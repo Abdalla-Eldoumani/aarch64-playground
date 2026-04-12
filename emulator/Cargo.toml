@@ -1,0 +1,21 @@
+[package]
+name = "aarch64-emulator"
+version = "0.1.0"
+edition = "2021"
+description = "ARMv8 instruction emulator for the browser"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = "s"
+lto = true
