@@ -31,9 +31,9 @@ export interface RegisterState {
  * Handles dynamic import and BigInt-to-string conversion.
  */
 export class EmulatorInstance {
-  private inner: InstanceType<WasmEmulatorClass>;
+  private inner: WasmEmulatorInstance;
 
-  constructor(inner: InstanceType<WasmEmulatorClass>) {
+  constructor(inner: WasmEmulatorInstance) {
     this.inner = inner;
   }
 
@@ -127,9 +127,8 @@ interface RawRunResult {
   error?: string;
 }
 
-// the WASM module's Emulator class shape
-interface WasmEmulatorClass {
-  new (): InstanceType<WasmEmulatorClass>;
+// the WASM module's Emulator instance shape
+interface WasmEmulatorInstance {
   assemble_and_load(source: string): unknown;
   step(): unknown;
   run_until_break(max_steps: number): unknown;
@@ -146,6 +145,8 @@ interface WasmEmulatorClass {
   is_halted(): boolean;
   code_base(): number;
 }
+
+type WasmEmulatorClass = new () => WasmEmulatorInstance;
 
 /**
  * Load the WASM module and return an EmulatorInstance.
