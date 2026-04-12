@@ -1,0 +1,18 @@
+# Rust
+emulator/target/
+emulator/Cargo.lock
+
+# Node
+web/node_modules/
+web/.next/
+web/out/
+
+# WASM build output
+web/lib/wasm/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
