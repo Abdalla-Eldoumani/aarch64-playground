@@ -142,17 +142,19 @@ export function Editor({
       monaco.editor.setTheme("arm64-dark");
 
       // glyph margin click for breakpoints
-      editor.onMouseDown((e) => {
-        if (
-          e.target.type ===
-          monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
-        ) {
-          const line = e.target.position?.lineNumber;
-          if (line != null) {
-            onToggleBreakpoint(line);
+      editor.onMouseDown(
+        (e: { target: { type: number; position?: { lineNumber: number } } }) => {
+          if (
+            e.target.type ===
+            monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
+          ) {
+            const line = e.target.position?.lineNumber;
+            if (line != null) {
+              onToggleBreakpoint(line);
+            }
           }
         }
-      });
+      );
 
       updateDecorations();
     },
