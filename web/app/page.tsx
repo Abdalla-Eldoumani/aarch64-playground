@@ -8,6 +8,7 @@ import { MemoryPanel } from "@/components/MemoryPanel";
 import { StackPanel } from "@/components/StackPanel";
 import { Controls } from "@/components/Controls";
 import { InstructionView } from "@/components/InstructionView";
+import { ExampleLoader } from "@/components/ExampleLoader";
 
 const DEFAULT_SOURCE = `// aarch64 playground
 // write ARM64 assembly, hit Assemble, then Step or Run
@@ -36,6 +37,12 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen">
+      {/* header bar */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+        <span className="text-sm font-bold text-[var(--text-primary)]">aarch64 playground</span>
+        <ExampleLoader onLoad={setSource} />
+      </div>
+
       {/* main content */}
       <div className="flex flex-1 min-h-0">
         {/* left: editor + disassembly */}
