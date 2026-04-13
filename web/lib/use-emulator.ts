@@ -18,6 +18,7 @@ export interface DecodedInstruction {
 
 export interface EmulatorState {
   isLoaded: boolean;
+  loadError: string | null;
   registers: string[];
   sp: string;
   pc: number;
@@ -48,6 +49,7 @@ export function useEmulator(): EmulatorState {
   const sourceRef = useRef("");
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [registers, setRegisters] = useState<string[]>(
     () => Array(31).fill("0x0000000000000000")
   );
@@ -67,12 +69,18 @@ export function useEmulator(): EmulatorState {
   // load WASM on mount
   useEffect(() => {
     let cancelled = false;
-    loadEmulator().then((emu) => {
-      if (cancelled) return;
-      emuRef.current = emu;
-      setCodeBase(emu.codeBase());
-      setIsLoaded(true);
-    });
+    loadEmulator()
+      .then((emu) => {
+        if (cancelled) return;
+        emuRef.current = emu;
+        setCodeBase(emu.codeBase());
+        setIsLoaded(true);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        setLoadError(msg);
+      });
     return () => {
       cancelled = true;
     };
@@ -112,6 +120,21 @@ export function useEmulator(): EmulatorState {
       setAssemblyErrors([]);
       setIsRunning(false);
       runningRef.current = false;
+
+      // stripping comments and whitespace tells us whether there's anything
+      // to assemble at all; the rust assembler accepts empty input but the
+      // result is a zero-instruction program that can't be stepped
+      const hasContent = source
+        .split("\n")
+        .some((line) => {
+          const trimmed = line.replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
+          return trimmed.length > 0 && !trimmed.endsWith(":");
+        });
+      if (!hasContent) {
+        setError("no instructions to assemble");
+        setInstructions([]);
+        return;
+      }
 
       const result: AssembleResult = emu.assembleAndLoad(source);
 
@@ -248,6 +271,7 @@ export function useEmulator(): EmulatorState {
 
   return {
     isLoaded,
+    loadError,
     registers,
     sp,
     pc,
