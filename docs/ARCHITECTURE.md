@@ -6,7 +6,7 @@ Two workspaces, one monorepo.
 
 ```
 ┌────────────────────────────────────────────────┐
-│ web/    Next.js 14 (App Router) + React 18     │
+│ web/    Next.js 16 (App Router) + React 19     │
 │         Monaco editor, register/memory/stack   │
 │         panels, Controls, InstructionView      │
 ├────────────────────────────────────────────────┤
@@ -98,7 +98,7 @@ Rust panics inside WASM go through `console_error_panic_hook` so the message is 
 ## Testing strategy
 
 - Native Rust unit tests live next to their module (`#[cfg(test)] mod tests`). 96 tests cover memory, registers, decoder, executor, assembler, and full end-to-end programs via `Cpu::run_until_break`.
-- WASM is smoke-tested by building with `wasm-pack build --target nodejs` and running `Emulator::new().assemble_and_load(...)` from a one-liner Node script. See `scripts/` (add one if you need it reproducibly).
+- WASM is smoke-tested end-to-end by [`scripts/verify-examples.js`](../scripts/verify-examples.js), which builds a nodejs-target WASM bundle and runs every program in `web/public/examples/` through it, asserting the post-halt register and memory state matches the comment in each file. Treat its output as the source of truth for example correctness.
 - The frontend has no automated tests yet. It's small enough that manual verification with the example programs is usually enough.
 
 ## Gotchas
