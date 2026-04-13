@@ -8,7 +8,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 
 | Mnemonic | Form                             | Notes                                    |
 | -------- | -------------------------------- | ---------------------------------------- |
-| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm`    | Register-to-register or wide immediate.  |
+| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift. |
 | `MOVZ`   | `MOVZ Xd, #imm, LSL #shift`      | Zero upper bits, shift is 0/16/32/48.    |
 | `MOVK`   | `MOVK Xd, #imm, LSL #shift`      | Keep other halfwords.                    |
 | `MOVN`   | `MOVN Xd, #imm, LSL #shift`      | Bitwise NOT, same shifts.                |
