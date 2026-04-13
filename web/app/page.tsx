@@ -55,12 +55,22 @@ export default function Home() {
       <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
         <span className="text-sm font-bold text-[var(--text-primary)]">aarch64 playground</span>
         <ExampleLoader onLoad={setSource} />
+        <div className="flex-1" />
+        <a
+          href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded px-1"
+          aria-label="View source on GitHub"
+        >
+          source
+        </a>
       </div>
 
-      {/* main content */}
-      <div className="flex flex-1 min-h-0">
+      {/* main content: stacks on narrow screens, side-by-side from md up */}
+      <div className="flex flex-1 min-h-0 flex-col md:flex-row">
         {/* left: editor + disassembly */}
-        <div className="flex flex-col w-1/2 border-r border-[var(--border)]">
+        <div className="flex flex-col w-full md:w-1/2 border-b md:border-b-0 md:border-r border-[var(--border)] min-h-[50vh] md:min-h-0">
           <div className="flex-1 min-h-0">
             <Editor
               value={source}
@@ -81,7 +91,7 @@ export default function Home() {
         </div>
 
         {/* right: registers + memory/stack */}
-        <div className="flex flex-col w-1/2">
+        <div className="flex flex-col w-full md:w-1/2 min-h-[50vh] md:min-h-0">
           <div className="flex-1 min-h-0 overflow-auto border-b border-[var(--border)]">
             <RegisterPanel
               registers={emu.registers}
@@ -92,15 +102,27 @@ export default function Home() {
             />
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
-            <div className="flex border-b border-[var(--border)]">
+            <div className="flex border-b border-[var(--border)]" role="tablist" aria-label="memory view">
               <button
-                className={`px-4 py-1 text-xs ${activeTab === "memory" ? "text-[var(--accent)] border-b border-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
+                role="tab"
+                aria-selected={activeTab === "memory"}
+                className={`px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                  activeTab === "memory"
+                    ? "text-[var(--accent)] border-b border-[var(--accent)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                }`}
                 onClick={() => setActiveTab("memory")}
               >
                 memory
               </button>
               <button
-                className={`px-4 py-1 text-xs ${activeTab === "stack" ? "text-[var(--accent)] border-b border-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
+                role="tab"
+                aria-selected={activeTab === "stack"}
+                className={`px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                  activeTab === "stack"
+                    ? "text-[var(--accent)] border-b border-[var(--accent)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                }`}
                 onClick={() => setActiveTab("stack")}
               >
                 stack
