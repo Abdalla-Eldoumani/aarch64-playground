@@ -383,7 +383,7 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "CMP/CMN requires 2 operands");
     }
-    let (rn, sf) = parse_register(ops[0], ln)?;
+    let (_, sf) = parse_register(ops[0], ln)?;
     let zr = if sf { "XZR" } else { "WZR" };
     let new_ops = [zr, ops[0], ops[1]];
     encode_dp(&new_ops, op_bit, 1, ln)
@@ -421,7 +421,7 @@ fn encode_tst(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "TST requires 2 operands");
     }
-    let (rn, sf) = parse_register(ops[0], ln)?;
+    let (_, sf) = parse_register(ops[0], ln)?;
     let zr = if sf { "XZR" } else { "WZR" };
     let new_ops = [zr, ops[0], ops[1]];
     encode_log_reg(&new_ops, 0b11, false, true, ln)
@@ -462,16 +462,9 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
             | ((rn as u32) << 5) | (rd as u32));
     }
 
-    // register form: encode as ORR with shift
+    // register form: variable shifts go through LSLV/LSRV/ASRV (dp2 instrs).
+    // LSLV layout: sf_0_S=0_11010110_Rm_0010_00_Rn_Rd
     let (rm, _) = parse_register(op3, ln)?;
-    let shift_enc = match shift_type {
-        0 => 0b00, // LSL -- not really encodable as a variable shift via logical
-        1 => 0b01,
-        2 => 0b10,
-        _ => unreachable!(),
-    };
-    // actually, variable shifts use LSLV/LSRV/ASRV which are dp2 instructions
-    // LSLV: sf_0_S=0_11010110_Rm_0010_00_Rn_Rd
     let opcode: u32 = match shift_type {
         0 => 0b001000, // LSLV
         1 => 0b001001, // LSRV
