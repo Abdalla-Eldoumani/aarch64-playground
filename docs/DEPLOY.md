@@ -46,6 +46,20 @@ Output goes to `web/.next` and is served by Vercel's Next.js runtime.
 
 **Deploy succeeds but the page shows the WASM load error** -- the `Content-Type` on the WASM response might be wrong. `curl -I https://your-deploy.vercel.app/path/to/bg.wasm` and confirm you see `Content-Type: application/wasm`. If not, the `vercel.json` regex isn't matching; double-check the header block.
 
+## npm audit status
+
+`npm audit` reports four high-severity advisories that we intentionally do not patch, all against the pinned Next.js 14.2 line:
+
+- **[GHSA-9g9p-9gw9-jx7f](https://github.com/advisories/GHSA-9g9p-9gw9-jx7f)** — DoS via `next/image` `remotePatterns`. We don't use `next/image`.
+- **[GHSA-h25m-26qc-wcjf](https://github.com/advisories/GHSA-h25m-26qc-wcjf)** — HTTP request deserialization in insecure React Server Components. No RSC data flow; page is fully static.
+- **[GHSA-ggv3-7p47-pfv8](https://github.com/advisories/GHSA-ggv3-7p47-pfv8)** — HTTP request smuggling in `rewrites`. No `rewrites` are configured.
+- **[GHSA-3x4c-7xq6-9pq8](https://github.com/advisories/GHSA-3x4c-7xq6-9pq8)** — Unbounded `next/image` disk cache. Same as the first, we don't use `next/image`.
+- **[GHSA-q4gf-8mx6-v5v3](https://github.com/advisories/GHSA-q4gf-8mx6-v5v3)** — DoS with Server Components. Same reason.
+
+Plus **[GHSA-5j98-mcp5-4vw2](https://github.com/advisories/GHSA-5j98-mcp5-4vw2)** — command injection in the `glob` CLI, pulled transitively by `eslint-config-next`. We only use `glob` as a library; the vulnerable `-c/--cmd` flag is never invoked.
+
+Fixing any of them requires upgrading to Next.js 15 or 16, which is a non-trivial migration. Revisit when we're ready to move off 14. The moderate-severity DOMPurify advisories are patched via an `overrides` entry in `web/package.json`.
+
 ## Alternative: pre-building the WASM
 
 If you'd rather not run Rust on Vercel's build image, you can un-ignore `web/lib/wasm/` in the repo (remove that line from `.gitignore`), commit the built artifacts, and simplify `vercel.json` to:
