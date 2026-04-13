@@ -14,8 +14,14 @@ if ! command -v rustup >/dev/null 2>&1; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --profile minimal --default-toolchain stable
 fi
-# shellcheck disable=SC1091
-source "$HOME/.cargo/env"
+# rustup-init.sh writes $HOME/.cargo/env on Linux/macOS. Source it if it
+# exists (Vercel's fresh build image); skip otherwise so the script works
+# in environments that already have cargo on PATH (CI with cached toolchain,
+# local Windows/Git Bash).
+if [ -f "$HOME/.cargo/env" ]; then
+  # shellcheck disable=SC1091
+  source "$HOME/.cargo/env"
+fi
 
 rustup target add wasm32-unknown-unknown
 
