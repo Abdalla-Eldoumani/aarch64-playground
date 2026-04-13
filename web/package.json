@@ -25,5 +25,8 @@
     "autoprefixer": "^10.4.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.0"
+  },
+  "overrides": {
+    "dompurify": "^3.3.3"
   }
 }
