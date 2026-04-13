@@ -1,0 +1,12 @@
+{
+  "name": "aarch64-playground",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo root. The Next.js app lives in web/; its lockfile and dependencies are installed there by the Vercel install command. This root manifest exists only so Vercel's Next.js framework preset can detect the project.",
+  "workspaces": [
+    "web"
+  ],
+  "dependencies": {
+    "next": "^14.2.0"
+  }
+}
