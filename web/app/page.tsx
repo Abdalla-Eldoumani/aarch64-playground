@@ -27,6 +27,20 @@ export default function Home() {
   const [source, setSource] = useState(DEFAULT_SOURCE);
   const [activeTab, setActiveTab] = useState<"memory" | "stack">("memory");
 
+  if (emu.loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen gap-3 px-6 text-center">
+        <span className="text-sm text-red-400">failed to load emulator</span>
+        <pre className="text-xs text-[var(--text-secondary)] max-w-xl whitespace-pre-wrap">
+          {emu.loadError}
+        </pre>
+        <span className="text-xs text-[var(--text-secondary)]">
+          check the browser console for details, then reload the page
+        </span>
+      </div>
+    );
+  }
+
   if (!emu.isLoaded) {
     return (
       <div className="flex items-center justify-center h-screen text-[var(--text-secondary)]">
