@@ -6,6 +6,7 @@ emulator/Cargo.lock
 web/node_modules/
 web/.next/
 web/out/
+web/tsconfig.tsbuildinfo
 
 # WASM build output
 web/lib/wasm/
