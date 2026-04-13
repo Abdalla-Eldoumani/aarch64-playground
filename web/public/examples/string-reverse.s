@@ -1,19 +1,23 @@
 // string reverse -- reverse "HELLO" in memory
 //
-// The string is stored at address 0x10000000 (heap).
-// X0 = pointer to start, X1 = pointer to end.
+// Writes "HELLO" one byte at a time at 0x10000000, then swaps around the
+// midpoint until the string reads "OLLEH".
 
-    // store "HELLO" (5 bytes) at heap base
-    MOV X0, #0x4C4C     // "LL" in little-endian
-    MOVK X0, #0x4548, LSL #16  // "HE"
+    // lay down the string byte-by-byte at 0x10000000
     MOV X10, #0x10000000
-    STR X0, [X10]
+    MOV X0, #0x48       // 'H'
+    STRB X0, [X10]
+    MOV X0, #0x45       // 'E'
+    STRB X0, [X10, #1]
+    MOV X0, #0x4C       // 'L'
+    STRB X0, [X10, #2]
+    STRB X0, [X10, #3]  // 'L' again
     MOV X0, #0x4F       // 'O'
     STRB X0, [X10, #4]
 
-    // X0 = start pointer, X1 = end pointer
-    MOV X0, #0x10000000
-    ADD X1, X0, #4      // point to last char
+    // X0 = front pointer, X1 = back pointer
+    MOV X0, X10         // front = 0x10000000
+    ADD X1, X0, #4      // back = front + 4 (points at 'O')
 
 reverse_loop:
     CMP X0, X1
