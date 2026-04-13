@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use cpu::Cpu;
 
+
 /// WASM-exposed emulator wrapping the core CPU.
 #[wasm_bindgen]
 pub struct Emulator {
@@ -55,6 +56,8 @@ impl Emulator {
     /// Create a fresh emulator with default memory layout.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
+        // install panic hook so Rust panics surface as readable JS errors
+        console_error_panic_hook::set_once();
         Self { cpu: Cpu::new() }
     }
 
