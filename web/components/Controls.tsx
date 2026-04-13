@@ -67,12 +67,22 @@ export function Controls({
 
       <div className="flex-1" />
 
-      {isHalted && (
-        <span className="text-[var(--text-secondary)] text-xs">halted</span>
+      {isHalted && !error && (
+        <span
+          className="inline-flex items-center gap-2 text-xs text-[var(--text-secondary)]"
+          role="status"
+        >
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
+          halted
+        </span>
       )}
 
       {error && (
-        <span className="text-red-400 text-xs truncate max-w-md">
+        <span
+          className="text-red-400 text-xs truncate max-w-md"
+          role="alert"
+          title={error}
+        >
           {error}
         </span>
       )}
@@ -95,14 +105,20 @@ function Button({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`px-3 py-1 text-xs rounded border transition-colors ${
+      aria-label={shortcut ? `${label} (${shortcut})` : label}
+      className={`group inline-flex items-center gap-2 px-3 py-1 text-xs rounded border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
         disabled
           ? "border-[var(--border)] text-[var(--text-secondary)] cursor-not-allowed"
           : "border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-panel)] hover:border-[var(--accent)]"
       }`}
       title={shortcut}
     >
-      {label}
+      <span>{label}</span>
+      {shortcut && (
+        <kbd className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono border border-[var(--border)] rounded px-1 py-[1px] group-hover:border-[var(--accent)]">
+          {shortcut}
+        </kbd>
+      )}
     </button>
   );
 }

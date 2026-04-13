@@ -296,7 +296,24 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         let imm = parse_immediate(op2, ln)?;
         if imm >= 0 && imm <= 0xFFFF {
             return encode_movzk(&[ops[0], op2], 0b10, ln); // MOVZ
-        } else if imm < 0 {
+        }
+        if imm > 0 {
+            // Try to encode as a single MOVZ with a shifted 16-bit field
+            // (e.g. 0x10000000 -> MOVZ Xd, #0x1000, LSL #16).
+            let u = imm as u64;
+            let limit: u64 = if sf { 4 } else { 2 };
+            for hw in 0..limit {
+                let shift = hw * 16;
+                let mask: u64 = 0xFFFF << shift;
+                if u & !mask == 0 {
+                    let val = (u >> shift) as i64;
+                    let sf_bit = if sf { 1u32 } else { 0 };
+                    return Ok((sf_bit << 31) | (0b10 << 29) | (0b100101 << 23)
+                        | ((hw as u32) << 21) | ((val as u32 & 0xFFFF) << 5) | (rd as u32));
+                }
+            }
+        }
+        if imm < 0 {
             // MOVN: ~imm
             let not_imm = !(imm as u64);
             let trunc = if sf { not_imm } else { not_imm & 0xFFFF_FFFF };
@@ -305,9 +322,17 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
                 return Ok((sf_bit << 31) | (0b00 << 29) | (0b100101 << 23)
                     | ((trunc as u32) << 5) | (rd as u32));
             }
-            return asm_err(ln, "immediate out of range for MOV");
         }
-        return asm_err(ln, "immediate out of range for MOV");
+        return asm_err(ln, "immediate out of range for MOV (needs MOVZ+MOVK)");
+    }
+
+    // MOV involving SP is the ADD-immediate alias: MOV Xd, SP -> ADD Xd, SP, #0
+    // and MOV SP, Xn -> ADD SP, Xn, #0. parse_register collapses SP and XZR
+    // to index 31, so this has to be detected textually.
+    let dst_is_sp = ops[0].trim().eq_ignore_ascii_case("SP");
+    let src_is_sp = op2.eq_ignore_ascii_case("SP");
+    if dst_is_sp || src_is_sp {
+        return encode_dp(&[ops[0], op2, "#0"], 0, 0, ln);
     }
 
     // MOV Xd, Xn -> ORR Xd, XZR, Xn
