@@ -52,9 +52,15 @@ impl Cpu {
         cpu.regs.write_sp(STACK_BASE);
         cpu.regs.write_pc(CODE_BASE);
 
-        // pre-map some stack pages so initial pushes don't need auto-map
+        // pre-map stack pages so initial pushes don't need auto-map
         for i in 0..4 {
             cpu.mem.map_page(STACK_BASE - (i + 1) * 4096);
+        }
+        // pre-map a few code pages up front to avoid per-page allocations
+        // during `load_program` (on wasm32, mid-call page allocs were tripping
+        // a dlmalloc invariant and trapping mid-assemble)
+        for i in 0..4 {
+            cpu.mem.map_page(CODE_BASE + i * 4096);
         }
         cpu
     }
@@ -165,7 +171,7 @@ impl Cpu {
         self.regs = RegisterFile::new();
         self.regs.write_sp(STACK_BASE);
         self.regs.write_pc(CODE_BASE);
-        self.mem = Memory::new();
+        self.mem.clear();
         for i in 0..4 {
             self.mem.map_page(STACK_BASE - (i + 1) * 4096);
         }
