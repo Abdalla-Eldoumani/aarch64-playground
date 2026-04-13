@@ -4,6 +4,6 @@
   "private": true,
   "description": "Monorepo root. The real Next.js app lives in web/; installs and builds happen there. This manifest exists so Vercel's Next.js framework preset can detect the project. Don't add a workspaces field -- it collides with web/package-lock.json.",
   "dependencies": {
-    "next": "^14.2.0"
+    "next": "^16.0.0"
   }
 }
