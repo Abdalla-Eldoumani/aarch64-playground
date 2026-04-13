@@ -4,14 +4,16 @@ A browser-based ARMv8 (AArch64) instruction emulator with a visual debugger. Wri
 
 ## Why
 
-Most online assembly tools target x86. The few that target ARM64 are either command-line QEMU wrappers or heavy Emscripten builds of Unicorn. This is a hand-rolled interpreter written in Rust (~5 kloc), compiled straight to WebAssembly, with a Next.js debugger UI on top. It's built for teaching — CPSC 355-style courses, anyone learning AArch64 from scratch.
+Most online assembly tools target x86. The few that target ARM64 are either command-line QEMU wrappers or heavy Emscripten builds of Unicorn. This is a hand-rolled interpreter written in Rust (~5 kloc), compiled straight to WebAssembly, with a Next.js 16 + React 19 debugger UI on top. It's built for teaching — CPSC 355-style courses, anyone learning AArch64 from scratch.
+
+Live at <https://aarch64-playground.vercel.app>.
 
 ## Quickstart
 
 **Requirements:**
 - [Rust](https://rustup.rs/) 1.75+ with `rustup target add wasm32-unknown-unknown`
 - [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/) 0.12+
-- Node.js 18+
+- Node.js 20+
 
 ```bash
 # 1. Build the WASM module
@@ -60,9 +62,10 @@ Register names follow the usual AArch64 conventions: `X0`-`X30`, `W0`-`W30`, `SP
 ```
 emulator/  Rust crate. Pure ARMv8 interpreter + hand-rolled assembler.
            Compiles to WASM via wasm-pack.
-web/       Next.js 14 frontend with a Monaco editor and state panels.
+web/       Next.js 16 + React 19 frontend with a Monaco editor and state panels.
            Imports the WASM module the emulator crate produces.
-scripts/   Build helpers (Vercel entrypoint, etc.)
+scripts/   Build helpers: Vercel entrypoint (vercel-build.sh) and the
+           example verifier (verify-examples.js).
 docs/      Architecture and contributor docs.
 ```
 
@@ -81,10 +84,15 @@ cd emulator && cargo test --lib
 # TypeScript: type check
 cd web && npx tsc --noEmit
 
+# End-to-end: run every example through the WASM emulator
+node scripts/verify-examples.js
+
 # Rebuild WASM + dev server
 cd emulator && wasm-pack build --target web --out-dir ../web/lib/wasm
 cd ../web && npm run dev
 ```
+
+`npm run dev` / `npm run build` pass `--webpack` to Next 16 because the WASM pipeline relies on `webpack.experiments.asyncWebAssembly`; migrating to Turbopack is a future task.
 
 More detail in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
