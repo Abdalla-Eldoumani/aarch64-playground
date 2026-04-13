@@ -8,7 +8,7 @@ You need:
   `rustup target add wasm32-unknown-unknown`
 - **wasm-pack** 0.12+. `cargo install wasm-pack` or use the installer at
   <https://rustwasm.github.io/wasm-pack/installer/>.
-- **Node.js** 18+.
+- **Node.js** 20+.
 
 First build:
 
@@ -26,9 +26,9 @@ Open <http://localhost:3000>. If you see "loading emulator..." for more than a s
 ## Layout recap
 
 - `emulator/` -- Rust crate, no browser deps in the core. Compiles to WASM via wasm-pack.
-- `web/` -- Next.js 14 app. Imports the WASM module the crate produces.
+- `web/` -- Next.js 16 + React 19 app. Imports the WASM module the crate produces.
 - `docs/` -- you are here.
-- `scripts/` -- deploy helpers (Vercel entrypoint).
+- `scripts/` -- `vercel-build.sh` (Vercel build entrypoint) and `verify-examples.js` (end-to-end WASM smoke test for every example program).
 
 Each workspace has a `CLAUDE.md` with notes aimed at contributors and AI pairs. Read those before making non-obvious changes.
 
@@ -42,7 +42,12 @@ cargo test --lib
 # Rust change visible to the browser -> rebuild WASM
 wasm-pack build --target web --out-dir ../web/lib/wasm
 
-# Frontend change -> hot-reloads via next dev
+# Any change to the assembler / executor / examples -> re-run the
+# example-level smoke test, which builds a nodejs WASM bundle and runs
+# every .s file in web/public/examples/ to completion:
+node scripts/verify-examples.js
+
+# Frontend change -> hot-reloads via next dev (webpack, not Turbopack)
 # TypeScript changes don't need a rebuild, but if you change the wasm-bindgen
 # public API the bindings in web/lib/wasm/ have to be regenerated.
 ```
@@ -89,7 +94,10 @@ The project is early. Open an issue first if the change is larger than a single 
 
 - **WASM page dealloc trap** -- `emulator/src/memory.rs` uses `HashMap<u64, Vec<u8>>` instead of `HashMap<u64, Box<[u8; 4096]>>`. Do not "clean up" by changing this back. Full story in `emulator/CLAUDE.md`.
 - **WASM caching in dev** -- Next.js hard-caches compiled WASM under `web/.next/`. If a WASM rebuild doesn't take, delete `web/.next/` and restart `npm run dev`.
+- **Webpack flag on Next 16** -- the `dev` and `build` npm scripts pass `--webpack` because we rely on `webpack.experiments.asyncWebAssembly`. Next 16 defaults to Turbopack, whose async-wasm story isn't where we need it yet. If you remove the flag, the build fails with a webpack-config warning.
+- **Root package.json trick** -- there's a near-empty `package.json` at the repo root listing only `next`. It exists so Vercel's framework detector finds a Next.js dep at the configured Root Directory; the real install happens in `web/`. Don't add unrelated deps to the root manifest.
 - **`strict: true` in tsconfig** -- add types, don't sprinkle `any`. If you hit a gnarly wasm-bindgen-generated type, widen it in `web/lib/emulator.ts`, not at the call site.
+- **`next-env.d.ts` can drift** -- `next dev` and `next build` each write a slightly different `import "./.next/..."` line. If CI complains, normalize it to the production path (`./.next/types/routes.d.ts`).
 
 ## Where to ask questions
 
