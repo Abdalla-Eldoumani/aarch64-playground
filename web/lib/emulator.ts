@@ -5,10 +5,19 @@ export interface AssembleResult {
   instruction_count: number;
 }
 
+export type StepOutcome =
+  | "advance"
+  | "halted"
+  | "waiting"
+  | "exited"
+  | "error";
+
 export interface StepResult {
   pc: number;
   halted: boolean;
   error: string | null;
+  outcome: StepOutcome;
+  exitCode: number | null;
 }
 
 export interface RunResult {
@@ -47,7 +56,73 @@ export class EmulatorInstance {
       pc: Number(raw.pc),
       halted: raw.halted,
       error: raw.error ?? null,
+      outcome: raw.outcome ?? "advance",
+      exitCode: raw.exit_code != null ? Number(raw.exit_code) : null,
     };
+  }
+
+  stepBack(): StepResult {
+    const raw = this.inner.step_back() as RawStepResult;
+    return {
+      pc: Number(raw.pc),
+      halted: raw.halted,
+      error: raw.error ?? null,
+      outcome: raw.outcome ?? "advance",
+      exitCode: raw.exit_code != null ? Number(raw.exit_code) : null,
+    };
+  }
+
+  canStepBack(): boolean {
+    return this.inner.can_step_back();
+  }
+
+  saveState(name: string): void {
+    this.inner.save_state(name);
+  }
+
+  loadState(name: string): boolean {
+    return this.inner.load_state(name);
+  }
+
+  deleteState(name: string): boolean {
+    return this.inner.delete_state(name);
+  }
+
+  listStates(): string[] {
+    return this.inner.list_states();
+  }
+
+  takeStdout(): string {
+    return this.inner.take_stdout();
+  }
+
+  takeStderr(): string {
+    return this.inner.take_stderr();
+  }
+
+  pushStdin(s: string): void {
+    this.inner.push_stdin(s);
+  }
+
+  isBlocked(): boolean {
+    return this.inner.is_blocked();
+  }
+
+  getExitCode(): number | null {
+    const code = this.inner.get_exit_code();
+    return code == null ? null : Number(code);
+  }
+
+  uploadVfsFile(path: string, data: Uint8Array): void {
+    this.inner.upload_vfs_file(path, data);
+  }
+
+  listVfsFiles(): string[] {
+    return this.inner.list_vfs_files();
+  }
+
+  clearConsole(): void {
+    this.inner.clear_console();
   }
 
   runUntilBreak(maxSteps: number): RunResult {
@@ -117,6 +192,8 @@ interface RawStepResult {
   pc: bigint | number;
   halted: boolean;
   error?: string;
+  outcome?: StepOutcome;
+  exit_code?: bigint | number | null;
 }
 
 interface RawRunResult {
@@ -131,6 +208,12 @@ interface RawRunResult {
 interface WasmEmulatorInstance {
   assemble_and_load(source: string): unknown;
   step(): unknown;
+  step_back(): unknown;
+  can_step_back(): boolean;
+  save_state(name: string): void;
+  load_state(name: string): boolean;
+  delete_state(name: string): boolean;
+  list_states(): string[];
   run_until_break(max_steps: number): unknown;
   reset(): void;
   get_pc(): bigint;
@@ -144,6 +227,14 @@ interface WasmEmulatorInstance {
   clear_breakpoint(address: number): void;
   is_halted(): boolean;
   code_base(): number;
+  take_stdout(): string;
+  take_stderr(): string;
+  push_stdin(s: string): void;
+  is_blocked(): boolean;
+  get_exit_code(): bigint | number | null | undefined;
+  upload_vfs_file(path: string, data: Uint8Array): void;
+  list_vfs_files(): string[];
+  clear_console(): void;
 }
 
 type WasmEmulatorClass = new () => WasmEmulatorInstance;
