@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+[data-theme="dark"] {
   --bg-primary: #0f1117;
   --bg-secondary: #1a1d27;
   --bg-panel: #1e2130;
@@ -10,13 +11,70 @@
   --text-primary: #e2e4e9;
   --text-secondary: #8b8fa3;
   --accent: #60a5fa;
+  --accent-muted: #2564d6;
   --changed: #facc15;
+  --danger: #f87171;
+  --success: #4ade80;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --font-scale: 1;
+}
+
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f6fa;
+  --bg-panel: #eceff5;
+  --border: #d4d8e0;
+  --text-primary: #1a1d27;
+  --text-secondary: #5b6070;
+  --accent: #2563eb;
+  --accent-muted: #3b82f6;
+  --changed: #ca8a04;
+  --danger: #dc2626;
+  --success: #16a34a;
+}
+
+html {
+  /* 16px base on iOS kills form-field auto-zoom when the keyboard opens. */
+  font-size: 16px;
 }
 
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+  padding-top: var(--safe-top);
+}
+
+/* Resize-handle styling for react-resizable-panels. The `data-` attributes
+   come from the library; we widen the hit target on coarse pointers so
+   phone drags don't miss the handle. */
+[data-panel-resize-handle-enabled] {
+  background: transparent;
+  position: relative;
+}
+[data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"] {
+  width: 4px;
+}
+[data-panel-resize-handle-enabled][data-panel-group-direction="vertical"] {
+  height: 4px;
+}
+[data-panel-resize-handle-enabled]:hover,
+[data-panel-resize-handle-enabled][data-resize-handle-active="pointer"] {
+  background: var(--accent-muted);
+}
+@media (pointer: coarse) {
+  [data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"] {
+    width: 12px;
+  }
+  [data-panel-resize-handle-enabled][data-panel-group-direction="vertical"] {
+    height: 12px;
+  }
+}
+
+/* Panel content inherits `--font-scale`; opt-in classes use it. */
+.panel-scaled {
+  font-size: calc(0.75rem * var(--font-scale));
 }
 
 /* scrollbar styling for panels */
