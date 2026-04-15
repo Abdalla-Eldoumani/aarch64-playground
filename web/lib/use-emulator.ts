@@ -32,13 +32,64 @@ export interface EmulatorState {
   currentLine: number | null;
   instructions: DecodedInstruction[];
   codeBase: number;
+  /// Accumulated stdout since the last `clearConsole`.
+  stdout: string;
+  /// Accumulated stderr.
+  stderr: string;
+  /// True when the program is waiting for stdin (scanf / read(0)).
+  blocked: boolean;
+  /// `exit(code)` status, if the program called it.
+  exitCode: number | null;
+  /// True when the source triggers hosted-mode features (libc calls, data
+  /// sections, `.global main`). See `detectHostedMode` for the heuristic.
+  hostedMode: boolean;
+  /// Filenames currently registered with the virtual FS.
+  vfsFiles: string[];
   assemble: (source: string) => void;
   step: () => void;
+  stepBack: () => void;
+  canStepBack: boolean;
+  stepCount: number;
+  savedStates: string[];
+  saveState: (name: string) => void;
+  loadState: (name: string) => void;
+  deleteState: (name: string) => void;
   run: () => void;
   pause: () => void;
   reset: () => void;
   toggleBreakpoint: (line: number) => void;
   getMemory: (addr: number, len: number) => Uint8Array;
+  pushStdin: (s: string) => void;
+  uploadVfsFile: (path: string, data: Uint8Array) => void;
+  clearConsole: () => void;
+}
+
+/// Heuristic: does the source look like a hosted cpsc 355 program that
+/// expects libc and a `main` entry point? Anything that references a libc
+/// stub, declares `.global main`, or populates `.data`/`.rodata` counts.
+function detectHostedMode(source: string): boolean {
+  const stripped = source
+    .split("\n")
+    .map((l) => l.replace(/\/\/.*$/, "").replace(/;.*$/, ""))
+    .join("\n");
+  if (/\.(global|globl)\s+main\b/.test(stripped)) return true;
+  if (/\.(data|rodata|bss)\b/.test(stripped)) return true;
+  const libc = [
+    "printf",
+    "scanf",
+    "puts",
+    "putchar",
+    "getchar",
+    "strlen",
+    "strcmp",
+    "strcpy",
+    "memset",
+    "memcpy",
+    "exit",
+    "atof",
+  ];
+  const pattern = new RegExp(`\\bbl\\s+(${libc.join("|")})\\b`, "i");
+  return pattern.test(stripped);
 }
 
 export function useEmulator(): EmulatorState {
@@ -59,12 +110,20 @@ export function useEmulator(): EmulatorState {
   const [changedRegs, setChangedRegs] = useState<Set<number>>(new Set());
   const [isRunning, setIsRunning] = useState(false);
   const [isHalted, setIsHalted] = useState(false);
+  const [canStepBack, setCanStepBack] = useState(false);
+  const [stepCount, setStepCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [assemblyErrors, setAssemblyErrors] = useState<AssemblyError[]>([]);
   const [breakpoints, setBreakpoints] = useState<Set<number>>(new Set());
   const [currentLine, setCurrentLine] = useState<number | null>(null);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
+  const [stdout, setStdout] = useState("");
+  const [stderr, setStderr] = useState("");
+  const [blocked, setBlocked] = useState(false);
+  const [exitCode, setExitCode] = useState<number | null>(null);
+  const [hostedMode, setHostedMode] = useState(false);
+  const [vfsFiles, setVfsFiles] = useState<string[]>([]);
 
   // load WASM on mount
   useEffect(() => {
@@ -100,6 +159,15 @@ export function useEmulator(): EmulatorState {
     setChangedRegs(new Set(changed));
 
     setIsHalted(emu.isHalted());
+    setBlocked(emu.isBlocked());
+    setExitCode(emu.getExitCode());
+    setCanStepBack(emu.canStepBack());
+
+    // Drain any stdout/stderr the hosted runtime produced this step.
+    const out = emu.takeStdout();
+    if (out.length > 0) setStdout((prev) => prev + out);
+    const err = emu.takeStderr();
+    if (err.length > 0) setStderr((prev) => prev + err);
 
     // compute current source line from PC
     const currentPc = emu.getPc();
@@ -120,6 +188,8 @@ export function useEmulator(): EmulatorState {
       setAssemblyErrors([]);
       setIsRunning(false);
       runningRef.current = false;
+      setStepCount(0);
+      setHostedMode(detectHostedMode(source));
 
       // stripping comments and whitespace tells us whether there's anything
       // to assemble at all; the rust assembler accepts empty input but the
@@ -178,8 +248,53 @@ export function useEmulator(): EmulatorState {
     if (result.error) {
       setError(result.error);
     }
+    setStepCount((c) => c + 1);
     syncState();
   }, [syncState]);
+
+  const stepBack = useCallback(() => {
+    const emu = emuRef.current;
+    if (!emu) return;
+    setError(null);
+    emu.stepBack();
+    setStepCount((c) => Math.max(0, c - 1));
+    syncState();
+  }, [syncState]);
+
+  const [savedStates, setSavedStates] = useState<string[]>([]);
+  const refreshSaves = useCallback(() => {
+    const emu = emuRef.current;
+    if (!emu) return;
+    setSavedStates(emu.listStates());
+  }, []);
+  const saveState = useCallback(
+    (name: string) => {
+      const emu = emuRef.current;
+      if (!emu || !name) return;
+      emu.saveState(name);
+      refreshSaves();
+    },
+    [refreshSaves],
+  );
+  const loadState = useCallback(
+    (name: string) => {
+      const emu = emuRef.current;
+      if (!emu) return;
+      if (emu.loadState(name)) {
+        syncState();
+      }
+    },
+    [syncState],
+  );
+  const deleteState = useCallback(
+    (name: string) => {
+      const emu = emuRef.current;
+      if (!emu) return;
+      emu.deleteState(name);
+      refreshSaves();
+    },
+    [refreshSaves],
+  );
 
   const run = useCallback(() => {
     const emu = emuRef.current;
@@ -192,6 +307,7 @@ export function useEmulator(): EmulatorState {
       if (!runningRef.current || !emuRef.current) return;
 
       const result = emuRef.current.runUntilBreak(10000);
+      setStepCount((c) => c + result.steps_executed);
       syncState();
 
       if (result.error) {
@@ -202,6 +318,13 @@ export function useEmulator(): EmulatorState {
       }
 
       if (result.halted || result.hit_breakpoint) {
+        setIsRunning(false);
+        runningRef.current = false;
+        return;
+      }
+
+      // run_until_break also exits if the CPU is now blocked on stdin.
+      if (emuRef.current.isBlocked()) {
         setIsRunning(false);
         runningRef.current = false;
         return;
@@ -232,8 +355,51 @@ export function useEmulator(): EmulatorState {
     setAssemblyErrors([]);
     setInstructions([]);
     setCurrentLine(null);
+    setStdout("");
+    setStderr("");
+    setBlocked(false);
+    setExitCode(null);
+    setVfsFiles([]);
+    setStepCount(0);
     syncState();
   }, [pause, syncState]);
+
+  const pushStdin = useCallback(
+    (s: string) => {
+      const emu = emuRef.current;
+      if (!emu) return;
+      emu.pushStdin(s);
+      setBlocked(false);
+      // If the program was paused waiting for input, a single step resumes
+      // it; the caller (ConsolePanel) usually wants to continue running.
+      if (runningRef.current) {
+        return;
+      }
+      // Auto-step once so the stalled scanf/read drains the new input and
+      // the UI reflects the updated register state immediately.
+      emu.step();
+      syncState();
+    },
+    [syncState]
+  );
+
+  const uploadVfsFile = useCallback(
+    (path: string, data: Uint8Array) => {
+      const emu = emuRef.current;
+      if (!emu) return;
+      emu.uploadVfsFile(path, data);
+      setVfsFiles(emu.listVfsFiles());
+    },
+    []
+  );
+
+  const clearConsole = useCallback(() => {
+    const emu = emuRef.current;
+    if (!emu) return;
+    emu.clearConsole();
+    setStdout("");
+    setStderr("");
+  }, []);
 
   const toggleBreakpoint = useCallback(
     (line: number) => {
@@ -285,13 +451,29 @@ export function useEmulator(): EmulatorState {
     currentLine,
     instructions,
     codeBase,
+    stdout,
+    stderr,
+    blocked,
+    exitCode,
+    hostedMode,
+    vfsFiles,
     assemble,
     step,
+    stepBack,
+    canStepBack,
+    stepCount,
+    savedStates,
+    saveState,
+    loadState,
+    deleteState,
     run,
     pause,
     reset,
     toggleBreakpoint,
     getMemory,
+    pushStdin,
+    uploadVfsFile,
+    clearConsole,
   };
 }
 
