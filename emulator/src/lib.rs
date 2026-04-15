@@ -3,13 +3,82 @@ pub mod cpu;
 pub mod decoder;
 pub mod errors;
 pub mod executor;
+pub mod fpu;
+pub mod frontend;
+pub mod hosted;
 pub mod memory;
 pub mod registers;
+pub mod snapshot;
 
 use wasm_bindgen::prelude::*;
 use serde::Serialize;
 
-use cpu::Cpu;
+use cpu::{Cpu, StepOutcome};
+
+/// Heuristic that decides whether the source uses the hosted cpsc 355
+/// feature set (sections, .global main, libc BLs). The bare-metal
+/// examples hit none of these so they keep the legacy path.
+fn needs_hosted_pipeline(source: &str) -> bool {
+    // Strip // and ; comments so fragments inside them don't trigger.
+    let clean: String = source
+        .lines()
+        .map(|l| {
+            let without_line_comment = match l.find("//") {
+                Some(p) => &l[..p],
+                None => l,
+            };
+            match without_line_comment.find(';') {
+                Some(p) => &without_line_comment[..p],
+                None => without_line_comment,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let lower = clean.to_lowercase();
+    if lower.contains(".text")
+        || lower.contains(".data")
+        || lower.contains(".bss")
+        || lower.contains(".rodata")
+        || lower.contains(".global")
+        || lower.contains(".globl")
+        || lower.contains(".string")
+        || lower.contains(".asciz")
+        || lower.contains(".ascii")
+        || lower.contains(".word")
+        || lower.contains(".quad")
+        || lower.contains(".hword")
+        || lower.contains(".short")
+        || lower.contains(".byte")
+        || lower.contains(".double")
+        || lower.contains(".float")
+        || lower.contains(".skip")
+        || lower.contains(".zero")
+        || lower.contains(".balign")
+        || lower.contains(".align")
+        || lower.contains("define(")
+    {
+        return true;
+    }
+    for libc in [
+        "printf", "scanf", "puts", "putchar", "getchar", "strlen", "strcmp", "strcpy",
+        "memset", "memcpy", "atof", "exit",
+    ] {
+        let pat = format!("bl {libc}");
+        if lower.contains(&pat) {
+            return true;
+        }
+    }
+    false
+}
+
+fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
+    match outcome {
+        StepOutcome::Advance => ("advance", None),
+        StepOutcome::Halted => ("halted", None),
+        StepOutcome::WaitingForInput => ("waiting", None),
+        StepOutcome::Exited(code) => ("exited", Some(*code)),
+    }
+}
 
 
 /// WASM-exposed emulator wrapping the core CPU.
@@ -23,6 +92,10 @@ struct StepResultJs {
     pc: u64,
     halted: bool,
     error: Option<String>,
+    /// "advance" | "halted" | "waiting" | "exited"
+    outcome: &'static str,
+    /// Populated when outcome == "exited".
+    exit_code: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -61,35 +134,80 @@ impl Emulator {
         Self { cpu: Cpu::new() }
     }
 
-    /// Assemble source text and load the resulting program.
+    /// Assemble source text and load the resulting program. Sources that
+    /// reach for hosted features (`.text`/`.data`/`.bss`/`.rodata`, or
+    /// `.global main`, or any `bl <libc>`) go through the section-aware
+    /// pipeline; everything else keeps the legacy single-`.text` path so
+    /// the bare-metal examples retain their exact byte-for-byte layout.
     pub fn assemble_and_load(&mut self, source: &str) -> JsValue {
-        match assembler::assemble(source) {
-            Ok(code) => {
-                let count = code.len();
-                self.cpu.reset();
-                self.cpu.load_program(&code);
-                serde_wasm_bindgen::to_value(&AssembleResultJs {
-                    success: true,
-                    error: None,
-                    error_line: None,
-                    instruction_count: count,
-                }).unwrap()
+        if needs_hosted_pipeline(source) {
+            self.cpu.reset();
+            match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
+                Ok(image) => {
+                    let count = image.instruction_count;
+                    match self.cpu.load_linked_image(&image) {
+                        Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
+                            success: true,
+                            error: None,
+                            error_line: None,
+                            instruction_count: count,
+                        })
+                        .unwrap(),
+                        Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
+                            success: false,
+                            error: Some(e.to_string()),
+                            error_line: None,
+                            instruction_count: 0,
+                        })
+                        .unwrap(),
+                    }
+                }
+                Err(e) => {
+                    let (line, message) = match e {
+                        errors::EmuError::AssemblyError { line, message }
+                        | errors::EmuError::PreprocError { line, message }
+                        | errors::EmuError::ParseError { line, message }
+                        | errors::EmuError::LinkError { line, message } => (Some(line), message),
+                        other => (None, other.to_string()),
+                    };
+                    serde_wasm_bindgen::to_value(&AssembleResultJs {
+                        success: false,
+                        error: Some(message),
+                        error_line: line,
+                        instruction_count: 0,
+                    })
+                    .unwrap()
+                }
             }
-            Err(errors::EmuError::AssemblyError { line, message }) => {
-                serde_wasm_bindgen::to_value(&AssembleResultJs {
-                    success: false,
-                    error: Some(message),
-                    error_line: Some(line),
-                    instruction_count: 0,
-                }).unwrap()
-            }
-            Err(e) => {
-                serde_wasm_bindgen::to_value(&AssembleResultJs {
-                    success: false,
-                    error: Some(e.to_string()),
-                    error_line: None,
-                    instruction_count: 0,
-                }).unwrap()
+        } else {
+            match assembler::assemble(source) {
+                Ok(code) => {
+                    let count = code.len();
+                    self.cpu.reset();
+                    self.cpu.load_program(&code);
+                    serde_wasm_bindgen::to_value(&AssembleResultJs {
+                        success: true,
+                        error: None,
+                        error_line: None,
+                        instruction_count: count,
+                    }).unwrap()
+                }
+                Err(errors::EmuError::AssemblyError { line, message }) => {
+                    serde_wasm_bindgen::to_value(&AssembleResultJs {
+                        success: false,
+                        error: Some(message),
+                        error_line: Some(line),
+                        instruction_count: 0,
+                    }).unwrap()
+                }
+                Err(e) => {
+                    serde_wasm_bindgen::to_value(&AssembleResultJs {
+                        success: false,
+                        error: Some(e.to_string()),
+                        error_line: None,
+                        instruction_count: 0,
+                    }).unwrap()
+                }
             }
         }
     }
@@ -97,17 +215,70 @@ impl Emulator {
     /// Execute one instruction.
     pub fn step(&mut self) -> JsValue {
         match self.cpu.step() {
-            Ok(result) => serde_wasm_bindgen::to_value(&StepResultJs {
-                pc: result.pc,
-                halted: result.halted,
-                error: result.error,
-            }).unwrap(),
+            Ok(result) => {
+                let (outcome, exit_code) = outcome_to_js(&result.outcome);
+                serde_wasm_bindgen::to_value(&StepResultJs {
+                    pc: result.pc,
+                    halted: result.halted,
+                    error: result.error,
+                    outcome,
+                    exit_code,
+                })
+                .unwrap()
+            }
             Err(e) => serde_wasm_bindgen::to_value(&StepResultJs {
                 pc: self.cpu.regs.read_pc(),
                 halted: true,
                 error: Some(e.to_string()),
-            }).unwrap(),
+                outcome: "error",
+                exit_code: None,
+            })
+            .unwrap(),
         }
+    }
+
+    /// Step one instruction backward using the snapshot ring. Returns
+    /// the same tagged result shape as `step` so the JS side can share
+    /// its handler; `outcome` is whatever state the CPU landed in after
+    /// restoring the previous frame.
+    pub fn step_back(&mut self) -> JsValue {
+        let outcome = self.cpu.step_back();
+        let (outcome_str, exit_code) = outcome_to_js(&outcome);
+        serde_wasm_bindgen::to_value(&StepResultJs {
+            pc: self.cpu.regs.read_pc(),
+            halted: self.cpu.is_halted(),
+            error: None,
+            outcome: outcome_str,
+            exit_code,
+        })
+        .unwrap()
+    }
+
+    /// Whether `step_back` would have a frame to restore.
+    pub fn can_step_back(&self) -> bool {
+        self.cpu.can_step_back()
+    }
+
+    /// Save the current CPU state under `name`. Overwrites any existing
+    /// save with the same name; named saves survive `reset()`.
+    pub fn save_state(&mut self, name: &str) {
+        self.cpu.save_state(name.to_string());
+    }
+
+    /// Restore a previously-saved state. Returns `true` on success,
+    /// `false` when no save by that name exists.
+    pub fn load_state(&mut self, name: &str) -> bool {
+        self.cpu.load_state(name)
+    }
+
+    /// Delete a named save. Returns `true` when a save existed.
+    pub fn delete_state(&mut self, name: &str) -> bool {
+        self.cpu.delete_state(name)
+    }
+
+    /// Sorted list of every named save currently held.
+    pub fn list_states(&self) -> Vec<String> {
+        self.cpu.state_names()
     }
 
     /// Run until breakpoint, halt, error, or max_steps reached.
@@ -199,5 +370,51 @@ impl Emulator {
     /// Get the code base address (where assembled programs are loaded).
     pub fn code_base(&self) -> u32 {
         cpu::CODE_BASE as u32
+    }
+
+    // -- hosted runtime (phase B) --
+
+    /// Drain accumulated stdout as a UTF-8 string.
+    pub fn take_stdout(&mut self) -> String {
+        String::from_utf8_lossy(&self.cpu.take_stdout()).into_owned()
+    }
+
+    /// Drain accumulated stderr as a UTF-8 string.
+    pub fn take_stderr(&mut self) -> String {
+        String::from_utf8_lossy(&self.cpu.take_stderr()).into_owned()
+    }
+
+    /// Push bytes onto the stdin buffer. Clears the blocked flag so a
+    /// paused read/scanf resumes on the next step.
+    pub fn push_stdin(&mut self, s: &str) {
+        self.cpu.push_stdin(s.as_bytes());
+    }
+
+    /// Whether the CPU is paused waiting for stdin.
+    pub fn is_blocked(&self) -> bool {
+        self.cpu.is_blocked()
+    }
+
+    /// Current exit code, if `exit` ran.
+    pub fn get_exit_code(&self) -> Option<i64> {
+        self.cpu.exit_code()
+    }
+
+    /// Register a virtual file. Subsequent `openat(path, ...)` finds it.
+    pub fn upload_vfs_file(&mut self, path: &str, data: &[u8]) {
+        self.cpu
+            .upload_vfs_file(path.to_string(), data.to_vec());
+    }
+
+    /// Names of every file currently in the virtual filesystem.
+    pub fn list_vfs_files(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.cpu.vfs.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// Clear stdout/stderr scrollback without resetting CPU state.
+    pub fn clear_console(&mut self) {
+        self.cpu.clear_console();
     }
 }
