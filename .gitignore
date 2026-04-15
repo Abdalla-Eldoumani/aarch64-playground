@@ -30,6 +30,11 @@ yarn-error.log*
 # Test artifacts
 .playwright-mcp/
 
+# Local reference material. The cpsc 355 tutorial corpus lives under
+# docs/cpsc355-reference/ and is course material, not for the public repo --
+# the assembler consumes it from here during development only.
+docs/cpsc355-reference/
+
 # Editors
 .vscode/
 .idea/
