@@ -10,8 +10,12 @@ pub enum ExecResult {
     Advance,
     /// PC was explicitly set to a new value (branch).
     Branched,
-    /// Execution should halt (SVC).
+    /// Execution should halt (bare-metal SVC with imm16 != 0).
     Halted,
+    /// Linux supervisor call: `svc #0` with the syscall number in `x8`.
+    /// Caller dispatches to `hosted::syscalls` and advances PC by 4 on
+    /// return, since the "return from svc" semantics don't touch LR.
+    Syscall,
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +122,15 @@ pub fn execute(
         Instruction::LdStPair { op, sf, rt, rt2, rn, imm7, mode } => {
             exec_ldst_pair(*op, *sf, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
         }
+        Instruction::LdrLiteral { sf, rt, offset } => {
+            exec_ldr_literal(*sf, *rt, *offset, regs, mem)
+        }
+        Instruction::CompareBranch { sf, rt, nonzero, offset } => {
+            exec_compare_branch(*sf, *rt, *nonzero, *offset, regs)
+        }
+        Instruction::TestBranch { rt, bit_pos, nonzero, offset } => {
+            exec_test_branch(*rt, *bit_pos, *nonzero, *offset, regs)
+        }
         Instruction::BrImm { link, offset } => {
             exec_br_imm(*link, *offset, regs)
         }
@@ -133,8 +146,95 @@ pub fn execute(
         Instruction::MulDiv { op, sf, rd, rn, rm } => {
             exec_mul_div(*op, *sf, *rd, *rn, *rm, regs)
         }
+        Instruction::MulAccumulate { op, sf, rd, rn, rm, ra } => {
+            exec_mul_accumulate(*op, *sf, *rd, *rn, *rm, *ra, regs)
+        }
+        Instruction::LdrSignExtended { rt, rn, offset, size, mode, sf } => {
+            exec_ldrs(*rt, *rn, offset, *size, *mode, *sf, regs, mem)
+        }
+        Instruction::FpBinary { op, fd, fn_, fm } => {
+            exec_fp_binary(*op, *fd, *fn_, *fm, regs)
+        }
+        Instruction::FpLdSt { load, ft, rn, offset, size } => {
+            let addr = regs.read_gpr(*rn, true).wrapping_add(*offset as u64);
+            if *load {
+                match size {
+                    MemSize::X => {
+                        // LDR Dt: read 64 bits into the D register's raw bits.
+                        let v = mem.read_u64(addr)?;
+                        regs.write_fpr_bits(*ft, v);
+                    }
+                    MemSize::W => {
+                        // LDR St: read 32 bits; upper 32 of the FP reg go
+                        // to zero per AAPCS.
+                        let v = mem.read_u32(addr)? as u64;
+                        regs.write_fpr_bits(*ft, v);
+                    }
+                    _ => return Err(EmuError::UnknownInstruction(0)),
+                }
+            } else {
+                match size {
+                    MemSize::X => {
+                        let v = regs.read_fpr_bits(*ft);
+                        mem.write_u64(addr, v)?;
+                    }
+                    MemSize::W => {
+                        let v = regs.read_fpr_bits(*ft) as u32;
+                        mem.write_u32(addr, v)?;
+                    }
+                    _ => return Err(EmuError::UnknownInstruction(0)),
+                }
+            }
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpMoveReg { fd, fn_ } => {
+            let v = regs.read_fpr_bits(*fn_);
+            regs.write_fpr_bits(*fd, v);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpCompare { fn_, fm } => {
+            let a = regs.read_fpr_f64(*fn_);
+            let b = regs.read_fpr_f64(*fm);
+            regs.nzcv = crate::fpu::fcmp_flags(a, b);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpScvtf { fd, rn, sf } => {
+            let raw = regs.read_gpr(*rn, *sf);
+            let value = if *sf {
+                raw as i64 as f64
+            } else {
+                (raw as u32 as i32) as f64
+            };
+            regs.write_fpr_f64(*fd, value);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpFcvtzs { rd, fn_, sf } => {
+            let value = regs.read_fpr_f64(*fn_);
+            let truncated = value.trunc();
+            let int_value = if *sf {
+                if truncated.is_nan() { 0i64 }
+                else if truncated >= i64::MAX as f64 { i64::MAX }
+                else if truncated <= i64::MIN as f64 { i64::MIN }
+                else { truncated as i64 }
+            } else {
+                if truncated.is_nan() { 0i64 }
+                else if truncated >= i32::MAX as f64 { i32::MAX as i64 }
+                else if truncated <= i32::MIN as f64 { i32::MIN as i64 }
+                else { truncated as i32 as i64 }
+            };
+            regs.write_gpr(*rd, *sf, int_value as u64);
+            Ok(ExecResult::Advance)
+        }
         Instruction::Nop => Ok(ExecResult::Advance),
-        Instruction::Svc { .. } => Ok(ExecResult::Halted),
+        Instruction::Svc { imm16 } => {
+            // svc #0 is a Linux supervisor call; imm16 != 0 keeps the
+            // bare-metal halt semantics the original examples depend on.
+            if *imm16 == 0 {
+                Ok(ExecResult::Syscall)
+            } else {
+                Ok(ExecResult::Halted)
+            }
+        }
     }
 }
 
@@ -287,9 +387,18 @@ fn exec_ldst(
 
     let offset_val = match offset {
         LdStOffset::Immediate(imm) => *imm,
-        LdStOffset::Register { rm, shift_amount } => {
-            let idx = regs.read_gpr(*rm, true);
-            (idx << (*shift_amount as u64)) as i64
+        LdStOffset::Register {
+            rm,
+            extend,
+            shift_amount,
+        } => {
+            let raw = regs.read_gpr(*rm, true);
+            let extended = match extend {
+                ExtendType::Lsl | ExtendType::Sxtx => raw,
+                ExtendType::Uxtw => raw & 0xFFFF_FFFF,
+                ExtendType::Sxtw => (raw as i32) as i64 as u64,
+            };
+            (extended << (*shift_amount as u64)) as i64
         }
     };
 
@@ -396,6 +505,65 @@ fn exec_ldst_pair(
     Ok(ExecResult::Advance)
 }
 
+fn exec_ldr_literal(
+    sf: bool,
+    rt: u8,
+    offset: i64,
+    regs: &mut RegisterFile,
+    mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    let pc = regs.read_pc();
+    let target = (pc as i64).wrapping_add(offset) as u64;
+    if sf {
+        let value = mem.read_u64(target)?;
+        regs.write_gpr(rt, true, value);
+    } else {
+        let value = mem.read_u32(target)? as u64;
+        regs.write_gpr(rt, false, value);
+    }
+    Ok(ExecResult::Advance)
+}
+
+fn exec_compare_branch(
+    sf: bool,
+    rt: u8,
+    nonzero: bool,
+    offset: i64,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let value = regs.read_gpr(rt, sf);
+    let take = if nonzero { value != 0 } else { value == 0 };
+    if take {
+        let pc = regs.read_pc();
+        regs.write_pc((pc as i64).wrapping_add(offset) as u64);
+        Ok(ExecResult::Branched)
+    } else {
+        Ok(ExecResult::Advance)
+    }
+}
+
+fn exec_test_branch(
+    rt: u8,
+    bit_pos: u8,
+    nonzero: bool,
+    offset: i64,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    // The architecture always reads the full 64-bit register for tbz/tbnz
+    // even for the W-register form, since bit_pos is already constrained
+    // by the encoding (b5 is 0 when sf is 0).
+    let value = regs.read_gpr(rt, true);
+    let bit_set = (value >> bit_pos) & 1 == 1;
+    let take = if nonzero { bit_set } else { !bit_set };
+    if take {
+        let pc = regs.read_pc();
+        regs.write_pc((pc as i64).wrapping_add(offset) as u64);
+        Ok(ExecResult::Branched)
+    } else {
+        Ok(ExecResult::Advance)
+    }
+}
+
 fn exec_br_imm(
     link: bool, offset: i64, regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
@@ -491,6 +659,103 @@ fn exec_mul_div(
         }
     };
 
+    regs.write_gpr(rd, sf, result);
+    Ok(ExecResult::Advance)
+}
+
+fn exec_fp_binary(
+    op: FpBinOp,
+    fd: u8,
+    fn_: u8,
+    fm: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let a = regs.read_fpr_f64(fn_);
+    let b = regs.read_fpr_f64(fm);
+    let result = match op {
+        FpBinOp::Fadd => a + b,
+        FpBinOp::Fsub => a - b,
+        FpBinOp::Fmul => a * b,
+        FpBinOp::Fdiv => a / b,
+    };
+    regs.write_fpr_f64(fd, result);
+    Ok(ExecResult::Advance)
+}
+
+fn exec_ldrs(
+    rt: u8,
+    rn: u8,
+    offset: &LdStOffset,
+    size: MemSize,
+    mode: IndexMode,
+    sf: bool,
+    regs: &mut RegisterFile,
+    mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    // Compute the effective address using the same offset math as exec_ldst.
+    let base = regs.read_gpr_or_sp(rn, true);
+    let offset_val = match offset {
+        LdStOffset::Immediate(imm) => *imm,
+        LdStOffset::Register {
+            rm,
+            extend,
+            shift_amount,
+        } => {
+            let raw = regs.read_gpr(*rm, true);
+            let extended = match extend {
+                ExtendType::Lsl | ExtendType::Sxtx => raw,
+                ExtendType::Uxtw => raw & 0xFFFF_FFFF,
+                ExtendType::Sxtw => (raw as i32) as i64 as u64,
+            };
+            (extended << (*shift_amount as u64)) as i64
+        }
+    };
+    let (address, writeback) = match mode {
+        IndexMode::PreIndex => {
+            let addr = (base as i64).wrapping_add(offset_val) as u64;
+            (addr, Some(addr))
+        }
+        IndexMode::PostIndex => {
+            let addr = base;
+            let wb = (base as i64).wrapping_add(offset_val) as u64;
+            (addr, Some(wb))
+        }
+        IndexMode::SignedOffset => {
+            let addr = (base as i64).wrapping_add(offset_val) as u64;
+            (addr, None)
+        }
+    };
+    let value_64 = match size {
+        MemSize::B => (mem.read_u8(address)? as i8) as i64,
+        MemSize::H => (mem.read_u16(address)? as i16) as i64,
+        MemSize::W => (mem.read_u32(address)? as i32) as i64,
+        MemSize::X => return Err(EmuError::UnknownInstruction(0)),
+    };
+    if sf {
+        regs.write_gpr(rt, true, value_64 as u64);
+    } else {
+        // Write low 32 bits; write_gpr with sf=false zeros upper bits.
+        regs.write_gpr(rt, false, (value_64 as u32) as u64);
+    }
+    if let Some(wb) = writeback {
+        regs.write_gpr_or_sp(rn, true, wb);
+    }
+    Ok(ExecResult::Advance)
+}
+
+fn exec_mul_accumulate(
+    op: MulAccumulateOp, sf: bool, rd: u8, rn: u8, rm: u8, ra: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let a = regs.read_gpr(rn, sf);
+    let b = regs.read_gpr(rm, sf);
+    let c = regs.read_gpr(ra, sf);
+    let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
+    let product = a.wrapping_mul(b);
+    let result = match op {
+        MulAccumulateOp::Madd => c.wrapping_add(product) & mask,
+        MulAccumulateOp::Msub => c.wrapping_sub(product) & mask,
+    };
     regs.write_gpr(rd, sf, result);
     Ok(ExecResult::Advance)
 }
@@ -868,9 +1133,19 @@ mod tests {
     }
 
     #[test]
-    fn svc_halts() {
+    fn svc_zero_returns_syscall() {
+        // `svc #0` is now a Linux supervisor call; the Cpu layer decides
+        // halt vs dispatch based on x8.
         let (mut regs, mut mem) = fresh();
         let result = execute(&Instruction::Svc { imm16: 0 }, &mut regs, &mut mem).unwrap();
+        assert_eq!(result, ExecResult::Syscall);
+    }
+
+    #[test]
+    fn svc_nonzero_imm_halts() {
+        // Non-zero imm16 preserves the bare-metal halt semantics.
+        let (mut regs, mut mem) = fresh();
+        let result = execute(&Instruction::Svc { imm16: 1 }, &mut regs, &mut mem).unwrap();
         assert_eq!(result, ExecResult::Halted);
     }
 
@@ -931,5 +1206,473 @@ mod tests {
         };
         execute(&ldr_instr, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_gpr(1, true), 0x42); // only low byte
+    }
+
+    // -- extended-register addressing --
+
+    fn write_word_at(mem: &mut Memory, addr: u64, value: u32) {
+        mem.write_u32(addr, value).unwrap();
+    }
+
+    #[test]
+    fn ldr_extended_sxtw_scales_signed_index_by_four_for_words() {
+        // Equivalent to `ldr w0, [x12, w9, SXTW 2]` with x12 = base,
+        // w9 = 3 -> address = base + 12.
+        let (mut regs, mut mem) = fresh();
+        let base = 0x0060_0000_u64;
+        regs.write_gpr(12, true, base);
+        regs.write_gpr(9, false, 3); // W register write
+        write_word_at(&mut mem, base + 12, 0xAABB_CCDD);
+
+        let ldr = Instruction::LdSt {
+            op: LdStOp::Ldr, rt: 0, rn: 12,
+            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Sxtw, shift_amount: 2 },
+            size: MemSize::W,
+            mode: IndexMode::SignedOffset,
+        };
+        execute(&ldr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, false), 0xAABB_CCDD);
+    }
+
+    #[test]
+    fn ldr_extended_sxtw_handles_negative_index() {
+        // w9 = -1 should sign-extend and subtract 4*|-1| = 4 from base.
+        let (mut regs, mut mem) = fresh();
+        let base = 0x0060_1000_u64;
+        regs.write_gpr(12, true, base);
+        regs.write_gpr(9, false, 0xFFFF_FFFF); // W = -1
+        write_word_at(&mut mem, base - 4, 0xCAFEBABE);
+
+        let ldr = Instruction::LdSt {
+            op: LdStOp::Ldr, rt: 0, rn: 12,
+            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Sxtw, shift_amount: 2 },
+            size: MemSize::W,
+            mode: IndexMode::SignedOffset,
+        };
+        execute(&ldr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, false), 0xCAFEBABE);
+    }
+
+    #[test]
+    fn ldr_extended_uxtw_zero_extends_index() {
+        // w9 set to a value with the top bit set; UXTW should not sign-extend.
+        let (mut regs, mut mem) = fresh();
+        let base = 0x0060_0000_u64;
+        regs.write_gpr(12, true, base);
+        regs.write_gpr(9, false, 2); // simple positive
+        write_word_at(&mut mem, base + 8, 0x11223344);
+
+        let ldr = Instruction::LdSt {
+            op: LdStOp::Ldr, rt: 0, rn: 12,
+            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Uxtw, shift_amount: 2 },
+            size: MemSize::W,
+            mode: IndexMode::SignedOffset,
+        };
+        execute(&ldr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, false), 0x11223344);
+    }
+
+    #[test]
+    fn ldr_extended_lsl_uses_full_64_bit_index() {
+        // argv walker pattern: [argv_r, i_r, SXTW 3] for 8-byte pointer array.
+        let (mut regs, mut mem) = fresh();
+        let base = 0x0060_0000_u64;
+        regs.write_gpr(21, true, base); // argv_r
+        regs.write_gpr(19, true, 5); // i_r as 64-bit
+        mem.write_u64(base + 40, 0xDEAD_BEEF_CAFE_BABE).unwrap();
+
+        let ldr = Instruction::LdSt {
+            op: LdStOp::Ldr, rt: 0, rn: 21,
+            offset: LdStOffset::Register { rm: 19, extend: ExtendType::Lsl, shift_amount: 3 },
+            size: MemSize::X,
+            mode: IndexMode::SignedOffset,
+        };
+        execute(&ldr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0xDEAD_BEEF_CAFE_BABE);
+    }
+
+    // -- compare-and-branch, test-bit-and-branch --
+
+    #[test]
+    fn cbz_branches_when_register_zero() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0000);
+        regs.write_gpr(3, false, 0);
+        let cbz = Instruction::CompareBranch {
+            sf: false,
+            rt: 3,
+            nonzero: false,
+            offset: 16,
+        };
+        let r = execute(&cbz, &mut regs, &mut mem).unwrap();
+        assert_eq!(r, ExecResult::Branched);
+        assert_eq!(regs.read_pc(), 0x0040_0010);
+    }
+
+    #[test]
+    fn cbz_does_not_branch_when_register_nonzero() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0000);
+        regs.write_gpr(3, false, 7);
+        let cbz = Instruction::CompareBranch {
+            sf: false,
+            rt: 3,
+            nonzero: false,
+            offset: 16,
+        };
+        let r = execute(&cbz, &mut regs, &mut mem).unwrap();
+        assert_eq!(r, ExecResult::Advance);
+        assert_eq!(regs.read_pc(), 0x0040_0000);
+    }
+
+    #[test]
+    fn cbnz_branches_when_register_nonzero() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0000);
+        regs.write_gpr(5, true, 42);
+        let cbnz = Instruction::CompareBranch {
+            sf: true,
+            rt: 5,
+            nonzero: true,
+            offset: -4,
+        };
+        let r = execute(&cbnz, &mut regs, &mut mem).unwrap();
+        assert_eq!(r, ExecResult::Branched);
+        assert_eq!(regs.read_pc(), 0x0040_0000 - 4);
+    }
+
+    #[test]
+    fn tbz_bit_zero_branches_when_clear() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0000);
+        regs.write_gpr(1, true, 0b1110); // bit 0 clear
+        let tbz = Instruction::TestBranch {
+            rt: 1,
+            bit_pos: 0,
+            nonzero: false,
+            offset: 12,
+        };
+        let r = execute(&tbz, &mut regs, &mut mem).unwrap();
+        assert_eq!(r, ExecResult::Branched);
+        assert_eq!(regs.read_pc(), 0x0040_000C);
+    }
+
+    #[test]
+    fn tbnz_high_bit_branches_when_set() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0000);
+        regs.write_gpr(2, true, 1u64 << 63);
+        let tbnz = Instruction::TestBranch {
+            rt: 2,
+            bit_pos: 63,
+            nonzero: true,
+            offset: 8,
+        };
+        let r = execute(&tbnz, &mut regs, &mut mem).unwrap();
+        assert_eq!(r, ExecResult::Branched);
+        assert_eq!(regs.read_pc(), 0x0040_0008);
+    }
+
+    #[test]
+    fn tbnz_does_not_branch_when_bit_clear() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0000);
+        regs.write_gpr(2, true, 0);
+        let tbnz = Instruction::TestBranch {
+            rt: 2,
+            bit_pos: 0,
+            nonzero: true,
+            offset: 8,
+        };
+        let r = execute(&tbnz, &mut regs, &mut mem).unwrap();
+        assert_eq!(r, ExecResult::Advance);
+        assert_eq!(regs.read_pc(), 0x0040_0000);
+    }
+
+    // -- multiply-accumulate --
+
+    #[test]
+    fn madd_adds_product_to_accumulator() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, 3);
+        regs.write_gpr(2, true, 4);
+        regs.write_gpr(3, true, 10);
+        let madd = Instruction::MulAccumulate {
+            op: MulAccumulateOp::Madd,
+            sf: true,
+            rd: 0,
+            rn: 1,
+            rm: 2,
+            ra: 3,
+        };
+        execute(&madd, &mut regs, &mut mem).unwrap();
+        // 10 + 3*4 = 22
+        assert_eq!(regs.read_gpr(0, true), 22);
+    }
+
+    #[test]
+    fn msub_as_remainder_idiom() {
+        // Course idiom: sdiv q, a, b; msub r, q, b, a gives a mod b.
+        // Here: a=17, b=5 -> q=3, r=17 - 3*5 = 2.
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, 3);  // q
+        regs.write_gpr(2, true, 5);  // b
+        regs.write_gpr(3, true, 17); // a
+        let msub = Instruction::MulAccumulate {
+            op: MulAccumulateOp::Msub,
+            sf: true,
+            rd: 0,
+            rn: 1,
+            rm: 2,
+            ra: 3,
+        };
+        execute(&msub, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 2);
+    }
+
+    // -- sign-extending loads --
+
+    #[test]
+    fn ldrsb_xt_sign_extends_negative_byte_to_64_bits() {
+        let (mut regs, mut mem) = fresh();
+        let base = 0x0060_0000_u64;
+        regs.write_gpr(1, true, base);
+        mem.write_u8(base + 4, 0xFF).unwrap(); // -1 as signed byte
+
+        let ldrsb = Instruction::LdrSignExtended {
+            rt: 0,
+            rn: 1,
+            offset: LdStOffset::Immediate(4),
+            size: MemSize::B,
+            mode: IndexMode::SignedOffset,
+            sf: true,
+        };
+        execute(&ldrsb, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), u64::MAX); // all ones = -1 in Xt
+    }
+
+    #[test]
+    fn ldrsb_wt_sign_extends_within_32_bits() {
+        let (mut regs, mut mem) = fresh();
+        let base = 0x0060_0000_u64;
+        regs.write_gpr(1, true, base);
+        mem.write_u8(base + 2, 0x80).unwrap(); // -128 as signed byte
+
+        let ldrsb = Instruction::LdrSignExtended {
+            rt: 0,
+            rn: 1,
+            offset: LdStOffset::Immediate(2),
+            size: MemSize::B,
+            mode: IndexMode::SignedOffset,
+            sf: false,
+        };
+        execute(&ldrsb, &mut regs, &mut mem).unwrap();
+        // Wt gets 0xFFFFFF80; read_gpr(.., false) returns low 32 bits.
+        assert_eq!(regs.read_gpr(0, false), 0xFFFF_FF80);
+    }
+
+    #[test]
+    fn ldrsh_positive_halfword_no_upper_bits_set() {
+        let (mut regs, mut mem) = fresh();
+        let base = 0x0060_0000_u64;
+        regs.write_gpr(1, true, base);
+        mem.write_u16(base, 0x007F).unwrap();
+
+        let ldrsh = Instruction::LdrSignExtended {
+            rt: 0,
+            rn: 1,
+            offset: LdStOffset::Immediate(0),
+            size: MemSize::H,
+            mode: IndexMode::SignedOffset,
+            sf: true,
+        };
+        execute(&ldrsh, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0x7F);
+    }
+
+    #[test]
+    fn ldrsw_sign_extends_word_to_xt() {
+        let (mut regs, mut mem) = fresh();
+        let base = 0x0060_0000_u64;
+        regs.write_gpr(1, true, base);
+        mem.write_u32(base, 0xFFFF_FFFE).unwrap(); // -2 as signed word
+
+        let ldrsw = Instruction::LdrSignExtended {
+            rt: 0,
+            rn: 1,
+            offset: LdStOffset::Immediate(0),
+            size: MemSize::W,
+            mode: IndexMode::SignedOffset,
+            sf: true,
+        };
+        execute(&ldrsw, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), !1u64); // -2
+    }
+
+    // -- floating-point --
+
+    #[test]
+    fn fadd_sum_lands_in_destination() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 1.5);
+        regs.write_fpr_f64(2, 2.5);
+        let fadd = Instruction::FpBinary {
+            op: FpBinOp::Fadd,
+            fd: 0,
+            fn_: 1,
+            fm: 2,
+        };
+        execute(&fadd, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 4.0);
+    }
+
+    #[test]
+    fn fsub_correct() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 5.0);
+        regs.write_fpr_f64(2, 2.0);
+        execute(
+            &Instruction::FpBinary { op: FpBinOp::Fsub, fd: 0, fn_: 1, fm: 2 },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 3.0);
+    }
+
+    #[test]
+    fn fmul_and_fdiv_work() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 3.0);
+        regs.write_fpr_f64(2, 4.0);
+        execute(
+            &Instruction::FpBinary { op: FpBinOp::Fmul, fd: 0, fn_: 1, fm: 2 },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 12.0);
+
+        execute(
+            &Instruction::FpBinary { op: FpBinOp::Fdiv, fd: 3, fn_: 0, fm: 2 },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_f64(3), 3.0);
+    }
+
+    #[test]
+    fn fmov_reg_to_reg_copies_bits() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(2, std::f64::consts::PI);
+        execute(
+            &Instruction::FpMoveReg { fd: 5, fn_: 2 },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_f64(5), std::f64::consts::PI);
+    }
+
+    #[test]
+    fn fcmp_sets_nzcv_for_equal() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 1.5);
+        regs.write_fpr_f64(2, 1.5);
+        execute(
+            &Instruction::FpCompare { fn_: 1, fm: 2 },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert!(!regs.nzcv.n);
+        assert!(regs.nzcv.z);
+        assert!(regs.nzcv.c);
+        assert!(!regs.nzcv.v);
+    }
+
+    #[test]
+    fn fcmp_sets_nzcv_for_less_than() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 1.0);
+        regs.write_fpr_f64(2, 2.0);
+        execute(
+            &Instruction::FpCompare { fn_: 1, fm: 2 },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert!(regs.nzcv.n);
+        assert!(!regs.nzcv.z);
+        assert!(!regs.nzcv.c);
+        assert!(!regs.nzcv.v);
+    }
+
+    #[test]
+    fn scvtf_converts_x_register_to_double() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(3, true, 42);
+        execute(
+            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 42.0);
+    }
+
+    #[test]
+    fn scvtf_handles_negative_int() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(3, true, (-7i64) as u64);
+        execute(
+            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_f64(0), -7.0);
+    }
+
+    #[test]
+    fn fcvtzs_truncates_toward_zero() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(2, 3.9);
+        execute(
+            &Instruction::FpFcvtzs { rd: 0, fn_: 2, sf: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_gpr(0, true), 3);
+
+        regs.write_fpr_f64(2, -3.9);
+        execute(
+            &Instruction::FpFcvtzs { rd: 1, fn_: 2, sf: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_gpr(1, true) as i64, -3);
+    }
+
+    #[test]
+    fn msub_w_register_truncates_to_32_bits() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, false, 0x10000);
+        regs.write_gpr(2, false, 0x10000);
+        regs.write_gpr(3, false, 0);
+        let msub = Instruction::MulAccumulate {
+            op: MulAccumulateOp::Msub,
+            sf: false,
+            rd: 0,
+            rn: 1,
+            rm: 2,
+            ra: 3,
+        };
+        execute(&msub, &mut regs, &mut mem).unwrap();
+        // 0 - (0x10000 * 0x10000) wraps in 32 bits to 0.
+        assert_eq!(regs.read_gpr(0, false), 0);
     }
 }
