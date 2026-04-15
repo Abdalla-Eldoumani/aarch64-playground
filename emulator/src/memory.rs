@@ -10,6 +10,7 @@ const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 /// Pages are 4 KiB, allocated on first write (auto-map). Reads to unmapped
 /// addresses fault. All multi-byte accesses are little-endian and require
 /// natural alignment.
+#[derive(Clone)]
 pub struct Memory {
     pages: HashMap<u64, Vec<u8>>,
 }
@@ -55,16 +56,6 @@ impl Memory {
         (addr & (PAGE_SIZE as u64 - 1)) as usize
     }
 
-    fn check_alignment(addr: u64, required: u8) -> Result<(), EmuError> {
-        if addr % (required as u64) != 0 {
-            return Err(EmuError::UnalignedAccess {
-                address: addr,
-                required,
-            });
-        }
-        Ok(())
-    }
-
     fn get_page(&self, addr: u64) -> Result<&[u8], EmuError> {
         let base = addr & PAGE_MASK;
         self.pages
@@ -89,17 +80,30 @@ impl Memory {
         Ok(page[Self::page_offset(addr)])
     }
 
-    /// Read a 16-bit value (little-endian, 2-byte aligned).
+    /// Read a 16-bit little-endian value. Tolerates unaligned addresses
+    /// (including page-crossing ones) by falling back to byte access.
     pub fn read_u16(&self, addr: u64) -> Result<u16, EmuError> {
-        Self::check_alignment(addr, 2)?;
+        if Self::spans_page(addr, 2) {
+            let mut bytes = [0u8; 2];
+            for (i, b) in bytes.iter_mut().enumerate() {
+                *b = self.read_u8(addr + i as u64)?;
+            }
+            return Ok(u16::from_le_bytes(bytes));
+        }
         let off = Self::page_offset(addr);
         let page = self.get_page(addr)?;
         Ok(u16::from_le_bytes([page[off], page[off + 1]]))
     }
 
-    /// Read a 32-bit value (little-endian, 4-byte aligned).
+    /// Read a 32-bit little-endian value; see `read_u16`.
     pub fn read_u32(&self, addr: u64) -> Result<u32, EmuError> {
-        Self::check_alignment(addr, 4)?;
+        if Self::spans_page(addr, 4) {
+            let mut bytes = [0u8; 4];
+            for (i, b) in bytes.iter_mut().enumerate() {
+                *b = self.read_u8(addr + i as u64)?;
+            }
+            return Ok(u32::from_le_bytes(bytes));
+        }
         let off = Self::page_offset(addr);
         let page = self.get_page(addr)?;
         Ok(u32::from_le_bytes([
@@ -110,9 +114,15 @@ impl Memory {
         ]))
     }
 
-    /// Read a 64-bit value (little-endian, 8-byte aligned).
+    /// Read a 64-bit little-endian value; see `read_u16`.
     pub fn read_u64(&self, addr: u64) -> Result<u64, EmuError> {
-        Self::check_alignment(addr, 8)?;
+        if Self::spans_page(addr, 8) {
+            let mut bytes = [0u8; 8];
+            for (i, b) in bytes.iter_mut().enumerate() {
+                *b = self.read_u8(addr + i as u64)?;
+            }
+            return Ok(u64::from_le_bytes(bytes));
+        }
         let off = Self::page_offset(addr);
         let page = self.get_page(addr)?;
         Ok(u64::from_le_bytes([
@@ -135,9 +145,15 @@ impl Memory {
         Ok(())
     }
 
-    /// Write a 16-bit value (little-endian, 2-byte aligned, auto-maps).
+    /// Write a 16-bit little-endian value. Tolerates unaligned (and
+    /// page-crossing) addresses via byte fallback; auto-maps pages.
     pub fn write_u16(&mut self, addr: u64, val: u16) -> Result<(), EmuError> {
-        Self::check_alignment(addr, 2)?;
+        if Self::spans_page(addr, 2) {
+            for (i, b) in val.to_le_bytes().iter().enumerate() {
+                self.write_u8(addr + i as u64, *b)?;
+            }
+            return Ok(());
+        }
         let off = Self::page_offset(addr);
         let bytes = val.to_le_bytes();
         let page = self.get_page_mut(addr);
@@ -145,9 +161,14 @@ impl Memory {
         Ok(())
     }
 
-    /// Write a 32-bit value (little-endian, 4-byte aligned, auto-maps).
+    /// Write a 32-bit little-endian value; see `write_u16`.
     pub fn write_u32(&mut self, addr: u64, val: u32) -> Result<(), EmuError> {
-        Self::check_alignment(addr, 4)?;
+        if Self::spans_page(addr, 4) {
+            for (i, b) in val.to_le_bytes().iter().enumerate() {
+                self.write_u8(addr + i as u64, *b)?;
+            }
+            return Ok(());
+        }
         let off = Self::page_offset(addr);
         let bytes = val.to_le_bytes();
         let page = self.get_page_mut(addr);
@@ -155,14 +176,25 @@ impl Memory {
         Ok(())
     }
 
-    /// Write a 64-bit value (little-endian, 8-byte aligned, auto-maps).
+    /// Write a 64-bit little-endian value; see `write_u16`.
     pub fn write_u64(&mut self, addr: u64, val: u64) -> Result<(), EmuError> {
-        Self::check_alignment(addr, 8)?;
+        if Self::spans_page(addr, 8) {
+            for (i, b) in val.to_le_bytes().iter().enumerate() {
+                self.write_u8(addr + i as u64, *b)?;
+            }
+            return Ok(());
+        }
         let off = Self::page_offset(addr);
         let bytes = val.to_le_bytes();
         let page = self.get_page_mut(addr);
         page[off..off + 8].copy_from_slice(&bytes);
         Ok(())
+    }
+
+    fn spans_page(addr: u64, len: usize) -> bool {
+        let start_page = addr & PAGE_MASK;
+        let end_page = (addr + len as u64 - 1) & PAGE_MASK;
+        start_page != end_page
     }
 
     /// Read a contiguous range of bytes. Unmapped bytes read as zero.
@@ -219,19 +251,29 @@ mod tests {
     }
 
     #[test]
-    fn unaligned_u32_faults() {
+    fn unaligned_u32_round_trips_via_byte_fallback() {
+        // ARM64 LDR/STR on Normal memory succeeds at any alignment when
+        // SCTLR.A = 0 (the Linux userspace default), so the emulator
+        // matches that by falling back to byte-level access.
         let mut mem = Memory::new();
-        mem.write_u8(0x1001, 0).unwrap();
-        let err = mem.read_u32(0x1001).unwrap_err();
-        assert!(matches!(err, EmuError::UnalignedAccess { address: 0x1001, required: 4 }));
+        mem.write_u32(0x1001, 0xDEAD_BEEF).unwrap();
+        assert_eq!(mem.read_u32(0x1001).unwrap(), 0xDEAD_BEEF);
     }
 
     #[test]
-    fn unaligned_u64_faults() {
+    fn unaligned_u32_spanning_page_boundary() {
+        // Spans the 0x1000 / 0x2000 page boundary; the byte fallback
+        // auto-maps the second page just like a regular byte write would.
         let mut mem = Memory::new();
-        mem.write_u8(0x1004, 0).unwrap();
-        let err = mem.write_u64(0x1004, 0).unwrap_err();
-        assert!(matches!(err, EmuError::UnalignedAccess { address: 0x1004, required: 8 }));
+        mem.write_u32(0x1FFD, 0x1122_3344).unwrap();
+        assert_eq!(mem.read_u32(0x1FFD).unwrap(), 0x1122_3344);
+    }
+
+    #[test]
+    fn unaligned_u64_round_trips_via_byte_fallback() {
+        let mut mem = Memory::new();
+        mem.write_u64(0x1003, 0x1122_3344_5566_7788).unwrap();
+        assert_eq!(mem.read_u64(0x1003).unwrap(), 0x1122_3344_5566_7788);
     }
 
     #[test]
