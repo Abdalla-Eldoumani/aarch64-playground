@@ -73,11 +73,30 @@ pub enum IndexMode {
     PostIndex,
 }
 
+/// How an Xm/Wm index register is extended into the effective-address
+/// computation. `Lsl` treats the 64-bit register value as-is (equivalent to
+/// UXTX on AArch64); the others sign- or zero-extend a 32-bit value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtendType {
+    /// Zero-extend a 32-bit unsigned value.
+    Uxtw,
+    /// Use the 64-bit value directly (option 011 in the encoding).
+    Lsl,
+    /// Sign-extend a 32-bit value.
+    Sxtw,
+    /// Sign-extend a 64-bit value (no-op, kept for encoding symmetry).
+    Sxtx,
+}
+
 /// Offset for single-register load/store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LdStOffset {
     Immediate(i64),
-    Register { rm: u8, shift_amount: u8 },
+    Register {
+        rm: u8,
+        extend: ExtendType,
+        shift_amount: u8,
+    },
 }
 
 /// Unconditional branch-to-register variant.
@@ -101,6 +120,24 @@ pub enum MulDivOp {
     Mul,
     Udiv,
     Sdiv,
+}
+
+/// Multiply-accumulate variant. `Madd` computes `Rd = Ra + Rn*Rm`; `Msub`
+/// computes `Rd = Ra - Rn*Rm`. The course uses MSUB for remainder:
+/// `sdiv q, a, b; msub r, q, b, a` yields `r = a mod b`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MulAccumulateOp {
+    Madd,
+    Msub,
+}
+
+/// Floating-point binary operation. Double precision only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpBinOp {
+    Fadd,
+    Fsub,
+    Fmul,
+    Fdiv,
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +204,16 @@ pub enum Instruction {
         size: MemSize,
         mode: IndexMode,
     },
+    /// SIMD&FP LDR/STR, unsigned-offset form. `size` picks D (0b11, 8B)
+    /// or S (0b10, 4B) width; pre/post-index and register-offset forms
+    /// aren't wired through yet.
+    FpLdSt {
+        load: bool,
+        ft: u8,
+        rn: u8,
+        offset: i64,
+        size: MemSize,
+    },
     /// LDP/STP.
     LdStPair {
         op: LdStPairOp,
@@ -208,6 +255,86 @@ pub enum Instruction {
         rd: u8,
         rn: u8,
         rm: u8,
+    },
+    /// LDR (literal): load Xt or Wt from a PC-relative offset. The linker
+    /// places the referenced value in a literal pool after the `.text`
+    /// section and back-patches the offset into this instruction word.
+    LdrLiteral {
+        sf: bool,
+        rt: u8,
+        /// Byte offset relative to the instruction's PC, already shifted.
+        offset: i64,
+    },
+    /// CBZ / CBNZ: compare register to zero and branch. `nonzero` is
+    /// true for CBNZ (branch when the register is nonzero).
+    CompareBranch {
+        sf: bool,
+        rt: u8,
+        nonzero: bool,
+        /// Byte offset relative to the instruction's PC, already scaled.
+        offset: i64,
+    },
+    /// TBZ / TBNZ: test one bit of a register and branch. `nonzero` is
+    /// true for TBNZ (branch when the tested bit is 1). `bit_pos` is
+    /// the 0-based bit index (0..=63).
+    TestBranch {
+        rt: u8,
+        bit_pos: u8,
+        nonzero: bool,
+        /// Byte offset relative to the instruction's PC, already scaled.
+        offset: i64,
+    },
+    /// MADD / MSUB: three-source multiply with an accumulator. The
+    /// existing `MulDiv::Mul` path still handles MUL (MADD with Ra=XZR).
+    MulAccumulate {
+        op: MulAccumulateOp,
+        sf: bool,
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        ra: u8,
+    },
+    /// LDRSB / LDRSH / LDRSW: sign-extending loads. `sf` selects the
+    /// target register width (Xt when true, Wt when false; LDRSW only
+    /// has the Xt form so it always sets `sf = true`). `size` is the
+    /// number of bytes read from memory (B, H, or W).
+    LdrSignExtended {
+        rt: u8,
+        rn: u8,
+        offset: LdStOffset,
+        size: MemSize,
+        mode: IndexMode,
+        sf: bool,
+    },
+    /// FADD / FSUB / FMUL / FDIV in double precision.
+    FpBinary {
+        op: FpBinOp,
+        fd: u8,
+        fn_: u8,
+        fm: u8,
+    },
+    /// FMOV Dd, Dn (reg-to-reg).
+    FpMoveReg {
+        fd: u8,
+        fn_: u8,
+    },
+    /// FCMP Dn, Dm. Sets NZCV; Dd is unused in the encoding.
+    FpCompare {
+        fn_: u8,
+        fm: u8,
+    },
+    /// SCVTF Dd, Rn: signed int (W or X) to double. `sf` picks Xn vs Wn.
+    FpScvtf {
+        fd: u8,
+        rn: u8,
+        sf: bool,
+    },
+    /// FCVTZS Rd, Dn: double to signed int (W or X), round-toward-zero.
+    /// `sf` picks Xd vs Wd.
+    FpFcvtzs {
+        rd: u8,
+        fn_: u8,
+        sf: bool,
     },
     /// NOP.
     Nop,
@@ -304,6 +431,98 @@ pub fn decode_bitmask_imm(n: bool, immr: u8, imms: u8, sf: bool) -> Result<u64, 
     Ok(result)
 }
 
+/// Encode a 64-bit value (or 32-bit when `!sf`) as the `(N, immr, imms)`
+/// triple that `decode_bitmask_imm` consumes. Returns `None` when the
+/// value isn't expressible as an ARM64 logical bitmask immediate; those
+/// exclude all-zeros, all-ones, and any pattern that doesn't reduce to
+/// a rotated run of ones in a 2/4/8/16/32/64-bit element.
+pub fn encode_bitmask_imm(value: u64, sf: bool) -> Option<(bool, u8, u8)> {
+    let reg_width: u32 = if sf { 64 } else { 32 };
+    // Reject trivial patterns the ARM spec excludes.
+    let trimmed = if sf { value } else { value & 0xFFFF_FFFF };
+    if !sf && value != trimmed {
+        // Upper 32 bits set in a 32-bit instruction -- not encodable.
+        return None;
+    }
+    if trimmed == 0 {
+        return None;
+    }
+    if sf && trimmed == u64::MAX {
+        return None;
+    }
+    if !sf && trimmed == 0xFFFF_FFFF {
+        return None;
+    }
+
+    // Replicate the 32-bit value to 64 bits so the search below can treat
+    // everything uniformly; the decoder does the same in reverse.
+    let replicated: u64 = if sf {
+        trimmed
+    } else {
+        trimmed | (trimmed << 32)
+    };
+
+    for &esize in &[2u32, 4, 8, 16, 32, 64] {
+        if esize > reg_width {
+            break;
+        }
+        let mask: u64 = if esize == 64 { u64::MAX } else { (1u64 << esize) - 1 };
+        let element = replicated & mask;
+        let mut stride: u32 = esize;
+        let mut repeats = true;
+        while stride < 64 {
+            if ((replicated >> stride) & mask) != element {
+                repeats = false;
+                break;
+            }
+            stride += esize;
+        }
+        if !repeats {
+            continue;
+        }
+        if element == 0 || element == mask {
+            continue;
+        }
+        let ones = element.count_ones();
+        // Try rotating right by each possible amount; a valid bitmask
+        // immediate rotates into a contiguous run of ones in the low bits.
+        for r in 0..esize {
+            let rotated = if r == 0 {
+                element
+            } else {
+                ((element >> r) | (element << (esize - r))) & mask
+            };
+            if rotated == (1u64 << ones) - 1 {
+                let s_val = ones - 1;
+                let n_bit = esize == 64;
+                let len: u32 = match esize {
+                    2 => 1,
+                    4 => 2,
+                    8 => 3,
+                    16 => 4,
+                    32 => 5,
+                    64 => 6,
+                    _ => unreachable!(),
+                };
+                let imms: u8 = if n_bit {
+                    (s_val as u8) & 0x3F
+                } else {
+                    let upper_count = 5u32 - len;
+                    let upper_bits = if upper_count == 0 {
+                        0u8
+                    } else {
+                        (((1u32 << upper_count) - 1) as u8) << (len + 1)
+                    };
+                    upper_bits | ((s_val as u8) & ((1u8 << len) - 1))
+                };
+                let immr = r as u8;
+                return Some((n_bit, immr, imms));
+            }
+        }
+    }
+    None
+}
+
 // ---------------------------------------------------------------------------
 // top-level decoder
 // ---------------------------------------------------------------------------
@@ -332,8 +551,79 @@ pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
         0b0100 | 0b0110 | 0b1100 | 0b1110 => decode_ldst_group(instr),
         // data processing -- register
         0b0101 | 0b1101 => decode_dp_reg_group(instr),
+        // scalar FP (and SIMD, which we do not implement)
+        0b0111 | 0b1111 => decode_fp_group(instr),
         _ => Err(EmuError::UnknownInstruction(instr)),
     }
+}
+
+fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
+    // Data-processing (1 source): FMOV (reg), FNEG, FABS, FSQRT.
+    //   Encoding: 0_0_0_11110_ftype_1_00_000_1_op_000_Rn_Rd  (opcode in bits 20:15)
+    // Data-processing (2 source): FADD/FSUB/FMUL/FDIV.
+    //   Encoding: 0_0_0_11110_ftype_1_Rm_opcode_10_Rn_Rd
+    // FCMP:
+    //   Encoding: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_opcode2
+    // FCVTZS (double -> Xd/Wd, round toward zero):
+    //   Encoding: sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
+    // SCVTF (Xn/Wn -> double):
+    //   Encoding: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
+    // We only handle double precision (ftype=01).
+
+    let bits_28_24 = bits(instr, 28, 24);
+    if bits_28_24 != 0b11110 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    let ftype = bits(instr, 23, 22);
+    if ftype != 0b01 {
+        // Only double precision for now.
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    if bit(instr, 21) != 1 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+
+    let rn = bits(instr, 9, 5) as u8;
+    let rd = bits(instr, 4, 0) as u8;
+    let rm = bits(instr, 20, 16) as u8;
+
+    // FP data-processing 2-source: bits[15:10] = opcode | 10
+    if bits(instr, 11, 10) == 0b10 {
+        let opcode = bits(instr, 15, 12);
+        let op = match opcode {
+            0b0000 => FpBinOp::Fmul,
+            0b0001 => FpBinOp::Fdiv,
+            0b0010 => FpBinOp::Fadd,
+            0b0011 => FpBinOp::Fsub,
+            _ => return Err(EmuError::UnknownInstruction(instr)),
+        };
+        return Ok(Instruction::FpBinary { op, fd: rd, fn_: rn, fm: rm });
+    }
+
+    // FP data-processing 1-source (bits 21 down): opcode2 in bits 20:15.
+    if bits(instr, 20, 15) == 0b000000 && bits(instr, 14, 10) == 0b10000 {
+        // FMOV Dd, Dn
+        return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn });
+    }
+
+    // FCMP: opcode2 = 001000 in bits 15:10, bits 4:0 = 00000, bits 20:16 = Rm.
+    if bits(instr, 15, 10) == 0b001000 && bits(instr, 4, 0) == 0 {
+        return Ok(Instruction::FpCompare { fn_: rn, fm: rm });
+    }
+
+    // FCVTZS (double -> signed int): sf_0_0_11110_01_1_11_000_000000_Rn_Rd
+    if bits(instr, 20, 10) == 0b11000_000000 {
+        let sf = bit(instr, 31) == 1;
+        return Ok(Instruction::FpFcvtzs { rd, fn_: rn, sf });
+    }
+
+    // SCVTF (signed int -> double): sf_0_0_11110_01_1_00_010_000000_Rn_Rd
+    if bits(instr, 20, 10) == 0b00010_000000 {
+        let sf = bit(instr, 31) == 1;
+        return Ok(Instruction::FpScvtf { fd: rd, rn, sf });
+    }
+
+    Err(EmuError::UnknownInstruction(instr))
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +789,38 @@ fn decode_bitfield(instr: u32) -> Result<Instruction, EmuError> {
 // ---------------------------------------------------------------------------
 
 fn decode_branch_group(instr: u32) -> Result<Instruction, EmuError> {
+    // compare-and-branch: x011_010o ... (CBZ when bit 24 = 0, CBNZ = 1)
+    if (instr & 0x7E00_0000) == 0x3400_0000 {
+        let sf = bit(instr, 31) == 1;
+        let nonzero = bit(instr, 24) == 1;
+        let imm19 = bits(instr, 23, 5);
+        let rt = bits(instr, 4, 0) as u8;
+        let offset = sign_extend(imm19, 19) * 4;
+        return Ok(Instruction::CompareBranch {
+            sf,
+            rt,
+            nonzero,
+            offset,
+        });
+    }
+
+    // test-bit-and-branch: b5_011_011_o b40_imm14_Rt (TBZ when bit 24 = 0, TBNZ = 1)
+    if (instr & 0x7E00_0000) == 0x3600_0000 {
+        let b5 = bit(instr, 31) as u8;
+        let b40 = bits(instr, 23, 19) as u8;
+        let bit_pos = (b5 << 5) | b40;
+        let nonzero = bit(instr, 24) == 1;
+        let imm14 = bits(instr, 18, 5);
+        let rt = bits(instr, 4, 0) as u8;
+        let offset = sign_extend(imm14, 14) * 4;
+        return Ok(Instruction::TestBranch {
+            rt,
+            bit_pos,
+            nonzero,
+            offset,
+        });
+    }
+
     // conditional branch: 0101_010o oooo_oooo oooo_oooo ooo0_cccc
     if (instr & 0xFF00_0010) == 0x5400_0000 {
         let imm19 = bits(instr, 23, 5);
@@ -537,6 +859,13 @@ fn decode_branch_group(instr: u32) -> Result<Instruction, EmuError> {
 // ---------------------------------------------------------------------------
 
 fn decode_ldst_group(instr: u32) -> Result<Instruction, EmuError> {
+    // LDR (literal), scalar form. Mask bit 26 to 0 so the SIMD/FP literal
+    // form (0x5C00_0000, bit 26 = 1) drops through to the regular decode
+    // path and errors there as unknown.
+    if (instr & 0xBF00_0000) == 0x1800_0000 {
+        return decode_ldr_literal(instr);
+    }
+
     // load/store pair
     if (instr & 0x3A00_0000) == 0x2800_0000 {
         return decode_ldst_pair(instr);
@@ -544,6 +873,16 @@ fn decode_ldst_group(instr: u32) -> Result<Instruction, EmuError> {
 
     // single register load/store
     decode_ldst_single(instr)
+}
+
+fn decode_ldr_literal(instr: u32) -> Result<Instruction, EmuError> {
+    // opc:01_011_0_00 -- bit 30 selects width (0 = W, 1 = X).
+    let sf = bit(instr, 30) == 1;
+    let imm19 = bits(instr, 23, 5);
+    let rt = bits(instr, 4, 0) as u8;
+    // imm19 is in instruction units (4 bytes each), signed.
+    let offset = sign_extend(imm19, 19) * 4;
+    Ok(Instruction::LdrLiteral { sf, rt, offset })
 }
 
 fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
@@ -590,8 +929,27 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
         _ => unreachable!(),
     };
 
-    let v = bit(instr, 26); // vector -- not supported
+    let v = bit(instr, 26);
     if v == 1 {
+        // SIMD&FP LDR/STR, unsigned offset form. Other SIMD/FP addressing
+        // variants stay unsupported for now; the corpus uses only this one.
+        let opc_outer = bits(instr, 25, 24);
+        let opc_inner = bits(instr, 23, 22);
+        if opc_outer == 0b01 && (opc_inner == 0b00 || opc_inner == 0b01) {
+            let imm12 = bits(instr, 21, 10);
+            let scale = size.bytes();
+            let offset = (imm12 as i64) * (scale as i64);
+            let rn = bits(instr, 9, 5) as u8;
+            let ft = bits(instr, 4, 0) as u8;
+            let load = opc_inner == 0b01;
+            return Ok(Instruction::FpLdSt {
+                load,
+                ft,
+                rn,
+                offset,
+                size,
+            });
+        }
         return Err(EmuError::UnknownInstruction(instr));
     }
 
@@ -602,18 +960,49 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
     // unsigned offset: xx11_1001 xxoo_oooo oooo_oonn nnnt_tttt
     if opc == 0b01 && bits(instr, 29, 28) == 0b11 {
         let imm12 = bits(instr, 21, 10);
-        let is_load = bit(instr, 22) == 1;
         let scale = size.bytes();
         let offset = (imm12 as i64) * (scale as i64);
-
-        return Ok(Instruction::LdSt {
-            op: if is_load { LdStOp::Ldr } else { LdStOp::Str },
-            rt,
-            rn,
-            offset: LdStOffset::Immediate(offset),
-            size,
-            mode: IndexMode::SignedOffset,
-        });
+        // bits 23:22 distinguish STR/LDR/LDRS-X/LDRS-W.
+        let inner_opc = bits(instr, 23, 22);
+        match inner_opc {
+            0b00 => {
+                return Ok(Instruction::LdSt {
+                    op: LdStOp::Str,
+                    rt,
+                    rn,
+                    offset: LdStOffset::Immediate(offset),
+                    size,
+                    mode: IndexMode::SignedOffset,
+                });
+            }
+            0b01 => {
+                return Ok(Instruction::LdSt {
+                    op: LdStOp::Ldr,
+                    rt,
+                    rn,
+                    offset: LdStOffset::Immediate(offset),
+                    size,
+                    mode: IndexMode::SignedOffset,
+                });
+            }
+            0b10 | 0b11 => {
+                // LDRSB / LDRSH (size B or H) or LDRSW (size W).
+                // size=X is reserved for the sign-extending forms.
+                if matches!(size, MemSize::X) {
+                    return Err(EmuError::UnknownInstruction(instr));
+                }
+                let sf = inner_opc == 0b10; // 10 = Xt, 11 = Wt
+                return Ok(Instruction::LdrSignExtended {
+                    rt,
+                    rn,
+                    offset: LdStOffset::Immediate(offset),
+                    size,
+                    mode: IndexMode::SignedOffset,
+                    sf,
+                });
+            }
+            _ => unreachable!(),
+        }
     }
 
     // pre/post-index and register offset: xx11_1000 xx0o_oooo oooo_MMnn nnnt_tttt
@@ -624,9 +1013,17 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
         let idx_type = bits(instr, 11, 10);
 
         if idx_type == 0b10 {
-            // register offset: option field in bits [15:13], S in bit 12
+            // register offset: option field in bits [15:13], S in bit 12.
             let rm = bits(instr, 20, 16) as u8;
+            let option = bits(instr, 15, 13);
             let s = bit(instr, 12) as u8;
+            let extend = match option {
+                0b010 => ExtendType::Uxtw,
+                0b011 => ExtendType::Lsl,
+                0b110 => ExtendType::Sxtw,
+                0b111 => ExtendType::Sxtx,
+                _ => return Err(EmuError::UnknownInstruction(instr)),
+            };
             let shift_amount = if s == 1 {
                 match size {
                     MemSize::B => 0,
@@ -642,7 +1039,11 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
                 op,
                 rt,
                 rn,
-                offset: LdStOffset::Register { rm, shift_amount },
+                offset: LdStOffset::Register {
+                    rm,
+                    extend,
+                    shift_amount,
+                },
                 size,
                 mode: IndexMode::SignedOffset,
             });
@@ -829,18 +1230,31 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
     let rn = bits(instr, 9, 5) as u8;
     let rd = bits(instr, 4, 0) as u8;
 
-    // MADD: op31=000, o0=0. MUL is MADD with ra=XZR (31)
-    if op31 == 0b000 && o0 == 0 {
-        // we only support MUL (ra == 31) for now
-        if ra != 31 {
-            return Err(EmuError::UnknownInstruction(instr));
+    // MADD / MSUB share op31=000; o0 selects between them.
+    if op31 == 0b000 {
+        // Keep MUL (MADD with Ra=XZR and o0=0) on the existing MulDiv::Mul
+        // path so older tests and the legacy assembler still match it.
+        if ra == 31 && o0 == 0 {
+            return Ok(Instruction::MulDiv {
+                op: MulDivOp::Mul,
+                sf,
+                rd,
+                rn,
+                rm,
+            });
         }
-        return Ok(Instruction::MulDiv {
-            op: MulDivOp::Mul,
+        let op = if o0 == 0 {
+            MulAccumulateOp::Madd
+        } else {
+            MulAccumulateOp::Msub
+        };
+        return Ok(Instruction::MulAccumulate {
+            op,
             sf,
             rd,
             rn,
             rm,
+            ra,
         });
     }
 
@@ -1152,5 +1566,141 @@ mod tests {
     #[test]
     fn decode_unknown() {
         assert!(decode(0x0000_0000).is_err());
+    }
+
+    // -- extended-register addressing --
+
+    /// Build the instruction word for LDR Xt, [Xn, Rm, option shift].
+    /// `option` is the 3-bit encoding (010=UXTW, 011=LSL, 110=SXTW, 111=SXTX).
+    /// `s` is 1 when a shift is applied, 0 otherwise.
+    fn build_ldr_x_extended(rt: u8, rn: u8, rm: u8, option: u8, s: u8) -> u32 {
+        // size=11 (X), V=0, opc=01 (LDR), top nibble 0xF8, idx_type=10, imm9=0.
+        let base: u32 = 0xF860_0800;
+        base | ((rm as u32 & 0x1F) << 16)
+            | ((option as u32 & 0x7) << 13)
+            | ((s as u32 & 0x1) << 12)
+            | ((rn as u32 & 0x1F) << 5)
+            | (rt as u32 & 0x1F)
+    }
+
+    #[test]
+    fn decode_ldr_extended_uxtw_no_shift() {
+        let word = build_ldr_x_extended(0, 1, 2, 0b010, 0);
+        match decode(word).unwrap() {
+            Instruction::LdSt { offset: LdStOffset::Register { rm, extend, shift_amount }, .. } => {
+                assert_eq!(rm, 2);
+                assert_eq!(extend, ExtendType::Uxtw);
+                assert_eq!(shift_amount, 0);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_ldr_extended_sxtw_with_shift_3() {
+        // For MemSize::X, S=1 gives shift 3 (scaled by 8 bytes).
+        let word = build_ldr_x_extended(0, 1, 2, 0b110, 1);
+        match decode(word).unwrap() {
+            Instruction::LdSt { offset: LdStOffset::Register { rm, extend, shift_amount }, .. } => {
+                assert_eq!(rm, 2);
+                assert_eq!(extend, ExtendType::Sxtw);
+                assert_eq!(shift_amount, 3);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_ldr_extended_lsl_and_sxtx() {
+        let lsl = build_ldr_x_extended(0, 1, 2, 0b011, 1);
+        let sxtx = build_ldr_x_extended(0, 1, 2, 0b111, 1);
+        let matches = |w: u32, expected: ExtendType| match decode(w).unwrap() {
+            Instruction::LdSt { offset: LdStOffset::Register { extend, .. }, .. } => {
+                extend == expected
+            }
+            _ => false,
+        };
+        assert!(matches(lsl, ExtendType::Lsl));
+        assert!(matches(sxtx, ExtendType::Sxtx));
+    }
+
+    #[test]
+    fn decode_ldr_reserved_option_errors() {
+        // option = 000 (UXTB) is not valid for indexed addressing.
+        let bad = build_ldr_x_extended(0, 1, 2, 0b000, 0);
+        assert!(decode(bad).is_err());
+    }
+
+    // -- compare-and-branch, test-bit-and-branch --
+
+    fn build_cbz(sf: bool, nonzero: bool, rt: u8, offset_bytes: i64) -> u32 {
+        let sf_bit = if sf { 1u32 << 31 } else { 0 };
+        let op_bit = if nonzero { 1u32 << 24 } else { 0 };
+        let imm19 = ((offset_bytes / 4) as u32) & 0x7_FFFF;
+        0x3400_0000 | sf_bit | op_bit | (imm19 << 5) | (rt as u32 & 0x1F)
+    }
+
+    fn build_tbz(nonzero: bool, bit_pos: u8, rt: u8, offset_bytes: i64) -> u32 {
+        let b5 = (bit_pos >> 5) as u32;
+        let b40 = (bit_pos & 0x1F) as u32;
+        let op_bit = if nonzero { 1u32 << 24 } else { 0 };
+        let imm14 = ((offset_bytes / 4) as u32) & 0x3FFF;
+        0x3600_0000 | (b5 << 31) | op_bit | (b40 << 19) | (imm14 << 5) | (rt as u32 & 0x1F)
+    }
+
+    #[test]
+    fn decode_cbz_w() {
+        let word = build_cbz(false, false, 3, 16);
+        match decode(word).unwrap() {
+            Instruction::CompareBranch { sf, rt, nonzero, offset } => {
+                assert!(!sf);
+                assert_eq!(rt, 3);
+                assert!(!nonzero);
+                assert_eq!(offset, 16);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_cbnz_x_negative_offset() {
+        let word = build_cbz(true, true, 5, -8);
+        match decode(word).unwrap() {
+            Instruction::CompareBranch { sf, rt, nonzero, offset } => {
+                assert!(sf);
+                assert_eq!(rt, 5);
+                assert!(nonzero);
+                assert_eq!(offset, -8);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_tbz_bit_zero() {
+        let word = build_tbz(false, 0, 7, 12);
+        match decode(word).unwrap() {
+            Instruction::TestBranch { rt, bit_pos, nonzero, offset } => {
+                assert_eq!(rt, 7);
+                assert_eq!(bit_pos, 0);
+                assert!(!nonzero);
+                assert_eq!(offset, 12);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_tbnz_high_bit() {
+        let word = build_tbz(true, 63, 2, -4);
+        match decode(word).unwrap() {
+            Instruction::TestBranch { rt, bit_pos, nonzero, offset } => {
+                assert_eq!(rt, 2);
+                assert_eq!(bit_pos, 63);
+                assert!(nonzero);
+                assert_eq!(offset, -4);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 }
