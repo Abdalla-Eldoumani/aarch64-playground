@@ -33,6 +33,23 @@ pub enum EmuError {
         line: usize,
         message: String,
     },
+    /// m4 preprocessing failed (unsupported construct, recursion loop, ...).
+    /// `line` is the 1-based line in the original (pre-expansion) source.
+    PreprocError {
+        line: usize,
+        message: String,
+    },
+    /// Lexer or parser found bad source. `line` is the original line.
+    ParseError {
+        line: usize,
+        message: String,
+    },
+    /// Linker could not resolve a reference or back-patch an offset.
+    /// `line` is the original source line when one is available.
+    LinkError {
+        line: usize,
+        message: String,
+    },
 }
 
 impl fmt::Display for EmuError {
@@ -61,6 +78,15 @@ impl fmt::Display for EmuError {
             Self::ExecutionHalted => write!(f, "execution halted"),
             Self::AssemblyError { line, message } => {
                 write!(f, "assembly error at line {line}: {message}")
+            }
+            Self::PreprocError { line, message } => {
+                write!(f, "preprocess error at line {line}: {message}")
+            }
+            Self::ParseError { line, message } => {
+                write!(f, "parse error at line {line}: {message}")
+            }
+            Self::LinkError { line, message } => {
+                write!(f, "link error at line {line}: {message}")
             }
         }
     }
