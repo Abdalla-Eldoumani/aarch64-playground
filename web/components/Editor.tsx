@@ -1,8 +1,9 @@
 "use client";
 
 import MonacoEditor, { type OnMount } from "@monaco-editor/react";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/use-emulator";
+import { lookupDoc } from "@/lib/instruction-docs";
 
 interface EditorProps {
   value: string;
@@ -31,6 +32,16 @@ const COND_BRANCHES = [
   "B.CS", "B.CC",
 ];
 
+function isCoarsePointer(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(pointer: coarse)").matches;
+}
+
+function isNarrow(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth < 480;
+}
+
 export function Editor({
   value,
   onChange,
@@ -42,6 +53,16 @@ export function Editor({
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
+  const [fallback, setFallback] = useState<boolean>(() => isNarrow());
+
+  // Re-evaluate the narrow-viewport fallback on resize so a student
+  // who rotates their phone doesn't get stuck in the wrong mode.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setFallback(isNarrow());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const updateDecorations = useCallback(() => {
     const editor = editorRef.current;
@@ -141,6 +162,50 @@ export function Editor({
 
       monaco.editor.setTheme("arm64-dark");
 
+      // Hover provider: surface a short course-voice summary of the
+      // mnemonic under the cursor. Falls back to no-hover when the
+      // token under the cursor isn't one we recognize.
+      type MonacoModule = typeof monaco;
+      type TextModel = Parameters<
+        Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
+      >[0];
+      type MonacoPosition = Parameters<
+        Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
+      >[1];
+      monaco.languages.registerHoverProvider("arm64", {
+        provideHover(model: TextModel, position: MonacoPosition) {
+          const word = model.getWordAtPosition(position);
+          if (!word) return null;
+          // Grab the possibly-dotted conditional form (e.g. "B.EQ").
+          const line = model.getLineContent(position.lineNumber);
+          const dotStart = word.startColumn - 1;
+          const extended =
+            line[dotStart - 1] === "." && /[A-Za-z]/.test(line[dotStart - 2] ?? "")
+              ? `${line[dotStart - 2]}.${word.word}`
+              : word.word;
+          const doc = lookupDoc(extended) ?? lookupDoc(word.word);
+          if (!doc) return null;
+          const lines: string[] = [
+            `**${word.word.toUpperCase()}** — ${doc.summary}`,
+          ];
+          if (doc.details) {
+            lines.push("", ...doc.details);
+          }
+          if (doc.example) {
+            lines.push("", "```", doc.example, "```");
+          }
+          return {
+            range: new monaco.Range(
+              position.lineNumber,
+              word.startColumn,
+              position.lineNumber,
+              word.endColumn,
+            ),
+            contents: [{ value: lines.join("\n") }],
+          };
+        },
+      });
+
       // glyph margin click for breakpoints
       editor.onMouseDown((e) => {
         if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
@@ -152,24 +217,99 @@ export function Editor({
         }
       });
 
+      // On coarse pointers (phones / tablets), a 500ms press-and-hold
+      // anywhere on the line sets a breakpoint -- reaching for the
+      // narrow glyph margin with a fingertip is unreliable.
+      if (isCoarsePointer()) {
+        const dom = editor.getDomNode();
+        if (dom) {
+          let pressTimer: ReturnType<typeof setTimeout> | null = null;
+          let pressedLine: number | null = null;
+          const startPress = (clientX: number, clientY: number) => {
+            const pos = editor.getTargetAtClientPoint(clientX, clientY);
+            const line = pos?.position?.lineNumber ?? null;
+            if (line == null) return;
+            pressedLine = line;
+            pressTimer = setTimeout(() => {
+              if (pressedLine != null) {
+                onToggleBreakpoint(pressedLine);
+              }
+            }, 500);
+          };
+          const cancelPress = () => {
+            if (pressTimer) clearTimeout(pressTimer);
+            pressTimer = null;
+            pressedLine = null;
+          };
+          dom.addEventListener("touchstart", (ev) => {
+            const t = ev.touches[0];
+            if (t) startPress(t.clientX, t.clientY);
+          }, { passive: true });
+          dom.addEventListener("touchmove", cancelPress, { passive: true });
+          dom.addEventListener("touchend", cancelPress);
+          dom.addEventListener("touchcancel", cancelPress);
+        }
+      }
+
+      // Shrink the editor when the iOS keyboard opens so the textarea
+      // doesn't sit behind the keyboard; Monaco's `automaticLayout` flag
+      // only handles viewport changes, not keyboard-induced visual-
+      // viewport changes.
+      if (typeof window !== "undefined" && "visualViewport" in window) {
+        const vv = window.visualViewport;
+        if (vv) {
+          const onVvResize = () => editor.layout();
+          vv.addEventListener("resize", onVvResize);
+        }
+      }
+
       updateDecorations();
     },
     [onToggleBreakpoint, updateDecorations]
   );
 
-  // re-apply decorations when they change
-  const prevDepsRef = useRef({ currentLine, breakpoints, assemblyErrors });
-  if (
-    prevDepsRef.current.currentLine !== currentLine ||
-    prevDepsRef.current.breakpoints !== breakpoints ||
-    prevDepsRef.current.assemblyErrors !== assemblyErrors
-  ) {
-    prevDepsRef.current = { currentLine, breakpoints, assemblyErrors };
+  // re-apply decorations when the editor or any of its inputs change
+  useEffect(() => {
     updateDecorations();
+  }, [currentLine, breakpoints, assemblyErrors, updateDecorations]);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      if (!/\.(s|asm|txt)$/i.test(file.name)) return;
+      e.preventDefault();
+      file.text().then((text) => onChange(text));
+    },
+    [onChange],
+  );
+
+  if (fallback) {
+    // Under 480px, Monaco's keyboard behavior on iOS is unreliable
+    // (the soft keyboard jumps the caret to the wrong line when the
+    // visual viewport shrinks). Fall back to a plain textarea.
+    return (
+      <textarea
+        className="h-full w-full resize-none bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono text-[16px] p-3 focus:outline-none"
+        style={{ WebkitAppearance: "none" }}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+        aria-label="assembly source"
+      />
+    );
   }
 
   return (
-    <>
+    <div
+      className="h-full"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+    >
       <style>{`
         .current-line-highlight { background: rgba(96, 165, 250, 0.15) !important; }
         .current-line-glyph { background: #60a5fa; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
@@ -185,7 +325,9 @@ export function Editor({
         onChange={(v) => onChange(v ?? "")}
         onMount={handleMount}
         options={{
-          fontSize: 14,
+          // 16px font on mobile kills iOS's focus-zoom behavior; keep
+          // 14 on desktop where the ems cost is worth it.
+          fontSize: isCoarsePointer() ? 16 : 14,
           fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
           minimap: { enabled: false },
           glyphMargin: true,
@@ -193,8 +335,9 @@ export function Editor({
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize: 4,
+          wordWrap: isCoarsePointer() ? "on" : "off",
         }}
       />
-    </>
+    </div>
   );
 }
