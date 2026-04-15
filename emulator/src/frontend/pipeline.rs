@@ -1,0 +1,694 @@
+//! Full-stack assembly pipeline for hosted cpsc 355 source. Runs the
+//! parser, resolves labels across every section, allocates a literal pool
+//! for `ldr xN, =expr` pseudo-instructions, and emits a `LinkedImage`
+//! that the CPU loader writes into memory as-is.
+//!
+//! Ordinary instructions reconstruct their post-m4 source line from
+//! `Program::expanded_source` (indexed by `original_line`) and go through
+//! `assembler::encode_line_absolute`, so every encoding the legacy
+//! assembler already knows about keeps working unchanged. `ldr xN, =expr`
+//! is the one pseudo that needs special handling, since the legacy
+//! encoder doesn't recognize `=` in operands.
+
+use std::collections::HashMap;
+
+use crate::assembler;
+use crate::cpu::CODE_BASE;
+use crate::errors::EmuError;
+use crate::frontend::expr::evaluate;
+use crate::frontend::lexer::{lex, TokenKind};
+use crate::frontend::linker::encode_ldr_literal;
+use crate::frontend::parser::parse;
+use crate::frontend::sections::{Item, Program, SectionKind};
+use crate::hosted::HostTable;
+
+/// Result of a hosted-assembly run. `writes` is an ordered list of
+/// (address, bytes) pairs that the loader applies verbatim.
+#[derive(Debug, Clone)]
+pub struct LinkedImage {
+    pub writes: Vec<(u64, Vec<u8>)>,
+    pub entry_point: u64,
+    pub instruction_count: usize,
+    /// Absolute address of the first instruction in `.text`, for debugger
+    /// decoration.
+    pub text_base: u64,
+}
+
+pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, EmuError> {
+    let prog = parse(source)?;
+    link(&prog, host)
+}
+
+fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
+    let mut symbols: HashMap<String, u64> = HashMap::new();
+
+    // Pass 1a: place labels at section base + running byte offset, and
+    // collect `name = expr` assignments with the address where they
+    // appear so the linker can evaluate `. - msg - 1` and similar bodies
+    // in the right place.
+    let mut text_len: u64 = 0;
+    let mut assignments: Vec<(String, String, u64, usize)> = Vec::new();
+    for section in &prog.sections {
+        let base = section.kind.default_base();
+        let mut offset: u64 = 0;
+        for item in &section.items {
+            match item {
+                Item::Label(name) => {
+                    symbols.insert(name.clone(), base + offset);
+                }
+                Item::Bytes(b) => offset += b.len() as u64,
+                Item::Reserve(n) => offset += n,
+                Item::AlignToBytes(n) => {
+                    if *n > 0 {
+                        let rem = offset % n;
+                        if rem != 0 {
+                            offset += n - rem;
+                        }
+                    }
+                }
+                Item::SymbolAssignment { name, body, original_line } => {
+                    assignments.push((name.clone(), body.clone(), base + offset, *original_line));
+                }
+                Item::Instruction { .. } => offset += 4,
+            }
+        }
+        if section.kind == SectionKind::Text {
+            text_len = offset;
+        }
+    }
+
+    // Pass 1b: host-stub addresses so `bl printf` (via a literal-pool
+    // trampoline) and any direct-label lookups can find them.
+    for name in host.names() {
+        if let Some(addr) = host.lookup(name) {
+            symbols.entry(name.to_string()).or_insert(addr);
+        }
+    }
+
+    // Pass 1c: evaluate each `name = expr` assignment using its recorded
+    // `.` address. Do multiple rounds since later assignments can depend
+    // on earlier ones or on labels defined later in the same section.
+    for _ in 0..16 {
+        let mut changed = false;
+        let mut remaining: Vec<(String, String, u64, usize)> = Vec::new();
+        for (name, body, here, line) in &assignments {
+            if symbols.contains_key(name) {
+                continue;
+            }
+            if let Some(v) = try_evaluate_at(body, *here, &symbols, *line) {
+                symbols.insert(name.clone(), v as u64);
+                changed = true;
+            } else {
+                remaining.push((name.clone(), body.clone(), *here, *line));
+            }
+        }
+        assignments = remaining;
+        if !changed {
+            break;
+        }
+    }
+
+    // Pass 1d: scan .text instructions for `ldr xN, =expr` to size the
+    // literal pool, and for `bl <hostname>` calls that need a trampoline
+    // because direct BL cannot reach the 0xFFFF_0000 host-stub range.
+    let mut pool_slots: HashMap<String, u64> = HashMap::new();
+    let mut pool_values: Vec<u64> = Vec::new();
+    let mut host_trampolines: Vec<String> = Vec::new();
+    let mut host_trampoline_set: HashMap<String, ()> = HashMap::new();
+    for section in &prog.sections {
+        if section.kind != SectionKind::Text {
+            continue;
+        }
+        for item in &section.items {
+            if let Item::Instruction { tokens, original_line } = item {
+                if let Some(target_text) = extract_ldr_eq_operand(tokens) {
+                    if !pool_slots.contains_key(&target_text) {
+                        let value = resolve_ldr_eq_target(&target_text, &symbols, *original_line)?;
+                        pool_slots.insert(target_text, pool_values.len() as u64 * 8);
+                        pool_values.push(value);
+                    }
+                    continue;
+                }
+                if let Some(target) = extract_bl_target(tokens) {
+                    if let Some(addr) = symbols.get(&target) {
+                        if is_host_address(*addr)
+                            && !host_trampoline_set.contains_key(&target)
+                        {
+                            host_trampoline_set.insert(target.clone(), ());
+                            host_trampolines.push(target);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Each trampoline is two instructions (LDR X16, <pool slot>; BR X16)
+    // = 8 bytes. They sit between .text and the literal pool so BL's
+    // imm26 range easily reaches them, and so their LDR literal's imm19
+    // reaches the pool entries that hold the real host stub addresses.
+    let tramp_base = CODE_BASE + ((text_len + 7) & !7);
+    let tramp_bytes = (host_trampolines.len() as u64) * 8;
+    let pool_base = tramp_base + tramp_bytes;
+
+    // Each trampoline needs a pool slot that holds the host stub's real
+    // 64-bit address. Pre-allocate those slots and wire the per-name
+    // trampoline address into the symbol table so `bl printf` can route
+    // through a synthetic `__tramp_printf` label.
+    let mut tramp_addr: HashMap<String, u64> = HashMap::new();
+    for (idx, name) in host_trampolines.iter().enumerate() {
+        let addr = tramp_base + (idx as u64) * 8;
+        tramp_addr.insert(name.clone(), addr);
+        symbols.insert(format!("__tramp_{name}"), addr);
+        // Reserve a literal pool slot holding the real host-stub address,
+        // if one isn't already there under the host name.
+        let host_addr = *symbols.get(name).expect("host target in symbols");
+        pool_slots
+            .entry(name.clone())
+            .or_insert_with(|| {
+                let slot = pool_values.len() as u64 * 8;
+                pool_values.push(host_addr);
+                slot
+            });
+    }
+
+    // Pass 2: emit bytes for every section, then the literal pool.
+    let mut writes: Vec<(u64, Vec<u8>)> = Vec::new();
+    let mut instruction_count: usize = 0;
+    let expanded_lines: Vec<&str> = prog.expanded_source.lines().collect();
+
+    for section in &prog.sections {
+        let base = section.kind.default_base();
+        let mut offset: u64 = 0;
+        for item in &section.items {
+            match item {
+                Item::Label(_) => {}
+                Item::Bytes(b) => {
+                    writes.push((base + offset, b.clone()));
+                    offset += b.len() as u64;
+                }
+                Item::Reserve(n) => offset += n,
+                Item::AlignToBytes(n) => {
+                    if *n > 0 {
+                        let rem = offset % n;
+                        if rem != 0 {
+                            offset += n - rem;
+                        }
+                    }
+                }
+                Item::SymbolAssignment { .. } => {}
+                Item::Instruction { tokens, original_line } => {
+                    let pc = base + offset;
+                    let word = if let Some(target_text) = extract_ldr_eq_operand(tokens) {
+                        let (rt, sf) = parse_ldr_eq_rt(tokens, *original_line)?;
+                        let slot = pool_slots[&target_text];
+                        let slot_addr = pool_base + slot;
+                        let byte_offset = slot_addr as i64 - pc as i64;
+                        encode_ldr_literal(sf, rt, byte_offset)?
+                    } else {
+                        let raw = expanded_lines
+                            .get(original_line - 1)
+                            .copied()
+                            .unwrap_or("");
+                        let stripped = strip_leading_labels(raw);
+                        if stripped.is_empty() {
+                            return Err(EmuError::AssemblyError {
+                                line: *original_line,
+                                message: "empty instruction line".into(),
+                            });
+                        }
+                        // Resolve aliases and constant expressions into
+                        // plain numeric literals so the legacy encoder
+                        // sees `[sp, -32]!` instead of `[sp, alloc]!`.
+                        let rewritten =
+                            lower_operands(&stripped, pc, &symbols, *original_line)?;
+                        // Rewrite `bl <hostname>` to hop through the
+                        // trampoline so the out-of-range synthetic host
+                        // address becomes reachable.
+                        let line_text = redirect_bl_to_trampoline(&rewritten, &tramp_addr);
+                        assembler::encode_line_absolute(
+                            &line_text,
+                            pc,
+                            &symbols,
+                            *original_line,
+                        )?
+                    };
+                    writes.push((pc, word.to_le_bytes().to_vec()));
+                    offset += 4;
+                    instruction_count += 1;
+                }
+            }
+        }
+    }
+
+    // Emit host-call trampolines. Each is `LDR X16, <pool slot>; BR X16`
+    // with the pool slot holding the real host stub address. Two
+    // instructions per trampoline = 8 bytes.
+    for (idx, name) in host_trampolines.iter().enumerate() {
+        let addr = tramp_base + (idx as u64) * 8;
+        let slot = pool_slots[name];
+        let slot_addr = pool_base + slot;
+        let byte_offset = slot_addr as i64 - addr as i64;
+        let ldr_word = encode_ldr_literal(true, 16, byte_offset)?;
+        // BR X16 = 0xD61F_0200 | (rn << 5) with rn = 16
+        let br_word: u32 = 0xD61F_0000 | (16u32 << 5);
+        writes.push((addr, ldr_word.to_le_bytes().to_vec()));
+        writes.push((addr + 4, br_word.to_le_bytes().to_vec()));
+    }
+
+    // Emit pool bytes.
+    for (i, value) in pool_values.iter().enumerate() {
+        let addr = pool_base + (i as u64) * 8;
+        writes.push((addr, value.to_le_bytes().to_vec()));
+    }
+
+    let entry_point = symbols.get("main").copied().unwrap_or(CODE_BASE);
+
+    Ok(LinkedImage {
+        writes,
+        entry_point,
+        instruction_count,
+        text_base: CODE_BASE,
+    })
+}
+
+/// Return the textual key for an `ldr xN, =<expr>` pseudo, or None if the
+/// instruction is something else.
+fn extract_ldr_eq_operand(tokens: &[crate::frontend::lexer::Token]) -> Option<String> {
+    if tokens.len() < 4 {
+        return None;
+    }
+    let TokenKind::Ident(mn) = &tokens[0].kind else {
+        return None;
+    };
+    if !mn.eq_ignore_ascii_case("ldr") {
+        return None;
+    }
+    // tokens: ident(ldr), ident(reg), comma, equals, ...
+    let comma_pos = tokens.iter().position(|t| matches!(t.kind, TokenKind::Comma))?;
+    let after = &tokens[comma_pos + 1..];
+    let first_after = after.first()?;
+    if !matches!(first_after.kind, TokenKind::Equals) {
+        return None;
+    }
+    // The operand text is everything after the '='; stringify tokens.
+    Some(stringify_tokens(&after[1..]))
+}
+
+fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
+    let mut out = String::new();
+    for t in tokens {
+        match &t.kind {
+            TokenKind::Ident(s) => out.push_str(s),
+            TokenKind::IntLit(v) => out.push_str(&format!("{v}")),
+            TokenKind::CharLit(v) => out.push_str(&format!("{v}")),
+            TokenKind::Comma => out.push(','),
+            TokenKind::Plus => out.push('+'),
+            TokenKind::Minus => out.push('-'),
+            TokenKind::Star => out.push('*'),
+            TokenKind::Slash => out.push('/'),
+            TokenKind::Percent => out.push('%'),
+            TokenKind::Amp => out.push('&'),
+            TokenKind::Pipe => out.push('|'),
+            TokenKind::Caret => out.push('^'),
+            TokenKind::Tilde => out.push('~'),
+            TokenKind::Bang => out.push('!'),
+            TokenKind::LShift => out.push_str("<<"),
+            TokenKind::RShift => out.push_str(">>"),
+            TokenKind::LParen => out.push('('),
+            TokenKind::RParen => out.push(')'),
+            TokenKind::Dot => out.push('.'),
+            TokenKind::Hash => out.push('#'),
+            _ => {}
+        }
+        out.push(' ');
+    }
+    out.trim().to_string()
+}
+
+fn parse_ldr_eq_rt(
+    tokens: &[crate::frontend::lexer::Token],
+    line: usize,
+) -> Result<(u8, bool), EmuError> {
+    let TokenKind::Ident(reg) = &tokens[1].kind else {
+        return Err(err(line, "expected register after LDR"));
+    };
+    let first = reg.chars().next().unwrap_or(' ').to_ascii_uppercase();
+    let (sf, idx_str) = match first {
+        'X' => (true, &reg[1..]),
+        'W' => (false, &reg[1..]),
+        _ => return Err(err(line, &format!("bad register `{reg}` in LDR =pseudo"))),
+    };
+    let idx: u8 = idx_str
+        .parse()
+        .map_err(|_| err(line, &format!("bad register index in `{reg}`")))?;
+    Ok((idx, sf))
+}
+
+fn resolve_ldr_eq_target(
+    text: &str,
+    symbols: &HashMap<String, u64>,
+    line: usize,
+) -> Result<u64, EmuError> {
+    // Lex the operand fragment, evaluate as an expression with the full
+    // symbol table. `. here` is meaningless in a pool entry so we pass 0.
+    let tokens = lex(text, line)?;
+    let value = evaluate(
+        &tokens,
+        &|name| symbols.get(name).map(|v| *v as i64),
+        0,
+        line,
+    )?;
+    Ok(value as u64)
+}
+
+/// Evaluate an assignment body at a specific point in the section walk,
+/// using the symbol table accumulated so far. `here` is the absolute
+/// address the assignment line appears at; expressions using `.` resolve
+/// against that.
+fn try_evaluate_at(
+    body: &str,
+    here: u64,
+    symbols: &HashMap<String, u64>,
+    line: usize,
+) -> Option<i64> {
+    let tokens = lex(body, line).ok()?;
+    evaluate(
+        &tokens,
+        &|name| symbols.get(name).map(|v| *v as i64),
+        here as i64,
+        line,
+    )
+    .ok()
+}
+
+/// Walk the operand tail of an instruction line, evaluate any expression
+/// that resolves to a constant, and rewrite it as a plain numeric literal
+/// so the legacy assembler's `parse_immediate` can consume it. Register
+/// operands (x0, w3, sp, d5, ...) and shift keywords (LSL, SXTW) pass
+/// through unchanged because the expression evaluator returns None when
+/// it cannot fold them into a constant.
+fn lower_operands(
+    line: &str,
+    pc: u64,
+    symbols: &HashMap<String, u64>,
+    ln: usize,
+) -> Result<String, EmuError> {
+    let trimmed = line.trim();
+    let split = trimmed
+        .find(|c: char| c.is_whitespace())
+        .unwrap_or(trimmed.len());
+    let mnemonic = &trimmed[..split];
+    let tail = trimmed[split..].trim_start();
+    if tail.is_empty() {
+        return Ok(mnemonic.to_string());
+    }
+    // Branches want to see a label name, not an evaluated offset; leave
+    // the tail alone for them.
+    if is_branch_mnemonic(mnemonic) {
+        return Ok(format!("{mnemonic} {tail}"));
+    }
+    let rewritten = rewrite_operand_list(tail, pc, symbols, ln)?;
+    Ok(format!("{mnemonic} {rewritten}"))
+}
+
+fn is_branch_mnemonic(mn: &str) -> bool {
+    let lower = mn.to_ascii_lowercase();
+    // Unconditional and link branches, conditional branches (b.cond), CBZ/CBNZ
+    // and TBZ/TBNZ families; all take a label in their last operand slot.
+    matches!(lower.as_str(), "b" | "bl" | "cbz" | "cbnz" | "tbz" | "tbnz")
+        || lower.starts_with("b.")
+}
+
+fn rewrite_operand_list(
+    s: &str,
+    pc: u64,
+    symbols: &HashMap<String, u64>,
+    ln: usize,
+) -> Result<String, EmuError> {
+    let mut out: Vec<String> = Vec::new();
+    let segments = split_top_level_commas(s);
+    for seg in segments {
+        out.push(rewrite_operand(seg.trim(), pc, symbols, ln)?);
+    }
+    Ok(out.join(", "))
+}
+
+fn split_top_level_commas(s: &str) -> Vec<&str> {
+    let mut out: Vec<&str> = Vec::new();
+    let mut depth: i32 = 0;
+    let mut start: usize = 0;
+    let bytes = s.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            b'[' | b'(' | b'{' => depth += 1,
+            b']' | b')' | b'}' => depth -= 1,
+            b',' if depth == 0 => {
+                out.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(&s[start..]);
+    out
+}
+
+fn rewrite_operand(
+    s: &str,
+    pc: u64,
+    symbols: &HashMap<String, u64>,
+    ln: usize,
+) -> Result<String, EmuError> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+    // Bracketed operand [Xn, <expr>] or [Xn, <expr>]!: rewrite the inside
+    // recursively and preserve the trailing characters (whitespace, !).
+    if trimmed.starts_with('[') {
+        let close = find_matching_bracket(trimmed).ok_or_else(|| EmuError::AssemblyError {
+            line: ln,
+            message: "unbalanced addressing bracket".into(),
+        })?;
+        let inside = &trimmed[1..close];
+        let trailer = &trimmed[close..];
+        let rewritten_inside = rewrite_operand_list(inside, pc, symbols, ln)?;
+        return Ok(format!("[{rewritten_inside}{trailer}"));
+    }
+    // Strip a leading `#` while evaluating; the legacy encoder accepts
+    // either form, so we emit the decimal literal without the hash.
+    let body = trimmed.strip_prefix('#').unwrap_or(trimmed).trim();
+    if !looks_like_expression(body, symbols) {
+        return Ok(trimmed.to_string());
+    }
+    match try_evaluate_operand(body, pc, symbols, ln) {
+        Some(value) => Ok(format!("{value}")),
+        None => Ok(trimmed.to_string()),
+    }
+}
+
+fn find_matching_bracket(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth: i32 = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            b'[' => depth += 1,
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Quick filter: is this operand body something we should try to
+/// evaluate? True if it contains arithmetic/operator characters, or if
+/// it's a bare identifier that resolves against the symbol table.
+fn looks_like_expression(body: &str, symbols: &HashMap<String, u64>) -> bool {
+    if body.is_empty() {
+        return false;
+    }
+    // Contains any expression operator or `.`-current-address.
+    let has_op = body
+        .chars()
+        .any(|c| matches!(c, '+' | '-' | '*' | '/' | '&' | '|' | '^' | '~' | '(' | ')' | '.' | '<' | '>' | '%'));
+    if has_op {
+        return true;
+    }
+    // Bare identifier that we know about (alias resolved to a constant).
+    // Skip things that look like registers or shift keywords; leave those
+    // alone even if a user happened to define a symbol with the same name.
+    if is_register_or_shift_keyword(body) {
+        return false;
+    }
+    if is_plain_ident(body) && symbols.contains_key(body) {
+        return true;
+    }
+    false
+}
+
+fn is_plain_ident(s: &str) -> bool {
+    let mut it = s.chars();
+    match it.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '.' => {}
+        _ => return false,
+    }
+    it.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+}
+
+fn is_register_or_shift_keyword(s: &str) -> bool {
+    let lower = s.to_ascii_lowercase();
+    // Register prefixes followed by digits (or zr).
+    for prefix in ["x", "w", "d", "s", "q", "h", "b"] {
+        if let Some(rest) = lower.strip_prefix(prefix) {
+            if rest == "zr" {
+                return true;
+            }
+            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
+    matches!(
+        lower.as_str(),
+        "sp" | "xzr" | "wzr" | "fp" | "lr" |
+        "lsl" | "lsr" | "asr" | "ror" |
+        "sxtw" | "sxtx" | "uxtw" | "uxtx" |
+        "sxtb" | "sxth" | "uxtb" | "uxth"
+    )
+}
+
+fn try_evaluate_operand(
+    body: &str,
+    pc: u64,
+    symbols: &HashMap<String, u64>,
+    ln: usize,
+) -> Option<i64> {
+    let tokens = lex(body, ln).ok()?;
+    evaluate(
+        &tokens,
+        &|name| symbols.get(name).map(|v| *v as i64),
+        pc as i64,
+        ln,
+    )
+    .ok()
+}
+
+/// If this instruction is `bl <ident>`, return the target identifier.
+fn extract_bl_target(tokens: &[crate::frontend::lexer::Token]) -> Option<String> {
+    if tokens.len() < 2 {
+        return None;
+    }
+    let TokenKind::Ident(mn) = &tokens[0].kind else {
+        return None;
+    };
+    if !mn.eq_ignore_ascii_case("bl") {
+        return None;
+    }
+    let TokenKind::Ident(name) = &tokens[1].kind else {
+        return None;
+    };
+    Some(name.clone())
+}
+
+fn is_host_address(addr: u64) -> bool {
+    const HOST_STUB_BASE: u64 = 0xFFFF_0000;
+    addr >= HOST_STUB_BASE && addr < HOST_STUB_BASE + 0x1_0000
+}
+
+/// When a `bl <hostname>` instruction's target is registered as a host
+/// stub, redirect the BL to the synthetic `__tramp_<hostname>` label so
+/// the encoder's imm26 offset stays in range.
+fn redirect_bl_to_trampoline(line: &str, tramp_addr: &HashMap<String, u64>) -> String {
+    let trimmed = line.trim_start();
+    let rest = match trimmed.strip_prefix("bl ").or_else(|| trimmed.strip_prefix("BL ")) {
+        Some(r) => r,
+        None => return line.to_string(),
+    };
+    let target = rest.trim().trim_end_matches(|c: char| c.is_whitespace() || c == '\t');
+    if tramp_addr.contains_key(target) {
+        format!("bl __tramp_{target}")
+    } else {
+        line.to_string()
+    }
+}
+
+fn err(line: usize, message: &str) -> EmuError {
+    EmuError::AssemblyError {
+        line,
+        message: message.to_string(),
+    }
+}
+
+/// Remove any leading `ident:` labels from a raw source line, since
+/// `encode_line_absolute` expects just the instruction. Multiple labels
+/// can appear in a row (`fn: main: stp fp, lr, ...`). Also strips `//`
+/// and `;` line comments so the underlying encoder doesn't see them.
+fn strip_leading_labels(line: &str) -> String {
+    let mut s = line.trim_start();
+    loop {
+        let bytes = s.as_bytes();
+        let mut end = 0;
+        while end < bytes.len() {
+            let b = bytes[end];
+            let ok = b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'$';
+            if !ok {
+                break;
+            }
+            end += 1;
+        }
+        if end == 0 || bytes.get(end) != Some(&b':') {
+            break;
+        }
+        s = s[end + 1..].trim_start();
+    }
+    let s = match s.find("//") {
+        Some(p) => &s[..p],
+        None => s,
+    };
+    let s = match s.find(';') {
+        Some(p) => &s[..p],
+        None => s,
+    };
+    s.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_leading_labels;
+
+    #[test]
+    fn strips_single_label() {
+        assert_eq!(strip_leading_labels("main: mov x0, 1"), "mov x0, 1");
+    }
+
+    #[test]
+    fn strips_stacked_labels() {
+        assert_eq!(
+            strip_leading_labels("start: main: mov x0, 1"),
+            "mov x0, 1"
+        );
+    }
+
+    #[test]
+    fn leaves_naked_instruction_alone() {
+        assert_eq!(strip_leading_labels("  mov x0, 1"), "mov x0, 1");
+    }
+
+    #[test]
+    fn strips_line_comments() {
+        assert_eq!(strip_leading_labels("main: mov x0, 1 // hi"), "mov x0, 1");
+        assert_eq!(strip_leading_labels("main: mov x0, 1 ; hi"), "mov x0, 1");
+    }
+
+    #[test]
+    fn ignores_colon_inside_operand() {
+        // No leading ident:, just pass through.
+        assert_eq!(strip_leading_labels("ldr x0, [x1, :lo12:foo]"), "ldr x0, [x1, :lo12:foo]");
+    }
+}
