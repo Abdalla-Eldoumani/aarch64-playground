@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useZoom } from "@/lib/use-zoom";
+import { ZoomControl } from "@/components/ZoomControl";
 
 interface MemoryPanelProps {
   getMemory: (addr: number, len: number) => Uint8Array;
@@ -9,9 +11,18 @@ interface MemoryPanelProps {
 const BYTES_PER_ROW = 16;
 const DEFAULT_ROWS = 16;
 
+const JUMP_TARGETS: Array<{ label: string; addr: string }> = [
+  { label: ".text", addr: "0x00400000" },
+  { label: ".rodata", addr: "0x00500000" },
+  { label: ".data", addr: "0x00600000" },
+  { label: ".bss", addr: "0x00700000" },
+  { label: "stack", addr: "0x7fffff00" },
+];
+
 export function MemoryPanel({ getMemory }: MemoryPanelProps) {
   const [baseAddr, setBaseAddr] = useState("0x00400000");
   const [rows] = useState(DEFAULT_ROWS);
+  const zoom = useZoom("memory");
 
   const addr = parseInt(baseAddr, 16) || 0;
   const totalBytes = rows * BYTES_PER_ROW;
@@ -25,8 +36,17 @@ export function MemoryPanel({ getMemory }: MemoryPanelProps) {
   );
 
   return (
-    <div className="p-3 text-xs">
-      <div className="flex items-center gap-2 mb-2">
+    <div
+      className="p-3"
+      style={{ ...zoom.style, fontSize: `calc(0.75rem * var(--font-scale, 1))` }}
+      onWheel={(e) => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        if (e.deltaY < 0) zoom.zoomIn();
+        else zoom.zoomOut();
+      }}
+    >
+      <div className="flex items-center flex-wrap gap-2 mb-2">
         <label className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
           address
         </label>
@@ -35,6 +55,31 @@ export function MemoryPanel({ getMemory }: MemoryPanelProps) {
           value={baseAddr}
           onChange={handleAddrChange}
           className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
+        />
+        <select
+          onChange={(e) => {
+            if (e.target.value) setBaseAddr(e.target.value);
+            e.target.value = "";
+          }}
+          defaultValue=""
+          aria-label="jump to section"
+          className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[10px] text-[var(--text-secondary)]"
+        >
+          <option value="" disabled>
+            jump...
+          </option>
+          {JUMP_TARGETS.map((j) => (
+            <option key={j.label} value={j.addr}>
+              {j.label}
+            </option>
+          ))}
+        </select>
+        <ZoomControl
+          scale={zoom.scale}
+          onZoomIn={zoom.zoomIn}
+          onZoomOut={zoom.zoomOut}
+          onReset={zoom.reset}
+          className="ml-auto"
         />
       </div>
 
