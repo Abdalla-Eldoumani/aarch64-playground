@@ -4,9 +4,20 @@ use crate::errors::EmuError;
 
 /// Assemble ARM64 source text into a vector of 32-bit instruction words.
 ///
-/// Supports labels (word followed by colon), the instruction subset defined
-/// in the project spec, and common pseudo-instructions (MOV, CMP, NEG, etc.).
+/// Runs m4 expansion first so `define(fp, x29)` and `name = expr` aliases
+/// from cpsc 355 source expand before the single-pass encoder sees them.
+/// The expansion is line-aligned with the input, so encoder errors still
+/// carry the original (pre-expansion) line number. Expression-level
+/// numeric substitutions in operands still need the full new pipeline --
+/// that integration lands once the linker can encode from token slices.
 pub fn assemble(source: &str) -> Result<Vec<u32>, EmuError> {
+    let expanded = crate::frontend::m4::expand(source)?;
+    assemble_expanded(&expanded.text)
+}
+
+/// Pre-m4 entry point used by tests that want to exercise the raw encoder
+/// without feeding the source through expansion.
+pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
     let lines = preprocess(source);
 
     // pass 1: collect labels
@@ -70,6 +81,18 @@ fn preprocess(source: &str) -> Vec<(usize, String)> {
 // line encoding
 // ---------------------------------------------------------------------------
 
+/// Public entry point for encoding a single assembly line against an
+/// absolute-address symbol table. Used by the hosted pipeline (see
+/// `frontend::pipeline`) which walks `.text` instructions one at a time.
+pub fn encode_line_absolute(
+    line: &str,
+    pc: u64,
+    labels: &HashMap<String, u64>,
+    line_num: usize,
+) -> Result<u32, EmuError> {
+    encode_line(line, pc, labels, line_num)
+}
+
 fn encode_line(
     line: &str,
     pc: u64,
@@ -102,10 +125,10 @@ fn encode_line(
         "CMN" => encode_cmp(&ops, 0, line_num),
 
         // -- logical --
-        "AND" => encode_log_reg(&ops, 0b00, false, false, line_num),
-        "ANDS" => encode_log_reg(&ops, 0b11, false, false, line_num),
-        "ORR" => encode_log_reg(&ops, 0b01, false, false, line_num),
-        "EOR" => encode_log_reg(&ops, 0b10, false, false, line_num),
+        "AND" => encode_log_dispatch(&ops, 0b00, line_num),
+        "ANDS" => encode_log_dispatch(&ops, 0b11, line_num),
+        "ORR" => encode_log_dispatch(&ops, 0b01, line_num),
+        "EOR" => encode_log_dispatch(&ops, 0b10, line_num),
         "MVN" => encode_mvn(&ops, line_num),
         "TST" => encode_tst(&ops, line_num),
 
@@ -118,6 +141,8 @@ fn encode_line(
         "MUL" => encode_mul_div(&ops, 0, line_num),
         "UDIV" => encode_mul_div(&ops, 1, line_num),
         "SDIV" => encode_mul_div(&ops, 2, line_num),
+        "MADD" => encode_mul_accumulate(&ops, false, line_num),
+        "MSUB" => encode_mul_accumulate(&ops, true, line_num),
         "NEG" => encode_neg(&ops, line_num),
 
         // -- memory --
@@ -127,6 +152,19 @@ fn encode_line(
         "STRB" => encode_ldst(&ops, 0, 0b00, line_num),
         "LDRH" => encode_ldst(&ops, 1, 0b01, line_num),
         "STRH" => encode_ldst(&ops, 0, 0b01, line_num),
+        "LDRSB" => encode_ldrs(&ops, 0b00, line_num),
+        "LDRSH" => encode_ldrs(&ops, 0b01, line_num),
+        "LDRSW" => encode_ldrs(&ops, 0b10, line_num),
+
+        // -- floating-point --
+        "FADD" => encode_fp_binary(&ops, 0b0010, line_num),
+        "FSUB" => encode_fp_binary(&ops, 0b0011, line_num),
+        "FMUL" => encode_fp_binary(&ops, 0b0000, line_num),
+        "FDIV" => encode_fp_binary(&ops, 0b0001, line_num),
+        "FMOV" => encode_fmov(&ops, line_num),
+        "FCMP" => encode_fcmp(&ops, line_num),
+        "SCVTF" => encode_scvtf(&ops, line_num),
+        "FCVTZS" => encode_fcvtzs(&ops, line_num),
         "LDP" => encode_ldst_pair(&ops, 1, line_num),
         "STP" => encode_ldst_pair(&ops, 0, line_num),
 
@@ -138,20 +176,26 @@ fn encode_line(
         "RET" => encode_ret(&ops, line_num),
 
         // -- conditional branches --
-        "B.EQ" => encode_bcond(&ops, 0b0000, pc, labels, line_num),
-        "B.NE" => encode_bcond(&ops, 0b0001, pc, labels, line_num),
-        "B.HS" | "B.CS" => encode_bcond(&ops, 0b0010, pc, labels, line_num),
-        "B.LO" | "B.CC" => encode_bcond(&ops, 0b0011, pc, labels, line_num),
-        "B.MI" => encode_bcond(&ops, 0b0100, pc, labels, line_num),
-        "B.PL" => encode_bcond(&ops, 0b0101, pc, labels, line_num),
-        "B.VS" => encode_bcond(&ops, 0b0110, pc, labels, line_num),
-        "B.VC" => encode_bcond(&ops, 0b0111, pc, labels, line_num),
-        "B.HI" => encode_bcond(&ops, 0b1000, pc, labels, line_num),
-        "B.LS" => encode_bcond(&ops, 0b1001, pc, labels, line_num),
-        "B.GE" => encode_bcond(&ops, 0b1010, pc, labels, line_num),
-        "B.LT" => encode_bcond(&ops, 0b1011, pc, labels, line_num),
-        "B.GT" => encode_bcond(&ops, 0b1100, pc, labels, line_num),
-        "B.LE" => encode_bcond(&ops, 0b1101, pc, labels, line_num),
+        "B.EQ" | "BEQ" => encode_bcond(&ops, 0b0000, pc, labels, line_num),
+        "B.NE" | "BNE" => encode_bcond(&ops, 0b0001, pc, labels, line_num),
+        "B.HS" | "B.CS" | "BHS" | "BCS" => encode_bcond(&ops, 0b0010, pc, labels, line_num),
+        "B.LO" | "B.CC" | "BLO" | "BCC" => encode_bcond(&ops, 0b0011, pc, labels, line_num),
+        "B.MI" | "BMI" => encode_bcond(&ops, 0b0100, pc, labels, line_num),
+        "B.PL" | "BPL" => encode_bcond(&ops, 0b0101, pc, labels, line_num),
+        "B.VS" | "BVS" => encode_bcond(&ops, 0b0110, pc, labels, line_num),
+        "B.VC" | "BVC" => encode_bcond(&ops, 0b0111, pc, labels, line_num),
+        "B.HI" | "BHI" => encode_bcond(&ops, 0b1000, pc, labels, line_num),
+        "B.LS" | "BLS" => encode_bcond(&ops, 0b1001, pc, labels, line_num),
+        "B.GE" | "BGE" => encode_bcond(&ops, 0b1010, pc, labels, line_num),
+        "B.LT" | "BLT" => encode_bcond(&ops, 0b1011, pc, labels, line_num),
+        "B.GT" | "BGT" => encode_bcond(&ops, 0b1100, pc, labels, line_num),
+        "B.LE" | "BLE" => encode_bcond(&ops, 0b1101, pc, labels, line_num),
+
+        // -- compare/test and branch --
+        "CBZ" => encode_compare_branch(&ops, false, pc, labels, line_num),
+        "CBNZ" => encode_compare_branch(&ops, true, pc, labels, line_num),
+        "TBZ" => encode_test_branch(&ops, false, pc, labels, line_num),
+        "TBNZ" => encode_test_branch(&ops, true, pc, labels, line_num),
 
         // -- conditional select --
         "CSEL" => encode_cond_sel(&ops, 0, line_num),
@@ -234,6 +278,11 @@ fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError> {
     let s = s.strip_prefix('#').unwrap_or(s);
     let s = s.trim();
 
+    // Single-quoted char literal: 'A' -> 65, '\n' -> 10, '\xFF' -> 255.
+    if let Some(body) = s.strip_prefix('\'').and_then(|b| b.strip_suffix('\'')) {
+        return parse_char_body(body, line_num);
+    }
+
     let negative = s.starts_with('-');
     let s = if negative { &s[1..] } else { s };
 
@@ -246,6 +295,51 @@ fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError> {
     };
 
     Ok(if negative { -(val as i64) } else { val as i64 })
+}
+
+fn parse_char_body(body: &str, line_num: usize) -> Result<i64, EmuError> {
+    let bytes = body.as_bytes();
+    if bytes.is_empty() {
+        return Err(asm_error(line_num, "empty char literal"));
+    }
+    if bytes[0] != b'\\' {
+        // Plain character; the lexer-level corpus stays single-byte ASCII.
+        if bytes.len() != 1 {
+            return Err(asm_error(line_num, "char literal must be one character"));
+        }
+        return Ok(bytes[0] as i64);
+    }
+    if bytes.len() < 2 {
+        return Err(asm_error(line_num, "dangling backslash in char literal"));
+    }
+    let value = match bytes[1] {
+        b'n' => b'\n' as i64,
+        b't' => b'\t' as i64,
+        b'r' => b'\r' as i64,
+        b'0' => 0,
+        b'\\' => b'\\' as i64,
+        b'"' => b'"' as i64,
+        b'\'' => b'\'' as i64,
+        b'x' | b'X' => {
+            if bytes.len() != 4 {
+                return Err(asm_error(line_num, "\\xNN char literal needs two hex digits"));
+            }
+            let hex = std::str::from_utf8(&bytes[2..4])
+                .map_err(|_| asm_error(line_num, "invalid hex in char literal"))?;
+            i64::from_str_radix(hex, 16)
+                .map_err(|_| asm_error(line_num, "invalid hex in char literal"))?
+        }
+        other => {
+            return Err(asm_error(
+                line_num,
+                &format!("unknown escape in char literal: \\{}", other as char),
+            ));
+        }
+    };
+    if bytes[0] == b'\\' && !matches!(bytes[1], b'x' | b'X') && bytes.len() != 2 {
+        return Err(asm_error(line_num, "trailing characters after escape in char literal"));
+    }
+    Ok(value)
 }
 
 fn parse_condition(s: &str, line_num: usize) -> Result<u8, EmuError> {
@@ -292,7 +386,11 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     let op2 = ops[1].trim();
 
     // MOV Xd, #imm -> MOVZ or MOVN
-    if op2.starts_with('#') || op2.starts_with('-') || op2.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    if op2.starts_with('#')
+        || op2.starts_with('-')
+        || op2.starts_with('\'')
+        || op2.chars().next().map_or(false, |c| c.is_ascii_digit())
+    {
         let imm = parse_immediate(op2, ln)?;
         if imm >= 0 && imm <= 0xFFFF {
             return encode_movzk(&[ops[0], op2], 0b10, ln); // MOVZ
@@ -441,15 +539,67 @@ fn encode_mvn(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         | ((rm as u32) << 16) | (0b11111 << 5) | (rd as u32))
 }
 
+/// Dispatch `AND/ANDS/ORR/EOR` between the register-register form and the
+/// bitmask-immediate form based on the third operand's shape. `opc`
+/// follows the ARM encoding's opc field: 00=AND, 01=ORR, 10=EOR, 11=ANDS.
+fn encode_log_dispatch(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() == 3 {
+        let op3 = ops[2].trim();
+        if op3.starts_with('#')
+            || op3.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+        {
+            let (rd, sf) = parse_register(ops[0], ln)?;
+            let (rn, _) = parse_register(ops[1], ln)?;
+            let value = parse_immediate(op3, ln)? as u64;
+            return encode_log_imm_fields(rn, rd, value, sf, opc as u32, ln);
+        }
+    }
+    encode_log_reg(ops, opc, false, false, ln)
+}
+
 fn encode_tst(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
-    // TST Xn, Xm -> ANDS XZR, Xn, Xm
+    // TST Xn, Xm/imm -> ANDS XZR, Xn, Xm/imm.
     if ops.len() != 2 {
         return asm_err(ln, "TST requires 2 operands");
     }
-    let (_, sf) = parse_register(ops[0], ln)?;
+    let (rn, sf) = parse_register(ops[0], ln)?;
+    let op2 = ops[1].trim();
+    // Immediate form: emit ANDS-immediate with Rd=ZR.
+    if op2.starts_with('#') || op2.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+    {
+        let value = parse_immediate(op2, ln)? as u64;
+        return encode_log_imm_fields(rn, 31, value, sf, 0b11, ln);
+    }
     let zr = if sf { "XZR" } else { "WZR" };
     let new_ops = [zr, ops[0], ops[1]];
     encode_log_reg(&new_ops, 0b11, false, true, ln)
+}
+
+/// Emit a logical immediate encoding: `AND/ORR/EOR/ANDS Rd, Rn, #imm`.
+/// `opc` is 00=AND, 01=ORR, 10=EOR, 11=ANDS. The value must be a valid
+/// ARM64 bitmask immediate per `decode_bitmask_imm`; arbitrary constants
+/// (e.g. `#3` in 32-bit mode) round-trip, pathological ones (all zeros /
+/// all ones / non-replicating patterns) are rejected loudly.
+fn encode_log_imm_fields(
+    rn: u8,
+    rd: u8,
+    value: u64,
+    sf: bool,
+    opc: u32,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let (n_bit, immr, imms) = crate::decoder::encode_bitmask_imm(value, sf)
+        .ok_or_else(|| asm_error(ln, &format!("{value:#x} is not a valid bitmask immediate")))?;
+    let sf_bit: u32 = if sf { 1 } else { 0 };
+    let n_enc: u32 = if n_bit { 1 } else { 0 };
+    Ok((sf_bit << 31)
+        | (opc << 29)
+        | (0b100100 << 23)
+        | (n_enc << 22)
+        | ((immr as u32) << 16)
+        | ((imms as u32) << 10)
+        | ((rn as u32) << 5)
+        | (rd as u32))
 }
 
 fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError> {
@@ -529,6 +679,27 @@ fn encode_mul_div(ops: &[&str], variant: u8, ln: usize) -> Result<u32, EmuError>
     }
 }
 
+fn encode_mul_accumulate(ops: &[&str], subtract: bool, ln: usize) -> Result<u32, EmuError> {
+    // MADD Xd, Xn, Xm, Xa  (Rd = Ra + Rn*Rm)
+    // MSUB Xd, Xn, Xm, Xa  (Rd = Ra - Rn*Rm)
+    if ops.len() != 4 {
+        return asm_err(ln, "MADD/MSUB requires 4 operands");
+    }
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, _) = parse_register(ops[1], ln)?;
+    let (rm, _) = parse_register(ops[2], ln)?;
+    let (ra, _) = parse_register(ops[3], ln)?;
+    let sf_bit = if sf { 1u32 } else { 0 };
+    let o0 = if subtract { 1u32 } else { 0 };
+    Ok((sf_bit << 31)
+        | (0b0011011000 << 21)
+        | ((rm as u32) << 16)
+        | (o0 << 15)
+        | ((ra as u32) << 10)
+        | ((rn as u32) << 5)
+        | (rd as u32))
+}
+
 fn encode_neg(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     // NEG Xd, Xm -> SUB Xd, XZR, Xm
     if ops.len() != 2 {
@@ -540,23 +711,166 @@ fn encode_neg(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     encode_dp(&new_ops, 1, 0, ln)
 }
 
+fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
+    // Accept D0..D31 or S0..S31 (returns width ('D' or 'S') too).
+    let s = s.trim();
+    let first = s.chars().next().ok_or_else(|| asm_error(ln, "empty register"))?;
+    let prefix = first.to_ascii_uppercase();
+    if prefix != 'D' && prefix != 'S' {
+        return asm_err(ln, &format!("expected D or S register, got: {s}"));
+    }
+    let idx: u8 = s[1..]
+        .parse()
+        .map_err(|_| asm_error(ln, &format!("bad FP register: {s}")))?;
+    if idx > 31 {
+        return asm_err(ln, &format!("FP register index out of range: {idx}"));
+    }
+    Ok((idx, prefix))
+}
+
+fn encode_fp_binary(ops: &[&str], opcode: u32, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 3 {
+        return asm_err(ln, "FP binary op requires 3 operands");
+    }
+    let (fd, _) = parse_fp_register(ops[0], ln)?;
+    let (fn_, _) = parse_fp_register(ops[1], ln)?;
+    let (fm, _) = parse_fp_register(ops[2], ln)?;
+    // Double-precision 2-source: 0_0_0_11110_01_1_Rm_opcode_10_Rn_Rd
+    Ok(0x1E60_0800
+        | ((fm as u32) << 16)
+        | ((opcode & 0xF) << 12)
+        | ((fn_ as u32) << 5)
+        | (fd as u32))
+}
+
+fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "FMOV requires 2 operands");
+    }
+    // For now only reg-to-reg double is supported. Immediate and GPR forms
+    // are future work (tracked in the plan).
+    let (fd, _) = parse_fp_register(ops[0], ln)?;
+    let (fn_, _) = parse_fp_register(ops[1], ln)?;
+    // FMOV Dd, Dn: 0_0_0_11110_01_1_00000_010000_Rn_Rd
+    Ok(0x1E60_4000 | ((fn_ as u32) << 5) | (fd as u32))
+}
+
+fn encode_fcmp(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "FCMP requires 2 operands");
+    }
+    let (fn_, _) = parse_fp_register(ops[0], ln)?;
+    let (fm, _) = parse_fp_register(ops[1], ln)?;
+    // FCMP Dn, Dm: 0_0_0_11110_01_1_Rm_00_1000_Rn_0_0000
+    Ok(0x1E60_2000 | ((fm as u32) << 16) | ((fn_ as u32) << 5))
+}
+
+fn encode_scvtf(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "SCVTF requires 2 operands");
+    }
+    let (fd, _) = parse_fp_register(ops[0], ln)?;
+    let (rn, sf) = parse_register(ops[1], ln)?;
+    let sf_bit = if sf { 1u32 } else { 0 };
+    // SCVTF Dd, Rn: sf_0_0_11110_01_1_00_010_000000_Rn_Rd
+    Ok((sf_bit << 31) | 0x1E62_0000 | ((rn as u32) << 5) | (fd as u32))
+}
+
+fn encode_fcvtzs(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "FCVTZS requires 2 operands");
+    }
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (fn_, _) = parse_fp_register(ops[1], ln)?;
+    let sf_bit = if sf { 1u32 } else { 0 };
+    // FCVTZS Rd, Dn: sf_0_0_11110_01_1_11_000_000000_Rn_Rd
+    Ok((sf_bit << 31) | 0x1E78_0000 | ((fn_ as u32) << 5) | (rd as u32))
+}
+
+fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
+    // LDRSB / LDRSH / LDRSW in unsigned-offset form. The target register
+    // width picks between opc=10 (Xt) and opc=11 (Wt). LDRSW only exists
+    // with an Xt target, so reject W there.
+    if ops.len() < 2 {
+        return asm_err(ln, "LDRS* requires at least 2 operands");
+    }
+    let (rt, target_is_x) = parse_register(ops[0], ln)?;
+    if size == 0b10 && !target_is_x {
+        return asm_err(ln, "LDRSW needs an X register as the destination");
+    }
+    let addr_str: String = ops[1..].join(",");
+    let am = parse_addressing_mode(addr_str.trim(), ln)?;
+    match am {
+        AddressingMode::Immediate {
+            rn,
+            offset,
+            mode: IndexMode::Unsigned,
+        } => {
+            let offset_val = offset.unwrap_or(0);
+            let scale: u64 = match size {
+                0b00 => 1,
+                0b01 => 2,
+                0b10 => 4,
+                _ => unreachable!(),
+            };
+            if offset_val < 0 || (offset_val as u64) % scale != 0 {
+                return asm_err(ln, "unsigned offset must be positive and aligned");
+            }
+            let imm12 = (offset_val as u64 / scale) as u32;
+            if imm12 > 4095 {
+                return asm_err(ln, "offset out of range");
+            }
+            // opc=10 for Xt target, opc=11 for Wt target.
+            let inner_opc: u32 = if target_is_x { 0b10 } else { 0b11 };
+            Ok(((size as u32) << 30)
+                | (0b111001 << 24)
+                | (inner_opc << 22)
+                | (imm12 << 10)
+                | ((rn as u32) << 5)
+                | (rt as u32))
+        }
+        AddressingMode::Immediate { .. } => {
+            asm_err(ln, "LDRS* pre/post-index not yet supported by the assembler")
+        }
+        AddressingMode::RegOffset { .. } => {
+            asm_err(ln, "LDRS* register-offset form not yet supported by the assembler")
+        }
+    }
+}
+
 fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuError> {
     if ops.len() < 2 {
         return asm_err(ln, "LDR/STR requires at least 2 operands");
     }
-    let (rt, _) = parse_register(ops[0], ln)?;
+    // FP LDR/STR: the target is a D/S register. Dispatch to the SIMD&FP
+    // encoding; this path only handles the plain integer form.
+    if let Some(first_char) = ops[0].trim().chars().next() {
+        let upper = first_char.to_ascii_uppercase();
+        if matches!(upper, 'D' | 'S') && size == 0b11 {
+            return encode_ldst_fp(ops, load, ln);
+        }
+    }
+    let (rt, target_is_x) = parse_register(ops[0], ln)?;
+
+    // LDR/STR (plain, not byte/halfword) implicitly picks 32- or 64-bit
+    // based on whether the target register is W or X. Byte/halfword
+    // variants come in with size already pinned (0b00 / 0b01) so leave
+    // those alone.
+    let size = if size == 0b11 && !target_is_x { 0b10 } else { size };
 
     // parse addressing mode from remaining operands
     let addr_str: String = ops[1..].join(",");
     let addr_str = addr_str.trim();
 
-    let (rn, offset, mode) = parse_addressing_mode(addr_str, ln)?;
+    let am = parse_addressing_mode(addr_str, ln)?;
 
-    // encode based on mode
-    let offset_val = offset.unwrap_or(0);
-
-    match mode {
-        IndexMode::Unsigned => {
+    match am {
+        AddressingMode::Immediate {
+            rn,
+            offset,
+            mode: IndexMode::Unsigned,
+        } => {
+            let offset_val = offset.unwrap_or(0);
             // unsigned offset encoding
             let scale = match size {
                 0b00 => 1u64,
@@ -575,7 +889,8 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
             Ok(((size as u32) << 30) | (0b111001 << 24) | ((load as u32) << 22)
                 | (imm12 << 10) | ((rn as u32) << 5) | (rt as u32))
         }
-        IndexMode::PreIndex | IndexMode::PostIndex => {
+        AddressingMode::Immediate { rn, offset, mode } => {
+            let offset_val = offset.unwrap_or(0);
             if offset_val < -256 || offset_val > 255 {
                 return asm_err(ln, "pre/post-index offset must be in [-256, 255]");
             }
@@ -583,6 +898,26 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
             let idx = if matches!(mode, IndexMode::PreIndex) { 0b11u32 } else { 0b01 };
             Ok(((size as u32) << 30) | (0b111000 << 24) | ((load as u32) << 22)
                 | (imm9 << 12) | (idx << 10) | ((rn as u32) << 5) | (rt as u32))
+        }
+        AddressingMode::RegOffset {
+            rn,
+            rm,
+            option,
+            shift_applied,
+        } => {
+            // LDR/STR register. Encoding:
+            //   size | 111 0 00 | V=0 | load(2b) | 1 | Rm | option(3) | S | 10 | Rn | Rt
+            let s_bit: u32 = if shift_applied { 1 } else { 0 };
+            Ok(((size as u32) << 30)
+                | (0b111000 << 24)
+                | ((load as u32) << 22)
+                | (1 << 21)
+                | ((rm as u32) << 16)
+                | ((option as u32) << 13)
+                | (s_bit << 12)
+                | (0b10 << 10)
+                | ((rn as u32) << 5)
+                | (rt as u32))
         }
     }
 }
@@ -594,7 +929,109 @@ enum IndexMode {
     PostIndex,
 }
 
-fn parse_addressing_mode(s: &str, ln: usize) -> Result<(u8, Option<i64>, IndexMode), EmuError> {
+/// Parsed LDR/STR address. Register-offset form (`[xN, wM, SXTW #2]`)
+/// comes back as `RegOffset`; everything else stays `Immediate` so the
+/// existing call sites keep working.
+#[derive(Debug)]
+enum AddressingMode {
+    Immediate {
+        rn: u8,
+        offset: Option<i64>,
+        mode: IndexMode,
+    },
+    /// `[Xn, (Wm|Xm) (, LSL|UXTW|SXTW|SXTX|UXTX #<amount>)?]`.
+    RegOffset {
+        rn: u8,
+        rm: u8,
+        /// ARM-spec 3-bit option encoding: 010=UXTW, 011=LSL/UXTX,
+        /// 110=SXTW, 111=SXTX.
+        option: u8,
+        /// 1 when a `#<amount>` was present (even if it was 0 for some
+        /// instruction widths); the access-size scaling bit in the
+        /// encoding rides along with this.
+        shift_applied: bool,
+    },
+}
+
+fn looks_like_register(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() {
+        return false;
+    }
+    let lower = s.to_ascii_lowercase();
+    if matches!(lower.as_str(), "sp" | "xzr" | "wzr" | "fp" | "lr") {
+        return true;
+    }
+    for prefix in ["x", "w"] {
+        if let Some(rest) = lower.strip_prefix(prefix) {
+            if rest == "zr" {
+                return true;
+            }
+            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn parse_reg_offset_tail(parts: &[&str], ln: usize) -> Result<AddressingMode, EmuError> {
+    // `parts` has been pre-split on commas; index 0 is the base, the
+    // rest describe the offset.
+    let (rn, _) = parse_register(parts[0], ln)?;
+    let (rm, rm_is_x) = parse_register(parts[1], ln)?;
+    // No explicit extend / shift: default LSL for Xm, UXTW for Wm.
+    if parts.len() == 2 {
+        let option = if rm_is_x { 0b011 } else { 0b010 };
+        return Ok(AddressingMode::RegOffset {
+            rn,
+            rm,
+            option,
+            shift_applied: false,
+        });
+    }
+    let modifier = parts[2].trim();
+    let (keyword, shift_str) = split_extend_keyword(modifier);
+    let keyword_lower = keyword.to_ascii_lowercase();
+    let option = match keyword_lower.as_str() {
+        "lsl" => 0b011,
+        "uxtw" => 0b010,
+        "sxtw" => 0b110,
+        "sxtx" => 0b111,
+        "uxtx" => 0b011,
+        _ => return asm_err(ln, &format!("bad extend/shift keyword: {keyword}")),
+    };
+    // Require the extend keyword to match the Rm width ARM-spec rules:
+    // UXTW/SXTW only make sense with Wm; LSL/UXTX/SXTX with Xm.
+    if matches!(keyword_lower.as_str(), "uxtw" | "sxtw") && rm_is_x {
+        return asm_err(ln, "UXTW/SXTW require a W index register");
+    }
+    if matches!(keyword_lower.as_str(), "lsl" | "uxtx" | "sxtx") && !rm_is_x {
+        return asm_err(ln, "LSL/UXTX/SXTX require an X index register");
+    }
+    let shift_applied = !shift_str.trim().is_empty();
+    if shift_applied {
+        let _ = parse_immediate(shift_str, ln)?; // validate shape, value unused here
+    }
+    Ok(AddressingMode::RegOffset {
+        rn,
+        rm,
+        option,
+        shift_applied,
+    })
+}
+
+fn split_extend_keyword(s: &str) -> (&str, &str) {
+    // Keyword then optional `#imm`. The keyword is the first whitespace-
+    // delimited token; anything after is the shift amount.
+    let s = s.trim();
+    match s.find(|c: char| c.is_whitespace()) {
+        Some(p) => (&s[..p], &s[p..]),
+        None => (s, ""),
+    }
+}
+
+fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError> {
     let s = s.trim();
 
     // [Xn, #imm]! -> pre-index
@@ -610,7 +1047,11 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<(u8, Option<i64>, IndexMo
         } else {
             Some(0)
         };
-        return Ok((rn, offset, IndexMode::PreIndex));
+        return Ok(AddressingMode::Immediate {
+            rn,
+            offset,
+            mode: IndexMode::PreIndex,
+        });
     }
 
     // check if it starts with [
@@ -628,20 +1069,80 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<(u8, Option<i64>, IndexMo
             let (rn, _) = parse_register(inside.trim(), ln)?;
             let offset_str = after.strip_prefix(',').unwrap_or(after).trim();
             let offset = parse_immediate(offset_str, ln)?;
-            return Ok((rn, Some(offset), IndexMode::PostIndex));
+            return Ok(AddressingMode::Immediate {
+                rn,
+                offset: Some(offset),
+                mode: IndexMode::PostIndex,
+            });
         }
 
-        // [Xn] or [Xn, #imm]
-        let parts: Vec<&str> = inside.splitn(2, ',').collect();
+        // [Xn] or [Xn, ...]
+        let parts: Vec<&str> = inside.splitn(3, ',').collect();
+        if parts.len() >= 2 && looks_like_register(parts[1]) {
+            return parse_reg_offset_tail(&parts, ln);
+        }
         let (rn, _) = parse_register(parts[0], ln)?;
         if parts.len() > 1 {
             let offset = parse_immediate(parts[1], ln)?;
-            return Ok((rn, Some(offset), IndexMode::Unsigned));
+            return Ok(AddressingMode::Immediate {
+                rn,
+                offset: Some(offset),
+                mode: IndexMode::Unsigned,
+            });
         }
-        return Ok((rn, None, IndexMode::Unsigned));
+        return Ok(AddressingMode::Immediate {
+            rn,
+            offset: None,
+            mode: IndexMode::Unsigned,
+        });
     }
 
     asm_err(ln, "invalid addressing mode")
+}
+
+fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    // SIMD&FP LDR/STR (immediate, unsigned offset):
+    //   size[31:30] | 111 | V=1 | 01 | opc[23:22] | imm12 | Rn | Rt
+    // D uses size=0b11, opc=01 (load) or 00 (store); S uses size=0b10,
+    // same opc selection. Access scale is 8 for D, 4 for S.
+    let (rt, width) = parse_fp_register(ops[0], ln)?;
+    let addr_str: String = ops[1..].join(",");
+    let am = parse_addressing_mode(addr_str.trim(), ln)?;
+    let (size, scale) = match width {
+        'D' => (0b11u32, 8u64),
+        'S' => (0b10u32, 4u64),
+        _ => return asm_err(ln, "unsupported FP LDR/STR width"),
+    };
+    let opc: u32 = if load == 1 { 0b01 } else { 0b00 };
+    match am {
+        AddressingMode::Immediate {
+            rn,
+            offset,
+            mode: IndexMode::Unsigned,
+        } => {
+            let offset_val = offset.unwrap_or(0);
+            if offset_val < 0 || (offset_val as u64) % scale != 0 {
+                return asm_err(ln, "unsigned FP offset must be positive and aligned");
+            }
+            let imm12 = (offset_val as u64 / scale) as u32;
+            if imm12 > 4095 {
+                return asm_err(ln, "FP offset out of range");
+            }
+            Ok((size << 30)
+                | (0b1111 << 26)
+                | (0b01 << 24)
+                | (opc << 22)
+                | (imm12 << 10)
+                | ((rn as u32) << 5)
+                | (rt as u32))
+        }
+        AddressingMode::Immediate { .. } => {
+            asm_err(ln, "FP LDR/STR pre/post-index not yet supported by the assembler")
+        }
+        AddressingMode::RegOffset { .. } => {
+            asm_err(ln, "FP LDR/STR register-offset not yet supported by the assembler")
+        }
+    }
 }
 
 fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
@@ -652,9 +1153,14 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     let (rt2, _) = parse_register(ops[1], ln)?;
 
     let addr_str: String = ops[2..].join(",");
-    let (rn, offset, mode) = parse_addressing_mode(addr_str.trim(), ln)?;
+    let am = parse_addressing_mode(addr_str.trim(), ln)?;
+    let (rn, offset_val, mode) = match am {
+        AddressingMode::Immediate { rn, offset, mode } => (rn, offset.unwrap_or(0), mode),
+        AddressingMode::RegOffset { .. } => {
+            return asm_err(ln, "LDP/STP does not accept a register offset");
+        }
+    };
 
-    let offset_val = offset.unwrap_or(0);
     let scale: i64 = if sf { 8 } else { 4 };
     if offset_val % scale != 0 {
         return asm_err(ln, "pair offset must be aligned to register size");
@@ -688,8 +1194,11 @@ fn encode_branch_imm(
     let offset_bytes = if target.starts_with('#') || target.starts_with('-') || target.chars().next().map_or(false, |c| c.is_ascii_digit()) {
         parse_immediate(target, ln)?
     } else {
-        let label = target.to_lowercase();
-        let addr = labels.get(&label)
+        // Labels in the cpsc 355 corpus are lowercase; the frontend
+        // pipeline preserves case so GCC-emitted `.L2` works. Try both.
+        let addr = labels
+            .get(target)
+            .or_else(|| labels.get(&target.to_lowercase()))
             .ok_or_else(|| asm_error(ln, &format!("undefined label: {target}")))?;
         *addr as i64 - pc as i64
     };
@@ -714,8 +1223,11 @@ fn encode_bcond(
     let offset_bytes = if target.starts_with('#') || target.starts_with('-') || target.chars().next().map_or(false, |c| c.is_ascii_digit()) {
         parse_immediate(target, ln)?
     } else {
-        let label = target.to_lowercase();
-        let addr = labels.get(&label)
+        // Labels in the cpsc 355 corpus are lowercase; the frontend
+        // pipeline preserves case so GCC-emitted `.L2` works. Try both.
+        let addr = labels
+            .get(target)
+            .or_else(|| labels.get(&target.to_lowercase()))
             .ok_or_else(|| asm_error(ln, &format!("undefined label: {target}")))?;
         *addr as i64 - pc as i64
     };
@@ -726,6 +1238,88 @@ fn encode_bcond(
     let imm19 = ((offset_bytes / 4) as u32) & 0x7FFFF;
 
     Ok(0x5400_0000 | (imm19 << 5) | (cond as u32))
+}
+
+/// Encode `CBZ / CBNZ Rt, label`. Reaches +/-1 MiB from the call site.
+fn encode_compare_branch(
+    ops: &[&str],
+    nonzero: bool,
+    pc: u64,
+    labels: &HashMap<String, u64>,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "CBZ/CBNZ requires 2 operands");
+    }
+    let (rt, sf) = parse_register(ops[0], ln)?;
+    let target = ops[1].trim();
+    let offset_bytes = resolve_branch_target(target, pc, labels, ln)?;
+    if offset_bytes % 4 != 0 {
+        return asm_err(ln, "branch offset must be 4-byte aligned");
+    }
+    let imm19 = ((offset_bytes / 4) as u32) & 0x7_FFFF;
+    let sf_bit: u32 = if sf { 1 } else { 0 };
+    let op_bit: u32 = if nonzero { 1 } else { 0 };
+    Ok((sf_bit << 31)
+        | (0b011010 << 25)
+        | (op_bit << 24)
+        | (imm19 << 5)
+        | (rt as u32))
+}
+
+/// Encode `TBZ / TBNZ Rt, #bit, label`. Reaches +/-32 KiB from the call
+/// site. `bit` selects which bit of `Rt` is tested: 0..63 for X, 0..31
+/// for W.
+fn encode_test_branch(
+    ops: &[&str],
+    nonzero: bool,
+    pc: u64,
+    labels: &HashMap<String, u64>,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    if ops.len() != 3 {
+        return asm_err(ln, "TBZ/TBNZ requires 3 operands");
+    }
+    let (rt, sf) = parse_register(ops[0], ln)?;
+    let bit = parse_immediate(ops[1], ln)?;
+    if bit < 0 || bit > if sf { 63 } else { 31 } {
+        return asm_err(ln, "TBZ/TBNZ bit index out of range");
+    }
+    let target = ops[2].trim();
+    let offset_bytes = resolve_branch_target(target, pc, labels, ln)?;
+    if offset_bytes % 4 != 0 {
+        return asm_err(ln, "branch offset must be 4-byte aligned");
+    }
+    let imm14 = ((offset_bytes / 4) as u32) & 0x3FFF;
+    let b5 = ((bit as u32) >> 5) & 1;
+    let b40 = (bit as u32) & 0x1F;
+    let op_bit: u32 = if nonzero { 1 } else { 0 };
+    Ok((b5 << 31)
+        | (0b011011 << 25)
+        | (op_bit << 24)
+        | (b40 << 19)
+        | (imm14 << 5)
+        | (rt as u32))
+}
+
+fn resolve_branch_target(
+    target: &str,
+    pc: u64,
+    labels: &HashMap<String, u64>,
+    ln: usize,
+) -> Result<i64, EmuError> {
+    if target.starts_with('#')
+        || target.starts_with('-')
+        || target.chars().next().map_or(false, |c| c.is_ascii_digit())
+    {
+        parse_immediate(target, ln)
+    } else {
+        let addr = labels
+            .get(target)
+            .or_else(|| labels.get(&target.to_lowercase()))
+            .ok_or_else(|| asm_error(ln, &format!("undefined label: {target}")))?;
+        Ok(*addr as i64 - pc as i64)
+    }
 }
 
 fn encode_branch_reg(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError> {
@@ -962,5 +1556,197 @@ mod tests {
     fn assemble_error_on_unknown() {
         let result = assemble("FOOBAR X0, X1");
         assert!(result.is_err());
+    }
+
+    // -- msub / madd / char literals --
+
+    #[test]
+    fn assemble_msub_general_form() {
+        // `msub w11, w11, w10, w9`: encode then confirm it round-trips through
+        // the decoder as MulAccumulate::Msub with the expected registers.
+        let code = assemble("MSUB W11, W11, W10, W9").unwrap();
+        assert_eq!(code.len(), 1);
+        let decoded = crate::decoder::decode(code[0]).unwrap();
+        match decoded {
+            crate::decoder::Instruction::MulAccumulate { op, sf, rd, rn, rm, ra } => {
+                assert_eq!(op, crate::decoder::MulAccumulateOp::Msub);
+                assert!(!sf);
+                assert_eq!(rd, 11);
+                assert_eq!(rn, 11);
+                assert_eq!(rm, 10);
+                assert_eq!(ra, 9);
+            }
+            other => panic!("expected MulAccumulate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_madd_general_form() {
+        let code = assemble("MADD X0, X1, X2, X3").unwrap();
+        let decoded = crate::decoder::decode(code[0]).unwrap();
+        match decoded {
+            crate::decoder::Instruction::MulAccumulate { op, ra, .. } => {
+                assert_eq!(op, crate::decoder::MulAccumulateOp::Madd);
+                assert_eq!(ra, 3);
+            }
+            other => panic!("expected MulAccumulate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn char_literal_in_immediate() {
+        // `mov w19, 'A'` should encode as `mov w19, #65`.
+        let code = assemble("MOV W19, 'A'").unwrap();
+        let reference = assemble("MOV W19, #65").unwrap();
+        assert_eq!(code, reference);
+    }
+
+    #[test]
+    fn char_literal_escape_sequence() {
+        let code = assemble("MOV W0, '\\n'").unwrap();
+        let reference = assemble("MOV W0, #10").unwrap();
+        assert_eq!(code, reference);
+    }
+
+    #[test]
+    fn char_literal_hex_escape() {
+        let code = assemble("MOV W0, '\\x41'").unwrap();
+        let reference = assemble("MOV W0, #65").unwrap();
+        assert_eq!(code, reference);
+    }
+
+    // -- sign-extending loads --
+
+    #[test]
+    fn assemble_ldrsb_xt_round_trips() {
+        let code = assemble("LDRSB X0, [X1, #4]").unwrap();
+        let decoded = crate::decoder::decode(code[0]).unwrap();
+        match decoded {
+            crate::decoder::Instruction::LdrSignExtended { rt, rn, size, sf, .. } => {
+                assert_eq!(rt, 0);
+                assert_eq!(rn, 1);
+                assert_eq!(size, crate::decoder::MemSize::B);
+                assert!(sf);
+            }
+            other => panic!("expected LdrSignExtended, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_ldrsb_wt_has_sf_false() {
+        let code = assemble("LDRSB W0, [X1, #0]").unwrap();
+        let decoded = crate::decoder::decode(code[0]).unwrap();
+        match decoded {
+            crate::decoder::Instruction::LdrSignExtended { sf, .. } => assert!(!sf),
+            other => panic!("expected LdrSignExtended, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_ldrsh_round_trips() {
+        let code = assemble("LDRSH X3, [X4, #8]").unwrap();
+        let decoded = crate::decoder::decode(code[0]).unwrap();
+        match decoded {
+            crate::decoder::Instruction::LdrSignExtended { size, .. } => {
+                assert_eq!(size, crate::decoder::MemSize::H);
+            }
+            other => panic!("expected LdrSignExtended, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_ldrsw_requires_x_target() {
+        assert!(assemble("LDRSW W0, [X1, #0]").is_err());
+        assert!(assemble("LDRSW X0, [X1, #0]").is_ok());
+    }
+
+    // -- floating-point --
+
+    #[test]
+    fn assemble_fadd_round_trips() {
+        let code = assemble("FADD D0, D1, D2").unwrap();
+        let decoded = crate::decoder::decode(code[0]).unwrap();
+        match decoded {
+            crate::decoder::Instruction::FpBinary { op, fd, fn_, fm } => {
+                assert_eq!(op, crate::decoder::FpBinOp::Fadd);
+                assert_eq!(fd, 0);
+                assert_eq!(fn_, 1);
+                assert_eq!(fm, 2);
+            }
+            other => panic!("expected FpBinary, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_all_fp_binaries_distinct() {
+        let ops = ["FADD", "FSUB", "FMUL", "FDIV"];
+        let mut words = Vec::new();
+        for mn in ops {
+            let src = format!("{mn} D0, D1, D2");
+            words.push(assemble(&src).unwrap()[0]);
+        }
+        for i in 0..words.len() {
+            for j in (i + 1)..words.len() {
+                assert_ne!(words[i], words[j]);
+            }
+        }
+    }
+
+    #[test]
+    fn assemble_fmov_reg_reg() {
+        let code = assemble("FMOV D3, D5").unwrap();
+        let decoded = crate::decoder::decode(code[0]).unwrap();
+        match decoded {
+            crate::decoder::Instruction::FpMoveReg { fd, fn_ } => {
+                assert_eq!(fd, 3);
+                assert_eq!(fn_, 5);
+            }
+            other => panic!("expected FpMoveReg, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_fcmp_and_scvtf_and_fcvtzs() {
+        let cases = ["FCMP D0, D1", "SCVTF D0, X3", "FCVTZS X0, D3"];
+        for src in cases {
+            let code = assemble(src).unwrap();
+            let decoded = crate::decoder::decode(code[0]).unwrap();
+            match decoded {
+                crate::decoder::Instruction::FpCompare { .. }
+                | crate::decoder::Instruction::FpScvtf { .. }
+                | crate::decoder::Instruction::FpFcvtzs { .. } => {}
+                other => panic!("unexpected decode for `{src}`: {other:?}"),
+            }
+        }
+    }
+
+    // -- m4 expansion integrated with the encoder --
+
+    #[test]
+    fn assemble_expands_m4_register_aliases() {
+        // `define(fp, x29)` should make `fp` an alias for `x29` before the
+        // encoder sees the line.
+        let with_alias = assemble("define(fp, x29)\nADD fp, fp, #1\n").unwrap();
+        let without_alias = assemble("ADD X29, X29, #1").unwrap();
+        assert_eq!(with_alias, without_alias);
+    }
+
+    #[test]
+    fn assemble_expands_multiple_aliases() {
+        let program = "define(fp, x29)\ndefine(lr, x30)\nMOV fp, lr\n";
+        let code = assemble(program).unwrap();
+        let reference = assemble("MOV X29, X30").unwrap();
+        assert_eq!(code, reference);
+    }
+
+    #[test]
+    fn assemble_rejects_m4_construct_and_reports_line() {
+        let err = assemble("define(fp, x29)\nifdef(FOO, bar)\n").unwrap_err();
+        match err {
+            crate::errors::EmuError::PreprocError { line, .. } => {
+                assert_eq!(line, 2);
+            }
+            other => panic!("expected PreprocError at line 2, got {other:?}"),
+        }
     }
 }
