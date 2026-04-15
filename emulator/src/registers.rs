@@ -155,6 +155,10 @@ pub struct RegisterFile {
     sp: u64,
     pc: u64,
     pub nzcv: NzcvFlags,
+    /// D0..D31 / S0..S31 / V0..V31 share the same 32-entry register file.
+    /// We store the low 64 bits as `u64` so `f64::from_bits` / `to_bits`
+    /// round-trip losslessly; S-form reads use only the low 32 bits.
+    fpr: [u64; 32],
 }
 
 impl RegisterFile {
@@ -165,6 +169,7 @@ impl RegisterFile {
             sp: 0,
             pc: 0,
             nzcv: NzcvFlags::default(),
+            fpr: [0u64; 32],
         }
     }
 
@@ -226,6 +231,39 @@ impl RegisterFile {
         out[..31].copy_from_slice(&self.gpr);
         out[31] = self.sp;
         out
+    }
+
+    /// Read the raw 64-bit bit pattern of an FP register. D-register reads
+    /// use the full 64 bits; S-register reads can mask the result as u32.
+    pub fn read_fpr_bits(&self, index: u8) -> u64 {
+        if index >= 32 {
+            return 0;
+        }
+        self.fpr[index as usize]
+    }
+
+    /// Write the raw 64-bit bit pattern of an FP register.
+    pub fn write_fpr_bits(&mut self, index: u8, value: u64) {
+        if index >= 32 {
+            return;
+        }
+        self.fpr[index as usize] = value;
+    }
+
+    /// Read an FP register as f64. The low 64 bits are interpreted as the
+    /// IEEE double.
+    pub fn read_fpr_f64(&self, index: u8) -> f64 {
+        f64::from_bits(self.read_fpr_bits(index))
+    }
+
+    /// Write an FP register as f64. Upper bits are zeroed.
+    pub fn write_fpr_f64(&mut self, index: u8, value: f64) {
+        self.write_fpr_bits(index, value.to_bits());
+    }
+
+    /// Snapshot all 32 FP registers for change detection alongside GPRs.
+    pub fn snapshot_fpr(&self) -> [u64; 32] {
+        self.fpr
     }
 }
 
