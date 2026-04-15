@@ -5,23 +5,29 @@ import { useEffect } from "react";
 interface ControlsProps {
   onAssemble: () => void;
   onStep: () => void;
+  onStepBack?: () => void;
+  canStepBack?: boolean;
   onRun: () => void;
   onPause: () => void;
   onReset: () => void;
   isRunning: boolean;
   isHalted: boolean;
   error: string | null;
+  stepCount?: number;
 }
 
 export function Controls({
   onAssemble,
   onStep,
+  onStepBack,
+  canStepBack,
   onRun,
   onPause,
   onReset,
   isRunning,
   isHalted,
   error,
+  stepCount,
 }: ControlsProps) {
   // keyboard shortcuts
   useEffect(() => {
@@ -36,6 +42,9 @@ export function Controls({
       } else if (e.key === "F5" && e.shiftKey) {
         e.preventDefault();
         onReset();
+      } else if (e.key === "F10" && e.shiftKey) {
+        e.preventDefault();
+        if (onStepBack && canStepBack) onStepBack();
       } else if (e.key === "F10") {
         e.preventDefault();
         onStep();
@@ -46,7 +55,7 @@ export function Controls({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onAssemble, onStep, onRun, onPause, onReset, isRunning]);
+  }, [onAssemble, onStep, onStepBack, canStepBack, onRun, onPause, onReset, isRunning]);
 
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-t border-[var(--border)] bg-[var(--bg-secondary)]">
@@ -63,9 +72,27 @@ export function Controls({
         shortcut="F10"
         disabled={isRunning || isHalted}
       />
+      {onStepBack && (
+        <Button
+          onClick={onStepBack}
+          label="back"
+          shortcut="Shift+F10"
+          disabled={isRunning || !canStepBack}
+        />
+      )}
       <Button onClick={onReset} label="reset" shortcut="Shift+F5" />
 
       <div className="flex-1" />
+
+      {stepCount != null && stepCount > 0 && (
+        <span
+          className="text-[10px] text-[var(--text-secondary)] font-mono"
+          role="status"
+          aria-label={`${stepCount} instructions executed`}
+        >
+          {stepCount.toLocaleString()} steps
+        </span>
+      )}
 
       {isHalted && !error && (
         <span
