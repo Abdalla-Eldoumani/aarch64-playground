@@ -43,6 +43,12 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* Safe-area inset top, applied to the first flex child (the header) so the
+   inset participates in the flex chain instead of pushing the body below the
+   visible viewport on notched devices. */
+.safe-area-top {
   padding-top: var(--safe-top);
 }
 
