@@ -543,7 +543,7 @@ export default function Home() {
 
   if (emu.loadError) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-3 px-6 text-center">
+      <div className="flex flex-col flex-1 min-h-0 items-center justify-center gap-3 px-6 text-center">
         <span className="text-sm text-red-400">failed to load emulator</span>
         <pre className="text-xs text-[var(--text-secondary)] max-w-xl whitespace-pre-wrap">
           {emu.loadError}
@@ -557,15 +557,15 @@ export default function Home() {
 
   if (!emu.isLoaded) {
     return (
-      <div className="flex items-center justify-center h-screen text-[var(--text-secondary)]">
+      <div className="flex flex-1 min-h-0 items-center justify-center text-[var(--text-secondary)]">
         loading emulator...
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] overflow-x-auto">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="safe-area-top flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] overflow-x-auto">
         <span className="text-sm font-bold text-[var(--text-primary)] whitespace-nowrap">
           cpsc 355 playground
         </span>
