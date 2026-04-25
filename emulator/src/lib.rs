@@ -1,3 +1,4 @@
+pub mod argv;
 pub mod assembler;
 pub mod cpu;
 pub mod decoder;
@@ -220,6 +221,62 @@ impl Emulator {
                     }).unwrap()
                 }
             }
+        }
+    }
+
+    /// Same as `assemble_and_load` but additionally writes argc/argv at
+    /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
+    /// sees the supplied arguments. Bare-metal sources (no hosted
+    /// features) ignore args -- argc/argv only have meaning for hosted
+    /// programs that read them through w0/x1.
+    pub fn assemble_and_load_with_args(
+        &mut self,
+        source: &str,
+        args: Vec<String>,
+    ) -> JsValue {
+        if needs_hosted_pipeline(source) {
+            self.cpu.reset();
+            let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
+                Ok(image) => {
+                    let count = image.instruction_count;
+                    match self.cpu.load_linked_image_with_args(&image, &arg_refs) {
+                        Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
+                            success: true,
+                            error: None,
+                            error_line: None,
+                            instruction_count: count,
+                        })
+                        .unwrap(),
+                        Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
+                            success: false,
+                            error: Some(e.to_string()),
+                            error_line: None,
+                            instruction_count: 0,
+                        })
+                        .unwrap(),
+                    }
+                }
+                Err(e) => {
+                    let (line, message) = match e {
+                        errors::EmuError::AssemblyError { line, message }
+                        | errors::EmuError::PreprocError { line, message }
+                        | errors::EmuError::ParseError { line, message }
+                        | errors::EmuError::LinkError { line, message } => (Some(line), message),
+                        other => (None, other.to_string()),
+                    };
+                    serde_wasm_bindgen::to_value(&AssembleResultJs {
+                        success: false,
+                        error: Some(message),
+                        error_line: line,
+                        instruction_count: 0,
+                    })
+                    .unwrap()
+                }
+            }
+        } else {
+            // Bare-metal path -- args have no caller, just delegate.
+            self.assemble_and_load(source)
         }
     }
 
