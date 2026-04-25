@@ -66,9 +66,11 @@ function parseArgsLine(input) {
   return out;
 }
 
-// Feed optional stdin and argv, run until halt or exit, then return
-// stdout + exit code. Used for hosted corpus fixtures (phase B.12+).
-function runHosted(file, stdin, args) {
+// Feed optional stdin / argv / vfs inputs, run until halt or exit, then
+// return stdout + exit code + the post-run state of every VFS file the
+// program may have created. Used for hosted corpus fixtures (phase E
+// extends fixture coverage to all 13 cpsc 355 examples).
+function runHosted(file, stdin, args, vfsIn) {
   const src = fs.readFileSync(file, "utf8");
   const emu = new wasm.Emulator();
   const asm = (args && args.length > 0)
@@ -76,6 +78,14 @@ function runHosted(file, stdin, args) {
     : emu.assemble_and_load(src);
   if (!asm.success) {
     return { ok: false, stage: "assemble", error: asm.error, line: asm.error_line };
+  }
+  // Uploads must happen AFTER assemble: assemble_and_load calls
+  // Cpu::reset which clears the VFS along with stdin/stdout/stderr.
+  if (vfsIn) {
+    for (const [name, contents] of Object.entries(vfsIn)) {
+      const bytes = Buffer.from(contents, "utf8");
+      emu.upload_vfs_file(name, bytes);
+    }
   }
   if (stdin) emu.push_stdin(stdin);
   // Drive the run loop with a small cap per iteration so we can re-feed
@@ -93,7 +103,11 @@ function runHosted(file, stdin, args) {
   const stdout = emu.take_stdout();
   const stderr = emu.take_stderr();
   const exitCode = emu.get_exit_code();
-  return { ok: true, stdout, stderr, exitCode };
+  const vfsOut = {};
+  for (const name of emu.list_vfs_files()) {
+    vfsOut[name] = Buffer.from(emu.read_vfs_file(name)).toString("utf8");
+  }
+  return { ok: true, stdout, stderr, exitCode, vfs: vfsOut };
 }
 
 const expectations = {
@@ -140,17 +154,29 @@ for (const file of Object.keys(expectations)) {
   if (ok) passed++; else failed++;
 }
 
-// Hosted fixtures: each .asm or .s under examples/cpsc355/ with a matching
-// .stdout file in examples/cpsc355/fixtures/ runs with its .stdin (if any)
-// and must produce the exact stdout.
+// Hosted fixtures: every fixture stem under examples/cpsc355/fixtures/
+// runs with its `.stdin`, `.args`, and `.vfs.json` inputs (any subset),
+// and must match its `.stdout` (text) and `.vfsout.json` (post-run files)
+// when present. A stem qualifies if any of `.stdout` / `.vfsout.json`
+// exists; programs without either are reported as SKIP rather than
+// silently passing.
 const hostedRoot = path.join(examplesDir, "cpsc355");
 const fixturesRoot = path.join(hostedRoot, "fixtures");
 if (fs.existsSync(fixturesRoot)) {
-  const expectedOutputs = fs.readdirSync(fixturesRoot).filter((f) => f.endsWith(".stdout"));
-  for (const stem of expectedOutputs.map((f) => f.slice(0, -".stdout".length))) {
+  const stems = collectStems(fixturesRoot);
+  for (const stem of stems) {
     const stdoutPath = path.join(fixturesRoot, stem + ".stdout");
     const stdinPath = path.join(fixturesRoot, stem + ".stdin");
-    // Search for the source file under cpsc355/week*/ subdirectories.
+    const argsPath = path.join(fixturesRoot, stem + ".args");
+    const vfsInPath = path.join(fixturesRoot, stem + ".vfs.json");
+    const vfsOutPath = path.join(fixturesRoot, stem + ".vfsout.json");
+    const hasStdout = fs.existsSync(stdoutPath);
+    const hasVfsOut = fs.existsSync(vfsOutPath);
+    if (!hasStdout && !hasVfsOut) {
+      console.log(`\n=== cpsc355/${stem} ===`);
+      console.log(`  SKIP: no .stdout or .vfsout.json fixture`);
+      continue;
+    }
     const srcPath = findSource(hostedRoot, stem);
     if (!srcPath) {
       console.log(`\n=== cpsc355/${stem} ===`);
@@ -159,27 +185,54 @@ if (fs.existsSync(fixturesRoot)) {
     }
     console.log(`\n=== ${path.relative(examplesDir, srcPath)} ===`);
     const stdin = fs.existsSync(stdinPath) ? fs.readFileSync(stdinPath, "utf8") : "";
-    const argsPath = path.join(fixturesRoot, stem + ".args");
     const args = fs.existsSync(argsPath)
       ? parseArgsLine(fs.readFileSync(argsPath, "utf8").trim())
       : [];
-    const expected = fs.readFileSync(stdoutPath, "utf8");
-    const result = runHosted(srcPath, stdin, args);
+    const vfsIn = fs.existsSync(vfsInPath)
+      ? JSON.parse(fs.readFileSync(vfsInPath, "utf8"))
+      : null;
+    const result = runHosted(srcPath, stdin, args, vfsIn);
     if (!result.ok) {
-      console.log(`  FAIL at ${result.stage}: ${result.error}`);
+      console.log(`  FAIL at ${result.stage}: ${result.error}${result.line != null ? " at line " + result.line : ""}`);
       failed++;
       continue;
     }
-    if (result.stdout === expected) {
-      console.log(`  OK: stdout matches fixture (${result.stdout.length} bytes)`);
-      passed++;
-    } else {
-      console.log(`  FAIL: stdout mismatch`);
-      console.log(`  expected: ${JSON.stringify(expected)}`);
-      console.log(`  actual:   ${JSON.stringify(result.stdout)}`);
-      failed++;
+    let ok = true;
+    if (hasStdout) {
+      const expected = fs.readFileSync(stdoutPath, "utf8");
+      if (result.stdout === expected) {
+        console.log(`  OK: stdout matches fixture (${result.stdout.length} bytes)`);
+      } else {
+        console.log(`  FAIL: stdout mismatch`);
+        console.log(`  expected: ${JSON.stringify(expected)}`);
+        console.log(`  actual:   ${JSON.stringify(result.stdout)}`);
+        ok = false;
+      }
     }
+    if (hasVfsOut) {
+      const expectedVfs = JSON.parse(fs.readFileSync(vfsOutPath, "utf8"));
+      for (const [name, body] of Object.entries(expectedVfs)) {
+        if (result.vfs[name] === body) {
+          console.log(`  OK: vfs ${name} matches (${body.length} bytes)`);
+        } else {
+          console.log(`  FAIL: vfs ${name} mismatch`);
+          console.log(`  expected: ${JSON.stringify(body)}`);
+          console.log(`  actual:   ${JSON.stringify(result.vfs[name] ?? "(missing)")}`);
+          ok = false;
+        }
+      }
+    }
+    if (ok) passed++; else failed++;
   }
+}
+
+function collectStems(dir) {
+  const seen = new Set();
+  for (const f of fs.readdirSync(dir)) {
+    const m = f.match(/^(.+?)\.(stdin|stdout|args|vfs\.json|vfsout\.json)$/);
+    if (m) seen.add(m[1]);
+  }
+  return Array.from(seen).sort();
 }
 
 function findSource(root, stem) {
