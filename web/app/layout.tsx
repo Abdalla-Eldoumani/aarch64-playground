@@ -1,6 +1,31 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { ToastHost } from "@/components/Toast";
+
+// Engineering-notebook trio: Source Serif 4 in editorial chrome (page
+// titles, empty-state heads), IBM Plex Sans in the controls and labels,
+// JetBrains Mono everywhere code or registers appear. Each font is
+// pinned to a CSS variable so component-level utility classes can pull
+// the right family without a Tailwind config rewrite.
+const fontSerif = Source_Serif_4({
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  display: "swap",
+  variable: "--font-serif",
+});
+const fontSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-sans",
+});
+const fontMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-mono",
+});
 
 export const metadata: Metadata = {
   title: "cpsc 355 playground",
@@ -22,9 +47,10 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const fontClasses = `${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`;
   return (
-    <html lang="en">
-      <body className="flex flex-col h-dvh">
+    <html lang="en" className={fontClasses}>
+      <body className="flex flex-col h-dvh font-mono">
         <ToastHost>{children}</ToastHost>
       </body>
     </html>
