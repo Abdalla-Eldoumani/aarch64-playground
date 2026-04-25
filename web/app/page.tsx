@@ -777,13 +777,15 @@ export default function Home() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0" data-embed={embed ? "1" : undefined}>
-      <div className="safe-area-top flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] overflow-x-auto">
-        <span className="text-sm font-bold text-[var(--text-primary)] whitespace-nowrap">
+      <div className="safe-area-top flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+        <span className="hidden sm:inline text-sm font-bold text-[var(--text-primary)] whitespace-nowrap shrink-0">
           cpsc 355 playground
         </span>
-        <ExampleLoader
-          onLoad={(src, label) => loadAsBaseline(src, label ?? "example")}
-        />
+        <div className="min-w-0 flex-1 sm:flex-initial overflow-hidden">
+          <ExampleLoader
+            onLoad={(src, label) => loadAsBaseline(src, label ?? "example")}
+          />
+        </div>
         <div className="hidden md:flex items-center gap-3">
           <ImportExport source={source} target={importTarget} onImport={handleImport} />
           {renderSecondaryActions()}
@@ -791,18 +793,18 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setOverflowOpen(true)}
-          className="md:hidden text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="md:hidden shrink-0 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           aria-label="more actions"
           aria-haspopup="dialog"
           aria-expanded={overflowOpen}
         >
           ...
         </button>
-        <div className="flex-1" />
+        <div className="hidden md:flex flex-1" />
         <button
           type="button"
           onClick={() => setHelpOpen(true)}
-          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] rounded px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="shrink-0 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] rounded px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           aria-label="keyboard shortcuts"
         >
           ?
