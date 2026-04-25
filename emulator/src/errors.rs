@@ -50,6 +50,9 @@ pub enum EmuError {
         line: usize,
         message: String,
     },
+    /// Combined argv pointer-table + string pool would exceed the 4 KiB
+    /// page reserved at `ARGV_BASE`.
+    ArgvTooLarge { bytes: usize },
 }
 
 impl fmt::Display for EmuError {
@@ -87,6 +90,9 @@ impl fmt::Display for EmuError {
             }
             Self::LinkError { line, message } => {
                 write!(f, "link error at line {line}: {message}")
+            }
+            Self::ArgvTooLarge { bytes } => {
+                write!(f, "argv layout would need {bytes} bytes, exceeds the 4096-byte argv page")
             }
         }
     }
