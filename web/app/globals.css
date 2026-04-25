@@ -63,7 +63,57 @@ html {
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+  /* `--font-mono` is supplied by `next/font` in layout.tsx; the cascade
+     below keeps the page on JetBrains Mono if the variable is missing
+     (server-rendered HTML before CSS loads). */
+  font-family: var(--font-mono), "JetBrains Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* Editorial-chrome typography. The serif lands on titles and empty-
+   state heads; the sans owns labels, buttons, controls, and dropdowns
+   so the chrome reads quietly while the mono code stays loud. */
+.font-serif {
+  font-family: var(--font-serif), "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  letter-spacing: -0.005em;
+}
+.font-sans {
+  font-family: var(--font-sans), "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+}
+.font-mono {
+  font-family: var(--font-mono), "JetBrains Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* Motion. Each animation is opt-in via a class so existing layout is
+   untouched; `prefers-reduced-motion` strips them so screen-reader and
+   vestibular-sensitive users see static UI. */
+@keyframes shake-x {
+  0%   { transform: translate3d(0, 0, 0); }
+  20%  { transform: translate3d(-3px, 0, 0); }
+  40%  { transform: translate3d(3px, 0, 0); }
+  60%  { transform: translate3d(-2px, 0, 0); }
+  80%  { transform: translate3d(2px, 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+@keyframes step-pop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+@keyframes tab-fade-in {
+  from { opacity: 0.45; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .anim-error-shake {
+    animation: shake-x 200ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
+  }
+  .anim-step-pop {
+    animation: step-pop 180ms cubic-bezier(0.2, 0.7, 0.2, 1) 1;
+  }
+  .anim-tab-fade {
+    animation: tab-fade-in 50ms linear 1;
+  }
 }
 
 /* Safe-area inset top, applied to the first flex child (the header) so the
