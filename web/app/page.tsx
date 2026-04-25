@@ -703,6 +703,9 @@ export default function Home() {
             memory={memoryBlock}
             stack={stackBlock}
             console={consoleBlock}
+            watches={watchBlock}
+            memwatch={memWatchBlock}
+            saves={savesBlock}
             consoleBlocked={emu.blocked}
           />
         )}
