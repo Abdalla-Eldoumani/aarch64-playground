@@ -202,10 +202,23 @@ impl Cpu {
 
     /// Load a `LinkedImage` from `frontend::pipeline`. Writes each (addr,
     /// bytes) pair to memory, sets PC to the image's entry point, and
-    /// clears the halt flag. Used for hosted cpsc 355 source.
+    /// clears the halt flag. Used for hosted cpsc 355 source. Equivalent
+    /// to calling `load_linked_image_with_args(image, &[])`.
     pub fn load_linked_image(
         &mut self,
         image: &crate::frontend::pipeline::LinkedImage,
+    ) -> Result<(), EmuError> {
+        self.load_linked_image_with_args(image, &[])
+    }
+
+    /// Load a hosted image and additionally write argc/argv at
+    /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
+    /// sees the supplied arguments. Empty slice gives identical behavior
+    /// to `load_linked_image` (`w0 = 0, x1 = 0` on entry).
+    pub fn load_linked_image_with_args(
+        &mut self,
+        image: &crate::frontend::pipeline::LinkedImage,
+        args: &[&str],
     ) -> Result<(), EmuError> {
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes)?;
@@ -217,6 +230,7 @@ impl Cpu {
         if let Some(ret_addr) = self.host.lookup("__main_return") {
             self.regs.write_gpr(30, true, ret_addr);
         }
+        crate::argv::setup_argv(&mut self.regs, &mut self.mem, args)?;
         self.halted = false;
         Ok(())
     }
