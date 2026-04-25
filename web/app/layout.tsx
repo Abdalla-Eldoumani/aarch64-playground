@@ -23,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen">{children}</body>
+      <body className="flex flex-col min-h-dvh">{children}</body>
     </html>
   );
 }
