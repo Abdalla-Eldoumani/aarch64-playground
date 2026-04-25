@@ -72,6 +72,12 @@ const TutorialRunner = dynamic(
   () => import("@/components/TutorialRunner").then((m) => m.TutorialRunner),
   { ssr: false },
 );
+// Lazy-loaded so the xterm bundle only ships when a student opens the
+// terminal tab; nothing in the default-load bundle depends on it.
+const TerminalPane = dynamic(
+  () => import("@/components/TerminalPane").then((m) => m.TerminalPane),
+  { ssr: false, loading: () => null },
+);
 
 const DEFAULT_SOURCE = `// cpsc 355 playground
 // write ARM64 assembly, hit Assemble, then Step or Run
@@ -119,7 +125,7 @@ export default function Home() {
     setSourceState((prev) => ({ source: next, fromShare: prev.fromShare }));
   }, []);
   const [activeTab, setActiveTab] = useState<
-    "memory" | "stack" | "console" | "watches" | "memwatch" | "saves"
+    "memory" | "stack" | "console" | "term" | "watches" | "memwatch" | "saves"
   >("memory");
   const [view, setView] = useState<"playground" | "c-to-asm">(initialView);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -504,6 +510,100 @@ export default function Home() {
     />
   );
 
+  // Hidden file picker the terminal's `upload` command triggers; mounted
+  // alongside the terminal block so the focus trap stays within the
+  // terminal pane.
+  const terminalUploadRef = useRef<HTMLInputElement>(null);
+  const buildTerminalContext = useCallback(() => {
+    return {
+      vfs: new Map<string, string>(),
+      listVfs: () => emu.vfsFiles.slice().sort(),
+      readVfs: () => undefined,
+      writeVfs: (path: string, body: string) => {
+        const enc = new TextEncoder();
+        emu.uploadVfsFile(path, enc.encode(body));
+      },
+      deleteVfs: () => false,
+      runProgram: async (args: string[], stdin?: string) => {
+        emu.assemble(source, args.slice(1));
+        if (stdin) emu.pushStdin(stdin);
+        emu.run();
+        // Poll for completion -- backend resolves these state fields
+        // when the run loop ends. Bounded so a runaway program doesn't
+        // hang the shell forever.
+        const startedAt = Date.now();
+        while (emu.isRunning) {
+          await new Promise<void>((r) => setTimeout(r, 16));
+          if (Date.now() - startedAt > 10_000) break;
+        }
+        return {
+          stdout: emu.stdout,
+          stderr: emu.stderr,
+          exitCode: emu.exitCode ?? 0,
+        };
+      },
+      step: async () => {
+        emu.step();
+        return { halted: emu.isHalted, line: emu.currentLine };
+      },
+      runUntilBreak: async () => {
+        emu.run();
+        const startedAt = Date.now();
+        while (emu.isRunning) {
+          await new Promise<void>((r) => setTimeout(r, 16));
+          if (Date.now() - startedAt > 10_000) break;
+        }
+        return { halted: emu.isHalted, hit_breakpoint: false };
+      },
+      setBreakpoint: async () => { /* address-based bp needs backend extension; tracked in BACKLOG */ },
+      clearBreakpoint: async () => { /* same */ },
+      resolveLabel: () => null,
+      readRegister: (name: string) => {
+        const lower = name.toLowerCase();
+        if (lower === "sp") return BigInt(emu.sp);
+        if (lower === "pc") return BigInt(emu.pc);
+        const m = lower.match(/^[xw](\d+)$/);
+        if (!m) return null;
+        const idx = Number(m[1]);
+        if (idx < 0 || idx > 30) return null;
+        const raw = emu.registers[idx];
+        if (!raw) return null;
+        return BigInt(raw);
+      },
+      readRegisters: () => {
+        const out: Record<string, bigint> = {};
+        emu.registers.forEach((v, i) => { out[`x${i}`] = BigInt(v); });
+        out.sp = BigInt(emu.sp);
+        out.pc = BigInt(emu.pc);
+        return out;
+      },
+      readMemory: async (addr: number, len: number) => emu.getMemory(addr, len),
+      pcAddress: () => emu.pc,
+      reset: async () => emu.reset(),
+    };
+  }, [emu, source]);
+  const terminalBlock = (
+    <div className="h-full relative">
+      <input
+        ref={terminalUploadRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          f.arrayBuffer().then((buf) => {
+            emu.uploadVfsFile(f.name, new Uint8Array(buf));
+          });
+          e.target.value = "";
+        }}
+      />
+      <TerminalPane
+        buildContext={buildTerminalContext}
+        onUploadRequest={() => terminalUploadRef.current?.click()}
+      />
+    </div>
+  );
+
   const watchBlock = (
     <WatchPanel
       registers={emu.registers}
@@ -585,7 +685,7 @@ export default function Home() {
         role="tablist"
         aria-label="debug view"
       >
-        {(["memory", "stack", "console", "watches", "memwatch", "saves"] as const).map((tab) => {
+        {(["memory", "stack", "console", "term", "watches", "memwatch", "saves"] as const).map((tab) => {
           const selected = activeTab === tab;
           const showDot = tab === "console" && emu.blocked && !selected;
           return (
@@ -620,6 +720,9 @@ export default function Home() {
         )}
         {activeTab === "console" && (
           <div className="h-full flex flex-col">{consoleBlock}</div>
+        )}
+        {activeTab === "term" && (
+          <div className="h-full">{terminalBlock}</div>
         )}
         {activeTab === "watches" && (
           <div className="h-full overflow-auto">{watchBlock}</div>
@@ -901,6 +1004,7 @@ export default function Home() {
             memory={memoryBlock}
             stack={stackBlock}
             console={consoleBlock}
+            terminal={terminalBlock}
             watches={watchBlock}
             memwatch={memWatchBlock}
             saves={savesBlock}
