@@ -919,9 +919,21 @@ export default function Home() {
       <TutorialRunner
         open={tutorialOpen}
         onClose={() => setTutorialOpen(false)}
-        onLoadSnippet={(src, label) => {
+        onLoadSnippet={(src, label, args, stdin) => {
           loadAsBaseline(src, label);
+          if (args !== undefined) setArgsText(args);
+          if (stdin !== undefined) emu.pushStdin(stdin);
           setTutorialOpen(false);
+        }}
+        getRegister={(name) => {
+          const lower = name.toLowerCase();
+          if (lower === "sp") return emu.sp;
+          if (lower === "pc") return String(emu.pc);
+          const m = lower.match(/^[xw](\d+)$/);
+          if (!m) return null;
+          const idx = Number(m[1]);
+          if (idx < 0 || idx > 30) return null;
+          return emu.registers[idx] ?? null;
         }}
       />
     </div>
