@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ToastHost } from "@/components/Toast";
 
 export const metadata: Metadata = {
   title: "cpsc 355 playground",
@@ -23,7 +24,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="flex flex-col min-h-dvh">{children}</body>
+      <body className="flex flex-col min-h-dvh">
+        <ToastHost>{children}</ToastHost>
+      </body>
     </html>
   );
 }
