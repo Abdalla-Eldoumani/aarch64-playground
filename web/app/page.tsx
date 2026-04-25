@@ -810,7 +810,7 @@ export default function Home() {
   return (
     <div className="flex flex-col flex-1 min-h-0" data-embed={embed ? "1" : undefined}>
       <div className="safe-area-top flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
-        <span className="hidden sm:inline text-sm font-bold text-[var(--text-primary)] whitespace-nowrap shrink-0">
+        <span className="hidden sm:inline font-serif text-[15px] font-semibold tracking-tight text-[var(--text-primary)] whitespace-nowrap shrink-0">
           cpsc 355 playground
         </span>
         <div className="min-w-0 flex-1 sm:flex-initial overflow-hidden">
