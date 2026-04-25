@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useRef } from "react";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface Shortcut {
   keys: string;
@@ -18,14 +19,8 @@ export interface ShortcutsHelpProps {
  * Renders nothing when closed so keyboard focus stays wherever it was.
  */
 export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(open, ref, onClose);
 
   if (!open) return null;
 
@@ -38,6 +33,7 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
       onClick={onClose}
     >
       <div
+        ref={ref}
         className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
