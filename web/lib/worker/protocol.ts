@@ -3,72 +3,67 @@
  *
  * Every call from the main thread to the worker is a `Request` carrying
  * an `id`. The worker replies with a `Response` echoing the same id, so
- * the client can match awaiters. The protocol mirrors the
- * `EmulatorInstance` surface in `lib/emulator.ts`; the client adapter
- * turns it into a Promise-returning facade.
+ * the client can match awaiters. During long-running operations (the
+ * run loop) the worker also emits unsolicited `Heartbeat` messages with
+ * id = -1 carrying a fresh `StateSnapshot` so panels update mid-run.
  *
- * Phase 2 ships the scaffolding plus the most-used methods (init,
- * assemble, step, runUntilBreak, reset, takeStdout). Memory reads and
- * the lazy-fetch optimization stay on the main thread for now and land
- * in a follow-up pass.
+ * The protocol mirrors the EmulatorInstance surface but everything
+ * is async; the in-process fallback wraps sync calls in Promise.resolve
+ * to expose the same shape.
  */
 
 export type RequestKind =
   | "init"
   | "assemble"
   | "step"
+  | "stepBack"
   | "runUntilBreak"
+  | "pause"
   | "reset"
+  | "pushStdin"
   | "takeStdout"
-  | "pushStdin";
+  | "takeStderr"
+  | "getMemory"
+  | "getSnapshot"
+  | "setBreakpoint"
+  | "clearBreakpoint"
+  | "saveState"
+  | "loadState"
+  | "deleteState"
+  | "listStates"
+  | "uploadVfsFile"
+  | "listVfsFiles"
+  | "clearConsole"
+  | "codeBase";
 
-export interface InitRequest {
+export interface BaseRequest<K extends RequestKind> {
   id: number;
-  kind: "init";
-}
-
-export interface AssembleRequest {
-  id: number;
-  kind: "assemble";
-  source: string;
-  args: string[];
-}
-
-export interface StepRequest {
-  id: number;
-  kind: "step";
-}
-
-export interface RunUntilBreakRequest {
-  id: number;
-  kind: "runUntilBreak";
-  maxSteps: number;
-}
-
-export interface ResetRequest {
-  id: number;
-  kind: "reset";
-}
-
-export interface TakeStdoutRequest {
-  id: number;
-  kind: "takeStdout";
-}
-
-export interface PushStdinRequest {
-  id: number;
-  kind: "pushStdin";
-  text: string;
+  kind: K;
 }
 
 export type Request =
-  | InitRequest
-  | AssembleRequest
-  | StepRequest
-  | RunUntilBreakRequest
-  | ResetRequest
-  | TakeStdoutRequest
-  | PushStdinRequest;
+  | BaseRequest<"init">
+  | (BaseRequest<"assemble"> & { source: string; args: string[] })
+  | BaseRequest<"step">
+  | BaseRequest<"stepBack">
+  | (BaseRequest<"runUntilBreak"> & { maxSteps: number })
+  | BaseRequest<"pause">
+  | BaseRequest<"reset">
+  | (BaseRequest<"pushStdin"> & { text: string })
+  | BaseRequest<"takeStdout">
+  | BaseRequest<"takeStderr">
+  | (BaseRequest<"getMemory"> & { addr: number; len: number })
+  | BaseRequest<"getSnapshot">
+  | (BaseRequest<"setBreakpoint"> & { addr: number })
+  | (BaseRequest<"clearBreakpoint"> & { addr: number })
+  | (BaseRequest<"saveState"> & { name: string })
+  | (BaseRequest<"loadState"> & { name: string })
+  | (BaseRequest<"deleteState"> & { name: string })
+  | BaseRequest<"listStates">
+  | (BaseRequest<"uploadVfsFile"> & { path: string; data: Uint8Array })
+  | BaseRequest<"listVfsFiles">
+  | BaseRequest<"clearConsole">
+  | BaseRequest<"codeBase">;
 
 export interface OkResponse<T> {
   id: number;
@@ -82,7 +77,20 @@ export interface ErrorResponse {
   message: string;
 }
 
+/**
+ * Heartbeat: unsolicited message from the worker carrying a fresh
+ * snapshot. Sent every ~50ms during runUntilBreak so panels can
+ * refresh while the run loop is still executing.
+ */
+export interface Heartbeat {
+  id: -1;
+  kind: "heartbeat";
+  snapshot: StateSnapshot;
+}
+
 export type Response<T = unknown> = OkResponse<T> | ErrorResponse;
+
+export type WorkerMessage = Response | Heartbeat;
 
 export interface AssembleResultPayload {
   success: boolean;
@@ -105,4 +113,33 @@ export interface RunResultPayload {
   steps_executed: number;
   hit_breakpoint: boolean;
   error: string | null;
+}
+
+/**
+ * Snapshot of all state the UI needs after an operation. Sent in the
+ * `ok` response of every state-mutating call (assemble/step/run/reset/
+ * stepBack/loadState) and as the `snapshot` field of heartbeats.
+ *
+ * The `frame` field is a monotonically increasing counter the cache
+ * layer uses as part of its cache key so memory reads from earlier
+ * frames are invalidated when the worker advances.
+ */
+export interface StateSnapshot {
+  frame: number;
+  registers: string[];
+  sp: string;
+  pc: string;
+  nzcv: number;
+  changedRegs: number[];
+  halted: boolean;
+  blocked: boolean;
+  exitCode: number | null;
+  canStepBack: boolean;
+  stdoutDelta: string;
+  stderrDelta: string;
+  vfsFiles: string[];
+  savedStates: string[];
+  /// True if any memory page was written this frame; the cache uses this
+  /// to invalidate panel ranges that might be stale.
+  changedMem: boolean;
 }
