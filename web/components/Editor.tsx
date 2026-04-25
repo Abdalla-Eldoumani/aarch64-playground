@@ -276,39 +276,10 @@ export function Editor({
         }
       });
 
-      // On coarse pointers (phones / tablets), a 500ms press-and-hold
-      // anywhere on the line sets a breakpoint -- reaching for the
-      // narrow glyph margin with a fingertip is unreliable.
-      if (isCoarsePointer()) {
-        const dom = editor.getDomNode();
-        if (dom) {
-          let pressTimer: ReturnType<typeof setTimeout> | null = null;
-          let pressedLine: number | null = null;
-          const startPress = (clientX: number, clientY: number) => {
-            const pos = editor.getTargetAtClientPoint(clientX, clientY);
-            const line = pos?.position?.lineNumber ?? null;
-            if (line == null) return;
-            pressedLine = line;
-            pressTimer = setTimeout(() => {
-              if (pressedLine != null) {
-                onToggleBreakpoint(pressedLine);
-              }
-            }, 500);
-          };
-          const cancelPress = () => {
-            if (pressTimer) clearTimeout(pressTimer);
-            pressTimer = null;
-            pressedLine = null;
-          };
-          dom.addEventListener("touchstart", (ev) => {
-            const t = ev.touches[0];
-            if (t) startPress(t.clientX, t.clientY);
-          }, { passive: true });
-          dom.addEventListener("touchmove", cancelPress, { passive: true });
-          dom.addEventListener("touchend", cancelPress);
-          dom.addEventListener("touchcancel", cancelPress);
-        }
-      }
+      // On coarse pointers, the breakpoint gesture is a single tap on
+      // the glyph margin. The CSS below widens that margin to 32px so a
+      // fingertip lands reliably; no anywhere-on-line long-press, which
+      // used to fight text selection.
 
       // Shrink the editor when the iOS keyboard opens so the textarea
       // doesn't sit behind the keyboard; Monaco's `automaticLayout` flag
@@ -375,6 +346,9 @@ export function Editor({
         .breakpoint-glyph { background: #ef4444; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .error-line-highlight { background: rgba(239, 68, 68, 0.15) !important; }
         .error-glyph { background: #f59e0b; border-radius: 2px; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
+        @media (pointer: coarse) {
+          .monaco-editor .glyph-margin { width: 32px !important; }
+        }
       `}</style>
       <MonacoEditor
         height="100%"
