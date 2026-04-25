@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   TUTORIALS,
   loadProgress,
   saveProgress,
   type Tutorial,
 } from "@/lib/tutorials";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface TutorialRunnerProps {
   open: boolean;
@@ -27,17 +28,10 @@ export function TutorialRunner({
 }: TutorialRunnerProps) {
   const [activeId, setActiveId] = useState<string>(TUTORIALS[0]?.id ?? "");
   const [progress, setProgress] = useState(() => loadProgress());
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(open, ref, onClose);
 
   useEffect(() => saveProgress(progress), [progress]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
 
   const tutorial = useMemo<Tutorial | undefined>(
     () => TUTORIALS.find((t) => t.id === activeId),
@@ -62,6 +56,7 @@ export function TutorialRunner({
       onClick={onClose}
     >
       <div
+        ref={ref}
         className="w-full max-w-2xl max-h-[80vh] rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
