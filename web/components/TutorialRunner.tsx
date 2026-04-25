@@ -171,7 +171,7 @@ export function TutorialRunner({
               {loadError}
             </p>
           )}
-          <h3 className="text-base font-semibold text-[var(--text-primary)] mb-2">
+          <h3 className="font-serif text-[18px] font-semibold tracking-tight text-[var(--text-primary)] mb-2">
             {step?.title}
           </h3>
           <p className="text-[13px] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
