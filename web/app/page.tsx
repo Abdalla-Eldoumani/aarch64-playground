@@ -21,6 +21,7 @@ import { MobileLayout } from "@/components/MobileLayout";
 import { ImportExport } from "@/components/ImportExport";
 import { useToast } from "@/components/Toast";
 import { HeaderOverflowSheet } from "@/components/HeaderOverflowSheet";
+import { parseDeepLink } from "@/lib/use-deep-link";
 import {
   describeTarget,
   getImportTarget,
@@ -127,7 +128,8 @@ export default function Home() {
     { source: DEFAULT_SOURCE, label: "starter snippet" },
   );
   const [tutorialOpen, setTutorialOpen] = useState(false);
-  const [, toggleTheme] = useTheme();
+  const [, toggleTheme, setTheme] = useTheme();
+  const [embed, setEmbed] = useState<boolean>(false);
   const [extraFiles, setExtraFiles] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
   const toast = useToast();
@@ -575,6 +577,33 @@ export default function Home() {
     [setSource],
   );
 
+  // Deep-link bootstrap. Runs once on mount: applies ?theme=, ?view=,
+  // ?embed=, and (if ?example=<stem> resolves to a real file) loads the
+  // example into the editor. Errors during the example fetch are
+  // silently dropped -- the user can still load via the dropdown.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const dl = parseDeepLink(window.location.search);
+    if (dl.theme) setTheme(dl.theme);
+    if (dl.view) setView(dl.view);
+    if (dl.embed) setEmbed(true);
+    if (dl.example) {
+      const tryLoad = async (ext: "asm" | "s") => {
+        const res = await fetch(`/examples/cpsc355/${dl.example}.${ext}`);
+        if (!res.ok) return false;
+        const text = await res.text();
+        loadAsBaseline(text, dl.example ?? "example");
+        return true;
+      };
+      void (async () => {
+        if (!(await tryLoad("asm"))) await tryLoad("s");
+      })();
+    }
+    // Effect runs once at mount; deep-link state is read from the URL
+    // exactly once and never re-derived.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Buttons that live in the header at md+ and inside the overflow sheet
   // below md. `after` fires after the action runs so the sheet auto-closes
   // when one is chosen on a phone.
@@ -684,7 +713,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0" data-embed={embed ? "1" : undefined}>
       <div className="safe-area-top flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] overflow-x-auto">
         <span className="text-sm font-bold text-[var(--text-primary)] whitespace-nowrap">
           cpsc 355 playground
