@@ -429,6 +429,46 @@ main:
 }
 
 #[test]
+fn hosted_pipeline_bl_with_tab_whitespace_trampolines() {
+    // The legacy string-based redirect did `strip_prefix("bl ")`
+    // against a literal space and silently left `bl\texit` untouched,
+    // sending the BL at a 0xFFFF_XXXX host stub directly and crashing
+    // the encoder's imm26 range check. The token form lexes tab and
+    // space identically so the trampoline now wires up correctly.
+    let src = "\n.text\n.global main\nmain:\n    mov     x0, 11\n    bl\texit\n";
+    let (_, exit_code, halted) = run_source(src);
+    assert!(halted);
+    assert_eq!(exit_code, Some(11));
+}
+
+#[test]
+fn hosted_pipeline_string_literal_containing_bl_is_left_alone() {
+    // `.string "bl printf"` lives in `.rodata` as `Item::Bytes`, so the
+    // redirect never sees those tokens; this regression-pins that the
+    // bytes survive verbatim regardless of what trampolines exist.
+    let src = r#"
+.text
+.global main
+main:
+    mov     x0, 1
+    ldr     x1, =fake_bl
+    mov     x2, 9
+    mov     x8, 64
+    svc     0
+    mov     x0, 0
+    mov     x8, 93
+    svc     0
+.data
+fake_bl:
+    .string "bl printf"
+"#;
+    let (stdout, exit_code, halted) = run_source(src);
+    assert!(halted);
+    assert_eq!(exit_code, Some(0));
+    assert_eq!(stdout, "bl printf");
+}
+
+#[test]
 fn hosted_pipeline_main_return_halts_with_exit_code() {
     // Programs that fall off the end of `main` via `ret` expect the
     // runtime to treat that as `exit(w0)`. The loader stashes a sentinel
