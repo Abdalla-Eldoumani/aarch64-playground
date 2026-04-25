@@ -317,21 +317,19 @@ export function Editor({
   if (fallback) {
     // Under 480px, Monaco's keyboard behavior on iOS is unreliable
     // (the soft keyboard jumps the caret to the wrong line when the
-    // visual viewport shrinks). Fall back to a plain textarea.
-    return (
-      <textarea
-        className="h-full w-full resize-none bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono text-[16px] p-3 focus:outline-none"
-        style={{ WebkitAppearance: "none" }}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
-        aria-label="assembly source"
-      />
-    );
+    // visual viewport shrinks). Fall back to a plain textarea with a
+    // synced gutter that surfaces line numbers, breakpoint dots, the
+    // current PC line, and the first assembler error so a student can
+    // still navigate errors and toggle breakpoints on a phone.
+    return <FallbackEditor
+      value={value}
+      onChange={onChange}
+      currentLine={currentLine}
+      breakpoints={breakpoints}
+      onToggleBreakpoint={onToggleBreakpoint}
+      assemblyErrors={assemblyErrors}
+      onDrop={onDrop}
+    />;
   }
 
   return (
@@ -372,6 +370,93 @@ export function Editor({
           accessibilitySupport: "auto",
           accessibilityHelpUrl: "/docs/accessibility",
         }}
+      />
+    </div>
+  );
+}
+
+interface FallbackEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  currentLine: number | null;
+  breakpoints: Set<number>;
+  onToggleBreakpoint: (line: number) => void;
+  assemblyErrors: AssemblyError[];
+  onDrop: (e: React.DragEvent) => void;
+}
+
+/**
+ * Phone-mode editor: bare `<textarea>` plus a synced gutter strip that
+ * shows line numbers, breakpoint dots, current-PC marker, and the first
+ * error line. Students on iPhone SE need to be able to toggle a
+ * breakpoint, see which line their error is on, and watch the PC move
+ * during step -- all without Monaco's larger virtual surface.
+ */
+function FallbackEditor({
+  value,
+  onChange,
+  currentLine,
+  breakpoints,
+  onToggleBreakpoint,
+  assemblyErrors,
+  onDrop,
+}: FallbackEditorProps) {
+  const gutterRef = useRef<HTMLDivElement>(null);
+  const lineCount = Math.max(1, value.split("\n").length);
+  const errorLines = new Set(assemblyErrors.map((e) => e.line));
+
+  return (
+    <div className="h-full w-full flex bg-[var(--bg-primary)]">
+      <div
+        ref={gutterRef}
+        className="flex-shrink-0 w-10 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] py-3 select-none"
+        aria-hidden="false"
+        role="presentation"
+      >
+        {Array.from({ length: lineCount }, (_, i) => i + 1).map((n) => {
+          const isBreak = breakpoints.has(n);
+          const isError = errorLines.has(n);
+          const isCurrent = currentLine === n;
+          const cls = isError
+            ? "text-[var(--danger)] font-bold"
+            : isBreak
+            ? "text-[var(--danger)]"
+            : isCurrent
+            ? "text-[var(--accent)] font-bold"
+            : "text-[var(--text-secondary)]";
+          return (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onToggleBreakpoint(n)}
+              className={`block w-full h-6 leading-6 text-right pr-2 text-[11px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] ${cls}`}
+              aria-label={
+                isBreak
+                  ? `line ${n}, breakpoint set, tap to clear`
+                  : `line ${n}, tap to set breakpoint`
+              }
+            >
+              {isBreak ? "●" : n}
+            </button>
+          );
+        })}
+      </div>
+      <textarea
+        className="flex-1 h-full resize-none bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono text-[16px] py-3 pl-2 pr-3 focus:outline-none leading-6"
+        style={{ WebkitAppearance: "none" }}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+        onScroll={(e) => {
+          if (gutterRef.current) {
+            gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+          }
+        }}
+        aria-label="assembly source"
       />
     </div>
   );
