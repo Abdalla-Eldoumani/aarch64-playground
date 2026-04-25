@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/backend";
+import { detectHostedMode } from "@/lib/emulator";
 import type { StateSnapshot } from "@/lib/worker/protocol";
 
 export interface AssemblyError {
@@ -60,31 +61,6 @@ export interface EmulatorState {
   pushStdin: (s: string) => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   clearConsole: () => void;
-}
-
-function detectHostedMode(source: string): boolean {
-  const stripped = source
-    .split("\n")
-    .map((l) => l.replace(/\/\/.*$/, "").replace(/;.*$/, ""))
-    .join("\n");
-  if (/\.(global|globl)\s+main\b/.test(stripped)) return true;
-  if (/\.(data|rodata|bss)\b/.test(stripped)) return true;
-  const libc = [
-    "printf",
-    "scanf",
-    "puts",
-    "putchar",
-    "getchar",
-    "strlen",
-    "strcmp",
-    "strcpy",
-    "memset",
-    "memcpy",
-    "exit",
-    "atof",
-  ];
-  const pattern = new RegExp(`\\bbl\\s+(${libc.join("|")})\\b`, "i");
-  return pattern.test(stripped);
 }
 
 function memCacheKey(addr: number, len: number): string {
@@ -199,7 +175,7 @@ export function useEmulator(): EmulatorState {
       setStepCount(0);
       setStdout("");
       setStderr("");
-      setHostedMode(detectHostedMode(source));
+      detectHostedMode(source).then(setHostedMode).catch(() => {});
 
       const hasContent = source
         .split("\n")
