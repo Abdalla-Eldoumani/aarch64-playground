@@ -99,6 +99,14 @@ body {
   }
 }
 
+/* Embed mode (?embed=1) hides the outer chrome so an instructor can
+   <iframe> the playground inside course pages without the header bar
+   eating layout space. The bottom Controls bar stays. */
+[data-embed="1"] > .safe-area-top,
+[data-embed="1"] [role="status"][aria-live="polite"][data-share-banner] {
+  display: none !important;
+}
+
 /* Panel content inherits `--font-scale`; opt-in classes use it. */
 .panel-scaled {
   font-size: calc(0.75rem * var(--font-scale));
