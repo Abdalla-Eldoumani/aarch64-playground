@@ -23,9 +23,9 @@ export function NotFound({
         <span className="text-xs uppercase tracking-wider">signal 11</span>
       </div>
 
-      <h1 className="text-lg text-[var(--text-primary)]">{title}</h1>
+      <h1 className="font-serif text-2xl text-[var(--text-primary)]">{title}</h1>
 
-      <p className="text-sm text-[var(--text-secondary)] max-w-md">{message}</p>
+      <p className="font-sans text-sm text-[var(--text-secondary)] max-w-md">{message}</p>
 
       <pre className="text-xs text-[var(--text-secondary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-4 py-3 whitespace-pre">
 {`MOV X0, #0x404
