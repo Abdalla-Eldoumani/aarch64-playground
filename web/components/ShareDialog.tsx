@@ -60,7 +60,7 @@ export function ShareDialog({ open, source, onClose }: ShareDialogProps) {
         className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3">
+        <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
           share this program
         </h2>
         <p className="text-[11px] text-[var(--text-secondary)] mb-2">
