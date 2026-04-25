@@ -160,7 +160,55 @@ export function Editor({
         },
       });
 
-      monaco.editor.setTheme("arm64-dark");
+      monaco.editor.defineTheme("arm64-light", {
+        base: "vs",
+        inherit: true,
+        rules: [
+          { token: "keyword", foreground: "1d4ed8", fontStyle: "bold" },
+          { token: "variable", foreground: "be185d" },
+          { token: "number", foreground: "6d28d9" },
+          { token: "number.hex", foreground: "6d28d9" },
+          { token: "comment", foreground: "6b7280", fontStyle: "italic" },
+          { token: "type.identifier", foreground: "047857" },
+        ],
+        colors: {
+          "editor.background": "#ffffff",
+          "editor.lineHighlightBackground": "#f1f5f988",
+          "editorGutter.background": "#ffffff",
+          "editorLineNumber.foreground": "#6b7280",
+        },
+      });
+
+      monaco.editor.defineTheme("arm64-hc", {
+        base: "hc-black",
+        inherit: true,
+        rules: [
+          { token: "keyword", foreground: "8be0ff", fontStyle: "bold" },
+          { token: "variable", foreground: "ffb6e6" },
+          { token: "number", foreground: "d4b6ff" },
+          { token: "number.hex", foreground: "d4b6ff" },
+          { token: "comment", foreground: "d1d5db", fontStyle: "italic" },
+          { token: "type.identifier", foreground: "9ef0c1" },
+        ],
+        colors: {
+          "editor.background": "#000000",
+          "editor.lineHighlightBackground": "#1a1a1a",
+          "editorGutter.background": "#000000",
+          "editorLineNumber.foreground": "#d1d5db",
+        },
+      });
+
+      const applyTheme = () => {
+        const t = document.documentElement.getAttribute("data-theme");
+        const id = t === "light" ? "arm64-light" : t === "high-contrast" ? "arm64-hc" : "arm64-dark";
+        monaco.editor.setTheme(id);
+      };
+      applyTheme();
+      const observer = new MutationObserver(applyTheme);
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      });
 
       // Hover provider: surface a short course-voice summary of the
       // mnemonic under the cursor. Falls back to no-hover when the
