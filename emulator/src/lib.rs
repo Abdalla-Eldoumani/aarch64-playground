@@ -10,14 +10,18 @@ pub mod memory;
 pub mod registers;
 pub mod snapshot;
 
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use serde::Serialize;
 
+#[allow(unused_imports)]
 use cpu::{Cpu, StepOutcome};
 
 /// Heuristic that decides whether the source uses the hosted cpsc 355
 /// feature set (sections, .global main, libc BLs). The bare-metal
 /// examples hit none of these so they keep the legacy path.
+#[cfg(target_arch = "wasm32")]
 fn needs_hosted_pipeline(source: &str) -> bool {
     // Strip // and ; comments so fragments inside them don't trigger.
     let clean: String = source
@@ -71,6 +75,7 @@ fn needs_hosted_pipeline(source: &str) -> bool {
     false
 }
 
+#[cfg(target_arch = "wasm32")]
 fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
     match outcome {
         StepOutcome::Advance => ("advance", None),
@@ -82,11 +87,13 @@ fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
 
 
 /// WASM-exposed emulator wrapping the core CPU.
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub struct Emulator {
     cpu: Cpu,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct StepResultJs {
     pc: u64,
@@ -98,6 +105,7 @@ struct StepResultJs {
     exit_code: Option<i64>,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct RunResultJs {
     pc: u64,
@@ -107,6 +115,7 @@ struct RunResultJs {
     error: Option<String>,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct RegistersJs {
     /// X0-X30 as hex strings (BigInt-safe)
@@ -116,6 +125,7 @@ struct RegistersJs {
     nzcv: u8,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct AssembleResultJs {
     success: bool,
@@ -124,6 +134,7 @@ struct AssembleResultJs {
     instruction_count: usize,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl Emulator {
     /// Create a fresh emulator with default memory layout.
