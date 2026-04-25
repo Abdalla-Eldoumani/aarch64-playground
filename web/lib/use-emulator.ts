@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  EmulatorInstance,
-  loadEmulator,
-  type AssembleResult,
-} from "./emulator";
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { pickBackend, type EmulatorBackend } from "@/lib/backend";
+import type { StateSnapshot } from "@/lib/worker/protocol";
 
 export interface AssemblyError {
   line: number;
@@ -32,18 +31,11 @@ export interface EmulatorState {
   currentLine: number | null;
   instructions: DecodedInstruction[];
   codeBase: number;
-  /// Accumulated stdout since the last `clearConsole`.
   stdout: string;
-  /// Accumulated stderr.
   stderr: string;
-  /// True when the program is waiting for stdin (scanf / read(0)).
   blocked: boolean;
-  /// `exit(code)` status, if the program called it.
   exitCode: number | null;
-  /// True when the source triggers hosted-mode features (libc calls, data
-  /// sections, `.global main`). See `detectHostedMode` for the heuristic.
   hostedMode: boolean;
-  /// Filenames currently registered with the virtual FS.
   vfsFiles: string[];
   assemble: (source: string, args?: string[]) => void;
   step: () => void;
@@ -58,15 +50,18 @@ export interface EmulatorState {
   pause: () => void;
   reset: () => void;
   toggleBreakpoint: (line: number) => void;
+  /**
+   * Returns the cached bytes for `[addr, addr + len)`. On a cache miss
+   * the returned array is empty and an async fetch is queued; the next
+   * render delivers the bytes via state. Memory panels render a
+   * "loading" placeholder while empty.
+   */
   getMemory: (addr: number, len: number) => Uint8Array;
   pushStdin: (s: string) => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   clearConsole: () => void;
 }
 
-/// Heuristic: does the source look like a hosted cpsc 355 program that
-/// expects libc and a `main` entry point? Anything that references a libc
-/// stub, declares `.global main`, or populates `.data`/`.rodata` counts.
 function detectHostedMode(source: string): boolean {
   const stripped = source
     .split("\n")
@@ -92,17 +87,24 @@ function detectHostedMode(source: string): boolean {
   return pattern.test(stripped);
 }
 
+function memCacheKey(addr: number, len: number): string {
+  return `${addr}:${len}`;
+}
+
 export function useEmulator(): EmulatorState {
-  const emuRef = useRef<EmulatorInstance | null>(null);
+  const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
-  const rafRef = useRef<number | null>(null);
-  const instructionCountRef = useRef(0);
   const sourceRef = useRef("");
+  const frameRef = useRef(0);
+  // Per-frame memory cache. Cleared when the worker bumps `frame`, so
+  // panels never read stale bytes. Stores Uint8Arrays keyed by addr+len.
+  const memCacheRef = useRef<Map<string, Uint8Array>>(new Map());
+  const memPendingRef = useRef<Set<string>>(new Set());
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registers, setRegisters] = useState<string[]>(
-    () => Array(31).fill("0x0000000000000000")
+    () => Array(31).fill("0x0000000000000000"),
   );
   const [sp, setSp] = useState("0x0000000080000000");
   const [pc, setPc] = useState(0x400000);
@@ -124,15 +126,52 @@ export function useEmulator(): EmulatorState {
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [hostedMode, setHostedMode] = useState(false);
   const [vfsFiles, setVfsFiles] = useState<string[]>([]);
+  const [savedStates, setSavedStates] = useState<string[]>([]);
+  // Tick increments whenever cache state changes so panels re-render.
+  const [memTick, setMemTick] = useState(0);
 
-  // load WASM on mount
+  const applySnapshot = useCallback((snap: StateSnapshot) => {
+    if (snap.frame > frameRef.current) {
+      frameRef.current = snap.frame;
+      memCacheRef.current.clear();
+      memPendingRef.current.clear();
+      setMemTick((t) => t + 1);
+    }
+    setRegisters(snap.registers);
+    setSp(snap.sp);
+    setPc(Number(BigInt(snap.pc)));
+    setNzcv(snap.nzcv);
+    setChangedRegs(new Set(snap.changedRegs));
+    setIsHalted(snap.halted);
+    setBlocked(snap.blocked);
+    setExitCode(snap.exitCode);
+    setCanStepBack(snap.canStepBack);
+    setVfsFiles(snap.vfsFiles);
+    setSavedStates(snap.savedStates);
+    if (snap.stdoutDelta) setStdout((prev) => prev + snap.stdoutDelta);
+    if (snap.stderrDelta) setStderr((prev) => prev + snap.stderrDelta);
+    const instrIndex = (Number(BigInt(snap.pc)) - codeBase) / 4;
+    if (instrIndex >= 0) {
+      setCurrentLine(pcToSourceLine(instrIndex, sourceRef.current));
+    }
+  }, [codeBase]);
+
+  // Load backend on mount.
   useEffect(() => {
     let cancelled = false;
-    loadEmulator()
-      .then((emu) => {
+    const backend = pickBackend();
+    backendRef.current = backend;
+    const unsubscribe = backend.onSnapshot((snap) => {
+      if (!cancelled) applySnapshot(snap);
+    });
+    backend
+      .init()
+      .then(async (snap) => {
         if (cancelled) return;
-        emuRef.current = emu;
-        setCodeBase(emu.codeBase());
+        applySnapshot(snap);
+        const base = await backend.codeBase();
+        if (cancelled) return;
+        setCodeBase(base);
         setIsLoaded(true);
       })
       .catch((err: unknown) => {
@@ -142,58 +181,26 @@ export function useEmulator(): EmulatorState {
       });
     return () => {
       cancelled = true;
+      unsubscribe();
     };
-  }, []);
-
-  const syncState = useCallback(() => {
-    const emu = emuRef.current;
-    if (!emu) return;
-
-    const regs = emu.getAllRegisters();
-    setRegisters(regs.gpr);
-    setSp(regs.sp);
-    setPc(Number(BigInt("0x" + regs.pc.slice(2))));
-    setNzcv(regs.nzcv);
-
-    const changed = emu.getChangedRegisters();
-    setChangedRegs(new Set(changed));
-
-    setIsHalted(emu.isHalted());
-    setBlocked(emu.isBlocked());
-    setExitCode(emu.getExitCode());
-    setCanStepBack(emu.canStepBack());
-
-    // Drain any stdout/stderr the hosted runtime produced this step.
-    const out = emu.takeStdout();
-    if (out.length > 0) setStdout((prev) => prev + out);
-    const err = emu.takeStderr();
-    if (err.length > 0) setStderr((prev) => prev + err);
-
-    // compute current source line from PC
-    const currentPc = emu.getPc();
-    const base = emu.codeBase();
-    if (currentPc >= base) {
-      const instrIndex = (currentPc - base) / 4;
-      setCurrentLine(pcToSourceLine(instrIndex, sourceRef.current));
-    }
+    // applySnapshot depends on codeBase but we want this to run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const assemble = useCallback(
     (source: string, args: string[] = []) => {
-      const emu = emuRef.current;
-      if (!emu) return;
-
+      const backend = backendRef.current;
+      if (!backend) return;
       sourceRef.current = source;
       setError(null);
       setAssemblyErrors([]);
       setIsRunning(false);
       runningRef.current = false;
       setStepCount(0);
+      setStdout("");
+      setStderr("");
       setHostedMode(detectHostedMode(source));
 
-      // stripping comments and whitespace tells us whether there's anything
-      // to assemble at all; the rust assembler accepts empty input but the
-      // result is a zero-instruction program that can't be stepped
       const hasContent = source
         .split("\n")
         .some((line) => {
@@ -206,278 +213,255 @@ export function useEmulator(): EmulatorState {
         return;
       }
 
-      const result: AssembleResult =
-        args.length > 0
-          ? emu.assembleAndLoadWithArgs(source, args)
-          : emu.assembleAndLoad(source);
-
-      if (!result.success) {
-        const errors: AssemblyError[] = [];
-        if (result.error_line != null && result.error != null) {
-          errors.push({ line: result.error_line, message: result.error });
-        }
-        setAssemblyErrors(errors);
-        setError(result.error);
-        return;
-      }
-
-      instructionCountRef.current = result.instruction_count;
-
-      // build instruction list by reading encoded bytes
-      const instrs: DecodedInstruction[] = [];
-      const base = emu.codeBase();
-      for (let i = 0; i < result.instruction_count; i++) {
-        const addr = base + i * 4;
-        const bytes = emu.getMemoryRange(addr, 4);
-        const word =
-          bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
-        const hex = "0x" + (word >>> 0).toString(16).padStart(8, "0");
-        const srcLine = getSourceLineText(i, source);
-        instrs.push({ address: addr, hex, text: srcLine });
-      }
-      setInstructions(instrs);
-
-      syncState();
+      backend
+        .assemble(source, args)
+        .then(async ({ result }) => {
+          if (!result.success) {
+            const errors: AssemblyError[] = [];
+            if (result.error_line != null && result.error != null) {
+              errors.push({ line: result.error_line, message: result.error });
+            }
+            setAssemblyErrors(errors);
+            setError(result.error ?? null);
+            return;
+          }
+          const base = await backend.codeBase();
+          const instrs: DecodedInstruction[] = [];
+          for (let i = 0; i < result.instruction_count; i++) {
+            const addr = base + i * 4;
+            const bytes = await backend.getMemory(addr, 4);
+            const word =
+              (bytes[0] ?? 0) |
+              ((bytes[1] ?? 0) << 8) |
+              ((bytes[2] ?? 0) << 16) |
+              ((bytes[3] ?? 0) << 24);
+            const hex = "0x" + (word >>> 0).toString(16).padStart(8, "0");
+            const srcLine = getSourceLineText(i, source);
+            instrs.push({ address: addr, hex, text: srcLine });
+          }
+          setInstructions(instrs);
+        })
+        .catch((e: unknown) => {
+          setError(e instanceof Error ? e.message : String(e));
+        });
     },
-    [syncState]
+    [],
   );
 
   const step = useCallback(() => {
-    const emu = emuRef.current;
-    if (!emu) return;
-
+    const backend = backendRef.current;
+    if (!backend) return;
     setError(null);
-    const result = emu.step();
-    if (result.error) {
-      setError(result.error);
-    }
-    setStepCount((c) => c + 1);
-    syncState();
-  }, [syncState]);
+    backend
+      .step()
+      .then(({ stepResult }) => {
+        if (stepResult.error) setError(stepResult.error);
+        setStepCount((c) => c + 1);
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+      });
+  }, []);
 
   const stepBack = useCallback(() => {
-    const emu = emuRef.current;
-    if (!emu) return;
+    const backend = backendRef.current;
+    if (!backend) return;
     setError(null);
-    emu.stepBack();
-    setStepCount((c) => Math.max(0, c - 1));
-    syncState();
-  }, [syncState]);
-
-  const [savedStates, setSavedStates] = useState<string[]>([]);
-  const refreshSaves = useCallback(() => {
-    const emu = emuRef.current;
-    if (!emu) return;
-    setSavedStates(emu.listStates());
+    backend
+      .stepBack()
+      .then(() => setStepCount((c) => Math.max(0, c - 1)))
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+      });
   }, []);
-  const saveState = useCallback(
-    (name: string) => {
-      const emu = emuRef.current;
-      if (!emu || !name) return;
-      emu.saveState(name);
-      refreshSaves();
-    },
-    [refreshSaves],
-  );
-  const loadState = useCallback(
-    (name: string) => {
-      const emu = emuRef.current;
-      if (!emu) return;
-      if (emu.loadState(name)) {
-        syncState();
-      }
-    },
-    [syncState],
-  );
-  const deleteState = useCallback(
-    (name: string) => {
-      const emu = emuRef.current;
-      if (!emu) return;
-      emu.deleteState(name);
-      refreshSaves();
-    },
-    [refreshSaves],
-  );
+
+  const saveState = useCallback((name: string) => {
+    const backend = backendRef.current;
+    if (!backend || !name) return;
+    void backend.saveState(name);
+  }, []);
+
+  const loadState = useCallback((name: string) => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    void backend.loadState(name);
+  }, []);
+
+  const deleteState = useCallback((name: string) => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    void backend.deleteState(name);
+  }, []);
 
   const run = useCallback(() => {
-    const emu = emuRef.current;
-    if (!emu || emu.isHalted()) return;
-
+    const backend = backendRef.current;
+    if (!backend || isHalted) return;
     setIsRunning(true);
     runningRef.current = true;
-
-    const tick = () => {
-      if (!runningRef.current || !emuRef.current) return;
-
-      const result = emuRef.current.runUntilBreak(10000);
-      setStepCount((c) => c + result.steps_executed);
-      syncState();
-
-      if (result.error) {
-        setError(result.error);
+    backend
+      .runUntilBreak(1_000_000)
+      .then(({ runResult }) => {
+        setStepCount((c) => c + runResult.steps_executed);
+        if (runResult.error) setError(runResult.error);
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
         setIsRunning(false);
         runningRef.current = false;
-        return;
-      }
-
-      if (result.halted || result.hit_breakpoint) {
-        setIsRunning(false);
-        runningRef.current = false;
-        return;
-      }
-
-      // run_until_break also exits if the CPU is now blocked on stdin.
-      if (emuRef.current.isBlocked()) {
-        setIsRunning(false);
-        runningRef.current = false;
-        return;
-      }
-
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
-  }, [syncState]);
+      });
+  }, [isHalted]);
 
   const pause = useCallback(() => {
+    const backend = backendRef.current;
+    if (!backend) return;
     runningRef.current = false;
     setIsRunning(false);
-    if (rafRef.current != null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
+    void backend.pause();
   }, []);
 
   const reset = useCallback(() => {
-    const emu = emuRef.current;
-    if (!emu) return;
-
-    pause();
-    emu.reset();
+    const backend = backendRef.current;
+    if (!backend) return;
+    runningRef.current = false;
+    setIsRunning(false);
     setError(null);
     setAssemblyErrors([]);
     setInstructions([]);
     setCurrentLine(null);
     setStdout("");
     setStderr("");
-    setBlocked(false);
-    setExitCode(null);
-    setVfsFiles([]);
     setStepCount(0);
-    syncState();
-  }, [pause, syncState]);
-
-  const pushStdin = useCallback(
-    (s: string) => {
-      const emu = emuRef.current;
-      if (!emu) return;
-      emu.pushStdin(s);
-      setBlocked(false);
-      // If the program was paused waiting for input, a single step resumes
-      // it; the caller (ConsolePanel) usually wants to continue running.
-      if (runningRef.current) {
-        return;
-      }
-      // Auto-step once so the stalled scanf/read drains the new input and
-      // the UI reflects the updated register state immediately.
-      emu.step();
-      syncState();
-    },
-    [syncState]
-  );
-
-  const uploadVfsFile = useCallback(
-    (path: string, data: Uint8Array) => {
-      const emu = emuRef.current;
-      if (!emu) return;
-      emu.uploadVfsFile(path, data);
-      setVfsFiles(emu.listVfsFiles());
-    },
-    []
-  );
-
-  const clearConsole = useCallback(() => {
-    const emu = emuRef.current;
-    if (!emu) return;
-    emu.clearConsole();
-    setStdout("");
-    setStderr("");
+    void backend.reset();
   }, []);
 
-  const toggleBreakpoint = useCallback(
-    (line: number) => {
-      const emu = emuRef.current;
-      if (!emu) return;
+  const pushStdin = useCallback((s: string) => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    void backend.pushStdin(s);
+  }, []);
 
-      const instrIndex = sourceLineToInstrIndex(line, sourceRef.current);
-      if (instrIndex === null) return;
+  const uploadVfsFile = useCallback((path: string, data: Uint8Array) => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    void backend.uploadVfsFile(path, data);
+  }, []);
 
-      const addr = emu.codeBase() + instrIndex * 4;
+  const clearConsole = useCallback(() => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    setStdout("");
+    setStderr("");
+    void backend.clearConsole();
+  }, []);
 
-      setBreakpoints((prev) => {
-        const next = new Set(prev);
-        if (next.has(line)) {
-          next.delete(line);
-          emu.clearBreakpoint(addr);
-        } else {
-          next.add(line);
-          emu.setBreakpoint(addr);
-        }
-        return next;
-      });
-    },
-    []
-  );
+  const toggleBreakpoint = useCallback((line: number) => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    const instrIndex = sourceLineToInstrIndex(line, sourceRef.current);
+    if (instrIndex === null) return;
+    const addr = codeBase + instrIndex * 4;
+    setBreakpoints((prev) => {
+      const next = new Set(prev);
+      if (next.has(line)) {
+        next.delete(line);
+        void backend.clearBreakpoint(addr);
+      } else {
+        next.add(line);
+        void backend.setBreakpoint(addr);
+      }
+      return next;
+    });
+  }, [codeBase]);
 
+  // Synchronous read from the per-frame cache. On a miss we kick off
+  // an async fetch; the next snapshot/heartbeat will trigger a re-
+  // render with the bytes available.
   const getMemory = useCallback(
     (addr: number, len: number): Uint8Array => {
-      const emu = emuRef.current;
-      if (!emu) return new Uint8Array(len);
-      return emu.getMemoryRange(addr, len);
+      const backend = backendRef.current;
+      if (!backend) return new Uint8Array(len);
+      const key = memCacheKey(addr, len);
+      const cached = memCacheRef.current.get(key);
+      if (cached) return cached;
+      if (!memPendingRef.current.has(key)) {
+        memPendingRef.current.add(key);
+        backend
+          .getMemory(addr, len)
+          .then((bytes) => {
+            memCacheRef.current.set(key, bytes);
+            memPendingRef.current.delete(key);
+            setMemTick((t) => t + 1);
+          })
+          .catch(() => {
+            memPendingRef.current.delete(key);
+          });
+      }
+      return new Uint8Array(len);
     },
-    []
+    // memTick included so React knows this callback closure should
+    // re-fire on cache invalidation; not strictly required since the
+    // cache lives in refs but keeps the dependency set honest.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [memTick],
   );
 
-  return {
-    isLoaded,
-    loadError,
-    registers,
-    sp,
-    pc,
-    nzcv,
-    changedRegs,
-    isRunning,
-    isHalted,
-    error,
-    assemblyErrors,
-    breakpoints,
-    currentLine,
-    instructions,
-    codeBase,
-    stdout,
-    stderr,
-    blocked,
-    exitCode,
-    hostedMode,
-    vfsFiles,
-    assemble,
-    step,
-    stepBack,
-    canStepBack,
-    stepCount,
-    savedStates,
-    saveState,
-    loadState,
-    deleteState,
-    run,
-    pause,
-    reset,
-    toggleBreakpoint,
-    getMemory,
-    pushStdin,
-    uploadVfsFile,
-    clearConsole,
-  };
+  // Memoized return so consumers' useCallback/useMemo dependents don't
+  // see a fresh object every render.
+  return useMemo(
+    () => ({
+      isLoaded,
+      loadError,
+      registers,
+      sp,
+      pc,
+      nzcv,
+      changedRegs,
+      isRunning,
+      isHalted,
+      error,
+      assemblyErrors,
+      breakpoints,
+      currentLine,
+      instructions,
+      codeBase,
+      stdout,
+      stderr,
+      blocked,
+      exitCode,
+      hostedMode,
+      vfsFiles,
+      assemble,
+      step,
+      stepBack,
+      canStepBack,
+      stepCount,
+      savedStates,
+      saveState,
+      loadState,
+      deleteState,
+      run,
+      pause,
+      reset,
+      toggleBreakpoint,
+      getMemory,
+      pushStdin,
+      uploadVfsFile,
+      clearConsole,
+    }),
+    // memTick is intentionally a dep so getMemory closures re-render
+    // when the cache fills.
+    [
+      isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
+      isRunning, isHalted, error, assemblyErrors, breakpoints,
+      currentLine, instructions, codeBase, stdout, stderr, blocked,
+      exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
+      savedStates, assemble, step, stepBack, saveState, loadState,
+      deleteState, run, pause, reset, toggleBreakpoint, getMemory,
+      pushStdin, uploadVfsFile, clearConsole,
+    ],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -490,7 +474,7 @@ function pcToSourceLine(instrIndex: number, source: string): number | null {
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
     if (!trimmed || trimmed.endsWith(":")) continue;
-    if (idx === instrIndex) return i + 1; // 1-based
+    if (idx === instrIndex) return i + 1;
     idx++;
   }
   return null;
@@ -498,7 +482,7 @@ function pcToSourceLine(instrIndex: number, source: string): number | null {
 
 function sourceLineToInstrIndex(
   line: number,
-  source: string
+  source: string,
 ): number | null {
   const lines = source.split("\n");
   let idx = 0;
