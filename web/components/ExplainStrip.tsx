@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { lookupDoc } from "@/lib/instruction-docs";
 
 export interface ExplainStripProps {
@@ -36,9 +36,24 @@ function writeEnabled(on: boolean): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, on ? "on" : "off");
+    window.dispatchEvent(new CustomEvent("aarch64-playground:explain-strip-changed"));
   } catch {
     // ignore quota / private mode failures
   }
+}
+
+function subscribeEnabled(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) callback();
+  };
+  const onCustom = () => callback();
+  window.addEventListener("storage", onStorage);
+  window.addEventListener("aarch64-playground:explain-strip-changed", onCustom);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener("aarch64-playground:explain-strip-changed", onCustom);
+  };
 }
 
 function describeLine(
@@ -87,11 +102,11 @@ function resolveAliases(operands: string, aliases: Record<string, string>): stri
  * editor. Toggle persists in localStorage; on by default.
  */
 export function ExplainStrip({ source, currentLine }: ExplainStripProps) {
-  const [enabled, setEnabled] = useState<boolean>(true);
-  // Avoid SSR mismatch by reading localStorage after mount.
-  useEffect(() => {
-    setEnabled(readEnabled());
-  }, []);
+  // useSyncExternalStore reads the same localStorage flag the toggle
+  // writes to. Server snapshot stays `true` (the default-on state) so
+  // hydration matches; the client snapshot can flip on the first
+  // commit if the user previously hid the strip.
+  const enabled = useSyncExternalStore(subscribeEnabled, readEnabled, () => true);
 
   const aliases = useMemo(() => extractAliases(source), [source]);
 
@@ -108,7 +123,6 @@ export function ExplainStrip({ source, currentLine }: ExplainStripProps) {
         <button
           type="button"
           onClick={() => {
-            setEnabled(true);
             writeEnabled(true);
           }}
           className="hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] rounded px-1"
@@ -131,7 +145,6 @@ export function ExplainStrip({ source, currentLine }: ExplainStripProps) {
       <button
         type="button"
         onClick={() => {
-          setEnabled(false);
           writeEnabled(false);
         }}
         className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] rounded px-1 shrink-0"
