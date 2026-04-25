@@ -20,6 +20,7 @@ import { ResizableLayout } from "@/components/ResizableLayout";
 import { MobileLayout } from "@/components/MobileLayout";
 import { ImportExport } from "@/components/ImportExport";
 import { useToast } from "@/components/Toast";
+import { HeaderOverflowSheet } from "@/components/HeaderOverflowSheet";
 import {
   describeTarget,
   getImportTarget,
@@ -118,6 +119,7 @@ export default function Home() {
   const [view, setView] = useState<"playground" | "c-to-asm">(initialView);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareBanner, setShareBanner] = useState(fromShare);
   const [diffOpen, setDiffOpen] = useState(false);
@@ -573,6 +575,92 @@ export default function Home() {
     [setSource],
   );
 
+  // Buttons that live in the header at md+ and inside the overflow sheet
+  // below md. `after` fires after the action runs so the sheet auto-closes
+  // when one is chosen on a phone.
+  const renderSecondaryActions = (after?: () => void) => {
+    const wrap = <T extends () => void>(fn: T) => () => {
+      fn();
+      after?.();
+    };
+    return (
+      <>
+        <RecentPrograms
+          entries={recent.entries}
+          onLoad={(body) => {
+            loadAsBaseline(body, "recent program");
+            after?.();
+          }}
+          onClear={recent.clear}
+        />
+        <button
+          type="button"
+          onClick={wrap(() =>
+            setView(view === "c-to-asm" ? "playground" : "c-to-asm"),
+          )}
+          className={`text-xs rounded px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] whitespace-nowrap ${
+            view === "c-to-asm"
+              ? "bg-[var(--accent)] text-black"
+              : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
+          }`}
+          aria-pressed={view === "c-to-asm"}
+        >
+          C -&gt; asm
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => setShareOpen(true))}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="share program"
+        >
+          share
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => setDiffOpen(true))}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="diff against baseline"
+        >
+          diff
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => setTutorialOpen(true))}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="open tutorial runner"
+        >
+          tour
+        </button>
+        <button
+          type="button"
+          onClick={wrap(toggleTheme)}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="toggle theme"
+        >
+          theme
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => setPaletteOpen(true))}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="open command palette"
+        >
+          cmd
+        </button>
+        <a
+          href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded px-1"
+          aria-label="View source on GitHub"
+          onClick={() => after?.()}
+        >
+          source
+        </a>
+      </>
+    );
+  };
+
   if (emu.loadError) {
     return (
       <div className="flex flex-col flex-1 min-h-0 items-center justify-center gap-3 px-6 text-center">
@@ -604,63 +692,19 @@ export default function Home() {
         <ExampleLoader
           onLoad={(src, label) => loadAsBaseline(src, label ?? "example")}
         />
-        <RecentPrograms
-          entries={recent.entries}
-          onLoad={(body) => loadAsBaseline(body, "recent program")}
-          onClear={recent.clear}
-        />
-        <button
-          type="button"
-          onClick={() => setView(view === "c-to-asm" ? "playground" : "c-to-asm")}
-          className={`text-xs rounded px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] whitespace-nowrap ${
-            view === "c-to-asm"
-              ? "bg-[var(--accent)] text-black"
-              : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
-          }`}
-          aria-pressed={view === "c-to-asm"}
-        >
-          C -&gt; asm
-        </button>
         <ImportExport source={source} target={importTarget} onImport={handleImport} />
+        <div className="hidden md:flex items-center gap-3">
+          {renderSecondaryActions()}
+        </div>
         <button
           type="button"
-          onClick={() => setShareOpen(true)}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="share program"
+          onClick={() => setOverflowOpen(true)}
+          className="md:hidden text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="more actions"
+          aria-haspopup="dialog"
+          aria-expanded={overflowOpen}
         >
-          share
-        </button>
-        <button
-          type="button"
-          onClick={() => setDiffOpen(true)}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="diff against baseline"
-        >
-          diff
-        </button>
-        <button
-          type="button"
-          onClick={() => setTutorialOpen(true)}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="open tutorial runner"
-        >
-          tour
-        </button>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="toggle theme"
-        >
-          theme
-        </button>
-        <button
-          type="button"
-          onClick={() => setPaletteOpen(true)}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="open command palette"
-        >
-          cmd
+          ...
         </button>
         <div className="flex-1" />
         <button
@@ -671,16 +715,10 @@ export default function Home() {
         >
           ?
         </button>
-        <a
-          href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
-          target="_blank"
-          rel="noreferrer noopener"
-          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded px-1"
-          aria-label="View source on GitHub"
-        >
-          source
-        </a>
       </div>
+      <HeaderOverflowSheet open={overflowOpen} onClose={() => setOverflowOpen(false)}>
+        {renderSecondaryActions(() => setOverflowOpen(false))}
+      </HeaderOverflowSheet>
 
       {shareBanner && (
         <div
