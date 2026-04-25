@@ -491,6 +491,13 @@ impl Emulator {
         names
     }
 
+    /// Read a VFS file's bytes. Returns an empty array when the path is
+    /// absent so the JS side can distinguish "missing" from "empty file"
+    /// via `list_vfs_files()` if it cares.
+    pub fn read_vfs_file(&self, path: &str) -> Vec<u8> {
+        self.cpu.vfs.get(path).cloned().unwrap_or_default()
+    }
+
     /// Clear stdout/stderr scrollback without resetting CPU state.
     pub fn clear_console(&mut self) {
         self.cpu.clear_console();
