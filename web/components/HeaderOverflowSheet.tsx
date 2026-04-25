@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface HeaderOverflowSheetProps {
   open: boolean;
@@ -20,45 +21,8 @@ export function HeaderOverflowSheet({
   children,
   ariaLabel = "more actions",
 }: HeaderOverflowSheetProps) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    const focusables = getFocusables(sheetRef.current);
-    focusables[0]?.focus();
-    return () => {
-      previouslyFocused.current?.focus?.();
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      if (e.key === "Tab") {
-        const focusables = getFocusables(sheetRef.current);
-        if (focusables.length === 0) return;
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        const active = document.activeElement;
-        if (e.shiftKey && active === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && active === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(open, ref, onClose);
 
   if (!open) return null;
 
@@ -69,7 +33,7 @@ export function HeaderOverflowSheet({
       className="fixed inset-0 z-40 bg-black/40"
     >
       <div
-        ref={sheetRef}
+        ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
@@ -81,11 +45,4 @@ export function HeaderOverflowSheet({
       </div>
     </div>
   );
-}
-
-function getFocusables(root: HTMLElement | null): HTMLElement[] {
-  if (!root) return [];
-  const sel =
-    'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
-  return Array.from(root.querySelectorAll<HTMLElement>(sel));
 }
