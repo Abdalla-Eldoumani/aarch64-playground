@@ -13,6 +13,7 @@ import { MemoryPanel } from "@/components/MemoryPanel";
 import { StackPanel } from "@/components/StackPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
 import { Controls } from "@/components/Controls";
+import { ExplainStrip } from "@/components/ExplainStrip";
 import { InstructionView } from "@/components/InstructionView";
 import { ExampleLoader } from "@/components/ExampleLoader";
 import { RecentPrograms } from "@/components/RecentPrograms";
@@ -893,6 +894,7 @@ export default function Home() {
         error={emu.error}
         stepCount={emu.stepCount}
       />
+      <ExplainStrip source={source} currentLine={emu.currentLine} />
 
       <CommandPalette
         open={paletteOpen}
