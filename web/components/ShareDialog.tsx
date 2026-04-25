@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { buildShareUrl } from "@/lib/share";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface ShareDialogProps {
   open: boolean;
@@ -16,18 +17,11 @@ export interface ShareDialogProps {
  */
 export function ShareDialog({ open, source, onClose }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(open, ref, onClose);
   // Build the URL during render; since we only read `source` and
   // `open`, this stays consistent without a setState-in-effect round.
   const url = open ? buildShareUrl(source) : "";
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -62,6 +56,7 @@ export function ShareDialog({ open, source, onClose }: ShareDialogProps) {
       onClick={onClose}
     >
       <div
+        ref={ref}
         className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
