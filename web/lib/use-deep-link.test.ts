@@ -55,6 +55,25 @@ describe("parseDeepLink", () => {
       embed: true,
     });
   });
+
+  test("?bundle=<lz> decodes into the deep link's bundle field", async () => {
+    const { encodeBundle } = await import("@/lib/diagnostic-bundle");
+    const encoded = encodeBundle({
+      source: ".text\nmain:\n    mov x0, 9\n    svc 0\n",
+      args: "demo",
+      exitCode: 9,
+    });
+    const dl = parseDeepLink(`?bundle=${encoded}`);
+    expect(dl.bundle).not.toBeUndefined();
+    expect(dl.bundle!.source).toContain("mov x0, 9");
+    expect(dl.bundle!.args).toBe("demo");
+    expect(dl.bundle!.exitCode).toBe(9);
+  });
+
+  test("malformed ?bundle is silently dropped", () => {
+    const dl = parseDeepLink("?bundle=not-a-payload");
+    expect(dl.bundle).toBeUndefined();
+  });
 });
 
 describe("buildDeepLinkQuery", () => {
