@@ -55,6 +55,100 @@ fn load_imm64(rd: u8, value: u64, out: &mut Vec<u32>) {
 }
 
 #[test]
+fn printf_spills_ninth_int_arg_to_stack() {
+    // AAPCS64: x0 = fmt, x1..x7 = vararg ints 1..7. Beyond x7, ints
+    // spill to the stack starting at SP+0, advancing 8 bytes per arg.
+    // 3 doubles all fit in d0..d2 so no fp spill happens here -- this
+    // test exercises the int-spill path the corpus would otherwise
+    // never reach.
+    let mut cpu = Cpu::new();
+    let printf_addr = cpu.host.register("printf", printf::printf);
+
+    let data_base = 0x0060_0000u64;
+    let fmt = b"%d %d %d %d %d %d %d %d %d %.1f %.1f %.1f\n\0";
+    for (i, b) in fmt.iter().enumerate() {
+        cpu.mem.write_u8(data_base + i as u64, *b).unwrap();
+    }
+
+    // Pre-populate the FP register file so we don't need to encode FMOV
+    // sequences in the test program.
+    cpu.regs.write_fpr_f64(0, 1.5);
+    cpu.regs.write_fpr_f64(1, 2.5);
+    cpu.regs.write_fpr_f64(2, 3.5);
+
+    // Spill slots for ints 8 and 9. The walker reads from SP at the
+    // call site; we leave SP at STACK_BASE so SP+0 = STACK_BASE.
+    let spill_base = STACK_BASE;
+    cpu.mem.write_u64(spill_base, 8).unwrap();
+    cpu.mem.write_u64(spill_base + 8, 9).unwrap();
+
+    // Program: load fmt + 7 register-resident ints + printf stub, BLR.
+    let mut prog: Vec<u32> = Vec::new();
+    load_imm64(0, data_base, &mut prog);
+    for i in 1u8..=7u8 {
+        load_imm64(i, i as u64, &mut prog);
+    }
+    load_imm64(16, printf_addr, &mut prog);
+    prog.push(blr(16));
+    prog.push(svc(1));
+    cpu.load_program(&prog);
+
+    let result = cpu.run_until_break(2000).unwrap();
+    assert!(result.halted, "program should have halted");
+    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    assert_eq!(stdout, "1 2 3 4 5 6 7 8 9 1.5 2.5 3.5\n");
+}
+
+#[test]
+fn printf_int_and_float_spill_share_stack_cursor() {
+    // The shared-NSAA case: enough ints AND enough doubles to spill
+    // both register files, so the walker must advance ONE stack
+    // cursor (not two independent ones). With the old code each type
+    // had its own (idx-8)*8 formula and the spilled int + spilled
+    // double would collide at SP+0.
+    let mut cpu = Cpu::new();
+    let printf_addr = cpu.host.register("printf", printf::printf);
+
+    let data_base = 0x0060_0000u64;
+    // 8 ints (last spills) followed by 9 doubles (last spills).
+    let fmt = b"%d %d %d %d %d %d %d %d %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f\n\0";
+    for (i, b) in fmt.iter().enumerate() {
+        cpu.mem.write_u8(data_base + i as u64, *b).unwrap();
+    }
+
+    // d0..d7 carry doubles 1..8. Double 9 spills.
+    for n in 0u8..8u8 {
+        cpu.regs.write_fpr_f64(n, (n as f64) + 1.0);
+    }
+
+    // Stack layout (SP-relative):
+    //   SP+0:  spilled int 8     -> walker reads first
+    //   SP+8:  spilled double 9  -> walker reads second (shared cursor)
+    let spill_base = STACK_BASE;
+    cpu.mem.write_u64(spill_base, 8).unwrap();
+    cpu.mem.write_u64(spill_base + 8, 9.0f64.to_bits()).unwrap();
+
+    // Program: x0 = fmt, x1..x7 = ints 1..7, BLR printf.
+    let mut prog: Vec<u32> = Vec::new();
+    load_imm64(0, data_base, &mut prog);
+    for i in 1u8..=7u8 {
+        load_imm64(i, i as u64, &mut prog);
+    }
+    load_imm64(16, printf_addr, &mut prog);
+    prog.push(blr(16));
+    prog.push(svc(1));
+    cpu.load_program(&prog);
+
+    let result = cpu.run_until_break(2000).unwrap();
+    assert!(result.halted, "program should have halted");
+    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    assert_eq!(
+        stdout,
+        "1 2 3 4 5 6 7 8 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0\n"
+    );
+}
+
+#[test]
 fn printf_via_host_stub_emits_to_stdout() {
     let mut cpu = Cpu::new();
     let printf_addr = cpu.host.register("printf", printf::printf);
