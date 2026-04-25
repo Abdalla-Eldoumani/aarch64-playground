@@ -13,6 +13,7 @@ import { MemoryPanel } from "@/components/MemoryPanel";
 import { StackPanel } from "@/components/StackPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
 import { Controls } from "@/components/Controls";
+import { DiagnosticBundle } from "@/components/DiagnosticBundle";
 import { ExplainStrip } from "@/components/ExplainStrip";
 import { InstructionView } from "@/components/InstructionView";
 import { ExampleLoader } from "@/components/ExampleLoader";
@@ -654,7 +655,11 @@ export default function Home() {
     if (dl.theme) setTheme(dl.theme);
     if (dl.view) setView(dl.view);
     if (dl.embed) setEmbed(true);
-    if (dl.example) {
+    if (dl.bundle) {
+      loadAsBaseline(dl.bundle.source, "diagnostic bundle");
+      if (dl.bundle.args !== undefined) setArgsText(dl.bundle.args);
+      if (dl.bundle.stdin) emu.pushStdin(dl.bundle.stdin);
+    } else if (dl.example) {
       const tryLoad = async (ext: "asm" | "s") => {
         const res = await fetch(`/examples/cpsc355/${dl.example}.${ext}`);
         if (!res.ok) return false;
@@ -719,6 +724,29 @@ export default function Home() {
         >
           diff
         </button>
+        <DiagnosticBundle
+          build={() => ({
+            source,
+            args: argsText || undefined,
+            stdin: undefined,
+            stdout: emu.stdout || undefined,
+            stderr: emu.stderr || undefined,
+            exitCode: emu.exitCode,
+            registers: emu.registers,
+            sp: emu.sp,
+            pc: `0x${emu.pc.toString(16).padStart(16, "0")}`,
+            stackBytes: (() => {
+              const spNum = Number(BigInt(emu.sp));
+              if (!Number.isFinite(spNum)) return undefined;
+              const top = emu.getMemory(spNum, 64);
+              if (!top.length) return undefined;
+              return Array.from(top)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(" ");
+            })(),
+            error: emu.error,
+          })}
+        />
         <button
           type="button"
           onClick={wrap(() => setTutorialOpen(true))}
