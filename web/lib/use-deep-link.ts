@@ -1,5 +1,6 @@
 "use client";
 
+import { decodeBundle, type DiagnosticBundle } from "@/lib/diagnostic-bundle";
 import type { Theme } from "@/lib/use-theme";
 
 export interface DeepLink {
@@ -7,6 +8,8 @@ export interface DeepLink {
   example?: string;
   theme?: Theme;
   embed: boolean;
+  /** Decoded `?bundle=<lz>` payload, when present and well-formed. */
+  bundle?: DiagnosticBundle;
 }
 
 /**
@@ -31,6 +34,9 @@ export function parseDeepLink(search: string): DeepLink {
   }
 
   result.embed = params.get("embed") === "1";
+
+  const bundle = decodeBundle(params.get("bundle"));
+  if (bundle) result.bundle = bundle;
 
   return result;
 }
