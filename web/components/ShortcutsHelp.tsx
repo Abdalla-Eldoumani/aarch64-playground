@@ -37,7 +37,7 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
         className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3">
+        <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
           keyboard shortcuts
         </h2>
         <dl className="text-xs space-y-1.5">
