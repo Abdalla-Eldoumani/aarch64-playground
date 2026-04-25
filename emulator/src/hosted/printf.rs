@@ -1,24 +1,67 @@
 //! printf implementation. Double-precision floats and 64-bit ints cover
-//! every format the corpus uses. Varargs follow the AAPCS64 rules:
-//! integer/pointer args live in x0..x7, double args in d0..d7, and the
-//! two counters advance independently so `printf("%d %f %d %f", ...)`
-//! pulls x0 d0 x1 d1 without one stream jumping over the other.
-//!
-//! The first argument (the format string pointer) is always in x0, so the
-//! int counter starts at 1; the float counter starts at 0. The corpus
-//! never exhausts either register file (eight ints + eight doubles), so
-//! stack-spill handling is a phase-G follow-up.
+//! every format the corpus uses. Varargs follow AAPCS64:
+//! - Integer/pointer args use the next general-purpose register (NGRN
+//!   in the spec) starting at the first slot after the fixed parameters.
+//!   For printf, `x0` holds the format string pointer, so vararg ints
+//!   start at `x1` and run through `x7` before spilling.
+//! - Double args use the next SIMD register (NDRN) `d0..d7`.
+//! - Spilled args (NGRN > 7 or NDRN > 7) live on the stack starting at
+//!   the SP at the call site, advancing 8 bytes per spilled arg. The
+//!   stack offset is **shared** between integer and float spills, so a
+//!   format like `"%d ... %f ..."` that exhausts both register files
+//!   reads ints and doubles from the same NSAA cursor in source order.
 
 use crate::errors::EmuError;
 use crate::hosted::{HostContext, HostOutcome};
+
+/// AAPCS64 vararg cursor. Tracks how many GP and SIMD registers have
+/// been consumed and where on the stack the next spilled arg lives.
+struct VarargWalker {
+    /// Next GP register index. <= 7 means read xN; > 7 means spill.
+    gp_idx: u8,
+    /// Next SIMD register index. <= 7 means read dN; > 7 means spill.
+    fp_idx: u8,
+    /// Bytes above SP-at-call-site for the next spilled arg. Shared
+    /// between int and float spills per AAPCS64.
+    stack_off: u64,
+}
+
+impl VarargWalker {
+    fn next_int(&mut self, ctx: &mut HostContext<'_>) -> u64 {
+        if self.gp_idx <= 7 {
+            let v = ctx.regs.read_gpr(self.gp_idx, true);
+            self.gp_idx = self.gp_idx.saturating_add(1);
+            v
+        } else {
+            let sp = ctx.regs.read_sp();
+            let addr = sp.wrapping_add(self.stack_off);
+            self.stack_off = self.stack_off.wrapping_add(8);
+            ctx.mem.read_u64(addr).unwrap_or(0)
+        }
+    }
+
+    fn next_double(&mut self, ctx: &mut HostContext<'_>) -> f64 {
+        if self.fp_idx <= 7 {
+            let v = ctx.regs.read_fpr_f64(self.fp_idx);
+            self.fp_idx = self.fp_idx.saturating_add(1);
+            v
+        } else {
+            let sp = ctx.regs.read_sp();
+            let addr = sp.wrapping_add(self.stack_off);
+            self.stack_off = self.stack_off.wrapping_add(8);
+            ctx.mem.read_u64(addr).map(f64::from_bits).unwrap_or(0.0)
+        }
+    }
+}
 
 pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
     let fmt_bytes = read_c_string(ctx.mem, fmt_ptr)?;
     let fmt = String::from_utf8_lossy(&fmt_bytes).into_owned();
 
-    let mut int_idx: u8 = 1;
-    let mut dbl_idx: u8 = 0;
+    // x0 is the format string (fixed param), so vararg ints start at x1.
+    // d0..d7 are all available for vararg doubles.
+    let mut walker = VarargWalker { gp_idx: 1, fp_idx: 0, stack_off: 0 };
     let mut out: Vec<u8> = Vec::new();
 
     let chars: Vec<char> = fmt.chars().collect();
@@ -39,7 +82,7 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         }
         let conv = chars[i];
         i += 1;
-        format_conversion(&spec, conv, ctx, &mut int_idx, &mut dbl_idx, &mut out)?;
+        format_conversion(&spec, conv, ctx, &mut walker, &mut out)?;
     }
 
     ctx.stdout.extend_from_slice(&out);
@@ -121,14 +164,13 @@ fn format_conversion(
     spec: &FormatSpec,
     conv: char,
     ctx: &mut HostContext<'_>,
-    int_idx: &mut u8,
-    dbl_idx: &mut u8,
+    walker: &mut VarargWalker,
     out: &mut Vec<u8>,
 ) -> Result<(), EmuError> {
     match conv {
         '%' => out.push(b'%'),
         'd' | 'i' => {
-            let raw = next_int(ctx, int_idx);
+            let raw = walker.next_int(ctx);
             let value = raw as i64;
             let mut body = if value < 0 {
                 format!("-{}", (value as i128).unsigned_abs())
@@ -143,13 +185,13 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'u' => {
-            let value = next_int(ctx, int_idx);
+            let value = walker.next_int(ctx);
             let mut body = format!("{value}");
             apply_precision_int(&mut body, spec);
             pad_and_emit(&body, spec, out);
         }
         'x' => {
-            let value = next_int(ctx, int_idx);
+            let value = walker.next_int(ctx);
             let mut body = format!("{value:x}");
             if spec.alt && value != 0 {
                 body = format!("0x{body}");
@@ -158,7 +200,7 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'X' => {
-            let value = next_int(ctx, int_idx);
+            let value = walker.next_int(ctx);
             let mut body = format!("{value:X}");
             if spec.alt && value != 0 {
                 body = format!("0X{body}");
@@ -167,7 +209,7 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'o' => {
-            let value = next_int(ctx, int_idx);
+            let value = walker.next_int(ctx);
             let mut body = format!("{value:o}");
             if spec.alt && !body.starts_with('0') {
                 body = format!("0{body}");
@@ -176,16 +218,16 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'p' => {
-            let value = next_int(ctx, int_idx);
+            let value = walker.next_int(ctx);
             let body = format!("0x{value:x}");
             pad_and_emit(&body, spec, out);
         }
         'c' => {
-            let value = next_int(ctx, int_idx) as u8;
+            let value = walker.next_int(ctx) as u8;
             out.push(value);
         }
         's' => {
-            let ptr = next_int(ctx, int_idx);
+            let ptr = walker.next_int(ctx);
             let bytes = read_c_string(ctx.mem, ptr)?;
             let mut s = String::from_utf8_lossy(&bytes).into_owned();
             if let Some(p) = spec.precision {
@@ -194,7 +236,7 @@ fn format_conversion(
             pad_and_emit(&s, spec, out);
         }
         'f' | 'F' => {
-            let value = next_double(ctx, dbl_idx);
+            let value = walker.next_double(ctx);
             let prec = spec.precision.unwrap_or(6);
             let body = format_fixed(value, prec, spec.plus, spec.space);
             pad_and_emit(&body, spec, out);
@@ -206,36 +248,6 @@ fn format_conversion(
         }
     }
     Ok(())
-}
-
-fn next_int(ctx: &mut HostContext<'_>, idx: &mut u8) -> u64 {
-    let v = if *idx <= 7 {
-        ctx.regs.read_gpr(*idx, true)
-    } else {
-        // Stack spill: read from sp + (idx-8)*8. Not used by the corpus,
-        // but kept safe so we degrade gracefully instead of panicking.
-        let sp = ctx.regs.read_sp();
-        let addr = sp.wrapping_add(((*idx - 8) as u64) * 8);
-        ctx.mem.read_u64(addr).unwrap_or(0)
-    };
-    *idx = idx.saturating_add(1);
-    v
-}
-
-fn next_double(ctx: &mut HostContext<'_>, idx: &mut u8) -> f64 {
-    let v = if *idx <= 7 {
-        ctx.regs.read_fpr_f64(*idx)
-    } else {
-        // Same stack-spill story as next_int; defensive fallback.
-        let sp = ctx.regs.read_sp();
-        let addr = sp.wrapping_add(((*idx - 8) as u64) * 8);
-        ctx.mem
-            .read_u64(addr)
-            .map(f64::from_bits)
-            .unwrap_or(0.0)
-    };
-    *idx = idx.saturating_add(1);
-    v
 }
 
 fn format_fixed(value: f64, precision: usize, plus: bool, space: bool) -> String {
