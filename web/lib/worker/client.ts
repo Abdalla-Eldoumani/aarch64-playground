@@ -2,23 +2,22 @@
 
 import type {
   AssembleResultPayload,
+  Heartbeat,
   Request,
   Response,
   RunResultPayload,
+  StateSnapshot,
   StepResultPayload,
+  WorkerMessage,
 } from "@/lib/worker/protocol";
 
+type SnapshotListener = (snap: StateSnapshot) => void;
+
 /**
- * Promise-returning proxy over the emulator worker. Each call posts a
- * `Request` and awaits the matching `Response` (matched by `id`).
- * Falls back gracefully when `Worker` isn't available -- the caller
- * can detect this via `isWorkerBacked()` and use the main-thread
- * `EmulatorInstance` instead.
- *
- * Phase 2 wires the client up but the default in `useEmulator` stays
- * on the main-thread instance until the panel-side memory cache is in
- * place. To opt in for testing: set `localStorage.setItem(
- * "aarch64-playground:worker", "1")` and reload.
+ * Promise-returning proxy over the emulator worker. Callers get back
+ * an async surface mirroring the in-process EmulatorInstance, plus an
+ * `onSnapshot` subscription that fires for every state change
+ * (response snapshot or run-loop heartbeat).
  */
 export class WorkerClient {
   private worker: Worker;
@@ -27,20 +26,35 @@ export class WorkerClient {
     number,
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
+  private listeners = new Set<SnapshotListener>();
   private initialized = false;
 
   constructor(worker: Worker) {
     this.worker = worker;
-    this.worker.addEventListener("message", (e: MessageEvent<Response>) => {
+    this.worker.addEventListener("message", (e: MessageEvent<WorkerMessage>) => {
       const msg = e.data;
+      if (msg.kind === "heartbeat") {
+        this.notify(msg.snapshot);
+        return;
+      }
       const slot = this.pending.get(msg.id);
       if (!slot) return;
       this.pending.delete(msg.id);
-      if (msg.kind === "ok") slot.resolve(msg.value);
-      else slot.reject(new Error(msg.message));
+      if (msg.kind === "ok") {
+        // If the value carries a snapshot, fire the listener too so the
+        // caller can update React state without unwrapping every method.
+        if (typeof msg.value === "object" && msg.value !== null && "snapshot" in (msg.value as object)) {
+          const snap = (msg.value as { snapshot: StateSnapshot }).snapshot;
+          this.notify(snap);
+        } else if (looksLikeSnapshot(msg.value)) {
+          this.notify(msg.value as StateSnapshot);
+        }
+        slot.resolve(msg.value);
+      } else {
+        slot.reject(new Error(msg.message));
+      }
     });
     this.worker.addEventListener("error", (e: ErrorEvent) => {
-      // Reject every outstanding request so callers don't hang.
       for (const slot of this.pending.values()) {
         slot.reject(new Error(e.message || "worker error"));
       }
@@ -48,47 +62,109 @@ export class WorkerClient {
     });
   }
 
-  isWorkerBacked(): true {
-    return true;
+  onSnapshot(listener: SnapshotListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
-  async init(): Promise<void> {
-    if (this.initialized) return;
-    await this.send<null>({ id: 0, kind: "init" });
+  async init(): Promise<StateSnapshot> {
+    if (this.initialized) {
+      return this.send<StateSnapshot>({ id: 0, kind: "init" });
+    }
+    const snap = await this.send<StateSnapshot>({ id: 0, kind: "init" });
     this.initialized = true;
+    return snap;
   }
 
-  assemble(source: string, args: string[] = []): Promise<AssembleResultPayload> {
-    return this.send<AssembleResultPayload>({
-      id: 0,
-      kind: "assemble",
-      source,
-      args,
-    });
+  assemble(
+    source: string,
+    args: string[] = [],
+  ): Promise<{ result: AssembleResultPayload; snapshot: StateSnapshot }> {
+    return this.send({ id: 0, kind: "assemble", source, args });
   }
 
-  step(): Promise<StepResultPayload> {
-    return this.send<StepResultPayload>({ id: 0, kind: "step" });
+  step(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }> {
+    return this.send({ id: 0, kind: "step" });
   }
 
-  runUntilBreak(maxSteps: number): Promise<RunResultPayload> {
-    return this.send<RunResultPayload>({
-      id: 0,
-      kind: "runUntilBreak",
-      maxSteps,
-    });
+  stepBack(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }> {
+    return this.send({ id: 0, kind: "stepBack" });
   }
 
-  reset(): Promise<void> {
-    return this.send<null>({ id: 0, kind: "reset" }).then(() => undefined);
+  runUntilBreak(
+    maxSteps: number,
+  ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
+    return this.send({ id: 0, kind: "runUntilBreak", maxSteps });
+  }
+
+  pause(): Promise<void> {
+    return this.send<null>({ id: 0, kind: "pause" }).then(() => undefined);
+  }
+
+  reset(): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "reset" });
+  }
+
+  pushStdin(text: string): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "pushStdin", text });
   }
 
   takeStdout(): Promise<string> {
     return this.send<string>({ id: 0, kind: "takeStdout" });
   }
 
-  pushStdin(text: string): Promise<void> {
-    return this.send<null>({ id: 0, kind: "pushStdin", text }).then(() => undefined);
+  takeStderr(): Promise<string> {
+    return this.send<string>({ id: 0, kind: "takeStderr" });
+  }
+
+  getMemory(addr: number, len: number): Promise<Uint8Array> {
+    return this.send<Uint8Array>({ id: 0, kind: "getMemory", addr, len });
+  }
+
+  getSnapshot(): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "getSnapshot" });
+  }
+
+  setBreakpoint(addr: number): Promise<void> {
+    return this.send<null>({ id: 0, kind: "setBreakpoint", addr }).then(() => undefined);
+  }
+
+  clearBreakpoint(addr: number): Promise<void> {
+    return this.send<null>({ id: 0, kind: "clearBreakpoint", addr }).then(() => undefined);
+  }
+
+  saveState(name: string): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "saveState", name });
+  }
+
+  loadState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }> {
+    return this.send({ id: 0, kind: "loadState", name });
+  }
+
+  deleteState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }> {
+    return this.send({ id: 0, kind: "deleteState", name });
+  }
+
+  listStates(): Promise<string[]> {
+    return this.send<string[]>({ id: 0, kind: "listStates" });
+  }
+
+  uploadVfsFile(path: string, data: Uint8Array): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "uploadVfsFile", path, data });
+  }
+
+  listVfsFiles(): Promise<string[]> {
+    return this.send<string[]>({ id: 0, kind: "listVfsFiles" });
+  }
+
+  clearConsole(): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "clearConsole" });
+  }
+
+  codeBase(): Promise<number> {
+    return this.send<number>({ id: 0, kind: "codeBase" });
   }
 
   terminate(): void {
@@ -97,6 +173,11 @@ export class WorkerClient {
       slot.reject(new Error("worker terminated"));
     }
     this.pending.clear();
+    this.listeners.clear();
+  }
+
+  private notify(snap: StateSnapshot): void {
+    for (const listener of this.listeners) listener(snap);
   }
 
   private send<T>(msg: Request): Promise<T> {
@@ -111,10 +192,19 @@ export class WorkerClient {
   }
 }
 
+function looksLikeSnapshot(v: unknown): boolean {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    "frame" in (v as object) &&
+    "registers" in (v as object) &&
+    "halted" in (v as object)
+  );
+}
+
 /**
  * Spawn the emulator worker. Returns `null` when `Worker` isn't
- * available (SSR, sandboxed iframes, ancient browsers); the caller
- * should fall back to `EmulatorInstance` in that case.
+ * available; the caller should fall back to the in-process backend.
  */
 export function spawnEmulatorWorker(): WorkerClient | null {
   if (typeof Worker === "undefined") return null;
@@ -126,20 +216,5 @@ export function spawnEmulatorWorker(): WorkerClient | null {
     return new WorkerClient(worker);
   } catch {
     return null;
-  }
-}
-
-/**
- * Read the localStorage opt-in flag for the worker-backed path. Lets
- * power users (and developers) flip the implementation without code
- * changes; the default stays on the main-thread instance until the
- * panel-side memory cache is in place.
- */
-export function isWorkerOptInEnabled(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem("aarch64-playground:worker") === "1";
-  } catch {
-    return false;
   }
 }
