@@ -254,6 +254,17 @@ export function Editor({
         },
       });
 
+      // Set an aria-label so screen readers announce the editor as more
+      // than "edit text"; Monaco's default label is generic.
+      editor.getDomNode()?.setAttribute("aria-label", "ARM64 assembly source code editor");
+
+      // Escape blurs the editor when no internal Monaco widget is open,
+      // so keyboard-only users aren't trapped inside Monaco when they
+      // hit Esc to back out of a focused control.
+      editor.addCommand(monaco.KeyCode.Escape, () => {
+        editor.getDomNode()?.blur();
+      });
+
       // glyph margin click for breakpoints
       editor.onMouseDown((e) => {
         if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
@@ -384,6 +395,8 @@ export function Editor({
           automaticLayout: true,
           tabSize: 4,
           wordWrap: isCoarsePointer() ? "on" : "off",
+          accessibilitySupport: "auto",
+          accessibilityHelpUrl: "/docs/accessibility",
         }}
       />
     </div>
