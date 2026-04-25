@@ -4,34 +4,55 @@
 
 :root,
 [data-theme="dark"] {
-  --bg-primary: #0f1117;
-  --bg-secondary: #1a1d27;
-  --bg-panel: #1e2130;
-  --border: #2d3148;
-  --text-primary: #e2e4e9;
-  --text-secondary: #8b8fa3;
-  --accent: #60a5fa;
-  --accent-muted: #2564d6;
-  --changed: #facc15;
-  --danger: #f87171;
-  --success: #4ade80;
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-top: env(safe-area-inset-top, 0px);
-  --font-scale: 1;
+  --bg-primary:     oklch(0.18 0.02 270);
+  --bg-secondary:   oklch(0.22 0.02 270);
+  --bg-panel:       oklch(0.25 0.02 270);
+  --border:         oklch(0.32 0.02 270);
+  --text-primary:   oklch(0.94 0.02 270);
+  --text-secondary: oklch(0.70 0.02 270);
+  --accent:         oklch(0.72 0.18 240);
+  --accent-muted:   oklch(0.55 0.16 240);
+  --changed:        oklch(0.84 0.18 90);
+  --danger:         oklch(0.68 0.22 25);
+  --success:        oklch(0.78 0.18 145);
+  --focus:          oklch(0.78 0.20 240);
+  --safe-bottom:    env(safe-area-inset-bottom, 0px);
+  --safe-top:       env(safe-area-inset-top, 0px);
+  --font-scale:     1;
 }
 
 [data-theme="light"] {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f4f6fa;
-  --bg-panel: #eceff5;
-  --border: #d4d8e0;
-  --text-primary: #1a1d27;
-  --text-secondary: #5b6070;
-  --accent: #2563eb;
-  --accent-muted: #3b82f6;
-  --changed: #ca8a04;
-  --danger: #dc2626;
-  --success: #16a34a;
+  --bg-primary:     oklch(0.99 0     0);
+  --bg-secondary:   oklch(0.96 0.005 270);
+  --bg-panel:       oklch(0.93 0.01  270);
+  --border:         oklch(0.85 0.01  270);
+  --text-primary:   oklch(0.20 0.02  270);
+  --text-secondary: oklch(0.40 0.02  270);
+  --accent:         oklch(0.50 0.20  240);
+  --accent-muted:   oklch(0.62 0.18  240);
+  --changed:        oklch(0.55 0.18  75);
+  --danger:         oklch(0.50 0.22  25);
+  --success:        oklch(0.50 0.18  145);
+  --focus:          oklch(0.50 0.22  240);
+}
+
+/* High contrast: pure black surfaces with bright cyan/yellow accents.
+   Targets WCAG AAA on body text and at least 7:1 on every interactive
+   control state. Used by students with low vision and presentations on
+   bright projectors where dim themes wash out. */
+[data-theme="high-contrast"] {
+  --bg-primary:     oklch(0    0     0);
+  --bg-secondary:   oklch(0.10 0     0);
+  --bg-panel:       oklch(0.15 0     0);
+  --border:         oklch(0.85 0     0);
+  --text-primary:   oklch(1    0     0);
+  --text-secondary: oklch(0.85 0     0);
+  --accent:         oklch(0.85 0.30  240);
+  --accent-muted:   oklch(0.75 0.25  240);
+  --changed:        oklch(0.95 0.18  90);
+  --danger:         oklch(0.75 0.30  25);
+  --success:        oklch(0.85 0.25  145);
+  --focus:          oklch(1    0     0);
 }
 
 html {
