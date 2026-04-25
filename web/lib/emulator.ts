@@ -50,6 +50,10 @@ export class EmulatorInstance {
     return this.inner.assemble_and_load(source) as AssembleResult;
   }
 
+  assembleAndLoadWithArgs(source: string, args: string[]): AssembleResult {
+    return this.inner.assemble_and_load_with_args(source, args) as AssembleResult;
+  }
+
   step(): StepResult {
     const raw = this.inner.step() as RawStepResult;
     return {
@@ -207,6 +211,7 @@ interface RawRunResult {
 // the WASM module's Emulator instance shape
 interface WasmEmulatorInstance {
   assemble_and_load(source: string): unknown;
+  assemble_and_load_with_args(source: string, args: string[]): unknown;
   step(): unknown;
   step_back(): unknown;
   can_step_back(): boolean;
