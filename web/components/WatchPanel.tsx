@@ -140,8 +140,14 @@ export function WatchPanel({
       </form>
       <div className="flex-1 overflow-auto">
         {watches.length === 0 && (
-          <div className="text-[10px] text-[var(--text-secondary)]">
-            no watches yet. add an expression above.
+          <div className="space-y-1">
+            <p className="font-serif text-[12px] text-[var(--text-primary)]">
+              Watches stay quiet until you ask.
+            </p>
+            <p className="font-sans text-[10px] text-[var(--text-secondary)]">
+              Type an expression like <code className="font-mono">x0</code> or{" "}
+              <code className="font-mono">[fp, score1_s]</code> above and press add.
+            </p>
           </div>
         )}
         <ul className="space-y-1">
