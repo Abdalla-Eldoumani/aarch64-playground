@@ -29,6 +29,12 @@ export function Controls({
   error,
   stepCount,
 }: ControlsProps) {
+  // The error span uses `error` itself as its React key so that any
+  // change (new error, fixed error, different error) re-mounts the
+  // span and re-fires the css shake. Same trick on the step counter
+  // below: a key tied to the count restarts the scale-up animation
+  // each step without needing extra effects.
+
   // keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -89,7 +95,8 @@ export function Controls({
 
       {stepCount != null && stepCount > 0 && (
         <span
-          className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono"
+          key={stepCount}
+          className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono anim-step-pop"
           role="status"
           aria-label={`${stepCount} instructions executed`}
         >
@@ -99,7 +106,7 @@ export function Controls({
 
       {isHalted && !error && (
         <span
-          className="hidden sm:inline-flex items-center gap-2 text-xs text-[var(--text-secondary)]"
+          className="hidden sm:inline-flex items-center gap-2 font-sans text-xs tracking-wide text-[var(--text-secondary)]"
           role="status"
         >
           <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
@@ -109,7 +116,8 @@ export function Controls({
 
       {error && (
         <span
-          className="text-red-400 text-xs truncate max-w-md"
+          key={error}
+          className="font-sans text-red-400 text-xs truncate max-w-md anim-error-shake"
           role="alert"
           title={error}
         >
@@ -136,7 +144,7 @@ function Button({
       onClick={onClick}
       disabled={disabled}
       aria-label={shortcut ? `${label} (${shortcut})` : label}
-      className={`group inline-flex items-center gap-2 px-2 sm:px-3 py-1 min-h-[28px] text-xs rounded border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+      className={`group inline-flex items-center gap-2 px-2 sm:px-3 py-1 min-h-[28px] font-sans text-xs tracking-wide rounded border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
         disabled
           ? "border-[var(--border)] text-[var(--text-secondary)] cursor-not-allowed"
           : "border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-panel)] hover:border-[var(--accent)]"
