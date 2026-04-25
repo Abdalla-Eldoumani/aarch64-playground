@@ -10,6 +10,7 @@ type Tab =
   | "memory"
   | "stack"
   | "console"
+  | "term"
   | "watches"
   | "memwatch"
   | "saves";
@@ -21,6 +22,7 @@ export interface MobileLayoutProps {
   memory: ReactNode;
   stack: ReactNode;
   console: ReactNode;
+  terminal: ReactNode;
   watches: ReactNode;
   memwatch: ReactNode;
   saves: ReactNode;
@@ -34,6 +36,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "memory", label: "mem" },
   { id: "stack", label: "stack" },
   { id: "console", label: "i/o" },
+  { id: "term", label: "term" },
   { id: "watches", label: "watches" },
   { id: "memwatch", label: "memwatch" },
   { id: "saves", label: "saves" },
@@ -52,6 +55,7 @@ export function MobileLayout({
   memory,
   stack,
   console,
+  terminal,
   watches,
   memwatch,
   saves,
@@ -78,6 +82,7 @@ export function MobileLayout({
         {active === "memory" && <div className="h-full overflow-auto">{memory}</div>}
         {active === "stack" && <div className="h-full overflow-auto">{stack}</div>}
         {active === "console" && <div className="h-full flex flex-col">{console}</div>}
+        {active === "term" && <div className="h-full">{terminal}</div>}
         {active === "watches" && <div className="h-full overflow-auto">{watches}</div>}
         {active === "memwatch" && <div className="h-full overflow-auto">{memwatch}</div>}
         {active === "saves" && <div className="h-full overflow-auto">{saves}</div>}

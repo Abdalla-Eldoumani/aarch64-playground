@@ -11,6 +11,7 @@ const allBlocks = {
   memory: <div />,
   stack: <div />,
   console: <div />,
+  terminal: <div />,
   watches: <div />,
   memwatch: <div />,
   saves: <div />,
@@ -24,7 +25,7 @@ describe("MobileLayout", () => {
     expect(last.getAttribute("role")).toBe("tablist");
   });
 
-  test("renders nine tabs in canonical order", () => {
+  test("renders ten tabs in canonical order", () => {
     const { getAllByRole } = render(<MobileLayout {...allBlocks} />);
     const labels = getAllByRole("tab").map((t) => t.textContent?.trim());
     expect(labels).toEqual([
@@ -34,6 +35,7 @@ describe("MobileLayout", () => {
       "mem",
       "stack",
       "i/o",
+      "term",
       "watches",
       "memwatch",
       "saves",
