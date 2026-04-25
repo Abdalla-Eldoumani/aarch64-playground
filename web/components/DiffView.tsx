@@ -1,6 +1,8 @@
 "use client";
 
+import { useRef } from "react";
 import { DiffEditor } from "@monaco-editor/react";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface DiffViewProps {
   open: boolean;
@@ -24,10 +26,14 @@ export function DiffView({
   current,
   onClose,
 }: DiffViewProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(open, ref, onClose);
+
   if (!open) return null;
 
   return (
     <div
+      ref={ref}
       className="fixed inset-0 z-50 flex flex-col bg-[var(--bg-primary)]"
       role="dialog"
       aria-modal="true"
