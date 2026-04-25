@@ -25,7 +25,12 @@ function readEnabled(): boolean {
   if (typeof window === "undefined") return true;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw == null) return true;     // on by default for new users
+    if (raw == null) {
+      // Vertical space is at a premium on phones; default the strip
+      // off below the `sm` breakpoint so it doesn't crowd the editor.
+      // Desktop and tablet keep the default-on behavior.
+      return window.innerWidth >= 640;
+    }
     return raw !== "off";
   } catch {
     return true;
