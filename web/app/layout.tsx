@@ -24,7 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="flex flex-col min-h-dvh">
+      <body className="flex flex-col h-dvh">
         <ToastHost>{children}</ToastHost>
       </body>
     </html>
