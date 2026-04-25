@@ -22,6 +22,8 @@ import { ImportExport } from "@/components/ImportExport";
 import { useToast } from "@/components/Toast";
 import { HeaderOverflowSheet } from "@/components/HeaderOverflowSheet";
 import { parseDeepLink } from "@/lib/use-deep-link";
+import { parseArgs } from "@/lib/args";
+import { ArgsInput } from "@/components/ArgsInput";
 import {
   describeTarget,
   getImportTarget,
@@ -121,6 +123,7 @@ export default function Home() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [argsText, setArgsText] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [shareBanner, setShareBanner] = useState(fromShare);
   const [diffOpen, setDiffOpen] = useState(false);
@@ -191,8 +194,8 @@ export default function Home() {
     // form of multi-file assembly.
     const combined =
       extraFiles.length > 0 ? combineSources(source, extraFiles) : source;
-    emu.assemble(combined);
-  }, [source, recent, emu, extraFiles]);
+    emu.assemble(combined, parseArgs(argsText));
+  }, [source, recent, emu, extraFiles, argsText]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -786,6 +789,7 @@ export default function Home() {
             onLoad={(src, label) => loadAsBaseline(src, label ?? "example")}
           />
         </div>
+        <ArgsInput source={source} value={argsText} onChange={setArgsText} />
         <div className="hidden md:flex items-center gap-3">
           <ImportExport source={source} target={importTarget} onImport={handleImport} />
           {renderSecondaryActions()}
