@@ -19,11 +19,12 @@ use serde::Serialize;
 #[allow(unused_imports)]
 use cpu::{Cpu, StepOutcome};
 
-/// Heuristic that decides whether the source uses the hosted cpsc 355
-/// feature set (sections, .global main, libc BLs). The bare-metal
-/// examples hit none of these so they keep the legacy path.
-#[cfg(target_arch = "wasm32")]
-fn needs_hosted_pipeline(source: &str) -> bool {
+/// Decide whether the source uses the hosted cpsc 355 feature set
+/// (sections, `.global main`, libc BLs, m4 defines). The bare-metal
+/// examples hit none of these so they keep the legacy single-`.text`
+/// path. Single source of truth: TypeScript callers go through the
+/// wasm-bindgen wrapper rather than maintaining their own list.
+pub fn detect_hosted_mode(source: &str) -> bool {
     // Strip // and ; comments so fragments inside them don't trigger.
     let clean: String = source
         .lines()
@@ -74,6 +75,15 @@ fn needs_hosted_pipeline(source: &str) -> bool {
         }
     }
     false
+}
+
+/// Wasm-bindgen wrapper. The TS frontend imports this through the WASM
+/// module so it never has to maintain a parallel list of directives or
+/// libc names; adding a new hosted feature touches only this file.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = detectHostedMode)]
+pub fn detect_hosted_mode_js(source: &str) -> bool {
+    detect_hosted_mode(source)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -152,7 +162,7 @@ impl Emulator {
     /// pipeline; everything else keeps the legacy single-`.text` path so
     /// the bare-metal examples retain their exact byte-for-byte layout.
     pub fn assemble_and_load(&mut self, source: &str) -> JsValue {
-        if needs_hosted_pipeline(source) {
+        if detect_hosted_mode(source) {
             self.cpu.reset();
             match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
                 Ok(image) => {
@@ -234,7 +244,7 @@ impl Emulator {
         source: &str,
         args: Vec<String>,
     ) -> JsValue {
-        if needs_hosted_pipeline(source) {
+        if detect_hosted_mode(source) {
             self.cpu.reset();
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
@@ -484,5 +494,61 @@ impl Emulator {
     /// Clear stdout/stderr scrollback without resetting CPU state.
     pub fn clear_console(&mut self) {
         self.cpu.clear_console();
+    }
+}
+
+#[cfg(test)]
+mod hosted_mode_tests {
+    use super::detect_hosted_mode;
+
+    #[test]
+    fn detects_hosted_via_section_directive() {
+        assert!(detect_hosted_mode(".text\nmain:\n  mov x0, 1\n"));
+        assert!(detect_hosted_mode(".data\nmsg: .word 0\n"));
+        assert!(detect_hosted_mode(".bss\nbuf: .skip 16\n"));
+        assert!(detect_hosted_mode(".rodata\nfmt: .string \"hi\"\n"));
+    }
+
+    #[test]
+    fn detects_hosted_via_global_main() {
+        assert!(detect_hosted_mode(".global main\nmain: mov x0, 0\n"));
+        assert!(detect_hosted_mode(".globl main\nmain: mov x0, 0\n"));
+    }
+
+    #[test]
+    fn detects_hosted_via_libc_call() {
+        assert!(detect_hosted_mode("main: bl printf\n"));
+        assert!(detect_hosted_mode("main: BL exit\n"));
+        assert!(detect_hosted_mode("main: bl strlen\n"));
+    }
+
+    #[test]
+    fn detects_hosted_via_m4_define() {
+        assert!(detect_hosted_mode("define(REG, w19)\nmov REG, 1\n"));
+    }
+
+    #[test]
+    fn bare_metal_program_is_not_hosted() {
+        // Five classics should all stay on the legacy path.
+        let factorial = "mov x0, 5\nmov x1, 1\nloop: mul x1, x1, x0\nsubs x0, x0, 1\nb.ne loop\nsvc 0\n";
+        assert!(!detect_hosted_mode(factorial));
+    }
+
+    #[test]
+    fn fragments_in_comments_do_not_trigger() {
+        // The comment mentions .data but the program is bare-metal.
+        let src = "// uses .data section in some other example\nmov x0, 1\nsvc 0\n";
+        assert!(!detect_hosted_mode(src));
+        let semi = "mov x0, 1 ; .global main is unrelated here\nsvc 0\n";
+        assert!(!detect_hosted_mode(semi));
+    }
+
+    #[test]
+    fn fragment_in_string_literal_still_triggers_via_directive() {
+        // A `.string ".text"` line still has the literal `.string`
+        // directive so detection fires on the directive itself, which
+        // is the desired behavior (any program with a string literal
+        // is using the hosted pipeline).
+        assert!(detect_hosted_mode(".rodata\nmsg: .string \".text\"\n"));
     }
 }
