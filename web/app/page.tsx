@@ -328,8 +328,71 @@ export default function Home() {
         shortcut: "?",
         run: () => setHelpOpen(true),
       },
+      {
+        id: "import-file",
+        label: "Import file",
+        description: "open the file picker and load assembly into the active buffer",
+        run: () => {
+          const el = document.querySelector<HTMLInputElement>(
+            'input[type="file"][accept=".s,.asm,.txt"]',
+          );
+          el?.click();
+        },
+      },
+      {
+        id: "download-asm",
+        label: "Download as .asm",
+        description: "save the current buffer to your computer",
+        run: () => {
+          const blob = new Blob([source], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "program.asm";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        },
+      },
+      {
+        id: "download-s",
+        label: "Download as .s",
+        description: "save the current buffer with the .s extension",
+        run: () => {
+          const blob = new Blob([source], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "program.s";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        },
+      },
+      {
+        id: "copy-source",
+        label: "Copy source to clipboard",
+        description: "copy the current buffer for pasting elsewhere",
+        run: () => {
+          void navigator.clipboard?.writeText(source);
+        },
+      },
+      {
+        id: "open-source",
+        label: "View source on GitHub",
+        description: "open the playground repo in a new tab",
+        run: () => {
+          window.open(
+            "https://github.com/Abdalla-Eldoumani/aarch64-playground",
+            "_blank",
+            "noopener,noreferrer",
+          );
+        },
+      },
     ],
-    [emu, view, assembleWithHistory, baseline.label, toggleTheme],
+    [emu, view, assembleWithHistory, baseline.label, toggleTheme, source],
   );
 
   const isMain = activeFile === -1;
