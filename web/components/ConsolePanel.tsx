@@ -109,9 +109,14 @@ export function ConsolePanel({
         {stdout && <span>{stdout}</span>}
         {stderr && <span className="text-red-400">{stderr}</span>}
         {!stdout && !stderr && (
-          <span className="text-[var(--text-secondary)] italic">
-            (no output yet)
-          </span>
+          <div className="space-y-1">
+            <p className="font-serif text-[13px] text-[var(--text-primary)]">
+              Output prints here as your program runs.
+            </p>
+            <p className="font-sans text-[11px] text-[var(--text-secondary)]">
+              Step with F10, run with F5, or feed stdin from the box below.
+            </p>
+          </div>
         )}
       </div>
       {vfsFiles.length > 0 && (
