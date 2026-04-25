@@ -39,12 +39,41 @@ function runBareMetal(file) {
   return { file, ok: true, steps: res.steps_executed, regs };
 }
 
-// Feed optional stdin, run until halt or exit, then return stdout + exit code.
-// Used for hosted corpus fixtures (phase B.12+).
-function runHosted(file, stdin) {
+// Whitespace-quoted parser to keep the verifier's .args handling in sync
+// with the in-app `parseArgs` (web/lib/args.ts). Supports double + single
+// quotes and `\` escapes; tolerant of unterminated quotes (rest of line
+// becomes the final token).
+function parseArgsLine(input) {
+  const out = [];
+  let buf = "";
+  let inQuote = null;
+  let hasToken = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === "\\" && i + 1 < input.length) { buf += input[i + 1]; hasToken = true; i++; continue; }
+    if (inQuote) {
+      if (ch === inQuote) { inQuote = null; continue; }
+      buf += ch; hasToken = true; continue;
+    }
+    if (ch === '"' || ch === "'") { inQuote = ch; hasToken = true; continue; }
+    if (/\s/.test(ch)) {
+      if (hasToken) { out.push(buf); buf = ""; hasToken = false; }
+      continue;
+    }
+    buf += ch; hasToken = true;
+  }
+  if (hasToken) out.push(buf);
+  return out;
+}
+
+// Feed optional stdin and argv, run until halt or exit, then return
+// stdout + exit code. Used for hosted corpus fixtures (phase B.12+).
+function runHosted(file, stdin, args) {
   const src = fs.readFileSync(file, "utf8");
   const emu = new wasm.Emulator();
-  const asm = emu.assemble_and_load(src);
+  const asm = (args && args.length > 0)
+    ? emu.assemble_and_load_with_args(src, args)
+    : emu.assemble_and_load(src);
   if (!asm.success) {
     return { ok: false, stage: "assemble", error: asm.error, line: asm.error_line };
   }
@@ -130,8 +159,12 @@ if (fs.existsSync(fixturesRoot)) {
     }
     console.log(`\n=== ${path.relative(examplesDir, srcPath)} ===`);
     const stdin = fs.existsSync(stdinPath) ? fs.readFileSync(stdinPath, "utf8") : "";
+    const argsPath = path.join(fixturesRoot, stem + ".args");
+    const args = fs.existsSync(argsPath)
+      ? parseArgsLine(fs.readFileSync(argsPath, "utf8").trim())
+      : [];
     const expected = fs.readFileSync(stdoutPath, "utf8");
-    const result = runHosted(srcPath, stdin);
+    const result = runHosted(srcPath, stdin, args);
     if (!result.ok) {
       console.log(`  FAIL at ${result.stage}: ${result.error}`);
       failed++;
