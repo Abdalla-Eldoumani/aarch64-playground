@@ -29,10 +29,11 @@ function initialTheme(): Theme {
 /**
  * Persist-aware theme state. Reflects the current theme as a `data-theme`
  * attribute on the root `<html>` element so CSS vars respond via the
- * `[data-theme="..."]` selectors in `globals.css`. Cycles through three
- * states: dark -> light -> high-contrast -> dark.
+ * `[data-theme="..."]` selectors in `globals.css`. Returns the current
+ * theme, a cycle function (dark -> light -> high-contrast -> dark), and
+ * a direct setter so deep-links can pin a theme on mount.
  */
-export function useTheme(): [Theme, () => void] {
+export function useTheme(): [Theme, () => void, (next: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
   useEffect(() => {
@@ -52,5 +53,5 @@ export function useTheme(): [Theme, () => void] {
     });
   }, []);
 
-  return [theme, cycle];
+  return [theme, cycle, setTheme];
 }
