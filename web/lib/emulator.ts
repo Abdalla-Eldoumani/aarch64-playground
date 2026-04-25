@@ -244,13 +244,39 @@ interface WasmEmulatorInstance {
 
 type WasmEmulatorClass = new () => WasmEmulatorInstance;
 
+type WasmModule = typeof import("@/lib/wasm/aarch64_emulator");
+
+let wasmModulePromise: Promise<WasmModule> | null = null;
+
+async function ensureWasmModule(): Promise<WasmModule> {
+  if (!wasmModulePromise) {
+    wasmModulePromise = (async () => {
+      const wasm = await import("@/lib/wasm/aarch64_emulator");
+      await wasm.default();
+      return wasm;
+    })();
+  }
+  return wasmModulePromise;
+}
+
 /**
  * Load the WASM module and return an EmulatorInstance.
  * This is async because of the dynamic import.
  */
 export async function loadEmulator(): Promise<EmulatorInstance> {
-  const wasm = await import("@/lib/wasm/aarch64_emulator");
-  await wasm.default();
+  const wasm = await ensureWasmModule();
   const inner = new wasm.Emulator();
   return new EmulatorInstance(inner);
+}
+
+/**
+ * Hosted-mode detection routed through the Rust source of truth. The
+ * TS side used to maintain a parallel regex list which drifted from the
+ * Rust list; this helper makes the WASM module the only place that
+ * decides. First call awaits the WASM load; subsequent calls use the
+ * cached module so latency is just the wasm-bindgen marshalling.
+ */
+export async function detectHostedMode(source: string): Promise<boolean> {
+  const wasm = await ensureWasmModule();
+  return wasm.detectHostedMode(source);
 }
