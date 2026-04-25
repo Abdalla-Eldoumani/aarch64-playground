@@ -19,6 +19,12 @@ import { RecentPrograms } from "@/components/RecentPrograms";
 import { ResizableLayout } from "@/components/ResizableLayout";
 import { MobileLayout } from "@/components/MobileLayout";
 import { ImportExport } from "@/components/ImportExport";
+import { useToast } from "@/components/Toast";
+import {
+  describeTarget,
+  getImportTarget,
+  type ImportTarget,
+} from "@/lib/use-import-target";
 import { WatchPanel } from "@/components/WatchPanel";
 import { MemoryWatches } from "@/components/MemoryWatches";
 import {
@@ -122,6 +128,32 @@ export default function Home() {
   const [, toggleTheme] = useTheme();
   const [extraFiles, setExtraFiles] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
+  const toast = useToast();
+  const importTarget = getImportTarget(view, activeFile);
+  const handleImport = useCallback(
+    (target: ImportTarget, body: string) => {
+      switch (target.kind) {
+        case "main":
+          setSource(body);
+          toast.show("imported into main.asm");
+          return;
+        case "extra": {
+          const idx = target.index;
+          setExtraFiles(
+            extraFiles.map((f, i) => (i === idx ? { ...f, body } : f)),
+          );
+          toast.show(`imported into ${describeTarget(target, extraFiles)}`);
+          return;
+        }
+        case "c-to-asm":
+          setView("playground");
+          setSource(body);
+          toast.show("switched to playground and imported");
+          return;
+      }
+    },
+    [extraFiles, setExtraFiles, setSource, toast],
+  );
   const [saveName, setSaveName] = useState("");
   const loadAsBaseline = useCallback(
     (next: string, label: string) => {
@@ -589,7 +621,7 @@ export default function Home() {
         >
           C -&gt; asm
         </button>
-        <ImportExport source={source} onImport={setSource} />
+        <ImportExport source={source} target={importTarget} onImport={handleImport} />
         <button
           type="button"
           onClick={() => setShareOpen(true)}
