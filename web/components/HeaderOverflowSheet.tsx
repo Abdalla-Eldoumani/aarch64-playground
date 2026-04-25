@@ -39,9 +39,16 @@ export function HeaderOverflowSheet({
         aria-label={ariaLabel}
         onClick={(e) => e.stopPropagation()}
         style={{ paddingBottom: "var(--safe-bottom)" }}
-        className="absolute left-0 right-0 bottom-0 bg-[var(--bg-secondary)] border-t border-[var(--border)] rounded-t-lg p-3"
+        className="absolute left-0 right-0 bottom-0 max-h-[70vh] overflow-y-auto bg-[var(--bg-secondary)] border-t border-[var(--border)] rounded-t-lg p-3"
       >
-        <div className="grid grid-cols-3 gap-2">{children}</div>
+        {/* Each action lays out in a row with a 44px min height so
+            touch targets meet WCAG 2.5.5; consumers that nest a button
+            group (e.g. ImportExport's import/.asm/.s/copy) opt out via
+            `data-sheet-row="group"` so their inner buttons stay
+            inline. */}
+        <div className="sheet-actions flex flex-col gap-1.5 [&>*]:min-h-[44px] [&>*]:flex [&>*]:items-center [&>*]:w-full [&>button]:justify-start [&>button]:px-3 [&>a]:px-3 [&>select]:px-3 [&>select]:w-full">
+          {children}
+        </div>
       </div>
     </div>
   );
