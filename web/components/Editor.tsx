@@ -409,6 +409,12 @@ interface FallbackEditorProps {
  * breakpoint, see which line their error is on, and watch the PC move
  * during step -- all without Monaco's larger virtual surface.
  */
+// Vertical padding shared by gutter and textarea so the first line
+// of code aligns with the first gutter button. Both elements offset by
+// the same constant so the running translateY math stays simple.
+const FALLBACK_PAD_Y = 12;
+const FALLBACK_LINE_H = 24;
+
 function FallbackEditor({
   value,
   onChange,
@@ -418,49 +424,64 @@ function FallbackEditor({
   assemblyErrors,
   onDrop,
 }: FallbackEditorProps) {
-  const gutterRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
   const lineCount = Math.max(1, value.split("\n").length);
   const errorLines = new Set(assemblyErrors.map((e) => e.line));
 
+  // Outer wrapper carries `min-h-0 overflow-hidden` so the gutter's
+  // natural content height (lineCount * 24px, often well past the
+  // viewport on phones) cannot expand its parent and push the rest of
+  // the page off-screen. The previous version had no such guard, which
+  // made the editor pane balloon to thousands of pixels and pushed the
+  // header / Controls / tab strip out of view on iPhone portrait.
   return (
-    <div className="h-full w-full flex bg-[var(--bg-primary)]">
+    <div className="h-full w-full min-h-0 overflow-hidden flex bg-[var(--bg-primary)]">
       <div
-        ref={gutterRef}
-        className="flex-shrink-0 w-10 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] py-3 select-none"
-        aria-hidden="false"
+        className="flex-shrink-0 w-10 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] select-none relative"
         role="presentation"
       >
-        {Array.from({ length: lineCount }, (_, i) => i + 1).map((n) => {
-          const isBreak = breakpoints.has(n);
-          const isError = errorLines.has(n);
-          const isCurrent = currentLine === n;
-          const cls = isError
-            ? "text-[var(--danger)] font-bold"
-            : isBreak
-            ? "text-[var(--danger)]"
-            : isCurrent
-            ? "text-[var(--accent)] font-bold"
-            : "text-[var(--text-secondary)]";
-          return (
-            <button
-              key={n}
-              type="button"
-              onClick={() => onToggleBreakpoint(n)}
-              className={`block w-full h-6 leading-6 text-right pr-2 text-[11px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] ${cls}`}
-              aria-label={
-                isBreak
-                  ? `line ${n}, breakpoint set, tap to clear`
-                  : `line ${n}, tap to set breakpoint`
-              }
-            >
-              {isBreak ? "●" : n}
-            </button>
-          );
-        })}
+        <div
+          className="absolute left-0 right-0 will-change-transform"
+          style={{ transform: `translateY(${FALLBACK_PAD_Y - scrollTop}px)` }}
+        >
+          {Array.from({ length: lineCount }, (_, i) => i + 1).map((n) => {
+            const isBreak = breakpoints.has(n);
+            const isError = errorLines.has(n);
+            const isCurrent = currentLine === n;
+            const cls = isError
+              ? "text-[var(--danger)] font-bold"
+              : isBreak
+              ? "text-[var(--danger)]"
+              : isCurrent
+              ? "text-[var(--accent)] font-bold"
+              : "text-[var(--text-secondary)]";
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onToggleBreakpoint(n)}
+                className={`block w-full h-6 leading-6 text-right pr-2 text-[11px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] ${cls}`}
+                aria-label={
+                  isBreak
+                    ? `line ${n}, breakpoint set, tap to clear`
+                    : `line ${n}, tap to set breakpoint`
+                }
+              >
+                {isBreak ? "●" : n}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <textarea
-        className="flex-1 h-full resize-none bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono text-[16px] py-3 pl-2 pr-3 focus:outline-none leading-6"
-        style={{ WebkitAppearance: "none" }}
+        className="flex-1 h-full min-h-0 resize-none bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono text-[16px] pl-2 pr-3 focus:outline-none leading-6 whitespace-pre"
+        style={{
+          WebkitAppearance: "none",
+          paddingTop: `${FALLBACK_PAD_Y}px`,
+          paddingBottom: `${FALLBACK_PAD_Y}px`,
+          lineHeight: `${FALLBACK_LINE_H}px`,
+          overflow: "auto",
+        }}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         spellCheck={false}
@@ -468,11 +489,7 @@ function FallbackEditor({
         autoCorrect="off"
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
-        onScroll={(e) => {
-          if (gutterRef.current) {
-            gutterRef.current.scrollTop = e.currentTarget.scrollTop;
-          }
-        }}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
         aria-label="assembly source"
       />
     </div>
