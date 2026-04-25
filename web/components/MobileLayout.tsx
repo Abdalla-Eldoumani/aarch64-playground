@@ -1,9 +1,18 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-type Tab = "editor" | "disasm" | "regs" | "memory" | "stack" | "console";
+type Tab =
+  | "editor"
+  | "disasm"
+  | "regs"
+  | "memory"
+  | "stack"
+  | "console"
+  | "watches"
+  | "memwatch"
+  | "saves";
 
 export interface MobileLayoutProps {
   editor: ReactNode;
@@ -12,6 +21,9 @@ export interface MobileLayoutProps {
   memory: ReactNode;
   stack: ReactNode;
   console: ReactNode;
+  watches: ReactNode;
+  memwatch: ReactNode;
+  saves: ReactNode;
   consoleBlocked?: boolean;
 }
 
@@ -22,12 +34,16 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "memory", label: "mem" },
   { id: "stack", label: "stack" },
   { id: "console", label: "i/o" },
+  { id: "watches", label: "watches" },
+  { id: "memwatch", label: "memwatch" },
+  { id: "saves", label: "saves" },
 ];
 
 /**
  * Single-column stacked layout for phones (< md). One active pane at a
  * time, selected from a sticky bottom tab strip so the touch target
- * stays above the safe area.
+ * stays above the safe area. Strip scrolls horizontally when nine tabs
+ * exceed viewport width; the active tab scrolls itself into view.
  */
 export function MobileLayout({
   editor,
@@ -36,9 +52,23 @@ export function MobileLayout({
   memory,
   stack,
   console,
+  watches,
+  memwatch,
+  saves,
   consoleBlocked,
 }: MobileLayoutProps) {
   const [active, setActive] = useState<Tab>("editor");
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = stripRef.current?.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    if (typeof node?.scrollIntoView === "function") {
+      node.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [active]);
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex-1 min-h-0 overflow-hidden">
@@ -48,8 +78,12 @@ export function MobileLayout({
         {active === "memory" && <div className="h-full overflow-auto">{memory}</div>}
         {active === "stack" && <div className="h-full overflow-auto">{stack}</div>}
         {active === "console" && <div className="h-full flex flex-col">{console}</div>}
+        {active === "watches" && <div className="h-full overflow-auto">{watches}</div>}
+        {active === "memwatch" && <div className="h-full overflow-auto">{memwatch}</div>}
+        {active === "saves" && <div className="h-full overflow-auto">{saves}</div>}
       </div>
       <div
+        ref={stripRef}
         role="tablist"
         aria-label="view switcher"
         className="flex border-t border-[var(--border)] bg-[var(--bg-secondary)] overflow-x-auto"
@@ -65,7 +99,7 @@ export function MobileLayout({
               role="tab"
               aria-selected={selected}
               onClick={() => setActive(t.id)}
-              className={`relative flex-1 min-w-[3.5rem] h-11 px-2 text-[11px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+              className={`relative shrink-0 min-w-[3.5rem] h-11 px-3 text-[11px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                 selected
                   ? "text-[var(--accent)] border-t-2 border-[var(--accent)]"
                   : "text-[var(--text-secondary)]"
