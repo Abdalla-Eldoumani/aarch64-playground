@@ -3,12 +3,12 @@
 import { useCallback, useState } from "react";
 import { useZoom } from "@/lib/use-zoom";
 import { ZoomControl } from "@/components/ZoomControl";
+import { isAtLeast, useBreakpoint } from "@/lib/use-breakpoint";
 
 interface MemoryPanelProps {
   getMemory: (addr: number, len: number) => Uint8Array;
 }
 
-const BYTES_PER_ROW = 16;
 const DEFAULT_ROWS = 16;
 
 const JUMP_TARGETS: Array<{ label: string; addr: string }> = [
@@ -23,9 +23,14 @@ export function MemoryPanel({ getMemory }: MemoryPanelProps) {
   const [baseAddr, setBaseAddr] = useState("0x00400000");
   const [rows] = useState(DEFAULT_ROWS);
   const zoom = useZoom("memory");
+  // 16 bytes/row reads naturally on a desktop monospace grid; below sm
+  // the row overflows the viewport, so collapse to 8/row -- still
+  // 16-byte aligned so addresses stay in even multiples.
+  const bp = useBreakpoint();
+  const bytesPerRow = isAtLeast(bp, "sm") ? 16 : 8;
 
   const addr = parseInt(baseAddr, 16) || 0;
-  const totalBytes = rows * BYTES_PER_ROW;
+  const totalBytes = rows * bytesPerRow;
   const data = getMemory(addr, totalBytes);
 
   const handleAddrChange = useCallback(
@@ -86,25 +91,25 @@ export function MemoryPanel({ getMemory }: MemoryPanelProps) {
       <table className="w-full font-mono">
         <thead>
           <tr className="text-[var(--text-secondary)]">
-            <th className="text-left pr-4">addr</th>
-            {Array.from({ length: BYTES_PER_ROW }, (_, i) => (
-              <th key={i} className="w-6 text-center">
+            <th className="text-left pr-2 sm:pr-4">addr</th>
+            {Array.from({ length: bytesPerRow }, (_, i) => (
+              <th key={i} className="w-5 sm:w-6 text-center">
                 {i.toString(16).toUpperCase()}
               </th>
             ))}
-            <th className="pl-4 text-left">ascii</th>
+            <th className="pl-2 sm:pl-4 text-left">ascii</th>
           </tr>
         </thead>
         <tbody>
           {Array.from({ length: rows }, (_, row) => {
-            const rowAddr = addr + row * BYTES_PER_ROW;
+            const rowAddr = addr + row * bytesPerRow;
             const rowBytes = data.slice(
-              row * BYTES_PER_ROW,
-              (row + 1) * BYTES_PER_ROW
+              row * bytesPerRow,
+              (row + 1) * bytesPerRow
             );
             return (
               <tr key={row} className="hover:bg-[var(--bg-secondary)]">
-                <td className="text-[var(--text-secondary)] pr-4">
+                <td className="text-[var(--text-secondary)] pr-2 sm:pr-4">
                   {formatAddr(rowAddr)}
                 </td>
                 {Array.from(rowBytes).map((byte, i) => (
@@ -121,14 +126,14 @@ export function MemoryPanel({ getMemory }: MemoryPanelProps) {
                 ))}
                 {/* pad if data is short */}
                 {Array.from(
-                  { length: BYTES_PER_ROW - rowBytes.length },
+                  { length: bytesPerRow - rowBytes.length },
                   (_, i) => (
                     <td key={`pad-${i}`} className="text-center text-[var(--text-secondary)]">
                       ..
                     </td>
                   )
                 )}
-                <td className="pl-4 text-[var(--text-secondary)]">
+                <td className="pl-2 sm:pl-4 text-[var(--text-secondary)]">
                   {asciiString(rowBytes)}
                 </td>
               </tr>
