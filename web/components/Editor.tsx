@@ -4,6 +4,7 @@ import MonacoEditor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/use-emulator";
 import { lookupDoc } from "@/lib/instruction-docs";
+import { explainError } from "@/lib/error-explain";
 
 interface EditorProps {
   value: string;
@@ -94,15 +95,31 @@ export function Editor({
       });
     }
 
-    // assembly errors
+    // assembly errors -- the hover bubble carries both the raw message
+    // and, when the explainer recognizes the variant, a structured
+    // {what / why / fix / consult} block keyed to a style-guide section.
     for (const err of assemblyErrors) {
+      const explanation = explainError(err.message);
+      const md = explanation
+        ? [
+            `**${err.message}**`,
+            "",
+            `*what:* ${explanation.what}`,
+            "",
+            `*why:* ${explanation.why}`,
+            "",
+            `*fix:* ${explanation.fix}`,
+            "",
+            `*consult:* ${explanation.styleSection} (docs/cpsc355-style-guide.md)`,
+          ].join("\n")
+        : err.message;
       decorations.push({
         range: new monaco.Range(err.line, 1, err.line, 1),
         options: {
           isWholeLine: true,
           className: "error-line-highlight",
           glyphMarginClassName: "error-glyph",
-          hoverMessage: { value: err.message },
+          hoverMessage: { value: md, isTrusted: false },
         },
       });
     }
