@@ -71,7 +71,7 @@ export function MobileLayout({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div key={active} className="flex-1 min-h-0 overflow-hidden anim-tab-fade">
         {active === "editor" && <div className="h-full flex flex-col">{editor}</div>}
         {active === "disasm" && <div className="h-full overflow-auto">{disassembly}</div>}
         {active === "regs" && <div className="h-full overflow-auto">{registers}</div>}
@@ -99,7 +99,7 @@ export function MobileLayout({
               role="tab"
               aria-selected={selected}
               onClick={() => setActive(t.id)}
-              className={`relative shrink-0 min-w-[3.5rem] h-11 px-3 text-[11px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+              className={`relative shrink-0 min-w-[3.5rem] h-11 px-3 font-sans text-[11px] font-medium tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                 selected
                   ? "text-[var(--accent)] border-t-2 border-[var(--accent)]"
                   : "text-[var(--text-secondary)]"
