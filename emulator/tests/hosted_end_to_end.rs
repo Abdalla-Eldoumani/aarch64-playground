@@ -442,6 +442,29 @@ fn hosted_pipeline_bl_with_tab_whitespace_trampolines() {
 }
 
 #[test]
+fn hosted_pipeline_empty_args_zeroes_argc_and_argv() {
+    // Phase 3 parity check: `load_linked_image(image)` is now defined as
+    // `load_linked_image_with_args(image, &[])`, and the empty-args
+    // branch of `setup_argv` zeroes w0/x1. A program loaded without args
+    // must observe `argc = 0` and `argv = NULL` on entry, identical to
+    // the pre-argv legacy behavior.
+    use aarch64_emulator::frontend::pipeline::assemble_hosted;
+    let src = r#"
+.text
+.global main
+main:
+    mov     x0, 0
+    mov     x8, 93
+    svc     0
+"#;
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("pipeline should succeed");
+    cpu.load_linked_image(&image).unwrap();
+    assert_eq!(cpu.regs.read_gpr(0, true), 0, "argc should be 0 with no args");
+    assert_eq!(cpu.regs.read_gpr(1, true), 0, "argv should be NULL with no args");
+}
+
+#[test]
 fn hosted_pipeline_string_literal_containing_bl_is_left_alone() {
     // `.string "bl printf"` lives in `.rodata` as `Item::Bytes`, so the
     // redirect never sees those tokens; this regression-pins that the
