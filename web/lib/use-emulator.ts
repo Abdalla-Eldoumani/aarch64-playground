@@ -45,7 +45,7 @@ export interface EmulatorState {
   hostedMode: boolean;
   /// Filenames currently registered with the virtual FS.
   vfsFiles: string[];
-  assemble: (source: string) => void;
+  assemble: (source: string, args?: string[]) => void;
   step: () => void;
   stepBack: () => void;
   canStepBack: boolean;
@@ -179,7 +179,7 @@ export function useEmulator(): EmulatorState {
   }, []);
 
   const assemble = useCallback(
-    (source: string) => {
+    (source: string, args: string[] = []) => {
       const emu = emuRef.current;
       if (!emu) return;
 
@@ -206,7 +206,10 @@ export function useEmulator(): EmulatorState {
         return;
       }
 
-      const result: AssembleResult = emu.assembleAndLoad(source);
+      const result: AssembleResult =
+        args.length > 0
+          ? emu.assembleAndLoadWithArgs(source, args)
+          : emu.assembleAndLoad(source);
 
       if (!result.success) {
         const errors: AssemblyError[] = [];
