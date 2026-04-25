@@ -784,8 +784,8 @@ export default function Home() {
         <ExampleLoader
           onLoad={(src, label) => loadAsBaseline(src, label ?? "example")}
         />
-        <ImportExport source={source} target={importTarget} onImport={handleImport} />
         <div className="hidden md:flex items-center gap-3">
+          <ImportExport source={source} target={importTarget} onImport={handleImport} />
           {renderSecondaryActions()}
         </div>
         <button
@@ -809,6 +809,7 @@ export default function Home() {
         </button>
       </div>
       <HeaderOverflowSheet open={overflowOpen} onClose={() => setOverflowOpen(false)}>
+        <ImportExport source={source} target={importTarget} onImport={handleImport} />
         {renderSecondaryActions(() => setOverflowOpen(false))}
       </HeaderOverflowSheet>
 
