@@ -21,16 +21,6 @@ const INSTRUCTION_INDENT = "        "; // 8 spaces
 const MNEMONIC_WIDTH = 8; // chars including trailing whitespace
 const COMMENT_COLUMN = 40;
 
-interface SplitLine {
-  raw: string;
-  trimmed: string;
-  comment: string | null;
-  /** Indent that was already there. Used only for blank-line preservation. */
-  indent: string;
-}
-
-const COMMENT_RE = /(\s*)(\/\/|;).*$/;
-
 function splitOffComment(line: string): { code: string; comment: string | null } {
   // Strip a trailing line comment without disturbing comments inside
   // string literals. The cpsc 355 corpus only uses `//` and `;` as
