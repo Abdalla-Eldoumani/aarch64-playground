@@ -199,24 +199,31 @@ if (fs.existsSync(fixturesRoot)) {
     }
     let ok = true;
     if (hasStdout) {
-      const expected = fs.readFileSync(stdoutPath, "utf8");
-      if (result.stdout === expected) {
-        console.log(`  OK: stdout matches fixture (${result.stdout.length} bytes)`);
+      // Normalize CRLF to LF on the fixture side. On Windows, git's
+      // autocrlf can introduce CRLF endings on checkout; the WASM
+      // emulator always emits LF. Compare with both sides on LF so
+      // the test is byte-tolerant of contributor checkout settings.
+      const expected = fs.readFileSync(stdoutPath, "utf8").replace(/\r\n/g, "\n");
+      const actual = result.stdout.replace(/\r\n/g, "\n");
+      if (actual === expected) {
+        console.log(`  OK: stdout matches fixture (${actual.length} bytes)`);
       } else {
         console.log(`  FAIL: stdout mismatch`);
         console.log(`  expected: ${JSON.stringify(expected)}`);
-        console.log(`  actual:   ${JSON.stringify(result.stdout)}`);
+        console.log(`  actual:   ${JSON.stringify(actual)}`);
         ok = false;
       }
     }
     if (hasVfsOut) {
       const expectedVfs = JSON.parse(fs.readFileSync(vfsOutPath, "utf8"));
       for (const [name, body] of Object.entries(expectedVfs)) {
-        if (result.vfs[name] === body) {
-          console.log(`  OK: vfs ${name} matches (${body.length} bytes)`);
+        const expected = String(body).replace(/\r\n/g, "\n");
+        const actual = (result.vfs[name] ?? "").replace(/\r\n/g, "\n");
+        if (actual === expected) {
+          console.log(`  OK: vfs ${name} matches (${expected.length} bytes)`);
         } else {
           console.log(`  FAIL: vfs ${name} mismatch`);
-          console.log(`  expected: ${JSON.stringify(body)}`);
+          console.log(`  expected: ${JSON.stringify(expected)}`);
           console.log(`  actual:   ${JSON.stringify(result.vfs[name] ?? "(missing)")}`);
           ok = false;
         }
