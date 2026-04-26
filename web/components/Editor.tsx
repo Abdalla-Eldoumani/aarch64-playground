@@ -8,6 +8,7 @@ import { explainError } from "@/lib/error-explain";
 import { lintSource } from "@/lib/cpsc355-lint";
 import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
 import { useHotspotMode } from "@/lib/use-hotspot-mode";
+import { buildSuggestions, type Suggestion } from "@/lib/asm-completion";
 
 interface EditorProps {
   value: string;
@@ -273,6 +274,37 @@ export function Editor({
         attributeFilter: ["data-theme"],
       });
 
+      // Completion provider: builds context-aware suggestions from the
+      // current line + the full source (for labels and m4 aliases).
+      type CompletionModel = Parameters<
+        Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
+      >[0];
+      type CompletionPos = Parameters<
+        Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
+      >[1];
+      monaco.languages.registerCompletionItemProvider("arm64", {
+        triggerCharacters: [".", " ", ",", "[", "$", "_"],
+        provideCompletionItems(model: CompletionModel, position: CompletionPos) {
+          const line = model.getLineContent(position.lineNumber);
+          const source = model.getValue();
+          const word = model.getWordUntilPosition(position);
+          const range = new monaco.Range(
+            position.lineNumber,
+            word.startColumn,
+            position.lineNumber,
+            word.endColumn,
+          );
+          const suggestions = buildSuggestions({
+            source,
+            line,
+            position: position.column,
+          });
+          return {
+            suggestions: suggestions.map((s) => mapSuggestion(s, monaco, range)),
+          };
+        },
+      });
+
       // Hover provider: surface a short course-voice summary of the
       // mnemonic under the cursor. Falls back to no-hover when the
       // token under the cursor isn't one we recognize.
@@ -525,6 +557,31 @@ interface FallbackEditorProps {
   assemblyErrors: AssemblyError[];
   onDrop: (e: React.DragEvent) => void;
   onCursorChange?: (pos: { line: number; column: number }) => void;
+}
+
+type MonacoForCompletion = Parameters<OnMount>[1];
+
+function mapSuggestion(
+  s: Suggestion,
+  monaco: MonacoForCompletion,
+  range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number },
+) {
+  const KIND = monaco.languages.CompletionItemKind;
+  const kindMap: Record<Suggestion["kind"], number> = {
+    directive: KIND.Keyword,
+    instruction: KIND.Function,
+    register: KIND.Variable,
+    alias: KIND.Variable,
+    label: KIND.Reference,
+    libc: KIND.Function,
+  };
+  return {
+    label: s.label,
+    kind: kindMap[s.kind],
+    detail: s.detail,
+    insertText: s.insertText ?? s.label,
+    range,
+  };
 }
 
 /**
