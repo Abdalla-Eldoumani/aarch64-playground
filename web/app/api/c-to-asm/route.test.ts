@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { POST } from "./route";
+import { MAX_C_SOURCE_BYTES } from "@/lib/upload-guard";
 
 function makeRequest(body: unknown): NextRequest {
   return new Request("http://localhost/api/c-to-asm", {
@@ -74,6 +75,31 @@ describe("POST /api/c-to-asm", () => {
       makeRequest({ source: "int main(){return 3;}", optLevel: "-O0" }),
     );
     expect(res.status).toBe(502);
+  });
+
+  it("rejects an oversized source body with 413", async () => {
+    const huge = "// padding\n".repeat(Math.ceil(MAX_C_SOURCE_BYTES / 11) + 1);
+    const res = await POST(makeRequest({ source: huge, optLevel: "-O0" }));
+    expect(res.status).toBe(413);
+    const body = await res.json();
+    expect(body.error).toMatch(/exceeds/);
+  });
+
+  it("returns 504 when the upstream times out", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        return Promise.reject(err);
+      }),
+    );
+    const res = await POST(
+      makeRequest({ source: "int main(){return 4;}", optLevel: "-O0" }),
+    );
+    expect(res.status).toBe(504);
+    const body = await res.json();
+    expect(body.error).toMatch(/timed out/);
   });
 
   it("returns 400 when the compiler reports a diagnostic", async () => {
