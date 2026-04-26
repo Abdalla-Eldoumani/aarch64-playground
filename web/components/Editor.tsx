@@ -360,7 +360,7 @@ export function Editor({
 
       updateDecorations();
     },
-    [onToggleBreakpoint, updateDecorations]
+    [onToggleBreakpoint, updateDecorations, onCursorChange]
   );
 
   // re-apply decorations when the editor or any of its inputs change
