@@ -30,6 +30,11 @@ import { useLectureMode } from "@/lib/use-lecture-mode";
 import { useHotspotMode } from "@/lib/use-hotspot-mode";
 import { useNamedSaves } from "@/lib/use-named-saves";
 import { formatAsm } from "@/lib/asm-formatter";
+import {
+  MAX_BOOKMARK_JSON_BYTES,
+  MAX_VFS_BYTES,
+  checkUploadSize,
+} from "@/lib/upload-guard";
 import { ArgsInput } from "@/components/ArgsInput";
 import { LectureBar } from "@/components/LectureBar";
 import { ReplayScrubber } from "@/components/ReplayScrubber";
@@ -640,6 +645,12 @@ export default function Home() {
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (!f) return;
+          const sizeError = checkUploadSize(f.size, MAX_VFS_BYTES, "file");
+          if (sizeError) {
+            toast.error(sizeError);
+            e.target.value = "";
+            return;
+          }
           f.arrayBuffer().then((buf) => {
             emu.uploadVfsFile(f.name, new Uint8Array(buf));
           });
@@ -738,7 +749,7 @@ export default function Home() {
                 await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
                 toast.show(`exported ${bundle.saves.length} bookmark${bundle.saves.length === 1 ? "" : "s"} to clipboard`);
               } catch {
-                toast.show("clipboard write failed");
+                toast.error("clipboard write failed");
               }
             }}
             className="text-[10px] text-[var(--accent)] hover:underline"
@@ -762,13 +773,19 @@ export default function Home() {
         onChange={async (e) => {
           const file = e.target.files?.[0];
           if (!file) return;
+          const sizeError = checkUploadSize(file.size, MAX_BOOKMARK_JSON_BYTES, "bookmark file");
+          if (sizeError) {
+            toast.error(sizeError);
+            e.target.value = "";
+            return;
+          }
           try {
             const text = await file.text();
             const parsed = JSON.parse(text);
             const result = namedSaves.importBundle(parsed);
             toast.show(`imported ${result.added} added, ${result.skipped} skipped`);
           } catch {
-            toast.show("invalid bookmark bundle");
+            toast.error("invalid bookmark bundle");
           } finally {
             e.target.value = "";
           }
@@ -840,7 +857,7 @@ export default function Home() {
                     });
                     toast.show(`restored ${s.name} (step ${s.stepCount})`);
                   } catch {
-                    toast.show(`restore failed for ${s.name}`);
+                    toast.error(`restore failed for ${s.name}`);
                   }
                 }}
                 className="text-[10px] text-[var(--accent)] hover:underline"
