@@ -67,3 +67,26 @@ describe("cpsc355-lint non-canonical-prologue", () => {
     expect(lintSource(src).filter((m) => m.ruleId === "non-canonical-prologue")).toEqual([]);
   });
 });
+
+describe("cpsc355-lint non-16-byte-alloc", () => {
+  it("flags an alloc symbol that resolves to a non-16-multiple", () => {
+    const src = `alloc = -8\n`;
+    const markers = lintSource(src);
+    expect(markers.some((m) => m.ruleId === "non-16-byte-alloc")).toBe(true);
+  });
+
+  it("accepts a -(16+16) & -16 expression", () => {
+    const src = `alloc = -(16 + 16) & -16\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "non-16-byte-alloc")).toEqual([]);
+  });
+
+  it("flags a [sp, K]! literal that is not a multiple of 16", () => {
+    const src = `  stp fp, lr, [sp, -8]!\n`;
+    expect(lintSource(src).some((m) => m.ruleId === "non-16-byte-alloc")).toBe(true);
+  });
+
+  it("accepts [sp, -16]!", () => {
+    const src = `  stp fp, lr, [sp, -16]!\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "non-16-byte-alloc")).toEqual([]);
+  });
+});

@@ -122,10 +122,106 @@ function nonCanonicalPrologueRule(source: string): LintMarker[] {
   return out;
 }
 
+// Tiny expression evaluator for the alloc rule: integer literals
+// (decimal / hex), parens, unary minus, binary + - &. Returns null on
+// any unsupported token so the rule simply skips uncertain cases
+// instead of false-warning.
+function evalExpr(expr: string): number | null {
+  let pos = 0;
+  const src = expr.trim();
+  const peek = () => src[pos];
+  const eatWs = () => {
+    while (pos < src.length && /\s/.test(src[pos])) pos++;
+  };
+  const parsePrimary = (): number | null => {
+    eatWs();
+    if (peek() === "(") {
+      pos++;
+      const v = parseAdd();
+      eatWs();
+      if (peek() !== ")") return null;
+      pos++;
+      return v;
+    }
+    if (peek() === "-") {
+      pos++;
+      const v = parsePrimary();
+      return v == null ? null : -v;
+    }
+    const m = src.slice(pos).match(/^(0x[0-9a-fA-F]+|\d+)/);
+    if (!m) return null;
+    pos += m[0].length;
+    return m[0].startsWith("0x") || m[0].startsWith("0X")
+      ? parseInt(m[0], 16)
+      : parseInt(m[0], 10);
+  };
+  const parseAdd = (): number | null => {
+    let left = parsePrimary();
+    if (left == null) return null;
+    while (true) {
+      eatWs();
+      const op = peek();
+      if (op !== "+" && op !== "-" && op !== "&") return left;
+      pos++;
+      const right = parsePrimary();
+      if (right == null) return null;
+      if (op === "+") left = left + right;
+      else if (op === "-") left = left - right;
+      else left = left & right;
+    }
+  };
+  const result = parseAdd();
+  eatWs();
+  if (pos !== src.length) return null;
+  return result;
+}
+
+function non16ByteAllocRule(source: string): LintMarker[] {
+  const out: LintMarker[] = [];
+  const lines = source.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Form 1: name = expression
+    const eq = line.match(/^\s*([A-Za-z_][\w]*)\s*=\s*(.+?)\s*(?:\/\/.*)?$/);
+    if (eq) {
+      const value = evalExpr(eq[2]);
+      if (value != null && Math.abs(value) % 16 !== 0) {
+        out.push({
+          line: i + 1,
+          column: 1,
+          endColumn: line.length + 1,
+          severity: "warning",
+          message: `\`${eq[1]}\` evaluates to ${value}, which is not a multiple of 16; AAPCS64 requires 16-byte stack alignment.`,
+          ruleId: "non-16-byte-alloc",
+        });
+        continue;
+      }
+    }
+    // Form 2: [sp, K]! literal
+    const sp = line.match(/\[\s*sp\s*,\s*(-?\d+)\s*\]!/);
+    if (sp) {
+      const k = parseInt(sp[1], 10);
+      if (Math.abs(k) % 16 !== 0) {
+        const idx = line.indexOf(sp[0]);
+        out.push({
+          line: i + 1,
+          column: idx + 1,
+          endColumn: idx + sp[0].length + 1,
+          severity: "warning",
+          message: `pre-indexed sp adjustment by ${k} is not a multiple of 16; AAPCS64 requires 16-byte stack alignment.`,
+          ruleId: "non-16-byte-alloc",
+        });
+      }
+    }
+  }
+  return out;
+}
+
 export function lintSource(source: string): LintMarker[] {
   return [
     ...aliasSuffixRule(source),
     ...missingGlobalMainRule(source),
     ...nonCanonicalPrologueRule(source),
+    ...non16ByteAllocRule(source),
   ].sort((a, b) => a.line - b.line);
 }
