@@ -2,6 +2,7 @@
 
 import LZString from "lz-string";
 import { buildDeepLinkQuery } from "@/lib/use-deep-link";
+import { MAX_SHARE_DECOMPRESSED_BYTES } from "@/lib/upload-guard";
 import type { Theme } from "@/lib/use-theme";
 
 const PREFIX_V2 = "p2=";
@@ -45,16 +46,26 @@ export function readShareHash(hash: string): ShareState | null {
     const compressed = trimmed.slice(PREFIX_V2.length);
     const decoded = LZString.decompressFromEncodedURIComponent(compressed);
     if (!decoded) return null;
+    if (decoded.length > MAX_SHARE_DECOMPRESSED_BYTES) return null;
     try {
       const parsed = JSON.parse(decoded) as unknown;
+      if (parsed == null || typeof parsed !== "object") return null;
+      const o = parsed as Record<string, unknown>;
+      if (typeof o.source !== "string") return null;
+      const out: ShareState = { source: o.source };
+      if (typeof o.args === "string") out.args = o.args;
+      if (typeof o.stdin === "string") out.stdin = o.stdin;
+      if (o.view === "playground" || o.view === "c-to-asm") out.view = o.view;
       if (
-        parsed != null &&
-        typeof parsed === "object" &&
-        typeof (parsed as { source?: unknown }).source === "string"
+        o.cursor != null &&
+        typeof o.cursor === "object" &&
+        typeof (o.cursor as { line?: unknown }).line === "number" &&
+        typeof (o.cursor as { column?: unknown }).column === "number"
       ) {
-        return parsed as ShareState;
+        const c = o.cursor as { line: number; column: number };
+        out.cursor = { line: c.line, column: c.column };
       }
-      return null;
+      return out;
     } catch {
       return null;
     }
@@ -62,7 +73,9 @@ export function readShareHash(hash: string): ShareState | null {
   if (trimmed.startsWith(PREFIX_V1)) {
     const compressed = trimmed.slice(PREFIX_V1.length);
     const decoded = LZString.decompressFromEncodedURIComponent(compressed);
-    return decoded && decoded.length > 0 ? { source: decoded } : null;
+    if (!decoded || decoded.length === 0) return null;
+    if (decoded.length > MAX_SHARE_DECOMPRESSED_BYTES) return null;
+    return { source: decoded };
   }
   return null;
 }
