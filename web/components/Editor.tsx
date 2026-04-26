@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/use-emulator";
 import { lookupDoc } from "@/lib/instruction-docs";
 import { explainError } from "@/lib/error-explain";
+import { lintSource } from "@/lib/cpsc355-lint";
+import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
 
 interface EditorProps {
   value: string;
@@ -57,6 +59,14 @@ export function Editor({
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
   const [fallback, setFallback] = useState<boolean>(() => isNarrow());
+  const { enabled: cpscEnabled } = useCpsc355Mode();
+  // Stash the live flag in a ref so the model.onDidChangeContent
+  // listener registered inside handleMount sees the current value
+  // without re-registering each time the toggle flips.
+  const cpscEnabledRef = useRef(cpscEnabled);
+  useEffect(() => {
+    cpscEnabledRef.current = cpscEnabled;
+  }, [cpscEnabled]);
 
   // Re-evaluate the narrow-viewport fallback on resize so a student
   // who rotates their phone doesn't get stuck in the wrong mode.
@@ -280,6 +290,35 @@ export function Editor({
         onCursorChange?.({ line: e.position.lineNumber, column: e.position.column });
       });
 
+      // cpsc 355 lint: debounced model-content listener that converts
+      // `lintSource` markers into Monaco model markers. Cleared when
+      // the toggle is off so old warnings don't linger.
+      let lintTimer: ReturnType<typeof setTimeout> | null = null;
+      const runLint = () => {
+        const model = editor.getModel();
+        if (!model) return;
+        if (!cpscEnabledRef.current) {
+          monaco.editor.setModelMarkers(model, "cpsc355", []);
+          return;
+        }
+        const markers = lintSource(model.getValue()).map((mk) => ({
+          severity: monaco.MarkerSeverity.Warning,
+          message: mk.message,
+          startLineNumber: mk.line,
+          startColumn: mk.column,
+          endLineNumber: mk.line,
+          endColumn: mk.endColumn,
+          source: "cpsc 355",
+        }));
+        monaco.editor.setModelMarkers(model, "cpsc355", markers);
+      };
+      const debouncedLint = () => {
+        if (lintTimer) clearTimeout(lintTimer);
+        lintTimer = setTimeout(runLint, 150);
+      };
+      editor.getModel()?.onDidChangeContent(() => debouncedLint());
+      runLint();
+
       // Set an aria-label so screen readers announce the editor as more
       // than "edit text"; Monaco's default label is generic.
       editor.getDomNode()?.setAttribute("aria-label", "ARM64 assembly source code editor");
@@ -328,6 +367,31 @@ export function Editor({
   useEffect(() => {
     updateDecorations();
   }, [currentLine, breakpoints, assemblyErrors, updateDecorations]);
+
+  // Re-run cpsc 355 lint when the toggle flips. The handleMount
+  // listener already keeps markers fresh on edits via the ref-backed
+  // flag; this effect handles the toggle itself.
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const model = editor.getModel();
+    if (!model) return;
+    if (!cpscEnabled) {
+      monaco.editor.setModelMarkers(model, "cpsc355", []);
+      return;
+    }
+    const markers = lintSource(model.getValue()).map((mk) => ({
+      severity: monaco.MarkerSeverity.Warning,
+      message: mk.message,
+      startLineNumber: mk.line,
+      startColumn: mk.column,
+      endLineNumber: mk.line,
+      endColumn: mk.endColumn,
+      source: "cpsc 355",
+    }));
+    monaco.editor.setModelMarkers(model, "cpsc355", markers);
+  }, [cpscEnabled]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
