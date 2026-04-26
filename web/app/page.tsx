@@ -26,7 +26,9 @@ import { HeaderOverflowSheet } from "@/components/HeaderOverflowSheet";
 import { parseDeepLink } from "@/lib/use-deep-link";
 import { parseArgs } from "@/lib/args";
 import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
+import { useLectureMode } from "@/lib/use-lecture-mode";
 import { ArgsInput } from "@/components/ArgsInput";
+import { LectureBar } from "@/components/LectureBar";
 import {
   describeTarget,
   getImportTarget,
@@ -142,6 +144,7 @@ export default function Home() {
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [, toggleTheme, setTheme] = useTheme();
   const cpsc = useCpsc355Mode();
+  const lecture = useLectureMode();
   const [embed, setEmbed] = useState<boolean>(false);
   const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
   const [extraFiles, setExtraFiles] = useSourceFiles();
@@ -893,6 +896,19 @@ export default function Home() {
         </button>
         <button
           type="button"
+          onClick={wrap(() => lecture.toggle())}
+          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+            lecture.enabled
+              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+          aria-pressed={lecture.enabled}
+          aria-label="toggle lecture mode"
+        >
+          lecture
+        </button>
+        <button
+          type="button"
           onClick={wrap(() => setPaletteOpen(true))}
           className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           aria-label="open command palette"
@@ -1039,6 +1055,14 @@ export default function Home() {
         )}
       </div>
 
+      {lecture.enabled && (
+        <LectureBar
+          onStep={emu.step}
+          onReset={emu.reset}
+          stepCount={emu.stepCount}
+          isHalted={emu.isHalted}
+        />
+      )}
       <Controls
         onAssemble={assembleWithHistory}
         onStep={emu.step}
