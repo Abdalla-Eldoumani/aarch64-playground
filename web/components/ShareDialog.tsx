@@ -1,27 +1,29 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { buildShareUrl } from "@/lib/share";
+import { buildShareUrl, type ShareState } from "@/lib/share";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface ShareDialogProps {
   open: boolean;
-  source: string;
+  state: ShareState;
   onClose: () => void;
 }
 
 /**
- * Modal that builds a compressed `#p=...` URL and offers copy/share.
+ * Modal that builds a compressed `#p2=...` URL and offers copy/share.
  * Uses `navigator.share` when the platform supports it (iOS/Android),
- * falls back to a textarea with a copy button otherwise.
+ * falls back to a textarea with a copy button otherwise. The hash
+ * carries the full editor state (source, args, stdin, view, cursor)
+ * so the recipient lands in the same scenario the sender saw.
  */
-export function ShareDialog({ open, source, onClose }: ShareDialogProps) {
+export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(open, ref, onClose);
-  // Build the URL during render; since we only read `source` and
+  // Build the URL during render; since we only read `state` and
   // `open`, this stays consistent without a setState-in-effect round.
-  const url = open ? buildShareUrl(source) : "";
+  const url = open ? buildShareUrl(state) : "";
 
   if (!open) return null;
 
