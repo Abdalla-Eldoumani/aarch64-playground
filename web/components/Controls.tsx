@@ -143,7 +143,8 @@ function Button({
     <button
       onClick={onClick}
       disabled={disabled}
-      aria-label={shortcut ? `${label} (${shortcut})` : label}
+      aria-label={label}
+      aria-keyshortcuts={shortcut}
       className={`group inline-flex items-center gap-2 px-2 sm:px-3 py-1 min-h-[28px] font-sans text-xs tracking-wide rounded border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
         disabled
           ? "border-[var(--border)] text-[var(--text-secondary)] cursor-not-allowed"
