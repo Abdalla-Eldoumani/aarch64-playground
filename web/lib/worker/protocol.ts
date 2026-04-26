@@ -33,6 +33,9 @@ export type RequestKind =
   | "listStates"
   | "uploadVfsFile"
   | "listVfsFiles"
+  | "readVfsFile"
+  | "deleteVfsFile"
+  | "resolveLabel"
   | "clearConsole"
   | "codeBase";
 
@@ -62,6 +65,9 @@ export type Request =
   | BaseRequest<"listStates">
   | (BaseRequest<"uploadVfsFile"> & { path: string; data: Uint8Array })
   | BaseRequest<"listVfsFiles">
+  | (BaseRequest<"readVfsFile"> & { path: string })
+  | (BaseRequest<"deleteVfsFile"> & { path: string })
+  | (BaseRequest<"resolveLabel"> & { name: string })
   | BaseRequest<"clearConsole">
   | BaseRequest<"codeBase">;
 

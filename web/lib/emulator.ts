@@ -125,6 +125,20 @@ export class EmulatorInstance {
     return this.inner.list_vfs_files();
   }
 
+  readVfsFile(path: string): Uint8Array {
+    return this.inner.read_vfs_file(path);
+  }
+
+  deleteVfsFile(path: string): boolean {
+    return this.inner.delete_vfs_file(path);
+  }
+
+  resolveLabel(name: string): number | null {
+    const v = this.inner.resolve_label(name);
+    if (v == null) return null;
+    return typeof v === "bigint" ? Number(v) : Number(v);
+  }
+
   clearConsole(): void {
     this.inner.clear_console();
   }
@@ -239,6 +253,9 @@ interface WasmEmulatorInstance {
   get_exit_code(): bigint | number | null | undefined;
   upload_vfs_file(path: string, data: Uint8Array): void;
   list_vfs_files(): string[];
+  read_vfs_file(path: string): Uint8Array;
+  delete_vfs_file(path: string): boolean;
+  resolve_label(name: string): bigint | number | null | undefined;
   clear_console(): void;
 }
 

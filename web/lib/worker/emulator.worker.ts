@@ -257,6 +257,35 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: emu.list_vfs_files() });
         return;
       }
+      case "readVfsFile": {
+        await ensureWasm();
+        const emu = require_emulator();
+        const bytes = emu.read_vfs_file(msg.path) as Uint8Array;
+        // Copy and transfer the buffer like getMemory does so the
+        // wasm-side allocation isn't pinned across postMessage.
+        const copy = new Uint8Array(bytes);
+        post({ id: msg.id, kind: "ok", value: copy }, [copy.buffer]);
+        return;
+      }
+      case "deleteVfsFile": {
+        await ensureWasm();
+        const emu = require_emulator();
+        const removed = emu.delete_vfs_file(msg.path);
+        bumpFrame();
+        post({ id: msg.id, kind: "ok", value: { removed, snapshot: snapshot() } });
+        return;
+      }
+      case "resolveLabel": {
+        await ensureWasm();
+        const emu = require_emulator();
+        const addr = emu.resolve_label(msg.name);
+        // wasm-bindgen returns Option<u64> as bigint | undefined; flatten to
+        // number | null for the JS protocol.
+        const value =
+          addr == null ? null : typeof addr === "bigint" ? Number(addr) : Number(addr);
+        post({ id: msg.id, kind: "ok", value });
+        return;
+      }
       case "clearConsole": {
         await ensureWasm();
         const emu = require_emulator();

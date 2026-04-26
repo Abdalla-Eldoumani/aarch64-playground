@@ -159,6 +159,18 @@ export class WorkerClient {
     return this.send<string[]>({ id: 0, kind: "listVfsFiles" });
   }
 
+  readVfsFile(path: string): Promise<Uint8Array> {
+    return this.send<Uint8Array>({ id: 0, kind: "readVfsFile", path });
+  }
+
+  deleteVfsFile(path: string): Promise<{ removed: boolean; snapshot: StateSnapshot }> {
+    return this.send({ id: 0, kind: "deleteVfsFile", path });
+  }
+
+  resolveLabel(name: string): Promise<number | null> {
+    return this.send<number | null>({ id: 0, kind: "resolveLabel", name });
+  }
+
   clearConsole(): Promise<StateSnapshot> {
     return this.send<StateSnapshot>({ id: 0, kind: "clearConsole" });
   }

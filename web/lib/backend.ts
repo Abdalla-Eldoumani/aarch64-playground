@@ -36,6 +36,9 @@ export interface EmulatorBackend {
   loadState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }>;
   deleteState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }>;
   uploadVfsFile(path: string, data: Uint8Array): Promise<StateSnapshot>;
+  readVfsFile(path: string): Promise<Uint8Array>;
+  deleteVfsFile(path: string): Promise<{ removed: boolean; snapshot: StateSnapshot }>;
+  resolveLabel(name: string): Promise<number | null>;
   clearConsole(): Promise<StateSnapshot>;
   codeBase(): Promise<number>;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
@@ -183,6 +186,21 @@ class MainThreadBackend implements EmulatorBackend {
   async uploadVfsFile(path: string, data: Uint8Array): Promise<StateSnapshot> {
     this.requireEmu().uploadVfsFile(path, data);
     return this.notifyAndReturn(this.snapshot());
+  }
+
+  async readVfsFile(path: string): Promise<Uint8Array> {
+    const bytes = this.requireEmu().readVfsFile(path);
+    return bytes;
+  }
+
+  async deleteVfsFile(path: string): Promise<{ removed: boolean; snapshot: StateSnapshot }> {
+    const removed = this.requireEmu().deleteVfsFile(path);
+    if (removed) this.frame++;
+    return this.notifyAndReturn({ removed, snapshot: this.snapshot() });
+  }
+
+  async resolveLabel(name: string): Promise<number | null> {
+    return this.requireEmu().resolveLabel(name);
   }
 
   async clearConsole(): Promise<StateSnapshot> {
