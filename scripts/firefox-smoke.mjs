@@ -70,8 +70,12 @@ console.log(`firefox: editor ok, headers ok, sw count = ${swCount}`);
 if (errors.length > 0) {
   console.error("console / page errors:");
   for (const e of errors) console.error(`  ${e}`);
-  // Filter known-noise like favicon 404 across browsers
-  const real = errors.filter((e) => !/favicon/i.test(e));
+  // Filter known-noise: favicon 404, and Vercel Analytics / Speed
+  // Insights script 404s on localhost (those endpoints are proxied
+  // by Vercel's edge, not by `next start`).
+  const real = errors.filter(
+    (e) => !/favicon/i.test(e) && !/_vercel\/(insights|speed-insights)/i.test(e),
+  );
   if (real.length) exit = 1;
 }
 
