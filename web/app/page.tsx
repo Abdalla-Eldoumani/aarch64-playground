@@ -537,15 +537,22 @@ export default function Home() {
   // terminal pane.
   const terminalUploadRef = useRef<HTMLInputElement>(null);
   const buildTerminalContext = useCallback(() => {
+    const dec = new TextDecoder();
     return {
       vfs: new Map<string, string>(),
       listVfs: () => emu.vfsFiles.slice().sort(),
-      readVfs: () => undefined,
+      readVfs: async (path: string) => {
+        const bytes = await emu.readVfsFile(path);
+        if (bytes.length === 0 && !emu.vfsFiles.includes(path)) {
+          return undefined; // distinguish missing from empty
+        }
+        return dec.decode(bytes);
+      },
       writeVfs: (path: string, body: string) => {
         const enc = new TextEncoder();
         emu.uploadVfsFile(path, enc.encode(body));
       },
-      deleteVfs: () => false,
+      deleteVfs: async (path: string) => emu.deleteVfsFile(path),
       runProgram: async (args: string[], stdin?: string) => {
         emu.assemble(source, args.slice(1));
         if (stdin) emu.pushStdin(stdin);
@@ -577,9 +584,9 @@ export default function Home() {
         }
         return { halted: emu.isHalted, hit_breakpoint: false };
       },
-      setBreakpoint: async () => { /* address-based bp needs backend extension; tracked in BACKLOG */ },
-      clearBreakpoint: async () => { /* same */ },
-      resolveLabel: () => null,
+      setBreakpoint: async (addr: number) => emu.setBreakpointAddress(addr),
+      clearBreakpoint: async (addr: number) => emu.clearBreakpointAddress(addr),
+      resolveLabel: async (name: string) => emu.resolveLabel(name),
       readRegister: (name: string) => {
         const lower = name.toLowerCase();
         if (lower === "sp") return BigInt(emu.sp);

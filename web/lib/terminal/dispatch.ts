@@ -59,9 +59,11 @@ export interface DispatchContext {
   /** Lower-level VFS handle (rare; helpers below are usually enough). */
   vfs: Map<string, string>;
   listVfs(): string[];
-  readVfs(path: string): string | undefined;
+  /** Async because production reads round-trip through the worker;
+   *  tests can return a resolved Promise. */
+  readVfs(path: string): Promise<string | undefined> | string | undefined;
   writeVfs(path: string, body: string): void;
-  deleteVfs(path: string): boolean;
+  deleteVfs(path: string): Promise<boolean> | boolean;
   /** Run the currently-loaded program with argv and optional stdin. */
   runProgram(args: string[], stdin?: string): Promise<{ stdout: string; stderr: string; exitCode: number }>;
   step(): Promise<{ halted: boolean; line: number | null }>;
@@ -69,7 +71,7 @@ export interface DispatchContext {
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
   /** Look up a label's runtime address. Returns null when unresolved. */
-  resolveLabel(label: string): number | null;
+  resolveLabel(label: string): Promise<number | null> | number | null;
   /** Read a single register by name (`x0`..`x30`, `sp`, `pc`). */
   readRegister(name: string): bigint | null;
   /** Read every register the gdb `info registers` block should print. */
@@ -127,25 +129,24 @@ export async function dispatchCommand(
     const long = args[0] === "-l";
     const names = ctx.listVfs().slice().sort();
     if (!long) return { status: "ok", lines: names };
-    return {
-      status: "ok",
-      lines: names.map((n) => {
-        const body = ctx.readVfs(n) ?? "";
-        return `${String(body.length).padStart(6)} bytes  ${n}`;
-      }),
-    };
+    const lines: string[] = [];
+    for (const n of names) {
+      const body = (await ctx.readVfs(n)) ?? "";
+      lines.push(`${String(body.length).padStart(6)} bytes  ${n}`);
+    }
+    return { status: "ok", lines };
   }
   if (cmd === "cat") {
     const target = args[0];
     if (!target) return { status: "err", lines: ["cat: missing operand"] };
-    const body = ctx.readVfs(target);
+    const body = await ctx.readVfs(target);
     if (body === undefined) return { status: "err", lines: [`cat: ${target}: no such file in vfs`] };
     return { status: "ok", lines: body.split("\n") };
   }
   if (cmd === "cp") {
     const [src, dst] = args;
     if (!src || !dst) return { status: "err", lines: ["cp: usage: cp <src> <dst>"] };
-    const body = ctx.readVfs(src);
+    const body = await ctx.readVfs(src);
     if (body === undefined) return { status: "err", lines: [`cp: ${src}: no such file in vfs`] };
     ctx.writeVfs(dst, body);
     return { status: "ok", lines: [] };
@@ -153,17 +154,17 @@ export async function dispatchCommand(
   if (cmd === "rm") {
     const target = args[0];
     if (!target) return { status: "err", lines: ["rm: missing operand"] };
-    const ok = ctx.deleteVfs(target);
+    const ok = await ctx.deleteVfs(target);
     if (!ok) return { status: "err", lines: [`rm: ${target}: no such file in vfs`] };
     return { status: "ok", lines: [] };
   }
   if (cmd === "mv") {
     const [src, dst] = args;
     if (!src || !dst) return { status: "err", lines: ["mv: usage: mv <old> <new>"] };
-    const body = ctx.readVfs(src);
+    const body = await ctx.readVfs(src);
     if (body === undefined) return { status: "err", lines: [`mv: ${src}: no such file in vfs`] };
     ctx.writeVfs(dst, body);
-    ctx.deleteVfs(src);
+    await ctx.deleteVfs(src);
     return { status: "ok", lines: [] };
   }
   if (cmd === "reset") {
@@ -176,7 +177,7 @@ export async function dispatchCommand(
   if (cmd === "./program" || cmd === "program") {
     let stdin: string | undefined;
     if (stdinFrom) {
-      const body = ctx.readVfs(stdinFrom);
+      const body = await ctx.readVfs(stdinFrom);
       if (body === undefined) return { status: "err", lines: [`./program: ${stdinFrom}: no such file in vfs`] };
       stdin = body;
     }
@@ -211,7 +212,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "b") {
     const label = args[1];
     if (!label) return { status: "err", lines: ["gdb: b needs a label"] };
-    const addr = ctx.resolveLabel(label);
+    const addr = await ctx.resolveLabel(label);
     if (addr == null) return { status: "err", lines: [`gdb: unknown label '${label}'`] };
     await ctx.setBreakpoint(addr);
     return { status: "ok", lines: [`breakpoint set at ${hex16(BigInt(addr))} (${label})`] };

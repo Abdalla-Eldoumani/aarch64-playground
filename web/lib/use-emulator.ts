@@ -61,6 +61,14 @@ export interface EmulatorState {
   getMemory: (addr: number, len: number) => Uint8Array;
   pushStdin: (s: string) => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
+  readVfsFile: (path: string) => Promise<Uint8Array>;
+  deleteVfsFile: (path: string) => Promise<boolean>;
+  resolveLabel: (name: string) => Promise<number | null>;
+  /** Address-based breakpoint setter, used by `gdb b <label>` once the
+   *  label resolves. The line-based `toggleBreakpoint` stays the
+   *  primary path for the gutter UI. */
+  setBreakpointAddress: (addr: number) => Promise<void>;
+  clearBreakpointAddress: (addr: number) => Promise<void>;
   clearConsole: () => void;
   /**
    * Per-source-line execution counter. Increments by one each time a
@@ -426,6 +434,37 @@ export function useEmulator(): EmulatorState {
     void backend.clearConsole();
   }, []);
 
+  const readVfsFile = useCallback(async (path: string) => {
+    const backend = backendRef.current;
+    if (!backend) return new Uint8Array();
+    return backend.readVfsFile(path);
+  }, []);
+
+  const deleteVfsFile = useCallback(async (path: string) => {
+    const backend = backendRef.current;
+    if (!backend) return false;
+    const result = await backend.deleteVfsFile(path);
+    return result.removed;
+  }, []);
+
+  const resolveLabel = useCallback(async (name: string) => {
+    const backend = backendRef.current;
+    if (!backend) return null;
+    return backend.resolveLabel(name);
+  }, []);
+
+  const setBreakpointAddress = useCallback(async (addr: number) => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    await backend.setBreakpoint(addr);
+  }, []);
+
+  const clearBreakpointAddress = useCallback(async (addr: number) => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    await backend.clearBreakpoint(addr);
+  }, []);
+
   const toggleBreakpoint = useCallback((line: number) => {
     const backend = backendRef.current;
     if (!backend) return;
@@ -518,6 +557,11 @@ export function useEmulator(): EmulatorState {
       getMemory,
       pushStdin,
       uploadVfsFile,
+      readVfsFile,
+      deleteVfsFile,
+      resolveLabel,
+      setBreakpointAddress,
+      clearBreakpointAddress,
       clearConsole,
       lineCounts: lineCountsRef.current,
       replayFrames: replayRingRef.current.range(),
@@ -535,7 +579,9 @@ export function useEmulator(): EmulatorState {
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, getMemory,
-      pushStdin, uploadVfsFile, clearConsole, lineCountsTick, seekReplay,
+      pushStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
+      setBreakpointAddress, clearBreakpointAddress,
+      clearConsole, lineCountsTick, seekReplay,
     ],
   );
 }
