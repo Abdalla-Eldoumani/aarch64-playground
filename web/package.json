@@ -9,8 +9,31 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "size": "size-limit"
   },
+  "size-limit": [
+    {
+      "name": "initial js (framework + main + polyfills + entry)",
+      "path": [
+        ".next/static/chunks/framework-*.js",
+        ".next/static/chunks/main-*.js",
+        ".next/static/chunks/polyfills-*.js",
+        ".next/static/chunks/app/page-*.js"
+      ],
+      "limit": "400 KB"
+    },
+    {
+      "name": "lazy monaco bundle",
+      "path": ".next/static/chunks/e868780c.*.js",
+      "limit": "100 KB"
+    },
+    {
+      "name": "wasm emulator (lazy on first assemble)",
+      "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
+      "limit": "200 KB"
+    }
+  ],
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "^0.11.0",
@@ -24,6 +47,7 @@
     "react-resizable-panels": "^4.10.0"
   },
   "devDependencies": {
+    "@size-limit/file": "^12.1.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
@@ -34,6 +58,7 @@
     "eslint-config-next": "^16.0.0",
     "jsdom": "^29.0.2",
     "postcss": "^8.4.0",
+    "size-limit": "^12.1.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.4"
