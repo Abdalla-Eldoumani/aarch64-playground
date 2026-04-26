@@ -1,0 +1,13 @@
+# Fixture and source files MUST stay LF on every checkout, regardless
+# of platform. The WASM emulator emits LF in stdout/stderr, and the
+# verify-corpus.js byte-for-byte fixture comparison breaks if Windows
+# git's autocrlf converts these to CRLF on checkout.
+*.stdout text eol=lf
+*.stdin  text eol=lf
+*.args   text eol=lf
+*.s      text eol=lf
+*.asm    text eol=lf
+*.S      text eol=lf
+
+# Shell scripts must be LF or bash on Linux refuses to run them.
+*.sh text eol=lf
