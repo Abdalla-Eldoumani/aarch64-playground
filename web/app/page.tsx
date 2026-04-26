@@ -1164,27 +1164,23 @@ export default function Home() {
         <span className="hidden sm:inline font-serif text-[15px] font-semibold tracking-tight text-[var(--text-primary)] whitespace-nowrap shrink-0">
           cpsc 355 playground
         </span>
-        <div className="min-w-0 flex-1 sm:flex-initial overflow-hidden">
+        <div className="min-w-0 flex-1 sm:flex-initial sm:shrink-0 overflow-hidden">
           <ExampleLoader
             onLoad={(src, label) => loadAsBaseline(src, label ?? "example")}
           />
         </div>
         <ArgsInput source={source} value={argsText} onChange={setArgsText} />
-        <div className="hidden md:flex items-center gap-3">
-          <ImportExport source={source} target={importTarget} onImport={handleImport} />
-          {renderSecondaryActions()}
-        </div>
         <button
           type="button"
           onClick={() => setOverflowOpen(true)}
-          className="md:hidden shrink-0 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="shrink-0 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           aria-label="more actions"
           aria-haspopup="dialog"
           aria-expanded={overflowOpen}
         >
           ...
         </button>
-        <div className="hidden md:flex flex-1" />
+        <div className="flex-1" />
         <button
           type="button"
           onClick={() => setHelpOpen(true)}
@@ -1215,7 +1211,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 flex flex-col">
+      <main role="main" aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
         {view === "c-to-asm" ? (
           <CToAsmView
             onLoadIntoPlayground={onLoadIntoPlayground}
@@ -1259,7 +1255,7 @@ export default function Home() {
             consoleBlocked={emu.blocked}
           />
         )}
-      </div>
+      </main>
 
       {lecture.enabled && (
         <LectureBar
