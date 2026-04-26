@@ -61,6 +61,14 @@ export interface EmulatorState {
   pushStdin: (s: string) => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   clearConsole: () => void;
+  /**
+   * Per-source-line execution counter. Increments by one each time a
+   * `step` / `runUntilBreak` settles on a new line; cleared on
+   * `reset` and `assemble`. Used by the hotspot overlay. Approximate
+   * during run-mode (only the final line of each chunk is captured)
+   * because the snapshot stream doesn't carry per-step line history.
+   */
+  lineCounts: Map<number, number>;
 }
 
 function memCacheKey(addr: number, len: number): string {
@@ -76,6 +84,11 @@ export function useEmulator(): EmulatorState {
   // panels never read stale bytes. Stores Uint8Arrays keyed by addr+len.
   const memCacheRef = useRef<Map<string, Uint8Array>>(new Map());
   const memPendingRef = useRef<Set<string>>(new Set());
+  // Hotspot tracking. Source of truth lives in a ref so applySnapshot
+  // can write without forcing the hook to render every snapshot. Tick
+  // bump triggers consumers to re-read.
+  const lineCountsRef = useRef<Map<number, number>>(new Map());
+  const currentLineRef = useRef<number | null>(null);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -105,6 +118,7 @@ export function useEmulator(): EmulatorState {
   const [savedStates, setSavedStates] = useState<string[]>([]);
   // Tick increments whenever cache state changes so panels re-render.
   const [memTick, setMemTick] = useState(0);
+  const [lineCountsTick, setLineCountsTick] = useState(0);
 
   const applySnapshot = useCallback((snap: StateSnapshot) => {
     if (snap.frame > frameRef.current) {
@@ -128,9 +142,27 @@ export function useEmulator(): EmulatorState {
     if (snap.stderrDelta) setStderr((prev) => prev + snap.stderrDelta);
     const instrIndex = (Number(BigInt(snap.pc)) - codeBase) / 4;
     if (instrIndex >= 0) {
-      setCurrentLine(pcToSourceLine(instrIndex, sourceRef.current));
+      const newLine = pcToSourceLine(instrIndex, sourceRef.current);
+      setCurrentLine(newLine);
+      currentLineRef.current = newLine;
     }
   }, [codeBase]);
+
+  // Bump the per-line execution counter for the current line. Called
+  // by step / runUntilBreak after the snapshot listener has updated
+  // currentLineRef. Caller is responsible for triggering the React
+  // re-render via the tick state.
+  const bumpLineCount = useCallback(() => {
+    const ln = currentLineRef.current;
+    if (ln == null) return;
+    lineCountsRef.current.set(ln, (lineCountsRef.current.get(ln) ?? 0) + 1);
+    setLineCountsTick((t) => t + 1);
+  }, []);
+
+  const resetLineCounts = useCallback(() => {
+    lineCountsRef.current = new Map();
+    setLineCountsTick((t) => t + 1);
+  }, []);
 
   // Load backend on mount.
   useEffect(() => {
@@ -175,6 +207,7 @@ export function useEmulator(): EmulatorState {
       setStepCount(0);
       setStdout("");
       setStderr("");
+      resetLineCounts();
       detectHostedMode(source).then(setHostedMode).catch(() => {});
 
       const hasContent = source
@@ -221,7 +254,7 @@ export function useEmulator(): EmulatorState {
           setError(e instanceof Error ? e.message : String(e));
         });
     },
-    [],
+    [resetLineCounts],
   );
 
   const step = useCallback(() => {
@@ -233,11 +266,12 @@ export function useEmulator(): EmulatorState {
       .then(({ stepResult }) => {
         if (stepResult.error) setError(stepResult.error);
         setStepCount((c) => c + 1);
+        bumpLineCount();
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
       });
-  }, []);
+  }, [bumpLineCount]);
 
   const stepBack = useCallback(() => {
     const backend = backendRef.current;
@@ -279,6 +313,10 @@ export function useEmulator(): EmulatorState {
       .then(({ runResult }) => {
         setStepCount((c) => c + runResult.steps_executed);
         if (runResult.error) setError(runResult.error);
+        // Approximate hotspot bump: only the final line of the run
+        // chunk is captured. Per-step granularity would require a Rust
+        // delta in the snapshot; tracked in BACKLOG.
+        bumpLineCount();
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
@@ -287,7 +325,7 @@ export function useEmulator(): EmulatorState {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [isHalted]);
+  }, [isHalted, bumpLineCount]);
 
   const pause = useCallback(() => {
     const backend = backendRef.current;
@@ -309,8 +347,9 @@ export function useEmulator(): EmulatorState {
     setStdout("");
     setStderr("");
     setStepCount(0);
+    resetLineCounts();
     void backend.reset();
-  }, []);
+  }, [resetLineCounts]);
 
   const pushStdin = useCallback((s: string) => {
     const backend = backendRef.current;
@@ -425,9 +464,10 @@ export function useEmulator(): EmulatorState {
       pushStdin,
       uploadVfsFile,
       clearConsole,
+      lineCounts: lineCountsRef.current,
     }),
-    // memTick is intentionally a dep so getMemory closures re-render
-    // when the cache fills.
+    // memTick / lineCountsTick are intentionally deps so getMemory and
+    // lineCounts consumers re-render when the underlying ref mutates.
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isHalted, error, assemblyErrors, breakpoints,
@@ -435,7 +475,7 @@ export function useEmulator(): EmulatorState {
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, getMemory,
-      pushStdin, uploadVfsFile, clearConsole,
+      pushStdin, uploadVfsFile, clearConsole, lineCountsTick,
     ],
   );
 }
