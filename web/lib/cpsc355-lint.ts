@@ -52,6 +52,33 @@ function aliasSuffixRule(source: string): LintMarker[] {
   return out;
 }
 
+function missingGlobalMainRule(source: string): LintMarker[] {
+  const lines = source.split("\n");
+  let mainLine = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*main\s*:/.test(lines[i])) {
+      mainLine = i + 1;
+      break;
+    }
+  }
+  if (mainLine < 0) return [];
+  const hasGlobal = lines.some((l) => /^\s*\.glob(al|l)\s+main\b/.test(l));
+  if (hasGlobal) return [];
+  return [
+    {
+      line: mainLine,
+      column: 1,
+      endColumn: 5,
+      severity: "warning",
+      message: "label `main` is not declared with `.global main`; the loader needs the global symbol to find the entry point.",
+      ruleId: "missing-global-main",
+    },
+  ];
+}
+
 export function lintSource(source: string): LintMarker[] {
-  return [...aliasSuffixRule(source)].sort((a, b) => a.line - b.line);
+  return [
+    ...aliasSuffixRule(source),
+    ...missingGlobalMainRule(source),
+  ].sort((a, b) => a.line - b.line);
 }

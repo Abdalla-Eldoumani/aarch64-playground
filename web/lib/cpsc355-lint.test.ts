@@ -26,3 +26,26 @@ describe("cpsc355-lint alias-suffix", () => {
     expect(lintSource(src).filter((m) => m.ruleId === "alias-suffix")).toEqual([]);
   });
 });
+
+describe("cpsc355-lint missing-global-main", () => {
+  it("flags a main: label without .global main", () => {
+    const src = `.text\nmain:\n  ret\n`;
+    const markers = lintSource(src);
+    expect(markers.some((m) => m.ruleId === "missing-global-main")).toBe(true);
+  });
+
+  it("accepts main: when .global main is present", () => {
+    const src = `.global main\nmain:\n  ret\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "missing-global-main")).toEqual([]);
+  });
+
+  it("accepts .globl main as the directive too", () => {
+    const src = `.globl main\nmain:\n  ret\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "missing-global-main")).toEqual([]);
+  });
+
+  it("does not flag bare-metal source with no main: label", () => {
+    const src = `start:\n  mov x0, 0\n  ret\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "missing-global-main")).toEqual([]);
+  });
+});
