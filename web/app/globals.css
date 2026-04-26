@@ -184,3 +184,18 @@ body {
 [data-embed="1"] [data-embed-hide="1"] {
   display: none;
 }
+
+/* Phase 7: lecture mode bumps font scale so the playground reads from
+   the back of a classroom. The class lands on `<html>` together with
+   data-theme="high-contrast" via useLectureMode. */
+.lecture-mode {
+  --font-scale: 1.25;
+}
+.lecture-mode .font-mono,
+.lecture-mode .font-sans,
+.lecture-mode .font-serif {
+  font-size: calc(1em * var(--font-scale));
+}
+.lecture-mode .monaco-editor {
+  font-size: calc(16px * var(--font-scale)) !important;
+}
