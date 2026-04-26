@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useToast } from "@/components/Toast";
+import { MAX_SOURCE_BYTES, checkUploadSize } from "@/lib/upload-guard";
 import type { ImportTarget } from "@/lib/use-import-target";
 
 export interface ImportExportProps {
@@ -25,6 +27,7 @@ export interface ImportExportProps {
 export function ImportExport({ source, onImport, target, className = "" }: ImportExportProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
+  const toast = useToast();
 
   const download = useCallback(
     (ext: "asm" | "s") => {
@@ -55,10 +58,16 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      const sizeError = checkUploadSize(file.size, MAX_SOURCE_BYTES, "source file");
+      if (sizeError) {
+        toast.error(sizeError);
+        e.target.value = "";
+        return;
+      }
       file.text().then((text) => onImport(target, text));
       e.target.value = "";
     },
-    [onImport, target],
+    [onImport, target, toast],
   );
 
   return (
