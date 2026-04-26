@@ -124,6 +124,10 @@ pub struct Cpu {
     /// VFS + stdin; stdout/stderr are intentionally left alone so the
     /// student doesn't see already-printed output vanish).
     snapshots: SnapshotRing,
+    /// Resolved label -> absolute address from the most recent linker
+    /// pass. Empty until `load_linked_image*` runs. Drives
+    /// `gdb b <label>` and any other label-based debugger feature.
+    pub symbols: HashMap<String, u64>,
 }
 
 impl Cpu {
@@ -145,6 +149,7 @@ impl Cpu {
             next_fd: 3,
             host: HostTable::new(),
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
+            symbols: HashMap::new(),
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -232,7 +237,19 @@ impl Cpu {
         }
         crate::argv::setup_argv(&mut self.regs, &mut self.mem, args)?;
         self.halted = false;
+        // Refresh the symbol table from the linker so debugger
+        // surfaces (`gdb b <label>`, future symbolic features) can
+        // resolve names without going through the frontend again.
+        self.symbols = image.symbols.clone();
         Ok(())
+    }
+
+    /// Resolve a label name to its absolute address using the symbol
+    /// table captured during the most recent `load_linked_image*`
+    /// call. Returns `None` for unknown names or when no image has
+    /// been loaded yet.
+    pub fn resolve_label(&self, name: &str) -> Option<u64> {
+        self.symbols.get(name).copied()
     }
 
     /// Load a parsed program's sections into memory at their configured

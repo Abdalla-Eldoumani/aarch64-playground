@@ -560,3 +560,30 @@ fn step_back_restores_memory_writes() {
     cpu.step_back();
     assert_eq!(cpu.mem.read_u32(0x0070_0000).unwrap(), 0);
 }
+
+#[test]
+fn resolve_label_finds_main_after_hosted_assemble() {
+    use aarch64_emulator::frontend::pipeline::assemble_hosted;
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(
+        ".text\n.global main\nmain:\n  mov w0, 0\n  ret\n",
+        &cpu.host,
+    )
+    .expect("assembled");
+    cpu.load_linked_image(&image).expect("loaded");
+    let main_addr = cpu.resolve_label("main").expect("main exists");
+    assert_eq!(main_addr, CODE_BASE, "main should be at .text base");
+    assert!(cpu.resolve_label("nonexistent").is_none());
+}
+
+#[test]
+fn delete_vfs_file_removes_entry() {
+    let mut cpu = Cpu::new();
+    cpu.upload_vfs_file("foo.txt".to_string(), b"hello".to_vec());
+    assert_eq!(cpu.vfs.get("foo.txt"), Some(&b"hello".to_vec()));
+    let removed = cpu.vfs.remove("foo.txt").is_some();
+    assert!(removed);
+    assert!(cpu.vfs.get("foo.txt").is_none());
+    // Removing again is a no-op.
+    assert!(cpu.vfs.remove("foo.txt").is_none());
+}

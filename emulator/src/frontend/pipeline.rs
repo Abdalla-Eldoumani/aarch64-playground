@@ -32,6 +32,12 @@ pub struct LinkedImage {
     /// Absolute address of the first instruction in `.text`, for debugger
     /// decoration.
     pub text_base: u64,
+    /// Resolved label -> absolute address for every label the linker
+    /// saw (instructions, data symbols, m4 expression symbols, plus
+    /// the synthetic `__tramp_<libc>` trampolines). Used by the
+    /// `gdb b <label>` terminal command and any future symbolic
+    /// debugger surface.
+    pub symbols: HashMap<String, u64>,
 }
 
 pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, EmuError> {
@@ -280,6 +286,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         entry_point,
         instruction_count,
         text_base: CODE_BASE,
+        symbols,
     })
 }
 

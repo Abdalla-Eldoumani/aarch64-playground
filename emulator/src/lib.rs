@@ -498,6 +498,21 @@ impl Emulator {
         self.cpu.vfs.get(path).cloned().unwrap_or_default()
     }
 
+    /// Remove a VFS file. Returns `true` when an entry actually went
+    /// away. No-ops if the path was never registered.
+    pub fn delete_vfs_file(&mut self, path: &str) -> bool {
+        self.cpu.vfs.remove(path).is_some()
+    }
+
+    /// Resolve a label name to its absolute address. Powers
+    /// `gdb b <label>` in the terminal pane. Returns the address as
+    /// `u32` for JS-friendly typing (the address space sits well below
+    /// 2^32 for cpsc 355 programs); JS-side callers cast back to
+    /// number. `None` -> JS `undefined`.
+    pub fn resolve_label(&self, name: &str) -> Option<u64> {
+        self.cpu.resolve_label(name)
+    }
+
     /// Clear stdout/stderr scrollback without resetting CPU state.
     pub fn clear_console(&mut self) {
         self.cpu.clear_console();
