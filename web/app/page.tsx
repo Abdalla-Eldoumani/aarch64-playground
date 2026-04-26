@@ -27,6 +27,7 @@ import { parseDeepLink } from "@/lib/use-deep-link";
 import { parseArgs } from "@/lib/args";
 import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
 import { useLectureMode } from "@/lib/use-lecture-mode";
+import { useHotspotMode } from "@/lib/use-hotspot-mode";
 import { ArgsInput } from "@/components/ArgsInput";
 import { LectureBar } from "@/components/LectureBar";
 import {
@@ -145,6 +146,7 @@ export default function Home() {
   const [, toggleTheme, setTheme] = useTheme();
   const cpsc = useCpsc355Mode();
   const lecture = useLectureMode();
+  const hotspot = useHotspotMode();
   const [embed, setEmbed] = useState<boolean>(false);
   const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
   const [extraFiles, setExtraFiles] = useSourceFiles();
@@ -461,6 +463,7 @@ export default function Home() {
           onToggleBreakpoint={emu.toggleBreakpoint}
           assemblyErrors={isMain ? emu.assemblyErrors : []}
           onCursorChange={isMain ? setCursor : undefined}
+          lineCounts={isMain ? emu.lineCounts : undefined}
         />
       </div>
     </div>
@@ -906,6 +909,19 @@ export default function Home() {
           aria-label="toggle lecture mode"
         >
           lecture
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => hotspot.toggle())}
+          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+            hotspot.enabled
+              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+          aria-pressed={hotspot.enabled}
+          aria-label="toggle hotspot heat map"
+        >
+          hotspot
         </button>
         <button
           type="button"
