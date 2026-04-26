@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "size": "size-limit",
     "lighthouse": "lighthouse http://localhost:3000 --preset=desktop --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/report",
-    "lighthouse:mobile": "lighthouse http://localhost:3000 --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/mobile"
+    "lighthouse:mobile": "lighthouse http://localhost:3000 --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/mobile",
+    "audit:deps": "node ../scripts/audit-deps.js",
+    "audit:headers": "node ../scripts/check-headers.js"
   },
   "size-limit": [
     {
