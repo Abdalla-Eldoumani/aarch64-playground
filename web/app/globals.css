@@ -176,3 +176,11 @@ body {
   background: var(--border);
   border-radius: 3px;
 }
+
+/* Phase 7: embed mode hides chrome that doesn't belong inside an
+   iframe. Editor + panels + Controls + ExplainStrip stay visible. */
+[data-embed="1"] > .safe-area-top,
+[data-embed="1"] > [role="status"],
+[data-embed="1"] [data-embed-hide="1"] {
+  display: none;
+}

@@ -878,6 +878,7 @@ export default function Home() {
           href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
           target="_blank"
           rel="noreferrer noopener"
+          data-embed-hide="1"
           className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded px-1"
           aria-label="View source on GitHub"
           onClick={() => after?.()}
