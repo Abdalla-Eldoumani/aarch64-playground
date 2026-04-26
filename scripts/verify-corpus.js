@@ -8,7 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const wasmDir = process.env.WASM_DIR || "C:/Users/96654/AppData/Local/Temp/node-wasm-check";
+const wasmDir = process.env.WASM_DIR || path.join(__dirname, "..", "web", "lib", "wasm-node");
 const wasm = require(path.join(wasmDir, "aarch64_emulator.js"));
 
 const examplesDir = path.join(__dirname, "..", "web", "public", "examples");
