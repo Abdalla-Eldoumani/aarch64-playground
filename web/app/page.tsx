@@ -105,7 +105,7 @@ const SHORTCUTS: Shortcut[] = [
 function initialSource(): { source: string; fromShare: boolean } {
   if (typeof window === "undefined") return { source: DEFAULT_SOURCE, fromShare: false };
   const fromHash = readShareHash(window.location.hash);
-  if (fromHash) return { source: fromHash, fromShare: true };
+  if (fromHash) return { source: fromHash.source, fromShare: true };
   const saved = loadAutoSavedBuffer();
   if (saved && saved.length > 0) return { source: saved, fromShare: false };
   return { source: DEFAULT_SOURCE, fromShare: false };
@@ -141,6 +141,7 @@ export default function Home() {
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [, toggleTheme, setTheme] = useTheme();
   const [embed, setEmbed] = useState<boolean>(false);
+  const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
   const [extraFiles, setExtraFiles] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
   const toast = useToast();
@@ -454,6 +455,7 @@ export default function Home() {
           breakpoints={emu.breakpoints}
           onToggleBreakpoint={emu.toggleBreakpoint}
           assemblyErrors={isMain ? emu.assemblyErrors : []}
+          onCursorChange={isMain ? setCursor : undefined}
         />
       </div>
     </div>
@@ -752,6 +754,8 @@ export default function Home() {
   // ?embed=, and (if ?example=<stem> resolves to a real file) loads the
   // example into the editor. Errors during the example fetch are
   // silently dropped -- the user can still load via the dropdown.
+  // Also restores args / view / cursor from the share hash; the source
+  // itself was already pulled in by `initialSource`.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const dl = parseDeepLink(window.location.search);
@@ -773,6 +777,12 @@ export default function Home() {
       void (async () => {
         if (!(await tryLoad("asm"))) await tryLoad("s");
       })();
+    }
+    const hashState = readShareHash(window.location.hash);
+    if (hashState) {
+      if (hashState.args !== undefined) setArgsText(hashState.args);
+      if (hashState.view) setView(hashState.view);
+      if (hashState.cursor) setCursor(hashState.cursor);
     }
     // Effect runs once at mount; deep-link state is read from the URL
     // exactly once and never re-derived.
@@ -1041,7 +1051,12 @@ export default function Home() {
       />
       <ShareDialog
         open={shareOpen}
-        source={source}
+        state={{
+          source,
+          args: argsText || undefined,
+          view,
+          cursor,
+        }}
         onClose={() => setShareOpen(false)}
       />
       <DiffView
