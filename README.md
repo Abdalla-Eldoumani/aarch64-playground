@@ -75,6 +75,10 @@ Live at <https://aarch64-playground.vercel.app>.
   worker pre-warms the app shell + manifest + icons on install and
   uses cache-first for `/_next/static/`, `/icons/`, and `/examples/`,
   network-first for everything else.
+- **Analytics + Core Web Vitals** via `@vercel/analytics` +
+  `@vercel/speed-insights`. Anonymized, cookie-free, production-only.
+  CSP allow-listed (`va.vercel-scripts.com`,
+  `vitals.vercel-insights.com`).
 - **Multi-file assembly** via tabs, concatenated before assembly so
   `bl helper` resolves across files.
 - **GCC output runs as is**: GAS-style `bgt`/`beq` aliases, `@function`
