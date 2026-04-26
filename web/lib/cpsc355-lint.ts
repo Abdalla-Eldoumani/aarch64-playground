@@ -217,11 +217,40 @@ function non16ByteAllocRule(source: string): LintMarker[] {
   return out;
 }
 
+function bareX29X30Rule(source: string): LintMarker[] {
+  const out: LintMarker[] = [];
+  const lines = source.split("\n");
+  const fpAliased = /\bdefine\s*\(\s*fp\s*,\s*x29\s*\)/.test(source);
+  const lrAliased = /\bdefine\s*\(\s*lr\s*,\s*x30\s*\)/.test(source);
+  if (!fpAliased && !lrAliased) return [];
+  const reg = new RegExp(
+    `\\b(${fpAliased ? "x29" : ""}${fpAliased && lrAliased ? "|" : ""}${lrAliased ? "x30" : ""})\\b`,
+    "i",
+  );
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/\bdefine\s*\(/i.test(line)) continue;
+    const m = line.match(reg);
+    if (!m) continue;
+    const idx = line.indexOf(m[0]);
+    out.push({
+      line: i + 1,
+      column: idx + 1,
+      endColumn: idx + m[0].length + 1,
+      severity: "warning",
+      message: `bare \`${m[0]}\` used while \`${m[0].toLowerCase() === "x29" ? "fp" : "lr"}\` alias exists; prefer the alias for readability.`,
+      ruleId: "bare-x29-x30",
+    });
+  }
+  return out;
+}
+
 export function lintSource(source: string): LintMarker[] {
   return [
     ...aliasSuffixRule(source),
     ...missingGlobalMainRule(source),
     ...nonCanonicalPrologueRule(source),
     ...non16ByteAllocRule(source),
+    ...bareX29X30Rule(source),
   ].sort((a, b) => a.line - b.line);
 }

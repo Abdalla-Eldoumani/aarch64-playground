@@ -90,3 +90,21 @@ describe("cpsc355-lint non-16-byte-alloc", () => {
     expect(lintSource(src).filter((m) => m.ruleId === "non-16-byte-alloc")).toEqual([]);
   });
 });
+
+describe("cpsc355-lint bare-x29-x30", () => {
+  it("flags bare x29 when fp alias exists", () => {
+    const src = `define(fp, x29)\n  mov x29, sp\n`;
+    const markers = lintSource(src);
+    expect(markers.some((m) => m.ruleId === "bare-x29-x30")).toBe(true);
+  });
+
+  it("does not flag x29 inside the define line itself", () => {
+    const src = `define(fp, x29)\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "bare-x29-x30")).toEqual([]);
+  });
+
+  it("does nothing when no fp/lr alias is defined", () => {
+    const src = `  mov x29, sp\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "bare-x29-x30")).toEqual([]);
+  });
+});
