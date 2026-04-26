@@ -47,8 +47,11 @@ wasm-pack build --target web --out-dir ../web/lib/wasm
 # every .s file in web/public/examples/ to completion:
 node scripts/verify-corpus.js
 
-# Web workspace has its own tests (watch expressions, share link,
-# frame-labels matcher, asm-filter, etc):
+# Web workspace has its own tests (301 vitest tests covering watch
+# expressions, share link + validators, diagnostic-bundle round-trip
+# + size caps, frame-labels matcher, asm-filter, asm-formatter,
+# asm-completion, named-saves bundle import, the toggles, the worker
+# protocol, the upload-guard caps, and more):
 cd ../web && npx vitest run
 
 # Frontend change -> hot-reloads via next dev (webpack, not Turbopack)
@@ -94,6 +97,36 @@ One logical change per commit. Messages are one line, lowercase, three sentences
 
 The project is early. Open an issue first if the change is larger than a single file or touches the assembler/decoder layout. For bug fixes and small additions, a PR with a focused description works.
 
+## Adding a new visible feature
+
+The repo separates pure logic (`web/lib/`) from React components
+(`web/components/`). Default to writing logic as a pure module + tests
+first, then wire it into a component.
+
+1. **Pure module** -- new `web/lib/<feature>.ts` with TS types and
+   exported pure functions. Add `web/lib/<feature>.test.ts` next to
+   it covering happy path + edge cases. Tests run in jsdom; use plain
+   DOM assertions (no `@testing-library/jest-dom`).
+2. **Hook** (if React state is involved) -- `web/lib/use-<feature>.ts`.
+   For toggles persisted to localStorage, copy the `useSyncExternalStore`
+   shape from `use-cpsc355-mode.ts` so cross-tab sync works.
+3. **Component** -- `web/components/<Feature>.tsx`. Mark `"use client"`
+   if the component uses hooks or browser APIs. Heavy components
+   (anything that pulls Monaco or xterm) should be lazy-loaded via
+   `next/dynamic` with `ssr: false` from the parent.
+4. **Wire into the page** -- `web/app/page.tsx` is the orchestrator.
+   Render the new component into one of the existing `*Block` nodes
+   so the resizable / mobile / two-column layouts pick it up
+   automatically.
+5. **Documentation** -- add a row to `docs/features.md` and, if it
+   adds a deep-link param or shortcut, the README and the matching
+   `CLAUDE.md`.
+
+If the feature accepts external input (URL params, file uploads,
+clipboard paste), add a validator in the same PR. See
+[`security.md`](security.md) for the patterns the existing gates
+follow.
+
 ## Gotchas to know about
 
 - **WASM page dealloc trap** -- `emulator/src/memory.rs` uses `HashMap<u64, Vec<u8>>` instead of `HashMap<u64, Box<[u8; 4096]>>`. Do not "clean up" by changing this back: `Box::new([0u8; 4096])` puts a 4 KiB array on the stack before moving it to the heap, and on wasm32 that confuses the bundled dlmalloc enough that `__rdl_dealloc` hits an `unreachable` trap during `assemble_and_load`. Related: `Cpu::reset` calls `self.mem.clear()` (zero-fills in place) rather than re-allocating, and `Cpu::new` pre-maps the first few code pages for the same reason. If you see `RuntimeError: unreachable` on wasm with a stack that bottoms out in `dlmalloc`, it's this class of bug.
@@ -107,6 +140,10 @@ The project is early. Open an issue first if the change is larger than a single 
 - **`next lint` is gone in Next 16** -- we migrated to ESLint flat config. The `web/eslint.config.mjs` re-exports `eslint-config-next`'s own flat-config array plus ignore blocks for `lib/wasm/` and `lib/wasm-node/` (wasm-pack-generated JS that isn't ours to lint). `npm run lint` now invokes `eslint .` directly.
 - **Heavy components are lazy-loaded** -- CToAsmView, DiffView, CommandPalette, and TutorialRunner are all loaded via `next/dynamic` with `ssr: false` so the initial bundle stays small. When adding a panel that pulls in Monaco or a hefty dep, match this pattern.
 - **Light theme is CSS-var driven** -- overrides live under `[data-theme="light"]` in `globals.css`; every component reads `var(--bg-primary)` etc. Don't hardcode hex colors.
+- **vitest setup file** -- `web/vitest.setup.ts` stubs `window.matchMedia` because jsdom doesn't ship it. Anything else jsdom is missing should be stubbed there too rather than at the call site.
+- **Worker-first backend** -- the WASM emulator runs in a Web Worker by default. The `EmulatorBackend` interface in `web/lib/backend.ts` has two implementations (`WorkerClient` + `MainThreadBackend`) so React doesn't know or care which is active. Force the main thread for debugging via `localStorage.aarch64-playground:backend = "main"`.
+- **Service worker is no-op in dev outside localhost** -- `register-sw.ts` only registers when `window.isSecureContext` is true (or hostname is localhost / 127.0.0.1). If you're testing offline behavior over LAN IP, expect no SW.
+- **Toast queue is module-level** -- `react-hot-toast` keeps its own queue between renders. Tests that mount `<ToastHost>` should match the most-recent toast text and not assume a clean slate.
 
 ## Where to ask questions
 
