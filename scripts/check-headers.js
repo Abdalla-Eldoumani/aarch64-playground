@@ -24,7 +24,8 @@ const REQUIRED = {
     /default-src 'self'/.test(v) &&
     /'wasm-unsafe-eval'/.test(v) &&
     /frame-ancestors 'none'/.test(v) &&
-    /object-src 'none'/.test(v),
+    /object-src 'none'/.test(v) &&
+    /style-src[^;]*cdn\.jsdelivr\.net/.test(v),
 };
 
 async function main() {
