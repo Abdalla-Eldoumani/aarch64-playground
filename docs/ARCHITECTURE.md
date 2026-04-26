@@ -250,6 +250,15 @@ for `/_next/static/`, `/icons/`, `*.wasm`. `/sw.js` is served
 `max-age=0, must-revalidate` so service-worker updates land
 immediately.
 
+## Analytics + speed insights
+
+`@vercel/analytics/next` and `@vercel/speed-insights/next` are mounted
+in `app/layout.tsx` as `<Analytics />` and `<SpeedInsights />`. Both
+no-op in dev / when not on the Vercel platform; on production they
+beacon page views + Core Web Vitals to Vercel's collector. The CSP
+allow-lists the two endpoints (`va.vercel-scripts.com`,
+`vitals.vercel-insights.com`) in both `script-src` and `connect-src`.
+
 ## PWA + service worker
 
 [`web/app/manifest.ts`](../web/app/manifest.ts) generates the
