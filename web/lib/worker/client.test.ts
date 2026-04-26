@@ -222,7 +222,6 @@ describe("WorkerClient", () => {
 
   test("spawnEmulatorWorker returns null when Worker is unavailable", () => {
     const original = (globalThis as { Worker?: unknown }).Worker;
-    // @ts-expect-error -- intentional removal for the negative path
     delete (globalThis as { Worker?: unknown }).Worker;
     try {
       expect(spawnEmulatorWorker()).toBeNull();
