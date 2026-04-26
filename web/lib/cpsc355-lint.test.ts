@@ -49,3 +49,21 @@ describe("cpsc355-lint missing-global-main", () => {
     expect(lintSource(src).filter((m) => m.ruleId === "missing-global-main")).toEqual([]);
   });
 });
+
+describe("cpsc355-lint non-canonical-prologue", () => {
+  it("flags a function whose first instruction is not stp fp, lr, [sp, ...]", () => {
+    const src = `.global main\nmain:\n  mov x0, 0\n  ret\n`;
+    const markers = lintSource(src);
+    expect(markers.some((m) => m.ruleId === "non-canonical-prologue")).toBe(true);
+  });
+
+  it("accepts the canonical stp/mov fp pair", () => {
+    const src = `.global main\nmain:\n  stp fp, lr, [sp, -16]!\n  mov fp, sp\n  ret\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "non-canonical-prologue")).toEqual([]);
+  });
+
+  it("ignores comment lines between the label and the first instruction", () => {
+    const src = `.global main\nmain:\n  // entry\n  stp fp, lr, [sp, alloc]!\n  mov fp, sp\n  ret\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "non-canonical-prologue")).toEqual([]);
+  });
+});

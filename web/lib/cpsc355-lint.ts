@@ -76,9 +76,56 @@ function missingGlobalMainRule(source: string): LintMarker[] {
   ];
 }
 
+function nonCanonicalPrologueRule(source: string): LintMarker[] {
+  const lines = source.split("\n");
+  const out: LintMarker[] = [];
+  // Collect labels marked as global. The directive may appear anywhere
+  // in the file (typically just above the label).
+  const globalLabels = new Set<string>();
+  for (const l of lines) {
+    const m = l.match(/^\s*\.glob(?:al|l)\s+([A-Za-z_][\w.$]*)\s*$/);
+    if (m) globalLabels.add(m[1]);
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const labelMatch = lines[i].match(/^\s*([A-Za-z_][\w.$]*)\s*:\s*(?:\/\/.*)?$/);
+    if (!labelMatch) continue;
+    const name = labelMatch[1];
+    if (!globalLabels.has(name)) continue;
+    // Walk forward, skipping blank and comment-only lines, to find the
+    // first two real instructions.
+    const real: string[] = [];
+    for (let j = i + 1; j < lines.length && real.length < 2; j++) {
+      const raw = lines[j].replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
+      if (!raw) continue;
+      // A `.directive` here means we're past the function body or in
+      // data; not relevant for prologue check.
+      if (raw.startsWith(".")) break;
+      // A new label means the function had no instructions of its own.
+      if (/^[A-Za-z_][\w.$]*\s*:/.test(raw)) break;
+      real.push(raw);
+    }
+    if (real.length < 2) continue;
+    const first = real[0].toLowerCase();
+    const second = real[1].toLowerCase();
+    const stpOk = /^stp\s+fp\s*,\s*lr\s*,\s*\[\s*sp\s*,/.test(first);
+    const movOk = /^mov\s+fp\s*,\s*sp\b/.test(second);
+    if (stpOk && movOk) continue;
+    out.push({
+      line: i + 1,
+      column: 1,
+      endColumn: name.length + 2,
+      severity: "warning",
+      message: `function \`${name}\` does not begin with the canonical \`stp fp, lr, [sp, ...]!\` then \`mov fp, sp\` prologue.`,
+      ruleId: "non-canonical-prologue",
+    });
+  }
+  return out;
+}
+
 export function lintSource(source: string): LintMarker[] {
   return [
     ...aliasSuffixRule(source),
     ...missingGlobalMainRule(source),
+    ...nonCanonicalPrologueRule(source),
   ].sort((a, b) => a.line - b.line);
 }
