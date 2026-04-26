@@ -16,7 +16,9 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - name: install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        uses: jetli/wasm-pack-action@v1
+        with:
+          version: 'latest'
       - name: cargo test
         run: cargo test --manifest-path emulator/Cargo.toml
       - name: wasm-pack web build
