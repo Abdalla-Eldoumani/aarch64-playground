@@ -1,0 +1,28 @@
+import { describe, expect, it } from "vitest";
+import { lintSource } from "./cpsc355-lint";
+
+describe("cpsc355-lint alias-suffix", () => {
+  it("flags a register alias whose name lacks _r/_s/_m", () => {
+    const src = `define(score, w19)\n`;
+    const markers = lintSource(src);
+    expect(markers.length).toBe(1);
+    expect(markers[0].ruleId).toBe("alias-suffix");
+    expect(markers[0].line).toBe(1);
+    expect(markers[0].severity).toBe("warning");
+  });
+
+  it("accepts a register alias ending in _r", () => {
+    const src = `define(score_r, w19)\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "alias-suffix")).toEqual([]);
+  });
+
+  it("excepts fp and lr aliases", () => {
+    const src = `define(fp, x29)\ndefine(lr, x30)\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "alias-suffix")).toEqual([]);
+  });
+
+  it("excepts integer literal bodies", () => {
+    const src = `define(MAX, 42)\n`;
+    expect(lintSource(src).filter((m) => m.ruleId === "alias-suffix")).toEqual([]);
+  });
+});
