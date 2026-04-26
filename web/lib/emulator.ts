@@ -274,8 +274,6 @@ interface WasmEmulatorInstance {
   clear_console(): void;
 }
 
-type WasmEmulatorClass = new () => WasmEmulatorInstance;
-
 type WasmModule = typeof import("@/lib/wasm/aarch64_emulator");
 
 let wasmModulePromise: Promise<WasmModule> | null = null;
