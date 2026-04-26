@@ -10,9 +10,16 @@ const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 /// Pages are 4 KiB, allocated on first write (auto-map). Reads to unmapped
 /// addresses fault. All multi-byte accesses are little-endian and require
 /// natural alignment.
+///
+/// Each write also appends `(addr, len)` to `dirty` so callers (the
+/// snapshot layer) can surface a per-step list of changed addresses
+/// for the replay scrubber's memory-diff highlighting. The buffer is
+/// drained by `take_dirty()` between steps; without that drain it
+/// grows unbounded.
 #[derive(Clone)]
 pub struct Memory {
     pages: HashMap<u64, Vec<u8>>,
+    dirty: Vec<(u64, usize)>,
 }
 
 fn new_page() -> Vec<u8> {
@@ -24,7 +31,15 @@ impl Memory {
     pub fn new() -> Self {
         Self {
             pages: HashMap::new(),
+            dirty: Vec::new(),
         }
+    }
+
+    /// Drain the dirty-write buffer accumulated since the last call.
+    /// Returns `(addr, len)` ranges in write order (duplicates and
+    /// overlap are normal -- the consumer dedupes if it cares).
+    pub fn take_dirty(&mut self) -> Vec<(u64, usize)> {
+        std::mem::take(&mut self.dirty)
     }
 
     /// Explicitly map a page so it can be read before being written.
@@ -142,6 +157,7 @@ impl Memory {
         let off = Self::page_offset(addr);
         let page = self.get_page_mut(addr);
         page[off] = val;
+        self.dirty.push((addr, 1));
         Ok(())
     }
 
@@ -158,6 +174,7 @@ impl Memory {
         let bytes = val.to_le_bytes();
         let page = self.get_page_mut(addr);
         page[off..off + 2].copy_from_slice(&bytes);
+        self.dirty.push((addr, 2));
         Ok(())
     }
 
@@ -173,6 +190,7 @@ impl Memory {
         let bytes = val.to_le_bytes();
         let page = self.get_page_mut(addr);
         page[off..off + 4].copy_from_slice(&bytes);
+        self.dirty.push((addr, 4));
         Ok(())
     }
 
@@ -188,6 +206,7 @@ impl Memory {
         let bytes = val.to_le_bytes();
         let page = self.get_page_mut(addr);
         page[off..off + 8].copy_from_slice(&bytes);
+        self.dirty.push((addr, 8));
         Ok(())
     }
 

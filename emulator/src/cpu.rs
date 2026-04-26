@@ -128,6 +128,13 @@ pub struct Cpu {
     /// pass. Empty until `load_linked_image*` runs. Drives
     /// `gdb b <label>` and any other label-based debugger feature.
     pub symbols: HashMap<String, u64>,
+    /// PCs of successfully-executed instructions since the last
+    /// `take_pc_trace()` drain. Powers run-mode hotspot heat-map
+    /// granularity: without this trace the JS side only sees the
+    /// final PC of each run chunk and the heat map looks "thin" on
+    /// long loops. Populated by `step()` and the inner loop of
+    /// `run_until_break()`.
+    pub pc_trace: Vec<u64>,
 }
 
 impl Cpu {
@@ -150,6 +157,7 @@ impl Cpu {
             host: HostTable::new(),
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
+            pc_trace: Vec::new(),
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -399,12 +407,26 @@ impl Cpu {
             StepOutcome::Advance
         };
 
+        // Record the executed PC for the hotspot heat map. We push the
+        // PC the instruction lived at (captured at function entry as
+        // `pc`), not the post-execution PC -- the heat map is "what
+        // got executed", not "what's next".
+        self.pc_trace.push(pc);
+
         Ok(StepResult {
             pc: self.regs.read_pc(),
             halted: self.halted,
             error: None,
             outcome,
         })
+    }
+
+    /// Drain the PC trace accumulated since the last call. The frontend
+    /// converts each PC to a source line and bumps `lineCounts` for
+    /// the hotspot heat map. Without this drain the trace grows
+    /// unbounded across long runs.
+    pub fn take_pc_trace(&mut self) -> Vec<u64> {
+        std::mem::take(&mut self.pc_trace)
     }
 
     /// Push bytes onto the stdin buffer. Clears the `blocked` flag so a
@@ -618,6 +640,10 @@ impl Cpu {
         // plus re-assemble. Clearing the table would leave those calls
         // unresolved.
         self.snapshots.clear();
+        self.pc_trace.clear();
+        // Drain dirty so the next snapshot doesn't surface fake writes
+        // from the page-mapping work above.
+        let _ = self.mem.take_dirty();
     }
 
     /// Whether the CPU has at least one recorded snapshot; i.e. whether

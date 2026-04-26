@@ -513,6 +513,29 @@ impl Emulator {
         self.cpu.resolve_label(name)
     }
 
+    /// Drain the per-step PC trace accumulated since the last call.
+    /// JS converts each PC to a source line and bumps `lineCounts`
+    /// for the hotspot heat map. Without this drain the trace grows
+    /// unbounded across long runs.
+    pub fn take_pc_trace(&mut self) -> Vec<u64> {
+        self.cpu.take_pc_trace()
+    }
+
+    /// Drain the dirty-write buffer (per-byte `(addr, len)` ranges)
+    /// accumulated since the last call. JS uses these to highlight
+    /// changed memory cells during replay scrubbing.
+    /// Returned as a flat `Vec<u32>` of `[addr0_lo, addr0_hi, len0,
+    /// addr1_lo, ...]` triples to keep the JS protocol simple.
+    pub fn take_dirty_addrs(&mut self) -> Vec<u32> {
+        let mut out = Vec::new();
+        for (addr, len) in self.cpu.mem.take_dirty() {
+            out.push((addr & 0xFFFF_FFFF) as u32);
+            out.push((addr >> 32) as u32);
+            out.push(len as u32);
+        }
+        out
+    }
+
     /// Clear stdout/stderr scrollback without resetting CPU state.
     pub fn clear_console(&mut self) {
         self.cpu.clear_console();

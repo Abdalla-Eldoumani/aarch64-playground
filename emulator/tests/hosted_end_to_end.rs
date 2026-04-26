@@ -587,3 +587,36 @@ fn delete_vfs_file_removes_entry() {
     // Removing again is a no-op.
     assert!(cpu.vfs.remove("foo.txt").is_none());
 }
+
+#[test]
+fn pc_trace_records_each_step() {
+    // Tiny program: 3 NOPs then HLT (svc #0 with x8=93 = exit). The
+    // hostable runtime would normally trip on x8=93; just give it
+    // distinct PCs to capture.
+    let mut cpu = Cpu::new();
+    // 4 nops then a halt. NOP encoding: 0xD503201F.
+    cpu.load_program(&[0xD503201F, 0xD503201F, 0xD503201F, 0xD4000021]);
+    let _ = cpu.step().unwrap();
+    let _ = cpu.step().unwrap();
+    let _ = cpu.step().unwrap();
+    let trace = cpu.take_pc_trace();
+    assert_eq!(trace.len(), 3);
+    assert_eq!(trace[0], CODE_BASE);
+    assert_eq!(trace[1], CODE_BASE + 4);
+    assert_eq!(trace[2], CODE_BASE + 8);
+    // Drained trace returns empty until more steps run.
+    assert!(cpu.take_pc_trace().is_empty());
+}
+
+#[test]
+fn dirty_addrs_record_writes() {
+    use aarch64_emulator::memory::Memory;
+    let mut mem = Memory::new();
+    mem.write_u32(0x0070_0000, 0xDEAD_BEEF).unwrap();
+    mem.write_u8(0x0070_0010, 0x42).unwrap();
+    let dirty = mem.take_dirty();
+    assert!(dirty.iter().any(|&(a, l)| a == 0x0070_0000 && l == 4));
+    assert!(dirty.iter().any(|&(a, l)| a == 0x0070_0010 && l == 1));
+    // Drained: returns empty.
+    assert!(mem.take_dirty().is_empty());
+}
