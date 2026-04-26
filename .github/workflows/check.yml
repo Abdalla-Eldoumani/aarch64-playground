@@ -1,0 +1,85 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust:
+    name: cargo + wasm-pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: cargo test
+        run: cargo test --manifest-path emulator/Cargo.toml
+      - name: wasm-pack web build
+        run: wasm-pack build emulator --release --target web --out-dir ../web/lib/wasm
+      - name: wasm-pack node build
+        run: wasm-pack build emulator --release --target nodejs --out-dir ../web/lib/wasm-node
+      - name: upload wasm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-bundles
+          path: |
+            web/lib/wasm/
+            web/lib/wasm-node/
+          retention-days: 1
+
+  web:
+    name: web (lint + tsc + vitest + size-limit)
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: download wasm artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-bundles
+          path: web/lib/
+      - name: install
+        working-directory: web
+        run: npm ci
+      - name: lint
+        working-directory: web
+        run: npm run lint
+      - name: typecheck
+        working-directory: web
+        run: npm run typecheck
+      - name: vitest
+        working-directory: web
+        run: npm test
+      - name: build
+        working-directory: web
+        run: npm run build
+      - name: size-limit
+        working-directory: web
+        run: npm run size
+
+  corpus:
+    name: verify-corpus
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: download wasm artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-bundles
+          path: web/lib/
+      - name: verify-corpus
+        run: node scripts/verify-corpus.js
