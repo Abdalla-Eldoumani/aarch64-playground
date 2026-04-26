@@ -2,9 +2,7 @@
 
 import type {
   AssembleResultPayload,
-  Heartbeat,
   Request,
-  Response,
   RunResultPayload,
   StateSnapshot,
   StepResultPayload,
