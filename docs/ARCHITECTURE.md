@@ -182,23 +182,92 @@ the ring's rolling 128-frame history intact.
 ## State sync
 
 The React hook in
-[`web/lib/use-emulator.ts`](../web/lib/use-emulator.ts) owns a ref to
-the `EmulatorInstance` and a ref to the last-assembled source. Every
-`step` / `run` tick ends with `syncState()`, which pulls:
+[`web/lib/use-emulator.ts`](../web/lib/use-emulator.ts) owns an
+`EmulatorBackend` (see "Worker layer" below) and a ref to the
+last-assembled source. After every state-mutating call (assemble /
+step / run / reset / step-back / load-state / push-stdin / upload-vfs
+/ clear-console) the backend emits a `StateSnapshot` on its
+`onSnapshot` channel:
 
-- `get_all_registers()` -> `{gpr[], sp, pc, nzcv, fpr[]}`
-- `get_changed_registers()` -> indices whose value differs from the
-  pre-step snapshot
-- `get_pc()` -> u64 as BigInt, reduced to a Number for rendering
-- `get_stdout()`, `get_stderr()`, `get_exit_code()`, `is_blocked()`
-- halted flag
-- step count (increments on Advance, decrements on step-back, resets
+- registers: `gpr[]`, `sp`, `pc`, `nzcv`, `fpr[]`
+- `changedRegs`: indices whose value differs from the pre-step snapshot
+- `stdout`, `stderr`, `exitCode`, `blocked`, `halted`
+- `stepCount` (increments on Advance, decrements on step-back, resets
   on assemble / reset)
+- `frame`: monotonic counter the React side uses to invalidate caches
 
-`MemoryPanel`, `StackPanel`, and `MemoryWatches` pull bytes on demand
-via `getMemoryRange(addr, len)` during render. That call is cheap (a
-single `Vec::to_vec` on the paged buffer) and happens every React
-render.
+The hook applies the snapshot to React state in one shot; nothing in
+React mirrors the Cpu directly anymore. During `runUntilBreak` the
+worker emits heartbeat snapshots every ~50 ms via `performance.now()`
+gating so the UI stays live without flushing every cycle.
+
+The memory cache lives in a ref keyed by `${addr}:${len}`. On every
+snapshot with a fresh `frame`, the cache clears. Panels call the
+synchronous `getMemory(addr, len)` API; cache hits return cached
+bytes, misses kick off an async fetch and bump a `memTick` counter
+to re-render once bytes arrive.
+
+## Worker layer
+
+The WASM module runs in a Web Worker by default so tight `runUntilBreak`
+loops do not freeze the UI. The boundary is in three files:
+
+- [`web/lib/worker/protocol.ts`](../web/lib/worker/protocol.ts) --
+  request / response message types.
+- [`web/lib/worker/emulator.worker.ts`](../web/lib/worker/emulator.worker.ts)
+  -- the worker entry point: instantiates `EmulatorInstance` and
+  forwards messages.
+- [`web/lib/worker/client.ts`](../web/lib/worker/client.ts) --
+  `WorkerClient` implements `EmulatorBackend` and round-trips
+  promises against the worker.
+
+`pickBackend()` in [`web/lib/backend.ts`](../web/lib/backend.ts)
+returns a `WorkerClient` when `Worker` is available, otherwise a
+`MainThreadBackend` that wraps `EmulatorInstance` directly. Force the
+main thread via `localStorage.aarch64-playground:backend = "main"`.
+
+## Security gates
+
+URL-borne and file-borne payloads pass through typed validators
+before any field touches React state, the editor, or the WASM
+emulator. The gates and their caps are documented in
+[`docs/security.md`](security.md) and live in:
+
+- `web/lib/diagnostic-bundle.ts::decodeBundle` -- per-field type
+  check + 1 MB decompressed size cap on `?bundle=<lz>`.
+- `web/lib/share.ts::readShareHash` -- per-field type check + 1 MB
+  decompressed size cap on `#p2=<lz>` and `#p=`.
+- `web/lib/named-saves.ts::isValidSave` -- per-field type check on
+  bookmark JSON; collisions are skipped instead of overwriting.
+- `web/lib/upload-guard.ts` -- size caps for source uploads
+  (4 MB), VFS uploads (16 MB), and bookmark JSON uploads (1 MB).
+- `web/lib/use-deep-link.ts` -- enum checks on `?theme` / `?view`,
+  regex on `?example`.
+
+The Vercel header layer adds CSP, COOP, X-Frame-Options DENY,
+Referrer-Policy, Permissions-Policy, and immutable cache headers
+for `/_next/static/`, `/icons/`, `*.wasm`. `/sw.js` is served
+`max-age=0, must-revalidate` so service-worker updates land
+immediately.
+
+## PWA + service worker
+
+[`web/app/manifest.ts`](../web/app/manifest.ts) generates the
+manifest from inside the App Router so theme color + display mode
+stay in one place. [`web/public/sw.js`](../web/public/sw.js) handles
+fetches with a cache-first / network-first split:
+
+- cross-origin or non-GET -> network only
+- `/api/c-to-asm` -> network only (proxy is dynamic)
+- navigation -> network first, fall back to cached "/"
+- `/_next/static/`, `/examples/`, `/icons/` -> cache first
+- everything else -> network first, fall back to cache
+
+Registration happens once from
+[`web/components/RegisterSW.tsx`](../web/components/RegisterSW.tsx)
+via `lib/register-sw.ts::registerServiceWorker`, which no-ops on SSR,
+non-secure contexts (except localhost), and browsers without
+`navigator.serviceWorker`.
 
 ## Error surfaces
 
@@ -221,11 +290,11 @@ message is readable in the browser console.
 ## Testing strategy
 
 - Native Rust unit tests live next to their module
-  (`#[cfg(test)] mod tests`). 380 lib tests cover memory, registers,
+  (`#[cfg(test)] mod tests`). 396 lib tests cover memory, registers,
   decoder, executor, assembler, FPU, snapshots, and the whole
   frontend pipeline.
 - Two integration suites: `tests/cpsc355_corpus.rs` (2 tests) and
-  `tests/hosted_end_to_end.rs` (14 tests) exercise the shipping
+  `tests/hosted_end_to_end.rs` (23 tests) exercise the shipping
   pipeline against real cpsc 355 tutorial source plus hosted printf /
   scanf / syscalls / step-back / BL-to-host / `main`-return paths.
 - WASM end-to-end: [`scripts/verify-corpus.js`](../scripts/verify-corpus.js)
@@ -233,10 +302,16 @@ message is readable in the browser console.
   example in `web/public/examples/` through it, asserting the
   post-halt register and memory state. Treat it as the source of
   truth for example correctness.
-- The web workspace has 44 vitest tests covering the asm-filter,
-  auto-save ring, frame-labels pattern matcher, share-link
-  round-trip, layout persistence, watch-expression evaluator, and
-  the C-to-asm route.
+- The web workspace has 301 vitest tests covering the asm-filter,
+  asm-formatter, asm-completion, auto-save ring, frame-labels pattern
+  matcher, share-link round-trip + validation, diagnostic-bundle
+  validation + size caps, layout persistence, watch-expression
+  evaluator, named-saves bundle import, the C-to-asm route, every
+  toggle hook (cpsc355 / lecture / hotspot), the replay ring, the
+  worker protocol, the deep-link parser, the import-target router,
+  the upload-guard caps, the godbolt client, the tutorial catalog,
+  the breakpoint hook, the per-panel zoom hook, the service-worker
+  registration paths, and the toast host.
 
 ## Gotchas
 
