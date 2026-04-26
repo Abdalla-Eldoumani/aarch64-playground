@@ -121,8 +121,8 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           max={512}
           value={length}
           onChange={(e) => setLength(parseInt(e.target.value, 10) || 1)}
+          aria-label="watch byte length"
           className="w-14 bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)]"
-          aria-label="watch length"
         />
         <button
           type="submit"
