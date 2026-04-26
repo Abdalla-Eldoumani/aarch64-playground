@@ -63,13 +63,15 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
       }}
     >
       <div className="flex items-center flex-wrap gap-2 mb-2">
-        <label className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
+        <label htmlFor="memory-base-addr" className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
           address
         </label>
         <input
+          id="memory-base-addr"
           type="text"
           value={baseAddr}
           onChange={handleAddrChange}
+          aria-label="memory base address"
           className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
         />
         <select
