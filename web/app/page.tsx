@@ -29,6 +29,7 @@ import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
 import { useLectureMode } from "@/lib/use-lecture-mode";
 import { useHotspotMode } from "@/lib/use-hotspot-mode";
 import { useNamedSaves } from "@/lib/use-named-saves";
+import { formatAsm } from "@/lib/asm-formatter";
 import { ArgsInput } from "@/components/ArgsInput";
 import { LectureBar } from "@/components/LectureBar";
 import { ReplayScrubber } from "@/components/ReplayScrubber";
@@ -340,6 +341,17 @@ export default function Home() {
         run: () => toggleTheme(),
       },
       {
+        id: "format-source",
+        label: "Format source",
+        description: "lowercase mnemonics and align operand columns",
+        shortcut: "Ctrl+Shift+F",
+        run: () => {
+          const next = formatAsm(source);
+          if (next !== source) setSource(next);
+          toast.show("source formatted");
+        },
+      },
+      {
         id: "toggle-view",
         label: view === "playground" ? "Open C to ASM view" : "Back to playground",
         description: "flip between the two top-level views",
@@ -469,6 +481,12 @@ export default function Home() {
           assemblyErrors={isMain ? emu.assemblyErrors : []}
           onCursorChange={isMain ? setCursor : undefined}
           lineCounts={isMain ? emu.lineCounts : undefined}
+          onFormat={() => {
+            if (!isMain) return;
+            const next = formatAsm(source);
+            if (next !== source) setSource(next);
+            toast.show("source formatted");
+          }}
         />
       </div>
     </div>

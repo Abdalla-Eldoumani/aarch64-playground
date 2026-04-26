@@ -19,6 +19,10 @@ interface EditorProps {
   onCursorChange?: (pos: { line: number; column: number }) => void;
   /** Per-source-line execution counter for the hotspot heat map. */
   lineCounts?: Map<number, number>;
+  /** Format-source command bound to Ctrl+Shift+F inside Monaco. The
+   *  parent owns the formatter implementation so the keybinding and
+   *  the command-palette entry share one code path. */
+  onFormat?: () => void;
 }
 
 const ARM64_MNEMONICS = [
@@ -58,6 +62,7 @@ export function Editor({
   assemblyErrors,
   onCursorChange,
   lineCounts,
+  onFormat,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -72,6 +77,12 @@ export function Editor({
   useEffect(() => {
     cpscEnabledRef.current = cpscEnabled;
   }, [cpscEnabled]);
+  // Keep the latest format handler accessible from the Monaco command
+  // (registered once at mount).
+  const onFormatRef = useRef(onFormat);
+  useEffect(() => {
+    onFormatRef.current = onFormat;
+  }, [onFormat]);
 
   // Re-evaluate the narrow-viewport fallback on resize so a student
   // who rotates their phone doesn't get stuck in the wrong mode.
@@ -355,6 +366,14 @@ export function Editor({
       editor.addCommand(monaco.KeyCode.Escape, () => {
         editor.getDomNode()?.blur();
       });
+
+      // Ctrl+Shift+F invokes the playground's source formatter (the
+      // command palette uses the same handler). Mirrors VS Code's
+      // "Format Document" binding so muscle memory transfers.
+      editor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
+        () => onFormatRef.current?.(),
+      );
 
       // glyph margin click for breakpoints
       editor.onMouseDown((e) => {
