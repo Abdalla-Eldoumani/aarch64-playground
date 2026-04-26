@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
+import { C_TO_ASM_TIMEOUT_MS, MAX_C_SOURCE_BYTES } from "@/lib/upload-guard";
 
 // Compiler Explorer compiler id for AArch64 GCC. Re-verified via
 // https://godbolt.org/api/compilers/c?fields=id,name on 2026-04-15; the
@@ -61,6 +62,12 @@ export async function POST(req: NextRequest) {
   if (!source.trim()) {
     return NextResponse.json({ error: "source is empty" }, { status: 400 });
   }
+  if (source.length > MAX_C_SOURCE_BYTES) {
+    return NextResponse.json(
+      { error: `source exceeds ${MAX_C_SOURCE_BYTES} byte limit` },
+      { status: 413 },
+    );
+  }
   if (!/^-O[0-3s]$/.test(optLevel)) {
     return NextResponse.json({ error: "invalid opt level" }, { status: 400 });
   }
@@ -72,6 +79,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ asm: cached, cached: true });
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), C_TO_ASM_TIMEOUT_MS);
   try {
     const upstream = await fetch(
       `https://godbolt.org/api/compiler/${COMPILER_ID}/compile`,
@@ -98,6 +107,7 @@ export async function POST(req: NextRequest) {
             },
           },
         }),
+        signal: controller.signal,
       },
     );
     if (!upstream.ok) {
@@ -136,10 +146,18 @@ export async function POST(req: NextRequest) {
     writeToCache(key, asm);
     return NextResponse.json({ asm, cached: false, sourceMap });
   } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      return NextResponse.json(
+        { error: "upstream fetch timed out" },
+        { status: 504 },
+      );
+    }
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
       { error: `upstream fetch failed: ${message}` },
       { status: 502 },
     );
+  } finally {
+    clearTimeout(timer);
   }
 }
