@@ -131,7 +131,7 @@ export function ExplainStrip({ source, currentLine }: ExplainStripProps) {
             writeEnabled(true);
           }}
           className="hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] rounded px-1"
-          aria-label="enable explain strip"
+          aria-label="show explain strip"
         >
           show explain
         </button>
