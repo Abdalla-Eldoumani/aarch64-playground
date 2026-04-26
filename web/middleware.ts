@@ -17,11 +17,11 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Content-Security-Policy":
     "default-src 'self'; " +
-    "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+    "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
     "font-src 'self' data:; " +
     "img-src 'self' data: blob:; " +
-    "connect-src 'self' https://cdn.jsdelivr.net; " +
+    "connect-src 'self' https://cdn.jsdelivr.net https://vitals.vercel-insights.com https://va.vercel-scripts.com; " +
     "worker-src 'self' blob:; " +
     "child-src 'self' blob:; " +
     "frame-ancestors 'none'; " +
