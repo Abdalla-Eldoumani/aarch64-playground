@@ -73,7 +73,7 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
         autoCapitalize="off"
         autoCorrect="off"
         aria-label="command-line arguments"
-        className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 py-2 sm:py-0.5 min-h-[36px] sm:min-h-0 font-mono text-[11px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       />
     </label>
   );
