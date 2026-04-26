@@ -13,6 +13,7 @@ interface EditorProps {
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
+  onCursorChange?: (pos: { line: number; column: number }) => void;
 }
 
 const ARM64_MNEMONICS = [
@@ -50,6 +51,7 @@ export function Editor({
   breakpoints,
   onToggleBreakpoint,
   assemblyErrors,
+  onCursorChange,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -271,6 +273,13 @@ export function Editor({
         },
       });
 
+      // Surface cursor position to the parent so the share-state hash
+      // can encode it. The callback fires on arrow keys, click, and any
+      // edit; the parent throttles persistence as needed.
+      editor.onDidChangeCursorPosition((e) => {
+        onCursorChange?.({ line: e.position.lineNumber, column: e.position.column });
+      });
+
       // Set an aria-label so screen readers announce the editor as more
       // than "edit text"; Monaco's default label is generic.
       editor.getDomNode()?.setAttribute("aria-label", "ARM64 assembly source code editor");
@@ -346,6 +355,7 @@ export function Editor({
       onToggleBreakpoint={onToggleBreakpoint}
       assemblyErrors={assemblyErrors}
       onDrop={onDrop}
+      onCursorChange={onCursorChange}
     />;
   }
 
@@ -400,6 +410,7 @@ interface FallbackEditorProps {
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
   onDrop: (e: React.DragEvent) => void;
+  onCursorChange?: (pos: { line: number; column: number }) => void;
 }
 
 /**
@@ -423,6 +434,7 @@ function FallbackEditor({
   onToggleBreakpoint,
   assemblyErrors,
   onDrop,
+  onCursorChange,
 }: FallbackEditorProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const lineCount = Math.max(1, value.split("\n").length);
@@ -490,6 +502,15 @@ function FallbackEditor({
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onSelect={(e) => {
+          if (!onCursorChange) return;
+          const ta = e.currentTarget;
+          const upto = ta.value.slice(0, ta.selectionStart);
+          const lines = upto.split("\n");
+          const line = lines.length;
+          const column = (lines[lines.length - 1]?.length ?? 0) + 1;
+          onCursorChange({ line, column });
+        }}
         aria-label="assembly source"
       />
     </div>
