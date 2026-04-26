@@ -521,16 +521,16 @@ impl Emulator {
         self.cpu.take_pc_trace()
     }
 
-    /// Drain the dirty-write buffer (per-byte `(addr, len)` ranges)
+    /// Drain the dirty-write buffer (per-write `(addr, len)` ranges)
     /// accumulated since the last call. JS uses these to highlight
-    /// changed memory cells during replay scrubbing.
-    /// Returned as a flat `Vec<u32>` of `[addr0_lo, addr0_hi, len0,
-    /// addr1_lo, ...]` triples to keep the JS protocol simple.
+    /// changed memory cells during replay scrubbing. Returned as a
+    /// flat `Vec<u32>` of `[addr, len, addr, len, ...]`. Every cpsc
+    /// 355 address fits in u32 (max is `0xFFFF_FFFF` for the host
+    /// stub range) so the high half isn't carried.
     pub fn take_dirty_addrs(&mut self) -> Vec<u32> {
         let mut out = Vec::new();
         for (addr, len) in self.cpu.mem.take_dirty() {
-            out.push((addr & 0xFFFF_FFFF) as u32);
-            out.push((addr >> 32) as u32);
+            out.push(addr as u32);
             out.push(len as u32);
         }
         out
