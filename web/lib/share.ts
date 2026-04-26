@@ -4,7 +4,16 @@ import LZString from "lz-string";
 import { buildDeepLinkQuery } from "@/lib/use-deep-link";
 import type { Theme } from "@/lib/use-theme";
 
-const HASH_PREFIX = "p=";
+const PREFIX_V2 = "p2=";
+const PREFIX_V1 = "p=";
+
+export interface ShareState {
+  source: string;
+  args?: string;
+  stdin?: string;
+  view?: "playground" | "c-to-asm";
+  cursor?: { line: number; column: number };
+}
 
 export interface ShareOptions {
   view?: "playground" | "c-to-asm";
@@ -13,24 +22,49 @@ export interface ShareOptions {
 }
 
 /**
- * Encode the editor buffer as a shareable URL hash. Uses lz-string's
- * `compressToEncodedURIComponent` so the payload is safe to embed in a
- * `#p=...` fragment and survives being copy-pasted through chat apps.
+ * Encode the editor state as a shareable URL hash. lz-string's
+ * `compressToEncodedURIComponent` keeps the payload safe inside a
+ * `#p2=...` fragment and survives copy-paste through chat apps. The
+ * v2 prefix carries the full state JSON; the older `#p=` form carrying
+ * just the source string is still decoded by `readShareHash` so links
+ * shared before this change keep working.
  */
-export function buildShareHash(source: string): string {
-  return `#${HASH_PREFIX}${LZString.compressToEncodedURIComponent(source)}`;
+export function buildShareHash(state: ShareState): string {
+  const json = JSON.stringify(state);
+  return `#${PREFIX_V2}${LZString.compressToEncodedURIComponent(json)}`;
 }
 
 /**
- * Parse a share hash (with or without leading `#`) and return the
- * decompressed source, or `null` if the hash isn't ours.
+ * Parse a share hash (with or without leading `#`). Tries the v2 JSON
+ * payload first, then falls back to the v1 source-only form. Returns
+ * `null` if the hash isn't ours or the payload is malformed.
  */
-export function readShareHash(hash: string): string | null {
+export function readShareHash(hash: string): ShareState | null {
   const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (!trimmed.startsWith(HASH_PREFIX)) return null;
-  const compressed = trimmed.slice(HASH_PREFIX.length);
-  const decoded = LZString.decompressFromEncodedURIComponent(compressed);
-  return decoded && decoded.length > 0 ? decoded : null;
+  if (trimmed.startsWith(PREFIX_V2)) {
+    const compressed = trimmed.slice(PREFIX_V2.length);
+    const decoded = LZString.decompressFromEncodedURIComponent(compressed);
+    if (!decoded) return null;
+    try {
+      const parsed = JSON.parse(decoded) as unknown;
+      if (
+        parsed != null &&
+        typeof parsed === "object" &&
+        typeof (parsed as { source?: unknown }).source === "string"
+      ) {
+        return parsed as ShareState;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  if (trimmed.startsWith(PREFIX_V1)) {
+    const compressed = trimmed.slice(PREFIX_V1.length);
+    const decoded = LZString.decompressFromEncodedURIComponent(compressed);
+    return decoded && decoded.length > 0 ? { source: decoded } : null;
+  }
+  return null;
 }
 
 /**
@@ -38,11 +72,11 @@ export function readShareHash(hash: string): string | null {
  * share hash). When the caller passes view / example / theme, an
  * instructor can link to a specific example in a specific layout.
  */
-export function buildShareUrl(source: string, options: ShareOptions = {}): string {
+export function buildShareUrl(state: ShareState, options: ShareOptions = {}): string {
   const query = buildDeepLinkQuery(options);
-  if (typeof window === "undefined") return `${query}${buildShareHash(source)}`;
+  if (typeof window === "undefined") return `${query}${buildShareHash(state)}`;
   const url = new URL(window.location.href);
   url.hash = "";
   url.search = "";
-  return `${url.origin}${url.pathname}${query}${buildShareHash(source)}`;
+  return `${url.origin}${url.pathname}${query}${buildShareHash(state)}`;
 }
