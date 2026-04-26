@@ -6,25 +6,62 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs of this workflow on the same ref so a fast
+# follow-up push doesn't pile up duplicate jobs.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
 jobs:
   rust:
     name: cargo + wasm-pack
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - name: install wasm-pack
-        uses: jetli/wasm-pack-action@v1
+
+      # Cache the cargo registry + git index + target dir so reruns don't
+      # spend a full minute re-downloading + recompiling every dep.
+      - name: cache cargo
+        uses: actions/cache@v4
         with:
-          version: 'latest'
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            emulator/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('emulator/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # taiki-e/install-action grabs prebuilt binaries via binstall when
+      # available, which is faster and more reliable than the older
+      # jetli/wasm-pack-action (that one rate-limits without a token on
+      # newer GitHub runners).
+      - name: install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
       - name: cargo test
         run: cargo test --manifest-path emulator/Cargo.toml
+
       - name: wasm-pack web build
         run: wasm-pack build emulator --release --target web --out-dir ../web/lib/wasm
+
       - name: wasm-pack node build
         run: wasm-pack build emulator --release --target nodejs --out-dir ../web/lib/wasm-node
+
       - name: upload wasm artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -33,6 +70,7 @@ jobs:
             web/lib/wasm/
             web/lib/wasm-node/
           retention-days: 1
+          if-no-files-found: error
 
   web:
     name: web (lint + tsc + vitest + size-limit)
@@ -40,31 +78,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: web/package-lock.json
+
       - name: download wasm artifacts
         uses: actions/download-artifact@v4
         with:
           name: wasm-bundles
-          path: web/lib/
+          path: web/lib
+
       - name: install
         working-directory: web
-        run: npm ci
+        run: npm ci --no-audit --no-fund
+
       - name: lint
         working-directory: web
         run: npm run lint
+
       - name: typecheck
         working-directory: web
         run: npm run typecheck
+
       - name: vitest
         working-directory: web
         run: npm test
+
       - name: build
         working-directory: web
         run: npm run build
+
       - name: size-limit
         working-directory: web
         run: npm run size
@@ -75,13 +121,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+
       - name: download wasm artifacts
         uses: actions/download-artifact@v4
         with:
           name: wasm-bundles
-          path: web/lib/
+          path: web/lib
+
       - name: verify-corpus
         run: node scripts/verify-corpus.js
