@@ -271,6 +271,9 @@ export function Editor({
           if (doc.example) {
             lines.push("", "```", doc.example, "```");
           }
+          if (doc.cExample) {
+            lines.push("", `**c equivalent:** \`${doc.cExample}\``);
+          }
           return {
             range: new monaco.Range(
               position.lineNumber,
