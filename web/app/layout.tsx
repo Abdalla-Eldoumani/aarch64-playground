@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { ToastHost } from "@/components/Toast";
 import { OfflineBadge } from "@/components/OfflineBadge";
@@ -56,6 +58,8 @@ export default function RootLayout({
         <RegisterSW />
         <OfflineBadge />
         <ToastHost>{children}</ToastHost>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
