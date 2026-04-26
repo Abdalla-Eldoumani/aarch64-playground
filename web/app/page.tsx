@@ -28,6 +28,7 @@ import { parseArgs } from "@/lib/args";
 import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
 import { useLectureMode } from "@/lib/use-lecture-mode";
 import { useHotspotMode } from "@/lib/use-hotspot-mode";
+import { useNamedSaves } from "@/lib/use-named-saves";
 import { ArgsInput } from "@/components/ArgsInput";
 import { LectureBar } from "@/components/LectureBar";
 import { ReplayScrubber } from "@/components/ReplayScrubber";
@@ -148,6 +149,9 @@ export default function Home() {
   const cpsc = useCpsc355Mode();
   const lecture = useLectureMode();
   const hotspot = useHotspotMode();
+  const namedSaves = useNamedSaves();
+  const [bookmarkName, setBookmarkName] = useState("");
+  const bookmarkImportRef = useRef<HTMLInputElement>(null);
   const [embed, setEmbed] = useState<boolean>(false);
   const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
   const [extraFiles, setExtraFiles] = useSourceFiles();
@@ -633,9 +637,9 @@ export default function Home() {
   );
   const memWatchBlock = <MemoryWatches getMemory={emu.getMemory} />;
   const savesBlock = (
-    <div className="p-3 text-xs flex flex-col h-full">
+    <div className="p-3 text-xs flex flex-col h-full overflow-auto">
       <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px] mb-2">
-        save states
+        save states (this session)
       </h2>
       <form
         onSubmit={(e) => {
@@ -662,7 +666,7 @@ export default function Home() {
           save
         </button>
       </form>
-      <ul className="flex-1 overflow-auto space-y-1">
+      <ul className="space-y-1 mb-4">
         {emu.savedStates.length === 0 && (
           <li className="text-[10px] text-[var(--text-secondary)]">
             no saved states yet.
@@ -685,6 +689,126 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => emu.deleteState(name)}
+                className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)]"
+              >
+                delete
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">
+          bookmarks (persistent)
+        </h2>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              const bundle = namedSaves.exportBundle();
+              try {
+                await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
+                toast.show(`exported ${bundle.saves.length} bookmark${bundle.saves.length === 1 ? "" : "s"} to clipboard`);
+              } catch {
+                toast.show("clipboard write failed");
+              }
+            }}
+            className="text-[10px] text-[var(--accent)] hover:underline"
+          >
+            export json
+          </button>
+          <button
+            type="button"
+            onClick={() => bookmarkImportRef.current?.click()}
+            className="text-[10px] text-[var(--accent)] hover:underline"
+          >
+            import json
+          </button>
+        </div>
+      </div>
+      <input
+        ref={bookmarkImportRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            const result = namedSaves.importBundle(parsed);
+            toast.show(`imported ${result.added} added, ${result.skipped} skipped`);
+          } catch {
+            toast.show("invalid bookmark bundle");
+          } finally {
+            e.target.value = "";
+          }
+        }}
+        aria-label="import bookmark bundle"
+      />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const name = bookmarkName.trim();
+          if (!name) return;
+          namedSaves.put({
+            name,
+            source,
+            args: argsText || undefined,
+            stepCount: emu.stepCount,
+            savedAt: new Date().toISOString(),
+          });
+          setBookmarkName("");
+        }}
+        className="flex gap-1 mb-2"
+      >
+        <input
+          type="text"
+          value={bookmarkName}
+          onChange={(e) => setBookmarkName(e.target.value)}
+          placeholder="bookmark name"
+          className="flex-1 bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)]"
+          aria-label="bookmark name"
+        />
+        <button
+          type="submit"
+          className="px-2 py-0.5 text-[11px] rounded bg-[var(--accent-muted)] hover:bg-[var(--accent)] hover:text-black text-[var(--text-primary)]"
+        >
+          bookmark
+        </button>
+      </form>
+      <ul className="space-y-1">
+        {namedSaves.saves.length === 0 && (
+          <li className="text-[10px] text-[var(--text-secondary)]">
+            no bookmarks yet.
+          </li>
+        )}
+        {namedSaves.saves.map((s) => (
+          <li
+            key={s.name}
+            className="flex items-center justify-between gap-2 font-mono"
+          >
+            <span className="text-[var(--text-primary)] truncate" title={`step ${s.stepCount} -- ${s.savedAt}`}>
+              {s.name}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  loadAsBaseline(s.source, s.name);
+                  if (s.args !== undefined) setArgsText(s.args);
+                  // stepCount restoration deferred -- the user can re-step
+                  // with knowledge of the saved count (shown in tooltip).
+                }}
+                className="text-[10px] text-[var(--accent)] hover:underline"
+              >
+                load
+              </button>
+              <button
+                type="button"
+                onClick={() => namedSaves.remove(s.name)}
                 className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)]"
               >
                 delete
