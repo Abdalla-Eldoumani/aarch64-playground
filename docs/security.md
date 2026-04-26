@@ -21,7 +21,7 @@ payloads, bookmark JSON), all of which arrive untrusted.
 
 | Header                       | Value                                         | Why                                                                                                  |
 | ---------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `Content-Security-Policy`    | tight default-src 'self', see vercel.json     | Blocks inline scripts from URL params, blocks third-party scripts except `cdn.jsdelivr.net` (Monaco) |
+| `Content-Security-Policy`    | tight default-src 'self', see vercel.json     | Blocks inline scripts from URL params; third-party origins limited to `cdn.jsdelivr.net` (Monaco), `va.vercel-scripts.com` (Vercel Analytics + Speed Insights script), `vitals.vercel-insights.com` (their beacon endpoint) |
 | `X-Content-Type-Options`     | `nosniff`                                     | Prevents MIME-sniff-driven script execution                                                          |
 | `X-Frame-Options`            | `DENY`                                        | Blocks framing                                                                                       |
 | `Cross-Origin-Opener-Policy` | `same-origin`                                 | Cross-origin isolation (windows opened cannot script us)                                             |
@@ -60,7 +60,10 @@ emulator.
 - **No SharedArrayBuffer**, so we don't need COEP and the strict cross-
   origin isolation it requires. The WASM emulator copies bytes
   through worker `postMessage` instead.
-- **No analytics, no third-party trackers**, no telemetry.
+- **Vercel Analytics + Speed Insights are wired in** (page-view counts
+  + Core Web Vitals). They are anonymized, do not set cookies, and run
+  only on the production deploy. The script and beacon endpoints are
+  the only third-party origins reachable from the page.
 
 ## What you can do safely
 
