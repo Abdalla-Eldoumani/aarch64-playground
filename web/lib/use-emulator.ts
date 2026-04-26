@@ -466,8 +466,11 @@ export function useEmulator(): EmulatorState {
       clearConsole,
       lineCounts: lineCountsRef.current,
     }),
-    // memTick / lineCountsTick are intentionally deps so getMemory and
-    // lineCounts consumers re-render when the underlying ref mutates.
+    // lineCountsTick is intentionally a dep so consumers re-render when
+    // the underlying lineCountsRef mutates (the ref identity itself
+    // never changes). eslint can't see that the returned `lineCounts`
+    // points at the ref's current value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isHalted, error, assemblyErrors, breakpoints,

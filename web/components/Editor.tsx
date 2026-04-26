@@ -7,6 +7,7 @@ import { lookupDoc } from "@/lib/instruction-docs";
 import { explainError } from "@/lib/error-explain";
 import { lintSource } from "@/lib/cpsc355-lint";
 import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
+import { useHotspotMode } from "@/lib/use-hotspot-mode";
 
 interface EditorProps {
   value: string;
@@ -16,6 +17,8 @@ interface EditorProps {
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
   onCursorChange?: (pos: { line: number; column: number }) => void;
+  /** Per-source-line execution counter for the hotspot heat map. */
+  lineCounts?: Map<number, number>;
 }
 
 const ARM64_MNEMONICS = [
@@ -54,12 +57,14 @@ export function Editor({
   onToggleBreakpoint,
   assemblyErrors,
   onCursorChange,
+  lineCounts,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
   const [fallback, setFallback] = useState<boolean>(() => isNarrow());
   const { enabled: cpscEnabled } = useCpsc355Mode();
+  const { enabled: hotspotEnabled } = useHotspotMode();
   // Stash the live flag in a ref so the model.onDidChangeContent
   // listener registered inside handleMount sees the current value
   // without re-registering each time the toggle flips.
@@ -83,6 +88,24 @@ export function Editor({
     if (!editor || !monaco) return;
 
     const decorations: Parameters<typeof editor.deltaDecorations>[1] = [];
+
+    // hotspot heat map: cool blue -> hot red, painted first so the
+    // current-line / breakpoint / error rules overlay it
+    if (hotspotEnabled && lineCounts && lineCounts.size > 0) {
+      let max = 1;
+      for (const v of lineCounts.values()) if (v > max) max = v;
+      for (const [line, count] of lineCounts.entries()) {
+        // bucket into 1..5 based on relative heat (round half up)
+        const bucket = Math.max(1, Math.min(5, Math.ceil((count / max) * 5)));
+        decorations.push({
+          range: new monaco.Range(line, 1, line, 1),
+          options: {
+            isWholeLine: true,
+            className: `hotspot-${bucket}`,
+          },
+        });
+      }
+    }
 
     // current line highlight
     if (currentLine != null) {
@@ -140,7 +163,7 @@ export function Editor({
       decorationsRef.current,
       decorations
     );
-  }, [currentLine, breakpoints, assemblyErrors]);
+  }, [currentLine, breakpoints, assemblyErrors, hotspotEnabled, lineCounts]);
 
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
@@ -437,6 +460,11 @@ export function Editor({
         .current-line-glyph { background: #60a5fa; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .breakpoint-glyph { background: #ef4444; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .error-line-highlight { background: rgba(239, 68, 68, 0.15) !important; }
+        .hotspot-1 { background: rgba(56, 189, 248, 0.10) !important; }
+        .hotspot-2 { background: rgba(125, 211, 252, 0.16) !important; }
+        .hotspot-3 { background: rgba(253, 224, 71, 0.18) !important; }
+        .hotspot-4 { background: rgba(251, 146, 60, 0.22) !important; }
+        .hotspot-5 { background: rgba(248, 113, 113, 0.28) !important; }
         .error-glyph { background: #f59e0b; border-radius: 2px; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         @media (pointer: coarse) {
           .monaco-editor .glyph-margin { width: 32px !important; }
