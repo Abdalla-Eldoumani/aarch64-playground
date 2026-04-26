@@ -117,6 +117,14 @@ is sensitive, do not paste it here. See
 [`c-to-asm.md`](c-to-asm.md) for the full data-handling note,
 compiler id, cache TTL, and directive filter.
 
+## pass program arguments
+
+Type into the **args** input above the Assemble bar (e.g. `hello world`).
+The loader writes the strings into the argv pool at `0x0080_0000` and
+sets `w0 = argc`, `x1 = argv` on entry, so `int main(int argc, char
+**argv)`-style programs work without any extra wiring. Args persist
+per-program -- if you switch sources and come back, your args do too.
+
 ## beyond the basics
 
 Once you're comfortable with step / run / reset, the header and the
@@ -125,38 +133,69 @@ minutes it takes to try them:
 
 - **Tutorials** walk you through a topic one step at a time, with a
   snippet you can load into the editor per step. Progress per
-  tutorial is saved locally.
+  tutorial is saved locally and `expect` checks verify register
+  state as you advance.
 - **Save states** (the **Saves** tab in the debug area) let you
   snapshot the CPU under a name, keep stepping, then jump back. The
   run loop also records the last 128 instructions so **Step back**
   (`Shift+F10`) always undoes the last instruction.
+- **Bookmarks** in the same tab persist across page reloads -- they
+  capture source + args + stdin + step count, restore by re-running
+  the program forward to the saved step. Export / import as JSON to
+  share a setup with a classmate.
+- **Replay scrubber** appears above the register panel after you've
+  taken at least two steps. Drag the slider to walk back through the
+  last 128 frames visually; the next forward step resumes from the
+  live PC.
+- **Diagnostic bundle** (the icon next to **share**) copies a
+  markdown report of source + args + stdin + stdout + stderr +
+  exit code + register state + last-error to the clipboard, plus a
+  `?bundle=<lz>` link a TA can open to land at the exact same state.
 - **Watch expressions** (the **Watches** tab) evaluate a small grammar
-  (`x0`, `*x0`, `[fp, score1_s]`, `arr[i]`) every time the CPU stops,
-  so you can keep an eye on `[fp, score1_s]` without counting stack
-  offsets by hand.
+  (`x0`, `*x0`, `[fp, score1_s]`, `arr[i]`) every time the CPU stops.
 - **Memory watches** (the **Memwatch** tab) lets you pin labelled
-  (address, length) ranges so you can keep the `.data` buffer in view
-  without scrolling the memory panel.
+  (address, length) ranges so you can keep the `.data` buffer in view.
 - **Multi-file assembly** (the **+** next to the main file tab) lets
-  you register extra source files. They are concatenated before
-  assembly so `bl helper` calls in `main.asm` can resolve to a
-  `helper:` label in another file.
-- **Light theme** toggle in the header for laptops that autoswitch.
-- **Instruction count** in the controls bar ticks up every time a
-  real instruction executes, so you can compare two implementations
-  by how many steps they take.
+  you register extra source files, concatenated before assembly.
+- **Terminal** (the **term** tab) runs an xterm.js shell that knows
+  `./program [args]` (with `<file` / `>file` redirections), the basic
+  VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
+- **CPSC 355 mode** (toggle in the overflow sheet on phone, header on
+  desktop) turns on lints for the idioms the course expects -- alias
+  suffixes, canonical prologues, 16-byte stack alignment, no bare
+  `x29`/`x30`.
+- **Lecture mode** swaps to high-contrast theme + fullscreen +
+  oversized step / reset buttons for projector use.
+- **Hotspot mode** highlights the hottest instructions across a run
+  so you can spot loops at a glance.
+- **Three themes**: cycle through dark / light / high-contrast from
+  the header.
+- **Per-panel zoom** with `Ctrl+Wheel` over a panel; `Ctrl+0` resets.
+- **Source formatter**: `Ctrl+Shift+F` lowercases mnemonics, indents
+  to 8 spaces, aligns trailing comments to column 40.
+- **Embed mode**: `?embed=1` strips the chrome to just the editor +
+  console for slide decks and inline lecture demos.
+- **Offline**: the playground is a PWA. Once loaded once, the app
+  shell + examples + icons stay cached and the page works offline
+  for everything except the C-to-asm view (which needs Godbolt).
 
 ## keyboard shortcuts
 
-| Key          | Action                   |
-| ------------ | ------------------------ |
-| `F6`         | Assemble                 |
-| `F10`        | Step one instruction     |
-| `Shift+F10`  | Step back                |
-| `F5`         | Run / pause              |
-| `Shift+F5`   | Reset                    |
-| `Ctrl+K`     | Command palette          |
-| `?`          | Keyboard-shortcut help   |
+| Key            | Action                  |
+| -------------- | ----------------------- |
+| `F6`           | Assemble                |
+| `F10`          | Step one instruction    |
+| `Shift+F10`    | Step back               |
+| `F5`           | Run / pause             |
+| `Shift+F5`     | Reset                   |
+| `Ctrl+K`       | Command palette         |
+| `Ctrl+S`       | Save state (named)      |
+| `Ctrl+Shift+F` | Format the source       |
+| `Ctrl+Wheel`   | Zoom focused panel      |
+| `Ctrl+0`       | Reset zoom              |
+| `?`            | Keyboard shortcuts help |
 
 That's everything. For the next level of detail, read
-[`cpsc355-style-guide.md`](cpsc355-style-guide.md).
+[`cpsc355-style-guide.md`](cpsc355-style-guide.md) or
+[`features.md`](features.md) for a per-feature index of where things
+live in the source.
