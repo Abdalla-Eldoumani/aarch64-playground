@@ -1,33 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { buildShareUrl } from "@/lib/share";
+import { useRef, useState } from "react";
+import { buildShareUrl, type ShareState } from "@/lib/share";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export interface ShareDialogProps {
   open: boolean;
-  source: string;
+  state: ShareState;
   onClose: () => void;
 }
 
 /**
- * Modal that builds a compressed `#p=...` URL and offers copy/share.
+ * Modal that builds a compressed `#p2=...` URL and offers copy/share.
  * Uses `navigator.share` when the platform supports it (iOS/Android),
- * falls back to a textarea with a copy button otherwise.
+ * falls back to a textarea with a copy button otherwise. The hash
+ * carries the full editor state (source, args, stdin, view, cursor)
+ * so the recipient lands in the same scenario the sender saw.
  */
-export function ShareDialog({ open, source, onClose }: ShareDialogProps) {
+export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
-  // Build the URL during render; since we only read `source` and
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(open, ref, onClose);
+  // Build the URL during render; since we only read `state` and
   // `open`, this stays consistent without a setState-in-effect round.
-  const url = open ? buildShareUrl(source) : "";
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const url = open ? buildShareUrl(state) : "";
 
   if (!open) return null;
 
@@ -62,10 +58,11 @@ export function ShareDialog({ open, source, onClose }: ShareDialogProps) {
       onClick={onClose}
     >
       <div
+        ref={ref}
         className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3">
+        <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
           share this program
         </h2>
         <p className="text-[11px] text-[var(--text-secondary)] mb-2">

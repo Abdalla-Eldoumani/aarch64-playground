@@ -2,15 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export type Theme = "dark" | "light";
+export type Theme = "dark" | "light" | "high-contrast";
 
 const KEY = "aarch64-playground:theme";
+const ORDER: Theme[] = ["dark", "light", "high-contrast"];
+
+function isTheme(v: unknown): v is Theme {
+  return v === "dark" || v === "light" || v === "high-contrast";
+}
 
 function initialTheme(): Theme {
   if (typeof window === "undefined") return "dark";
   try {
     const saved = window.localStorage.getItem(KEY);
-    if (saved === "dark" || saved === "light") return saved;
+    if (isTheme(saved)) return saved;
   } catch {
     // ignore
   }
@@ -22,12 +27,13 @@ function initialTheme(): Theme {
 }
 
 /**
- * Persist-aware theme state. Reflects the current theme as a
- * `data-theme` attribute on the root `<html>` element so CSS vars can
- * respond via the `[data-theme="light"]` selector defined in
- * `globals.css`.
+ * Persist-aware theme state. Reflects the current theme as a `data-theme`
+ * attribute on the root `<html>` element so CSS vars respond via the
+ * `[data-theme="..."]` selectors in `globals.css`. Returns the current
+ * theme, a cycle function (dark -> light -> high-contrast -> dark), and
+ * a direct setter so deep-links can pin a theme on mount.
  */
-export function useTheme(): [Theme, () => void] {
+export function useTheme(): [Theme, () => void, (next: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
   useEffect(() => {
@@ -40,9 +46,12 @@ export function useTheme(): [Theme, () => void] {
     }
   }, [theme]);
 
-  const toggle = useCallback(() => {
-    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  const cycle = useCallback(() => {
+    setTheme((t) => {
+      const i = ORDER.indexOf(t);
+      return ORDER[(i + 1) % ORDER.length];
+    });
   }, []);
 
-  return [theme, toggle];
+  return [theme, cycle, setTheme];
 }

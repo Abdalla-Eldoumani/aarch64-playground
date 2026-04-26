@@ -107,7 +107,7 @@ export function RegisterPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
         {registers.map((val, i) => (
           <RegisterRow
             key={i}

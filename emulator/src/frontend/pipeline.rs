@@ -32,6 +32,12 @@ pub struct LinkedImage {
     /// Absolute address of the first instruction in `.text`, for debugger
     /// decoration.
     pub text_base: u64,
+    /// Resolved label -> absolute address for every label the linker
+    /// saw (instructions, data symbols, m4 expression symbols, plus
+    /// the synthetic `__tramp_<libc>` trampolines). Used by the
+    /// `gdb b <label>` terminal command and any future symbolic
+    /// debugger surface.
+    pub symbols: HashMap<String, u64>,
 }
 
 pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, EmuError> {
@@ -206,6 +212,14 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         let byte_offset = slot_addr as i64 - pc as i64;
                         encode_ldr_literal(sf, rt, byte_offset)?
                     } else {
+                        // Rewrite `bl <hostname>` to hop through the
+                        // trampoline so the out-of-range synthetic host
+                        // address becomes reachable. Operating on the
+                        // tokens directly handles tab whitespace and
+                        // any trailing token noise that the old raw-
+                        // string path could not.
+                        let mut tokens_owned = tokens.clone();
+                        redirect_bl_to_trampoline_tokens(&mut tokens_owned, &tramp_addr);
                         let raw = expanded_lines
                             .get(original_line - 1)
                             .copied()
@@ -220,12 +234,15 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         // Resolve aliases and constant expressions into
                         // plain numeric literals so the legacy encoder
                         // sees `[sp, -32]!` instead of `[sp, alloc]!`.
-                        let rewritten =
-                            lower_operands(&stripped, pc, &symbols, *original_line)?;
-                        // Rewrite `bl <hostname>` to hop through the
-                        // trampoline so the out-of-range synthetic host
-                        // address becomes reachable.
-                        let line_text = redirect_bl_to_trampoline(&rewritten, &tramp_addr);
+                        let line_text = if let Some(name) = extract_bl_target(&tokens_owned) {
+                            // Token redirect already produced the final
+                            // mnemonic+target; bypass the string path so
+                            // tab-separated lines reach the encoder
+                            // correctly.
+                            format!("bl {name}")
+                        } else {
+                            lower_operands(&stripped, pc, &symbols, *original_line)?
+                        };
                         assembler::encode_line_absolute(
                             &line_text,
                             pc,
@@ -269,6 +286,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         entry_point,
         instruction_count,
         text_base: CODE_BASE,
+        symbols,
     })
 }
 
@@ -601,9 +619,41 @@ fn is_host_address(addr: u64) -> bool {
     addr >= HOST_STUB_BASE && addr < HOST_STUB_BASE + 0x1_0000
 }
 
-/// When a `bl <hostname>` instruction's target is registered as a host
-/// stub, redirect the BL to the synthetic `__tramp_<hostname>` label so
-/// the encoder's imm26 offset stays in range.
+/// Token-based BL redirect. When the line is `bl <ident>` and `<ident>`
+/// names a host stub with a registered trampoline, mutate `tokens[1]`
+/// from `Ident(name)` to `Ident("__tramp_<name>")`. Returns true when
+/// the rewrite happened. Operates on the lexer's already-tokenized
+/// instruction so trailing comments (stripped by m4) and tab whitespace
+/// (already collapsed by the lexer) cannot break the match the way the
+/// raw-string version did.
+pub(crate) fn redirect_bl_to_trampoline_tokens(
+    tokens: &mut Vec<crate::frontend::lexer::Token>,
+    tramp_addr: &HashMap<String, u64>,
+) -> bool {
+    if tokens.len() < 2 {
+        return false;
+    }
+    let TokenKind::Ident(mn) = &tokens[0].kind else {
+        return false;
+    };
+    if !mn.eq_ignore_ascii_case("bl") {
+        return false;
+    }
+    let TokenKind::Ident(name) = &tokens[1].kind else {
+        return false;
+    };
+    if !tramp_addr.contains_key(name) {
+        return false;
+    }
+    let new_name = format!("__tramp_{name}");
+    tokens[1].kind = TokenKind::Ident(new_name);
+    true
+}
+
+/// Old string-based BL redirect. Kept under `#[cfg(test)]` only as a
+/// regression baseline against the token form; production code uses
+/// `redirect_bl_to_trampoline_tokens` exclusively.
+#[cfg(test)]
 fn redirect_bl_to_trampoline(line: &str, tramp_addr: &HashMap<String, u64>) -> String {
     let trimmed = line.trim_start();
     let rest = match trimmed.strip_prefix("bl ").or_else(|| trimmed.strip_prefix("BL ")) {
@@ -660,7 +710,11 @@ fn strip_leading_labels(line: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_leading_labels;
+    use super::{
+        redirect_bl_to_trampoline_tokens, stringify_tokens, strip_leading_labels,
+    };
+    use crate::frontend::lexer::lex;
+    use std::collections::HashMap;
 
     #[test]
     fn strips_single_label() {
@@ -690,5 +744,80 @@ mod tests {
     fn ignores_colon_inside_operand() {
         // No leading ident:, just pass through.
         assert_eq!(strip_leading_labels("ldr x0, [x1, :lo12:foo]"), "ldr x0, [x1, :lo12:foo]");
+    }
+
+    fn tramp_with_printf() -> HashMap<String, u64> {
+        let mut t = HashMap::new();
+        t.insert("printf".to_string(), 0x0040_1000u64);
+        t
+    }
+
+    #[test]
+    fn token_redirect_rewrites_plain_bl() {
+        let mut tokens = lex("bl printf", 1).unwrap();
+        let rewritten = redirect_bl_to_trampoline_tokens(&mut tokens, &tramp_with_printf());
+        assert!(rewritten);
+        assert_eq!(stringify_tokens(&tokens), "bl __tramp_printf");
+    }
+
+    #[test]
+    fn token_redirect_handles_trailing_comment_after_m4_strip() {
+        // m4 strips `// call libc` before the lexer sees it, so the
+        // instruction tokens are exactly the same as the no-comment case.
+        // The token-based redirect must succeed where the string version
+        // could fail when fed an unstripped line.
+        let mut tokens = lex("bl printf", 1).unwrap();
+        let rewritten = redirect_bl_to_trampoline_tokens(&mut tokens, &tramp_with_printf());
+        assert!(rewritten);
+        assert_eq!(stringify_tokens(&tokens), "bl __tramp_printf");
+    }
+
+    #[test]
+    fn token_redirect_handles_tab_whitespace() {
+        // The string version does `strip_prefix("bl ")` (literal space)
+        // and silently leaves `bl\tprintf` unrewritten. The lexer treats
+        // tabs and spaces identically, so the token form succeeds here.
+        let mut tokens = lex("bl\tprintf", 1).unwrap();
+        let rewritten = redirect_bl_to_trampoline_tokens(&mut tokens, &tramp_with_printf());
+        assert!(rewritten);
+        assert_eq!(stringify_tokens(&tokens), "bl __tramp_printf");
+    }
+
+    #[test]
+    fn token_redirect_leaves_string_literal_alone() {
+        // `.string "bl printf"` lexes as a directive plus a single string
+        // literal token; tokens[0] is not `Ident("bl")` so the function
+        // must return false and not mutate the stream.
+        let mut tokens = lex(".string \"bl printf\"", 1).unwrap();
+        let before = tokens.clone();
+        let rewritten = redirect_bl_to_trampoline_tokens(&mut tokens, &tramp_with_printf());
+        assert!(!rewritten);
+        assert_eq!(tokens, before);
+    }
+
+    #[test]
+    fn token_redirect_returns_false_for_unknown_target() {
+        let mut tokens = lex("bl my_local_label", 1).unwrap();
+        let before = tokens.clone();
+        let rewritten = redirect_bl_to_trampoline_tokens(&mut tokens, &tramp_with_printf());
+        assert!(!rewritten);
+        assert_eq!(tokens, before);
+    }
+
+    #[test]
+    fn legacy_string_redirect_misses_tab_whitespace() {
+        // Regression baseline: the old string-based version handles a
+        // plain space-separated `bl printf` but silently leaves
+        // `bl\tprintf` unrewritten because it does
+        // `strip_prefix("bl ")` against a literal space. Pinning the
+        // bug here so any future revival of the string form is forced
+        // to confront it.
+        use super::redirect_bl_to_trampoline;
+        let tramp = tramp_with_printf();
+        assert_eq!(
+            redirect_bl_to_trampoline("bl printf", &tramp),
+            "bl __tramp_printf"
+        );
+        assert_eq!(redirect_bl_to_trampoline("bl\tprintf", &tramp), "bl\tprintf");
     }
 }

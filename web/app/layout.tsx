@@ -1,5 +1,35 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
+import { ToastHost } from "@/components/Toast";
+import { OfflineBadge } from "@/components/OfflineBadge";
+import { RegisterSW } from "@/components/RegisterSW";
+
+// Engineering-notebook trio: Source Serif 4 in editorial chrome (page
+// titles, empty-state heads), IBM Plex Sans in the controls and labels,
+// JetBrains Mono everywhere code or registers appear. Each font is
+// pinned to a CSS variable so component-level utility classes can pull
+// the right family without a Tailwind config rewrite.
+const fontSerif = Source_Serif_4({
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  display: "swap",
+  variable: "--font-serif",
+});
+const fontSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-sans",
+});
+const fontMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-mono",
+});
 
 export const metadata: Metadata = {
   title: "cpsc 355 playground",
@@ -21,9 +51,16 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const fontClasses = `${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`;
   return (
-    <html lang="en">
-      <body className="min-h-screen">{children}</body>
+    <html lang="en" className={fontClasses}>
+      <body className="flex flex-col h-dvh font-mono">
+        <RegisterSW />
+        <OfflineBadge />
+        <ToastHost>{children}</ToastHost>
+        <Analytics />
+        <SpeedInsights />
+      </body>
     </html>
   );
 }

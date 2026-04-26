@@ -28,11 +28,20 @@ Output goes to `web/.next` and is served by Vercel's Next.js runtime.
 
 `vercel.json` sets:
 
-- `Cache-Control: public, max-age=31536000, immutable` on `/_next/static/*` and `*.wasm` -- these are content-hashed, safe to cache forever.
-- `Cache-Control: public, max-age=3600` on `/examples/*.s` -- example programs rotate occasionally.
+- `Cache-Control: public, max-age=31536000, immutable` on `/_next/static/*`, `/icons/*`, and `*.wasm` -- content-hashed or version-pinned, safe to cache forever.
+- `Cache-Control: public, max-age=3600` on `/examples/*.s` and `/manifest.webmanifest` -- examples and manifest rotate occasionally.
+- `Cache-Control: public, max-age=0, must-revalidate` plus `Service-Worker-Allowed: /` on `/sw.js` -- so service-worker updates land immediately.
 - `Content-Type: application/wasm` on `.wasm` -- Vercel already sets this, but we're explicit so nothing downstream can override it.
 - `Content-Type: text/plain; charset=utf-8` on `/examples/*.s` -- browsers default to `application/octet-stream` which makes `fetch().text()` work but feels wrong.
-- Standard security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`.
+- Security headers (full set):
+  - `Content-Security-Policy` -- `default-src 'self'`, scripts from self + `cdn.jsdelivr.net` (Monaco), styles inline (Tailwind / Monaco), workers from self + blob:, no framing, no objects.
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Cross-Origin-Opener-Policy: same-origin`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`
+
+See [`security.md`](security.md) for the rationale.
 
 ## Troubleshooting
 

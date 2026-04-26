@@ -42,3 +42,4 @@ docs/cpsc355-reference/
 # OS
 .DS_Store
 Thumbs.db
+.lighthouse/

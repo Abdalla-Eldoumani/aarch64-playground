@@ -50,6 +50,10 @@ export class EmulatorInstance {
     return this.inner.assemble_and_load(source) as AssembleResult;
   }
 
+  assembleAndLoadWithArgs(source: string, args: string[]): AssembleResult {
+    return this.inner.assemble_and_load_with_args(source, args) as AssembleResult;
+  }
+
   step(): StepResult {
     const raw = this.inner.step() as RawStepResult;
     return {
@@ -119,6 +123,33 @@ export class EmulatorInstance {
 
   listVfsFiles(): string[] {
     return this.inner.list_vfs_files();
+  }
+
+  readVfsFile(path: string): Uint8Array {
+    return this.inner.read_vfs_file(path);
+  }
+
+  deleteVfsFile(path: string): boolean {
+    return this.inner.delete_vfs_file(path);
+  }
+
+  resolveLabel(name: string): number | null {
+    const v = this.inner.resolve_label(name);
+    if (v == null) return null;
+    return typeof v === "bigint" ? Number(v) : Number(v);
+  }
+
+  takePcTrace(): number[] {
+    const raw = this.inner.take_pc_trace();
+    const out: number[] = [];
+    for (const v of raw) {
+      out.push(typeof v === "bigint" ? Number(v) : Number(v));
+    }
+    return out;
+  }
+
+  takeDirtyAddrs(): number[] {
+    return Array.from(this.inner.take_dirty_addrs());
   }
 
   clearConsole(): void {
@@ -207,6 +238,7 @@ interface RawRunResult {
 // the WASM module's Emulator instance shape
 interface WasmEmulatorInstance {
   assemble_and_load(source: string): unknown;
+  assemble_and_load_with_args(source: string, args: string[]): unknown;
   step(): unknown;
   step_back(): unknown;
   can_step_back(): boolean;
@@ -234,18 +266,47 @@ interface WasmEmulatorInstance {
   get_exit_code(): bigint | number | null | undefined;
   upload_vfs_file(path: string, data: Uint8Array): void;
   list_vfs_files(): string[];
+  read_vfs_file(path: string): Uint8Array;
+  delete_vfs_file(path: string): boolean;
+  resolve_label(name: string): bigint | number | null | undefined;
+  take_pc_trace(): BigUint64Array | bigint[];
+  take_dirty_addrs(): Uint32Array;
   clear_console(): void;
 }
 
-type WasmEmulatorClass = new () => WasmEmulatorInstance;
+type WasmModule = typeof import("@/lib/wasm/aarch64_emulator");
+
+let wasmModulePromise: Promise<WasmModule> | null = null;
+
+async function ensureWasmModule(): Promise<WasmModule> {
+  if (!wasmModulePromise) {
+    wasmModulePromise = (async () => {
+      const wasm = await import("@/lib/wasm/aarch64_emulator");
+      await wasm.default();
+      return wasm;
+    })();
+  }
+  return wasmModulePromise;
+}
 
 /**
  * Load the WASM module and return an EmulatorInstance.
  * This is async because of the dynamic import.
  */
 export async function loadEmulator(): Promise<EmulatorInstance> {
-  const wasm = await import("@/lib/wasm/aarch64_emulator");
-  await wasm.default();
+  const wasm = await ensureWasmModule();
   const inner = new wasm.Emulator();
   return new EmulatorInstance(inner);
+}
+
+/**
+ * Hosted-mode detection routed through the Rust source of truth. The
+ * TS side used to maintain a parallel regex list which drifted from the
+ * Rust list; this helper makes the WASM module the only place that
+ * decides. First call awaits the WASM load; subsequent calls use the
+ * cached module so latency is just the wasm-bindgen marshalling.
+ */
+export async function detectHostedMode(source: string): Promise<boolean> {
+  const wasm = await ensureWasmModule();
+  return wasm.detectHostedMode(source);
 }

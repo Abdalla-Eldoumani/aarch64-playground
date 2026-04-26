@@ -121,8 +121,8 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           max={512}
           value={length}
           onChange={(e) => setLength(parseInt(e.target.value, 10) || 1)}
+          aria-label="watch byte length"
           className="w-14 bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)]"
-          aria-label="watch length"
         />
         <button
           type="submit"
@@ -133,8 +133,13 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
       </form>
       <div className="flex-1 overflow-auto">
         {watches.length === 0 && (
-          <div className="text-[10px] text-[var(--text-secondary)]">
-            watch a memory range to see it live-updated below.
+          <div className="space-y-1">
+            <p className="font-serif text-[12px] text-[var(--text-primary)]">
+              Pin an address; the bytes follow you across runs.
+            </p>
+            <p className="font-sans text-[10px] text-[var(--text-secondary)]">
+              Pick a label, an address (hex or decimal), and a byte count, then add.
+            </p>
           </div>
         )}
         <ul className="space-y-2">

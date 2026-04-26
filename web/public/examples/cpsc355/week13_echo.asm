@@ -26,9 +26,11 @@ main:   stp     fp, lr, [sp, alloc]!
         mov     fp, sp
 
         // Print prompt with write(stdout, prompt, prompt_len)
+        // 12 = "Enter text: " visible bytes; the .string directive's
+        // implicit NUL must not be written or printf below picks it up.
         mov     w0, 1                   // fd = 1 (stdout)
         ldr     x1, =prompt
-        mov     x2, 13                  // prompt length
+        mov     x2, 12                  // prompt length (no NUL)
         mov     x8, 64                  // syscall number for write
         svc     0
 

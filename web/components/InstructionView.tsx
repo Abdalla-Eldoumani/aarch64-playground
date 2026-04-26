@@ -5,13 +5,11 @@ import type { DecodedInstruction } from "@/lib/use-emulator";
 interface InstructionViewProps {
   instructions: DecodedInstruction[];
   pc: number;
-  codeBase: number;
 }
 
 export function InstructionView({
   instructions,
   pc,
-  codeBase,
 }: InstructionViewProps) {
   if (instructions.length === 0) {
     return (

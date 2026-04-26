@@ -1,3 +1,4 @@
+pub mod argv;
 pub mod assembler;
 pub mod cpu;
 pub mod decoder;
@@ -10,15 +11,20 @@ pub mod memory;
 pub mod registers;
 pub mod snapshot;
 
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use serde::Serialize;
 
+#[allow(unused_imports)]
 use cpu::{Cpu, StepOutcome};
 
-/// Heuristic that decides whether the source uses the hosted cpsc 355
-/// feature set (sections, .global main, libc BLs). The bare-metal
-/// examples hit none of these so they keep the legacy path.
-fn needs_hosted_pipeline(source: &str) -> bool {
+/// Decide whether the source uses the hosted cpsc 355 feature set
+/// (sections, `.global main`, libc BLs, m4 defines). The bare-metal
+/// examples hit none of these so they keep the legacy single-`.text`
+/// path. Single source of truth: TypeScript callers go through the
+/// wasm-bindgen wrapper rather than maintaining their own list.
+pub fn detect_hosted_mode(source: &str) -> bool {
     // Strip // and ; comments so fragments inside them don't trigger.
     let clean: String = source
         .lines()
@@ -71,6 +77,16 @@ fn needs_hosted_pipeline(source: &str) -> bool {
     false
 }
 
+/// Wasm-bindgen wrapper. The TS frontend imports this through the WASM
+/// module so it never has to maintain a parallel list of directives or
+/// libc names; adding a new hosted feature touches only this file.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = detectHostedMode)]
+pub fn detect_hosted_mode_js(source: &str) -> bool {
+    detect_hosted_mode(source)
+}
+
+#[cfg(target_arch = "wasm32")]
 fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
     match outcome {
         StepOutcome::Advance => ("advance", None),
@@ -82,11 +98,13 @@ fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
 
 
 /// WASM-exposed emulator wrapping the core CPU.
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub struct Emulator {
     cpu: Cpu,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct StepResultJs {
     pc: u64,
@@ -98,6 +116,7 @@ struct StepResultJs {
     exit_code: Option<i64>,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct RunResultJs {
     pc: u64,
@@ -107,6 +126,7 @@ struct RunResultJs {
     error: Option<String>,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct RegistersJs {
     /// X0-X30 as hex strings (BigInt-safe)
@@ -116,6 +136,7 @@ struct RegistersJs {
     nzcv: u8,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct AssembleResultJs {
     success: bool,
@@ -124,6 +145,7 @@ struct AssembleResultJs {
     instruction_count: usize,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl Emulator {
     /// Create a fresh emulator with default memory layout.
@@ -140,7 +162,7 @@ impl Emulator {
     /// pipeline; everything else keeps the legacy single-`.text` path so
     /// the bare-metal examples retain their exact byte-for-byte layout.
     pub fn assemble_and_load(&mut self, source: &str) -> JsValue {
-        if needs_hosted_pipeline(source) {
+        if detect_hosted_mode(source) {
             self.cpu.reset();
             match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
                 Ok(image) => {
@@ -209,6 +231,62 @@ impl Emulator {
                     }).unwrap()
                 }
             }
+        }
+    }
+
+    /// Same as `assemble_and_load` but additionally writes argc/argv at
+    /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
+    /// sees the supplied arguments. Bare-metal sources (no hosted
+    /// features) ignore args -- argc/argv only have meaning for hosted
+    /// programs that read them through w0/x1.
+    pub fn assemble_and_load_with_args(
+        &mut self,
+        source: &str,
+        args: Vec<String>,
+    ) -> JsValue {
+        if detect_hosted_mode(source) {
+            self.cpu.reset();
+            let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
+                Ok(image) => {
+                    let count = image.instruction_count;
+                    match self.cpu.load_linked_image_with_args(&image, &arg_refs) {
+                        Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
+                            success: true,
+                            error: None,
+                            error_line: None,
+                            instruction_count: count,
+                        })
+                        .unwrap(),
+                        Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
+                            success: false,
+                            error: Some(e.to_string()),
+                            error_line: None,
+                            instruction_count: 0,
+                        })
+                        .unwrap(),
+                    }
+                }
+                Err(e) => {
+                    let (line, message) = match e {
+                        errors::EmuError::AssemblyError { line, message }
+                        | errors::EmuError::PreprocError { line, message }
+                        | errors::EmuError::ParseError { line, message }
+                        | errors::EmuError::LinkError { line, message } => (Some(line), message),
+                        other => (None, other.to_string()),
+                    };
+                    serde_wasm_bindgen::to_value(&AssembleResultJs {
+                        success: false,
+                        error: Some(message),
+                        error_line: line,
+                        instruction_count: 0,
+                    })
+                    .unwrap()
+                }
+            }
+        } else {
+            // Bare-metal path -- args have no caller, just delegate.
+            self.assemble_and_load(source)
         }
     }
 
@@ -413,8 +491,109 @@ impl Emulator {
         names
     }
 
+    /// Read a VFS file's bytes. Returns an empty array when the path is
+    /// absent so the JS side can distinguish "missing" from "empty file"
+    /// via `list_vfs_files()` if it cares.
+    pub fn read_vfs_file(&self, path: &str) -> Vec<u8> {
+        self.cpu.vfs.get(path).cloned().unwrap_or_default()
+    }
+
+    /// Remove a VFS file. Returns `true` when an entry actually went
+    /// away. No-ops if the path was never registered.
+    pub fn delete_vfs_file(&mut self, path: &str) -> bool {
+        self.cpu.vfs.remove(path).is_some()
+    }
+
+    /// Resolve a label name to its absolute address. Powers
+    /// `gdb b <label>` in the terminal pane. Returns the address as
+    /// `u32` for JS-friendly typing (the address space sits well below
+    /// 2^32 for cpsc 355 programs); JS-side callers cast back to
+    /// number. `None` -> JS `undefined`.
+    pub fn resolve_label(&self, name: &str) -> Option<u64> {
+        self.cpu.resolve_label(name)
+    }
+
+    /// Drain the per-step PC trace accumulated since the last call.
+    /// JS converts each PC to a source line and bumps `lineCounts`
+    /// for the hotspot heat map. Without this drain the trace grows
+    /// unbounded across long runs.
+    pub fn take_pc_trace(&mut self) -> Vec<u64> {
+        self.cpu.take_pc_trace()
+    }
+
+    /// Drain the dirty-write buffer (per-write `(addr, len)` ranges)
+    /// accumulated since the last call. JS uses these to highlight
+    /// changed memory cells during replay scrubbing. Returned as a
+    /// flat `Vec<u32>` of `[addr, len, addr, len, ...]`. Every cpsc
+    /// 355 address fits in u32 (max is `0xFFFF_FFFF` for the host
+    /// stub range) so the high half isn't carried.
+    pub fn take_dirty_addrs(&mut self) -> Vec<u32> {
+        let mut out = Vec::new();
+        for (addr, len) in self.cpu.mem.take_dirty() {
+            out.push(addr as u32);
+            out.push(len as u32);
+        }
+        out
+    }
+
     /// Clear stdout/stderr scrollback without resetting CPU state.
     pub fn clear_console(&mut self) {
         self.cpu.clear_console();
+    }
+}
+
+#[cfg(test)]
+mod hosted_mode_tests {
+    use super::detect_hosted_mode;
+
+    #[test]
+    fn detects_hosted_via_section_directive() {
+        assert!(detect_hosted_mode(".text\nmain:\n  mov x0, 1\n"));
+        assert!(detect_hosted_mode(".data\nmsg: .word 0\n"));
+        assert!(detect_hosted_mode(".bss\nbuf: .skip 16\n"));
+        assert!(detect_hosted_mode(".rodata\nfmt: .string \"hi\"\n"));
+    }
+
+    #[test]
+    fn detects_hosted_via_global_main() {
+        assert!(detect_hosted_mode(".global main\nmain: mov x0, 0\n"));
+        assert!(detect_hosted_mode(".globl main\nmain: mov x0, 0\n"));
+    }
+
+    #[test]
+    fn detects_hosted_via_libc_call() {
+        assert!(detect_hosted_mode("main: bl printf\n"));
+        assert!(detect_hosted_mode("main: BL exit\n"));
+        assert!(detect_hosted_mode("main: bl strlen\n"));
+    }
+
+    #[test]
+    fn detects_hosted_via_m4_define() {
+        assert!(detect_hosted_mode("define(REG, w19)\nmov REG, 1\n"));
+    }
+
+    #[test]
+    fn bare_metal_program_is_not_hosted() {
+        // Five classics should all stay on the legacy path.
+        let factorial = "mov x0, 5\nmov x1, 1\nloop: mul x1, x1, x0\nsubs x0, x0, 1\nb.ne loop\nsvc 0\n";
+        assert!(!detect_hosted_mode(factorial));
+    }
+
+    #[test]
+    fn fragments_in_comments_do_not_trigger() {
+        // The comment mentions .data but the program is bare-metal.
+        let src = "// uses .data section in some other example\nmov x0, 1\nsvc 0\n";
+        assert!(!detect_hosted_mode(src));
+        let semi = "mov x0, 1 ; .global main is unrelated here\nsvc 0\n";
+        assert!(!detect_hosted_mode(semi));
+    }
+
+    #[test]
+    fn fragment_in_string_literal_still_triggers_via_directive() {
+        // A `.string ".text"` line still has the literal `.string`
+        // directive so detection fires on the directive itself, which
+        // is the desired behavior (any program with a string literal
+        // is using the hosted pipeline).
+        assert!(detect_hosted_mode(".rodata\nmsg: .string \".text\"\n"));
     }
 }

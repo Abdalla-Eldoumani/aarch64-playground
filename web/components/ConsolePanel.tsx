@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useToast } from "@/components/Toast";
+import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/upload-guard";
 
 interface ConsolePanelProps {
   stdout: string;
@@ -32,6 +34,7 @@ export function ConsolePanel({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRef = useRef(true);
   const [stdinValue, setStdinValue] = useState("");
+  const toast = useToast();
 
   // Auto-scroll on new output unless the user has scrolled up.
   useEffect(() => {
@@ -57,6 +60,12 @@ export function ConsolePanel({
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const sizeError = checkUploadSize(file.size, MAX_VFS_BYTES, "file");
+    if (sizeError) {
+      toast.error(sizeError);
+      e.target.value = "";
+      return;
+    }
     const buf = await file.arrayBuffer();
     uploadVfsFile(file.name, new Uint8Array(buf));
     // Clear the input so the same file can be re-uploaded.
@@ -109,9 +118,14 @@ export function ConsolePanel({
         {stdout && <span>{stdout}</span>}
         {stderr && <span className="text-red-400">{stderr}</span>}
         {!stdout && !stderr && (
-          <span className="text-[var(--text-secondary)] italic">
-            (no output yet)
-          </span>
+          <div className="space-y-1">
+            <p className="font-serif text-[13px] text-[var(--text-primary)]">
+              Output prints here as your program runs.
+            </p>
+            <p className="font-sans text-[11px] text-[var(--text-secondary)]">
+              Step with F10, run with F5, or feed stdin from the box below.
+            </p>
+          </div>
         )}
       </div>
       {vfsFiles.length > 0 && (

@@ -1,22 +1,33 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useToast } from "@/components/Toast";
+import { MAX_SOURCE_BYTES, checkUploadSize } from "@/lib/upload-guard";
+import type { ImportTarget } from "@/lib/use-import-target";
 
 export interface ImportExportProps {
   source: string;
-  onImport: (source: string) => void;
+  /**
+   * Receives the active import target along with the file body. The parent
+   * routes the body to main / extras[i] / the c-to-asm pane and shows a
+   * toast confirming where the import landed.
+   */
+  onImport: (target: ImportTarget, body: string) => void;
+  /** Where the next import will land. Computed by the parent each render. */
+  target: ImportTarget;
   className?: string;
 }
 
 /**
- * Import and export buttons in the header. Import supports file-picker
- * and drop-into-editor (the caller wires the drop event on the editor
- * container through `readFile`). Export offers `.asm` and `.s` download
- * plus copy-to-clipboard.
+ * Import and export buttons in the header. Import sends the picked file's
+ * body to the active target (main / an extra / the c-to-asm pane) so a
+ * student editing extras isn't surprised when their import overwrites the
+ * wrong buffer. Export offers `.asm` and `.s` download plus copy-to-clipboard.
  */
-export function ImportExport({ source, onImport, className = "" }: ImportExportProps) {
+export function ImportExport({ source, onImport, target, className = "" }: ImportExportProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
+  const toast = useToast();
 
   const download = useCallback(
     (ext: "asm" | "s") => {
@@ -47,10 +58,16 @@ export function ImportExport({ source, onImport, className = "" }: ImportExportP
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      file.text().then((text) => onImport(text));
+      const sizeError = checkUploadSize(file.size, MAX_SOURCE_BYTES, "source file");
+      if (sizeError) {
+        toast.error(sizeError);
+        e.target.value = "";
+        return;
+      }
+      file.text().then((text) => onImport(target, text));
       e.target.value = "";
     },
-    [onImport],
+    [onImport, target, toast],
   );
 
   return (

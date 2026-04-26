@@ -124,6 +124,17 @@ pub struct Cpu {
     /// VFS + stdin; stdout/stderr are intentionally left alone so the
     /// student doesn't see already-printed output vanish).
     snapshots: SnapshotRing,
+    /// Resolved label -> absolute address from the most recent linker
+    /// pass. Empty until `load_linked_image*` runs. Drives
+    /// `gdb b <label>` and any other label-based debugger feature.
+    pub symbols: HashMap<String, u64>,
+    /// PCs of successfully-executed instructions since the last
+    /// `take_pc_trace()` drain. Powers run-mode hotspot heat-map
+    /// granularity: without this trace the JS side only sees the
+    /// final PC of each run chunk and the heat map looks "thin" on
+    /// long loops. Populated by `step()` and the inner loop of
+    /// `run_until_break()`.
+    pub pc_trace: Vec<u64>,
 }
 
 impl Cpu {
@@ -145,6 +156,8 @@ impl Cpu {
             next_fd: 3,
             host: HostTable::new(),
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
+            symbols: HashMap::new(),
+            pc_trace: Vec::new(),
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -202,10 +215,23 @@ impl Cpu {
 
     /// Load a `LinkedImage` from `frontend::pipeline`. Writes each (addr,
     /// bytes) pair to memory, sets PC to the image's entry point, and
-    /// clears the halt flag. Used for hosted cpsc 355 source.
+    /// clears the halt flag. Used for hosted cpsc 355 source. Equivalent
+    /// to calling `load_linked_image_with_args(image, &[])`.
     pub fn load_linked_image(
         &mut self,
         image: &crate::frontend::pipeline::LinkedImage,
+    ) -> Result<(), EmuError> {
+        self.load_linked_image_with_args(image, &[])
+    }
+
+    /// Load a hosted image and additionally write argc/argv at
+    /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
+    /// sees the supplied arguments. Empty slice gives identical behavior
+    /// to `load_linked_image` (`w0 = 0, x1 = 0` on entry).
+    pub fn load_linked_image_with_args(
+        &mut self,
+        image: &crate::frontend::pipeline::LinkedImage,
+        args: &[&str],
     ) -> Result<(), EmuError> {
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes)?;
@@ -217,8 +243,21 @@ impl Cpu {
         if let Some(ret_addr) = self.host.lookup("__main_return") {
             self.regs.write_gpr(30, true, ret_addr);
         }
+        crate::argv::setup_argv(&mut self.regs, &mut self.mem, args)?;
         self.halted = false;
+        // Refresh the symbol table from the linker so debugger
+        // surfaces (`gdb b <label>`, future symbolic features) can
+        // resolve names without going through the frontend again.
+        self.symbols = image.symbols.clone();
         Ok(())
+    }
+
+    /// Resolve a label name to its absolute address using the symbol
+    /// table captured during the most recent `load_linked_image*`
+    /// call. Returns `None` for unknown names or when no image has
+    /// been loaded yet.
+    pub fn resolve_label(&self, name: &str) -> Option<u64> {
+        self.symbols.get(name).copied()
     }
 
     /// Load a parsed program's sections into memory at their configured
@@ -368,12 +407,26 @@ impl Cpu {
             StepOutcome::Advance
         };
 
+        // Record the executed PC for the hotspot heat map. We push the
+        // PC the instruction lived at (captured at function entry as
+        // `pc`), not the post-execution PC -- the heat map is "what
+        // got executed", not "what's next".
+        self.pc_trace.push(pc);
+
         Ok(StepResult {
             pc: self.regs.read_pc(),
             halted: self.halted,
             error: None,
             outcome,
         })
+    }
+
+    /// Drain the PC trace accumulated since the last call. The frontend
+    /// converts each PC to a source line and bumps `lineCounts` for
+    /// the hotspot heat map. Without this drain the trace grows
+    /// unbounded across long runs.
+    pub fn take_pc_trace(&mut self) -> Vec<u64> {
+        std::mem::take(&mut self.pc_trace)
     }
 
     /// Push bytes onto the stdin buffer. Clears the `blocked` flag so a
@@ -587,6 +640,10 @@ impl Cpu {
         // plus re-assemble. Clearing the table would leave those calls
         // unresolved.
         self.snapshots.clear();
+        self.pc_trace.clear();
+        // Drain dirty so the next snapshot doesn't surface fake writes
+        // from the page-mapping work above.
+        let _ = self.mem.take_dirty();
     }
 
     /// Whether the CPU has at least one recorded snapshot; i.e. whether

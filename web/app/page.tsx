@@ -13,12 +13,36 @@ import { MemoryPanel } from "@/components/MemoryPanel";
 import { StackPanel } from "@/components/StackPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
 import { Controls } from "@/components/Controls";
+import { DiagnosticBundle } from "@/components/DiagnosticBundle";
+import { ExplainStrip } from "@/components/ExplainStrip";
 import { InstructionView } from "@/components/InstructionView";
 import { ExampleLoader } from "@/components/ExampleLoader";
 import { RecentPrograms } from "@/components/RecentPrograms";
 import { ResizableLayout } from "@/components/ResizableLayout";
 import { MobileLayout } from "@/components/MobileLayout";
 import { ImportExport } from "@/components/ImportExport";
+import { useToast } from "@/components/Toast";
+import { HeaderOverflowSheet } from "@/components/HeaderOverflowSheet";
+import { parseDeepLink } from "@/lib/use-deep-link";
+import { parseArgs } from "@/lib/args";
+import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
+import { useLectureMode } from "@/lib/use-lecture-mode";
+import { useHotspotMode } from "@/lib/use-hotspot-mode";
+import { useNamedSaves } from "@/lib/use-named-saves";
+import { formatAsm } from "@/lib/asm-formatter";
+import {
+  MAX_BOOKMARK_JSON_BYTES,
+  MAX_VFS_BYTES,
+  checkUploadSize,
+} from "@/lib/upload-guard";
+import { ArgsInput } from "@/components/ArgsInput";
+import { LectureBar } from "@/components/LectureBar";
+import { ReplayScrubber } from "@/components/ReplayScrubber";
+import {
+  describeTarget,
+  getImportTarget,
+  type ImportTarget,
+} from "@/lib/use-import-target";
 import { WatchPanel } from "@/components/WatchPanel";
 import { MemoryWatches } from "@/components/MemoryWatches";
 import {
@@ -60,6 +84,12 @@ const TutorialRunner = dynamic(
   () => import("@/components/TutorialRunner").then((m) => m.TutorialRunner),
   { ssr: false },
 );
+// Lazy-loaded so the xterm bundle only ships when a student opens the
+// terminal tab; nothing in the default-load bundle depends on it.
+const TerminalPane = dynamic(
+  () => import("@/components/TerminalPane").then((m) => m.TerminalPane),
+  { ssr: false, loading: () => null },
+);
 
 const DEFAULT_SOURCE = `// cpsc 355 playground
 // write ARM64 assembly, hit Assemble, then Step or Run
@@ -87,7 +117,7 @@ const SHORTCUTS: Shortcut[] = [
 function initialSource(): { source: string; fromShare: boolean } {
   if (typeof window === "undefined") return { source: DEFAULT_SOURCE, fromShare: false };
   const fromHash = readShareHash(window.location.hash);
-  if (fromHash) return { source: fromHash, fromShare: true };
+  if (fromHash) return { source: fromHash.source, fromShare: true };
   const saved = loadAutoSavedBuffer();
   if (saved && saved.length > 0) return { source: saved, fromShare: false };
   return { source: DEFAULT_SOURCE, fromShare: false };
@@ -107,11 +137,13 @@ export default function Home() {
     setSourceState((prev) => ({ source: next, fromShare: prev.fromShare }));
   }, []);
   const [activeTab, setActiveTab] = useState<
-    "memory" | "stack" | "console" | "watches" | "memwatch" | "saves"
+    "memory" | "stack" | "console" | "term" | "watches" | "memwatch" | "saves"
   >("memory");
   const [view, setView] = useState<"playground" | "c-to-asm">(initialView);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [argsText, setArgsText] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [shareBanner, setShareBanner] = useState(fromShare);
   const [diffOpen, setDiffOpen] = useState(false);
@@ -119,9 +151,43 @@ export default function Home() {
     { source: DEFAULT_SOURCE, label: "starter snippet" },
   );
   const [tutorialOpen, setTutorialOpen] = useState(false);
-  const [, toggleTheme] = useTheme();
+  const [, toggleTheme, setTheme] = useTheme();
+  const cpsc = useCpsc355Mode();
+  const lecture = useLectureMode();
+  const hotspot = useHotspotMode();
+  const namedSaves = useNamedSaves();
+  const [bookmarkName, setBookmarkName] = useState("");
+  const bookmarkImportRef = useRef<HTMLInputElement>(null);
+  const [embed, setEmbed] = useState<boolean>(false);
+  const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
   const [extraFiles, setExtraFiles] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
+  const toast = useToast();
+  const importTarget = getImportTarget(view, activeFile);
+  const handleImport = useCallback(
+    (target: ImportTarget, body: string) => {
+      switch (target.kind) {
+        case "main":
+          setSource(body);
+          toast.show("imported into main.asm");
+          return;
+        case "extra": {
+          const idx = target.index;
+          setExtraFiles(
+            extraFiles.map((f, i) => (i === idx ? { ...f, body } : f)),
+          );
+          toast.show(`imported into ${describeTarget(target, extraFiles)}`);
+          return;
+        }
+        case "c-to-asm":
+          setView("playground");
+          setSource(body);
+          toast.show("switched to playground and imported");
+          return;
+      }
+    },
+    [extraFiles, setExtraFiles, setSource, toast],
+  );
   const [saveName, setSaveName] = useState("");
   const loadAsBaseline = useCallback(
     (next: string, label: string) => {
@@ -155,8 +221,8 @@ export default function Home() {
     // form of multi-file assembly.
     const combined =
       extraFiles.length > 0 ? combineSources(source, extraFiles) : source;
-    emu.assemble(combined);
-  }, [source, recent, emu, extraFiles]);
+    emu.assemble(combined, parseArgs(argsText));
+  }, [source, recent, emu, extraFiles, argsText]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -280,6 +346,17 @@ export default function Home() {
         run: () => toggleTheme(),
       },
       {
+        id: "format-source",
+        label: "Format source",
+        description: "lowercase mnemonics and align operand columns",
+        shortcut: "Ctrl+Shift+F",
+        run: () => {
+          const next = formatAsm(source);
+          if (next !== source) setSource(next);
+          toast.show("source formatted");
+        },
+      },
+      {
         id: "toggle-view",
         label: view === "playground" ? "Open C to ASM view" : "Back to playground",
         description: "flip between the two top-level views",
@@ -292,8 +369,71 @@ export default function Home() {
         shortcut: "?",
         run: () => setHelpOpen(true),
       },
+      {
+        id: "import-file",
+        label: "Import file",
+        description: "open the file picker and load assembly into the active buffer",
+        run: () => {
+          const el = document.querySelector<HTMLInputElement>(
+            'input[type="file"][accept=".s,.asm,.txt"]',
+          );
+          el?.click();
+        },
+      },
+      {
+        id: "download-asm",
+        label: "Download as .asm",
+        description: "save the current buffer to your computer",
+        run: () => {
+          const blob = new Blob([source], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "program.asm";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        },
+      },
+      {
+        id: "download-s",
+        label: "Download as .s",
+        description: "save the current buffer with the .s extension",
+        run: () => {
+          const blob = new Blob([source], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "program.s";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        },
+      },
+      {
+        id: "copy-source",
+        label: "Copy source to clipboard",
+        description: "copy the current buffer for pasting elsewhere",
+        run: () => {
+          void navigator.clipboard?.writeText(source);
+        },
+      },
+      {
+        id: "open-source",
+        label: "View source on GitHub",
+        description: "open the playground repo in a new tab",
+        run: () => {
+          window.open(
+            "https://github.com/Abdalla-Eldoumani/aarch64-playground",
+            "_blank",
+            "noopener,noreferrer",
+          );
+        },
+      },
     ],
-    [emu, view, assembleWithHistory, baseline.label, toggleTheme],
+    [emu, view, assembleWithHistory, baseline.label, toggleTheme, source, setSource, toast],
   );
 
   const isMain = activeFile === -1;
@@ -344,6 +484,14 @@ export default function Home() {
           breakpoints={emu.breakpoints}
           onToggleBreakpoint={emu.toggleBreakpoint}
           assemblyErrors={isMain ? emu.assemblyErrors : []}
+          onCursorChange={isMain ? setCursor : undefined}
+          lineCounts={isMain ? emu.lineCounts : undefined}
+          onFormat={() => {
+            if (!isMain) return;
+            const next = formatAsm(source);
+            if (next !== source) setSource(next);
+            toast.show("source formatted");
+          }}
         />
       </div>
     </div>
@@ -354,24 +502,32 @@ export default function Home() {
       <InstructionView
         instructions={emu.instructions}
         pc={emu.pc}
-        codeBase={emu.codeBase}
       />
     </div>
   );
 
   const regsBlock = (
-    <div className="h-full overflow-auto">
-      <RegisterPanel
-        registers={emu.registers}
-        changedRegs={emu.changedRegs}
-        sp={emu.sp}
-        pc={emu.pc}
-        nzcv={emu.nzcv}
+    <div className="h-full flex flex-col">
+      <ReplayScrubber
+        frames={emu.replayFrames}
+        currentStep={emu.stepCount}
+        onSeek={emu.seekReplay}
       />
+      <div className="flex-1 min-h-0 overflow-auto">
+        <RegisterPanel
+          registers={emu.registers}
+          changedRegs={emu.changedRegs}
+          sp={emu.sp}
+          pc={emu.pc}
+          nzcv={emu.nzcv}
+        />
+      </div>
     </div>
   );
 
-  const memoryBlock = <MemoryPanel getMemory={emu.getMemory} />;
+  const memoryBlock = (
+    <MemoryPanel getMemory={emu.getMemory} dirtyAddrs={emu.dirtyAddrs} />
+  );
   const frameSlots = useMemo(() => parseFrameSlots(source), [source]);
   const fpValue = useMemo(() => {
     const raw = emu.registers[29];
@@ -400,6 +556,113 @@ export default function Home() {
     />
   );
 
+  // Hidden file picker the terminal's `upload` command triggers; mounted
+  // alongside the terminal block so the focus trap stays within the
+  // terminal pane.
+  const terminalUploadRef = useRef<HTMLInputElement>(null);
+  const buildTerminalContext = useCallback(() => {
+    const dec = new TextDecoder();
+    return {
+      vfs: new Map<string, string>(),
+      listVfs: () => emu.vfsFiles.slice().sort(),
+      readVfs: async (path: string) => {
+        const bytes = await emu.readVfsFile(path);
+        if (bytes.length === 0 && !emu.vfsFiles.includes(path)) {
+          return undefined; // distinguish missing from empty
+        }
+        return dec.decode(bytes);
+      },
+      writeVfs: (path: string, body: string) => {
+        const enc = new TextEncoder();
+        emu.uploadVfsFile(path, enc.encode(body));
+      },
+      deleteVfs: async (path: string) => emu.deleteVfsFile(path),
+      runProgram: async (args: string[], stdin?: string) => {
+        emu.assemble(source, args.slice(1));
+        if (stdin) emu.pushStdin(stdin);
+        emu.run();
+        // Poll for completion -- backend resolves these state fields
+        // when the run loop ends. Bounded so a runaway program doesn't
+        // hang the shell forever.
+        const startedAt = Date.now();
+        while (emu.isRunning) {
+          await new Promise<void>((r) => setTimeout(r, 16));
+          if (Date.now() - startedAt > 10_000) break;
+        }
+        return {
+          stdout: emu.stdout,
+          stderr: emu.stderr,
+          exitCode: emu.exitCode ?? 0,
+        };
+      },
+      step: async () => {
+        emu.step();
+        return { halted: emu.isHalted, line: emu.currentLine };
+      },
+      runUntilBreak: async () => {
+        emu.run();
+        const startedAt = Date.now();
+        while (emu.isRunning) {
+          await new Promise<void>((r) => setTimeout(r, 16));
+          if (Date.now() - startedAt > 10_000) break;
+        }
+        return { halted: emu.isHalted, hit_breakpoint: false };
+      },
+      setBreakpoint: async (addr: number) => emu.setBreakpointAddress(addr),
+      clearBreakpoint: async (addr: number) => emu.clearBreakpointAddress(addr),
+      resolveLabel: async (name: string) => emu.resolveLabel(name),
+      readRegister: (name: string) => {
+        const lower = name.toLowerCase();
+        if (lower === "sp") return BigInt(emu.sp);
+        if (lower === "pc") return BigInt(emu.pc);
+        const m = lower.match(/^[xw](\d+)$/);
+        if (!m) return null;
+        const idx = Number(m[1]);
+        if (idx < 0 || idx > 30) return null;
+        const raw = emu.registers[idx];
+        if (!raw) return null;
+        return BigInt(raw);
+      },
+      readRegisters: () => {
+        const out: Record<string, bigint> = {};
+        emu.registers.forEach((v, i) => { out[`x${i}`] = BigInt(v); });
+        out.sp = BigInt(emu.sp);
+        out.pc = BigInt(emu.pc);
+        return out;
+      },
+      readMemory: async (addr: number, len: number) => emu.getMemory(addr, len),
+      pcAddress: () => emu.pc,
+      reset: async () => emu.reset(),
+    };
+  }, [emu, source]);
+  const terminalBlock = (
+    <div className="h-full relative">
+      <input
+        ref={terminalUploadRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          const sizeError = checkUploadSize(f.size, MAX_VFS_BYTES, "file");
+          if (sizeError) {
+            toast.error(sizeError);
+            e.target.value = "";
+            return;
+          }
+          f.arrayBuffer().then((buf) => {
+            emu.uploadVfsFile(f.name, new Uint8Array(buf));
+          });
+          e.target.value = "";
+        }}
+      />
+      <TerminalPane
+        buildContext={buildTerminalContext}
+        onUploadRequest={() => terminalUploadRef.current?.click()}
+      />
+    </div>
+  );
+
   const watchBlock = (
     <WatchPanel
       registers={emu.registers}
@@ -411,9 +674,9 @@ export default function Home() {
   );
   const memWatchBlock = <MemoryWatches getMemory={emu.getMemory} />;
   const savesBlock = (
-    <div className="p-3 text-xs flex flex-col h-full">
+    <div className="p-3 text-xs flex flex-col h-full overflow-auto">
       <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px] mb-2">
-        save states
+        save states (this session)
       </h2>
       <form
         onSubmit={(e) => {
@@ -440,7 +703,7 @@ export default function Home() {
           save
         </button>
       </form>
-      <ul className="flex-1 overflow-auto space-y-1">
+      <ul className="space-y-1 mb-4">
         {emu.savedStates.length === 0 && (
           <li className="text-[10px] text-[var(--text-secondary)]">
             no saved states yet.
@@ -471,6 +734,146 @@ export default function Home() {
           </li>
         ))}
       </ul>
+
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">
+          bookmarks (persistent)
+        </h2>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              const bundle = namedSaves.exportBundle();
+              try {
+                await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
+                toast.show(`exported ${bundle.saves.length} bookmark${bundle.saves.length === 1 ? "" : "s"} to clipboard`);
+              } catch {
+                toast.error("clipboard write failed");
+              }
+            }}
+            className="text-[10px] text-[var(--accent)] hover:underline"
+          >
+            export json
+          </button>
+          <button
+            type="button"
+            onClick={() => bookmarkImportRef.current?.click()}
+            className="text-[10px] text-[var(--accent)] hover:underline"
+          >
+            import json
+          </button>
+        </div>
+      </div>
+      <input
+        ref={bookmarkImportRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const sizeError = checkUploadSize(file.size, MAX_BOOKMARK_JSON_BYTES, "bookmark file");
+          if (sizeError) {
+            toast.error(sizeError);
+            e.target.value = "";
+            return;
+          }
+          try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            const result = namedSaves.importBundle(parsed);
+            toast.show(`imported ${result.added} added, ${result.skipped} skipped`);
+          } catch {
+            toast.error("invalid bookmark bundle");
+          } finally {
+            e.target.value = "";
+          }
+        }}
+        aria-label="import bookmark bundle"
+      />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const name = bookmarkName.trim();
+          if (!name) return;
+          namedSaves.put({
+            name,
+            source,
+            args: argsText || undefined,
+            stepCount: emu.stepCount,
+            savedAt: new Date().toISOString(),
+          });
+          setBookmarkName("");
+        }}
+        className="flex gap-1 mb-2"
+      >
+        <input
+          type="text"
+          value={bookmarkName}
+          onChange={(e) => setBookmarkName(e.target.value)}
+          placeholder="bookmark name"
+          className="flex-1 bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)]"
+          aria-label="bookmark name"
+        />
+        <button
+          type="submit"
+          className="px-2 py-0.5 text-[11px] rounded bg-[var(--accent-muted)] hover:bg-[var(--accent)] hover:text-black text-[var(--text-primary)]"
+        >
+          bookmark
+        </button>
+      </form>
+      <ul className="space-y-1">
+        {namedSaves.saves.length === 0 && (
+          <li className="text-[10px] text-[var(--text-secondary)]">
+            no bookmarks yet.
+          </li>
+        )}
+        {namedSaves.saves.map((s) => (
+          <li
+            key={s.name}
+            className="flex items-center justify-between gap-2 font-mono"
+          >
+            <span className="text-[var(--text-primary)] truncate" title={`step ${s.stepCount} -- ${s.savedAt}`}>
+              {s.name}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  loadAsBaseline(s.source, s.name);
+                  if (s.args !== undefined) setArgsText(s.args);
+                  // Drive the backend through assemble + stdin push +
+                  // step-to-count so the live CPU lands at the same
+                  // execution point the bookmark captured. Toast
+                  // surfaces the result so the student sees what
+                  // happened.
+                  try {
+                    await emu.restoreBookmark({
+                      source: s.source,
+                      args: s.args,
+                      stdin: s.stdin,
+                      stepCount: s.stepCount,
+                    });
+                    toast.show(`restored ${s.name} (step ${s.stepCount})`);
+                  } catch {
+                    toast.error(`restore failed for ${s.name}`);
+                  }
+                }}
+                className="text-[10px] text-[var(--accent)] hover:underline"
+              >
+                load
+              </button>
+              <button
+                type="button"
+                onClick={() => namedSaves.remove(s.name)}
+                className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)]"
+              >
+                delete
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 
@@ -481,7 +884,7 @@ export default function Home() {
         role="tablist"
         aria-label="debug view"
       >
-        {(["memory", "stack", "console", "watches", "memwatch", "saves"] as const).map((tab) => {
+        {(["memory", "stack", "console", "term", "watches", "memwatch", "saves"] as const).map((tab) => {
           const selected = activeTab === tab;
           const showDot = tab === "console" && emu.blocked && !selected;
           return (
@@ -517,6 +920,9 @@ export default function Home() {
         {activeTab === "console" && (
           <div className="h-full flex flex-col">{consoleBlock}</div>
         )}
+        {activeTab === "term" && (
+          <div className="h-full">{terminalBlock}</div>
+        )}
         {activeTab === "watches" && (
           <div className="h-full overflow-auto">{watchBlock}</div>
         )}
@@ -541,9 +947,197 @@ export default function Home() {
     [setSource],
   );
 
+  // Deep-link bootstrap. Runs once on mount: applies ?theme=, ?view=,
+  // ?embed=, and (if ?example=<stem> resolves to a real file) loads the
+  // example into the editor. Errors during the example fetch are
+  // silently dropped -- the user can still load via the dropdown.
+  // Also restores args / view / cursor from the share hash; the source
+  // itself was already pulled in by `initialSource`.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const dl = parseDeepLink(window.location.search);
+    if (dl.theme) setTheme(dl.theme);
+    if (dl.view) setView(dl.view);
+    if (dl.embed) setEmbed(true);
+    if (dl.bundle) {
+      loadAsBaseline(dl.bundle.source, "diagnostic bundle");
+      if (dl.bundle.args !== undefined) setArgsText(dl.bundle.args);
+      if (dl.bundle.stdin) emu.pushStdin(dl.bundle.stdin);
+    } else if (dl.example) {
+      const tryLoad = async (ext: "asm" | "s") => {
+        const res = await fetch(`/examples/cpsc355/${dl.example}.${ext}`);
+        if (!res.ok) return false;
+        const text = await res.text();
+        loadAsBaseline(text, dl.example ?? "example");
+        return true;
+      };
+      void (async () => {
+        if (!(await tryLoad("asm"))) await tryLoad("s");
+      })();
+    }
+    const hashState = readShareHash(window.location.hash);
+    if (hashState) {
+      if (hashState.args !== undefined) setArgsText(hashState.args);
+      if (hashState.view) setView(hashState.view);
+      if (hashState.cursor) setCursor(hashState.cursor);
+    }
+    // Effect runs once at mount; deep-link state is read from the URL
+    // exactly once and never re-derived.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Buttons that live in the header at md+ and inside the overflow sheet
+  // below md. `after` fires after the action runs so the sheet auto-closes
+  // when one is chosen on a phone.
+  const renderSecondaryActions = (after?: () => void) => {
+    const wrap = <T extends () => void>(fn: T) => () => {
+      fn();
+      after?.();
+    };
+    return (
+      <>
+        <RecentPrograms
+          entries={recent.entries}
+          onLoad={(body) => {
+            loadAsBaseline(body, "recent program");
+            after?.();
+          }}
+          onClear={recent.clear}
+        />
+        <button
+          type="button"
+          onClick={wrap(() =>
+            setView(view === "c-to-asm" ? "playground" : "c-to-asm"),
+          )}
+          className={`text-xs rounded px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] whitespace-nowrap ${
+            view === "c-to-asm"
+              ? "bg-[var(--accent)] text-black"
+              : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
+          }`}
+          aria-pressed={view === "c-to-asm"}
+        >
+          C -&gt; asm
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => setShareOpen(true))}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="share program"
+        >
+          share
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => setDiffOpen(true))}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="diff against baseline"
+        >
+          diff
+        </button>
+        <DiagnosticBundle
+          build={() => ({
+            source,
+            args: argsText || undefined,
+            stdin: undefined,
+            stdout: emu.stdout || undefined,
+            stderr: emu.stderr || undefined,
+            exitCode: emu.exitCode,
+            registers: emu.registers,
+            sp: emu.sp,
+            pc: `0x${emu.pc.toString(16).padStart(16, "0")}`,
+            stackBytes: (() => {
+              const spNum = Number(BigInt(emu.sp));
+              if (!Number.isFinite(spNum)) return undefined;
+              const top = emu.getMemory(spNum, 64);
+              if (!top.length) return undefined;
+              return Array.from(top)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(" ");
+            })(),
+            error: emu.error,
+          })}
+        />
+        <button
+          type="button"
+          onClick={wrap(() => setTutorialOpen(true))}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="open tutorial runner"
+        >
+          tour
+        </button>
+        <button
+          type="button"
+          onClick={wrap(toggleTheme)}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="toggle theme"
+        >
+          theme
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => cpsc.toggle())}
+          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+            cpsc.enabled
+              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+          aria-pressed={cpsc.enabled}
+          aria-label="toggle cpsc 355 lint mode"
+        >
+          cpsc 355
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => lecture.toggle())}
+          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+            lecture.enabled
+              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+          aria-pressed={lecture.enabled}
+          aria-label="toggle lecture mode"
+        >
+          lecture
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => hotspot.toggle())}
+          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+            hotspot.enabled
+              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+          aria-pressed={hotspot.enabled}
+          aria-label="toggle hotspot heat map"
+        >
+          hotspot
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => setPaletteOpen(true))}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="open command palette"
+        >
+          cmd
+        </button>
+        <a
+          href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
+          target="_blank"
+          rel="noreferrer noopener"
+          data-embed-hide="1"
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded px-1"
+          aria-label="View source on GitHub"
+          onClick={() => after?.()}
+        >
+          source
+        </a>
+      </>
+    );
+  };
+
   if (emu.loadError) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-3 px-6 text-center">
+      <div className="flex flex-col flex-1 min-h-0 items-center justify-center gap-3 px-6 text-center">
         <span className="text-sm text-red-400">failed to load emulator</span>
         <pre className="text-xs text-[var(--text-secondary)] max-w-xl whitespace-pre-wrap">
           {emu.loadError}
@@ -557,98 +1151,48 @@ export default function Home() {
 
   if (!emu.isLoaded) {
     return (
-      <div className="flex items-center justify-center h-screen text-[var(--text-secondary)]">
+      <div className="flex flex-1 min-h-0 items-center justify-center text-[var(--text-secondary)]">
         loading emulator...
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] overflow-x-auto">
-        <span className="text-sm font-bold text-[var(--text-primary)] whitespace-nowrap">
+    <div className="flex flex-col flex-1 min-h-0" data-embed={embed ? "1" : undefined}>
+      <div className="safe-area-top flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+        <span className="hidden sm:inline font-serif text-[15px] font-semibold tracking-tight text-[var(--text-primary)] whitespace-nowrap shrink-0">
           cpsc 355 playground
         </span>
-        <ExampleLoader
-          onLoad={(src, label) => loadAsBaseline(src, label ?? "example")}
-        />
-        <RecentPrograms
-          entries={recent.entries}
-          onLoad={(body) => loadAsBaseline(body, "recent program")}
-          onClear={recent.clear}
-        />
+        <div className="min-w-0 flex-1 sm:flex-initial sm:shrink-0 overflow-hidden">
+          <ExampleLoader
+            onLoad={(src, label) => loadAsBaseline(src, label ?? "example")}
+          />
+        </div>
+        <ArgsInput source={source} value={argsText} onChange={setArgsText} />
         <button
           type="button"
-          onClick={() => setView(view === "c-to-asm" ? "playground" : "c-to-asm")}
-          className={`text-xs rounded px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] whitespace-nowrap ${
-            view === "c-to-asm"
-              ? "bg-[var(--accent)] text-black"
-              : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
-          }`}
-          aria-pressed={view === "c-to-asm"}
+          onClick={() => setOverflowOpen(true)}
+          className="shrink-0 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          aria-label="more actions"
+          aria-haspopup="dialog"
+          aria-expanded={overflowOpen}
         >
-          C -&gt; asm
-        </button>
-        <ImportExport source={source} onImport={setSource} />
-        <button
-          type="button"
-          onClick={() => setShareOpen(true)}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="share program"
-        >
-          share
-        </button>
-        <button
-          type="button"
-          onClick={() => setDiffOpen(true)}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="diff against baseline"
-        >
-          diff
-        </button>
-        <button
-          type="button"
-          onClick={() => setTutorialOpen(true)}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="open tutorial runner"
-        >
-          tour
-        </button>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="toggle theme"
-        >
-          theme
-        </button>
-        <button
-          type="button"
-          onClick={() => setPaletteOpen(true)}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="open command palette"
-        >
-          cmd
+          ...
         </button>
         <div className="flex-1" />
         <button
           type="button"
           onClick={() => setHelpOpen(true)}
-          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] rounded px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="shrink-0 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] rounded px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           aria-label="keyboard shortcuts"
         >
           ?
         </button>
-        <a
-          href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
-          target="_blank"
-          rel="noreferrer noopener"
-          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded px-1"
-          aria-label="View source on GitHub"
-        >
-          source
-        </a>
       </div>
+      <HeaderOverflowSheet open={overflowOpen} onClose={() => setOverflowOpen(false)}>
+        <ImportExport source={source} target={importTarget} onImport={handleImport} />
+        {renderSecondaryActions(() => setOverflowOpen(false))}
+      </HeaderOverflowSheet>
 
       {shareBanner && (
         <div
@@ -666,7 +1210,7 @@ export default function Home() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0">
+      <main role="main" aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
         {view === "c-to-asm" ? (
           <CToAsmView
             onLoadIntoPlayground={onLoadIntoPlayground}
@@ -703,11 +1247,23 @@ export default function Home() {
             memory={memoryBlock}
             stack={stackBlock}
             console={consoleBlock}
+            terminal={terminalBlock}
+            watches={watchBlock}
+            memwatch={memWatchBlock}
+            saves={savesBlock}
             consoleBlocked={emu.blocked}
           />
         )}
-      </div>
+      </main>
 
+      {lecture.enabled && (
+        <LectureBar
+          onStep={emu.step}
+          onReset={emu.reset}
+          stepCount={emu.stepCount}
+          isHalted={emu.isHalted}
+        />
+      )}
       <Controls
         onAssemble={assembleWithHistory}
         onStep={emu.step}
@@ -721,6 +1277,7 @@ export default function Home() {
         error={emu.error}
         stepCount={emu.stepCount}
       />
+      <ExplainStrip source={source} currentLine={emu.currentLine} />
 
       <CommandPalette
         open={paletteOpen}
@@ -734,7 +1291,12 @@ export default function Home() {
       />
       <ShareDialog
         open={shareOpen}
-        source={source}
+        state={{
+          source,
+          args: argsText || undefined,
+          view,
+          cursor,
+        }}
         onClose={() => setShareOpen(false)}
       />
       <DiffView
@@ -747,9 +1309,21 @@ export default function Home() {
       <TutorialRunner
         open={tutorialOpen}
         onClose={() => setTutorialOpen(false)}
-        onLoadSnippet={(src, label) => {
+        onLoadSnippet={(src, label, args, stdin) => {
           loadAsBaseline(src, label);
+          if (args !== undefined) setArgsText(args);
+          if (stdin !== undefined) emu.pushStdin(stdin);
           setTutorialOpen(false);
+        }}
+        getRegister={(name) => {
+          const lower = name.toLowerCase();
+          if (lower === "sp") return emu.sp;
+          if (lower === "pc") return String(emu.pc);
+          const m = lower.match(/^[xw](\d+)$/);
+          if (!m) return null;
+          const idx = Number(m[1]);
+          if (idx < 0 || idx > 30) return null;
+          return emu.registers[idx] ?? null;
         }}
       />
     </div>

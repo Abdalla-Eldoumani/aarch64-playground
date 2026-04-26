@@ -60,7 +60,7 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
           <tr className="text-[var(--text-secondary)]">
             <th className="text-left">address</th>
             <th className="text-left pl-4">value (u64)</th>
-            <th className="text-left pl-4">label</th>
+            <th className="hidden sm:table-cell text-left pl-4">label</th>
           </tr>
         </thead>
         <tbody>
@@ -105,7 +105,7 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
                 >
                   {hex}
                 </td>
-                <td className="pl-4 text-[var(--text-secondary)]">
+                <td className="hidden sm:table-cell pl-4 text-[var(--text-secondary)]">
                   {label ? (
                     <span>
                       [fp, <span className="text-[var(--text-primary)]">{label}</span>]

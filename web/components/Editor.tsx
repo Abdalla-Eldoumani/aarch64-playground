@@ -4,6 +4,11 @@ import MonacoEditor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/use-emulator";
 import { lookupDoc } from "@/lib/instruction-docs";
+import { explainError } from "@/lib/error-explain";
+import { lintSource } from "@/lib/cpsc355-lint";
+import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
+import { useHotspotMode } from "@/lib/use-hotspot-mode";
+import { buildSuggestions, type Suggestion } from "@/lib/asm-completion";
 
 interface EditorProps {
   value: string;
@@ -12,6 +17,13 @@ interface EditorProps {
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
+  onCursorChange?: (pos: { line: number; column: number }) => void;
+  /** Per-source-line execution counter for the hotspot heat map. */
+  lineCounts?: Map<number, number>;
+  /** Format-source command bound to Ctrl+Shift+F inside Monaco. The
+   *  parent owns the formatter implementation so the keybinding and
+   *  the command-palette entry share one code path. */
+  onFormat?: () => void;
 }
 
 const ARM64_MNEMONICS = [
@@ -49,11 +61,29 @@ export function Editor({
   breakpoints,
   onToggleBreakpoint,
   assemblyErrors,
+  onCursorChange,
+  lineCounts,
+  onFormat,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
   const [fallback, setFallback] = useState<boolean>(() => isNarrow());
+  const { enabled: cpscEnabled } = useCpsc355Mode();
+  const { enabled: hotspotEnabled } = useHotspotMode();
+  // Stash the live flag in a ref so the model.onDidChangeContent
+  // listener registered inside handleMount sees the current value
+  // without re-registering each time the toggle flips.
+  const cpscEnabledRef = useRef(cpscEnabled);
+  useEffect(() => {
+    cpscEnabledRef.current = cpscEnabled;
+  }, [cpscEnabled]);
+  // Keep the latest format handler accessible from the Monaco command
+  // (registered once at mount).
+  const onFormatRef = useRef(onFormat);
+  useEffect(() => {
+    onFormatRef.current = onFormat;
+  }, [onFormat]);
 
   // Re-evaluate the narrow-viewport fallback on resize so a student
   // who rotates their phone doesn't get stuck in the wrong mode.
@@ -70,6 +100,24 @@ export function Editor({
     if (!editor || !monaco) return;
 
     const decorations: Parameters<typeof editor.deltaDecorations>[1] = [];
+
+    // hotspot heat map: cool blue -> hot red, painted first so the
+    // current-line / breakpoint / error rules overlay it
+    if (hotspotEnabled && lineCounts && lineCounts.size > 0) {
+      let max = 1;
+      for (const v of lineCounts.values()) if (v > max) max = v;
+      for (const [line, count] of lineCounts.entries()) {
+        // bucket into 1..5 based on relative heat (round half up)
+        const bucket = Math.max(1, Math.min(5, Math.ceil((count / max) * 5)));
+        decorations.push({
+          range: new monaco.Range(line, 1, line, 1),
+          options: {
+            isWholeLine: true,
+            className: `hotspot-${bucket}`,
+          },
+        });
+      }
+    }
 
     // current line highlight
     if (currentLine != null) {
@@ -94,15 +142,31 @@ export function Editor({
       });
     }
 
-    // assembly errors
+    // assembly errors -- the hover bubble carries both the raw message
+    // and, when the explainer recognizes the variant, a structured
+    // {what / why / fix / consult} block keyed to a style-guide section.
     for (const err of assemblyErrors) {
+      const explanation = explainError(err.message);
+      const md = explanation
+        ? [
+            `**${err.message}**`,
+            "",
+            `*what:* ${explanation.what}`,
+            "",
+            `*why:* ${explanation.why}`,
+            "",
+            `*fix:* ${explanation.fix}`,
+            "",
+            `*consult:* ${explanation.styleSection} (docs/cpsc355-style-guide.md)`,
+          ].join("\n")
+        : err.message;
       decorations.push({
         range: new monaco.Range(err.line, 1, err.line, 1),
         options: {
           isWholeLine: true,
           className: "error-line-highlight",
           glyphMarginClassName: "error-glyph",
-          hoverMessage: { value: err.message },
+          hoverMessage: { value: md, isTrusted: false },
         },
       });
     }
@@ -111,7 +175,7 @@ export function Editor({
       decorationsRef.current,
       decorations
     );
-  }, [currentLine, breakpoints, assemblyErrors]);
+  }, [currentLine, breakpoints, assemblyErrors, hotspotEnabled, lineCounts]);
 
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
@@ -160,7 +224,86 @@ export function Editor({
         },
       });
 
-      monaco.editor.setTheme("arm64-dark");
+      monaco.editor.defineTheme("arm64-light", {
+        base: "vs",
+        inherit: true,
+        rules: [
+          { token: "keyword", foreground: "1d4ed8", fontStyle: "bold" },
+          { token: "variable", foreground: "be185d" },
+          { token: "number", foreground: "6d28d9" },
+          { token: "number.hex", foreground: "6d28d9" },
+          { token: "comment", foreground: "6b7280", fontStyle: "italic" },
+          { token: "type.identifier", foreground: "047857" },
+        ],
+        colors: {
+          "editor.background": "#ffffff",
+          "editor.lineHighlightBackground": "#f1f5f988",
+          "editorGutter.background": "#ffffff",
+          "editorLineNumber.foreground": "#6b7280",
+        },
+      });
+
+      monaco.editor.defineTheme("arm64-hc", {
+        base: "hc-black",
+        inherit: true,
+        rules: [
+          { token: "keyword", foreground: "8be0ff", fontStyle: "bold" },
+          { token: "variable", foreground: "ffb6e6" },
+          { token: "number", foreground: "d4b6ff" },
+          { token: "number.hex", foreground: "d4b6ff" },
+          { token: "comment", foreground: "d1d5db", fontStyle: "italic" },
+          { token: "type.identifier", foreground: "9ef0c1" },
+        ],
+        colors: {
+          "editor.background": "#000000",
+          "editor.lineHighlightBackground": "#1a1a1a",
+          "editorGutter.background": "#000000",
+          "editorLineNumber.foreground": "#d1d5db",
+        },
+      });
+
+      const applyTheme = () => {
+        const t = document.documentElement.getAttribute("data-theme");
+        const id = t === "light" ? "arm64-light" : t === "high-contrast" ? "arm64-hc" : "arm64-dark";
+        monaco.editor.setTheme(id);
+      };
+      applyTheme();
+      const observer = new MutationObserver(applyTheme);
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      });
+
+      // Completion provider: builds context-aware suggestions from the
+      // current line + the full source (for labels and m4 aliases).
+      type CompletionModel = Parameters<
+        Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
+      >[0];
+      type CompletionPos = Parameters<
+        Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
+      >[1];
+      monaco.languages.registerCompletionItemProvider("arm64", {
+        triggerCharacters: [".", " ", ",", "[", "$", "_"],
+        provideCompletionItems(model: CompletionModel, position: CompletionPos) {
+          const line = model.getLineContent(position.lineNumber);
+          const source = model.getValue();
+          const word = model.getWordUntilPosition(position);
+          const range = new monaco.Range(
+            position.lineNumber,
+            word.startColumn,
+            position.lineNumber,
+            word.endColumn,
+          );
+          const suggestions = buildSuggestions({
+            source,
+            line,
+            position: position.column,
+          });
+          return {
+            suggestions: suggestions.map((s) => mapSuggestion(s, monaco, range)),
+          };
+        },
+      });
 
       // Hover provider: surface a short course-voice summary of the
       // mnemonic under the cursor. Falls back to no-hover when the
@@ -194,6 +337,9 @@ export function Editor({
           if (doc.example) {
             lines.push("", "```", doc.example, "```");
           }
+          if (doc.cExample) {
+            lines.push("", `**c equivalent:** \`${doc.cExample}\``);
+          }
           return {
             range: new monaco.Range(
               position.lineNumber,
@@ -206,6 +352,61 @@ export function Editor({
         },
       });
 
+      // Surface cursor position to the parent so the share-state hash
+      // can encode it. The callback fires on arrow keys, click, and any
+      // edit; the parent throttles persistence as needed.
+      editor.onDidChangeCursorPosition((e) => {
+        onCursorChange?.({ line: e.position.lineNumber, column: e.position.column });
+      });
+
+      // cpsc 355 lint: debounced model-content listener that converts
+      // `lintSource` markers into Monaco model markers. Cleared when
+      // the toggle is off so old warnings don't linger.
+      let lintTimer: ReturnType<typeof setTimeout> | null = null;
+      const runLint = () => {
+        const model = editor.getModel();
+        if (!model) return;
+        if (!cpscEnabledRef.current) {
+          monaco.editor.setModelMarkers(model, "cpsc355", []);
+          return;
+        }
+        const markers = lintSource(model.getValue()).map((mk) => ({
+          severity: monaco.MarkerSeverity.Warning,
+          message: mk.message,
+          startLineNumber: mk.line,
+          startColumn: mk.column,
+          endLineNumber: mk.line,
+          endColumn: mk.endColumn,
+          source: "cpsc 355",
+        }));
+        monaco.editor.setModelMarkers(model, "cpsc355", markers);
+      };
+      const debouncedLint = () => {
+        if (lintTimer) clearTimeout(lintTimer);
+        lintTimer = setTimeout(runLint, 150);
+      };
+      editor.getModel()?.onDidChangeContent(() => debouncedLint());
+      runLint();
+
+      // Set an aria-label so screen readers announce the editor as more
+      // than "edit text"; Monaco's default label is generic.
+      editor.getDomNode()?.setAttribute("aria-label", "ARM64 assembly source code editor");
+
+      // Escape blurs the editor when no internal Monaco widget is open,
+      // so keyboard-only users aren't trapped inside Monaco when they
+      // hit Esc to back out of a focused control.
+      editor.addCommand(monaco.KeyCode.Escape, () => {
+        editor.getDomNode()?.blur();
+      });
+
+      // Ctrl+Shift+F invokes the playground's source formatter (the
+      // command palette uses the same handler). Mirrors VS Code's
+      // "Format Document" binding so muscle memory transfers.
+      editor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
+        () => onFormatRef.current?.(),
+      );
+
       // glyph margin click for breakpoints
       editor.onMouseDown((e) => {
         if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
@@ -217,39 +418,10 @@ export function Editor({
         }
       });
 
-      // On coarse pointers (phones / tablets), a 500ms press-and-hold
-      // anywhere on the line sets a breakpoint -- reaching for the
-      // narrow glyph margin with a fingertip is unreliable.
-      if (isCoarsePointer()) {
-        const dom = editor.getDomNode();
-        if (dom) {
-          let pressTimer: ReturnType<typeof setTimeout> | null = null;
-          let pressedLine: number | null = null;
-          const startPress = (clientX: number, clientY: number) => {
-            const pos = editor.getTargetAtClientPoint(clientX, clientY);
-            const line = pos?.position?.lineNumber ?? null;
-            if (line == null) return;
-            pressedLine = line;
-            pressTimer = setTimeout(() => {
-              if (pressedLine != null) {
-                onToggleBreakpoint(pressedLine);
-              }
-            }, 500);
-          };
-          const cancelPress = () => {
-            if (pressTimer) clearTimeout(pressTimer);
-            pressTimer = null;
-            pressedLine = null;
-          };
-          dom.addEventListener("touchstart", (ev) => {
-            const t = ev.touches[0];
-            if (t) startPress(t.clientX, t.clientY);
-          }, { passive: true });
-          dom.addEventListener("touchmove", cancelPress, { passive: true });
-          dom.addEventListener("touchend", cancelPress);
-          dom.addEventListener("touchcancel", cancelPress);
-        }
-      }
+      // On coarse pointers, the breakpoint gesture is a single tap on
+      // the glyph margin. The CSS below widens that margin to 32px so a
+      // fingertip lands reliably; no anywhere-on-line long-press, which
+      // used to fight text selection.
 
       // Shrink the editor when the iOS keyboard opens so the textarea
       // doesn't sit behind the keyboard; Monaco's `automaticLayout` flag
@@ -265,13 +437,38 @@ export function Editor({
 
       updateDecorations();
     },
-    [onToggleBreakpoint, updateDecorations]
+    [onToggleBreakpoint, updateDecorations, onCursorChange]
   );
 
   // re-apply decorations when the editor or any of its inputs change
   useEffect(() => {
     updateDecorations();
   }, [currentLine, breakpoints, assemblyErrors, updateDecorations]);
+
+  // Re-run cpsc 355 lint when the toggle flips. The handleMount
+  // listener already keeps markers fresh on edits via the ref-backed
+  // flag; this effect handles the toggle itself.
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    const model = editor.getModel();
+    if (!model) return;
+    if (!cpscEnabled) {
+      monaco.editor.setModelMarkers(model, "cpsc355", []);
+      return;
+    }
+    const markers = lintSource(model.getValue()).map((mk) => ({
+      severity: monaco.MarkerSeverity.Warning,
+      message: mk.message,
+      startLineNumber: mk.line,
+      startColumn: mk.column,
+      endLineNumber: mk.line,
+      endColumn: mk.endColumn,
+      source: "cpsc 355",
+    }));
+    monaco.editor.setModelMarkers(model, "cpsc355", markers);
+  }, [cpscEnabled]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -287,21 +484,20 @@ export function Editor({
   if (fallback) {
     // Under 480px, Monaco's keyboard behavior on iOS is unreliable
     // (the soft keyboard jumps the caret to the wrong line when the
-    // visual viewport shrinks). Fall back to a plain textarea.
-    return (
-      <textarea
-        className="h-full w-full resize-none bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono text-[16px] p-3 focus:outline-none"
-        style={{ WebkitAppearance: "none" }}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
-        aria-label="assembly source"
-      />
-    );
+    // visual viewport shrinks). Fall back to a plain textarea with a
+    // synced gutter that surfaces line numbers, breakpoint dots, the
+    // current PC line, and the first assembler error so a student can
+    // still navigate errors and toggle breakpoints on a phone.
+    return <FallbackEditor
+      value={value}
+      onChange={onChange}
+      currentLine={currentLine}
+      breakpoints={breakpoints}
+      onToggleBreakpoint={onToggleBreakpoint}
+      assemblyErrors={assemblyErrors}
+      onDrop={onDrop}
+      onCursorChange={onCursorChange}
+    />;
   }
 
   return (
@@ -315,7 +511,15 @@ export function Editor({
         .current-line-glyph { background: #60a5fa; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .breakpoint-glyph { background: #ef4444; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .error-line-highlight { background: rgba(239, 68, 68, 0.15) !important; }
+        .hotspot-1 { background: rgba(56, 189, 248, 0.10) !important; }
+        .hotspot-2 { background: rgba(125, 211, 252, 0.16) !important; }
+        .hotspot-3 { background: rgba(253, 224, 71, 0.18) !important; }
+        .hotspot-4 { background: rgba(251, 146, 60, 0.22) !important; }
+        .hotspot-5 { background: rgba(248, 113, 113, 0.28) !important; }
         .error-glyph { background: #f59e0b; border-radius: 2px; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
+        @media (pointer: coarse) {
+          .monaco-editor .glyph-margin { width: 32px !important; }
+        }
       `}</style>
       <MonacoEditor
         height="100%"
@@ -336,7 +540,149 @@ export function Editor({
           automaticLayout: true,
           tabSize: 4,
           wordWrap: isCoarsePointer() ? "on" : "off",
+          accessibilitySupport: "auto",
+          accessibilityHelpUrl: "/docs/accessibility",
         }}
+      />
+    </div>
+  );
+}
+
+interface FallbackEditorProps {
+  value: string;
+  onChange: (value: string) => void;
+  currentLine: number | null;
+  breakpoints: Set<number>;
+  onToggleBreakpoint: (line: number) => void;
+  assemblyErrors: AssemblyError[];
+  onDrop: (e: React.DragEvent) => void;
+  onCursorChange?: (pos: { line: number; column: number }) => void;
+}
+
+type MonacoForCompletion = Parameters<OnMount>[1];
+
+function mapSuggestion(
+  s: Suggestion,
+  monaco: MonacoForCompletion,
+  range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number },
+) {
+  const KIND = monaco.languages.CompletionItemKind;
+  const kindMap: Record<Suggestion["kind"], number> = {
+    directive: KIND.Keyword,
+    instruction: KIND.Function,
+    register: KIND.Variable,
+    alias: KIND.Variable,
+    label: KIND.Reference,
+    libc: KIND.Function,
+  };
+  return {
+    label: s.label,
+    kind: kindMap[s.kind],
+    detail: s.detail,
+    insertText: s.insertText ?? s.label,
+    range,
+  };
+}
+
+/**
+ * Phone-mode editor: bare `<textarea>` plus a synced gutter strip that
+ * shows line numbers, breakpoint dots, current-PC marker, and the first
+ * error line. Students on iPhone SE need to be able to toggle a
+ * breakpoint, see which line their error is on, and watch the PC move
+ * during step -- all without Monaco's larger virtual surface.
+ */
+// Vertical padding shared by gutter and textarea so the first line
+// of code aligns with the first gutter button. Both elements offset by
+// the same constant so the running translateY math stays simple.
+const FALLBACK_PAD_Y = 12;
+const FALLBACK_LINE_H = 24;
+
+function FallbackEditor({
+  value,
+  onChange,
+  currentLine,
+  breakpoints,
+  onToggleBreakpoint,
+  assemblyErrors,
+  onDrop,
+  onCursorChange,
+}: FallbackEditorProps) {
+  const [scrollTop, setScrollTop] = useState(0);
+  const lineCount = Math.max(1, value.split("\n").length);
+  const errorLines = new Set(assemblyErrors.map((e) => e.line));
+
+  // Outer wrapper carries `min-h-0 overflow-hidden` so the gutter's
+  // natural content height (lineCount * 24px, often well past the
+  // viewport on phones) cannot expand its parent and push the rest of
+  // the page off-screen. The previous version had no such guard, which
+  // made the editor pane balloon to thousands of pixels and pushed the
+  // header / Controls / tab strip out of view on iPhone portrait.
+  return (
+    <div className="h-full w-full min-h-0 overflow-hidden flex bg-[var(--bg-primary)]">
+      <div
+        className="flex-shrink-0 w-10 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] select-none relative"
+        role="presentation"
+      >
+        <div
+          className="absolute left-0 right-0 will-change-transform"
+          style={{ transform: `translateY(${FALLBACK_PAD_Y - scrollTop}px)` }}
+        >
+          {Array.from({ length: lineCount }, (_, i) => i + 1).map((n) => {
+            const isBreak = breakpoints.has(n);
+            const isError = errorLines.has(n);
+            const isCurrent = currentLine === n;
+            const cls = isError
+              ? "text-[var(--danger)] font-bold"
+              : isBreak
+              ? "text-[var(--danger)]"
+              : isCurrent
+              ? "text-[var(--accent)] font-bold"
+              : "text-[var(--text-secondary)]";
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onToggleBreakpoint(n)}
+                className={`block w-full h-6 leading-6 text-right pr-2 text-[11px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] ${cls}`}
+                aria-label={
+                  isBreak
+                    ? `line ${n}, breakpoint set, tap to clear`
+                    : `line ${n}, tap to set breakpoint`
+                }
+              >
+                {isBreak ? "●" : n}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <textarea
+        className="flex-1 h-full min-h-0 resize-none bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono text-[16px] pl-2 pr-3 focus:outline-none leading-6 whitespace-pre"
+        style={{
+          WebkitAppearance: "none",
+          paddingTop: `${FALLBACK_PAD_Y}px`,
+          paddingBottom: `${FALLBACK_PAD_Y}px`,
+          lineHeight: `${FALLBACK_LINE_H}px`,
+          overflow: "auto",
+        }}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onSelect={(e) => {
+          if (!onCursorChange) return;
+          const ta = e.currentTarget;
+          const upto = ta.value.slice(0, ta.selectionStart);
+          const lines = upto.split("\n");
+          const line = lines.length;
+          const column = (lines[lines.length - 1]?.length ?? 0) + 1;
+          onCursorChange({ line, column });
+        }}
+        aria-label="assembly source"
       />
     </div>
   );

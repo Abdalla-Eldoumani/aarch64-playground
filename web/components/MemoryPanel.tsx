@@ -3,12 +3,23 @@
 import { useCallback, useState } from "react";
 import { useZoom } from "@/lib/use-zoom";
 import { ZoomControl } from "@/components/ZoomControl";
+import { isAtLeast, useBreakpoint } from "@/lib/use-breakpoint";
 
 interface MemoryPanelProps {
   getMemory: (addr: number, len: number) => Uint8Array;
+  /** `(addr, len)` ranges that the most-recent step wrote. Bytes
+   *  inside any range render with an accent background so the
+   *  student sees what changed since the previous frame. */
+  dirtyAddrs?: Array<[number, number]>;
 }
 
-const BYTES_PER_ROW = 16;
+function isDirty(byteAddr: number, ranges: Array<[number, number]>): boolean {
+  for (const [start, len] of ranges) {
+    if (byteAddr >= start && byteAddr < start + len) return true;
+  }
+  return false;
+}
+
 const DEFAULT_ROWS = 16;
 
 const JUMP_TARGETS: Array<{ label: string; addr: string }> = [
@@ -19,13 +30,18 @@ const JUMP_TARGETS: Array<{ label: string; addr: string }> = [
   { label: "stack", addr: "0x7fffff00" },
 ];
 
-export function MemoryPanel({ getMemory }: MemoryPanelProps) {
+export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
   const [baseAddr, setBaseAddr] = useState("0x00400000");
   const [rows] = useState(DEFAULT_ROWS);
   const zoom = useZoom("memory");
+  // 16 bytes/row reads naturally on a desktop monospace grid; below sm
+  // the row overflows the viewport, so collapse to 8/row -- still
+  // 16-byte aligned so addresses stay in even multiples.
+  const bp = useBreakpoint();
+  const bytesPerRow = isAtLeast(bp, "sm") ? 16 : 8;
 
   const addr = parseInt(baseAddr, 16) || 0;
-  const totalBytes = rows * BYTES_PER_ROW;
+  const totalBytes = rows * bytesPerRow;
   const data = getMemory(addr, totalBytes);
 
   const handleAddrChange = useCallback(
@@ -47,13 +63,15 @@ export function MemoryPanel({ getMemory }: MemoryPanelProps) {
       }}
     >
       <div className="flex items-center flex-wrap gap-2 mb-2">
-        <label className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
+        <label htmlFor="memory-base-addr" className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
           address
         </label>
         <input
+          id="memory-base-addr"
           type="text"
           value={baseAddr}
           onChange={handleAddrChange}
+          aria-label="memory base address"
           className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
         />
         <select
@@ -86,49 +104,54 @@ export function MemoryPanel({ getMemory }: MemoryPanelProps) {
       <table className="w-full font-mono">
         <thead>
           <tr className="text-[var(--text-secondary)]">
-            <th className="text-left pr-4">addr</th>
-            {Array.from({ length: BYTES_PER_ROW }, (_, i) => (
-              <th key={i} className="w-6 text-center">
+            <th className="text-left pr-2 sm:pr-4">addr</th>
+            {Array.from({ length: bytesPerRow }, (_, i) => (
+              <th key={i} className="w-5 sm:w-6 text-center">
                 {i.toString(16).toUpperCase()}
               </th>
             ))}
-            <th className="pl-4 text-left">ascii</th>
+            <th className="pl-2 sm:pl-4 text-left">ascii</th>
           </tr>
         </thead>
         <tbody>
           {Array.from({ length: rows }, (_, row) => {
-            const rowAddr = addr + row * BYTES_PER_ROW;
+            const rowAddr = addr + row * bytesPerRow;
             const rowBytes = data.slice(
-              row * BYTES_PER_ROW,
-              (row + 1) * BYTES_PER_ROW
+              row * bytesPerRow,
+              (row + 1) * bytesPerRow
             );
             return (
               <tr key={row} className="hover:bg-[var(--bg-secondary)]">
-                <td className="text-[var(--text-secondary)] pr-4">
+                <td className="text-[var(--text-secondary)] pr-2 sm:pr-4">
                   {formatAddr(rowAddr)}
                 </td>
-                {Array.from(rowBytes).map((byte, i) => (
-                  <td
-                    key={i}
-                    className={`text-center ${
-                      byte !== 0
-                        ? "text-[var(--text-primary)]"
-                        : "text-[var(--text-secondary)]"
-                    }`}
-                  >
-                    {byte.toString(16).padStart(2, "0")}
-                  </td>
-                ))}
+                {Array.from(rowBytes).map((byte, i) => {
+                  const dirty = isDirty(rowAddr + i, dirtyAddrs);
+                  return (
+                    <td
+                      key={i}
+                      className={`text-center ${
+                        dirty
+                          ? "bg-[var(--accent-muted)] text-[var(--text-primary)] rounded-sm"
+                          : byte !== 0
+                          ? "text-[var(--text-primary)]"
+                          : "text-[var(--text-secondary)]"
+                      }`}
+                    >
+                      {byte.toString(16).padStart(2, "0")}
+                    </td>
+                  );
+                })}
                 {/* pad if data is short */}
                 {Array.from(
-                  { length: BYTES_PER_ROW - rowBytes.length },
+                  { length: bytesPerRow - rowBytes.length },
                   (_, i) => (
                     <td key={`pad-${i}`} className="text-center text-[var(--text-secondary)]">
                       ..
                     </td>
                   )
                 )}
-                <td className="pl-4 text-[var(--text-secondary)]">
+                <td className="pl-2 sm:pl-4 text-[var(--text-secondary)]">
                   {asciiString(rowBytes)}
                 </td>
               </tr>

@@ -9,19 +9,53 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "size": "size-limit",
+    "lighthouse": "lighthouse http://localhost:3000 --preset=desktop --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/report",
+    "lighthouse:mobile": "lighthouse http://localhost:3000 --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/mobile",
+    "audit:deps": "node ../scripts/audit-deps.js",
+    "audit:headers": "node ../scripts/check-headers.js",
+    "smoke:firefox": "node ../scripts/firefox-smoke.mjs"
   },
+  "size-limit": [
+    {
+      "name": "initial js (framework + main + polyfills + entry)",
+      "path": [
+        ".next/static/chunks/framework-*.js",
+        ".next/static/chunks/main-*.js",
+        ".next/static/chunks/polyfills-*.js",
+        ".next/static/chunks/app/page-*.js"
+      ],
+      "limit": "400 KB"
+    },
+    {
+      "name": "lazy monaco bundle",
+      "path": ".next/static/chunks/e868780c.*.js",
+      "limit": "100 KB"
+    },
+    {
+      "name": "wasm emulator (lazy on first assemble)",
+      "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
+      "limit": "200 KB"
+    }
+  ],
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "cmdk": "^1.1.1",
     "lz-string": "^1.5.0",
     "motion": "^12.38.0",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.6.0",
     "react-resizable-panels": "^4.10.0"
   },
   "devDependencies": {
+    "@size-limit/file": "^12.1.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
@@ -31,12 +65,16 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.0.0",
     "jsdom": "^29.0.2",
-    "postcss": "^8.4.0",
+    "lighthouse": "^13.1.0",
+    "playwright": "^1.59.1",
+    "postcss": "^8.5.10",
+    "size-limit": "^12.1.0",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.4"
   },
   "overrides": {
-    "dompurify": "^3.3.3"
+    "dompurify": "^3.3.3",
+    "postcss": "^8.5.10"
   }
 }

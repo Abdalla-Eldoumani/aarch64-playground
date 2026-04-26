@@ -72,7 +72,7 @@ export function MultiFileTabs({
         onClick={() => onSelect(-1)}
         className={`px-2 py-0.5 rounded ${
           activeIndex === -1
-            ? "bg-[var(--accent)] text-black"
+            ? "bg-[var(--accent)] text-[var(--bg-primary)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
         }`}
       >
@@ -82,7 +82,7 @@ export function MultiFileTabs({
         <span
           key={`${f.name}-${i}`}
           className={`inline-flex items-center rounded ${
-            activeIndex === i ? "bg-[var(--accent)] text-black" : ""
+            activeIndex === i ? "bg-[var(--accent)] text-[var(--bg-primary)]" : ""
           }`}
         >
           <button
@@ -100,7 +100,7 @@ export function MultiFileTabs({
             type="button"
             onClick={() => onRemove(i)}
             aria-label={`remove ${f.name}`}
-            className="px-1 text-[var(--text-secondary)] hover:text-[var(--danger)]"
+            className="inline-flex items-center justify-center min-w-[24px] min-h-[24px] px-1 text-[var(--text-secondary)] hover:text-[var(--danger)]"
           >
             x
           </button>
@@ -125,7 +125,7 @@ export function MultiFileTabs({
         />
         <button
           type="submit"
-          className="px-1 text-[var(--text-secondary)] hover:text-[var(--accent)]"
+          className="inline-flex items-center justify-center min-w-[24px] min-h-[24px] px-1 text-[var(--text-secondary)] hover:text-[var(--accent)]"
           aria-label="add file"
         >
           +
