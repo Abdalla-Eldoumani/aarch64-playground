@@ -502,7 +502,6 @@ export default function Home() {
       <InstructionView
         instructions={emu.instructions}
         pc={emu.pc}
-        codeBase={emu.codeBase}
       />
     </div>
   );
