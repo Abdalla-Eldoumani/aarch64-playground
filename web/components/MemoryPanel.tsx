@@ -7,6 +7,17 @@ import { isAtLeast, useBreakpoint } from "@/lib/use-breakpoint";
 
 interface MemoryPanelProps {
   getMemory: (addr: number, len: number) => Uint8Array;
+  /** `(addr, len)` ranges that the most-recent step wrote. Bytes
+   *  inside any range render with an accent background so the
+   *  student sees what changed since the previous frame. */
+  dirtyAddrs?: Array<[number, number]>;
+}
+
+function isDirty(byteAddr: number, ranges: Array<[number, number]>): boolean {
+  for (const [start, len] of ranges) {
+    if (byteAddr >= start && byteAddr < start + len) return true;
+  }
+  return false;
 }
 
 const DEFAULT_ROWS = 16;
@@ -19,7 +30,7 @@ const JUMP_TARGETS: Array<{ label: string; addr: string }> = [
   { label: "stack", addr: "0x7fffff00" },
 ];
 
-export function MemoryPanel({ getMemory }: MemoryPanelProps) {
+export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
   const [baseAddr, setBaseAddr] = useState("0x00400000");
   const [rows] = useState(DEFAULT_ROWS);
   const zoom = useZoom("memory");
@@ -112,18 +123,23 @@ export function MemoryPanel({ getMemory }: MemoryPanelProps) {
                 <td className="text-[var(--text-secondary)] pr-2 sm:pr-4">
                   {formatAddr(rowAddr)}
                 </td>
-                {Array.from(rowBytes).map((byte, i) => (
-                  <td
-                    key={i}
-                    className={`text-center ${
-                      byte !== 0
-                        ? "text-[var(--text-primary)]"
-                        : "text-[var(--text-secondary)]"
-                    }`}
-                  >
-                    {byte.toString(16).padStart(2, "0")}
-                  </td>
-                ))}
+                {Array.from(rowBytes).map((byte, i) => {
+                  const dirty = isDirty(rowAddr + i, dirtyAddrs);
+                  return (
+                    <td
+                      key={i}
+                      className={`text-center ${
+                        dirty
+                          ? "bg-[var(--accent-muted)] text-[var(--text-primary)] rounded-sm"
+                          : byte !== 0
+                          ? "text-[var(--text-primary)]"
+                          : "text-[var(--text-secondary)]"
+                      }`}
+                    >
+                      {byte.toString(16).padStart(2, "0")}
+                    </td>
+                  );
+                })}
                 {/* pad if data is short */}
                 {Array.from(
                   { length: bytesPerRow - rowBytes.length },

@@ -503,7 +503,9 @@ export default function Home() {
     </div>
   );
 
-  const memoryBlock = <MemoryPanel getMemory={emu.getMemory} />;
+  const memoryBlock = (
+    <MemoryPanel getMemory={emu.getMemory} dirtyAddrs={emu.dirtyAddrs} />
+  );
   const frameSlots = useMemo(() => parseFrameSlots(source), [source]);
   const fpValue = useMemo(() => {
     const raw = emu.registers[29];
