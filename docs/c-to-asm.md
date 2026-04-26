@@ -93,11 +93,19 @@ UI.
 | `compiler explorer responded 429` | Upstream rate limit. The cache absorbs most of these; wait 60 seconds and retry. |
 | `compiler explorer responded 5xx` | Compiler Explorer outage. Use **open on godbolt** to compile in their UI directly. |
 | `upstream fetch failed` | Network issue between Vercel and godbolt.org. Retry. |
+| `upstream fetch timed out` | The upstream took longer than `C_TO_ASM_TIMEOUT_MS` (30 s). Usually a Compiler Explorer hiccup; retry. |
+| `source exceeds <N> byte limit` | Your C source is over `MAX_C_SOURCE_BYTES` (256 KB). Trim it or compile locally. |
+
+## Limits
+
+The proxy caps inbound C source at `MAX_C_SOURCE_BYTES = 256 KB`
+(defined in `web/lib/upload-guard.ts`) and times out the upstream
+fetch after `C_TO_ASM_TIMEOUT_MS = 30 s`. Both gates exist to keep
+the route from being a free byte-relay or a slow-loris vector.
 
 ## Quickstart
 
 1. Click **C -> asm** in the header.
 2. Pick a snippet from the dropdown (or paste your own C).
 3. Hit **compile** (or wait 500 ms for the auto-compile to fire).
-4. Hit **load into playground** and you're back at the assembler with
-   the generated code ready to step.
+4. Hit **load into playground** and you're back at the assembler with the generated code ready to step.
