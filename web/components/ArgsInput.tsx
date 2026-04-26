@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { hashString } from "@/lib/auto-save";
 
 export interface ArgsInputProps {
