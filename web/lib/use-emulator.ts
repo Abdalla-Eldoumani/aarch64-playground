@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/backend";
 import { detectHostedMode } from "@/lib/emulator";
+import { ReplayRing, type ReplayFrame } from "@/lib/replay";
 import type { StateSnapshot } from "@/lib/worker/protocol";
 
 export interface AssemblyError {
@@ -69,6 +70,17 @@ export interface EmulatorState {
    * because the snapshot stream doesn't carry per-step line history.
    */
   lineCounts: Map<number, number>;
+  /**
+   * Last N captured frames for the replay scrubber. Populated by the
+   * same step/run path that bumps `lineCounts`. Capacity 128.
+   */
+  replayFrames: ReplayFrame[];
+  /**
+   * Apply a captured frame's registers/PC/currentLine to React state
+   * for visual scrubbing. Does not touch the underlying CPU; the next
+   * forward `step` resumes from the live PC.
+   */
+  seekReplay: (frameIndex: number) => void;
 }
 
 function memCacheKey(addr: number, len: number): string {
@@ -89,6 +101,13 @@ export function useEmulator(): EmulatorState {
   // bump triggers consumers to re-read.
   const lineCountsRef = useRef<Map<number, number>>(new Map());
   const currentLineRef = useRef<number | null>(null);
+  // Replay ring + the latest snapshot snapshot-cache so step/run callbacks
+  // can read regs/pc/nzcv without piping them through React state and
+  // racing the snapshot listener.
+  const replayRingRef = useRef<ReplayRing>(new ReplayRing(128));
+  const latestSnapRef = useRef<{ registers: string[]; pc: number; nzcv: number; changedRegs: number[] }>(
+    { registers: [], pc: 0, nzcv: 0, changedRegs: [] },
+  );
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -129,9 +148,16 @@ export function useEmulator(): EmulatorState {
     }
     setRegisters(snap.registers);
     setSp(snap.sp);
-    setPc(Number(BigInt(snap.pc)));
+    const pcNum = Number(BigInt(snap.pc));
+    setPc(pcNum);
     setNzcv(snap.nzcv);
     setChangedRegs(new Set(snap.changedRegs));
+    latestSnapRef.current = {
+      registers: snap.registers,
+      pc: pcNum,
+      nzcv: snap.nzcv,
+      changedRegs: snap.changedRegs,
+    };
     setIsHalted(snap.halted);
     setBlocked(snap.blocked);
     setExitCode(snap.exitCode);
@@ -148,20 +174,40 @@ export function useEmulator(): EmulatorState {
     }
   }, [codeBase]);
 
-  // Bump the per-line execution counter for the current line. Called
-  // by step / runUntilBreak after the snapshot listener has updated
-  // currentLineRef. Caller is responsible for triggering the React
-  // re-render via the tick state.
-  const bumpLineCount = useCallback(() => {
+  // Bump the per-line execution counter for the current line and push
+  // a replay frame. Called by step / runUntilBreak after the snapshot
+  // listener has updated currentLineRef + latestSnapRef.
+  const bumpLineCount = useCallback((newStepCount: number) => {
     const ln = currentLineRef.current;
-    if (ln == null) return;
-    lineCountsRef.current.set(ln, (lineCountsRef.current.get(ln) ?? 0) + 1);
+    if (ln != null) {
+      lineCountsRef.current.set(ln, (lineCountsRef.current.get(ln) ?? 0) + 1);
+    }
+    const snap = latestSnapRef.current;
+    replayRingRef.current.push({
+      stepCount: newStepCount,
+      registers: snap.registers,
+      pc: snap.pc,
+      nzcv: snap.nzcv,
+      changedRegs: snap.changedRegs,
+      currentLine: ln,
+    });
     setLineCountsTick((t) => t + 1);
   }, []);
 
   const resetLineCounts = useCallback(() => {
     lineCountsRef.current = new Map();
+    replayRingRef.current.clear();
     setLineCountsTick((t) => t + 1);
+  }, []);
+
+  const seekReplay = useCallback((frameIndex: number) => {
+    const frame = replayRingRef.current.at(frameIndex);
+    if (!frame) return;
+    setRegisters(frame.registers);
+    setPc(frame.pc);
+    setNzcv(frame.nzcv);
+    setChangedRegs(new Set(frame.changedRegs));
+    setCurrentLine(frame.currentLine);
   }, []);
 
   // Load backend on mount.
@@ -265,8 +311,14 @@ export function useEmulator(): EmulatorState {
       .step()
       .then(({ stepResult }) => {
         if (stepResult.error) setError(stepResult.error);
-        setStepCount((c) => c + 1);
-        bumpLineCount();
+        setStepCount((c) => {
+          const next = c + 1;
+          // currentLineRef + latestSnapRef are already updated because
+          // notifyAndReturn fires the listener before the promise
+          // resolves.
+          bumpLineCount(next);
+          return next;
+        });
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
@@ -311,12 +363,15 @@ export function useEmulator(): EmulatorState {
     backend
       .runUntilBreak(1_000_000)
       .then(({ runResult }) => {
-        setStepCount((c) => c + runResult.steps_executed);
-        if (runResult.error) setError(runResult.error);
-        // Approximate hotspot bump: only the final line of the run
-        // chunk is captured. Per-step granularity would require a Rust
-        // delta in the snapshot; tracked in BACKLOG.
-        bumpLineCount();
+        setStepCount((c) => {
+          const next = c + runResult.steps_executed;
+          if (runResult.error) setError(runResult.error);
+          // Approximate hotspot + replay capture: only the final frame
+          // of the run chunk is captured. Per-step granularity would
+          // require a Rust delta in the snapshot; tracked in BACKLOG.
+          bumpLineCount(next);
+          return next;
+        });
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
@@ -465,6 +520,8 @@ export function useEmulator(): EmulatorState {
       uploadVfsFile,
       clearConsole,
       lineCounts: lineCountsRef.current,
+      replayFrames: replayRingRef.current.range(),
+      seekReplay,
     }),
     // lineCountsTick is intentionally a dep so consumers re-render when
     // the underlying lineCountsRef mutates (the ref identity itself
@@ -478,7 +535,7 @@ export function useEmulator(): EmulatorState {
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, getMemory,
-      pushStdin, uploadVfsFile, clearConsole, lineCountsTick,
+      pushStdin, uploadVfsFile, clearConsole, lineCountsTick, seekReplay,
     ],
   );
 }
