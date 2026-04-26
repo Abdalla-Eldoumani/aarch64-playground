@@ -30,6 +30,7 @@ import { useLectureMode } from "@/lib/use-lecture-mode";
 import { useHotspotMode } from "@/lib/use-hotspot-mode";
 import { ArgsInput } from "@/components/ArgsInput";
 import { LectureBar } from "@/components/LectureBar";
+import { ReplayScrubber } from "@/components/ReplayScrubber";
 import {
   describeTarget,
   getImportTarget,
@@ -480,14 +481,21 @@ export default function Home() {
   );
 
   const regsBlock = (
-    <div className="h-full overflow-auto">
-      <RegisterPanel
-        registers={emu.registers}
-        changedRegs={emu.changedRegs}
-        sp={emu.sp}
-        pc={emu.pc}
-        nzcv={emu.nzcv}
+    <div className="h-full flex flex-col">
+      <ReplayScrubber
+        frames={emu.replayFrames}
+        currentStep={emu.stepCount}
+        onSeek={emu.seekReplay}
       />
+      <div className="flex-1 min-h-0 overflow-auto">
+        <RegisterPanel
+          registers={emu.registers}
+          changedRegs={emu.changedRegs}
+          sp={emu.sp}
+          pc={emu.pc}
+          nzcv={emu.nzcv}
+        />
+      </div>
     </div>
   );
 
