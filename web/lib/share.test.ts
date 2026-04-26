@@ -6,6 +6,7 @@ import {
   readShareHash,
   type ShareState,
 } from "./share";
+import { MAX_SHARE_DECOMPRESSED_BYTES } from "./upload-guard";
 
 describe("share hash p2", () => {
   it("round-trips a state with all fields", () => {
@@ -50,6 +51,48 @@ describe("share hash p2", () => {
     const state: ShareState = { source: "NOP\n" };
     const hash = buildShareHash(state).slice(1);
     expect(readShareHash(hash)).toEqual(state);
+  });
+
+  it("strips a non-string args field instead of trusting it", () => {
+    const evil = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ source: "ret", args: { malicious: true } }),
+    );
+    const decoded = readShareHash(`#p2=${evil}`);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.source).toBe("ret");
+    expect(decoded!.args).toBeUndefined();
+  });
+
+  it("strips an unknown view value", () => {
+    const payload = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ source: "ret", view: "evil-view" }),
+    );
+    const decoded = readShareHash(`#p2=${payload}`);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.view).toBeUndefined();
+  });
+
+  it("strips a malformed cursor", () => {
+    const payload = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ source: "ret", cursor: { line: "bad", column: 1 } }),
+    );
+    const decoded = readShareHash(`#p2=${payload}`);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.cursor).toBeUndefined();
+  });
+
+  it("rejects an oversized p2 payload", () => {
+    const huge = "x".repeat(MAX_SHARE_DECOMPRESSED_BYTES + 1);
+    const payload = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ source: huge }),
+    );
+    expect(readShareHash(`#p2=${payload}`)).toBeNull();
+  });
+
+  it("rejects an oversized p1 payload", () => {
+    const huge = "x".repeat(MAX_SHARE_DECOMPRESSED_BYTES + 1);
+    const payload = LZString.compressToEncodedURIComponent(huge);
+    expect(readShareHash(`#p=${payload}`)).toBeNull();
   });
 });
 
