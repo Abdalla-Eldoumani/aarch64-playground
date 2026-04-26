@@ -22,6 +22,21 @@ import type {
 let emulator: Emulator | null = null;
 let frame = 0;
 let pauseRequested = false;
+let wasmReady: Promise<void> | null = null;
+
+// Defer the WASM fetch + Emulator construction until the first
+// state-mutating message. Keeps the initial page payload small: the
+// worker boots with just the JS wrapper, and the ~200 KB compiled
+// WASM blob only downloads when a student actually clicks `assemble`
+// (or imports a program through any other path that mutates state).
+function ensureWasm(): Promise<void> {
+  if (!wasmReady) {
+    wasmReady = init().then(() => {
+      emulator = new Emulator();
+    });
+  }
+  return wasmReady;
+}
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -30,12 +45,13 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
   try {
     switch (msg.kind) {
       case "init": {
-        await init();
-        emulator = new Emulator();
+        // Respond with the empty snapshot immediately; defer the WASM
+        // fetch to the first state-mutating message.
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
       case "assemble": {
+        await ensureWasm();
         const emu = require_emulator();
         const result =
           msg.args.length > 0
@@ -50,6 +66,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "step": {
+        await ensureWasm();
         const emu = require_emulator();
         const raw = emu.step() as Record<string, unknown>;
         bumpFrame();
@@ -68,6 +85,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "stepBack": {
+        await ensureWasm();
         const emu = require_emulator();
         const raw = emu.step_back() as Record<string, unknown>;
         bumpFrame();
@@ -86,6 +104,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "runUntilBreak": {
+        await ensureWasm();
         const emu = require_emulator();
         // Drive the run loop in chunks of ~10k steps and yield to the
         // event queue between chunks so heartbeats actually fire and
@@ -142,6 +161,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "reset": {
+        await ensureWasm();
         const emu = require_emulator();
         emu.reset();
         bumpFrame();
@@ -149,6 +169,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "pushStdin": {
+        await ensureWasm();
         const emu = require_emulator();
         emu.push_stdin(msg.text);
         bumpFrame();
@@ -156,16 +177,19 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "takeStdout": {
+        await ensureWasm();
         const emu = require_emulator();
         post({ id: msg.id, kind: "ok", value: emu.take_stdout() });
         return;
       }
       case "takeStderr": {
+        await ensureWasm();
         const emu = require_emulator();
         post({ id: msg.id, kind: "ok", value: emu.take_stderr() });
         return;
       }
       case "getMemory": {
+        await ensureWasm();
         const emu = require_emulator();
         const bytes = emu.get_memory_range(msg.addr, msg.len) as Uint8Array;
         // Copy into a fresh buffer so we can transfer ownership without
@@ -179,24 +203,28 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "setBreakpoint": {
+        await ensureWasm();
         const emu = require_emulator();
         emu.set_breakpoint(msg.addr);
         post({ id: msg.id, kind: "ok", value: null });
         return;
       }
       case "clearBreakpoint": {
+        await ensureWasm();
         const emu = require_emulator();
         emu.clear_breakpoint(msg.addr);
         post({ id: msg.id, kind: "ok", value: null });
         return;
       }
       case "saveState": {
+        await ensureWasm();
         const emu = require_emulator();
         emu.save_state(msg.name);
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
       case "loadState": {
+        await ensureWasm();
         const emu = require_emulator();
         const ok = emu.load_state(msg.name);
         bumpFrame();
@@ -204,34 +232,40 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "deleteState": {
+        await ensureWasm();
         const emu = require_emulator();
         const ok = emu.delete_state(msg.name);
         post({ id: msg.id, kind: "ok", value: { ok, snapshot: snapshot() } });
         return;
       }
       case "listStates": {
+        await ensureWasm();
         const emu = require_emulator();
         post({ id: msg.id, kind: "ok", value: emu.list_states() });
         return;
       }
       case "uploadVfsFile": {
+        await ensureWasm();
         const emu = require_emulator();
         emu.upload_vfs_file(msg.path, msg.data);
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
       case "listVfsFiles": {
+        await ensureWasm();
         const emu = require_emulator();
         post({ id: msg.id, kind: "ok", value: emu.list_vfs_files() });
         return;
       }
       case "clearConsole": {
+        await ensureWasm();
         const emu = require_emulator();
         emu.clear_console();
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
       case "codeBase": {
+        await ensureWasm();
         const emu = require_emulator();
         post({ id: msg.id, kind: "ok", value: Number(emu.code_base()) });
         return;
