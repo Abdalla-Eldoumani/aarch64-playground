@@ -81,6 +81,38 @@ emulator.
   a bookmark with stdin that contains a password, anyone with access
   to that profile can read it.
 
+## Dependency posture
+
+Last reviewed: 2026-04-25.
+
+`npm audit` against `web/` reports **0 vulnerabilities**. Beyond that
+automated check, every direct dependency was researched against the
+GitHub Advisory Database and the upstream security advisories on the
+date above. Notable findings and their resolution:
+
+| Package           | Installed | Notes                                                                                                |
+| ----------------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| next              | 16.2.4    | Patched against the React2Shell family (CVE-2025-55182, CVE-2025-66478, CVE-2025-55184, CVE-2025-67779, CVE-2026-23864). Latest 16.2.x stable. App Router with no Server Actions used; RSC attack surface is minimal regardless. |
+| react / react-dom | 19.2.5    | Latest 19.2.x; includes the December 2025 RSC patches and the January 2026 DoS fix.                  |
+| @monaco-editor/react | 4.7.0  | Loader fetches from `cdn.jsdelivr.net`; allowed in CSP `script-src` and `connect-src`.               |
+| react-hot-toast   | 2.6.0     | No advisories. Calls `window.matchMedia` on mount; vitest setup stubs it for jsdom.                  |
+| lz-string         | 1.5.0     | No advisories. Decompressed payloads are size-capped before parse to prevent decompression bombs.    |
+| cmdk              | 1.1.1     | No advisories.                                                                                       |
+| motion            | 12.38.0   | No advisories.                                                                                       |
+| react-resizable-panels | 4.10.0 | No advisories.                                                                                    |
+| @xterm/xterm      | 6.0.0     | No advisories. xterm is sandboxed per-pane; no shell-out beyond our dispatch router.                 |
+| postcss           | 8.5.10    | Pinned via `overrides` in package.json to keep the GHSA-qx2v-qp2m-jg93 (XSS) fix in transitive deps. |
+| dompurify         | (override 3.3.3) | Pinned via `overrides` so older monaco transitives don't pull a vulnerable line.            |
+
+Run `node scripts/audit-deps.js` from the repo root any time. It exits
+non-zero on any moderate-or-higher advisory (rather than `npm audit`'s
+"any" threshold) so CI won't drown in low-severity noise but will
+break on a real finding.
+
+`scripts/check-headers.js` GETs the deployed origin and asserts every
+header in this doc is actually present. Run after any deploy or
+`vercel.json` change.
+
 ## Reporting
 
 Found something that looks wrong? Open an issue with the smallest
