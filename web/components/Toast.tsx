@@ -1,70 +1,81 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { type ReactNode, useMemo } from "react";
+import toast, { Toaster } from "react-hot-toast";
 
 interface ToastApi {
+  /** Default success notification (check-mark icon). The legacy
+   *  `useToast().show("...")` call sites lean on this -- treat it as
+   *  the "operation completed" toast. */
   show: (message: string) => void;
+  /** Explicit success toast with a check-mark icon. */
+  success: (message: string) => void;
+  /** Error toast with the cross icon and a longer dwell time. */
+  error: (message: string) => void;
+  /** Neutral / informational toast (no icon). */
+  info: (message: string) => void;
 }
 
-const ToastContext = createContext<ToastApi | null>(null);
-
-const HIDE_AFTER_MS = 3000;
-
 /**
- * Wrap the app once. Children inside can call `useToast()` to fire a
- * 3-second polite announcement. Single-message queue: the latest call
- * wins so a burst of imports collapses to one visible toast.
+ * Mounts the global `<Toaster />` and renders children. Kept as a
+ * named "ToastHost" so the layout import doesn't change. The actual
+ * toast queue + animation now lives in react-hot-toast; this wrapper
+ * just provides the scope.
  */
 export function ToastHost({ children }: { children: ReactNode }) {
-  const [message, setMessage] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const show = useCallback((next: string) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setMessage(next);
-    timerRef.current = setTimeout(() => {
-      setMessage(null);
-      timerRef.current = null;
-    }, HIDE_AFTER_MS);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  const api = useMemo(() => ({ show }), [show]);
-
   return (
-    <ToastContext.Provider value={api}>
+    <>
       {children}
-      {message != null && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed left-1/2 -translate-x-1/2 bottom-16 sm:bottom-auto sm:left-auto sm:translate-x-0 sm:top-12 sm:right-4 z-50 px-3 py-2 rounded-md text-xs bg-[var(--bg-panel)] border border-[var(--border)] text-[var(--text-primary)] shadow-lg"
-        >
-          {message}
-        </div>
-      )}
-    </ToastContext.Provider>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          // Match the playground's design tokens so the toast doesn't
+          // look transplanted from another app. Uses CSS vars so each
+          // theme (dark / light / high-contrast / lecture) renders the
+          // toast in its own palette.
+          style: {
+            background: "var(--bg-panel)",
+            color: "var(--text-primary)",
+            border: "1px solid var(--border)",
+            fontSize: "12px",
+            padding: "8px 12px",
+            borderRadius: "6px",
+            boxShadow: "0 4px 14px rgb(0 0 0 / 0.35)",
+          },
+          success: {
+            iconTheme: {
+              primary: "var(--success)",
+              secondary: "var(--bg-panel)",
+            },
+          },
+          error: {
+            duration: 5000,
+            iconTheme: {
+              primary: "var(--danger)",
+              secondary: "var(--bg-panel)",
+            },
+          },
+        }}
+      />
+    </>
   );
 }
 
+/**
+ * Hook returning the toast API. Backwards-compatible with the old
+ * `{ show }` shape; new call sites should prefer the explicit
+ * `success` / `error` / `info` methods so the right icon and dwell
+ * time render.
+ */
 export function useToast(): ToastApi {
-  const ctx = useContext(ToastContext);
-  if (!ctx) {
-    throw new Error("useToast must be called inside <ToastHost>");
-  }
-  return ctx;
+  return useMemo<ToastApi>(
+    () => ({
+      show: (m) => toast.success(m),
+      success: (m) => toast.success(m),
+      error: (m) => toast.error(m),
+      info: (m) => toast(m),
+    }),
+    [],
+  );
 }
