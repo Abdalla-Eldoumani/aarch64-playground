@@ -3,6 +3,7 @@ import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google"
 import "./globals.css";
 import { ToastHost } from "@/components/Toast";
 import { OfflineBadge } from "@/components/OfflineBadge";
+import { RegisterSW } from "@/components/RegisterSW";
 
 // Engineering-notebook trio: Source Serif 4 in editorial chrome (page
 // titles, empty-state heads), IBM Plex Sans in the controls and labels,
@@ -52,6 +53,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={fontClasses}>
       <body className="flex flex-col h-dvh font-mono">
+        <RegisterSW />
         <OfflineBadge />
         <ToastHost>{children}</ToastHost>
       </body>
