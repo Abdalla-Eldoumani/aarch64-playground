@@ -247,6 +247,8 @@ class MainThreadBackend implements EmulatorBackend {
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       changedMem: true,
+      pcTrace: this.emu.takePcTrace(),
+      dirtyAddrs: this.emu.takeDirtyAddrs(),
     };
   }
 
@@ -290,6 +292,8 @@ function emptySnapshot(frame: number): StateSnapshot {
     vfsFiles: [],
     savedStates: [],
     changedMem: false,
+    pcTrace: [],
+    dirtyAddrs: [],
   };
 }
 

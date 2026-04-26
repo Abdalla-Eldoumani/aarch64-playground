@@ -19,6 +19,8 @@ function makeSnapshot(): StateSnapshot {
     vfsFiles: [],
     savedStates: [],
     changedMem: false,
+    pcTrace: [],
+    dirtyAddrs: [],
   };
 }
 

@@ -346,6 +346,8 @@ function snapshot(): StateSnapshot {
       vfsFiles: [],
       savedStates: [],
       changedMem: false,
+      pcTrace: [],
+      dirtyAddrs: [],
     };
   }
   const regs = emulator.get_all_registers() as {
@@ -380,6 +382,13 @@ function snapshot(): StateSnapshot {
     // honest at the cost of a re-fetch per step. The cache layer keys
     // its read by `frame` so the fetches still dedup within a frame.
     changedMem: true,
+    // Drain the per-step PC trace and dirty addresses. Both are
+    // additive between snapshot calls, so failing to drain would make
+    // them grow unbounded.
+    pcTrace: Array.from(emulator.take_pc_trace()).map((v) =>
+      typeof v === "bigint" ? Number(v) : Number(v),
+    ),
+    dirtyAddrs: Array.from(emulator.take_dirty_addrs()).map(Number),
   };
 }
 

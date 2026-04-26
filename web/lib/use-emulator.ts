@@ -84,13 +84,18 @@ export interface EmulatorState {
   }) => Promise<void>;
   clearConsole: () => void;
   /**
-   * Per-source-line execution counter. Increments by one each time a
-   * `step` / `runUntilBreak` settles on a new line; cleared on
-   * `reset` and `assemble`. Used by the hotspot overlay. Approximate
-   * during run-mode (only the final line of each chunk is captured)
-   * because the snapshot stream doesn't carry per-step line history.
+   * Per-source-line execution counter. Increments by one for every
+   * instruction the snapshot's `pcTrace` reports (granular both for
+   * `step` and `runUntilBreak`); cleared on `reset` and `assemble`.
+   * Drives the hotspot overlay.
    */
   lineCounts: Map<number, number>;
+  /**
+   * Most-recent snapshot's `(addr, len)` memory writes. Drives the
+   * replay scrubber's memory-diff highlighting and any future
+   * "show me what changed last step" UI.
+   */
+  dirtyAddrs: Array<[number, number]>;
   /**
    * Last N captured frames for the replay scrubber. Populated by the
    * same step/run path that bumps `lineCounts`. Capacity 128.
@@ -129,6 +134,10 @@ export function useEmulator(): EmulatorState {
   const latestSnapRef = useRef<{ registers: string[]; pc: number; nzcv: number; changedRegs: number[] }>(
     { registers: [], pc: 0, nzcv: 0, changedRegs: [] },
   );
+  // Most-recent snapshot's `(addr, len)` writes. Drives memory-cell
+  // diff highlighting in the replay scrubber and MemoryPanel. Cleared
+  // on assemble / reset.
+  const dirtyAddrsRef = useRef<Array<[number, number]>>([]);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -159,6 +168,7 @@ export function useEmulator(): EmulatorState {
   // Tick increments whenever cache state changes so panels re-render.
   const [memTick, setMemTick] = useState(0);
   const [lineCountsTick, setLineCountsTick] = useState(0);
+  const [dirtyAddrsTick, setDirtyAddrsTick] = useState(0);
 
   const applySnapshot = useCallback((snap: StateSnapshot) => {
     if (snap.frame > frameRef.current) {
@@ -193,16 +203,49 @@ export function useEmulator(): EmulatorState {
       setCurrentLine(newLine);
       currentLineRef.current = newLine;
     }
+    // Trace-driven hotspot bumping. Each PC in pcTrace maps to a
+    // source line; we bump the count for every executed instruction
+    // (not just the snapshot's terminal PC like the older
+    // bumpLineCount path). This is the granular run-mode hotspot --
+    // a long loop now lights up across all its lines, not just the
+    // final one.
+    if (snap.pcTrace && snap.pcTrace.length > 0) {
+      const counts = lineCountsRef.current;
+      let mutated = false;
+      for (const pc of snap.pcTrace) {
+        const idx = (pc - codeBase) / 4;
+        if (idx < 0) continue;
+        const line = pcToSourceLine(idx, sourceRef.current);
+        if (line == null) continue;
+        counts.set(line, (counts.get(line) ?? 0) + 1);
+        mutated = true;
+      }
+      if (mutated) setLineCountsTick((t) => t + 1);
+    }
+    // dirtyAddrs are surfaced through a separate ref so the memory
+    // panel + replay scrubber can highlight changed cells without
+    // forcing a full memory cache invalidation.
+    if (snap.dirtyAddrs && snap.dirtyAddrs.length > 0) {
+      // The flat array is `[addr, len, addr, len, ...]`. Stash as
+      // pairs; the consumer (replay scrubber + memory panel) reads
+      // them out via `dirtyAddrs` on the hook return.
+      const pairs: Array<[number, number]> = [];
+      for (let i = 0; i + 1 < snap.dirtyAddrs.length; i += 2) {
+        pairs.push([snap.dirtyAddrs[i], snap.dirtyAddrs[i + 1]]);
+      }
+      dirtyAddrsRef.current = pairs;
+      setDirtyAddrsTick((t) => t + 1);
+    }
   }, [codeBase]);
 
-  // Bump the per-line execution counter for the current line and push
-  // a replay frame. Called by step / runUntilBreak after the snapshot
-  // listener has updated currentLineRef + latestSnapRef.
+  // Push a replay frame using the latest snapshot data + the
+  // current line. Called by step / runUntilBreak after the snapshot
+  // listener has updated currentLineRef + latestSnapRef. The
+  // hotspot heat map now drives off the snapshot's `pcTrace` field
+  // (handled inside applySnapshot) so this function does NOT bump
+  // lineCounts -- it would double-count.
   const bumpLineCount = useCallback((newStepCount: number) => {
     const ln = currentLineRef.current;
-    if (ln != null) {
-      lineCountsRef.current.set(ln, (lineCountsRef.current.get(ln) ?? 0) + 1);
-    }
     const snap = latestSnapRef.current;
     replayRingRef.current.push({
       stepCount: newStepCount,
@@ -623,6 +666,7 @@ export function useEmulator(): EmulatorState {
       restoreBookmark,
       clearConsole,
       lineCounts: lineCountsRef.current,
+      dirtyAddrs: dirtyAddrsRef.current,
       replayFrames: replayRingRef.current.range(),
       seekReplay,
     }),
@@ -640,7 +684,7 @@ export function useEmulator(): EmulatorState {
       deleteState, run, pause, reset, toggleBreakpoint, getMemory,
       pushStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
-      clearConsole, lineCountsTick, seekReplay,
+      clearConsole, lineCountsTick, dirtyAddrsTick, seekReplay,
     ],
   );
 }
