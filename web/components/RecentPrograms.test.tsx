@@ -13,8 +13,8 @@ describe("RecentPrograms", () => {
 
   it("renders one option per entry plus the clear sentinel", () => {
     const entries = [
-      { id: "a", name: "first.asm", body: "// a", at: 1 },
-      { id: "b", name: "second.asm", body: "// b", at: 2 },
+      { id: "a", name: "first.asm", body: "// a", savedAt: 1 },
+      { id: "b", name: "second.asm", body: "// b", savedAt: 2 },
     ];
     render(<RecentPrograms entries={entries} onLoad={() => {}} onClear={() => {}} />);
     const options = screen.getAllByRole("option").map((o) => o.textContent);
@@ -25,7 +25,7 @@ describe("RecentPrograms", () => {
 
   it("calls onLoad with the entry body when picked", () => {
     const onLoad = vi.fn();
-    const entries = [{ id: "a", name: "first.asm", body: "// the body", at: 1 }];
+    const entries = [{ id: "a", name: "first.asm", body: "// the body", savedAt: 1 }];
     render(<RecentPrograms entries={entries} onLoad={onLoad} onClear={() => {}} />);
     const select = screen.getByLabelText("load recent program") as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "a" } });
@@ -34,7 +34,7 @@ describe("RecentPrograms", () => {
 
   it("calls onClear when the user picks the clear sentinel", () => {
     const onClear = vi.fn();
-    const entries = [{ id: "a", name: "first.asm", body: "// a", at: 1 }];
+    const entries = [{ id: "a", name: "first.asm", body: "// a", savedAt: 1 }];
     render(<RecentPrograms entries={entries} onLoad={() => {}} onClear={onClear} />);
     const select = screen.getByLabelText("load recent program") as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "__clear__" } });
@@ -42,7 +42,7 @@ describe("RecentPrograms", () => {
   });
 
   it("falls back to '(untitled)' for entries with empty names", () => {
-    const entries = [{ id: "a", name: "", body: "// a", at: 1 }];
+    const entries = [{ id: "a", name: "", body: "// a", savedAt: 1 }];
     render(<RecentPrograms entries={entries} onLoad={() => {}} onClear={() => {}} />);
     expect(screen.getByText("(untitled)")).toBeTruthy();
   });
