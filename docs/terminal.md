@@ -21,10 +21,10 @@ unchanged -- pick whichever surface fits your task.
 | --- | --- |
 | `ls`                      | List the VFS file names. |
 | `ls -l`                   | List with byte counts. |
-| `cat <file>`              | Print a VFS file's contents. (currently unimplemented -- see BACKLOG) |
-| `cp <src> <dst>`          | Copy a VFS file. (BACKLOG) |
-| `rm <file>`               | Remove a VFS file. (BACKLOG) |
-| `mv <old> <new>`          | Rename a VFS file. (BACKLOG) |
+| `cat <file>`              | Print a VFS file's contents. |
+| `cp <src> <dst>`          | Copy a VFS file. |
+| `rm <file>`               | Remove a VFS file. |
+| `mv <old> <new>`          | Rename a VFS file. |
 | `upload`                  | Open the host file picker; pick a file to add to the VFS. |
 | `clear`                   | Clear the terminal scrollback. |
 | `reset`                   | Reset the emulator (memory, registers); preserves the VFS. |
@@ -37,7 +37,7 @@ unchanged -- pick whichever surface fits your task.
 | `gdb help`                | Show the gdb-lite command list. |
 | `gdb n`, `gdb s`          | Step one instruction. |
 | `gdb c`                   | Continue to halt or breakpoint. |
-| `gdb b <label>`           | Set a breakpoint at a labeled address. (currently a stub -- needs label resolver) |
+| `gdb b <label>`           | Set a breakpoint at a labeled address (resolved via the linker symbol table). |
 | `gdb p $xN`               | Print register `xN` in hex (`$x0`..`$x30`, `$sp`, `$pc`). |
 | `gdb info registers`      | Print every register. |
 | `gdb x/Ni $pc`            | Show N words of memory at the current PC. |
