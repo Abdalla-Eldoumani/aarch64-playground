@@ -10,6 +10,7 @@
  */
 
 import LZString from "lz-string";
+import { MAX_BUNDLE_DECOMPRESSED_BYTES } from "@/lib/upload-guard";
 
 export interface DiagnosticBundle {
   source: string;
@@ -109,20 +110,58 @@ export function encodeBundle(bundle: DiagnosticBundle): string {
   return LZString.compressToEncodedURIComponent(JSON.stringify(payload));
 }
 
+function isOptionalString(v: unknown): v is string | undefined {
+  return v === undefined || typeof v === "string";
+}
+
+function isOptionalNumberOrNull(v: unknown): v is number | null | undefined {
+  return v === undefined || v === null || typeof v === "number";
+}
+
+/**
+ * Strict shape validation on a decoded bundle. We only accept fields we
+ * know how to render, of the types we expect. An attacker controlling
+ * a `?bundle=` URL cannot smuggle non-string `args` or `stdin` past
+ * this gate to confuse downstream code paths.
+ */
+function isValidBundle(b: unknown): b is DiagnosticBundle {
+  if (b == null || typeof b !== "object") return false;
+  const o = b as Record<string, unknown>;
+  if (typeof o.source !== "string") return false;
+  if (!isOptionalString(o.args)) return false;
+  if (!isOptionalString(o.stdin)) return false;
+  if (!isOptionalString(o.stdout)) return false;
+  if (!isOptionalString(o.stderr)) return false;
+  if (!isOptionalNumberOrNull(o.exitCode)) return false;
+  if (o.registers !== undefined) {
+    if (!Array.isArray(o.registers)) return false;
+    if (!o.registers.every((r) => typeof r === "string")) return false;
+  }
+  if (!isOptionalString(o.sp)) return false;
+  if (!isOptionalString(o.pc)) return false;
+  if (!isOptionalString(o.stackBytes)) return false;
+  if (o.error !== undefined && o.error !== null && typeof o.error !== "string") return false;
+  return true;
+}
+
 /**
  * Decode a `?bundle=...` query value. Returns null when the payload is
- * absent, badly encoded, or comes from a future bundle version we don't
- * understand. Keeps the playground's deep-link bootstrap defensive.
+ * absent, badly encoded, oversized, or comes from a future bundle
+ * version we don't understand. Keeps the playground's deep-link
+ * bootstrap defensive against URL-borne attacks.
  */
 export function decodeBundle(value: string | null): DiagnosticBundle | null {
   if (!value) return null;
   try {
     const decompressed = LZString.decompressFromEncodedURIComponent(value);
     if (!decompressed) return null;
-    const parsed = JSON.parse(decompressed) as { v?: number; b?: DiagnosticBundle };
-    if (typeof parsed !== "object" || parsed === null) return null;
-    if (parsed.v !== BUNDLE_VERSION || !parsed.b || typeof parsed.b.source !== "string") return null;
-    return parsed.b;
+    if (decompressed.length > MAX_BUNDLE_DECOMPRESSED_BYTES) return null;
+    const parsed = JSON.parse(decompressed) as unknown;
+    if (parsed == null || typeof parsed !== "object") return null;
+    const versioned = parsed as { v?: unknown; b?: unknown };
+    if (versioned.v !== BUNDLE_VERSION) return null;
+    if (!isValidBundle(versioned.b)) return null;
+    return versioned.b;
   } catch {
     return null;
   }
