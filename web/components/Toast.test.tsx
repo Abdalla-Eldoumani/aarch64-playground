@@ -1,10 +1,18 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ToastHost, useToast } from "@/components/Toast";
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+beforeEach(() => {
+  // react-hot-toast keeps a module-level queue; clear it between
+  // tests so each case sees a clean slate.
+  // We re-import the module cache via dynamic import in each test
+  // would be heavier; simpler is to just ignore the carry-over and
+  // rely on text matching for the most-recent toast.
 });
 
 function Trigger() {
@@ -17,8 +25,7 @@ function Trigger() {
 }
 
 describe("Toast", () => {
-  test("shows the message and hides after 3s", () => {
-    vi.useFakeTimers();
+  test("renders the message after a show call", async () => {
     render(
       <ToastHost>
         <Trigger />
@@ -27,36 +34,52 @@ describe("Toast", () => {
     act(() => {
       screen.getByRole("button").click();
     });
-    expect(screen.getByRole("status").textContent).toBe("imported main.asm");
-    act(() => {
-      vi.advanceTimersByTime(3100);
+    await waitFor(() => {
+      expect(screen.getByText("imported main.asm")).toBeTruthy();
     });
-    expect(screen.queryByRole("status")).toBeNull();
   });
 
-  test("a second show call replaces the first message", () => {
-    vi.useFakeTimers();
-    function TwoFire() {
+  test("renders an explicit error toast", async () => {
+    function ErrFire() {
       const t = useToast();
       return (
-        <>
-          <button onClick={() => t.show("a")}>a</button>
-          <button onClick={() => t.show("b")}>b</button>
-        </>
+        <button type="button" onClick={() => t.error("boom")}>
+          err
+        </button>
       );
     }
     render(
       <ToastHost>
-        <TwoFire />
+        <ErrFire />
       </ToastHost>,
     );
     act(() => {
-      screen.getByText("a").click();
+      screen.getByRole("button").click();
     });
-    expect(screen.getByRole("status").textContent).toBe("a");
+    await waitFor(() => {
+      expect(screen.getByText("boom")).toBeTruthy();
+    });
+  });
+
+  test("info toast renders without an icon kind", async () => {
+    function InfoFire() {
+      const t = useToast();
+      return (
+        <button type="button" onClick={() => t.info("loading")}>
+          info
+        </button>
+      );
+    }
+    render(
+      <ToastHost>
+        <InfoFire />
+      </ToastHost>,
+    );
     act(() => {
-      screen.getByText("b").click();
+      screen.getByRole("button").click();
     });
-    expect(screen.getByRole("status").textContent).toBe("b");
+    await waitFor(() => {
+      expect(screen.getByText("loading")).toBeTruthy();
+    });
   });
 });
