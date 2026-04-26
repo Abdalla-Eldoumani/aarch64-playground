@@ -25,6 +25,7 @@ import { useToast } from "@/components/Toast";
 import { HeaderOverflowSheet } from "@/components/HeaderOverflowSheet";
 import { parseDeepLink } from "@/lib/use-deep-link";
 import { parseArgs } from "@/lib/args";
+import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
 import { ArgsInput } from "@/components/ArgsInput";
 import {
   describeTarget,
@@ -140,6 +141,7 @@ export default function Home() {
   );
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [, toggleTheme, setTheme] = useTheme();
+  const cpsc = useCpsc355Mode();
   const [embed, setEmbed] = useState<boolean>(false);
   const [cursor, setCursor] = useState<{ line: number; column: number }>({ line: 1, column: 1 });
   const [extraFiles, setExtraFiles] = useSourceFiles();
@@ -875,6 +877,19 @@ export default function Home() {
           aria-label="toggle theme"
         >
           theme
+        </button>
+        <button
+          type="button"
+          onClick={wrap(() => cpsc.toggle())}
+          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+            cpsc.enabled
+              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          }`}
+          aria-pressed={cpsc.enabled}
+          aria-label="toggle cpsc 355 lint mode"
+        >
+          cpsc 355
         </button>
         <button
           type="button"
