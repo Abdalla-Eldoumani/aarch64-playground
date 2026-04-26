@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { WorkerClient } from "@/lib/worker/client";
+import { WorkerClient, spawnEmulatorWorker } from "@/lib/worker/client";
 import type { Request, Response, StateSnapshot } from "@/lib/worker/protocol";
 
 function makeSnapshot(): StateSnapshot {
@@ -135,5 +135,119 @@ describe("WorkerClient", () => {
     const promise = client.step();
     client.terminate();
     await expect(promise).rejects.toThrow("worker terminated");
+  });
+
+  test("heartbeat fans out to every subscriber", async () => {
+    const { w, fire } = makeMockWorker();
+    const client = new WorkerClient(w);
+    const a = vi.fn();
+    const b = vi.fn();
+    client.onSnapshot(a);
+    client.onSnapshot(b);
+    fire({ id: -1, kind: "heartbeat", snapshot: makeSnapshot() } as never);
+    expect(a).toHaveBeenCalledTimes(1);
+    expect(b).toHaveBeenCalledTimes(1);
+  });
+
+  test("unsubscribing stops further snapshot delivery", async () => {
+    const { w, fire } = makeMockWorker();
+    const client = new WorkerClient(w);
+    const cb = vi.fn();
+    const off = client.onSnapshot(cb);
+    fire({ id: -1, kind: "heartbeat", snapshot: makeSnapshot() } as never);
+    off();
+    fire({ id: -1, kind: "heartbeat", snapshot: makeSnapshot() } as never);
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  test("ok response with embedded snapshot also fires subscribers", async () => {
+    const { w, posted, fire } = makeMockWorker();
+    const client = new WorkerClient(w);
+    const cb = vi.fn();
+    client.onSnapshot(cb);
+    const promise = client.step();
+    fire({
+      id: posted[0].id,
+      kind: "ok",
+      value: {
+        stepResult: { pc: 4, halted: false, error: null, outcome: "advance", exitCode: null },
+        snapshot: makeSnapshot(),
+      },
+    });
+    await promise;
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  test("ok response that IS a bare snapshot fires subscribers", async () => {
+    const { w, posted, fire } = makeMockWorker();
+    const client = new WorkerClient(w);
+    const cb = vi.fn();
+    client.onSnapshot(cb);
+    const promise = client.reset();
+    fire({ id: posted[0].id, kind: "ok", value: makeSnapshot() });
+    await promise;
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  test("each request gets a unique monotonic id", async () => {
+    const { w, posted } = makeMockWorker();
+    const client = new WorkerClient(w);
+    void client.step();
+    void client.step();
+    void client.step();
+    const ids = posted.map((p) => p.id);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids[1]).toBeGreaterThan(ids[0]);
+    expect(ids[2]).toBeGreaterThan(ids[1]);
+  });
+
+  test("response with an unknown id is dropped silently", async () => {
+    const { w, posted, fire } = makeMockWorker();
+    const client = new WorkerClient(w);
+    const promise = client.step();
+    expect(() =>
+      fire({
+        id: 9999,
+        kind: "ok",
+        value: { stepResult: { pc: 0, halted: false, error: null, outcome: "advance", exitCode: null }, snapshot: makeSnapshot() },
+      }),
+    ).not.toThrow();
+    fire({
+      id: posted[0].id,
+      kind: "ok",
+      value: { stepResult: { pc: 4, halted: false, error: null, outcome: "advance", exitCode: null }, snapshot: makeSnapshot() },
+    });
+    await expect(promise).resolves.toBeDefined();
+  });
+
+  test("spawnEmulatorWorker returns null when Worker is unavailable", () => {
+    const original = (globalThis as { Worker?: unknown }).Worker;
+    // @ts-expect-error -- intentional removal for the negative path
+    delete (globalThis as { Worker?: unknown }).Worker;
+    try {
+      expect(spawnEmulatorWorker()).toBeNull();
+    } finally {
+      (globalThis as { Worker?: unknown }).Worker = original;
+    }
+  });
+
+  test("error event rejects all pending promises with the event message", async () => {
+    const { w } = makeMockWorker();
+    const listeners: Record<string, Array<(e: unknown) => void>> = {};
+    const monkey = w as unknown as {
+      addEventListener: (t: string, fn: (e: unknown) => void) => void;
+    };
+    const orig = monkey.addEventListener;
+    monkey.addEventListener = (t: string, fn: (e: unknown) => void) => {
+      listeners[t] ??= [];
+      listeners[t].push(fn);
+      orig.call(w, t, fn);
+    };
+    const client = new WorkerClient(w);
+    const a = client.step();
+    const b = client.runUntilBreak(1);
+    listeners.error?.forEach((fn) => fn({ message: "wasm crash" }));
+    await expect(a).rejects.toThrow("wasm crash");
+    await expect(b).rejects.toThrow("wasm crash");
   });
 });
