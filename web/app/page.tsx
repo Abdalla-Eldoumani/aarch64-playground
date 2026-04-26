@@ -428,7 +428,7 @@ export default function Home() {
         },
       },
     ],
-    [emu, view, assembleWithHistory, baseline.label, toggleTheme, source],
+    [emu, view, assembleWithHistory, baseline.label, toggleTheme, source, setSource, toast],
   );
 
   const isMain = activeFile === -1;
