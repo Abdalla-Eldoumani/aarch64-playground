@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import LZString from "lz-string";
 import {
   bundleToMarkdown,
   decodeBundle,
   encodeBundle,
   type DiagnosticBundle,
 } from "./diagnostic-bundle";
+import { MAX_BUNDLE_DECOMPRESSED_BYTES } from "./upload-guard";
 
 const sample: DiagnosticBundle = {
   source: ".text\nmain:\n    mov x0, 5\n    svc 0\n",
@@ -72,5 +74,41 @@ describe("diagnostic-bundle round-trip", () => {
     expect(decodeBundle(null)).toBeNull();
     expect(decodeBundle("")).toBeNull();
     expect(decodeBundle("not-a-real-payload")).toBeNull();
+  });
+
+  it("decodeBundle rejects a non-string args field (type-confusion guard)", () => {
+    const evil = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ v: 1, b: { source: "ret", args: { toString: "x" } } }),
+    );
+    expect(decodeBundle(evil)).toBeNull();
+  });
+
+  it("decodeBundle rejects non-string entries in registers", () => {
+    const evil = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ v: 1, b: { source: "ret", registers: ["0x1", 42] } }),
+    );
+    expect(decodeBundle(evil)).toBeNull();
+  });
+
+  it("decodeBundle rejects a future bundle version", () => {
+    const future = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ v: 99, b: { source: "ret" } }),
+    );
+    expect(decodeBundle(future)).toBeNull();
+  });
+
+  it("decodeBundle rejects an oversized decompressed payload", () => {
+    const huge = "x".repeat(MAX_BUNDLE_DECOMPRESSED_BYTES + 1);
+    const evil = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ v: 1, b: { source: huge } }),
+    );
+    expect(decodeBundle(evil)).toBeNull();
+  });
+
+  it("decodeBundle accepts an empty source string", () => {
+    const encoded = encodeBundle({ source: "" });
+    const decoded = decodeBundle(encoded);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.source).toBe("");
   });
 });
