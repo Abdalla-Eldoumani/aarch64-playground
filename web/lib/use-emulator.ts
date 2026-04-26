@@ -69,6 +69,19 @@ export interface EmulatorState {
    *  primary path for the gutter UI. */
   setBreakpointAddress: (addr: number) => Promise<void>;
   clearBreakpointAddress: (addr: number) => Promise<void>;
+  /**
+   * Restore a named bookmark: assemble the saved source with the saved
+   * args, push the saved stdin (if any), then step the live CPU forward
+   * to `stepCount`. The Promise resolves once the step loop completes
+   * or stops early because the program halted / blocked. Used by the
+   * bookmarks list "load" button.
+   */
+  restoreBookmark: (params: {
+    source: string;
+    args?: string;
+    stdin?: string;
+    stepCount: number;
+  }) => Promise<void>;
   clearConsole: () => void;
   /**
    * Per-source-line execution counter. Increments by one each time a
@@ -465,6 +478,51 @@ export function useEmulator(): EmulatorState {
     await backend.clearBreakpoint(addr);
   }, []);
 
+  const restoreBookmark = useCallback(
+    async (params: { source: string; args?: string; stdin?: string; stepCount: number }) => {
+      const backend = backendRef.current;
+      if (!backend) return;
+      // Reset frontend state in the same shape `assemble` does, then
+      // drive the backend through the bookmark-recorded sequence:
+      // assemble -> push stdin -> step N times.
+      sourceRef.current = params.source;
+      setError(null);
+      setAssemblyErrors([]);
+      setStepCount(0);
+      setStdout("");
+      setStderr("");
+      resetLineCounts();
+      const argList = params.args
+        ? params.args.split(/\s+/).filter((s) => s.length > 0)
+        : [];
+      const { result } = await backend.assemble(params.source, argList);
+      if (!result.success) {
+        if (result.error_line != null && result.error != null) {
+          setAssemblyErrors([{ line: result.error_line, message: result.error }]);
+        }
+        setError(result.error ?? null);
+        return;
+      }
+      if (params.stdin) {
+        await backend.pushStdin(params.stdin);
+      }
+      // Step in chunks rather than one-step-per-await to keep the round
+      // trip cost bounded. runUntilBreak has chunking already, but it
+      // doesn't accept a stop-at-step-N argument; the per-step loop
+      // gives the most precise restoration semantics.
+      let stepped = 0;
+      while (stepped < params.stepCount) {
+        const { stepResult } = await backend.step();
+        stepped++;
+        setStepCount(stepped);
+        if (stepResult.halted || stepResult.error) break;
+        if (stepResult.outcome === "waiting") break;
+      }
+      bumpLineCount(stepped);
+    },
+    [bumpLineCount, resetLineCounts],
+  );
+
   const toggleBreakpoint = useCallback((line: number) => {
     const backend = backendRef.current;
     if (!backend) return;
@@ -562,6 +620,7 @@ export function useEmulator(): EmulatorState {
       resolveLabel,
       setBreakpointAddress,
       clearBreakpointAddress,
+      restoreBookmark,
       clearConsole,
       lineCounts: lineCountsRef.current,
       replayFrames: replayRingRef.current.range(),
@@ -580,7 +639,7 @@ export function useEmulator(): EmulatorState {
       savedStates, assemble, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, getMemory,
       pushStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
-      setBreakpointAddress, clearBreakpointAddress,
+      setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, lineCountsTick, seekReplay,
     ],
   );

@@ -803,11 +803,25 @@ export default function Home() {
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   loadAsBaseline(s.source, s.name);
                   if (s.args !== undefined) setArgsText(s.args);
-                  // stepCount restoration deferred -- the user can re-step
-                  // with knowledge of the saved count (shown in tooltip).
+                  // Drive the backend through assemble + stdin push +
+                  // step-to-count so the live CPU lands at the same
+                  // execution point the bookmark captured. Toast
+                  // surfaces the result so the student sees what
+                  // happened.
+                  try {
+                    await emu.restoreBookmark({
+                      source: s.source,
+                      args: s.args,
+                      stdin: s.stdin,
+                      stepCount: s.stepCount,
+                    });
+                    toast.show(`restored ${s.name} (step ${s.stepCount})`);
+                  } catch {
+                    toast.show(`restore failed for ${s.name}`);
+                  }
                 }}
                 className="text-[10px] text-[var(--accent)] hover:underline"
               >
