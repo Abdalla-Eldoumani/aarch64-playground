@@ -65,6 +65,26 @@ verify-corpus, vitest), see [`TESTING.md`](TESTING.md).
 
 The frontend devserver picks up changes to `web/lib/wasm/` automatically, but a hard-refresh (Ctrl+Shift+R) is sometimes needed to bust the browser's WASM cache.
 
+## Your first PR
+
+Before tackling a real feature, do a tiny, low-risk PR end to end.
+This verifies your local build, branch and commit conventions, the PR
+template, branch protection on `main`, CI, and the code-owner review
+wiring -- all at once.
+
+1. Pick something tiny: a typo, a missing word, a clarifying comment.
+2. Branch with a conventional prefix: `git checkout -b docs/<short-name>`
+   (or `fix/`, `feature/`).
+3. Commit per the project style: lowercase imperative, one line, three
+   sentences max, one logical change.
+4. Push and open a PR using the template; fill the "How to verify"
+   checklist honestly. [`TESTING.md`](TESTING.md) is the canonical
+   command list.
+5. Wait for review. Merge happens after approval; squash is recommended.
+
+Doing this once on a typo fix saves a lot of "wait, why is my PR
+blocked?" later when the change actually matters.
+
 ## Adding a new instruction
 
 1. **Decoder** -- in [`emulator/src/decoder.rs`](../emulator/src/decoder.rs), add a branch to the cascade that recognizes the bit pattern and returns a new `Instruction` variant if needed. Test-drive it with a hand-encoded word.
