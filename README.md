@@ -1,4 +1,4 @@
-# cpsc 355 playground
+# CPSC 355 playground
 
 Browser-based AArch64 emulator tuned for CPSC 355 course material:
 hosted Linux ARM64 assembly with m4 register-alias macros, GAS
