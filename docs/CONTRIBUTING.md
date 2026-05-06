@@ -9,6 +9,7 @@ You need:
 - **wasm-pack** 0.12+. `cargo install wasm-pack` or use the installer at
   <https://rustwasm.github.io/wasm-pack/installer/>.
 - **Node.js** 20+.
+- Optional: `cargo install cargo-watch` if you plan to use the `npm run dev:all` loop.
 
 First build:
 
@@ -33,6 +34,19 @@ Open <http://localhost:3000>. If you see "loading emulator..." for more than a s
 Every non-obvious design decision is captured either in this directory or in `ARCHITECTURE.md`; skim those before making changes in an unfamiliar area.
 
 ## Day-to-day loop
+
+The primary loop is `npm run dev:all` from `web/`. cargo-watch
+watches `emulator/src` and `Cargo.toml`, re-runs `wasm-pack build --dev`
+on every change, and Next.js dev picks up the new files in
+`web/lib/wasm/` and reloads. Both run under `concurrently` with
+prefix-colored output so the WASM and web sides are easy to tell apart.
+
+```bash
+cd web && npm run dev:all
+```
+
+Manual fallback if you don't have cargo-watch installed, or for
+one-shot rebuilds:
 
 ```bash
 # Rust change -> re-run tests
