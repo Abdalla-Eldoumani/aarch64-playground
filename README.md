@@ -92,6 +92,7 @@ Live at <https://aarch64-playground.vercel.app>.
 - [Rust](https://rustup.rs/) 1.75+ with `rustup target add wasm32-unknown-unknown`
 - [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/) 0.12+
 - Node.js 20+
+- Optional, only needed if you want to use `npm run dev:all`: `cargo install cargo-watch`
 
 ```bash
 # 1. Build the WASM module
@@ -110,6 +111,10 @@ then step or run.
 
 [`docs/getting-started.md`](docs/getting-started.md) walks through a
 full session end to end.
+
+For an iterative loop, `npm run dev:all` from `web/` runs the WASM
+rebuild watcher and the Next.js dev server together in one terminal,
+with prefix-colored output for each side.
 
 ## Keyboard shortcuts
 
@@ -216,20 +221,31 @@ and [`docs/security.md`](docs/security.md) for the security posture.
 
 ## Development
 
+The iterative loop is `npm run dev:all` from `web/`. It runs
+cargo-watch plus `wasm-pack build --dev` and `next dev` in parallel
+under `concurrently`, with prefix-colored output so the WASM and web
+sides are easy to tell apart.
+
 ```bash
-# Rust: full test suite (lib + integration)
-cd emulator && cargo test
+cd web && npm run dev:all
+```
 
-# TypeScript: type check + lint + 301-test vitest suite
-cd web && npx tsc --noEmit && npm run lint && npm test
+If you don't have cargo-watch installed, or for a one-shot rebuild,
+the manual flow still works:
 
-# End-to-end: run every bare-metal example through the WASM emulator
-node scripts/verify-corpus.js
-
-# Rebuild WASM + dev server
+```bash
 cd emulator && wasm-pack build --target web --out-dir ../web/lib/wasm
 cd ../web && npm run dev
 ```
+
+`dev:all` builds WASM with `--dev`, which skips `wasm-opt` and is
+roughly an order of magnitude faster but produces a larger output.
+That's fine for local iteration; never use it for production. CI
+still builds with `--release`.
+
+For the full test reference (Rust, vitest, corpus, type and lint,
+size and lighthouse, cross-browser smoke), see
+[`docs/TESTING.md`](docs/TESTING.md).
 
 `npm run dev` / `npm run build` pass `--webpack` to Next 16 because the
 WASM pipeline relies on `webpack.experiments.asyncWebAssembly`.

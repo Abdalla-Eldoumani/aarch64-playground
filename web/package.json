@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "wasm:watch": "cd ../emulator && cargo watch -w src -w Cargo.toml -s \"wasm-pack build --dev --target web --out-dir ../web/lib/wasm\"",
+    "dev:all": "concurrently --kill-others-on-fail --names wasm,web --prefix-colors yellow,cyan \"npm run wasm:watch\" \"npm run dev\"",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
@@ -62,6 +64,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitest/coverage-v8": "^4.1.4",
     "autoprefixer": "^10.4.0",
+    "concurrently": "^9.0.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.0.0",
     "jsdom": "^29.0.2",

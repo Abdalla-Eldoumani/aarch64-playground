@@ -9,6 +9,7 @@ You need:
 - **wasm-pack** 0.12+. `cargo install wasm-pack` or use the installer at
   <https://rustwasm.github.io/wasm-pack/installer/>.
 - **Node.js** 20+.
+- Optional: `cargo install cargo-watch` if you plan to use the `npm run dev:all` loop.
 
 First build:
 
@@ -34,32 +35,55 @@ Every non-obvious design decision is captured either in this directory or in `AR
 
 ## Day-to-day loop
 
+The primary loop is `npm run dev:all` from `web/`. cargo-watch
+watches `emulator/src` and `Cargo.toml`, re-runs `wasm-pack build --dev`
+on every change, and Next.js dev picks up the new files in
+`web/lib/wasm/` and reloads. Both run under `concurrently` with
+prefix-colored output so the WASM and web sides are easy to tell apart.
+
 ```bash
-# Rust change -> re-run tests
-cd emulator
-cargo test --lib
-
-# Rust change visible to the browser -> rebuild WASM
-wasm-pack build --target web --out-dir ../web/lib/wasm
-
-# Any change to the assembler / executor / examples -> re-run the
-# example-level smoke test, which builds a nodejs WASM bundle and runs
-# every .s file in web/public/examples/ to completion:
-node scripts/verify-corpus.js
-
-# Web workspace has its own tests (301 vitest tests covering watch
-# expressions, share link + validators, diagnostic-bundle round-trip
-# + size caps, frame-labels matcher, asm-filter, asm-formatter,
-# asm-completion, named-saves bundle import, the toggles, the worker
-# protocol, the upload-guard caps, and more):
-cd ../web && npx vitest run
-
-# Frontend change -> hot-reloads via next dev (webpack, not Turbopack)
-# TypeScript changes don't need a rebuild, but if you change the wasm-bindgen
-# public API the bindings in web/lib/wasm/ have to be regenerated.
+cd web && npm run dev:all
 ```
 
+Manual fallback if you don't have cargo-watch installed, or for
+one-shot rebuilds:
+
+```bash
+# Rust change visible to the browser -> rebuild WASM
+cd emulator
+wasm-pack build --target web --out-dir ../web/lib/wasm
+
+# Frontend change -> hot-reloads via next dev (webpack, not Turbopack).
+# TypeScript changes don't need a rebuild, but if you change the
+# wasm-bindgen public API the bindings in web/lib/wasm/ have to be
+# regenerated.
+cd ../web && npm run dev
+```
+
+For the test commands you'd run per change type (Rust unit tests,
+verify-corpus, vitest), see [`TESTING.md`](TESTING.md).
+
 The frontend devserver picks up changes to `web/lib/wasm/` automatically, but a hard-refresh (Ctrl+Shift+R) is sometimes needed to bust the browser's WASM cache.
+
+## Your first PR
+
+Before tackling a real feature, do a tiny, low-risk PR end to end.
+This verifies your local build, branch and commit conventions, the PR
+template, branch protection on `main`, CI, and the code-owner review
+wiring -- all at once.
+
+1. Pick something tiny: a typo, a missing word, a clarifying comment.
+2. Branch with a conventional prefix: `git checkout -b docs/<short-name>`
+   (or `fix/`, `feature/`).
+3. Commit per the project style: lowercase imperative, one line, three
+   sentences max, one logical change.
+4. Push and open a PR using the template; fill the "How to verify"
+   checklist honestly. [`TESTING.md`](TESTING.md) is the canonical
+   command list.
+5. Wait for review. Merge happens after approval; squash is recommended.
+
+Doing this once on a typo fix saves a lot of "wait, why is my PR
+blocked?" later when the change actually matters.
 
 ## Adding a new instruction
 
