@@ -1,1 +1,9 @@
+# Code owners. GitHub auto-requests review from listed owners on PRs that
+# touch matching paths. Combined with the "Require review from Code Owners"
+# branch protection rule on main, this means @Abdalla-Eldoumani must approve
+# any PR before it can merge.
+#
+# Order matters: more specific patterns below override the default.
+# See docs/CONTRIBUTING.md and https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
 * @Abdalla-Eldoumani
