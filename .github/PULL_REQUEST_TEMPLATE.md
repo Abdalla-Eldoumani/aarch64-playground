@@ -4,6 +4,8 @@ One paragraph. What does this PR do and why?
 
 ## How to verify
 
+See `docs/TESTING.md` for the full reference; the minimum is below.
+
 - [ ] `cargo test --manifest-path emulator/Cargo.toml` passes locally
 - [ ] `cd web && npm run lint && npm run typecheck && npm test` passes locally
 - [ ] `node scripts/verify-corpus.js` passes if the change touches the assembler, executor, or examples
