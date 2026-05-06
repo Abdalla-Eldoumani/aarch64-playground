@@ -243,18 +243,9 @@ roughly an order of magnitude faster but produces a larger output.
 That's fine for local iteration; never use it for production. CI
 still builds with `--release`.
 
-Tests:
-
-```bash
-# Rust: full test suite (lib + integration)
-cd emulator && cargo test
-
-# TypeScript: type check + lint + 301-test vitest suite
-cd web && npx tsc --noEmit && npm run lint && npm test
-
-# End-to-end: run every bare-metal example through the WASM emulator
-node scripts/verify-corpus.js
-```
+For the full test reference (Rust, vitest, corpus, type and lint,
+size and lighthouse, cross-browser smoke), see
+[`docs/TESTING.md`](docs/TESTING.md).
 
 `npm run dev` / `npm run build` pass `--webpack` to Next 16 because the
 WASM pipeline relies on `webpack.experiments.asyncWebAssembly`.
