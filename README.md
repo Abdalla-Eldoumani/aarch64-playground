@@ -259,6 +259,11 @@ More detail in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md),
 [`docs/c-to-asm.md`](docs/c-to-asm.md), and
 [`docs/terminal.md`](docs/terminal.md).
 
+## Contributors
+- **Michael Olsen** - Developer
+- **Abdalla Eldoumani** - Developer
+- **Ethan Brill** - Developer
+
 ## License
 
 MIT
