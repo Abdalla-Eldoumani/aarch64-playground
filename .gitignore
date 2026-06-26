@@ -32,6 +32,10 @@ yarn-error.log*
 # the assembler consumes it from here during development only.
 docs/cpsc355-reference/
 
+# Local study and design reference
+course-material/
+design-reference/
+
 # Editors
 .vscode/
 .idea/
