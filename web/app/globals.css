@@ -177,7 +177,7 @@ body {
   border-radius: 3px;
 }
 
-/* Phase 7: embed mode hides chrome that doesn't belong inside an
+/* Embed mode hides chrome that doesn't belong inside an
    iframe. Editor + panels + Controls + ExplainStrip stay visible. */
 [data-embed="1"] > .safe-area-top,
 [data-embed="1"] > [role="status"],
@@ -185,7 +185,7 @@ body {
   display: none;
 }
 
-/* Phase 7: lecture mode bumps font scale so the playground reads from
+/* Lecture mode bumps font scale so the playground reads from
    the back of a classroom. The class lands on `<html>` together with
    data-theme="high-contrast" via useLectureMode. */
 .lecture-mode {
