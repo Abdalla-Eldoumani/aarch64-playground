@@ -143,8 +143,7 @@ first, then wire it into a component.
    so the resizable / mobile / two-column layouts pick it up
    automatically.
 5. **Documentation** -- add a row to `docs/features.md` and, if it
-   adds a deep-link param or shortcut, the README and the matching
-   `CLAUDE.md`.
+   adds a deep-link param or shortcut, the README.
 
 If the feature accepts external input (URL params, file uploads,
 clipboard paste), add a validator in the same PR. See
