@@ -1,8 +1,8 @@
 //! Data types representing a parsed program: sections, items, symbols, and
 //! the full `Program` the parser produces and the linker consumes.
 //!
-//! Sections are addressed at fixed base addresses documented in
-//! `emulator/CLAUDE.md`. Overlap would be a bug; leaving big gaps between
+//! Sections are addressed at fixed base addresses (see
+//! `SectionKind::default_base`). Overlap would be a bug; leaving big gaps between
 //! them makes off-by-N memory bugs obvious in the panel.
 
 use std::collections::{HashMap, HashSet};
@@ -19,8 +19,8 @@ pub enum SectionKind {
 }
 
 impl SectionKind {
-    /// Default base address for this section. Matches the layout documented
-    /// in `emulator/CLAUDE.md` and used by `Cpu::load_sections`.
+    /// Default base address for this section. The fixed per-section layout
+    /// used by `Cpu::load_sections`.
     pub fn default_base(self) -> u64 {
         match self {
             SectionKind::Text => 0x0040_0000,
