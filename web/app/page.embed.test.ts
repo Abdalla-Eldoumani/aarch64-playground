@@ -8,8 +8,7 @@ import path from "node:path";
 //   - page.tsx marks the source GitHub link with data-embed-hide="1"
 //   - globals.css hides any data-embed-hide element when the wrapper
 //     carries data-embed="1"
-// The visual effect itself is verified in the Phase 7 Playwright
-// screenshot run.
+// The visual effect itself is verified in the browser, not here.
 
 describe("embed mode markup contract", () => {
   it("page.tsx marks the source link with data-embed-hide", () => {
