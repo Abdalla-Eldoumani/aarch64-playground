@@ -41,6 +41,9 @@ export interface EmulatorBackend {
   resolveLabel(name: string): Promise<number | null>;
   clearConsole(): Promise<StateSnapshot>;
   codeBase(): Promise<number>;
+  /** Flat `[addr, line, addr, line, ...]` editor-line map from the most
+   *  recent assemble; empty for the bare-metal path. */
+  lineMap(): Promise<number[]>;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void;
 }
@@ -210,6 +213,10 @@ class MainThreadBackend implements EmulatorBackend {
 
   async codeBase(): Promise<number> {
     return this.requireEmu().codeBase();
+  }
+
+  async lineMap(): Promise<number[]> {
+    return this.requireEmu().getLineMap();
   }
 
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void {
