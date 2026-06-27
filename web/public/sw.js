@@ -4,7 +4,6 @@
 //   - activate: claim clients + sweep stale caches keyed by version.
 //   - fetch:
 //       * cross-origin or non-GET -> network only.
-//       * /api/c-to-asm           -> network only (Godbolt proxy is dynamic).
 //       * navigation              -> network first, fall back to cached "/".
 //       * /_next/static, /examples, /icons -> cache first.
 //       * else                    -> network first, fall back to cache.
@@ -49,7 +48,6 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/c-to-asm")) return;
 
   // Navigation: network first so a fresh deploy reaches the user;
   // cached "/" keeps the app shell available offline.
