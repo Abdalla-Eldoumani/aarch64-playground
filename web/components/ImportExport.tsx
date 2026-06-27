@@ -9,8 +9,8 @@ export interface ImportExportProps {
   source: string;
   /**
    * Receives the active import target along with the file body. The parent
-   * routes the body to main / extras[i] / the c-to-asm pane and shows a
-   * toast confirming where the import landed.
+   * routes the body to main / extras[i] and shows a toast confirming where
+   * the import landed.
    */
   onImport: (target: ImportTarget, body: string) => void;
   /** Where the next import will land. Computed by the parent each render. */
@@ -20,9 +20,9 @@ export interface ImportExportProps {
 
 /**
  * Import and export buttons in the header. Import sends the picked file's
- * body to the active target (main / an extra / the c-to-asm pane) so a
- * student editing extras isn't surprised when their import overwrites the
- * wrong buffer. Export offers `.asm` and `.s` download plus copy-to-clipboard.
+ * body to the active target (main / an extra) so a student editing extras
+ * isn't surprised when their import overwrites the wrong buffer. Export
+ * offers `.asm` and `.s` download plus copy-to-clipboard.
  */
 export function ImportExport({ source, onImport, target, className = "" }: ImportExportProps) {
   const fileRef = useRef<HTMLInputElement>(null);
