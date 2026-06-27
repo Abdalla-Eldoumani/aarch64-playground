@@ -40,7 +40,7 @@ emulator.
 | `?bundle=<lz>` deep link       | `lib/diagnostic-bundle.ts::decodeBundle`   | non-version-1 payloads, malformed field types, > 1 MB inflated  |
 | `#p2=<lz>` share hash          | `lib/share.ts::readShareHash`              | non-string source, malformed cursor, > 1 MB inflated             |
 | `?example=<id>`                | regex `/^[\w.-]+$/`                        | path traversal, special chars                                    |
-| `?theme=`, `?view=`            | enum check                                 | unknown values                                                   |
+| `?theme=`                      | enum check                                 | unknown values                                                   |
 | Bookmark JSON import           | `lib/named-saves.ts::isValidSave`          | per-field type check, no-clobber on name collision               |
 | `.s` / `.asm` / `.txt` upload  | `lib/upload-guard.ts` + `MAX_SOURCE_BYTES` | files > 4 MB                                                      |
 | VFS upload (console + terminal)| `lib/upload-guard.ts` + `MAX_VFS_BYTES`    | files > 16 MB                                                     |
@@ -76,10 +76,6 @@ emulator.
 
 ## What you should still be careful about
 
-- The C-to-asm view forwards your C source to the Compiler Explorer
-  API (`https://godbolt.org`). See [`docs/c-to-asm.md`](c-to-asm.md)
-  for the full privacy / caching note. Don't paste secrets into that
-  pane.
 - localStorage is per-browser-per-origin and unencrypted. If you save
   a bookmark with stdin that contains a password, anyone with access
   to that profile can read it.
