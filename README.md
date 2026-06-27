@@ -140,9 +140,9 @@ with prefix-colored output for each side.
 
 ## Supported instruction surface
 
-Thirteen tutorial files from weeks 3 / 8 / 9 / 10 / 11 / 12 / 13 run
-end to end through the pipeline plus five bare-metal classics
-(factorial, fibonacci, string-reverse, bubble-sort, gcd).
+Thirteen CPSC 355 tutorial files -- covering arithmetic, stack frames,
+records and arrays, subroutines, static data and arguments, floating
+point, and file I/O -- run end to end through the pipeline.
 
 **Data processing:** `MOV` (movz/movk/alias), `MOVZ`, `MOVK`, `MOVN`,
 `ADD`, `ADDS`, `SUB`, `SUBS`, `AND`, `ANDS`, `ORR`, `EOR` (with the
