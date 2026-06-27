@@ -36,8 +36,7 @@ import { RecentPrograms } from "@/components/RecentPrograms";
 import { ResizableLayout } from "@/components/ResizableLayout";
 import { MobileLayout } from "@/components/MobileLayout";
 import { ImportExport } from "@/components/ImportExport";
-import { HeaderOverflowSheet } from "@/components/HeaderOverflowSheet";
-import { DiagnosticBundle } from "@/components/DiagnosticBundle";
+import { Toolbar } from "@/components/Toolbar";
 import { ArgsInput } from "@/components/ArgsInput";
 import { LectureBar } from "@/components/LectureBar";
 import {
@@ -217,7 +216,6 @@ function EmbeddableCore({
   const [activeTab, setActiveTab] = useState<
     "memory" | "stack" | "console" | "term" | "watches" | "memwatch" | "saves"
   >("memory");
-  const [overflowOpen, setOverflowOpen] = useState(false);
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
@@ -648,132 +646,6 @@ function EmbeddableCore({
     };
   }, [emu, source]);
 
-  // Buttons that live in the header overflow sheet. `after` fires after the
-  // action so the sheet auto-closes when one is chosen on a phone.
-  const renderSecondaryActions = (after?: () => void) => {
-    const wrap = <T extends () => void>(fn: T) => () => {
-      fn();
-      after?.();
-    };
-    return (
-      <>
-        <RecentPrograms
-          entries={recent.entries}
-          onLoad={(body) => {
-            loadSource(body);
-            after?.();
-          }}
-          onClear={recent.clear}
-        />
-        <button
-          type="button"
-          onClick={wrap(() => onOpenShareDialog?.())}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="share program"
-        >
-          share
-        </button>
-        <DiagnosticBundle
-          build={() => ({
-            source,
-            args: argsText || undefined,
-            stdin: undefined,
-            stdout: emu.stdout || undefined,
-            stderr: emu.stderr || undefined,
-            exitCode: emu.exitCode,
-            registers: emu.registers,
-            sp: emu.sp,
-            pc: `0x${emu.pc.toString(16).padStart(16, "0")}`,
-            stackBytes: (() => {
-              const spNum = Number(BigInt(emu.sp));
-              if (!Number.isFinite(spNum)) return undefined;
-              const top = emu.getMemory(spNum, 64);
-              if (!top.length) return undefined;
-              return Array.from(top)
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join(" ");
-            })(),
-            error: emu.error,
-          })}
-        />
-        <button
-          type="button"
-          onClick={wrap(() => setTutorialOpen(true))}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="open tutorial runner"
-        >
-          tour
-        </button>
-        <button
-          type="button"
-          onClick={wrap(() => onToggleTheme?.())}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="toggle theme"
-        >
-          theme
-        </button>
-        <button
-          type="button"
-          onClick={wrap(() => cpsc.toggle())}
-          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-            cpsc.enabled
-              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
-              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          }`}
-          aria-pressed={cpsc.enabled}
-          aria-label="toggle cpsc 355 lint mode"
-        >
-          cpsc 355
-        </button>
-        <button
-          type="button"
-          onClick={wrap(() => lecture.toggle())}
-          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-            lecture.enabled
-              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
-              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          }`}
-          aria-pressed={lecture.enabled}
-          aria-label="toggle lecture mode"
-        >
-          lecture
-        </button>
-        <button
-          type="button"
-          onClick={wrap(() => hotspot.toggle())}
-          className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-            hotspot.enabled
-              ? "bg-[var(--accent)] text-[var(--bg-primary)]"
-              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          }`}
-          aria-pressed={hotspot.enabled}
-          aria-label="toggle hotspot heat map"
-        >
-          hotspot
-        </button>
-        <button
-          type="button"
-          onClick={wrap(() => onOpenCommandPalette?.())}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="open command palette"
-        >
-          cmd
-        </button>
-        <a
-          href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
-          target="_blank"
-          rel="noreferrer noopener"
-          data-embed-hide="1"
-          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded px-1"
-          aria-label="View source on GitHub"
-          onClick={() => after?.()}
-        >
-          source
-        </a>
-      </>
-    );
-  };
-
   if (emu.loadError) {
     return (
       <div className="flex flex-col flex-1 min-h-0 items-center justify-center gap-3 px-6 text-center">
@@ -1087,40 +959,77 @@ function EmbeddableCore({
 
   return (
     <>
-      <div className="safe-area-top flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+      <div className="safe-area-top flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
         <span className="hidden sm:inline font-serif text-[15px] font-semibold tracking-tight text-[var(--text-primary)] whitespace-nowrap shrink-0">
           cpsc 355 playground
         </span>
-        <div className="min-w-0 flex-1 sm:flex-initial sm:shrink-0 overflow-hidden">
+        <div className="min-w-0 shrink-0 overflow-hidden">
           <ExampleLoader
             onLoad={(src, label) => loadSource(src, label ?? "example")}
           />
         </div>
+        <ImportExport source={source} target={importTarget} onImport={handleImport} />
+        <RecentPrograms
+          entries={recent.entries}
+          onLoad={(body) => loadSource(body)}
+          onClear={recent.clear}
+        />
         <ArgsInput source={source} value={argsText} onChange={setArgsText} />
-        <button
-          type="button"
-          onClick={() => setOverflowOpen(true)}
-          className="shrink-0 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="more actions"
-          aria-haspopup="dialog"
-          aria-expanded={overflowOpen}
-        >
-          ...
-        </button>
-        <div className="flex-1" />
+        <Toolbar
+          className="ml-auto"
+          cpsc355Enabled={cpsc.enabled}
+          onToggleCpsc355={cpsc.toggle}
+          lectureEnabled={lecture.enabled}
+          onToggleLecture={lecture.toggle}
+          hotspotEnabled={hotspot.enabled}
+          onToggleHotspot={hotspot.toggle}
+          onShare={() => onOpenShareDialog?.()}
+          onTour={() => setTutorialOpen(true)}
+          onToggleTheme={() => onToggleTheme?.()}
+          buildDiagnostic={() => ({
+            source,
+            args: argsText || undefined,
+            stdin: undefined,
+            stdout: emu.stdout || undefined,
+            stderr: emu.stderr || undefined,
+            exitCode: emu.exitCode,
+            registers: emu.registers,
+            sp: emu.sp,
+            pc: `0x${emu.pc.toString(16).padStart(16, "0")}`,
+            stackBytes: (() => {
+              const spNum = Number(BigInt(emu.sp));
+              if (!Number.isFinite(spNum)) return undefined;
+              const top = emu.getMemory(spNum, 64);
+              if (!top.length) return undefined;
+              return Array.from(top)
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(" ");
+            })(),
+            error: emu.error,
+          })}
+          onOpenCommandPalette={() => onOpenCommandPalette?.()}
+          sourceLink={
+            <a
+              href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
+              target="_blank"
+              rel="noreferrer noopener"
+              data-embed-hide="1"
+              className="inline-flex items-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-sans text-[var(--text-secondary)] hover:text-[var(--cyan)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+              aria-label="View source on GitHub"
+            >
+              source
+            </a>
+          }
+        />
         <button
           type="button"
           onClick={() => onOpenShortcutsHelp?.()}
-          className="shrink-0 text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] rounded px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="shrink-0 inline-flex items-center min-h-[36px] text-xs text-[var(--text-secondary)] hover:text-[var(--cyan)] rounded px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           aria-label="keyboard shortcuts"
         >
           ?
         </button>
       </div>
-      <HeaderOverflowSheet open={overflowOpen} onClose={() => setOverflowOpen(false)}>
-        <ImportExport source={source} target={importTarget} onImport={handleImport} />
-        {renderSecondaryActions(() => setOverflowOpen(false))}
-      </HeaderOverflowSheet>
 
       {shareBanner && (
         <div
