@@ -30,7 +30,8 @@ import { Editor } from "@/components/Editor";
 import { RegisterPanel } from "@/components/RegisterPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
 import { Controls } from "@/components/Controls";
-import { ExplainStrip } from "@/components/ExplainStrip";
+import { CurrentStrip } from "@/components/CurrentStrip";
+import { FirstRunState } from "@/components/FirstRunState";
 import { ExampleLoader } from "@/components/ExampleLoader";
 import { RecentPrograms } from "@/components/RecentPrograms";
 import { ResizableLayout } from "@/components/ResizableLayout";
@@ -795,16 +796,26 @@ function EmbeddableCore({
 
   const disasmBlock = (
     <div className="h-full overflow-auto">
-      <InstructionView
-        instructions={emu.instructions}
-        pc={emu.pc}
-        running={emu.isRunning}
-      />
+      {emu.instructions.length === 0 ? (
+        // Cold load / nothing assembled: the designed first-run hero, not a
+        // blank dense IDE. Replaces InstructionView's bare "no program
+        // assembled" line with a brief what-this-is / what-to-press lead.
+        <FirstRunState onAssemble={assembleWithHistory} />
+      ) : (
+        <InstructionView
+          instructions={emu.instructions}
+          pc={emu.pc}
+          running={emu.isRunning}
+        />
+      )}
     </div>
   );
 
   const regsBlock = (
     <div className="h-full flex flex-col">
+      {/* The prominent, always-on CURRENT instruction strip heads the registers
+          column -- the beginner's lifeline -- replacing the thin bottom strip. */}
+      <CurrentStrip source={source} currentLine={emu.currentLine} />
       <ReplayScrubber
         frames={emu.replayFrames}
         currentStep={emu.stepCount}
@@ -900,7 +911,7 @@ function EmbeddableCore({
   const rightTabs = (
     <div className="h-full flex flex-col">
       <div
-        className="flex flex-wrap border-b border-[var(--border)] overflow-x-auto"
+        className="flex flex-wrap border-b border-[var(--border)] bg-[var(--bg-sunken)] overflow-x-auto"
         role="tablist"
         aria-label="debug view"
       >
@@ -1109,7 +1120,6 @@ function EmbeddableCore({
         error={emu.error}
         stepCount={emu.stepCount}
       />
-      <ExplainStrip source={source} currentLine={emu.currentLine} />
 
       <TutorialRunner
         open={tutorialOpen}
