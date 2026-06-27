@@ -1039,7 +1039,6 @@ function EmbeddableCore({
               href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
               target="_blank"
               rel="noreferrer noopener"
-              data-embed-hide="1"
               className="inline-flex items-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-sans text-[var(--text-secondary)] hover:text-[var(--cyan)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
               aria-label="View source on GitHub"
             >
@@ -1252,6 +1251,9 @@ export const EmbeddablePlayground = forwardRef<
     [runOrQueue, startSource, startArgs],
   );
 
+  // data-embed marks the wrapper in embed mode as a host-facing hook so a
+  // parent page or iframe can detect and style the embedded surface. The
+  // reduced chrome itself is selected by the chrome prop, not this attribute.
   return (
     <div
       ref={wrapperRef}

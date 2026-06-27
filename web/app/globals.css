@@ -314,14 +314,6 @@ body {
   }
 }
 
-/* Embed mode (?embed=1) hides the outer chrome so an instructor can
-   <iframe> the playground inside course pages without the header bar
-   eating layout space. The bottom Controls bar stays. */
-[data-embed="1"] > .safe-area-top,
-[data-embed="1"] [role="status"][aria-live="polite"][data-share-banner] {
-  display: none !important;
-}
-
 /* Panel content inherits `--font-scale`; opt-in classes use it. */
 .panel-scaled {
   font-size: calc(0.75rem * var(--font-scale));
@@ -340,15 +332,6 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
-}
-
-/* Embed mode hides chrome that doesn't belong inside an
-   iframe. Editor + panels + Controls + the current-instruction strip stay
-   visible. */
-[data-embed="1"] > .safe-area-top,
-[data-embed="1"] > [role="status"],
-[data-embed="1"] [data-embed-hide="1"] {
-  display: none;
 }
 
 /* Lecture mode bumps font scale so the playground reads from

@@ -19,8 +19,8 @@ export interface ToolbarProps {
   /** Builds the diagnostic snapshot lazily on click; kept in the parent so the
    *  toolbar holds no emulator-hub state. */
   buildDiagnostic: () => DiagnosticBundleData;
-  /** The GitHub source anchor, supplied by the parent so the embed-hide
-   *  contract (`data-embed-hide`) stays co-located with the playground. */
+  /** The GitHub source anchor, supplied by the parent so the playground owns
+   *  the link's destination and styling. */
   sourceLink?: ReactNode;
   /** Opens the standalone command-palette modal. A visible labeled control so
    *  discovery never depends on the Ctrl+K shortcut. */
