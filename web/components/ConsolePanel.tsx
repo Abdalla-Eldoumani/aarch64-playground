@@ -74,13 +74,13 @@ export function ConsolePanel({
 
   return (
     <div className="flex flex-col h-full min-h-0 text-xs">
-      <div className="flex items-center justify-between px-2 py-1 bg-[var(--bg-secondary)] border-b border-[var(--border)]">
+      <div className="flex items-center justify-between px-2 py-1 bg-[var(--bg-sunken)] border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
           <span className="font-semibold">console</span>
           {blocked && (
             <span
               role="status"
-              className="px-1.5 py-0.5 rounded bg-[var(--accent)] text-black text-[10px]"
+              className="px-1.5 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] text-[10px]"
             >
               waiting for input
             </span>
@@ -92,7 +92,7 @@ export function ConsolePanel({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <label className="cursor-pointer text-[var(--accent)] hover:underline">
+          <label className="cursor-pointer text-[var(--cyan)] hover:underline">
             upload file
             <input
               type="file"
@@ -116,7 +116,7 @@ export function ConsolePanel({
         className="flex-1 min-h-0 overflow-auto px-2 py-1 font-mono whitespace-pre-wrap"
       >
         {stdout && <span>{stdout}</span>}
-        {stderr && <span className="text-red-400">{stderr}</span>}
+        {stderr && <span className="text-[var(--danger)]">{stderr}</span>}
         {!stdout && !stderr && (
           <div className="space-y-1">
             <p className="font-serif text-[13px] text-[var(--text-primary)]">
@@ -129,13 +129,13 @@ export function ConsolePanel({
         )}
       </div>
       {vfsFiles.length > 0 && (
-        <div className="px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-secondary)] text-[10px] text-[var(--text-secondary)]">
+        <div className="px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)] text-[10px] text-[var(--text-secondary)]">
           vfs: {vfsFiles.join(", ")}
         </div>
       )}
       <form
         onSubmit={handleSubmit}
-        className="flex gap-1 px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-secondary)]"
+        className="flex gap-1 px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)]"
       >
         <input
           type="text"
@@ -143,11 +143,11 @@ export function ConsolePanel({
           onChange={(e) => setStdinValue(e.target.value)}
           placeholder={blocked ? "program is waiting for input..." : "stdin"}
           aria-label="Standard input"
-          className="flex-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--accent)]"
+          className="flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)]"
         />
         <button
           type="submit"
-          className="px-2 py-0.5 rounded bg-[var(--accent)] text-black hover:brightness-110"
+          className="px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110"
         >
           send
         </button>
