@@ -306,9 +306,9 @@ export function useEmulator(): EmulatorState {
   }, []);
 
   const assemble = useCallback(
-    (source: string, args: string[] = []) => {
+    (source: string, args: string[] = []): Promise<void> => {
       const backend = backendRef.current;
-      if (!backend) return;
+      if (!backend) return Promise.resolve();
       sourceRef.current = source;
       setError(null);
       setAssemblyErrors([]);
@@ -329,10 +329,13 @@ export function useEmulator(): EmulatorState {
       if (!hasContent) {
         setError("no instructions to assemble");
         setInstructions([]);
-        return;
+        return Promise.resolve();
       }
 
-      backend
+      // Return the promise chain so callers that must run only after the
+      // backend has loaded the program (the embed/checker Run, which has no
+      // separate Assemble control) can await assembly.
+      return backend
         .assemble(source, args)
         .then(async ({ result }) => {
           if (!result.success) {
