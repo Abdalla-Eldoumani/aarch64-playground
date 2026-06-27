@@ -40,11 +40,11 @@ export interface Tutorial {
 
 export const TUTORIALS: Tutorial[] = [
   {
-    id: "week03-arithmetic",
-    title: "Week 3 -- arithmetic operations",
+    id: "arithmetic",
+    title: "arithmetic operations",
     summary:
-      "Walk through ADD, SUB, MUL, UDIV, and remainder via SUB+MUL using the week 3 calc example.",
-    sourcePath: "/examples/cpsc355/week03_exercise.s",
+      "Walk through ADD, SUB, MUL, UDIV, and remainder via SUB+MUL using the basics example.",
+    sourcePath: "/examples/cpsc355/basics.s",
     steps: [
       {
         title: "Aliases and operands",
@@ -71,11 +71,11 @@ export const TUTORIALS: Tutorial[] = [
     ],
   },
   {
-    id: "week08-stack-frames",
-    title: "Week 8 -- stack frames and scanf",
+    id: "stack-frames",
+    title: "stack frames and scanf",
     summary:
       "Allocate locals on the stack, scan three integer scores, average them, and tear down the frame.",
-    sourcePath: "/examples/cpsc355/week08_scores.asm",
+    sourcePath: "/examples/cpsc355/array-scores.s",
     stdin: "85\n92\n78\n",
     steps: [
       {
@@ -114,11 +114,11 @@ export const TUTORIALS: Tutorial[] = [
     ],
   },
   {
-    id: "week09-records-and-arrays",
-    title: "Week 9 -- records on the stack",
+    id: "records-and-arrays",
+    title: "records on the stack",
     summary:
       "Lay out a Student record (name + id + grade) with explicit offsets, fill it via scanf, set a byte field, and printf the record.",
-    sourcePath: "/examples/cpsc355/week09_student_record.asm",
+    sourcePath: "/examples/cpsc355/student-record.s",
     stdin: "Alice\n12345\n",
     steps: [
       {
@@ -156,11 +156,11 @@ export const TUTORIALS: Tutorial[] = [
     ],
   },
   {
-    id: "week10-find-max",
-    title: "Week 10 -- arrays and a find_max function",
+    id: "find-max",
+    title: "arrays and a find_max function",
     summary:
       "Fill a 10-int array, scan it with a leaf function, return the largest value.",
-    sourcePath: "/examples/cpsc355/week10_find_max.asm",
+    sourcePath: "/examples/cpsc355/find-max.s",
     steps: [
       {
         title: "Allocate and fill the array",
@@ -191,11 +191,11 @@ export const TUTORIALS: Tutorial[] = [
     ],
   },
   {
-    id: "week11-static-vs-argv",
-    title: "Week 11 -- static locals and argv",
+    id: "static-vs-argv",
+    title: "static locals and argv",
     summary:
       "Compare a function with a static counter (file-scope state) against main's argv (per-invocation state).",
-    sourcePath: "/examples/cpsc355/week11_static_counter.asm",
+    sourcePath: "/examples/cpsc355/static-counter.s",
     steps: [
       {
         title: "Static counter in .data",
@@ -220,7 +220,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Switching to argv",
         body:
-          "Now load `/examples/cpsc355/week11_argv.asm` and set the args field above to `./myecho hello world`. argc lands in w0 and argv in x1 on entry.",
+          "Now load `/examples/cpsc355/command-line-args.s` and set the args field above to `./myecho hello world`. argc lands in w0 and argv in x1 on entry.",
       },
       {
         title: "Loop over argv",
@@ -235,10 +235,10 @@ export const TUTORIALS: Tutorial[] = [
     ],
   },
   {
-    id: "week12-floating-point",
-    title: "Week 12 -- floating-point and the area of a circle",
+    id: "floating-point",
+    title: "floating-point and the area of a circle",
     summary: "Read an integer radius, convert to double, compute pi*r*r, printf with %f.",
-    sourcePath: "/examples/cpsc355/week12_fp_circle.asm",
+    sourcePath: "/examples/cpsc355/circle-area.s",
     stdin: "5\n",
     steps: [
       {
@@ -268,11 +268,11 @@ export const TUTORIALS: Tutorial[] = [
     ],
   },
   {
-    id: "week13-syscalls",
-    title: "Week 13 -- raw Linux syscalls",
+    id: "syscalls",
+    title: "raw Linux syscalls",
     summary:
       "Use write (64), read (63), and exit (93) directly via SVC, without going through libc.",
-    sourcePath: "/examples/cpsc355/week13_echo.asm",
+    sourcePath: "/examples/cpsc355/echo.s",
     stdin: "hi there\n",
     steps: [
       {
