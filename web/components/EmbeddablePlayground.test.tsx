@@ -179,6 +179,45 @@ describe("EmbeddablePlayground", () => {
     expect((onCheck.mock.calls[0][0] as EmbeddableState).exitCode).toBe(7);
   });
 
+  it("embed Run assembles the current source before executing", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(undefined);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
+    // assemble must precede run so runUntilBreak sees a loaded program, not
+    // empty memory (the visible Run is the embed's only execution trigger).
+    expect(hub.assemble.mock.invocationCallOrder[0]).toBeLessThan(
+      hub.run.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("embed Run does not re-assemble an unchanged, already-loaded program", async () => {
+    const hub: Hub = makeHub({
+      instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
+    });
+    hub.assemble = vi.fn().mockResolvedValue(undefined);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    const run = screen.getByLabelText("run");
+    fireEvent.click(run);
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    fireEvent.click(run);
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(2));
+    // source unchanged and a program is loaded, so Run executes again without
+    // a second assemble.
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the calm fault treatment when the hub fails to load", () => {
     useEmulatorMock.mockReturnValue(
       makeHub({ isLoaded: false, loadError: "wasm exploded" }),
