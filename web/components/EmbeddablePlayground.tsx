@@ -109,9 +109,9 @@ export type PanelKey =
   | "saves";
 
 /**
- * The outcome slice the host reads for in-place output and the Phase 5-7
- * checker. Exactly these ten fields mirror the hub; this is the single
- * definition consumers import (no redeclaration elsewhere).
+ * The outcome slice the host reads for in-place output and the future
+ * outcome checker. Exactly these ten fields mirror the hub; this is the
+ * single definition consumers import (no redeclaration elsewhere).
  */
 export type EmbeddableState = {
   registers: string[];
@@ -165,7 +165,7 @@ export type EmbeddablePlaygroundProps = {
   /** Check only applies in checker chrome. */
   showCheck?: boolean;
   onStateChange?: (state: EmbeddableState) => void;
-  /** Checker Check button; evaluation itself lands in Phase 6. */
+  /** Checker Check button; the evaluation itself lands in a later milestone. */
   onCheck?: (state: EmbeddableState) => void;
   // Page-chrome hooks: the host renders these modals and owns the theme;
   // the component's full-chrome header triggers them so there is no
