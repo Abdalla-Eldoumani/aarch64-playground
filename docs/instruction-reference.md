@@ -30,6 +30,11 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `LSL`    | `LSL Xd, Xn, #imm` / `..., Xm`   | Logical shift left.                      |
 | `LSR`    | `LSR Xd, Xn, #imm` / `..., Xm`   | Logical shift right.                     |
 | `ASR`    | `ASR Xd, Xn, #imm` / `..., Xm`   | Arithmetic shift right.                  |
+| `SXTB`   | `SXTB Xd, Wn` / `SXTB Wd, Wn`    | Sign-extend a byte. Alias for `SBFM`.    |
+| `SXTH`   | `SXTH Xd, Wn` / `SXTH Wd, Wn`    | Sign-extend a halfword.                  |
+| `SXTW`   | `SXTW Xd, Wn`                    | Sign-extend a word to 64 bits.           |
+| `UXTB`   | `UXTB Wd, Wn`                    | Zero-extend a byte. Alias for `UBFM`.    |
+| `UXTH`   | `UXTH Wd, Wn`                    | Zero-extend a halfword.                  |
 
 ## Compare and test
 
@@ -83,6 +88,18 @@ Sign-extending loads: `LDRSB Wt` / `LDRSB Xt` / `LDRSH Wt` / `LDRSH Xt` /
 
 FP data moves: `LDR Dt, [Xn, #imm]` / `STR Dt, [Xn, #imm]` and the
 32-bit `LDR St` / `STR St` equivalents, unsigned-offset form only.
+
+## PC-relative addressing
+
+| Mnemonic | Form                  | Notes                                          |
+| -------- | --------------------- | ---------------------------------------------- |
+| `ADR`    | `ADR Xd, label`       | Byte-relative address of `label`.              |
+| `ADRP`   | `ADRP Xd, label`      | Address of the 4 KiB page containing `label`.  |
+
+The `adrp` / `add :lo12:` pair is the page-plus-offset alternative to a
+literal-pool load: `adrp Xd, sym` forms the page base and
+`add Xd, Xd, :lo12:sym` adds the low 12 bits to land on the exact address.
+Both forms are correct and interchangeable with `ldr Xd, =sym`.
 
 ## Branches
 
