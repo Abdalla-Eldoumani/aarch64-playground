@@ -9,6 +9,8 @@ import { lintSource } from "@/lib/cpsc355-lint";
 import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
 import { useHotspotMode } from "@/lib/use-hotspot-mode";
 import { buildSuggestions, type Suggestion } from "@/lib/asm-completion";
+import { useToast } from "@/components/Toast";
+import { validateSource } from "@/lib/upload-guard";
 
 interface EditorProps {
   value: string;
@@ -84,6 +86,26 @@ export function Editor({
   useEffect(() => {
     onFormatRef.current = onFormat;
   }, [onFormat]);
+  const toast = useToast();
+
+  // Guard the source ingress (typing, paste, and drop all flow here). A
+  // change that would push the buffer over MAX_SOURCE_BYTES is rejected and
+  // the last in-bounds buffer is kept.
+  const handleChange = useCallback(
+    (next: string) => {
+      const error = validateSource(next);
+      if (error) {
+        toast.error(error);
+        // Intentional security observability: a rejected over-cap input is
+        // surfaced to the console alongside the toast, per the input-
+        // validation policy. This is the only sanctioned console use here.
+        console.warn(`rejected over-cap source: ${error}`);
+        return;
+      }
+      onChange(next);
+    },
+    [onChange, toast],
+  );
 
   // Re-evaluate the narrow-viewport fallback on resize so a student
   // who rotates their phone doesn't get stuck in the wrong mode.
@@ -476,9 +498,9 @@ export function Editor({
       if (!file) return;
       if (!/\.(s|asm|txt)$/i.test(file.name)) return;
       e.preventDefault();
-      file.text().then((text) => onChange(text));
+      file.text().then((text) => handleChange(text));
     },
-    [onChange],
+    [handleChange],
   );
 
   if (fallback) {
@@ -490,7 +512,7 @@ export function Editor({
     // still navigate errors and toggle breakpoints on a phone.
     return <FallbackEditor
       value={value}
-      onChange={onChange}
+      onChange={handleChange}
       currentLine={currentLine}
       breakpoints={breakpoints}
       onToggleBreakpoint={onToggleBreakpoint}
@@ -526,7 +548,7 @@ export function Editor({
         language="arm64"
         theme="arm64-dark"
         value={value}
-        onChange={(v) => onChange(v ?? "")}
+        onChange={(v) => handleChange(v ?? "")}
         onMount={handleMount}
         options={{
           // 16px font on mobile kills iOS's focus-zoom behavior; keep
