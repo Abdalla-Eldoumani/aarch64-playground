@@ -82,7 +82,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="import assembly file"
       >
         import
@@ -90,7 +90,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
       <button
         type="button"
         onClick={() => download("asm")}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="download as .asm"
       >
         .asm
@@ -98,7 +98,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
       <button
         type="button"
         onClick={() => download("s")}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="download as .s"
       >
         .s
@@ -106,7 +106,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
       <button
         type="button"
         onClick={copy}
-        className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+        className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
           copied
             ? "text-[var(--success)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
