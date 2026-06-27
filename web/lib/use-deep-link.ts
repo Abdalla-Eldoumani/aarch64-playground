@@ -37,6 +37,39 @@ export function parseDeepLink(search: string): DeepLink {
   return result;
 }
 
+/**
+ * Legacy example stems (the old course-labeled file names) mapped to the
+ * renamed clean stems. A `?example=` link shared before the corpus was
+ * renamed still resolves: the resolver translates the old stem to the new
+ * one before fetching. This is a fixed allow-list -- only these known
+ * stems are translated; everything else passes through untouched.
+ */
+export const LEGACY_EXAMPLE_ALIASES: Record<string, string> = {
+  week03_exercise: "basics",
+  week08_scores: "array-scores",
+  week09_student_record: "student-record",
+  week10_find_max: "find-max",
+  week11_argv: "command-line-args",
+  week11_static_counter: "static-counter",
+  week12_fp_circle: "circle-area",
+  week12_is_prime: "is-prime",
+  week13_hello: "hello",
+  week13_echo: "echo",
+  week13_write_file: "write-file",
+  week13_read_file: "read-file",
+  week13_copy_file: "copy-file",
+};
+
+/**
+ * Resolve a `?example=` stem to the file actually on disk, translating a
+ * known legacy stem to its renamed clean stem. An unknown stem is returned
+ * unchanged. Path safety stays with the `/^[\w.-]+$/` check in
+ * `parseDeepLink`; this only remaps a fixed set of names.
+ */
+export function resolveExampleStem(stem: string): string {
+  return LEGACY_EXAMPLE_ALIASES[stem] ?? stem;
+}
+
 /** Compose the query-string portion of a share URL from a partial DeepLink. */
 export function buildDeepLinkQuery(link: Omit<DeepLink, "embed"> & { embed?: boolean }): string {
   const params = new URLSearchParams();
