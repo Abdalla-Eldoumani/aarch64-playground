@@ -172,6 +172,12 @@ fn parse_directive(
             prog.section_or_insert(SectionKind::Bss);
             Ok(())
         }
+        ".rodata" => {
+            require_no_args(rest, line, name)?;
+            *current = SectionKind::Rodata;
+            prog.section_or_insert(SectionKind::Rodata);
+            Ok(())
+        }
         ".section" => {
             let kind = parse_section_name(rest, line)?;
             *current = kind;
@@ -609,6 +615,19 @@ mod tests {
     fn section_rodata_switches_current_section() {
         let p = parse_ok(".section .rodata\n.string \"x\"\n");
         assert_eq!(section_bytes(&p, SectionKind::Rodata), b"x\0");
+    }
+
+    #[test]
+    fn bare_rodata_directive_switches_current_section() {
+        // The plain `.rodata` switcher must work the same as `.data` /
+        // `.bss`, not only the `.section .rodata` named form.
+        let p = parse_ok(".rodata\nro: .word 100\n.text\nmov x0, #1\n");
+        assert_eq!(section_bytes(&p, SectionKind::Rodata), vec![100, 0, 0, 0]);
+        let text = p.section(SectionKind::Text).unwrap();
+        assert!(text
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::Instruction { .. })));
     }
 
     #[test]
