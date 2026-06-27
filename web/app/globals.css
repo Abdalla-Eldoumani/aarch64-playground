@@ -255,6 +255,15 @@ body {
   50%      { box-shadow: inset 3px 0 0 0 var(--amber); }
 }
 
+/* Block-cursor blink: the brand block cursor (amber = the machine acting) pulses
+   on the first-run hero. A near-instant jump at the midpoint gives a hard on/off
+   blink. Applied only inside the reduced-motion-safe block below, so the cursor
+   holds solid (no blink) under prefers-reduced-motion. */
+@keyframes cursor-blink {
+  0%, 50%      { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .anim-error-shake {
     animation: shake-x 200ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
@@ -274,6 +283,11 @@ body {
     /* ~2s amber pulse on the running program-counter row, looping until the run
        stops. Outside this block (reduced motion) the class has no animation. */
     animation: run-breathe var(--run-breathe) var(--ease) infinite;
+  }
+  .anim-cursor-blink {
+    /* ~1s hard on/off blink from the --cursor-blink token. Outside this block
+       (reduced motion) the class has no animation, so the cursor stays solid. */
+    animation: cursor-blink var(--cursor-blink) infinite;
   }
 }
 
@@ -339,7 +353,8 @@ body {
 }
 
 /* Embed mode hides chrome that doesn't belong inside an
-   iframe. Editor + panels + Controls + ExplainStrip stay visible. */
+   iframe. Editor + panels + Controls + the current-instruction strip stay
+   visible. */
 [data-embed="1"] > .safe-area-top,
 [data-embed="1"] > [role="status"],
 [data-embed="1"] [data-embed-hide="1"] {
