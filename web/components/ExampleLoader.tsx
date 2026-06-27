@@ -63,36 +63,6 @@ const GROUPS: ExampleGroup[] = [
       { name: "copy file", file: "/examples/cpsc355/copy-file.s" },
     ],
   },
-  {
-    label: "starters (A1–A6)",
-    items: [
-      { name: "A1 min cubic", file: "/examples/cpsc355/starters/A1_min_cubic.asm" },
-      {
-        name: "A2 multiply via shift-add",
-        file: "/examples/cpsc355/starters/A2_mul_shift_add.asm",
-      },
-      { name: "A3 sort array", file: "/examples/cpsc355/starters/A3_sort_array.asm" },
-      {
-        name: "A4 struct + subroutines",
-        file: "/examples/cpsc355/starters/A4_struct_subroutine.asm",
-      },
-      {
-        name: "A5 global RPN calculator",
-        file: "/examples/cpsc355/starters/A5_global_rpn.asm",
-      },
-      { name: "A6 file I/O + fp", file: "/examples/cpsc355/starters/A6_file_io.asm" },
-    ],
-  },
-  {
-    label: "bare-metal classics",
-    items: [
-      { name: "factorial", file: "/examples/factorial.s" },
-      { name: "fibonacci", file: "/examples/fibonacci.s" },
-      { name: "string reverse", file: "/examples/string-reverse.s" },
-      { name: "bubble sort", file: "/examples/bubble-sort.s" },
-      { name: "gcd", file: "/examples/gcd.s" },
-    ],
-  },
 ];
 
 export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
