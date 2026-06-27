@@ -38,6 +38,17 @@ pub struct LinkedImage {
     /// `gdb b <label>` terminal command and any future symbolic
     /// debugger surface.
     pub symbols: HashMap<String, u64>,
+    /// Authoritative address -> editor-source-line map. For every
+    /// `.text` instruction emitted at `pc`, this holds `(pc,
+    /// original_line)` where `original_line` is the 1-based EDITOR
+    /// (pre-m4) line. m4 keeps line numbers aligned -- `define()` lines
+    /// expand to empty lines -- so `original_line` is the line the
+    /// student actually wrote. The debugger marker, the disassembly
+    /// text, and breakpoint placement key off this instead of counting
+    /// non-label source lines (which double-counts data/macro/directive
+    /// lines and drifts on complex programs). Trampolines and the
+    /// literal pool get no entries.
+    pub line_map: Vec<(u64, u32)>,
 }
 
 pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, EmuError> {
@@ -180,6 +191,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
 
     // Pass 2: emit bytes for every section, then the literal pool.
     let mut writes: Vec<(u64, Vec<u8>)> = Vec::new();
+    let mut line_map: Vec<(u64, u32)> = Vec::new();
     let mut instruction_count: usize = 0;
     let expanded_lines: Vec<&str> = prog.expanded_source.lines().collect();
 
@@ -251,6 +263,14 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         )?
                     };
                     writes.push((pc, word.to_le_bytes().to_vec()));
+                    // Record the authoritative pc -> editor-line entry for
+                    // every real `.text` instruction. Only `.text` carries
+                    // executable instructions; trampolines and the literal
+                    // pool are emitted separately below and intentionally
+                    // get no entries.
+                    if section.kind == SectionKind::Text {
+                        line_map.push((pc, *original_line as u32));
+                    }
                     offset += 4;
                     instruction_count += 1;
                 }
@@ -287,6 +307,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         instruction_count,
         text_base: CODE_BASE,
         symbols,
+        line_map,
     })
 }
 
