@@ -38,7 +38,7 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
         <span className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
           stack
         </span>
-        <span className="font-mono text-[var(--accent)]">
+        <span className="font-mono text-[var(--amber)]">
           SP = 0x{spVal.toString(16).padStart(16, "0")}
         </span>
         {fpVal > 0 && (
@@ -83,7 +83,7 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
                 : null;
             const isFpRow = fpInView && addr === fpVal;
             const rowClass = row === 0
-              ? "text-[var(--accent)]"
+              ? "text-[var(--amber)]"
               : isFpRow
                 ? "text-[var(--success)]"
                 : "";
@@ -91,7 +91,7 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
             return (
               <tr
                 key={row}
-                className={`hover:bg-[var(--bg-secondary)] ${rowClass}`}
+                className={`hover:bg-[var(--bg-elevated)] ${rowClass}`}
               >
                 <td className="text-[var(--text-secondary)]">
                   0x{addr.toString(16).padStart(8, "0")}
