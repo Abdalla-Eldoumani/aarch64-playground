@@ -1,9 +1,9 @@
 "use client";
 
-import { motion } from "motion/react";
 import { useEffect, useReducer } from "react";
 import { useZoom } from "@/lib/use-zoom";
 import { ZoomControl } from "@/components/ZoomControl";
+import { RegisterRow } from "@/components/RegisterRow";
 
 interface RegisterPanelProps {
   registers: string[];
@@ -16,9 +16,9 @@ interface RegisterPanelProps {
 const FLAG_NAMES = ["V", "C", "Z", "N"];
 
 /**
- * ARM calling-convention aliases for X0..X30. Shown faded next to the
- * register name so students can cross-reference what the course docs
- * call each register.
+ * ARM calling-convention aliases for X0..X30. Shown beside the register name
+ * (AA-legible via the base RegisterRow, not a faded micro-label) so students
+ * can cross-reference what the course docs call each register.
  */
 const ABI_ALIAS: Record<number, string> = {
   0: "arg0",
@@ -94,10 +94,12 @@ export function RegisterPanel({
             return (
               <span
                 key={name}
-                className={`px-1 rounded ${
+                // A set flag is machine state, so it reads in execution amber;
+                // an unset flag recedes to the tertiary text token.
+                className={`px-1 ${
                   set
-                    ? "bg-[var(--accent)] text-black font-bold"
-                    : "text-[var(--text-secondary)]"
+                    ? "text-[var(--amber)] font-bold"
+                    : "text-[var(--text-tertiary)]"
                 }`}
               >
                 {name}
@@ -109,59 +111,25 @@ export function RegisterPanel({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
         {registers.map((val, i) => (
+          // Keying on the pulse id remounts the row each time the register
+          // actually changes, so the reduced-motion-safe --changed flash in the
+          // shared RegisterRow replays even on consecutive writes.
           <RegisterRow
-            key={i}
+            key={`x${i}-${pulses.get(i) ?? 0}`}
             name={`X${i}`}
             value={val}
             alias={ABI_ALIAS[i]}
             changed={changedRegs.has(i)}
-            pulseId={pulses.get(i) ?? 0}
           />
         ))}
         <RegisterRow
+          key={`sp-${pulses.get(31) ?? 0}`}
           name="SP"
           value={sp}
           changed={changedRegs.has(31)}
-          pulseId={pulses.get(31) ?? 0}
         />
-        <RegisterRow name="PC" value={pcHex} changed={false} pulseId={0} />
+        <RegisterRow name="PC" value={pcHex} changed={false} />
       </div>
     </div>
-  );
-}
-
-function RegisterRow({
-  name,
-  value,
-  alias,
-  changed,
-  pulseId,
-}: {
-  name: string;
-  value: string;
-  alias?: string;
-  changed: boolean;
-  pulseId: number;
-}) {
-  return (
-    <motion.div
-      key={pulseId}
-      initial={changed ? { backgroundColor: "rgba(250, 204, 21, 0.35)" } : false}
-      animate={{ backgroundColor: "rgba(250, 204, 21, 0)" }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
-      className={`flex items-center justify-between py-0.5 px-1 rounded ${
-        changed ? "text-[var(--changed)]" : ""
-      }`}
-    >
-      <span className="text-[var(--text-secondary)] w-8 flex-shrink-0">
-        {name}
-      </span>
-      {alias && (
-        <span className="text-[9px] text-[var(--text-secondary)] opacity-60 flex-shrink-0 w-8 text-left">
-          {alias}
-        </span>
-      )}
-      <span className="font-mono flex-1 text-right">{value}</span>
-    </motion.div>
   );
 }
