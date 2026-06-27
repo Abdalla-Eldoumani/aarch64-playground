@@ -176,3 +176,65 @@ fn complex_program_runs_to_expected_exit_code() {
     // surfaced as the exit code by the main-return sentinel.
     assert_eq!(cpu.exit_code(), Some(55), "exit code is the sum of squares");
 }
+
+// -- the authoritative line map (the actual fix surface) --
+
+#[test]
+fn line_map_maps_main_first_instruction_to_editor_line() {
+    let (_cpu, image) = assemble_complex();
+    let main_addr = *image.symbols.get("main").expect("main symbol resolved");
+    // main's first instruction (`stp fp, lr, [sp, -16]!`) sits on editor
+    // line 14 of COMPLEX_SRC -- after the five define lines, the blank,
+    // the `.data` block (lines 7-9), the blank, and the
+    // `.text`/`.global main`/`main:` header lines. The text-counting
+    // heuristic the fix replaces would instead point at the 9th non-label
+    // source line, which is wrong precisely because it counted the data
+    // and define lines.
+    let entry = image
+        .line_map
+        .iter()
+        .find(|(addr, _)| *addr == main_addr)
+        .expect("main's first instruction has a line-map entry");
+    assert_eq!(entry.1, 14, "main's first instruction maps to its editor line");
+}
+
+#[test]
+fn line_map_skips_data_and_define_lines_and_strictly_increases() {
+    let (_cpu, image) = assemble_complex();
+    assert!(!image.line_map.is_empty(), "a hosted program emits a line map");
+
+    // Entries are emitted in `.text` address order. Addresses are
+    // contiguous (4 bytes apart) and the editor lines strictly increase,
+    // never pointing back at the m4 define lines (1-5) or the `.data`
+    // block (7-9) -- those carry no instructions and so get no entries.
+    let mut prev_addr: Option<u64> = None;
+    let mut prev_line: Option<u32> = None;
+    for (addr, line) in &image.line_map {
+        if let Some(pa) = prev_addr {
+            assert_eq!(*addr, pa + 4, "consecutive .text instructions are 4 bytes apart");
+        }
+        if let Some(pl) = prev_line {
+            assert!(*line > pl, "editor lines strictly increase across instructions");
+        }
+        assert!(
+            *line >= 14,
+            "no instruction maps into the define/.data/header lines (got line {line})",
+        );
+        prev_addr = Some(*addr);
+        prev_line = Some(*line);
+    }
+}
+
+#[test]
+fn line_map_covers_every_text_instruction() {
+    let (_cpu, image) = assemble_complex();
+    // Every emitted `.text` instruction gets exactly one entry; the
+    // trampolines and the literal pool (the `ldr x0, =count_m` pool slot)
+    // do not. This program is all-`.text` plus one pool entry, so the map
+    // length equals the instruction count.
+    assert_eq!(
+        image.line_map.len(),
+        image.instruction_count,
+        "one line-map entry per emitted .text instruction",
+    );
+}
