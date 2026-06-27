@@ -81,16 +81,6 @@ walking the whole project.
 | Example loader (grouped by week)    | `web/components/ExampleLoader.tsx`                      |
 | Recent programs                     | `web/components/RecentPrograms.tsx`, `web/lib/auto-save.ts` |
 
-## C-to-asm view
-
-| Feature                             | Lives in                                                |
-| ----------------------------------- | ------------------------------------------------------- |
-| Compiler Explorer proxy             | `web/app/api/c-to-asm/route.ts`                         |
-| Shortlink expansion                 | `web/app/api/c-to-asm/shortlink.ts`                     |
-| Client (typed wrapper)              | `web/lib/godbolt.ts`                                    |
-| DWARF/CFI filter                    | `web/lib/asm-filter.ts`                                 |
-| Diff / side-by-side                 | `web/components/DiffView.tsx`, `web/components/CToAsmView.tsx` |
-
 ## PWA & offline
 
 | Feature                             | Lives in                                                |
