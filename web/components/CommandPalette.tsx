@@ -45,7 +45,7 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl overflow-hidden"
+        className="w-full max-w-lg rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl overflow-hidden anim-modal-rise"
         onClick={(e) => e.stopPropagation()}
       >
         <Command label="command palette" className="flex flex-col">
