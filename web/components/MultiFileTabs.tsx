@@ -65,14 +65,14 @@ export function MultiFileTabs({
   const [pending, setPending] = useState("");
 
   return (
-    <div className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-secondary)] text-[11px]">
+    <div className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px]">
       <span className="text-[var(--text-secondary)] mr-1">files:</span>
       <button
         type="button"
         onClick={() => onSelect(-1)}
         className={`px-2 py-0.5 rounded ${
           activeIndex === -1
-            ? "bg-[var(--accent)] text-[var(--bg-primary)]"
+            ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
         }`}
       >
@@ -82,7 +82,7 @@ export function MultiFileTabs({
         <span
           key={`${f.name}-${i}`}
           className={`inline-flex items-center rounded ${
-            activeIndex === i ? "bg-[var(--accent)] text-[var(--bg-primary)]" : ""
+            activeIndex === i ? "bg-[var(--cyan)] text-[var(--on-cyan)]" : ""
           }`}
         >
           <button
@@ -121,11 +121,11 @@ export function MultiFileTabs({
           value={pending}
           onChange={(e) => setPending(e.target.value)}
           placeholder="new.asm"
-          className="w-20 bg-[var(--bg-primary)] border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
+          className="w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
         />
         <button
           type="submit"
-          className="inline-flex items-center justify-center min-w-[24px] min-h-[24px] px-1 text-[var(--text-secondary)] hover:text-[var(--accent)]"
+          className="inline-flex items-center justify-center min-w-[24px] min-h-[24px] px-1 text-[var(--text-secondary)] hover:text-[var(--cyan)]"
           aria-label="add file"
         >
           +
