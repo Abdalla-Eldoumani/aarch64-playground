@@ -135,7 +135,7 @@
 /* =============================================================================
    SPACE · RADII · ELEVATION · MOTION
    Motion tokens are defined here for later use; the existing .anim-* classes
-   keep their inline timings until the Phase 2 point-of-use sweep rewires them.
+   keep their inline timings until the later point-of-use sweep rewires them.
 ============================================================================= */
 :root {
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
