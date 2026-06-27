@@ -184,7 +184,7 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
 
   return (
     <div
-      className="h-full w-full bg-[var(--bg-primary)] overflow-hidden"
+      className="h-full w-full bg-[var(--bg-base)] overflow-hidden"
       ref={containerRef}
       aria-label="shell terminal"
       role="application"
