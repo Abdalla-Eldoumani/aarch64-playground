@@ -28,7 +28,7 @@ describe("Input", () => {
     const input = screen.getByLabelText("field");
     expect(input.className).toContain("bg-[var(--bg-raised)]");
     expect(input.className).toContain("border-[var(--border)]");
-    expect(input.className).toContain("focus-visible:shadow-[var(--ring)]");
+    expect(input.className).toContain("focus-visible:[box-shadow:var(--ring)]");
   });
 
   it("renders mono when the value carries data, sans otherwise", () => {
