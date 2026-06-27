@@ -76,7 +76,7 @@ export function Tabs({
               aria-controls={`tabpanel-${item.value}`}
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange(item.value)}
-              className={`relative shrink-0 min-h-[44px] px-4 font-sans text-[14px] font-medium transition-colors focus:outline-none focus-visible:shadow-[var(--ring)] ${
+              className={`relative shrink-0 min-h-[44px] px-4 font-sans text-[14px] font-medium transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
                 selected
                   ? "text-[var(--cyan)] border-b-2 border-[var(--cyan)]"
                   : "text-[var(--text-secondary)] border-b-2 border-transparent hover:text-[var(--text-primary)]"
@@ -92,7 +92,7 @@ export function Tabs({
         id={`tabpanel-${active}`}
         aria-labelledby={`tab-${active}`}
         tabIndex={0}
-        className="focus:outline-none focus-visible:shadow-[var(--ring)]"
+        className="focus:outline-none focus-visible:[box-shadow:var(--ring)]"
       >
         {children}
       </div>
