@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
-import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/upload-guard";
+import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/upload-guard";
 
 interface ConsolePanelProps {
   stdout: string;
@@ -52,6 +52,16 @@ export function ConsolePanel({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate the stdin ingress before it reaches the emulator as data.
+    const error = validateStdin(stdinValue);
+    if (error) {
+      toast.error(error);
+      // Intentional security observability: a rejected over-cap input is
+      // surfaced to the console alongside the toast, per the input-
+      // validation policy. This is the only sanctioned console use here.
+      console.warn(`rejected over-cap stdin: ${error}`);
+      return;
+    }
     // Always terminate with a newline so scanf / read block releases.
     pushStdin(stdinValue + "\n");
     setStdinValue("");
