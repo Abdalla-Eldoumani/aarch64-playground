@@ -24,14 +24,17 @@ describe("RegisterRow", () => {
 
   it("drives the write flash and value tint from --changed when changed", () => {
     const { container } = render(<RegisterRow name="X2" value="0x2a" changed />);
-    // the flash overlay reads its color from the theme-following --changed token
-    expect(container.innerHTML).toContain("bg-[var(--changed)]");
+    // the row plays the reduced-motion-safe reg-flash keyframe (its color comes
+    // from --changed in globals.css) and the value carries the --changed tint
+    const row = container.firstElementChild as HTMLElement;
+    expect(row.className).toContain("anim-reg-flash");
     expect(screen.getByText("0x2a").className).toContain("text-[var(--changed)]");
   });
 
-  it("stays static (no flash overlay, no tint) when unchanged", () => {
+  it("stays static (no flash class, no tint) when unchanged", () => {
     const { container } = render(<RegisterRow name="X3" value="0x0" />);
-    expect(container.innerHTML).not.toContain("bg-[var(--changed)]");
+    const row = container.firstElementChild as HTMLElement;
+    expect(row.className).not.toContain("anim-reg-flash");
     expect(screen.getByText("0x0").className).not.toContain("text-[var(--changed)]");
   });
 
