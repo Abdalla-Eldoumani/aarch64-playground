@@ -5,6 +5,21 @@ use crate::errors::{EmuError, MemAccess};
 const PAGE_SIZE: usize = 4096;
 const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 
+/// Hard ceiling on how many 4 KiB pages a single program may have mapped
+/// at once. A store that would map a NEW page beyond this cap faults with
+/// `MemoryFault { access: Write }` instead of allocating, so a runaway
+/// allocation -- a memory bomb, or unbounded recursion growing the stack --
+/// aborts calmly rather than growing the wasm heap until the tab dies.
+///
+/// 1024 pages is 4 MiB of live program memory: roughly 20x a real cpsc 355
+/// working set (tens of pages -- stack, code, a data section, a buffer) yet
+/// well under tab exhaustion. The bound is kept below a "few thousand
+/// pages" because the step-back snapshot ring clones every live page each
+/// step, so the effective peak is ~129x the live cap; 1024 keeps that worst
+/// case near half a GiB. The pre-mapped stack/code/data baseline and
+/// `map_page` are not subject to the cap (they are the fixed baseline).
+pub const MAX_MAPPED_PAGES: usize = 1024;
+
 /// Sparse page-based memory.
 ///
 /// Pages are 4 KiB, allocated on first write (auto-map). Reads to unmapped
@@ -53,6 +68,12 @@ impl Memory {
         self.pages.contains_key(&(addr & PAGE_MASK))
     }
 
+    /// Number of 4 KiB pages currently mapped. Used to enforce and observe
+    /// `MAX_MAPPED_PAGES`.
+    pub fn mapped_page_count(&self) -> usize {
+        self.pages.len()
+    }
+
     /// Zero every mapped page in place, keeping the allocations.
     ///
     /// Dropping and re-allocating 4 KiB page buffers under wasm32's bundled
@@ -82,9 +103,18 @@ impl Memory {
             })
     }
 
-    fn get_page_mut(&mut self, addr: u64) -> &mut [u8] {
+    fn get_page_mut(&mut self, addr: u64) -> Result<&mut [u8], EmuError> {
         let base = addr & PAGE_MASK;
-        self.pages.entry(base).or_insert_with(new_page).as_mut_slice()
+        // A write to an already-mapped page always succeeds. A write that
+        // would map a NEW page is refused once the cap is reached, so a
+        // runaway allocation aborts instead of growing the heap unbounded.
+        if !self.pages.contains_key(&base) && self.pages.len() >= MAX_MAPPED_PAGES {
+            return Err(EmuError::MemoryFault {
+                address: addr,
+                access: MemAccess::Write,
+            });
+        }
+        Ok(self.pages.entry(base).or_insert_with(new_page).as_mut_slice())
     }
 
     // -- public read/write --
@@ -155,7 +185,7 @@ impl Memory {
     /// Write a single byte (auto-maps the page).
     pub fn write_u8(&mut self, addr: u64, val: u8) -> Result<(), EmuError> {
         let off = Self::page_offset(addr);
-        let page = self.get_page_mut(addr);
+        let page = self.get_page_mut(addr)?;
         page[off] = val;
         self.dirty.push((addr, 1));
         Ok(())
@@ -172,7 +202,7 @@ impl Memory {
         }
         let off = Self::page_offset(addr);
         let bytes = val.to_le_bytes();
-        let page = self.get_page_mut(addr);
+        let page = self.get_page_mut(addr)?;
         page[off..off + 2].copy_from_slice(&bytes);
         self.dirty.push((addr, 2));
         Ok(())
@@ -188,7 +218,7 @@ impl Memory {
         }
         let off = Self::page_offset(addr);
         let bytes = val.to_le_bytes();
-        let page = self.get_page_mut(addr);
+        let page = self.get_page_mut(addr)?;
         page[off..off + 4].copy_from_slice(&bytes);
         self.dirty.push((addr, 4));
         Ok(())
@@ -204,7 +234,7 @@ impl Memory {
         }
         let off = Self::page_offset(addr);
         let bytes = val.to_le_bytes();
-        let page = self.get_page_mut(addr);
+        let page = self.get_page_mut(addr)?;
         page[off..off + 8].copy_from_slice(&bytes);
         self.dirty.push((addr, 8));
         Ok(())
@@ -345,5 +375,27 @@ mod tests {
         assert_eq!(mem.read_u16(0x2000).unwrap(), 0xCAFE);
         assert_eq!(mem.read_u8(0x2000).unwrap(), 0xFE);
         assert_eq!(mem.read_u8(0x2001).unwrap(), 0xCA);
+    }
+
+    #[test]
+    fn write_past_page_cap_faults_but_mapped_writes_still_ok() {
+        let mut mem = Memory::new();
+        // Map exactly the cap's worth of distinct pages (map_page bypasses
+        // the cap; it is the trusted baseline path).
+        for i in 0..MAX_MAPPED_PAGES {
+            mem.map_page((i as u64) * 4096);
+        }
+        assert_eq!(mem.mapped_page_count(), MAX_MAPPED_PAGES);
+        // A write to an already-mapped page still succeeds.
+        assert!(mem.write_u8(0, 0xAB).is_ok());
+        // A write that would map a NEW page is refused, with a Write fault.
+        let new_page = (MAX_MAPPED_PAGES as u64) * 4096;
+        let err = mem.write_u8(new_page, 0xFF).unwrap_err();
+        assert_eq!(
+            err,
+            EmuError::MemoryFault { address: new_page, access: MemAccess::Write }
+        );
+        // The cap held: no new page was allocated.
+        assert_eq!(mem.mapped_page_count(), MAX_MAPPED_PAGES);
     }
 }
