@@ -279,6 +279,21 @@ function EmbeddableCore({
     emu.assemble(combined, parseArgs(argsText));
   }, [source, recent, emu, extraFiles, argsText]);
 
+  // The reduced embed/checker chrome has no separate Assemble control, so its
+  // primary Run must assemble first; otherwise runUntilBreak executes over
+  // empty memory and nothing the student wrote runs. Assemble when nothing is
+  // loaded yet (fresh or post-reset, instructions empty) or the source changed
+  // since the last run, awaiting the hub so the backend is loaded before run;
+  // an already-assembled, unchanged program runs straight away.
+  const lastRunSourceRef = useRef<string | null>(null);
+  const runEmbed = useCallback(async () => {
+    if (emu.instructions.length === 0 || lastRunSourceRef.current !== source) {
+      lastRunSourceRef.current = source;
+      await emu.assemble(source, parseArgs(argsText));
+    }
+    emu.run();
+  }, [emu, source, argsText]);
+
   // Auto-switch to the console on the false->true edge of `blocked` so the
   // student sees the scanf prompt. queueMicrotask defers the flip out of the
   // synchronous render phase.
@@ -715,7 +730,7 @@ function EmbeddableCore({
           {showRun && (
             <button
               type="button"
-              onClick={emu.run}
+              onClick={() => void runEmbed()}
               disabled={emu.isHalted && !emu.isRunning}
               aria-label="run"
               className="min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
