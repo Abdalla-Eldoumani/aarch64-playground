@@ -55,19 +55,9 @@ import type { Shortcut } from "@/components/ShortcutsHelp";
 import { useTheme } from "@/lib/use-theme";
 import dynamic from "next/dynamic";
 
-// Heavy components load on first use. `CToAsmView` and `DiffView` each
-// ship their own Monaco instance; keeping them out of the initial bundle
-// cuts the landing payload by ~300 kB gzipped. The three modals
-// (command palette, shortcuts help, share dialog) are only mounted once
-// the user opens them.
-const CToAsmView = dynamic(
-  () => import("@/components/CToAsmView").then((m) => m.CToAsmView),
-  { ssr: false, loading: () => <div className="h-full flex items-center justify-center text-xs text-[var(--text-secondary)]">loading C view...</div> },
-);
-const DiffView = dynamic(
-  () => import("@/components/DiffView").then((m) => m.DiffView),
-  { ssr: false },
-);
+// Heavy components load on first use. The three modals (command
+// palette, shortcuts help, share dialog) are only mounted once the
+// user opens them.
 const CommandPalette = dynamic(
   () => import("@/components/CommandPalette").then((m) => m.CommandPalette),
   { ssr: false },
@@ -123,12 +113,6 @@ function initialSource(): { source: string; fromShare: boolean } {
   return { source: DEFAULT_SOURCE, fromShare: false };
 }
 
-function initialView(): "playground" | "c-to-asm" {
-  if (typeof window === "undefined") return "playground";
-  const v = new URLSearchParams(window.location.search).get("view");
-  return v === "c-to-asm" ? "c-to-asm" : "playground";
-}
-
 export default function Home() {
   const emu = useEmulator();
   const bp = useBreakpoint();
@@ -139,17 +123,12 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<
     "memory" | "stack" | "console" | "term" | "watches" | "memwatch" | "saves"
   >("memory");
-  const [view, setView] = useState<"playground" | "c-to-asm">(initialView);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [argsText, setArgsText] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [shareBanner, setShareBanner] = useState(fromShare);
-  const [diffOpen, setDiffOpen] = useState(false);
-  const [baseline, setBaseline] = useState<{ source: string; label: string }>(
-    { source: DEFAULT_SOURCE, label: "starter snippet" },
-  );
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [, toggleTheme, setTheme] = useTheme();
   const cpsc = useCpsc355Mode();
@@ -163,7 +142,7 @@ export default function Home() {
   const [extraFiles, setExtraFiles] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
   const toast = useToast();
-  const importTarget = getImportTarget(view, activeFile);
+  const importTarget = getImportTarget(activeFile);
   const handleImport = useCallback(
     (target: ImportTarget, body: string) => {
       switch (target.kind) {
@@ -179,20 +158,14 @@ export default function Home() {
           toast.show(`imported into ${describeTarget(target, extraFiles)}`);
           return;
         }
-        case "c-to-asm":
-          setView("playground");
-          setSource(body);
-          toast.show("switched to playground and imported");
-          return;
       }
     },
     [extraFiles, setExtraFiles, setSource, toast],
   );
   const [saveName, setSaveName] = useState("");
   const loadAsBaseline = useCallback(
-    (next: string, label: string) => {
+    (next: string, _label?: string) => {
       setSourceState({ source: next, fromShare: false });
-      setBaseline({ source: next, label });
     },
     [],
   );
@@ -223,14 +196,6 @@ export default function Home() {
       extraFiles.length > 0 ? combineSources(source, extraFiles) : source;
     emu.assemble(combined, parseArgs(argsText));
   }, [source, recent, emu, extraFiles, argsText]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const url = new URL(window.location.href);
-    if (view === "c-to-asm") url.searchParams.set("view", "c-to-asm");
-    else url.searchParams.delete("view");
-    window.history.replaceState({}, "", url.toString());
-  }, [view]);
 
   // Auto-switch to the console on the false->true edge of `blocked` so
   // the student sees the scanf prompt. Using queueMicrotask defers the
@@ -328,12 +293,6 @@ export default function Home() {
         run: () => setShareOpen(true),
       },
       {
-        id: "diff",
-        label: "Diff against baseline",
-        description: `compare the editor against "${baseline.label}"`,
-        run: () => setDiffOpen(true),
-      },
-      {
         id: "tutorial",
         label: "Start guided tour",
         description: "walk through a concept one step at a time",
@@ -355,12 +314,6 @@ export default function Home() {
           if (next !== source) setSource(next);
           toast.show("source formatted");
         },
-      },
-      {
-        id: "toggle-view",
-        label: view === "playground" ? "Open C to ASM view" : "Back to playground",
-        description: "flip between the two top-level views",
-        run: () => setView(view === "playground" ? "c-to-asm" : "playground"),
       },
       {
         id: "help",
@@ -433,7 +386,7 @@ export default function Home() {
         },
       },
     ],
-    [emu, view, assembleWithHistory, baseline.label, toggleTheme, source, setSource, toast],
+    [emu, assembleWithHistory, toggleTheme, source, setSource, toast],
   );
 
   const isMain = activeFile === -1;
@@ -939,25 +892,16 @@ export default function Home() {
   const showResizable = isAtLeast(bp, "lg");
   const showTablet = !showResizable && isAtLeast(bp, "md");
 
-  const onLoadIntoPlayground = useCallback(
-    (asm: string) => {
-      setSource(asm);
-      setView("playground");
-    },
-    [setSource],
-  );
-
-  // Deep-link bootstrap. Runs once on mount: applies ?theme=, ?view=,
+  // Deep-link bootstrap. Runs once on mount: applies ?theme=,
   // ?embed=, and (if ?example=<stem> resolves to a real file) loads the
   // example into the editor. Errors during the example fetch are
   // silently dropped -- the user can still load via the dropdown.
-  // Also restores args / view / cursor from the share hash; the source
+  // Also restores args / cursor from the share hash; the source
   // itself was already pulled in by `initialSource`.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const dl = parseDeepLink(window.location.search);
     if (dl.theme) setTheme(dl.theme);
-    if (dl.view) setView(dl.view);
     if (dl.embed) setEmbed(true);
     if (dl.bundle) {
       loadAsBaseline(dl.bundle.source, "diagnostic bundle");
@@ -978,7 +922,6 @@ export default function Home() {
     const hashState = readShareHash(window.location.hash);
     if (hashState) {
       if (hashState.args !== undefined) setArgsText(hashState.args);
-      if (hashState.view) setView(hashState.view);
       if (hashState.cursor) setCursor(hashState.cursor);
     }
     // Effect runs once at mount; deep-link state is read from the URL
@@ -1006,33 +949,11 @@ export default function Home() {
         />
         <button
           type="button"
-          onClick={wrap(() =>
-            setView(view === "c-to-asm" ? "playground" : "c-to-asm"),
-          )}
-          className={`text-xs rounded px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] whitespace-nowrap ${
-            view === "c-to-asm"
-              ? "bg-[var(--accent)] text-black"
-              : "text-[var(--text-secondary)] hover:text-[var(--accent)]"
-          }`}
-          aria-pressed={view === "c-to-asm"}
-        >
-          C -&gt; asm
-        </button>
-        <button
-          type="button"
           onClick={wrap(() => setShareOpen(true))}
           className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           aria-label="share program"
         >
           share
-        </button>
-        <button
-          type="button"
-          onClick={wrap(() => setDiffOpen(true))}
-          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          aria-label="diff against baseline"
-        >
-          diff
         </button>
         <DiagnosticBundle
           build={() => ({
@@ -1211,12 +1132,7 @@ export default function Home() {
       )}
 
       <main role="main" aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
-        {view === "c-to-asm" ? (
-          <CToAsmView
-            onLoadIntoPlayground={onLoadIntoPlayground}
-            onClose={() => setView("playground")}
-          />
-        ) : showResizable ? (
+        {showResizable ? (
           <ResizableLayout
             breakpoint={bp}
             editor={editorBlock}
@@ -1294,17 +1210,9 @@ export default function Home() {
         state={{
           source,
           args: argsText || undefined,
-          view,
           cursor,
         }}
         onClose={() => setShareOpen(false)}
-      />
-      <DiffView
-        open={diffOpen}
-        baseline={baseline.source}
-        baselineLabel={baseline.label}
-        current={source}
-        onClose={() => setDiffOpen(false)}
       />
       <TutorialRunner
         open={tutorialOpen}
