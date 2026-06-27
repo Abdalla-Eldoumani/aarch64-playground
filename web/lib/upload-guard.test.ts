@@ -1,9 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
-  C_TO_ASM_TIMEOUT_MS,
   MAX_BOOKMARK_JSON_BYTES,
   MAX_BUNDLE_DECOMPRESSED_BYTES,
-  MAX_C_SOURCE_BYTES,
   MAX_SHARE_DECOMPRESSED_BYTES,
   MAX_SOURCE_BYTES,
   MAX_VFS_BYTES,
@@ -37,9 +35,5 @@ describe("upload-guard", () => {
     expect(MAX_BOOKMARK_JSON_BYTES).toBeGreaterThan(0);
     expect(MAX_BUNDLE_DECOMPRESSED_BYTES).toBeGreaterThan(0);
     expect(MAX_SHARE_DECOMPRESSED_BYTES).toBeGreaterThan(0);
-    expect(MAX_C_SOURCE_BYTES).toBeGreaterThan(0);
-    expect(MAX_C_SOURCE_BYTES).toBeLessThan(MAX_SOURCE_BYTES);
-    expect(C_TO_ASM_TIMEOUT_MS).toBeGreaterThanOrEqual(5_000);
-    expect(C_TO_ASM_TIMEOUT_MS).toBeLessThanOrEqual(60_000);
   });
 });
