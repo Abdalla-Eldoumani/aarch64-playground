@@ -1,5 +1,5 @@
-//! Runaway-loop and memory-bomb bounds (SEC-01). These prove the
-//! in-browser execution sandbox can never hang or exhaust the tab: a
+//! Runaway-loop and memory-bomb bounds. These prove the in-browser
+//! execution sandbox can never hang or exhaust the tab: a
 //! runaway loop hits the cumulative step ceiling and a runaway allocation
 //! hits the mapped-page cap, both aborting as a CALM halt that carries a
 //! plain-language message through the result `error` field -- never a
