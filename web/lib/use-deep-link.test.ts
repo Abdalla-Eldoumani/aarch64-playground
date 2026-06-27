@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import LZString from "lz-string";
-import { buildDeepLinkQuery, parseDeepLink } from "@/lib/use-deep-link";
+import { buildDeepLinkQuery, parseDeepLink, resolveExampleStem } from "@/lib/use-deep-link";
 import { MAX_SHARE_HASH_BYTES } from "@/lib/upload-guard";
 
 afterEach(() => {
@@ -8,8 +8,8 @@ afterEach(() => {
 });
 
 describe("parseDeepLink", () => {
-  test("?example=week08_scores names the example", () => {
-    expect(parseDeepLink("?example=week08_scores").example).toBe("week08_scores");
+  test("?example=array-scores names the example", () => {
+    expect(parseDeepLink("?example=array-scores").example).toBe("array-scores");
   });
 
   test("malicious example with slash is dropped", () => {
@@ -40,9 +40,9 @@ describe("parseDeepLink", () => {
   });
 
   test("multiple params combine", () => {
-    const r = parseDeepLink("?example=week08_scores&theme=light&embed=1");
+    const r = parseDeepLink("?example=array-scores&theme=light&embed=1");
     expect(r).toEqual({
-      example: "week08_scores",
+      example: "array-scores",
       theme: "light",
       embed: true,
     });
@@ -85,16 +85,41 @@ describe("buildDeepLinkQuery", () => {
 
   test("includes example, theme, embed", () => {
     const q = buildDeepLinkQuery({
-      example: "week08_scores",
+      example: "array-scores",
       theme: "high-contrast",
       embed: true,
     });
-    expect(q).toContain("example=week08_scores");
+    expect(q).toContain("example=array-scores");
     expect(q).toContain("theme=high-contrast");
     expect(q).toContain("embed=1");
   });
 
   test("omits embed when false", () => {
-    expect(buildDeepLinkQuery({ example: "week08_scores", embed: false })).toBe("?example=week08_scores");
+    expect(buildDeepLinkQuery({ example: "array-scores", embed: false })).toBe("?example=array-scores");
+  });
+});
+
+describe("resolveExampleStem", () => {
+  test("maps a legacy course-labeled stem to its renamed file", () => {
+    expect(resolveExampleStem("week03_exercise")).toBe("basics");
+    expect(resolveExampleStem("week08_scores")).toBe("array-scores");
+    expect(resolveExampleStem("week11_argv")).toBe("command-line-args");
+    expect(resolveExampleStem("week13_copy_file")).toBe("copy-file");
+  });
+
+  test("passes an already-clean stem through unchanged", () => {
+    expect(resolveExampleStem("basics")).toBe("basics");
+    expect(resolveExampleStem("circle-area")).toBe("circle-area");
+  });
+
+  test("passes an unknown stem through unchanged", () => {
+    expect(resolveExampleStem("not-an-example")).toBe("not-an-example");
+  });
+
+  test("does not alias a traversal string, and parseDeepLink still rejects it", () => {
+    // resolveExampleStem only remaps the fixed allow-list; path safety is
+    // parseDeepLink's job, which drops anything outside /^[\w.-]+$/.
+    expect(resolveExampleStem("../etc/passwd")).toBe("../etc/passwd");
+    expect(parseDeepLink("?example=../etc/passwd").example).toBeUndefined();
   });
 });
