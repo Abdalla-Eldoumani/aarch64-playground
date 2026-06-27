@@ -106,9 +106,8 @@ pub struct Emulator {
     /// editor-source-line map from the most recent hosted assemble.
     /// Empty for the legacy bare-metal path and after a failed assemble;
     /// the web layer treats an empty map as "fall back to the source-text
-    /// line-count heuristic". Stored here on the wrapper (not in `cpu`)
-    /// so the SEC-01 bounds work that owns `cpu.rs` this wave does not
-    /// collide with this change.
+    /// line-count heuristic". Stored on the wrapper rather than on `cpu`
+    /// to keep the cpu module focused on execution state.
     line_map: Vec<u32>,
 }
 
