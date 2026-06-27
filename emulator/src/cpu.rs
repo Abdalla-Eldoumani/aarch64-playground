@@ -1195,7 +1195,7 @@ mod tests {
         assert_eq!(cpu.regs.read_gpr(0, true), 99);
     }
 
-    // -- runaway-loop / step-ceiling bounds (SEC-01) --
+    // -- runaway-loop / step-ceiling bounds --
 
     #[test]
     fn steps_total_increments_once_per_step() {
