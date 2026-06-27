@@ -936,8 +936,10 @@ function EmbeddableCore({
           return (
             <button
               key={tab}
+              id={`right-tab-${tab}`}
               role="tab"
               aria-selected={selected}
+              aria-controls={`right-panel-${tab}`}
               className={`relative min-h-[2.25rem] px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
                 selected
                   ? "text-[var(--cyan)] border-b border-[var(--cyan)]"
@@ -956,7 +958,12 @@ function EmbeddableCore({
           );
         })}
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div
+        className="flex-1 min-h-0 overflow-hidden"
+        role="tabpanel"
+        id={`right-panel-${activeTab}`}
+        aria-labelledby={`right-tab-${activeTab}`}
+      >
         {activeTab === "memory" && (
           <div className="h-full overflow-auto">{memoryBlock}</div>
         )}
