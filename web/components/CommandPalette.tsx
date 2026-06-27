@@ -45,7 +45,7 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl overflow-hidden"
+        className="w-full max-w-lg rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <Command label="command palette" className="flex flex-col">
@@ -66,7 +66,7 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
                   a.run();
                   onClose();
                 }}
-                className="flex items-center justify-between gap-3 px-4 py-2 text-sm cursor-pointer data-[selected=true]:bg-[var(--bg-panel)] data-[selected=true]:text-[var(--accent)]"
+                className="flex items-center justify-between gap-3 px-4 py-2 text-sm cursor-pointer data-[selected=true]:bg-[var(--bg-panel)] data-[selected=true]:text-[var(--cyan)]"
               >
                 <div className="flex flex-col">
                   <span>{a.label}</span>
@@ -75,7 +75,7 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
                   </span>
                 </div>
                 {a.shortcut && (
-                  <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-primary)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border)]">
                     {a.shortcut}
                   </kbd>
                 )}
