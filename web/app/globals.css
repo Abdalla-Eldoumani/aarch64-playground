@@ -113,6 +113,53 @@
   --accent-muted: var(--cyan-dim);
 }
 
+/* =============================================================================
+   TYPE: Hanken Grotesk (display/UI), JetBrains Mono (signature), Source Serif 4
+   (lead). next/font binds --font-sans/--font-mono/--font-serif on <html> to the
+   self-hosted hashed families (layout.tsx); the --type-* shorthands reference
+   those vars so they resolve to the self-hosted fonts. The family vars are
+   intentionally NOT redeclared here — doing so would shadow next/font.
+============================================================================= */
+:root {
+  --type-display:  800 56px/1.04  var(--font-sans);   /* tracking -0.02em  */
+  --type-h1:       700 36px/1.10  var(--font-sans);   /* tracking -0.015em */
+  --type-h2:       600 26px/1.20  var(--font-sans);   /* tracking -0.01em  */
+  --type-h3:       600 19px/1.30  var(--font-sans);
+  --type-lead:     400 19px/1.60  var(--font-serif);  /* editorial lead only */
+  --type-body:     400 16px/1.60  var(--font-sans);
+  --type-small:    400 13px/1.50  var(--font-sans);
+  --type-code:     400 14px/1.60  var(--font-mono);
+  --type-label:    500 12px/1.40  var(--font-mono);   /* .08em, uppercase   */
+}
+
+/* =============================================================================
+   SPACE · RADII · ELEVATION · MOTION
+   Motion tokens are defined here for later use; the existing .anim-* classes
+   keep their inline timings until the Phase 2 point-of-use sweep rewires them.
+============================================================================= */
+:root {
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
+
+  --radius-control: 6px;
+  --radius-card:    10px;
+  --radius-modal:   14px;
+
+  --shadow-overlay: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+
+  --ring: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--focus);
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-ui: 160ms;
+  --reg-flash-in: 120ms;
+  --reg-flash-out: 480ms;
+  --step-pop: 160ms;
+  --run-breathe: 2000ms;
+  --cursor-blink: 1000ms;
+  --error-shake: 200ms;
+  --modal-rise: 160ms;
+}
+
 html {
   /* 16px base on iOS kills form-field auto-zoom when the keyboard opens. */
   font-size: 16px;
@@ -135,7 +182,7 @@ body {
   letter-spacing: -0.005em;
 }
 .font-sans {
-  font-family: var(--font-sans), "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  font-family: var(--font-sans), "Hanken Grotesk", "Helvetica Neue", system-ui, sans-serif;
 }
 .font-mono {
   font-family: var(--font-mono), "JetBrains Mono", "Fira Code", "Consolas", monospace;
