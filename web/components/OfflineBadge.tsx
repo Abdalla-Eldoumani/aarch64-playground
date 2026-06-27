@@ -34,7 +34,7 @@ export function OfflineBadge() {
     <div
       role="status"
       aria-live="polite"
-      className="px-3 py-1 text-[11px] text-center bg-[var(--bg-secondary)] border-b border-[var(--border)] text-[var(--text-secondary)]"
+      className="px-3 py-1 text-[11px] text-center bg-[var(--bg-sunken)] border-b border-[var(--border)] text-[var(--text-secondary)]"
     >
       offline -- the playground is using cached files; C-to-asm needs network access.
     </div>
