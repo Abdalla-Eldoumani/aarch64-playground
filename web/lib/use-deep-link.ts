@@ -4,7 +4,6 @@ import { decodeBundle, type DiagnosticBundle } from "@/lib/diagnostic-bundle";
 import type { Theme } from "@/lib/use-theme";
 
 export interface DeepLink {
-  view?: "playground" | "c-to-asm";
   example?: string;
   theme?: Theme;
   embed: boolean;
@@ -21,9 +20,6 @@ export function parseDeepLink(search: string): DeepLink {
   const trimmed = search.startsWith("?") ? search.slice(1) : search;
   const params = new URLSearchParams(trimmed);
   const result: DeepLink = { embed: false };
-
-  const view = params.get("view");
-  if (view === "playground" || view === "c-to-asm") result.view = view;
 
   const example = params.get("example");
   if (example && /^[\w.-]+$/.test(example)) result.example = example;
@@ -44,7 +40,6 @@ export function parseDeepLink(search: string): DeepLink {
 /** Compose the query-string portion of a share URL from a partial DeepLink. */
 export function buildDeepLinkQuery(link: Omit<DeepLink, "embed"> & { embed?: boolean }): string {
   const params = new URLSearchParams();
-  if (link.view) params.set("view", link.view);
   if (link.example) params.set("example", link.example);
   if (link.theme) params.set("theme", link.theme);
   if (link.embed) params.set("embed", "1");
