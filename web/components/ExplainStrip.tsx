@@ -1,22 +1,13 @@
 "use client";
 
 import { useMemo, useSyncExternalStore } from "react";
-import { lookupDoc } from "@/lib/instruction-docs";
+import { describeLine, extractAliases } from "@/lib/explain-line";
 
 export interface ExplainStripProps {
   /** Full source text -- needed to extract the line that just executed. */
   source: string;
   /** 1-based line of the most recently executed (or about-to-execute) instruction, or null. */
   currentLine: number | null;
-}
-
-function extractAliases(source: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const re = /^\s*define\(\s*([A-Za-z_][\w]*)\s*,\s*([^)]+?)\s*\)\s*$/gm;
-  for (const m of source.matchAll(re)) {
-    out[m[1]] = m[2].trim();
-  }
-  return out;
 }
 
 const STORAGE_KEY = "aarch64-playground:explain-strip";
@@ -59,45 +50,6 @@ function subscribeEnabled(callback: () => void): () => void {
     window.removeEventListener("storage", onStorage);
     window.removeEventListener("aarch64-playground:explain-strip-changed", onCustom);
   };
-}
-
-function describeLine(
-  rawLine: string,
-  aliases?: Record<string, string>,
-): string | null {
-  if (!rawLine) return null;
-  let line = rawLine.replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
-  if (!line) return null;
-  // Strip a leading `label:` if present.
-  const labelMatch = line.match(/^[A-Za-z_.$][\w.$]*\s*:\s*(.*)$/);
-  if (labelMatch) line = labelMatch[1];
-  if (!line) return null;
-  const space = line.search(/\s/);
-  const mnemonic = (space === -1 ? line : line.slice(0, space)).toUpperCase();
-  const operands = space === -1 ? "" : line.slice(space).trim();
-
-  const doc = lookupDoc(mnemonic);
-  if (!doc) {
-    // Directives, labels, and pseudo-ops fall through.
-    if (mnemonic.startsWith(".")) return `directive ${mnemonic.toLowerCase()} -- emits data or controls section layout`;
-    return null;
-  }
-  if (doc.notImplemented) {
-    return `${mnemonic.toLowerCase()} -- not implemented in this emulator`;
-  }
-  // Surface alias resolutions so a student sees `score1_r -> w19`.
-  const resolved = aliases ? resolveAliases(operands, aliases) : null;
-  const detail = resolved && resolved !== operands ? ` (aliases: ${resolved})` : "";
-  return `${mnemonic.toLowerCase()} ${operands}${detail} -- ${doc.summary}`;
-}
-
-function resolveAliases(operands: string, aliases: Record<string, string>): string {
-  if (!operands) return operands;
-  return operands.replace(/\b([A-Za-z_][\w]*)\b/g, (match) => {
-    const target = aliases[match];
-    if (!target || target === match) return match;
-    return `${match}=${target}`;
-  });
 }
 
 /**
