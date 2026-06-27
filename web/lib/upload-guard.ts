@@ -15,10 +15,6 @@ export const MAX_BOOKMARK_JSON_BYTES = 1 * 1024 * 1024;
 export const MAX_BUNDLE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
 /** Maximum decompressed size of a `#p2=` share hash (1 MB). */
 export const MAX_SHARE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
-/** Maximum C source length the /api/c-to-asm route will forward to Godbolt (256 KB). */
-export const MAX_C_SOURCE_BYTES = 256 * 1024;
-/** Hard timeout on the upstream Godbolt request (30 s). */
-export const C_TO_ASM_TIMEOUT_MS = 30_000;
 
 /**
  * Returns null when the size is within `cap`, otherwise a human-readable
