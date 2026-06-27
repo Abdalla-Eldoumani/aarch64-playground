@@ -2,7 +2,7 @@
 
 import LZString from "lz-string";
 import { buildDeepLinkQuery } from "@/lib/use-deep-link";
-import { MAX_SHARE_DECOMPRESSED_BYTES } from "@/lib/upload-guard";
+import { MAX_SHARE_DECOMPRESSED_BYTES, MAX_SHARE_HASH_BYTES } from "@/lib/upload-guard";
 import type { Theme } from "@/lib/use-theme";
 
 const PREFIX_V2 = "p2=";
@@ -40,6 +40,10 @@ export function buildShareHash(state: ShareState): string {
  */
 export function readShareHash(hash: string): ShareState | null {
   const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
+  // Decompression-bomb guard: bound the raw (still-compressed) fragment
+  // before lz-string runs, so a tiny payload can't expand to exhaust the
+  // tab. The caller falls back to the default editor state on null.
+  if (trimmed.length > MAX_SHARE_HASH_BYTES) return null;
   if (trimmed.startsWith(PREFIX_V2)) {
     const compressed = trimmed.slice(PREFIX_V2.length);
     const decoded = LZString.decompressFromEncodedURIComponent(compressed);
