@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { Button } from "@/components/Button";
+import { explainError } from "@/lib/error-explain";
 
 interface ControlsProps {
   onAssemble: () => void;
@@ -29,11 +31,10 @@ export function Controls({
   error,
   stepCount,
 }: ControlsProps) {
-  // The error span uses `error` itself as its React key so that any
-  // change (new error, fixed error, different error) re-mounts the
-  // span and re-fires the css shake. Same trick on the step counter
-  // below: a key tied to the count restarts the scale-up animation
-  // each step without needing extra effects.
+  // The step counter uses a key tied to the count so the scale-up
+  // animation restarts each step without extra effects. The keyboard
+  // shortcuts stay bound, but the visible 44px controls are the obvious
+  // path -- discovery never depends on F5, which collides with reload.
 
   // keyboard shortcuts
   useEffect(() => {
@@ -63,33 +64,70 @@ export function Controls({
     return () => window.removeEventListener("keydown", handler);
   }, [onAssemble, onStep, onStepBack, canStepBack, onRun, onPause, onReset, isRunning]);
 
+  // The plain-language cause/hint replaces the raw error string alone, so
+  // a beginner's first failed program reads as instructive, not alarming.
+  const explanation = error ? explainError(error) : null;
+
   return (
     <div
       style={{ paddingBottom: "calc(0.5rem + var(--safe-bottom))" }}
-      className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 border-t border-[var(--border)] bg-[var(--bg-secondary)]"
+      className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)]"
     >
-      <Button onClick={onAssemble} label="assemble" shortcut="F6" />
       <Button
+        variant="primary"
+        onClick={onAssemble}
+        aria-label="assemble"
+        aria-keyshortcuts="F6"
+        title="F6"
+      >
+        <span>assemble</span>
+        <Shortcut keys="F6" />
+      </Button>
+      <Button
+        variant="primary"
         onClick={isRunning ? onPause : onRun}
-        label={isRunning ? "pause" : "run"}
-        shortcut="F5"
+        aria-label={isRunning ? "pause" : "run"}
+        aria-keyshortcuts="F5"
+        title="F5"
         disabled={isHalted && !isRunning}
-      />
+      >
+        <span>{isRunning ? "pause" : "run"}</span>
+        <Shortcut keys="F5" />
+      </Button>
       <Button
+        variant="secondary"
         onClick={onStep}
-        label="step"
-        shortcut="F10"
+        aria-label="step"
+        aria-keyshortcuts="F10"
+        title="F10"
         disabled={isRunning || isHalted}
-      />
+      >
+        <span>step</span>
+        <Shortcut keys="F10" />
+      </Button>
       {onStepBack && (
         <Button
+          variant="secondary"
           onClick={onStepBack}
-          label="back"
-          shortcut="Shift+F10"
+          aria-label="back"
+          aria-keyshortcuts="Shift+F10"
+          title="Shift+F10"
           disabled={isRunning || !canStepBack}
-        />
+        >
+          <span>back</span>
+          <Shortcut keys="Shift+F10" />
+        </Button>
       )}
-      <Button onClick={onReset} label="reset" shortcut="Shift+F5" />
+      <Button
+        variant="secondary"
+        onClick={onReset}
+        aria-label="reset"
+        aria-keyshortcuts="Shift+F5"
+        title="Shift+F5"
+      >
+        <span>reset</span>
+        <Shortcut keys="Shift+F5" />
+      </Button>
 
       <div className="flex-1" />
 
@@ -109,55 +147,39 @@ export function Controls({
           className="hidden sm:inline-flex items-center gap-2 font-sans text-xs tracking-wide text-[var(--text-secondary)]"
           role="status"
         >
-          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
+          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--success)]" />
           halted
         </span>
       )}
 
       {error && (
-        <span
-          key={error}
-          className="font-sans text-red-400 text-xs truncate max-w-md anim-error-shake"
+        <div
           role="alert"
-          title={error}
+          className="flex flex-col items-end min-w-0 max-w-md text-right"
         >
-          {error}
-        </span>
+          <span className="font-sans text-xs text-[var(--danger)] truncate w-full" title={error}>
+            {error}
+          </span>
+          {explanation && (
+            <span
+              className="hidden sm:block font-sans text-[11px] text-[var(--text-tertiary)] truncate w-full"
+              title={explanation.fix}
+            >
+              {explanation.fix}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-function Button({
-  onClick,
-  label,
-  shortcut,
-  disabled,
-}: {
-  onClick: () => void;
-  label: string;
-  shortcut?: string;
-  disabled?: boolean;
-}) {
+function Shortcut({ keys }: { keys: string }) {
+  // Inherit the button's text color via currentColor so the chip reads on
+  // both the cyan-filled primaries and the surface-toned secondaries.
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      aria-keyshortcuts={shortcut}
-      className={`group inline-flex items-center gap-2 px-2 sm:px-3 py-1 min-h-[28px] font-sans text-xs tracking-wide rounded border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-        disabled
-          ? "border-[var(--border)] text-[var(--text-secondary)] cursor-not-allowed"
-          : "border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-panel)] hover:border-[var(--accent)]"
-      }`}
-      title={shortcut}
-    >
-      <span>{label}</span>
-      {shortcut && (
-        <kbd className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono border border-[var(--border)] rounded px-1 py-[1px] group-hover:border-[var(--accent)]">
-          {shortcut}
-        </kbd>
-      )}
-    </button>
+    <kbd className="hidden sm:inline-block text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px] opacity-70">
+      {keys}
+    </kbd>
   );
 }
