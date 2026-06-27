@@ -79,7 +79,7 @@ export function readShareHash(hash: string): ShareState | null {
 
 /**
  * Full shareable URL (origin + pathname + optional deep-link query +
- * share hash). When the caller passes view / example / theme, an
+ * share hash). When the caller passes example / theme, an
  * instructor can link to a specific example in a specific layout.
  */
 export function buildShareUrl(state: ShareState, options: ShareOptions = {}): string {
