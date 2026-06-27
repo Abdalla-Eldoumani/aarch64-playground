@@ -299,6 +299,14 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: Number(emu.code_base()) });
         return;
       }
+      case "lineMap": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Flat `[addr, line, addr, line, ...]` editor-line map from the
+        // most recent hosted assemble; empty for bare-metal programs.
+        post({ id: msg.id, kind: "ok", value: Array.from(emu.get_line_map()) });
+        return;
+      }
       default: {
         const _exhaustive: never = msg;
         post({
