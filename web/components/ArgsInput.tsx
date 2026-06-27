@@ -42,7 +42,7 @@ function saveFor(source: string, value: string): void {
  * The value gets parsed shell-style (`hello "two words"` -> two args)
  * and threaded into the next assemble call so `main(int argc, char **argv)`
  * sees them. Last-used args persist per-program in localStorage so a
- * student returning to week11_argv keeps their `hello world` typed in.
+ * student returning to command-line-args keeps their `hello world` typed in.
  */
 export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
   const toast = useToast();
