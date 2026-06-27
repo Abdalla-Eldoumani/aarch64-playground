@@ -40,7 +40,7 @@ export function DiagnosticBundle({ build }: DiagnosticBundleProps) {
     <button
       type="button"
       onClick={onClick}
-      className="text-xs rounded px-2 py-1 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] whitespace-nowrap"
+      className="text-xs rounded px-2 py-1 bg-[var(--bg-sunken)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] whitespace-nowrap"
       aria-label="copy diagnostic bundle to clipboard"
     >
       {label}
