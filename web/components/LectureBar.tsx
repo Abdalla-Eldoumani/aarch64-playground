@@ -16,13 +16,13 @@ interface LectureBarProps {
  */
 export function LectureBar({ onStep, onReset, stepCount, isHalted }: LectureBarProps) {
   return (
-    <div className="flex w-full border-t border-[var(--border)] bg-[var(--bg-secondary)]" aria-label="lecture controls">
+    <div className="flex w-full border-t border-[var(--border)] bg-[var(--bg-sunken)]" aria-label="lecture controls">
       <button
         key={stepCount}
         type="button"
         onClick={onStep}
         disabled={isHalted}
-        className="anim-step-pop flex-1 h-16 text-[22px] font-sans font-semibold border-r border-[var(--border)] bg-[var(--accent)] text-[var(--bg-primary)] disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-primary)]"
+        className="anim-step-pop flex-1 h-16 text-[22px] font-sans font-semibold border-r border-[var(--border)] bg-[var(--cyan)] text-[var(--on-cyan)] disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-primary)]"
         aria-label="step"
       >
         step
@@ -30,7 +30,7 @@ export function LectureBar({ onStep, onReset, stepCount, isHalted }: LectureBarP
       <button
         type="button"
         onClick={onReset}
-        className="flex-1 h-16 text-[22px] font-sans font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="flex-1 h-16 text-[22px] font-sans font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-base)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="reset"
       >
         reset
