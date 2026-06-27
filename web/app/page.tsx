@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { readShareHash, type ShareState } from "@/lib/share";
-import { parseDeepLink } from "@/lib/use-deep-link";
+import { parseDeepLink, resolveExampleStem } from "@/lib/use-deep-link";
 import { loadAutoSavedBuffer } from "@/lib/auto-save";
 import { useTheme } from "@/lib/use-theme";
 import type { Action } from "@/lib/commands";
@@ -215,16 +215,14 @@ export default function Home() {
     const dl = parseDeepLink(window.location.search);
     if (dl.theme) setTheme(dl.theme);
     if (dl.example && !dl.bundle) {
-      const exampleStem = dl.example;
-      const tryLoad = async (ext: "asm" | "s") => {
-        const res = await fetch(`/examples/cpsc355/${exampleStem}.${ext}`);
-        if (!res.ok) return false;
+      // Translate a legacy week-labeled stem to its renamed file, then
+      // fetch from the fixed examples prefix. Every example is now `.s`.
+      const exampleStem = resolveExampleStem(dl.example);
+      void (async () => {
+        const res = await fetch(`/examples/cpsc355/${exampleStem}.s`);
+        if (!res.ok) return;
         const text = await res.text();
         playgroundRef.current?.loadSource(text, exampleStem);
-        return true;
-      };
-      void (async () => {
-        if (!(await tryLoad("asm"))) await tryLoad("s");
       })();
     }
   }, [setTheme]);
