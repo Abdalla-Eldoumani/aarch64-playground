@@ -135,9 +135,11 @@ export function MobileLayout({
             return (
               <button
                 key={m.id}
+                id={`m-tab-${m.id}`}
                 type="button"
                 role="tab"
                 aria-selected={selected}
+                aria-controls="m-panel"
                 onClick={() =>
                   setMemberByGroup((prev) => ({ ...prev, [group.id]: m.id }))
                 }
@@ -156,6 +158,11 @@ export function MobileLayout({
 
       <div
         key={`${group.id}:${member.id}`}
+        role="tabpanel"
+        id="m-panel"
+        aria-labelledby={
+          group.members.length > 1 ? `m-tab-${member.id}` : `g-tab-${group.id}`
+        }
         className="flex-1 min-h-0 overflow-hidden anim-tab-fade"
       >
         <div className={member.className}>{member.node}</div>
@@ -174,9 +181,11 @@ export function MobileLayout({
           return (
             <button
               key={g.id}
+              id={`g-tab-${g.id}`}
               type="button"
               role="tab"
               aria-selected={selected}
+              aria-controls="m-panel"
               onClick={() => setActiveGroup(g.id)}
               className={`relative flex-1 min-w-0 h-11 px-1 text-center overflow-hidden whitespace-nowrap font-sans text-[11px] font-medium tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
                 selected
