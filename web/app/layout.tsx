@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
+import { Hanken_Grotesk, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -8,8 +8,8 @@ import { OfflineBadge } from "@/components/OfflineBadge";
 import { RegisterSW } from "@/components/RegisterSW";
 
 // Engineering-notebook trio: Source Serif 4 in editorial chrome (page
-// titles, empty-state heads), IBM Plex Sans in the controls and labels,
-// JetBrains Mono everywhere code or registers appear. Each font is
+// titles, empty-state heads), Hanken Grotesk for display, body, and
+// controls, JetBrains Mono everywhere code or registers appear. Each font is
 // pinned to a CSS variable so component-level utility classes can pull
 // the right family without a Tailwind config rewrite.
 const fontSerif = Source_Serif_4({
@@ -18,9 +18,9 @@ const fontSerif = Source_Serif_4({
   display: "swap",
   variable: "--font-serif",
 });
-const fontSans = IBM_Plex_Sans({
+const fontSans = Hanken_Grotesk({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
   variable: "--font-sans",
 });
