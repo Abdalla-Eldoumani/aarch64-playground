@@ -104,7 +104,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="label"
-          className="w-20 bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          className="w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch label"
         />
         <input
@@ -112,7 +112,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={addr}
           onChange={(e) => setAddr(e.target.value)}
           placeholder="0x00400000"
-          className="w-28 bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          className="w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch address"
         />
         <input
@@ -122,11 +122,11 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={length}
           onChange={(e) => setLength(parseInt(e.target.value, 10) || 1)}
           aria-label="watch byte length"
-          className="w-14 bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)]"
+          className="w-14 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)]"
         />
         <button
           type="submit"
-          className="px-2 py-0.5 text-[11px] rounded bg-[var(--accent-muted)] hover:bg-[var(--accent)] hover:text-black text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         >
           add
         </button>
@@ -148,7 +148,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
             return (
               <li key={`${w.label}-${i}`} className="font-mono">
                 <div className="flex items-center justify-between">
-                  <span className="text-[var(--accent)]">{w.label}</span>
+                  <span className="text-[var(--text-primary)]">{w.label}</span>
                   <span className="text-[var(--text-secondary)] text-[10px]">
                     0x{w.addr.toString(16).padStart(8, "0")} +{w.length}
                   </span>
