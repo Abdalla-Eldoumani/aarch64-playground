@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
-import { MAX_SOURCE_BYTES, checkUploadSize } from "@/lib/upload-guard";
+import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/upload-guard";
 import type { ImportTarget } from "@/lib/use-import-target";
 
 export interface ImportExportProps {
@@ -64,7 +64,20 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
         e.target.value = "";
         return;
       }
-      file.text().then((text) => onImport(target, text));
+      file.text().then((text) => {
+        // Validate the decoded source content (byte length) before applying;
+        // file.size is a fast pre-read guard, this bounds the actual text.
+        const contentError = validateSource(text);
+        if (contentError) {
+          toast.error(contentError);
+          // Intentional security observability: a rejected over-cap import is
+          // surfaced to the console alongside the toast, per the input-
+          // validation policy. This is the only sanctioned console use here.
+          console.warn(`rejected over-cap source import: ${contentError}`);
+          return;
+        }
+        onImport(target, text);
+      });
       e.target.value = "";
     },
     [onImport, target, toast],
