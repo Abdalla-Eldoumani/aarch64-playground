@@ -39,7 +39,7 @@ export function HeaderOverflowSheet({
         aria-label={ariaLabel}
         onClick={(e) => e.stopPropagation()}
         style={{ paddingBottom: "var(--safe-bottom)" }}
-        className="absolute left-0 right-0 bottom-0 max-h-[70vh] overflow-y-auto bg-[var(--bg-secondary)] border-t border-[var(--border)] rounded-t-lg p-3"
+        className="absolute left-0 right-0 bottom-0 max-h-[70vh] overflow-y-auto bg-[var(--bg-sunken)] border-t border-[var(--border)] rounded-t-lg p-3"
       >
         {/* Each action lays out in a row with a 44px min height so
             touch targets meet WCAG 2.5.5; consumers that nest a button
