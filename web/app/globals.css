@@ -37,6 +37,18 @@
 
   --focus:          var(--cyan);
 
+  /* Syntax colors for the read-only CodeBlock, matched per theme to the editor's
+     Monaco palette (web/components/Editor.tsx) so the editor and read-only code
+     read the same. --syntax-comment is lifted from the editor's gray to clear
+     WCAG AA on the code surface; --syntax-string reuses the literal (number) hue
+     since the editor grammar has no string token. */
+  --syntax-keyword:  #60A5FA;
+  --syntax-register: #F472B6;
+  --syntax-number:   #A78BFA;
+  --syntax-string:   #A78BFA;
+  --syntax-comment:  #8B939E;
+  --syntax-label:    #34D399;
+
   /* Viewport-safe insets and the lecture-mode font scale are theme-independent,
      so the base/dark block owns them; they cascade to every theme via :root. */
   --safe-bottom:    env(safe-area-inset-bottom, 0px);
@@ -70,6 +82,13 @@
   --changed:        #B5791A;
 
   --focus:          var(--cyan);
+
+  --syntax-keyword:  #1D4ED8;
+  --syntax-register: #BE185D;
+  --syntax-number:   #6D28D9;
+  --syntax-string:   #6D28D9;
+  --syntax-comment:  #5A626B;
+  --syntax-label:    #047857;
 }
 
 /* ----- HIGH-CONTRAST · pure-black, bright hairlines, targets WCAG AAA ----- */
@@ -98,6 +117,13 @@
   --changed:        #FFD480;
 
   --focus:          #FFFFFF;
+
+  --syntax-keyword:  #8BE0FF;
+  --syntax-register: #FFB6E6;
+  --syntax-number:   #D4B6FF;
+  --syntax-string:   #D4B6FF;
+  --syntax-comment:  #D1D5DB;
+  --syntax-label:    #9EF0C1;
 }
 
 /* =============================================================================
