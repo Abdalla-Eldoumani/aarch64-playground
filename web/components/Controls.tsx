@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { Button } from "@/components/Button";
 import { explainError } from "@/lib/error-explain";
 
@@ -31,38 +30,11 @@ export function Controls({
   error,
   stepCount,
 }: ControlsProps) {
-  // The step counter uses a key tied to the count so the scale-up
-  // animation restarts each step without extra effects. The keyboard
-  // shortcuts stay bound, but the visible 44px controls are the obvious
-  // path -- discovery never depends on F5, which collides with reload.
-
-  // keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "F5" && !e.shiftKey) {
-        e.preventDefault();
-        if (isRunning) {
-          onPause();
-        } else {
-          onRun();
-        }
-      } else if (e.key === "F5" && e.shiftKey) {
-        e.preventDefault();
-        onReset();
-      } else if (e.key === "F10" && e.shiftKey) {
-        e.preventDefault();
-        if (onStepBack && canStepBack) onStepBack();
-      } else if (e.key === "F10") {
-        e.preventDefault();
-        onStep();
-      } else if (e.key === "F6") {
-        e.preventDefault();
-        onAssemble();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onAssemble, onStep, onStepBack, canStepBack, onRun, onPause, onReset, isRunning]);
+  // The step counter uses a key tied to the count so the scale-up animation
+  // restarts each step without extra effects. The visible 44px controls are
+  // the obvious path; the page owns the keyboard shortcuts (a single window
+  // listener), so these buttons advertise them via aria-keyshortcuts without
+  // binding any keys themselves.
 
   // The plain-language cause/hint replaces the raw error string alone, so
   // a beginner's first failed program reads as instructive, not alarming.
