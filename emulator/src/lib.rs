@@ -102,6 +102,28 @@ fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
 #[wasm_bindgen]
 pub struct Emulator {
     cpu: Cpu,
+    /// Flat `[addr, line, addr, line, ...]` authoritative address ->
+    /// editor-source-line map from the most recent hosted assemble.
+    /// Empty for the legacy bare-metal path and after a failed assemble;
+    /// the web layer treats an empty map as "fall back to the source-text
+    /// line-count heuristic". Stored here on the wrapper (not in `cpu`)
+    /// so the SEC-01 bounds work that owns `cpu.rs` this wave does not
+    /// collide with this change.
+    line_map: Vec<u32>,
+}
+
+/// Flatten the linker's `(addr, line)` pairs into the flat `[addr, line,
+/// ...]` array the TS boundary consumes. Every cpsc 355 address fits in
+/// u32 (the host-stub range tops out at `0xFFFF_FFFF`), matching the
+/// `take_dirty_addrs` convention.
+#[cfg(target_arch = "wasm32")]
+fn flatten_line_map(pairs: &[(u64, u32)]) -> Vec<u32> {
+    let mut out = Vec::with_capacity(pairs.len() * 2);
+    for (addr, line) in pairs {
+        out.push(*addr as u32);
+        out.push(*line);
+    }
+    out
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -153,7 +175,7 @@ impl Emulator {
     pub fn new() -> Self {
         // install panic hook so Rust panics surface as readable JS errors
         console_error_panic_hook::set_once();
-        Self { cpu: Cpu::new() }
+        Self { cpu: Cpu::new(), line_map: Vec::new() }
     }
 
     /// Assemble source text and load the resulting program. Sources that
@@ -162,11 +184,16 @@ impl Emulator {
     /// pipeline; everything else keeps the legacy single-`.text` path so
     /// the bare-metal examples retain their exact byte-for-byte layout.
     pub fn assemble_and_load(&mut self, source: &str) -> JsValue {
+        // Each assemble replaces the line map; clear it up front so a
+        // failed assemble or the bare-metal path leaves it empty and the
+        // web layer falls back to the legacy line-count heuristic.
+        self.line_map.clear();
         if detect_hosted_mode(source) {
             self.cpu.reset();
             match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
                 Ok(image) => {
                     let count = image.instruction_count;
+                    self.line_map = flatten_line_map(&image.line_map);
                     match self.cpu.load_linked_image(&image) {
                         Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
                             success: true,
@@ -244,12 +271,15 @@ impl Emulator {
         source: &str,
         args: Vec<String>,
     ) -> JsValue {
+        // Clear the map up front for the same reason as assemble_and_load.
+        self.line_map.clear();
         if detect_hosted_mode(source) {
             self.cpu.reset();
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
                 Ok(image) => {
                     let count = image.instruction_count;
+                    self.line_map = flatten_line_map(&image.line_map);
                     match self.cpu.load_linked_image_with_args(&image, &arg_refs) {
                         Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
                             success: true,
@@ -448,6 +478,17 @@ impl Emulator {
     /// Get the code base address (where assembled programs are loaded).
     pub fn code_base(&self) -> u32 {
         cpu::CODE_BASE as u32
+    }
+
+    /// Flat `[addr, line, addr, line, ...]` authoritative address ->
+    /// editor-source-line map from the most recent hosted assemble. The
+    /// worker threads this to the hook, which keys the current-line
+    /// marker, the disassembly text, and breakpoint placement off it
+    /// instead of counting source-text lines. Empty for the legacy
+    /// bare-metal path; the web layer falls back to the source-text
+    /// heuristic when it is empty.
+    pub fn get_line_map(&self) -> Vec<u32> {
+        self.line_map.clone()
     }
 
     // -- hosted runtime (phase B) --
