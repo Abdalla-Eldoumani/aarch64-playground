@@ -37,7 +37,8 @@ export type RequestKind =
   | "deleteVfsFile"
   | "resolveLabel"
   | "clearConsole"
-  | "codeBase";
+  | "codeBase"
+  | "lineMap";
 
 export interface BaseRequest<K extends RequestKind> {
   id: number;
@@ -69,7 +70,8 @@ export type Request =
   | (BaseRequest<"deleteVfsFile"> & { path: string })
   | (BaseRequest<"resolveLabel"> & { name: string })
   | BaseRequest<"clearConsole">
-  | BaseRequest<"codeBase">;
+  | BaseRequest<"codeBase">
+  | BaseRequest<"lineMap">;
 
 export interface OkResponse<T> {
   id: number;
