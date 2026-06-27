@@ -89,13 +89,13 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
 
   return (
     <div
-      className="flex items-center gap-2 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-secondary)] text-[11px]"
+      className="flex items-center gap-2 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px]"
       aria-label="replay scrubber"
     >
       <button
         type="button"
         onClick={togglePlay}
-        className="text-[var(--accent)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] rounded px-1"
+        className="text-[var(--cyan)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] rounded px-1"
         aria-label={playing ? "pause replay" : "play replay"}
       >
         {playing ? "pause" : "play"}
@@ -110,7 +110,7 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
         step={1}
         value={idx}
         onChange={onChange}
-        className="flex-1 accent-[var(--accent)]"
+        className="flex-1 accent-[var(--amber)]"
         aria-label="replay step slider"
       />
       <span className="text-[var(--text-secondary)] font-mono whitespace-nowrap tabular-nums">
