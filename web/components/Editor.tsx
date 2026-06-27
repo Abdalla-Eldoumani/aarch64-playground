@@ -507,16 +507,16 @@ export function Editor({
       onDrop={onDrop}
     >
       <style>{`
-        .current-line-highlight { background: rgba(96, 165, 250, 0.15) !important; }
-        .current-line-glyph { background: #60a5fa; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
+        .current-line-highlight { background: color-mix(in srgb, var(--amber) 16%, transparent) !important; box-shadow: inset 2px 0 0 0 var(--amber); }
+        .current-line-glyph { background: var(--amber); border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .breakpoint-glyph { background: #ef4444; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
-        .error-line-highlight { background: rgba(239, 68, 68, 0.15) !important; }
+        .error-line-highlight { background: color-mix(in srgb, var(--danger) 15%, transparent) !important; }
         .hotspot-1 { background: rgba(56, 189, 248, 0.10) !important; }
         .hotspot-2 { background: rgba(125, 211, 252, 0.16) !important; }
         .hotspot-3 { background: rgba(253, 224, 71, 0.18) !important; }
         .hotspot-4 { background: rgba(251, 146, 60, 0.22) !important; }
         .hotspot-5 { background: rgba(248, 113, 113, 0.28) !important; }
-        .error-glyph { background: #f59e0b; border-radius: 2px; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
+        .error-glyph { background: var(--danger); border-radius: 2px; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         @media (pointer: coarse) {
           .monaco-editor .glyph-margin { width: 32px !important; }
         }
@@ -618,9 +618,9 @@ function FallbackEditor({
   // made the editor pane balloon to thousands of pixels and pushed the
   // header / Controls / tab strip out of view on iPhone portrait.
   return (
-    <div className="h-full w-full min-h-0 overflow-hidden flex bg-[var(--bg-primary)]">
+    <div className="h-full w-full min-h-0 overflow-hidden flex bg-[var(--bg-base)]">
       <div
-        className="flex-shrink-0 w-10 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-secondary)] select-none relative"
+        className="flex-shrink-0 w-10 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-sunken)] select-none relative"
         role="presentation"
       >
         <div
@@ -636,14 +636,14 @@ function FallbackEditor({
               : isBreak
               ? "text-[var(--danger)]"
               : isCurrent
-              ? "text-[var(--accent)] font-bold"
+              ? "text-[var(--amber)] font-bold"
               : "text-[var(--text-secondary)]";
             return (
               <button
                 key={n}
                 type="button"
                 onClick={() => onToggleBreakpoint(n)}
-                className={`block w-full h-6 leading-6 text-right pr-2 text-[11px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)] ${cls}`}
+                className={`block w-full h-6 leading-6 text-right pr-2 text-[11px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] ${cls}`}
                 aria-label={
                   isBreak
                     ? `line ${n}, breakpoint set, tap to clear`
@@ -657,7 +657,7 @@ function FallbackEditor({
         </div>
       </div>
       <textarea
-        className="flex-1 h-full min-h-0 resize-none bg-[var(--bg-primary)] text-[var(--text-primary)] font-mono text-[16px] pl-2 pr-3 focus:outline-none leading-6 whitespace-pre"
+        className="flex-1 h-full min-h-0 resize-none bg-[var(--bg-base)] text-[var(--text-primary)] font-mono text-[16px] pl-2 pr-3 focus:outline-none leading-6 whitespace-pre"
         style={{
           WebkitAppearance: "none",
           paddingTop: `${FALLBACK_PAD_Y}px`,
