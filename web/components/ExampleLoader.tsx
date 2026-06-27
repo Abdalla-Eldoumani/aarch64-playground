@@ -17,74 +17,50 @@ interface ExampleGroup {
 }
 
 /**
- * Examples grouped by course topic. The cpsc 355 groups follow the
- * course week progression (stack and locals, records, arrays, floating
- * point, I/O) so students can find the example that maps to the concept
- * they're learning.
+ * Examples grouped by course topic so students can find the example that
+ * maps to the concept they're learning (stack and locals, records,
+ * arrays, floating point, I/O).
  */
 const GROUPS: ExampleGroup[] = [
   {
     label: "cpsc 355 — basics",
-    items: [
-      { name: "week 3 exercise", file: "/examples/cpsc355/week03_exercise.s" },
-    ],
+    items: [{ name: "arithmetic", file: "/examples/cpsc355/basics.s" }],
   },
   {
     label: "cpsc 355 — stack and locals",
     items: [
-      { name: "week 8 scores (scanf + avg)", file: "/examples/cpsc355/week08_scores.asm" },
+      { name: "scores (scanf + avg)", file: "/examples/cpsc355/array-scores.s" },
     ],
   },
   {
     label: "cpsc 355 — records and arrays",
     items: [
-      {
-        name: "week 9 student record",
-        file: "/examples/cpsc355/week09_student_record.asm",
-      },
-      { name: "week 10 find max", file: "/examples/cpsc355/week10_find_max.asm" },
+      { name: "student record", file: "/examples/cpsc355/student-record.s" },
+      { name: "find max", file: "/examples/cpsc355/find-max.s" },
     ],
   },
   {
     label: "cpsc 355 — subroutines and static data",
     items: [
-      {
-        name: "week 11 static counter",
-        file: "/examples/cpsc355/week11_static_counter.asm",
-      },
-      { name: "week 11 argv", file: "/examples/cpsc355/week11_argv.asm" },
+      { name: "static counter", file: "/examples/cpsc355/static-counter.s" },
+      { name: "command-line args", file: "/examples/cpsc355/command-line-args.s" },
     ],
   },
   {
     label: "cpsc 355 — floating point",
     items: [
-      {
-        name: "week 12 circle area (fp)",
-        file: "/examples/cpsc355/week12_fp_circle.asm",
-      },
-      {
-        name: "week 12 is_prime",
-        file: "/examples/cpsc355/week12_is_prime.asm",
-      },
+      { name: "circle area (fp)", file: "/examples/cpsc355/circle-area.s" },
+      { name: "is prime", file: "/examples/cpsc355/is-prime.s" },
     ],
   },
   {
     label: "cpsc 355 — I/O and syscalls",
     items: [
-      { name: "week 13 hello (write)", file: "/examples/cpsc355/week13_hello.asm" },
-      { name: "week 13 echo (read)", file: "/examples/cpsc355/week13_echo.asm" },
-      {
-        name: "week 13 write file",
-        file: "/examples/cpsc355/week13_write_file.asm",
-      },
-      {
-        name: "week 13 read file",
-        file: "/examples/cpsc355/week13_read_file.asm",
-      },
-      {
-        name: "week 13 copy file",
-        file: "/examples/cpsc355/week13_copy_file.asm",
-      },
+      { name: "hello (write)", file: "/examples/cpsc355/hello.s" },
+      { name: "echo (read)", file: "/examples/cpsc355/echo.s" },
+      { name: "write file", file: "/examples/cpsc355/write-file.s" },
+      { name: "read file", file: "/examples/cpsc355/read-file.s" },
+      { name: "copy file", file: "/examples/cpsc355/copy-file.s" },
     ],
   },
   {
