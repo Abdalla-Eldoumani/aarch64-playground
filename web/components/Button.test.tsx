@@ -22,7 +22,7 @@ describe("Button", () => {
     for (const variant of ["primary", "secondary", "ghost"] as const) {
       const { unmount } = render(<Button variant={variant}>label</Button>);
       const button = screen.getByRole("button", { name: "label" });
-      expect(button.className).toContain("focus-visible:shadow-[var(--ring)]");
+      expect(button.className).toContain("focus-visible:[box-shadow:var(--ring)]");
       unmount();
     }
   });
