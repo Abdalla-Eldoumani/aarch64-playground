@@ -34,7 +34,7 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
     >
       <div
         ref={ref}
-        className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl p-5"
+        className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
@@ -48,7 +48,7 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
             >
               <dt className="text-[var(--text-secondary)]">{s.description}</dt>
               <dd>
-                <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] text-[var(--text-primary)] border border-[var(--border)] font-mono">
+                <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-mono">
                   {s.keys}
                 </kbd>
               </dd>
@@ -59,7 +59,7 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             close
           </button>
