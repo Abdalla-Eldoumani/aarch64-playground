@@ -923,9 +923,9 @@ function EmbeddableCore({
               key={tab}
               role="tab"
               aria-selected={selected}
-              className={`relative min-h-[2.25rem] px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+              className={`relative min-h-[2.25rem] px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
                 selected
-                  ? "text-[var(--accent)] border-b border-[var(--accent)]"
+                  ? "text-[var(--cyan)] border-b border-[var(--cyan)]"
                   : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               }`}
               onClick={() => setActiveTab(tab)}
@@ -934,7 +934,7 @@ function EmbeddableCore({
               {showDot && (
                 <span
                   aria-hidden="true"
-                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
+                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"
                 />
               )}
             </button>
@@ -1045,7 +1045,7 @@ function EmbeddableCore({
       {shareBanner && (
         <div
           role="status"
-          className="px-4 py-1 text-[11px] text-[var(--accent)] border-b border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-between"
+          className="px-4 py-1 text-[11px] text-[var(--cyan)] border-b border-[var(--border)] bg-[var(--bg-sunken)] flex items-center justify-between"
         >
           <span>loaded a shared program from the URL</span>
           <button
