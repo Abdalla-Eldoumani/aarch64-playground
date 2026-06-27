@@ -29,7 +29,7 @@ export function RecentPrograms({ entries, onLoad, onClear }: RecentProgramsProps
       defaultValue=""
       disabled={disabled}
       aria-label="load recent program"
-      className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] disabled:opacity-50"
+      className="bg-[var(--bg-sunken)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] disabled:opacity-50"
     >
       <option value="" disabled>
         recent...
