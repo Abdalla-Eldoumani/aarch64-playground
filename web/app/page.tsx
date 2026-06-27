@@ -164,9 +164,11 @@ export default function Home() {
     }
   }, [setTheme]);
 
-  // Global shortcuts. Execution keys delegate to the component through the
-  // ref; palette / help toggle page state. F5 / Shift+F5 / F10 also fire
-  // inside Controls -- this preserves the prior page-level bindings exactly.
+  // Global shortcuts, single owner. Every execution key delegates to the
+  // component through the imperative handle; palette / help toggle page state.
+  // Controls renders the same actions as visible buttons but no longer binds
+  // keys, so a keypress fires exactly once -- and embed chrome, which omits
+  // Controls, still gets the shortcuts from here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -184,6 +186,12 @@ export default function Home() {
       } else if (meta && e.key === "Enter") {
         e.preventDefault();
         playgroundRef.current?.assemble();
+      } else if (e.key === "F6") {
+        e.preventDefault();
+        playgroundRef.current?.assemble();
+      } else if (e.key === "F10" && e.shiftKey) {
+        e.preventDefault();
+        playgroundRef.current?.stepBack();
       } else if (e.key === "F10") {
         e.preventDefault();
         playgroundRef.current?.step();

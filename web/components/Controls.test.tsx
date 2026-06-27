@@ -171,18 +171,27 @@ describe("Controls", () => {
     expect(text).toContain("mnemonic");
   });
 
-  it("F6 fires onAssemble globally", () => {
+  it("does not bind keyboard shortcuts (the page is the single owner)", () => {
     const h = allHandlers();
     render(
       <Controls
         {...h}
-        canStepBack={false}
+        canStepBack={true}
         isRunning={false}
         isHalted={false}
         error={null}
       />,
     );
     fireEvent.keyDown(window, { key: "F6" });
-    expect(h.onAssemble).toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "F10" });
+    fireEvent.keyDown(window, { key: "F10", shiftKey: true });
+    fireEvent.keyDown(window, { key: "F5" });
+    fireEvent.keyDown(window, { key: "F5", shiftKey: true });
+    expect(h.onAssemble).not.toHaveBeenCalled();
+    expect(h.onStep).not.toHaveBeenCalled();
+    expect(h.onStepBack).not.toHaveBeenCalled();
+    expect(h.onRun).not.toHaveBeenCalled();
+    expect(h.onPause).not.toHaveBeenCalled();
+    expect(h.onReset).not.toHaveBeenCalled();
   });
 });
