@@ -121,7 +121,7 @@ export default function Home() {
   const [shareState, setShareState] = useState<ShareState>({ source: "" });
   const [, toggleTheme, setTheme] = useTheme();
   // The outcome slice mirrors the hub for the F5 run/pause decision and the
-  // future Phase 5-7 checker; the page never holds the hub itself.
+  // future outcome checker; the page never holds the hub itself.
   const outcomeRef = useRef<EmbeddableState | null>(null);
 
   const onStateChange = useCallback((state: EmbeddableState) => {
