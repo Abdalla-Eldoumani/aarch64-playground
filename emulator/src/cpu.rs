@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::decoder;
-use crate::errors::EmuError;
+use crate::errors::{EmuError, MemAccess};
 use crate::executor::{self, ExecResult};
 use crate::frontend::sections::{Item, Program};
 use crate::hosted::{HostContext, HostOutcome, HostTable};
@@ -38,6 +38,24 @@ pub const STACK_BASE: u64 = 0x8000_0000;
 pub const HOST_STUB_BASE: u64 = 0xFFFF_0000;
 pub const HOST_STUB_STRIDE: u64 = 16;
 pub const HOST_STUB_COUNT: u64 = 256;
+
+/// Cumulative executed-instruction ceiling (the runaway-loop wall). Once a
+/// loaded program has executed this many steps -- counted across every
+/// `step` and the inner `run_until_break` loop, persistent until the next
+/// load/reset -- the run aborts calmly instead of hanging the tab. ~10M
+/// sits far above any real cpsc 355 program's step count, yet an infinite
+/// loop reaches it in well under a second of wall time per run chunk.
+pub const MAX_TOTAL_STEPS: u64 = 10_000_000;
+
+/// Calm, plain-language abort surfaced through the result `error` field
+/// when a store would allocate past `memory::MAX_MAPPED_PAGES`.
+pub const MEMORY_CAP_MESSAGE: &str = "stopped -- program tried to use too much memory";
+
+/// Calm, plain-language abort surfaced when the cumulative step ceiling is
+/// hit. Built dynamically so the count always matches `MAX_TOTAL_STEPS`.
+pub fn step_ceiling_message() -> String {
+    format!("stopped after {MAX_TOTAL_STEPS} steps -- possible infinite loop")
+}
 
 /// What happened during a single step, beyond the "did it advance or halt"
 /// dichotomy. Runtime I/O (scanf, read syscall) introduces a third state
@@ -135,6 +153,15 @@ pub struct Cpu {
     /// long loops. Populated by `step()` and the inner loop of
     /// `run_until_break()`.
     pub pc_trace: Vec<u64>,
+    /// Cumulative count of executed steps since the last load/reset. Drives
+    /// the `MAX_TOTAL_STEPS` runaway-loop wall; persistent across repeated
+    /// `run_until_break` calls so chunked running still reaches the ceiling.
+    steps_total: u64,
+    /// Set when a bound (step ceiling or memory cap) aborts the run. The
+    /// run/step result carries it through `error` while `halted` stays true,
+    /// so the UI shows a calm message instead of a silent stop or a raw
+    /// fault. Cleared on load/reset.
+    pub abort_message: Option<String>,
 }
 
 impl Cpu {
@@ -158,6 +185,8 @@ impl Cpu {
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
             pc_trace: Vec::new(),
+            steps_total: 0,
+            abort_message: None,
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -211,6 +240,9 @@ impl Cpu {
         }
         self.regs.write_pc(CODE_BASE);
         self.halted = false;
+        // A freshly loaded program starts a fresh runaway budget.
+        self.steps_total = 0;
+        self.abort_message = None;
     }
 
     /// Load a `LinkedImage` from `frontend::pipeline`. Writes each (addr,
@@ -233,6 +265,10 @@ impl Cpu {
         image: &crate::frontend::pipeline::LinkedImage,
         args: &[&str],
     ) -> Result<(), EmuError> {
+        // A fresh program starts a fresh runaway budget and clears any
+        // prior bounds-abort message.
+        self.steps_total = 0;
+        self.abort_message = None;
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes)?;
         }
@@ -331,6 +367,22 @@ impl Cpu {
             });
         }
 
+        // Runaway-loop wall: once the cumulative instruction budget is
+        // spent, halt calmly instead of executing another instruction.
+        // Checked here so single-stepping a loop is bounded the same way run
+        // mode is; surfaced through `error` while `halted` stays true.
+        if self.steps_total >= MAX_TOTAL_STEPS {
+            self.halted = true;
+            let msg = step_ceiling_message();
+            self.abort_message = Some(msg.clone());
+            return Ok(StepResult {
+                pc: self.regs.read_pc(),
+                halted: true,
+                error: Some(msg),
+                outcome: StepOutcome::Halted,
+            });
+        }
+
         let pc = self.regs.read_pc();
 
         // Snapshot CPU state before we touch anything so `step_back` can
@@ -349,6 +401,10 @@ impl Cpu {
             next_fd: self.next_fd,
         });
 
+        // Count this executed step against the cumulative ceiling. Done
+        // before the host-stub dispatch so synthetic libc calls count too.
+        self.steps_total += 1;
+
         // If PC landed on a host-stub address (reached via `bl printf` or
         // similar), dispatch to Rust instead of fetching an instruction,
         // then return to the caller via LR.
@@ -359,7 +415,26 @@ impl Cpu {
         let snapshot = self.regs.snapshot();
         let word = self.mem.read_u32(pc)?;
         let instr = decoder::decode(word)?;
-        let result = executor::execute(&instr, &mut self.regs, &mut self.mem)?;
+        let result = match executor::execute(&instr, &mut self.regs, &mut self.mem) {
+            Ok(r) => r,
+            Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
+                // A store tried to map a page past MAX_MAPPED_PAGES. Convert
+                // the allocation-cap fault into the same calm halt as the
+                // step ceiling rather than propagating a raw memory fault.
+                // (Stores are the only writer that faults, so a write fault
+                // here is unambiguously the cap.)
+                self.halted = true;
+                let msg = MEMORY_CAP_MESSAGE.to_string();
+                self.abort_message = Some(msg.clone());
+                return Ok(StepResult {
+                    pc: self.regs.read_pc(),
+                    halted: true,
+                    error: Some(msg),
+                    outcome: StepOutcome::Halted,
+                });
+            }
+            Err(e) => return Err(e),
+        };
 
         // advance PC if the instruction didn't branch
         if result == ExecResult::Advance {
@@ -588,7 +663,10 @@ impl Cpu {
             halted: self.halted,
             steps_executed: steps,
             hit_breakpoint: false,
-            error: None,
+            // Surface a bounds abort (step ceiling / memory cap) through
+            // `error` so the UI shows the calm message; `None` on a normal
+            // halt, a breakpoint, or a max_steps stop.
+            error: self.abort_message.clone(),
         })
     }
 
@@ -626,6 +704,8 @@ impl Cpu {
         self.mem.map_page(BSS_BASE);
         self.changed_regs.clear();
         self.halted = false;
+        self.steps_total = 0;
+        self.abort_message = None;
         self.stdout.clear();
         self.stderr.clear();
         self.stdin.clear();
@@ -1113,5 +1193,79 @@ mod tests {
         assert!(cpu.stdout.is_empty());
         // The rest of the CPU state is untouched.
         assert_eq!(cpu.regs.read_gpr(0, true), 99);
+    }
+
+    // -- runaway-loop / step-ceiling bounds (SEC-01) --
+
+    #[test]
+    fn steps_total_increments_once_per_step() {
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(0, 1, 0),
+            encode_movz(1, 2, 0),
+            encode_movz(2, 3, 0),
+            encode_svc(0),
+        ]);
+        cpu.step().unwrap();
+        cpu.step().unwrap();
+        cpu.step().unwrap();
+        assert_eq!(cpu.steps_total, 3);
+    }
+
+    #[test]
+    fn step_ceiling_aborts_calmly_with_message() {
+        let mut cpu = Cpu::new();
+        // b . (branch to self): an unconditional infinite loop.
+        cpu.load_program(&[0x1400_0000]);
+        // Fast-forward the cumulative budget to the wall so the exact
+        // boundary is exercised without running ten million steps.
+        cpu.steps_total = MAX_TOTAL_STEPS - 1;
+        let first = cpu.run_until_break(100).unwrap();
+        assert!(first.halted, "the run should halt at the ceiling");
+        assert_eq!(first.error, Some(step_ceiling_message()));
+        assert_eq!(cpu.abort_message, Some(step_ceiling_message()));
+        // The wall holds across repeated runs: still halted, no more steps.
+        let again = cpu.run_until_break(100).unwrap();
+        assert!(again.halted);
+        assert_eq!(again.steps_executed, 0);
+        assert_eq!(again.error, Some(step_ceiling_message()));
+    }
+
+    #[test]
+    fn step_ceiling_also_bounds_single_stepping() {
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[0x1400_0000]); // b .
+        cpu.steps_total = MAX_TOTAL_STEPS;
+        // A single step at the wall halts calmly rather than executing.
+        let r = cpu.step().unwrap();
+        assert!(r.halted);
+        assert_eq!(r.error, Some(step_ceiling_message()));
+        assert_eq!(r.outcome, StepOutcome::Halted);
+    }
+
+    #[test]
+    fn load_program_resets_the_step_budget() {
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[0x1400_0000]);
+        cpu.steps_total = MAX_TOTAL_STEPS;
+        cpu.abort_message = Some("stale".to_string());
+        // Reloading a program starts a fresh budget and clears the message.
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        assert_eq!(cpu.steps_total, 0);
+        assert!(cpu.abort_message.is_none());
+        let r = cpu.run_until_break(10).unwrap();
+        assert!(r.halted);
+        assert!(r.error.is_none());
+        assert_eq!(cpu.regs.read_gpr(0, true), 7);
+    }
+
+    #[test]
+    fn reset_clears_the_step_budget_and_abort_message() {
+        let mut cpu = Cpu::new();
+        cpu.steps_total = 12_345;
+        cpu.abort_message = Some("stale".to_string());
+        cpu.reset();
+        assert_eq!(cpu.steps_total, 0);
+        assert!(cpu.abort_message.is_none());
     }
 }
