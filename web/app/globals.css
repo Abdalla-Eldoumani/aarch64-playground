@@ -245,6 +245,16 @@ body {
   100% { background-color: transparent; }
 }
 
+/* Program-counter breathing while the program runs: a subtle amber edge-bar that
+   pulses on the current instruction row so "the machine is acting" reads at a
+   glance. Amber-driven so it follows the theme (never a hardcoded color); applied
+   only inside the reduced-motion-safe block below, so the row is static under
+   prefers-reduced-motion and the amber current-row highlight is the only cue. */
+@keyframes run-breathe {
+  0%, 100% { box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--amber) 40%, transparent); }
+  50%      { box-shadow: inset 3px 0 0 0 var(--amber); }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .anim-error-shake {
     animation: shake-x 200ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
@@ -259,6 +269,11 @@ body {
     /* ~120ms in (peak at 20% of the 600ms total) then ~480ms out, timed from
        the register-flash motion tokens. */
     animation: reg-flash calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
+  }
+  .anim-run-breathe {
+    /* ~2s amber pulse on the running program-counter row, looping until the run
+       stops. Outside this block (reduced motion) the class has no animation. */
+    animation: run-breathe var(--run-breathe) var(--ease) infinite;
   }
 }
 
