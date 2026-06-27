@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 
 export interface TabItem {
   /** Stable identifier; also the value passed to `onChange` and the ARIA wiring. */
@@ -35,6 +35,7 @@ export function Tabs({
   className = "",
 }: TabsProps) {
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const uid = useId();
 
   function select(value: string) {
     onChange(value);
@@ -71,9 +72,9 @@ export function Tabs({
               }}
               type="button"
               role="tab"
-              id={`tab-${item.value}`}
+              id={`${uid}-tab-${item.value}`}
               aria-selected={selected}
-              aria-controls={`tabpanel-${item.value}`}
+              aria-controls={`${uid}-panel`}
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange(item.value)}
               className={`relative shrink-0 min-h-[44px] px-4 font-sans text-[14px] font-medium transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
@@ -89,8 +90,8 @@ export function Tabs({
       </div>
       <div
         role="tabpanel"
-        id={`tabpanel-${active}`}
-        aria-labelledby={`tab-${active}`}
+        id={`${uid}-panel`}
+        aria-labelledby={`${uid}-tab-${active}`}
         tabIndex={0}
         className="focus:outline-none focus-visible:[box-shadow:var(--ring)]"
       >
