@@ -49,7 +49,7 @@ import {
 import { useToast } from "@/components/Toast";
 
 // Full-only / heavy panels load on first render so a multi-embed page (and
-// the embed/checker chrome) never ships their code (PERF-01).
+// the embed/checker chrome) never ships their code.
 const InstructionView = dynamic(
   () => import("@/components/InstructionView").then((m) => m.InstructionView),
   { ssr: false },
