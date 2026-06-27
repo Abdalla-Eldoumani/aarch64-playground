@@ -59,7 +59,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
     >
       <div
         ref={ref}
-        className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl p-5"
+        className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
@@ -72,7 +72,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           readOnly
           value={url}
           rows={4}
-          className="w-full text-[11px] font-mono bg-[var(--bg-primary)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)]"
+          className="w-full text-[11px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)]"
           onFocus={(e) => e.currentTarget.select()}
           aria-label="shareable url"
         />
@@ -80,24 +80,24 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             close
           </button>
           <button
             type="button"
             onClick={share}
-            className="text-xs text-[var(--text-primary)] bg-[var(--accent-muted)] hover:bg-[var(--accent)] hover:text-black rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             share
           </button>
           <button
             type="button"
             onClick={copy}
-            className={`text-xs rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+            className={`text-xs rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
               copied
                 ? "text-[var(--success)]"
-                : "text-[var(--accent)] hover:underline"
+                : "text-[var(--cyan)] hover:underline"
             }`}
           >
             {copied ? "copied" : "copy link"}
