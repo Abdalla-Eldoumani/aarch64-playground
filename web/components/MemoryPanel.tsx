@@ -7,9 +7,10 @@ import { isAtLeast, useBreakpoint } from "@/lib/use-breakpoint";
 
 interface MemoryPanelProps {
   getMemory: (addr: number, len: number) => Uint8Array;
-  /** `(addr, len)` ranges that the most-recent step wrote. Bytes
-   *  inside any range render with an accent background so the
-   *  student sees what changed since the previous frame. */
+  /** `(addr, len)` ranges that the most-recent step wrote. Bytes inside any
+   *  range render with a static amber (execution) tint so the student sees what
+   *  changed since the previous frame; the range is replaced on the next write,
+   *  so only the latest write stays tinted. */
   dirtyAddrs?: Array<[number, number]>;
 }
 
@@ -72,7 +73,7 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
           value={baseAddr}
           onChange={handleAddrChange}
           aria-label="memory base address"
-          className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
+          className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
         />
         <select
           onChange={(e) => {
@@ -81,7 +82,7 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
           }}
           defaultValue=""
           aria-label="jump to section"
-          className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-0.5 text-[10px] text-[var(--text-secondary)]"
+          className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[10px] text-[var(--text-secondary)]"
         >
           <option value="" disabled>
             jump...
@@ -121,7 +122,7 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
               (row + 1) * bytesPerRow
             );
             return (
-              <tr key={row} className="hover:bg-[var(--bg-secondary)]">
+              <tr key={row} className="hover:bg-[var(--bg-elevated)]">
                 <td className="text-[var(--text-secondary)] pr-2 sm:pr-4">
                   {formatAddr(rowAddr)}
                 </td>
@@ -132,7 +133,7 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
                       key={i}
                       className={`text-center ${
                         dirty
-                          ? "bg-[var(--accent-muted)] text-[var(--text-primary)] rounded-sm"
+                          ? "bg-[var(--amber-dim)] text-[var(--text-primary)] rounded-sm"
                           : byte !== 0
                           ? "text-[var(--text-primary)]"
                           : "text-[var(--text-secondary)]"
