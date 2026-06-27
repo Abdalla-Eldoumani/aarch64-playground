@@ -10,7 +10,7 @@
  */
 
 import LZString from "lz-string";
-import { MAX_BUNDLE_DECOMPRESSED_BYTES } from "@/lib/upload-guard";
+import { MAX_BUNDLE_DECOMPRESSED_BYTES, MAX_SHARE_HASH_BYTES } from "@/lib/upload-guard";
 
 export interface DiagnosticBundle {
   source: string;
@@ -152,6 +152,10 @@ function isValidBundle(b: unknown): b is DiagnosticBundle {
  */
 export function decodeBundle(value: string | null): DiagnosticBundle | null {
   if (!value) return null;
+  // Decompression-bomb guard: reject the raw (still-compressed) `?bundle=`
+  // fragment before lz-string runs, so a tiny payload can't expand to
+  // exhaust the tab. The caller falls back to a clean default on null.
+  if (value.length > MAX_SHARE_HASH_BYTES) return null;
   try {
     const decompressed = LZString.decompressFromEncodedURIComponent(value);
     if (!decompressed) return null;
