@@ -243,6 +243,15 @@ body {
   50.01%, 100% { opacity: 0; }
 }
 
+/* Modal entrance: a small fade and ~8px rise over the --modal-rise token so a
+   dialog (command palette, share, shortcuts) settles in rather than snapping.
+   Applied only inside the reduced-motion-safe block below, so the modal appears
+   instantly (no fade or rise) under prefers-reduced-motion. */
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .anim-step-pop {
     animation: step-pop 180ms cubic-bezier(0.2, 0.7, 0.2, 1) 1;
@@ -264,6 +273,11 @@ body {
     /* ~1s hard on/off blink from the --cursor-blink token. Outside this block
        (reduced motion) the class has no animation, so the cursor stays solid. */
     animation: cursor-blink var(--cursor-blink) infinite;
+  }
+  .anim-modal-rise {
+    /* modal fade + ~8px rise over the --modal-rise token. Outside this block
+       (reduced motion) the class has no animation, so the modal is static. */
+    animation: modal-rise var(--modal-rise) var(--ease) 1;
   }
 }
 
