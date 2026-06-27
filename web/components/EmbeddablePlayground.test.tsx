@@ -5,7 +5,9 @@ import { createRef } from "react";
 // The core children pull in Monaco / framer / toast; stub them so jsdom
 // never instantiates the editor or WASM. The tests exercise
 // EmbeddablePlayground's own logic (lazy engage, the handle, onStateChange,
-// chrome gating), not the children.
+// chrome gating), not the children. The reduced embed/checker chrome renders
+// only these three plus the minimal control set, so they keep the heavy full
+// layout out of these unit tests.
 vi.mock("@/components/Editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
@@ -99,11 +101,14 @@ afterEach(() => {
 });
 
 describe("EmbeddablePlayground", () => {
-  it("exports the component and is driveable through an imperative handle", () => {
+  it("is driveable through an imperative handle once engaged", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
-    render(<EmbeddablePlayground ref={ref} chrome="full" startSource="mov x0, #1" />);
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
     expect(ref.current).not.toBeNull();
     act(() => ref.current!.step());
     expect(hub.step).toHaveBeenCalledTimes(1);
@@ -125,7 +130,10 @@ describe("EmbeddablePlayground", () => {
   it("emits exactly the ten outcome fields through onStateChange", async () => {
     useEmulatorMock.mockReturnValue(makeHub({ exitCode: 0, stdout: "hi" }));
     const onStateChange = vi.fn();
-    render(<EmbeddablePlayground chrome="full" onStateChange={onStateChange} />);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" onStateChange={onStateChange} />,
+    );
+    engage(container);
     await waitFor(() => expect(onStateChange).toHaveBeenCalled());
     const state = onStateChange.mock.calls.at(-1)![0] as EmbeddableState;
     expect(Object.keys(state).sort()).toEqual(
@@ -175,12 +183,17 @@ describe("EmbeddablePlayground", () => {
     useEmulatorMock.mockReturnValue(
       makeHub({ isLoaded: false, loadError: "wasm exploded" }),
     );
+    // Full chrome engages on mount; the load-error gate returns before any
+    // heavy panel renders.
     render(<EmbeddablePlayground chrome="full" />);
     expect(screen.getByText(/failed to load emulator/i)).toBeTruthy();
     expect(screen.getByText("wasm exploded")).toBeTruthy();
   });
 
   it("sets data-embed on the wrapper only in embed chrome", () => {
+    // isLoaded:false keeps the core on the loading gate so the heavy full
+    // layout never renders; the wrapper attribute still reflects chrome.
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     const { container, rerender } = render(<EmbeddablePlayground chrome="full" />);
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBeNull();
     rerender(<EmbeddablePlayground chrome="embed" />);
