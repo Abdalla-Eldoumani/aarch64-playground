@@ -12,12 +12,10 @@ export interface ShareState {
   source: string;
   args?: string;
   stdin?: string;
-  view?: "playground" | "c-to-asm";
   cursor?: { line: number; column: number };
 }
 
 export interface ShareOptions {
-  view?: "playground" | "c-to-asm";
   example?: string;
   theme?: Theme;
 }
@@ -55,7 +53,6 @@ export function readShareHash(hash: string): ShareState | null {
       const out: ShareState = { source: o.source };
       if (typeof o.args === "string") out.args = o.args;
       if (typeof o.stdin === "string") out.stdin = o.stdin;
-      if (o.view === "playground" || o.view === "c-to-asm") out.view = o.view;
       if (
         o.cursor != null &&
         typeof o.cursor === "object" &&
