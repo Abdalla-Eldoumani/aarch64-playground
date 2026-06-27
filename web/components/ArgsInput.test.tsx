@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { useState } from "react";
 import { ArgsInput } from "./ArgsInput";
 import { hashString } from "@/lib/auto-save";
+import { MAX_ARGS_CHARS } from "@/lib/upload-guard";
 
 afterEach(() => {
   cleanup();
@@ -25,6 +26,25 @@ describe("ArgsInput", () => {
     const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "hello world" } });
     expect(input.value).toBe("hello world");
+  });
+
+  it("accepts an args value exactly at the cap", () => {
+    render(<Harness source="// prog" />);
+    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const atCap = "x".repeat(MAX_ARGS_CHARS);
+    fireEvent.change(input, { target: { value: atCap } });
+    expect(input.value).toBe(atCap);
+  });
+
+  it("rejects an over-cap args value and keeps the previous value", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<Harness source="// prog" initial="ok" />);
+    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "x".repeat(MAX_ARGS_CHARS + 1) } });
+    // The over-cap input is not propagated, so the controlled value reverts.
+    expect(input.value).toBe("ok");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("persists per-program in localStorage after a debounce", () => {
