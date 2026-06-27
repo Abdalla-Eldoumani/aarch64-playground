@@ -177,6 +177,10 @@ export class WorkerClient {
     return this.send<number>({ id: 0, kind: "codeBase" });
   }
 
+  lineMap(): Promise<number[]> {
+    return this.send<number[]>({ id: 0, kind: "lineMap" });
+  }
+
   terminate(): void {
     this.worker.terminate();
     for (const slot of this.pending.values()) {
