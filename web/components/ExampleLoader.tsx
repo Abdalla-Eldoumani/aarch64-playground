@@ -157,7 +157,7 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
       <select
         onChange={handleSelect}
         defaultValue=""
-        className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] max-w-[14rem]"
+        className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] max-w-[14rem]"
         aria-label="Load example program"
       >
         <option value="" disabled>
@@ -174,7 +174,7 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
         ))}
       </select>
       {loadError && (
-        <span className="text-red-400 text-xs" role="alert">
+        <span className="text-[var(--danger)] text-xs" role="alert">
           {loadError}
         </span>
       )}
