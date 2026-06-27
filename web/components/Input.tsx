@@ -17,7 +17,7 @@ const BASE =
   "block w-full rounded-[var(--radius-control)] px-3 min-h-[44px] text-[14px] " +
   "bg-[var(--bg-raised)] border border-[var(--border)] text-[var(--text-primary)] " +
   "placeholder:text-[var(--text-tertiary)] " +
-  "focus:outline-none focus-visible:shadow-[var(--ring)] focus-visible:border-[var(--focus)]";
+  "focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:border-[var(--focus)]";
 
 /**
  * The base text input every form draws from. Forwards all native input
