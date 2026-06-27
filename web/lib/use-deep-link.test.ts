@@ -1,5 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import LZString from "lz-string";
 import { buildDeepLinkQuery, parseDeepLink } from "@/lib/use-deep-link";
+import { MAX_SHARE_HASH_BYTES } from "@/lib/upload-guard";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("parseDeepLink", () => {
   test("?example=week08_scores names the example", () => {
@@ -59,6 +65,16 @@ describe("parseDeepLink", () => {
   test("malformed ?bundle is silently dropped", () => {
     const dl = parseDeepLink("?bundle=not-a-payload");
     expect(dl.bundle).toBeUndefined();
+  });
+
+  test("an oversized ?bundle= payload falls back to no bundle before decompressing", () => {
+    const spy = vi.spyOn(LZString, "decompressFromEncodedURIComponent");
+    const oversized = "a".repeat(MAX_SHARE_HASH_BYTES + 1);
+    const dl = parseDeepLink(`?bundle=${oversized}`);
+    expect(dl.bundle).toBeUndefined();
+    // The decompression-bomb guard rejects the raw fragment before lz-string
+    // is invoked, so a tiny payload cannot expand to exhaust the tab.
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 
