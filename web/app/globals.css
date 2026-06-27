@@ -127,19 +127,6 @@
 }
 
 /* =============================================================================
-   Compatibility shim: maps the previous OKLCH token names onto the Reference-A
-   tokens so existing components keep resolving while the point-of-use sweep
-   runs per phase. Each var() resolves against the active [data-theme] block on
-   <html>, so the old names stay theme-aware. Removed once no old name remains.
-============================================================================= */
-:root {
-  --bg-primary:   var(--bg-base);
-  --bg-secondary: var(--bg-sunken);
-  --accent:       var(--cyan);
-  --accent-muted: var(--cyan-dim);
-}
-
-/* =============================================================================
    TYPE: Hanken Grotesk (display/UI), JetBrains Mono (signature), Source Serif 4
    (lead). next/font binds --font-sans/--font-mono/--font-serif on <html> to the
    self-hosted hashed families (layout.tsx); the --type-* shorthands reference
@@ -192,7 +179,7 @@ html {
 }
 
 body {
-  background: var(--bg-primary);
+  background: var(--bg-base);
   color: var(--text-primary);
   /* `--font-mono` is supplied by `next/font` in layout.tsx; the cascade
      below keeps the page on JetBrains Mono if the variable is missing
@@ -313,7 +300,7 @@ body {
 }
 [data-panel-resize-handle-enabled]:hover,
 [data-panel-resize-handle-enabled][data-resize-handle-active="pointer"] {
-  background: var(--accent-muted);
+  background: var(--cyan-dim);
 }
 @media (pointer: coarse) {
   [data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"] {
@@ -344,7 +331,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--bg-sunken);
 }
 
 ::-webkit-scrollbar-thumb {
