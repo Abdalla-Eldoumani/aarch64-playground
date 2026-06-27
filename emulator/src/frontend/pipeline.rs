@@ -443,8 +443,13 @@ fn lower_operands(
         return Ok(mnemonic.to_string());
     }
     // Branches want to see a label name, not an evaluated offset; leave
-    // the tail alone for them.
-    if is_branch_mnemonic(mnemonic) {
+    // the tail alone for them. ADR/ADRP likewise carry a label the encoder
+    // resolves against the absolute symbol table (and `:lo12:` operands are
+    // handled per-operand below).
+    if is_branch_mnemonic(mnemonic)
+        || mnemonic.eq_ignore_ascii_case("adr")
+        || mnemonic.eq_ignore_ascii_case("adrp")
+    {
         return Ok(format!("{mnemonic} {tail}"));
     }
     let rewritten = rewrite_operand_list(tail, pc, symbols, ln)?;
@@ -502,6 +507,24 @@ fn rewrite_operand(
     let trimmed = s.trim();
     if trimmed.is_empty() {
         return Ok(String::new());
+    }
+    // GAS relocation specifier `:lo12:SYM` (the second half of an
+    // `adrp`/`add :lo12:` address pair) resolves to the low 12 bits of the
+    // symbol's address so the legacy `add` encoder sees a plain immediate.
+    if let Some(sym) = trimmed
+        .strip_prefix(":lo12:")
+        .or_else(|| trimmed.strip_prefix(":LO12:"))
+    {
+        let name = sym.trim();
+        match symbols.get(name) {
+            Some(addr) => return Ok(format!("{}", addr & 0xFFF)),
+            None => {
+                return Err(EmuError::AssemblyError {
+                    line: ln,
+                    message: format!("unknown symbol in :lo12: `{name}`"),
+                })
+            }
+        }
     }
     // Bracketed operand [Xn, <expr>] or [Xn, <expr>]!: rewrite the inside
     // recursively and preserve the trailing characters (whitespace, !).
