@@ -103,20 +103,6 @@ program compressed into the hash. Copy it and paste into Slack / Teams /
 whatever. Opening the link loads the program straight into the
 editor; nothing is sent to a server.
 
-## try the c-to-asm view
-
-Click **C -> asm** in the header. Write some C; the playground
-forwards it to Compiler Explorer, gets back AArch64 assembly, and
-shows it next to the source. Hit **load into playground** and the
-generated assembly lands in the main editor so you can step through
-it. While your cursor is on an asm line the header shows the matching
-C line number, so you can jump back and forth between the two views.
-
-The C source is sent to **godbolt.org** to compile -- if your snippet
-is sensitive, do not paste it here. See
-[`c-to-asm.md`](c-to-asm.md) for the full data-handling note,
-compiler id, cache TTL, and directive filter.
-
 ## pass program arguments
 
 Type into the **args** input above the Assemble bar (e.g. `hello world`).
@@ -176,8 +162,7 @@ minutes it takes to try them:
 - **Embed mode**: `?embed=1` strips the chrome to just the editor +
   console for slide decks and inline lecture demos.
 - **Offline**: the playground is a PWA. Once loaded once, the app
-  shell + examples + icons stay cached and the page works offline
-  for everything except the C-to-asm view (which needs Godbolt).
+  shell + examples + icons stay cached and the page works offline.
 
 ## keyboard shortcuts
 
