@@ -14,7 +14,6 @@ describe("share hash p2", () => {
       source: "MOV X0, #42\nSVC #0\n",
       args: "hello world",
       stdin: "42\n",
-      view: "playground",
       cursor: { line: 2, column: 5 },
     };
     const hash = buildShareHash(state);
@@ -61,15 +60,6 @@ describe("share hash p2", () => {
     expect(decoded).not.toBeNull();
     expect(decoded!.source).toBe("ret");
     expect(decoded!.args).toBeUndefined();
-  });
-
-  it("strips an unknown view value", () => {
-    const payload = LZString.compressToEncodedURIComponent(
-      JSON.stringify({ source: "ret", view: "evil-view" }),
-    );
-    const decoded = readShareHash(`#p2=${payload}`);
-    expect(decoded).not.toBeNull();
-    expect(decoded!.view).toBeUndefined();
   });
 
   it("strips a malformed cursor", () => {
