@@ -5,11 +5,16 @@ import type { DecodedInstruction } from "@/lib/use-emulator";
 interface InstructionViewProps {
   instructions: DecodedInstruction[];
   pc: number;
+  /** When the program is running, the current-instruction row breathes its
+   *  amber PC marker. Default off; the page wires `running={emu.isRunning}`
+   *  during the composition pass. */
+  running?: boolean;
 }
 
 export function InstructionView({
   instructions,
   pc,
+  running = false,
 }: InstructionViewProps) {
   if (instructions.length === 0) {
     return (
@@ -39,11 +44,21 @@ export function InstructionView({
             return (
               <tr
                 key={instr.address}
-                className={`${
+                className={
                   isCurrent
-                    ? "bg-[rgba(96,165,250,0.15)] text-[var(--accent)]"
-                    : "hover:bg-[var(--bg-secondary)]"
-                }`}
+                    ? `text-[var(--amber)]${running ? " anim-run-breathe" : ""}`
+                    : "hover:bg-[var(--bg-sunken)]"
+                }
+                // Current instruction is execution state, so its highlight reads
+                // amber; color-mix keeps the tint theme-following across themes.
+                style={
+                  isCurrent
+                    ? {
+                        backgroundColor:
+                          "color-mix(in srgb, var(--amber) 15%, transparent)",
+                      }
+                    : undefined
+                }
               >
                 <td className="text-center">
                   {isCurrent ? "\u25B6" : ""}
