@@ -137,6 +137,13 @@ fn encode_line(
         "LSR" => encode_shift(&ops, 1, line_num),
         "ASR" => encode_shift(&ops, 2, line_num),
 
+        // -- sign / zero extension (SBFM / UBFM extract-and-extend aliases) --
+        "SXTB" => encode_extend(&ops, true, 7, line_num),
+        "SXTH" => encode_extend(&ops, true, 15, line_num),
+        "SXTW" => encode_extend(&ops, true, 31, line_num),
+        "UXTB" => encode_extend(&ops, false, 7, line_num),
+        "UXTH" => encode_extend(&ops, false, 15, line_num),
+
         // -- multiply / divide --
         "MUL" => encode_mul_div(&ops, 0, line_num),
         "UDIV" => encode_mul_div(&ops, 1, line_num),
@@ -167,6 +174,10 @@ fn encode_line(
         "FCVTZS" => encode_fcvtzs(&ops, line_num),
         "LDP" => encode_ldst_pair(&ops, 1, line_num),
         "STP" => encode_ldst_pair(&ops, 0, line_num),
+
+        // -- pc-relative address formation --
+        "ADR" => encode_adr(&ops, false, pc, labels, line_num),
+        "ADRP" => encode_adr(&ops, true, pc, labels, line_num),
 
         // -- branches --
         "B" => encode_branch_imm(&ops, false, pc, labels, line_num),
@@ -289,6 +300,11 @@ fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError> {
     let val: u64 = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
         u64::from_str_radix(hex, 16)
             .map_err(|_| asm_error(line_num, &format!("invalid hex immediate: {s}")))?
+    } else if let Some(bin) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
+        // Binary immediates (`#0b101010`) are a documented course form; the
+        // lexer already accepts them, so the legacy encoder must too.
+        u64::from_str_radix(bin, 2)
+            .map_err(|_| asm_error(line_num, &format!("invalid binary immediate: {s}")))?
     } else {
         s.parse()
             .map_err(|_| asm_error(line_num, &format!("invalid immediate: {s}")))?
@@ -648,6 +664,29 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
     };
     Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
         | (opcode << 10) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Encode `sxtb`/`sxth`/`sxtw`/`uxtb`/`uxth Rd, Wn`. These are SBFM/UBFM
+/// aliases with `immr = 0` and `imms` fixed per width (7/15/31). The
+/// destination width picks the 64- vs 32-bit form (and the N bit, which
+/// tracks `sf` for these encodings).
+fn encode_extend(ops: &[&str], signed: bool, imms: u8, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "sign/zero extend requires 2 operands");
+    }
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, _) = parse_register(ops[1], ln)?;
+    let opc: u32 = if signed { 0b00 } else { 0b10 }; // SBFM vs UBFM
+    let sf_bit = if sf { 1u32 } else { 0 };
+    let n_bit = if sf { 1u32 } else { 0 };
+    Ok((sf_bit << 31)
+        | (opc << 29)
+        | (0b100110 << 23)
+        | (n_bit << 22)
+        | (0 << 16) // immr = 0
+        | ((imms as u32) << 10)
+        | ((rn as u32) << 5)
+        | (rd as u32))
 }
 
 fn encode_mul_div(ops: &[&str], variant: u8, ln: usize) -> Result<u32, EmuError> {
@@ -1181,6 +1220,48 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     Ok((opc << 30) | (0b101 << 27) | (0 << 26) | (mode_bits << 23)
         | ((load as u32) << 22) | (imm7_enc << 15)
         | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
+}
+
+/// Encode `adr Rd, label` (byte-relative) or `adrp Rd, label` (page-
+/// relative). The label resolves against the absolute symbol table; for
+/// `adrp` the displacement is computed between the 4 KiB page of the
+/// instruction and the page of the target, then encoded as the 21-bit
+/// immediate the decoder shifts back left by 12.
+fn encode_adr(
+    ops: &[&str], adrp: bool, pc: u64, labels: &HashMap<String, u64>, ln: usize,
+) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "ADR/ADRP requires 2 operands");
+    }
+    let (rd, _) = parse_register(ops[0], ln)?;
+    let target = ops[1].trim();
+    let target_addr = if target.starts_with('#')
+        || target.starts_with('-')
+        || target.chars().next().map_or(false, |c| c.is_ascii_digit())
+    {
+        parse_immediate(target, ln)? as u64
+    } else {
+        *labels
+            .get(target)
+            .or_else(|| labels.get(&target.to_lowercase()))
+            .ok_or_else(|| asm_error(ln, &format!("undefined label: {target}")))?
+    };
+
+    let imm: i64 = if adrp {
+        let pc_page = (pc & !0xFFF) as i64;
+        let target_page = (target_addr & !0xFFF) as i64;
+        (target_page - pc_page) >> 12
+    } else {
+        target_addr as i64 - pc as i64
+    };
+    if !(-(1 << 20)..(1 << 20)).contains(&imm) {
+        return asm_err(ln, "ADR/ADRP target out of +/-1MiB (or +/-4GiB page) range");
+    }
+    let imm21 = (imm as u32) & 0x1F_FFFF;
+    let immlo = imm21 & 0x3;
+    let immhi = (imm21 >> 2) & 0x7_FFFF;
+    let op = if adrp { 1u32 } else { 0 };
+    Ok((op << 31) | (immlo << 29) | (0b10000 << 24) | (immhi << 5) | (rd as u32))
 }
 
 fn encode_branch_imm(
@@ -1737,6 +1818,95 @@ mod tests {
         let code = assemble(program).unwrap();
         let reference = assemble("MOV X29, X30").unwrap();
         assert_eq!(code, reference);
+    }
+
+    // -- sign / zero extension --
+
+    #[test]
+    fn assemble_sxtb_round_trips_as_sbfm() {
+        let code = assemble("SXTB X0, W1").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
+                assert_eq!(op, crate::decoder::BitfieldOp::Sbfm);
+                assert!(sf);
+                assert_eq!(rd, 0);
+                assert_eq!(rn, 1);
+                assert_eq!(immr, 0);
+                assert_eq!(imms, 7);
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_uxth_round_trips_as_ubfm() {
+        let code = assemble("UXTH W3, W2").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { op, sf, imms, .. } => {
+                assert_eq!(op, crate::decoder::BitfieldOp::Ubfm);
+                assert!(!sf);
+                assert_eq!(imms, 15);
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_all_extends_distinct() {
+        let mnemonics = ["SXTB", "SXTH", "SXTW", "UXTB", "UXTH"];
+        let mut words = Vec::new();
+        for mn in mnemonics {
+            words.push(assemble(&format!("{mn} X0, W1")).unwrap()[0]);
+        }
+        for i in 0..words.len() {
+            for j in (i + 1)..words.len() {
+                assert_ne!(words[i], words[j], "{} vs {}", mnemonics[i], mnemonics[j]);
+            }
+        }
+    }
+
+    // -- ADR / ADRP --
+
+    #[test]
+    fn assemble_adrp_then_add_lo12_reaches_label() {
+        // adrp computes the page; the decoded byte displacement reflects the
+        // label's page minus the instruction's page.
+        let mut labels = HashMap::new();
+        labels.insert("sym".to_string(), 0x0060_1234u64);
+        let pc = 0x0040_0000u64;
+        let word = encode_line_absolute("ADRP X0, sym", pc, &labels, 1).unwrap();
+        match crate::decoder::decode(word).unwrap() {
+            crate::decoder::Instruction::Adr { adrp, rd, imm } => {
+                assert!(adrp);
+                assert_eq!(rd, 0);
+                // (0x0060_1000 - 0x0040_0000) = 0x20_1000.
+                assert_eq!(imm, 0x20_1000);
+            }
+            other => panic!("expected Adr, got {other:?}"),
+        }
+    }
+
+    // -- binary immediates --
+
+    #[test]
+    fn assemble_binary_immediate_matches_decimal() {
+        let bin = assemble("MOV W0, #0b101010").unwrap();
+        let dec = assemble("MOV W0, #42").unwrap();
+        assert_eq!(bin, dec);
+    }
+
+    #[test]
+    fn assemble_tst_single_bit_immediate_round_trips() {
+        // `tst w0, #2` is a valid single-bit bitmask immediate; the encoder
+        // must produce a word whose logical immediate decodes back to 2.
+        let code = assemble("TST W0, #2").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::LogImm { imm, set_flags, .. } => {
+                assert!(set_flags);
+                assert_eq!(imm, 2);
+            }
+            other => panic!("expected LogImm, got {other:?}"),
+        }
     }
 
     #[test]
