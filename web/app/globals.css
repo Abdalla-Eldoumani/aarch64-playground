@@ -2,57 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================================
+   aarch64 playground: design tokens v1
+   One system, two densities. Amber = the machine acting. Cyan = you acting.
+   One token drives each semantic state across all three themes.
+============================================================================= */
+
+/* ----- DARK · primary surface (default) ----- */
 :root,
 [data-theme="dark"] {
-  --bg-primary:     oklch(0.18 0.02 270);
-  --bg-secondary:   oklch(0.22 0.02 270);
-  --bg-panel:       oklch(0.25 0.02 270);
-  --border:         oklch(0.32 0.02 270);
-  --text-primary:   oklch(0.94 0.02 270);
-  --text-secondary: oklch(0.70 0.02 270);
-  --accent:         oklch(0.72 0.18 240);
-  --accent-muted:   oklch(0.55 0.16 240);
-  --changed:        oklch(0.84 0.18 90);
-  --danger:         oklch(0.68 0.22 25);
-  --success:        oklch(0.78 0.18 145);
-  --focus:          oklch(0.78 0.20 240);
+  --bg-base:        #0B0C0E;
+  --bg-sunken:      #111316;
+  --bg-raised:      #16181C;
+  --bg-panel:       #1B1E22;
+  --bg-elevated:    #22262B;
+  --border:         #2A2E34;
+  --border-strong:  #3A3F47;
+
+  --text-primary:   #ECEDEF;
+  --text-secondary: #A4ABB3;
+  --text-tertiary:  #6C737B;
+
+  --amber:          #F5B53D;  /* execution: pc, current line, run, links into live things */
+  --amber-dim:      #8A6722;
+
+  --cyan:           #39C0DE;  /* interaction: links, focus, primary actions, selected tab/nav */
+  --cyan-dim:       #1C6576;
+  --on-cyan:        #04222A;  /* text/icon on a filled cyan control */
+
+  --success:        #56D364;
+  --warning:        #FFB454;
+  --danger:         #FF6B6B;
+  --changed:        #FFCC66;  /* register-write flash: drives the animation so it follows the theme */
+
+  --focus:          var(--cyan);
+
+  /* Viewport-safe insets and the lecture-mode font scale are theme-independent,
+     so the base/dark block owns them; they cascade to every theme via :root. */
   --safe-bottom:    env(safe-area-inset-bottom, 0px);
   --safe-top:       env(safe-area-inset-top, 0px);
   --font-scale:     1;
 }
 
+/* ----- LIGHT · true light ----- */
 [data-theme="light"] {
-  --bg-primary:     oklch(0.99 0     0);
-  --bg-secondary:   oklch(0.96 0.005 270);
-  --bg-panel:       oklch(0.93 0.01  270);
-  --border:         oklch(0.85 0.01  270);
-  --text-primary:   oklch(0.20 0.02  270);
-  --text-secondary: oklch(0.40 0.02  270);
-  --accent:         oklch(0.50 0.20  240);
-  --accent-muted:   oklch(0.62 0.18  240);
-  --changed:        oklch(0.55 0.18  75);
-  --danger:         oklch(0.50 0.22  25);
-  --success:        oklch(0.50 0.18  145);
-  --focus:          oklch(0.50 0.22  240);
+  --bg-base:        #FFFFFF;
+  --bg-sunken:      #F6F7F9;
+  --bg-raised:      #FFFFFF;
+  --bg-panel:       #FFFFFF;
+  --bg-elevated:    #ECEEF1;
+  --border:         #E5E8EC;
+  --border-strong:  #D2D7DD;
+
+  --text-primary:   #0E1013;
+  --text-secondary: #5A626B;
+  --text-tertiary:  #858D96;
+
+  --amber:          #B5791A;
+  --amber-dim:      #E7C98A;
+  --cyan:           #0E8FA8;
+  --cyan-dim:       #9AD3DF;
+  --on-cyan:        #FFFFFF;
+
+  --success:        #1F8A3B;
+  --warning:        #B26A00;
+  --danger:         #C2362F;
+  --changed:        #B5791A;
+
+  --focus:          var(--cyan);
 }
 
-/* High contrast: pure black surfaces with bright cyan/yellow accents.
-   Targets WCAG AAA on body text and at least 7:1 on every interactive
-   control state. Used by students with low vision and presentations on
-   bright projectors where dim themes wash out. */
+/* ----- HIGH-CONTRAST · pure-black, bright hairlines, targets WCAG AAA ----- */
 [data-theme="high-contrast"] {
-  --bg-primary:     oklch(0    0     0);
-  --bg-secondary:   oklch(0.10 0     0);
-  --bg-panel:       oklch(0.15 0     0);
-  --border:         oklch(0.85 0     0);
-  --text-primary:   oklch(1    0     0);
-  --text-secondary: oklch(0.85 0     0);
-  --accent:         oklch(0.85 0.30  240);
-  --accent-muted:   oklch(0.75 0.25  240);
-  --changed:        oklch(0.95 0.18  90);
-  --danger:         oklch(0.75 0.30  25);
-  --success:        oklch(0.85 0.25  145);
-  --focus:          oklch(1    0     0);
+  --bg-base:        #000000;
+  --bg-sunken:      #0A0A0A;
+  --bg-raised:      #141414;
+  --bg-panel:       #141414;
+  --bg-elevated:    #1E1E1E;
+  --border:         #FFFFFF;
+  --border-strong:  #FFFFFF;
+
+  --text-primary:   #FFFFFF;
+  --text-secondary: #E6E6E6;
+  --text-tertiary:  #C7C7C7;
+
+  --amber:          #FFC247;
+  --amber-dim:      #C99220;
+  --cyan:           #5AD7F0;
+  --cyan-dim:       #2C9FB8;
+  --on-cyan:        #00181E;
+
+  --success:        #5CF06B;
+  --warning:        #FFC247;
+  --danger:         #FF8585;
+  --changed:        #FFD480;
+
+  --focus:          #FFFFFF;
+}
+
+/* =============================================================================
+   Compatibility shim: maps the previous OKLCH token names onto the Reference-A
+   tokens so existing components keep resolving while the point-of-use sweep
+   runs per phase. Each var() resolves against the active [data-theme] block on
+   <html>, so the old names stay theme-aware. Removed once no old name remains.
+============================================================================= */
+:root {
+  --bg-primary:   var(--bg-base);
+  --bg-secondary: var(--bg-sunken);
+  --accent:       var(--cyan);
+  --accent-muted: var(--cyan-dim);
 }
 
 html {
