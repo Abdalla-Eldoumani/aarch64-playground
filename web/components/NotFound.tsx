@@ -19,7 +19,7 @@ export function NotFound({
       role="main"
     >
       <div className="flex items-baseline gap-3 text-[var(--text-secondary)]">
-        <span className="text-5xl font-bold text-[var(--accent)]">404</span>
+        <span className="text-5xl font-bold text-[var(--danger)]">404</span>
         <span className="text-xs uppercase tracking-wider">signal 11</span>
       </div>
 
@@ -27,14 +27,14 @@ export function NotFound({
 
       <p className="font-sans text-sm text-[var(--text-secondary)] max-w-md">{message}</p>
 
-      <pre className="text-xs text-[var(--text-secondary)] bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-4 py-3 whitespace-pre">
+      <pre className="text-xs text-[var(--text-secondary)] bg-[var(--bg-sunken)] border border-[var(--border)] rounded px-4 py-3 whitespace-pre">
 {`MOV X0, #0x404
 SVC #0`}
       </pre>
 
       <Link
         href={returnHref}
-        className="text-xs text-[var(--accent)] hover:underline"
+        className="text-xs text-[var(--cyan)] hover:underline"
       >
         {returnLabel}
       </Link>
