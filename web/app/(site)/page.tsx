@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+import { Hero } from "@/components/Hero";
+import { RoutesRegisterFile } from "@/components/RoutesRegisterFile";
+import { FeatureCatalog } from "@/components/FeatureCatalog";
+import { CredibilitySection } from "@/components/CredibilitySection";
 
 const DESCRIPTION =
   "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";
@@ -24,17 +28,21 @@ export const metadata: Metadata = {
   },
 };
 
+// The landing composes the four sections top to bottom: the live hero, the
+// routes-as-register-file jump table, the feature catalog, then the credibility
+// band. Each section owns its own measure (the first three centre at max-w-5xl;
+// the credibility band runs full-bleed by design) and its own py-12/sm:py-16
+// rhythm, so the page only orders them -- no wrapper measure or extra spacing to
+// avoid double-padding or clipping the band. The nav and footer come from the
+// (site) layout. A server component: it renders the client Hero without itself
+// going client, so the rest of the page ships no JS.
 export default function LandingPage() {
   return (
-    <section className="mx-auto w-full max-w-2xl px-6 py-12 sm:py-16">
-      <h1 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)]">
-        cpsc 355 playground
-      </h1>
-      <p className="mt-4 font-serif text-lg leading-relaxed text-[var(--text-secondary)]">
-        A browser-based AArch64 emulator and visual debugger for the cpsc 355
-        tutorial corpus: paste a program, assemble it, and step through real
-        registers, stack, memory, and I/O without leaving the tab.
-      </p>
-    </section>
+    <>
+      <Hero />
+      <RoutesRegisterFile />
+      <FeatureCatalog />
+      <CredibilitySection />
+    </>
   );
 }
