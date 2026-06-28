@@ -18,6 +18,12 @@ pub const SYS_OPENAT: u64 = 56;
 pub const SYS_CLOSE: u64 = 57;
 pub const SYS_LSEEK: u64 = 62;
 
+/// Upper bound on a virtual-filesystem file size. `lseek` lets a guest pick
+/// the offset a later `write` lands at, so without a cap a one-byte write at a
+/// huge offset would resize the backing `Vec` to gigabytes and abort the host
+/// allocator. 16 MiB is far above anything the corpus needs.
+pub const MAX_VFS_FILE_BYTES: usize = 16 * 1024 * 1024;
+
 /// Linux `O_*` flag bits we care about. Matches the AArch64 Linux ABI.
 const O_WRONLY: u32 = 0o1;
 const O_RDWR: u32 = 0o2;
@@ -47,7 +53,10 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fd = ctx.regs.read_gpr(0, true);
     let buf = ctx.regs.read_gpr(1, true);
     let count = ctx.regs.read_gpr(2, true);
-    let mut bytes = Vec::with_capacity(count as usize);
+    // `count` is guest-controlled (x2); never pre-reserve from it. The loop
+    // grows `bytes` only as far as mapped memory allows and faults calmly past
+    // it, so a huge count cannot trigger a host allocation abort.
+    let mut bytes: Vec<u8> = Vec::new();
     for i in 0..count {
         bytes.push(ctx.mem.read_u8(buf + i)?);
     }
@@ -68,6 +77,12 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             }
             let path = file.path.clone();
             let offset = file.offset as usize;
+            // Reject a write that would grow the file past the cap rather than
+            // resizing the backing Vec to a guest-chosen (possibly huge) size.
+            if offset.saturating_add(bytes.len()) > MAX_VFS_FILE_BYTES {
+                ctx.regs.write_gpr(0, true, (-1i64) as u64);
+                return Ok(HostOutcome::Continue);
+            }
             let data = ctx
                 .vfs
                 .entry(path)
@@ -210,7 +225,7 @@ pub fn sys_lseek(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             return Ok(HostOutcome::Continue);
         }
     };
-    if new_offset < 0 {
+    if new_offset < 0 || new_offset as u64 > MAX_VFS_FILE_BYTES as u64 {
         ctx.regs.write_gpr(0, true, (-1i64) as u64);
         return Ok(HostOutcome::Continue);
     }
@@ -480,5 +495,52 @@ mod tests {
         dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
         assert_eq!(h.regs.read_gpr(0, true), 3);
         assert_eq!(h.vfs["out.txt"], b"Hi!");
+    }
+
+    #[test]
+    fn write_with_huge_count_faults_calmly() {
+        // A guest-controlled count must not pre-reserve host memory; reading
+        // past mapped memory returns an error, never a host allocation abort.
+        let mut h = Host::new();
+        h.regs.write_gpr(0, true, 1); // stdout
+        h.regs.write_gpr(1, true, 0x0060_0000); // one mapped page
+        h.regs.write_gpr(2, true, u32::MAX as u64); // huge count
+        assert!(dispatch(SYS_WRITE, &mut h.ctx()).is_err());
+    }
+
+    #[test]
+    fn lseek_past_the_file_cap_returns_minus_one() {
+        let mut h = Host::new();
+        h.vfs.insert("f".into(), Vec::new());
+        h.open_files.insert(
+            3,
+            crate::cpu::OpenFile { path: "f".into(), offset: 0, writable: true },
+        );
+        h.regs.write_gpr(0, true, 3);
+        h.regs.write_gpr(1, true, MAX_VFS_FILE_BYTES as u64 + 1);
+        h.regs.write_gpr(2, true, 0); // SEEK_SET
+        dispatch(SYS_LSEEK, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+    }
+
+    #[test]
+    fn write_past_the_file_cap_fails_without_a_huge_resize() {
+        let mut h = Host::new();
+        h.vfs.insert("f".into(), Vec::new());
+        h.open_files.insert(
+            3,
+            crate::cpu::OpenFile {
+                path: "f".into(),
+                offset: MAX_VFS_FILE_BYTES as u64,
+                writable: true,
+            },
+        );
+        h.mem.write_u8(0x0060_0000, b'x').unwrap();
+        h.regs.write_gpr(0, true, 3);
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, 1);
+        dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert!(h.vfs["f"].len() <= MAX_VFS_FILE_BYTES);
     }
 }
