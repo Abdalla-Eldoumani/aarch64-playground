@@ -140,6 +140,17 @@ pub enum FpBinOp {
     Fdiv,
 }
 
+/// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
+/// zero-extends it. The `sxtb`/`sxth`/`sxtw` and `uxtb`/`uxth` extends, plus
+/// `sbfx`/`ubfx`, all lower to these. The LSL/LSR/ASR immediate aliases keep
+/// their dedicated decode (see `decode_bitfield`) so this only covers the
+/// extract-and-extend forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BitfieldOp {
+    Sbfm,
+    Ubfm,
+}
+
 // ---------------------------------------------------------------------------
 // instruction enum
 // ---------------------------------------------------------------------------
@@ -336,6 +347,26 @@ pub enum Instruction {
         fn_: u8,
         sf: bool,
     },
+    /// SBFM / UBFM extract-and-extend (the form behind `sxtb`/`sxth`/
+    /// `sxtw`/`uxtb`/`uxth` and `sbfx`/`ubfx`). `immr` is the rotate/lsb,
+    /// `imms` the top bit of the source field.
+    Bitfield {
+        op: BitfieldOp,
+        sf: bool,
+        rd: u8,
+        rn: u8,
+        immr: u8,
+        imms: u8,
+    },
+    /// ADR / ADRP: PC-relative address formation. `adrp` true means the
+    /// page form (PC masked to a 4 KiB boundary, `imm` already shifted left
+    /// 12); `adrp` false is the byte-relative `adr`. `imm` is the resolved
+    /// signed displacement.
+    Adr {
+        adrp: bool,
+        rd: u8,
+        imm: i64,
+    },
     /// NOP.
     Nop,
     /// SVC (treated as halt).
@@ -515,7 +546,12 @@ pub fn encode_bitmask_imm(value: u64, sf: bool) -> Option<(bool, u8, u8)> {
                     };
                     upper_bits | ((s_val as u8) & ((1u8 << len) - 1))
                 };
-                let immr = r as u8;
+                // The loop found `r` such that ROR(element, r) == the
+                // canonical low run of ones. The decoder reconstructs the
+                // element as ROR(canonical, immr), so the encoded rotate is
+                // the inverse: immr = (esize - r) mod esize. (For r == 0 the
+                // modulo keeps immr == 0.)
+                let immr = ((esize - r) % esize) as u8;
                 return Some((n_bit, immr, imms));
             }
         }
@@ -631,6 +667,13 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
 // ---------------------------------------------------------------------------
 
 fn decode_dp_imm_group(instr: u32) -> Result<Instruction, EmuError> {
+    // PC-relative addressing (ADR / ADRP) sits in this group with the fixed
+    // field bits[28:24] = 10000. Detect it before the op0 dispatch since its
+    // op0 (bits 25:23) overlaps no other dp-immediate subgroup.
+    if bits(instr, 28, 24) == 0b10000 {
+        return decode_adr(instr);
+    }
+
     let op0 = bits(instr, 25, 23);
 
     match op0 {
@@ -644,6 +687,21 @@ fn decode_dp_imm_group(instr: u32) -> Result<Instruction, EmuError> {
         0b110 => decode_bitfield(instr),
         _ => Err(EmuError::UnknownInstruction(instr)),
     }
+}
+
+fn decode_adr(instr: u32) -> Result<Instruction, EmuError> {
+    // ADR / ADRP: op[31] immlo[30:29] 1_0000 immhi[23:5] Rd[4:0].
+    let adrp = bit(instr, 31) == 1;
+    let immlo = bits(instr, 30, 29);
+    let immhi = bits(instr, 23, 5);
+    let imm21 = (immhi << 2) | immlo;
+    let mut imm = sign_extend(imm21, 21);
+    if adrp {
+        // The page form scales the 21-bit immediate by 4 KiB.
+        imm <<= 12;
+    }
+    let rd = bits(instr, 4, 0) as u8;
+    Ok(Instruction::Adr { adrp, rd, imm })
 }
 
 fn decode_add_sub_imm(instr: u32) -> Result<Instruction, EmuError> {
@@ -780,6 +838,26 @@ fn decode_bitfield(instr: u32) -> Result<Instruction, EmuError> {
             set_flags: false,
             invert: false,
         }),
+        // General SBFM/UBFM: the extract-and-extend forms behind sxtb/sxth/
+        // sxtw, uxtb/uxth, and sbfx/ubfx. The shift aliases above are
+        // matched first, so only the genuine bitfield moves land here.
+        0b00 => Ok(Instruction::Bitfield {
+            op: BitfieldOp::Sbfm,
+            sf,
+            rd,
+            rn,
+            immr,
+            imms,
+        }),
+        0b10 => Ok(Instruction::Bitfield {
+            op: BitfieldOp::Ubfm,
+            sf,
+            rd,
+            rn,
+            immr,
+            imms,
+        }),
+        // opc 0b01 is BFM (bitfield insert), unused by the course.
         _ => Err(EmuError::UnknownInstruction(instr)),
     }
 }
@@ -1329,6 +1407,28 @@ mod tests {
         assert!(decode_bitmask_imm(true, 0, 0, false).is_err());
     }
 
+    #[test]
+    fn bitmask_encode_decode_round_trips_rotated_values() {
+        // A single-bit immediate like `#2` needs a rotation; the encoder
+        // must produce an (immr, imms) the decoder reads back to the same
+        // value. Pins the rotate-direction fix.
+        for &(value, sf) in &[
+            (2u64, false),
+            (2u64, true),
+            (0x8000_0000u64, false),
+            (0xF000_0000_0000_000Fu64, true),
+            (0x0000_0000_FFFF_0000u64, true),
+            (4u64, false),
+            (0x40u64, true),
+        ] {
+            let (n, immr, imms) = encode_bitmask_imm(value, sf)
+                .unwrap_or_else(|| panic!("{value:#x} should encode (sf={sf})"));
+            let decoded = decode_bitmask_imm(n, immr, imms, sf).unwrap();
+            let expected = if sf { value } else { value & 0xFFFF_FFFF };
+            assert_eq!(decoded, expected, "round-trip {value:#x} sf={sf}");
+        }
+    }
+
     // -- MOV/MOVZ/MOVK tests --
 
     #[test]
@@ -1701,6 +1801,92 @@ mod tests {
                 assert_eq!(offset, -4);
             }
             other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    // -- bitfield extract-and-extend (sxt*/uxt*) --
+
+    #[test]
+    fn decode_sxtb_x_is_sbfm() {
+        // SXTB Xd, Wn = SBFM Xd, Xn, #0, #7: sf=1, opc=00, N=1, immr=0, imms=7.
+        let word: u32 = (1 << 31) | (0b00 << 29) | (0b100110 << 23) | (1 << 22) | (7 << 10) | (1 << 5);
+        match decode(word).unwrap() {
+            Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
+                assert_eq!(op, BitfieldOp::Sbfm);
+                assert!(sf);
+                assert_eq!(rd, 0);
+                assert_eq!(rn, 1);
+                assert_eq!(immr, 0);
+                assert_eq!(imms, 7);
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_uxth_w_is_ubfm() {
+        // UXTH Wd, Wn = UBFM Wd, Wn, #0, #15: sf=0, opc=10, N=0, immr=0, imms=15.
+        let word: u32 = (0b10 << 29) | (0b100110 << 23) | (15 << 10) | (2 << 5) | 3;
+        match decode(word).unwrap() {
+            Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
+                assert_eq!(op, BitfieldOp::Ubfm);
+                assert!(!sf);
+                assert_eq!(rd, 3);
+                assert_eq!(rn, 2);
+                assert_eq!(immr, 0);
+                assert_eq!(imms, 15);
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_lsl_immediate_stays_a_shift_not_a_bitfield() {
+        // `lsl x0, x1, #4` lowers to UBFM with imms+1==immr; it must keep
+        // decoding as the shifted-register alias, not the general bitfield.
+        let word: u32 =
+            (1 << 31) | (0b10 << 29) | (0b100110 << 23) | (1 << 22) | (60 << 16) | (59 << 10) | (1 << 5);
+        match decode(word).unwrap() {
+            Instruction::LogReg { shift, amount, .. } => {
+                assert_eq!(shift, ShiftType::LSL);
+                assert_eq!(amount, 4);
+            }
+            other => panic!("expected LogReg (LSL alias), got {other:?}"),
+        }
+    }
+
+    // -- ADR / ADRP --
+
+    #[test]
+    fn decode_adrp_recovers_page_displacement() {
+        // ADRP X0, +1 page (imm21 = 1 -> byte displacement 0x1000).
+        let immlo = 1u32 & 0x3;
+        let immhi = (1u32 >> 2) & 0x7_FFFF;
+        let word: u32 = (1 << 31) | (immlo << 29) | (0b10000 << 24) | (immhi << 5);
+        match decode(word).unwrap() {
+            Instruction::Adr { adrp, rd, imm } => {
+                assert!(adrp);
+                assert_eq!(rd, 0);
+                assert_eq!(imm, 0x1000);
+            }
+            other => panic!("expected Adr, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_adr_byte_relative() {
+        // ADR X5, +8 bytes (imm21 = 8, no page scaling).
+        let imm21 = 8u32;
+        let immlo = imm21 & 0x3;
+        let immhi = (imm21 >> 2) & 0x7_FFFF;
+        let word: u32 = (immlo << 29) | (0b10000 << 24) | (immhi << 5) | 5;
+        match decode(word).unwrap() {
+            Instruction::Adr { adrp, rd, imm } => {
+                assert!(!adrp);
+                assert_eq!(rd, 5);
+                assert_eq!(imm, 8);
+            }
+            other => panic!("expected Adr, got {other:?}"),
         }
     }
 }

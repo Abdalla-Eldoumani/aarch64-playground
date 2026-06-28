@@ -38,6 +38,17 @@ pub struct LinkedImage {
     /// `gdb b <label>` terminal command and any future symbolic
     /// debugger surface.
     pub symbols: HashMap<String, u64>,
+    /// Authoritative address -> editor-source-line map. For every
+    /// `.text` instruction emitted at `pc`, this holds `(pc,
+    /// original_line)` where `original_line` is the 1-based EDITOR
+    /// (pre-m4) line. m4 keeps line numbers aligned -- `define()` lines
+    /// expand to empty lines -- so `original_line` is the line the
+    /// student actually wrote. The debugger marker, the disassembly
+    /// text, and breakpoint placement key off this instead of counting
+    /// non-label source lines (which double-counts data/macro/directive
+    /// lines and drifts on complex programs). Trampolines and the
+    /// literal pool get no entries.
+    pub line_map: Vec<(u64, u32)>,
 }
 
 pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, EmuError> {
@@ -180,6 +191,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
 
     // Pass 2: emit bytes for every section, then the literal pool.
     let mut writes: Vec<(u64, Vec<u8>)> = Vec::new();
+    let mut line_map: Vec<(u64, u32)> = Vec::new();
     let mut instruction_count: usize = 0;
     let expanded_lines: Vec<&str> = prog.expanded_source.lines().collect();
 
@@ -251,6 +263,14 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         )?
                     };
                     writes.push((pc, word.to_le_bytes().to_vec()));
+                    // Record the authoritative pc -> editor-line entry for
+                    // every real `.text` instruction. Only `.text` carries
+                    // executable instructions; trampolines and the literal
+                    // pool are emitted separately below and intentionally
+                    // get no entries.
+                    if section.kind == SectionKind::Text {
+                        line_map.push((pc, *original_line as u32));
+                    }
                     offset += 4;
                     instruction_count += 1;
                 }
@@ -287,6 +307,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         instruction_count,
         text_base: CODE_BASE,
         symbols,
+        line_map,
     })
 }
 
@@ -422,8 +443,13 @@ fn lower_operands(
         return Ok(mnemonic.to_string());
     }
     // Branches want to see a label name, not an evaluated offset; leave
-    // the tail alone for them.
-    if is_branch_mnemonic(mnemonic) {
+    // the tail alone for them. ADR/ADRP likewise carry a label the encoder
+    // resolves against the absolute symbol table (and `:lo12:` operands are
+    // handled per-operand below).
+    if is_branch_mnemonic(mnemonic)
+        || mnemonic.eq_ignore_ascii_case("adr")
+        || mnemonic.eq_ignore_ascii_case("adrp")
+    {
         return Ok(format!("{mnemonic} {tail}"));
     }
     let rewritten = rewrite_operand_list(tail, pc, symbols, ln)?;
@@ -481,6 +507,24 @@ fn rewrite_operand(
     let trimmed = s.trim();
     if trimmed.is_empty() {
         return Ok(String::new());
+    }
+    // GAS relocation specifier `:lo12:SYM` (the second half of an
+    // `adrp`/`add :lo12:` address pair) resolves to the low 12 bits of the
+    // symbol's address so the legacy `add` encoder sees a plain immediate.
+    if let Some(sym) = trimmed
+        .strip_prefix(":lo12:")
+        .or_else(|| trimmed.strip_prefix(":LO12:"))
+    {
+        let name = sym.trim();
+        match symbols.get(name) {
+            Some(addr) => return Ok(format!("{}", addr & 0xFFF)),
+            None => {
+                return Err(EmuError::AssemblyError {
+                    line: ln,
+                    message: format!("unknown symbol in :lo12: `{name}`"),
+                })
+            }
+        }
     }
     // Bracketed operand [Xn, <expr>] or [Xn, <expr>]!: rewrite the inside
     // recursively and preserve the trailing characters (whitespace, !).

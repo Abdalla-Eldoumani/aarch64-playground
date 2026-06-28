@@ -46,8 +46,8 @@ describe("tutorial progress persistence", () => {
   });
 
   test("saveProgress + loadProgress round-trip", () => {
-    saveProgress({ "week03-arithmetic": 3 });
-    expect(loadProgress()).toEqual({ "week03-arithmetic": 3 });
+    saveProgress({ arithmetic: 3 });
+    expect(loadProgress()).toEqual({ arithmetic: 3 });
   });
 
   test("loadProgress returns {} on malformed JSON", () => {

@@ -29,6 +29,19 @@ describe("useAutoSave", () => {
     expect(window.localStorage.getItem(CURRENT_KEY)).toBe("second");
   });
 
+  it("does not write when disabled, so embedded surfaces never overwrite the saved buffer", async () => {
+    window.localStorage.setItem(CURRENT_KEY, "playground work");
+    const { rerender } = renderHook(
+      ({ v }: { v: string }) => useAutoSave(v, false),
+      { initialProps: { v: "hero program" } },
+    );
+    rerender({ v: "hero program stepped" });
+    await act(async () => {
+      await flushDebounce();
+    });
+    expect(window.localStorage.getItem(CURRENT_KEY)).toBe("playground work");
+  });
+
   it("loadAutoSavedBuffer surfaces whatever was last saved", () => {
     window.localStorage.setItem(CURRENT_KEY, "saved");
     expect(loadAutoSavedBuffer()).toBe("saved");

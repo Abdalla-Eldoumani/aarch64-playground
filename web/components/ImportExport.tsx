@@ -2,15 +2,15 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
-import { MAX_SOURCE_BYTES, checkUploadSize } from "@/lib/upload-guard";
+import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/upload-guard";
 import type { ImportTarget } from "@/lib/use-import-target";
 
 export interface ImportExportProps {
   source: string;
   /**
    * Receives the active import target along with the file body. The parent
-   * routes the body to main / extras[i] / the c-to-asm pane and shows a
-   * toast confirming where the import landed.
+   * routes the body to main / extras[i] and shows a toast confirming where
+   * the import landed.
    */
   onImport: (target: ImportTarget, body: string) => void;
   /** Where the next import will land. Computed by the parent each render. */
@@ -20,9 +20,9 @@ export interface ImportExportProps {
 
 /**
  * Import and export buttons in the header. Import sends the picked file's
- * body to the active target (main / an extra / the c-to-asm pane) so a
- * student editing extras isn't surprised when their import overwrites the
- * wrong buffer. Export offers `.asm` and `.s` download plus copy-to-clipboard.
+ * body to the active target (main / an extra) so a student editing extras
+ * isn't surprised when their import overwrites the wrong buffer. Export
+ * offers `.asm` and `.s` download plus copy-to-clipboard.
  */
 export function ImportExport({ source, onImport, target, className = "" }: ImportExportProps) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,7 +64,20 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
         e.target.value = "";
         return;
       }
-      file.text().then((text) => onImport(target, text));
+      file.text().then((text) => {
+        // Validate the decoded source content (byte length) before applying;
+        // file.size is a fast pre-read guard, this bounds the actual text.
+        const contentError = validateSource(text);
+        if (contentError) {
+          toast.error(contentError);
+          // Intentional security observability: a rejected over-cap import is
+          // surfaced to the console alongside the toast, per the input-
+          // validation policy. This is the only sanctioned console use here.
+          console.warn(`rejected over-cap source import: ${contentError}`);
+          return;
+        }
+        onImport(target, text);
+      });
       e.target.value = "";
     },
     [onImport, target, toast],
@@ -82,7 +95,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="import assembly file"
       >
         import
@@ -90,7 +103,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
       <button
         type="button"
         onClick={() => download("asm")}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="download as .asm"
       >
         .asm
@@ -98,7 +111,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
       <button
         type="button"
         onClick={() => download("s")}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="download as .s"
       >
         .s
@@ -106,7 +119,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
       <button
         type="button"
         onClick={copy}
-        className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+        className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
           copied
             ? "text-[var(--success)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"

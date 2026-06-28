@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import LZString from "lz-string";
 import {
   buildShareHash,
@@ -6,7 +6,7 @@ import {
   readShareHash,
   type ShareState,
 } from "./share";
-import { MAX_SHARE_DECOMPRESSED_BYTES } from "./upload-guard";
+import { MAX_SHARE_DECOMPRESSED_BYTES, MAX_SHARE_HASH_BYTES } from "./upload-guard";
 
 describe("share hash p2", () => {
   it("round-trips a state with all fields", () => {
@@ -14,7 +14,6 @@ describe("share hash p2", () => {
       source: "MOV X0, #42\nSVC #0\n",
       args: "hello world",
       stdin: "42\n",
-      view: "playground",
       cursor: { line: 2, column: 5 },
     };
     const hash = buildShareHash(state);
@@ -63,15 +62,6 @@ describe("share hash p2", () => {
     expect(decoded!.args).toBeUndefined();
   });
 
-  it("strips an unknown view value", () => {
-    const payload = LZString.compressToEncodedURIComponent(
-      JSON.stringify({ source: "ret", view: "evil-view" }),
-    );
-    const decoded = readShareHash(`#p2=${payload}`);
-    expect(decoded).not.toBeNull();
-    expect(decoded!.view).toBeUndefined();
-  });
-
   it("strips a malformed cursor", () => {
     const payload = LZString.compressToEncodedURIComponent(
       JSON.stringify({ source: "ret", cursor: { line: "bad", column: 1 } }),
@@ -93,6 +83,29 @@ describe("share hash p2", () => {
     const huge = "x".repeat(MAX_SHARE_DECOMPRESSED_BYTES + 1);
     const payload = LZString.compressToEncodedURIComponent(huge);
     expect(readShareHash(`#p=${payload}`)).toBeNull();
+  });
+});
+
+describe("readShareHash decompression-bomb guard", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects a raw fragment over the cap without decompressing it", () => {
+    const spy = vi.spyOn(LZString, "decompressFromEncodedURIComponent");
+    const oversized = "a".repeat(MAX_SHARE_HASH_BYTES + 1);
+    expect(readShareHash(`#p2=${oversized}`)).toBeNull();
+    expect(readShareHash(`#p=${oversized}`)).toBeNull();
+    // The guard short-circuits before lz-string runs, so a tiny compressed
+    // fragment can never be expanded to exhaust the tab's memory.
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("still decompresses a small valid hash", () => {
+    const spy = vi.spyOn(LZString, "decompressFromEncodedURIComponent");
+    const state: ShareState = { source: "nop\n" };
+    expect(readShareHash(buildShareHash(state))).toEqual(state);
+    expect(spy).toHaveBeenCalled();
   });
 });
 

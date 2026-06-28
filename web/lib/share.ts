@@ -2,7 +2,7 @@
 
 import LZString from "lz-string";
 import { buildDeepLinkQuery } from "@/lib/use-deep-link";
-import { MAX_SHARE_DECOMPRESSED_BYTES } from "@/lib/upload-guard";
+import { MAX_SHARE_DECOMPRESSED_BYTES, MAX_SHARE_HASH_BYTES } from "@/lib/upload-guard";
 import type { Theme } from "@/lib/use-theme";
 
 const PREFIX_V2 = "p2=";
@@ -12,12 +12,10 @@ export interface ShareState {
   source: string;
   args?: string;
   stdin?: string;
-  view?: "playground" | "c-to-asm";
   cursor?: { line: number; column: number };
 }
 
 export interface ShareOptions {
-  view?: "playground" | "c-to-asm";
   example?: string;
   theme?: Theme;
 }
@@ -42,6 +40,10 @@ export function buildShareHash(state: ShareState): string {
  */
 export function readShareHash(hash: string): ShareState | null {
   const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
+  // Decompression-bomb guard: bound the raw (still-compressed) fragment
+  // before lz-string runs, so a tiny payload can't expand to exhaust the
+  // tab. The caller falls back to the default editor state on null.
+  if (trimmed.length > MAX_SHARE_HASH_BYTES) return null;
   if (trimmed.startsWith(PREFIX_V2)) {
     const compressed = trimmed.slice(PREFIX_V2.length);
     const decoded = LZString.decompressFromEncodedURIComponent(compressed);
@@ -55,7 +57,6 @@ export function readShareHash(hash: string): ShareState | null {
       const out: ShareState = { source: o.source };
       if (typeof o.args === "string") out.args = o.args;
       if (typeof o.stdin === "string") out.stdin = o.stdin;
-      if (o.view === "playground" || o.view === "c-to-asm") out.view = o.view;
       if (
         o.cursor != null &&
         typeof o.cursor === "object" &&
@@ -82,7 +83,7 @@ export function readShareHash(hash: string): ShareState | null {
 
 /**
  * Full shareable URL (origin + pathname + optional deep-link query +
- * share hash). When the caller passes view / example / theme, an
+ * share hash). When the caller passes example / theme, an
  * instructor can link to a specific example in a specific layout.
  */
 export function buildShareUrl(state: ShareState, options: ShareOptions = {}): string {

@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/backend";
 import { detectHostedMode } from "@/lib/emulator";
+import {
+  emptyLineMap,
+  isEmptyLineMap,
+  lineToAddrFromMap,
+  parseLineMap,
+  pcToSourceLineFromMap,
+  type LineMap,
+} from "@/lib/line-map";
 import { ReplayRing, type ReplayFrame } from "@/lib/replay";
 import type { StateSnapshot } from "@/lib/worker/protocol";
 
@@ -127,6 +135,11 @@ export function useEmulator(): EmulatorState {
   // bump triggers consumers to re-read.
   const lineCountsRef = useRef<Map<number, number>>(new Map());
   const currentLineRef = useRef<number | null>(null);
+  // Authoritative linker address -> editor-line map for the current
+  // assembly. Empty until the first successful hosted assemble; an empty
+  // map signals the legacy source-text line-count fallback (bare-metal,
+  // where instruction index and non-label source line are already 1:1).
+  const lineMapRef = useRef<LineMap>(emptyLineMap());
   // Replay ring + the latest snapshot snapshot-cache so step/run callbacks
   // can read regs/pc/nzcv without piping them through React state and
   // racing the snapshot listener.
@@ -197,25 +210,41 @@ export function useEmulator(): EmulatorState {
     setSavedStates(snap.savedStates);
     if (snap.stdoutDelta) setStdout((prev) => prev + snap.stdoutDelta);
     if (snap.stderrDelta) setStderr((prev) => prev + snap.stderrDelta);
-    const instrIndex = (Number(BigInt(snap.pc)) - codeBase) / 4;
-    if (instrIndex >= 0) {
-      const newLine = pcToSourceLine(instrIndex, sourceRef.current);
+    // Drive the current-line marker off the linker's authoritative
+    // address->editor-line map: look the snapshot pc up directly instead
+    // of counting non-label source lines (which double-counts data/macro
+    // lines and drifts on complex programs). Fall back to the legacy
+    // line-count path only when the map is empty (bare-metal, already 1:1).
+    const map = lineMapRef.current;
+    if (!isEmptyLineMap(map)) {
+      const newLine = pcToSourceLineFromMap(pcNum, map);
       setCurrentLine(newLine);
       currentLineRef.current = newLine;
+    } else {
+      const instrIndex = (pcNum - codeBase) / 4;
+      if (instrIndex >= 0) {
+        const newLine = pcToSourceLine(instrIndex, sourceRef.current);
+        setCurrentLine(newLine);
+        currentLineRef.current = newLine;
+      }
     }
     // Trace-driven hotspot bumping. Each PC in pcTrace maps to a
-    // source line; we bump the count for every executed instruction
-    // (not just the snapshot's terminal PC like the older
-    // bumpLineCount path). This is the granular run-mode hotspot --
-    // a long loop now lights up across all its lines, not just the
-    // final one.
+    // source line via the same authoritative map; we bump the count for
+    // every executed instruction (not just the snapshot's terminal PC).
+    // This is the granular run-mode hotspot -- a long loop lights up
+    // across all its lines, not just the final one.
     if (snap.pcTrace && snap.pcTrace.length > 0) {
       const counts = lineCountsRef.current;
+      const mapped = !isEmptyLineMap(map);
       let mutated = false;
-      for (const pc of snap.pcTrace) {
-        const idx = (pc - codeBase) / 4;
-        if (idx < 0) continue;
-        const line = pcToSourceLine(idx, sourceRef.current);
+      for (const tracePc of snap.pcTrace) {
+        let line: number | null;
+        if (mapped) {
+          line = pcToSourceLineFromMap(tracePc, map);
+        } else {
+          const idx = (tracePc - codeBase) / 4;
+          line = idx < 0 ? null : pcToSourceLine(idx, sourceRef.current);
+        }
         if (line == null) continue;
         counts.set(line, (counts.get(line) ?? 0) + 1);
         mutated = true;
@@ -306,9 +335,9 @@ export function useEmulator(): EmulatorState {
   }, []);
 
   const assemble = useCallback(
-    (source: string, args: string[] = []) => {
+    (source: string, args: string[] = []): Promise<void> => {
       const backend = backendRef.current;
-      if (!backend) return;
+      if (!backend) return Promise.resolve();
       sourceRef.current = source;
       setError(null);
       setAssemblyErrors([]);
@@ -318,6 +347,9 @@ export function useEmulator(): EmulatorState {
       setStdout("");
       setStderr("");
       resetLineCounts();
+      // Drop any prior line map; a failed assemble or the bare-metal path
+      // then falls back to the legacy line-count heuristic.
+      lineMapRef.current = emptyLineMap();
       detectHostedMode(source).then(setHostedMode).catch(() => {});
 
       const hasContent = source
@@ -329,10 +361,13 @@ export function useEmulator(): EmulatorState {
       if (!hasContent) {
         setError("no instructions to assemble");
         setInstructions([]);
-        return;
+        return Promise.resolve();
       }
 
-      backend
+      // Return the promise chain so callers that must run only after the
+      // backend has loaded the program (the embed/checker Run, which has no
+      // separate Assemble control) can await assembly.
+      return backend
         .assemble(source, args)
         .then(async ({ result }) => {
           if (!result.success) {
@@ -345,6 +380,24 @@ export function useEmulator(): EmulatorState {
             return;
           }
           const base = await backend.codeBase();
+          // Fetch the authoritative line map alongside codeBase (mirroring
+          // the existing codeBase round-trip), parse it into addr<->line
+          // lookups, and key the disassembly text -- and, via the ref, the
+          // marker and breakpoints -- off it for this assembly.
+          const flatMap = await backend.lineMap();
+          const map = parseLineMap(flatMap);
+          lineMapRef.current = map;
+          const mapped = !isEmptyLineMap(map);
+          // The post-assemble snapshot was applied before this map existed,
+          // so its current-line marker came from the legacy line-count
+          // fallback -- wrong for a hosted program's prologue. Recompute the
+          // marker from the live PC now that the authoritative map is in
+          // hand, so the entry frame highlights correctly without a step.
+          if (mapped) {
+            const ln = pcToSourceLineFromMap(latestSnapRef.current.pc, map);
+            setCurrentLine(ln);
+            currentLineRef.current = ln;
+          }
           const instrs: DecodedInstruction[] = [];
           for (let i = 0; i < result.instruction_count; i++) {
             const addr = base + i * 4;
@@ -355,8 +408,18 @@ export function useEmulator(): EmulatorState {
               ((bytes[2] ?? 0) << 16) |
               ((bytes[3] ?? 0) << 24);
             const hex = "0x" + (word >>> 0).toString(16).padStart(8, "0");
-            const srcLine = getSourceLineText(i, source);
-            instrs.push({ address: addr, hex, text: srcLine });
+            // The map gives the editor line for this instruction's
+            // address; render that line's text. Fall back to the
+            // index-based source text when the map is empty (bare-metal)
+            // or the address is unexpectedly absent.
+            let text: string;
+            if (mapped) {
+              const line = pcToSourceLineFromMap(addr, map);
+              text = line == null ? getSourceLineText(i, source) : sourceLineText(source, line);
+            } else {
+              text = getSourceLineText(i, source);
+            }
+            instrs.push({ address: addr, hex, text });
           }
           setInstructions(instrs);
         })
@@ -569,9 +632,20 @@ export function useEmulator(): EmulatorState {
   const toggleBreakpoint = useCallback((line: number) => {
     const backend = backendRef.current;
     if (!backend) return;
-    const instrIndex = sourceLineToInstrIndex(line, sourceRef.current);
-    if (instrIndex === null) return;
-    const addr = codeBase + instrIndex * 4;
+    // Resolve the editor line to an instruction address via the
+    // authoritative reverse map: a breakpoint on a label, blank, or
+    // comment line lands on the next real instruction. Fall back to index
+    // counting only when the map is empty (bare-metal, already 1:1).
+    const map = lineMapRef.current;
+    let resolved: number | null;
+    if (!isEmptyLineMap(map)) {
+      resolved = lineToAddrFromMap(line, map);
+    } else {
+      const instrIndex = sourceLineToInstrIndex(line, sourceRef.current);
+      resolved = instrIndex === null ? null : codeBase + instrIndex * 4;
+    }
+    if (resolved === null) return;
+    const addr = resolved;
     setBreakpoints((prev) => {
       const next = new Set(prev);
       if (next.has(line)) {
@@ -730,4 +804,15 @@ function getSourceLineText(instrIndex: number, source: string): string {
     idx++;
   }
   return "";
+}
+
+// Text of a specific 1-based editor line, comments stripped and trimmed
+// to match the display shape of `getSourceLineText`. Used when the
+// authoritative line map provides the editor line for an instruction
+// address, so the disassembly text tracks the real instruction rather
+// than the index-counted source line.
+function sourceLineText(source: string, lineNo: number): string {
+  const raw = source.split("\n")[lineNo - 1];
+  if (raw == null) return "";
+  return raw.replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
 }

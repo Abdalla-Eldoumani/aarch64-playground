@@ -216,6 +216,13 @@ export class EmulatorInstance {
   codeBase(): number {
     return this.inner.code_base();
   }
+
+  /** Flat `[addr, line, addr, line, ...]` authoritative address ->
+   *  editor-source-line map from the most recent hosted assemble. Empty
+   *  for the legacy bare-metal path. */
+  getLineMap(): number[] {
+    return Array.from(this.inner.get_line_map());
+  }
 }
 
 // raw types from wasm-bindgen (BigInt fields)
@@ -259,6 +266,7 @@ interface WasmEmulatorInstance {
   clear_breakpoint(address: number): void;
   is_halted(): boolean;
   code_base(): number;
+  get_line_map(): Uint32Array;
   take_stdout(): string;
   take_stderr(): string;
   push_stdin(s: string): void;

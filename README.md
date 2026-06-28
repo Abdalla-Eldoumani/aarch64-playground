@@ -38,11 +38,6 @@ Live at <https://aarch64-playground.vercel.app>.
   loader writes the pointer table + string pool at `ARGV_BASE`
   (`0x0080_0000`) and sets `w0 = argc`, `x1 = argv` on the first
   cycle.
-- **C-to-AArch64 view** (`?view=c-to-asm`) that proxies source through
-  the Compiler Explorer API behind a 60s LRU on `/api/c-to-asm`,
-  filters DWARF/CFI noise, and lets you load the generated assembly
-  straight into the playground. Hover an asm line to see the matching
-  C source line from Godbolt's source map.
 - **Visual debugger** sized for everything from a 360px phone to a
   1920px+ desktop: nested resizable panels at `lg+`, fixed two-column
   at `md`, single column with a 10-tab bottom strip below `md`. Motion
@@ -136,19 +131,18 @@ with prefix-colored output for each side.
 
 | Param      | Effect                                                       |
 | ---------- | ------------------------------------------------------------ |
-| `?view=`   | `playground` (default) or `c-to-asm`                         |
 | `?example=`| Auto-load a CPSC 355 example by id                            |
 | `?theme=`  | `dark` / `light` / `high-contrast`                            |
 | `?embed=1` | Embed mode (chrome-stripped, single-pane)                    |
 | `?bundle=` | Restore a captured diagnostic bundle (lz-string compressed)  |
-| `#p2=`     | Share-link payload (source + args + stdin + view + cursor)   |
+| `#p2=`     | Share-link payload (source + args + stdin + cursor)          |
 | `#p=`      | Legacy share-link (source-only, still decoded)               |
 
 ## Supported instruction surface
 
-Thirteen tutorial files from weeks 3 / 8 / 9 / 10 / 11 / 12 / 13 run
-end to end through the pipeline plus five bare-metal classics
-(factorial, fibonacci, string-reverse, bubble-sort, gcd).
+Thirteen CPSC 355 tutorial files -- covering arithmetic, stack frames,
+records and arrays, subroutines, static data and arguments, floating
+point, and file I/O -- run end to end through the pipeline.
 
 **Data processing:** `MOV` (movz/movk/alias), `MOVZ`, `MOVK`, `MOVN`,
 `ADD`, `ADDS`, `SUB`, `SUBS`, `AND`, `ANDS`, `ORR`, `EOR` (with the
@@ -200,12 +194,12 @@ emulator/  Rust crate: assembler, frontend pipeline, decoder, executor,
            hosted runtime, FPU helpers. ~390 unit + integration tests.
 web/       Next.js 16 + React 19 frontend: Monaco editor, resizable
            panel layout, console, VFS uploader, command palette, share
-           dialog, C-to-asm view, terminal pane. 301 vitest tests.
+           dialog, terminal pane. 301 vitest tests.
 scripts/   verify-corpus.js (runs every bare-metal + tutorial example
            through the WASM build in Node) and vercel-build.sh.
 docs/      Architecture, getting-started, contributing, deploy,
            security, instruction reference, cpsc355 style guide,
-           c-to-asm privacy note, terminal command reference.
+           terminal command reference.
 ```
 
 ## Deploying
@@ -255,14 +249,8 @@ More detail in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md),
 [`docs/features.md`](docs/features.md),
 [`docs/security.md`](docs/security.md),
 [`docs/instruction-reference.md`](docs/instruction-reference.md),
-[`docs/cpsc355-style-guide.md`](docs/cpsc355-style-guide.md),
-[`docs/c-to-asm.md`](docs/c-to-asm.md), and
+[`docs/cpsc355-style-guide.md`](docs/cpsc355-style-guide.md), and
 [`docs/terminal.md`](docs/terminal.md).
-
-## Contributors
-- **Michael Olsen** - Developer
-- **Abdalla Eldoumani** - Developer
-- **Ethan Brill** - Developer
 
 ## License
 

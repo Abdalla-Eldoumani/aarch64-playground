@@ -7,37 +7,66 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// The eight fixed level-up stages, in the order the concepts build.
+const STAGES = [
+  "First programs",
+  "Data and memory",
+  "Stack and locals",
+  "Records and arrays",
+  "Subroutines",
+  "Static data and command-line arguments",
+  "Floating point",
+  "Files and I/O",
+];
+
+function optgroupsOf(select: HTMLSelectElement): HTMLOptGroupElement[] {
+  return Array.from(select.querySelectorAll("optgroup")) as HTMLOptGroupElement[];
+}
+
 describe("ExampleLoader", () => {
-  it("groups every cpsc 355 example, the A1-A6 starters, and the bare-metal classics", () => {
+  it("presents the eight level-up stages in order, each non-empty, no week labels", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
-    const groupLabels = Array.from(select.querySelectorAll("optgroup")).map(
-      (g) => (g as HTMLOptGroupElement).label,
-    );
-    expect(groupLabels).toContain("cpsc 355 — basics");
-    expect(groupLabels).toContain("cpsc 355 — I/O and syscalls");
-    expect(groupLabels).toContain("starters (A1–A6)");
-    expect(groupLabels).toContain("bare-metal classics");
+    const groups = optgroupsOf(select);
+
+    expect(groups.map((g) => g.label)).toEqual(STAGES);
+    for (const group of groups) {
+      expect(group.querySelectorAll("option").length).toBeGreaterThan(0);
+      expect(group.label).not.toMatch(/week/i);
+      expect(group.label).not.toMatch(/cpsc/i);
+    }
   });
 
-  it("offers all six A1-A6 starters in the starters group", () => {
+  it("seeds the two previously-empty stages with the filler programs", () => {
     render(<ExampleLoader onLoad={() => {}} />);
-    const select = screen.getByLabelText("Load example program");
-    const startersGroup = Array.from(select.querySelectorAll("optgroup")).find(
-      (g) => (g as HTMLOptGroupElement).label === "starters (A1–A6)",
-    ) as HTMLOptGroupElement | undefined;
-    expect(startersGroup).toBeDefined();
-    const names = Array.from(startersGroup!.querySelectorAll("option")).map(
-      (o) => o.textContent,
-    );
-    expect(names).toEqual([
-      "A1 min cubic",
-      "A2 multiply via shift-add",
-      "A3 sort array",
-      "A4 struct + subroutines",
-      "A5 global RPN calculator",
-      "A6 file I/O + fp",
-    ]);
+    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
+    const groups = optgroupsOf(select);
+
+    const valuesIn = (label: string) => {
+      const group = groups.find((g) => g.label === label)!;
+      return Array.from(group.querySelectorAll("option")).map(
+        (o) => (o as HTMLOptionElement).value,
+      );
+    };
+
+    expect(valuesIn("Data and memory")).toContain("/examples/cpsc355/globals.s");
+    expect(valuesIn("Stack and locals")).toContain("/examples/cpsc355/locals.s");
+  });
+
+  it("offers every example with a clean, week-free file path", () => {
+    render(<ExampleLoader onLoad={() => {}} />);
+    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
+    const options = Array.from(select.querySelectorAll("option"))
+      .map((o) => (o as HTMLOptionElement).value)
+      .filter((v) => v !== "");
+    // 13 kept programs + the two stage fillers.
+    expect(options.length).toBe(15);
+    for (const value of options) {
+      expect(value).toMatch(/^\/examples\/cpsc355\/[a-z-]+\.s$/);
+      expect(value).not.toMatch(/week\d/);
+    }
+    expect(options).toContain("/examples/cpsc355/basics.s");
+    expect(options).toContain("/examples/cpsc355/copy-file.s");
   });
 
   it("fetches the picked file and forwards body + label to onLoad", async () => {
@@ -45,21 +74,21 @@ describe("ExampleLoader", () => {
       ok: true,
       status: 200,
       statusText: "OK",
-      text: async () => "// week 3 source\n",
+      text: async () => "// basics source\n",
     });
     vi.stubGlobal("fetch", fetchMock);
     const onLoad = vi.fn();
     render(<ExampleLoader onLoad={onLoad} />);
     const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
     fireEvent.change(select, {
-      target: { value: "/examples/cpsc355/week03_exercise.s" },
+      target: { value: "/examples/cpsc355/basics.s" },
     });
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(fetchMock).toHaveBeenCalledWith("/examples/cpsc355/week03_exercise.s");
-    expect(onLoad).toHaveBeenCalledWith("// week 3 source\n", "week 3 exercise");
+    expect(fetchMock).toHaveBeenCalledWith("/examples/cpsc355/basics.s");
+    expect(onLoad).toHaveBeenCalledWith("// basics source\n", "arithmetic");
   });
 
   it("shows an inline alert when the fetch fails", async () => {
@@ -72,7 +101,7 @@ describe("ExampleLoader", () => {
     // Pick a real option so the change event fires; fetch is mocked to fail.
     await act(async () => {
       fireEvent.change(select, {
-        target: { value: "/examples/cpsc355/week03_exercise.s" },
+        target: { value: "/examples/cpsc355/basics.s" },
       });
       // Allow fetch -> setState -> render to flush.
       await Promise.resolve();

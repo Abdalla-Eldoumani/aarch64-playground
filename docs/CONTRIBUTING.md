@@ -143,8 +143,7 @@ first, then wire it into a component.
    so the resizable / mobile / two-column layouts pick it up
    automatically.
 5. **Documentation** -- add a row to `docs/features.md` and, if it
-   adds a deep-link param or shortcut, the README and the matching
-   `CLAUDE.md`.
+   adds a deep-link param or shortcut, the README.
 
 If the feature accepts external input (URL params, file uploads,
 clipboard paste), add a validator in the same PR. See
@@ -162,7 +161,7 @@ follow.
 - **Multiple Rust installs on Windows** -- if you installed Rust via the standalone MSVC `.msi` alongside rustup, your `PATH` may prefer the standalone `rustc`, which doesn't ship the `wasm32-unknown-unknown` target. The symptom is `wasm-pack build` failing with `can't find crate for 'std'` even though `rustup target list --installed` shows wasm32. Either uninstall the standalone install, or build with `RUSTC=$(rustup which rustc) wasm-pack build --target web --out-dir ../web/lib/wasm`. Vercel CI uses rustup exclusively and isn't affected.
 - **AVG / McAfee quarantine of debug build scripts on Windows** -- some consumer AV products (confirmed with AVG 2025) quarantine the `build_script_build-*.exe` cargo produces for `serde_core` in the dev profile, which shows up as `LNK1104: cannot open file ... build_script_build-*.exe`. `cargo test --release --lib` produces different hashes that aren't flagged, and is the recommended local test command on affected machines. CI is unaffected.
 - **`next lint` is gone in Next 16** -- we migrated to ESLint flat config. The `web/eslint.config.mjs` re-exports `eslint-config-next`'s own flat-config array plus ignore blocks for `lib/wasm/` and `lib/wasm-node/` (wasm-pack-generated JS that isn't ours to lint). `npm run lint` now invokes `eslint .` directly.
-- **Heavy components are lazy-loaded** -- CToAsmView, DiffView, CommandPalette, and TutorialRunner are all loaded via `next/dynamic` with `ssr: false` so the initial bundle stays small. When adding a panel that pulls in Monaco or a hefty dep, match this pattern.
+- **Heavy components are lazy-loaded** -- CommandPalette and TutorialRunner are loaded via `next/dynamic` with `ssr: false` so the initial bundle stays small. When adding a panel that pulls in Monaco or a hefty dep, match this pattern.
 - **Light theme is CSS-var driven** -- overrides live under `[data-theme="light"]` in `globals.css`; every component reads `var(--bg-primary)` etc. Don't hardcode hex colors.
 - **vitest setup file** -- `web/vitest.setup.ts` stubs `window.matchMedia` because jsdom doesn't ship it. Anything else jsdom is missing should be stubbed there too rather than at the call site.
 - **Worker-first backend** -- the WASM emulator runs in a Web Worker by default. The `EmulatorBackend` interface in `web/lib/backend.ts` has two implementations (`WorkerClient` + `MainThreadBackend`) so React doesn't know or care which is active. Force the main thread for debugging via `localStorage.aarch64-playground:backend = "main"`.

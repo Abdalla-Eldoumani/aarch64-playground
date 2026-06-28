@@ -9,7 +9,7 @@ Two workspaces, one monorepo.
 │ web/    Next.js 16 (App Router) + React 19                 │
 │         Monaco editor, resizable panel layout,             │
 │         register / memory / stack / console / watches      │
-│         / memory-watches / saves tabs, C-to-asm view,      │
+│         / memory-watches / saves tabs,                     │
 │         command palette, tutorial runner, share links      │
 ├────────────────────────────────────────────────────────────┤
 │         ↑  wasm-bindgen generated JS bindings              │
@@ -267,7 +267,6 @@ stay in one place. [`web/public/sw.js`](../web/public/sw.js) handles
 fetches with a cache-first / network-first split:
 
 - cross-origin or non-GET -> network only
-- `/api/c-to-asm` -> network only (proxy is dynamic)
 - navigation -> network first, fall back to cached "/"
 - `/_next/static/`, `/examples/`, `/icons/` -> cache first
 - everything else -> network first, fall back to cache
@@ -311,16 +310,15 @@ message is readable in the browser console.
   example in `web/public/examples/` through it, asserting the
   post-halt register and memory state. Treat it as the source of
   truth for example correctness.
-- The web workspace has 301 vitest tests covering the asm-filter,
-  asm-formatter, asm-completion, auto-save ring, frame-labels pattern
-  matcher, share-link round-trip + validation, diagnostic-bundle
-  validation + size caps, layout persistence, watch-expression
-  evaluator, named-saves bundle import, the C-to-asm route, every
-  toggle hook (cpsc355 / lecture / hotspot), the replay ring, the
-  worker protocol, the deep-link parser, the import-target router,
-  the upload-guard caps, the godbolt client, the tutorial catalog,
-  the breakpoint hook, the per-panel zoom hook, the service-worker
-  registration paths, and the toast host.
+- The web workspace has 287 vitest tests covering the asm-formatter,
+  asm-completion, auto-save ring, frame-labels pattern matcher,
+  share-link round-trip + validation, diagnostic-bundle validation +
+  size caps, layout persistence, watch-expression evaluator,
+  named-saves bundle import, every toggle hook (cpsc355 / lecture /
+  hotspot), the replay ring, the worker protocol, the deep-link
+  parser, the import-target router, the upload-guard caps, the
+  tutorial catalog, the breakpoint hook, the per-panel zoom hook, the
+  service-worker registration paths, and the toast host.
 
 ## Gotchas
 

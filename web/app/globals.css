@@ -2,57 +2,175 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================================
+   aarch64 playground: design tokens v1
+   One system, two densities. Amber = the machine acting. Cyan = you acting.
+   One token drives each semantic state across all three themes.
+============================================================================= */
+
+/* ----- DARK · primary surface (default) ----- */
 :root,
 [data-theme="dark"] {
-  --bg-primary:     oklch(0.18 0.02 270);
-  --bg-secondary:   oklch(0.22 0.02 270);
-  --bg-panel:       oklch(0.25 0.02 270);
-  --border:         oklch(0.32 0.02 270);
-  --text-primary:   oklch(0.94 0.02 270);
-  --text-secondary: oklch(0.70 0.02 270);
-  --accent:         oklch(0.72 0.18 240);
-  --accent-muted:   oklch(0.55 0.16 240);
-  --changed:        oklch(0.84 0.18 90);
-  --danger:         oklch(0.68 0.22 25);
-  --success:        oklch(0.78 0.18 145);
-  --focus:          oklch(0.78 0.20 240);
+  --bg-base:        #0B0C0E;
+  --bg-sunken:      #111316;
+  --bg-raised:      #16181C;
+  --bg-panel:       #1B1E22;
+  --bg-elevated:    #22262B;
+  --border:         #2A2E34;
+  --border-strong:  #3A3F47;
+
+  --text-primary:   #ECEDEF;
+  --text-secondary: #A4ABB3;
+  --text-tertiary:  #6C737B;
+
+  --amber:          #F5B53D;  /* execution: pc, current line, run, links into live things */
+  --amber-dim:      #8A6722;
+
+  --cyan:           #39C0DE;  /* interaction: links, focus, primary actions, selected tab/nav */
+  --cyan-dim:       #1C6576;
+  --on-cyan:        #04222A;  /* text/icon on a filled cyan control */
+
+  --success:        #56D364;
+  --warning:        #FFB454;
+  --danger:         #FF6B6B;
+  --changed:        #FFCC66;  /* register-write flash: drives the animation so it follows the theme */
+
+  --focus:          var(--cyan);
+
+  /* Syntax colors for the read-only CodeBlock, matched per theme to the editor's
+     Monaco palette (web/components/Editor.tsx) so the editor and read-only code
+     read the same. --syntax-comment is lifted from the editor's gray to clear
+     WCAG AA on the code surface; --syntax-string reuses the literal (number) hue
+     since the editor grammar has no string token. */
+  --syntax-keyword:  #60A5FA;
+  --syntax-register: #F472B6;
+  --syntax-number:   #A78BFA;
+  --syntax-string:   #A78BFA;
+  --syntax-comment:  #8B939E;
+  --syntax-label:    #34D399;
+
+  /* Viewport-safe insets and the lecture-mode font scale are theme-independent,
+     so the base/dark block owns them; they cascade to every theme via :root. */
   --safe-bottom:    env(safe-area-inset-bottom, 0px);
   --safe-top:       env(safe-area-inset-top, 0px);
   --font-scale:     1;
 }
 
+/* ----- LIGHT · true light ----- */
 [data-theme="light"] {
-  --bg-primary:     oklch(0.99 0     0);
-  --bg-secondary:   oklch(0.96 0.005 270);
-  --bg-panel:       oklch(0.93 0.01  270);
-  --border:         oklch(0.85 0.01  270);
-  --text-primary:   oklch(0.20 0.02  270);
-  --text-secondary: oklch(0.40 0.02  270);
-  --accent:         oklch(0.50 0.20  240);
-  --accent-muted:   oklch(0.62 0.18  240);
-  --changed:        oklch(0.55 0.18  75);
-  --danger:         oklch(0.50 0.22  25);
-  --success:        oklch(0.50 0.18  145);
-  --focus:          oklch(0.50 0.22  240);
+  --bg-base:        #FFFFFF;
+  --bg-sunken:      #F6F7F9;
+  --bg-raised:      #FFFFFF;
+  --bg-panel:       #FFFFFF;
+  --bg-elevated:    #ECEEF1;
+  --border:         #E5E8EC;
+  --border-strong:  #D2D7DD;
+
+  --text-primary:   #0E1013;
+  --text-secondary: #5A626B;
+  --text-tertiary:  #858D96;
+
+  --amber:          #B5791A;
+  --amber-dim:      #E7C98A;
+  --cyan:           #0E8FA8;
+  --cyan-dim:       #9AD3DF;
+  --on-cyan:        #FFFFFF;
+
+  --success:        #1F8A3B;
+  --warning:        #B26A00;
+  --danger:         #C2362F;
+  --changed:        #B5791A;
+
+  --focus:          var(--cyan);
+
+  --syntax-keyword:  #1D4ED8;
+  --syntax-register: #BE185D;
+  --syntax-number:   #6D28D9;
+  --syntax-string:   #6D28D9;
+  --syntax-comment:  #5A626B;
+  --syntax-label:    #047857;
 }
 
-/* High contrast: pure black surfaces with bright cyan/yellow accents.
-   Targets WCAG AAA on body text and at least 7:1 on every interactive
-   control state. Used by students with low vision and presentations on
-   bright projectors where dim themes wash out. */
+/* ----- HIGH-CONTRAST · pure-black, bright hairlines, targets WCAG AAA ----- */
 [data-theme="high-contrast"] {
-  --bg-primary:     oklch(0    0     0);
-  --bg-secondary:   oklch(0.10 0     0);
-  --bg-panel:       oklch(0.15 0     0);
-  --border:         oklch(0.85 0     0);
-  --text-primary:   oklch(1    0     0);
-  --text-secondary: oklch(0.85 0     0);
-  --accent:         oklch(0.85 0.30  240);
-  --accent-muted:   oklch(0.75 0.25  240);
-  --changed:        oklch(0.95 0.18  90);
-  --danger:         oklch(0.75 0.30  25);
-  --success:        oklch(0.85 0.25  145);
-  --focus:          oklch(1    0     0);
+  --bg-base:        #000000;
+  --bg-sunken:      #0A0A0A;
+  --bg-raised:      #141414;
+  --bg-panel:       #141414;
+  --bg-elevated:    #1E1E1E;
+  --border:         #FFFFFF;
+  --border-strong:  #FFFFFF;
+
+  --text-primary:   #FFFFFF;
+  --text-secondary: #E6E6E6;
+  --text-tertiary:  #C7C7C7;
+
+  --amber:          #FFC247;
+  --amber-dim:      #C99220;
+  --cyan:           #5AD7F0;
+  --cyan-dim:       #2C9FB8;
+  --on-cyan:        #00181E;
+
+  --success:        #5CF06B;
+  --warning:        #FFC247;
+  --danger:         #FF8585;
+  --changed:        #FFD480;
+
+  --focus:          #FFFFFF;
+
+  --syntax-keyword:  #8BE0FF;
+  --syntax-register: #FFB6E6;
+  --syntax-number:   #D4B6FF;
+  --syntax-string:   #D4B6FF;
+  --syntax-comment:  #D1D5DB;
+  --syntax-label:    #9EF0C1;
+}
+
+/* =============================================================================
+   TYPE: Hanken Grotesk (display/UI), JetBrains Mono (signature), Source Serif 4
+   (lead). next/font binds --font-sans/--font-mono/--font-serif on <html> to the
+   self-hosted hashed families (layout.tsx); the --type-* shorthands reference
+   those vars so they resolve to the self-hosted fonts. The family vars are
+   intentionally NOT redeclared here — doing so would shadow next/font.
+============================================================================= */
+:root {
+  --type-display:  800 56px/1.04  var(--font-sans);   /* tracking -0.02em  */
+  --type-h1:       700 36px/1.10  var(--font-sans);   /* tracking -0.015em */
+  --type-h2:       600 26px/1.20  var(--font-sans);   /* tracking -0.01em  */
+  --type-h3:       600 19px/1.30  var(--font-sans);
+  --type-lead:     400 19px/1.60  var(--font-serif);  /* editorial lead only */
+  --type-body:     400 16px/1.60  var(--font-sans);
+  --type-small:    400 13px/1.50  var(--font-sans);
+  --type-code:     400 14px/1.60  var(--font-mono);
+  --type-label:    500 12px/1.40  var(--font-mono);   /* .08em, uppercase   */
+}
+
+/* =============================================================================
+   SPACE · RADII · ELEVATION · MOTION
+   Motion tokens are defined here for later use; the existing .anim-* classes
+   keep their inline timings until the later point-of-use sweep rewires them.
+============================================================================= */
+:root {
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
+
+  --radius-control: 6px;
+  --radius-card:    10px;
+  --radius-modal:   14px;
+
+  --shadow-overlay: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+
+  --ring: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--focus);
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-ui: 160ms;
+  --reg-flash-in: 120ms;
+  --reg-flash-out: 480ms;
+  --step-pop: 160ms;
+  --run-breathe: 2000ms;
+  --cursor-blink: 1000ms;
+  --error-shake: 200ms;
+  --modal-rise: 160ms;
 }
 
 html {
@@ -61,7 +179,7 @@ html {
 }
 
 body {
-  background: var(--bg-primary);
+  background: var(--bg-base);
   color: var(--text-primary);
   /* `--font-mono` is supplied by `next/font` in layout.tsx; the cascade
      below keeps the page on JetBrains Mono if the variable is missing
@@ -77,7 +195,7 @@ body {
   letter-spacing: -0.005em;
 }
 .font-sans {
-  font-family: var(--font-sans), "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+  font-family: var(--font-sans), "Hanken Grotesk", "Helvetica Neue", system-ui, sans-serif;
 }
 .font-mono {
   font-family: var(--font-mono), "JetBrains Mono", "Fira Code", "Consolas", monospace;
@@ -86,14 +204,6 @@ body {
 /* Motion. Each animation is opt-in via a class so existing layout is
    untouched; `prefers-reduced-motion` strips them so screen-reader and
    vestibular-sensitive users see static UI. */
-@keyframes shake-x {
-  0%   { transform: translate3d(0, 0, 0); }
-  20%  { transform: translate3d(-3px, 0, 0); }
-  40%  { transform: translate3d(3px, 0, 0); }
-  60%  { transform: translate3d(-2px, 0, 0); }
-  80%  { transform: translate3d(2px, 0, 0); }
-  100% { transform: translate3d(0, 0, 0); }
-}
 @keyframes step-pop {
   0%   { transform: scale(1); }
   35%  { transform: scale(1.15); }
@@ -104,15 +214,70 @@ body {
   to   { opacity: 1; }
 }
 
+/* Register write flash: a brief tint pulled from --changed so it follows the
+   theme (never a hardcoded amber). Defined like the other motions and applied
+   only inside the reduced-motion-safe block below, so it is static under
+   prefers-reduced-motion. */
+@keyframes reg-flash {
+  0%   { background-color: transparent; }
+  20%  { background-color: color-mix(in srgb, var(--changed) 38%, transparent); }
+  100% { background-color: transparent; }
+}
+
+/* Program-counter breathing while the program runs: a subtle amber edge-bar that
+   pulses on the current instruction row so "the machine is acting" reads at a
+   glance. Amber-driven so it follows the theme (never a hardcoded color); applied
+   only inside the reduced-motion-safe block below, so the row is static under
+   prefers-reduced-motion and the amber current-row highlight is the only cue. */
+@keyframes run-breathe {
+  0%, 100% { box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--amber) 40%, transparent); }
+  50%      { box-shadow: inset 3px 0 0 0 var(--amber); }
+}
+
+/* Block-cursor blink: the brand block cursor (amber = the machine acting) pulses
+   on the first-run hero. A near-instant jump at the midpoint gives a hard on/off
+   blink. Applied only inside the reduced-motion-safe block below, so the cursor
+   holds solid (no blink) under prefers-reduced-motion. */
+@keyframes cursor-blink {
+  0%, 50%      { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+/* Modal entrance: a small fade and ~8px rise over the --modal-rise token so a
+   dialog (command palette, share, shortcuts) settles in rather than snapping.
+   Applied only inside the reduced-motion-safe block below, so the modal appears
+   instantly (no fade or rise) under prefers-reduced-motion. */
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  .anim-error-shake {
-    animation: shake-x 200ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
-  }
   .anim-step-pop {
     animation: step-pop 180ms cubic-bezier(0.2, 0.7, 0.2, 1) 1;
   }
   .anim-tab-fade {
     animation: tab-fade-in 50ms linear 1;
+  }
+  .anim-reg-flash {
+    /* ~120ms in (peak at 20% of the 600ms total) then ~480ms out, timed from
+       the register-flash motion tokens. */
+    animation: reg-flash calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
+  }
+  .anim-run-breathe {
+    /* ~2s amber pulse on the running program-counter row, looping until the run
+       stops. Outside this block (reduced motion) the class has no animation. */
+    animation: run-breathe var(--run-breathe) var(--ease) infinite;
+  }
+  .anim-cursor-blink {
+    /* ~1s hard on/off blink from the --cursor-blink token. Outside this block
+       (reduced motion) the class has no animation, so the cursor stays solid. */
+    animation: cursor-blink var(--cursor-blink) infinite;
+  }
+  .anim-modal-rise {
+    /* modal fade + ~8px rise over the --modal-rise token. Outside this block
+       (reduced motion) the class has no animation, so the modal is static. */
+    animation: modal-rise var(--modal-rise) var(--ease) 1;
   }
 }
 
@@ -138,7 +303,7 @@ body {
 }
 [data-panel-resize-handle-enabled]:hover,
 [data-panel-resize-handle-enabled][data-resize-handle-active="pointer"] {
-  background: var(--accent-muted);
+  background: var(--cyan-dim);
 }
 @media (pointer: coarse) {
   [data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"] {
@@ -147,14 +312,6 @@ body {
   [data-panel-resize-handle-enabled][data-panel-group-direction="vertical"] {
     height: 12px;
   }
-}
-
-/* Embed mode (?embed=1) hides the outer chrome so an instructor can
-   <iframe> the playground inside course pages without the header bar
-   eating layout space. The bottom Controls bar stays. */
-[data-embed="1"] > .safe-area-top,
-[data-embed="1"] [role="status"][aria-live="polite"][data-share-banner] {
-  display: none !important;
 }
 
 /* Panel content inherits `--font-scale`; opt-in classes use it. */
@@ -169,7 +326,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--bg-sunken);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -177,15 +334,7 @@ body {
   border-radius: 3px;
 }
 
-/* Phase 7: embed mode hides chrome that doesn't belong inside an
-   iframe. Editor + panels + Controls + ExplainStrip stay visible. */
-[data-embed="1"] > .safe-area-top,
-[data-embed="1"] > [role="status"],
-[data-embed="1"] [data-embed-hide="1"] {
-  display: none;
-}
-
-/* Phase 7: lecture mode bumps font scale so the playground reads from
+/* Lecture mode bumps font scale so the playground reads from
    the back of a classroom. The class lands on `<html>` together with
    data-theme="high-contrast" via useLectureMode. */
 .lecture-mode {

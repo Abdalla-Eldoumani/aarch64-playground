@@ -22,7 +22,7 @@ export function hashString(s: string): string {
   return (h >>> 0).toString(16);
 }
 
-function safeGetItem(key: string): string | null {
+export function safeGetItem(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {
     return window.localStorage.getItem(key);
@@ -31,7 +31,7 @@ function safeGetItem(key: string): string | null {
   }
 }
 
-function safeSetItem(key: string, value: string): void {
+export function safeSetItem(key: string, value: string): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(key, value);
@@ -49,17 +49,23 @@ export function loadAutoSavedBuffer(): string | null {
  * Auto-save the editor buffer on change, debounced by 500ms. The effect
  * writes whenever the incoming `value` stabilizes for the debounce
  * window, so fast typing doesn't hammer localStorage.
+ *
+ * `enabled` gates the write: only the full playground persists to the
+ * shared buffer. Embedded surfaces (the landing hero, lessons, exercises)
+ * pass `false` so their host-supplied program never overwrites the
+ * playground's saved work.
  */
-export function useAutoSave(value: string): void {
+export function useAutoSave(value: string, enabled: boolean = true): void {
   const lastSavedRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     const id = setTimeout(() => {
       if (value === lastSavedRef.current) return;
       lastSavedRef.current = value;
       safeSetItem(KEY_CURRENT, value);
     }, DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [value]);
+  }, [value, enabled]);
 }
 
 /**

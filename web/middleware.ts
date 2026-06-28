@@ -15,6 +15,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Permissions-Policy":
     "camera=(), microphone=(), geolocation=(), interest-cohort=()",
   "Cross-Origin-Opener-Policy": "same-origin",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
   "Content-Security-Policy":
     "default-src 'self'; " +
     "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +

@@ -225,6 +225,16 @@ pub fn execute(
             regs.write_gpr(*rd, *sf, int_value as u64);
             Ok(ExecResult::Advance)
         }
+        Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
+            exec_bitfield(*op, *sf, *rd, *rn, *immr, *imms, regs)
+        }
+        Instruction::Adr { adrp, rd, imm } => {
+            let pc = regs.read_pc();
+            let base = if *adrp { pc & !0xFFF } else { pc };
+            let addr = (base as i64).wrapping_add(*imm) as u64;
+            regs.write_gpr(*rd, true, addr);
+            Ok(ExecResult::Advance)
+        }
         Instruction::Nop => Ok(ExecResult::Advance),
         Instruction::Svc { imm16 } => {
             // svc #0 is a Linux supervisor call; imm16 != 0 keeps the
@@ -740,6 +750,62 @@ fn exec_ldrs(
     if let Some(wb) = writeback {
         regs.write_gpr_or_sp(rn, true, wb);
     }
+    Ok(ExecResult::Advance)
+}
+
+/// Sign-extend the low `top_bit + 1` bits of `value` to a full 64-bit
+/// value. `top_bit` is the index of the field's sign bit.
+fn sign_extend_from(value: u64, top_bit: u32) -> u64 {
+    if top_bit >= 63 {
+        return value;
+    }
+    let shift = 63 - top_bit;
+    (((value << shift) as i64) >> shift) as u64
+}
+
+/// SBFM / UBFM extract-and-extend. Mirrors the ARM bitfield-move algorithm
+/// for the two cases the course reaches: `imms >= immr` (extract a field
+/// from bit `immr` upward -- the `sxt*`/`uxt*`/`sbfx`/`ubfx` forms) and
+/// `imms < immr` (place a field at the high end -- the `sbfiz`/`ubfiz`
+/// forms). The LSL/LSR/ASR aliases never reach here; the decoder keeps them
+/// on the shifted-register path.
+fn exec_bitfield(
+    op: BitfieldOp, sf: bool, rd: u8, rn: u8, immr: u8, imms: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let datasize: u32 = if sf { 64 } else { 32 };
+    let src = regs.read_gpr(rn, sf);
+    let r = (immr as u32) % datasize;
+    let s = (imms as u32) % datasize;
+    let mask_for = |width: u32| -> u64 {
+        if width >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << width) - 1
+        }
+    };
+
+    let result = if s >= r {
+        // Extract bits [s:r] (width = s - r + 1) down to bit 0.
+        let width = s - r + 1;
+        let field = (src >> r) & mask_for(width);
+        match op {
+            BitfieldOp::Ubfm => field,
+            BitfieldOp::Sbfm => sign_extend_from(field, width - 1),
+        }
+    } else {
+        // Place bits [s:0] (width = s + 1) starting at bit (datasize - r).
+        let width = s + 1;
+        let field = src & mask_for(width);
+        let shift = datasize - r;
+        let placed = field << shift;
+        match op {
+            BitfieldOp::Ubfm => placed,
+            BitfieldOp::Sbfm => sign_extend_from(placed, shift + s),
+        }
+    };
+
+    regs.write_gpr(rd, sf, result);
     Ok(ExecResult::Advance)
 }
 
@@ -1655,6 +1721,74 @@ mod tests {
         )
         .unwrap();
         assert_eq!(regs.read_gpr(1, true) as i64, -3);
+    }
+
+    // -- bitfield extract-and-extend --
+
+    #[test]
+    fn sxtb_sign_extends_negative_byte_to_x() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, 0x80); // byte 0x80 = -128
+        let sxtb = Instruction::Bitfield {
+            op: BitfieldOp::Sbfm, sf: true, rd: 0, rn: 1, immr: 0, imms: 7,
+        };
+        execute(&sxtb, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true) as i64, -128);
+    }
+
+    #[test]
+    fn uxtb_zero_extends_byte() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, 0xFF80);
+        let uxtb = Instruction::Bitfield {
+            op: BitfieldOp::Ubfm, sf: true, rd: 0, rn: 1, immr: 0, imms: 7,
+        };
+        execute(&uxtb, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0x80);
+    }
+
+    #[test]
+    fn sxtw_sign_extends_word() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, 0xFFFF_FFFF); // word -1
+        let sxtw = Instruction::Bitfield {
+            op: BitfieldOp::Sbfm, sf: true, rd: 0, rn: 1, immr: 0, imms: 31,
+        };
+        execute(&sxtw, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true) as i64, -1);
+    }
+
+    #[test]
+    fn sxth_w_form_keeps_result_in_32_bits() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, 0x8000); // halfword -32768
+        let sxth = Instruction::Bitfield {
+            op: BitfieldOp::Sbfm, sf: false, rd: 0, rn: 1, immr: 0, imms: 15,
+        };
+        execute(&sxth, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, false), 0xFFFF_8000);
+    }
+
+    // -- ADR / ADRP --
+
+    #[test]
+    fn adrp_masks_pc_to_page_then_adds_offset() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0ABC);
+        // imm already shifted by the decoder; +1 page = 0x1000.
+        let adrp = Instruction::Adr { adrp: true, rd: 0, imm: 0x1000 };
+        execute(&adrp, &mut regs, &mut mem).unwrap();
+        // (0x0040_0ABC & !0xFFF) + 0x1000 = 0x0040_0000 + 0x1000 = 0x0040_1000.
+        assert_eq!(regs.read_gpr(0, true), 0x0040_1000);
+    }
+
+    #[test]
+    fn adr_is_byte_relative_to_pc() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0010);
+        let adr = Instruction::Adr { adrp: false, rd: 3, imm: 8 };
+        execute(&adr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(3, true), 0x0040_0018);
     }
 
     #[test]

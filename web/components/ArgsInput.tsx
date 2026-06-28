@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { useToast } from "@/components/Toast";
 import { hashString } from "@/lib/auto-save";
+import { validateArgs } from "@/lib/upload-guard";
 
 export interface ArgsInputProps {
   /** The current source -- used to key the per-program persistence. */
@@ -40,9 +42,26 @@ function saveFor(source: string, value: string): void {
  * The value gets parsed shell-style (`hello "two words"` -> two args)
  * and threaded into the next assemble call so `main(int argc, char **argv)`
  * sees them. Last-used args persist per-program in localStorage so a
- * student returning to week11_argv keeps their `hello world` typed in.
+ * student returning to command-line-args keeps their `hello world` typed in.
  */
 export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
+  const toast = useToast();
+
+  // Validate the args ingress before propagating. An over-cap value is
+  // rejected and the previous (in-bounds) value is kept.
+  const handleChange = (next: string) => {
+    const error = validateArgs(next);
+    if (error) {
+      toast.error(error);
+      // Intentional security observability: a rejected over-cap input is
+      // surfaced to the console alongside the toast, per the input-
+      // validation policy. This is the only sanctioned console use here.
+      console.warn(`rejected over-cap args: ${error}`);
+      return;
+    }
+    onChange(next);
+  };
+
   // Restore whatever args were last typed for this program.
   useEffect(() => {
     const saved = loadFor(source);
@@ -67,13 +86,13 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
       <input
         type="text"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
         placeholder="argv..."
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
         aria-label="command-line arguments"
-        className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 py-2 sm:py-0.5 min-h-[36px] sm:min-h-0 font-mono text-[11px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-2 sm:py-0.5 min-h-[36px] sm:min-h-0 font-mono text-[11px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
       />
     </label>
   );

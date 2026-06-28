@@ -47,15 +47,15 @@ function ExpectedRegisterCheck({
   let glyph = "?";
   if (actual !== null) {
     if (actual === expect.value) {
-      cls = "text-emerald-400";
+      cls = "text-[var(--success)]";
       glyph = "OK";
     } else {
-      cls = "text-rose-400";
+      cls = "text-[var(--danger)]";
       glyph = "no";
     }
   }
   return (
-    <div className="mt-3 text-[12px] rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2">
+    <div className="mt-3 text-[12px] rounded border border-[var(--border)] bg-[var(--bg-base)] p-2">
       <span className="text-[var(--text-secondary)]">expect </span>
       <span className="font-mono">{expect.reg}</span>
       <span className="text-[var(--text-secondary)]"> = </span>
@@ -127,14 +127,14 @@ export function TutorialRunner({
     >
       <div
         ref={ref}
-        className="w-full max-w-2xl max-h-[80vh] rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl flex flex-col"
+        className="w-full max-w-2xl max-h-[80vh] rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)]">
           <select
             value={activeId}
             onChange={(e) => setActiveId(e.target.value)}
-            className="bg-[var(--bg-primary)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)]"
+            className="bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)]"
             aria-label="tutorial"
           >
             {TUTORIALS.map((t) => (
@@ -150,7 +150,7 @@ export function TutorialRunner({
           <button
             type="button"
             onClick={loadSource}
-            className="text-xs rounded bg-[var(--accent-muted)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)] text-[var(--text-primary)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             load source
           </button>
@@ -167,7 +167,7 @@ export function TutorialRunner({
             {tutorial.summary}
           </p>
           {loadError && (
-            <p className="text-[11px] text-rose-400 mb-2" role="alert">
+            <p className="text-[11px] text-[var(--danger)] mb-2" role="alert">
               {loadError}
             </p>
           )}
@@ -207,7 +207,7 @@ export function TutorialRunner({
             type="button"
             onClick={() => setStep(stepIndex + 1)}
             disabled={stepIndex === tutorial.steps.length - 1}
-            className="text-xs rounded bg-[var(--accent-muted)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)] text-[var(--text-primary)] disabled:opacity-40 px-2 py-1"
+            className="text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] disabled:opacity-40 px-2 py-1"
           >
             next
           </button>

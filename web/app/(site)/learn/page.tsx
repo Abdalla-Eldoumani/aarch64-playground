@@ -1,0 +1,45 @@
+import type { Metadata } from "next";
+import { loadAllLessons } from "@/lib/lessons";
+import { LessonIndex } from "@/components/LessonIndex";
+
+const DESCRIPTION =
+  "Step-by-step AArch64 lessons that pair a short reading with a live, runnable editor.";
+
+export const metadata: Metadata = {
+  title: "learn",
+  description: DESCRIPTION,
+  // Open Graph and Twitter are not deep-merged across segments, so each route
+  // restates the full composed title and its own url instead of inheriting.
+  openGraph: {
+    type: "website",
+    siteName: "cpsc 355 playground",
+    title: "learn — cpsc 355 playground",
+    description: DESCRIPTION,
+    url: "/learn",
+  },
+  twitter: {
+    card: "summary",
+    title: "learn — cpsc 355 playground",
+    description: DESCRIPTION,
+  },
+};
+
+// Server page: the server-only loader validates every lesson at build time and
+// the already-validated, order-sorted lessons are handed to the client index as
+// plain data, so no client component ever imports the loader.
+export default function LearnPage() {
+  const lessons = loadAllLessons();
+  return (
+    <section className="mx-auto w-full max-w-2xl px-6 py-12 sm:py-16">
+      <h1 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)]">
+        learn
+      </h1>
+      <p className="mt-4 text-[var(--text-secondary)] [font:var(--type-lead)]">
+        Step-by-step lessons that pair a short reading with a live, runnable editor.
+      </p>
+      <div className="mt-10">
+        <LessonIndex lessons={lessons} />
+      </div>
+    </section>
+  );
+}

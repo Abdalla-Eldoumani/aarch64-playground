@@ -17,104 +17,64 @@ interface ExampleGroup {
 }
 
 /**
- * Examples grouped by course topic. The cpsc 355 groups follow the
- * course week progression (stack and locals, records, arrays, floating
- * point, I/O) so students can find the example that maps to the concept
- * they're learning.
+ * Examples presented as an eight-stage level-up path, in the order the
+ * concepts build: first programs, data and memory, stack and locals,
+ * records and arrays, subroutines, static data and arguments, floating
+ * point, files and I/O. Each stage carries at least one program; the
+ * labels are the stage names, with no course-week text.
  */
 const GROUPS: ExampleGroup[] = [
   {
-    label: "cpsc 355 — basics",
+    label: "First programs",
+    items: [{ name: "arithmetic", file: "/examples/cpsc355/basics.s" }],
+  },
+  {
+    label: "Data and memory",
     items: [
-      { name: "week 3 exercise", file: "/examples/cpsc355/week03_exercise.s" },
+      { name: "globals (load + store)", file: "/examples/cpsc355/globals.s" },
     ],
   },
   {
-    label: "cpsc 355 — stack and locals",
+    label: "Stack and locals",
     items: [
-      { name: "week 8 scores (scanf + avg)", file: "/examples/cpsc355/week08_scores.asm" },
+      { name: "locals (sum + product)", file: "/examples/cpsc355/locals.s" },
     ],
   },
   {
-    label: "cpsc 355 — records and arrays",
+    label: "Records and arrays",
     items: [
-      {
-        name: "week 9 student record",
-        file: "/examples/cpsc355/week09_student_record.asm",
-      },
-      { name: "week 10 find max", file: "/examples/cpsc355/week10_find_max.asm" },
+      { name: "scores (scanf + avg)", file: "/examples/cpsc355/array-scores.s" },
+      { name: "student record", file: "/examples/cpsc355/student-record.s" },
     ],
   },
   {
-    label: "cpsc 355 — subroutines and static data",
+    label: "Subroutines",
     items: [
-      {
-        name: "week 11 static counter",
-        file: "/examples/cpsc355/week11_static_counter.asm",
-      },
-      { name: "week 11 argv", file: "/examples/cpsc355/week11_argv.asm" },
+      { name: "find max", file: "/examples/cpsc355/find-max.s" },
+      { name: "is prime", file: "/examples/cpsc355/is-prime.s" },
     ],
   },
   {
-    label: "cpsc 355 — floating point",
+    label: "Static data and command-line arguments",
     items: [
-      {
-        name: "week 12 circle area (fp)",
-        file: "/examples/cpsc355/week12_fp_circle.asm",
-      },
-      {
-        name: "week 12 is_prime",
-        file: "/examples/cpsc355/week12_is_prime.asm",
-      },
+      { name: "static counter", file: "/examples/cpsc355/static-counter.s" },
+      { name: "command-line args", file: "/examples/cpsc355/command-line-args.s" },
     ],
   },
   {
-    label: "cpsc 355 — I/O and syscalls",
+    label: "Floating point",
     items: [
-      { name: "week 13 hello (write)", file: "/examples/cpsc355/week13_hello.asm" },
-      { name: "week 13 echo (read)", file: "/examples/cpsc355/week13_echo.asm" },
-      {
-        name: "week 13 write file",
-        file: "/examples/cpsc355/week13_write_file.asm",
-      },
-      {
-        name: "week 13 read file",
-        file: "/examples/cpsc355/week13_read_file.asm",
-      },
-      {
-        name: "week 13 copy file",
-        file: "/examples/cpsc355/week13_copy_file.asm",
-      },
+      { name: "circle area", file: "/examples/cpsc355/circle-area.s" },
     ],
   },
   {
-    label: "starters (A1–A6)",
+    label: "Files and I/O",
     items: [
-      { name: "A1 min cubic", file: "/examples/cpsc355/starters/A1_min_cubic.asm" },
-      {
-        name: "A2 multiply via shift-add",
-        file: "/examples/cpsc355/starters/A2_mul_shift_add.asm",
-      },
-      { name: "A3 sort array", file: "/examples/cpsc355/starters/A3_sort_array.asm" },
-      {
-        name: "A4 struct + subroutines",
-        file: "/examples/cpsc355/starters/A4_struct_subroutine.asm",
-      },
-      {
-        name: "A5 global RPN calculator",
-        file: "/examples/cpsc355/starters/A5_global_rpn.asm",
-      },
-      { name: "A6 file I/O + fp", file: "/examples/cpsc355/starters/A6_file_io.asm" },
-    ],
-  },
-  {
-    label: "bare-metal classics",
-    items: [
-      { name: "factorial", file: "/examples/factorial.s" },
-      { name: "fibonacci", file: "/examples/fibonacci.s" },
-      { name: "string reverse", file: "/examples/string-reverse.s" },
-      { name: "bubble sort", file: "/examples/bubble-sort.s" },
-      { name: "gcd", file: "/examples/gcd.s" },
+      { name: "hello (write)", file: "/examples/cpsc355/hello.s" },
+      { name: "echo (read)", file: "/examples/cpsc355/echo.s" },
+      { name: "write file", file: "/examples/cpsc355/write-file.s" },
+      { name: "read file", file: "/examples/cpsc355/read-file.s" },
+      { name: "copy file", file: "/examples/cpsc355/copy-file.s" },
     ],
   },
 ];
@@ -157,7 +117,7 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
       <select
         onChange={handleSelect}
         defaultValue=""
-        className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] max-w-[14rem]"
+        className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] max-w-[14rem]"
         aria-label="Load example program"
       >
         <option value="" disabled>
@@ -174,7 +134,7 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
         ))}
       </select>
       {loadError && (
-        <span className="text-red-400 text-xs" role="alert">
+        <span className="text-[var(--danger)] text-xs" role="alert">
           {loadError}
         </span>
       )}

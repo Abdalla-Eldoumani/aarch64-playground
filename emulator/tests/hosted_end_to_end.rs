@@ -443,7 +443,7 @@ fn hosted_pipeline_bl_with_tab_whitespace_trampolines() {
 
 #[test]
 fn hosted_pipeline_empty_args_zeroes_argc_and_argv() {
-    // Phase 3 parity check: `load_linked_image(image)` is now defined as
+    // Parity check: `load_linked_image(image)` is now defined as
     // `load_linked_image_with_args(image, &[])`, and the empty-args
     // branch of `setup_argv` zeroes w0/x1. A program loaded without args
     // must observe `argc = 0` and `argv = NULL` on entry, identical to

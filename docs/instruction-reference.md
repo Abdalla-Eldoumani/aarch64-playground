@@ -27,9 +27,14 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `ORR`    | `ORR Xd, Xn, Xm`                 | Logical OR.                              |
 | `EOR`    | `EOR Xd, Xn, Xm`                 | Exclusive OR.                            |
 | `MVN`    | `MVN Xd, Xm`                     | Bitwise NOT.                             |
-| `LSL`    | `LSL Xd, Xn, #imm` / `..., Xm`   | Logical shift left.                      |
-| `LSR`    | `LSR Xd, Xn, #imm` / `..., Xm`   | Logical shift right.                     |
-| `ASR`    | `ASR Xd, Xn, #imm` / `..., Xm`   | Arithmetic shift right.                  |
+| `LSL`    | `LSL Xd, Xn, #imm`               | Logical shift left by an immediate.      |
+| `LSR`    | `LSR Xd, Xn, #imm`               | Logical shift right by an immediate.     |
+| `ASR`    | `ASR Xd, Xn, #imm`               | Arithmetic shift right by an immediate.  |
+| `SXTB`   | `SXTB Xd, Wn` / `SXTB Wd, Wn`    | Sign-extend a byte. Alias for `SBFM`.    |
+| `SXTH`   | `SXTH Xd, Wn` / `SXTH Wd, Wn`    | Sign-extend a halfword.                  |
+| `SXTW`   | `SXTW Xd, Wn`                    | Sign-extend a word to 64 bits.           |
+| `UXTB`   | `UXTB Wd, Wn`                    | Zero-extend a byte. Alias for `UBFM`.    |
+| `UXTH`   | `UXTH Wd, Wn`                    | Zero-extend a halfword.                  |
 
 ## Compare and test
 
@@ -61,6 +66,9 @@ Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`,
 | `STRH`   | same                                                  | Halfword store.                    |
 | `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` (+ pre/post index)         | Load pair.                         |
 | `STP`    | same                                                  | Store pair.                        |
+| `LDRSB`  | `LDRSB Wt, [Xn, #imm]` / `LDRSB Xt, [Xn, #imm]`       | Byte load, sign-extended into Wt or Xt. |
+| `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
+| `LDRSW`  | `LDRSW Xt, [Xn, #imm]`                                | Word load, sign-extended to 64 bits. `Xt` target only, per the ARM spec. |
 
 Addressing modes supported:
 
@@ -78,11 +86,23 @@ Unaligned access succeeds (SCTLR.A = 0), so a student's code that
 stumbles onto a misaligned base doesn't fault inside the emulator but
 would also not fault on real AArch64 Linux.
 
-Sign-extending loads: `LDRSB Wt` / `LDRSB Xt` / `LDRSH Wt` / `LDRSH Xt` /
-`LDRSW Xt`. `LDRSW` requires an `Xt` target per ARM spec.
+The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned
+immediate-offset form `[Xn, #imm]`.
 
 FP data moves: `LDR Dt, [Xn, #imm]` / `STR Dt, [Xn, #imm]` and the
 32-bit `LDR St` / `STR St` equivalents, unsigned-offset form only.
+
+## PC-relative addressing
+
+| Mnemonic | Form                  | Notes                                          |
+| -------- | --------------------- | ---------------------------------------------- |
+| `ADR`    | `ADR Xd, label`       | Byte-relative address of `label`.              |
+| `ADRP`   | `ADRP Xd, label`      | Address of the 4 KiB page containing `label`.  |
+
+The `adrp` / `add :lo12:` pair is the page-plus-offset alternative to a
+literal-pool load: `adrp Xd, sym` forms the page base and
+`add Xd, Xd, :lo12:sym` adds the low 12 bits to land on the exact address.
+Both forms are correct and interchangeable with `ldr Xd, =sym`.
 
 ## Branches
 
@@ -109,8 +129,10 @@ FP data moves: `LDR Dt, [Xn, #imm]` / `STR Dt, [Xn, #imm]` and the
 
 ## Floating point
 
-Double-precision only; D registers live next to the X file in
-`registers.rs`.
+Arithmetic is double-precision only; D registers live next to the X file in
+`registers.rs`. S registers are loaded and stored (the `.float` data form, see
+the memory section) but have no single-precision arithmetic: convert through a
+D register.
 
 | Mnemonic | Form                              | Notes                                   |
 | -------- | --------------------------------- | --------------------------------------- |

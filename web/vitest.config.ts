@@ -15,6 +15,7 @@ export default defineConfig({
       "lib/**/*.test.ts",
       "lib/**/*.test.tsx",
       "app/**/*.test.ts",
+      "app/**/*.test.tsx",
       "components/**/*.test.tsx",
     ],
     // WASM bindings and monaco are browser-only; tests never import them.

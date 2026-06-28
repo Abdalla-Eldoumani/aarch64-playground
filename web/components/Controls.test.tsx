@@ -25,13 +25,48 @@ describe("Controls", () => {
         error={null}
       />,
     );
-    // Button text includes a kbd chip child (e.g. "assembleF6"); pull
-    // just the leading mnemonic from the first child span.
-    const labels = screen.getAllByRole("button").map((b) => {
-      const span = b.querySelector("span");
-      return span?.textContent?.trim();
-    });
+    const labels = screen
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label"));
     expect(labels).toEqual(["assemble", "run", "step", "back", "reset"]);
+  });
+
+  it("sizes every control with the 44px Button base", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        error={null}
+      />,
+    );
+    for (const b of screen.getAllByRole("button")) {
+      expect(b.className).toContain("min-h-[44px]");
+    }
+  });
+
+  it("leads with Assemble and Run as the cyan primary actions", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        error={null}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /^assemble/ }).className,
+    ).toContain("bg-[var(--cyan)]");
+    expect(screen.getByRole("button", { name: /^run/ }).className).toContain(
+      "bg-[var(--cyan)]",
+    );
+    expect(screen.getByRole("button", { name: /^step/ }).className).not.toContain(
+      "bg-[var(--cyan)]",
+    );
   });
 
   it("disables back when canStepBack is false", () => {
@@ -102,7 +137,7 @@ describe("Controls", () => {
     expect(screen.getByRole("status").textContent?.trim()).toMatch(/halted/);
   });
 
-  it("renders the error message and applies the shake animation class", () => {
+  it("renders the error calmly, without the shake animation", () => {
     const h = allHandlers();
     render(
       <Controls
@@ -114,11 +149,12 @@ describe("Controls", () => {
       />,
     );
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toBe("boom");
-    expect(alert.className).toContain("anim-error-shake");
+    expect(alert.textContent).toContain("boom");
+    expect(alert.className).not.toContain("anim-error-shake");
+    expect(alert.innerHTML).not.toContain("anim-error-shake");
   });
 
-  it("F6 fires onAssemble globally", () => {
+  it("surfaces a plain-language recovery hint for a recognized error", () => {
     const h = allHandlers();
     render(
       <Controls
@@ -126,10 +162,36 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        error="unknown instruction: 0x12345678"
+      />,
+    );
+    const alert = screen.getByRole("alert");
+    const text = alert.textContent?.toLowerCase() ?? "";
+    expect(text).toContain("unknown instruction");
+    expect(text).toContain("mnemonic");
+  });
+
+  it("does not bind keyboard shortcuts (the page is the single owner)", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={true}
+        isRunning={false}
+        isHalted={false}
         error={null}
       />,
     );
     fireEvent.keyDown(window, { key: "F6" });
-    expect(h.onAssemble).toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "F10" });
+    fireEvent.keyDown(window, { key: "F10", shiftKey: true });
+    fireEvent.keyDown(window, { key: "F5" });
+    fireEvent.keyDown(window, { key: "F5", shiftKey: true });
+    expect(h.onAssemble).not.toHaveBeenCalled();
+    expect(h.onStep).not.toHaveBeenCalled();
+    expect(h.onStepBack).not.toHaveBeenCalled();
+    expect(h.onRun).not.toHaveBeenCalled();
+    expect(h.onPause).not.toHaveBeenCalled();
+    expect(h.onReset).not.toHaveBeenCalled();
   });
 });

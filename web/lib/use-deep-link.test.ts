@@ -1,21 +1,15 @@
-import { describe, expect, test } from "vitest";
-import { buildDeepLinkQuery, parseDeepLink } from "@/lib/use-deep-link";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import LZString from "lz-string";
+import { buildDeepLinkQuery, parseDeepLink, resolveExampleStem } from "@/lib/use-deep-link";
+import { MAX_SHARE_HASH_BYTES } from "@/lib/upload-guard";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("parseDeepLink", () => {
-  test("?view=c-to-asm yields view 'c-to-asm'", () => {
-    expect(parseDeepLink("?view=c-to-asm").view).toBe("c-to-asm");
-  });
-
-  test("?view=playground yields view 'playground'", () => {
-    expect(parseDeepLink("?view=playground").view).toBe("playground");
-  });
-
-  test("unknown view value is dropped", () => {
-    expect(parseDeepLink("?view=garbage").view).toBeUndefined();
-  });
-
-  test("?example=week08_scores names the example", () => {
-    expect(parseDeepLink("?example=week08_scores").example).toBe("week08_scores");
+  test("?example=array-scores names the example", () => {
+    expect(parseDeepLink("?example=array-scores").example).toBe("array-scores");
   });
 
   test("malicious example with slash is dropped", () => {
@@ -40,17 +34,15 @@ describe("parseDeepLink", () => {
 
   test("absent params yield undefined fields and embed false", () => {
     const r = parseDeepLink("");
-    expect(r.view).toBeUndefined();
     expect(r.example).toBeUndefined();
     expect(r.theme).toBeUndefined();
     expect(r.embed).toBe(false);
   });
 
   test("multiple params combine", () => {
-    const r = parseDeepLink("?view=c-to-asm&example=week08_scores&theme=light&embed=1");
+    const r = parseDeepLink("?example=array-scores&theme=light&embed=1");
     expect(r).toEqual({
-      view: "c-to-asm",
-      example: "week08_scores",
+      example: "array-scores",
       theme: "light",
       embed: true,
     });
@@ -74,6 +66,16 @@ describe("parseDeepLink", () => {
     const dl = parseDeepLink("?bundle=not-a-payload");
     expect(dl.bundle).toBeUndefined();
   });
+
+  test("an oversized ?bundle= payload falls back to no bundle before decompressing", () => {
+    const spy = vi.spyOn(LZString, "decompressFromEncodedURIComponent");
+    const oversized = "a".repeat(MAX_SHARE_HASH_BYTES + 1);
+    const dl = parseDeepLink(`?bundle=${oversized}`);
+    expect(dl.bundle).toBeUndefined();
+    // The decompression-bomb guard rejects the raw fragment before lz-string
+    // is invoked, so a tiny payload cannot expand to exhaust the tab.
+    expect(spy).not.toHaveBeenCalled();
+  });
 });
 
 describe("buildDeepLinkQuery", () => {
@@ -81,20 +83,43 @@ describe("buildDeepLinkQuery", () => {
     expect(buildDeepLinkQuery({})).toBe("");
   });
 
-  test("includes view, example, theme, embed", () => {
+  test("includes example, theme, embed", () => {
     const q = buildDeepLinkQuery({
-      view: "c-to-asm",
-      example: "week08_scores",
+      example: "array-scores",
       theme: "high-contrast",
       embed: true,
     });
-    expect(q).toContain("view=c-to-asm");
-    expect(q).toContain("example=week08_scores");
+    expect(q).toContain("example=array-scores");
     expect(q).toContain("theme=high-contrast");
     expect(q).toContain("embed=1");
   });
 
   test("omits embed when false", () => {
-    expect(buildDeepLinkQuery({ view: "playground", embed: false })).toBe("?view=playground");
+    expect(buildDeepLinkQuery({ example: "array-scores", embed: false })).toBe("?example=array-scores");
+  });
+});
+
+describe("resolveExampleStem", () => {
+  test("maps a legacy course-labeled stem to its renamed file", () => {
+    expect(resolveExampleStem("week03_exercise")).toBe("basics");
+    expect(resolveExampleStem("week08_scores")).toBe("array-scores");
+    expect(resolveExampleStem("week11_argv")).toBe("command-line-args");
+    expect(resolveExampleStem("week13_copy_file")).toBe("copy-file");
+  });
+
+  test("passes an already-clean stem through unchanged", () => {
+    expect(resolveExampleStem("basics")).toBe("basics");
+    expect(resolveExampleStem("circle-area")).toBe("circle-area");
+  });
+
+  test("passes an unknown stem through unchanged", () => {
+    expect(resolveExampleStem("not-an-example")).toBe("not-an-example");
+  });
+
+  test("does not alias a traversal string, and parseDeepLink still rejects it", () => {
+    // resolveExampleStem only remaps the fixed allow-list; path safety is
+    // parseDeepLink's job, which drops anything outside /^[\w.-]+$/.
+    expect(resolveExampleStem("../etc/passwd")).toBe("../etc/passwd");
+    expect(parseDeepLink("?example=../etc/passwd").example).toBeUndefined();
   });
 });
