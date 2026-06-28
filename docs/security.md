@@ -64,9 +64,15 @@ tab. The walls live in the Rust core and hold however the program arrived
   and the run loop. A runaway loop trips it and stops.
 - Mapped-page cap `memory::MAX_MAPPED_PAGES` = 1024 (4 MiB live). A store past
   the cap faults, and the step converts that fault to a halt.
+- Host-runtime caps so one libc or syscall call cannot allocate without bound
+  from a guest-supplied size: `write` reads into a growable buffer instead of
+  pre-reserving its count, `printf` clamps field width and precision
+  (`MAX_FIELD_WIDTH`), and a virtual-filesystem file cannot grow past
+  `syscalls::MAX_VFS_FILE_BYTES` (16 MiB) through `lseek` then `write`.
 
-Either limit is a calm halt carrying a plain-language message, never a panic
-or a silent stop. Proven by `emulator/tests/bounds.rs`.
+Every limit is a calm halt or a refused call carrying a plain-language result,
+never a panic or a silent stop. Proven by `emulator/tests/bounds.rs` and the
+hosted-runtime unit tests.
 
 ### Practices we follow
 
@@ -77,9 +83,12 @@ or a silent stop. Proven by `emulator/tests/bounds.rs`.
   markdown is written to the clipboard, never injected into the DOM.
 - No dynamic JS evaluation. The watch-expression evaluator parses by hand into
   a small AST and reads register and memory state through typed accessors.
-- No third-party script CDN at runtime except the Monaco loader on
-  `cdn.jsdelivr.net`. Google Fonts are self-hosted via `next/font/google`, so
-  no font CDN connection happens at runtime.
+- No third-party script CDN at runtime except the Monaco editor loader on
+  `cdn.jsdelivr.net`. This is the one third-party script-trust boundary; it is
+  constrained to that host in the CSP and protected in transit by HTTPS and
+  HSTS. Self-hosting Monaco would remove it and is the natural next hardening
+  step. Google Fonts are self-hosted via `next/font/google`, so no font CDN
+  connection happens at runtime.
 - No SharedArrayBuffer, so we need no COEP and the strict cross-origin
   isolation it requires. The worker copies bytes through `postMessage`.
 - Vercel Analytics and Speed Insights are anonymized, set no cookies, and run
