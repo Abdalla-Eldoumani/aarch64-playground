@@ -1,22 +1,33 @@
 # getting started
 
-A five-minute tour of the cpsc 355 playground. This page assumes you
-have never used it before.
+A short tour for a first-time reader. The site has five places:
+
+- `/` the landing page, with a live mini-playground.
+- `/playground` the full emulator and visual debugger.
+- `/learn` step-by-step lessons that pair a short reading with a runnable editor.
+- `/practice` exercises checked by running your program, not by matching a stored solution.
+- `/reference` the supported instructions, the calling-convention guide, and a pitfalls catalog.
+
+The rest of this page walks through the playground, then points at the other sections.
 
 ## open the playground
 
-Go to <https://aarch64-playground.vercel.app> (or run `npm run dev` in
-the `web/` directory and open <http://localhost:3000>). You land on an
-editor on the left, a register view top-right, and a memory / stack /
-console tab bottom-right. On a phone you get a single pane at a time
-with a bottom tab strip.
+Go to <https://aarch64-playground.vercel.app/playground> (or click
+"Open the playground" on the landing page). Locally, run `npm run dev` in
+`web/` and open <http://localhost:3000/playground>.
 
-## load a tutorial
+You get an editor on the left, registers top-right, and a memory / stack /
+console area bottom-right. On a phone it is one pane at a time with a
+bottom tab strip.
 
-Click **load example...** in the header and pick **week 8 scores
-(scanf + avg)**. The editor fills with a CPSC 355 example that reads
-three scores from stdin, stores them on the stack, averages them, and
-prints the result.
+## load an example
+
+Pick an example from the **load example...** menu in the header. Examples
+are grouped by stage, in the order the concepts build (first programs,
+data and memory, stack and locals, and so on), with plain names and no
+course-week labels. Choose **scores (scanf + avg)** under "Records and
+arrays": it reads three scores from stdin, stores them on the stack,
+averages them, and prints the result.
 
 The source starts like this:
 
@@ -24,163 +35,111 @@ The source starts like this:
 define(fp, x29)
 define(lr, x30)
 define(score1_r, w19)
-...
 
 score1_s = 16
-score2_s = 20
-score3_s = 24
-
 alloc = -(16 + 16) & -16
-dealloc = -alloc
 
 .data
 fmt_prompt:     .string "Enter score %d: "
-...
 
 .text
 .global main
-main:   stp     fp, lr, [sp, alloc]!
+main:
+        stp     fp, lr, [sp, alloc]!
         mov     fp, sp
-        ...
 ```
 
-If this looks familiar that's because it's the unmodified tutorial file
-from your course materials. The playground accepts it as-is.
+It is a course-style tutorial file, accepted as-is.
 
 ## assemble and run
 
-Hit the **Assemble** button at the bottom (or `F6`). The m4
-expander runs, the frontend parses each section, the linker places
-labels and allocates a literal pool, and the resulting bytes load into
-memory at `0x0040_0000` (`.text`), `0x0060_0000` (`.data`), etc.
+Hit **Assemble** (`F6`). The m4 expander runs, the frontend parses each
+section, the linker places labels and a literal pool, and the bytes load
+into memory at `0x0040_0000` (`.text`), `0x0060_0000` (`.data`), and so on.
 
-Hit **Run** (or `F5`). The program starts executing. When it reaches
-the first `bl scanf`, the console tab lights up in the right-side
-panel and the run loop pauses on "waiting for input". Click over to
-the console tab, type a number, hit Enter. The run loop resumes,
-consumes the input, and continues.
+Hit **Run** (`F5`). At the first `bl scanf` the console area pauses for
+input: switch to the console tab, type a number, and press Enter. The run
+resumes and consumes it. After three numbers the program prints the
+average and the status bar shows it halted with exit code 0.
 
-After three numbers the program prints an average and halts. The
-status bar shows `halted, exit 0`.
+## step and set a breakpoint
 
-## step through it
+Reset (`Shift+F5`), then **Step** (`F10`) to advance one instruction at a
+time. Changed registers flash, the disassembly highlights the current PC,
+and the stack updates as the prologue runs. Click a line number in the
+editor to set a breakpoint; **Run** stops there.
 
-Reset (`Shift+F5`) and hit **Step** (`F10`) to advance one instruction
-at a time. The register panel yellow-pulses each register that changed;
-the disassembly panel highlights the current PC; the stack panel
-updates as the frame prologue runs.
+## write your own
 
-Click a line number in the editor to set a breakpoint; `Run` will stop
-at it.
+Every instruction in the reference works, plus more; see
+[`instruction-reference.md`](instruction-reference.md). A few things that
+come in handy:
 
-## step outside the tutorial
+- Register aliases (`define(i_r, w19)`) show faded next to the register name.
+- Stack-frame slots (`score1_s = 16`) resolve to numeric offsets at assemble time, so `[fp, score1_s]` becomes `[x29, 16]`.
+- Literal loads (`ldr x0, =msg`) work without wiring: the linker adds `msg`'s address to the pool and patches the LDR.
+- Host calls (`bl printf`) route through a per-host trampoline the linker plants in `.text`.
+- Syscalls (`mov x8, 64; svc 0`) produce real output through stdout.
 
-Write your own assembly. Every instruction the cpsc 355 reference
-mentions works, and a lot more besides; see
-[`instruction-reference.md`](instruction-reference.md) for the full
-list.
+## pass arguments
 
-Things that come in handy:
+Type into the **args** input above the Assemble bar (for example
+`hello world`). The loader writes the strings into the argv pool at
+`0x0080_0000` and sets `w0 = argc`, `x1 = argv` on entry, so
+`int main(int argc, char **argv)` programs work unchanged. Args persist
+per program, so switching sources and coming back keeps them.
 
-- **Register aliases** (`define(i_r, w19)`) show up faded next to the
-  register name in the register panel.
-- **Stack-frame slots** (`score1_s = 16`) resolve to numeric offsets at
-  assemble time; `[fp, score1_s]` becomes `[x29, 16]` before the
-  encoder sees it.
-- **Literal loads** (`ldr x0, =msg`) work without any extra wiring; the
-  linker puts `msg`'s address into an 8-byte pool slot after `.text`
-  and patches the LDR imm19.
-- **Host calls** (`bl printf`) route through a per-host trampoline the
-  linker planted in `.text`, so you don't have to care that the real
-  stub address lives out at `0xFFFF_XXXX`.
-- **Syscalls** (`mov x8, 64; svc 0`) produce real output through the
-  playground's stdout.
+## share
 
-## share your program
-
-Hit **share** in the header. The dialog shows a URL with the entire
-program compressed into the hash. Copy it and paste into Slack / Teams /
-whatever. Opening the link loads the program straight into the
+Hit **share** in the header. The dialog shows a URL with the whole program
+compressed into the hash. Opening the link loads it straight into the
 editor; nothing is sent to a server.
 
-## pass program arguments
+## learn, practice, reference
 
-Type into the **args** input above the Assemble bar (e.g. `hello world`).
-The loader writes the strings into the argv pool at `0x0080_0000` and
-sets `w0 = argc`, `x1 = argv` on entry, so `int main(int argc, char
-**argv)`-style programs work without any extra wiring. Args persist
-per-program -- if you switch sources and come back, your args do too.
+- **Learn** (`/learn`): lessons that embed the same editor, so you read a
+  short section then run the code beside it.
+- **Practice** (`/practice`): exercises graded by running your program
+  against expected behavior. The checker never reads or stores a solution.
+- **Reference** (`/reference`): the supported instruction set, a
+  calling-convention guide, and a catalog of common pitfalls.
 
-## beyond the basics
+## more playground features
 
-Once you're comfortable with step / run / reset, the header and the
-tab strip expose a handful of features that are worth the five
-minutes it takes to try them:
+The header and tab strip expose more. See [`features.md`](features.md)
+for the full index of where each lives.
 
-- **Tutorials** walk you through a topic one step at a time, with a
-  snippet you can load into the editor per step. Progress per
-  tutorial is saved locally and `expect` checks verify register
-  state as you advance.
-- **Save states** (the **Saves** tab in the debug area) let you
-  snapshot the CPU under a name, keep stepping, then jump back. The
-  run loop also records the last 128 instructions so **Step back**
-  (`Shift+F10`) always undoes the last instruction.
-- **Bookmarks** in the same tab persist across page reloads -- they
-  capture source + args + stdin + step count, restore by re-running
-  the program forward to the saved step. Export / import as JSON to
-  share a setup with a classmate.
-- **Replay scrubber** appears above the register panel after you've
-  taken at least two steps. Drag the slider to walk back through the
-  last 128 frames visually; the next forward step resumes from the
-  live PC.
-- **Diagnostic bundle** (the icon next to **share**) copies a
-  markdown report of source + args + stdin + stdout + stderr +
-  exit code + register state + last-error to the clipboard, plus a
-  `?bundle=<lz>` link a TA can open to land at the exact same state.
-- **Watch expressions** (the **Watches** tab) evaluate a small grammar
-  (`x0`, `*x0`, `[fp, score1_s]`, `arr[i]`) every time the CPU stops.
-- **Memory watches** (the **Memwatch** tab) lets you pin labelled
-  (address, length) ranges so you can keep the `.data` buffer in view.
-- **Multi-file assembly** (the **+** next to the main file tab) lets
-  you register extra source files, concatenated before assembly.
-- **Terminal** (the **term** tab) runs an xterm.js shell that knows
-  `./program [args]` (with `<file` / `>file` redirections), the basic
-  VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
-- **CPSC 355 mode** (toggle in the overflow sheet on phone, header on
-  desktop) turns on lints for the idioms the course expects -- alias
-  suffixes, canonical prologues, 16-byte stack alignment, no bare
-  `x29`/`x30`.
-- **Lecture mode** swaps to high-contrast theme + fullscreen +
-  oversized step / reset buttons for projector use.
-- **Hotspot mode** highlights the hottest instructions across a run
-  so you can spot loops at a glance.
-- **Three themes**: cycle through dark / light / high-contrast from
-  the header.
-- **Per-panel zoom** with `Ctrl+Wheel` over a panel; `Ctrl+0` resets.
-- **Source formatter**: `Ctrl+Shift+F` lowercases mnemonics, indents
-  to 8 spaces, aligns trailing comments to column 40.
-- **Embed mode**: `?embed=1` strips the chrome to just the editor +
-  console for slide decks and inline lecture demos.
-- **Offline**: the playground is a PWA. Once loaded once, the app
-  shell + examples + icons stay cached and the page works offline.
+- **Tutorials** walk a topic one step at a time and verify register state with `expect` checks; progress is saved locally.
+- **Save states** (the saves tab) snapshot the CPU under a name. The run loop also records recent instructions, so **Step back** (`Shift+F10`) undoes the last one.
+- **Bookmarks** (same tab) persist across reloads: they store source, args, stdin, and step count, and restore by re-running to the saved step. Export and import as JSON to share a setup.
+- **Replay scrubber** appears once you have stepped at least twice; drag it to walk back through recent frames.
+- **Diagnostic bundle** (next to **share**) copies a markdown report of source, args, stdin, output, exit code, and register state, plus a `?bundle=` link that reopens the same state.
+- **Watch expressions** (the watches tab) evaluate a small grammar (`x0`, `*x0`, `[fp, score1_s]`, `arr[i]`) every time the CPU stops.
+- **Memory watches** (the memwatch tab) pin labelled address ranges.
+- **Multi-file assembly** (the **+** by the file tab) registers extra source files, concatenated before assembly.
+- **Terminal** (the term tab) is an xterm.js shell with `./program [args]`, redirections, basic VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
+- **CPSC 355 mode** (toolbar toggle) turns on lints for course idioms: alias suffixes, canonical prologues, 16-byte stack alignment, and no bare `x29`/`x30`.
+- **Lecture mode** switches to high-contrast, fullscreen, oversized controls for projector use.
+- **Hotspot mode** highlights the hottest instructions across a run.
+- **Three themes** cycle through dark, light, and high-contrast from the header.
+- **Per-panel zoom** with `Ctrl+Wheel` over a panel.
+- **Source formatter** (`Ctrl+Shift+F`) lowercases mnemonics, indents to 8 spaces, and aligns trailing comments to column 40.
+- **Embed mode** (`?embed=1`) strips the chrome to the editor and console for slide decks.
+- **Offline**: the app is a PWA, so once loaded the shell, examples, and icons work offline.
 
 ## keyboard shortcuts
 
-| Key            | Action                  |
-| -------------- | ----------------------- |
-| `F6`           | Assemble                |
-| `F10`          | Step one instruction    |
-| `Shift+F10`    | Step back               |
-| `F5`           | Run / pause             |
-| `Shift+F5`     | Reset                   |
-| `Ctrl+K`       | Command palette         |
-| `Ctrl+S`       | Save state (named)      |
-| `Ctrl+Shift+F` | Format the source       |
-| `Ctrl+Wheel`   | Zoom focused panel      |
-| `Ctrl+0`       | Reset zoom              |
-| `?`            | Keyboard shortcuts help |
+| Key | Action |
+| --- | --- |
+| `F6` | Assemble (also `Ctrl+Enter`) |
+| `F10` | Step one instruction |
+| `Shift+F10` | Step back |
+| `F5` | Run / pause |
+| `Shift+F5` | Reset |
+| `Ctrl+K` | Command palette |
+| `Ctrl+Shift+F` | Format the source |
+| `Ctrl+Wheel` | Zoom the focused panel |
+| `?` | Keyboard shortcuts help |
 
-That's everything. For the next level of detail, read
-[`cpsc355-style-guide.md`](cpsc355-style-guide.md) or
-[`features.md`](features.md) for a per-feature index of where things
-live in the source.
+For more depth, read [`cpsc355-style-guide.md`](cpsc355-style-guide.md) or
+[`features.md`](features.md).
