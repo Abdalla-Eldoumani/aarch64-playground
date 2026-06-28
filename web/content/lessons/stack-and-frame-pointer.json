@@ -1,0 +1,42 @@
+{
+  "title": "the stack and the frame pointer",
+  "slug": "stack-and-frame-pointer",
+  "order": 2,
+  "summary": "How a function claims a stack frame, saves fp and lr, and reaches its locals by offset.",
+  "tags": [
+    "stack",
+    "frame-pointer"
+  ],
+  "body": [
+    {
+      "type": "prose",
+      "markdown": "The stack is the memory a function uses for its own working storage: saved registers, local variables, and the bookkeeping that lets control return to the caller. It grows downward, from higher addresses toward lower ones, and the stack pointer `sp` points at the lowest in-use byte.\n\nThe frame pointer `fp`, the register `x29`, marks a fixed point in the current function's slice of the stack, its *frame*. Because `sp` can move during a function, code reads and writes locals at steady offsets from `fp` instead, so each local keeps one stable address for the life of the call."
+    },
+    {
+      "type": "prose",
+      "markdown": "## the prologue and epilogue\n\nA function that calls other functions opens with a *prologue* and closes with an *epilogue*. The prologue saves the caller's frame pointer and the return address, then claims space for the new frame; the epilogue restores them and hands control back.\n\nThe pair instructions do this in one step. `stp fp, lr, [sp, alloc]!` stores `fp` and `lr` and moves `sp` down by `alloc` in one pre-indexed access, and `ldp fp, lr, [sp], dealloc` restores them and lifts `sp` back afterward. Between the two, `mov fp, sp` anchors the frame."
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "// the frame skeleton: prologue, one local by fp offset, epilogue\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(n_r, w19)\n\nn_s = 16\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n        .data\nfmt:    .string \"n = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\n        .type main, @function\nmain:\n        stp     fp, lr, [sp, alloc]!        // save fp+lr and open the frame\n        mov     fp, sp\n\n        mov     w0, 5\n        str     w0, [fp, n_s]               // store a local at fp+16\n        ldr     n_r, [fp, n_s]              // read it back by its offset\n\n        ldr     x0, =fmt\n        mov     w1, n_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc       // restore fp+lr and close the frame\n        ret\n"
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "markdown": "Two rules keep a frame correct. First, `sp` must stay 16-byte aligned at every point where another function might run, which is why the frame size is rounded with `& -16`. Second, a function that calls anything must save `fp` and `lr` on entry and restore them before it returns: `lr` holds the address to return to, and a call overwrites it, so losing it strands the function with no way back."
+    },
+    {
+      "type": "prose",
+      "markdown": "## locals in the frame\n\nLocal variables live at fixed offsets above `fp`. Storing one is `str w0, [fp, 16]`; reading it back is `ldr w1, [fp, 16]`. The offsets are yours to choose, as long as they stay inside the space the prologue reserved.\n\nThe reserved size comes from the alignment formula `alloc = -(16 + locals) & -16`, where `locals` is the number of bytes the function needs. The `& -16` rounds the frame up to a multiple of sixteen so the stack keeps its alignment, and the leading sixteen bytes hold the saved `fp` and `lr` pair. The two editors below allocate frames, fill locals with fixed values, and read them back by offset."
+    },
+    {
+      "type": "editor",
+      "starter": "// two locals in the frame: print their sum and product\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(a_r, w19)\ndefine(b_r, w20)\ndefine(sum_r, w21)\ndefine(prod_r, w22)\n\na_s = 16\nb_s = 20\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n        .data\nfmt:    .string \"sum = %d, product = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\n        .type main, @function\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     w0, 6\n        str     w0, [fp, a_s]               // local a = 6\n        mov     w0, 7\n        str     w0, [fp, b_s]               // local b = 7\n\n        ldr     a_r, [fp, a_s]\n        ldr     b_r, [fp, b_s]\n        add     sum_r, a_r, b_r\n        mul     prod_r, a_r, b_r\n\n        ldr     x0, =fmt\n        mov     w1, sum_r\n        mov     w2, prod_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// three locals in the frame: accumulate a running total across fp offsets\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(total_r, w19)\ndefine(t_r, w20)\n\nx_s = 16\ny_s = 20\nz_s = 24\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n        .data\nfmt:    .string \"total = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\n        .type main, @function\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     w0, 10\n        str     w0, [fp, x_s]\n        mov     w0, 20\n        str     w0, [fp, y_s]\n        mov     w0, 12\n        str     w0, [fp, z_s]\n\n        mov     total_r, wzr                // running total starts at zero\n        ldr     t_r, [fp, x_s]\n        add     total_r, total_r, t_r\n        ldr     t_r, [fp, y_s]\n        add     total_r, total_r, t_r\n        ldr     t_r, [fp, z_s]\n        add     total_r, total_r, t_r\n\n        ldr     x0, =fmt\n        mov     w1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n"
+    }
+  ]
+}
