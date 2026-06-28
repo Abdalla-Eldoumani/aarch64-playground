@@ -73,7 +73,7 @@ export default function RootLayout({
   const fontClasses = `${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`;
   return (
     <html lang="en" className={fontClasses}>
-      <body className="flex flex-col h-dvh font-mono">
+      <body className="flex flex-col min-h-dvh font-mono">
         <RegisterSW />
         <OfflineBadge />
         <ToastHost>{children}</ToastHost>
