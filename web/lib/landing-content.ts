@@ -89,15 +89,20 @@ export interface RouteRegister {
   primary?: boolean;
 }
 
-// The playground is the primary call to action; Learn / Practice / Reference
-// reuse NAV_ROUTES so the route addresses have one source. Each row carries an
+// The playground is the primary call to action; it and Learn / Practice /
+// Reference all take their href from NAV_ROUTES so every route address has one
+// source and cannot drift. The playground row finds its entry by label, so the
+// filter and the primary row read the same canonical href. Each row carries an
 // x-register-style label, rendered later as a register file (not generic cards).
+const PLAYGROUND_HREF =
+  NAV_ROUTES.find((route) => route.label === "Playground")?.href ?? "/playground";
+
 const SECONDARY_ROUTES = NAV_ROUTES.filter(
-  (route) => route.href !== "/playground",
+  (route) => route.href !== PLAYGROUND_HREF,
 );
 
 export const ROUTE_REGISTERS: RouteRegister[] = [
-  { reg: "x0", label: "Open the playground", href: "/playground", primary: true },
+  { reg: "x0", label: "Open the playground", href: PLAYGROUND_HREF, primary: true },
   ...SECONDARY_ROUTES.map((route, index) => ({
     reg: `x${index + 1}`,
     label: route.label,
