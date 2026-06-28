@@ -56,6 +56,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   LSL: { summary: "Logical shift left (Rd = Rn << amount).", cExample: "Rd = Rn << amt;" },
   LSR: { summary: "Logical shift right (unsigned).", cExample: "Rd = (unsigned)Rn >> amt;" },
   ASR: { summary: "Arithmetic shift right (sign-extending).", cExample: "Rd = (int)Rn >> amt;" },
+  SXTB: { summary: "Sign-extend a byte to Wd/Xd (alias for `SBFM`).", example: "sxtb w0, w1", cExample: "Rd = (signed char)Rn;" },
+  SXTH: { summary: "Sign-extend a halfword to Wd/Xd.", example: "sxth w0, w1", cExample: "Rd = (short)Rn;" },
+  SXTW: { summary: "Sign-extend a word to 64-bit Xd.", example: "sxtw x0, w1", cExample: "Xd = (long)(int)Wn;" },
+  UXTB: { summary: "Zero-extend a byte into Wd (alias for `UBFM`).", example: "uxtb w0, w1", cExample: "Rd = (unsigned char)Rn;" },
+  UXTH: { summary: "Zero-extend a halfword into Wd.", example: "uxth w0, w1", cExample: "Rd = (unsigned short)Rn;" },
   MUL: { summary: "Rd = Rn * Rm. Low bits only.", cExample: "Rd = Rn * Rm;" },
   MADD: { summary: "Rd = Ra + Rn * Rm.", cExample: "Rd = Ra + Rn * Rm;" },
   MSUB: { summary: "Rd = Ra - Rn * Rm.", cExample: "Rd = Ra - Rn * Rm;" },
@@ -92,6 +97,16 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     cExample: "Rt1 = *(long*)(Rn + off); Rt2 = *(long*)(Rn + off + 8);",
   },
   STP: { summary: "Store pair; mirrors LDP.", cExample: "*(long*)(Rn + off) = Rt1; *(long*)(Rn + off + 8) = Rt2;" },
+  ADR: {
+    summary: "Pc-relative byte address of a label into Xd.",
+    example: "adr x0, label",
+    cExample: "Rd = &label;",
+  },
+  ADRP: {
+    summary: "Address of the 4 KiB page that contains a label.",
+    details: ["Pair with `add Xd, Xd, :lo12:label` to add the low 12 bits and reach the exact address."],
+    example: "adrp x0, msg\nadd x0, x0, :lo12:msg",
+  },
   B: { summary: "Unconditional branch to label (±128 MiB).", cExample: "goto label;" },
   BL: {
     summary: "Branch with link; writes return address to X30.",
