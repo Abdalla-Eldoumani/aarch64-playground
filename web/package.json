@@ -26,7 +26,7 @@
         ".next/static/chunks/framework-*.js",
         ".next/static/chunks/main-*.js",
         ".next/static/chunks/polyfills-*.js",
-        ".next/static/chunks/app/page-*.js"
+        ".next/static/chunks/app/playground/page-*.js"
       ],
       "limit": "400 KB"
     },
