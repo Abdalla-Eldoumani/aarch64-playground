@@ -1,75 +1,64 @@
 # Deploying
 
-The project is set up to deploy on Vercel. One `vercel.json` at the repo root pins the framework, points at a build script that compiles the emulator crate to WASM, then hands off to `next build`.
+The project deploys on Vercel. A single `vercel.json` at the repo root sets the framework, runs a build script that compiles the emulator to WASM, then runs `next build`.
 
 ## First-time setup
 
 1. Push the repo to a git remote.
-2. On Vercel, **import project** and point at the remote. Leave the framework preset as auto-detected (it'll pick up `"framework": "nextjs"` from `vercel.json`).
-3. **Root directory**: leave blank. The `vercel.json` at the repo root handles everything.
-4. **Environment variables**: none required.
+2. On Vercel, import the project. The framework preset is auto-detected from `"framework": "nextjs"` in `vercel.json`.
+3. Leave the root directory blank; `vercel.json` handles paths.
+4. No environment variables are required.
 5. Deploy.
 
-The build takes ~3 minutes end-to-end -- most of that is rustup downloading the toolchain on first install. Subsequent deploys reuse Vercel's build cache for `~/.cargo` and `node_modules`, so they finish in under a minute.
+The first deploy is slower because rustup downloads the toolchain. Later deploys reuse Vercel's build cache for `~/.cargo` and `node_modules`.
 
 ## How the build works
 
-[`scripts/vercel-build.sh`](../scripts/vercel-build.sh) is the buildCommand entrypoint. It:
+[`scripts/vercel-build.sh`](../scripts/vercel-build.sh) is the `buildCommand`. It:
 
-1. Installs `rustup` with a minimal profile if it isn't already present.
+1. Installs rustup (minimal profile, stable toolchain) if `rustup` isn't on `PATH`, then sources `~/.cargo/env` when present.
 2. Adds the `wasm32-unknown-unknown` target.
-3. `cargo install --locked wasm-pack` if not already present.
-4. `wasm-pack build --target web --out-dir ../web/lib/wasm` from `emulator/`.
-5. `npx next build` from `web/`.
+3. Runs `cargo install --locked wasm-pack` if wasm-pack is missing.
+4. From `emulator/`, runs `wasm-pack build --target web --out-dir ../web/lib/wasm`.
+5. From `web/`, runs `npm run build` (`next build --webpack`).
 
-Output goes to `web/.next` and is served by Vercel's Next.js runtime.
+The `--webpack` flag is required: the `next.config` webpack hook (the `?raw` source-import rule) only applies under webpack, so the deploy must match local and CI. Output lands in `web/.next`, served by Vercel's Next.js runtime.
 
 ## Headers
 
 `vercel.json` sets:
 
-- `Cache-Control: public, max-age=31536000, immutable` on `/_next/static/*`, `/icons/*`, and `*.wasm` -- content-hashed or version-pinned, safe to cache forever.
-- `Cache-Control: public, max-age=3600` on `/examples/*.s` and `/manifest.webmanifest` -- examples and manifest rotate occasionally.
-- `Cache-Control: public, max-age=0, must-revalidate` plus `Service-Worker-Allowed: /` on `/sw.js` -- so service-worker updates land immediately.
-- `Content-Type: application/wasm` on `.wasm` -- Vercel already sets this, but we're explicit so nothing downstream can override it.
-- `Content-Type: text/plain; charset=utf-8` on `/examples/*.s` -- browsers default to `application/octet-stream` which makes `fetch().text()` work but feels wrong.
-- Security headers (full set):
-  - `Content-Security-Policy` -- `default-src 'self'`, scripts from self + `cdn.jsdelivr.net` (Monaco), styles inline (Tailwind / Monaco), workers from self + blob:, no framing, no objects.
-  - `X-Content-Type-Options: nosniff`
-  - `X-Frame-Options: DENY`
-  - `Cross-Origin-Opener-Policy: same-origin`
-  - `Referrer-Policy: strict-origin-when-cross-origin`
-  - `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`
+- `Cache-Control: public, max-age=31536000, immutable` on `/_next/static/*`, `/icons/*`, and `*.wasm` (content-hashed or version-pinned).
+- `Cache-Control: public, max-age=3600` on `/examples/*.s` and `/manifest.webmanifest`.
+- `Cache-Control: public, max-age=0, must-revalidate` plus `Service-Worker-Allowed: /` on `/sw.js`, so service-worker updates land immediately.
+- `Content-Type: application/wasm` on `.wasm`, and `text/plain; charset=utf-8` on `/examples/*.s`.
+- Security headers on every route: `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`.
 
-See [`security.md`](security.md) for the rationale.
+The CSP is `default-src 'self'` with scripts from self plus the Monaco CDN (`cdn.jsdelivr.net`) and Vercel analytics, workers from self and `blob:`, and no framing or objects. See [`security.md`](security.md) for the full policy and rationale; `middleware.ts` keeps the same headers in lockstep for `next start` and dev.
 
 ## Troubleshooting
 
-**`error: command not found: rustup`** during build -- the install step in `scripts/vercel-build.sh` failed. Check the build log for the curl fetch; it needs outbound HTTPS.
+- **`command not found: rustup`**: the install step failed. Check the build log for the curl fetch, which needs outbound HTTPS.
+- **`wasm-pack: command not found`**: `cargo install --locked wasm-pack` failed, usually a transient crates.io issue. Redeploy.
+- **404 on `/_next/static/...wasm`**: Next.js didn't emit the WASM. Reproduce with `cd web && npm run build`, then look for `.wasm` under `web/.next/static/media/`. If missing, `web/lib/wasm/` wasn't in place before `next build` ran.
+- **"loading emulator..." forever**: check the Network tab for the `.wasm` request. A 404 is the case above; a 200 that never finishes loading means a panic, so open the Console for the `console_error_panic_hook` trace.
+- **Page shows a WASM load error**: confirm the response `Content-Type` with `curl -I https://<deploy>/path/to/bg.wasm`. It must be `application/wasm`, or the `vercel.json` header regex isn't matching.
 
-**`wasm-pack: command not found`** -- `cargo install --locked wasm-pack` failed. Look for a `cargo` error earlier in the log. Usually a transient network issue with crates.io; redeploy.
+## Dependency audit
 
-**404 on `/_next/static/...wasm`** -- Next.js didn't emit the WASM into its static output. Verify locally: `cd web && npx next build` then look for `.wasm` files under `web/.next/static/media/`. If they're missing, your `web/lib/wasm/` output wasn't in place when `next build` ran -- check `scripts/vercel-build.sh`.
+`npm audit` is clean. The DOMPurify advisory that reaches in through monaco-editor is patched via an `overrides` entry in `web/package.json`. If the audit reports findings, bump the package or document the mitigation here.
 
-**"loading emulator..." forever in the deployed app** -- open the browser devtools Network tab and look for the `.wasm` request. If it's a 404, see above. If it's 200 but the status stays on "loading", check the Console tab for a panic message from `console_error_panic_hook`. The panic-hook output gives a readable stack trace.
+## Alternative: commit the WASM
 
-**Deploy succeeds but the page shows the WASM load error** -- the `Content-Type` on the WASM response might be wrong. `curl -I https://your-deploy.vercel.app/path/to/bg.wasm` and confirm you see `Content-Type: application/wasm`. If not, the `vercel.json` regex isn't matching; double-check the header block.
-
-## npm audit status
-
-`npm audit` currently reports **0 vulnerabilities** on `main`. The Next.js 14.2 advisories that were previously ignored as non-applicable were cleared by the upgrade to Next.js 16.2 + React 19 + eslint-config-next 16; the moderate DOMPurify findings are still patched via an `overrides` entry in `web/package.json` so a future monaco-editor update can't reintroduce them. If the audit starts reporting findings again, either bump the offending package or document the mitigation here.
-
-## Alternative: pre-building the WASM
-
-If you'd rather not run Rust on Vercel's build image, you can un-ignore `web/lib/wasm/` in the repo (remove that line from `.gitignore`), commit the built artifacts, and simplify `vercel.json` to:
+To avoid running Rust on Vercel, un-ignore `web/lib/wasm/` (remove the line from `.gitignore`), commit the built artifacts, and simplify `vercel.json`:
 
 ```json
 {
   "framework": "nextjs",
   "rootDirectory": "web",
   "installCommand": "npm ci",
-  "buildCommand": "next build"
+  "buildCommand": "next build --webpack"
 }
 ```
 
-The tradeoff is that every emulator change has to be rebuilt and committed manually. The default setup (rebuild from source on each deploy) catches drift automatically.
+The tradeoff: every emulator change must be rebuilt and committed by hand. The default (rebuild from source on each deploy) catches drift automatically.
