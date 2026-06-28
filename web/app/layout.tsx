@@ -6,6 +6,7 @@ import "./globals.css";
 import { ToastHost } from "@/components/Toast";
 import { OfflineBadge } from "@/components/OfflineBadge";
 import { RegisterSW } from "@/components/RegisterSW";
+import { SITE_URL } from "@/lib/site";
 
 // Engineering-notebook trio: Source Serif 4 in editorial chrome (page
 // titles, empty-state heads), Hanken Grotesk for display, body, and
@@ -31,10 +32,28 @@ const fontMono = JetBrains_Mono({
   variable: "--font-mono",
 });
 
+const DESCRIPTION =
+  "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";
+
 export const metadata: Metadata = {
-  title: "cpsc 355 playground",
-  description:
-    "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "cpsc 355 playground",
+    template: "%s — cpsc 355 playground",
+  },
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "cpsc 355 playground",
+    title: "cpsc 355 playground",
+    description: DESCRIPTION,
+    url: "/",
+  },
+  twitter: {
+    card: "summary",
+    title: "cpsc 355 playground",
+    description: DESCRIPTION,
+  },
 };
 
 export const viewport: Viewport = {
