@@ -17,3 +17,11 @@ export const NAV_ROUTES: NavRoute[] = [
   { label: "Practice", href: "/practice" },
   { label: "Reference", href: "/reference" },
 ];
+
+// The active-route rule, shared by the inline nav and the mobile drawer so the
+// two can never disagree: an exact match for the path, or (for non-root routes)
+// any path nested beneath it, so /learn stays marked while on /learn/loops.
+export function isActiveRoute(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(href + "/");
+}

@@ -3,17 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useId, useRef, useState } from "react";
-import { REPO_URL, NAV_ROUTES } from "@/lib/site";
+import { REPO_URL, NAV_ROUTES, isActiveRoute } from "@/lib/site";
 import { CloseIcon, GitHubIcon, MenuIcon } from "@/components/SiteIcons";
 import { ThemeControl } from "@/components/ThemeControl";
 import { useFocusTrap } from "@/lib/use-focus-trap";
-
-// A route is active when it is the exact path, or (for non-root routes) the
-// current path sits under it, so /learn stays marked while on /learn/loops.
-function isActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(href + "/");
-}
 
 /**
  * The collapsed mobile navigation: a hamburger trigger that opens an accessible
@@ -60,7 +53,7 @@ export function MobileNavDrawer() {
           >
             <nav className="flex flex-col gap-1">
               {NAV_ROUTES.map((route) => {
-                const active = isActive(pathname, route.href);
+                const active = isActiveRoute(pathname, route.href);
                 return (
                   <Link
                     key={route.href}
