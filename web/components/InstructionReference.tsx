@@ -174,6 +174,18 @@ export function InstructionReference({
     }
   }, [instructions]);
 
+  // A click pins the selection via `picked` and writes the fragment with
+  // replaceState, which fires no hashchange. A later hashchange -- browser
+  // back/forward or a manual `#...` edit -- must win, so clear `picked` and let
+  // the fragment store drive the selection again. Cold load and cross-tab open
+  // already select from the fragment because `picked` starts null.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHashChange = () => setPicked(null);
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   function openInstruction(mnemonic: string) {
     setPicked(mnemonic);
     setActivePick(mnemonic);

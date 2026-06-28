@@ -153,6 +153,24 @@ describe("InstructionReference", () => {
     ).toBeNull();
   });
 
+  it("re-selects on hashchange after a pick (back/forward, manual hash edits)", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    // a click pins the selection via picked (replaceState fires no hashchange)
+    fireEvent.click(screen.getByRole("button", { name: "ldr" }));
+    expect(
+      screen.getByRole("button", { name: "ldr" }).getAttribute("aria-current"),
+    ).toBe("true");
+    // a later hash change must win over the pick and re-select the match
+    window.history.replaceState(null, "", "#add");
+    fireEvent(window, new Event("hashchange"));
+    expect(
+      screen.getByRole("button", { name: "add" }).getAttribute("aria-current"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "ldr" }).getAttribute("aria-current"),
+    ).toBeNull();
+  });
+
   it("renders under every theme without crashing", () => {
     for (const theme of THEMES) {
       document.documentElement.setAttribute("data-theme", theme);
