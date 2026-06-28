@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { SiteFooter } from "./SiteFooter";
-import { NAV_ROUTES, REPO_URL } from "@/lib/site";
+import { NAV_ROUTES, REPO_URL, CREDIBILITY, LICENSE_URL } from "@/lib/site";
 
 afterEach(() => cleanup());
 
@@ -34,5 +34,16 @@ describe("SiteFooter", () => {
     const { container } = render(<SiteFooter />);
     expect(container.textContent).not.toMatch(/@/);
     expect(container.textContent).not.toContain("Abdalla");
+  });
+
+  it("renders the credibility text and license link from the shared site source", () => {
+    render(<SiteFooter />);
+    // Read the same constants the component reads, so a future drift in site.ts
+    // fails here instead of passing against a hard-coded copy in the footer.
+    expect(screen.getByText(CREDIBILITY.tagline)).toBeTruthy();
+    expect(screen.getByText(CREDIBILITY.courseContext)).toBeTruthy();
+    expect(screen.getByText(CREDIBILITY.disclaimer)).toBeTruthy();
+    const links = screen.getAllByRole("link");
+    expect(links.some((l) => l.getAttribute("href") === LICENSE_URL)).toBe(true);
   });
 });
