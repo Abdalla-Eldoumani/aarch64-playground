@@ -30,14 +30,19 @@ interface EditorProps {
 
 const ARM64_MNEMONICS = [
   "MOV", "MOVZ", "MOVK", "MOVN",
-  "ADD", "ADDS", "SUB", "SUBS", "MUL", "UDIV", "SDIV", "NEG",
+  "ADD", "ADDS", "SUB", "SUBS", "MUL", "MADD", "MSUB", "UDIV", "SDIV", "NEG",
   "AND", "ANDS", "ORR", "EOR", "MVN", "TST",
   "LSL", "LSR", "ASR", "ROR",
+  "SXTB", "SXTH", "SXTW", "UXTB", "UXTH",
   "CMP", "CMN",
   "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDP", "STP",
+  "LDRSB", "LDRSH", "LDRSW",
+  "ADR", "ADRP",
   "B", "BL", "BR", "BLR", "RET",
+  "CBZ", "CBNZ", "TBZ", "TBNZ",
   "CSEL", "CSINC", "CSET",
   "NOP", "SVC",
+  "FMOV", "FADD", "FSUB", "FMUL", "FDIV", "FCMP", "SCVTF", "FCVTZS",
 ];
 
 const COND_BRANCHES = [

@@ -21,10 +21,13 @@ interface Token {
 // copy (web/components/Editor.tsx); both are the curated CPSC 355 set, kept in
 // step so the two surfaces color the same tokens.
 const MNEMONICS = new Set<string>([
-  "mov", "movz", "movk", "movn", "add", "adds", "sub", "subs", "mul", "udiv",
-  "sdiv", "neg", "and", "ands", "orr", "eor", "mvn", "tst", "lsl", "lsr", "asr",
-  "ror", "cmp", "cmn", "ldr", "str", "ldrb", "strb", "ldrh", "strh", "ldp",
-  "stp", "b", "bl", "br", "blr", "ret", "csel", "csinc", "cset", "nop", "svc",
+  "mov", "movz", "movk", "movn", "add", "adds", "sub", "subs", "mul", "madd",
+  "msub", "udiv", "sdiv", "neg", "and", "ands", "orr", "eor", "mvn", "tst",
+  "lsl", "lsr", "asr", "ror", "sxtb", "sxth", "sxtw", "uxtb", "uxth", "cmp",
+  "cmn", "ldr", "str", "ldrb", "strb", "ldrh", "strh", "ldp", "stp", "ldrsb",
+  "ldrsh", "ldrsw", "adr", "adrp", "b", "bl", "br", "blr", "ret", "cbz",
+  "cbnz", "tbz", "tbnz", "csel", "csinc", "cset", "nop", "svc", "fmov", "fadd",
+  "fsub", "fmul", "fdiv", "fcmp", "scvtf", "fcvtzs",
 ]);
 
 const REGISTER_RE = /^(?:x(?:[12]?\d|30)|w(?:[12]?\d|30)|sp|xzr|wzr)$/i;
