@@ -15,20 +15,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { validateExercise, type Exercise } from "@/lib/exercise-schema";
+import { compareByOrder } from "@/lib/content-order";
 
 /** The real content directory, resolved against the build's cwd (web/). */
 const DEFAULT_DIR = path.join(process.cwd(), "content/exercises");
-
-/**
- * Order comparator matching the index's defensive rule: two numbers compare
- * numerically, two strings via `localeCompare`, and a mixed pair falls back to
- * a string comparison so the sort is always total.
- */
-function compareOrder(a: Exercise["order"], b: Exercise["order"]): number {
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  if (typeof a === "string" && typeof b === "string") return a.localeCompare(b);
-  return String(a).localeCompare(String(b));
-}
 
 /**
  * Read, parse, and validate every `*.json` exercise in `dir` (defaults to the
@@ -78,7 +68,7 @@ export function loadAllExercises(dir: string = DEFAULT_DIR): Exercise[] {
   }
 
   // Stable sort keeps the filename order for exercises that share an `order`.
-  return exercises.sort((a, b) => compareOrder(a.order, b.order));
+  return exercises.sort(compareByOrder);
 }
 
 /** Find a single validated exercise by slug, or `undefined` when none matches. */
