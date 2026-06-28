@@ -388,6 +388,16 @@ export function useEmulator(): EmulatorState {
           const map = parseLineMap(flatMap);
           lineMapRef.current = map;
           const mapped = !isEmptyLineMap(map);
+          // The post-assemble snapshot was applied before this map existed,
+          // so its current-line marker came from the legacy line-count
+          // fallback -- wrong for a hosted program's prologue. Recompute the
+          // marker from the live PC now that the authoritative map is in
+          // hand, so the entry frame highlights correctly without a step.
+          if (mapped) {
+            const ln = pcToSourceLineFromMap(latestSnapRef.current.pc, map);
+            setCurrentLine(ln);
+            currentLineRef.current = ln;
+          }
           const instrs: DecodedInstruction[] = [];
           for (let i = 0; i < result.instruction_count; i++) {
             const addr = base + i * 4;
