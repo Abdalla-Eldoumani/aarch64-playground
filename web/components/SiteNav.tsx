@@ -2,19 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { REPO_URL, NAV_ROUTES } from "@/lib/site";
+import { REPO_URL, NAV_ROUTES, isActiveRoute } from "@/lib/site";
 import { Wordmark } from "@/components/Wordmark";
 import { GitHubIcon } from "@/components/SiteIcons";
 import { ThemeControl } from "@/components/ThemeControl";
 import { MobileNavDrawer } from "@/components/MobileNavDrawer";
-
-// A route is active on its exact path, or (for non-root routes) when the current
-// path sits beneath it, so /learn stays marked while on /learn/loops. Mirrors the
-// rule the mobile drawer uses so the inline bar and the drawer never disagree.
-function isActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(href + "/");
-}
 
 /**
  * The persistent top navigation: one component, two variants driven by a prop so
@@ -43,7 +35,7 @@ export function SiteNav({ variant }: { variant: "full" | "slim" }) {
 
         <ul className="hidden items-center gap-1 md:flex">
           {NAV_ROUTES.map((route) => {
-            const active = isActive(pathname, route.href);
+            const active = isActiveRoute(pathname, route.href);
             return (
               <li key={route.href}>
                 <Link
