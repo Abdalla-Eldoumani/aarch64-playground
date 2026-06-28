@@ -150,6 +150,24 @@ describe("validateExercise (malformed acceptance)", () => {
     expect(error).toMatch(/equals/);
   });
 
+  test("rejects a non-integer register equals (no correct solution could satisfy it)", () => {
+    const error = rejectError({
+      ...validExercise(),
+      acceptance: { results: [{ kind: "register", reg: "x0", equals: 5.5 }] },
+    });
+    expect(error).toMatch(/acceptance\.results\[0\]/);
+    expect(error).toMatch(/equals must be an integer/);
+  });
+
+  test("rejects a non-integer exit equals", () => {
+    const error = rejectError({
+      ...validExercise(),
+      acceptance: { results: [{ kind: "exit", equals: 0.1 }] },
+    });
+    expect(error).toMatch(/acceptance\.results\[0\]/);
+    expect(error).toMatch(/equals must be an integer/);
+  });
+
   test("rejects a stdout assertion with both equals and matches", () => {
     const error = rejectError({
       ...validExercise(),
