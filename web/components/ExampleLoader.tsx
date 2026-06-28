@@ -17,44 +17,58 @@ interface ExampleGroup {
 }
 
 /**
- * Examples grouped by course topic so students can find the example that
- * maps to the concept they're learning (stack and locals, records,
- * arrays, floating point, I/O).
+ * Examples presented as an eight-stage level-up path, in the order the
+ * concepts build: first programs, data and memory, stack and locals,
+ * records and arrays, subroutines, static data and arguments, floating
+ * point, files and I/O. Each stage carries at least one program; the
+ * labels are the stage names, with no course-week text.
  */
 const GROUPS: ExampleGroup[] = [
   {
-    label: "cpsc 355 — basics",
+    label: "First programs",
     items: [{ name: "arithmetic", file: "/examples/cpsc355/basics.s" }],
   },
   {
-    label: "cpsc 355 — stack and locals",
+    label: "Data and memory",
+    items: [
+      { name: "globals (load + store)", file: "/examples/cpsc355/globals.s" },
+    ],
+  },
+  {
+    label: "Stack and locals",
+    items: [
+      { name: "locals (sum + product)", file: "/examples/cpsc355/locals.s" },
+    ],
+  },
+  {
+    label: "Records and arrays",
     items: [
       { name: "scores (scanf + avg)", file: "/examples/cpsc355/array-scores.s" },
-    ],
-  },
-  {
-    label: "cpsc 355 — records and arrays",
-    items: [
       { name: "student record", file: "/examples/cpsc355/student-record.s" },
-      { name: "find max", file: "/examples/cpsc355/find-max.s" },
     ],
   },
   {
-    label: "cpsc 355 — subroutines and static data",
+    label: "Subroutines",
+    items: [
+      { name: "find max", file: "/examples/cpsc355/find-max.s" },
+      { name: "is prime", file: "/examples/cpsc355/is-prime.s" },
+    ],
+  },
+  {
+    label: "Static data and command-line arguments",
     items: [
       { name: "static counter", file: "/examples/cpsc355/static-counter.s" },
       { name: "command-line args", file: "/examples/cpsc355/command-line-args.s" },
     ],
   },
   {
-    label: "cpsc 355 — floating point",
+    label: "Floating point",
     items: [
-      { name: "circle area (fp)", file: "/examples/cpsc355/circle-area.s" },
-      { name: "is prime", file: "/examples/cpsc355/is-prime.s" },
+      { name: "circle area", file: "/examples/cpsc355/circle-area.s" },
     ],
   },
   {
-    label: "cpsc 355 — I/O and syscalls",
+    label: "Files and I/O",
     items: [
       { name: "hello (write)", file: "/examples/cpsc355/hello.s" },
       { name: "echo (read)", file: "/examples/cpsc355/echo.s" },
