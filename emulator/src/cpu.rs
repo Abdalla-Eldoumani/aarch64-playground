@@ -340,6 +340,22 @@ impl Cpu {
         Ok(())
     }
 
+    /// Build the calm memory-cap halt result and record the abort, so a
+    /// page-cap write fault reports identically no matter which path raised
+    /// it -- the executor, a hosted libc stub, or a syscall. Sets `halted`
+    /// and `abort_message`; the caller returns the result through `step`.
+    fn memory_cap_halt(&mut self) -> StepResult {
+        self.halted = true;
+        let msg = MEMORY_CAP_MESSAGE.to_string();
+        self.abort_message = Some(msg.clone());
+        StepResult {
+            pc: self.regs.read_pc(),
+            halted: true,
+            error: Some(msg),
+            outcome: StepOutcome::Halted,
+        }
+    }
+
     /// Execute one instruction at the current PC.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
         if self.halted {
@@ -409,7 +425,16 @@ impl Cpu {
         // similar), dispatch to Rust instead of fetching an instruction,
         // then return to the caller via LR.
         if self.host.contains_address(pc) {
-            return self.dispatch_host_stub(pc);
+            // A page-cap write fault inside a hosted libc routine (e.g. a
+            // buffer-filling scanf when the program has already neared the
+            // cap) gets the same calm halt as a write in normal code, never
+            // a raw fault.
+            return match self.dispatch_host_stub(pc) {
+                Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
+                    Ok(self.memory_cap_halt())
+                }
+                other => other,
+            };
         }
 
         let snapshot = self.regs.snapshot();
@@ -423,15 +448,7 @@ impl Cpu {
                 // step ceiling rather than propagating a raw memory fault.
                 // (Stores are the only writer that faults, so a write fault
                 // here is unambiguously the cap.)
-                self.halted = true;
-                let msg = MEMORY_CAP_MESSAGE.to_string();
-                self.abort_message = Some(msg.clone());
-                return Ok(StepResult {
-                    pc: self.regs.read_pc(),
-                    halted: true,
-                    error: Some(msg),
-                    outcome: StepOutcome::Halted,
-                });
+                return Ok(self.memory_cap_halt());
             }
             Err(e) => return Err(e),
         };
@@ -454,7 +471,17 @@ impl Cpu {
             if syscall_num == 0 {
                 self.halted = true;
             } else {
-                self.dispatch_syscall(syscall_num)?;
+                // A page-cap write fault inside a syscall (e.g. read filling
+                // a buffer when the program has already neared the cap) gets
+                // the same calm halt as a write in normal code, never a raw
+                // fault.
+                match self.dispatch_syscall(syscall_num) {
+                    Ok(()) => {}
+                    Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
+                        return Ok(self.memory_cap_halt());
+                    }
+                    Err(e) => return Err(e),
+                }
                 // After a syscall returns normally, PC moves past the svc.
                 if !self.blocked {
                     self.regs.write_pc(pc + 4);
@@ -1267,5 +1294,67 @@ mod tests {
         cpu.reset();
         assert_eq!(cpu.steps_total, 0);
         assert!(cpu.abort_message.is_none());
+    }
+
+    // -- memory cap hit inside the hosted write paths --
+
+    #[test]
+    fn host_stub_write_past_page_cap_aborts_calmly() {
+        use crate::hosted::{HostContext, HostOutcome};
+        use crate::memory::MAX_MAPPED_PAGES;
+        // A libc-style stub that writes into a fresh, unmapped page. At the
+        // page cap that write raises a Write MemoryFault, exactly as a real
+        // buffer-filling routine (scanf/read) would near the cap.
+        fn writes_fresh_page(
+            ctx: &mut HostContext<'_>,
+        ) -> Result<HostOutcome, crate::errors::EmuError> {
+            ctx.mem.write_u32(0x2000_0000, 0)?;
+            Ok(HostOutcome::Continue)
+        }
+        let mut cpu = Cpu::new();
+        // Fill the page budget so the stub's write would map one page too many.
+        let baseline = cpu.mem.mapped_page_count();
+        for i in 0..(MAX_MAPPED_PAGES - baseline) {
+            cpu.mem.map_page(0x1000_0000 + (i as u64) * 4096);
+        }
+        let stub_addr = cpu.host.register("cap_writer", writes_fresh_page);
+        cpu.regs.write_pc(stub_addr);
+        cpu.regs.write_gpr(30, true, CODE_BASE);
+        let r = cpu.step().unwrap();
+        assert!(r.halted, "a cap hit in a libc stub must halt");
+        assert_eq!(
+            r.error.as_deref(),
+            Some(MEMORY_CAP_MESSAGE),
+            "a libc-path cap hit must carry the calm memory-cap message"
+        );
+        assert_eq!(cpu.abort_message.as_deref(), Some(MEMORY_CAP_MESSAGE));
+        assert_eq!(r.outcome, StepOutcome::Halted);
+    }
+
+    #[test]
+    fn syscall_write_past_page_cap_aborts_calmly() {
+        use crate::memory::MAX_MAPPED_PAGES;
+        let mut cpu = Cpu::new();
+        // `svc #0` with x8 = read(63) dispatches the read syscall, which
+        // copies stdin into the buffer pointed at by x1.
+        cpu.load_program(&[encode_svc(0)]);
+        cpu.push_stdin(b"data");
+        // Fill the page budget so the read's buffer write maps one page too many.
+        let baseline = cpu.mem.mapped_page_count();
+        for i in 0..(MAX_MAPPED_PAGES - baseline) {
+            cpu.mem.map_page(0x1000_0000 + (i as u64) * 4096);
+        }
+        cpu.regs.write_gpr(8, true, 63); // SYS_READ
+        cpu.regs.write_gpr(0, true, 0); // fd 0 (stdin)
+        cpu.regs.write_gpr(1, true, 0x2000_0000); // unmapped buffer at the cap
+        cpu.regs.write_gpr(2, true, 4); // count
+        let r = cpu.step().unwrap();
+        assert!(r.halted, "a cap hit in a syscall must halt");
+        assert_eq!(
+            r.error.as_deref(),
+            Some(MEMORY_CAP_MESSAGE),
+            "a syscall-path cap hit must carry the calm memory-cap message"
+        );
+        assert_eq!(cpu.abort_message.as_deref(), Some(MEMORY_CAP_MESSAGE));
     }
 }
