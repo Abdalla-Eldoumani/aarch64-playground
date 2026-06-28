@@ -12,7 +12,7 @@ export interface NavRoute {
 
 // Display labels are capitalized; hrefs stay lowercase. Order is the nav order.
 export const NAV_ROUTES: NavRoute[] = [
-  { label: "Playground", href: "/" },
+  { label: "Playground", href: "/playground" },
   { label: "Learn", href: "/learn" },
   { label: "Practice", href: "/practice" },
   { label: "Reference", href: "/reference" },
