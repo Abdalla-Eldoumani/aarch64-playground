@@ -10,7 +10,7 @@ interface NotFoundProps {
 export function NotFound({
   title = "page not found",
   message = "the address you requested isn't mapped.",
-  returnHref = "/",
+  returnHref = "/playground",
   returnLabel = "return to playground",
 }: NotFoundProps) {
   return (
