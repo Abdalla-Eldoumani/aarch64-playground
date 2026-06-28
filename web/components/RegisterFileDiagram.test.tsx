@@ -40,7 +40,10 @@ describe("RegisterFileDiagram", () => {
     expect(html).toContain("var(--cyan)"); // arguments / return
     expect(html).toContain("var(--danger)"); // caller-saved
     expect(html).toContain("var(--success)"); // callee-saved
-    expect(html).toContain("var(--amber)"); // special (lr / sp)
+    // the special lr/sp group reads a neutral token; --amber stays reserved for
+    // surfaces where execution is implied, so this static page never spends it.
+    expect(html).not.toContain("var(--amber)");
+    expect(html).toContain("var(--border-strong)"); // special (lr / sp)
   });
 
   it("exposes an accessible name", () => {

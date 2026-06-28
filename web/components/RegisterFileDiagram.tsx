@@ -9,8 +9,9 @@ import type { JSX } from "react";
  * x18 = platform) so the hover-define, this diagram, and the calling-convention
  * guide tell one story. The four color families are saved-ness, read from
  * tokens: cyan = the argument/result area, danger = caller-saved (volatile
- * across a call), success = callee-saved (preserved), amber = the special
- * lr/sp.
+ * across a call), success = callee-saved (preserved), and a neutral border
+ * tint = the special lr/sp. --amber stays reserved for surfaces where
+ * execution is implied, so this static page never spends it.
  */
 
 type Family = "args" | "caller" | "callee" | "special";
@@ -57,7 +58,7 @@ const FAMILY_TINT: Record<Family, string> = {
   args: "var(--cyan)",
   caller: "var(--danger)",
   callee: "var(--success)",
-  special: "var(--amber)",
+  special: "var(--border-strong)",
 };
 
 const LEGEND: { family: Family; label: string }[] = [
