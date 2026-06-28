@@ -41,8 +41,9 @@ const TOC_LINK_CLASS =
 
 export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
   const toc = extractToc(lesson);
-  // The first prose block carries the editorial serif lead; later prose use
-  // body type. Found once so the per-block map stays a pure switch.
+  // The opening paragraph of the first prose block carries the editorial serif
+  // lead; every other paragraph keeps the body type. Found once so the per-block
+  // map stays a pure switch.
   const firstProseIndex = lesson.body.findIndex((b) => b.type === "prose");
 
   return (
@@ -90,7 +91,7 @@ export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
                   key={index}
                   className={
                     index === firstProseIndex
-                      ? "[&_p]:[font:var(--type-lead)]"
+                      ? "[&_p:first-of-type]:[font:var(--type-lead)]"
                       : undefined
                   }
                 >
