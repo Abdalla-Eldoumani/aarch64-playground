@@ -270,7 +270,10 @@ function EmbeddableCore({
     [extraFiles, setExtraFiles, toast],
   );
 
-  useAutoSave(source);
+  // Only the full playground persists to the shared auto-save buffer; embed
+  // and checker surfaces carry host-supplied programs that must not overwrite
+  // the user's saved playground work.
+  useAutoSave(source, chrome === "full");
   const recent = useRecentPrograms();
 
   // Push the current buffer onto the recent list whenever the user
