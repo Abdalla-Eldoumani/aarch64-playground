@@ -5,6 +5,25 @@
 export const SITE_URL = "https://aarch64-playground.vercel.app";
 export const REPO_URL = "https://github.com/Abdalla-Eldoumani/aarch64-playground";
 
+// Credibility: the facts the footer and the credibility section both state, kept
+// here as the single source so the two surfaces can never drift apart. The
+// license link is derived from REPO_URL so the repository address has one source.
+export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
+export const LICENSE_LABEL = "MIT";
+
+export const CREDIBILITY = {
+  // One-line description of what the project is.
+  tagline:
+    "A browser-based AArch64 emulator and visual debugger for studying assembly.",
+  // The course this is a study aid for.
+  courseContext: "A study aid for the CPSC 355 assembly course.",
+  // The not-affiliated disclaimer.
+  disclaimer:
+    "Built for CPSC 355. Not officially affiliated with the University of Calgary.",
+  // How the emulator is built (the credibility section's headline note).
+  engineNote: "a hand-written Rust interpreter compiled to WebAssembly",
+} as const;
+
 export interface NavRoute {
   label: string;
   href: string;
