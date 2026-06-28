@@ -165,18 +165,67 @@ describe("EmbeddablePlayground", () => {
     expect(screen.queryByLabelText("check")).toBeNull();
   });
 
-  it("exposes a Check button in checker chrome that reports the state", () => {
+  it("checker Check runs the current source to completion, then reports the post-run snapshot", async () => {
     const hub: Hub = makeHub({ exitCode: 7 });
+    hub.assemble = vi.fn().mockResolvedValue(undefined);
     useEmulatorMock.mockReturnValue(hub);
     const onCheck = vi.fn();
     const { container } = render(
-      <EmbeddablePlayground chrome="checker" onCheck={onCheck} />,
+      <EmbeddablePlayground chrome="checker" startSource="mov x0, #1" onCheck={onCheck} />,
+    );
+    engage(container);
+    fireEvent.click(screen.getByLabelText("check"));
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(1));
+    // The current source is assembled and run before the snapshot is read, so
+    // the checker never evaluates a stale run (or zeroed pre-run state).
+    expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+    expect(hub.assemble.mock.invocationCallOrder[0]).toBeLessThan(
+      hub.run.mock.invocationCallOrder[0],
+    );
+    expect((onCheck.mock.calls[0][0] as EmbeddableState).exitCode).toBe(7);
+  });
+
+  it("checker Check re-runs after a source edit, but not when the source is unchanged", async () => {
+    // A loaded program so the re-run is driven purely by the source-change
+    // guard, not by the empty-instructions branch.
+    const hub: Hub = makeHub({
+      instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
+    });
+    hub.assemble = vi.fn().mockResolvedValue(undefined);
+    useEmulatorMock.mockReturnValue(hub);
+    const onCheck = vi.fn();
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground
+        ref={ref}
+        chrome="checker"
+        startSource="mov x0, #1"
+        onCheck={onCheck}
+      />,
     );
     engage(container);
     const check = screen.getByLabelText("check");
+
+    // First check: nothing has run yet, so it assembles + runs the starter.
     fireEvent.click(check);
-    expect(onCheck).toHaveBeenCalledTimes(1);
-    expect((onCheck.mock.calls[0][0] as EmbeddableState).exitCode).toBe(7);
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+
+    // Editing the source then checking re-assembles + re-runs the new source.
+    act(() => ref.current!.loadSource("mov x0, #2"));
+    fireEvent.click(check);
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(2));
+    expect(hub.assemble).toHaveBeenLastCalledWith("mov x0, #2", []);
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    expect(hub.run).toHaveBeenCalledTimes(2);
+
+    // Checking again without an edit reports the existing state without re-running.
+    fireEvent.click(check);
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(3));
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    expect(hub.run).toHaveBeenCalledTimes(2);
   });
 
   it("embed Run assembles the current source before executing", async () => {
