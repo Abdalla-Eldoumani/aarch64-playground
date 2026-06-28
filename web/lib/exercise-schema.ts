@@ -97,19 +97,19 @@ function validateResultAssertion(
           error: `acceptance.results[${index}] (register): reg must be x0-x30 or sp`,
         };
       }
-      if (typeof a.equals !== "number" || !Number.isFinite(a.equals)) {
+      if (typeof a.equals !== "number" || !Number.isInteger(a.equals)) {
         return {
           ok: false,
-          error: `acceptance.results[${index}] (register): equals must be a finite number`,
+          error: `acceptance.results[${index}] (register): equals must be an integer`,
         };
       }
       return { ok: true, assertion: { kind: "register", reg, equals: a.equals } };
     }
     case "exit": {
-      if (typeof a.equals !== "number" || !Number.isFinite(a.equals)) {
+      if (typeof a.equals !== "number" || !Number.isInteger(a.equals)) {
         return {
           ok: false,
-          error: `acceptance.results[${index}] (exit): equals must be a finite number`,
+          error: `acceptance.results[${index}] (exit): equals must be an integer`,
         };
       }
       return { ok: true, assertion: { kind: "exit", equals: a.equals } };
