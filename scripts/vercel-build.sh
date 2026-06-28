@@ -36,4 +36,8 @@ wasm-pack build --target web --out-dir "$repo_root/web/lib/wasm"
 
 echo "--- building next app"
 cd "$repo_root/web"
-npx next build
+# Use the project's canonical build command (next build --webpack). The
+# next.config webpack() hook (e.g. the `?raw` source-import rule) only
+# applies under webpack, so the deploy must match local/CI, not the
+# default bundler.
+npm run build
