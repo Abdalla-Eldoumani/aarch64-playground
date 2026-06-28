@@ -52,7 +52,7 @@ export function Hero() {
           href="/playground?example=basics"
           className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-control)] bg-[var(--cyan)] px-5 font-sans text-sm font-medium text-[var(--on-cyan)] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)]"
         >
-          Open the playground
+          Open this example in the playground
         </Link>
       </div>
     </section>
