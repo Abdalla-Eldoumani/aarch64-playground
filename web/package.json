@@ -31,6 +31,16 @@
       "limit": "400 KB"
     },
     {
+      "name": "landing initial js (framework + main + polyfills + entry)",
+      "path": [
+        ".next/static/chunks/framework-*.js",
+        ".next/static/chunks/main-*.js",
+        ".next/static/chunks/polyfills-*.js",
+        ".next/static/chunks/app/\\(site\\)/page-*.js"
+      ],
+      "limit": "400 KB"
+    },
+    {
       "name": "lazy monaco bundle",
       "path": ".next/static/chunks/e868780c.*.js",
       "limit": "100 KB"
