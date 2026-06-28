@@ -93,3 +93,52 @@ describe("extractToc", () => {
     expect(extractToc({ body: [{ type: "code", language: "asm", source: "## x" }] })).toEqual([]);
   });
 });
+
+describe("extractToc with links, images, and fenced code", () => {
+  test("derives a heading-link id from its visible text, not the url", () => {
+    const toc = extractToc({
+      body: [{ type: "prose", markdown: "## see [the docs](https://example.com/x)" }],
+    });
+    expect(toc).toHaveLength(1);
+    expect(toc[0].text).toBe("see the docs");
+    expect(toc[0].id).toBe("see-the-docs");
+    expect(toc[0].id).toBe(slugify("see the docs"));
+  });
+
+  test("keeps an image heading's alt text and drops the url", () => {
+    const toc = extractToc({
+      body: [{ type: "prose", markdown: "## ![a chart](https://example.com/c.png) overview" }],
+    });
+    expect(toc).toHaveLength(1);
+    expect(toc[0].text).toBe("a chart overview");
+    expect(toc[0].id).toBe("a-chart-overview");
+  });
+
+  test("skips ATX-looking lines inside a fenced code block", () => {
+    const toc = extractToc({
+      body: [
+        {
+          type: "prose",
+          markdown: [
+            "## Real Heading",
+            "",
+            "```",
+            "## not a heading",
+            "### also not",
+            "```",
+            "",
+            "### After Fence",
+          ].join("\n"),
+        },
+      ],
+    });
+    expect(toc.map((e) => e.text)).toEqual(["Real Heading", "After Fence"]);
+  });
+
+  test("treats a tilde fence the same as a backtick fence", () => {
+    const toc = extractToc({
+      body: [{ type: "prose", markdown: ["~~~", "## fenced only", "~~~"].join("\n") }],
+    });
+    expect(toc).toEqual([]);
+  });
+});
