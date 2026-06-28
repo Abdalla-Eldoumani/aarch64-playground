@@ -239,3 +239,74 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
   });
 });
+
+describe("autoplay", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("assembles then steps on a timer when motion is allowed", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(undefined);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground
+        chrome="embed"
+        autoplay
+        autoplaySteps={3}
+        startSource="mov x0, #1"
+      />,
+    );
+    // The global matchMedia stub reports not-reduced, so the walk runs.
+    engage(container);
+    await act(async () => {
+      // Flush the awaited assemble so the step interval registers, then drive
+      // the (self-clearing) interval.
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
+    expect(hub.step).toHaveBeenCalledTimes(3);
+  });
+
+  it("does nothing under prefers-reduced-motion: reduce", async () => {
+    const realMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: /prefers-reduced-motion:\s*reduce/.test(query),
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const hub: Hub = makeHub();
+      hub.assemble = vi.fn().mockResolvedValue(undefined);
+      useEmulatorMock.mockReturnValue(hub);
+      const { container } = render(
+        <EmbeddablePlayground
+          chrome="embed"
+          autoplay
+          autoplaySteps={3}
+          startSource="mov x0, #1"
+        />,
+      );
+      engage(container);
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(hub.assemble).not.toHaveBeenCalled();
+      expect(hub.step).not.toHaveBeenCalled();
+    } finally {
+      window.matchMedia = realMatchMedia;
+    }
+  });
+});
