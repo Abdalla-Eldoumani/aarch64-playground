@@ -22,7 +22,7 @@ export function hashString(s: string): string {
   return (h >>> 0).toString(16);
 }
 
-function safeGetItem(key: string): string | null {
+export function safeGetItem(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {
     return window.localStorage.getItem(key);
@@ -31,7 +31,7 @@ function safeGetItem(key: string): string | null {
   }
 }
 
-function safeSetItem(key: string, value: string): void {
+export function safeSetItem(key: string, value: string): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(key, value);
