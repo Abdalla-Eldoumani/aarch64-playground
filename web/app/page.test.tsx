@@ -35,6 +35,7 @@ vi.mock("@/components/EmbeddablePlayground", async () => {
 vi.mock("@/components/CommandPalette", () => ({ CommandPalette: () => null }));
 vi.mock("@/components/ShortcutsHelp", () => ({ ShortcutsHelp: () => null }));
 vi.mock("@/components/ShareDialog", () => ({ ShareDialog: () => null }));
+vi.mock("@/components/SiteNav", () => ({ SiteNav: () => null }));
 
 import Home from "./page";
 
