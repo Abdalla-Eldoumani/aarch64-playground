@@ -11,18 +11,7 @@
 import { useId, useMemo, useState, type JSX } from "react";
 import Link from "next/link";
 import type { Lesson } from "@/lib/lesson-schema";
-
-/**
- * The same ordering rule the server loader uses (numbers numerically, strings
- * via localeCompare, mixed by string). It is re-implemented here rather than
- * imported because the loader is server-only (it imports node:fs); this is a
- * defensive re-sort of data that already arrives ordered.
- */
-function compareOrder(a: Lesson["order"], b: Lesson["order"]): number {
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  if (typeof a === "string" && typeof b === "string") return a.localeCompare(b);
-  return String(a).localeCompare(String(b));
-}
+import { compareByOrder } from "@/lib/content-order";
 
 const CARD_CLASS =
   "flex min-h-[44px] flex-col gap-1 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-5 py-4 outline-none hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)]";
@@ -50,7 +39,7 @@ export function LessonIndex({
   const searchId = useId();
 
   const sorted = useMemo(
-    () => [...lessons].sort((a, b) => compareOrder(a.order, b.order)),
+    () => [...lessons].sort(compareByOrder),
     [lessons],
   );
 

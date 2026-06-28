@@ -15,20 +15,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { validateLesson, type Lesson } from "@/lib/lesson-schema";
+import { compareByOrder } from "@/lib/content-order";
 
 /** The real content directory, resolved against the build's cwd (web/). */
 const DEFAULT_DIR = path.join(process.cwd(), "content/lessons");
-
-/**
- * Order comparator matching the index's defensive rule: two numbers compare
- * numerically, two strings via `localeCompare`, and a mixed pair falls back to
- * a string comparison so the sort is always total.
- */
-function compareOrder(a: Lesson["order"], b: Lesson["order"]): number {
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  if (typeof a === "string" && typeof b === "string") return a.localeCompare(b);
-  return String(a).localeCompare(String(b));
-}
 
 /**
  * Read, parse, and validate every `*.json` lesson in `dir` (defaults to the
@@ -75,7 +65,7 @@ export function loadAllLessons(dir: string = DEFAULT_DIR): Lesson[] {
   }
 
   // Stable sort keeps the filename order for lessons that share an `order`.
-  return lessons.sort((a, b) => compareOrder(a.order, b.order));
+  return lessons.sort(compareByOrder);
 }
 
 /** Find a single validated lesson by slug, or `undefined` when none matches. */

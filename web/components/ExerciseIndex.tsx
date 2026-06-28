@@ -18,6 +18,7 @@ import { useId, useMemo, useState, useSyncExternalStore, type JSX } from "react"
 import Link from "next/link";
 import type { Exercise } from "@/lib/exercise-schema";
 import { getSolvedSlugs, subscribeSolved } from "@/lib/solved-state";
+import { compareByOrder } from "@/lib/content-order";
 
 // useSyncExternalStore needs getSnapshot to return a stable reference until the
 // value actually changes; getSolvedSlugs() reads localStorage and returns a
@@ -41,18 +42,6 @@ function subscribeSolvedSnapshot(callback: () => void): () => void {
     cachedSolved = getSolvedSlugs();
     callback();
   });
-}
-
-/**
- * The same ordering rule the server loader uses (numbers numerically, strings
- * via localeCompare, mixed by string). It is re-implemented here rather than
- * imported because the loader is server-only (it imports node:fs); this is a
- * defensive re-sort of data that already arrives ordered.
- */
-function compareOrder(a: Exercise["order"], b: Exercise["order"]): number {
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  if (typeof a === "string" && typeof b === "string") return a.localeCompare(b);
-  return String(a).localeCompare(String(b));
 }
 
 /** Difficulty order for the filter chips, so they read intro -> core -> challenge. */
@@ -119,7 +108,7 @@ export function ExerciseIndex({
   const cards = useMemo(
     () =>
       [...exercises]
-        .sort((a, b) => compareOrder(a.order, b.order))
+        .sort(compareByOrder)
         .map((exercise) => ({ exercise, blurb: blurbFromPrompt(exercise.prompt) })),
     [exercises],
   );
