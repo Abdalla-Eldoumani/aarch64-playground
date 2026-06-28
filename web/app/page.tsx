@@ -14,6 +14,7 @@ import {
   type EmbeddablePlaygroundHandle,
   type EmbeddableState,
 } from "@/components/EmbeddablePlayground";
+import { SiteNav } from "@/components/SiteNav";
 // The cold-load default program is the arithmetic basics example. Import its
 // single source -- the same file the example loader serves and the corpus
 // verifier checks against fixtures -- so the default can never drift from it.
@@ -200,20 +201,23 @@ export default function Home() {
 
   return (
     <>
-      <EmbeddablePlayground
-        ref={playgroundRef}
-        chrome={chrome}
-        startSource={boot.source}
-        startArgs={boot.args}
-        startStdin={boot.stdin}
-        startCursor={boot.cursor}
-        fromShare={boot.fromShare}
-        onStateChange={onStateChange}
-        onOpenCommandPalette={openCommandPalette}
-        onOpenShortcutsHelp={openShortcutsHelp}
-        onOpenShareDialog={openShareDialog}
-        onToggleTheme={toggleTheme}
-      />
+      <div className="flex flex-col h-dvh">
+        {!isEmbed && <SiteNav variant="slim" />}
+        <EmbeddablePlayground
+          ref={playgroundRef}
+          chrome={chrome}
+          startSource={boot.source}
+          startArgs={boot.args}
+          startStdin={boot.stdin}
+          startCursor={boot.cursor}
+          fromShare={boot.fromShare}
+          onStateChange={onStateChange}
+          onOpenCommandPalette={openCommandPalette}
+          onOpenShortcutsHelp={openShortcutsHelp}
+          onOpenShareDialog={openShareDialog}
+          onToggleTheme={toggleTheme}
+        />
+      </div>
 
       <CommandPalette
         open={paletteOpen}
