@@ -20,11 +20,10 @@ msg_len = . - msg - 1
 - `define(NAME, BODY)` substitutes every standalone `NAME` with `BODY`
   in the rest of the source. Fixed-point; up to 32 rounds before the
   playground flags a cycle.
-- `NAME = EXPRESSION` records a symbol whose value is the expression
-  body evaluated where it appears. `.` refers to the address of the
-  assignment line, so `msg_len = . - msg - 1` gets "length of the
-  string msg minus null terminator" regardless of where `msg_len`
-  later appears.
+- `NAME = EXPRESSION` records a symbol evaluated where it appears. `.` is
+  the address of the assignment line, so `msg_len = . - msg - 1` is the
+  length of string `msg` minus its null terminator, wherever `msg_len` is
+  used later.
 
 Comments strip before substitution: `//` and `;` to end of line.
 
@@ -96,8 +95,8 @@ add  x0, x0, :lo12:msg  // plus the low 12 bits
 ```
 
 `adrp` loads the 4 KiB page base and `:lo12:` adds the low 12 bits. Both
-forms assemble and both are correct. The course leans on the literal pool,
-but gcc output that emits the `adrp` / `add` pair runs unchanged.
+forms assemble. The course leans on the literal pool, but gcc output using
+the `adrp` / `add` pair runs unchanged.
 
 ## hosted runtime
 
@@ -131,15 +130,13 @@ code.
 ## virtual filesystem
 
 `cpu.upload_vfs_file(path, bytes)` registers a file that `openat(path)`
-can find. `write(fd, ...)` on a VFS fd grows the file; `read(fd, ...)`
-advances the offset. The console panel has a file-upload dropzone that
-calls this directly, so week 13 file tutorials can run against files
-the student just drag-and-dropped.
+finds. `write(fd, ...)` on a VFS fd grows the file; `read(fd, ...)` advances
+the offset. The console panel's file-upload dropzone calls this directly, so
+file tutorials run against files the student just dropped in.
 
 ## naming conventions
 
-The corpus follows a simple convention that shows up in the alias
-names:
+The corpus follows a convention that shows up in the alias names:
 
 | suffix | meaning                        | example                    |
 | ------ | ------------------------------ | -------------------------- |
