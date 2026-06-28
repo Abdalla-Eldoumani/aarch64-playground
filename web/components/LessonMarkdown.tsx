@@ -167,15 +167,18 @@ const components: Components = {
   },
   code(props) {
     const { className, children } = props;
-    // react-markdown v10 dropped the `inline` prop: fenced code carries a
-    // `language-*` class, inline code does not. Treat the absence of that class
-    // as inline.
-    const isFenced = /\blanguage-/.test(className ?? "");
-    if (isFenced) {
+    // react-markdown v10 dropped the `inline` prop. Fenced code is block code:
+    // a labeled fence carries a `language-*` class, and an unlabeled fence
+    // still arrives as multi-line text (mdast appends a trailing newline to a
+    // fenced block). Only single-line, unlabeled code is genuine inline code,
+    // so the hover-define is reserved for it and never fires inside a <pre>.
+    const text = flattenText(children);
+    const isBlock = /\blanguage-/.test(className ?? "") || text.includes("\n");
+    if (isBlock) {
       return <code className="font-mono">{children}</code>;
     }
 
-    const token = flattenText(children).trim();
+    const token = text.trim();
     // Resolve a hover summary from two sources: instruction docs and the
     // register roles. A token in neither renders as a plain inline code.
     const summary = lookupDoc(token)?.summary ?? registerRole(token);

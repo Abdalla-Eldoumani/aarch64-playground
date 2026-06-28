@@ -58,6 +58,18 @@ describe("LessonMarkdown", () => {
     expect(code?.textContent).toBe("zzz");
   });
 
+  it("renders an unlabeled multi-line fenced block as block code, not an inline hover-define", () => {
+    const markdown = ["```", "mov x0, 1", "add x1, x1, 2", "```"].join("\n");
+    const { container } = render(<LessonMarkdown markdown={markdown} />);
+    // The fence lands in a <pre>, and its <code> takes the plain block style,
+    // not the inline-code chrome.
+    expect(container.querySelector("pre")).not.toBeNull();
+    expect(container.querySelector("pre code")?.className).toBe("font-mono");
+    // No hover-define affordance is attached anywhere inside the fence.
+    expect(container.querySelector('[tabindex="0"]')).toBeNull();
+    expect(container.querySelector('[role="note"]')).toBeNull();
+  });
+
   it("makes a register a focusable hover-define with a non-empty role", () => {
     const { container } = render(
       <LessonMarkdown markdown="the `x0` register holds an argument" />,
