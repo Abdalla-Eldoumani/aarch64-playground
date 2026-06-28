@@ -51,7 +51,7 @@ export function MobileNavDrawer() {
             aria-label="site navigation"
             className="anim-modal-rise fixed inset-y-0 right-0 z-50 flex w-[min(20rem,85vw)] flex-col gap-1 border-l border-[var(--border)] bg-[var(--bg-panel)] p-4 shadow-[var(--shadow-overlay)]"
           >
-            <nav className="flex flex-col gap-1">
+            <nav aria-label="mobile" className="flex flex-col gap-1">
               {NAV_ROUTES.map((route) => {
                 const active = isActiveRoute(pathname, route.href);
                 return (
