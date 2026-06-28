@@ -110,6 +110,12 @@ pub fn read_c_string(mem: &crate::memory::Memory, addr: u64) -> Result<Vec<u8>, 
     })
 }
 
+/// Upper bound on a printf field width or precision. The values come from the
+/// guest format string; without a cap, "%2000000000d" or "%.2000000000f"
+/// would build a multi-gigabyte host string and abort the allocator. 4096 is
+/// far wider than any real format.
+const MAX_FIELD_WIDTH: usize = 4096;
+
 #[derive(Debug, Default, Clone)]
 struct FormatSpec {
     left_align: bool,
@@ -136,9 +142,13 @@ fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
         }
         *i += 1;
     }
-    // Width.
+    // Width (clamped so a guest-supplied value cannot blow up the output).
     while *i < chars.len() && chars[*i].is_ascii_digit() {
-        spec.width = spec.width * 10 + (chars[*i] as usize - '0' as usize);
+        spec.width = spec
+            .width
+            .saturating_mul(10)
+            .saturating_add(chars[*i] as usize - '0' as usize)
+            .min(MAX_FIELD_WIDTH);
         *i += 1;
     }
     // Precision.
@@ -146,7 +156,10 @@ fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
         *i += 1;
         let mut prec = 0usize;
         while *i < chars.len() && chars[*i].is_ascii_digit() {
-            prec = prec * 10 + (chars[*i] as usize - '0' as usize);
+            prec = prec
+                .saturating_mul(10)
+                .saturating_add(chars[*i] as usize - '0' as usize)
+                .min(MAX_FIELD_WIDTH);
             *i += 1;
         }
         spec.precision = Some(prec);
@@ -538,5 +551,26 @@ mod tests {
     fn printf_handles_string_with_embedded_newline() {
         let (s, _) = call("line\n", |_, _| {});
         assert_eq!(s, "line\n");
+    }
+
+    #[test]
+    fn printf_clamps_an_absurd_width() {
+        // A guest width far beyond MAX_FIELD_WIDTH must not build a giant
+        // buffer; it clamps to the cap.
+        let (s, n) = call("%2000000000d", |regs, _| {
+            regs.write_gpr(1, true, 5);
+        });
+        assert_eq!(n, MAX_FIELD_WIDTH);
+        assert_eq!(s.len(), MAX_FIELD_WIDTH);
+        assert!(s.ends_with('5'));
+    }
+
+    #[test]
+    fn printf_clamps_an_absurd_precision() {
+        let (s, _) = call("%.2000000000f", |regs, _| {
+            regs.write_fpr_f64(0, 1.0);
+        });
+        assert!(s.len() <= MAX_FIELD_WIDTH + 2);
+        assert!(s.starts_with("1."));
     }
 }
