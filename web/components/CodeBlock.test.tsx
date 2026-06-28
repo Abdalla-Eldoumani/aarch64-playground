@@ -28,6 +28,25 @@ describe("CodeBlock", () => {
     expect(html).toContain("var(--syntax-label)"); // main:
   });
 
+  it("colors every mnemonic the reference newly showcases", () => {
+    // multiply-add, sign/zero-extend, sign-extending loads, pc-relative,
+    // compare-and-branch, and the floating-point set now color as keywords
+    // instead of rendering as plain text alongside add / ldr.
+    const ADDED = [
+      "madd", "msub", "sxtb", "sxth", "sxtw", "uxtb", "uxth",
+      "ldrsb", "ldrsh", "ldrsw", "adr", "adrp",
+      "cbz", "cbnz", "tbz", "tbnz",
+      "fmov", "fadd", "fsub", "fmul", "fdiv", "fcmp", "scvtf", "fcvtzs",
+    ];
+    for (const mnemonic of ADDED) {
+      const { unmount } = render(<CodeBlock code={`${mnemonic} d0, d1`} />);
+      expect(screen.getByText(mnemonic).className).toContain(
+        "var(--syntax-keyword)",
+      );
+      unmount();
+    }
+  });
+
   it("colors quoted strings from the syntax-string token", () => {
     const { container } = render(<CodeBlock code={'msg: .asciz "hello"'} />);
     expect(container.innerHTML).toContain("var(--syntax-string)");
