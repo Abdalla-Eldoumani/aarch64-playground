@@ -158,6 +158,12 @@ export type EmbeddablePlaygroundProps = {
   fromShare?: boolean;
   /** Hero = non-editable taste; lessons / exercises editable. */
   readOnly?: boolean;
+  /** Landing hero only: once the hub engages, assemble the start program and
+   *  step it on a timer with no user action. Off by default, so full and
+   *  checker chrome are unchanged. Suppressed under prefers-reduced-motion. */
+  autoplay?: boolean;
+  /** How many steps the autoplay walk takes (clamped to a small ceiling). */
+  autoplaySteps?: number;
   /** Optional overrides on top of the chrome defaults. */
   panels?: Partial<Record<PanelKey, boolean>>;
   showRun?: boolean;
@@ -181,6 +187,12 @@ function joinClasses(...parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ");
 }
 
+// Autoplay cadence for the landing hero: a short step interval so the register
+// flash and the pc marker read clearly, and a hard ceiling so the walk stays
+// bounded regardless of the host-supplied step count.
+const AUTOPLAY_STEP_MS = 450;
+const AUTOPLAY_MAX_STEPS = 10;
+
 // ---------------------------------------------------------------------------
 // Inner core: mounted only after the lazy trigger fires, so the hub (and the
 // worker / WASM it instantiates) never spins up before the component is
@@ -200,6 +212,8 @@ function EmbeddableCore({
   startCursor,
   fromShare,
   readOnly,
+  autoplay,
+  autoplaySteps = 8,
   showRun = true,
   showReset = true,
   showCheck = true,
@@ -488,6 +502,56 @@ function EmbeddableCore({
       emu.pushStdin(startStdin);
     }
   }, [emu, emu.isLoaded, startStdin]);
+
+  // Autoplay (landing hero only): once the hub is loaded, assemble the start
+  // program and step it a bounded number of times on a timer so the registers
+  // flash and the pc marker advances with no user action. Keyed STRICTLY on
+  // [emu.isLoaded, autoplay]: useEmulator returns a NEW object after every step
+  // (its memo deps include the changing registers/pc), so listing `emu` here
+  // would re-run this effect after the first step, the cleanup would clear the
+  // timer, and the once-per-engage guard would then block any restart -- the
+  // hero would step once and freeze. The hub is read through emuRef (synced
+  // every render above) so the timer survives the per-step re-renders.
+  const hasAutoplayedRef = useRef(false);
+  useEffect(() => {
+    if (!autoplay || !emu.isLoaded || hasAutoplayedRef.current) return;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+      return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    hasAutoplayedRef.current = true;
+
+    const steps = Math.max(0, Math.min(autoplaySteps, AUTOPLAY_MAX_STEPS));
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
+
+    const walk = async () => {
+      // Assemble directly (not assembleWithHistory) so the hero never pollutes
+      // the recent-programs list, and await it so the steps land on a loaded
+      // program. Read the hub through emuRef so a register re-render cannot
+      // strand the timer on a stale hub.
+      await emuRef.current.assemble(source, parseArgs(argsText));
+      if (cancelled || steps === 0) return;
+      let stepped = 0;
+      timer = setInterval(() => {
+        emuRef.current.step();
+        stepped += 1;
+        if (stepped >= steps && timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+      }, AUTOPLAY_STEP_MS);
+    };
+    void walk();
+
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emu.isLoaded, autoplay]);
 
   // Mirror exactly the ten outcome fields to the host whenever any of them
   // changes. Keyed only on those fields so unrelated hub churn (breakpoints,
