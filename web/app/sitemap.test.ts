@@ -6,8 +6,8 @@ import { SITE_URL } from "@/lib/site";
 describe("sitemap", () => {
   const entries = sitemap();
 
-  it("lists exactly the four public routes", () => {
-    expect(entries).toHaveLength(4);
+  it("lists exactly the five public routes", () => {
+    expect(entries).toHaveLength(5);
   });
 
   it("emits absolute URLs anchored to the single site origin", () => {
@@ -22,6 +22,13 @@ describe("sitemap", () => {
     );
     expect(home).toBeDefined();
     expect(home?.priority).toBe(1);
+  });
+
+  it("includes the dedicated playground route", () => {
+    const playground = entries.find(
+      (entry) => entry.url === new URL("/playground", SITE_URL).toString(),
+    );
+    expect(playground).toBeDefined();
   });
 
   it("gives every entry a change frequency and a numeric priority", () => {
