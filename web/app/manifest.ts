@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "cpsc 355",
     description:
       "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus",
-    start_url: "/",
+    start_url: "/playground",
     display: "standalone",
     background_color: "#0f1117",
     theme_color: "#0f1117",
