@@ -88,6 +88,17 @@ The linker appends a literal pool after `.text` (8-byte aligned). Each
 unique `=expr` target gets one 8-byte pool slot, and the LDR instruction
 is patched with a PC-relative imm19 offset to that slot.
 
+The page-relative pair forms the same address without a pool slot:
+
+```
+adrp x0, msg            // page base of msg
+add  x0, x0, :lo12:msg  // plus the low 12 bits
+```
+
+`adrp` loads the 4 KiB page base and `:lo12:` adds the low 12 bits. Both
+forms assemble and both are correct. The course leans on the literal pool,
+but gcc output that emits the `adrp` / `add` pair runs unchanged.
+
 ## hosted runtime
 
 Pre-registered libc stubs at addresses `0xFFFF_0000 + idx * 16`:
