@@ -15,7 +15,7 @@ export function NotFound({
 }: NotFoundProps) {
   return (
     <main
-      className="flex flex-col items-center justify-center h-screen gap-6 px-6 text-center"
+      className="flex flex-col items-center justify-center flex-1 min-h-0 gap-6 px-6 text-center"
       role="main"
     >
       <div className="flex items-baseline gap-3 text-[var(--text-secondary)]">
