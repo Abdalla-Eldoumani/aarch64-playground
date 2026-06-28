@@ -26,7 +26,7 @@ export function SiteNav({ variant }: { variant: "full" | "slim" }) {
   return (
     <nav
       aria-label="primary"
-      className={`w-full border-b border-[var(--border)] bg-[var(--bg-base)] ${
+      className={`safe-area-top w-full border-b border-[var(--border)] bg-[var(--bg-base)] ${
         full ? "h-14 md:h-16" : "h-14 md:h-12"
       }`}
     >
