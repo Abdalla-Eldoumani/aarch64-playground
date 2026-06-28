@@ -21,8 +21,25 @@ import type { Lesson, LessonBlock } from "@/lib/lesson-schema";
  */
 const INLINE_MARKERS = /[`*_]/g;
 
+/**
+ * Markdown link and image markup, reduced to its visible label: `[text](url)`
+ * and `![alt](url)` both collapse to their inner `text`/`alt`, dropping the
+ * url. Stripped before slugify so a heading that links out yields the same id
+ * the renderer derives from its flattened children, which carry only the link
+ * text, never the url.
+ */
+const LINK_IMAGE = /!?\[([^\]]*)\]\([^)]*\)/g;
+
 /** Matches an h2 or h3 ATX heading line, capturing the hashes and the text. */
 const HEADING_LINE = /^(#{2,3})\s+(.+)$/;
+
+/**
+ * A fenced-code delimiter: three or more backticks or tildes, indented up to
+ * three spaces, with any info string after. Toggling on each one lets the
+ * scanner skip the lines inside a fence, which the renderer shows as code and
+ * never as headings, so an ATX-looking line in a fence raises no dead anchor.
+ */
+const FENCE_LINE = /^ {0,3}(?:`{3,}|~{3,})/;
 
 /**
  * Map heading text to a stable, url-safe id: lowercase, strip inline
@@ -53,19 +70,31 @@ function isProse(block: LessonBlock): block is Extract<LessonBlock, { type: "pro
 /**
  * Extract the h2/h3 headings from a lesson's prose blocks, in document
  * order, as toc entries. The article owns the h1 title, so only h2/h3 are
- * collected; code/callout/editor blocks and non-heading lines are skipped.
- * Ids are not deduped: distinct headings are an authoring expectation, and
- * the renderer (sharing slugify) will produce the same ids.
+ * collected; code/callout/editor blocks, non-heading lines, and ATX-looking
+ * lines inside a fenced code block are skipped. Link/image markup is reduced
+ * to its visible label first, so the ids match what the renderer derives from
+ * its flattened heading children. Ids are not deduped: distinct headings are
+ * an authoring expectation, and the renderer (sharing slugify) produces the
+ * same ids.
  */
 export function extractToc(lesson: Pick<Lesson, "body">): TocEntry[] {
   const entries: TocEntry[] = [];
   for (const block of lesson.body) {
     if (!isProse(block)) continue;
+    let inFence = false;
     for (const line of block.markdown.split(/\r?\n/)) {
+      if (FENCE_LINE.test(line)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
       const match = HEADING_LINE.exec(line);
       if (!match) continue;
       const depth: 2 | 3 = match[1].length === 2 ? 2 : 3;
-      const text = match[2].replace(INLINE_MARKERS, "").trim();
+      const text = match[2]
+        .replace(LINK_IMAGE, "$1")
+        .replace(INLINE_MARKERS, "")
+        .trim();
       entries.push({ depth, text, id: slugify(text) });
     }
   }
