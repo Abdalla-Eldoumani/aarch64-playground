@@ -38,14 +38,20 @@ fn svc(imm16: u16) -> u32 {
     0xD400_0001 | ((imm16 as u32) << 5)
 }
 
+// The full end-to-end runaway wall executes the real ~10M-step ceiling,
+// which takes ~60s in a debug build -- too slow for the default `cargo test`
+// gate. It is kept as an on-demand proof; run it explicitly with
+// `cargo test --test bounds -- --ignored`. The fast boundary proof (the
+// ceiling fires exactly at MAX_TOTAL_STEPS) lives in the cpu unit tests
+// (`step_ceiling_aborts_calmly_with_message`), which the default gate runs.
 #[test]
+#[ignore = "runs the real ~10M-step wall (~60s); run with --ignored"]
 fn runaway_loop_aborts_calmly_within_the_step_ceiling() {
     let mut cpu = Cpu::new();
     // `b .` -- branch to self, an unconditional infinite loop. Driven with a
     // step budget just above the ceiling so the runaway wall (not max_steps)
-    // is what stops it. This runs the real ~10M-step wall end to end; it
-    // completes in well under the test timeout, proving a runaway program
-    // terminates rather than hanging the tab.
+    // is what stops it. This runs the real ~10M-step wall end to end,
+    // proving a runaway program terminates rather than hanging the tab.
     cpu.load_program(&[0x1400_0000]);
     let r = cpu.run_until_break(MAX_TOTAL_STEPS as u32 + 16).unwrap();
 
