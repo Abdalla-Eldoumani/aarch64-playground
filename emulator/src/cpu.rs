@@ -463,10 +463,10 @@ impl Cpu {
         }
 
         if result == ExecResult::Syscall {
-            // `svc #0` with x8 == 0 keeps the legacy "halt" behavior so
-            // the bare-metal examples (factorial/fibonacci/...) that never
-            // touch x8 still stop cleanly. Non-zero x8 dispatches through
-            // the hosted syscall table.
+            // `svc #0` with x8 == 0 keeps the legacy "halt" behavior so a
+            // program that traps to stop without setting up the hosted
+            // syscall ABI (x8 left zero) still halts cleanly. Non-zero x8
+            // dispatches through the hosted syscall table.
             let syscall_num = self.regs.read_gpr(8, true);
             if syscall_num == 0 {
                 self.halted = true;
