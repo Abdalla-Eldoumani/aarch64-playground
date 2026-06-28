@@ -249,29 +249,51 @@ describe("autoplay", () => {
     vi.useRealTimers();
   });
 
-  it("assembles then steps on a timer when motion is allowed", async () => {
-    const hub: Hub = makeHub();
-    hub.assemble = vi.fn().mockResolvedValue(undefined);
-    useEmulatorMock.mockReturnValue(hub);
-    const { container } = render(
+  it("assembles then steps on a timer, surviving the per-step re-render", async () => {
+    const assemble = vi.fn().mockResolvedValue(undefined);
+    const step = vi.fn();
+    // Mirror the real useEmulator: a fresh hub object every render (its memo
+    // deps include the changing registers/pc) while the assemble/step spies
+    // persist. A referentially stable hub would pass even if `emu` were
+    // re-added to the autoplay effect's deps -- the freeze regression this
+    // guards: keying on `emu` clears the interval on the first re-render and the
+    // once-per-engage guard then strands the walk (step fires 0-1 times).
+    useEmulatorMock.mockImplementation(() => ({ ...makeHub(), assemble, step }));
+    // A factory so every (re-)render gets a fresh element: React bails out on an
+    // identical element reference, so this forces the re-render and a new hub.
+    const view = () => (
       <EmbeddablePlayground
         chrome="embed"
         autoplay
         autoplaySteps={3}
         startSource="mov x0, #1"
-      />,
+      />
     );
+    const { container, rerender } = render(view());
     // The global matchMedia stub reports not-reduced, so the walk runs.
     engage(container);
+    // Flush the awaited assemble so the step interval registers.
     await act(async () => {
-      // Flush the awaited assemble so the step interval registers, then drive
-      // the (self-clearing) interval.
       await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(5000);
     });
-    expect(hub.assemble).toHaveBeenCalledTimes(1);
-    expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
-    expect(hub.step).toHaveBeenCalledTimes(3);
+    // Drive the per-step re-renders that hand useEmulator a new identity. The
+    // ref-based effect keeps the one timer alive across them, so each tick still
+    // lands; an `emu`-keyed effect would clear it on the first re-render.
+    rerender(view());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    rerender(view());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    rerender(view());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(assemble).toHaveBeenCalledTimes(1);
+    expect(assemble).toHaveBeenCalledWith("mov x0, #1", []);
+    expect(step).toHaveBeenCalledTimes(3);
   });
 
   it("does nothing under prefers-reduced-motion: reduce", async () => {
