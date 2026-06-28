@@ -49,17 +49,23 @@ export function loadAutoSavedBuffer(): string | null {
  * Auto-save the editor buffer on change, debounced by 500ms. The effect
  * writes whenever the incoming `value` stabilizes for the debounce
  * window, so fast typing doesn't hammer localStorage.
+ *
+ * `enabled` gates the write: only the full playground persists to the
+ * shared buffer. Embedded surfaces (the landing hero, lessons, exercises)
+ * pass `false` so their host-supplied program never overwrites the
+ * playground's saved work.
  */
-export function useAutoSave(value: string): void {
+export function useAutoSave(value: string, enabled: boolean = true): void {
   const lastSavedRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     const id = setTimeout(() => {
       if (value === lastSavedRef.current) return;
       lastSavedRef.current = value;
       safeSetItem(KEY_CURRENT, value);
     }, DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [value]);
+  }, [value, enabled]);
 }
 
 /**
