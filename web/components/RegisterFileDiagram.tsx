@@ -10,8 +10,8 @@ import type { JSX } from "react";
  * guide tell one story. The four color families are saved-ness, read from
  * tokens: cyan = the argument/result area, danger = caller-saved (volatile
  * across a call), success = callee-saved (preserved), and a neutral border
- * tint = the special lr/sp. --amber stays reserved for surfaces where
- * execution is implied, so this static page never spends it.
+ * tint = the special lr/sp and platform-reserved x18. --amber stays reserved
+ * for surfaces where execution is implied, so this static page never spends it.
  */
 
 type Family = "args" | "caller" | "callee" | "special";
@@ -46,7 +46,7 @@ const GROUPS: RoleGroup[] = [
       { name: "x17", alias: "ip1" },
     ],
   },
-  { role: "platform register (reserved)", family: "caller", regs: [{ name: "x18" }] },
+  { role: "platform register (reserved)", family: "special", regs: [{ name: "x18" }] },
   { role: "callee-saved", family: "callee", regs: xrange(19, 28) },
   { role: "frame pointer", family: "callee", regs: [{ name: "x29", alias: "fp" }] },
   { role: "link register", family: "special", regs: [{ name: "x30", alias: "lr" }] },
@@ -63,9 +63,9 @@ const FAMILY_TINT: Record<Family, string> = {
 
 const LEGEND: { family: Family; label: string }[] = [
   { family: "args", label: "arguments, return & indirect result (x0-x8)" },
-  { family: "caller", label: "caller-saved, volatile across a call (x9-x18)" },
+  { family: "caller", label: "caller-saved, volatile across a call (x9-x17)" },
   { family: "callee", label: "callee-saved, preserved across a call (x19-x29)" },
-  { family: "special", label: "special: link register & stack pointer" },
+  { family: "special", label: "platform-reserved x18, link register & stack pointer" },
 ];
 
 export function RegisterFileDiagram({

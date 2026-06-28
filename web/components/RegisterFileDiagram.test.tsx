@@ -46,6 +46,17 @@ describe("RegisterFileDiagram", () => {
     expect(html).toContain("var(--border-strong)"); // special (lr / sp)
   });
 
+  it("labels x18 as platform-reserved rather than caller-saved", () => {
+    render(<RegisterFileDiagram />);
+    // x18 is the platform register: the caller-saved band stops at x17, and x18
+    // is called out as platform-reserved, matching REGISTER_ROLES and the guide.
+    expect(screen.queryByText(/x9-x18/)).toBeNull();
+    expect(
+      screen.getByText(/caller-saved, volatile across a call \(x9-x17\)/),
+    ).toBeTruthy();
+    expect(screen.getByText(/platform-reserved/)).toBeTruthy();
+  });
+
   it("exposes an accessible name", () => {
     render(<RegisterFileDiagram />);
     expect(screen.getByLabelText("aapcs64 register file")).toBeTruthy();
