@@ -30,6 +30,7 @@ import { LessonMarkdown } from "@/components/LessonMarkdown";
 import { CodeBlock } from "@/components/CodeBlock";
 import { BitFieldDiagram } from "@/components/BitFieldDiagram";
 import { buildShareHash } from "@/lib/share";
+import { playgroundSource } from "@/lib/playground-source";
 
 /**
  * Stable, fragment-safe id for a mnemonic: lowercased with dots turned into
@@ -333,7 +334,7 @@ export function InstructionReference({
 
             <div className="flex flex-wrap items-center gap-4">
               <Link
-                href={`/playground${buildShareHash({ source: current.example })}`}
+                href={`/playground${buildShareHash({ source: playgroundSource(current) })}`}
                 className={ACTION_LINK}
               >
                 Try in playground <span aria-hidden="true">-&gt;</span>

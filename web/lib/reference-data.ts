@@ -41,6 +41,10 @@ export interface ReferenceInstruction {
   gotchas?: string[];
   /** Authored bit-field layout for the curated subset; widths sum to 32. */
   encoding?: BitField[];
+  /** Complete program for the try-in-playground deep-link, used when the bare
+   *  example references an undefined label or symbol and so cannot assemble on
+   *  its own. Other instructions wrap their example instead (playground-source). */
+  runnable?: string;
 }
 
 /**
@@ -57,6 +61,8 @@ interface ReferenceSeed {
   example?: string;
   gotchas?: string[];
   encoding?: BitField[];
+  /** Complete deep-link program when the bare example won't assemble alone. */
+  runnable?: string;
 }
 
 // Operand fields are tinted so they read apart from the fixed opcode bits.
@@ -145,6 +151,176 @@ const encBl: BitField[] = [
   { bits: 5, label: "00101" },
   { bits: 26, label: "imm26", color: operandTint },
 ];
+
+// Complete, self-contained programs for the try-in-playground deep-link. The
+// bare one-line example for these instructions names an undefined label or
+// symbol, so the link carries a runnable program that defines the target and
+// demonstrates the instruction instead. Every other instruction wraps its
+// illustrative example in a minimal main (see playground-source.ts).
+const runB = `// unconditional branch: skip the line that would set a wrong code
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        b       finish          // jump over the next instruction
+        mov     w0, 9           // never reached
+finish:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+const runCbz = `// compare-and-branch if zero: w0 holds 0, so the branch is taken
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w0, 0
+        cbz     w0, done        // w0 == 0, so branch to done
+        mov     w0, 9           // skipped
+done:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+const runCbnz = `// compare-and-branch if non-zero: loop until the counter hits zero
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w1, 3
+countdown:
+        sub     w1, w1, 1
+        cbnz    w1, countdown   // keep looping while w1 is non-zero
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+const runTbz = `// test-bit-and-branch if clear: bit 0 of w0 is 0, so branch to even
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w0, 4
+        tbz     w0, #0, even    // bit 0 is clear, so branch
+        mov     w0, 9           // odd path, skipped
+even:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+const runTbnz = `// test-bit-and-branch if set: bit 0 of w0 is 1, so branch to odd
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w0, 1
+        tbnz    w0, #0, odd     // bit 0 is set, so branch
+        mov     w0, 9           // even path, skipped
+odd:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+const runBcond = `// conditional branch: compare, then branch on the equal flag
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w0, 0
+        cmp     w0, #0
+        b.eq    done            // taken because w0 == 0
+        mov     w0, 9           // skipped
+done:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+const runAdr = `// pc-relative address: adr forms the byte address of a nearby label
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        adr     x1, target      // x1 = address of the label below
+        br      x1              // branch through the computed address
+target:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+const runAdrp = `// pc-relative page address: adrp + add :lo12: reaches a data symbol
+define(fp, x29)
+define(lr, x30)
+
+        .data
+        .balign 4
+message:
+        .string "adrp plus lo12 reached a symbol\\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        adrp    x0, message             // page base that contains message
+        add     x0, x0, :lo12:message   // add the low 12 bits to reach it
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
 
 const referenceSeeds: ReferenceSeed[] = [
   // data processing
@@ -428,6 +604,7 @@ const referenceSeeds: ReferenceSeed[] = [
     mnemonic: "adr",
     category: "PC-relative addressing",
     syntax: "adr xd, label",
+    runnable: runAdr,
   },
   {
     mnemonic: "adrp",
@@ -436,6 +613,7 @@ const referenceSeeds: ReferenceSeed[] = [
     gotchas: [
       "this lands on the 4 kib page base, not the symbol; add the low 12 bits with `:lo12:` to reach the exact address.",
     ],
+    runnable: runAdrp,
   },
 
   // branches
@@ -444,6 +622,7 @@ const referenceSeeds: ReferenceSeed[] = [
     category: "Branches",
     syntax: "b label",
     example: "b loop",
+    runnable: runB,
     encoding: encB,
   },
   {
@@ -475,29 +654,34 @@ const referenceSeeds: ReferenceSeed[] = [
     mnemonic: "b.cond",
     category: "Branches",
     syntax: "b.eq label / b.ne label / b.lt label / ...",
+    runnable: runBcond,
   },
   {
     mnemonic: "cbz",
     category: "Branches",
     syntax: "cbz rt, label",
     example: "cbz x0, done",
+    runnable: runCbz,
   },
   {
     mnemonic: "cbnz",
     category: "Branches",
     syntax: "cbnz rt, label",
     example: "cbnz x0, loop",
+    runnable: runCbnz,
   },
   {
     mnemonic: "tbz",
     category: "Branches",
     syntax: "tbz rt, #bit, label",
+    runnable: runTbz,
   },
   {
     mnemonic: "tbnz",
     category: "Branches",
     syntax: "tbnz rt, #bit, label",
     example: "tbnz w0, #0, odd",
+    runnable: runTbnz,
   },
 
   // system
@@ -586,6 +770,7 @@ export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map
       ...(doc.cExample !== undefined ? { cExample: doc.cExample } : {}),
       ...(seed.gotchas !== undefined ? { gotchas: seed.gotchas } : {}),
       ...(seed.encoding !== undefined ? { encoding: seed.encoding } : {}),
+      ...(seed.runnable !== undefined ? { runnable: seed.runnable } : {}),
     };
   },
 );
