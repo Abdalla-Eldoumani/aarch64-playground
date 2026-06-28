@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { NAV_ROUTES, REPO_URL } from "@/lib/site";
+import {
+  NAV_ROUTES,
+  REPO_URL,
+  LICENSE_URL,
+  LICENSE_LABEL,
+  CREDIBILITY,
+} from "@/lib/site";
 import { Wordmark } from "@/components/Wordmark";
-
-// The license link is derived from REPO_URL so the repository address has a single
-// source of truth and the two links can never point at different repositories.
-const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
 
 // Footer links share one quiet -> cyan-on-hover treatment, all from tokens.
 const LINK_CLASS =
@@ -24,7 +26,7 @@ export function SiteFooter() {
         <div className="flex max-w-xs flex-col gap-3">
           <Wordmark showLabel />
           <p className="font-serif text-[15px] leading-relaxed text-[var(--text-secondary)]">
-            A browser-based AArch64 emulator and visual debugger for studying assembly.
+            {CREDIBILITY.tagline}
           </p>
         </div>
 
@@ -52,16 +54,16 @@ export function SiteFooter() {
             aria-label="MIT license"
             className={LINK_CLASS}
           >
-            MIT
+            {LICENSE_LABEL}
           </a>
           <span className="text-[var(--text-tertiary)]">
-            A study aid for the CPSC 355 assembly course.
+            {CREDIBILITY.courseContext}
           </span>
         </div>
       </div>
 
       <p className="mx-auto mt-8 w-full max-w-5xl font-mono text-xs text-[var(--text-tertiary)]">
-        Built for CPSC 355. Not officially affiliated with the University of Calgary.
+        {CREDIBILITY.disclaimer}
       </p>
     </footer>
   );
