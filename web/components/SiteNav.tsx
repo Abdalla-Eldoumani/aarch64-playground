@@ -69,7 +69,7 @@ export function SiteNav({ variant }: { variant: "full" | "slim" }) {
 
           {full ? (
             <Link
-              href="/"
+              href="/playground"
               className="hidden min-h-[44px] items-center rounded-[var(--radius-control)] bg-[var(--cyan)] px-4 font-sans text-[14px] font-medium text-[var(--on-cyan)] transition-opacity hover:opacity-90 focus:outline-none focus-visible:[box-shadow:var(--ring)] lg:inline-flex"
             >
               Open playground
