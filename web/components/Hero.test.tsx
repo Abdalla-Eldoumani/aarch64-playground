@@ -26,7 +26,9 @@ afterEach(() => {
 describe("Hero", () => {
   it("deep-links the primary CTA into the playground with an example preloaded", () => {
     render(<Hero />);
-    const cta = screen.getByRole("link", { name: /open the playground/i });
+    const cta = screen.getByRole("link", {
+      name: /open this example in the playground/i,
+    });
     expect(cta.getAttribute("href")).toBe("/playground?example=basics");
   });
 
