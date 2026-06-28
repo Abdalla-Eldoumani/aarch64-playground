@@ -601,6 +601,29 @@ function EmbeddableCore({
     [],
   );
 
+  // The checker's Check must evaluate a snapshot that matches the CURRENT
+  // source, not whatever the last Run left behind -- otherwise a stale snapshot
+  // can PASS on code the student already edited away, or every result fails on
+  // zeroed pre-run state before any Run. Reuse runEmbed's assemble-if-stale
+  // guard (the shared lastRunSourceRef): when nothing has run yet or the source
+  // changed since the last run, assemble + run it to completion first, then
+  // snapshot; an unchanged, already-run program is checked as-is. The run loop
+  // is bounded by the emulator's own step ceiling; the wall-clock poll is only
+  // a safety net, and reads the live hub through emuRef so a per-render new hub
+  // identity is always observed.
+  const checkEmbed = useCallback(async () => {
+    if (emu.instructions.length === 0 || lastRunSourceRef.current !== source) {
+      lastRunSourceRef.current = source;
+      await emu.assemble(source, parseArgs(argsText));
+      emu.run();
+      const startedAt = Date.now();
+      do {
+        await new Promise<void>((resolve) => setTimeout(resolve, 16));
+      } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
+    }
+    onCheck?.(currentState());
+  }, [emu, source, argsText, onCheck, currentState]);
+
   // Stable handle identity; every method reads through a latest-value ref so
   // the object never needs rebuilding (no re-registration churn).
   const handle = useMemo<EmbeddablePlaygroundHandle>(
@@ -818,7 +841,7 @@ function EmbeddableCore({
           {chrome === "checker" && showCheck && (
             <button
               type="button"
-              onClick={() => onCheck?.(currentState())}
+              onClick={() => void checkEmbed()}
               aria-label="check"
               className="min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
             >
