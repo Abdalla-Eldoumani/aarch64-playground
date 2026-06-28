@@ -5,6 +5,10 @@ const nextConfig = {
   // to opt back in until Turbopack's async-wasm support is stable for us.
   webpack: (config) => {
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
+    // `?raw` imports load a file's contents as a string at build time, so
+    // the cold-load default program can be sourced from the single
+    // basics.s fixture instead of a duplicated literal.
+    config.module.rules.push({ resourceQuery: /raw/, type: "asset/source" });
     return config;
   },
   // Silence the "multiple lockfiles" warning by pinning the turbopack root
