@@ -20,5 +20,25 @@ export default defineConfig({
     ],
     // WASM bindings and monaco are browser-only; tests never import them.
     exclude: ["node_modules/**", "lib/wasm/**", "lib/wasm-node/**"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary"],
+      exclude: [
+        "**/*.test.{ts,tsx}",
+        "**/*.d.ts",
+        "lib/wasm/**",
+        "lib/wasm-node/**",
+        "vitest.config.ts",
+        "vitest.setup.ts",
+      ],
+      // A floor so coverage cannot silently regress. Set a few points below
+      // current so an ordinary change does not trip it; raise as coverage grows.
+      thresholds: {
+        statements: 70,
+        branches: 63,
+        functions: 60,
+        lines: 70,
+      },
+    },
   },
 });
