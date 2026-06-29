@@ -29,6 +29,20 @@ describe("CredibilitySection", () => {
     expect(license!.getAttribute("rel")).toBe("noreferrer noopener");
   });
 
+  it("gives the inline license link a persistent underline, not a hover-only one", () => {
+    render(<CredibilitySection />);
+    const license = screen
+      .getAllByRole("link")
+      .find((l) => l.getAttribute("href")?.endsWith("/blob/main/LICENSE"));
+    expect(license).toBeTruthy();
+    // The license link sits inline in a sentence, so it must be distinguishable
+    // without relying on color: a standalone "underline" utility that holds at
+    // rest, never only "hover:underline". This guards the fixed
+    // link-in-text-block.
+    expect(license!.classList.contains("underline")).toBe(true);
+    expect(license!.className).not.toContain("hover:underline");
+  });
+
   it("leaks no email and no author name into the rendered body", () => {
     const { container } = render(<CredibilitySection />);
     expect(container.textContent).not.toMatch(/@/);
