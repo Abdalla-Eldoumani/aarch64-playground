@@ -16,7 +16,6 @@ export function Wordmark({
   return (
     <Link
       href="/"
-      aria-label="aarch64 playground, home"
       className={`inline-flex items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus-visible:[box-shadow:var(--ring)] ${className}`}
     >
       <span
@@ -31,6 +30,7 @@ export function Wordmark({
           playground
         </span>
       ) : null}
+      <span className="sr-only"> home</span>
     </Link>
   );
 }
