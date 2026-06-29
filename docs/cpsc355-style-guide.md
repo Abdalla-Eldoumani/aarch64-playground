@@ -25,7 +25,7 @@ msg_len = . - msg - 1
   length of string `msg` minus its null terminator, wherever `msg_len` is
   used later.
 
-Comments strip before substitution: `//` and `;` to end of line.
+Comments strip before substitution: `//` to end of line.
 
 `ifdef`, `ifelse`, `forloop`, `dnl`, and backtick quoting are rejected
 with a clear error rather than silently ignored.
