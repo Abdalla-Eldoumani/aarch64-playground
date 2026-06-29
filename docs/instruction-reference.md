@@ -70,27 +70,15 @@ Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`,
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
 | `LDRSW`  | `LDRSW Xt, [Xn, #imm]`                                | Word load, sign-extended to 64 bits. `Xt` target only, per the ARM spec. |
 
-Addressing modes supported:
+Addressing modes:
 
 - **signed offset**: `[Xn, #imm]`
-- **pre-index**: `[Xn, #imm]!` (adds the offset *and* writes the new address back into Xn)
-- **post-index**: `[Xn], #imm` (reads/writes at the base, then updates Xn)
-
-Addressing modes also include register-offset forms the cpsc 355 corpus
-uses:
-
+- **pre-index**: `[Xn, #imm]!` (writes the new address back into Xn)
+- **post-index**: `[Xn], #imm` (uses the base, then updates Xn)
 - **register offset**: `[Xn, Xm]` (LSL by access size) or `[Xn, Wm, SXTW #k]`
 - **register offset with extend**: `[Xn, Wm, UXTW]`, `[Xn, Xm, LSL #3]`, `[Xn, Xm, SXTX]`, etc.
 
-Unaligned access succeeds (SCTLR.A = 0), so a student's code that
-stumbles onto a misaligned base doesn't fault inside the emulator but
-would also not fault on real AArch64 Linux.
-
-The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned
-immediate-offset form `[Xn, #imm]`.
-
-FP data moves: `LDR Dt, [Xn, #imm]` / `STR Dt, [Xn, #imm]` and the
-32-bit `LDR St` / `STR St` equivalents, unsigned-offset form only.
+Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned immediate-offset form `[Xn, #imm]` only. FP data moves use `LDR Dt, [Xn, #imm]` / `STR Dt, [Xn, #imm]` and the 32-bit `LDR St` / `STR St` equivalents, unsigned-offset form only.
 
 ## PC-relative addressing
 
@@ -99,10 +87,7 @@ FP data moves: `LDR Dt, [Xn, #imm]` / `STR Dt, [Xn, #imm]` and the
 | `ADR`    | `ADR Xd, label`       | Byte-relative address of `label`.              |
 | `ADRP`   | `ADRP Xd, label`      | Address of the 4 KiB page containing `label`.  |
 
-The `adrp` / `add :lo12:` pair is the page-plus-offset alternative to a
-literal-pool load: `adrp Xd, sym` forms the page base and
-`add Xd, Xd, :lo12:sym` adds the low 12 bits to land on the exact address.
-Both forms are correct and interchangeable with `ldr Xd, =sym`.
+The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` gives the page base, then `add Xd, Xd, :lo12:sym` adds the low 12 bits. Interchangeable with `ldr Xd, =sym`.
 
 ## Branches
 
@@ -129,10 +114,7 @@ Both forms are correct and interchangeable with `ldr Xd, =sym`.
 
 ## Floating point
 
-Arithmetic is double-precision only; D registers live next to the X file in
-`registers.rs`. S registers are loaded and stored (the `.float` data form, see
-the memory section) but have no single-precision arithmetic: convert through a
-D register.
+Arithmetic is double-precision only. S registers can be loaded and stored (the `.float` data form) but have no single-precision arithmetic: convert through a D register.
 
 | Mnemonic | Form                              | Notes                                   |
 | -------- | --------------------------------- | --------------------------------------- |
@@ -186,17 +168,11 @@ D register.
 
 ## GCC output compatibility
 
-Unmodified AArch64 GCC `-S` output assembles. The lexer accepts
-`@ident` attribute tokens (`.type foo, @function`, `@progbits`), the
-parser treats `.L2:` / `.Ltext0:` style dotted names as labels when
-they end in `:`, and the GAS-style lowercase `bgt` / `beq` / `blt`
-conditional branches route to the same encoding as `B.GT` / `B.EQ` /
-`B.LT`. Label lookups are case-preserving so mixed-case `.L<N>`
-targets resolve the way GCC emitted them.
+Unmodified AArch64 GCC `-S` output assembles: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, and label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them.
 
 ## Host stubs (hosted runtime)
 
-Pre-registered at `Cpu::new` time. Available without extra setup:
+Pre-registered and available without setup:
 
 | Name     | Notes                                                    |
 | -------- | -------------------------------------------------------- |

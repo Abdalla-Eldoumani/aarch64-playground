@@ -1,14 +1,31 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { ConsolePanel } from "./ConsolePanel";
-import { MAX_STDIN_BYTES } from "@/lib/upload-guard";
+import { MAX_STDIN_BYTES, MAX_VFS_BYTES, checkUploadSize } from "@/lib/upload-guard";
+
+// Mock the toast hook so the guard's exact message can be asserted directly,
+// without depending on react-hot-toast's async DOM rendering.
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock("@/components/Toast", () => ({
+  useToast: () => ({
+    error: toastError,
+    success: vi.fn(),
+    show: vi.fn(),
+    info: vi.fn(),
+  }),
+}));
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
-function setup() {
+beforeEach(() => {
+  toastError.mockClear();
+});
+
+function setup(overrides: Partial<ComponentProps<typeof ConsolePanel>> = {}) {
   const pushStdin = vi.fn();
   const uploadVfsFile = vi.fn();
   const clearConsole = vi.fn();
@@ -22,6 +39,7 @@ function setup() {
       pushStdin={pushStdin}
       uploadVfsFile={uploadVfsFile}
       clearConsole={clearConsole}
+      {...overrides}
     />,
   );
   const input = screen.getByLabelText("Standard input") as HTMLInputElement;
@@ -44,5 +62,101 @@ describe("ConsolePanel stdin validation", () => {
     fireEvent.submit(input.closest("form")!);
     expect(pushStdin).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+describe("ConsolePanel vfs upload", () => {
+  function uploadInput() {
+    return screen.getByLabelText("Upload file to virtual filesystem") as HTMLInputElement;
+  }
+
+  it("registers an uploaded file into the vfs with its bytes", async () => {
+    const { uploadVfsFile } = setup();
+    const file = new File([new Uint8Array([1, 2, 3, 4])], "data.bin");
+
+    fireEvent.change(uploadInput(), { target: { files: [file] } });
+
+    await waitFor(() => expect(uploadVfsFile).toHaveBeenCalledTimes(1));
+    const [name, bytes] = uploadVfsFile.mock.calls[0];
+    expect(name).toBe("data.bin");
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(Array.from(bytes as Uint8Array)).toEqual([1, 2, 3, 4]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("rejects an over-cap upload with the guard message and never touches the vfs", () => {
+    const { uploadVfsFile } = setup();
+    const big = new File(["x"], "huge.bin");
+    // The size guard runs synchronously off file.size, before the bytes are read.
+    Object.defineProperty(big, "size", { value: MAX_VFS_BYTES + 1, configurable: true });
+
+    fireEvent.change(uploadInput(), { target: { files: [big] } });
+
+    expect(toastError).toHaveBeenCalledWith(
+      checkUploadSize(MAX_VFS_BYTES + 1, MAX_VFS_BYTES, "file"),
+    );
+    expect(uploadVfsFile).not.toHaveBeenCalled();
+  });
+
+  it("ignores a change event with no file selected", () => {
+    const { uploadVfsFile } = setup();
+    fireEvent.change(uploadInput(), { target: { files: [] } });
+    expect(uploadVfsFile).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConsolePanel controls and state", () => {
+  it("invokes clearConsole when the clear button is pressed", () => {
+    const { clearConsole } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "clear" }));
+    expect(clearConsole).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces the waiting-for-input status and placeholder when blocked", () => {
+    const { input } = setup({ blocked: true });
+    expect(screen.getByRole("status").textContent).toBe("waiting for input");
+    expect(input.placeholder).toBe("program is waiting for input...");
+  });
+
+  it("shows a zero exit code (the != null edge, not falsiness)", () => {
+    setup({ exitCode: 0 });
+    expect(screen.getByText("exit 0")).toBeTruthy();
+  });
+
+  it("shows the idle hint with no output and the stream once it arrives", () => {
+    const { rerender } = render(
+      <ConsolePanel
+        stdout=""
+        stderr=""
+        blocked={false}
+        exitCode={null}
+        vfsFiles={[]}
+        pushStdin={vi.fn()}
+        uploadVfsFile={vi.fn()}
+        clearConsole={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Output prints here as your program runs.")).toBeTruthy();
+
+    rerender(
+      <ConsolePanel
+        stdout="hello\n"
+        stderr=""
+        blocked={false}
+        exitCode={null}
+        vfsFiles={[]}
+        pushStdin={vi.fn()}
+        uploadVfsFile={vi.fn()}
+        clearConsole={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/hello/)).toBeTruthy();
+    expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
+  });
+
+  it("lists registered vfs files", () => {
+    setup({ vfsFiles: ["a.bin", "b.txt"] });
+    expect(screen.getByText(/vfs: a\.bin, b\.txt/)).toBeTruthy();
   });
 });

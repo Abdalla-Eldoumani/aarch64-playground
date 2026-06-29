@@ -1,6 +1,6 @@
 [package]
 name = "aarch64-emulator"
-version = "0.1.0"
+version = "1.5.0"
 edition = "2021"
 description = "ARMv8 instruction emulator for the browser"
 license = "MIT"

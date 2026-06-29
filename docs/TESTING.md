@@ -1,18 +1,12 @@
 # Testing
 
-How to run each kind of test in this repo. The PR template lists the
-minimum gates; this file is the full reference.
+How to run each kind of test. The PR template lists the minimum gates; this is the full reference.
 
-## Overview
+## Layers
 
-Three layers of tests: Rust unit and integration tests in `emulator/`,
-a vitest suite in `web/` covering the React and library code, and an
-end-to-end corpus run via `scripts/verify-corpus.js` that exercises
-every example program through the WASM build in node. CI
-(`.github/workflows/check.yml`) runs all of these on every PR to
-`main`.
+Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
 
-## Rust tests
+## Rust
 
 From the repo root:
 
@@ -20,33 +14,24 @@ From the repo root:
 cargo test --manifest-path emulator/Cargo.toml
 ```
 
-For fast iteration during a Rust change, narrow to the lib target:
+For fast iteration, narrow to the lib target:
 
 ```bash
 cargo test --manifest-path emulator/Cargo.toml --lib
 ```
 
-If `cargo test` fails locally on Windows with `LNK1104: cannot open
-file build_script_build-*.exe`, that's AVG / McAfee quarantining the
-debug build script. Run with `--release` instead. The full background
-and a few related Rust gotchas live in
-[`CONTRIBUTING.md`](CONTRIBUTING.md#gotchas-to-know-about). CI is
-unaffected.
+On Windows, if `cargo test` fails with `LNK1104: cannot open file build_script_build-*.exe`, antivirus is quarantining the debug build script; run with `--release`. See [`CONTRIBUTING.md`](CONTRIBUTING.md#gotchas). CI is unaffected.
 
-## Web tests
+## Web
 
 From `web/`:
 
 ```bash
-npm test           # one-shot via vitest run
-npm run test:watch # interactive
+npm test            # one-shot (vitest run)
+npm run test:watch  # interactive
 ```
 
-Tests live next to the code they cover, e.g. `web/lib/<feature>.test.ts`
-or `web/components/<Component>.test.tsx`. The vitest config wires
-[`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs
-`window.matchMedia` because jsdom doesn't ship it. Use plain DOM
-assertions; `@testing-library/jest-dom` matchers are not installed.
+Tests sit next to the code they cover (`web/lib/<feature>.test.ts`, `web/components/<Component>.test.tsx`). The runner wires [`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs `window.matchMedia` (jsdom lacks it). Use plain DOM assertions; `@testing-library/jest-dom` is not installed.
 
 ## End-to-end corpus
 
@@ -56,11 +41,7 @@ From the repo root:
 node scripts/verify-corpus.js
 ```
 
-Builds a node-target WASM bundle and runs every example program in
-`web/public/examples/` to completion, asserting registers, memory, and
-hosted-runtime output match the values encoded in each fixture. Run
-this whenever you touch the assembler, executor, frontend pipeline,
-or `web/public/examples/`.
+Builds a node-target WASM bundle and runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout and post-run VFS state. Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
 
 ## Type and lint
 
@@ -68,24 +49,22 @@ From `web/`:
 
 ```bash
 npm run typecheck  # tsc --noEmit
-npm run lint       # eslint . via flat config
+npm run lint       # eslint .
 ```
 
-The eslint flat config ignores `lib/wasm/` and `lib/wasm-node/`
-because both are wasm-pack-generated and not ours to lint.
+The eslint flat config ignores `lib/wasm/` and `lib/wasm-node/`, both wasm-pack-generated.
 
-## Performance and size
+## Size and performance
 
 From `web/`:
 
 ```bash
-npm run size              # size-limit budgets defined in package.json
-npm run lighthouse        # desktop preset, headless
-npm run lighthouse:mobile # mobile preset, headless
+npm run size               # size-limit budgets from package.json
+npm run lighthouse         # desktop preset, headless
+npm run lighthouse:mobile  # mobile preset, headless
 ```
 
-The lighthouse runs need a `next start` server already listening on
-`http://localhost:3000`.
+The lighthouse runs need a `next start` server already on `http://localhost:3000`.
 
 ## Cross-browser smoke
 
@@ -95,28 +74,23 @@ From `web/`:
 npm run smoke:firefox
 ```
 
-Drives a Firefox engine through the live app to verify CSP boots
-Monaco, the editor renders, and the service worker registers. This
-caught the `cdn.jsdelivr.net` style-src omission that Chromium
-silently allowed.
+Drives Firefox through the live app to confirm CSP boots Monaco, the editor renders, and the service worker registers. This caught a `cdn.jsdelivr.net` style-src omission Chromium allowed silently.
 
 ## What CI runs
 
-`.github/workflows/check.yml` has three jobs. The `rust` job runs
-`cargo test` and the two wasm-pack builds (web and nodejs targets).
-The `web` job runs `npm run lint`, `npm run typecheck`, `npm test`,
-`npm run build`, and `npm run size`. The `corpus` job runs
-`node scripts/verify-corpus.js`. Each maps directly to the local
-commands above, so anything that passes locally on this checklist
-should pass in CI.
+`.github/workflows/check.yml` has three jobs:
+
+- **rust**: `cargo test` plus the web and nodejs wasm-pack builds.
+- **web**: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run size`.
+- **corpus**: `node scripts/verify-corpus.js`.
+
+Each maps to a local command above, so a clean local run should pass CI.
 
 ## Pre-PR checklist
 
-Mirrors the PR template's "How to verify" minimums:
+Mirrors the PR template's "How to verify":
 
 1. `cargo test --manifest-path emulator/Cargo.toml` passes.
 2. From `web/`, `npm run lint && npm run typecheck && npm test` all pass.
-3. `node scripts/verify-corpus.js` passes if your change touches the
-   assembler, executor, or examples.
-4. You have manually exercised the change in `npm run dev` (or
-   `npm run dev:all`) if it's UI-visible.
+3. `node scripts/verify-corpus.js` passes if the change touches the assembler, executor, or examples.
+4. You exercised the change in `npm run dev` (or `npm run dev:all`) if it is UI-visible.

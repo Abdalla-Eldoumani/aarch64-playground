@@ -1,343 +1,268 @@
 # Architecture
 
-## Shape of the project
+aarch64-playground is a fully client-side study site for CPSC 355: a
+landing page plus the `/playground` debugger and the `/learn`,
+`/practice`, and `/reference` content pages. There is no server runtime.
+A hand-written Rust AArch64 interpreter, compiled to WASM, does the work
+in the browser tab.
 
-Two workspaces, one monorepo.
+## Monorepo shape
+
+Two workspaces:
+
+- `web/`: Next.js 16 (App Router) + React 19 frontend. Monaco editor,
+  resizable panels (registers, memory, stack, console, watches, saves),
+  command palette, tutorial runner, share links.
+- `emulator/`: the Rust crate `aarch64-emulator`, compiled to WASM with
+  wasm-pack. Output lands in `web/lib/wasm/` (gitignored).
+
+Emulator modules:
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│ web/    Next.js 16 (App Router) + React 19                 │
-│         Monaco editor, resizable panel layout,             │
-│         register / memory / stack / console / watches      │
-│         / memory-watches / saves tabs,                     │
-│         command palette, tutorial runner, share links      │
-├────────────────────────────────────────────────────────────┤
-│         ↑  wasm-bindgen generated JS bindings              │
-├────────────────────────────────────────────────────────────┤
-│ emulator/  pure Rust                                       │
-│   registers.rs  -- X0..X30, SP, PC, NZCV, d0..d31          │
-│   memory.rs     -- paged Vec<u8>, 4 KiB pages              │
-│   decoder.rs    -- 32-bit word -> Instruction              │
-│   executor.rs   -- Instruction + state -> ()               │
-│   fpu.rs        -- f64 math + NZCV for fcmp                │
-│   snapshot.rs   -- step-back ring + named save states      │
-│   cpu.rs        -- top-level step / run loop + VFS + FDs   │
-│   assembler.rs  -- one-pass text -> Vec<u32> (legacy)      │
-│   frontend/     -- m4 -> lex -> parse -> sections ->       │
-│                    linker (section-aware, cpsc 355)        │
-│   hosted/       -- printf/scanf/libc stubs + syscalls      │
-│   errors.rs     -- EmuError enum (with original_line)      │
-│   lib.rs        -- #[wasm_bindgen] API                     │
-└────────────────────────────────────────────────────────────┘
+registers.rs  X0..X30, SP, PC, NZCV, 32 FP registers
+memory.rs     sparse HashMap of 4 KiB pages
+decoder.rs    32-bit word to Instruction
+executor.rs   per-instruction semantics + NZCV math
+fpu.rs        f64 compare flags (NZCV for fcmp)
+snapshot.rs   step-back ring + named save states
+cpu.rs        step / run loop, host stubs, syscalls, VFS, FDs, bounds
+assembler.rs  legacy one-pass encoder (bare-metal source)
+frontend/     m4 -> lex -> parse -> sections -> link
+hosted/       libc stubs + Linux syscalls
+errors.rs     EmuError (each variant carries the source line)
+lib.rs        #[wasm_bindgen] API
 ```
 
-The emulator never depends on anything browser-specific. The
-wasm-bindgen wrappers in `lib.rs` are the only place the Rust side
-touches JS types. Everything else compiles and tests cleanly on native.
+The emulator depends on nothing browser-specific. The wasm-bindgen
+wrappers in `lib.rs` are the only place the Rust side touches JS types;
+everything else compiles and tests on native.
 
 ## Execution flow
 
-1. User types assembly in Monaco.
-2. Click **assemble** -> `emu.assembleAndLoad(source)` in
-   [`web/lib/emulator.ts`](../web/lib/emulator.ts).
-3. Rust side, [`lib.rs`](../emulator/src/lib.rs)
-   `Emulator::assemble_and_load`:
-   - If the source has `.global main` or a `.data`/`.rodata` section or
-     a reference to a host stub, the frontend pipeline runs:
-     `m4 -> lex -> parse -> sections -> linker -> encode`.
-   - Otherwise the legacy single-pass assembler in
-     [`assembler.rs`](../emulator/src/assembler.rs) runs (bare-metal
-     classics).
-   - `cpu.reset()` zeroes registers, clears runtime tables (stdout,
-     stdin, VFS, FDs, exit code), in-place-clears mapped memory pages,
-     and stashes the `__main_return` sentinel in LR.
-   - `cpu.load_sections(sections)` (hosted path) or `load_program(code)`
-     (bare-metal path) writes bytes to the section bases.
-   - Returns a serialized `AssembleResultJs` to JS, carrying the
-     resolved alias table so the register panel can show labels.
-4. React reads the results back: the disassembly view is driven by
-   `getMemoryRange` + source-line text.
-5. **step** / **run** call `cpu.step()`. `step()` returns a
-   `StepOutcome` (`Advance`, `Halted`, `WaitingForInput`,
-   `Exited(code)`). The run loop in `use-emulator.ts` pauses on
-   `WaitingForInput` and resumes once `push_stdin` arrives.
-6. After each batch, `use-emulator.ts` calls `syncState()` which pulls
-   all registers + NZCV + changed-regs + halted + stdout + stderr +
-   exit code + step count out of Rust and into React state.
+1. The user types assembly in Monaco and clicks assemble.
+2. `use-emulator.ts` calls `backend.assemble(source, args)`, which reaches
+   Rust `Emulator::assemble_and_load` in
+   [`lib.rs`](../emulator/src/lib.rs).
+3. Source with `.global main`, a `.data`/`.rodata` section, or a host-stub
+   reference runs the frontend pipeline (`m4 -> lex -> parse -> sections
+   -> link -> encode`); everything else runs the legacy assembler in
+   [`assembler.rs`](../emulator/src/assembler.rs).
+4. `cpu.reset()` zeroes registers, clears the runtime tables (stdout,
+   stdin, VFS, FDs, exit code), zero-fills mapped pages in place, and
+   stashes the `__main_return` sentinel in LR. Then `load_sections`
+   (hosted) or `load_program` (bare-metal) writes bytes to the section
+   bases.
+5. step / run call `cpu.step()`, which returns a `StepOutcome`
+   (`Advance`, `Halted`, `WaitingForInput`, `Exited(code)`). The run loop
+   pauses on `WaitingForInput` and resumes once `push_stdin` arrives.
+6. After each call the backend emits a `StateSnapshot` (see State sync);
+   React applies it in one shot.
 
-The cardinal rule: state lives in Rust. React reads slices via getters
-after every mutation. Never mirror state on the JS side.
+Cardinal rule: state lives in Rust. React reads slices through getters
+after every mutation and never mirrors CPU state.
 
-## The frontend pipeline (cpsc 355 source)
+## Frontend pipeline (hosted CPSC 355 source)
 
 ```
-source text
-   |
-   v
-m4.rs      expand `define(NAME, BODY)` with token-boundary matching;
-           record `name = expr` separately so each assignment gets
-           evaluated at its own source byte offset
-   |
-   v
-lexer.rs   tokenize, emit `Token { kind, original_line, col }`
-   |
-   v
-parser.rs  one statement per line:
-           directive | instruction | label | symbol_assignment
-   |
-   v
-sections   group items by section (.text / .rodata / .data / .bss)
-   |
-   v
-pipeline.rs (linker):
-  - place labels at section offsets
-  - evaluate every expression; pass 2 resolves forward references
-  - allocate literal-pool slots for `ldr xN, =expr`
-  - emit per-host BL trampolines into .text so `bl printf` stays
-    in BL range even though the real stub lives at 0xFFFF_XXXX
-  - call `lower_operands` (alias substitution, constant folding)
-    per instruction and hand the text to the legacy
-    `assembler::encode_line_absolute`
-   |
-   v
-Vec<Section> -> cpu.load_sections()
+source
+  -> m4.rs      expand define(NAME, BODY); record name=expr per offset
+  -> lexer.rs   tokens carrying original_line
+  -> parser.rs  one statement per line: directive | instruction
+                | label | assignment
+  -> sections   group items by section (.text/.rodata/.data/.bss)
+  -> pipeline.rs (link): place labels at section offsets; two passes
+     resolve forward references; size the `ldr xN, =expr` literal pool;
+     plant a per-libc BL trampoline in .text so `bl printf` reaches the
+     host stub at 0xFFFF_0000; lower aliases and fold constants, then
+     encode each line via assembler::encode_line_absolute
+  -> Vec<Section> -> cpu.load_sections()
 ```
 
-Every error inside the pipeline carries `original_line` so the Monaco
-marker lands on the pre-m4 line the student actually wrote.
+Every pipeline error carries `original_line`, so the Monaco marker lands
+on the pre-m4 line the student wrote.
 
-## The legacy assembler
+## Legacy assembler
 
-The bare-metal examples still go through the one-pass
-`assembler::assemble`. It collects labels, then dispatches per-mnemonic.
-Pseudo-instructions are rewritten inside the encoder:
-
-- `MOV Xd, #imm` -> `MOVZ` + optional `MOVK`s (or ORR for logical-
-  immediate patterns)
-- `CMP Xn, ...` -> `SUBS XZR, Xn, ...`
-- `CMN Xn, ...` -> `ADDS XZR, Xn, ...`
-- `TST Xn, ...` -> `ANDS XZR, Xn, ...` (uses the bitmask-immediate
-  encoder so `tst w0, 1` works)
-- `NEG Xd, Xm` -> `SUB Xd, XZR, Xm`
-- `MVN Xd, Xm` -> `ORN Xd, XZR, Xm`
-- `CSET Xd, cond` -> `CSINC Xd, XZR, XZR, !cond`
-- `LSL / LSR / ASR` immediate forms -> `UBFM` / `SBFM`
-- CBZ/CBNZ and TBZ/TBNZ are first-class.
-
-This keeps the executor small: it only has to know the canonical
-encodings.
+The bare-metal path uses the one-pass `assembler::assemble`: collect
+labels, then encode per mnemonic. Pseudo-instructions are rewritten in
+the encoder (MOV to MOVZ/MOVK or ORR, CMP/CMN/TST to the flag-setting
+SUBS/ADDS/ANDS against XZR, NEG/MVN to SUB/ORN against XZR, CSET to
+CSINC, LSL/LSR/ASR immediates to UBFM/SBFM); CBZ/CBNZ and TBZ/TBNZ are
+first-class. This keeps the executor to canonical encodings only.
 
 ## Decoder
 
 ARMv8 instructions are fixed 32-bit. The decoder is a cascade of
-`if (word & mask) == pattern` checks ordered from most-specific to
-least-specific, returning a typed `Instruction` enum. Verbose but easy
-to single-step through in a debugger. FP ops dispatch through
+`(word & mask) == pattern` checks, most-specific first, returning a typed
+`Instruction`. Verbose but easy to single-step. FP ops dispatch through
 `fpu.rs` on execution.
 
 ## Memory model
 
-`HashMap<u64, Vec<u8>>` keyed by 4 KiB page base address. First write
-to an address auto-maps the page. `Memory::clear()` zero-fills existing
-pages in place rather than dropping/reallocating them; dropping and
-re-allocating `Vec<u8>` page buffers triggers a dlmalloc invariant on
-wasm32 that traps in `__rdl_dealloc`. Keep page buffers `Vec<u8>`-based
-and avoid dropping them during hot paths.
+`HashMap<u64, Vec<u8>>` keyed by 4 KiB page base; the first write to an
+address auto-maps its page. `Cpu::new` pre-maps the first code pages, the
+stack pages below `STACK_BASE`, and one page each at `.rodata`/`.data`/
+`.bss`, so no load call allocates mid-call.
 
-`Cpu::new` pre-maps the first few code pages, the stack pages below
-`STACK_BASE`, and one page each at `.rodata` / `.data` / `.bss` so
-no `load_sections` call needs to allocate mid-call.
+`Memory::clear()` zero-fills existing pages in place instead of dropping
+them: dropping and re-allocating `Vec<u8>` page buffers trips a dlmalloc
+invariant on wasm32 that traps in `__rdl_dealloc`. Keep page buffers
+`Vec<u8>`-based and avoid dropping them on hot paths.
 
-Unaligned LDR/STR succeed (mirrors Linux userspace with `SCTLR.A = 0`),
-except in the exclusive-access paths which still raise
-`UnalignedAccess`.
+Unaligned LDR/STR succeed (matching Linux userspace with `SCTLR.A = 0`);
+only the exclusive-access paths still raise `UnalignedAccess`.
 
 ## Hosted runtime
 
-SVC with `imm16 == 0` reads `x8` and dispatches into
-[`hosted/syscalls.rs`](../emulator/src/hosted/syscalls.rs) (write,
-read, exit, openat, close, lseek). Everything else halts for
-backwards compatibility with bare-metal programs.
+`SVC #0` reads `x8` and dispatches into
+[`hosted/syscalls.rs`](../emulator/src/hosted/syscalls.rs): read, write,
+exit, openat, close, lseek. Other syscalls halt (bare-metal
+compatibility).
 
-BL / BLR targets inside the range `[0xFFFF_0000, 0xFFFF_1000)` dispatch
-into the hosted libc (`printf`, `scanf`, `puts`, `putchar`, `getchar`,
-`strlen`, `strcmp`, `strcpy`, `memset`, `memcpy`, `exit`, `atof`). The
-stubs read argument registers per AAPCS64, call into Rust, write
-results to `x0` / `d0`, then return via `pc = lr`. The frontend
-linker also plants a close-range BL trampoline inside `.text` so
-`bl printf` can reach the real stub even when it lives 16 pages away.
+BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc
+(printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy, memset,
+memcpy, exit, atof). Stubs read argument registers per AAPCS64, call into
+Rust, write results to `x0`/`d0`, then return via `pc = lr`. `main`
+returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
+the exit code.
 
-`main` returning (via `ret` with the sentinel in LR) halts the CPU
-with `x0` as the exit code.
+## Execution bounds
 
-## Snapshots and named save states
+The site runs untrusted programs, so two walls live in the emulator and
+hold no matter how the source arrived:
+
+- `cpu::MAX_TOTAL_STEPS` = 10_000_000: cumulative executed-instruction
+  ceiling across every `step` and `run_until_break`, persistent until
+  load/reset. A runaway loop trips it and halts.
+- `memory::MAX_MAPPED_PAGES` = 1024 (4 MiB live): a store that would map a
+  new page past the cap faults instead of allocating. Kept low because
+  the snapshot ring clones every live page each step.
+
+Each abort is a calm halt with a plain-language message in the result
+`error` field, never a panic.
+
+## Snapshots and save states
 
 `SnapshotRing` (capacity 128) captures a `Snapshot { regs, mem, halted,
 blocked, exit_code, stdin, vfs, open_files, next_fd }` before each
-`step()`. `step_back()` pops the newest frame. Named save states live
-in a separate `HashMap<String, Snapshot>` on the same ring, so the
-user can snapshot with a name, step forward, reload, and still have
-the ring's rolling 128-frame history intact.
+`step()`; `step_back()` pops the newest frame. Stdout and stderr are not
+rolled back. Named save states live in a separate
+`HashMap<String, Snapshot>` on the same ring, so a named snapshot
+survives stepping while the rolling 128-frame history stays intact.
 
 ## State sync
 
-The React hook in
-[`web/lib/use-emulator.ts`](../web/lib/use-emulator.ts) owns an
-`EmulatorBackend` (see "Worker layer" below) and a ref to the
-last-assembled source. After every state-mutating call (assemble /
-step / run / reset / step-back / load-state / push-stdin / upload-vfs
-/ clear-console) the backend emits a `StateSnapshot` on its
-`onSnapshot` channel:
+[`use-emulator.ts`](../web/lib/use-emulator.ts) owns an `EmulatorBackend`
+and subscribes via `onSnapshot`. After every state-mutating call the
+backend emits a `StateSnapshot` (defined in `worker/protocol.ts`):
 
-- registers: `gpr[]`, `sp`, `pc`, `nzcv`, `fpr[]`
-- `changedRegs`: indices whose value differs from the pre-step snapshot
-- `stdout`, `stderr`, `exitCode`, `blocked`, `halted`
-- `stepCount` (increments on Advance, decrements on step-back, resets
-  on assemble / reset)
-- `frame`: monotonic counter the React side uses to invalidate caches
+- `registers`, `sp`, `pc`, `nzcv`, and `changedRegs` (indices that differ
+  from the previous frame)
+- `stdoutDelta`/`stderrDelta`, `exitCode`, `blocked`, `halted`,
+  `canStepBack`
+- `pcTrace`, `dirtyAddrs`, and `changedMem` for the memory cache;
+  `vfsFiles` and `savedStates`
+- `frame`: a monotonic counter the React side uses to invalidate caches
 
-The hook applies the snapshot to React state in one shot; nothing in
-React mirrors the Cpu directly anymore. During `runUntilBreak` the
-worker emits heartbeat snapshots every ~50 ms via `performance.now()`
-gating so the UI stays live without flushing every cycle.
-
-The memory cache lives in a ref keyed by `${addr}:${len}`. On every
-snapshot with a fresh `frame`, the cache clears. Panels call the
-synchronous `getMemory(addr, len)` API; cache hits return cached
-bytes, misses kick off an async fetch and bump a `memTick` counter
-to re-render once bytes arrive.
+The hook applies each snapshot in one shot and keeps its own step
+counter. During `runUntilBreak` the worker emits heartbeat snapshots
+about every 50 ms (gated on `performance.now()`) so the UI stays live.
+The memory cache lives in a ref keyed by `${addr}:${len}` and clears on
+each fresh `frame`; panels call the synchronous `getMemory(addr, len)`,
+and a miss kicks off an async fetch that bumps a tick to re-render once
+bytes arrive.
 
 ## Worker layer
 
-The WASM module runs in a Web Worker by default so tight `runUntilBreak`
-loops do not freeze the UI. The boundary is in three files:
+The WASM module runs in a Web Worker by default so tight run loops do not
+freeze the UI. The boundary is three files in
+[`web/lib/worker/`](../web/lib/worker/): `protocol.ts` (message types),
+`emulator.worker.ts` (worker entry, instantiates the emulator and
+forwards messages), and `client.ts` (`WorkerClient`, which implements
+`EmulatorBackend` over the message channel).
 
-- [`web/lib/worker/protocol.ts`](../web/lib/worker/protocol.ts) --
-  request / response message types.
-- [`web/lib/worker/emulator.worker.ts`](../web/lib/worker/emulator.worker.ts)
-  -- the worker entry point: instantiates `EmulatorInstance` and
-  forwards messages.
-- [`web/lib/worker/client.ts`](../web/lib/worker/client.ts) --
-  `WorkerClient` implements `EmulatorBackend` and round-trips
-  promises against the worker.
-
-`pickBackend()` in [`web/lib/backend.ts`](../web/lib/backend.ts)
-returns a `WorkerClient` when `Worker` is available, otherwise a
-`MainThreadBackend` that wraps `EmulatorInstance` directly. Force the
-main thread via `localStorage.aarch64-playground:backend = "main"`.
+`pickBackend()` in [`web/lib/backend.ts`](../web/lib/backend.ts) returns a
+`WorkerClient` when `Worker` exists, otherwise a `MainThreadBackend`
+wrapping the emulator directly. Force the main thread with
+`localStorage["aarch64-playground:backend"] = "main"`.
 
 ## Security gates
 
-URL-borne and file-borne payloads pass through typed validators
-before any field touches React state, the editor, or the WASM
-emulator. The gates and their caps are documented in
-[`docs/security.md`](security.md) and live in:
+URL-borne and file-borne payloads pass typed validators before any field
+reaches React, the editor, or the emulator (full caps in
+[`docs/security.md`](security.md)):
 
-- `web/lib/diagnostic-bundle.ts::decodeBundle` -- per-field type
-  check + 1 MB decompressed size cap on `?bundle=<lz>`.
-- `web/lib/share.ts::readShareHash` -- per-field type check + 1 MB
-  decompressed size cap on `#p2=<lz>` and `#p=`.
-- `web/lib/named-saves.ts::isValidSave` -- per-field type check on
-  bookmark JSON; collisions are skipped instead of overwriting.
-- `web/lib/upload-guard.ts` -- size caps for source uploads
-  (4 MB), VFS uploads (16 MB), and bookmark JSON uploads (1 MB).
-- `web/lib/use-deep-link.ts` -- enum checks on `?theme` / `?view`,
-  regex on `?example`.
+- `diagnostic-bundle.ts::decodeBundle`: per-field type check + 1 MB
+  decompressed cap on `?bundle=<lz>`.
+- `share.ts::readShareHash`: per-field type check + 1 MB decompressed cap
+  on `#p2=<lz>` and `#p=`.
+- `named-saves.ts::isValidSave`: per-field type check on bookmark JSON;
+  collisions are skipped, not overwritten.
+- `upload-guard.ts`: size caps for source (4 MB), VFS (16 MB), and
+  bookmark JSON (1 MB) uploads.
+- `use-deep-link.ts`: enum checks on `?theme`/`?view`, regex on
+  `?example`.
 
-The Vercel header layer adds CSP, COOP, X-Frame-Options DENY,
-Referrer-Policy, Permissions-Policy, and immutable cache headers
-for `/_next/static/`, `/icons/`, `*.wasm`. `/sw.js` is served
-`max-age=0, must-revalidate` so service-worker updates land
-immediately.
+Security headers (CSP, HSTS, COOP, X-Frame-Options DENY, Referrer-Policy,
+Permissions-Policy) are defined in both
+[`web/middleware.ts`](../web/middleware.ts) and `vercel.json`, kept in
+lockstep so they hold under `next start`, in dev, and on Vercel. The CSP
+allow-lists the Vercel analytics and speed-insights endpoints.
+`vercel.json` additionally sets immutable cache headers for
+`/_next/static/`, `/icons/`, and `*.wasm`, and serves `/sw.js` as
+`max-age=0, must-revalidate` so worker updates land immediately.
 
-## Analytics + speed insights
+## PWA and service worker
 
-`@vercel/analytics/next` and `@vercel/speed-insights/next` are mounted
-in `app/layout.tsx` as `<Analytics />` and `<SpeedInsights />`. Both
-no-op in dev / when not on the Vercel platform; on production they
-beacon page views + Core Web Vitals to Vercel's collector. The CSP
-allow-lists the two endpoints (`va.vercel-scripts.com`,
-`vitals.vercel-insights.com`) in both `script-src` and `connect-src`.
-
-## PWA + service worker
-
-[`web/app/manifest.ts`](../web/app/manifest.ts) generates the
-manifest from inside the App Router so theme color + display mode
-stay in one place. [`web/public/sw.js`](../web/public/sw.js) handles
-fetches with a cache-first / network-first split:
-
-- cross-origin or non-GET -> network only
-- navigation -> network first, fall back to cached "/"
-- `/_next/static/`, `/examples/`, `/icons/` -> cache first
-- everything else -> network first, fall back to cache
-
-Registration happens once from
-[`web/components/RegisterSW.tsx`](../web/components/RegisterSW.tsx)
-via `lib/register-sw.ts::registerServiceWorker`, which no-ops on SSR,
-non-secure contexts (except localhost), and browsers without
+[`web/app/manifest.ts`](../web/app/manifest.ts) generates the manifest
+from the App Router. [`web/public/sw.js`](../web/public/sw.js) splits
+fetches: cross-origin or non-GET is network-only; navigations are
+network-first falling back to cached `/`; `/_next/static/`, `/examples/`,
+and `/icons/` are cache-first; everything else is network-first falling
+back to cache. [`web/components/RegisterSW.tsx`](../web/components/RegisterSW.tsx)
+registers once via `lib/register-sw.ts`, which no-ops on SSR, non-secure
+contexts (except localhost), and browsers without
 `navigator.serviceWorker`.
 
 ## Error surfaces
 
-Three kinds of errors reach the user:
+1. Assembly/pipeline errors: `EmuError::{AssemblyError, PreprocError,
+   ParseError, LinkError}`, each with `original_line`. Shown as a red
+   Monaco marker and in the bottom error strip.
+2. Runtime errors: `UnknownInstruction`, `MemoryFault`, `UnalignedAccess`
+   (exclusive-access only), `InvalidRegister`, `UnsupportedSyscall`.
+   Shown in the error strip; the CPU is marked halted.
+3. WASM load failure: caught in `use-emulator.ts` and shown in place of
+   the loading screen.
 
-1. **Assembly / pipeline errors** --
-   `EmuError::{AssemblyError, PreprocError, ParseError, LinkError}`,
-   each with `original_line`. Surfaced via red marker in Monaco and
-   the error strip at the bottom.
-2. **Runtime errors** -- `UnknownInstruction`, `MemoryFault`,
-   `UnalignedAccess` (exclusive-access only), `InvalidRegister`,
-   `UnsupportedSyscall`. Surfaced in the bottom error strip; the CPU
-   is marked halted.
-3. **WASM load failure** -- network or instantiation error. Caught in
-   `use-emulator.ts` and displayed in place of the loading screen.
-
-Rust panics inside WASM go through `console_error_panic_hook` so the
-message is readable in the browser console.
+Rust panics route through `console_error_panic_hook` so the message is
+readable in the browser console.
 
 ## Testing strategy
 
-- Native Rust unit tests live next to their module
-  (`#[cfg(test)] mod tests`). 396 lib tests cover memory, registers,
-  decoder, executor, assembler, FPU, snapshots, and the whole
-  frontend pipeline.
-- Two integration suites: `tests/cpsc355_corpus.rs` (2 tests) and
-  `tests/hosted_end_to_end.rs` (23 tests) exercise the shipping
-  pipeline against real cpsc 355 tutorial source plus hosted printf /
-  scanf / syscalls / step-back / BL-to-host / `main`-return paths.
+- Rust: per-module `#[cfg(test)]` unit tests plus integration suites in
+  [`emulator/tests/`](../emulator/tests/) (conformance, acceptance, the
+  resource-bound walls, stepping/line-map, hosted end-to-end, the
+  CPSC 355 corpus, and the reference drift guard).
+- Web: a vitest suite across the lib helpers, the hooks, the worker
+  protocol, and the input validators.
 - WASM end-to-end: [`scripts/verify-corpus.js`](../scripts/verify-corpus.js)
-  builds a nodejs-target WASM bundle and runs every bare-metal
-  example in `web/public/examples/` through it, asserting the
-  post-halt register and memory state. Treat it as the source of
-  truth for example correctness.
-- The web workspace has 287 vitest tests covering the asm-formatter,
-  asm-completion, auto-save ring, frame-labels pattern matcher,
-  share-link round-trip + validation, diagnostic-bundle validation +
-  size caps, layout persistence, watch-expression evaluator,
-  named-saves bundle import, every toggle hook (cpsc355 / lecture /
-  hotspot), the replay ring, the worker protocol, the deep-link
-  parser, the import-target router, the upload-guard caps, the
-  tutorial catalog, the breakpoint hook, the per-panel zoom hook, the
-  service-worker registration paths, and the toast host.
+  builds a Node-target WASM bundle and runs every bare-metal example in
+  `web/public/examples/` through it, asserting post-halt register and
+  memory state. Treat it as the source of truth for example correctness.
 
 ## Gotchas
 
-- **Page storage must stay `Vec<u8>`, not `Box<[u8; 4096]>`.**
-  `Box::new([0u8; 4096])` puts a 4 KiB array on the stack before
-  moving it to the heap; on wasm32 that confuses bundled dlmalloc
-  enough to hit an `unreachable` trap in `__rdl_dealloc` during
-  `assemble_and_load`.
-- **`Cpu::reset` calls `self.mem.clear()` (zero-fills in place)**
-  rather than re-allocating. Dropping the page Vecs hits the same
-  trap. `reset` also preserves the host-stub registration so hosted
-  re-assemble doesn't lose `printf`.
-- **`Cpu::new` pre-maps the first few code pages and all data-section
-  pages** so `load_program` / `load_sections` never need to allocate
-  mid-call.
-- **`Memory` derives `Clone`** because `SnapshotRing` clones the
-  whole memory every step to build a step-back frame. The dlmalloc
-  rule still holds: clone into a fresh `Vec<u8>` per page, never a
-  `Box<[u8; 4096]>`.
+- Page storage must stay `Vec<u8>`, not `Box<[u8; 4096]>`.
+  `Box::new([0u8; 4096])` builds the array on the stack first; on wasm32
+  that confuses bundled dlmalloc into an `unreachable` trap in
+  `__rdl_dealloc` during `assemble_and_load`.
+- `Cpu::reset` calls `self.mem.clear()` (zero-fill in place) rather than
+  re-allocating, and preserves host-stub registration so a hosted
+  re-assemble keeps `printf`. Dropping the page Vecs hits the same trap.
+- `Memory` derives `Clone` because `SnapshotRing` clones all memory each
+  step. The dlmalloc rule still holds: clone into a fresh `Vec<u8>` per
+  page.
 
-`RuntimeError: unreachable` on wasm with a stack bottoming out in
-`dlmalloc` / `RawVecInner::deallocate` is this class of bug.
+A `RuntimeError: unreachable` on wasm bottoming out in `dlmalloc` /
+`RawVecInner::deallocate` is this class of bug.
