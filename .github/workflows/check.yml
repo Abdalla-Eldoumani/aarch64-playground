@@ -105,7 +105,7 @@ jobs:
 
       - name: vitest
         working-directory: web
-        run: npm test
+        run: npm test -- --coverage
 
       - name: build
         working-directory: web
