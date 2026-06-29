@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 
-// The core children pull in Monaco / framer / toast; stub them so jsdom
+// The core children pull in Monaco and toast; stub them so jsdom
 // never instantiates the editor or WASM. The tests exercise
 // EmbeddablePlayground's own logic (lazy engage, the handle, onStateChange,
 // chrome gating), not the children. The reduced embed/checker chrome renders
