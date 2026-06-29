@@ -3,7 +3,7 @@ import { REPO_URL, LICENSE_URL, LICENSE_LABEL, CREDIBILITY } from "@/lib/site";
 // The repository and license links share one cyan, rel-hardened, focus-ringed
 // treatment, all from tokens.
 const LINK_CLASS =
-  "rounded-[var(--radius-control)] text-[var(--cyan)] underline-offset-2 hover:underline focus:outline-none focus-visible:[box-shadow:var(--ring)]";
+  "rounded-[var(--radius-control)] text-[var(--cyan)] underline underline-offset-2 focus:outline-none focus-visible:[box-shadow:var(--ring)]";
 
 /**
  * The credibility band: open-source + MIT (linked to the LICENSE), the
