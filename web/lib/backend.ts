@@ -7,7 +7,7 @@ import type {
   StateSnapshot,
   StepResultPayload,
 } from "@/lib/worker/protocol";
-import { spawnEmulatorWorker, WorkerClient } from "@/lib/worker/client";
+import { spawnEmulatorWorker } from "@/lib/worker/client";
 
 /**
  * Async surface every emulator backend exposes. WorkerBackend serves
@@ -329,5 +329,3 @@ export function pickBackend(): EmulatorBackend {
   if (worker) return worker as unknown as EmulatorBackend;
   return new MainThreadBackend();
 }
-
-export { MainThreadBackend, WorkerClient };
