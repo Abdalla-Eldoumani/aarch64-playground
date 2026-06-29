@@ -46,8 +46,8 @@ export function RegisterPanel({
 }: RegisterPanelProps) {
   const pcHex = "0x" + pc.toString(16).padStart(8, "0");
 
-  // Monotonic pulse id per register; framer uses this as the animation
-  // key so the fade restarts each time the register actually changes.
+  // Monotonic pulse id per register; used as the React key so the CSS
+  // flash restarts each time the register actually changes.
   // `useReducer` lets us bump ids inside an effect without tripping
   // React 19's set-state-in-effect check.
   const [pulses, bumpPulses] = useReducer(
