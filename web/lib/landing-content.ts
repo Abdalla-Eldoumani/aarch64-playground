@@ -110,18 +110,21 @@ export const ROUTE_REGISTERS: RouteRegister[] = [
   })),
 ];
 
-// A tiny original CPSC 355-style snippet for the live hero: a few register
-// writes with decimal immediates and no hosted I/O, so it assembles instantly
-// and steps fast while the register flash and the pc marker read clearly. It
-// follows the in-repo convention (m4 define aliases, .text/.global main, the
-// stp/ldp frame prologue and epilogue); it is not copied from any course file.
-export const HERO_PROGRAM = `// a tiny no-i/o walk: build a value across a few registers, return it in x0
+// A tiny original CPSC 355-style snippet for the live hero: a short register
+// walk with decimal immediates, then one line printed through the bare write
+// system call. No libc, so it still assembles instantly and steps fast, while
+// the autoplay walk reaches the svc and real stdout appears in the embed
+// console with no user action. It follows the in-repo convention (m4 define
+// aliases, .text/.global main, the stp/ldp frame prologue and epilogue);
+// it is not copied from any course file.
+export const HERO_PROGRAM = `// build a small value, print a line with the write syscall, return the value
 define(base, x19)
-define(step, x20)
-define(total, x21)
-define(shifted, x22)
+define(total, x20)
 
         .text
+msg:    .string "hello from the playground\\n"
+msg_len = . - msg - 1
+
         .balign 4
         .global main
 
@@ -130,12 +133,16 @@ main:
         mov     x29, sp
 
         mov     base, 7
-        mov     step, 3
-        add     total, base, step
-        sub     total, total, 1
-        lsl     shifted, total, 2
-        add     x0, shifted, base
+        add     total, base, 3
 
+        // write(stdout, msg, msg_len)
+        mov     w0, 1
+        ldr     x1, =msg
+        mov     x2, msg_len
+        mov     x8, 64
+        svc     0
+
+        mov     x0, total
         ldp     x29, x30, [sp], 16
         ret
 `;
