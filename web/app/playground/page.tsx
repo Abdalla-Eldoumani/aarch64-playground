@@ -2,8 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
-import { readShareHash, type ShareState } from "@/lib/share";
-import { parseDeepLink, resolveExampleStem } from "@/lib/use-deep-link";
+import type { ShareState } from "@/lib/share";
+import { parseDeepLink } from "@/lib/use-deep-link";
+import {
+  fetchExample,
+  resolveBoot,
+  resolveHandoff,
+  type PlaygroundBoot,
+} from "@/lib/playground-handoff";
 import { loadAutoSavedBuffer } from "@/lib/auto-save";
 import { useTheme } from "@/lib/use-theme";
 import type { Action } from "@/lib/commands";
@@ -46,14 +52,6 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "?", description: "show this help" },
 ];
 
-type Boot = {
-  source: string;
-  args: string;
-  stdin?: string;
-  cursor?: { line: number; column: number };
-  fromShare: boolean;
-};
-
 // `?embed=1` is a client-only URL flag. Reading it through
 // useSyncExternalStore keeps the first hydration render matching the server
 // (chrome="full") and switches to embed afterwards without a mismatch -- and
@@ -66,36 +64,27 @@ function readEmbedParam(): boolean {
   return new URLSearchParams(window.location.search).get("embed") === "1";
 }
 
-// Resolve the starter buffer once on mount. Precedence matches the prior
-// playground: a diagnostic bundle deep-link, then a share hash, then the
-// autosaved buffer, then the cold-load default. Theme / embed / example are
-// applied after mount (they are not needed to seed the editor buffer).
-function initialBoot(): Boot {
+// Resolve the starter buffer once on mount. Precedence: a diagnostic
+// bundle deep-link, then a share hash, then the autosaved buffer, then
+// the cold-load default. This runs during render, so on a client-side
+// navigation it can only see the PREVIOUS route's URL; the post-mount
+// effect below re-reads the committed URL and delivers whatever this
+// pass missed. Theme / embed / example are always applied after mount.
+function initialBoot(): PlaygroundBoot {
   if (typeof window === "undefined") {
-    return { source: DEFAULT_SOURCE, args: "", fromShare: false };
-  }
-  const dl = parseDeepLink(window.location.search);
-  if (dl.bundle) {
     return {
-      source: dl.bundle.source,
-      args: dl.bundle.args ?? "",
-      stdin: dl.bundle.stdin,
+      source: DEFAULT_SOURCE,
+      args: "",
       fromShare: false,
+      fromBundle: false,
     };
   }
-  const fromHash = readShareHash(window.location.hash);
-  if (fromHash) {
-    return {
-      source: fromHash.source,
-      args: fromHash.args ?? "",
-      stdin: fromHash.stdin,
-      cursor: fromHash.cursor,
-      fromShare: true,
-    };
-  }
-  const saved = loadAutoSavedBuffer();
-  const source = saved && saved.length > 0 ? saved : DEFAULT_SOURCE;
-  return { source, args: "", fromShare: false };
+  return resolveBoot(
+    window.location.search,
+    window.location.hash,
+    loadAutoSavedBuffer(),
+    DEFAULT_SOURCE,
+  );
 }
 
 export default function Home() {
@@ -135,25 +124,28 @@ export default function Home() {
     setShareOpen(true);
   }, []);
 
-  // Deep-link bootstrap (post-mount): embed chrome, a pinned theme, and the
-  // async example fetch driven through the ref. Deferring these keeps the
-  // first client render matching the server (no hydration mismatch).
+  // Deep-link bootstrap (post-mount): a pinned theme, plus whatever
+  // program payload the render-time boot could not deliver. Effects run
+  // after the router commits the URL, so this pass sees the REAL
+  // destination even on a client-side navigation, where initialBoot read
+  // the previous route and fell back to the autosave. Examples are always
+  // delivered here (they need a fetch), with their args, stdin, and VFS
+  // fixtures riding along; a failed or oversize fetch keeps the booted
+  // buffer.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const dl = parseDeepLink(window.location.search);
     if (dl.theme) setTheme(dl.theme);
-    if (dl.example && !dl.bundle) {
-      // Translate a legacy week-labeled stem to its renamed file, then
-      // fetch from the fixed examples prefix. Every example is now `.s`.
-      const exampleStem = resolveExampleStem(dl.example);
-      void (async () => {
-        const res = await fetch(`/examples/cpsc355/${exampleStem}.s`);
-        if (!res.ok) return;
-        const text = await res.text();
-        playgroundRef.current?.loadSource(text, exampleStem);
-      })();
+    const handoff = resolveHandoff(boot, window.location.search, window.location.hash);
+    if (!handoff) return;
+    if (handoff.kind === "example") {
+      void fetchExample(handoff.stem)
+        .then((payload) => playgroundRef.current?.loadProgram(payload))
+        .catch(() => {});
+    } else {
+      playgroundRef.current?.loadProgram(handoff.payload);
     }
-  }, [setTheme]);
+  }, [setTheme, boot]);
 
   // Global shortcuts, single owner. Every execution key delegates to the
   // component through the imperative handle; palette / help toggle page state.
