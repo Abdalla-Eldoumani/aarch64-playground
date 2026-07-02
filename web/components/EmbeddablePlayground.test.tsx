@@ -172,7 +172,7 @@ describe("EmbeddablePlayground", () => {
 
   it("checker Check runs the current source to completion, then reports the post-run snapshot", async () => {
     const hub: Hub = makeHub({ exitCode: 7 });
-    hub.assemble = vi.fn().mockResolvedValue(undefined);
+    hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const onCheck = vi.fn();
     const { container } = render(
@@ -197,7 +197,7 @@ describe("EmbeddablePlayground", () => {
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
     });
-    hub.assemble = vi.fn().mockResolvedValue(undefined);
+    hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const onCheck = vi.fn();
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -235,7 +235,7 @@ describe("EmbeddablePlayground", () => {
 
   it("embed Run assembles the current source before executing", async () => {
     const hub: Hub = makeHub();
-    hub.assemble = vi.fn().mockResolvedValue(undefined);
+    hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
@@ -255,7 +255,7 @@ describe("EmbeddablePlayground", () => {
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
     });
-    hub.assemble = vi.fn().mockResolvedValue(undefined);
+    hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
@@ -270,6 +270,95 @@ describe("EmbeddablePlayground", () => {
     // source unchanged and a program is loaded, so Run executes again without
     // a second assemble.
     expect(hub.assemble).toHaveBeenCalledTimes(1);
+  });
+
+  it("embed Run re-assembles a halted program so it restarts from the top", async () => {
+    // A finished program leaves the machine halted; Run must mean "run it
+    // again", not a dead button or a silent no-op on stale memory.
+    const hub: Hub = makeHub({
+      isHalted: true,
+      instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
+    });
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    const run = screen.getByLabelText("run");
+    expect((run as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(run);
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
+  });
+
+  it("embed Run re-applies the stdin seed after its assemble", async () => {
+    // Assembling resets the machine (stdin queue included), so a program
+    // arriving with seeded input must have it back before the run or the
+    // read blocks and nothing ever prints.
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground
+        chrome="embed"
+        startSource="mov x0, #1"
+        startStdin={"5\n"}
+      />,
+    );
+    engage(container);
+    (hub.pushStdin as ReturnType<typeof vi.fn>).mockClear();
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+    expect(hub.pushStdin).toHaveBeenCalledWith("5\n");
+    const order = (fn: ReturnType<typeof vi.fn>) => fn.mock.invocationCallOrder[0];
+    expect(order(hub.assemble as ReturnType<typeof vi.fn>)).toBeLessThan(
+      order(hub.pushStdin as ReturnType<typeof vi.fn>),
+    );
+    expect(order(hub.pushStdin as ReturnType<typeof vi.fn>)).toBeLessThan(
+      order(hub.run as ReturnType<typeof vi.fn>),
+    );
+  });
+
+  it("embed Run skips execution when the assemble fails", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(false);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="bad prog" startStdin={"5\n"} />,
+    );
+    engage(container);
+    (hub.pushStdin as ReturnType<typeof vi.fn>).mockClear();
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalledTimes(1));
+    // No run over empty memory and no seeding of a machine that has no program.
+    expect(hub.run).not.toHaveBeenCalled();
+    expect(hub.pushStdin).not.toHaveBeenCalled();
+  });
+
+  it("checker Check re-applies the stdin seed after its assemble", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const onCheck = vi.fn();
+    const { container } = render(
+      <EmbeddablePlayground
+        chrome="checker"
+        startSource="mov x0, #1"
+        startStdin={"7\n"}
+        onCheck={onCheck}
+      />,
+    );
+    engage(container);
+    (hub.pushStdin as ReturnType<typeof vi.fn>).mockClear();
+    fireEvent.click(screen.getByLabelText("check"));
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(1));
+    expect(hub.pushStdin).toHaveBeenCalledWith("7\n");
+    expect(
+      (hub.assemble as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      (hub.pushStdin as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    );
   });
 
   it("renders the calm fault treatment when the hub fails to load", () => {
@@ -430,7 +519,7 @@ describe("autoplay", () => {
   });
 
   it("assembles then steps on a timer, surviving the per-step re-render", async () => {
-    const assemble = vi.fn().mockResolvedValue(undefined);
+    const assemble = vi.fn().mockResolvedValue(true);
     const step = vi.fn();
     // Mirror the real useEmulator: a fresh hub object every render (its memo
     // deps include the changing registers/pc) while the assemble/step spies
