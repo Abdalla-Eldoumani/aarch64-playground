@@ -37,7 +37,10 @@ export function Hero() {
         </p>
       </div>
 
-      <div className="flex h-[440px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[520px]">
+      {/* One fixed height at every breakpoint: the container-driven embed
+          layout does the arranging, and a static frame means the page cannot
+          shift as the editor and emulator stream in. */}
+      <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
         <EmbeddablePlayground
           chrome="embed"
           startSource={HERO_PROGRAM}
