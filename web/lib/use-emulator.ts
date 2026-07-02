@@ -47,7 +47,9 @@ export interface EmulatorState {
   exitCode: number | null;
   hostedMode: boolean;
   vfsFiles: string[];
-  assemble: (source: string, args?: string[]) => void;
+  /** Resolves true on a successful assemble, false on any failure, so
+   *  callers can chain work (input seeding, run) on a loaded program. */
+  assemble: (source: string, args?: string[]) => Promise<boolean>;
   step: () => void;
   stepBack: () => void;
   canStepBack: boolean;
@@ -335,9 +337,9 @@ export function useEmulator(): EmulatorState {
   }, []);
 
   const assemble = useCallback(
-    (source: string, args: string[] = []): Promise<void> => {
+    (source: string, args: string[] = []): Promise<boolean> => {
       const backend = backendRef.current;
-      if (!backend) return Promise.resolve();
+      if (!backend) return Promise.resolve(false);
       sourceRef.current = source;
       setError(null);
       setAssemblyErrors([]);
@@ -361,7 +363,7 @@ export function useEmulator(): EmulatorState {
       if (!hasContent) {
         setError("no instructions to assemble");
         setInstructions([]);
-        return Promise.resolve();
+        return Promise.resolve(false);
       }
 
       // Return the promise chain so callers that must run only after the
@@ -377,7 +379,7 @@ export function useEmulator(): EmulatorState {
             }
             setAssemblyErrors(errors);
             setError(result.error ?? null);
-            return;
+            return false;
           }
           const base = await backend.codeBase();
           // Fetch the authoritative line map alongside codeBase (mirroring
@@ -422,9 +424,11 @@ export function useEmulator(): EmulatorState {
             instrs.push({ address: addr, hex, text });
           }
           setInstructions(instrs);
+          return true;
         })
         .catch((e: unknown) => {
           setError(e instanceof Error ? e.message : String(e));
+          return false;
         });
     },
     [resetLineCounts],
