@@ -19,6 +19,8 @@
  */
 
 import { useRef, useState, type JSX, type ReactNode } from "react";
+import Link from "next/link";
+import { buildShareHash } from "@/lib/share";
 import type {
   Exercise,
   ResultAssertion,
@@ -160,6 +162,18 @@ export function ExerciseView({ exercise }: { exercise: Exercise }): JSX.Element 
           onCheck={handleCheck}
         />
       </div>
+
+      <Link
+        href={`/playground${buildShareHash({
+          source: exercise.starter,
+          args: exercise.args,
+          stdin: safeStdin(exercise.stdin),
+        })}`}
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] text-[var(--cyan)] [font:var(--type-small)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]"
+      >
+        Open in playground
+        <span aria-hidden="true">-&gt;</span>
+      </Link>
 
       <div role="status" className="my-6">
         {result && result.pass && (

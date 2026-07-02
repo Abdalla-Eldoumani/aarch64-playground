@@ -453,7 +453,8 @@ describe("useEmulator assemble", () => {
     const { result } = await mountLoaded(fake);
 
     await act(async () => {
-      await result.current.assemble(HOSTED_SOURCE);
+      // Success resolves true so callers can chain input seeding on it.
+      await expect(result.current.assemble(HOSTED_SOURCE)).resolves.toBe(true);
     });
 
     // The authoritative map must move the marker to the prologue right after
@@ -474,7 +475,7 @@ describe("useEmulator assemble", () => {
     const { result } = await mountLoaded(fake);
 
     await act(async () => {
-      await result.current.assemble(HOSTED_SOURCE);
+      await expect(result.current.assemble(HOSTED_SOURCE)).resolves.toBe(false);
     });
 
     expect(result.current.assemblyErrors).toEqual([{ line: 3, message: "bad instruction" }]);
@@ -502,7 +503,7 @@ describe("useEmulator assemble", () => {
     const { result } = await mountLoaded(fake);
 
     await act(async () => {
-      await result.current.assemble("\n   \n// comment\nlabel:");
+      await expect(result.current.assemble("\n   \n// comment\nlabel:")).resolves.toBe(false);
     });
 
     expect(result.current.error).toBe("no instructions to assemble");
@@ -515,7 +516,7 @@ describe("useEmulator assemble", () => {
     const { result } = await mountLoaded(fake);
 
     await act(async () => {
-      await result.current.assemble(HOSTED_SOURCE);
+      await expect(result.current.assemble(HOSTED_SOURCE)).resolves.toBe(false);
     });
 
     expect(result.current.error).toBe("boom");

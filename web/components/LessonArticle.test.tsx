@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { slugify } from "@/lib/lesson-toc";
+import { readShareHash } from "@/lib/share";
 import { MAX_STDIN_BYTES } from "@/lib/upload-guard";
 import type { Lesson } from "@/lib/lesson-schema";
 
@@ -62,7 +63,11 @@ describe("LessonArticle", () => {
     render(<LessonArticle lesson={fullLesson} />);
 
     const lead = screen.getByText(/the lead paragraph appears here/i);
-    const codeLink = screen.getByRole("link", { name: /open in playground/i });
+    // Both the code block and the editor block carry a playground link,
+    // in body order.
+    const [codeLink, editorLink] = screen.getAllByRole("link", {
+      name: /open in playground/i,
+    });
     const noteLabel = screen.getByText("Note");
     const embed = screen.getByTestId("embed");
     const secondProse = screen.getByText(/more body text here/i);
@@ -70,7 +75,8 @@ describe("LessonArticle", () => {
     expect(precedes(lead, codeLink)).toBe(true);
     expect(precedes(codeLink, noteLabel)).toBe(true);
     expect(precedes(noteLabel, embed)).toBe(true);
-    expect(precedes(embed, secondProse)).toBe(true);
+    expect(precedes(embed, editorLink)).toBe(true);
+    expect(precedes(editorLink, secondProse)).toBe(true);
   });
 
   it("renders prose through the real LessonMarkdown (heading id matches the toc)", () => {
@@ -83,11 +89,30 @@ describe("LessonArticle", () => {
     expect(screen.getByText(/the lead paragraph appears here/i)).toBeTruthy();
   });
 
-  it("gives the code block an open-in-playground deep link", () => {
+  it("gives the code block an open-in-playground deep link carrying its source", () => {
     render(<LessonArticle lesson={fullLesson} />);
-    const link = screen.getByRole("link", { name: /open in playground/i });
-    const href = link.getAttribute("href") ?? "";
+    const [codeLink] = screen.getAllByRole("link", {
+      name: /open in playground/i,
+    });
+    const href = codeLink.getAttribute("href") ?? "";
     expect(href.startsWith("/playground#p2=")).toBe(true);
+    const decoded = readShareHash(href.slice("/playground".length));
+    expect(decoded).toEqual({ source: "mov x0, #1\nret" });
+  });
+
+  it("gives the editor block a deep link carrying starter, args, and stdin", () => {
+    render(<LessonArticle lesson={fullLesson} />);
+    const [, editorLink] = screen.getAllByRole("link", {
+      name: /open in playground/i,
+    });
+    const href = editorLink.getAttribute("href") ?? "";
+    expect(href.startsWith("/playground#p2=")).toBe(true);
+    const decoded = readShareHash(href.slice("/playground".length));
+    expect(decoded).toEqual({
+      source: "// starter program\nret",
+      args: "1 2",
+      stdin: "queued input",
+    });
   });
 
   it("maps each callout variant to its label", () => {
@@ -150,5 +175,9 @@ describe("LessonArticle", () => {
     // Dropped: the marker received no stdin, but still got the starter source.
     expect(embed.getAttribute("data-startstdin")).toBeNull();
     expect(embed.getAttribute("data-startsource")).toBe("ret");
+    // The deep link drops it the same way: no oversize stdin in the URL.
+    const link = screen.getByRole("link", { name: /open in playground/i });
+    const decoded = readShareHash((link.getAttribute("href") ?? "").slice("/playground".length));
+    expect(decoded).toEqual({ source: "ret" });
   });
 });

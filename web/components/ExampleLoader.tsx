@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { fetchExample, type HandoffPayload } from "@/lib/playground-handoff";
 
 interface ExampleLoaderProps {
-  onLoad: (source: string, label?: string) => void;
+  /** Receives the complete program payload: source plus any args, stdin,
+   *  and VFS fixture files the example declares. */
+  onLoad: (payload: HandoffPayload) => void;
 }
 
 interface Example {
   name: string;
-  file: string;
+  stem: string;
 }
 
 interface ExampleGroup {
@@ -26,55 +29,49 @@ interface ExampleGroup {
 const GROUPS: ExampleGroup[] = [
   {
     label: "First programs",
-    items: [{ name: "arithmetic", file: "/examples/cpsc355/basics.s" }],
+    items: [{ name: "arithmetic", stem: "basics" }],
   },
   {
     label: "Data and memory",
-    items: [
-      { name: "globals (load + store)", file: "/examples/cpsc355/globals.s" },
-    ],
+    items: [{ name: "globals (load + store)", stem: "globals" }],
   },
   {
     label: "Stack and locals",
-    items: [
-      { name: "locals (sum + product)", file: "/examples/cpsc355/locals.s" },
-    ],
+    items: [{ name: "locals (sum + product)", stem: "locals" }],
   },
   {
     label: "Records and arrays",
     items: [
-      { name: "scores (scanf + avg)", file: "/examples/cpsc355/array-scores.s" },
-      { name: "student record", file: "/examples/cpsc355/student-record.s" },
+      { name: "scores (scanf + avg)", stem: "array-scores" },
+      { name: "student record", stem: "student-record" },
     ],
   },
   {
     label: "Subroutines",
     items: [
-      { name: "find max", file: "/examples/cpsc355/find-max.s" },
-      { name: "is prime", file: "/examples/cpsc355/is-prime.s" },
+      { name: "find max", stem: "find-max" },
+      { name: "is prime", stem: "is-prime" },
     ],
   },
   {
     label: "Static data and command-line arguments",
     items: [
-      { name: "static counter", file: "/examples/cpsc355/static-counter.s" },
-      { name: "command-line args", file: "/examples/cpsc355/command-line-args.s" },
+      { name: "static counter", stem: "static-counter" },
+      { name: "command-line args", stem: "command-line-args" },
     ],
   },
   {
     label: "Floating point",
-    items: [
-      { name: "circle area", file: "/examples/cpsc355/circle-area.s" },
-    ],
+    items: [{ name: "circle area", stem: "circle-area" }],
   },
   {
     label: "Files and I/O",
     items: [
-      { name: "hello (write)", file: "/examples/cpsc355/hello.s" },
-      { name: "echo (read)", file: "/examples/cpsc355/echo.s" },
-      { name: "write file", file: "/examples/cpsc355/write-file.s" },
-      { name: "read file", file: "/examples/cpsc355/read-file.s" },
-      { name: "copy file", file: "/examples/cpsc355/copy-file.s" },
+      { name: "hello (write)", stem: "hello" },
+      { name: "echo (read)", stem: "echo" },
+      { name: "write file", stem: "write-file" },
+      { name: "read file", stem: "read-file" },
+      { name: "copy file", stem: "copy-file" },
     ],
   },
 ];
@@ -84,25 +81,21 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
 
   const handleSelect = useCallback(
     async (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const file = e.target.value;
-      if (!file) return;
+      const stem = e.target.value;
+      if (!stem) return;
 
       setLoadError(null);
       try {
-        const response = await fetch(file);
-        if (!response.ok) {
-          throw new Error(`${response.status} ${response.statusText}`);
-        }
-        const text = await response.text();
+        const payload = await fetchExample(stem);
         const label = (() => {
           for (const group of GROUPS) {
             for (const item of group.items) {
-              if (item.file === file) return item.name;
+              if (item.stem === stem) return item.name;
             }
           }
-          return file;
+          return stem;
         })();
-        onLoad(text, label);
+        onLoad({ ...payload, label });
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "failed to load example");
       } finally {
@@ -126,7 +119,7 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
         {GROUPS.map((group) => (
           <optgroup key={group.label} label={group.label}>
             {group.items.map((ex) => (
-              <option key={ex.file} value={ex.file}>
+              <option key={ex.stem} value={ex.stem}>
                 {ex.name}
               </option>
             ))}

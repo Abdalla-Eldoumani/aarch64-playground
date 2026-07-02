@@ -17,6 +17,11 @@ vi.mock("@/components/RegisterPanel", () => ({
 vi.mock("@/components/ConsolePanel", () => ({
   ConsolePanel: () => <div data-testid="console" />,
 }));
+// react-resizable-panels needs a ResizeObserver jsdom does not provide; the
+// full-chrome layout is not what these unit tests exercise.
+vi.mock("@/components/ResizableLayout", () => ({
+  ResizableLayout: () => <div data-testid="layout" />,
+}));
 
 // A spy for the hub so a test can assert it is not called (the hub not
 // engaged) before the lazy trigger fires.
@@ -286,6 +291,132 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBeNull();
     rerender(<EmbeddablePlayground chrome="embed" />);
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
+  });
+});
+
+describe("loadProgram", () => {
+  it("resets the machine and applies the full payload", () => {
+    const hub: Hub = makeHub();
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="embed" startSource="old prog" />,
+    );
+    engage(container);
+    act(() =>
+      ref.current!.loadProgram({
+        source: "new prog",
+        args: "./prog a b",
+        stdin: "in\n",
+        vfs: { "input.txt": "data\n" },
+      }),
+    );
+    // A fresh program starts on a fresh machine: no registers, console,
+    // or VFS from the previous program may survive the load.
+    expect(hub.reset).toHaveBeenCalledTimes(1);
+    expect(hub.uploadVfsFile).toHaveBeenCalledWith(
+      "input.txt",
+      new TextEncoder().encode("data\n"),
+    );
+    expect(ref.current!.getSource()).toBe("new prog");
+    expect(ref.current!.getArgs()).toBe("./prog a b");
+    // stdin is a seed, not an immediate push: assembling clears the queue,
+    // so it lands after each assemble instead.
+    expect(hub.pushStdin).not.toHaveBeenCalled();
+  });
+
+  it("re-applies the program's stdin and vfs seeds after a successful assemble", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="embed" startSource="old" />,
+    );
+    engage(container);
+    act(() =>
+      ref.current!.loadProgram({
+        source: "mov x0, 1",
+        stdin: "in\n",
+        vfs: { "f.txt": "x" },
+      }),
+    );
+    (hub.uploadVfsFile as ReturnType<typeof vi.fn>).mockClear();
+    act(() => ref.current!.assemble());
+    await waitFor(() => expect(hub.pushStdin).toHaveBeenCalledWith("in\n"));
+    expect(hub.uploadVfsFile).toHaveBeenCalledWith(
+      "f.txt",
+      new TextEncoder().encode("x"),
+    );
+    // Seeds land after the assemble round-trip, on the freshly reset machine.
+    expect(
+      (hub.assemble as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      (hub.pushStdin as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("does not seed inputs when the assemble fails", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(false);
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="embed" startSource="old" />,
+    );
+    engage(container);
+    act(() => ref.current!.loadProgram({ source: "bad prog", stdin: "in\n" }));
+    act(() => ref.current!.assemble());
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalled());
+    expect(hub.pushStdin).not.toHaveBeenCalled();
+  });
+});
+
+describe("prior-work preservation (full chrome)", () => {
+  const KEY_CURRENT = "aarch64-playground:auto-save:current";
+  const KEY_RECENT = "aarch64-playground:auto-save:recent";
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  function recentBodies(): string[] {
+    const raw = window.localStorage.getItem(KEY_RECENT);
+    if (!raw) return [];
+    return (JSON.parse(raw) as Array<{ body: string }>).map((e) => e.body);
+  }
+
+  it("keeps an autosave displaced by a handoff boot reachable through recents", () => {
+    window.localStorage.setItem(KEY_CURRENT, "// prior work\nret");
+    // The loading gate keeps the heavy full layout out of the test; the
+    // preservation effect runs on mount regardless.
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    render(<EmbeddablePlayground chrome="full" startSource="// shared program" />);
+    expect(recentBodies()).toContain("// prior work\nret");
+  });
+
+  it("leaves recents alone when the boot buffer is the autosave itself", () => {
+    window.localStorage.setItem(KEY_CURRENT, "// prior work\nret");
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    render(
+      <EmbeddablePlayground chrome="full" startSource={"// prior work\nret"} />,
+    );
+    expect(window.localStorage.getItem(KEY_RECENT)).toBeNull();
+  });
+
+  it("preserves the replaced buffer in recents when a program loads over it", () => {
+    const hub: Hub = makeHub();
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground
+        ref={ref}
+        chrome="full"
+        startSource={"// working buffer\nret"}
+      />,
+    );
+    act(() => ref.current!.loadProgram({ source: "// example", label: "example" }));
+    expect(recentBodies()).toContain("// working buffer\nret");
   });
 });
 
