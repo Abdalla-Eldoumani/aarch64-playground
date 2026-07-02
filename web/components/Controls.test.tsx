@@ -22,6 +22,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        programLoaded={true}
         error={null}
       />,
     );
@@ -39,6 +40,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        programLoaded={true}
         error={null}
       />,
     );
@@ -55,6 +57,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        programLoaded={true}
         error={null}
       />,
     );
@@ -77,6 +80,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        programLoaded={true}
         error={null}
       />,
     );
@@ -92,6 +96,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        programLoaded={false}
         error={null}
       />,
     );
@@ -107,6 +112,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        programLoaded={true}
         error={null}
       />,
     );
@@ -117,6 +123,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={true}
         isHalted={false}
+        programLoaded={true}
         error={null}
       />,
     );
@@ -131,6 +138,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={true}
+        programLoaded={true}
         error={null}
       />,
     );
@@ -145,6 +153,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        programLoaded={false}
         error="boom"
       />,
     );
@@ -162,6 +171,7 @@ describe("Controls", () => {
         canStepBack={false}
         isRunning={false}
         isHalted={false}
+        programLoaded={false}
         error="unknown instruction: 0x12345678"
       />,
     );
@@ -169,6 +179,56 @@ describe("Controls", () => {
     const text = alert.textContent?.toLowerCase() ?? "";
     expect(text).toContain("unknown instruction");
     expect(text).toContain("mnemonic");
+  });
+
+  it("disables run, step, and back until a program is loaded", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={true}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={false}
+        error={null}
+      />,
+    );
+    for (const name of [/^run/, /^step/, /^back/]) {
+      const btn = screen.getByRole("button", { name });
+      expect(btn.hasAttribute("disabled")).toBe(true);
+      fireEvent.click(btn);
+    }
+    expect(h.onRun).not.toHaveBeenCalled();
+    expect(h.onStep).not.toHaveBeenCalled();
+    expect(h.onStepBack).not.toHaveBeenCalled();
+    // Assemble and reset stay live: they are how a program gets loaded.
+    expect(
+      screen.getByRole("button", { name: /^assemble/ }).hasAttribute("disabled"),
+    ).toBe(false);
+    expect(
+      screen.getByRole("button", { name: /^reset/ }).hasAttribute("disabled"),
+    ).toBe(false);
+  });
+
+  it("enables run, step, and back once a program is loaded", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={true}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={true}
+        error={null}
+      />,
+    );
+    for (const name of [/^run/, /^step/, /^back/]) {
+      expect(
+        screen.getByRole("button", { name }).hasAttribute("disabled"),
+      ).toBe(false);
+    }
+    fireEvent.click(screen.getByRole("button", { name: /^step/ }));
+    expect(h.onStep).toHaveBeenCalledTimes(1);
   });
 
   it("does not bind keyboard shortcuts (the page is the single owner)", () => {
@@ -179,6 +239,7 @@ describe("Controls", () => {
         canStepBack={true}
         isRunning={false}
         isHalted={false}
+        programLoaded={true}
         error={null}
       />,
     );
