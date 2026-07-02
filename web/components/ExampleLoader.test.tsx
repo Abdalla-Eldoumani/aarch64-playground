@@ -49,11 +49,11 @@ describe("ExampleLoader", () => {
       );
     };
 
-    expect(valuesIn("Data and memory")).toContain("/examples/cpsc355/globals.s");
-    expect(valuesIn("Stack and locals")).toContain("/examples/cpsc355/locals.s");
+    expect(valuesIn("Data and memory")).toContain("globals");
+    expect(valuesIn("Stack and locals")).toContain("locals");
   });
 
-  it("offers every example with a clean, week-free file path", () => {
+  it("offers every example with a clean, week-free stem", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
     const options = Array.from(select.querySelectorAll("option"))
@@ -62,14 +62,14 @@ describe("ExampleLoader", () => {
     // 13 kept programs + the two stage fillers.
     expect(options.length).toBe(15);
     for (const value of options) {
-      expect(value).toMatch(/^\/examples\/cpsc355\/[a-z-]+\.s$/);
+      expect(value).toMatch(/^[a-z-]+$/);
       expect(value).not.toMatch(/week\d/);
     }
-    expect(options).toContain("/examples/cpsc355/basics.s");
-    expect(options).toContain("/examples/cpsc355/copy-file.s");
+    expect(options).toContain("basics");
+    expect(options).toContain("copy-file");
   });
 
-  it("fetches the picked file and forwards body + label to onLoad", async () => {
+  it("fetches the picked example and forwards the payload + label to onLoad", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -80,29 +80,63 @@ describe("ExampleLoader", () => {
     const onLoad = vi.fn();
     render(<ExampleLoader onLoad={onLoad} />);
     const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
-    fireEvent.change(select, {
-      target: { value: "/examples/cpsc355/basics.s" },
-    });
+    fireEvent.change(select, { target: { value: "basics" } });
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(fetchMock).toHaveBeenCalledWith("/examples/cpsc355/basics.s");
-    expect(onLoad).toHaveBeenCalledWith("// basics source\n", "arithmetic");
+    expect(onLoad).toHaveBeenCalledWith({
+      source: "// basics source\n",
+      label: "arithmetic",
+    });
+  });
+
+  it("forwards a fixture-bearing example's inputs in the payload", async () => {
+    const routes: Record<string, string> = {
+      "/examples/cpsc355/read-file.s": "// read file\n",
+      "/examples/cpsc355/fixtures/read-file.vfs.json": '{"input.txt": "Hi\\n"}',
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        ok: url in routes,
+        status: url in routes ? 200 : 404,
+        statusText: "",
+        text: async () => routes[url] ?? "",
+      })),
+    );
+    const onLoad = vi.fn();
+    render(<ExampleLoader onLoad={onLoad} />);
+    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "read-file" } });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onLoad).toHaveBeenCalledWith({
+      source: "// read file\n",
+      label: "read file",
+      vfs: { "input.txt": "Hi\n" },
+    });
   });
 
   it("shows an inline alert when the fetch fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({ ok: false, status: 404, statusText: "Not Found" }),
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        text: async () => "",
+      }),
     );
     render(<ExampleLoader onLoad={() => {}} />);
     const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
     // Pick a real option so the change event fires; fetch is mocked to fail.
     await act(async () => {
-      fireEvent.change(select, {
-        target: { value: "/examples/cpsc355/basics.s" },
-      });
+      fireEvent.change(select, { target: { value: "basics" } });
       // Allow fetch -> setState -> render to flush.
       await Promise.resolve();
       await Promise.resolve();
