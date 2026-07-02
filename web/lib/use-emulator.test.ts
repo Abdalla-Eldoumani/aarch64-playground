@@ -317,6 +317,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     backend,
     calls,
     fire,
+    // Exposed so a test can flip outcomes mid-run (a successful assemble
+    // followed by a failing one exercises the loaded-program state machine).
+    cfg,
     triggerRun: () => runResolve?.(),
   };
 }
@@ -325,6 +328,16 @@ async function mountLoaded(fake: { backend: EmulatorBackend }) {
   h.backend = fake.backend;
   const view = renderHook(() => useEmulator());
   await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+  return view;
+}
+
+// Mount with a program already assembled: step/stepBack/run gate on a
+// successful assemble, so tests that exercise execution start here.
+async function mountAssembled(fake: { backend: EmulatorBackend }) {
+  const view = await mountLoaded(fake);
+  await act(async () => {
+    await expect(view.result.current.assemble(HOSTED_SOURCE)).resolves.toBe(true);
+  });
   return view;
 }
 
@@ -526,7 +539,7 @@ describe("useEmulator assemble", () => {
 describe("useEmulator stepping and running", () => {
   it("step advances the step counter and clears prior errors", async () => {
     const fake = makeBackend();
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.step();
@@ -540,7 +553,7 @@ describe("useEmulator stepping and running", () => {
     const fake = makeBackend({
       stepResult: { pc: CODE_BASE, halted: false, error: "trap", outcome: "error", exitCode: null },
     });
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.step();
@@ -551,7 +564,7 @@ describe("useEmulator stepping and running", () => {
 
   it("step records a rejected backend call as an error", async () => {
     const fake = makeBackend({ stepThrows: true });
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.step();
@@ -562,7 +575,7 @@ describe("useEmulator stepping and running", () => {
 
   it("stepBack decrements the step counter and clamps at zero", async () => {
     const fake = makeBackend();
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.step();
@@ -583,7 +596,7 @@ describe("useEmulator stepping and running", () => {
 
   it("stepBack records a rejected backend call as an error", async () => {
     const fake = makeBackend({ stepBackThrows: true });
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.stepBack();
@@ -595,7 +608,7 @@ describe("useEmulator stepping and running", () => {
     const fake = makeBackend({
       runResult: { pc: CODE_BASE, halted: false, steps_executed: 7, hit_breakpoint: false, error: null },
     });
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.run();
@@ -609,7 +622,7 @@ describe("useEmulator stepping and running", () => {
     const fake = makeBackend({
       runResult: { pc: CODE_BASE, halted: false, steps_executed: 3, hit_breakpoint: false, error: "run trap" },
     });
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.run();
@@ -620,7 +633,7 @@ describe("useEmulator stepping and running", () => {
 
   it("run records a rejected backend call and still clears the running flag", async () => {
     const fake = makeBackend({ runThrows: true });
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.run();
@@ -631,7 +644,7 @@ describe("useEmulator stepping and running", () => {
 
   it("run is a no-op once the program has halted", async () => {
     const fake = makeBackend();
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     act(() => {
       fake.fire({ halted: true });
@@ -673,7 +686,7 @@ describe("useEmulator stepping and running", () => {
 
   it("run sets the running flag until the backend resolves", async () => {
     const fake = makeBackend({ runDeferred: true });
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     act(() => {
       result.current.run();
@@ -702,7 +715,7 @@ describe("useEmulator stepping and running", () => {
 describe("useEmulator reset", () => {
   it("clears execution state and calls the backend", async () => {
     const fake = makeBackend();
-    const { result } = await mountLoaded(fake);
+    const { result } = await mountAssembled(fake);
 
     await act(async () => {
       result.current.step();
@@ -759,6 +772,127 @@ describe("useEmulator reset", () => {
     });
     expect(result.current.error).toBeNull();
     expect(result.current.assemblyErrors).toEqual([]);
+  });
+});
+
+describe("useEmulator loaded-program gating", () => {
+  it("ignores step, stepBack, and run before any assemble", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    expect(result.current.programLoaded).toBe(false);
+
+    act(() => {
+      result.current.step();
+      result.current.stepBack();
+      result.current.run();
+    });
+
+    // Nothing reaches the backend: no garbage decode of zeroed memory, no
+    // phantom step count, no replay frames for steps that never ran.
+    expect(fake.calls.step).toBe(0);
+    expect(fake.calls.stepBack).toBe(0);
+    expect(fake.calls.run).toEqual([]);
+    expect(result.current.stepCount).toBe(0);
+    expect(result.current.isRunning).toBe(false);
+    expect(result.current.replayFrames).toEqual([]);
+  });
+
+  it("opens the gate on a successful assemble and closes it on a failed one", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    expect(result.current.programLoaded).toBe(true);
+
+    await act(async () => {
+      result.current.step();
+    });
+    await waitFor(() => expect(result.current.replayFrames).toHaveLength(1));
+
+    // The next assemble fails. The backend wiped the machine for the
+    // attempt, so the gate closes and the dead program's replay frames go.
+    fake.cfg.assembleSuccess = false;
+    fake.cfg.assembleError = "bad instruction";
+    await act(async () => {
+      await expect(result.current.assemble(HOSTED_SOURCE)).resolves.toBe(false);
+    });
+    expect(result.current.programLoaded).toBe(false);
+    expect(result.current.replayFrames).toEqual([]);
+
+    act(() => {
+      result.current.step();
+      result.current.run();
+    });
+    expect(fake.calls.step).toBe(1);
+    expect(fake.calls.run).toEqual([]);
+  });
+
+  it("closes the gate on reset", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.step();
+    });
+    await waitFor(() => expect(result.current.replayFrames).toHaveLength(1));
+
+    await act(async () => {
+      result.current.reset();
+    });
+    expect(result.current.programLoaded).toBe(false);
+    expect(result.current.replayFrames).toEqual([]);
+
+    act(() => {
+      result.current.step();
+      result.current.run();
+    });
+    expect(fake.calls.step).toBe(1);
+    expect(fake.calls.run).toEqual([]);
+  });
+
+  it("reopens the gate when a saved machine state loads after a reset", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.reset();
+    });
+    expect(result.current.programLoaded).toBe(false);
+
+    await act(async () => {
+      result.current.loadState("chk1");
+    });
+    await waitFor(() => expect(result.current.programLoaded).toBe(true));
+
+    await act(async () => {
+      result.current.step();
+    });
+    expect(fake.calls.step).toBe(1);
+  });
+
+  it("keeps the gate closed when the state load fails", async () => {
+    const fake = makeBackend({ loadStateOk: false });
+    const { result } = await mountLoaded(fake);
+    await act(async () => {
+      result.current.loadState("ghost");
+    });
+    expect(result.current.programLoaded).toBe(false);
+  });
+
+  it("tracks bookmark restores: open on success, closed on failure", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    await act(async () => {
+      await result.current.restoreBookmark({ source: HOSTED_SOURCE, stepCount: 1 });
+    });
+    expect(result.current.programLoaded).toBe(true);
+
+    fake.cfg.assembleSuccess = false;
+    fake.cfg.assembleError = "nope";
+    await act(async () => {
+      await result.current.restoreBookmark({ source: HOSTED_SOURCE, stepCount: 1 });
+    });
+    expect(result.current.programLoaded).toBe(false);
   });
 });
 
