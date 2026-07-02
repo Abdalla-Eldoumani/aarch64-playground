@@ -124,17 +124,27 @@ export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
               );
             case "editor":
               return (
-                <div
-                  key={index}
-                  className="my-6 flex h-[440px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[520px]"
-                >
-                  <EmbeddablePlayground
-                    chrome="embed"
-                    startSource={block.starter}
-                    startArgs={block.args}
-                    startStdin={safeStdin(block.stdin)}
-                    readOnly={false}
-                  />
+                <div key={index} className="my-6">
+                  <div className="flex h-[440px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[520px]">
+                    <EmbeddablePlayground
+                      chrome="embed"
+                      startSource={block.starter}
+                      startArgs={block.args}
+                      startStdin={safeStdin(block.stdin)}
+                      readOnly={false}
+                    />
+                  </div>
+                  <Link
+                    href={`/playground${buildShareHash({
+                      source: block.starter,
+                      args: block.args,
+                      stdin: safeStdin(block.stdin),
+                    })}`}
+                    className={OPEN_IN_PLAYGROUND_CLASS}
+                  >
+                    Open in playground
+                    <span aria-hidden="true">-&gt;</span>
+                  </Link>
                 </div>
               );
           }
