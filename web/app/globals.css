@@ -319,6 +319,65 @@ body {
   font-size: calc(0.75rem * var(--font-scale));
 }
 
+/* =============================================================================
+   EMBEDDED PLAYGROUND LAYOUT
+   The hero, lesson, and exercise embeds render at whatever width their host
+   gives them (a wide hero, a prose measure), so the arrangement is chosen by
+   container queries against the embed itself, not viewport breakpoints.
+   Under 40rem: a vertical stack, editor first and largest.
+   40rem to 56rem: a full-width editor over a registers | console split, so
+   the editor keeps real line length inside a reading column.
+   56rem and up: the editor beside a registers-over-console rail.
+   The base stack doubles as the fallback where container queries are
+   unsupported.
+============================================================================= */
+.embed-layout {
+  container-type: inline-size;
+}
+.embed-grid {
+  display: grid;
+  grid-template-areas: "editor" "registers" "console";
+  grid-template-rows: minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+}
+.embed-area-editor {
+  grid-area: editor;
+  border-bottom: 1px solid var(--border);
+}
+.embed-area-registers {
+  grid-area: registers;
+  border-bottom: 1px solid var(--border);
+}
+.embed-area-console {
+  grid-area: console;
+}
+@container (min-width: 40rem) {
+  .embed-grid {
+    grid-template-areas: "editor editor" "registers console";
+    grid-template-rows: minmax(0, 11fr) minmax(0, 9fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .embed-area-registers {
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+  }
+}
+@container (min-width: 56rem) {
+  .embed-grid {
+    grid-template-areas: "editor registers" "editor console";
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+  .embed-area-editor {
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+  }
+  .embed-area-registers {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
 /* scrollbar styling for panels */
 ::-webkit-scrollbar {
   width: 6px;
