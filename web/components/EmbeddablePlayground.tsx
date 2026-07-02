@@ -12,7 +12,8 @@ import {
 import dynamic from "next/dynamic";
 import { useEmulator } from "@/lib/use-emulator";
 import { useBreakpoint, isAtLeast } from "@/lib/use-breakpoint";
-import { useAutoSave, useRecentPrograms } from "@/lib/auto-save";
+import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/auto-save";
+import type { HandoffPayload } from "@/lib/playground-handoff";
 import { parseFrameSlots } from "@/lib/frame-labels";
 import { parseArgs } from "@/lib/args";
 import { formatAsm } from "@/lib/asm-formatter";
@@ -138,8 +139,12 @@ export type EmbeddablePlaygroundHandle = {
   step(): void;
   stepBack(): void;
   reset(): void;
-  /** Load a program into the editable buffer (example / recent / bookmark / tutorial). */
+  /** Load a program into the editable buffer (recent / bookmark / tutorial). */
   loadSource(source: string, label?: string): void;
+  /** Deliver a complete program handoff (example, share link, bundle):
+   *  preserves the replaced buffer in recents, resets the machine, then
+   *  applies source, args, cursor, and the stdin/vfs input seeds. */
+  loadProgram(payload: HandoffPayload): void;
   getSource(): string;
   getArgs(): string;
   getCursor(): { line: number; column: number };
@@ -185,6 +190,18 @@ export type EmbeddablePlaygroundProps = {
 
 function joinClasses(...parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ");
+}
+
+// One naming rule for every recents entry: the program's first comment
+// line, or a timestamped snippet label when it has none.
+function nameForRecents(source: string): string {
+  const firstComment = source
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.startsWith("//") || l.startsWith(";"));
+  return firstComment
+    ? firstComment.replace(/^(?:\/\/|;)\s*/, "").slice(0, 48)
+    : `snippet ${new Date().toLocaleTimeString()}`;
 }
 
 // Autoplay cadence for the landing hero: a short step interval so the register
@@ -276,25 +293,84 @@ function EmbeddableCore({
   useAutoSave(source, chrome === "full");
   const recent = useRecentPrograms();
 
+  // A boot buffer that arrived through a handoff (a share link or bundle
+  // opened in a fresh tab) displaced the autosave before the first
+  // debounced write could run; keep that prior work reachable through
+  // recents instead of silently overwriting it. On a normal boot the
+  // autosave IS the start buffer, so nothing is pushed.
+  useEffect(() => {
+    if (chrome !== "full") return;
+    const prior = loadAutoSavedBuffer();
+    if (prior && prior.trim().length > 0 && prior !== (startSource ?? "")) {
+      recent.push(nameForRecents(prior), prior);
+    }
+    // Mount-only: the boot buffer comparison is meaningful exactly once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Input seeds for the current program. Assembling resets the whole
+  // machine (stdin queue and VFS included), so the seeds re-apply after
+  // every successful assemble; a new handoff replaces them.
+  const seedsRef = useRef<{ stdin?: string; vfs?: Record<string, string> }>({
+    stdin: startStdin,
+  });
+
+  const applySeeds = useCallback(() => {
+    const seeds = seedsRef.current;
+    if (seeds.stdin) emuRef.current.pushStdin(seeds.stdin);
+    if (seeds.vfs) {
+      const enc = new TextEncoder();
+      for (const [name, body] of Object.entries(seeds.vfs)) {
+        emuRef.current.uploadVfsFile(name, enc.encode(body));
+      }
+    }
+  }, []);
+
+  const loadProgram = useCallback(
+    (payload: HandoffPayload) => {
+      // The replaced buffer stays recoverable through recents; entries are
+      // keyed by content hash there, so repeats do not stack up.
+      const prev = sourceRef.current;
+      if (chrome === "full" && prev.trim().length > 0 && prev !== payload.source) {
+        recent.push(nameForRecents(prev), prev);
+      }
+      // A fresh program starts on a fresh machine: registers, memory,
+      // console, exit code, stdin queue, and VFS all clear.
+      emuRef.current.reset();
+      seedsRef.current = { stdin: payload.stdin, vfs: payload.vfs };
+      // Seed the VFS now so the console's file list shows the program's
+      // fixtures immediately; assemble re-seeds after its machine reset.
+      if (payload.vfs) {
+        const enc = new TextEncoder();
+        for (const [name, body] of Object.entries(payload.vfs)) {
+          emuRef.current.uploadVfsFile(name, enc.encode(body));
+        }
+      }
+      setSource(payload.source);
+      setActiveFile(-1);
+      setArgsText(payload.args ?? "");
+      setCursor(payload.cursor ?? { line: 1, column: 1 });
+      setShareBanner(Boolean(payload.fromShare));
+      lastRunSourceRef.current = null;
+    },
+    [chrome, recent],
+  );
+
   // Push the current buffer onto the recent list whenever the user
   // assembles, and concatenate any extra files so `bl func` resolves across
-  // files (the linker operates on one string).
-  const assembleWithHistory = useCallback(() => {
+  // files (the linker operates on one string). On success, re-apply the
+  // program's input seeds: the assemble reset the machine, and the seeded
+  // stdin and VFS files must be in place before the run.
+  const assembleWithHistory = useCallback(async () => {
     const trimmed = source.trim();
     if (trimmed.length > 0) {
-      const firstComment = source
-        .split("\n")
-        .map((l) => l.trim())
-        .find((l) => l.startsWith("//") || l.startsWith(";"));
-      const name = firstComment
-        ? firstComment.replace(/^(?:\/\/|;)\s*/, "").slice(0, 48)
-        : `snippet ${new Date().toLocaleTimeString()}`;
-      recent.push(name, source);
+      recent.push(nameForRecents(source), source);
     }
     const combined =
       extraFiles.length > 0 ? combineSources(source, extraFiles) : source;
-    emu.assemble(combined, parseArgs(argsText));
-  }, [source, recent, emu, extraFiles, argsText]);
+    const ok = await emu.assemble(combined, parseArgs(argsText));
+    if (ok) applySeeds();
+  }, [source, recent, emu, extraFiles, argsText, applySeeds]);
 
   // The reduced embed/checker chrome has no separate Assemble control, so its
   // primary Run must assemble first; otherwise runUntilBreak executes over
@@ -485,6 +561,7 @@ function EmbeddableCore({
   const cursorRef = useRef(cursor);
   const onStateChangeRef = useRef(onStateChange);
   const assembleRef = useRef(assembleWithHistory);
+  const loadProgramRef = useRef(loadProgram);
   const buildCommandsRef = useRef(buildCommands);
   useEffect(() => {
     emuRef.current = emu;
@@ -493,8 +570,9 @@ function EmbeddableCore({
     cursorRef.current = cursor;
     onStateChangeRef.current = onStateChange;
     assembleRef.current = assembleWithHistory;
+    loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
-  }, [emu, source, argsText, cursor, onStateChange, assembleWithHistory, buildCommands]);
+  }, [emu, source, argsText, cursor, onStateChange, assembleWithHistory, loadProgram, buildCommands]);
 
   // Seed starter stdin once the hub is live so a program that reads has its
   // input queued before the first run.
@@ -635,6 +713,7 @@ function EmbeddableCore({
       stepBack: () => emuRef.current.stepBack(),
       reset: () => emuRef.current.reset(),
       loadSource: (next: string) => loadSource(next),
+      loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
       getSource: () => sourceRef.current,
       getArgs: () => argsRef.current,
       getCursor: () => cursorRef.current,
@@ -1087,9 +1166,7 @@ function EmbeddableCore({
           cpsc 355 playground
         </span>
         <div className="min-w-0 shrink-0 overflow-hidden">
-          <ExampleLoader
-            onLoad={(src, label) => loadSource(src, label ?? "example")}
-          />
+          <ExampleLoader onLoad={loadProgram} />
         </div>
         <ImportExport source={source} target={importTarget} onImport={handleImport} />
         <RecentPrograms
@@ -1339,6 +1416,8 @@ export const EmbeddablePlayground = forwardRef<
       reset: () => runOrQueue((handle) => handle.reset()),
       loadSource: (next: string, label?: string) =>
         runOrQueue((handle) => handle.loadSource(next, label)),
+      loadProgram: (payload: HandoffPayload) =>
+        runOrQueue((handle) => handle.loadProgram(payload)),
       getSource: () => innerHandleRef.current?.getSource() ?? startSource ?? "",
       getArgs: () => innerHandleRef.current?.getArgs() ?? startArgs ?? "",
       getCursor: () =>
