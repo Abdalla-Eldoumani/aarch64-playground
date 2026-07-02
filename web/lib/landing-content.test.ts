@@ -31,7 +31,7 @@ describe("landing data", () => {
     expect(nonPrimary).toEqual(expectedSecondary);
   });
 
-  it("HERO_PROGRAM is an original, no-I/O, lowercase cpsc 355-style snippet", () => {
+  it("HERO_PROGRAM is an original, printing, lowercase cpsc 355-style snippet", () => {
     // Structural authenticity (the full visual/step check is the orchestrator's
     // on the deployed hero): in-repo convention markers must be present.
     expect(HERO_PROGRAM).toContain("define(");
@@ -41,8 +41,14 @@ describe("landing data", () => {
     expect(HERO_PROGRAM).toMatch(/ldp\s+x29,\s*x30,\s*\[sp\],\s*16/);
     expect(HERO_PROGRAM).toMatch(/ldp[\s\S]*\bret\b/);
 
-    // No hosted I/O, so stepping is fast and purely visual.
-    expect(HERO_PROGRAM).not.toMatch(/printf|scanf|svc|\bbl /);
+    // The hero demonstrates the console: one line printed through the bare
+    // write syscall (x8 = 64, svc 0), with the message in a .string literal.
+    expect(HERO_PROGRAM).toMatch(/mov\s+x8,\s*64/);
+    expect(HERO_PROGRAM).toMatch(/svc\s+0/);
+    expect(HERO_PROGRAM).toContain(".string");
+
+    // Still no libc, so assembly stays instant and the autoplay stays fast.
+    expect(HERO_PROGRAM).not.toMatch(/printf|scanf|\bbl /);
 
     // Lowercase mnemonics only: no line begins with an uppercase instruction.
     expect(HERO_PROGRAM).not.toMatch(/^\s*[A-Z]{2,}/m);
