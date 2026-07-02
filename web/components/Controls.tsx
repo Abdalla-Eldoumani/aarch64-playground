@@ -13,6 +13,10 @@ interface ControlsProps {
   onReset: () => void;
   isRunning: boolean;
   isHalted: boolean;
+  /** False until a successful assemble, and false again after reset or a
+   *  failed one. Run, step, and back have nothing to execute without a
+   *  program, so they render disabled instead of silently no-oping. */
+  programLoaded: boolean;
   error: string | null;
   stepCount?: number;
 }
@@ -27,6 +31,7 @@ export function Controls({
   onReset,
   isRunning,
   isHalted,
+  programLoaded,
   error,
   stepCount,
 }: ControlsProps) {
@@ -61,7 +66,7 @@ export function Controls({
         aria-label={isRunning ? "pause" : "run"}
         aria-keyshortcuts="F5"
         title="F5"
-        disabled={isHalted && !isRunning}
+        disabled={!programLoaded || (isHalted && !isRunning)}
       >
         <span>{isRunning ? "pause" : "run"}</span>
         <Shortcut keys="F5" />
@@ -72,7 +77,7 @@ export function Controls({
         aria-label="step"
         aria-keyshortcuts="F10"
         title="F10"
-        disabled={isRunning || isHalted}
+        disabled={!programLoaded || isRunning || isHalted}
       >
         <span>step</span>
         <Shortcut keys="F10" />
@@ -84,7 +89,7 @@ export function Controls({
           aria-label="back"
           aria-keyshortcuts="Shift+F10"
           title="Shift+F10"
-          disabled={isRunning || !canStepBack}
+          disabled={!programLoaded || isRunning || !canStepBack}
         >
           <span>back</span>
           <Shortcut keys="Shift+F10" />
