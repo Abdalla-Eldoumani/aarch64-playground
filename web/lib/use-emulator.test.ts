@@ -645,6 +645,32 @@ describe("useEmulator stepping and running", () => {
     expect(result.current.isRunning).toBe(false);
   });
 
+  it("a run captured before a halt-clearing assemble still executes", async () => {
+    // The embed's Run awaits assemble and then invokes the `run` it
+    // captured at click time. When the previous program had halted, that
+    // captured closure must observe the fresh post-assemble halt flag
+    // (via the ref), not the stale pre-assemble one, or the run silently
+    // never starts and no output ever streams.
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+
+    act(() => {
+      fake.fire({ halted: true });
+    });
+    expect(result.current.isHalted).toBe(true);
+    const capturedRun = result.current.run;
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    expect(result.current.isHalted).toBe(false);
+
+    await act(async () => {
+      capturedRun();
+    });
+    expect(fake.calls.run).toEqual([1_000_000]);
+  });
+
   it("run sets the running flag until the backend resolves", async () => {
     const fake = makeBackend({ runDeferred: true });
     const { result } = await mountLoaded(fake);
