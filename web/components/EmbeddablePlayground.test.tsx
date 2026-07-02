@@ -47,6 +47,7 @@ function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
     changedRegs: new Set<number>(),
     isRunning: false,
     isHalted: false,
+    programLoaded: false,
     error: null as string | null,
     assemblyErrors: [],
     breakpoints: new Set<number>(),
@@ -380,6 +381,35 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBeNull();
     rerender(<EmbeddablePlayground chrome="embed" />);
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
+  });
+
+  it("gates the full-chrome execution controls on the hub's loaded flag", () => {
+    // The real Controls renders in full chrome; run/step/back must follow
+    // programLoaded even when the snapshot ring says stepping back is
+    // possible (a stale canStepBack cannot outvote a missing program).
+    useEmulatorMock.mockReturnValue(
+      makeHub({ programLoaded: false, canStepBack: true }),
+    );
+    const { unmount } = render(<EmbeddablePlayground chrome="full" />);
+    for (const name of [/^run/, /^step/, /^back/]) {
+      expect(
+        screen.getByRole("button", { name }).hasAttribute("disabled"),
+      ).toBe(true);
+    }
+    expect(
+      screen.getByRole("button", { name: /^assemble/ }).hasAttribute("disabled"),
+    ).toBe(false);
+    unmount();
+
+    useEmulatorMock.mockReturnValue(
+      makeHub({ programLoaded: true, canStepBack: true }),
+    );
+    render(<EmbeddablePlayground chrome="full" />);
+    for (const name of [/^run/, /^step/, /^back/]) {
+      expect(
+        screen.getByRole("button", { name }).hasAttribute("disabled"),
+      ).toBe(false);
+    }
   });
 });
 
