@@ -151,7 +151,10 @@ export function ExerciseView({ exercise }: { exercise: Exercise }): JSX.Element 
         </ul>
       </section>
 
-      <div className="my-6 flex h-[440px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[520px]">
+      {/* Fixed frame at every breakpoint (no shift as the editor loads); the
+          embed's container-driven layout gives the editor the full prose
+          measure above a registers | console split. */}
+      <div className="my-6 flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
         <EmbeddablePlayground
           ref={embedRef}
           chrome="checker"
