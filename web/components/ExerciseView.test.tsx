@@ -5,6 +5,7 @@ import type { Exercise } from "@/lib/exercise-schema";
 import type { CheckResult } from "@/lib/exercise-checker";
 import { checkExercise } from "@/lib/exercise-checker";
 import { markSolved } from "@/lib/solved-state";
+import { readShareHash } from "@/lib/share";
 import { MAX_STDIN_BYTES } from "@/lib/upload-guard";
 
 // Shared between the embed mock and the assertions: the snapshot the embed
@@ -138,6 +139,37 @@ describe("ExerciseView", () => {
     // The expected register value and the expected stdout must never appear.
     expect(text).not.toContain("55");
     expect(text).not.toContain("sum = 55");
+  });
+
+  it("links to the playground with the starter, args, and stdin payload", () => {
+    const exercise: Exercise = {
+      ...writeExercise,
+      args: "3 4",
+      stdin: "7\n",
+    };
+    render(<ExerciseView exercise={exercise} />);
+    const link = screen.getByRole("link", { name: /open in playground/i });
+    const href = link.getAttribute("href") ?? "";
+    expect(href.startsWith("/playground#p2=")).toBe(true);
+    const decoded = readShareHash(href.slice("/playground".length));
+    expect(decoded).toEqual({
+      source: "// starter program\nret",
+      args: "3 4",
+      stdin: "7\n",
+    });
+  });
+
+  it("drops an oversize stdin from the playground link", () => {
+    const exercise: Exercise = {
+      ...writeExercise,
+      stdin: "x".repeat(MAX_STDIN_BYTES + 1),
+    };
+    render(<ExerciseView exercise={exercise} />);
+    const link = screen.getByRole("link", { name: /open in playground/i });
+    const decoded = readShareHash(
+      (link.getAttribute("href") ?? "").slice("/playground".length),
+    );
+    expect(decoded).toEqual({ source: "// starter program\nret" });
   });
 
   it("renders the identify-bug framing banner only for that variant", () => {
