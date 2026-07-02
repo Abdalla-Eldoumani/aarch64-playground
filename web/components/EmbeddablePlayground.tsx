@@ -424,7 +424,11 @@ function EmbeddableCore({
       {
         id: "step",
         label: "Step",
-        description: "execute one instruction",
+        // The hint mirrors step-back's: the hub ignores step/run without a
+        // loaded program, so the palette says why instead of no-oping mutely.
+        description: emu.programLoaded
+          ? "execute one instruction"
+          : "(no program; assemble first)",
         shortcut: "F10",
         run: () => emu.step(),
       },
@@ -440,7 +444,9 @@ function EmbeddableCore({
       {
         id: "run",
         label: "Run",
-        description: "run until halt or breakpoint",
+        description: emu.programLoaded
+          ? "run until halt or breakpoint"
+          : "(no program; assemble first)",
         shortcut: "F5",
         run: () => emu.run(),
       },
@@ -791,7 +797,12 @@ function EmbeddableCore({
       },
       deleteVfs: async (path: string) => emu.deleteVfsFile(path),
       runProgram: async (args: string[], stdin?: string) => {
-        emu.assemble(source, args.slice(1));
+        // Await the assemble: run() gates on the loaded-program flag, so
+        // firing it while the assemble is still in flight would no-op.
+        const ok = await emu.assemble(source, args.slice(1));
+        if (!ok) {
+          return { stdout: emu.stdout, stderr: emu.stderr, exitCode: emu.exitCode ?? 0 };
+        }
         if (stdin) emu.pushStdin(stdin);
         emu.run();
         const startedAt = Date.now();
@@ -1313,6 +1324,7 @@ function EmbeddableCore({
           onReset={emu.reset}
           stepCount={emu.stepCount}
           isHalted={emu.isHalted}
+          programLoaded={emu.programLoaded}
         />
       )}
       <Controls
@@ -1325,6 +1337,7 @@ function EmbeddableCore({
         onReset={emu.reset}
         isRunning={emu.isRunning}
         isHalted={emu.isHalted}
+        programLoaded={emu.programLoaded}
         error={emu.error}
         stepCount={emu.stepCount}
       />
