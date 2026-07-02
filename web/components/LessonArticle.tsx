@@ -125,7 +125,11 @@ export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
             case "editor":
               return (
                 <div key={index} className="my-6">
-                  <div className="flex h-[440px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[520px]">
+                  {/* Fixed frame at every breakpoint (no shift as the editor
+                      loads); the embed's container-driven layout gives the
+                      editor the full prose measure above a registers |
+                      console split. */}
+                  <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
                     <EmbeddablePlayground
                       chrome="embed"
                       startSource={block.starter}
