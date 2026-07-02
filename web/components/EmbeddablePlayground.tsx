@@ -882,12 +882,15 @@ function EmbeddableCore({
   }
 
   // embed / checker: the shared core plus a minimal control set. Full-only
-  // panels (and their code) never load here.
+  // panels (and their code) never load here. The editor / registers / console
+  // arrangement comes from the container-driven embed-grid areas in
+  // globals.css, so each host's own width (a prose measure, a wide hero)
+  // picks the layout rather than the viewport.
   if (chrome !== "full") {
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex-1 min-h-0 grid grid-rows-[1fr_auto] md:grid-rows-1 md:grid-cols-[3fr_2fr]">
-          <div className="min-h-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border)]">
+      <div className="embed-layout flex flex-col flex-1 min-h-0">
+        <div className="flex-1 min-h-0 embed-grid">
+          <div className="embed-area-editor min-h-0 min-w-0 flex flex-col">
             <Editor
               value={source}
               onChange={readOnly ? () => {} : setSource}
@@ -899,28 +902,26 @@ function EmbeddableCore({
               lineCounts={emu.lineCounts}
             />
           </div>
-          <div className="min-h-0 flex flex-col">
-            <div className="flex-1 min-h-0 overflow-auto border-b border-[var(--border)]">
-              <RegisterPanel
-                registers={emu.registers}
-                changedRegs={emu.changedRegs}
-                sp={emu.sp}
-                pc={emu.pc}
-                nzcv={emu.nzcv}
-              />
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              <ConsolePanel
-                stdout={emu.stdout}
-                stderr={emu.stderr}
-                blocked={emu.blocked}
-                exitCode={emu.exitCode}
-                vfsFiles={emu.vfsFiles}
-                pushStdin={emu.pushStdin}
-                uploadVfsFile={emu.uploadVfsFile}
-                clearConsole={emu.clearConsole}
-              />
-            </div>
+          <div className="embed-area-registers min-h-0 min-w-0 overflow-auto">
+            <RegisterPanel
+              registers={emu.registers}
+              changedRegs={emu.changedRegs}
+              sp={emu.sp}
+              pc={emu.pc}
+              nzcv={emu.nzcv}
+            />
+          </div>
+          <div className="embed-area-console min-h-0 min-w-0 overflow-hidden flex flex-col">
+            <ConsolePanel
+              stdout={emu.stdout}
+              stderr={emu.stderr}
+              blocked={emu.blocked}
+              exitCode={emu.exitCode}
+              vfsFiles={emu.vfsFiles}
+              pushStdin={emu.pushStdin}
+              uploadVfsFile={emu.uploadVfsFile}
+              clearConsole={emu.clearConsole}
+            />
           </div>
         </div>
         <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)]">
