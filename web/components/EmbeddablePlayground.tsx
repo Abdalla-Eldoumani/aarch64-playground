@@ -375,17 +375,27 @@ function EmbeddableCore({
   // The reduced embed/checker chrome has no separate Assemble control, so its
   // primary Run must assemble first; otherwise runUntilBreak executes over
   // empty memory and nothing the student wrote runs. Assemble when nothing is
-  // loaded yet (fresh or post-reset, instructions empty) or the source changed
-  // since the last run, awaiting the hub so the backend is loaded before run;
-  // an already-assembled, unchanged program runs straight away.
+  // loaded yet (fresh or post-reset, instructions empty), the source changed
+  // since the last run, or the machine has halted (Run on a finished program
+  // means run it again from the start), awaiting the hub so the backend is
+  // loaded before run. A failed assemble skips the run, and a successful one
+  // re-applies the program's input seeds: the assemble reset the machine, so
+  // seeded stdin and VFS files must be back in place before the run. Only a
+  // blocked or paused unchanged program resumes without re-assembling.
   const lastRunSourceRef = useRef<string | null>(null);
   const runEmbed = useCallback(async () => {
-    if (emu.instructions.length === 0 || lastRunSourceRef.current !== source) {
+    if (
+      emu.instructions.length === 0 ||
+      lastRunSourceRef.current !== source ||
+      emu.isHalted
+    ) {
       lastRunSourceRef.current = source;
-      await emu.assemble(source, parseArgs(argsText));
+      const ok = await emu.assemble(source, parseArgs(argsText));
+      if (!ok) return;
+      applySeeds();
     }
     emu.run();
-  }, [emu, source, argsText]);
+  }, [emu, source, argsText, applySeeds]);
 
   // Auto-switch to the console on the false->true edge of `blocked` so the
   // student sees the scanf prompt. queueMicrotask defers the flip out of the
@@ -609,9 +619,11 @@ function EmbeddableCore({
       // Assemble directly (not assembleWithHistory) so the hero never pollutes
       // the recent-programs list, and await it so the steps land on a loaded
       // program. Read the hub through emuRef so a register re-render cannot
-      // strand the timer on a stale hub.
-      await emuRef.current.assemble(source, parseArgs(argsText));
-      if (cancelled || steps === 0) return;
+      // strand the timer on a stale hub. Seeds re-apply after the successful
+      // assemble, the same as every other assemble path.
+      const ok = await emuRef.current.assemble(source, parseArgs(argsText));
+      if (ok) applySeeds();
+      if (cancelled || !ok || steps === 0) return;
       let stepped = 0;
       timer = setInterval(() => {
         emuRef.current.step();
@@ -692,15 +704,20 @@ function EmbeddableCore({
   const checkEmbed = useCallback(async () => {
     if (emu.instructions.length === 0 || lastRunSourceRef.current !== source) {
       lastRunSourceRef.current = source;
-      await emu.assemble(source, parseArgs(argsText));
-      emu.run();
-      const startedAt = Date.now();
-      do {
-        await new Promise<void>((resolve) => setTimeout(resolve, 16));
-      } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
+      const ok = await emu.assemble(source, parseArgs(argsText));
+      if (ok) {
+        // Same post-assemble seeding as Run: the exercise's stdin and
+        // fixtures must be on the freshly reset machine before it runs.
+        applySeeds();
+        emu.run();
+        const startedAt = Date.now();
+        do {
+          await new Promise<void>((resolve) => setTimeout(resolve, 16));
+        } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
+      }
     }
     onCheck?.(currentState());
-  }, [emu, source, argsText, onCheck, currentState]);
+  }, [emu, source, argsText, onCheck, currentState, applySeeds]);
 
   // Stable handle identity; every method reads through a latest-value ref so
   // the object never needs rebuilding (no re-registration churn).
@@ -897,10 +914,13 @@ function EmbeddableCore({
         </div>
         <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)]">
           {showRun && (
+            // Run stays available on a halted machine: runEmbed re-assembles
+            // and restarts, so a finished (or edited) program runs again
+            // without a reset. Only an in-flight run disables it.
             <button
               type="button"
               onClick={() => void runEmbed()}
-              disabled={emu.isHalted && !emu.isRunning}
+              disabled={emu.isRunning}
               aria-label="run"
               className="min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
             >

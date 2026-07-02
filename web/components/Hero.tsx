@@ -42,7 +42,9 @@ export function Hero() {
           chrome="embed"
           startSource={HERO_PROGRAM}
           autoplay
-          autoplaySteps={8}
+          // The walk reaches the program's svc on step 9, so the hero prints
+          // its line into the embed console during the autoplay.
+          autoplaySteps={10}
           readOnly
         />
       </div>

@@ -153,6 +153,11 @@ export function useEmulator(): EmulatorState {
   // diff highlighting in the replay scrubber and MemoryPanel. Cleared
   // on assemble / reset.
   const dirtyAddrsRef = useRef<Array<[number, number]>>([]);
+  // Live halted flag for the run() guard. The embed and checker call a
+  // `run` captured before their awaited assemble, so a state-closure
+  // guard would still see the pre-assemble halt and silently skip the
+  // run; the ref always reflects the latest snapshot.
+  const haltedRef = useRef(false);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -205,6 +210,7 @@ export function useEmulator(): EmulatorState {
       changedRegs: snap.changedRegs,
     };
     setIsHalted(snap.halted);
+    haltedRef.current = snap.halted;
     setBlocked(snap.blocked);
     setExitCode(snap.exitCode);
     setCanStepBack(snap.canStepBack);
@@ -488,7 +494,10 @@ export function useEmulator(): EmulatorState {
 
   const run = useCallback(() => {
     const backend = backendRef.current;
-    if (!backend || isHalted) return;
+    // Guard through the ref, not the isHalted state: callers that await
+    // an assemble and then invoke a run captured earlier (the embed's
+    // Run, the checker) must see the fresh post-assemble halt flag.
+    if (!backend || haltedRef.current) return;
     setIsRunning(true);
     runningRef.current = true;
     backend
@@ -511,7 +520,7 @@ export function useEmulator(): EmulatorState {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [isHalted, bumpLineCount]);
+  }, [bumpLineCount]);
 
   const pause = useCallback(() => {
     const backend = backendRef.current;
