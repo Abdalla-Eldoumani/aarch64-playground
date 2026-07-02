@@ -15,27 +15,34 @@ export interface RegisterRowProps {
 
 /**
  * One register row: name / alias / value columns. The value uses tabular
- * figures so hex digits line up down the column. On a write the row plays the
- * `anim-reg-flash` keyframe, a tint read from `--changed` so the flash follows
- * the theme (never a hardcoded amber); the keyframe lives inside a
- * `prefers-reduced-motion: no-preference` block, so under reduced motion the row
- * is static and the value's `--changed` tint is the only indicator. The alias
- * stays on `--text-secondary` at full opacity so it clears WCAG AA (not a faded
- * label).
+ * figures so hex digits line up down the column. The row is a wrap-capable
+ * flex line rather than a rigid grid: an 18-character hex value cannot
+ * shrink, so in a panel narrower than one full line it reflows onto its own
+ * right-aligned line under the name and alias instead of painting into the
+ * neighboring column; `title` keeps the full value one hover away. On a
+ * write the row plays the `anim-reg-flash` keyframe, a tint read from
+ * `--changed` so the flash follows the theme (never a hardcoded amber); the
+ * keyframe lives inside a `prefers-reduced-motion: no-preference` block, so
+ * under reduced motion the row is static and the value's `--changed` tint is
+ * the only indicator. The alias stays on `--text-secondary` at full opacity
+ * so it clears WCAG AA (not a faded label).
  */
 export function RegisterRow({ name, alias, value, changed = false }: RegisterRowProps) {
   return (
     <div
-      className={`grid grid-cols-[2.5rem_2.75rem_1fr] items-center gap-2 rounded-[var(--radius-control)] px-2 py-1 ${
+      className={`flex flex-wrap items-center gap-x-2 rounded-[var(--radius-control)] px-2 py-1 ${
         changed ? "anim-reg-flash" : ""
       }`}
     >
-      <span className="font-mono text-[13px] text-[var(--text-secondary)]">{name}</span>
-      <span className="text-left font-mono text-[12px] text-[var(--text-secondary)]">
+      <span className="w-10 shrink-0 font-mono text-[13px] text-[var(--text-secondary)]">
+        {name}
+      </span>
+      <span className="w-11 shrink-0 text-left font-mono text-[12px] text-[var(--text-secondary)]">
         {alias ?? ""}
       </span>
       <span
-        className={`text-right font-mono text-[13px] tabular-nums ${
+        title={value}
+        className={`ml-auto text-right font-mono text-[13px] tabular-nums ${
           changed ? "text-[var(--changed)]" : "text-[var(--text-primary)]"
         }`}
       >
