@@ -35,6 +35,10 @@ export interface EmulatorState {
   changedRegs: Set<number>;
   isRunning: boolean;
   isHalted: boolean;
+  /** True only while a successfully assembled (or state-restored) program
+   *  is in the machine. `run`, `step`, and `stepBack` are inert without
+   *  one; reset and a failed assemble drop the flag. */
+  programLoaded: boolean;
   error: string | null;
   assemblyErrors: AssemblyError[];
   breakpoints: Set<number>;
@@ -158,6 +162,13 @@ export function useEmulator(): EmulatorState {
   // guard would still see the pre-assemble halt and silently skip the
   // run; the ref always reflects the latest snapshot.
   const haltedRef = useRef(false);
+  // Loaded-program gate for the execution controls. Stepping or running an
+  // empty machine decodes zeroed memory ("unknown instruction: 0x00000000")
+  // and fills the replay ring with steps that never really executed, so
+  // run/step/stepBack no-op until an assemble succeeds. A ref shadows the
+  // state for the same reason as haltedRef: callbacks captured before an
+  // awaited assemble must see the fresh flag.
+  const programLoadedRef = useRef(false);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -170,6 +181,7 @@ export function useEmulator(): EmulatorState {
   const [changedRegs, setChangedRegs] = useState<Set<number>>(new Set());
   const [isRunning, setIsRunning] = useState(false);
   const [isHalted, setIsHalted] = useState(false);
+  const [programLoaded, setProgramLoaded] = useState(false);
   const [canStepBack, setCanStepBack] = useState(false);
   const [stepCount, setStepCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -295,6 +307,13 @@ export function useEmulator(): EmulatorState {
     setLineCountsTick((t) => t + 1);
   }, []);
 
+  // Ref and state move together so the guards (refs) and the controls
+  // (state) can never disagree about whether a program exists.
+  const markProgramLoaded = useCallback((loaded: boolean) => {
+    programLoadedRef.current = loaded;
+    setProgramLoaded(loaded);
+  }, []);
+
   const resetLineCounts = useCallback(() => {
     lineCountsRef.current = new Map();
     replayRingRef.current.clear();
@@ -354,6 +373,10 @@ export function useEmulator(): EmulatorState {
       setStepCount(0);
       setStdout("");
       setStderr("");
+      // The backend wipes the machine on every assemble attempt, so the old
+      // program is gone the moment one starts; the flag comes back only on
+      // success. A failed assemble leaves the controls gated.
+      markProgramLoaded(false);
       resetLineCounts();
       // Drop any prior line map; a failed assemble or the bare-metal path
       // then falls back to the legacy line-count heuristic.
@@ -430,6 +453,7 @@ export function useEmulator(): EmulatorState {
             instrs.push({ address: addr, hex, text });
           }
           setInstructions(instrs);
+          markProgramLoaded(true);
           return true;
         })
         .catch((e: unknown) => {
@@ -437,12 +461,14 @@ export function useEmulator(): EmulatorState {
           return false;
         });
     },
-    [resetLineCounts],
+    [resetLineCounts, markProgramLoaded],
   );
 
   const step = useCallback(() => {
     const backend = backendRef.current;
-    if (!backend) return;
+    // Gate on a loaded program (through the ref, like run) so the controls,
+    // shortcuts, palette, and terminal all share one no-program guard.
+    if (!backend || !programLoadedRef.current) return;
     setError(null);
     backend
       .step()
@@ -464,7 +490,7 @@ export function useEmulator(): EmulatorState {
 
   const stepBack = useCallback(() => {
     const backend = backendRef.current;
-    if (!backend) return;
+    if (!backend || !programLoadedRef.current) return;
     setError(null);
     backend
       .stepBack()
@@ -483,8 +509,12 @@ export function useEmulator(): EmulatorState {
   const loadState = useCallback((name: string) => {
     const backend = backendRef.current;
     if (!backend) return;
-    void backend.loadState(name);
-  }, []);
+    // A restored save is a live machine with a program in memory, so the
+    // execution controls come back even when a reset preceded the load.
+    void backend.loadState(name).then(({ ok }) => {
+      if (ok) markProgramLoaded(true);
+    });
+  }, [markProgramLoaded]);
 
   const deleteState = useCallback((name: string) => {
     const backend = backendRef.current;
@@ -494,10 +524,10 @@ export function useEmulator(): EmulatorState {
 
   const run = useCallback(() => {
     const backend = backendRef.current;
-    // Guard through the ref, not the isHalted state: callers that await
-    // an assemble and then invoke a run captured earlier (the embed's
-    // Run, the checker) must see the fresh post-assemble halt flag.
-    if (!backend || haltedRef.current) return;
+    // Guard through the refs, not state: callers that await an assemble
+    // and then invoke a run captured earlier (the embed's Run, the
+    // checker) must see the fresh post-assemble halt and loaded flags.
+    if (!backend || !programLoadedRef.current || haltedRef.current) return;
     setIsRunning(true);
     runningRef.current = true;
     backend
@@ -542,9 +572,10 @@ export function useEmulator(): EmulatorState {
     setStdout("");
     setStderr("");
     setStepCount(0);
+    markProgramLoaded(false);
     resetLineCounts();
     void backend.reset();
-  }, [resetLineCounts]);
+  }, [resetLineCounts, markProgramLoaded]);
 
   const pushStdin = useCallback((s: string) => {
     const backend = backendRef.current;
@@ -610,6 +641,9 @@ export function useEmulator(): EmulatorState {
       setStepCount(0);
       setStdout("");
       setStderr("");
+      // Same gate discipline as assemble: the backend call below wipes the
+      // machine, so the flag drops now and returns only on success.
+      markProgramLoaded(false);
       resetLineCounts();
       const argList = params.args
         ? params.args.split(/\s+/).filter((s) => s.length > 0)
@@ -622,6 +656,7 @@ export function useEmulator(): EmulatorState {
         setError(result.error ?? null);
         return;
       }
+      markProgramLoaded(true);
       if (params.stdin) {
         await backend.pushStdin(params.stdin);
       }
@@ -639,7 +674,7 @@ export function useEmulator(): EmulatorState {
       }
       bumpLineCount(stepped);
     },
-    [bumpLineCount, resetLineCounts],
+    [bumpLineCount, resetLineCounts, markProgramLoaded],
   );
 
   const toggleBreakpoint = useCallback((line: number) => {
@@ -717,6 +752,7 @@ export function useEmulator(): EmulatorState {
       changedRegs,
       isRunning,
       isHalted,
+      programLoaded,
       error,
       assemblyErrors,
       breakpoints,
@@ -764,7 +800,7 @@ export function useEmulator(): EmulatorState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
-      isRunning, isHalted, error, assemblyErrors, breakpoints,
+      isRunning, isHalted, programLoaded, error, assemblyErrors, breakpoints,
       currentLine, instructions, codeBase, stdout, stderr, blocked,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, step, stepBack, saveState, loadState,
