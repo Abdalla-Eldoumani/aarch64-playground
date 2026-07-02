@@ -235,8 +235,14 @@ export function useEmulator(): EmulatorState {
     // of counting non-label source lines (which double-counts data/macro
     // lines and drifts on complex programs). Fall back to the legacy
     // line-count path only when the map is empty (bare-metal, already 1:1).
+    // No program, no marker: snapshots that arrive while the machine is
+    // empty (boot heartbeats, reset, a failed assemble) must not resurrect
+    // a stale line through the previous program's map.
     const map = lineMapRef.current;
-    if (!isEmptyLineMap(map)) {
+    if (!programLoadedRef.current) {
+      setCurrentLine(null);
+      currentLineRef.current = null;
+    } else if (!isEmptyLineMap(map)) {
       const newLine = pcToSourceLineFromMap(pcNum, map);
       setCurrentLine(newLine);
       currentLineRef.current = newLine;
@@ -419,16 +425,17 @@ export function useEmulator(): EmulatorState {
           const map = parseLineMap(flatMap);
           lineMapRef.current = map;
           const mapped = !isEmptyLineMap(map);
-          // The post-assemble snapshot was applied before this map existed,
-          // so its current-line marker came from the legacy line-count
-          // fallback -- wrong for a hosted program's prologue. Recompute the
-          // marker from the live PC now that the authoritative map is in
-          // hand, so the entry frame highlights correctly without a step.
-          if (mapped) {
-            const ln = pcToSourceLineFromMap(latestSnapRef.current.pc, map);
-            setCurrentLine(ln);
-            currentLineRef.current = ln;
-          }
+          // The post-assemble snapshot was applied while the loaded flag was
+          // still down (and before this map existed), so it left no marker.
+          // Recompute the entry marker from the live PC now: through the map
+          // when there is one, through the index fallback when the program
+          // is bare-metal, so the entry frame highlights without a step.
+          const entryPc = latestSnapRef.current.pc;
+          const entryLine = mapped
+            ? pcToSourceLineFromMap(entryPc, map)
+            : pcToSourceLine((entryPc - base) / 4, source);
+          setCurrentLine(entryLine);
+          currentLineRef.current = entryLine;
           const instrs: DecodedInstruction[] = [];
           for (let i = 0; i < result.instruction_count; i++) {
             const addr = base + i * 4;
