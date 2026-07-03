@@ -121,6 +121,22 @@ describe("EmbeddablePlayground", () => {
     expect(ref.current!.getSource()).toBe("mov x0, #1");
   });
 
+  it("carries the base converter in the command actions", () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    const action = ref
+      .current!.getCommands()
+      .find((command) => command.id === "base-converter");
+    expect(action).toBeTruthy();
+    expect(action!.description).toContain("two's complement");
+    // Running it flips the full-chrome tab and the mobile pane request; in
+    // embed chrome that state simply has no surface, so it must not throw.
+    act(() => action!.run());
+  });
+
   it("does not engage the hub before the lazy trigger fires", () => {
     const { container } = render(<EmbeddablePlayground chrome="embed" />);
     // Embed defers until viewport entry / interaction; jsdom has no
