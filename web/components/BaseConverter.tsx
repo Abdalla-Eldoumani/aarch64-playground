@@ -209,7 +209,7 @@ export function BaseConverter({ className = "" }: { className?: string }) {
         onKeyDown={onGridKeyDown}
         className="flex flex-wrap gap-x-2 gap-y-2"
       >
-        {nibbles.map((nibble, g) => (
+        {nibbles.map((nibble) => (
           <span key={nibble.indices[0]} className="flex flex-col items-center gap-0.5">
             <span className="flex gap-px">
               {nibble.indices.map((i) => {
