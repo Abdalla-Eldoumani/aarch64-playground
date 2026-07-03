@@ -103,7 +103,7 @@ main:
     {
       "type": "code",
       "language": "asm",
-      "source": "// add two registers and print the sum\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\n        .type main, @function\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 6                        // first value\n        mov     b, 7                        // second value\n        add     a, a, b                     // a now holds the sum\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "source": "// add two registers and print the sum\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 6                        // first value\n        mov     b, 7                        // second value\n        add     a, a, b                     // a now holds the sum\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
     },
     {
       "type": "callout",
@@ -112,7 +112,7 @@ main:
     },
     {
       "type": "editor",
-      "starter": "// change the two values and run to watch the sum follow\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\n        .type main, @function\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 6\n        mov     b, 7\n        add     a, a, b\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "starter": "// change the two values and run to watch the sum follow\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 6\n        mov     b, 7\n        add     a, a, b\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
     }
   ]
 }
@@ -201,7 +201,7 @@ Saved as `web/content/exercises/subtract-two-numbers.json`:
   "topic": "arithmetic",
   "difficulty": "intro",
   "prompt": "The starter loads two values, `a` and `b`. Subtract `b` from `a` so the difference ends up in `a`, then let the program print it.\n\n## what is checked\n\n- the printed line reads `diff = 12`\n- the program exits cleanly\n- the difference is computed, not written in as a constant",
-  "starter": "// subtract b from a and print the difference\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"diff = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\n        .type main, @function\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 20\n        mov     b, 8\n\n        // TODO: subtract b from a, leaving the result in a\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",
+  "starter": "// subtract b from a and print the difference\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"diff = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 20\n        mov     b, 8\n\n        // TODO: subtract b from a, leaving the result in a\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",
   "args": "",
   "variant": "write",
   "acceptance": {
@@ -232,7 +232,8 @@ Saved as `web/content/exercises/subtract-two-numbers.json`:
 ## writing the assembly
 
 Keep it idiomatic: lowercase mnemonics, register aliases with
-`define(name, register)`, and the usual prologue and epilogue around `main`.
-Write your own short program rather than copying one, and run it in the
-playground before saving so you know it assembles and prints what your example
-claims.
+`define(name, register)`, the usual prologue and epilogue around `main`, and
+only the directives course files actually write (the style guide lists the
+ones they never do; a content test enforces that list). Write your own short
+program rather than copying one, and run it in the playground before saving so
+you know it assembles and prints what your example claims.
