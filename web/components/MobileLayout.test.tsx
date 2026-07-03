@@ -13,6 +13,7 @@ const allBlocks = {
   console: <div data-testid="con" />,
   terminal: <div data-testid="term" />,
   watches: <div data-testid="watch" />,
+  converter: <div data-testid="conv" />,
   memwatch: <div data-testid="memwatch" />,
   saves: <div data-testid="saves" />,
 };
@@ -35,7 +36,7 @@ describe("MobileLayout", () => {
     expect(last.getAttribute("aria-label")).toBe("view switcher");
   });
 
-  test("condenses the ten panes into five use-case groups in order", () => {
+  test("condenses the eleven panes into five use-case groups in order", () => {
     const { container } = render(<MobileLayout {...allBlocks} />);
     const labels = within(strip(container))
       .getAllByRole("tab")
@@ -74,6 +75,33 @@ describe("MobileLayout", () => {
         .getAllByRole("tab")
         .map((t) => t.textContent?.trim()),
     ).toEqual(["memory", "stack", "console"]);
+
+    // "tools" carries terminal + watches + the base converter.
+    fireEvent.click(within(strip(container)).getByRole("tab", { name: "tools" }));
+    expect(
+      within(tablist(container, "tools panes"))
+        .getAllByRole("tab")
+        .map((t) => t.textContent?.trim()),
+    ).toEqual(["terminal", "watches", "convert"]);
+  });
+
+  test("a host pane request selects the named pane and its group", () => {
+    const { container, getByTestId, queryByTestId, rerender } = render(
+      <MobileLayout {...allBlocks} />,
+    );
+    expect(queryByTestId("conv")).toBeNull();
+    rerender(
+      <MobileLayout {...allBlocks} paneRequest={{ pane: "convert", nonce: 1 }} />,
+    );
+    expect(getByTestId("conv")).toBeTruthy();
+    expect(
+      within(strip(container))
+        .getByRole("tab", { name: "tools" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    // The strip still works by hand after a request.
+    fireEvent.click(within(strip(container)).getByRole("tab", { name: "view" }));
+    expect(getByTestId("ed")).toBeTruthy();
   });
 
   test("the in-pane sub-switch reaches a non-default member", () => {
