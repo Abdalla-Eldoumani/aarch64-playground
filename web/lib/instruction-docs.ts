@@ -164,6 +164,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "fneg d16, d16",
     cExample: "Dd = -Dn;",
   },
+  FABS: {
+    summary: "Dd = fabs(Dn) (clears the sign bit).",
+    example: "fabs d0, d1",
+    cExample: "Dd = fabs(Dn);",
+  },
   FCMP: {
     summary: "Set NZCV from Dn vs Dm.",
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
