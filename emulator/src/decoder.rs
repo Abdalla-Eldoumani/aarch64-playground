@@ -140,15 +140,25 @@ pub enum FpBinOp {
     Fdiv,
 }
 
+/// Floating-point one-source operation (FP data-processing 1-source space,
+/// same opcode field FMOV-register lives in). Double precision only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpUnaryOp {
+    Fneg,
+    Fabs,
+}
+
 /// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
-/// zero-extends it. The `sxtb`/`sxth`/`sxtw` and `uxtb`/`uxth` extends, plus
-/// `sbfx`/`ubfx`, all lower to these. The LSL/LSR/ASR immediate aliases keep
-/// their dedicated decode (see `decode_bitfield`) so this only covers the
-/// extract-and-extend forms.
+/// zero-extends it; `Bfm` merges the field into the destination and keeps
+/// the other bits (the form behind `bfi`). The `sxtb`/`sxth`/`sxtw` and
+/// `uxtb`/`uxth` extends, plus `sbfx`/`ubfx`, lower to the first two. The
+/// LSL/LSR/ASR immediate aliases keep their dedicated decode (see
+/// `decode_bitfield`) so this only covers the genuine bitfield moves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BitfieldOp {
     Sbfm,
     Ubfm,
+    Bfm,
 }
 
 // ---------------------------------------------------------------------------
@@ -215,15 +225,18 @@ pub enum Instruction {
         size: MemSize,
         mode: IndexMode,
     },
-    /// SIMD&FP LDR/STR, unsigned-offset form. `size` picks D (0b11, 8B)
-    /// or S (0b10, 4B) width; pre/post-index and register-offset forms
-    /// aren't wired through yet.
+    /// SIMD&FP LDR/STR. `size` picks D (0b11, 8B) or S (0b10, 4B) width.
+    /// Immediate addressing matches the integer forms: scaled unsigned
+    /// offsets, unscaled signed offsets (the LDUR/STUR encodings), and
+    /// pre/post-index writeback via `mode`. Register-offset stays
+    /// integer-only; the course never indexes FP data that way.
     FpLdSt {
         load: bool,
         ft: u8,
         rn: u8,
         offset: i64,
         size: MemSize,
+        mode: IndexMode,
     },
     /// LDP/STP.
     LdStPair {
@@ -324,6 +337,12 @@ pub enum Instruction {
         fn_: u8,
         fm: u8,
     },
+    /// FMOV Dd, #imm (8-bit VFP immediate, already expanded to the full
+    /// IEEE 754 double bit pattern so the executor just writes it).
+    FpMoveImm {
+        fd: u8,
+        imm_bits: u64,
+    },
     /// FMOV Dd, Dn (reg-to-reg).
     FpMoveReg {
         fd: u8,
@@ -333,6 +352,12 @@ pub enum Instruction {
     FpCompare {
         fn_: u8,
         fm: u8,
+    },
+    /// FNEG / FABS Dd, Dn: double-precision sign flip / sign clear.
+    FpUnary {
+        op: FpUnaryOp,
+        fd: u8,
+        fn_: u8,
     },
     /// SCVTF Dd, Rn: signed int (W or X) to double. `sf` picks Xn vs Wn.
     FpScvtf {
@@ -395,6 +420,20 @@ fn sign_extend(val: u32, bit_width: u8) -> i64 {
 // ---------------------------------------------------------------------------
 // bitmask immediate decoder
 // ---------------------------------------------------------------------------
+
+/// Expand the FMOV 8-bit VFP immediate to its IEEE 754 double bit pattern.
+/// Per the ARM ARM: sign = b7, exponent = NOT(b6) then b6 replicated eight
+/// times then b5:b4, mantissa = b3:b0 at the top of the 52-bit fraction.
+/// Every encodable value is (16..31)/16 scaled by a power of two from 2^-3
+/// to 2^4, either sign; the assembler brute-forces this table in reverse.
+pub fn expand_fmov_imm8(imm8: u8) -> u64 {
+    let b7 = ((imm8 >> 7) & 1) as u64;
+    let b6 = ((imm8 >> 6) & 1) as u64;
+    let b54 = ((imm8 >> 4) & 0b11) as u64;
+    let b30 = (imm8 & 0b1111) as u64;
+    let rep = if b6 == 1 { 0xFFu64 } else { 0 };
+    (b7 << 63) | ((b6 ^ 1) << 62) | (rep << 54) | (b54 << 52) | (b30 << 48)
+}
 
 /// Decode the N:immr:imms bitmask immediate encoding used by logical
 /// instructions. Returns the 64-bit expanded bitmask.
@@ -636,10 +675,26 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         return Ok(Instruction::FpBinary { op, fd: rd, fn_: rn, fm: rm });
     }
 
-    // FP data-processing 1-source (bits 21 down): opcode2 in bits 20:15.
-    if bits(instr, 20, 15) == 0b000000 && bits(instr, 14, 10) == 0b10000 {
-        // FMOV Dd, Dn
-        return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn });
+    // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.
+    // FMOV keeps its dedicated variant; FABS/FNEG share FpUnary.
+    if bits(instr, 14, 10) == 0b10000 {
+        match bits(instr, 20, 15) {
+            0b000000 => return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn }),
+            0b000001 => {
+                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: rd, fn_: rn })
+            }
+            0b000010 => {
+                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: rd, fn_: rn })
+            }
+            _ => {}
+        }
+    }
+
+    // FMOV (scalar, immediate): imm8 in bits 20:13, bits 12:10 = 100, and
+    // the Rn field is zero. Expanded here so the executor writes raw bits.
+    if bits(instr, 12, 10) == 0b100 && bits(instr, 9, 5) == 0 {
+        let imm8 = bits(instr, 20, 13) as u8;
+        return Ok(Instruction::FpMoveImm { fd: rd, imm_bits: expand_fmov_imm8(imm8) });
     }
 
     // FCMP: opcode2 = 001000 in bits 15:10, bits 4:0 = 00000, bits 20:16 = Rm.
@@ -857,7 +912,16 @@ fn decode_bitfield(instr: u32) -> Result<Instruction, EmuError> {
             immr,
             imms,
         }),
-        // opc 0b01 is BFM (bitfield insert), unused by the course.
+        // BFM (bitfield insert), the form behind bfi: unlike SBFM/UBFM it
+        // reads Rd and preserves the bits outside the field.
+        0b01 => Ok(Instruction::Bitfield {
+            op: BitfieldOp::Bfm,
+            sf,
+            rd,
+            rn,
+            immr,
+            imms,
+        }),
         _ => Err(EmuError::UnknownInstruction(instr)),
     }
 }
@@ -1009,23 +1073,47 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
 
     let v = bit(instr, 26);
     if v == 1 {
-        // SIMD&FP LDR/STR, unsigned offset form. Other SIMD/FP addressing
-        // variants stay unsupported for now; the corpus uses only this one.
+        // SIMD&FP LDR/STR. Scaled unsigned offsets, plus the imm9 family
+        // (unscaled signed offset, pre/post-index) that negative frame
+        // offsets and writeback prologues assemble into. Register-offset
+        // and the Q/H/B widths stay unsupported.
         let opc_outer = bits(instr, 25, 24);
         let opc_inner = bits(instr, 23, 22);
+        let rn = bits(instr, 9, 5) as u8;
+        let ft = bits(instr, 4, 0) as u8;
+        let load = opc_inner == 0b01;
         if opc_outer == 0b01 && (opc_inner == 0b00 || opc_inner == 0b01) {
             let imm12 = bits(instr, 21, 10);
             let scale = size.bytes();
             let offset = (imm12 as i64) * (scale as i64);
-            let rn = bits(instr, 9, 5) as u8;
-            let ft = bits(instr, 4, 0) as u8;
-            let load = opc_inner == 0b01;
             return Ok(Instruction::FpLdSt {
                 load,
                 ft,
                 rn,
                 offset,
                 size,
+                mode: IndexMode::SignedOffset,
+            });
+        }
+        if opc_outer == 0b00
+            && (opc_inner == 0b00 || opc_inner == 0b01)
+            && bit(instr, 21) == 0
+        {
+            let imm9 = bits(instr, 20, 12);
+            let offset = sign_extend(imm9, 9);
+            let mode = match bits(instr, 11, 10) {
+                0b00 => IndexMode::SignedOffset, // unscaled LDUR/STUR
+                0b01 => IndexMode::PostIndex,
+                0b11 => IndexMode::PreIndex,
+                _ => return Err(EmuError::UnknownInstruction(instr)),
+            };
+            return Ok(Instruction::FpLdSt {
+                load,
+                ft,
+                rn,
+                offset,
+                size,
+                mode,
             });
         }
         return Err(EmuError::UnknownInstruction(instr));
@@ -1127,11 +1215,15 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
             });
         }
 
-        // pre-index or post-index with 9-bit signed immediate
+        // 9-bit signed immediate family: unscaled offset (the LDUR/STUR
+        // encodings GAS emits for negative or unaligned LDR/STR offsets),
+        // pre-index, and post-index. idx=00 with opc bit 23 set is the
+        // sign-extending LDURS* family, which stays unsupported.
         let imm9 = bits(instr, 20, 12);
         let offset = sign_extend(imm9, 9);
 
         let mode = match idx_type {
+            0b00 if bit(instr, 23) == 0 => IndexMode::SignedOffset,
             0b01 => IndexMode::PostIndex,
             0b11 => IndexMode::PreIndex,
             _ => return Err(EmuError::UnknownInstruction(instr)),

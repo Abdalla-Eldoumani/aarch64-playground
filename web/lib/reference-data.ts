@@ -94,6 +94,32 @@ const encAddSubShifted: BitField[] = [
   { bits: 5, label: "Rd", color: operandTint },
 ];
 
+// bitfield move, unsigned (ubfx xd, xn, #lsb, #width); opc 10, immr = lsb,
+// imms = lsb + width - 1
+const encUbfm: BitField[] = [
+  { bits: 1, label: "sf" },
+  { bits: 2, label: "10" },
+  { bits: 6, label: "100110" },
+  { bits: 1, label: "N" },
+  { bits: 6, label: "immr", color: operandTint },
+  { bits: 6, label: "imms", color: operandTint },
+  { bits: 5, label: "Rn", color: operandTint },
+  { bits: 5, label: "Rd", color: operandTint },
+];
+
+// bitfield move, insert (bfi xd, xn, #lsb, #width); opc 01,
+// immr = (reg size - lsb) mod reg size, imms = width - 1
+const encBfm: BitField[] = [
+  { bits: 1, label: "sf" },
+  { bits: 2, label: "01" },
+  { bits: 6, label: "100110" },
+  { bits: 1, label: "N" },
+  { bits: 6, label: "immr", color: operandTint },
+  { bits: 6, label: "imms", color: operandTint },
+  { bits: 5, label: "Rn", color: operandTint },
+  { bits: 5, label: "Rd", color: operandTint },
+];
+
 // move wide, zero (movz xd, #imm, lsl #shift); opc 10
 const encMovz: BitField[] = [
   { bits: 1, label: "sf" },
@@ -444,6 +470,15 @@ const referenceSeeds: ReferenceSeed[] = [
     example: "mvn x0, x1",
   },
   {
+    mnemonic: "bic",
+    category: "Data processing",
+    syntax: "bic xd, xn, xm",
+    gotchas: [
+      "register form only: there is no bic with an immediate. clear a constant mask with `and` and the inverted bits instead.",
+      "does not set flags; pair with `tst` when the cleared result drives a branch.",
+    ],
+  },
+  {
     mnemonic: "lsl",
     category: "Data processing",
     syntax: "lsl xd, xn, #imm",
@@ -485,6 +520,26 @@ const referenceSeeds: ReferenceSeed[] = [
     mnemonic: "uxth",
     category: "Data processing",
     syntax: "uxth wd, wn",
+  },
+  {
+    mnemonic: "ubfx",
+    category: "Data processing",
+    syntax: "ubfx xd, xn, #lsb, #width",
+    gotchas: [
+      "the field must fit the register: lsb + width can reach 32 (w form) or 64 (x form), never past it.",
+      "the extracted field lands at bit 0 zero-extended; sign does not survive the move.",
+    ],
+    encoding: encUbfm,
+  },
+  {
+    mnemonic: "bfi",
+    category: "Data processing",
+    syntax: "bfi xd, xn, #lsb, #width",
+    gotchas: [
+      "the destination is read before it is written: bits outside the field keep their old values, so xd must already hold what you mean to keep.",
+      "only the low `width` bits of xn move; anything above them is ignored, not an error.",
+    ],
+    encoding: encBfm,
   },
 
   // compare and test
@@ -702,8 +757,10 @@ const referenceSeeds: ReferenceSeed[] = [
   {
     mnemonic: "fmov",
     category: "Floating point",
-    syntax: "fmov dd, dn",
-    example: "fmov d0, d1",
+    syntax: "fmov dd, dn / fmov dd, #imm",
+    gotchas: [
+      "the immediate is 8 bits of float: a power-of-two multiple of 1.0 through 1.9375. constants like 5.0 and 9.0 fit; 0.0 and most decimals do not, so load those from a `.double` in `.data`.",
+    ],
   },
   {
     mnemonic: "fadd",
@@ -728,6 +785,22 @@ const referenceSeeds: ReferenceSeed[] = [
     category: "Floating point",
     syntax: "fdiv dd, dn, dm",
     example: "fdiv d0, d1, d2",
+  },
+  {
+    mnemonic: "fneg",
+    category: "Floating point",
+    syntax: "fneg dd, dn",
+    gotchas: [
+      "the alternating-sign series idiom: `fneg sign, sign` each pass flips a running +1/-1 factor without a branch.",
+    ],
+  },
+  {
+    mnemonic: "fabs",
+    category: "Floating point",
+    syntax: "fabs dd, dn",
+    gotchas: [
+      "the convergence-test idiom: take `fabs` of an error term before `fcmp` against the epsilon, so the loop exits on distance from zero, not direction.",
+    ],
   },
   {
     mnemonic: "fcmp",

@@ -10,21 +10,26 @@
 //! for now. Label-typed forward references in data slots are a phase A.7
 //! concern; the corpus does not use them.
 
+use std::collections::HashMap;
+
 use super::expr::evaluate;
 use super::lexer::{lex, Token, TokenKind};
 use super::m4::expand;
 use super::sections::{Item, Program, SectionKind, SymbolValue};
 use crate::errors::EmuError;
 
-/// Parse a cpsc 355 source string end to end: m4 expansion, lexing, then
-/// statement-per-line dispatch into `Program`.
+/// Parse a cpsc 355 source string end to end: m4 expansion, the `.req`
+/// register-alias pass, lexing, then statement-per-line dispatch into
+/// `Program`.
 pub fn parse(source: &str) -> Result<Program, EmuError> {
     let expanded = expand(source)?;
-    let tokens = lex(&expanded.text, 1)?;
+    let (text, req_aliases) = apply_req_aliases(&expanded.text);
     let mut prog = Program::new();
     prog.aliases = expanded.defines;
+    prog.aliases.extend(req_aliases);
     prog.source_map = expanded.line_map;
-    prog.expanded_source = expanded.text.clone();
+    prog.expanded_source = text.clone();
+    let tokens = lex(&text, 1)?;
     // Always initialize .text even if nothing goes into it; existing callers
     // expect a section to be present.
     prog.section_or_insert(SectionKind::Text);
@@ -33,6 +38,63 @@ pub fn parse(source: &str) -> Result<Program, EmuError> {
         parse_line(line_tokens, &mut prog, &mut current)?;
     }
     Ok(prog)
+}
+
+/// Apply GAS `name .req register` aliases textually, after m4 and before
+/// lexing. Course assignment files alias both general and FP registers
+/// this way (`fp .req x29`, `sum .req d19`). A definition takes effect on
+/// the lines after it; the definition line itself is blanked, not removed,
+/// so line numbers stay aligned with the editor. m4 has already stripped
+/// comments, so a whitespace split sees exactly the definition's three
+/// words. Substitution is the same token-boundary, string-literal-safe
+/// walk m4 defines use, so an alias works anywhere a register can appear
+/// and never rewrites `.string` text. The alias target is taken as
+/// written; a target that is not a register surfaces as the normal
+/// unknown-register error at the first use site.
+fn apply_req_aliases(text: &str) -> (String, HashMap<String, String>) {
+    // Fast path: nothing to do for the overwhelmingly common case.
+    if !text.contains(".req") {
+        return (text.to_string(), HashMap::new());
+    }
+    let mut aliases: HashMap<String, String> = HashMap::new();
+    let mut out = String::with_capacity(text.len());
+    let mut first = true;
+    for line in text.lines() {
+        if !first {
+            out.push('\n');
+        }
+        first = false;
+        let mut parts = line.split_whitespace();
+        if let (Some(name), Some(req), Some(target), None) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        {
+            if req.eq_ignore_ascii_case(".req") && is_plain_ident_text(name) {
+                // Resolve alias-to-alias at definition time so later
+                // substitution is a single lookup.
+                let resolved = aliases.get(target).cloned().unwrap_or_else(|| target.to_string());
+                aliases.insert(name.to_string(), resolved);
+                // Blank the definition; keep the line for the line map.
+                continue;
+            }
+        }
+        if aliases.is_empty() {
+            out.push_str(line);
+        } else {
+            out.push_str(&super::m4::substitute_once(line, &aliases));
+        }
+    }
+    (out, aliases)
+}
+
+/// A `.req` alias name: identifier shaped, no dots (dotted names are GCC
+/// local labels and directives, never alias names).
+fn is_plain_ident_text(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn group_by_line(tokens: &[Token]) -> Vec<&[Token]> {
@@ -216,6 +278,18 @@ fn parse_directive(
             Ok(())
         }
         ".skip" | ".zero" => {
+            // A count naming an equate (`.skip STACKSIZE * 4`) resolves
+            // in the linker's layout walk; constants resolve right here.
+            let symbolic = rest
+                .iter()
+                .any(|t| matches!(t.kind, TokenKind::Ident(_) | TokenKind::Dot));
+            if symbolic {
+                prog.section_or_insert(*current).items.push(Item::ReserveExpr {
+                    tokens: rest.to_vec(),
+                    original_line: line,
+                });
+                return Ok(());
+            }
             let n = eval_const(rest, line)?;
             if n < 0 {
                 return Err(err(line, ".skip needs a non-negative byte count"));
@@ -243,7 +317,9 @@ fn parse_directive(
         ".byte" => emit_int_list(rest, prog, *current, line, 1),
         ".hword" | ".short" => emit_int_list(rest, prog, *current, line, 2),
         ".word" => emit_int_list(rest, prog, *current, line, 4),
-        ".quad" => emit_int_list(rest, prog, *current, line, 8),
+        // `.dword` is the spelling course files write for 8-byte values;
+        // `.quad` is the GAS name GCC output carries. Same emission.
+        ".quad" | ".dword" => emit_int_list(rest, prog, *current, line, 8),
         ".double" => emit_float_list(rest, prog, *current, line, true),
         ".float" => emit_float_list(rest, prog, *current, line, false),
         other => Err(err(line, &format!("unknown directive `{other}`"))),
@@ -303,6 +379,25 @@ fn emit_int_list(
     width: usize,
 ) -> Result<(), EmuError> {
     let exprs = split_comma_groups(rest);
+    // A value that names a symbol or `.` cannot be computed here: label
+    // addresses exist only after the linker places every section. Course
+    // pointer tables (`.dword label_january, ...`) are the motivating
+    // case. Defer the whole list so slot addressing stays contiguous;
+    // pure-constant lists keep the immediate Bytes path and its
+    // parse-time error reporting.
+    let needs_link_resolution = exprs.iter().any(|group| {
+        group
+            .iter()
+            .any(|t| matches!(t.kind, TokenKind::Ident(_) | TokenKind::Dot))
+    });
+    if needs_link_resolution {
+        prog.section_or_insert(current).items.push(Item::DataExprs {
+            exprs: exprs.iter().map(|g| g.to_vec()).collect(),
+            width,
+            original_line: line,
+        });
+        return Ok(());
+    }
     let mut out = Vec::with_capacity(exprs.len() * width);
     for expr in exprs {
         let value = evaluate(expr, &|_| None, 0, line)?;
@@ -521,6 +616,15 @@ mod tests {
     }
 
     #[test]
+    fn dword_is_the_course_spelling_of_quad() {
+        let p = parse_ok(".data\n.dword 0x1122334455667788\n");
+        assert_eq!(
+            section_bytes(&p, SectionKind::Data),
+            vec![0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11]
+        );
+    }
+
+    #[test]
     fn quad_is_eight_bytes_little_endian() {
         let p = parse_ok(".data\n.quad 0xdeadbeefcafebabe\n");
         assert_eq!(
@@ -615,6 +719,153 @@ mod tests {
     fn section_rodata_switches_current_section() {
         let p = parse_ok(".section .rodata\n.string \"x\"\n");
         assert_eq!(section_bytes(&p, SectionKind::Rodata), b"x\0");
+    }
+
+    // -- .req register aliases --
+
+    #[test]
+    fn req_alias_substitutes_into_instructions() {
+        let p = parse_ok("counter .req w19\n.text\nmov counter, 6\n");
+        let text = p.section(SectionKind::Text).unwrap();
+        let instr_text: Vec<String> = text
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Instruction { original_line, .. } => Some(
+                    p.expanded_source
+                        .lines()
+                        .nth(original_line - 1)
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(instr_text, vec!["mov w19, 6".to_string()]);
+        assert_eq!(p.aliases.get("counter").map(String::as_str), Some("w19"));
+    }
+
+    #[test]
+    fn req_alias_definition_line_is_blanked_in_place() {
+        // The definition occupies line 1; the instruction stays on line 3.
+        let p = parse_ok("fp2 .req x29\n.text\nmov fp2, sp\n");
+        assert_eq!(p.expanded_source.lines().next(), Some(""));
+        let text = p.section(SectionKind::Text).unwrap();
+        match text.items.iter().find(|i| matches!(i, Item::Instruction { .. })) {
+            Some(Item::Instruction { original_line, .. }) => assert_eq!(*original_line, 3),
+            other => panic!("expected an instruction, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn req_alias_with_trailing_comment_and_fp_registers() {
+        // Course files alias FP registers and annotate the definitions.
+        let p = parse_ok("sum .req d19   // running total\n.text\nfmov sum, d0\n");
+        assert_eq!(p.aliases.get("sum").map(String::as_str), Some("d19"));
+        let line3 = p.expanded_source.lines().nth(2).unwrap_or("");
+        assert_eq!(line3.trim(), "fmov d19, d0");
+    }
+
+    #[test]
+    fn req_alias_never_rewrites_string_literals() {
+        // The alias name inside a `.string` must survive untouched.
+        let p = parse_ok(
+            "counter .req w19\n.data\nmsg: .string \"counter = %d\"\n.text\nmov counter, 1\n",
+        );
+        assert_eq!(
+            section_bytes(&p, SectionKind::Data),
+            b"counter = %d\0".to_vec()
+        );
+    }
+
+    #[test]
+    fn req_alias_use_before_definition_stays_unresolved() {
+        // GAS resolves .req top-down; a use above the definition is not
+        // an alias yet, so the ident survives for the encoder to reject.
+        let p = parse_ok(".text\nmov counter, 1\ncounter .req w19\n");
+        let line2 = p.expanded_source.lines().nth(1).unwrap_or("");
+        assert_eq!(line2.trim(), "mov counter, 1");
+    }
+
+    // -- deferred data expressions (label pointer tables) --
+
+    #[test]
+    fn dword_label_list_defers_to_link_time() {
+        let p = parse_ok(".data\ntable: .dword alpha, beta\n.text\nalpha: nop\nbeta: nop\n");
+        let data = p.section(SectionKind::Data).unwrap();
+        match data
+            .items
+            .iter()
+            .find(|i| matches!(i, Item::DataExprs { .. }))
+        {
+            Some(Item::DataExprs { exprs, width, .. }) => {
+                assert_eq!(*width, 8);
+                assert_eq!(exprs.len(), 2);
+            }
+            other => panic!("expected a deferred data item, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn constant_expression_lists_still_emit_bytes_at_parse_time() {
+        let p = parse_ok(".data\n.word 1 + 2, 7\n");
+        assert_eq!(
+            section_bytes(&p, SectionKind::Data),
+            vec![3, 0, 0, 0, 7, 0, 0, 0]
+        );
+        let data = p.section(SectionKind::Data).unwrap();
+        assert!(!data
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::DataExprs { .. })));
+    }
+
+    #[test]
+    fn mixed_constant_and_label_list_defers_the_whole_list() {
+        // Deferring the full list keeps the slots contiguous in one item;
+        // the constant re-evaluates trivially at link time.
+        let p = parse_ok(".data\n.dword 0, marker, 2\n.text\nmarker: nop\n");
+        let data = p.section(SectionKind::Data).unwrap();
+        match data
+            .items
+            .iter()
+            .find(|i| matches!(i, Item::DataExprs { .. }))
+        {
+            Some(Item::DataExprs { exprs, .. }) => assert_eq!(exprs.len(), 3),
+            other => panic!("expected a deferred data item, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn symbolic_skip_size_defers_to_link_time() {
+        // The assignment stack-buffer shape: an equate names the element
+        // count and the reserve multiplies it out.
+        let p = parse_ok("STACKSIZE = 5\n.bss\nstack: .skip STACKSIZE * 4\n");
+        let bss = p.section(SectionKind::Bss).unwrap();
+        assert!(bss
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::ReserveExpr { .. })));
+    }
+
+    #[test]
+    fn constant_skip_still_reserves_at_parse_time() {
+        let p = parse_ok(".bss\n.skip 12 * 2\n");
+        let bss = p.section(SectionKind::Bss).unwrap();
+        assert!(bss.items.iter().any(|i| matches!(i, Item::Reserve(24))));
+    }
+
+    #[test]
+    fn current_address_in_data_slot_defers_to_link_time() {
+        // `.` in a data value means the slot's own address, which only the
+        // linker knows; parse-time evaluation against 0 would bake in the
+        // wrong value.
+        let p = parse_ok(".data\nhere_mark: .dword .\n");
+        let data = p.section(SectionKind::Data).unwrap();
+        assert!(data
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::DataExprs { .. })));
     }
 
     #[test]

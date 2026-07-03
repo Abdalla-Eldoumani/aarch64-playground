@@ -155,8 +155,23 @@ pub fn execute(
         Instruction::FpBinary { op, fd, fn_, fm } => {
             exec_fp_binary(*op, *fd, *fn_, *fm, regs)
         }
-        Instruction::FpLdSt { load, ft, rn, offset, size } => {
-            let addr = regs.read_gpr(*rn, true).wrapping_add(*offset as u64);
+        Instruction::FpLdSt { load, ft, rn, offset, size, mode } => {
+            // Base register 31 means SP here, exactly as in the integer
+            // load/store path: FP spills sit on the stack.
+            let base = regs.read_gpr_or_sp(*rn, true);
+            let (addr, writeback) = match mode {
+                IndexMode::PreIndex => {
+                    let a = (base as i64).wrapping_add(*offset) as u64;
+                    (a, Some(a))
+                }
+                IndexMode::PostIndex => {
+                    let wb = (base as i64).wrapping_add(*offset) as u64;
+                    (base, Some(wb))
+                }
+                IndexMode::SignedOffset => {
+                    ((base as i64).wrapping_add(*offset) as u64, None)
+                }
+            };
             if *load {
                 match size {
                     MemSize::X => {
@@ -185,11 +200,27 @@ pub fn execute(
                     _ => return Err(EmuError::UnknownInstruction(0)),
                 }
             }
+            if let Some(wb) = writeback {
+                regs.write_gpr_or_sp(*rn, true, wb);
+            }
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpMoveImm { fd, imm_bits } => {
+            regs.write_fpr_bits(*fd, *imm_bits);
             Ok(ExecResult::Advance)
         }
         Instruction::FpMoveReg { fd, fn_ } => {
             let v = regs.read_fpr_bits(*fn_);
             regs.write_fpr_bits(*fd, v);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpUnary { op, fd, fn_ } => {
+            let v = regs.read_fpr_f64(*fn_);
+            let result = match op {
+                FpUnaryOp::Fneg => -v,
+                FpUnaryOp::Fabs => v.abs(),
+            };
+            regs.write_fpr_f64(*fd, result);
             Ok(ExecResult::Advance)
         }
         Instruction::FpCompare { fn_, fm } => {
@@ -792,6 +823,9 @@ fn exec_bitfield(
         match op {
             BitfieldOp::Ubfm => field,
             BitfieldOp::Sbfm => sign_extend_from(field, width - 1),
+            // BFM in this arm is BFXIL: field lands at bit 0, the
+            // destination's upper bits survive.
+            BitfieldOp::Bfm => (regs.read_gpr(rd, sf) & !mask_for(width)) | field,
         }
     } else {
         // Place bits [s:0] (width = s + 1) starting at bit (datasize - r).
@@ -802,6 +836,11 @@ fn exec_bitfield(
         match op {
             BitfieldOp::Ubfm => placed,
             BitfieldOp::Sbfm => sign_extend_from(placed, shift + s),
+            // BFM in this arm is BFI: the field lands at the insert
+            // position and every other destination bit survives.
+            BitfieldOp::Bfm => {
+                (regs.read_gpr(rd, sf) & !(mask_for(width) << shift)) | placed
+            }
         }
     };
 
@@ -971,6 +1010,84 @@ mod tests {
         };
         execute(&instr, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_gpr(0, true), 0xFFFF_FF00);
+    }
+
+    #[test]
+    fn bic_clears_masked_bits() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, false, 0b1111_1111);
+        regs.write_gpr(2, false, 0b0000_1111);
+        let instr = Instruction::LogReg {
+            op: LogOp::And, sf: false, rd: 0, rn: 1, rm: 2,
+            shift: ShiftType::LSL, amount: 0, set_flags: false, invert: true,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0b1111_0000);
+    }
+
+    #[test]
+    fn ubfx_extracts_mid_field() {
+        // Extract bits [7:4] of 0xAB: field is 0xA.
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, false, 0xAB);
+        let instr = Instruction::Bitfield {
+            op: BitfieldOp::Ubfm, sf: false, rd: 0, rn: 1, immr: 4, imms: 7,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0xA);
+    }
+
+    #[test]
+    fn bfi_inserts_and_keeps_surroundings() {
+        // Insert 0xC at bits [11:8] of 0xFFFF: only that nibble changes.
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(0, false, 0xFFFF);
+        regs.write_gpr(1, false, 0xC);
+        // bfi w0, w1, #8, #4 -> BFM immr = 24, imms = 3.
+        let instr = Instruction::Bitfield {
+            op: BitfieldOp::Bfm, sf: false, rd: 0, rn: 1, immr: 24, imms: 3,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0xFCFF);
+    }
+
+    #[test]
+    fn bfi_at_lsb_zero_keeps_upper_bits() {
+        // immr = 0 takes the s >= r arm (BFXIL shape): low byte replaced.
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(0, true, 0xABCD_1234);
+        regs.write_gpr(1, true, 0x77);
+        let instr = Instruction::Bitfield {
+            op: BitfieldOp::Bfm, sf: true, rd: 0, rn: 1, immr: 0, imms: 7,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0xABCD_1277);
+    }
+
+    #[test]
+    fn fneg_flips_sign_both_ways() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 2.5);
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: 0, fn_: 1 };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), -2.5);
+        // Negating the result lands back on the original value.
+        let back = Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: 0, fn_: 0 };
+        execute(&back, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 2.5);
+    }
+
+    #[test]
+    fn fabs_clears_sign_and_keeps_positive() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, -0.75);
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 1 };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 0.75);
+        // Already-positive values pass through unchanged.
+        let again = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 0 };
+        execute(&again, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 0.75);
     }
 
     // -- memory --

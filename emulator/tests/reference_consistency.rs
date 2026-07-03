@@ -39,11 +39,11 @@ const SUPPORTED: &[&str] = &[
     // arithmetic
     "ADD", "ADDS", "SUB", "SUBS", "MUL", "MADD", "MSUB", "UDIV", "SDIV", "NEG",
     // logical
-    "AND", "ANDS", "ORR", "EOR", "MVN",
+    "AND", "ANDS", "ORR", "EOR", "MVN", "BIC",
     // shifts (immediate form)
     "LSL", "LSR", "ASR",
-    // sign / zero extension
-    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH",
+    // sign / zero extension and bitfield extract / insert
+    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UBFX", "BFI",
     // compare and test
     "CMP", "CMN", "TST",
     // conditional select
@@ -57,7 +57,7 @@ const SUPPORTED: &[&str] = &[
     "B", "BL", "BR", "BLR", "RET", "B.cond", "Bcond",
     "CBZ", "CBNZ", "TBZ", "TBNZ",
     // floating point (double precision)
-    "FMOV", "FADD", "FSUB", "FMUL", "FDIV", "FCMP", "SCVTF", "FCVTZS",
+    "FMOV", "FADD", "FSUB", "FMUL", "FDIV", "FNEG", "FABS", "FCMP", "SCVTF", "FCVTZS",
     // system
     "NOP", "SVC",
 ];

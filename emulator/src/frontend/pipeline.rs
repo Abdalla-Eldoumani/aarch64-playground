@@ -62,13 +62,18 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // Pass 1a: place labels at section base + running byte offset, and
     // collect `name = expr` assignments with the address where they
     // appear so the linker can evaluate `. - msg - 1` and similar bodies
-    // in the right place.
+    // in the right place. Assignments that resolve against the symbols
+    // seen so far fold immediately -- `.skip STACKSIZE * 4` needs its
+    // equate during this very walk; the rest wait for pass 1c's rounds.
+    // Reserve sizes resolved here are kept for pass 2, which must walk
+    // the identical layout.
     let mut text_len: u64 = 0;
     let mut assignments: Vec<(String, String, u64, usize)> = Vec::new();
+    let mut reserve_sizes: HashMap<(SectionKind, usize), u64> = HashMap::new();
     for section in &prog.sections {
         let base = section.kind.default_base();
         let mut offset: u64 = 0;
-        for item in &section.items {
+        for (idx, item) in section.items.iter().enumerate() {
             match item {
                 Item::Label(name) => {
                     symbols.insert(name.clone(), base + offset);
@@ -84,9 +89,34 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                 }
                 Item::SymbolAssignment { name, body, original_line } => {
+                    if !symbols.contains_key(name) {
+                        if let Some(v) = try_evaluate_at(body, base + offset, &symbols, *original_line) {
+                            symbols.insert(name.clone(), v as u64);
+                            continue;
+                        }
+                    }
                     assignments.push((name.clone(), body.clone(), base + offset, *original_line));
                 }
                 Item::Instruction { .. } => offset += 4,
+                Item::DataExprs { exprs, width, .. } => {
+                    offset += (exprs.len() * width) as u64;
+                }
+                Item::ReserveExpr { tokens, original_line } => {
+                    let value = evaluate(
+                        tokens,
+                        &|name| symbols.get(name).map(|v| *v as i64),
+                        (base + offset) as i64,
+                        *original_line,
+                    )?;
+                    if value < 0 {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: ".skip needs a non-negative byte count".into(),
+                        });
+                    }
+                    reserve_sizes.insert((section.kind, idx), value as u64);
+                    offset += value as u64;
+                }
             }
         }
         if section.kind == SectionKind::Text {
@@ -198,7 +228,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     for section in &prog.sections {
         let base = section.kind.default_base();
         let mut offset: u64 = 0;
-        for item in &section.items {
+        for (idx, item) in section.items.iter().enumerate() {
             match item {
                 Item::Label(_) => {}
                 Item::Bytes(b) => {
@@ -206,6 +236,11 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     offset += b.len() as u64;
                 }
                 Item::Reserve(n) => offset += n,
+                Item::ReserveExpr { .. } => {
+                    // Sized during pass 1a; pages arrive zero-filled, so
+                    // reserving is just the same offset hop again.
+                    offset += reserve_sizes[&(section.kind, idx)];
+                }
                 Item::AlignToBytes(n) => {
                     if *n > 0 {
                         let rem = offset % n;
@@ -215,6 +250,26 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                 }
                 Item::SymbolAssignment { .. } => {}
+                Item::DataExprs { exprs, width, original_line } => {
+                    // Deferred data slots: every label now has an absolute
+                    // address, so evaluate each value against the full
+                    // symbol table. `.` means the address of the slot being
+                    // filled, matching GAS.
+                    let mut bytes = Vec::with_capacity(exprs.len() * width);
+                    for (i, group) in exprs.iter().enumerate() {
+                        let here = base + offset + (i * width) as u64;
+                        let value = evaluate(
+                            group,
+                            &|name| symbols.get(name).map(|v| *v as i64),
+                            here as i64,
+                            *original_line,
+                        )?;
+                        let le = value.to_le_bytes();
+                        bytes.extend_from_slice(&le[..*width]);
+                    }
+                    writes.push((base + offset, bytes));
+                    offset += (exprs.len() * width) as u64;
+                }
                 Item::Instruction { tokens, original_line } => {
                     let pc = base + offset;
                     let word = if let Some(target_text) = extract_ldr_eq_operand(tokens) {

@@ -67,7 +67,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     }
     for libc in [
         "printf", "scanf", "puts", "putchar", "getchar", "strlen", "strcmp", "strcpy",
-        "memset", "memcpy", "atof", "exit",
+        "memset", "memcpy", "atof", "atoi", "exit", "rand", "srand", "time",
     ] {
         let pat = format!("bl {libc}");
         if lower.contains(&pat) {
@@ -605,6 +605,9 @@ mod hosted_mode_tests {
         assert!(detect_hosted_mode("main: bl printf\n"));
         assert!(detect_hosted_mode("main: BL exit\n"));
         assert!(detect_hosted_mode("main: bl strlen\n"));
+        assert!(detect_hosted_mode("main: bl atoi\n"));
+        assert!(detect_hosted_mode("main: bl srand\n"));
+        assert!(detect_hosted_mode("main: bl rand\n"));
     }
 
     #[test]

@@ -129,6 +129,7 @@ fn encode_line(
         "ANDS" => encode_log_dispatch(&ops, 0b11, line_num),
         "ORR" => encode_log_dispatch(&ops, 0b01, line_num),
         "EOR" => encode_log_dispatch(&ops, 0b10, line_num),
+        "BIC" => encode_bic(&ops, line_num),
         "MVN" => encode_mvn(&ops, line_num),
         "TST" => encode_tst(&ops, line_num),
 
@@ -143,6 +144,10 @@ fn encode_line(
         "SXTW" => encode_extend(&ops, true, 31, line_num),
         "UXTB" => encode_extend(&ops, false, 7, line_num),
         "UXTH" => encode_extend(&ops, false, 15, line_num),
+
+        // -- bitfield extract / insert (UBFM / BFM aliases) --
+        "UBFX" => encode_ubfx(&ops, line_num),
+        "BFI" => encode_bfi(&ops, line_num),
 
         // -- multiply / divide --
         "MUL" => encode_mul_div(&ops, 0, line_num),
@@ -169,6 +174,8 @@ fn encode_line(
         "FMUL" => encode_fp_binary(&ops, 0b0000, line_num),
         "FDIV" => encode_fp_binary(&ops, 0b0001, line_num),
         "FMOV" => encode_fmov(&ops, line_num),
+        "FNEG" => encode_fp_unary(&ops, 0b000010, line_num),
+        "FABS" => encode_fp_unary(&ops, 0b000001, line_num),
         "FCMP" => encode_fcmp(&ops, line_num),
         "SCVTF" => encode_scvtf(&ops, line_num),
         "FCVTZS" => encode_fcvtzs(&ops, line_num),
@@ -524,11 +531,25 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     }
     let (_, sf) = parse_register(ops[0], ln)?;
     let zr = if sf { "XZR" } else { "WZR" };
+    // A negative comparison immediate has no direct encoding; GAS flips
+    // the alias instead (`cmp w1, -1` assembles as `cmn w1, 1`), and
+    // sentinel tests like top == -1 rely on that. Flip the same way.
+    let imm_body = ops[1].trim();
+    let imm_body = imm_body.strip_prefix('#').unwrap_or(imm_body).trim();
+    if let Ok(v) = imm_body.parse::<i64>() {
+        if v < 0 {
+            if let Some(positive) = v.checked_neg() {
+                let flipped = positive.to_string();
+                let new_ops = [zr, ops[0], flipped.as_str()];
+                return encode_dp(&new_ops, 1 - op_bit, 1, ln);
+            }
+        }
+    }
     let new_ops = [zr, ops[0], ops[1]];
     encode_dp(&new_ops, op_bit, 1, ln)
 }
 
-fn encode_log_reg(ops: &[&str], opc: u8, _n: bool, _set_flags: bool, ln: usize) -> Result<u32, EmuError> {
+fn encode_log_reg(ops: &[&str], opc: u8, n: bool, _set_flags: bool, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 3 {
         return asm_err(ln, "logical op requires 3 operands");
     }
@@ -536,9 +557,90 @@ fn encode_log_reg(ops: &[&str], opc: u8, _n: bool, _set_flags: bool, ln: usize) 
     let (rn, _) = parse_register(ops[1], ln)?;
     let (rm, _) = parse_register(ops[2], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
+    // N inverts Rm: AND+N is BIC, ORR+N is ORN (the MVN encoder sets it inline).
+    let n_bit = if n { 1u32 } else { 0 };
 
-    Ok((sf_bit << 31) | ((opc as u32) << 29) | (0b01010 << 24)
+    Ok((sf_bit << 31) | ((opc as u32) << 29) | (0b01010 << 24) | (n_bit << 21)
         | ((rm as u32) << 16) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Encode `BIC Xd, Xn, Xm` (bit clear: `Xd = Xn & ~Xm`). AND-shifted-register
+/// with the N bit set; AArch64 has no BIC-immediate, so a `#imm` third
+/// operand gets a plain-language error instead of a register-parse failure.
+fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 3 {
+        return asm_err(ln, "BIC requires 3 operands");
+    }
+    let op3 = ops[2].trim();
+    if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+    {
+        return asm_err(ln, "BIC takes a register, not an immediate; use AND with the inverted mask");
+    }
+    encode_log_reg(ops, 0b00, true, false, ln)
+}
+
+/// Encode `UBFX Rd, Rn, #lsb, #width` (unsigned bitfield extract), the
+/// course's pull-a-field-out instruction. Lowers onto UBFM with
+/// `immr = lsb`, `imms = lsb + width - 1`; the executor's existing
+/// `Bitfield::Ubfm` path does the extract-and-zero-extend.
+fn encode_ubfx(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(ln, "UBFX requires 4 operands: Rd, Rn, #lsb, #width");
+    }
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, _) = parse_register(ops[1], ln)?;
+    let lsb = parse_immediate(ops[2], ln)?;
+    let width = parse_immediate(ops[3], ln)?;
+    let reg_size: i64 = if sf { 64 } else { 32 };
+
+    if width < 1 {
+        return asm_err(ln, "UBFX width must be at least 1");
+    }
+    if lsb < 0 || lsb >= reg_size {
+        return asm_err(ln, "UBFX lsb is out of range for the register width");
+    }
+    if lsb + width > reg_size {
+        return asm_err(ln, "UBFX field runs past the top of the register");
+    }
+
+    let immr = lsb as u32;
+    let imms = (lsb + width - 1) as u32;
+    let sf_bit = if sf { 1u32 } else { 0 };
+    let n_bit = sf_bit; // N matches sf for the valid UBFM encodings
+    Ok((sf_bit << 31) | (0b10 << 29) | (0b100110 << 23) | (n_bit << 22)
+        | (immr << 16) | (imms << 10) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Encode `BFI Rd, Rn, #lsb, #width` (bitfield insert): drop the low
+/// `width` bits of Rn into Rd starting at `lsb`, leaving Rd's other bits
+/// alone. Lowers onto BFM with `immr = (reg_size - lsb) % reg_size`,
+/// `imms = width - 1`.
+fn encode_bfi(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(ln, "BFI requires 4 operands: Rd, Rn, #lsb, #width");
+    }
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, _) = parse_register(ops[1], ln)?;
+    let lsb = parse_immediate(ops[2], ln)?;
+    let width = parse_immediate(ops[3], ln)?;
+    let reg_size: i64 = if sf { 64 } else { 32 };
+
+    if width < 1 {
+        return asm_err(ln, "BFI width must be at least 1");
+    }
+    if lsb < 0 || lsb >= reg_size {
+        return asm_err(ln, "BFI lsb is out of range for the register width");
+    }
+    if lsb + width > reg_size {
+        return asm_err(ln, "BFI field runs past the top of the register");
+    }
+
+    let immr = ((reg_size - lsb) % reg_size) as u32;
+    let imms = (width - 1) as u32;
+    let sf_bit = if sf { 1u32 } else { 0 };
+    let n_bit = sf_bit;
+    Ok((sf_bit << 31) | (0b01 << 29) | (0b100110 << 23) | (n_bit << 22)
+        | (immr << 16) | (imms << 10) | ((rn as u32) << 5) | (rd as u32))
 }
 
 fn encode_mvn(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -786,12 +888,54 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "FMOV requires 2 operands");
     }
-    // For now only reg-to-reg double is supported. Immediate and GPR forms
-    // are future work (tracked in the plan).
     let (fd, _) = parse_fp_register(ops[0], ln)?;
+
+    // Immediate form: `fmov d9, 9.0` (course style, `#` optional). The
+    // operand is anything that reads as a float literal rather than a
+    // register. Only the 8-bit VFP immediates encode; everything else
+    // points the student at the `.double` fallback.
+    let op2 = ops[1].trim();
+    let imm_text = op2.strip_prefix('#').unwrap_or(op2);
+    if !imm_text.is_empty()
+        && imm_text
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_digit() || c == '-' || c == '+' || c == '.')
+    {
+        let value: f64 = imm_text.parse().map_err(|_| {
+            asm_error(ln, &format!("cannot parse '{op2}' as an FMOV float immediate"))
+        })?;
+        // 256 candidates; exact bit match is the correctness test.
+        let imm8 = (0u16..=255)
+            .map(|c| c as u8)
+            .find(|&c| crate::decoder::expand_fmov_imm8(c) == value.to_bits());
+        let Some(imm8) = imm8 else {
+            return asm_err(
+                ln,
+                &format!(
+                    "{op2} does not fit the FMOV 8-bit float immediate; load it from a .double instead"
+                ),
+            );
+        };
+        // FMOV Dd, #imm: 0_0_0_11110_01_1_imm8_100_00000_Rd
+        return Ok(0x1E60_1000 | ((imm8 as u32) << 13) | (fd as u32));
+    }
+
     let (fn_, _) = parse_fp_register(ops[1], ln)?;
     // FMOV Dd, Dn: 0_0_0_11110_01_1_00000_010000_Rn_Rd
     Ok(0x1E60_4000 | ((fn_ as u32) << 5) | (fd as u32))
+}
+
+/// Encode an FP data-processing 1-source op (`FNEG` / `FABS` `Dd, Dn`).
+/// `opcode` fills bits 20:15 of the double-precision 1-source layout:
+/// 0_0_0_11110_01_1_opcode_10000_Rn_Rd.
+fn encode_fp_unary(ops: &[&str], opcode: u32, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "FNEG/FABS requires 2 operands");
+    }
+    let (fd, _) = parse_fp_register(ops[0], ln)?;
+    let (fn_, _) = parse_fp_register(ops[1], ln)?;
+    Ok(0x1E60_4000 | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 fn encode_fcmp(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -919,7 +1063,23 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
                 _ => unreachable!(),
             };
             if offset_val < 0 || (offset_val as u64) % scale != 0 {
-                return asm_err(ln, "unsigned offset must be positive and aligned");
+                // Negative or unaligned offsets have no scaled form; GAS
+                // silently emits the unscaled LDUR/STUR encoding instead
+                // (struct fields at odd offsets, negative frame slots).
+                // Same conversion here, same [-256, 255] reach.
+                if (-256..=255).contains(&offset_val) {
+                    let imm9 = (offset_val as u32) & 0x1FF;
+                    return Ok(((size as u32) << 30)
+                        | (0b111000 << 24)
+                        | ((load as u32) << 22)
+                        | (imm9 << 12)
+                        | ((rn as u32) << 5)
+                        | (rt as u32));
+                }
+                return asm_err(
+                    ln,
+                    "offset must be scaled and positive, or within [-256, 255] for the unscaled form",
+                );
             }
             let imm12 = (offset_val as u64 / scale) as u32;
             if imm12 > 4095 {
@@ -1153,6 +1313,21 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
         _ => return asm_err(ln, "unsupported FP LDR/STR width"),
     };
     let opc: u32 = if load == 1 { 0b01 } else { 0b00 };
+    // The imm9 family shared by the unscaled-offset and writeback forms:
+    //   size | 1111 | 00 | opc | 0 | imm9 | idx | Rn | Rt
+    let imm9_form = |offset_val: i64, idx: u32, rn: u8| -> Result<u32, EmuError> {
+        if !(-256..=255).contains(&offset_val) {
+            return asm_err(ln, "FP offset must be in [-256, 255] for this form");
+        }
+        let imm9 = (offset_val as u32) & 0x1FF;
+        Ok((size << 30)
+            | (0b1111 << 26)
+            | (opc << 22)
+            | (imm9 << 12)
+            | (idx << 10)
+            | ((rn as u32) << 5)
+            | (rt as u32))
+    };
     match am {
         AddressingMode::Immediate {
             rn,
@@ -1161,7 +1336,9 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
         } => {
             let offset_val = offset.unwrap_or(0);
             if offset_val < 0 || (offset_val as u64) % scale != 0 {
-                return asm_err(ln, "unsigned FP offset must be positive and aligned");
+                // Same GAS conversion as the integer path: negative or
+                // unaligned offsets ride the unscaled encoding.
+                return imm9_form(offset_val, 0b00, rn);
             }
             let imm12 = (offset_val as u64 / scale) as u32;
             if imm12 > 4095 {
@@ -1175,8 +1352,10 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
                 | ((rn as u32) << 5)
                 | (rt as u32))
         }
-        AddressingMode::Immediate { .. } => {
-            asm_err(ln, "FP LDR/STR pre/post-index not yet supported by the assembler")
+        AddressingMode::Immediate { rn, offset, mode } => {
+            let offset_val = offset.unwrap_or(0);
+            let idx = if matches!(mode, IndexMode::PreIndex) { 0b11 } else { 0b01 };
+            imm9_form(offset_val, idx, rn)
         }
         AddressingMode::RegOffset { .. } => {
             asm_err(ln, "FP LDR/STR register-offset not yet supported by the assembler")
@@ -1510,6 +1689,133 @@ mod tests {
     }
 
     #[test]
+    fn negative_cmp_immediate_flips_to_cmn() {
+        // The sentinel-test shape: an index initialized to -1 compared
+        // against -1. GAS assembles `cmp w, -1` as `cmn w, 1`.
+        let source = r#"
+            MOV W1, #-1
+            CMP W1, #-1
+            B.EQ matched
+            MOV X0, #0
+            SVC #0
+        matched:
+            MOV X0, #1
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(0, true), 1, "cmp w1, -1 matches w1 = -1");
+        // And the flip works the other way: cmn with a negative
+        // immediate compares against the positive value.
+        let source = r#"
+            MOV W1, #5
+            CMN W1, #-5
+            B.EQ matched
+            MOV X0, #0
+            SVC #0
+        matched:
+            MOV X0, #1
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(0, true), 1, "cmn w1, -5 acts as cmp w1, 5");
+    }
+
+    #[test]
+    fn unaligned_signed_offset_rides_the_unscaled_encoding() {
+        // The struct-field shape: a 64-bit access at an offset that is
+        // not a multiple of 8 has no scaled unsigned form. GAS silently
+        // emits LDUR/STUR; the assembler must do the same conversion.
+        let source = r#"
+            MOV X0, #0x1122
+            MOVK X0, #0x3344, LSL #16
+            SUB SP, SP, #32
+            STR X0, [SP, #20]
+            LDR X1, [SP, #20]
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, true), 0x3344_1122);
+        assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn negative_signed_offset_rides_the_unscaled_encoding() {
+        let source = r#"
+            MOV X0, #77
+            STR X0, [SP, #-8]
+            LDR X1, [SP, #-8]
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, true), 77);
+    }
+
+    #[test]
+    fn unscaled_offset_out_of_reach_still_errors() {
+        // -257 is below the imm9 window and must not silently wrap.
+        let err = assemble("LDR X1, [SP, #-257]\nSVC #0\n").unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("[-256, 255]"), "explains the reach: {msg}");
+    }
+
+    #[test]
+    fn fp_negative_offset_and_writeback_assemble_and_execute() {
+        // FP spill discipline: push d0 with pre-index writeback, read it
+        // back at a negative offset, pop with post-index writeback.
+        let source = r#"
+            MOV X0, #3
+            SCVTF D0, X0
+            STR D0, [SP, #-16]!
+            LDR D1, [SP]
+            ADD X2, SP, #16
+            STR D1, [X2, #-16]
+            LDR D2, [SP], #16
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        let sp_before = cpu.regs.read_sp();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_fpr_f64(1), 3.0);
+        assert_eq!(cpu.regs.read_fpr_f64(2), 3.0);
+        // Writeback pushed then popped: SP is back where it started.
+        assert_eq!(cpu.regs.read_sp(), sp_before);
+        assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn fp_load_uses_sp_as_base_not_xzr() {
+        // Register 31 in a memory base means SP. A d-register load
+        // relative to SP must read the stack, not address zero.
+        let source = r#"
+            MOV X0, #9
+            SCVTF D0, X0
+            SUB SP, SP, #16
+            STR D0, [SP, #8]
+            LDR D3, [SP, #8]
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_fpr_f64(3), 9.0);
+    }
+
+    #[test]
     fn assemble_str_ldr() {
         let source = r#"
             MOV X0, #42
@@ -1774,6 +2080,75 @@ mod tests {
     }
 
     #[test]
+    fn assemble_fneg_round_trips() {
+        let code = assemble("fneg d16, d16").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::FpUnary { op, fd, fn_ } => {
+                assert_eq!(op, crate::decoder::FpUnaryOp::Fneg);
+                assert_eq!((fd, fn_), (16, 16));
+            }
+            other => panic!("expected FpUnary, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_fneg_distinct_from_fmov_and_fabs() {
+        let fneg = assemble("FNEG D0, D1").unwrap()[0];
+        let fmov = assemble("FMOV D0, D1").unwrap()[0];
+        let fabs = assemble("FABS D0, D1").unwrap()[0];
+        assert_ne!(fneg, fmov);
+        assert_ne!(fabs, fmov);
+        assert_ne!(fabs, fneg);
+    }
+
+    #[test]
+    fn assemble_fabs_round_trips() {
+        let code = assemble("fabs d10, d11").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::FpUnary { op, fd, fn_ } => {
+                assert_eq!(op, crate::decoder::FpUnaryOp::Fabs);
+                assert_eq!((fd, fn_), (10, 11));
+            }
+            other => panic!("expected FpUnary, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_fmov_immediate_round_trips_course_values() {
+        // The values course programs write: fmov dN, 1.0 / 2.0 / 5.0 / 9.0.
+        let cases = [
+            ("fmov d8, 1.0", 1.0f64),
+            ("fmov d9, 2.0", 2.0),
+            ("fmov d10, 5.0", 5.0),
+            ("fmov d11, 9.0", 9.0),
+            ("FMOV D0, #-1.0", -1.0),
+            ("fmov d1, 0.5", 0.5),
+        ];
+        for (src, expected) in cases {
+            let code = assemble(src).unwrap();
+            match crate::decoder::decode(code[0]).unwrap() {
+                crate::decoder::Instruction::FpMoveImm { imm_bits, .. } => {
+                    assert_eq!(
+                        f64::from_bits(imm_bits),
+                        expected,
+                        "wrong expansion for {src}"
+                    );
+                }
+                other => panic!("expected FpMoveImm for {src}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn assemble_fmov_immediate_rejects_unencodable_values() {
+        // 0.1 has no exact 8-bit float form; 100.0 is out of the 2^4 range;
+        // 0.0 encodes as integer zero moves, not an FMOV immediate.
+        assert!(assemble("fmov d0, 0.1").is_err());
+        assert!(assemble("fmov d0, 100.0").is_err());
+        assert!(assemble("fmov d0, 0.0").is_err());
+    }
+
+    #[test]
     fn assemble_fmov_reg_reg() {
         let code = assemble("FMOV D3, D5").unwrap();
         let decoded = crate::decoder::decode(code[0]).unwrap();
@@ -1907,6 +2282,128 @@ mod tests {
             }
             other => panic!("expected LogImm, got {other:?}"),
         }
+    }
+
+    // -- bit clear --
+
+    #[test]
+    fn assemble_bic_round_trips() {
+        let code = assemble("BIC X0, X1, X2").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::LogReg { op, sf, rd, rn, rm, set_flags, invert, .. } => {
+                assert_eq!(op, crate::decoder::LogOp::And);
+                assert!(sf);
+                assert_eq!((rd, rn, rm), (0, 1, 2));
+                assert!(!set_flags);
+                assert!(invert);
+            }
+            other => panic!("expected LogReg, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_bic_lowercase_w_form() {
+        let code = assemble("bic w19, w20, w21").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::LogReg { sf, invert, .. } => {
+                assert!(!sf);
+                assert!(invert);
+            }
+            other => panic!("expected LogReg, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_bic_rejects_immediate() {
+        assert!(assemble("BIC X0, X1, #0xF0").is_err());
+        assert!(assemble("BIC W0, W1, 15").is_err());
+    }
+
+    #[test]
+    fn assemble_bic_distinct_from_and() {
+        // The N bit must actually land in the word, or BIC silently
+        // degenerates to AND.
+        let bic = assemble("BIC X0, X1, X2").unwrap()[0];
+        let and = assemble("AND X0, X1, X2").unwrap()[0];
+        assert_ne!(bic, and);
+    }
+
+    // -- bitfield extract --
+
+    #[test]
+    fn assemble_ubfx_round_trips() {
+        // ubfx w19, w20, #4, #4 pulls the second nibble: UBFM immr=4, imms=7.
+        let code = assemble("UBFX W19, W20, #4, #4").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
+                assert_eq!(op, crate::decoder::BitfieldOp::Ubfm);
+                assert!(!sf);
+                assert_eq!((rd, rn), (19, 20));
+                assert_eq!((immr, imms), (4, 7));
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_ubfx_x_form_lowercase_no_hash() {
+        // Course style: lowercase, immediates without `#`.
+        let code = assemble("ubfx x0, x1, 8, 16").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { sf, immr, imms, .. } => {
+                assert!(sf);
+                assert_eq!((immr, imms), (8, 23));
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_ubfx_rejects_out_of_range_fields() {
+        // Field runs past the register top.
+        assert!(assemble("UBFX W0, W1, #28, #8").is_err());
+        // Zero width.
+        assert!(assemble("UBFX X0, X1, #4, #0").is_err());
+        // lsb outside the register.
+        assert!(assemble("UBFX W0, W1, #32, #1").is_err());
+    }
+
+    // -- bitfield insert --
+
+    #[test]
+    fn assemble_bfi_round_trips() {
+        // bfi w19, w20, #8, #4: BFM with immr = 32-8 = 24, imms = 3.
+        let code = assemble("BFI W19, W20, #8, #4").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
+                assert_eq!(op, crate::decoder::BitfieldOp::Bfm);
+                assert!(!sf);
+                assert_eq!((rd, rn), (19, 20));
+                assert_eq!((immr, imms), (24, 3));
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_bfi_lsb_zero_x_form() {
+        // lsb 0 wraps immr to 0: bfi x0, x1, 0, 16 -> immr = 0, imms = 15.
+        let code = assemble("bfi x0, x1, 0, 16").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { op, sf, immr, imms, .. } => {
+                assert_eq!(op, crate::decoder::BitfieldOp::Bfm);
+                assert!(sf);
+                assert_eq!((immr, imms), (0, 15));
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_bfi_rejects_out_of_range_fields() {
+        assert!(assemble("BFI W0, W1, #30, #4").is_err());
+        assert!(assemble("BFI X0, X1, #0, #0").is_err());
+        assert!(assemble("BFI W0, W1, #32, #1").is_err());
     }
 
     #[test]

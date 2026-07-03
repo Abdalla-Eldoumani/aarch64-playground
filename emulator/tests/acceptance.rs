@@ -612,3 +612,310 @@ fn every_conditional_branch() {
     assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "gt"), "gt");
     assert!(bcond_taken("    mov w1, 3\n    mov w2, 5", "le"), "le");
 }
+
+// ---------------------------------------------------------------------------
+// 13. label pointer tables in .data (the assignment jump-table shape)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dword_label_pointer_table_indexes_strings() {
+    // A .data table whose slots are label addresses, all forward
+    // references, indexed with the [base, Wm, SXTW 3] form the course
+    // pairs with pointer-sized slots.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+define(pick_r, w19)
+define(table_r, x20)
+
+        .data
+        .balign 8
+dir_table:  .dword name_east, name_north, name_south, name_west
+
+fmt_pick:   .string "picked %s\n"
+
+name_east:  .string "east"
+name_north: .string "north"
+name_south: .string "south"
+name_west:  .string "west"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     pick_r, 2                       // third slot
+        ldr     table_r, =dir_table
+        ldr     x1, [table_r, pick_r, SXTW 3]   // 8-byte pointer slots
+        ldr     x0, =fmt_pick
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut cpu = assemble_and_run(src);
+    assert_eq!(stdout_of(&mut cpu), "picked south\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+    // The raw slots hold the labels' absolute addresses in order.
+    let table = cpu.resolve_label("dir_table").expect("table symbol");
+    for (i, name) in ["name_east", "name_north", "name_south", "name_west"]
+        .iter()
+        .enumerate()
+    {
+        let expected = cpu.resolve_label(name).expect("string symbol");
+        let slot = cpu.mem.read_u64(table + (i as u64) * 8).expect("slot read");
+        assert_eq!(slot, expected, "slot {i} points at {name}");
+    }
+}
+
+#[test]
+fn current_address_in_data_slot_is_the_slot_address() {
+    let src = r#"
+        .data
+        .balign 8
+before: .dword 7
+selfp:  .dword .
+
+        .text
+        .global main
+main:
+        mov     w0, 0
+        mov     x8, 93
+        svc     0
+"#;
+    let cpu = assemble_and_run(src);
+    let selfp = cpu.resolve_label("selfp").expect("selfp symbol");
+    assert_eq!(
+        cpu.mem.read_u64(selfp).expect("slot read"),
+        selfp,
+        ".dword . stores its own address, not the parse-time zero"
+    );
+}
+
+#[test]
+fn unknown_symbol_in_data_slot_reports_symbol_and_line() {
+    let cpu = Cpu::new();
+    let err = aarch64_emulator::frontend::pipeline::assemble_hosted(
+        ".data\ntable: .dword no_such_label\n",
+        &cpu.host,
+    )
+    .expect_err("an unresolvable data slot must fail the assemble");
+    let msg = format!("{err}");
+    assert!(msg.contains("no_such_label"), "names the symbol: {msg}");
+    assert!(msg.contains("line 2"), "points at the table line: {msg}");
+}
+
+// ---------------------------------------------------------------------------
+// 17. .skip sized by an equate (the reserved-buffer assignment shape)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn skip_with_symbolic_size_reserves_the_computed_bytes() {
+    let src = r#"
+STACKSIZE = 4
+
+        .bss
+buffer:     .skip STACKSIZE * 4
+sentinel:   .skip 4
+
+        .text
+        .global main
+main:
+        ldr     x9, =buffer
+        mov     w10, 7
+        str     w10, [x9, 12]       // last element of the 16-byte buffer
+        ldr     w0, [x9, 12]
+        mov     x8, 93
+        svc     0
+"#;
+    let cpu = assemble_and_run(src);
+    assert_eq!(cpu.exit_code(), Some(7));
+    // The reserve really occupies STACKSIZE * 4 bytes: the next label
+    // lands exactly 16 past the buffer.
+    let buffer = cpu.resolve_label("buffer").expect("buffer symbol");
+    let sentinel = cpu.resolve_label("sentinel").expect("sentinel symbol");
+    assert_eq!(sentinel - buffer, 16);
+}
+
+#[test]
+fn skip_with_undefined_symbol_reports_it() {
+    let cpu = Cpu::new();
+    let err = aarch64_emulator::frontend::pipeline::assemble_hosted(
+        ".bss\nbuf: .skip NOSUCH * 4\n",
+        &cpu.host,
+    )
+    .expect_err("an undefined size symbol must fail the assemble");
+    let msg = format!("{err}");
+    assert!(msg.contains("NOSUCH"), "names the symbol: {msg}");
+    assert!(msg.contains("line 2"), "points at the reserve line: {msg}");
+}
+
+// ---------------------------------------------------------------------------
+// 16. struct-field addressing off the frame pointer (equate offsets)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn struct_field_offsets_reach_unaligned_and_fp_slots() {
+    // The struct-copy assignment shape: field offsets are equates, a
+    // 64-bit load grabs two packed ints at a 4-aligned offset (which
+    // only the unscaled encoding can express), and a double spills to
+    // the frame with writeback.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+
+point_x = 0
+point_y = 4
+box_w = 8
+box_area = 12
+box_size = 16
+
+alloc = -(16 + box_size) & -16
+dealloc = -alloc
+box_s = 16
+
+        .data
+fmt_pair:   .string "x %d y %d\n"
+fmt_area:   .string "area %.1f\n"
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+
+        mov     w9, 21
+        str     w9, [fp, box_s + point_x]
+        mov     w9, 43
+        str     w9, [fp, box_s + point_y]
+
+        // Both packed ints in one 64-bit load: offset 16+0 is 8-aligned,
+        // but the same load at point_y (offset 20) is not, so the pair
+        // below proves the unscaled form under an equate expression.
+        ldr     x9, [fp, box_s + point_y]       // unaligned 64-bit read
+        and     x2, x9, 0xFFFFFFFF              // low word = y
+        ldr     x9, [fp, box_s + point_x]
+        and     x1, x9, 0xFFFFFFFF              // low word = x
+        ldr     x0, =fmt_pair
+        bl      printf
+
+        // Double spill with writeback, read back at a negative offset.
+        mov     x9, 6
+        scvtf   d0, x9
+        str     d0, [sp, -16]!
+        ldr     d1, [sp]
+        add     sp, sp, 16
+        ldr     d2, [sp, -16]                   // negative FP-data offset
+        fadd    d0, d1, d2
+        ldr     x0, =fmt_area
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+    let mut cpu = assemble_and_run(src);
+    assert_eq!(stdout_of(&mut cpu), "x 21 y 43\narea 12.0\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+// ---------------------------------------------------------------------------
+// 14. rand / srand / time (the random-array assignment idiom)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn seeded_random_draws_are_reproducible() {
+    // The classic setup: srand(time(0)), then draws masked into a range.
+    // The emulator's time() is a fixed timestamp, so the sequence is the
+    // same on every run -- assert that by running the program twice.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+define(count_r, w19)
+
+        .data
+fmt_draw:   .string "draw %d\n"
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x0, 0                   // time(0)
+        bl      time
+        bl      srand                   // seed with the fixed stamp
+
+        mov     count_r, 3
+draw_loop:
+        bl      rand
+        and     w1, w0, 0xFF            // draw mod 256, course-style mask
+        ldr     x0, =fmt_draw
+        bl      printf
+        subs    count_r, count_r, 1
+        b.gt    draw_loop
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut first = assemble_and_run(src);
+    let first_out = stdout_of(&mut first);
+    assert_eq!(first.exit_code(), Some(0));
+    assert_eq!(first_out.lines().count(), 3, "three draws print");
+    for line in first_out.lines() {
+        let n: i64 = line
+            .strip_prefix("draw ")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("unexpected line: {line}"));
+        assert!((0..=255).contains(&n), "masked draw in range: {n}");
+    }
+    let mut second = assemble_and_run(src);
+    assert_eq!(stdout_of(&mut second), first_out, "fixed seed, fixed sequence");
+}
+
+// ---------------------------------------------------------------------------
+// 15. atoi over argv (how assignment programs read numeric arguments)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn atoi_converts_argv_strings() {
+    // argv[1] and argv[2] arrive as strings; the course converts them
+    // with atoi and works with the integers. Exit code carries the sum
+    // so the test observes both conversions.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+define(argv_r, x19)
+define(first_r, w20)
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     argv_r, x1
+        ldr     x0, [argv_r, 8]         // argv[1]
+        bl      atoi
+        mov     first_r, w0
+        ldr     x0, [argv_r, 16]        // argv[2]
+        bl      atoi
+        add     w0, first_r, w0
+
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut cpu = Cpu::new();
+    let image = aarch64_emulator::frontend::pipeline::assemble_hosted(src, &cpu.host)
+        .unwrap_or_else(|e| panic!("assembly failed: {e}"));
+    cpu.load_linked_image_with_args(&image, &["prog", "19", "-7"])
+        .expect("load failed");
+    let r = cpu.run_until_break(1_000_000).expect("run failed");
+    assert!(r.halted, "program did not halt");
+    assert_eq!(cpu.exit_code(), Some(12));
+}
+

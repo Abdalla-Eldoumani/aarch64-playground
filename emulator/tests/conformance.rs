@@ -4,8 +4,10 @@
 //! program, one per category a student writes: arithmetic and loops,
 //! branching with the condition codes, an array on the stack, a leaf
 //! subroutine, a non-leaf subroutine that calls a leaf, a printf/scanf
-//! round trip, a floating-point calculation, and a file-I/O syscall
-//! sequence. None reproduces course-archive text; every one is authored
+//! round trip, a floating-point calculation, a file-I/O syscall
+//! sequence, bitfield packing (the bitwise-tutorial material:
+//! bfi / ubfx / bic), and `.req` register aliasing (how later
+//! assignments name registers). None reproduces course-archive text; every one is authored
 //! to the course style (lowercase mnemonics, m4 aliases, AAPCS64
 //! prologue/epilogue where the function needs one, contextual stack
 //! discipline, idiomatic addressing and syscalls).
@@ -35,6 +37,12 @@ const COUNT_EVENS: &str = include_str!("conformance/count-evens.s");
 const GREETING: &str = include_str!("conformance/greeting.s");
 const CIRCLE_METRICS: &str = include_str!("conformance/circle-metrics.s");
 const LINE_COUNT: &str = include_str!("conformance/line-count.s");
+const PACK_COLOR: &str = include_str!("conformance/pack-color.s");
+const ALT_SERIES: &str = include_str!("conformance/alt-series.s");
+const ALIAS_SUM: &str = include_str!("conformance/alias-sum.s");
+const WEEKDAY_NAME: &str = include_str!("conformance/weekday-name.s");
+const LUCKY_DRAWS: &str = include_str!("conformance/lucky-draws.s");
+const VALUE_STACK: &str = include_str!("conformance/value-stack.s");
 
 // ---------------------------------------------------------------------------
 // harness (mirrors hosted_end_to_end::run_source so the suite has one place
@@ -53,6 +61,17 @@ fn assemble(src: &str) -> (Cpu, LinkedImage) {
 
 fn run(src: &str) -> Cpu {
     let (mut cpu, _image) = assemble(src);
+    let r = cpu.run_until_break(1_000_000).expect("run failed");
+    assert!(r.halted, "program did not halt within the step budget");
+    cpu
+}
+
+fn run_with_args(src: &str, args: &[&str]) -> Cpu {
+    let mut cpu = Cpu::new();
+    let image =
+        assemble_hosted(src, &cpu.host).unwrap_or_else(|e| panic!("assembly failed: {e}"));
+    cpu.load_linked_image_with_args(&image, args)
+        .expect("load failed");
     let r = cpu.run_until_break(1_000_000).expect("run failed");
     assert!(r.halted, "program did not halt within the step budget");
     cpu
@@ -124,6 +143,80 @@ fn nonleaf_subroutine_counts_even_elements() {
     let mut cpu = run(COUNT_EVENS);
     assert_eq!(stdout_of(&mut cpu), "Even count: 3\n");
     assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn bitfield_ops_pack_extract_and_clear_channels() {
+    let mut cpu = run(PACK_COLOR);
+    assert_eq!(
+        stdout_of(&mut cpu),
+        "color = 0x112233\ngreen = 34\nno blue = 0x112200\n"
+    );
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn fp_sign_ops_drive_the_alternating_series() {
+    let mut cpu = run(ALT_SERIES);
+    assert_eq!(
+        stdout_of(&mut cpu),
+        "sum = 0.5833\nlast term size = 0.2500\n"
+    );
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn req_aliases_name_registers_through_a_loop() {
+    let mut cpu = run(ALIAS_SUM);
+    assert_eq!(stdout_of(&mut cpu), "total = 8.5\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn pointer_table_selects_weekday_from_argv() {
+    let mut cpu = run_with_args(WEEKDAY_NAME, &["weekday-name", "4"]);
+    assert_eq!(stdout_of(&mut cpu), "day 4 is Thursday\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+    // The .dword slots really hold the string addresses, in table order.
+    let table = cpu.resolve_label("day_table").expect("table symbol");
+    let sunday = cpu.resolve_label("day_sun").expect("day_sun symbol");
+    let saturday = cpu.resolve_label("day_sat").expect("day_sat symbol");
+    assert_eq!(cpu.mem.read_u64(table).unwrap(), sunday);
+    assert_eq!(cpu.mem.read_u64(table + 48).unwrap(), saturday);
+}
+
+#[test]
+fn pointer_table_program_prints_usage_without_arguments() {
+    let mut cpu = run_with_args(WEEKDAY_NAME, &["weekday-name"]);
+    assert_eq!(stdout_of(&mut cpu), "usage: weekday-name n\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn seeded_draws_print_the_fixed_sequence() {
+    // time() is a fixed stamp, so srand(time(0)) pins the whole run.
+    // These three values are the contract of the rand stub's LCG.
+    let mut cpu = run(LUCKY_DRAWS);
+    assert_eq!(
+        stdout_of(&mut cpu),
+        "pick 1: 16\npick 2: 27\npick 3: 36\n"
+    );
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn value_stack_guards_capacity_over_an_equate_sized_buffer() {
+    let mut cpu = run(VALUE_STACK);
+    assert_eq!(
+        stdout_of(&mut cpu),
+        "stack full\npopped 40\npopped 30\n"
+    );
+    assert_eq!(cpu.exit_code(), Some(0));
+    // .skip STACKSIZE * 4 reserved exactly 16 bytes; the slots the
+    // program wrote are still there.
+    let stack = cpu.resolve_label("stack").expect("stack symbol");
+    assert_eq!(cpu.mem.read_u32(stack).unwrap(), 10);
+    assert_eq!(cpu.mem.read_u32(stack + 4).unwrap(), 20);
 }
 
 #[test]

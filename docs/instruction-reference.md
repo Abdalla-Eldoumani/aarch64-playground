@@ -27,9 +27,12 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `ORR`    | `ORR Xd, Xn, Xm`                 | Logical OR.                              |
 | `EOR`    | `EOR Xd, Xn, Xm`                 | Exclusive OR.                            |
 | `MVN`    | `MVN Xd, Xm`                     | Bitwise NOT.                             |
+| `BIC`    | `BIC Xd, Xn, Xm`                 | Bit clear: `Xd = Xn & ~Xm`. Register form only; AArch64 has no BIC-immediate. |
 | `LSL`    | `LSL Xd, Xn, #imm`               | Logical shift left by an immediate.      |
 | `LSR`    | `LSR Xd, Xn, #imm`               | Logical shift right by an immediate.     |
 | `ASR`    | `ASR Xd, Xn, #imm`               | Arithmetic shift right by an immediate.  |
+| `UBFX`   | `UBFX Xd, Xn, #lsb, #width`      | Unsigned bitfield extract: pulls `width` bits starting at `lsb` down to bit 0, zeros the rest. Alias for `UBFM`. |
+| `BFI`    | `BFI Xd, Xn, #lsb, #width`       | Bitfield insert: drops the low `width` bits of `Xn` into `Xd` at `lsb`; every other `Xd` bit survives. Alias for `BFM`. |
 | `SXTB`   | `SXTB Xd, Wn` / `SXTB Wd, Wn`    | Sign-extend a byte. Alias for `SBFM`.    |
 | `SXTH`   | `SXTH Xd, Wn` / `SXTH Wd, Wn`    | Sign-extend a halfword.                  |
 | `SXTW`   | `SXTW Xd, Wn`                    | Sign-extend a word to 64 bits.           |
@@ -40,8 +43,8 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 
 | Mnemonic | Form              | Notes                               |
 | -------- | ----------------- | ----------------------------------- |
-| `CMP`    | `CMP Xn, Xm/#imm` | `SUBS XZR, ...`; sets NZCV.         |
-| `CMN`    | `CMN Xn, Xm/#imm` | `ADDS XZR, ...`.                    |
+| `CMP`    | `CMP Xn, Xm/#imm` | `SUBS XZR, ...`; sets NZCV. A negative immediate flips to `CMN` with the positive value, as GAS does (`cmp w1, -1` = `cmn w1, 1`). |
+| `CMN`    | `CMN Xn, Xm/#imm` | `ADDS XZR, ...`. Negative immediates flip to `CMP` the same way. |
 | `TST`    | `TST Xn, Xm/#imm` | `ANDS XZR, ...`.                    |
 
 ## Conditional select
@@ -72,13 +75,13 @@ Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`,
 
 Addressing modes:
 
-- **signed offset**: `[Xn, #imm]`
+- **signed offset**: `[Xn, #imm]`. A negative or unaligned immediate (a struct field like `[fp, 20]` under a 64-bit load, or `[fp, -8]`) has no scaled encoding, so the assembler emits the unscaled (LDUR/STUR) form for it automatically, exactly as GAS does; that form reaches `[-256, 255]`.
 - **pre-index**: `[Xn, #imm]!` (writes the new address back into Xn)
 - **post-index**: `[Xn], #imm` (uses the base, then updates Xn)
 - **register offset**: `[Xn, Xm]` (LSL by access size) or `[Xn, Wm, SXTW #k]`
 - **register offset with extend**: `[Xn, Wm, UXTW]`, `[Xn, Xm, LSL #3]`, `[Xn, Xm, SXTX]`, etc.
 
-Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned immediate-offset form `[Xn, #imm]` only. FP data moves use `LDR Dt, [Xn, #imm]` / `STR Dt, [Xn, #imm]` and the 32-bit `LDR St` / `STR St` equivalents, unsigned-offset form only.
+Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned immediate-offset form `[Xn, #imm]` only. FP data moves (`LDR`/`STR` with a `Dt` or `St` target) accept the same immediate addressing as the integer forms: scaled offsets, negative and unaligned offsets via the unscaled encoding, and pre/post-index writeback. Register-offset addressing stays integer-only.
 
 ## PC-relative addressing
 
@@ -118,11 +121,13 @@ Arithmetic is double-precision only. S registers can be loaded and stored (the `
 
 | Mnemonic | Form                              | Notes                                   |
 | -------- | --------------------------------- | --------------------------------------- |
-| `FMOV`   | `FMOV Dd, Dn`                     | Bit-for-bit copy.                       |
+| `FMOV`   | `FMOV Dd, Dn` / `FMOV Dd, #imm`   | Bit-for-bit copy, or an 8-bit float immediate (`fmov d9, 5.0`). The immediate must be a small power-of-two multiple of 1.0-1.9375 (so 1.0, 2.0, 5.0, 9.0 work; 0.0 and 100.0 do not: load those from a `.double`). |
 | `FADD`   | `FADD Dd, Dn, Dm`                 | `d` is double precision.                |
 | `FSUB`   | `FSUB Dd, Dn, Dm`                 |                                         |
 | `FMUL`   | `FMUL Dd, Dn, Dm`                 |                                         |
 | `FDIV`   | `FDIV Dd, Dn, Dm`                 |                                         |
+| `FNEG`   | `FNEG Dd, Dn`                     | Flip the sign: `Dd = -Dn`.              |
+| `FABS`   | `FABS Dd, Dn`                     | Absolute value: clears the sign bit.    |
 | `FCMP`   | `FCMP Dn, Dm`                     | Updates NZCV. Unordered sets C and V.   |
 | `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Dd, Wn`   | Signed integer to double.               |
 | `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` | Truncate double to signed integer.      |
@@ -136,16 +141,17 @@ Arithmetic is double-precision only. S registers can be loaded and stored (the `
 | `.global` / `.globl` | Mark a symbol as externally visible.           |
 | `.balign N`   | Pad to an N-byte boundary (byte count).               |
 | `.align N`    | Pad to 2^N bytes (power-of-two form).                 |
-| `.skip N` / `.zero N` | Reserve N zero-initialized bytes.             |
+| `.skip N` / `.zero N` | Reserve N zero-initialized bytes. `N` may be a constant expression over equates defined above it (`.skip STACKSIZE * 4`). |
 | `.byte`       | One byte.                                             |
 | `.hword` / `.short` | Two bytes little-endian.                        |
 | `.word`       | Four bytes little-endian.                             |
-| `.quad`       | Eight bytes little-endian.                            |
+| `.quad` / `.dword` | Eight bytes little-endian. Course files write `.dword`; GCC output writes `.quad`. Values may name labels (`table: .dword msg_one, msg_two`): each slot receives the label's absolute address at link time, which is how assignment-style pointer tables are built and then indexed with `ldr Xt, [table, Wi, SXTW 3]`. |
 | `.double`     | IEEE 754 double (use `0r3.14` literal form).          |
 | `.float`      | IEEE 754 float.                                       |
 | `.string` / `.asciz` | Null-terminated string.                        |
 | `.ascii`      | String, no null terminator.                           |
 | `.type` / `.size` | Parsed-and-ignored so GCC output still loads.     |
+| `name .req reg` | Register alias, integer or FP (`fp .req x29`, `sum .req d19`). Takes effect on the lines after it; string literals are never rewritten. |
 
 ## Pseudo-instructions
 
@@ -183,6 +189,9 @@ Pre-registered and available without setup:
 | `memset` / `memcpy`            | Standard libc semantics.                  |
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
+| `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
+| `rand` / `srand`               | The portable C LCG, `RAND_MAX` 32767. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
+| `time`                         | Returns a fixed timestamp (and stores it through `x0` when non-null), so `srand(time(0))` seeds the same run every time. Reproducibility over wall-clock realism, by design. |
 
 ## Syscalls (`svc 0` with `x8`)
 

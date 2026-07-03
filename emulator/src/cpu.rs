@@ -132,6 +132,9 @@ pub struct Cpu {
     pub open_files: HashMap<u32, OpenFile>,
     /// Next fd number to hand out from `openat`.
     pub next_fd: u32,
+    /// State for the rand/srand host stubs. Starts at 1 (C's unseeded
+    /// default) and rides in every snapshot so step-back replays draws.
+    pub rand_state: u64,
     /// Table of hosted libc / syscall stubs reachable by `bl` into the
     /// synthetic 0xFFFF_0000 range. Populated by `Cpu::new` with the
     /// default suite of stubs; the linker reads `host.lookup(name)` to
@@ -181,6 +184,7 @@ impl Cpu {
             vfs: HashMap::new(),
             open_files: HashMap::new(),
             next_fd: 3,
+            rand_state: 1,
             host: HostTable::new(),
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
@@ -204,6 +208,10 @@ impl Cpu {
         cpu.host.register("memcpy", crate::hosted::libc::memcpy);
         cpu.host.register("exit", crate::hosted::libc::exit);
         cpu.host.register("atof", crate::hosted::libc::atof);
+        cpu.host.register("atoi", crate::hosted::libc::atoi);
+        cpu.host.register("rand", crate::hosted::libc::rand);
+        cpu.host.register("srand", crate::hosted::libc::srand);
+        cpu.host.register("time", crate::hosted::libc::time);
         // Sentinel used when a hosted program's `main` returns. Loader
         // stashes this address in LR so `ret` from main halts cleanly
         // with x0 as the exit code.
@@ -332,6 +340,19 @@ impl Cpu {
                     Item::Instruction { .. } => {
                         offset += 4;
                     }
+                    Item::DataExprs { exprs, width, .. } => {
+                        // Symbol-bearing data slots need the linker's
+                        // symbol table; this legacy loader has none, so
+                        // hold the layout and leave the page's zeros.
+                        // Real programs reach these through
+                        // `assemble_hosted` + `load_linked_image`.
+                        offset += (exprs.len() * width) as u64;
+                    }
+                    Item::ReserveExpr { .. } => {
+                        // Same story: sizing needs the symbol table this
+                        // loader does not have. The linker path resolves
+                        // it; here the reserve contributes no bytes.
+                    }
                 }
             }
         }
@@ -415,6 +436,7 @@ impl Cpu {
             vfs: self.vfs.clone(),
             open_files: self.open_files.clone(),
             next_fd: self.next_fd,
+            rand_state: self.rand_state,
         });
 
         // Count this executed step against the cumulative ceiling. Done
@@ -576,6 +598,7 @@ impl Cpu {
             vfs: &mut self.vfs,
             open_files: &mut self.open_files,
             next_fd: &mut self.next_fd,
+            rand_state: &mut self.rand_state,
         };
         let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
         match outcome {
@@ -608,6 +631,7 @@ impl Cpu {
             vfs: &mut self.vfs,
             open_files: &mut self.open_files,
             next_fd: &mut self.next_fd,
+            rand_state: &mut self.rand_state,
         };
         let outcome = table
             .dispatch(pc, &mut ctx)
@@ -741,6 +765,7 @@ impl Cpu {
         self.vfs.clear();
         self.open_files.clear();
         self.next_fd = 3;
+        self.rand_state = 1;
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
         // the libc + hosted-printf/scanf stubs, and the frontend linker
         // needs them to resolve `bl printf` / `bl scanf` after a reset
@@ -774,6 +799,7 @@ impl Cpu {
             vfs: self.vfs.clone(),
             open_files: self.open_files.clone(),
             next_fd: self.next_fd,
+            rand_state: self.rand_state,
         };
         self.snapshots.save_named(name, snap);
     }
@@ -793,6 +819,7 @@ impl Cpu {
         self.vfs = snap.vfs;
         self.open_files = snap.open_files;
         self.next_fd = snap.next_fd;
+        self.rand_state = snap.rand_state;
         self.changed_regs.clear();
         true
     }
@@ -833,6 +860,7 @@ impl Cpu {
         self.vfs = snap.vfs;
         self.open_files = snap.open_files;
         self.next_fd = snap.next_fd;
+        self.rand_state = snap.rand_state;
         self.changed_regs.clear();
         if self.halted {
             match self.exit_code {
@@ -1176,6 +1204,30 @@ mod tests {
         // Sanity: address is aligned to the stub stride above the base.
         assert!(stub_addr >= HOST_STUB_BASE);
         assert_eq!((stub_addr - HOST_STUB_BASE) % 16, 0);
+    }
+
+    #[test]
+    fn step_back_replays_the_same_rand_draw() {
+        // rand's state rides in the snapshot: undoing a draw and stepping
+        // again must produce the identical value, or replay diverges.
+        let mut cpu = Cpu::new();
+        let stub_addr = cpu.host.lookup("rand").expect("rand pre-registered");
+        cpu.load_program(&[encode_svc(0)]);
+        // First draw.
+        cpu.regs.write_gpr(30, true, CODE_BASE);
+        cpu.regs.write_pc(stub_addr);
+        cpu.step().unwrap();
+        let first = cpu.regs.read_gpr(0, true);
+        // Second draw.
+        cpu.regs.write_gpr(30, true, CODE_BASE);
+        cpu.regs.write_pc(stub_addr);
+        cpu.step().unwrap();
+        let second = cpu.regs.read_gpr(0, true);
+        assert_ne!(first, second, "consecutive draws differ");
+        // Undo the second draw and take it again: same value.
+        cpu.step_back();
+        cpu.step().unwrap();
+        assert_eq!(cpu.regs.read_gpr(0, true), second);
     }
 
     #[test]

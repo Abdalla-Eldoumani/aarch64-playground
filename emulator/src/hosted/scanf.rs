@@ -365,6 +365,7 @@ mod tests {
         vfs: HashMap<String, Vec<u8>>,
         open_files: HashMap<u32, OpenFile>,
         next_fd: u32,
+        rand_state: u64,
     }
 
     impl Host {
@@ -381,6 +382,7 @@ mod tests {
                 vfs: HashMap::new(),
                 open_files: HashMap::new(),
                 next_fd: 3,
+                rand_state: 1,
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -393,6 +395,7 @@ mod tests {
                 vfs: &mut self.vfs,
                 open_files: &mut self.open_files,
                 next_fd: &mut self.next_fd,
+                rand_state: &mut self.rand_state,
             }
         }
         fn place_fmt(&mut self, fmt: &str) {
