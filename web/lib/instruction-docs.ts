@@ -154,7 +154,14 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     ],
   },
   NOP: { summary: "Do nothing; PC advances." },
-  FMOV: { summary: "Copy FP register bit-for-bit." },
+  FMOV: {
+    summary: "Copy FP register bit-for-bit, or load an 8-bit float immediate.",
+    details: [
+      "`FMOV Dd, #imm` takes a small power-of-two multiple of 1.0-1.9375 (1.0, 2.0, 5.0, 9.0 all fit).",
+      "Values outside that set (0.0, 0.1, 100.0) do not encode; load them from a `.double` instead.",
+    ],
+    example: "fmov d9, 5.0",
+  },
   FADD: { summary: "Dd = Dn + Dm (double precision)." },
   FSUB: { summary: "Dd = Dn - Dm." },
   FMUL: { summary: "Dd = Dn * Dm." },
