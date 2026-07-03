@@ -1,21 +1,22 @@
 import type { JSX } from "react";
 import { LessonMarkdown } from "./LessonMarkdown";
-import { CodeBlock } from "./CodeBlock";
 import { RegisterFileDiagram } from "./RegisterFileDiagram";
-import { StackFrameDiagram } from "./StackFrameDiagram";
+import { FrameWalk } from "./FrameWalk";
 
 /**
  * The calling-convention quick guide: a reading-measure article covering the
  * aapcs64 register roles, 16-byte stack alignment, and the frame-pointer
  * prologue/epilogue. All prose flows through the single sanitizing
  * LessonMarkdown (no second renderer, no raw-HTML injection path); the
- * prologue/epilogue renders through the read-only CodeBlock; and the
- * RegisterFileDiagram and StackFrameDiagram are the existing teaching diagrams,
- * not re-implementations. Register tokens are written as inline code so
- * LessonMarkdown attaches the same role summaries that power the hover-define,
- * keeping the guide, the hover cards, and the diagram on one story. The prose is
- * original, summarized from the course style guide in plain words. Token-only
- * and reduced-motion safe (no motion at all).
+ * RegisterFileDiagram is the existing teaching diagram, and the FrameWalk
+ * steps the prologue/epilogue live -- code, registers, and frame bands per
+ * step -- teaching the course frame shape: the saved fp/lr pair at the frame
+ * base where fp points, locals above it at positive offsets like [fp, 16]
+ * (the layout every course example and assignment uses). Register tokens are
+ * written as inline code so LessonMarkdown attaches the same role summaries
+ * that power the hover-define, keeping the guide, the hover cards, and the
+ * diagram on one story. The prose is original, summarized from the course
+ * style guide in plain words. Token-only and reduced-motion safe.
  */
 
 // Original prose, authored from the course style guide. Each block is built as
@@ -38,27 +39,12 @@ const stackMarkdown = [
   "",
   "`sp` must stay 16-byte aligned at every point where the function calls another routine. When a function needs local space, round the frame up to a multiple of 16 so that boundary holds.",
   "",
-  "The frame pointer anchors the current frame. `fp` (that is `x29`) points at the saved `fp`/`lr` pair at the base of the frame, and locals sit just below it at fixed offsets such as `[fp, -16]`. A function that calls anything saves the pair on entry and restores it on exit:",
+  "The frame pointer anchors the current frame. The prologue's `stp` saves the caller's `fp`/`lr` pair at the lowest address of the new frame, and `mov fp, sp` points `fp` at that pair. Locals sit just above it at fixed positive offsets such as `[fp, 16]` and `[fp, 20]`, between the saved pair and the caller's frame. Step the prologue and epilogue to watch the frame open and close:",
 ].join("\n");
 
 const allocMarkdown = [
   "The `alloc = -(16 + locals) & -16` form sizes the frame: the `& -16` masks the low bits so the allocation is a 16-byte multiple, with `locals` the byte count of local space, so `sp` stays aligned through every call. A leaf routine that calls nothing and needs no locals can skip the save and `ret` directly.",
 ].join("\n");
-
-// Authentic lowercase prologue/epilogue per the course style: pre-indexed save
-// that opens the frame, frame-pointer anchor, post-indexed restore that closes
-// it. fp/lr are the standard x29/x30 aliases.
-const prologueEpilogue = `alloc = -(16 + locals) & -16
-dealloc = -alloc
-
-func:
-        stp     fp, lr, [sp, alloc]!     // save fp and lr, open the frame
-        mov     fp, sp                   // anchor the frame pointer
-
-        // body keeps cross-call values in x19-x28
-
-        ldp     fp, lr, [sp], dealloc    // restore the pair, close the frame
-        ret`;
 
 export function CallingConventionGuide({
   className = "",
@@ -75,9 +61,8 @@ export function CallingConventionGuide({
       </div>
       <RegisterFileDiagram />
       <LessonMarkdown markdown={stackMarkdown} />
-      <CodeBlock code={prologueEpilogue} />
+      <FrameWalk />
       <LessonMarkdown markdown={allocMarkdown} />
-      <StackFrameDiagram />
     </section>
   );
 }
