@@ -986,6 +986,18 @@ mod tests {
         assert_eq!(regs.read_gpr(0, true), 0b1111_0000);
     }
 
+    #[test]
+    fn ubfx_extracts_mid_field() {
+        // Extract bits [7:4] of 0xAB: field is 0xA.
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, false, 0xAB);
+        let instr = Instruction::Bitfield {
+            op: BitfieldOp::Ubfm, sf: false, rd: 0, rn: 1, immr: 4, imms: 7,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0xA);
+    }
+
     // -- memory --
 
     #[test]
