@@ -444,6 +444,15 @@ const referenceSeeds: ReferenceSeed[] = [
     example: "mvn x0, x1",
   },
   {
+    mnemonic: "bic",
+    category: "Data processing",
+    syntax: "bic xd, xn, xm",
+    gotchas: [
+      "register form only: there is no bic with an immediate. clear a constant mask with `and` and the inverted bits instead.",
+      "does not set flags; pair with `tst` when the cleared result drives a branch.",
+    ],
+  },
+  {
     mnemonic: "lsl",
     category: "Data processing",
     syntax: "lsl xd, xn, #imm",
