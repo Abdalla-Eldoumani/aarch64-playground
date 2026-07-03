@@ -1147,8 +1147,7 @@ function EmbeddableCore({
       source={source}
       args={argsText}
       stepCount={emu.stepCount}
-      onLoadSource={loadSource}
-      onSetArgs={setArgsText}
+      onLoadProgram={loadProgram}
       onRestoreBookmark={emu.restoreBookmark}
     />
   );
@@ -1235,7 +1234,11 @@ function EmbeddableCore({
         <ImportExport source={source} target={importTarget} onImport={handleImport} />
         <RecentPrograms
           entries={recent.entries}
-          onLoad={(body) => loadSource(body)}
+          // A recent is a program delivery, not a text swap: the machine
+          // resets and the seeds clear, so the previous program's
+          // registers, console, stdin, and VFS cannot show under the
+          // recalled source. The displaced buffer lands in recents.
+          onLoad={(body) => loadProgram({ source: body })}
           onClear={recent.clear}
         />
         <ArgsInput source={source} value={argsText} onChange={setArgsText} />
@@ -1381,9 +1384,11 @@ function EmbeddableCore({
         open={tutorialOpen}
         onClose={() => setTutorialOpen(false)}
         onLoadSnippet={(src, label, args, stdin) => {
-          loadSource(src, label);
-          if (args !== undefined) setArgsText(args);
-          if (stdin !== undefined) emu.pushStdin(stdin);
+          // A snippet is a program delivery. Its stdin must ride as a
+          // seed, not an immediate push: the assemble the tutorial asks
+          // for next resets the machine, which would wipe a pushed queue
+          // and re-apply the previous program's inputs instead.
+          loadProgram({ source: src, label, args, stdin });
           setTutorialOpen(false);
         }}
         getRegister={(name) => {
