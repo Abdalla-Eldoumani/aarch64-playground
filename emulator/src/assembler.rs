@@ -174,6 +174,7 @@ fn encode_line(
         "FMUL" => encode_fp_binary(&ops, 0b0000, line_num),
         "FDIV" => encode_fp_binary(&ops, 0b0001, line_num),
         "FMOV" => encode_fmov(&ops, line_num),
+        "FNEG" => encode_fp_unary(&ops, 0b000010, line_num),
         "FCMP" => encode_fcmp(&ops, line_num),
         "SCVTF" => encode_scvtf(&ops, line_num),
         "FCVTZS" => encode_fcvtzs(&ops, line_num),
@@ -878,6 +879,18 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     let (fn_, _) = parse_fp_register(ops[1], ln)?;
     // FMOV Dd, Dn: 0_0_0_11110_01_1_00000_010000_Rn_Rd
     Ok(0x1E60_4000 | ((fn_ as u32) << 5) | (fd as u32))
+}
+
+/// Encode an FP data-processing 1-source op (`FNEG` / `FABS` `Dd, Dn`).
+/// `opcode` fills bits 20:15 of the double-precision 1-source layout:
+/// 0_0_0_11110_01_1_opcode_10000_Rn_Rd.
+fn encode_fp_unary(ops: &[&str], opcode: u32, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "FNEG/FABS requires 2 operands");
+    }
+    let (fd, _) = parse_fp_register(ops[0], ln)?;
+    let (fn_, _) = parse_fp_register(ops[1], ln)?;
+    Ok(0x1E60_4000 | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 fn encode_fcmp(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -1857,6 +1870,25 @@ mod tests {
                 assert_ne!(words[i], words[j]);
             }
         }
+    }
+
+    #[test]
+    fn assemble_fneg_round_trips() {
+        let code = assemble("fneg d16, d16").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::FpUnary { op, fd, fn_ } => {
+                assert_eq!(op, crate::decoder::FpUnaryOp::Fneg);
+                assert_eq!((fd, fn_), (16, 16));
+            }
+            other => panic!("expected FpUnary, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_fneg_distinct_from_fmov_and_fabs() {
+        let fneg = assemble("FNEG D0, D1").unwrap()[0];
+        let fmov = assemble("FMOV D0, D1").unwrap()[0];
+        assert_ne!(fneg, fmov);
     }
 
     #[test]
