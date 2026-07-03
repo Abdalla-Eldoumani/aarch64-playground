@@ -695,6 +695,48 @@ main:
     );
 }
 
+// ---------------------------------------------------------------------------
+// 14. atoi over argv (how assignment programs read numeric arguments)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn atoi_converts_argv_strings() {
+    // argv[1] and argv[2] arrive as strings; the course converts them
+    // with atoi and works with the integers. Exit code carries the sum
+    // so the test observes both conversions.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+define(argv_r, x19)
+define(first_r, w20)
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     argv_r, x1
+        ldr     x0, [argv_r, 8]         // argv[1]
+        bl      atoi
+        mov     first_r, w0
+        ldr     x0, [argv_r, 16]        // argv[2]
+        bl      atoi
+        add     w0, first_r, w0
+
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut cpu = Cpu::new();
+    let image = aarch64_emulator::frontend::pipeline::assemble_hosted(src, &cpu.host)
+        .unwrap_or_else(|e| panic!("assembly failed: {e}"));
+    cpu.load_linked_image_with_args(&image, &["prog", "19", "-7"])
+        .expect("load failed");
+    let r = cpu.run_until_break(1_000_000).expect("run failed");
+    assert!(r.halted, "program did not halt");
+    assert_eq!(cpu.exit_code(), Some(12));
+}
+
 #[test]
 fn unknown_symbol_in_data_slot_reports_symbol_and_line() {
     let cpu = Cpu::new();
