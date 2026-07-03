@@ -71,6 +71,10 @@ const MemoryWatches = dynamic(
   () => import("@/components/MemoryWatches").then((m) => m.MemoryWatches),
   { ssr: false },
 );
+const BaseConverter = dynamic(
+  () => import("@/components/BaseConverter").then((m) => m.BaseConverter),
+  { ssr: false },
+);
 const ReplayScrubber = dynamic(
   () => import("@/components/ReplayScrubber").then((m) => m.ReplayScrubber),
   { ssr: false },
@@ -246,8 +250,11 @@ function EmbeddableCore({
   const bp = useBreakpoint();
   const [source, setSource] = useState(startSource ?? "");
   const [activeTab, setActiveTab] = useState<
-    "memory" | "stack" | "console" | "term" | "watches" | "memwatch" | "saves"
+    "memory" | "stack" | "console" | "term" | "watches" | "convert" | "memwatch" | "saves"
   >("memory");
+  // Mirrors the palette's converter action into the phone layout, where the
+  // desktop tab state has nothing to show.
+  const [paneRequest, setPaneRequest] = useState<{ pane: string; nonce: number } | null>(null);
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
@@ -475,6 +482,15 @@ function EmbeddableCore({
         label: "Start guided tour",
         description: "walk through a concept one step at a time",
         run: () => setTutorialOpen(true),
+      },
+      {
+        id: "base-converter",
+        label: "Base converter",
+        description: "hex, binary, decimal, and two's complement side by side",
+        run: () => {
+          setActiveTab("convert");
+          setPaneRequest((prev) => ({ pane: "convert", nonce: (prev?.nonce ?? 0) + 1 }));
+        },
       },
       {
         id: "toggle-theme",
@@ -1121,6 +1137,7 @@ function EmbeddableCore({
     />
   );
   const memWatchBlock = <MemoryWatches getMemory={emu.getMemory} />;
+  const converterBlock = <BaseConverter />;
   const savesBlock = (
     <SavesPanel
       savedStates={emu.savedStates}
@@ -1143,7 +1160,7 @@ function EmbeddableCore({
         role="tablist"
         aria-label="debug view"
       >
-        {(["memory", "stack", "console", "term", "watches", "memwatch", "saves"] as const).map((tab) => {
+        {(["memory", "stack", "console", "term", "watches", "convert", "memwatch", "saves"] as const).map((tab) => {
           const selected = activeTab === tab;
           const showDot = tab === "console" && emu.blocked && !selected;
           return (
@@ -1189,6 +1206,9 @@ function EmbeddableCore({
         {activeTab === "term" && <div className="h-full">{terminalBlock}</div>}
         {activeTab === "watches" && (
           <div className="h-full overflow-auto">{watchBlock}</div>
+        )}
+        {activeTab === "convert" && (
+          <div className="h-full overflow-auto">{converterBlock}</div>
         )}
         {activeTab === "memwatch" && (
           <div className="h-full overflow-auto">{memWatchBlock}</div>
@@ -1324,9 +1344,11 @@ function EmbeddableCore({
             console={consoleBlock}
             terminal={terminalBlock}
             watches={watchBlock}
+            converter={converterBlock}
             memwatch={memWatchBlock}
             saves={savesBlock}
             consoleBlocked={emu.blocked}
+            paneRequest={paneRequest ?? undefined}
           />
         )}
       </main>
