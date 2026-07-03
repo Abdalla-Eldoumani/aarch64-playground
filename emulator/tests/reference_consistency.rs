@@ -39,7 +39,7 @@ const SUPPORTED: &[&str] = &[
     // arithmetic
     "ADD", "ADDS", "SUB", "SUBS", "MUL", "MADD", "MSUB", "UDIV", "SDIV", "NEG",
     // logical
-    "AND", "ANDS", "ORR", "EOR", "MVN",
+    "AND", "ANDS", "ORR", "EOR", "MVN", "BIC",
     // shifts (immediate form)
     "LSL", "LSR", "ASR",
     // sign / zero extension
