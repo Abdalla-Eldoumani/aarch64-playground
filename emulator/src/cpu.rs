@@ -348,6 +348,11 @@ impl Cpu {
                         // `assemble_hosted` + `load_linked_image`.
                         offset += (exprs.len() * width) as u64;
                     }
+                    Item::ReserveExpr { .. } => {
+                        // Same story: sizing needs the symbol table this
+                        // loader does not have. The linker path resolves
+                        // it; here the reserve contributes no bytes.
+                    }
                 }
             }
         }
