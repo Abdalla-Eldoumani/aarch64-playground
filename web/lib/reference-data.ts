@@ -107,6 +107,19 @@ const encUbfm: BitField[] = [
   { bits: 5, label: "Rd", color: operandTint },
 ];
 
+// bitfield move, insert (bfi xd, xn, #lsb, #width); opc 01,
+// immr = (reg size - lsb) mod reg size, imms = width - 1
+const encBfm: BitField[] = [
+  { bits: 1, label: "sf" },
+  { bits: 2, label: "01" },
+  { bits: 6, label: "100110" },
+  { bits: 1, label: "N" },
+  { bits: 6, label: "immr", color: operandTint },
+  { bits: 6, label: "imms", color: operandTint },
+  { bits: 5, label: "Rn", color: operandTint },
+  { bits: 5, label: "Rd", color: operandTint },
+];
+
 // move wide, zero (movz xd, #imm, lsl #shift); opc 10
 const encMovz: BitField[] = [
   { bits: 1, label: "sf" },
@@ -517,6 +530,16 @@ const referenceSeeds: ReferenceSeed[] = [
       "the extracted field lands at bit 0 zero-extended; sign does not survive the move.",
     ],
     encoding: encUbfm,
+  },
+  {
+    mnemonic: "bfi",
+    category: "Data processing",
+    syntax: "bfi xd, xn, #lsb, #width",
+    gotchas: [
+      "the destination is read before it is written: bits outside the field keep their old values, so xd must already hold what you mean to keep.",
+      "only the low `width` bits of xn move; anything above them is ignored, not an error.",
+    ],
+    encoding: encBfm,
   },
 
   // compare and test
