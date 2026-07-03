@@ -959,6 +959,18 @@ function EmbeddableCore({
               check
             </button>
           )}
+          {/* A fault must be visible here too: full chrome surfaces
+              emu.error through Controls, and without this line an embedded
+              run that faults just stops silently. */}
+          {emu.error && (
+            <p
+              role="alert"
+              title={emu.error}
+              className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--danger)]"
+            >
+              {emu.error}
+            </p>
+          )}
         </div>
       </div>
     );
