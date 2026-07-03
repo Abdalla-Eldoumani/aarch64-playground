@@ -22,6 +22,24 @@ vi.mock("@/components/ConsolePanel", () => ({
 vi.mock("@/components/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
 }));
+// Capture the tutorial's props so tests can drive onLoadSnippet -- the
+// snippet handoff contract -- without walking the real tour UI.
+const tutorialProps = vi.hoisted(() => ({
+  current: null as null | {
+    onLoadSnippet: (
+      src: string,
+      label: string,
+      args?: string,
+      stdin?: string,
+    ) => void;
+  },
+}));
+vi.mock("@/components/TutorialRunner", () => ({
+  TutorialRunner: (props: NonNullable<typeof tutorialProps.current>) => {
+    tutorialProps.current = props;
+    return <div data-testid="tutorial-runner" />;
+  },
+}));
 
 // A spy for the hub so a test can assert it is not called (the hub not
 // engaged) before the lazy trigger fires.
@@ -525,6 +543,85 @@ describe("loadProgram", () => {
     act(() => ref.current!.assemble());
     await waitFor(() => expect(hub.assemble).toHaveBeenCalled());
     expect(hub.pushStdin).not.toHaveBeenCalled();
+  });
+});
+
+describe("program delivery from recents and the tutorial", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    tutorialProps.current = null;
+  });
+
+  it("loads a recent as a fresh program: machine reset, args cleared, seeds replaced", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground
+        ref={ref}
+        chrome="full"
+        startSource={"// working buffer\nret"}
+      />,
+    );
+    // A handoff carrying stdin and VFS seeds displaces the buffer into
+    // recents; those seeds must not survive the recall below.
+    act(() =>
+      ref.current!.loadProgram({
+        source: "// prog a",
+        args: "./a 1",
+        stdin: "stale-in\n",
+        vfs: { "stale.txt": "x" },
+      }),
+    );
+    const select = screen.getByLabelText(
+      "load recent program",
+    ) as HTMLSelectElement;
+    const entry = Array.from(select.options).find(
+      (o) => o.value && o.value !== "__clear__",
+    );
+    expect(entry).toBeDefined();
+    (hub.reset as ReturnType<typeof vi.fn>).mockClear();
+    (hub.uploadVfsFile as ReturnType<typeof vi.fn>).mockClear();
+    fireEvent.change(select, { target: { value: entry!.value } });
+    // The recall is a program delivery, not a text swap: fresh machine,
+    // recalled source, no inherited args.
+    expect(hub.reset).toHaveBeenCalledTimes(1);
+    expect(ref.current!.getSource()).toBe("// working buffer\nret");
+    expect(ref.current!.getArgs()).toBe("");
+    // Assembling the recalled program must not re-seed the previous
+    // program's stdin or VFS fixtures.
+    act(() => ref.current!.assemble());
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalled());
+    expect(hub.pushStdin).not.toHaveBeenCalled();
+    expect(hub.uploadVfsFile).not.toHaveBeenCalled();
+  });
+
+  it("loads a tutorial snippet as a fresh program with its stdin as a seed", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource="// old" />,
+    );
+    await waitFor(() => expect(tutorialProps.current).not.toBeNull());
+    act(() => {
+      tutorialProps.current!.onLoadSnippet(
+        "mov x0, 1",
+        "scores",
+        "./scores",
+        "85\n92\n",
+      );
+    });
+    expect(hub.reset).toHaveBeenCalled();
+    expect(ref.current!.getSource()).toBe("mov x0, 1");
+    expect(ref.current!.getArgs()).toBe("./scores");
+    // Not pushed at load time: the assemble the tutorial asks for next
+    // resets the machine, which would wipe a pushed queue.
+    expect(hub.pushStdin).not.toHaveBeenCalled();
+    act(() => ref.current!.assemble());
+    await waitFor(() => expect(hub.pushStdin).toHaveBeenCalledWith("85\n92\n"));
   });
 });
 
