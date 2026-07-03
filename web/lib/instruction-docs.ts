@@ -62,6 +62,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   LSL: { summary: "Logical shift left (Rd = Rn << amount).", cExample: "Rd = Rn << amt;" },
   LSR: { summary: "Logical shift right (unsigned).", cExample: "Rd = (unsigned)Rn >> amt;" },
   ASR: { summary: "Arithmetic shift right (sign-extending).", cExample: "Rd = (int)Rn >> amt;" },
+  UBFX: {
+    summary: "Unsigned bitfield extract: Rd = (Rn >> lsb) & ((1 << width) - 1).",
+    details: ["Pulls `width` bits starting at `lsb` down to bit 0 and zeros the rest. The pattern for unpacking flag fields."],
+    example: "ubfx w19, w20, #4, #4",
+    cExample: "Rd = (Rn >> lsb) & ((1u << width) - 1);",
+  },
   SXTB: { summary: "Sign-extend a byte to Wd/Xd (alias for `SBFM`).", example: "sxtb w0, w1", cExample: "Rd = (signed char)Rn;" },
   SXTH: { summary: "Sign-extend a halfword to Wd/Xd.", example: "sxth w0, w1", cExample: "Rd = (short)Rn;" },
   SXTW: { summary: "Sign-extend a word to 64-bit Xd.", example: "sxtw x0, w1", cExample: "Xd = (long)(int)Wn;" },
