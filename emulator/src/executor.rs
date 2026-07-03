@@ -973,6 +973,19 @@ mod tests {
         assert_eq!(regs.read_gpr(0, true), 0xFFFF_FF00);
     }
 
+    #[test]
+    fn bic_clears_masked_bits() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, false, 0b1111_1111);
+        regs.write_gpr(2, false, 0b0000_1111);
+        let instr = Instruction::LogReg {
+            op: LogOp::And, sf: false, rd: 0, rn: 1, rm: 2,
+            shift: ShiftType::LSL, amount: 0, set_flags: false, invert: true,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0b1111_0000);
+    }
+
     // -- memory --
 
     #[test]
