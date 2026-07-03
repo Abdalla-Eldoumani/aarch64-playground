@@ -133,6 +133,27 @@ describe("EmbeddablePlayground", () => {
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
 
+  it("arranges the embed through the container-driven grid areas", () => {
+    const { container } = render(<EmbeddablePlayground chrome="embed" />);
+    engage(container);
+    // The embed's own width, not the viewport, picks the arrangement: the
+    // root declares the size container and each panel sits in a named area
+    // the globals.css container queries re-place per width band.
+    const layoutRoot = container.querySelector(".embed-layout");
+    expect(layoutRoot).not.toBeNull();
+    const grid = layoutRoot!.querySelector(".embed-grid");
+    expect(grid).not.toBeNull();
+    expect(
+      grid!.querySelector('.embed-area-editor [data-testid="editor"]'),
+    ).toBeTruthy();
+    expect(
+      grid!.querySelector('.embed-area-registers [data-testid="registers"]'),
+    ).toBeTruthy();
+    expect(
+      grid!.querySelector('.embed-area-console [data-testid="console"]'),
+    ).toBeTruthy();
+  });
+
   it("emits exactly the ten outcome fields through onStateChange", async () => {
     useEmulatorMock.mockReturnValue(makeHub({ exitCode: 0, stdout: "hi" }));
     const onStateChange = vi.fn();

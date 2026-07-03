@@ -22,6 +22,18 @@ describe("RegisterRow", () => {
     expect(screen.getByText("0x00000000deadbeef").className).toContain("tabular-nums");
   });
 
+  it("reflows deliberately in a narrow panel: wrap-capable row, full value on hover", () => {
+    const { container } = render(<RegisterRow name="X9" value="0x0123456789abcdef" />);
+    // An 18-character hex value cannot shrink; the row must wrap it onto its
+    // own line rather than let it paint into the neighboring column.
+    const row = container.firstElementChild as HTMLElement;
+    expect(row.className).toContain("flex-wrap");
+    // Wherever the row wrapped, the full value stays one hover away.
+    expect(screen.getByText("0x0123456789abcdef").getAttribute("title")).toBe(
+      "0x0123456789abcdef",
+    );
+  });
+
   it("drives the write flash and value tint from --changed when changed", () => {
     const { container } = render(<RegisterRow name="X2" value="0x2a" changed />);
     // the row plays the reduced-motion-safe reg-flash keyframe (its color comes

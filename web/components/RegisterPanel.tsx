@@ -109,7 +109,12 @@ export function RegisterPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+      {/* Columns are intrinsic to the panel's own width, not the viewport:
+          a second column appears only when two full rows actually fit, so a
+          narrow host (an embed rail, a dragged-thin panel) can never squeeze
+          a value into the neighboring column. 16.5rem covers one full row:
+          name, alias, an 18-character hex value, gaps, and padding. */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(16.5rem,100%),1fr))] gap-x-4 gap-y-0.5">
         {registers.map((val, i) => (
           // Keying on the pulse id remounts the row each time the register
           // actually changes, so the reduced-motion-safe --changed flash in the
