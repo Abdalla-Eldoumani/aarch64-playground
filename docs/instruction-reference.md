@@ -27,6 +27,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `ORR`    | `ORR Xd, Xn, Xm`                 | Logical OR.                              |
 | `EOR`    | `EOR Xd, Xn, Xm`                 | Exclusive OR.                            |
 | `MVN`    | `MVN Xd, Xm`                     | Bitwise NOT.                             |
+| `BIC`    | `BIC Xd, Xn, Xm`                 | Bit clear: `Xd = Xn & ~Xm`. Register form only; AArch64 has no BIC-immediate. |
 | `LSL`    | `LSL Xd, Xn, #imm`               | Logical shift left by an immediate.      |
 | `LSR`    | `LSR Xd, Xn, #imm`               | Logical shift right by an immediate.     |
 | `ASR`    | `ASR Xd, Xn, #imm`               | Arithmetic shift right by an immediate.  |
