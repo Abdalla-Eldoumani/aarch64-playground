@@ -19,7 +19,7 @@
     {
       "type": "code",
       "language": "asm",
-      "source": "// the immediate move forms: mov, movz, movk, and add with an immediate\ndefine(r, x19)\n\n        .data\nfmt:    .string \"%lld\\n\"\n\n        .text\n        .balign 4\n        .global main\n        .type main, @function\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     r, 42                       // a small immediate moves straight in\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        movz    r, 0x0002, lsl 16           // zero the register, set one halfword\n        movk    r, 0x0003                    // keep that halfword, set the low one\n        add     r, r, 1                      // add a small immediate\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "source": "// the immediate move forms: mov, movz, movk, and add with an immediate\ndefine(r, x19)\n\n        .data\nfmt:    .string \"%lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     r, 42                       // a small immediate moves straight in\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        movz    r, 0x0002, lsl 16           // zero the register, set one halfword\n        movk    r, 0x0003                    // keep that halfword, set the low one\n        add     r, r, 1                      // add a small immediate\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
     },
     {
       "type": "callout",
@@ -32,7 +32,7 @@
     },
     {
       "type": "editor",
-      "starter": "// build a wide constant halfword by halfword, then add an immediate\ndefine(value, x19)\n\n        .data\nfmt:    .string \"value = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\n        .type main, @function\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        movz    value, 0x0001, lsl 16       // value = 0x0000_0000_0001_0000\n        movk    value, 0x2710                // keep the upper halfword, set the low one\n        add     value, value, 0x20          // add a small immediate\n\n        ldr     x0, =fmt\n        mov     x1, value\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "starter": "// build a wide constant halfword by halfword, then add an immediate\ndefine(value, x19)\n\n        .data\nfmt:    .string \"value = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        movz    value, 0x0001, lsl 16       // value = 0x0000_0000_0001_0000\n        movk    value, 0x2710                // keep the upper halfword, set the low one\n        add     value, value, 0x20          // add a small immediate\n\n        ldr     x0, =fmt\n        mov     x1, value\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
     }
   ]
 }
