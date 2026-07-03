@@ -829,12 +829,15 @@ function EmbeddableCore({
         if (stdin) emuRef.current.pushStdin(stdin);
         emuRef.current.run();
         const startedAt = Date.now();
-        // Each 16ms sleep yields to React, so the ref advances with the
-        // live run and the loop ends on the real halt.
-        while (emuRef.current.isRunning) {
+        // Sleep BEFORE checking: run() raises isRunning through React
+        // state, which reaches emuRef only on the next commit, so an
+        // immediate check reads the pre-run false and would report the
+        // previous stdout and exit code. Each 16ms sleep yields to React,
+        // so the ref advances with the live run and the loop ends on the
+        // real halt.
+        do {
           await new Promise<void>((r) => setTimeout(r, 16));
-          if (Date.now() - startedAt > 10_000) break;
-        }
+        } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
         const e = emuRef.current;
         return {
           stdout: e.stdout,
@@ -850,10 +853,12 @@ function EmbeddableCore({
       runUntilBreak: async () => {
         emuRef.current.run();
         const startedAt = Date.now();
-        while (emuRef.current.isRunning) {
+        // Same sleep-before-check shape as runProgram: the pre-run
+        // isRunning is still false on the first read, and gdb's continue
+        // must not resolve while the program is live.
+        do {
           await new Promise<void>((r) => setTimeout(r, 16));
-          if (Date.now() - startedAt > 10_000) break;
-        }
+        } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
         return { halted: emuRef.current.isHalted, hit_breakpoint: false };
       },
       setBreakpoint: async (addr: number) => emuRef.current.setBreakpointAddress(addr),
