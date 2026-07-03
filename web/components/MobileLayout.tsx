@@ -14,9 +14,14 @@ export interface MobileLayoutProps {
   console: ReactNode;
   terminal: ReactNode;
   watches: ReactNode;
+  converter: ReactNode;
   memwatch: ReactNode;
   saves: ReactNode;
   consoleBlocked?: boolean;
+  /** One-shot pane jump from the host (the command palette): a bumped nonce
+   *  selects the named pane's group and member, so palette actions land
+   *  somewhere visible on a phone too. */
+  paneRequest?: { pane: string; nonce: number };
 }
 
 interface Member {
@@ -34,7 +39,7 @@ interface Group {
 }
 
 /**
- * Single-pane phone layout (< md). The ten panes are condensed into five
+ * Single-pane phone layout (< md). The eleven panes are condensed into five
  * use-case groups in a sticky bottom strip; a group with more than one
  * member exposes an in-pane sub-switch so every pane stays reachable. The
  * five 44px targets share the width (no fixed min-width), so the strip fits
@@ -50,9 +55,11 @@ export function MobileLayout({
   console,
   terminal,
   watches,
+  converter,
   memwatch,
   saves,
   consoleBlocked,
+  paneRequest,
 }: MobileLayoutProps) {
   const groups: Group[] = [
     {
@@ -85,6 +92,7 @@ export function MobileLayout({
       members: [
         { id: "term", label: "terminal", node: terminal, className: "h-full" },
         { id: "watches", label: "watches", node: watches, className: "h-full overflow-auto" },
+        { id: "convert", label: "convert", node: converter, className: "h-full overflow-auto" },
       ],
     },
     {
@@ -112,6 +120,22 @@ export function MobileLayout({
     group.members.find((m) => m.id === memberByGroup[group.id]) ?? group.members[0];
   // The blocked dot clears only once the console pane is actually on screen.
   const consoleHidden = !(group.id === "inspect" && member.id === "console");
+
+  // Apply a host pane request: select the group that carries the pane, then
+  // the pane itself. `groups` is rebuilt per render with static membership,
+  // so the request object (fresh state identity per palette invocation) alone
+  // decides when this runs.
+  useEffect(() => {
+    if (!paneRequest) return;
+    for (const g of groups) {
+      if (g.members.some((m) => m.id === paneRequest.pane)) {
+        setActiveGroup(g.id);
+        setMemberByGroup((prev) => ({ ...prev, [g.id]: paneRequest.pane }));
+        return;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneRequest]);
 
   useEffect(() => {
     const node = stripRef.current?.querySelector<HTMLElement>(
