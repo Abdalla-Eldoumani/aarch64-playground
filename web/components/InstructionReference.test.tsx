@@ -12,12 +12,27 @@ vi.mock("@/components/LessonMarkdown", () => ({
   ),
 }));
 
+// Stub the shared embeddable with a light marker that echoes the props the
+// reference feeds it, so the run-in-place tests never instantiate Monaco or
+// the WASM worker.
+vi.mock("@/components/EmbeddablePlayground", () => ({
+  EmbeddablePlayground: (props: { chrome?: string; startSource?: string }) => (
+    <div
+      data-testid="embed"
+      data-chrome={props.chrome}
+      data-startsource={props.startSource}
+    />
+  ),
+}));
+
 import { InstructionReference } from "./InstructionReference";
+import { playgroundSource } from "@/lib/playground-source";
 
 const THEMES = ["dark", "light", "high-contrast"] as const;
 
-// Two categories, three entries: one carries an encoding (add), the others do
-// not (mov, ldr). Distinct syntax/example strings make the detail unambiguous.
+// Two categories, four entries: one carries a worked encoding (add), one sets
+// flags (cmp), the others are plain. Distinct syntax/example strings make the
+// detail unambiguous.
 const FIXTURE: ReferenceInstruction[] = [
   {
     mnemonic: "mov",
@@ -34,9 +49,17 @@ const FIXTURE: ReferenceInstruction[] = [
     summary: "add summary prose",
     example: "add x0, x1, x2",
     encoding: [
-      { bits: 1, label: "sf" },
-      { bits: 31, label: "rest" },
+      { bits: 1, label: "sf", value: "1", meaning: "x width" },
+      { bits: 31, label: "rest", value: "0".repeat(31) },
     ],
+    encodedAsm: "add x19, x0, 8",
+  },
+  {
+    mnemonic: "cmp",
+    category: "Compare and test",
+    syntax: "cmp xn, xm",
+    summary: "cmp summary prose",
+    example: "cmp x0, x1",
   },
   {
     mnemonic: "ldr",
@@ -137,6 +160,55 @@ describe("InstructionReference", () => {
     render(<InstructionReference instructions={FIXTURE} />);
     const link = screen.getByRole("link", { name: /try in playground/i });
     expect((link.getAttribute("href") ?? "").startsWith("/playground#p2=")).toBe(true);
+  });
+
+  it("runs the example in place with the same payload the deep link carries", async () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "run this example: mov" }),
+    );
+    const embed = await screen.findByTestId("embed");
+    expect(embed.getAttribute("data-chrome")).toBe("embed");
+    expect(embed.getAttribute("data-startsource")).toBe(
+      playgroundSource(FIXTURE[0]),
+    );
+    // The live bench replaces the static example block until closed.
+    fireEvent.click(
+      screen.getByRole("button", { name: "close the live example for mov" }),
+    );
+    expect(screen.queryByTestId("embed")).toBeNull();
+    const detail = screen.getByLabelText("instruction detail");
+    expect(detail.textContent).toContain("mov x0, x1");
+  });
+
+  it("selecting another instruction retires the live example", async () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "run this example: mov" }),
+    );
+    await screen.findByTestId("embed");
+    fireEvent.click(screen.getByRole("button", { name: "ldr" }));
+    expect(screen.queryByTestId("embed")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "run this example: ldr" }),
+    ).toBeTruthy();
+  });
+
+  it("renders the flag panel only for flag-setting entries", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    // mov is selected by default and sets no flags
+    expect(screen.queryByLabelText("cmp flag effect")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "cmp" }));
+    expect(screen.getByLabelText("cmp flag effect")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ldr" }));
+    expect(screen.queryByLabelText("cmp flag effect")).toBeNull();
+  });
+
+  it("captions the worked encoding with its concrete instruction", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(screen.getByText("add x19, x0, 8")).toBeTruthy();
+    expect(screen.getByLabelText("assembled word")).toBeTruthy();
   });
 
   it("marks the selected index item with aria-current", () => {
