@@ -121,7 +121,7 @@ Arithmetic is double-precision only. S registers can be loaded and stored (the `
 
 | Mnemonic | Form                              | Notes                                   |
 | -------- | --------------------------------- | --------------------------------------- |
-| `FMOV`   | `FMOV Dd, Dn`                     | Bit-for-bit copy.                       |
+| `FMOV`   | `FMOV Dd, Dn` / `FMOV Dd, #imm`   | Bit-for-bit copy, or an 8-bit float immediate (`fmov d9, 5.0`). The immediate must be a small power-of-two multiple of 1.0-1.9375 (so 1.0, 2.0, 5.0, 9.0 work; 0.0 and 100.0 do not: load those from a `.double`). |
 | `FADD`   | `FADD Dd, Dn, Dm`                 | `d` is double precision.                |
 | `FSUB`   | `FSUB Dd, Dn, Dm`                 |                                         |
 | `FMUL`   | `FMUL Dd, Dn, Dm`                 |                                         |
