@@ -43,8 +43,8 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 
 | Mnemonic | Form              | Notes                               |
 | -------- | ----------------- | ----------------------------------- |
-| `CMP`    | `CMP Xn, Xm/#imm` | `SUBS XZR, ...`; sets NZCV.         |
-| `CMN`    | `CMN Xn, Xm/#imm` | `ADDS XZR, ...`.                    |
+| `CMP`    | `CMP Xn, Xm/#imm` | `SUBS XZR, ...`; sets NZCV. A negative immediate flips to `CMN` with the positive value, as GAS does (`cmp w1, -1` = `cmn w1, 1`). |
+| `CMN`    | `CMN Xn, Xm/#imm` | `ADDS XZR, ...`. Negative immediates flip to `CMP` the same way. |
 | `TST`    | `TST Xn, Xm/#imm` | `ANDS XZR, ...`.                    |
 
 ## Conditional select
