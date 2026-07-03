@@ -612,3 +612,98 @@ fn every_conditional_branch() {
     assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "gt"), "gt");
     assert!(bcond_taken("    mov w1, 3\n    mov w2, 5", "le"), "le");
 }
+
+// ---------------------------------------------------------------------------
+// 13. label pointer tables in .data (the assignment jump-table shape)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dword_label_pointer_table_indexes_strings() {
+    // A .data table whose slots are label addresses, all forward
+    // references, indexed with the [base, Wm, SXTW 3] form the course
+    // pairs with pointer-sized slots.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+define(pick_r, w19)
+define(table_r, x20)
+
+        .data
+        .balign 8
+dir_table:  .dword name_east, name_north, name_south, name_west
+
+fmt_pick:   .string "picked %s\n"
+
+name_east:  .string "east"
+name_north: .string "north"
+name_south: .string "south"
+name_west:  .string "west"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     pick_r, 2                       // third slot
+        ldr     table_r, =dir_table
+        ldr     x1, [table_r, pick_r, SXTW 3]   // 8-byte pointer slots
+        ldr     x0, =fmt_pick
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut cpu = assemble_and_run(src);
+    assert_eq!(stdout_of(&mut cpu), "picked south\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+    // The raw slots hold the labels' absolute addresses in order.
+    let table = cpu.resolve_label("dir_table").expect("table symbol");
+    for (i, name) in ["name_east", "name_north", "name_south", "name_west"]
+        .iter()
+        .enumerate()
+    {
+        let expected = cpu.resolve_label(name).expect("string symbol");
+        let slot = cpu.mem.read_u64(table + (i as u64) * 8).expect("slot read");
+        assert_eq!(slot, expected, "slot {i} points at {name}");
+    }
+}
+
+#[test]
+fn current_address_in_data_slot_is_the_slot_address() {
+    let src = r#"
+        .data
+        .balign 8
+before: .dword 7
+selfp:  .dword .
+
+        .text
+        .global main
+main:
+        mov     w0, 0
+        mov     x8, 93
+        svc     0
+"#;
+    let cpu = assemble_and_run(src);
+    let selfp = cpu.resolve_label("selfp").expect("selfp symbol");
+    assert_eq!(
+        cpu.mem.read_u64(selfp).expect("slot read"),
+        selfp,
+        ".dword . stores its own address, not the parse-time zero"
+    );
+}
+
+#[test]
+fn unknown_symbol_in_data_slot_reports_symbol_and_line() {
+    let cpu = Cpu::new();
+    let err = aarch64_emulator::frontend::pipeline::assemble_hosted(
+        ".data\ntable: .dword no_such_label\n",
+        &cpu.host,
+    )
+    .expect_err("an unresolvable data slot must fail the assemble");
+    let msg = format!("{err}");
+    assert!(msg.contains("no_such_label"), "names the symbol: {msg}");
+    assert!(msg.contains("line 2"), "points at the table line: {msg}");
+}
