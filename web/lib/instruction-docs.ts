@@ -53,6 +53,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   ANDS: { summary: "Bitwise AND with flag update (the basis of `TST`).", cExample: "Rd = Rn & op2; // NZCV updated" },
   ORR: { summary: "Bitwise OR; register or bitmask immediate.", cExample: "Rd = Rn | op2;" },
   EOR: { summary: "Bitwise XOR; register or bitmask immediate.", cExample: "Rd = Rn ^ op2;" },
+  BIC: {
+    summary: "Bit clear: Rd = Rn & ~Rm.",
+    details: ["Register form only; AArch64 has no BIC-immediate. Clear a constant mask with `AND` and the inverted bits instead."],
+    example: "bic w19, w20, w21",
+    cExample: "Rd = Rn & ~Rm;",
+  },
   LSL: { summary: "Logical shift left (Rd = Rn << amount).", cExample: "Rd = Rn << amt;" },
   LSR: { summary: "Logical shift right (unsigned).", cExample: "Rd = (unsigned)Rn >> amt;" },
   ASR: { summary: "Arithmetic shift right (sign-extending).", cExample: "Rd = (int)Rn >> amt;" },
