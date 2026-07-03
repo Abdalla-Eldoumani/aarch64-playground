@@ -145,7 +145,7 @@ Arithmetic is double-precision only. S registers can be loaded and stored (the `
 | `.byte`       | One byte.                                             |
 | `.hword` / `.short` | Two bytes little-endian.                        |
 | `.word`       | Four bytes little-endian.                             |
-| `.quad`       | Eight bytes little-endian.                            |
+| `.quad` / `.dword` | Eight bytes little-endian. Course files write `.dword`; GCC output writes `.quad`. |
 | `.double`     | IEEE 754 double (use `0r3.14` literal form).          |
 | `.float`      | IEEE 754 float.                                       |
 | `.string` / `.asciz` | Null-terminated string.                        |
