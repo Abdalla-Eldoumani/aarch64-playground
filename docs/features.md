@@ -10,7 +10,7 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | Landing page (`/`) | `web/app/(site)/page.tsx` |
-| Hero, feature catalog, credibility, routes | `web/components/Hero.tsx`, `FeatureCatalog.tsx`, `CredibilitySection.tsx`, `RoutesRegisterFile.tsx` |
+| Hero, feature catalog, routes | `web/components/Hero.tsx`, `FeatureCatalog.tsx`, `RoutesRegisterFile.tsx` |
 | Landing data (features, routes, hero program) | `web/lib/landing-content.ts` |
 | Routes, nav, footer | `web/lib/site.ts`, `web/components/SiteNav.tsx`, `SiteFooter.tsx` |
 | Shared embeddable emulator | `web/components/EmbeddablePlayground.tsx` |
