@@ -37,6 +37,7 @@ const GREETING: &str = include_str!("conformance/greeting.s");
 const CIRCLE_METRICS: &str = include_str!("conformance/circle-metrics.s");
 const LINE_COUNT: &str = include_str!("conformance/line-count.s");
 const PACK_COLOR: &str = include_str!("conformance/pack-color.s");
+const ALT_SERIES: &str = include_str!("conformance/alt-series.s");
 
 // ---------------------------------------------------------------------------
 // harness (mirrors hosted_end_to_end::run_source so the suite has one place
@@ -134,6 +135,16 @@ fn bitfield_ops_pack_extract_and_clear_channels() {
     assert_eq!(
         stdout_of(&mut cpu),
         "color = 0x112233\ngreen = 34\nno blue = 0x112200\n"
+    );
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn fp_sign_ops_drive_the_alternating_series() {
+    let mut cpu = run(ALT_SERIES);
+    assert_eq!(
+        stdout_of(&mut cpu),
+        "sum = 0.5833\nlast term size = 0.2500\n"
     );
     assert_eq!(cpu.exit_code(), Some(0));
 }
