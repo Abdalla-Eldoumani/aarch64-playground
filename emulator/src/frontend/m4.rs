@@ -50,6 +50,11 @@ pub struct Expanded {
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
 pub fn expand(source: &str) -> Result<Expanded, EmuError> {
+    // Pass 0: blank C-style block comments. Course assignment headers wrap
+    // multi-line prose (even #include lines) in /* ... */, which the
+    // per-line comment stripping below cannot see.
+    let source = strip_block_comments(source);
+    let source = source.as_str();
     // Pass 1: collect `define()` aliases for substitution, record `name =
     // expr` assignments separately (they stay inline so the parser can
     // pin them to a section offset), and strip comments. Walking the
@@ -128,7 +133,10 @@ fn expand_recursively(
     Ok(current)
 }
 
-fn substitute_once(line: &str, defines: &HashMap<String, String>) -> String {
+/// One token-boundary substitution pass over a line. String and char
+/// literals are copied verbatim. Shared with the parser's `.req` alias
+/// pass, which substitutes register aliases the same way defines expand.
+pub(crate) fn substitute_once(line: &str, defines: &HashMap<String, String>) -> String {
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
@@ -173,6 +181,73 @@ fn substitute_once(line: &str, defines: &HashMap<String, String>) -> String {
         i += 1;
     }
     out
+}
+
+/// Blank C-style `/* ... */` block comments across the whole source,
+/// keeping every newline inside them so line numbers stay aligned with
+/// the editor. String and char literals are respected; `//` line comments
+/// are copied through untouched (the per-line `strip_comment` below owns
+/// them), so a `/*` inside one never opens a block. Literal state resets
+/// at each newline because both literal forms are single-line in
+/// assembly, which keeps a stray quote from poisoning the rest of the
+/// file.
+fn strip_block_comments(source: &str) -> String {
+    if !source.contains("/*") {
+        return source.to_string();
+    }
+    let bytes = source.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    let mut in_string = false;
+    let mut in_char = false;
+    let mut in_block = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\n' {
+            in_string = false;
+            in_char = false;
+            out.push(b'\n');
+            i += 1;
+            continue;
+        }
+        if in_block {
+            if b == b'*' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                in_block = false;
+                i += 2;
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+        if (in_string || in_char) && b == b'\\' && i + 1 < bytes.len() {
+            out.push(b);
+            out.push(bytes[i + 1]);
+            i += 2;
+            continue;
+        }
+        match b {
+            b'"' if !in_char => in_string = !in_string,
+            b'\'' if !in_string => in_char = !in_char,
+            b'/' if !in_string && !in_char && i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
+                // Copy the `//` comment through to the end of the line.
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+                continue;
+            }
+            b'/' if !in_string && !in_char && i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                in_block = true;
+                i += 2;
+                continue;
+            }
+            _ => {}
+        }
+        out.push(b);
+        i += 1;
+    }
+    // Only ASCII spans were removed, so the bytes are still valid UTF-8.
+    String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
 fn strip_comment(line: &str) -> &str {
