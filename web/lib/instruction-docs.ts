@@ -68,6 +68,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "ubfx w19, w20, #4, #4",
     cExample: "Rd = (Rn >> lsb) & ((1u << width) - 1);",
   },
+  BFI: {
+    summary: "Bitfield insert: low `width` bits of Rn land in Rd at `lsb`; other Rd bits survive.",
+    details: ["The write is a merge, not a replace, so Rd keeps everything outside the field. UBFX is the matching read."],
+    example: "bfi w19, w20, #8, #4",
+    cExample: "Rd = (Rd & ~(mask << lsb)) | ((Rn & mask) << lsb);",
+  },
   SXTB: { summary: "Sign-extend a byte to Wd/Xd (alias for `SBFM`).", example: "sxtb w0, w1", cExample: "Rd = (signed char)Rn;" },
   SXTH: { summary: "Sign-extend a halfword to Wd/Xd.", example: "sxth w0, w1", cExample: "Rd = (short)Rn;" },
   SXTW: { summary: "Sign-extend a word to 64-bit Xd.", example: "sxtw x0, w1", cExample: "Xd = (long)(int)Wn;" },
