@@ -793,6 +793,14 @@ const referenceSeeds: ReferenceSeed[] = [
     ],
   },
   {
+    mnemonic: "fabs",
+    category: "Floating point",
+    syntax: "fabs dd, dn",
+    gotchas: [
+      "the convergence-test idiom: take `fabs` of an error term before `fcmp` against the epsilon, so the loop exits on distance from zero, not direction.",
+    ],
+  },
+  {
     mnemonic: "fcmp",
     category: "Floating point",
     syntax: "fcmp dn, dm",
