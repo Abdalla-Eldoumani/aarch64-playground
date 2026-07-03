@@ -14,10 +14,13 @@ const LINK_CLASS =
 
 /**
  * The persistent site footer shared by the content layout and the 404: the brand
- * wordmark with a one-line description, the route links, the repository and MIT
- * license links, the course context, and the not-affiliated disclaimer. Stays a
- * server component (no hooks) so it ships no client JS and can be imported by
- * server layouts. The author's name lives only in the committed LICENSE, never here.
+ * wordmark with a one-line description and the Rust-to-WASM engine note, the
+ * route links, the repository and MIT license links, the course context, the
+ * open-source line, and the not-affiliated disclaimer. The one footer everywhere,
+ * the landing included -- it carries the project's credibility facts itself so no
+ * page needs a second footer-like band above it. Stays a server component (no
+ * hooks) so it ships no client JS and can be imported by server layouts. The
+ * author's name lives only in the committed LICENSE, never here.
  */
 export function SiteFooter() {
   return (
@@ -27,6 +30,13 @@ export function SiteFooter() {
           <Wordmark showLabel />
           <p className="font-serif text-[15px] leading-relaxed text-[var(--text-secondary)]">
             {CREDIBILITY.tagline}
+          </p>
+          <p className="font-serif text-[15px] leading-relaxed text-[var(--text-secondary)]">
+            The emulator is{" "}
+            <span className="font-mono text-sm text-[var(--text-primary)]">
+              {CREDIBILITY.engineNote}
+            </span>
+            .
           </p>
         </div>
 
@@ -63,7 +73,7 @@ export function SiteFooter() {
       </div>
 
       <p className="mx-auto mt-8 w-full max-w-5xl font-mono text-xs text-[var(--text-tertiary)]">
-        {CREDIBILITY.disclaimer}
+        Open source, free to use and study. {CREDIBILITY.disclaimer}
       </p>
     </footer>
   );
