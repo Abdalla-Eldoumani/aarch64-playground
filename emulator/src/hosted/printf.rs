@@ -367,6 +367,7 @@ mod tests {
         let mut vfs: HashMap<String, Vec<u8>> = HashMap::new();
         let mut open_files: HashMap<u32, OpenFile> = HashMap::new();
         let mut next_fd = 3u32;
+        let mut rand_state = 1u64;
         let mut ctx = HostContext {
             regs: &mut regs,
             mem: &mut mem,
@@ -376,6 +377,7 @@ mod tests {
             vfs: &mut vfs,
             open_files: &mut open_files,
             next_fd: &mut next_fd,
+            rand_state: &mut rand_state,
         };
         printf(&mut ctx).unwrap();
         let written = ctx.regs.read_gpr(0, true) as usize;
