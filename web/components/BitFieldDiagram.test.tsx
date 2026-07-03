@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { BitFieldDiagram } from "./BitFieldDiagram";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { BitFieldDiagram, type BitField } from "./BitFieldDiagram";
 
 const THEMES = ["dark", "light", "high-contrast"] as const;
 
@@ -8,6 +8,15 @@ afterEach(() => {
   cleanup();
   document.documentElement.removeAttribute("data-theme");
 });
+
+// A worked 32-bit example whose nibble split is easy to eyeball: the four
+// byte-wide fields concatenate to 0x8b010013.
+const WORKED_FIELDS: BitField[] = [
+  { bits: 8, label: "op", value: "10001011" },
+  { bits: 8, label: "hi", value: "00000001" },
+  { bits: 8, label: "mid", value: "00000000" },
+  { bits: 8, label: "Rd", value: "00010011", meaning: "x19" },
+];
 
 describe("BitFieldDiagram", () => {
   it("renders one box per field", () => {
@@ -58,6 +67,54 @@ describe("BitFieldDiagram", () => {
     render(<BitFieldDiagram />);
     expect(screen.getAllByRole("listitem").length).toBeGreaterThan(0);
     expect(screen.getByText("opcode")).toBeTruthy();
+  });
+
+  it("stays static without worked values: no readout, no field buttons", () => {
+    render(
+      <BitFieldDiagram
+        fields={[
+          { bits: 16, label: "a" },
+          { bits: 16, label: "b" },
+        ]}
+      />,
+    );
+    expect(screen.queryByLabelText("assembled word")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("stays static when the worked values do not fill the word", () => {
+    render(
+      <BitFieldDiagram
+        fields={[
+          { bits: 16, label: "a", value: "1010101010101010" },
+          { bits: 16, label: "b" }, // no value
+        ]}
+      />,
+    );
+    expect(screen.queryByLabelText("assembled word")).toBeNull();
+  });
+
+  it("assembles the worked word into nibbles and hex", () => {
+    render(<BitFieldDiagram fields={WORKED_FIELDS} asm="add x19, x0, x1" />);
+    const readout = screen.getByLabelText("assembled word");
+    expect(readout.textContent).toContain("= 0x8b010013");
+    // The caption names the worked instruction.
+    expect(screen.getByText("add x19, x0, x1")).toBeTruthy();
+    // Every field is reachable by keyboard as a labeled button.
+    expect(
+      screen.getByRole("button", { name: "Rd, 8 bits, 00010011, x19" }),
+    ).toBeTruthy();
+  });
+
+  it("focusing a field traces it into the caption", () => {
+    render(<BitFieldDiagram fields={WORKED_FIELDS} />);
+    const field = screen.getByRole("button", {
+      name: "Rd, 8 bits, 00010011, x19",
+    });
+    fireEvent.focus(field);
+    expect(screen.getByText("Rd = 00010011 -> x19")).toBeTruthy();
+    fireEvent.blur(field);
+    expect(screen.queryByText("Rd = 00010011 -> x19")).toBeNull();
   });
 
   it("renders the default form under every theme without crashing", () => {
