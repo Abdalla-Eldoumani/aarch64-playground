@@ -160,3 +160,34 @@ export interface StateSnapshot {
   /// scrubber. Flat array of `[addr, len, addr, len, ...]`.
   dirtyAddrs: number[];
 }
+
+/**
+ * The reset-state snapshot for a machine with no program loaded: all 31
+ * general-purpose registers zeroed, the stack pointer at the top of the
+ * mapped region, and the program counter at the code base where the first
+ * instruction will land. Both backends return this before the first
+ * assemble, so the cold register panel shows the full register file (not
+ * just SP/PC) and the worker and main-thread paths agree byte for byte.
+ * A single source of truth here keeps the two from drifting apart.
+ */
+export function emptyStateSnapshot(frame = 0): StateSnapshot {
+  return {
+    frame,
+    registers: Array(31).fill("0x0000000000000000"),
+    sp: "0x0000000080000000",
+    pc: "0x0000000000400000",
+    nzcv: 0,
+    changedRegs: [],
+    halted: false,
+    blocked: false,
+    exitCode: null,
+    canStepBack: false,
+    stdoutDelta: "",
+    stderrDelta: "",
+    vfsFiles: [],
+    savedStates: [],
+    changedMem: false,
+    pcTrace: [],
+    dirtyAddrs: [],
+  };
+}
