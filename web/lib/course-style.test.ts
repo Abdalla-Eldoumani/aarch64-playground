@@ -65,6 +65,13 @@ describe("authored programs stay inside the course directive vocabulary", () => 
     }
   });
 
+  it("reference try-in-playground payloads carry no banned directive", () => {
+    // The module is authored data end to end (seeds, examples, gotcha prose,
+    // runnable programs), so scanning the raw source covers every payload.
+    const file = path.join(process.cwd(), "lib", "reference-data.ts");
+    assertClean("lib/reference-data.ts", fs.readFileSync(file, "utf8"));
+  });
+
   it("authoring guide payloads carry no banned directive", () => {
     const guide = path.join(process.cwd(), "..", "docs", "authoring-content.md");
     assertClean("docs/authoring-content.md", fs.readFileSync(guide, "utf8"));
