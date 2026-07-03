@@ -367,6 +367,25 @@ fn emit_int_list(
     width: usize,
 ) -> Result<(), EmuError> {
     let exprs = split_comma_groups(rest);
+    // A value that names a symbol or `.` cannot be computed here: label
+    // addresses exist only after the linker places every section. Course
+    // pointer tables (`.dword label_january, ...`) are the motivating
+    // case. Defer the whole list so slot addressing stays contiguous;
+    // pure-constant lists keep the immediate Bytes path and its
+    // parse-time error reporting.
+    let needs_link_resolution = exprs.iter().any(|group| {
+        group
+            .iter()
+            .any(|t| matches!(t.kind, TokenKind::Ident(_) | TokenKind::Dot))
+    });
+    if needs_link_resolution {
+        prog.section_or_insert(current).items.push(Item::DataExprs {
+            exprs: exprs.iter().map(|g| g.to_vec()).collect(),
+            width,
+            original_line: line,
+        });
+        return Ok(());
+    }
     let mut out = Vec::with_capacity(exprs.len() * width);
     for expr in exprs {
         let value = evaluate(expr, &|_| None, 0, line)?;
@@ -754,6 +773,68 @@ mod tests {
         let p = parse_ok(".text\nmov counter, 1\ncounter .req w19\n");
         let line2 = p.expanded_source.lines().nth(1).unwrap_or("");
         assert_eq!(line2.trim(), "mov counter, 1");
+    }
+
+    // -- deferred data expressions (label pointer tables) --
+
+    #[test]
+    fn dword_label_list_defers_to_link_time() {
+        let p = parse_ok(".data\ntable: .dword alpha, beta\n.text\nalpha: nop\nbeta: nop\n");
+        let data = p.section(SectionKind::Data).unwrap();
+        match data
+            .items
+            .iter()
+            .find(|i| matches!(i, Item::DataExprs { .. }))
+        {
+            Some(Item::DataExprs { exprs, width, .. }) => {
+                assert_eq!(*width, 8);
+                assert_eq!(exprs.len(), 2);
+            }
+            other => panic!("expected a deferred data item, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn constant_expression_lists_still_emit_bytes_at_parse_time() {
+        let p = parse_ok(".data\n.word 1 + 2, 7\n");
+        assert_eq!(
+            section_bytes(&p, SectionKind::Data),
+            vec![3, 0, 0, 0, 7, 0, 0, 0]
+        );
+        let data = p.section(SectionKind::Data).unwrap();
+        assert!(!data
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::DataExprs { .. })));
+    }
+
+    #[test]
+    fn mixed_constant_and_label_list_defers_the_whole_list() {
+        // Deferring the full list keeps the slots contiguous in one item;
+        // the constant re-evaluates trivially at link time.
+        let p = parse_ok(".data\n.dword 0, marker, 2\n.text\nmarker: nop\n");
+        let data = p.section(SectionKind::Data).unwrap();
+        match data
+            .items
+            .iter()
+            .find(|i| matches!(i, Item::DataExprs { .. }))
+        {
+            Some(Item::DataExprs { exprs, .. }) => assert_eq!(exprs.len(), 3),
+            other => panic!("expected a deferred data item, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn current_address_in_data_slot_defers_to_link_time() {
+        // `.` in a data value means the slot's own address, which only the
+        // linker knows; parse-time evaluation against 0 would bake in the
+        // wrong value.
+        let p = parse_ok(".data\nhere_mark: .dword .\n");
+        let data = p.section(SectionKind::Data).unwrap();
+        assert!(data
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::DataExprs { .. })));
     }
 
     #[test]
