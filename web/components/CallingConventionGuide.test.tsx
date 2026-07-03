@@ -11,10 +11,18 @@ afterEach(() => {
 });
 
 describe("CallingConventionGuide", () => {
-  it("renders both teaching diagrams", () => {
+  it("renders the register diagram and the interactive frame walk", () => {
     render(<CallingConventionGuide />);
     expect(screen.getByLabelText("aapcs64 register file")).toBeTruthy();
-    expect(screen.getByLabelText("aapcs64 stack frame layout")).toBeTruthy();
+    expect(screen.getByLabelText("frame walk")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "next" })).toBeTruthy();
+  });
+
+  it("teaches the course frame shape: locals above fp at positive offsets", () => {
+    const { container } = render(<CallingConventionGuide />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("[fp, 16]");
+    expect(text).not.toContain("[fp, -16]");
   });
 
   it("renders the register-role split and the alignment guidance", () => {
