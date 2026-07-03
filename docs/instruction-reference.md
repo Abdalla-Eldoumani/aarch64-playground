@@ -189,6 +189,7 @@ Pre-registered and available without setup:
 | `memset` / `memcpy`            | Standard libc semantics.                  |
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
+| `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
 
 ## Syscalls (`svc 0` with `x8`)
 
