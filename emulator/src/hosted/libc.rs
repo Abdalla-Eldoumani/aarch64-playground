@@ -105,6 +105,30 @@ pub fn main_return(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Exited(code))
 }
 
+pub fn atoi(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let ptr = ctx.regs.read_gpr(0, true);
+    let bytes = read_c_string(ctx.mem, ptr)?;
+    let s = String::from_utf8_lossy(&bytes);
+    // C's atoi: skip leading whitespace, take an optional sign, then
+    // digits until the first non-digit; no digits at all yields 0.
+    let trimmed = s.trim_start();
+    let (negative, digits) = match trimmed.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    let mut value: i64 = 0;
+    for c in digits.chars() {
+        let Some(d) = c.to_digit(10) else { break };
+        value = value.wrapping_mul(10).wrapping_add(d as i64);
+    }
+    if negative {
+        value = -value;
+    }
+    // int return: keep w0 and x0 reads consistent by sign-extending.
+    ctx.regs.write_gpr(0, true, value as i32 as i64 as u64);
+    Ok(HostOutcome::Continue)
+}
+
 pub fn atof(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let ptr = ctx.regs.read_gpr(0, true);
     let bytes = read_c_string(ctx.mem, ptr)?;
@@ -293,6 +317,36 @@ mod tests {
         h.regs.write_gpr(0, true, 7);
         let outcome = exit(&mut h.ctx()).unwrap();
         assert_eq!(outcome, HostOutcome::Exited(7));
+    }
+
+    #[test]
+    fn atoi_parses_argv_style_numbers() {
+        // The a5b shape: "./a5b 3 21" hands atoi the strings "3" and "21".
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"21");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        atoi(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, 21);
+    }
+
+    #[test]
+    fn atoi_handles_sign_whitespace_and_trailing_garbage() {
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"  -42abc");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        atoi(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -42);
+        // Sign-extended into x0 so w0 and x0 reads agree.
+        assert_eq!(h.regs.read_gpr(0, false) as u32 as i32, -42);
+    }
+
+    #[test]
+    fn atoi_returns_zero_on_nonsense() {
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"pyramid");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        atoi(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0);
     }
 
     #[test]
