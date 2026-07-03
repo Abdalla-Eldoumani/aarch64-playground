@@ -187,6 +187,10 @@ pub fn execute(
             }
             Ok(ExecResult::Advance)
         }
+        Instruction::FpMoveImm { fd, imm_bits } => {
+            regs.write_fpr_bits(*fd, *imm_bits);
+            Ok(ExecResult::Advance)
+        }
         Instruction::FpMoveReg { fd, fn_ } => {
             let v = regs.read_fpr_bits(*fn_);
             regs.write_fpr_bits(*fd, v);
