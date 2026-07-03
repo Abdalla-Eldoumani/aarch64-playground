@@ -145,8 +145,9 @@ fn encode_line(
         "UXTB" => encode_extend(&ops, false, 7, line_num),
         "UXTH" => encode_extend(&ops, false, 15, line_num),
 
-        // -- bitfield extract (UBFM alias) --
+        // -- bitfield extract / insert (UBFM / BFM aliases) --
         "UBFX" => encode_ubfx(&ops, line_num),
+        "BFI" => encode_bfi(&ops, line_num),
 
         // -- multiply / divide --
         "MUL" => encode_mul_div(&ops, 0, line_num),
@@ -591,6 +592,38 @@ fn encode_ubfx(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     let sf_bit = if sf { 1u32 } else { 0 };
     let n_bit = sf_bit; // N matches sf for the valid UBFM encodings
     Ok((sf_bit << 31) | (0b10 << 29) | (0b100110 << 23) | (n_bit << 22)
+        | (immr << 16) | (imms << 10) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Encode `BFI Rd, Rn, #lsb, #width` (bitfield insert): drop the low
+/// `width` bits of Rn into Rd starting at `lsb`, leaving Rd's other bits
+/// alone. Lowers onto BFM with `immr = (reg_size - lsb) % reg_size`,
+/// `imms = width - 1`.
+fn encode_bfi(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(ln, "BFI requires 4 operands: Rd, Rn, #lsb, #width");
+    }
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, _) = parse_register(ops[1], ln)?;
+    let lsb = parse_immediate(ops[2], ln)?;
+    let width = parse_immediate(ops[3], ln)?;
+    let reg_size: i64 = if sf { 64 } else { 32 };
+
+    if width < 1 {
+        return asm_err(ln, "BFI width must be at least 1");
+    }
+    if lsb < 0 || lsb >= reg_size {
+        return asm_err(ln, "BFI lsb is out of range for the register width");
+    }
+    if lsb + width > reg_size {
+        return asm_err(ln, "BFI field runs past the top of the register");
+    }
+
+    let immr = ((reg_size - lsb) % reg_size) as u32;
+    let imms = (width - 1) as u32;
+    let sf_bit = if sf { 1u32 } else { 0 };
+    let n_bit = sf_bit;
+    Ok((sf_bit << 31) | (0b01 << 29) | (0b100110 << 23) | (n_bit << 22)
         | (immr << 16) | (imms << 10) | ((rn as u32) << 5) | (rd as u32))
 }
 
@@ -2044,6 +2077,44 @@ mod tests {
         assert!(assemble("UBFX X0, X1, #4, #0").is_err());
         // lsb outside the register.
         assert!(assemble("UBFX W0, W1, #32, #1").is_err());
+    }
+
+    // -- bitfield insert --
+
+    #[test]
+    fn assemble_bfi_round_trips() {
+        // bfi w19, w20, #8, #4: BFM with immr = 32-8 = 24, imms = 3.
+        let code = assemble("BFI W19, W20, #8, #4").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
+                assert_eq!(op, crate::decoder::BitfieldOp::Bfm);
+                assert!(!sf);
+                assert_eq!((rd, rn), (19, 20));
+                assert_eq!((immr, imms), (24, 3));
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_bfi_lsb_zero_x_form() {
+        // lsb 0 wraps immr to 0: bfi x0, x1, 0, 16 -> immr = 0, imms = 15.
+        let code = assemble("bfi x0, x1, 0, 16").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { op, sf, immr, imms, .. } => {
+                assert_eq!(op, crate::decoder::BitfieldOp::Bfm);
+                assert!(sf);
+                assert_eq!((immr, imms), (0, 15));
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_bfi_rejects_out_of_range_fields() {
+        assert!(assemble("BFI W0, W1, #30, #4").is_err());
+        assert!(assemble("BFI X0, X1, #0, #0").is_err());
+        assert!(assemble("BFI W0, W1, #32, #1").is_err());
     }
 
     #[test]
