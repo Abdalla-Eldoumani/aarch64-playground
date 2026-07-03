@@ -87,6 +87,9 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     assignments.push((name.clone(), body.clone(), base + offset, *original_line));
                 }
                 Item::Instruction { .. } => offset += 4,
+                Item::DataExprs { exprs, width, .. } => {
+                    offset += (exprs.len() * width) as u64;
+                }
             }
         }
         if section.kind == SectionKind::Text {
@@ -215,6 +218,26 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                 }
                 Item::SymbolAssignment { .. } => {}
+                Item::DataExprs { exprs, width, original_line } => {
+                    // Deferred data slots: every label now has an absolute
+                    // address, so evaluate each value against the full
+                    // symbol table. `.` means the address of the slot being
+                    // filled, matching GAS.
+                    let mut bytes = Vec::with_capacity(exprs.len() * width);
+                    for (i, group) in exprs.iter().enumerate() {
+                        let here = base + offset + (i * width) as u64;
+                        let value = evaluate(
+                            group,
+                            &|name| symbols.get(name).map(|v| *v as i64),
+                            here as i64,
+                            *original_line,
+                        )?;
+                        let le = value.to_le_bytes();
+                        bytes.extend_from_slice(&le[..*width]);
+                    }
+                    writes.push((base + offset, bytes));
+                    offset += (exprs.len() * width) as u64;
+                }
                 Item::Instruction { tokens, original_line } => {
                     let pc = base + offset;
                     let word = if let Some(target_text) = extract_ldr_eq_operand(tokens) {
