@@ -795,85 +795,98 @@ function EmbeddableCore({
 
   // Hidden file picker the terminal's `upload` command triggers.
   const terminalUploadRef = useRef<HTMLInputElement>(null);
+  // Reads go through emuRef / sourceRef, not the render's hub object:
+  // the hub is a new object every snapshot, so a closure over it freezes
+  // mid-command state -- runProgram's wait loop would poll an isRunning
+  // that can never change and report the pre-run stdout and exit code.
+  // The refs also keep this callback's identity stable, so the terminal
+  // pane never re-initializes underneath an open session.
   const buildTerminalContext = useCallback(() => {
     const dec = new TextDecoder();
     return {
       vfs: new Map<string, string>(),
-      listVfs: () => emu.vfsFiles.slice().sort(),
+      listVfs: () => emuRef.current.vfsFiles.slice().sort(),
       readVfs: async (path: string) => {
-        const bytes = await emu.readVfsFile(path);
-        if (bytes.length === 0 && !emu.vfsFiles.includes(path)) {
+        const bytes = await emuRef.current.readVfsFile(path);
+        if (bytes.length === 0 && !emuRef.current.vfsFiles.includes(path)) {
           return undefined; // distinguish missing from empty
         }
         return dec.decode(bytes);
       },
       writeVfs: (path: string, body: string) => {
         const enc = new TextEncoder();
-        emu.uploadVfsFile(path, enc.encode(body));
+        emuRef.current.uploadVfsFile(path, enc.encode(body));
       },
-      deleteVfs: async (path: string) => emu.deleteVfsFile(path),
+      deleteVfs: async (path: string) => emuRef.current.deleteVfsFile(path),
       runProgram: async (args: string[], stdin?: string) => {
         // Await the assemble: run() gates on the loaded-program flag, so
         // firing it while the assemble is still in flight would no-op.
-        const ok = await emu.assemble(source, args.slice(1));
+        const ok = await emuRef.current.assemble(sourceRef.current, args.slice(1));
         if (!ok) {
-          return { stdout: emu.stdout, stderr: emu.stderr, exitCode: emu.exitCode ?? 0 };
+          const e = emuRef.current;
+          return { stdout: e.stdout, stderr: e.stderr, exitCode: e.exitCode ?? 0 };
         }
-        if (stdin) emu.pushStdin(stdin);
-        emu.run();
+        if (stdin) emuRef.current.pushStdin(stdin);
+        emuRef.current.run();
         const startedAt = Date.now();
-        while (emu.isRunning) {
+        // Each 16ms sleep yields to React, so the ref advances with the
+        // live run and the loop ends on the real halt.
+        while (emuRef.current.isRunning) {
           await new Promise<void>((r) => setTimeout(r, 16));
           if (Date.now() - startedAt > 10_000) break;
         }
+        const e = emuRef.current;
         return {
-          stdout: emu.stdout,
-          stderr: emu.stderr,
-          exitCode: emu.exitCode ?? 0,
+          stdout: e.stdout,
+          stderr: e.stderr,
+          exitCode: e.exitCode ?? 0,
         };
       },
       step: async () => {
-        emu.step();
-        return { halted: emu.isHalted, line: emu.currentLine };
+        emuRef.current.step();
+        const e = emuRef.current;
+        return { halted: e.isHalted, line: e.currentLine };
       },
       runUntilBreak: async () => {
-        emu.run();
+        emuRef.current.run();
         const startedAt = Date.now();
-        while (emu.isRunning) {
+        while (emuRef.current.isRunning) {
           await new Promise<void>((r) => setTimeout(r, 16));
           if (Date.now() - startedAt > 10_000) break;
         }
-        return { halted: emu.isHalted, hit_breakpoint: false };
+        return { halted: emuRef.current.isHalted, hit_breakpoint: false };
       },
-      setBreakpoint: async (addr: number) => emu.setBreakpointAddress(addr),
-      clearBreakpoint: async (addr: number) => emu.clearBreakpointAddress(addr),
-      resolveLabel: async (name: string) => emu.resolveLabel(name),
+      setBreakpoint: async (addr: number) => emuRef.current.setBreakpointAddress(addr),
+      clearBreakpoint: async (addr: number) => emuRef.current.clearBreakpointAddress(addr),
+      resolveLabel: async (name: string) => emuRef.current.resolveLabel(name),
       readRegister: (name: string) => {
+        const e = emuRef.current;
         const lower = name.toLowerCase();
-        if (lower === "sp") return BigInt(emu.sp);
-        if (lower === "pc") return BigInt(emu.pc);
+        if (lower === "sp") return BigInt(e.sp);
+        if (lower === "pc") return BigInt(e.pc);
         const m = lower.match(/^[xw](\d+)$/);
         if (!m) return null;
         const idx = Number(m[1]);
         if (idx < 0 || idx > 30) return null;
-        const raw = emu.registers[idx];
+        const raw = e.registers[idx];
         if (!raw) return null;
         return BigInt(raw);
       },
       readRegisters: () => {
+        const e = emuRef.current;
         const out: Record<string, bigint> = {};
-        emu.registers.forEach((v, i) => {
+        e.registers.forEach((v, i) => {
           out[`x${i}`] = BigInt(v);
         });
-        out.sp = BigInt(emu.sp);
-        out.pc = BigInt(emu.pc);
+        out.sp = BigInt(e.sp);
+        out.pc = BigInt(e.pc);
         return out;
       },
-      readMemory: async (addr: number, len: number) => emu.getMemory(addr, len),
-      pcAddress: () => emu.pc,
-      reset: async () => emu.reset(),
+      readMemory: async (addr: number, len: number) => emuRef.current.getMemory(addr, len),
+      pcAddress: () => emuRef.current.pc,
+      reset: async () => emuRef.current.reset(),
     };
-  }, [emu, source]);
+  }, []);
 
   if (emu.loadError) {
     return (
