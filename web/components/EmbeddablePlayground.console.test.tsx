@@ -126,6 +126,31 @@ describe("embed console rendering", () => {
     expect(err.className).toContain("--danger");
   });
 
+  it("surfaces a run fault as an alert in the embed control row", () => {
+    // The full chrome shows emu.error through Controls; the embed must not
+    // let a faulting run stop silently (the pitfall demos depend on the
+    // failure being visible).
+    useEmulatorMock.mockReturnValue(
+      makeHub({ error: "memory fault: read at 0x0000000800600008" }),
+    );
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("memory fault");
+    expect(alert.className).toContain("--danger");
+  });
+
+  it("shows no alert while the machine is error-free", () => {
+    useEmulatorMock.mockReturnValue(makeHub());
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("shows the exit code in the embed console header", () => {
     useEmulatorMock.mockReturnValue(makeHub({ stdout: "done\n", exitCode: 3 }));
     const { container } = render(
