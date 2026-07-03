@@ -48,6 +48,9 @@ pub struct HostContext<'a> {
     pub vfs: &'a mut std::collections::HashMap<String, Vec<u8>>,
     pub open_files: &'a mut std::collections::HashMap<u32, crate::cpu::OpenFile>,
     pub next_fd: &'a mut u32,
+    /// State for the rand/srand stubs. Lives on the `Cpu` (and in every
+    /// snapshot) so draws are deterministic and replay-stable.
+    pub rand_state: &'a mut u64,
 }
 
 /// Table of host stubs, indexed by symbolic name and addressable via a
@@ -135,6 +138,7 @@ mod tests {
         vfs: &'a mut HashMap<String, Vec<u8>>,
         open_files: &'a mut HashMap<u32, crate::cpu::OpenFile>,
         next_fd: &'a mut u32,
+        rand_state: &'a mut u64,
     ) -> HostContext<'a> {
         HostContext {
             regs,
@@ -145,6 +149,7 @@ mod tests {
             vfs,
             open_files,
             next_fd,
+            rand_state,
         }
     }
 
@@ -188,8 +193,10 @@ mod tests {
         let mut vfs = HashMap::new();
         let mut open = HashMap::new();
         let mut next = 3u32;
+        let mut rand_state = 1u64;
         let mut ctx = fresh_ctx(
             &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
+            &mut rand_state,
         );
         let outcome = t.dispatch(addr, &mut ctx).unwrap().unwrap();
         assert_eq!(outcome, HostOutcome::Continue);
@@ -207,8 +214,10 @@ mod tests {
         let mut vfs = HashMap::new();
         let mut open = HashMap::new();
         let mut next = 3u32;
+        let mut rand_state = 1u64;
         let mut ctx = fresh_ctx(
             &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
+            &mut rand_state,
         );
         // Address past the end of the table.
         assert!(t
