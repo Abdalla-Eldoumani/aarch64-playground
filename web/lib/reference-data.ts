@@ -94,6 +94,19 @@ const encAddSubShifted: BitField[] = [
   { bits: 5, label: "Rd", color: operandTint },
 ];
 
+// bitfield move, unsigned (ubfx xd, xn, #lsb, #width); opc 10, immr = lsb,
+// imms = lsb + width - 1
+const encUbfm: BitField[] = [
+  { bits: 1, label: "sf" },
+  { bits: 2, label: "10" },
+  { bits: 6, label: "100110" },
+  { bits: 1, label: "N" },
+  { bits: 6, label: "immr", color: operandTint },
+  { bits: 6, label: "imms", color: operandTint },
+  { bits: 5, label: "Rn", color: operandTint },
+  { bits: 5, label: "Rd", color: operandTint },
+];
+
 // move wide, zero (movz xd, #imm, lsl #shift); opc 10
 const encMovz: BitField[] = [
   { bits: 1, label: "sf" },
@@ -494,6 +507,16 @@ const referenceSeeds: ReferenceSeed[] = [
     mnemonic: "uxth",
     category: "Data processing",
     syntax: "uxth wd, wn",
+  },
+  {
+    mnemonic: "ubfx",
+    category: "Data processing",
+    syntax: "ubfx xd, xn, #lsb, #width",
+    gotchas: [
+      "the field must fit the register: lsb + width can reach 32 (w form) or 64 (x form), never past it.",
+      "the extracted field lands at bit 0 zero-extended; sign does not survive the move.",
+    ],
+    encoding: encUbfm,
   },
 
   // compare and test
