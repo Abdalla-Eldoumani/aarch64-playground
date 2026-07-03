@@ -709,6 +709,51 @@ fn unknown_symbol_in_data_slot_reports_symbol_and_line() {
 }
 
 // ---------------------------------------------------------------------------
+// 17. .skip sized by an equate (the reserved-buffer assignment shape)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn skip_with_symbolic_size_reserves_the_computed_bytes() {
+    let src = r#"
+STACKSIZE = 4
+
+        .bss
+buffer:     .skip STACKSIZE * 4
+sentinel:   .skip 4
+
+        .text
+        .global main
+main:
+        ldr     x9, =buffer
+        mov     w10, 7
+        str     w10, [x9, 12]       // last element of the 16-byte buffer
+        ldr     w0, [x9, 12]
+        mov     x8, 93
+        svc     0
+"#;
+    let cpu = assemble_and_run(src);
+    assert_eq!(cpu.exit_code(), Some(7));
+    // The reserve really occupies STACKSIZE * 4 bytes: the next label
+    // lands exactly 16 past the buffer.
+    let buffer = cpu.resolve_label("buffer").expect("buffer symbol");
+    let sentinel = cpu.resolve_label("sentinel").expect("sentinel symbol");
+    assert_eq!(sentinel - buffer, 16);
+}
+
+#[test]
+fn skip_with_undefined_symbol_reports_it() {
+    let cpu = Cpu::new();
+    let err = aarch64_emulator::frontend::pipeline::assemble_hosted(
+        ".bss\nbuf: .skip NOSUCH * 4\n",
+        &cpu.host,
+    )
+    .expect_err("an undefined size symbol must fail the assemble");
+    let msg = format!("{err}");
+    assert!(msg.contains("NOSUCH"), "names the symbol: {msg}");
+    assert!(msg.contains("line 2"), "points at the reserve line: {msg}");
+}
+
+// ---------------------------------------------------------------------------
 // 16. struct-field addressing off the frame pointer (equate offsets)
 // ---------------------------------------------------------------------------
 
