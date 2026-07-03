@@ -785,6 +785,14 @@ const referenceSeeds: ReferenceSeed[] = [
     example: "fdiv d0, d1, d2",
   },
   {
+    mnemonic: "fneg",
+    category: "Floating point",
+    syntax: "fneg dd, dn",
+    gotchas: [
+      "the alternating-sign series idiom: `fneg sign, sign` each pass flips a running +1/-1 factor without a branch.",
+    ],
+  },
+  {
     mnemonic: "fcmp",
     category: "Floating point",
     syntax: "fcmp dn, dm",
