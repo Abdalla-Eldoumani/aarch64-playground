@@ -5,8 +5,9 @@
 //! branching with the condition codes, an array on the stack, a leaf
 //! subroutine, a non-leaf subroutine that calls a leaf, a printf/scanf
 //! round trip, a floating-point calculation, a file-I/O syscall
-//! sequence, and bitfield packing (the bitwise-tutorial material:
-//! bfi / ubfx / bic). None reproduces course-archive text; every one is authored
+//! sequence, bitfield packing (the bitwise-tutorial material:
+//! bfi / ubfx / bic), and `.req` register aliasing (how later
+//! assignments name registers). None reproduces course-archive text; every one is authored
 //! to the course style (lowercase mnemonics, m4 aliases, AAPCS64
 //! prologue/epilogue where the function needs one, contextual stack
 //! discipline, idiomatic addressing and syscalls).
@@ -38,6 +39,7 @@ const CIRCLE_METRICS: &str = include_str!("conformance/circle-metrics.s");
 const LINE_COUNT: &str = include_str!("conformance/line-count.s");
 const PACK_COLOR: &str = include_str!("conformance/pack-color.s");
 const ALT_SERIES: &str = include_str!("conformance/alt-series.s");
+const ALIAS_SUM: &str = include_str!("conformance/alias-sum.s");
 
 // ---------------------------------------------------------------------------
 // harness (mirrors hosted_end_to_end::run_source so the suite has one place
@@ -146,6 +148,13 @@ fn fp_sign_ops_drive_the_alternating_series() {
         stdout_of(&mut cpu),
         "sum = 0.5833\nlast term size = 0.2500\n"
     );
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn req_aliases_name_registers_through_a_loop() {
+    let mut cpu = run(ALIAS_SUM);
+    assert_eq!(stdout_of(&mut cpu), "total = 8.5\n");
     assert_eq!(cpu.exit_code(), Some(0));
 }
 
