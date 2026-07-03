@@ -332,6 +332,14 @@ impl Cpu {
                     Item::Instruction { .. } => {
                         offset += 4;
                     }
+                    Item::DataExprs { exprs, width, .. } => {
+                        // Symbol-bearing data slots need the linker's
+                        // symbol table; this legacy loader has none, so
+                        // hold the layout and leave the page's zeros.
+                        // Real programs reach these through
+                        // `assemble_hosted` + `load_linked_image`.
+                        offset += (exprs.len() * width) as u64;
+                    }
                 }
             }
         }
