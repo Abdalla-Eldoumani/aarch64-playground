@@ -5,7 +5,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { dispatchCommand, type DispatchContext } from "@/lib/terminal/dispatch";
-import { TerminalInputState } from "@/lib/terminal/input-state";
+import { TerminalInputState, splitPasteLines } from "@/lib/terminal/input-state";
 
 export interface TerminalPaneProps {
   /** Build a fresh DispatchContext on demand (each command may snapshot state). */
@@ -152,7 +152,10 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       // already handled by onKey above.
       if (data.length <= 1) return;
       const s = stateRef.current;
-      const lines = data.replace(/\r\n/g, "\n").split("\n");
+      // xterm delivers pasted line breaks as bare \r, never \n, so the
+      // split must accept every convention or a multi-line paste lands
+      // as one joined command line.
+      const lines = splitPasteLines(data);
       // First chunk extends the current line; subsequent chunks each
       // submit a separate command.
       s.handlePrintable(lines[0]);
