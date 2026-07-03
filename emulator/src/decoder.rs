@@ -141,14 +141,16 @@ pub enum FpBinOp {
 }
 
 /// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
-/// zero-extends it. The `sxtb`/`sxth`/`sxtw` and `uxtb`/`uxth` extends, plus
-/// `sbfx`/`ubfx`, all lower to these. The LSL/LSR/ASR immediate aliases keep
-/// their dedicated decode (see `decode_bitfield`) so this only covers the
-/// extract-and-extend forms.
+/// zero-extends it; `Bfm` merges the field into the destination and keeps
+/// the other bits (the form behind `bfi`). The `sxtb`/`sxth`/`sxtw` and
+/// `uxtb`/`uxth` extends, plus `sbfx`/`ubfx`, lower to the first two. The
+/// LSL/LSR/ASR immediate aliases keep their dedicated decode (see
+/// `decode_bitfield`) so this only covers the genuine bitfield moves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BitfieldOp {
     Sbfm,
     Ubfm,
+    Bfm,
 }
 
 // ---------------------------------------------------------------------------
@@ -857,7 +859,16 @@ fn decode_bitfield(instr: u32) -> Result<Instruction, EmuError> {
             immr,
             imms,
         }),
-        // opc 0b01 is BFM (bitfield insert), unused by the course.
+        // BFM (bitfield insert), the form behind bfi: unlike SBFM/UBFM it
+        // reads Rd and preserves the bits outside the field.
+        0b01 => Ok(Instruction::Bitfield {
+            op: BitfieldOp::Bfm,
+            sf,
+            rd,
+            rn,
+            immr,
+            imms,
+        }),
         _ => Err(EmuError::UnknownInstruction(instr)),
     }
 }
