@@ -141,7 +141,7 @@ Arithmetic is double-precision only. S registers can be loaded and stored (the `
 | `.global` / `.globl` | Mark a symbol as externally visible.           |
 | `.balign N`   | Pad to an N-byte boundary (byte count).               |
 | `.align N`    | Pad to 2^N bytes (power-of-two form).                 |
-| `.skip N` / `.zero N` | Reserve N zero-initialized bytes.             |
+| `.skip N` / `.zero N` | Reserve N zero-initialized bytes. `N` may be a constant expression over equates defined above it (`.skip STACKSIZE * 4`). |
 | `.byte`       | One byte.                                             |
 | `.hword` / `.short` | Two bytes little-endian.                        |
 | `.word`       | Four bytes little-endian.                             |
