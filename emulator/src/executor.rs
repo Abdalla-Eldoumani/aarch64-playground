@@ -155,8 +155,23 @@ pub fn execute(
         Instruction::FpBinary { op, fd, fn_, fm } => {
             exec_fp_binary(*op, *fd, *fn_, *fm, regs)
         }
-        Instruction::FpLdSt { load, ft, rn, offset, size } => {
-            let addr = regs.read_gpr(*rn, true).wrapping_add(*offset as u64);
+        Instruction::FpLdSt { load, ft, rn, offset, size, mode } => {
+            // Base register 31 means SP here, exactly as in the integer
+            // load/store path: FP spills sit on the stack.
+            let base = regs.read_gpr_or_sp(*rn, true);
+            let (addr, writeback) = match mode {
+                IndexMode::PreIndex => {
+                    let a = (base as i64).wrapping_add(*offset) as u64;
+                    (a, Some(a))
+                }
+                IndexMode::PostIndex => {
+                    let wb = (base as i64).wrapping_add(*offset) as u64;
+                    (base, Some(wb))
+                }
+                IndexMode::SignedOffset => {
+                    ((base as i64).wrapping_add(*offset) as u64, None)
+                }
+            };
             if *load {
                 match size {
                     MemSize::X => {
@@ -184,6 +199,9 @@ pub fn execute(
                     }
                     _ => return Err(EmuError::UnknownInstruction(0)),
                 }
+            }
+            if let Some(wb) = writeback {
+                regs.write_gpr_or_sp(*rn, true, wb);
             }
             Ok(ExecResult::Advance)
         }
