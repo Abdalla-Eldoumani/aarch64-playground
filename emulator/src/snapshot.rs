@@ -28,6 +28,9 @@ pub struct Snapshot {
     pub vfs: HashMap<String, Vec<u8>>,
     pub open_files: HashMap<u32, OpenFile>,
     pub next_fd: u32,
+    /// PRNG state behind the rand/srand stubs. Restored with the rest of
+    /// the machine so step-back and replay reproduce the same draws.
+    pub rand_state: u64,
 }
 
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
@@ -109,6 +112,7 @@ mod tests {
             vfs: HashMap::new(),
             open_files: HashMap::new(),
             next_fd: 3,
+            rand_state: 1,
         }
     }
 
