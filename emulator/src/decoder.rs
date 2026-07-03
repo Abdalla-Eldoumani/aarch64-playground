@@ -225,15 +225,18 @@ pub enum Instruction {
         size: MemSize,
         mode: IndexMode,
     },
-    /// SIMD&FP LDR/STR, unsigned-offset form. `size` picks D (0b11, 8B)
-    /// or S (0b10, 4B) width; pre/post-index and register-offset forms
-    /// aren't wired through yet.
+    /// SIMD&FP LDR/STR. `size` picks D (0b11, 8B) or S (0b10, 4B) width.
+    /// Immediate addressing matches the integer forms: scaled unsigned
+    /// offsets, unscaled signed offsets (the LDUR/STUR encodings), and
+    /// pre/post-index writeback via `mode`. Register-offset stays
+    /// integer-only; the course never indexes FP data that way.
     FpLdSt {
         load: bool,
         ft: u8,
         rn: u8,
         offset: i64,
         size: MemSize,
+        mode: IndexMode,
     },
     /// LDP/STP.
     LdStPair {
@@ -1070,23 +1073,47 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
 
     let v = bit(instr, 26);
     if v == 1 {
-        // SIMD&FP LDR/STR, unsigned offset form. Other SIMD/FP addressing
-        // variants stay unsupported for now; the corpus uses only this one.
+        // SIMD&FP LDR/STR. Scaled unsigned offsets, plus the imm9 family
+        // (unscaled signed offset, pre/post-index) that negative frame
+        // offsets and writeback prologues assemble into. Register-offset
+        // and the Q/H/B widths stay unsupported.
         let opc_outer = bits(instr, 25, 24);
         let opc_inner = bits(instr, 23, 22);
+        let rn = bits(instr, 9, 5) as u8;
+        let ft = bits(instr, 4, 0) as u8;
+        let load = opc_inner == 0b01;
         if opc_outer == 0b01 && (opc_inner == 0b00 || opc_inner == 0b01) {
             let imm12 = bits(instr, 21, 10);
             let scale = size.bytes();
             let offset = (imm12 as i64) * (scale as i64);
-            let rn = bits(instr, 9, 5) as u8;
-            let ft = bits(instr, 4, 0) as u8;
-            let load = opc_inner == 0b01;
             return Ok(Instruction::FpLdSt {
                 load,
                 ft,
                 rn,
                 offset,
                 size,
+                mode: IndexMode::SignedOffset,
+            });
+        }
+        if opc_outer == 0b00
+            && (opc_inner == 0b00 || opc_inner == 0b01)
+            && bit(instr, 21) == 0
+        {
+            let imm9 = bits(instr, 20, 12);
+            let offset = sign_extend(imm9, 9);
+            let mode = match bits(instr, 11, 10) {
+                0b00 => IndexMode::SignedOffset, // unscaled LDUR/STUR
+                0b01 => IndexMode::PostIndex,
+                0b11 => IndexMode::PreIndex,
+                _ => return Err(EmuError::UnknownInstruction(instr)),
+            };
+            return Ok(Instruction::FpLdSt {
+                load,
+                ft,
+                rn,
+                offset,
+                size,
+                mode,
             });
         }
         return Err(EmuError::UnknownInstruction(instr));
@@ -1188,11 +1215,15 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
             });
         }
 
-        // pre-index or post-index with 9-bit signed immediate
+        // 9-bit signed immediate family: unscaled offset (the LDUR/STUR
+        // encodings GAS emits for negative or unaligned LDR/STR offsets),
+        // pre-index, and post-index. idx=00 with opc bit 23 set is the
+        // sign-extending LDURS* family, which stays unsupported.
         let imm9 = bits(instr, 20, 12);
         let offset = sign_extend(imm9, 9);
 
         let mode = match idx_type {
+            0b00 if bit(instr, 23) == 0 => IndexMode::SignedOffset,
             0b01 => IndexMode::PostIndex,
             0b11 => IndexMode::PreIndex,
             _ => return Err(EmuError::UnknownInstruction(instr)),
