@@ -709,6 +709,75 @@ fn unknown_symbol_in_data_slot_reports_symbol_and_line() {
 }
 
 // ---------------------------------------------------------------------------
+// 16. struct-field addressing off the frame pointer (equate offsets)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn struct_field_offsets_reach_unaligned_and_fp_slots() {
+    // The struct-copy assignment shape: field offsets are equates, a
+    // 64-bit load grabs two packed ints at a 4-aligned offset (which
+    // only the unscaled encoding can express), and a double spills to
+    // the frame with writeback.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+
+point_x = 0
+point_y = 4
+box_w = 8
+box_area = 12
+box_size = 16
+
+alloc = -(16 + box_size) & -16
+dealloc = -alloc
+box_s = 16
+
+        .data
+fmt_pair:   .string "x %d y %d\n"
+fmt_area:   .string "area %.1f\n"
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+
+        mov     w9, 21
+        str     w9, [fp, box_s + point_x]
+        mov     w9, 43
+        str     w9, [fp, box_s + point_y]
+
+        // Both packed ints in one 64-bit load: offset 16+0 is 8-aligned,
+        // but the same load at point_y (offset 20) is not, so the pair
+        // below proves the unscaled form under an equate expression.
+        ldr     x9, [fp, box_s + point_y]       // unaligned 64-bit read
+        and     x2, x9, 0xFFFFFFFF              // low word = y
+        ldr     x9, [fp, box_s + point_x]
+        and     x1, x9, 0xFFFFFFFF              // low word = x
+        ldr     x0, =fmt_pair
+        bl      printf
+
+        // Double spill with writeback, read back at a negative offset.
+        mov     x9, 6
+        scvtf   d0, x9
+        str     d0, [sp, -16]!
+        ldr     d1, [sp]
+        add     sp, sp, 16
+        ldr     d2, [sp, -16]                   // negative FP-data offset
+        fadd    d0, d1, d2
+        ldr     x0, =fmt_area
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+    let mut cpu = assemble_and_run(src);
+    assert_eq!(stdout_of(&mut cpu), "x 21 y 43\narea 12.0\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+// ---------------------------------------------------------------------------
 // 14. rand / srand / time (the random-array assignment idiom)
 // ---------------------------------------------------------------------------
 
