@@ -334,6 +334,12 @@ pub enum Instruction {
         fn_: u8,
         fm: u8,
     },
+    /// FMOV Dd, #imm (8-bit VFP immediate, already expanded to the full
+    /// IEEE 754 double bit pattern so the executor just writes it).
+    FpMoveImm {
+        fd: u8,
+        imm_bits: u64,
+    },
     /// FMOV Dd, Dn (reg-to-reg).
     FpMoveReg {
         fd: u8,
@@ -411,6 +417,20 @@ fn sign_extend(val: u32, bit_width: u8) -> i64 {
 // ---------------------------------------------------------------------------
 // bitmask immediate decoder
 // ---------------------------------------------------------------------------
+
+/// Expand the FMOV 8-bit VFP immediate to its IEEE 754 double bit pattern.
+/// Per the ARM ARM: sign = b7, exponent = NOT(b6) then b6 replicated eight
+/// times then b5:b4, mantissa = b3:b0 at the top of the 52-bit fraction.
+/// Every encodable value is (16..31)/16 scaled by a power of two from 2^-3
+/// to 2^4, either sign; the assembler brute-forces this table in reverse.
+pub fn expand_fmov_imm8(imm8: u8) -> u64 {
+    let b7 = ((imm8 >> 7) & 1) as u64;
+    let b6 = ((imm8 >> 6) & 1) as u64;
+    let b54 = ((imm8 >> 4) & 0b11) as u64;
+    let b30 = (imm8 & 0b1111) as u64;
+    let rep = if b6 == 1 { 0xFFu64 } else { 0 };
+    (b7 << 63) | ((b6 ^ 1) << 62) | (rep << 54) | (b54 << 52) | (b30 << 48)
+}
 
 /// Decode the N:immr:imms bitmask immediate encoding used by logical
 /// instructions. Returns the 64-bit expanded bitmask.
@@ -665,6 +685,13 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
             }
             _ => {}
         }
+    }
+
+    // FMOV (scalar, immediate): imm8 in bits 20:13, bits 12:10 = 100, and
+    // the Rn field is zero. Expanded here so the executor writes raw bits.
+    if bits(instr, 12, 10) == 0b100 && bits(instr, 9, 5) == 0 {
+        let imm8 = bits(instr, 20, 13) as u8;
+        return Ok(Instruction::FpMoveImm { fd: rd, imm_bits: expand_fmov_imm8(imm8) });
     }
 
     // FCMP: opcode2 = 001000 in bits 15:10, bits 4:0 = 00000, bits 20:16 = Rm.
