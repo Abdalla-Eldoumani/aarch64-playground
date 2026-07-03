@@ -531,6 +531,20 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     }
     let (_, sf) = parse_register(ops[0], ln)?;
     let zr = if sf { "XZR" } else { "WZR" };
+    // A negative comparison immediate has no direct encoding; GAS flips
+    // the alias instead (`cmp w1, -1` assembles as `cmn w1, 1`), and
+    // sentinel tests like top == -1 rely on that. Flip the same way.
+    let imm_body = ops[1].trim();
+    let imm_body = imm_body.strip_prefix('#').unwrap_or(imm_body).trim();
+    if let Ok(v) = imm_body.parse::<i64>() {
+        if v < 0 {
+            if let Some(positive) = v.checked_neg() {
+                let flipped = positive.to_string();
+                let new_ops = [zr, ops[0], flipped.as_str()];
+                return encode_dp(&new_ops, 1 - op_bit, 1, ln);
+            }
+        }
+    }
     let new_ops = [zr, ops[0], ops[1]];
     encode_dp(&new_ops, op_bit, 1, ln)
 }
@@ -1672,6 +1686,44 @@ mod tests {
 
         assert_eq!(cpu.regs.read_gpr(0, true), 0);
         assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn negative_cmp_immediate_flips_to_cmn() {
+        // The sentinel-test shape: an index initialized to -1 compared
+        // against -1. GAS assembles `cmp w, -1` as `cmn w, 1`.
+        let source = r#"
+            MOV W1, #-1
+            CMP W1, #-1
+            B.EQ matched
+            MOV X0, #0
+            SVC #0
+        matched:
+            MOV X0, #1
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(0, true), 1, "cmp w1, -1 matches w1 = -1");
+        // And the flip works the other way: cmn with a negative
+        // immediate compares against the positive value.
+        let source = r#"
+            MOV W1, #5
+            CMN W1, #-5
+            B.EQ matched
+            MOV X0, #0
+            SVC #0
+        matched:
+            MOV X0, #1
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(0, true), 1, "cmn w1, -5 acts as cmp w1, 5");
     }
 
     #[test]
