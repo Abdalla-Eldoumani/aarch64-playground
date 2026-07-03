@@ -1055,6 +1055,19 @@ mod tests {
         assert_eq!(regs.read_fpr_f64(0), 2.5);
     }
 
+    #[test]
+    fn fabs_clears_sign_and_keeps_positive() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, -0.75);
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 1 };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 0.75);
+        // Already-positive values pass through unchanged.
+        let again = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 0 };
+        execute(&again, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 0.75);
+    }
+
     // -- memory --
 
     #[test]
