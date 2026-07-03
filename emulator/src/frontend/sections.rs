@@ -88,6 +88,15 @@ pub enum Item {
         tokens: Vec<Token>,
         original_line: usize,
     },
+    /// A `.skip`/`.zero` whose byte count references symbols (`.skip
+    /// STACKSIZE * 4` with `STACKSIZE = 5` above it). The linker
+    /// evaluates the size during its layout walk, where equates seen so
+    /// far are known; the count must resolve there because every later
+    /// offset in the section depends on it.
+    ReserveExpr {
+        tokens: Vec<Token>,
+        original_line: usize,
+    },
     /// Integer data slots whose expressions reference symbols or `.`, one
     /// token group per comma-separated value. Course pointer tables
     /// (`array_months: .dword label_january, label_february, ...`) name
