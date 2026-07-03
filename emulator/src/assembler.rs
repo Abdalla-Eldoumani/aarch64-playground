@@ -874,9 +874,39 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "FMOV requires 2 operands");
     }
-    // For now only reg-to-reg double is supported. Immediate and GPR forms
-    // are future work (tracked in the plan).
     let (fd, _) = parse_fp_register(ops[0], ln)?;
+
+    // Immediate form: `fmov d9, 9.0` (course style, `#` optional). The
+    // operand is anything that reads as a float literal rather than a
+    // register. Only the 8-bit VFP immediates encode; everything else
+    // points the student at the `.double` fallback.
+    let op2 = ops[1].trim();
+    let imm_text = op2.strip_prefix('#').unwrap_or(op2);
+    if !imm_text.is_empty()
+        && imm_text
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_digit() || c == '-' || c == '+' || c == '.')
+    {
+        let value: f64 = imm_text.parse().map_err(|_| {
+            asm_error(ln, &format!("cannot parse '{op2}' as an FMOV float immediate"))
+        })?;
+        // 256 candidates; exact bit match is the correctness test.
+        let imm8 = (0u16..=255)
+            .map(|c| c as u8)
+            .find(|&c| crate::decoder::expand_fmov_imm8(c) == value.to_bits());
+        let Some(imm8) = imm8 else {
+            return asm_err(
+                ln,
+                &format!(
+                    "{op2} does not fit the FMOV 8-bit float immediate; load it from a .double instead"
+                ),
+            );
+        };
+        // FMOV Dd, #imm: 0_0_0_11110_01_1_imm8_100_00000_Rd
+        return Ok(0x1E60_1000 | ((imm8 as u32) << 13) | (fd as u32));
+    }
+
     let (fn_, _) = parse_fp_register(ops[1], ln)?;
     // FMOV Dd, Dn: 0_0_0_11110_01_1_00000_010000_Rn_Rd
     Ok(0x1E60_4000 | ((fn_ as u32) << 5) | (fd as u32))
@@ -1905,6 +1935,41 @@ mod tests {
             }
             other => panic!("expected FpUnary, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn assemble_fmov_immediate_round_trips_course_values() {
+        // The values course programs write: fmov dN, 1.0 / 2.0 / 5.0 / 9.0.
+        let cases = [
+            ("fmov d8, 1.0", 1.0f64),
+            ("fmov d9, 2.0", 2.0),
+            ("fmov d10, 5.0", 5.0),
+            ("fmov d11, 9.0", 9.0),
+            ("FMOV D0, #-1.0", -1.0),
+            ("fmov d1, 0.5", 0.5),
+        ];
+        for (src, expected) in cases {
+            let code = assemble(src).unwrap();
+            match crate::decoder::decode(code[0]).unwrap() {
+                crate::decoder::Instruction::FpMoveImm { imm_bits, .. } => {
+                    assert_eq!(
+                        f64::from_bits(imm_bits),
+                        expected,
+                        "wrong expansion for {src}"
+                    );
+                }
+                other => panic!("expected FpMoveImm for {src}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn assemble_fmov_immediate_rejects_unencodable_values() {
+        // 0.1 has no exact 8-bit float form; 100.0 is out of the 2^4 range;
+        // 0.0 encodes as integer zero moves, not an FMOV immediate.
+        assert!(assemble("fmov d0, 0.1").is_err());
+        assert!(assemble("fmov d0, 100.0").is_err());
+        assert!(assemble("fmov d0, 0.0").is_err());
     }
 
     #[test]
