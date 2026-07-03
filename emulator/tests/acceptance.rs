@@ -695,8 +695,76 @@ main:
     );
 }
 
+#[test]
+fn unknown_symbol_in_data_slot_reports_symbol_and_line() {
+    let cpu = Cpu::new();
+    let err = aarch64_emulator::frontend::pipeline::assemble_hosted(
+        ".data\ntable: .dword no_such_label\n",
+        &cpu.host,
+    )
+    .expect_err("an unresolvable data slot must fail the assemble");
+    let msg = format!("{err}");
+    assert!(msg.contains("no_such_label"), "names the symbol: {msg}");
+    assert!(msg.contains("line 2"), "points at the table line: {msg}");
+}
+
 // ---------------------------------------------------------------------------
-// 14. atoi over argv (how assignment programs read numeric arguments)
+// 14. rand / srand / time (the random-array assignment idiom)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn seeded_random_draws_are_reproducible() {
+    // The classic setup: srand(time(0)), then draws masked into a range.
+    // The emulator's time() is a fixed timestamp, so the sequence is the
+    // same on every run -- assert that by running the program twice.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+define(count_r, w19)
+
+        .data
+fmt_draw:   .string "draw %d\n"
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x0, 0                   // time(0)
+        bl      time
+        bl      srand                   // seed with the fixed stamp
+
+        mov     count_r, 3
+draw_loop:
+        bl      rand
+        and     w1, w0, 0xFF            // draw mod 256, course-style mask
+        ldr     x0, =fmt_draw
+        bl      printf
+        subs    count_r, count_r, 1
+        b.gt    draw_loop
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut first = assemble_and_run(src);
+    let first_out = stdout_of(&mut first);
+    assert_eq!(first.exit_code(), Some(0));
+    assert_eq!(first_out.lines().count(), 3, "three draws print");
+    for line in first_out.lines() {
+        let n: i64 = line
+            .strip_prefix("draw ")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("unexpected line: {line}"));
+        assert!((0..=255).contains(&n), "masked draw in range: {n}");
+    }
+    let mut second = assemble_and_run(src);
+    assert_eq!(stdout_of(&mut second), first_out, "fixed seed, fixed sequence");
+}
+
+// ---------------------------------------------------------------------------
+// 15. atoi over argv (how assignment programs read numeric arguments)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -737,15 +805,3 @@ main:
     assert_eq!(cpu.exit_code(), Some(12));
 }
 
-#[test]
-fn unknown_symbol_in_data_slot_reports_symbol_and_line() {
-    let cpu = Cpu::new();
-    let err = aarch64_emulator::frontend::pipeline::assemble_hosted(
-        ".data\ntable: .dword no_such_label\n",
-        &cpu.host,
-    )
-    .expect_err("an unresolvable data slot must fail the assemble");
-    let msg = format!("{err}");
-    assert!(msg.contains("no_such_label"), "names the symbol: {msg}");
-    assert!(msg.contains("line 2"), "points at the table line: {msg}");
-}
