@@ -95,6 +95,46 @@ pub fn exit(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Exited(code))
 }
 
+/// C `RAND_MAX`: rand() draws land in `0..=32767`.
+pub const RAND_MAX: i64 = 32767;
+
+/// The timestamp `time` reports. A browser emulator has no reason to
+/// leak wall-clock time, and a fixed value makes the classic
+/// `srand(time(0))` seeding produce the same run every time -- which is
+/// what a student stepping backward and forward through a program needs.
+/// Only stability matters, not the date it decodes to.
+pub const FIXED_TIME: u64 = 355_000_000;
+
+pub fn rand(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    // The portable C LCG (the ISO sample implementation): advance the
+    // state, expose bits 16.. so the low-bit patterns of the multiplier
+    // never reach the caller.
+    *ctx.rand_state = ctx
+        .rand_state
+        .wrapping_mul(1_103_515_245)
+        .wrapping_add(12_345);
+    let value = ((*ctx.rand_state / 65_536) % 32_768) as i64;
+    ctx.regs.write_gpr(0, true, value as u64);
+    Ok(HostOutcome::Continue)
+}
+
+pub fn srand(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    // C takes an unsigned int seed in w0.
+    *ctx.rand_state = ctx.regs.read_gpr(0, false);
+    Ok(HostOutcome::Continue)
+}
+
+pub fn time(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    // time(time_t *tloc): returns the timestamp, and stores it through
+    // the pointer too when one is given.
+    let tloc = ctx.regs.read_gpr(0, true);
+    if tloc != 0 {
+        ctx.mem.write_u64(tloc, FIXED_TIME)?;
+    }
+    ctx.regs.write_gpr(0, true, FIXED_TIME);
+    Ok(HostOutcome::Continue)
+}
+
 /// Sentinel stub the loader stashes in `LR` before calling `main`. A
 /// program that returns out of `main` lands here and we halt with the
 /// caller's return value (the ARM64 AAPCS64 convention puts it in `w0`).
@@ -172,6 +212,7 @@ mod tests {
         vfs: HashMap<String, Vec<u8>>,
         open_files: HashMap<u32, OpenFile>,
         next_fd: u32,
+        rand_state: u64,
     }
 
     impl Host {
@@ -188,6 +229,7 @@ mod tests {
                 vfs: HashMap::new(),
                 open_files: HashMap::new(),
                 next_fd: 3,
+                rand_state: 1,
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -200,6 +242,7 @@ mod tests {
                 vfs: &mut self.vfs,
                 open_files: &mut self.open_files,
                 next_fd: &mut self.next_fd,
+                rand_state: &mut self.rand_state,
             }
         }
         fn place_string(&mut self, addr: u64, s: &[u8]) {
@@ -317,6 +360,71 @@ mod tests {
         h.regs.write_gpr(0, true, 7);
         let outcome = exit(&mut h.ctx()).unwrap();
         assert_eq!(outcome, HostOutcome::Exited(7));
+    }
+
+    #[test]
+    fn rand_is_deterministic_and_in_range() {
+        let mut h = Host::new();
+        let mut first_run = Vec::new();
+        for _ in 0..5 {
+            rand(&mut h.ctx()).unwrap();
+            let v = h.regs.read_gpr(0, true) as i64;
+            assert!((0..=RAND_MAX).contains(&v), "rand out of range: {v}");
+            first_run.push(v);
+        }
+        // Same seed, same sequence.
+        let mut h2 = Host::new();
+        for expected in &first_run {
+            rand(&mut h2.ctx()).unwrap();
+            assert_eq!(h2.regs.read_gpr(0, true) as i64, *expected);
+        }
+        // The draws are not all identical.
+        assert!(first_run.windows(2).any(|w| w[0] != w[1]));
+    }
+
+    #[test]
+    fn srand_reseeds_the_sequence() {
+        let mut h = Host::new();
+        h.regs.write_gpr(0, true, 42);
+        srand(&mut h.ctx()).unwrap();
+        rand(&mut h.ctx()).unwrap();
+        let seeded_first = h.regs.read_gpr(0, true);
+        // Re-seeding with the same value replays the same draw.
+        h.regs.write_gpr(0, true, 42);
+        srand(&mut h.ctx()).unwrap();
+        rand(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), seeded_first);
+        // A different seed diverges.
+        h.regs.write_gpr(0, true, 43);
+        srand(&mut h.ctx()).unwrap();
+        rand(&mut h.ctx()).unwrap();
+        assert_ne!(h.regs.read_gpr(0, true), seeded_first);
+    }
+
+    #[test]
+    fn unseeded_rand_matches_srand_one() {
+        // C: rand() before any srand behaves as if srand(1) had run.
+        let mut fresh = Host::new();
+        rand(&mut fresh.ctx()).unwrap();
+        let unseeded = fresh.regs.read_gpr(0, true);
+        let mut seeded = Host::new();
+        seeded.regs.write_gpr(0, true, 1);
+        srand(&mut seeded.ctx()).unwrap();
+        rand(&mut seeded.ctx()).unwrap();
+        assert_eq!(seeded.regs.read_gpr(0, true), unseeded);
+    }
+
+    #[test]
+    fn time_returns_fixed_stamp_and_stores_through_pointer() {
+        let mut h = Host::new();
+        h.regs.write_gpr(0, true, 0); // time(0)
+        time(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), FIXED_TIME);
+        // With a pointer, the value also lands in memory.
+        h.regs.write_gpr(0, true, 0x0060_0000);
+        time(&mut h.ctx()).unwrap();
+        assert_eq!(h.mem.read_u64(0x0060_0000).unwrap(), FIXED_TIME);
+        assert_eq!(h.regs.read_gpr(0, true), FIXED_TIME);
     }
 
     #[test]
