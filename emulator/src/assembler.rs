@@ -175,6 +175,7 @@ fn encode_line(
         "FDIV" => encode_fp_binary(&ops, 0b0001, line_num),
         "FMOV" => encode_fmov(&ops, line_num),
         "FNEG" => encode_fp_unary(&ops, 0b000010, line_num),
+        "FABS" => encode_fp_unary(&ops, 0b000001, line_num),
         "FCMP" => encode_fcmp(&ops, line_num),
         "SCVTF" => encode_scvtf(&ops, line_num),
         "FCVTZS" => encode_fcvtzs(&ops, line_num),
@@ -1888,7 +1889,22 @@ mod tests {
     fn assemble_fneg_distinct_from_fmov_and_fabs() {
         let fneg = assemble("FNEG D0, D1").unwrap()[0];
         let fmov = assemble("FMOV D0, D1").unwrap()[0];
+        let fabs = assemble("FABS D0, D1").unwrap()[0];
         assert_ne!(fneg, fmov);
+        assert_ne!(fabs, fmov);
+        assert_ne!(fabs, fneg);
+    }
+
+    #[test]
+    fn assemble_fabs_round_trips() {
+        let code = assemble("fabs d10, d11").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::FpUnary { op, fd, fn_ } => {
+                assert_eq!(op, crate::decoder::FpUnaryOp::Fabs);
+                assert_eq!((fd, fn_), (10, 11));
+            }
+            other => panic!("expected FpUnary, got {other:?}"),
+        }
     }
 
     #[test]
