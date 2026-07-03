@@ -29,6 +29,20 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
   const fitRef = useRef<FitAddon | null>(null);
   const stateRef = useRef<TerminalInputState>(new TerminalInputState());
 
+  // The context builder closes over the emulator hub, which is a new
+  // object after every machine snapshot, so this prop changes identity
+  // on every step and run. Route it (and the upload handler) through
+  // refs so no callback below depends on it: a dependency chain from
+  // these props into the init effect would dispose and recreate the
+  // terminal on each machine change, destroying the scrollback
+  // mid-session -- including during the terminal's own program runs.
+  const buildContextRef = useRef(buildContext);
+  const onUploadRequestRef = useRef(onUploadRequest);
+  useEffect(() => {
+    buildContextRef.current = buildContext;
+    onUploadRequestRef.current = onUploadRequest;
+  });
+
   const writePrompt = useCallback(() => {
     termRef.current?.write(PROMPT);
   }, []);
@@ -53,12 +67,12 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       if (!t) return;
       t.write("\r\n");
       if (line === "upload") {
-        onUploadRequest?.();
+        onUploadRequestRef.current?.();
         t.write("upload: pick a file in the host dialog above\r\n");
         writePrompt();
         return;
       }
-      const ctx = buildContext();
+      const ctx = buildContextRef.current();
       const result = await dispatchCommand(line, ctx);
       if (result.control === "clear") {
         t.clear();
@@ -68,7 +82,7 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       writeLines(result.lines);
       writePrompt();
     },
-    [buildContext, onUploadRequest, writePrompt, writeLines],
+    [writePrompt, writeLines],
   );
 
   useEffect(() => {
@@ -125,7 +139,7 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       }
       if (domEvent.key === "Tab") {
         domEvent.preventDefault();
-        const ctx = buildContext();
+        const ctx = buildContextRef.current();
         const matches = s.handleTab(ctx.listVfs());
         if (matches.length === 1) {
           repaintInput();
@@ -183,7 +197,9 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       termRef.current = null;
       fitRef.current = null;
     };
-  }, [buildContext, repaintInput, runLine, writeLines, writePrompt]);
+    // Every dependency here is a stable useCallback, so the terminal is
+    // allocated exactly once per mount and survives machine re-renders.
+  }, [repaintInput, runLine, writeLines, writePrompt]);
 
   return (
     <div
