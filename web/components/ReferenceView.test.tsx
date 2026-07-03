@@ -16,6 +16,9 @@ vi.mock("@/components/CallingConventionGuide", () => ({
 vi.mock("@/components/PitfallsCatalog", () => ({
   PitfallsCatalog: () => "pitfalls-catalog",
 }));
+vi.mock("@/components/BaseConverter", () => ({
+  BaseConverter: () => "base-converter-widget",
+}));
 
 import type { ReferenceInstruction } from "@/lib/reference-data";
 import { ReferenceView } from "./ReferenceView";
@@ -45,7 +48,7 @@ afterEach(() => {
 });
 
 describe("ReferenceView", () => {
-  it("renders the three reference tabs with Instructions active by default", () => {
+  it("renders the four reference tabs with Instructions active by default", () => {
     render(<ReferenceView instructions={INSTRUCTIONS} />);
     expect(
       screen.getByRole("tablist", { name: "reference sections" }),
@@ -55,6 +58,7 @@ describe("ReferenceView", () => {
       "Instructions",
       "Calling convention",
       "Pitfalls",
+      "Converter",
     ]);
     expect(
       screen.getByRole("tab", { name: "Instructions" }).getAttribute("aria-selected"),
@@ -76,6 +80,17 @@ describe("ReferenceView", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Pitfalls" }));
     expect(screen.getByText("pitfalls-catalog")).toBeTruthy();
     expect(screen.queryByText("calling-convention-guide")).toBeNull();
+  });
+
+  it("mounts the base converter behind its tab", async () => {
+    render(<ReferenceView instructions={INSTRUCTIONS} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Converter" }));
+    // The widget arrives asynchronously behind next/dynamic.
+    expect(await screen.findByText("base-converter-widget")).toBeTruthy();
+    expect(screen.getByText(/One bit pattern, four readings/)).toBeTruthy();
+    expect(
+      screen.queryByText(`instruction-reference:${INSTRUCTIONS.length}`),
+    ).toBeNull();
   });
 
   it("moves between sections with the arrow keys", () => {
