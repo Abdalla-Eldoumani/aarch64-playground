@@ -792,6 +792,9 @@ fn exec_bitfield(
         match op {
             BitfieldOp::Ubfm => field,
             BitfieldOp::Sbfm => sign_extend_from(field, width - 1),
+            // BFM in this arm is BFXIL: field lands at bit 0, the
+            // destination's upper bits survive.
+            BitfieldOp::Bfm => (regs.read_gpr(rd, sf) & !mask_for(width)) | field,
         }
     } else {
         // Place bits [s:0] (width = s + 1) starting at bit (datasize - r).
@@ -802,6 +805,11 @@ fn exec_bitfield(
         match op {
             BitfieldOp::Ubfm => placed,
             BitfieldOp::Sbfm => sign_extend_from(placed, shift + s),
+            // BFM in this arm is BFI: the field lands at the insert
+            // position and every other destination bit survives.
+            BitfieldOp::Bfm => {
+                (regs.read_gpr(rd, sf) & !(mask_for(width) << shift)) | placed
+            }
         }
     };
 
@@ -996,6 +1004,33 @@ mod tests {
         };
         execute(&instr, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_gpr(0, true), 0xA);
+    }
+
+    #[test]
+    fn bfi_inserts_and_keeps_surroundings() {
+        // Insert 0xC at bits [11:8] of 0xFFFF: only that nibble changes.
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(0, false, 0xFFFF);
+        regs.write_gpr(1, false, 0xC);
+        // bfi w0, w1, #8, #4 -> BFM immr = 24, imms = 3.
+        let instr = Instruction::Bitfield {
+            op: BitfieldOp::Bfm, sf: false, rd: 0, rn: 1, immr: 24, imms: 3,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0xFCFF);
+    }
+
+    #[test]
+    fn bfi_at_lsb_zero_keeps_upper_bits() {
+        // immr = 0 takes the s >= r arm (BFXIL shape): low byte replaced.
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(0, true, 0xABCD_1234);
+        regs.write_gpr(1, true, 0x77);
+        let instr = Instruction::Bitfield {
+            op: BitfieldOp::Bfm, sf: true, rd: 0, rn: 1, immr: 0, imms: 7,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0xABCD_1277);
     }
 
     // -- memory --
