@@ -41,6 +41,10 @@ export interface ReferenceInstruction {
   gotchas?: string[];
   /** Authored bit-field layout for the curated subset; widths sum to 32. */
   encoding?: BitField[];
+  /** The concrete instruction the encoding's worked field values spell,
+   *  e.g. "add x19, x0, 8"; shown as the diagram caption and pinned to the
+   *  emulator's machine word by reference-encoding.test.ts. */
+  encodedAsm?: string;
   /** Complete program for the try-in-playground deep-link, used when the bare
    *  example references an undefined label or symbol and so cannot assemble on
    *  its own. Other instructions wrap their example instead (playground-source). */
@@ -61,6 +65,8 @@ interface ReferenceSeed {
   example?: string;
   gotchas?: string[];
   encoding?: BitField[];
+  /** The concrete instruction the encoding's worked bits spell. */
+  encodedAsm?: string;
   /** Complete deep-link program when the bare example won't assemble alone. */
   runnable?: string;
 }
@@ -68,114 +74,128 @@ interface ReferenceSeed {
 // Operand fields are tinted so they read apart from the fixed opcode bits.
 const operandTint = "var(--cyan)";
 
-// add immediate (add xd, xn, #imm)
+// Each encoding carries a worked example: per-field `value` bits plus what
+// they decode to, verified against the emulator's own machine word by
+// reference-encoding.test.ts. The diagram turns them into the exam's by-hand
+// procedure (pack the fields, group nibbles, read hex). The `encodedAsm` on
+// the seed names the concrete instruction the bits belong to.
+
+// add immediate (add xd, xn, #imm); worked: add x19, x0, 8 = 0x91002013
 const encAddImm: BitField[] = [
-  { bits: 1, label: "sf" },
-  { bits: 1, label: "op" },
-  { bits: 1, label: "s" },
-  { bits: 6, label: "100010" },
-  { bits: 1, label: "sh" },
-  { bits: 12, label: "imm12", color: operandTint },
-  { bits: 5, label: "Rn", color: operandTint },
-  { bits: 5, label: "Rd", color: operandTint },
+  { bits: 1, label: "sf", value: "1", meaning: "1 = x width" },
+  { bits: 1, label: "op", value: "0", meaning: "0 = add, 1 = sub" },
+  { bits: 1, label: "s", value: "0", meaning: "0 = no flags (adds sets 1)" },
+  { bits: 6, label: "100010", value: "100010", meaning: "add/sub immediate class" },
+  { bits: 1, label: "sh", value: "0", meaning: "0 = imm12 not shifted" },
+  { bits: 12, label: "imm12", color: operandTint, value: "000000001000", meaning: "8" },
+  { bits: 5, label: "Rn", color: operandTint, value: "00000", meaning: "x0" },
+  { bits: 5, label: "Rd", color: operandTint, value: "10011", meaning: "x19" },
 ];
 
-// add/sub shifted register (sub xd, xn, xm); op selects add vs sub
+// add/sub shifted register (sub xd, xn, xm); op selects add vs sub;
+// worked: sub x19, x0, x1 = 0xcb010013
 const encAddSubShifted: BitField[] = [
-  { bits: 1, label: "sf" },
-  { bits: 1, label: "op" },
-  { bits: 1, label: "s" },
-  { bits: 5, label: "01011" },
-  { bits: 2, label: "shift" },
-  { bits: 1, label: "0" },
-  { bits: 5, label: "Rm", color: operandTint },
-  { bits: 6, label: "imm6" },
-  { bits: 5, label: "Rn", color: operandTint },
-  { bits: 5, label: "Rd", color: operandTint },
+  { bits: 1, label: "sf", value: "1", meaning: "1 = x width" },
+  { bits: 1, label: "op", value: "1", meaning: "1 = sub, 0 = add" },
+  { bits: 1, label: "s", value: "0", meaning: "0 = no flags (subs sets 1)" },
+  { bits: 5, label: "01011", value: "01011", meaning: "add/sub shifted-register class" },
+  { bits: 2, label: "shift", value: "00", meaning: "00 = lsl" },
+  { bits: 1, label: "0", value: "0", meaning: "fixed" },
+  { bits: 5, label: "Rm", color: operandTint, value: "00001", meaning: "x1" },
+  { bits: 6, label: "imm6", value: "000000", meaning: "shift amount 0" },
+  { bits: 5, label: "Rn", color: operandTint, value: "00000", meaning: "x0" },
+  { bits: 5, label: "Rd", color: operandTint, value: "10011", meaning: "x19" },
 ];
 
 // bitfield move, unsigned (ubfx xd, xn, #lsb, #width); opc 10, immr = lsb,
-// imms = lsb + width - 1
+// imms = lsb + width - 1; worked: ubfx w19, w20, 4, 4 = 0x53041e93
 const encUbfm: BitField[] = [
-  { bits: 1, label: "sf" },
-  { bits: 2, label: "10" },
-  { bits: 6, label: "100110" },
-  { bits: 1, label: "N" },
-  { bits: 6, label: "immr", color: operandTint },
-  { bits: 6, label: "imms", color: operandTint },
-  { bits: 5, label: "Rn", color: operandTint },
-  { bits: 5, label: "Rd", color: operandTint },
+  { bits: 1, label: "sf", value: "0", meaning: "0 = w width" },
+  { bits: 2, label: "10", value: "10", meaning: "10 = unsigned extract" },
+  { bits: 6, label: "100110", value: "100110", meaning: "bitfield class" },
+  { bits: 1, label: "N", value: "0", meaning: "matches sf for w" },
+  { bits: 6, label: "immr", color: operandTint, value: "000100", meaning: "lsb = 4" },
+  { bits: 6, label: "imms", color: operandTint, value: "000111", meaning: "lsb + width - 1 = 7" },
+  { bits: 5, label: "Rn", color: operandTint, value: "10100", meaning: "w20" },
+  { bits: 5, label: "Rd", color: operandTint, value: "10011", meaning: "w19" },
 ];
 
 // bitfield move, insert (bfi xd, xn, #lsb, #width); opc 01,
-// immr = (reg size - lsb) mod reg size, imms = width - 1
+// immr = (reg size - lsb) mod reg size, imms = width - 1;
+// worked: bfi w19, w20, 8, 4 = 0x33180e93
 const encBfm: BitField[] = [
-  { bits: 1, label: "sf" },
-  { bits: 2, label: "01" },
-  { bits: 6, label: "100110" },
-  { bits: 1, label: "N" },
-  { bits: 6, label: "immr", color: operandTint },
-  { bits: 6, label: "imms", color: operandTint },
-  { bits: 5, label: "Rn", color: operandTint },
-  { bits: 5, label: "Rd", color: operandTint },
+  { bits: 1, label: "sf", value: "0", meaning: "0 = w width" },
+  { bits: 2, label: "01", value: "01", meaning: "01 = insert" },
+  { bits: 6, label: "100110", value: "100110", meaning: "bitfield class" },
+  { bits: 1, label: "N", value: "0", meaning: "matches sf for w" },
+  { bits: 6, label: "immr", color: operandTint, value: "011000", meaning: "(32 - lsb) mod 32 = 24" },
+  { bits: 6, label: "imms", color: operandTint, value: "000011", meaning: "width - 1 = 3" },
+  { bits: 5, label: "Rn", color: operandTint, value: "10100", meaning: "w20" },
+  { bits: 5, label: "Rd", color: operandTint, value: "10011", meaning: "w19" },
 ];
 
-// move wide, zero (movz xd, #imm, lsl #shift); opc 10
+// move wide, zero (movz xd, #imm, lsl #shift); opc 10;
+// worked: movz x19, 0x1234 = 0xd2824693
 const encMovz: BitField[] = [
-  { bits: 1, label: "sf" },
-  { bits: 2, label: "10" },
-  { bits: 6, label: "100101" },
-  { bits: 2, label: "hw" },
-  { bits: 16, label: "imm16", color: operandTint },
-  { bits: 5, label: "Rd", color: operandTint },
+  { bits: 1, label: "sf", value: "1", meaning: "1 = x width" },
+  { bits: 2, label: "10", value: "10", meaning: "10 = movz" },
+  { bits: 6, label: "100101", value: "100101", meaning: "move-wide class" },
+  { bits: 2, label: "hw", value: "00", meaning: "halfword 0 = lsl 0" },
+  { bits: 16, label: "imm16", color: operandTint, value: "0001001000110100", meaning: "0x1234" },
+  { bits: 5, label: "Rd", color: operandTint, value: "10011", meaning: "x19" },
 ];
 
-// move wide, keep (movk xd, #imm, lsl #shift); opc 11
+// move wide, keep (movk xd, #imm, lsl #shift); opc 11;
+// worked: movk x19, 0xbeef, lsl 16 = 0xf2b7ddf3
 const encMovk: BitField[] = [
-  { bits: 1, label: "sf" },
-  { bits: 2, label: "11" },
-  { bits: 6, label: "100101" },
-  { bits: 2, label: "hw" },
-  { bits: 16, label: "imm16", color: operandTint },
-  { bits: 5, label: "Rd", color: operandTint },
+  { bits: 1, label: "sf", value: "1", meaning: "1 = x width" },
+  { bits: 2, label: "11", value: "11", meaning: "11 = movk" },
+  { bits: 6, label: "100101", value: "100101", meaning: "move-wide class" },
+  { bits: 2, label: "hw", value: "01", meaning: "halfword 1 = lsl 16" },
+  { bits: 16, label: "imm16", color: operandTint, value: "1011111011101111", meaning: "0xbeef" },
+  { bits: 5, label: "Rd", color: operandTint, value: "10011", meaning: "x19" },
 ];
 
-// load, unsigned-offset form (ldr xt, [xn, #imm]); size 11, opc 01
+// load, unsigned-offset form (ldr xt, [xn, #imm]); size 11, opc 01;
+// worked: ldr x19, [x20, 16] = 0xf9400a93
 const encLdrUoff: BitField[] = [
-  { bits: 2, label: "11" },
-  { bits: 3, label: "111" },
-  { bits: 1, label: "0" },
-  { bits: 2, label: "01" },
-  { bits: 2, label: "01" },
-  { bits: 12, label: "imm12", color: operandTint },
-  { bits: 5, label: "Rn", color: operandTint },
-  { bits: 5, label: "Rt", color: operandTint },
+  { bits: 2, label: "11", value: "11", meaning: "size: 11 = 64-bit" },
+  { bits: 3, label: "111", value: "111", meaning: "load/store class" },
+  { bits: 1, label: "0", value: "0", meaning: "0 = integer register" },
+  { bits: 2, label: "01", value: "01", meaning: "unsigned-offset form" },
+  { bits: 2, label: "01", value: "01", meaning: "01 = load" },
+  { bits: 12, label: "imm12", color: operandTint, value: "000000000010", meaning: "16 / 8 = 2, scaled by the size" },
+  { bits: 5, label: "Rn", color: operandTint, value: "10100", meaning: "x20" },
+  { bits: 5, label: "Rt", color: operandTint, value: "10011", meaning: "x19" },
 ];
 
-// store, unsigned-offset form (str xt, [xn, #imm]); size 11, opc 00
+// store, unsigned-offset form (str xt, [xn, #imm]); size 11, opc 00;
+// worked: str x19, [x20, 16] = 0xf9000a93
 const encStrUoff: BitField[] = [
-  { bits: 2, label: "11" },
-  { bits: 3, label: "111" },
-  { bits: 1, label: "0" },
-  { bits: 2, label: "01" },
-  { bits: 2, label: "00" },
-  { bits: 12, label: "imm12", color: operandTint },
-  { bits: 5, label: "Rn", color: operandTint },
-  { bits: 5, label: "Rt", color: operandTint },
+  { bits: 2, label: "11", value: "11", meaning: "size: 11 = 64-bit" },
+  { bits: 3, label: "111", value: "111", meaning: "load/store class" },
+  { bits: 1, label: "0", value: "0", meaning: "0 = integer register" },
+  { bits: 2, label: "01", value: "01", meaning: "unsigned-offset form" },
+  { bits: 2, label: "00", value: "00", meaning: "00 = store" },
+  { bits: 12, label: "imm12", color: operandTint, value: "000000000010", meaning: "16 / 8 = 2, scaled by the size" },
+  { bits: 5, label: "Rn", color: operandTint, value: "10100", meaning: "x20" },
+  { bits: 5, label: "Rt", color: operandTint, value: "10011", meaning: "x19" },
 ];
 
-// unconditional branch (b label); op 0
+// unconditional branch (b label); op 0; worked: b done, with done two
+// instructions ahead = 0x14000002
 const encB: BitField[] = [
-  { bits: 1, label: "0" },
-  { bits: 5, label: "00101" },
-  { bits: 26, label: "imm26", color: operandTint },
+  { bits: 1, label: "0", value: "0", meaning: "0 = b (no link)" },
+  { bits: 5, label: "00101", value: "00101", meaning: "branch class" },
+  { bits: 26, label: "imm26", color: operandTint, value: "00000000000000000000000010", meaning: "2 instructions forward: word count, not bytes" },
 ];
 
-// branch with link (bl label); op 1
+// branch with link (bl label); op 1; worked: bl helper, with helper three
+// instructions ahead = 0x94000003
 const encBl: BitField[] = [
-  { bits: 1, label: "1" },
-  { bits: 5, label: "00101" },
-  { bits: 26, label: "imm26", color: operandTint },
+  { bits: 1, label: "1", value: "1", meaning: "1 = bl (writes lr)" },
+  { bits: 5, label: "00101", value: "00101", meaning: "branch class" },
+  { bits: 26, label: "imm26", color: operandTint, value: "00000000000000000000000011", meaning: "3 instructions forward: word count, not bytes" },
 ];
 
 // Complete, self-contained programs for the try-in-playground deep-link. The
@@ -363,12 +383,14 @@ const referenceSeeds: ReferenceSeed[] = [
     category: "Data processing",
     syntax: "movz xd, #imm, lsl #shift",
     encoding: encMovz,
+    encodedAsm: "movz x19, 0x1234",
   },
   {
     mnemonic: "movk",
     category: "Data processing",
     syntax: "movk xd, #imm, lsl #shift",
     encoding: encMovk,
+    encodedAsm: "movk x19, 0xbeef, lsl 16",
   },
   {
     mnemonic: "movn",
@@ -380,6 +402,7 @@ const referenceSeeds: ReferenceSeed[] = [
     category: "Data processing",
     syntax: "add xd, xn, xm / add xd, xn, #imm",
     encoding: encAddImm,
+    encodedAsm: "add x19, x0, 8",
   },
   {
     mnemonic: "adds",
@@ -393,6 +416,7 @@ const referenceSeeds: ReferenceSeed[] = [
     syntax: "sub xd, xn, xm / sub xd, xn, #imm",
     example: "sub x0, x1, x2",
     encoding: encAddSubShifted,
+    encodedAsm: "sub x19, x0, x1",
   },
   {
     mnemonic: "subs",
@@ -530,6 +554,7 @@ const referenceSeeds: ReferenceSeed[] = [
       "the extracted field lands at bit 0 zero-extended; sign does not survive the move.",
     ],
     encoding: encUbfm,
+    encodedAsm: "ubfx w19, w20, 4, 4",
   },
   {
     mnemonic: "bfi",
@@ -540,6 +565,7 @@ const referenceSeeds: ReferenceSeed[] = [
       "only the low `width` bits of xn move; anything above them is ignored, not an error.",
     ],
     encoding: encBfm,
+    encodedAsm: "bfi w19, w20, 8, 4",
   },
 
   // compare and test
@@ -591,6 +617,7 @@ const referenceSeeds: ReferenceSeed[] = [
       "the `=label` form loads the symbol's address; read the value it points at with a second load.",
     ],
     encoding: encLdrUoff,
+    encodedAsm: "ldr x19, [x20, 16]",
   },
   {
     mnemonic: "str",
@@ -598,6 +625,7 @@ const referenceSeeds: ReferenceSeed[] = [
     syntax: "str xt, [xn] / [xn, #imm] / [xn, #imm]! / [xn], #imm",
     example: "str x0, [x1, #8]",
     encoding: encStrUoff,
+    encodedAsm: "str x19, [x20, 16]",
   },
   {
     mnemonic: "ldrb",
@@ -679,6 +707,7 @@ const referenceSeeds: ReferenceSeed[] = [
     example: "b loop",
     runnable: runB,
     encoding: encB,
+    encodedAsm: "b done",
   },
   {
     mnemonic: "bl",
@@ -686,6 +715,7 @@ const referenceSeeds: ReferenceSeed[] = [
     syntax: "bl label",
     example: "bl printf",
     encoding: encBl,
+    encodedAsm: "bl helper",
   },
   {
     mnemonic: "br",
@@ -843,6 +873,7 @@ export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map
       ...(doc.cExample !== undefined ? { cExample: doc.cExample } : {}),
       ...(seed.gotchas !== undefined ? { gotchas: seed.gotchas } : {}),
       ...(seed.encoding !== undefined ? { encoding: seed.encoding } : {}),
+      ...(seed.encodedAsm !== undefined ? { encodedAsm: seed.encodedAsm } : {}),
       ...(seed.runnable !== undefined ? { runnable: seed.runnable } : {}),
     };
   },
