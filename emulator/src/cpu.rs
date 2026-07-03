@@ -204,6 +204,7 @@ impl Cpu {
         cpu.host.register("memcpy", crate::hosted::libc::memcpy);
         cpu.host.register("exit", crate::hosted::libc::exit);
         cpu.host.register("atof", crate::hosted::libc::atof);
+        cpu.host.register("atoi", crate::hosted::libc::atoi);
         // Sentinel used when a hosted program's `main` returns. Loader
         // stashes this address in LR so `ret` from main halts cleanly
         // with x0 as the exit code.
