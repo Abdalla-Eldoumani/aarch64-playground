@@ -305,7 +305,9 @@ fn parse_directive(
         ".byte" => emit_int_list(rest, prog, *current, line, 1),
         ".hword" | ".short" => emit_int_list(rest, prog, *current, line, 2),
         ".word" => emit_int_list(rest, prog, *current, line, 4),
-        ".quad" => emit_int_list(rest, prog, *current, line, 8),
+        // `.dword` is the spelling course files write for 8-byte values;
+        // `.quad` is the GAS name GCC output carries. Same emission.
+        ".quad" | ".dword" => emit_int_list(rest, prog, *current, line, 8),
         ".double" => emit_float_list(rest, prog, *current, line, true),
         ".float" => emit_float_list(rest, prog, *current, line, false),
         other => Err(err(line, &format!("unknown directive `{other}`"))),
@@ -579,6 +581,15 @@ mod tests {
         assert_eq!(
             section_bytes(&p, SectionKind::Data),
             vec![0x78, 0x56, 0x34, 0x12]
+        );
+    }
+
+    #[test]
+    fn dword_is_the_course_spelling_of_quad() {
+        let p = parse_ok(".data\n.dword 0x1122334455667788\n");
+        assert_eq!(
+            section_bytes(&p, SectionKind::Data),
+            vec![0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11]
         );
     }
 
