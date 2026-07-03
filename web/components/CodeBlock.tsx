@@ -6,6 +6,9 @@ export interface CodeBlockProps {
   /** Dialect hint. "arm64" assembly is tokenized; anything else renders as
    *  plain monospaced text. */
   language?: string;
+  /** Zero-based line to mark as the current line (amber left bar + tint),
+   *  the debugger's current-line treatment for teaching walkthroughs. */
+  highlightLine?: number;
   className?: string;
 }
 
@@ -83,7 +86,12 @@ const KIND_CLASS: Record<TokenKind, string> = {
  * is rendered as text spans only (no HTML-string injection path), so a
  * caller-supplied string cannot inject markup.
  */
-export function CodeBlock({ code, language = "arm64", className = "" }: CodeBlockProps) {
+export function CodeBlock({
+  code,
+  language = "arm64",
+  highlightLine,
+  className = "",
+}: CodeBlockProps) {
   const lines = code.replace(/\n$/, "").split("\n");
   const tokenizedLines =
     language === "arm64"
@@ -96,7 +104,15 @@ export function CodeBlock({ code, language = "arm64", className = "" }: CodeBloc
     >
       <code>
         {tokenizedLines.map((tokens, lineIndex) => (
-          <span key={lineIndex} className="block min-h-[1.4em]">
+          <span
+            key={lineIndex}
+            data-current={lineIndex === highlightLine || undefined}
+            className={`block min-h-[1.4em] ${
+              lineIndex === highlightLine
+                ? "bg-[color-mix(in_srgb,var(--amber)_10%,transparent)] [box-shadow:inset_3px_0_0_0_var(--amber)]"
+                : ""
+            }`}
+          >
             {tokens.map((token, tokenIndex) => (
               <span key={tokenIndex} className={KIND_CLASS[token.kind]}>
                 {token.text}
