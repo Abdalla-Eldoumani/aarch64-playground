@@ -88,6 +88,18 @@ pub enum Item {
         tokens: Vec<Token>,
         original_line: usize,
     },
+    /// Integer data slots whose expressions reference symbols or `.`, one
+    /// token group per comma-separated value. Course pointer tables
+    /// (`array_months: .dword label_january, label_february, ...`) name
+    /// labels whose addresses only exist once the linker has placed every
+    /// section, so the parser defers these for link-time evaluation
+    /// instead of valuing them against an empty symbol table. `width` is
+    /// the slot size in bytes; the item occupies `exprs.len() * width`.
+    DataExprs {
+        exprs: Vec<Vec<Token>>,
+        width: usize,
+        original_line: usize,
+    },
 }
 
 /// Resolved or pending value for a named symbol.
