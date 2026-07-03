@@ -1049,7 +1049,23 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
                 _ => unreachable!(),
             };
             if offset_val < 0 || (offset_val as u64) % scale != 0 {
-                return asm_err(ln, "unsigned offset must be positive and aligned");
+                // Negative or unaligned offsets have no scaled form; GAS
+                // silently emits the unscaled LDUR/STUR encoding instead
+                // (struct fields at odd offsets, negative frame slots).
+                // Same conversion here, same [-256, 255] reach.
+                if (-256..=255).contains(&offset_val) {
+                    let imm9 = (offset_val as u32) & 0x1FF;
+                    return Ok(((size as u32) << 30)
+                        | (0b111000 << 24)
+                        | ((load as u32) << 22)
+                        | (imm9 << 12)
+                        | ((rn as u32) << 5)
+                        | (rt as u32));
+                }
+                return asm_err(
+                    ln,
+                    "offset must be scaled and positive, or within [-256, 255] for the unscaled form",
+                );
             }
             let imm12 = (offset_val as u64 / scale) as u32;
             if imm12 > 4095 {
@@ -1283,6 +1299,21 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
         _ => return asm_err(ln, "unsupported FP LDR/STR width"),
     };
     let opc: u32 = if load == 1 { 0b01 } else { 0b00 };
+    // The imm9 family shared by the unscaled-offset and writeback forms:
+    //   size | 1111 | 00 | opc | 0 | imm9 | idx | Rn | Rt
+    let imm9_form = |offset_val: i64, idx: u32, rn: u8| -> Result<u32, EmuError> {
+        if !(-256..=255).contains(&offset_val) {
+            return asm_err(ln, "FP offset must be in [-256, 255] for this form");
+        }
+        let imm9 = (offset_val as u32) & 0x1FF;
+        Ok((size << 30)
+            | (0b1111 << 26)
+            | (opc << 22)
+            | (imm9 << 12)
+            | (idx << 10)
+            | ((rn as u32) << 5)
+            | (rt as u32))
+    };
     match am {
         AddressingMode::Immediate {
             rn,
@@ -1291,7 +1322,9 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
         } => {
             let offset_val = offset.unwrap_or(0);
             if offset_val < 0 || (offset_val as u64) % scale != 0 {
-                return asm_err(ln, "unsigned FP offset must be positive and aligned");
+                // Same GAS conversion as the integer path: negative or
+                // unaligned offsets ride the unscaled encoding.
+                return imm9_form(offset_val, 0b00, rn);
             }
             let imm12 = (offset_val as u64 / scale) as u32;
             if imm12 > 4095 {
@@ -1305,8 +1338,10 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
                 | ((rn as u32) << 5)
                 | (rt as u32))
         }
-        AddressingMode::Immediate { .. } => {
-            asm_err(ln, "FP LDR/STR pre/post-index not yet supported by the assembler")
+        AddressingMode::Immediate { rn, offset, mode } => {
+            let offset_val = offset.unwrap_or(0);
+            let idx = if matches!(mode, IndexMode::PreIndex) { 0b11 } else { 0b01 };
+            imm9_form(offset_val, idx, rn)
         }
         AddressingMode::RegOffset { .. } => {
             asm_err(ln, "FP LDR/STR register-offset not yet supported by the assembler")
@@ -1637,6 +1672,95 @@ mod tests {
 
         assert_eq!(cpu.regs.read_gpr(0, true), 0);
         assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn unaligned_signed_offset_rides_the_unscaled_encoding() {
+        // The struct-field shape: a 64-bit access at an offset that is
+        // not a multiple of 8 has no scaled unsigned form. GAS silently
+        // emits LDUR/STUR; the assembler must do the same conversion.
+        let source = r#"
+            MOV X0, #0x1122
+            MOVK X0, #0x3344, LSL #16
+            SUB SP, SP, #32
+            STR X0, [SP, #20]
+            LDR X1, [SP, #20]
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, true), 0x3344_1122);
+        assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn negative_signed_offset_rides_the_unscaled_encoding() {
+        let source = r#"
+            MOV X0, #77
+            STR X0, [SP, #-8]
+            LDR X1, [SP, #-8]
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, true), 77);
+    }
+
+    #[test]
+    fn unscaled_offset_out_of_reach_still_errors() {
+        // -257 is below the imm9 window and must not silently wrap.
+        let err = assemble("LDR X1, [SP, #-257]\nSVC #0\n").unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("[-256, 255]"), "explains the reach: {msg}");
+    }
+
+    #[test]
+    fn fp_negative_offset_and_writeback_assemble_and_execute() {
+        // FP spill discipline: push d0 with pre-index writeback, read it
+        // back at a negative offset, pop with post-index writeback.
+        let source = r#"
+            MOV X0, #3
+            SCVTF D0, X0
+            STR D0, [SP, #-16]!
+            LDR D1, [SP]
+            ADD X2, SP, #16
+            STR D1, [X2, #-16]
+            LDR D2, [SP], #16
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        let sp_before = cpu.regs.read_sp();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_fpr_f64(1), 3.0);
+        assert_eq!(cpu.regs.read_fpr_f64(2), 3.0);
+        // Writeback pushed then popped: SP is back where it started.
+        assert_eq!(cpu.regs.read_sp(), sp_before);
+        assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn fp_load_uses_sp_as_base_not_xzr() {
+        // Register 31 in a memory base means SP. A d-register load
+        // relative to SP must read the stack, not address zero.
+        let source = r#"
+            MOV X0, #9
+            SCVTF D0, X0
+            SUB SP, SP, #16
+            STR D0, [SP, #8]
+            LDR D3, [SP, #8]
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_fpr_f64(3), 9.0);
     }
 
     #[test]
