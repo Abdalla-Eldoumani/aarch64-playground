@@ -31,6 +31,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `LSL`    | `LSL Xd, Xn, #imm`               | Logical shift left by an immediate.      |
 | `LSR`    | `LSR Xd, Xn, #imm`               | Logical shift right by an immediate.     |
 | `ASR`    | `ASR Xd, Xn, #imm`               | Arithmetic shift right by an immediate.  |
+| `UBFX`   | `UBFX Xd, Xn, #lsb, #width`      | Unsigned bitfield extract: pulls `width` bits starting at `lsb` down to bit 0, zeros the rest. Alias for `UBFM`. |
 | `SXTB`   | `SXTB Xd, Wn` / `SXTB Wd, Wn`    | Sign-extend a byte. Alias for `SBFM`.    |
 | `SXTH`   | `SXTH Xd, Wn` / `SXTH Wd, Wn`    | Sign-extend a halfword.                  |
 | `SXTW`   | `SXTW Xd, Wn`                    | Sign-extend a word to 64 bits.           |
