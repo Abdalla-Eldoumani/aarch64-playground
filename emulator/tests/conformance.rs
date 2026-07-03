@@ -4,8 +4,9 @@
 //! program, one per category a student writes: arithmetic and loops,
 //! branching with the condition codes, an array on the stack, a leaf
 //! subroutine, a non-leaf subroutine that calls a leaf, a printf/scanf
-//! round trip, a floating-point calculation, and a file-I/O syscall
-//! sequence. None reproduces course-archive text; every one is authored
+//! round trip, a floating-point calculation, a file-I/O syscall
+//! sequence, and bitfield packing (the bitwise-tutorial material:
+//! bfi / ubfx / bic). None reproduces course-archive text; every one is authored
 //! to the course style (lowercase mnemonics, m4 aliases, AAPCS64
 //! prologue/epilogue where the function needs one, contextual stack
 //! discipline, idiomatic addressing and syscalls).
@@ -35,6 +36,7 @@ const COUNT_EVENS: &str = include_str!("conformance/count-evens.s");
 const GREETING: &str = include_str!("conformance/greeting.s");
 const CIRCLE_METRICS: &str = include_str!("conformance/circle-metrics.s");
 const LINE_COUNT: &str = include_str!("conformance/line-count.s");
+const PACK_COLOR: &str = include_str!("conformance/pack-color.s");
 
 // ---------------------------------------------------------------------------
 // harness (mirrors hosted_end_to_end::run_source so the suite has one place
@@ -123,6 +125,16 @@ fn leaf_subroutine_reports_primality() {
 fn nonleaf_subroutine_counts_even_elements() {
     let mut cpu = run(COUNT_EVENS);
     assert_eq!(stdout_of(&mut cpu), "Even count: 3\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn bitfield_ops_pack_extract_and_clear_channels() {
+    let mut cpu = run(PACK_COLOR);
+    assert_eq!(
+        stdout_of(&mut cpu),
+        "color = 0x112233\ngreen = 34\nno blue = 0x112200\n"
+    );
     assert_eq!(cpu.exit_code(), Some(0));
 }
 
