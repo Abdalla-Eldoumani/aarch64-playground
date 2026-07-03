@@ -42,8 +42,8 @@ const SUPPORTED: &[&str] = &[
     "AND", "ANDS", "ORR", "EOR", "MVN", "BIC",
     // shifts (immediate form)
     "LSL", "LSR", "ASR",
-    // sign / zero extension and bitfield extract
-    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UBFX",
+    // sign / zero extension and bitfield extract / insert
+    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UBFX", "BFI",
     // compare and test
     "CMP", "CMN", "TST",
     // conditional select
