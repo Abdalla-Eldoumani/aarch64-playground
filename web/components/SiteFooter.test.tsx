@@ -12,6 +12,9 @@ describe("SiteFooter", () => {
     expect(
       screen.getByText(
         "Built for CPSC 355. Not officially affiliated with the University of Calgary.",
+        // The disclaimer shares its fine-print line with the open-source note,
+        // so match the sentence inside the line rather than the whole line.
+        { exact: false },
       ),
     ).toBeTruthy();
 
@@ -42,8 +45,25 @@ describe("SiteFooter", () => {
     // fails here instead of passing against a hard-coded copy in the footer.
     expect(screen.getByText(CREDIBILITY.tagline)).toBeTruthy();
     expect(screen.getByText(CREDIBILITY.courseContext)).toBeTruthy();
-    expect(screen.getByText(CREDIBILITY.disclaimer)).toBeTruthy();
+    expect(screen.getByText(new RegExp(CREDIBILITY.disclaimer))).toBeTruthy();
     const links = screen.getAllByRole("link");
     expect(links.some((l) => l.getAttribute("href") === LICENSE_URL)).toBe(true);
+  });
+
+  it("carries the merged credibility content: engine note and the open-source line", () => {
+    render(<SiteFooter />);
+    // The footer is the single home for the facts the landing's credibility band
+    // used to restate: how the emulator is built, and that it is open source.
+    expect(screen.getByText(CREDIBILITY.engineNote)).toBeTruthy();
+    expect(screen.getByText(/open source, free to use and study/i)).toBeTruthy();
+  });
+
+  it("links the repository and the license exactly once each", () => {
+    render(<SiteFooter />);
+    // The merged footer deduplicates what the footer and the old landing band
+    // both carried; a second repo or license link is a regression.
+    const links = screen.getAllByRole("link");
+    expect(links.filter((l) => l.getAttribute("href") === REPO_URL)).toHaveLength(1);
+    expect(links.filter((l) => l.getAttribute("href") === LICENSE_URL)).toHaveLength(1);
   });
 });
