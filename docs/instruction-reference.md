@@ -75,13 +75,13 @@ Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`,
 
 Addressing modes:
 
-- **signed offset**: `[Xn, #imm]`
+- **signed offset**: `[Xn, #imm]`. A negative or unaligned immediate (a struct field like `[fp, 20]` under a 64-bit load, or `[fp, -8]`) has no scaled encoding, so the assembler emits the unscaled (LDUR/STUR) form for it automatically, exactly as GAS does; that form reaches `[-256, 255]`.
 - **pre-index**: `[Xn, #imm]!` (writes the new address back into Xn)
 - **post-index**: `[Xn], #imm` (uses the base, then updates Xn)
 - **register offset**: `[Xn, Xm]` (LSL by access size) or `[Xn, Wm, SXTW #k]`
 - **register offset with extend**: `[Xn, Wm, UXTW]`, `[Xn, Xm, LSL #3]`, `[Xn, Xm, SXTX]`, etc.
 
-Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned immediate-offset form `[Xn, #imm]` only. FP data moves use `LDR Dt, [Xn, #imm]` / `STR Dt, [Xn, #imm]` and the 32-bit `LDR St` / `STR St` equivalents, unsigned-offset form only.
+Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned immediate-offset form `[Xn, #imm]` only. FP data moves (`LDR`/`STR` with a `Dt` or `St` target) accept the same immediate addressing as the integer forms: scaled offsets, negative and unaligned offsets via the unscaled encoding, and pre/post-index writeback. Register-offset addressing stays integer-only.
 
 ## PC-relative addressing
 
