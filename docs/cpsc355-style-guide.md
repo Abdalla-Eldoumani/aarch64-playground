@@ -56,6 +56,29 @@ Base addresses:
 | host stubs   | `0xFFFF_0000` |
 | stack base   | `0x8000_0000` |
 
+## authored program style
+
+The list above is what the machine accepts, which is wider than what the
+course writes. Course tutorial and assignment files use a fixed directive
+vocabulary, so every program the site ships as course-style source (lesson
+and exercise programs, the built-in examples, the authoring-guide payloads)
+stays inside it. A content test (`web/lib/course-style.test.ts`) enforces
+the difference list:
+
+| never authored     | what course files write               |
+| ------------------ | ------------------------------------- |
+| `.type` / `.size`  | nothing; `.global main` stands alone  |
+| `.globl`           | `.global`                             |
+| `.section`         | bare `.data` / `.text` / `.bss`       |
+| `.quad` / `.xword` | `.dword`                              |
+| `.space`           | `.skip`                               |
+| `.p2align`         | `.balign` (bytes) or `.align` (2^N)   |
+| `.equ` / `.set`    | m4 `define(...)` or `name = expr`     |
+
+The wider acceptance is deliberate, so unmodified gcc `-S` output still
+loads. The authored rule keeps every shipped program reading like a course
+file.
+
 ## addressing modes
 
 ```
