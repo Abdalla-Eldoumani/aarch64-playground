@@ -5,13 +5,20 @@
  * keyboard-navigable index grouped by category; the right pane is the
  * per-instruction detail. Usage prose renders only through the shared
  * sanitizing Markdown renderer, the example through the read-only code block,
- * and the encoding through the bit-field diagram when the instruction has one;
- * the try-in-playground link composes the shared share-hash. Data arrives as a
- * prop and the type is the only import from the data module, so this stays
- * decoupled from the emulator. Selecting an instruction reflects a stable
- * per-mnemonic id into the URL fragment so a detail is permalinkable; the
- * fragment is read through useSyncExternalStore so the first client render
- * matches the server and then restores the selection after hydration.
+ * and the encoding through the bit-field diagram when the instruction has one
+ * (with the worked field bits when the data authors them); the
+ * try-in-playground link composes the shared share-hash. Every entry can also
+ * run its worked example in place: "run this example" swaps the static block
+ * for the one shared EmbeddablePlayground seeded with the same
+ * playgroundSource payload the deep link carries, so reading and running are
+ * one surface (the embed is dynamically imported and mounts only on demand,
+ * keeping the route light). Flag-setting entries additionally render the
+ * FlagEffect panel. Data arrives as a prop and the type is the only import
+ * from the data module, so this stays decoupled from the emulator. Selecting
+ * an instruction reflects a stable per-mnemonic id into the URL fragment so a
+ * detail is permalinkable; the fragment is read through useSyncExternalStore
+ * so the first client render matches the server and then restores the
+ * selection after hydration.
  */
 
 import {
@@ -25,12 +32,25 @@ import {
   type KeyboardEvent,
 } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import type { ReferenceInstruction, ReferenceCategory } from "@/lib/reference-data";
 import { LessonMarkdown } from "@/components/LessonMarkdown";
 import { CodeBlock } from "@/components/CodeBlock";
 import { BitFieldDiagram } from "@/components/BitFieldDiagram";
+import { Button } from "@/components/Button";
+import { FlagEffect, FLAG_SETTERS, type FlagMnemonic } from "@/components/FlagEffect";
 import { buildShareHash } from "@/lib/share";
 import { playgroundSource } from "@/lib/playground-source";
+
+// The emulator surface loads only when an example is run in place, so
+// browsing the reference never ships or mounts the embed's chunk.
+const EmbeddablePlayground = dynamic(
+  () =>
+    import("@/components/EmbeddablePlayground").then(
+      (m) => m.EmbeddablePlayground,
+    ),
+  { ssr: false, loading: () => null },
+);
 
 /**
  * Stable, fragment-safe id for a mnemonic: lowercased with dots turned into
@@ -90,6 +110,10 @@ export function InstructionReference({
   // acts, so the fragment store drives the initial selection.
   const [picked, setPicked] = useState<string | null>(null);
   const [activePick, setActivePick] = useState<string | null>(null);
+  // The mnemonic whose example is live in the in-place embed. Selecting a
+  // different instruction deactivates it by inequality, so there is no effect
+  // to keep in sync and at most one emulator exists.
+  const [benchFor, setBenchFor] = useState<string | null>(null);
 
   const fragment = useSyncExternalStore(subscribeHash, readHashFragment, () => "");
 
@@ -327,7 +351,37 @@ export function InstructionReference({
 
             <LessonMarkdown markdown={buildUsage(current)} />
 
-            <CodeBlock code={current.example} />
+            {benchFor === current.mnemonic ? (
+              // Fixed frame so the editor loading never shifts the page; the
+              // embed carries the exact payload the deep link would.
+              <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+                <EmbeddablePlayground
+                  key={current.mnemonic}
+                  chrome="embed"
+                  startSource={playgroundSource(current)}
+                  readOnly={false}
+                />
+              </div>
+            ) : (
+              <CodeBlock code={current.example} />
+            )}
+            <Button
+              variant="secondary"
+              aria-label={
+                benchFor === current.mnemonic
+                  ? `close the live example for ${current.mnemonic}`
+                  : `run this example: ${current.mnemonic}`
+              }
+              aria-pressed={benchFor === current.mnemonic}
+              onClick={() =>
+                setBenchFor((live) =>
+                  live === current.mnemonic ? null : current.mnemonic,
+                )
+              }
+              className="self-start"
+            >
+              {benchFor === current.mnemonic ? "close" : "run this example"}
+            </Button>
 
             {current.gotchas && current.gotchas.length > 0 && (
               <ul className="flex list-disc flex-col gap-1 pl-5 text-[var(--text-secondary)] [font:var(--type-body)]">
@@ -337,10 +391,18 @@ export function InstructionReference({
               </ul>
             )}
 
+            {FLAG_SETTERS.has(current.mnemonic) && (
+              <FlagEffect
+                key={current.mnemonic}
+                mnemonic={current.mnemonic as FlagMnemonic}
+              />
+            )}
+
             {current.encoding && (
               <BitFieldDiagram
                 fields={current.encoding}
                 label={`${current.mnemonic} encoding`}
+                asm={current.encodedAsm}
               />
             )}
 

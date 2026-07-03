@@ -72,6 +72,13 @@ describe("authored programs stay inside the course directive vocabulary", () => 
     assertClean("lib/reference-data.ts", fs.readFileSync(file, "utf8"));
   });
 
+  it("pitfall demo programs carry no banned directive", () => {
+    // Same shape as reference-data: pure authored payload (card snippets plus
+    // the runnable fault/fix programs), so the raw scan covers all of it.
+    const file = path.join(process.cwd(), "lib", "pitfall-data.ts");
+    assertClean("lib/pitfall-data.ts", fs.readFileSync(file, "utf8"));
+  });
+
   it("authoring guide payloads carry no banned directive", () => {
     const guide = path.join(process.cwd(), "..", "docs", "authoring-content.md");
     assertClean("docs/authoring-content.md", fs.readFileSync(guide, "utf8"));
