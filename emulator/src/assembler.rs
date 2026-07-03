@@ -129,6 +129,7 @@ fn encode_line(
         "ANDS" => encode_log_dispatch(&ops, 0b11, line_num),
         "ORR" => encode_log_dispatch(&ops, 0b01, line_num),
         "EOR" => encode_log_dispatch(&ops, 0b10, line_num),
+        "BIC" => encode_bic(&ops, line_num),
         "MVN" => encode_mvn(&ops, line_num),
         "TST" => encode_tst(&ops, line_num),
 
@@ -528,7 +529,7 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     encode_dp(&new_ops, op_bit, 1, ln)
 }
 
-fn encode_log_reg(ops: &[&str], opc: u8, _n: bool, _set_flags: bool, ln: usize) -> Result<u32, EmuError> {
+fn encode_log_reg(ops: &[&str], opc: u8, n: bool, _set_flags: bool, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 3 {
         return asm_err(ln, "logical op requires 3 operands");
     }
@@ -536,9 +537,26 @@ fn encode_log_reg(ops: &[&str], opc: u8, _n: bool, _set_flags: bool, ln: usize) 
     let (rn, _) = parse_register(ops[1], ln)?;
     let (rm, _) = parse_register(ops[2], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
+    // N inverts Rm: AND+N is BIC, ORR+N is ORN (the MVN encoder sets it inline).
+    let n_bit = if n { 1u32 } else { 0 };
 
-    Ok((sf_bit << 31) | ((opc as u32) << 29) | (0b01010 << 24)
+    Ok((sf_bit << 31) | ((opc as u32) << 29) | (0b01010 << 24) | (n_bit << 21)
         | ((rm as u32) << 16) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Encode `BIC Xd, Xn, Xm` (bit clear: `Xd = Xn & ~Xm`). AND-shifted-register
+/// with the N bit set; AArch64 has no BIC-immediate, so a `#imm` third
+/// operand gets a plain-language error instead of a register-parse failure.
+fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 3 {
+        return asm_err(ln, "BIC requires 3 operands");
+    }
+    let op3 = ops[2].trim();
+    if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+    {
+        return asm_err(ln, "BIC takes a register, not an immediate; use AND with the inverted mask");
+    }
+    encode_log_reg(ops, 0b00, true, false, ln)
 }
 
 fn encode_mvn(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -1907,6 +1925,50 @@ mod tests {
             }
             other => panic!("expected LogImm, got {other:?}"),
         }
+    }
+
+    // -- bit clear --
+
+    #[test]
+    fn assemble_bic_round_trips() {
+        let code = assemble("BIC X0, X1, X2").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::LogReg { op, sf, rd, rn, rm, set_flags, invert, .. } => {
+                assert_eq!(op, crate::decoder::LogOp::And);
+                assert!(sf);
+                assert_eq!((rd, rn, rm), (0, 1, 2));
+                assert!(!set_flags);
+                assert!(invert);
+            }
+            other => panic!("expected LogReg, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_bic_lowercase_w_form() {
+        let code = assemble("bic w19, w20, w21").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::LogReg { sf, invert, .. } => {
+                assert!(!sf);
+                assert!(invert);
+            }
+            other => panic!("expected LogReg, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_bic_rejects_immediate() {
+        assert!(assemble("BIC X0, X1, #0xF0").is_err());
+        assert!(assemble("BIC W0, W1, 15").is_err());
+    }
+
+    #[test]
+    fn assemble_bic_distinct_from_and() {
+        // The N bit must actually land in the word, or BIC silently
+        // degenerates to AND.
+        let bic = assemble("BIC X0, X1, X2").unwrap()[0];
+        let and = assemble("AND X0, X1, X2").unwrap()[0];
+        assert_ne!(bic, and);
     }
 
     #[test]
