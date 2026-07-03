@@ -145,7 +145,7 @@ Arithmetic is double-precision only. S registers can be loaded and stored (the `
 | `.byte`       | One byte.                                             |
 | `.hword` / `.short` | Two bytes little-endian.                        |
 | `.word`       | Four bytes little-endian.                             |
-| `.quad` / `.dword` | Eight bytes little-endian. Course files write `.dword`; GCC output writes `.quad`. |
+| `.quad` / `.dword` | Eight bytes little-endian. Course files write `.dword`; GCC output writes `.quad`. Values may name labels (`table: .dword msg_one, msg_two`): each slot receives the label's absolute address at link time, which is how assignment-style pointer tables are built and then indexed with `ldr Xt, [table, Wi, SXTW 3]`. |
 | `.double`     | IEEE 754 double (use `0r3.14` literal form).          |
 | `.float`      | IEEE 754 float.                                       |
 | `.string` / `.asciz` | Null-terminated string.                        |
