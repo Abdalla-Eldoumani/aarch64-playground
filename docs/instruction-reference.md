@@ -126,6 +126,7 @@ Arithmetic is double-precision only. S registers can be loaded and stored (the `
 | `FSUB`   | `FSUB Dd, Dn, Dm`                 |                                         |
 | `FMUL`   | `FMUL Dd, Dn, Dm`                 |                                         |
 | `FDIV`   | `FDIV Dd, Dn, Dm`                 |                                         |
+| `FNEG`   | `FNEG Dd, Dn`                     | Flip the sign: `Dd = -Dn`.              |
 | `FCMP`   | `FCMP Dn, Dm`                     | Updates NZCV. Unordered sets C and V.   |
 | `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Dd, Wn`   | Signed integer to double.               |
 | `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` | Truncate double to signed integer.      |
