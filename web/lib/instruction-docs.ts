@@ -159,6 +159,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   FSUB: { summary: "Dd = Dn - Dm." },
   FMUL: { summary: "Dd = Dn * Dm." },
   FDIV: { summary: "Dd = Dn / Dm." },
+  FNEG: {
+    summary: "Dd = -Dn (flips the sign bit).",
+    example: "fneg d16, d16",
+    cExample: "Dd = -Dn;",
+  },
   FCMP: {
     summary: "Set NZCV from Dn vs Dm.",
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
