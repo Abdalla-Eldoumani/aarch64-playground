@@ -757,8 +757,10 @@ const referenceSeeds: ReferenceSeed[] = [
   {
     mnemonic: "fmov",
     category: "Floating point",
-    syntax: "fmov dd, dn",
-    example: "fmov d0, d1",
+    syntax: "fmov dd, dn / fmov dd, #imm",
+    gotchas: [
+      "the immediate is 8 bits of float: a power-of-two multiple of 1.0 through 1.9375. constants like 5.0 and 9.0 fit; 0.0 and most decimals do not, so load those from a `.double` in `.data`.",
+    ],
   },
   {
     mnemonic: "fadd",
