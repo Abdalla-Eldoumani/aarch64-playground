@@ -30,4 +30,25 @@ describe("every try-in-playground payload assembles", () => {
     }
     expect(failures, "deep-link payloads that fail to assemble").toEqual([]);
   });
+
+  it("runs every payload to a clean halt", { timeout: 30_000 }, () => {
+    // The reference can also run these in place, so a payload that assembles
+    // but faults mid-run (a load off a zero register, an unbalanced sp)
+    // would strand the student on an error the entry never mentions. Every
+    // worked example must execute to halt with no fault.
+    const failures: string[] = [];
+    for (const inst of REFERENCE_INSTRUCTIONS) {
+      const emu = new Emulator();
+      emu.assemble_and_load_with_args(playgroundSource(inst), []);
+      const result = emu.run_until_break(100_000) as {
+        error?: string | null;
+      };
+      if (result.error) {
+        failures.push(`${inst.mnemonic}: ${result.error}`);
+      } else if (!emu.is_halted()) {
+        failures.push(`${inst.mnemonic}: never halted`);
+      }
+    }
+    expect(failures, "payloads that fail when run").toEqual([]);
+  });
 });
