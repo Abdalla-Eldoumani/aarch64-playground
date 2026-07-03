@@ -10,21 +10,26 @@
 //! for now. Label-typed forward references in data slots are a phase A.7
 //! concern; the corpus does not use them.
 
+use std::collections::HashMap;
+
 use super::expr::evaluate;
 use super::lexer::{lex, Token, TokenKind};
 use super::m4::expand;
 use super::sections::{Item, Program, SectionKind, SymbolValue};
 use crate::errors::EmuError;
 
-/// Parse a cpsc 355 source string end to end: m4 expansion, lexing, then
-/// statement-per-line dispatch into `Program`.
+/// Parse a cpsc 355 source string end to end: m4 expansion, the `.req`
+/// register-alias pass, lexing, then statement-per-line dispatch into
+/// `Program`.
 pub fn parse(source: &str) -> Result<Program, EmuError> {
     let expanded = expand(source)?;
-    let tokens = lex(&expanded.text, 1)?;
+    let (text, req_aliases) = apply_req_aliases(&expanded.text);
     let mut prog = Program::new();
     prog.aliases = expanded.defines;
+    prog.aliases.extend(req_aliases);
     prog.source_map = expanded.line_map;
-    prog.expanded_source = expanded.text.clone();
+    prog.expanded_source = text.clone();
+    let tokens = lex(&text, 1)?;
     // Always initialize .text even if nothing goes into it; existing callers
     // expect a section to be present.
     prog.section_or_insert(SectionKind::Text);
@@ -33,6 +38,63 @@ pub fn parse(source: &str) -> Result<Program, EmuError> {
         parse_line(line_tokens, &mut prog, &mut current)?;
     }
     Ok(prog)
+}
+
+/// Apply GAS `name .req register` aliases textually, after m4 and before
+/// lexing. Course assignment files alias both general and FP registers
+/// this way (`fp .req x29`, `sum .req d19`). A definition takes effect on
+/// the lines after it; the definition line itself is blanked, not removed,
+/// so line numbers stay aligned with the editor. m4 has already stripped
+/// comments, so a whitespace split sees exactly the definition's three
+/// words. Substitution is the same token-boundary, string-literal-safe
+/// walk m4 defines use, so an alias works anywhere a register can appear
+/// and never rewrites `.string` text. The alias target is taken as
+/// written; a target that is not a register surfaces as the normal
+/// unknown-register error at the first use site.
+fn apply_req_aliases(text: &str) -> (String, HashMap<String, String>) {
+    // Fast path: nothing to do for the overwhelmingly common case.
+    if !text.contains(".req") {
+        return (text.to_string(), HashMap::new());
+    }
+    let mut aliases: HashMap<String, String> = HashMap::new();
+    let mut out = String::with_capacity(text.len());
+    let mut first = true;
+    for line in text.lines() {
+        if !first {
+            out.push('\n');
+        }
+        first = false;
+        let mut parts = line.split_whitespace();
+        if let (Some(name), Some(req), Some(target), None) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        {
+            if req.eq_ignore_ascii_case(".req") && is_plain_ident_text(name) {
+                // Resolve alias-to-alias at definition time so later
+                // substitution is a single lookup.
+                let resolved = aliases.get(target).cloned().unwrap_or_else(|| target.to_string());
+                aliases.insert(name.to_string(), resolved);
+                // Blank the definition; keep the line for the line map.
+                continue;
+            }
+        }
+        if aliases.is_empty() {
+            out.push_str(line);
+        } else {
+            out.push_str(&super::m4::substitute_once(line, &aliases));
+        }
+    }
+    (out, aliases)
+}
+
+/// A `.req` alias name: identifier shaped, no dots (dotted names are GCC
+/// local labels and directives, never alias names).
+fn is_plain_ident_text(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn group_by_line(tokens: &[Token]) -> Vec<&[Token]> {
@@ -615,6 +677,72 @@ mod tests {
     fn section_rodata_switches_current_section() {
         let p = parse_ok(".section .rodata\n.string \"x\"\n");
         assert_eq!(section_bytes(&p, SectionKind::Rodata), b"x\0");
+    }
+
+    // -- .req register aliases --
+
+    #[test]
+    fn req_alias_substitutes_into_instructions() {
+        let p = parse_ok("counter .req w19\n.text\nmov counter, 6\n");
+        let text = p.section(SectionKind::Text).unwrap();
+        let instr_text: Vec<String> = text
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Instruction { original_line, .. } => Some(
+                    p.expanded_source
+                        .lines()
+                        .nth(original_line - 1)
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(instr_text, vec!["mov w19, 6".to_string()]);
+        assert_eq!(p.aliases.get("counter").map(String::as_str), Some("w19"));
+    }
+
+    #[test]
+    fn req_alias_definition_line_is_blanked_in_place() {
+        // The definition occupies line 1; the instruction stays on line 3.
+        let p = parse_ok("fp2 .req x29\n.text\nmov fp2, sp\n");
+        assert_eq!(p.expanded_source.lines().next(), Some(""));
+        let text = p.section(SectionKind::Text).unwrap();
+        match text.items.iter().find(|i| matches!(i, Item::Instruction { .. })) {
+            Some(Item::Instruction { original_line, .. }) => assert_eq!(*original_line, 3),
+            other => panic!("expected an instruction, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn req_alias_with_trailing_comment_and_fp_registers() {
+        // Course files alias FP registers and annotate the definitions.
+        let p = parse_ok("sum .req d19   // running total\n.text\nfmov sum, d0\n");
+        assert_eq!(p.aliases.get("sum").map(String::as_str), Some("d19"));
+        let line3 = p.expanded_source.lines().nth(2).unwrap_or("");
+        assert_eq!(line3.trim(), "fmov d19, d0");
+    }
+
+    #[test]
+    fn req_alias_never_rewrites_string_literals() {
+        // The alias name inside a `.string` must survive untouched.
+        let p = parse_ok(
+            "counter .req w19\n.data\nmsg: .string \"counter = %d\"\n.text\nmov counter, 1\n",
+        );
+        assert_eq!(
+            section_bytes(&p, SectionKind::Data),
+            b"counter = %d\0".to_vec()
+        );
+    }
+
+    #[test]
+    fn req_alias_use_before_definition_stays_unresolved() {
+        // GAS resolves .req top-down; a use above the definition is not
+        // an alias yet, so the ident survives for the encoder to reject.
+        let p = parse_ok(".text\nmov counter, 1\ncounter .req w19\n");
+        let line2 = p.expanded_source.lines().nth(1).unwrap_or("");
+        assert_eq!(line2.trim(), "mov counter, 1");
     }
 
     #[test]
