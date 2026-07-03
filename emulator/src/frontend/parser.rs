@@ -278,6 +278,18 @@ fn parse_directive(
             Ok(())
         }
         ".skip" | ".zero" => {
+            // A count naming an equate (`.skip STACKSIZE * 4`) resolves
+            // in the linker's layout walk; constants resolve right here.
+            let symbolic = rest
+                .iter()
+                .any(|t| matches!(t.kind, TokenKind::Ident(_) | TokenKind::Dot));
+            if symbolic {
+                prog.section_or_insert(*current).items.push(Item::ReserveExpr {
+                    tokens: rest.to_vec(),
+                    original_line: line,
+                });
+                return Ok(());
+            }
             let n = eval_const(rest, line)?;
             if n < 0 {
                 return Err(err(line, ".skip needs a non-negative byte count"));
@@ -822,6 +834,25 @@ mod tests {
             Some(Item::DataExprs { exprs, .. }) => assert_eq!(exprs.len(), 3),
             other => panic!("expected a deferred data item, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn symbolic_skip_size_defers_to_link_time() {
+        // The assignment stack-buffer shape: an equate names the element
+        // count and the reserve multiplies it out.
+        let p = parse_ok("STACKSIZE = 5\n.bss\nstack: .skip STACKSIZE * 4\n");
+        let bss = p.section(SectionKind::Bss).unwrap();
+        assert!(bss
+            .items
+            .iter()
+            .any(|i| matches!(i, Item::ReserveExpr { .. })));
+    }
+
+    #[test]
+    fn constant_skip_still_reserves_at_parse_time() {
+        let p = parse_ok(".bss\n.skip 12 * 2\n");
+        let bss = p.section(SectionKind::Bss).unwrap();
+        assert!(bss.items.iter().any(|i| matches!(i, Item::Reserve(24))));
     }
 
     #[test]
