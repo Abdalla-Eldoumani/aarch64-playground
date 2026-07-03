@@ -192,6 +192,15 @@ pub fn execute(
             regs.write_fpr_bits(*fd, v);
             Ok(ExecResult::Advance)
         }
+        Instruction::FpUnary { op, fd, fn_ } => {
+            let v = regs.read_fpr_f64(*fn_);
+            let result = match op {
+                FpUnaryOp::Fneg => -v,
+                FpUnaryOp::Fabs => v.abs(),
+            };
+            regs.write_fpr_f64(*fd, result);
+            Ok(ExecResult::Advance)
+        }
         Instruction::FpCompare { fn_, fm } => {
             let a = regs.read_fpr_f64(*fn_);
             let b = regs.read_fpr_f64(*fm);
@@ -1031,6 +1040,19 @@ mod tests {
         };
         execute(&instr, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_gpr(0, true), 0xABCD_1277);
+    }
+
+    #[test]
+    fn fneg_flips_sign_both_ways() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 2.5);
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: 0, fn_: 1 };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), -2.5);
+        // Negating the result lands back on the original value.
+        let back = Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: 0, fn_: 0 };
+        execute(&back, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 2.5);
     }
 
     // -- memory --
