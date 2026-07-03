@@ -140,6 +140,14 @@ pub enum FpBinOp {
     Fdiv,
 }
 
+/// Floating-point one-source operation (FP data-processing 1-source space,
+/// same opcode field FMOV-register lives in). Double precision only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpUnaryOp {
+    Fneg,
+    Fabs,
+}
+
 /// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
 /// zero-extends it; `Bfm` merges the field into the destination and keeps
 /// the other bits (the form behind `bfi`). The `sxtb`/`sxth`/`sxtw` and
@@ -335,6 +343,12 @@ pub enum Instruction {
     FpCompare {
         fn_: u8,
         fm: u8,
+    },
+    /// FNEG / FABS Dd, Dn: double-precision sign flip / sign clear.
+    FpUnary {
+        op: FpUnaryOp,
+        fd: u8,
+        fn_: u8,
     },
     /// SCVTF Dd, Rn: signed int (W or X) to double. `sf` picks Xn vs Wn.
     FpScvtf {
@@ -638,10 +652,19 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         return Ok(Instruction::FpBinary { op, fd: rd, fn_: rn, fm: rm });
     }
 
-    // FP data-processing 1-source (bits 21 down): opcode2 in bits 20:15.
-    if bits(instr, 20, 15) == 0b000000 && bits(instr, 14, 10) == 0b10000 {
-        // FMOV Dd, Dn
-        return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn });
+    // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.
+    // FMOV keeps its dedicated variant; FABS/FNEG share FpUnary.
+    if bits(instr, 14, 10) == 0b10000 {
+        match bits(instr, 20, 15) {
+            0b000000 => return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn }),
+            0b000001 => {
+                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: rd, fn_: rn })
+            }
+            0b000010 => {
+                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: rd, fn_: rn })
+            }
+            _ => {}
+        }
     }
 
     // FCMP: opcode2 = 001000 in bits 15:10, bits 4:0 = 00000, bits 20:16 = Rm.
