@@ -40,6 +40,24 @@ vi.mock("@/components/TutorialRunner", () => ({
     return <div data-testid="tutorial-runner" />;
   },
 }));
+// Capture the terminal's props so tests can exercise buildTerminalContext --
+// the run-wait contract behind `./program` -- without booting a real xterm.
+const terminalProps = vi.hoisted(() => ({
+  current: null as null | {
+    buildContext: () => {
+      runProgram: (
+        args: string[],
+        stdin?: string,
+      ) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+    };
+  },
+}));
+vi.mock("@/components/TerminalPane", () => ({
+  TerminalPane: (props: NonNullable<typeof terminalProps.current>) => {
+    terminalProps.current = props;
+    return <div data-testid="terminal-pane" />;
+  },
+}));
 
 // A spy for the hub so a test can assert it is not called (the hub not
 // engaged) before the lazy trigger fires.
@@ -670,6 +688,83 @@ describe("prior-work preservation (full chrome)", () => {
     );
     act(() => ref.current!.loadProgram({ source: "// example", label: "example" }));
     expect(recentBodies()).toContain("// working buffer\nret");
+  });
+});
+
+describe("terminal context", () => {
+  function setWidth(px: number): void {
+    Object.defineProperty(window, "innerWidth", {
+      value: px,
+      configurable: true,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  afterEach(() => {
+    terminalProps.current = null;
+    setWidth(1024);
+  });
+
+  it("runProgram reports the post-run stdout and exit code, not the pre-run state", async () => {
+    // Mirror the real useEmulator: run() flips isRunning through React state,
+    // so the hub object the wait loop reads through emuRef only advances when
+    // a render commits. The stub keeps that latency -- `phase` moves inside
+    // run(), but no hub carries the new value until the next rerender -- which
+    // is exactly what makes a check-before-sleep loop exit on the pre-run
+    // false and report stale stdout and exit code.
+    let phase: "idle" | "running" | "done" = "idle";
+    const assemble = vi.fn(async () => true);
+    const run = vi.fn(() => {
+      phase = "running";
+    });
+    useEmulatorMock.mockImplementation(() => ({
+      ...makeHub(),
+      assemble,
+      run,
+      isRunning: phase === "running",
+      stdout: phase === "done" ? "Hello from a system call!\n" : "",
+      exitCode: phase === "done" ? 3 : null,
+    }));
+    // The tablet branch renders the right-tab strip directly, so the term tab
+    // (and the mocked TerminalPane behind it) mounts without ResizableLayout.
+    setWidth(800);
+    const view = () => <EmbeddablePlayground chrome="full" startSource="ret" />;
+    const { rerender } = render(view());
+    fireEvent.click(await screen.findByRole("tab", { name: "term" }));
+    await waitFor(() => expect(terminalProps.current).not.toBeNull());
+
+    const context = terminalProps.current!.buildContext();
+    let result: { stdout: string; stderr: string; exitCode: number } | null = null;
+    const pending = context.runProgram(["./program"]).then((r) => {
+      result = r;
+    });
+    // Flush the awaited assemble so run() fires; the running hub has NOT
+    // committed yet, so a loop that checks before sleeping would bail here.
+    await act(async () => {
+      await new Promise<void>((r) => setTimeout(r, 0));
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+
+    // Commit the running hub and give the poll a beat: the command must still
+    // be waiting on the live run, not already resolved with pre-run state.
+    rerender(view());
+    await act(async () => {
+      await new Promise<void>((r) => setTimeout(r, 30));
+    });
+    expect(result).toBeNull();
+
+    // Commit the halted hub; the next poll observes it and reports its output.
+    phase = "done";
+    rerender(view());
+    await act(async () => {
+      await pending;
+    });
+    expect(result).toEqual({
+      stdout: "Hello from a system call!\n",
+      stderr: "",
+      exitCode: 3,
+    });
   });
 });
 
