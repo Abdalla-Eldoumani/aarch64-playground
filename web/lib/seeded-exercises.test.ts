@@ -108,7 +108,6 @@ fmt:    .string "sum = %lld\\n"
         .text
         .balign 4
         .global main
-        .type main, @function
 main:
         stp     x29, x30, [sp, -16]!
         mov     x29, sp
@@ -145,7 +144,6 @@ fmt:    .string "sum = %lld\\n"
         .text
         .balign 4
         .global main
-        .type main, @function
 main:
         stp     x29, x30, [sp, -16]!
         mov     x29, sp
@@ -178,7 +176,6 @@ fmt:    .string "sum = %lld\\n"
         .text
         .balign 4
         .global main
-        .type main, @function
 main:
         stp     x29, x30, [sp, -16]!
         mov     x29, sp
@@ -204,7 +201,6 @@ fmt:    .string "result = %lld\\n"
         .text
         .balign 4
         .global main
-        .type main, @function
 main:
         stp     x29, x30, [sp, -16]!
         mov     x29, sp
