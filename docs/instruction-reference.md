@@ -151,6 +151,7 @@ Arithmetic is double-precision only. S registers can be loaded and stored (the `
 | `.string` / `.asciz` | Null-terminated string.                        |
 | `.ascii`      | String, no null terminator.                           |
 | `.type` / `.size` | Parsed-and-ignored so GCC output still loads.     |
+| `name .req reg` | Register alias, integer or FP (`fp .req x29`, `sum .req d19`). Takes effect on the lines after it; string literals are never rewritten. |
 
 ## Pseudo-instructions
 
