@@ -145,6 +145,9 @@ fn encode_line(
         "UXTB" => encode_extend(&ops, false, 7, line_num),
         "UXTH" => encode_extend(&ops, false, 15, line_num),
 
+        // -- bitfield extract (UBFM alias) --
+        "UBFX" => encode_ubfx(&ops, line_num),
+
         // -- multiply / divide --
         "MUL" => encode_mul_div(&ops, 0, line_num),
         "UDIV" => encode_mul_div(&ops, 1, line_num),
@@ -557,6 +560,38 @@ fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return asm_err(ln, "BIC takes a register, not an immediate; use AND with the inverted mask");
     }
     encode_log_reg(ops, 0b00, true, false, ln)
+}
+
+/// Encode `UBFX Rd, Rn, #lsb, #width` (unsigned bitfield extract), the
+/// course's pull-a-field-out instruction. Lowers onto UBFM with
+/// `immr = lsb`, `imms = lsb + width - 1`; the executor's existing
+/// `Bitfield::Ubfm` path does the extract-and-zero-extend.
+fn encode_ubfx(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(ln, "UBFX requires 4 operands: Rd, Rn, #lsb, #width");
+    }
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, _) = parse_register(ops[1], ln)?;
+    let lsb = parse_immediate(ops[2], ln)?;
+    let width = parse_immediate(ops[3], ln)?;
+    let reg_size: i64 = if sf { 64 } else { 32 };
+
+    if width < 1 {
+        return asm_err(ln, "UBFX width must be at least 1");
+    }
+    if lsb < 0 || lsb >= reg_size {
+        return asm_err(ln, "UBFX lsb is out of range for the register width");
+    }
+    if lsb + width > reg_size {
+        return asm_err(ln, "UBFX field runs past the top of the register");
+    }
+
+    let immr = lsb as u32;
+    let imms = (lsb + width - 1) as u32;
+    let sf_bit = if sf { 1u32 } else { 0 };
+    let n_bit = sf_bit; // N matches sf for the valid UBFM encodings
+    Ok((sf_bit << 31) | (0b10 << 29) | (0b100110 << 23) | (n_bit << 22)
+        | (immr << 16) | (imms << 10) | ((rn as u32) << 5) | (rd as u32))
 }
 
 fn encode_mvn(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -1969,6 +2004,46 @@ mod tests {
         let bic = assemble("BIC X0, X1, X2").unwrap()[0];
         let and = assemble("AND X0, X1, X2").unwrap()[0];
         assert_ne!(bic, and);
+    }
+
+    // -- bitfield extract --
+
+    #[test]
+    fn assemble_ubfx_round_trips() {
+        // ubfx w19, w20, #4, #4 pulls the second nibble: UBFM immr=4, imms=7.
+        let code = assemble("UBFX W19, W20, #4, #4").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
+                assert_eq!(op, crate::decoder::BitfieldOp::Ubfm);
+                assert!(!sf);
+                assert_eq!((rd, rn), (19, 20));
+                assert_eq!((immr, imms), (4, 7));
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_ubfx_x_form_lowercase_no_hash() {
+        // Course style: lowercase, immediates without `#`.
+        let code = assemble("ubfx x0, x1, 8, 16").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::Bitfield { sf, immr, imms, .. } => {
+                assert!(sf);
+                assert_eq!((immr, imms), (8, 23));
+            }
+            other => panic!("expected Bitfield, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_ubfx_rejects_out_of_range_fields() {
+        // Field runs past the register top.
+        assert!(assemble("UBFX W0, W1, #28, #8").is_err());
+        // Zero width.
+        assert!(assemble("UBFX X0, X1, #4, #0").is_err());
+        // lsb outside the register.
+        assert!(assemble("UBFX W0, W1, #32, #1").is_err());
     }
 
     #[test]
