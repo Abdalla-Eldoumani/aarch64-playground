@@ -61,7 +61,15 @@ export function Tabs({
 
   return (
     <div className={className}>
-      <div role="tablist" aria-label={label} className="flex" onKeyDown={onKeyDown}>
+      {/* overflow-x-auto: four labeled 44px tabs outgrow a 375px viewport, and a
+          strip that scrolls within itself beats shrinking the targets or leaking
+          document-level horizontal scroll. */}
+      <div
+        role="tablist"
+        aria-label={label}
+        className="flex overflow-x-auto"
+        onKeyDown={onKeyDown}
+      >
         {items.map((item) => {
           const selected = item.value === active;
           return (
