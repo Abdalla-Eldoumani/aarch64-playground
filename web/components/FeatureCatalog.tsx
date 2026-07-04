@@ -1,11 +1,15 @@
 import { FEATURES } from "@/lib/landing-content";
 
 /**
- * The feature catalog: one card per FEATURES entry in a responsive,
- * count-agnostic grid -- the columns scale with the breakpoint (1 / 2 / 3),
- * never with the data length -- so adding a capability is a single array entry
- * and the layout holds at three cards and at a dozen. Presentational: a server
- * component, no hooks.
+ * The capability listing: one ruled row per FEATURES entry, read like a
+ * datasheet rather than a wall of cards. Each row is a mono glyph column (the
+ * mnemonic) beside the capability and its one-line description, separated by
+ * hairline rules -- the same table grammar as the jump table above it, so the
+ * landing reads as machine listings, not marketing tiles. The rows are not
+ * interactive and do not pretend to be: no hover states, no card chrome. The
+ * grid is count-agnostic (rows flow into two columns from lg up), so adding a
+ * capability is a single array entry at three rows or a dozen. Presentational:
+ * a server component, no hooks.
  */
 export function FeatureCatalog() {
   return (
@@ -15,28 +19,31 @@ export function FeatureCatalog() {
     >
       <h2
         id="features-heading"
-        className="mb-6 font-serif text-2xl font-semibold leading-tight text-[var(--text-primary)]"
+        className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--text-tertiary)]"
       >
         what it does
       </h2>
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid gap-x-12 lg:grid-cols-2">
         {FEATURES.map((feature) => (
           <li
             key={feature.title}
             data-testid="feature-card"
-            className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-5"
+            className="grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3 border-t border-[var(--border)] py-4"
           >
-            {feature.glyph ? (
-              <span className="font-mono text-xs text-[var(--text-tertiary)]">
-                {feature.glyph}
-              </span>
-            ) : null}
-            <h3 className="font-sans text-base font-semibold text-[var(--text-primary)]">
-              {feature.title}
-            </h3>
-            <p className="font-sans text-sm leading-relaxed text-[var(--text-secondary)]">
-              {feature.description}
-            </p>
+            <span
+              aria-hidden="true"
+              className="font-mono text-[12px] leading-[1.55] text-[var(--text-tertiary)]"
+            >
+              {feature.glyph ?? ""}
+            </span>
+            <div className="flex flex-col gap-1">
+              <h3 className="font-sans text-[15px] font-semibold leading-snug text-[var(--text-primary)]">
+                {feature.title}
+              </h3>
+              <p className="font-sans text-sm leading-relaxed text-[var(--text-secondary)]">
+                {feature.description}
+              </p>
+            </div>
           </li>
         ))}
       </ul>
