@@ -46,7 +46,11 @@ export function ReferenceView({
       onChange={setActive}
       label="reference sections"
     >
-      <div className="mt-8">
+      {/* Keyed by the active tab so a section swap replays the small panel
+          entrance (one UI beat, 4px settle). The sections already unmount on
+          switch, so the key changes nothing about state, only the animation;
+          under prefers-reduced-motion the panel appears in place, static. */}
+      <div key={active} className="anim-panel-in mt-8">
         {active === "instructions" && (
           <InstructionReference instructions={instructions} />
         )}
