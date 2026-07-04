@@ -147,8 +147,10 @@
 
 /* =============================================================================
    SPACE · RADII · ELEVATION · MOTION
-   Motion tokens are defined here for later use; the existing .anim-* classes
-   keep their inline timings until the later point-of-use sweep rewires them.
+   Every .anim-* class below reads its duration from these tokens, so retiming
+   the system is a one-line change here. The lone exception is the mobile pane
+   fade, pinned at 50ms because switching panes mid-debug should feel like a
+   register latch, not a transition.
 ============================================================================= */
 :root {
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
@@ -252,17 +254,55 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Panel entrance: a quieter cousin of modal-rise for in-page section swaps
+   (the reference tabs). 4px, one UI beat, no opacity start from zero -- the
+   content is readable mid-animation. Static under prefers-reduced-motion. */
+@keyframes panel-in {
+  from { opacity: 0.4; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Error shake: a decaying ~200ms horizontal shake on the assemble-error line,
+   the instrument buzzing back at a bad input. One shot per new error; under
+   prefers-reduced-motion the class animates nothing and the danger-colored
+   alert text alone carries the state. */
+@keyframes error-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-3px); }
+  45%      { transform: translateX(3px); }
+  70%      { transform: translateX(-2px); }
+  85%      { transform: translateX(1px); }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .anim-step-pop {
-    animation: step-pop 180ms cubic-bezier(0.2, 0.7, 0.2, 1) 1;
+    animation: step-pop var(--step-pop) var(--ease) 1;
   }
   .anim-tab-fade {
+    /* Deliberately off-token at 50ms: a mobile pane switch mid-debug should
+       land like a register latch, not ease in like chrome. */
     animation: tab-fade-in 50ms linear 1;
   }
   .anim-reg-flash {
     /* ~120ms in (peak at 20% of the 600ms total) then ~480ms out, timed from
        the register-flash motion tokens. */
     animation: reg-flash calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
+  }
+  .anim-boot-flash {
+    /* Power-on write: a landing row flashes once with the register-write
+       tint, staggered per row via --boot-delay so the block reads as values
+       landing in a register file, top to bottom. Content never moves or
+       hides, so there is no layout shift; under prefers-reduced-motion the
+       rows are simply static. */
+    animation: reg-flash calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
+    animation-delay: var(--boot-delay, 0ms);
+    animation-fill-mode: backwards;
+  }
+  .anim-panel-in {
+    animation: panel-in var(--dur-ui) var(--ease) 1;
+  }
+  .anim-error-shake {
+    animation: error-shake var(--error-shake) var(--ease) 1;
   }
   .anim-run-breathe {
     /* ~2s amber pulse on the running program-counter row, looping until the run
