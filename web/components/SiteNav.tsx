@@ -31,7 +31,10 @@ export function SiteNav({ variant }: { variant: "full" | "slim" }) {
       }`}
     >
       <div className="mx-auto flex h-full w-full max-w-screen-xl items-center justify-between gap-3 px-4">
-        <Wordmark showLabel={full} />
+        {/* The label yields under sm: the actions cluster plus the labeled mark
+            is wider than a 375px viewport, and the mark alone still brands the
+            bar. The footer keeps the full label at every width. */}
+        <Wordmark showLabel={full ? "sm-up" : false} />
 
         <ul className="hidden items-center gap-1 md:flex">
           {NAV_ROUTES.map((route) => {
