@@ -360,6 +360,25 @@ body {
 }
 
 /* =============================================================================
+   HEADER BAND
+   Under sm the debugger header compresses from stacked wrap rows into one
+   horizontally scrolling instrument band: on a phone the editor is the point,
+   so the chrome takes a single strip that scrolls within itself (the same
+   self-scroll pattern as the tab strip) with every control at full size and
+   hit target, instead of wrapping into rows that push the editor below the
+   fold. The 639.98px bound matches Tailwind's max-sm.
+============================================================================= */
+@media (max-width: 639.98px) {
+  .header-band {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .header-band > * {
+    flex-shrink: 0;
+  }
+}
+
+/* =============================================================================
    EMBEDDED PLAYGROUND LAYOUT
    The hero, lesson, and exercise embeds render at whatever width their host
    gives them (a wide hero, a prose measure), so the arrangement is chosen by
