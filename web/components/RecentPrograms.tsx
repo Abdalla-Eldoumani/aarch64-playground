@@ -15,6 +15,9 @@ export interface RecentProgramsProps {
  */
 export function RecentPrograms({ entries, onLoad, onClear }: RecentProgramsProps) {
   const disabled = entries.length === 0;
+  // The width cap matters: a select sizes itself to its widest option, so one
+  // long recalled program name would push the header past a 375px viewport.
+  // Same cap as the example loader; the closed control clips the text.
   return (
     <select
       onChange={(e) => {
@@ -29,7 +32,7 @@ export function RecentPrograms({ entries, onLoad, onClear }: RecentProgramsProps
       defaultValue=""
       disabled={disabled}
       aria-label="load recent program"
-      className="bg-[var(--bg-sunken)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] disabled:opacity-50"
+      className="bg-[var(--bg-sunken)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] disabled:opacity-50 max-w-[14rem]"
     >
       <option value="" disabled>
         recent...
