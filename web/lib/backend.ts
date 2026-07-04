@@ -1,11 +1,12 @@
 "use client";
 
 import { loadEmulator, type EmulatorInstance } from "@/lib/emulator";
-import type {
-  AssembleResultPayload,
-  RunResultPayload,
-  StateSnapshot,
-  StepResultPayload,
+import {
+  emptyStateSnapshot,
+  type AssembleResultPayload,
+  type RunResultPayload,
+  type StateSnapshot,
+  type StepResultPayload,
 } from "@/lib/worker/protocol";
 import { spawnEmulatorWorker } from "@/lib/worker/client";
 
@@ -235,7 +236,7 @@ class MainThreadBackend implements EmulatorBackend {
 
   private snapshot(): StateSnapshot {
     if (!this.emu) {
-      return emptySnapshot(this.frame);
+      return emptyStateSnapshot(this.frame);
     }
     const regs = this.emu.getAllRegisters();
     return {
@@ -280,28 +281,6 @@ function looksLikeSnapshot(v: unknown): boolean {
     "frame" in (v as object) &&
     "registers" in (v as object)
   );
-}
-
-function emptySnapshot(frame: number): StateSnapshot {
-  return {
-    frame,
-    registers: Array(31).fill("0x0000000000000000"),
-    sp: "0x0000000080000000",
-    pc: "0x0000000000400000",
-    nzcv: 0,
-    changedRegs: [],
-    halted: false,
-    blocked: false,
-    exitCode: null,
-    canStepBack: false,
-    stdoutDelta: "",
-    stderrDelta: "",
-    vfsFiles: [],
-    savedStates: [],
-    changedMem: false,
-    pcTrace: [],
-    dirtyAddrs: [],
-  };
 }
 
 /**

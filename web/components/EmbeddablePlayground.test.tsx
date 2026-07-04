@@ -22,6 +22,42 @@ vi.mock("@/components/ConsolePanel", () => ({
 vi.mock("@/components/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
 }));
+// Capture the tutorial's props so tests can drive onLoadSnippet -- the
+// snippet handoff contract -- without walking the real tour UI.
+const tutorialProps = vi.hoisted(() => ({
+  current: null as null | {
+    onLoadSnippet: (
+      src: string,
+      label: string,
+      args?: string,
+      stdin?: string,
+    ) => void;
+  },
+}));
+vi.mock("@/components/TutorialRunner", () => ({
+  TutorialRunner: (props: NonNullable<typeof tutorialProps.current>) => {
+    tutorialProps.current = props;
+    return <div data-testid="tutorial-runner" />;
+  },
+}));
+// Capture the terminal's props so tests can exercise buildTerminalContext --
+// the run-wait contract behind `./program` -- without booting a real xterm.
+const terminalProps = vi.hoisted(() => ({
+  current: null as null | {
+    buildContext: () => {
+      runProgram: (
+        args: string[],
+        stdin?: string,
+      ) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+    };
+  },
+}));
+vi.mock("@/components/TerminalPane", () => ({
+  TerminalPane: (props: NonNullable<typeof terminalProps.current>) => {
+    terminalProps.current = props;
+    return <div data-testid="terminal-pane" />;
+  },
+}));
 
 // A spy for the hub so a test can assert it is not called (the hub not
 // engaged) before the lazy trigger fires.
@@ -528,6 +564,85 @@ describe("loadProgram", () => {
   });
 });
 
+describe("program delivery from recents and the tutorial", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    tutorialProps.current = null;
+  });
+
+  it("loads a recent as a fresh program: machine reset, args cleared, seeds replaced", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground
+        ref={ref}
+        chrome="full"
+        startSource={"// working buffer\nret"}
+      />,
+    );
+    // A handoff carrying stdin and VFS seeds displaces the buffer into
+    // recents; those seeds must not survive the recall below.
+    act(() =>
+      ref.current!.loadProgram({
+        source: "// prog a",
+        args: "./a 1",
+        stdin: "stale-in\n",
+        vfs: { "stale.txt": "x" },
+      }),
+    );
+    const select = screen.getByLabelText(
+      "load recent program",
+    ) as HTMLSelectElement;
+    const entry = Array.from(select.options).find(
+      (o) => o.value && o.value !== "__clear__",
+    );
+    expect(entry).toBeDefined();
+    (hub.reset as ReturnType<typeof vi.fn>).mockClear();
+    (hub.uploadVfsFile as ReturnType<typeof vi.fn>).mockClear();
+    fireEvent.change(select, { target: { value: entry!.value } });
+    // The recall is a program delivery, not a text swap: fresh machine,
+    // recalled source, no inherited args.
+    expect(hub.reset).toHaveBeenCalledTimes(1);
+    expect(ref.current!.getSource()).toBe("// working buffer\nret");
+    expect(ref.current!.getArgs()).toBe("");
+    // Assembling the recalled program must not re-seed the previous
+    // program's stdin or VFS fixtures.
+    act(() => ref.current!.assemble());
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalled());
+    expect(hub.pushStdin).not.toHaveBeenCalled();
+    expect(hub.uploadVfsFile).not.toHaveBeenCalled();
+  });
+
+  it("loads a tutorial snippet as a fresh program with its stdin as a seed", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource="// old" />,
+    );
+    await waitFor(() => expect(tutorialProps.current).not.toBeNull());
+    act(() => {
+      tutorialProps.current!.onLoadSnippet(
+        "mov x0, 1",
+        "scores",
+        "./scores",
+        "85\n92\n",
+      );
+    });
+    expect(hub.reset).toHaveBeenCalled();
+    expect(ref.current!.getSource()).toBe("mov x0, 1");
+    expect(ref.current!.getArgs()).toBe("./scores");
+    // Not pushed at load time: the assemble the tutorial asks for next
+    // resets the machine, which would wipe a pushed queue.
+    expect(hub.pushStdin).not.toHaveBeenCalled();
+    act(() => ref.current!.assemble());
+    await waitFor(() => expect(hub.pushStdin).toHaveBeenCalledWith("85\n92\n"));
+  });
+});
+
 describe("prior-work preservation (full chrome)", () => {
   const KEY_CURRENT = "aarch64-playground:auto-save:current";
   const KEY_RECENT = "aarch64-playground:auto-save:recent";
@@ -573,6 +688,83 @@ describe("prior-work preservation (full chrome)", () => {
     );
     act(() => ref.current!.loadProgram({ source: "// example", label: "example" }));
     expect(recentBodies()).toContain("// working buffer\nret");
+  });
+});
+
+describe("terminal context", () => {
+  function setWidth(px: number): void {
+    Object.defineProperty(window, "innerWidth", {
+      value: px,
+      configurable: true,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  afterEach(() => {
+    terminalProps.current = null;
+    setWidth(1024);
+  });
+
+  it("runProgram reports the post-run stdout and exit code, not the pre-run state", async () => {
+    // Mirror the real useEmulator: run() flips isRunning through React state,
+    // so the hub object the wait loop reads through emuRef only advances when
+    // a render commits. The stub keeps that latency -- `phase` moves inside
+    // run(), but no hub carries the new value until the next rerender -- which
+    // is exactly what makes a check-before-sleep loop exit on the pre-run
+    // false and report stale stdout and exit code.
+    let phase: "idle" | "running" | "done" = "idle";
+    const assemble = vi.fn(async () => true);
+    const run = vi.fn(() => {
+      phase = "running";
+    });
+    useEmulatorMock.mockImplementation(() => ({
+      ...makeHub(),
+      assemble,
+      run,
+      isRunning: phase === "running",
+      stdout: phase === "done" ? "Hello from a system call!\n" : "",
+      exitCode: phase === "done" ? 3 : null,
+    }));
+    // The tablet branch renders the right-tab strip directly, so the term tab
+    // (and the mocked TerminalPane behind it) mounts without ResizableLayout.
+    setWidth(800);
+    const view = () => <EmbeddablePlayground chrome="full" startSource="ret" />;
+    const { rerender } = render(view());
+    fireEvent.click(await screen.findByRole("tab", { name: "term" }));
+    await waitFor(() => expect(terminalProps.current).not.toBeNull());
+
+    const context = terminalProps.current!.buildContext();
+    let result: { stdout: string; stderr: string; exitCode: number } | null = null;
+    const pending = context.runProgram(["./program"]).then((r) => {
+      result = r;
+    });
+    // Flush the awaited assemble so run() fires; the running hub has NOT
+    // committed yet, so a loop that checks before sleeping would bail here.
+    await act(async () => {
+      await new Promise<void>((r) => setTimeout(r, 0));
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+
+    // Commit the running hub and give the poll a beat: the command must still
+    // be waiting on the live run, not already resolved with pre-run state.
+    rerender(view());
+    await act(async () => {
+      await new Promise<void>((r) => setTimeout(r, 30));
+    });
+    expect(result).toBeNull();
+
+    // Commit the halted hub; the next poll observes it and reports its output.
+    phase = "done";
+    rerender(view());
+    await act(async () => {
+      await pending;
+    });
+    expect(result).toEqual({
+      stdout: "Hello from a system call!\n",
+      stderr: "",
+      exitCode: 3,
+    });
   });
 });
 

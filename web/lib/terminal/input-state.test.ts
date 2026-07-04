@@ -1,5 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { TerminalInputState } from "./input-state";
+import { TerminalInputState, splitPasteLines } from "./input-state";
+
+describe("splitPasteLines", () => {
+  it("splits the bare carriage returns xterm delivers for pasted line breaks", () => {
+    // The regression this guards: xterm normalizes every pasted \n and
+    // \r\n to \r before onData, so a \n-only split joined a multi-line
+    // paste into one command line ("cat a.txt cp a.txt b.txt ...").
+    expect(splitPasteLines("cat a.txt\rcp a.txt b.txt\rls")).toEqual([
+      "cat a.txt",
+      "cp a.txt b.txt",
+      "ls",
+    ]);
+  });
+
+  it("splits unix and windows line endings the same way", () => {
+    expect(splitPasteLines("one\ntwo\r\nthree")).toEqual(["one", "two", "three"]);
+  });
+
+  it("a trailing line break yields an empty final chunk, submitting the last command", () => {
+    expect(splitPasteLines("ls -l\r")).toEqual(["ls -l", ""]);
+  });
+
+  it("passes a single-line paste through untouched", () => {
+    expect(splitPasteLines("gdb p $x0")).toEqual(["gdb p $x0"]);
+  });
+});
 
 describe("TerminalInputState", () => {
   it("appends printable characters to the buffer", () => {

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { useNamedSaves } from "@/lib/use-named-saves";
 import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/upload-guard";
+import type { HandoffPayload } from "@/lib/playground-handoff";
 
 export interface SavesPanelProps {
   /** Session save-state names from the live hub. */
@@ -15,8 +16,10 @@ export interface SavesPanelProps {
   source: string;
   args: string;
   stepCount: number;
-  onLoadSource: (source: string, label?: string) => void;
-  onSetArgs: (args: string) => void;
+  /** Delivers the bookmarked program (source, args, stdin) as a full
+   *  program handoff, so the machine resets and the bookmark's inputs
+   *  become the seeds every later assemble re-applies. */
+  onLoadProgram: (payload: HandoffPayload) => void;
   onRestoreBookmark: (params: {
     source: string;
     args?: string;
@@ -40,8 +43,7 @@ export function SavesPanel({
   source,
   args,
   stepCount,
-  onLoadSource,
-  onSetArgs,
+  onLoadProgram,
   onRestoreBookmark,
 }: SavesPanelProps) {
   const namedSaves = useNamedSaves();
@@ -217,8 +219,17 @@ export function SavesPanel({
               <button
                 type="button"
                 onClick={async () => {
-                  onLoadSource(s.source, s.name);
-                  if (s.args !== undefined) onSetArgs(s.args);
+                  // A bookmark is a program delivery: the handoff resets
+                  // the machine and installs the bookmark's args and
+                  // stdin as the current seeds, so a later manual
+                  // re-assemble replays the bookmark's inputs instead of
+                  // whatever program was loaded before it.
+                  onLoadProgram({
+                    source: s.source,
+                    label: s.name,
+                    args: s.args,
+                    stdin: s.stdin,
+                  });
                   // Drive the backend through assemble + stdin push +
                   // step-to-count so the live CPU lands at the same
                   // execution point the bookmark captured. Toast

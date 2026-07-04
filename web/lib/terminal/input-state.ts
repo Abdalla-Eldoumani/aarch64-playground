@@ -1,4 +1,15 @@
 /**
+ * Split pasted terminal data into command lines. xterm normalizes every
+ * pasted line break to a bare carriage return before it reaches onData,
+ * so splitting on \n alone never fires for a real clipboard paste; this
+ * accepts \r\n, \r, and \n so each pasted line submits as its own
+ * command regardless of the source's line-ending convention.
+ */
+export function splitPasteLines(data: string): string[] {
+  return data.split(/\r\n|\r|\n/);
+}
+
+/**
  * In-memory state for a single terminal input line: buffer + cursor +
  * history navigation + tab completion. Pure logic so it can be unit
  * tested without xterm or the DOM.

@@ -9,14 +9,15 @@
  */
 
 import init, { Emulator } from "@/lib/wasm/aarch64_emulator";
-import type {
-  AssembleResultPayload,
-  Heartbeat,
-  Request,
-  Response,
-  RunResultPayload,
-  StateSnapshot,
-  StepResultPayload,
+import {
+  emptyStateSnapshot,
+  type AssembleResultPayload,
+  type Heartbeat,
+  type Request,
+  type Response,
+  type RunResultPayload,
+  type StateSnapshot,
+  type StepResultPayload,
 } from "@/lib/worker/protocol";
 
 let emulator: Emulator | null = null;
@@ -338,25 +339,12 @@ function bumpFrame(): void {
 
 function snapshot(): StateSnapshot {
   if (!emulator) {
-    return {
-      frame,
-      registers: [],
-      sp: "0x0000000000000000",
-      pc: "0x0000000000000000",
-      nzcv: 0,
-      changedRegs: [],
-      halted: false,
-      blocked: false,
-      exitCode: null,
-      canStepBack: false,
-      stdoutDelta: "",
-      stderrDelta: "",
-      vfsFiles: [],
-      savedStates: [],
-      changedMem: false,
-      pcTrace: [],
-      dirtyAddrs: [],
-    };
+    // WASM is instantiated lazily on the first mutating message, so `init`
+    // and any pre-assemble snapshot run with no emulator. Return the shared
+    // reset snapshot (a full 31-register file, not an empty array) so the
+    // cold register panel shows every register instead of collapsing to
+    // SP/PC, matching the main-thread backend.
+    return emptyStateSnapshot(frame);
   }
   const regs = emulator.get_all_registers() as {
     gpr: string[];
