@@ -145,7 +145,12 @@ describe("Controls", () => {
     expect(screen.getByRole("status").textContent?.trim()).toMatch(/halted/);
   });
 
-  it("renders the error calmly, without the shake animation", () => {
+  it("shakes once per new error while the message itself stays calm", () => {
+    // The ~200ms decaying shake is the motion spec's error cue; the calm part
+    // is the message (plain text plus a recovery hint), not the absence of
+    // motion. The class animates only outside prefers-reduced-motion, and the
+    // alert is keyed by the message so a NEW error replays the one-shot shake
+    // while a re-render of the same error does not.
     const h = allHandlers();
     render(
       <Controls
@@ -159,8 +164,7 @@ describe("Controls", () => {
     );
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("boom");
-    expect(alert.className).not.toContain("anim-error-shake");
-    expect(alert.innerHTML).not.toContain("anim-error-shake");
+    expect(alert.className).toContain("anim-error-shake");
   });
 
   it("surfaces a plain-language recovery hint for a recognized error", () => {
