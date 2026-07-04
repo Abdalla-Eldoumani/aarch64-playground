@@ -5,12 +5,14 @@ import Link from "next/link";
  * linking home. Amber is the machine acting, so the block reads as the brand at any
  * size. When `showLabel` is set, a quiet "playground" label rides alongside (header
  * on wide viewports, drawer); collapsed, the block plus mark stand in as the mark.
+ * `"sm-up"` keeps the label out of viewports under the sm breakpoint, where a
+ * crowded bar (the 375px nav) cannot spare its width.
  */
 export function Wordmark({
   showLabel = false,
   className = "",
 }: {
-  showLabel?: boolean;
+  showLabel?: boolean | "sm-up";
   className?: string;
 }) {
   return (
@@ -26,7 +28,11 @@ export function Wordmark({
         aarch64
       </span>
       {showLabel ? (
-        <span className="font-sans text-[14px] leading-none text-[var(--text-secondary)]">
+        <span
+          className={`font-sans text-[14px] leading-none text-[var(--text-secondary)] ${
+            showLabel === "sm-up" ? "hidden sm:inline" : ""
+          }`}
+        >
           playground
         </span>
       ) : null}
