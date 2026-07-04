@@ -1242,7 +1242,10 @@ function EmbeddableCore({
 
   return (
     <>
-      <div className="safe-area-top flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
+      {/* header-band: under sm this row stops wrapping and scrolls within
+          itself, so the editor stays near the top of a phone screen instead
+          of sitting under seven rows of chrome. */}
+      <div className="header-band safe-area-top flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
         <span className="hidden sm:inline font-serif text-[15px] font-semibold tracking-tight text-[var(--text-primary)] whitespace-nowrap shrink-0">
           cpsc 355 playground
         </span>

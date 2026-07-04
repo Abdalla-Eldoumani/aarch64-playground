@@ -38,15 +38,29 @@ export function ReferenceView({
   instructions: ReferenceInstruction[];
 }): JSX.Element {
   const [active, setActive] = useState("instructions");
+  // The panel entrance answers a tab switch, never the page load: entrance
+  // motion is a response to the reader's action, and an animation riding the
+  // first paint would also slow it on throttled phones. False until the
+  // first switch, so the initial render is plain.
+  const [switched, setSwitched] = useState(false);
+
+  function onChange(value: string) {
+    setSwitched(true);
+    setActive(value);
+  }
 
   return (
     <Tabs
       items={TABS}
       active={active}
-      onChange={setActive}
+      onChange={onChange}
       label="reference sections"
     >
-      <div className="mt-8">
+      {/* Keyed by the active tab so a section swap replays the small panel
+          entrance (one UI beat, 4px settle). The sections already unmount on
+          switch, so the key changes nothing about state, only the animation;
+          under prefers-reduced-motion the panel appears in place, static. */}
+      <div key={active} className={`${switched ? "anim-panel-in " : ""}mt-8`}>
         {active === "instructions" && (
           <InstructionReference instructions={instructions} />
         )}

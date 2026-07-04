@@ -132,7 +132,12 @@ export function Controls({
       {error && (
         <div
           role="alert"
-          className="flex flex-col items-end min-w-0 max-w-md text-right"
+          // Keyed by the message so a NEW error replays the ~200ms decaying
+          // shake (the instrument buzzing back at a bad input); under
+          // prefers-reduced-motion the class is inert and the danger-colored
+          // text alone carries the state.
+          key={error}
+          className="anim-error-shake flex flex-col items-end min-w-0 max-w-md text-right"
         >
           <span className="font-sans text-xs text-[var(--danger)] truncate w-full" title={error}>
             {error}
@@ -153,9 +158,16 @@ export function Controls({
 
 function Shortcut({ keys }: { keys: string }) {
   // Inherit the button's text color via currentColor so the chip reads on
-  // both the cyan-filled primaries and the surface-toned secondaries.
+  // both the cyan-filled primaries and the surface-toned secondaries, at full
+  // strength so it clears WCAG AA on the filled cyan (quietness comes from
+  // the smaller size and the hairline, not from fading the ink). aria-hidden
+  // keeps the chip out of the accessible name -- the button's label stays the
+  // bare verb and aria-keyshortcuts already carries the key for AT.
   return (
-    <kbd className="hidden sm:inline-block text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px] opacity-70">
+    <kbd
+      aria-hidden="true"
+      className="hidden sm:inline-block text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px]"
+    >
       {keys}
     </kbd>
   );

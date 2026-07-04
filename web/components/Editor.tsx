@@ -56,6 +56,11 @@ function isCoarsePointer(): boolean {
   return window.matchMedia("(pointer: coarse)").matches;
 }
 
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function isNarrow(): boolean {
   if (typeof window === "undefined") return false;
   return window.innerWidth < 480;
@@ -232,6 +237,12 @@ export function Editor({
         },
       });
 
+      // Monaco themes take literal hex only, so these restate token values
+      // from app/globals.css: the editor sits on --bg-base with --bg-raised
+      // as the resting line highlight, line numbers read --text-tertiary,
+      // and the caret is the brand block cursor in --amber (the machine's
+      // color: the block marks where the machine will write next). Keep the
+      // two files in step when a token moves.
       monaco.editor.defineTheme("arm64-dark", {
         base: "vs-dark",
         inherit: true,
@@ -244,10 +255,12 @@ export function Editor({
           { token: "type.identifier", foreground: "34d399" },
         ],
         colors: {
-          "editor.background": "#0f1117",
-          "editor.lineHighlightBackground": "#1a1d2788",
-          "editorGutter.background": "#0f1117",
-          "editorLineNumber.foreground": "#4b5563",
+          "editor.background": "#0B0C0E",
+          "editor.lineHighlightBackground": "#16181CAA",
+          "editorGutter.background": "#0B0C0E",
+          "editorLineNumber.foreground": "#6C737B",
+          "editorCursor.foreground": "#F5B53D",
+          "editorCursor.background": "#0B0C0E",
         },
       });
 
@@ -263,10 +276,12 @@ export function Editor({
           { token: "type.identifier", foreground: "047857" },
         ],
         colors: {
-          "editor.background": "#ffffff",
-          "editor.lineHighlightBackground": "#f1f5f988",
-          "editorGutter.background": "#ffffff",
-          "editorLineNumber.foreground": "#6b7280",
+          "editor.background": "#FFFFFF",
+          "editor.lineHighlightBackground": "#F6F7F9CC",
+          "editorGutter.background": "#FFFFFF",
+          "editorLineNumber.foreground": "#686F78",
+          "editorCursor.foreground": "#B5791A",
+          "editorCursor.background": "#FFFFFF",
         },
       });
 
@@ -285,7 +300,9 @@ export function Editor({
           "editor.background": "#000000",
           "editor.lineHighlightBackground": "#1a1a1a",
           "editorGutter.background": "#000000",
-          "editorLineNumber.foreground": "#d1d5db",
+          "editorLineNumber.foreground": "#C7C7C7",
+          "editorCursor.foreground": "#FFC247",
+          "editorCursor.background": "#000000",
         },
       });
 
@@ -536,7 +553,7 @@ export function Editor({
       <style>{`
         .current-line-highlight { background: color-mix(in srgb, var(--amber) 16%, transparent) !important; box-shadow: inset 2px 0 0 0 var(--amber); }
         .current-line-glyph { background: var(--amber); border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
-        .breakpoint-glyph { background: #ef4444; border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
+        .breakpoint-glyph { background: var(--danger); border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .error-line-highlight { background: color-mix(in srgb, var(--danger) 15%, transparent) !important; }
         .hotspot-1 { background: rgba(56, 189, 248, 0.10) !important; }
         .hotspot-2 { background: rgba(125, 211, 252, 0.16) !important; }
@@ -567,6 +584,12 @@ export function Editor({
           automaticLayout: true,
           tabSize: 4,
           wordWrap: isCoarsePointer() ? "on" : "off",
+          // The block caret is the site's brand cursor, here in the one place
+          // it is a real cursor. It blinks hard on/off; when the reader asks
+          // for reduced motion it holds solid instead, same fallback as the
+          // CSS cursor elsewhere.
+          cursorStyle: "block",
+          cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
           accessibilitySupport: "auto",
           accessibilityHelpUrl: "/docs/accessibility",
         }}
@@ -684,7 +707,10 @@ function FallbackEditor({
         </div>
       </div>
       <textarea
-        className="flex-1 h-full min-h-0 resize-none bg-[var(--bg-base)] text-[var(--text-primary)] font-mono text-[16px] pl-2 pr-3 focus:outline-none leading-6 whitespace-pre"
+        // caret-color keeps the phone fallback's native caret in the same
+        // amber as Monaco's block cursor, so the brand cursor survives the
+        // textarea downgrade.
+        className="flex-1 h-full min-h-0 resize-none bg-[var(--bg-base)] text-[var(--text-primary)] [caret-color:var(--amber)] font-mono text-[16px] pl-2 pr-3 focus:outline-none leading-6 whitespace-pre"
         style={{
           WebkitAppearance: "none",
           paddingTop: `${FALLBACK_PAD_Y}px`,

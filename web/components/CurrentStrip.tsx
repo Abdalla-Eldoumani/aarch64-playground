@@ -36,7 +36,14 @@ export function CurrentStrip({ source, currentLine }: CurrentStripProps) {
         current instruction
       </span>
       {gloss ? (
-        <span className="font-mono text-[14px] leading-[1.6] text-[var(--text-primary)] break-words">
+        // Keyed by the line so each step replays the register-write flash on
+        // the gloss: the strip is machine state, and it pulses with the same
+        // --changed tint as a written register. Under prefers-reduced-motion
+        // the class is inert and the updated text alone carries the change.
+        <span
+          key={currentLine}
+          className="anim-reg-flash -mx-1 rounded-[var(--radius-control)] px-1 font-mono text-[14px] leading-[1.6] text-[var(--text-primary)] break-words"
+        >
           {gloss}
         </span>
       ) : (
