@@ -29,11 +29,13 @@ export interface ToolbarProps {
 }
 
 // Compact secondary control. The 44px primary-target bar is the run controls;
-// these supporting controls sit a step below it. Interaction reads cyan.
+// these supporting controls sit a step below it. Interaction reads cyan, the
+// focus ring is the shared --ring token (same two-layer ring as every other
+// control), and active presses travel one device pixel like the base button.
 const CONTROL =
   "inline-flex items-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 " +
   "text-[12px] font-sans transition-colors focus:outline-none " +
-  "focus-visible:ring-2 focus-visible:ring-[var(--cyan)]";
+  "focus-visible:[box-shadow:var(--ring)] active:translate-y-px";
 const INACTIVE =
   "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]";
 const ACTIVE = "bg-[var(--cyan)] text-[var(--on-cyan)]";
@@ -135,11 +137,19 @@ export function Toolbar({
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          aria-label="open command palette"
+          // The accessible name matches the visible label (WCAG label-in-name);
+          // the title still spells out what the button opens. The chip is
+          // full-strength for contrast on hover states and aria-hidden so the
+          // name stays the bare word.
+          aria-label="commands"
+          title="open the command palette (Ctrl+K)"
           className={`${CONTROL} ${INACTIVE}`}
         >
           commands
-          <kbd className="ml-1.5 hidden sm:inline-block text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px] opacity-70">
+          <kbd
+            aria-hidden="true"
+            className="ml-1.5 hidden sm:inline-block text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px]"
+          >
             Ctrl+K
           </kbd>
         </button>
