@@ -47,7 +47,9 @@ describe("Toolbar", () => {
       "copy diagnostic bundle to clipboard",
       "start guided tour",
       "toggle theme",
-      "open command palette",
+      // The palette opener's name is its visible label (WCAG label-in-name);
+      // the title carries the longer description.
+      "commands",
     ]) {
       expect(screen.getByRole("button", { name })).toBeTruthy();
     }
@@ -55,7 +57,7 @@ describe("Toolbar", () => {
 
   it("opens the command palette from a visible control (discovery without a shortcut)", () => {
     const props = setup();
-    fireEvent.click(screen.getByRole("button", { name: "open command palette" }));
+    fireEvent.click(screen.getByRole("button", { name: "commands" }));
     expect(props.onOpenCommandPalette).toHaveBeenCalledTimes(1);
   });
 
