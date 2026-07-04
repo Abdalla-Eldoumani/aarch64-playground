@@ -73,7 +73,7 @@ export function Toolbar({
 }: ToolbarProps) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 ${className}`}>
-      <div role="group" aria-label="view and modes" className="flex items-center gap-2">
+      <div role="group" aria-label="view and modes" className="flex flex-wrap items-center gap-2">
         <GroupLabel>view and modes</GroupLabel>
         <button
           type="button"
@@ -104,7 +104,7 @@ export function Toolbar({
         </button>
       </div>
 
-      <div role="group" aria-label="share and tools" className="flex items-center gap-2">
+      <div role="group" aria-label="share and tools" className="flex flex-wrap items-center gap-2">
         <GroupLabel>share and tools</GroupLabel>
         <button
           type="button"
