@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { ROUTE_REGISTERS } from "@/lib/landing-content";
 
 /**
@@ -24,8 +25,17 @@ export function RoutesRegisterFile() {
         jump table
       </h2>
       <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
-        {ROUTE_REGISTERS.map((route) => (
-          <li key={route.href}>
+        {ROUTE_REGISTERS.map((route, index) => (
+          // Each row plays the register-write flash once on first paint,
+          // staggered 70ms per row so the block powers on like values landing
+          // in a register file, top to bottom. Pure CSS with no movement or
+          // hidden start state: nothing shifts, and under
+          // prefers-reduced-motion the rows are simply static.
+          <li
+            key={route.href}
+            className="anim-boot-flash"
+            style={{ "--boot-delay": `${index * 70}ms` } as CSSProperties}
+          >
             <Link
               href={route.href}
               className={`grid min-h-[44px] grid-cols-[3rem_1fr_auto] items-center gap-3 px-4 transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
