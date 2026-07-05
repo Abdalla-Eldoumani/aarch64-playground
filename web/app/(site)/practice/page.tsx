@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { loadAllExercises } from "@/lib/exercises";
 import { ExerciseIndex } from "@/components/ExerciseIndex";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 const DESCRIPTION =
   "AArch64 exercises checked by running your program against expected behavior, not a stored solution.";
@@ -16,11 +17,13 @@ export const metadata: Metadata = {
     title: "practice — cpsc 355 playground",
     description: DESCRIPTION,
     url: "/practice",
+    images: [SHARE_CARD_IMAGE],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "practice — cpsc 355 playground",
     description: DESCRIPTION,
+    images: [SHARE_CARD_IMAGE],
   },
 };
 
