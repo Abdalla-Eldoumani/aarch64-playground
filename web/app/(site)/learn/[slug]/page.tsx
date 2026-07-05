@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { loadAllLessons, loadLesson } from "@/lib/lessons";
 import { LessonArticle } from "@/components/LessonArticle";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 // Fully static: the build enumerates every valid lesson slug and, with
 // dynamicParams off, only those slugs exist. Any other path falls through to the
@@ -39,11 +40,13 @@ export async function generateMetadata({
       title: composedTitle,
       description,
       url: `/learn/${slug}`,
+      images: [SHARE_CARD_IMAGE],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title: composedTitle,
       description,
+      images: [SHARE_CARD_IMAGE],
     },
   };
 }
