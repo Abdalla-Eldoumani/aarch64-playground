@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Hero } from "@/components/Hero";
 import { RoutesRegisterFile } from "@/components/RoutesRegisterFile";
 import { FeatureCatalog } from "@/components/FeatureCatalog";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 const DESCRIPTION =
   "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";
@@ -19,11 +20,13 @@ export const metadata: Metadata = {
     title: "cpsc 355 playground",
     description: DESCRIPTION,
     url: "/",
+    images: [SHARE_CARD_IMAGE],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "cpsc 355 playground",
     description: DESCRIPTION,
+    images: [SHARE_CARD_IMAGE],
   },
 };
 
