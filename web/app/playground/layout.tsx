@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 const DESCRIPTION =
   "Assemble and step through AArch64 programs with live registers, stack, memory, and real stdin and stdout in the browser.";
@@ -14,11 +15,13 @@ export const metadata: Metadata = {
     title: "playground — cpsc 355 playground",
     description: DESCRIPTION,
     url: "/playground",
+    images: [SHARE_CARD_IMAGE],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "playground — cpsc 355 playground",
     description: DESCRIPTION,
+    images: [SHARE_CARD_IMAGE],
   },
 };
 
