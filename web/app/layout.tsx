@@ -6,7 +6,7 @@ import "./globals.css";
 import { ToastHost } from "@/components/Toast";
 import { OfflineBadge } from "@/components/OfflineBadge";
 import { RegisterSW } from "@/components/RegisterSW";
-import { SITE_URL } from "@/lib/site";
+import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/site";
 
 // Engineering-notebook trio: Source Serif 4 in editorial chrome (page
 // titles, empty-state heads), Hanken Grotesk for display, body, and
@@ -35,15 +35,6 @@ const fontMono = JetBrains_Mono({
 const DESCRIPTION =
   "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";
 
-// The share card unfurlers fetch. metadataBase resolves the relative url to
-// the production origin; messengers refuse relative image URLs.
-const OG_IMAGE = {
-  url: "/og.png",
-  width: 1200,
-  height: 630,
-  alt: "cpsc 355 playground: the debugger mid-step, with the current instruction and a changed register highlighted",
-};
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
@@ -57,13 +48,13 @@ export const metadata: Metadata = {
     title: "cpsc 355 playground",
     description: DESCRIPTION,
     url: "/",
-    images: [OG_IMAGE],
+    images: [SHARE_CARD_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
     title: "cpsc 355 playground",
     description: DESCRIPTION,
-    images: [OG_IMAGE],
+    images: [SHARE_CARD_IMAGE],
   },
 };
 
