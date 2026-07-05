@@ -56,6 +56,8 @@ It is a course-style tutorial file, accepted as-is.
 Hit **Assemble** (`F6`). The m4 expander runs, the frontend parses each
 section, the linker places labels and a literal pool, and the bytes load
 into memory at `0x0040_0000` (`.text`), `0x0060_0000` (`.data`), and so on.
+Run, step, and step back stay disabled until a program assembles, and
+disable again after a reset or a failed assemble.
 
 Hit **Run** (`F5`). At the first `bl scanf` the console area pauses for
 input: switch to the console tab, type a number, and press Enter. The run
@@ -101,8 +103,11 @@ editor; nothing is sent to a server.
   short section then run the code beside it.
 - **Practice** (`/practice`): exercises graded by running your program
   against expected behavior. The checker never reads or stores a solution.
-- **Reference** (`/reference`): the supported instruction set, a
-  calling-convention guide, and a catalog of common pitfalls.
+- **Reference** (`/reference`): the supported instruction set, with a
+  worked encoding diagram per instruction and an interactive NZCV panel
+  on the flag-setters; a calling-convention guide with a step-through
+  frame walk; and a pitfalls catalog whose examples run in place so you
+  watch each mistake fail.
 
 ## more playground features
 
@@ -116,6 +121,7 @@ for the full index of where each lives.
 - **Diagnostic bundle** (next to **share**) copies a markdown report of source, args, stdin, output, exit code, and register state, plus a `?bundle=` link that reopens the same state.
 - **Watch expressions** (the watches tab) evaluate a small grammar (`x0`, `*x0`, `[fp, score1_s]`, `arr[i]`) every time the CPU stops.
 - **Memory watches** (the memwatch tab) pin labelled address ranges.
+- **Base converter** (the convert tab) keeps hex, binary, decimal, and the signed and unsigned readings in sync at 8, 16, 32, or 64 bits; click a bit to flip it. Also on the reference page and in the command palette.
 - **Multi-file assembly** (the **+** by the file tab) registers extra source files, concatenated before assembly.
 - **Terminal** (the term tab) is an xterm.js shell with `./program [args]`, redirections, basic VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
 - **CPSC 355 mode** (toolbar toggle) turns on lints for course idioms: alias suffixes, canonical prologues, 16-byte stack alignment, and no bare `x29`/`x30`.
