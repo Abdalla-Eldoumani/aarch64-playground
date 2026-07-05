@@ -5,6 +5,16 @@
 export const SITE_URL = "https://aarch64-playground.vercel.app";
 export const REPO_URL = "https://github.com/Abdalla-Eldoumani/aarch64-playground";
 
+// The cover messengers unfurl. Open Graph and Twitter cards do not deep-merge
+// across route segments, so every restated card pulls this one image; the url
+// stays relative and resolves through metadataBase to the production origin.
+export const SHARE_CARD_IMAGE = {
+  url: "/og.png",
+  width: 1200,
+  height: 630,
+  alt: "cpsc 355 playground: the debugger mid-step, with the current instruction and a changed register highlighted",
+} as const;
+
 // Credibility: the facts the footer and the credibility section both state, kept
 // here as the single source so the two surfaces can never drift apart. The
 // license link is derived from REPO_URL so the repository address has one source.
