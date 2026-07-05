@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { REFERENCE_INSTRUCTIONS } from "@/lib/reference-data";
 import { ReferenceView } from "@/components/ReferenceView";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 const DESCRIPTION =
   "A searchable map of the supported AArch64 instructions and the calling convention.";
@@ -16,11 +17,13 @@ export const metadata: Metadata = {
     title: "reference — cpsc 355 playground",
     description: DESCRIPTION,
     url: "/reference",
+    images: [SHARE_CARD_IMAGE],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "reference — cpsc 355 playground",
     description: DESCRIPTION,
+    images: [SHARE_CARD_IMAGE],
   },
 };
 
