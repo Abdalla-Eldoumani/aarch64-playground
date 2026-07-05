@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { loadAllLessons } from "@/lib/lessons";
 import { LessonIndex } from "@/components/LessonIndex";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 const DESCRIPTION =
   "Step-by-step AArch64 lessons that pair a short reading with a live, runnable editor.";
@@ -16,11 +17,13 @@ export const metadata: Metadata = {
     title: "learn — cpsc 355 playground",
     description: DESCRIPTION,
     url: "/learn",
+    images: [SHARE_CARD_IMAGE],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "learn — cpsc 355 playground",
     description: DESCRIPTION,
+    images: [SHARE_CARD_IMAGE],
   },
 };
 
