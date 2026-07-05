@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { NotFound } from "@/components/NotFound";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "404",
@@ -15,11 +16,13 @@ export const metadata: Metadata = {
     siteName: "cpsc 355 playground",
     title: "404 — cpsc 355 playground",
     description: "The page you were looking for doesn't exist.",
+    images: [SHARE_CARD_IMAGE],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "404 — cpsc 355 playground",
     description: "The page you were looking for doesn't exist.",
+    images: [SHARE_CARD_IMAGE],
   },
 };
 

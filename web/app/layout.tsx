@@ -6,7 +6,7 @@ import "./globals.css";
 import { ToastHost } from "@/components/Toast";
 import { OfflineBadge } from "@/components/OfflineBadge";
 import { RegisterSW } from "@/components/RegisterSW";
-import { SITE_URL } from "@/lib/site";
+import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/site";
 
 // Engineering-notebook trio: Source Serif 4 in editorial chrome (page
 // titles, empty-state heads), Hanken Grotesk for display, body, and
@@ -48,11 +48,13 @@ export const metadata: Metadata = {
     title: "cpsc 355 playground",
     description: DESCRIPTION,
     url: "/",
+    images: [SHARE_CARD_IMAGE],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "cpsc 355 playground",
     description: DESCRIPTION,
+    images: [SHARE_CARD_IMAGE],
   },
 };
 

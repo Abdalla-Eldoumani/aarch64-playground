@@ -11,6 +11,7 @@ vi.mock("@/components/ReferenceView", () => ({
 }));
 
 import { REFERENCE_INSTRUCTIONS } from "@/lib/reference-data";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 import ReferencePage, { metadata } from "./page";
 
 afterEach(() => {
@@ -30,5 +31,15 @@ describe("reference route", () => {
     expect(metadata.description).toBeTruthy();
     expect(metadata.openGraph).toBeTruthy();
     expect(metadata.twitter).toBeTruthy();
+  });
+
+  it("carries the shared cover on its restated cards", () => {
+    // Cards do not deep-merge across segments, so a route that restates its
+    // card without the image would unfurl with no cover.
+    expect(metadata.openGraph?.images).toEqual([SHARE_CARD_IMAGE]);
+    expect(metadata.twitter?.images).toEqual([SHARE_CARD_IMAGE]);
+    expect(
+      metadata.twitter && "card" in metadata.twitter && metadata.twitter.card,
+    ).toBe("summary_large_image");
   });
 });
