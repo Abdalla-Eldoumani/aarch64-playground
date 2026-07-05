@@ -13,14 +13,16 @@ Live at <https://aarch64-playground.vercel.app>.
 - **Playground** (`/playground`): a Monaco editor with assemble, run, step,
   and step-back; breakpoints; register, memory, and stack views; a console
   with stdin and a virtual filesystem; a terminal pane with a gdb-style
-  command subset; share links; and dark, light, and high-contrast themes.
+  command subset; a hex/binary/decimal/two's-complement converter; share
+  links; and dark, light, and high-contrast themes.
 - **Learn** (`/learn`): short lessons with runnable inline editors.
 - **Practice** (`/practice`): exercises checked by running your program
   against expected behavior (registers, exit code, stdout), never against a
   stored answer, so any correct approach passes.
-- **Reference** (`/reference`): a searchable instruction reference, a
-  calling-convention guide, and a pitfalls catalog, kept in sync with what
-  the emulator actually supports.
+- **Reference** (`/reference`): a searchable instruction reference with
+  worked encodings and interactive flag panels, a calling-convention guide
+  with a step-through frame walk, and a pitfalls catalog with runnable
+  examples, kept in sync with what the emulator actually supports.
 - **Realistic hosted runtime**: m4 register-alias macros, GAS directives and
   sections, frame-pointer prologues, the `ldr xN, =label` literal pool, the
   AAPCS64 `printf`/`scanf` path, Linux syscalls via `svc 0`, argc/argv on
