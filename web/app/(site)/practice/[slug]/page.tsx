@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { loadAllExercises, loadExercise } from "@/lib/exercises";
 import { ExerciseView } from "@/components/ExerciseView";
+import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 // Fully static: the build enumerates every valid exercise slug and, with
 // dynamicParams off, only those slugs exist. Any other path falls through to the
@@ -41,11 +42,13 @@ export async function generateMetadata({
       title: composedTitle,
       description,
       url: `/practice/${slug}`,
+      images: [SHARE_CARD_IMAGE],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title: composedTitle,
       description,
+      images: [SHARE_CARD_IMAGE],
     },
   };
 }
