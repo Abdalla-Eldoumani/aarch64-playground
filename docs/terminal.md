@@ -47,7 +47,7 @@ fits the task.
 
 - History: ArrowUp and ArrowDown walk previously-submitted lines; repeated identical commands collapse.
 - Tab completion: completes against the VFS file list. A unique prefix expands; an ambiguous one lists candidates.
-- Paste: multi-line clipboard pastes split on `\n`, and each line submits as a separate command.
+- Paste: multi-line clipboard pastes split on any line-break style (`\r\n`, `\r`, or `\n`), and each line submits as a separate command.
 
 ## Implementation
 
