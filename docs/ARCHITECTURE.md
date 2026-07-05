@@ -11,8 +11,9 @@ in the browser tab.
 Two workspaces:
 
 - `web/`: Next.js 16 (App Router) + React 19 frontend. Monaco editor,
-  resizable panels (registers, memory, stack, console, watches, saves),
-  command palette, tutorial runner, share links.
+  resizable panels (registers, memory, stack, console, terminal, watches,
+  base converter, memory watches, saves), command palette, tutorial
+  runner, share links.
 - `emulator/`: the Rust crate `aarch64-emulator`, compiled to WASM with
   wasm-pack. Output lands in `web/lib/wasm/` (gitignored).
 
@@ -198,7 +199,7 @@ reaches React, the editor, or the emulator (full caps in
   on `#p2=<lz>` and `#p=`.
 - `named-saves.ts::isValidSave`: per-field type check on bookmark JSON;
   collisions are skipped, not overwritten.
-- `upload-guard.ts`: size caps for source (4 MB), VFS (16 MB), and
+- `upload-guard.ts`: size caps for source (1 MB), VFS (10 MB), and
   bookmark JSON (1 MB) uploads.
 - `use-deep-link.ts`: enum checks on `?theme`/`?view`, regex on
   `?example`.

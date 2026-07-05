@@ -15,9 +15,9 @@ export const SHARE_CARD_IMAGE = {
   alt: "cpsc 355 playground: the debugger mid-step, with the current instruction and a changed register highlighted",
 } as const;
 
-// Credibility: the facts the footer and the credibility section both state, kept
-// here as the single source so the two surfaces can never drift apart. The
-// license link is derived from REPO_URL so the repository address has one source.
+// Credibility: the facts the footer states, kept here so the copy has one
+// source. The license link is derived from REPO_URL so the repository address
+// has one source too.
 export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
 export const LICENSE_LABEL = "MIT";
 
@@ -30,7 +30,7 @@ export const CREDIBILITY = {
   // The not-affiliated disclaimer.
   disclaimer:
     "Built for CPSC 355. Not officially affiliated with the University of Calgary.",
-  // How the emulator is built (the credibility section's headline note).
+  // How the emulator is built (the footer's engine note).
   engineNote: "a hand-written Rust interpreter compiled to WebAssembly",
 } as const;
 

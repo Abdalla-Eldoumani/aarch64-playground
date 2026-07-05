@@ -18,6 +18,8 @@ reference).
 | Exercises (`/practice`) | `web/app/(site)/practice/`, `web/components/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/exercises.ts` |
 | Exercise checker (no stored solution) | `web/lib/exercise-checker.ts` |
 | Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/ReferenceView.tsx`, `InstructionReference.tsx`, `InstructionView.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/reference-data.ts` |
+| Reference interactivity (NZCV panel, worked encodings, frame walk, runnable pitfalls) | `web/components/FlagEffect.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `PitfallsCatalog.tsx` |
+| Link preview card (og/twitter image) | `web/lib/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
 | Content schemas + author JSON | `web/lib/lesson-schema.ts`, `exercise-schema.ts`, `web/content/` |
 
 ## Editor & assembly
@@ -38,6 +40,7 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | Assemble / step / run / pause | `web/components/Controls.tsx`, `web/lib/use-emulator.ts` |
+| Pre-assemble gating + cold-load state | `web/components/Controls.tsx`, `FirstRunState.tsx` |
 | 128-frame step-back | `emulator/src/snapshot.rs::SnapshotRing` |
 | Replay scrubber (visual seek) | `web/components/ReplayScrubber.tsx`, `web/lib/replay.ts` |
 | Named save states (session-scoped) | `web/lib/use-emulator.ts`, `web/components/SavesPanel.tsx` |
@@ -55,6 +58,7 @@ reference).
 | Watch expressions (`x0`, `*x0`, `[fp, name]`, `arr[i]`) | `web/components/WatchPanel.tsx`, `web/lib/watch-expr.ts` |
 | Memory address watches | `web/components/MemoryWatches.tsx` |
 | Console (stdout/stderr + stdin) | `web/components/ConsolePanel.tsx` |
+| Base converter (convert tab) | `web/components/BaseConverter.tsx`, `web/lib/base-convert.ts` |
 | Current-instruction strip | `web/components/CurrentStrip.tsx`, `web/lib/explain-line.ts` |
 
 ## Layout & responsive
@@ -69,6 +73,8 @@ reference).
 | Lecture mode (HC + fullscreen) | `web/lib/use-lecture-mode.ts`, `web/components/LectureBar.tsx` |
 | Per-panel zoom (`Ctrl+Wheel`) | `web/lib/use-zoom.ts`, `web/components/ZoomControl.tsx` |
 | Breakpoint hook | `web/lib/use-breakpoint.ts` |
+| Command palette (`Ctrl+K`) | `web/components/CommandPalette.tsx` |
+| Keyboard shortcuts help (`?`) | `web/components/ShortcutsHelp.tsx` |
 
 ## Input & deep-link
 
@@ -77,6 +83,7 @@ reference).
 | Args bar (argv at entry) | `web/components/ArgsInput.tsx`, `web/lib/args.ts` |
 | Share link (`#p2=<lz>`) | `web/lib/share.ts`, `web/components/ShareDialog.tsx` |
 | Deep-link query parsing | `web/lib/use-deep-link.ts` |
+| Program handoff (boot precedence, example fetch) | `web/lib/playground-handoff.ts` |
 | `?bundle=<lz>` restore | `web/lib/diagnostic-bundle.ts` |
 | `?embed=1` chrome-stripped mode | `web/app/playground/page.tsx` (uses `useDeepLink`) |
 | Import / export source | `web/components/ImportExport.tsx` |

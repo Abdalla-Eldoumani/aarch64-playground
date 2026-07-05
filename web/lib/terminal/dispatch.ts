@@ -92,7 +92,7 @@ const HELP_LINES = [
   "  cp <src> <dst>                    copy a VFS file",
   "  rm <file>                         remove a VFS file",
   "  mv <old> <new>                    rename a VFS file",
-  "  upload                            opens the host file picker (TerminalPane handles this)",
+  "  upload                            open the host file picker to add a file to the VFS",
   "  clear                             clear the terminal scrollback",
   "  reset                             reset the emulator state (VFS preserved)",
   "  gdb help                          show the gdb-lite command list",
