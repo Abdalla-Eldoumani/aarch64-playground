@@ -11,8 +11,9 @@ in the browser tab.
 Two workspaces:
 
 - `web/`: Next.js 16 (App Router) + React 19 frontend. Monaco editor,
-  resizable panels (registers, memory, stack, console, watches, saves),
-  command palette, tutorial runner, share links.
+  resizable panels (registers, memory, stack, console, terminal, watches,
+  base converter, memory watches, saves), command palette, tutorial
+  runner, share links.
 - `emulator/`: the Rust crate `aarch64-emulator`, compiled to WASM with
   wasm-pack. Output lands in `web/lib/wasm/` (gitignored).
 
