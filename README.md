@@ -254,4 +254,4 @@ More detail in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md),
 
 ## License
 
-MIT
+AGPL-3.0. See [LICENSE](LICENSE) for the full text.
