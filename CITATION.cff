@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "aarch64-playground: a browser-based AArch64 emulator and visual debugger"
+authors:
+  - family-names: "Eldoumani"
+    given-names: "Abdalla"
+license: AGPL-3.0-only
+repository-code: "https://github.com/Abdalla-Eldoumani/aarch64-playground"
+url: "https://aarch64-playground.vercel.app"
+keywords:
+  - "AArch64"
+  - "ARMv8"
+  - "assembly"
+  - "emulator"
+  - "debugger"
+  - "WebAssembly"
+  - "education"
