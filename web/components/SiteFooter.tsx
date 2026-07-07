@@ -15,7 +15,7 @@ const LINK_CLASS =
 /**
  * The persistent site footer shared by the content layout and the 404: the brand
  * wordmark with a one-line description and the Rust-to-WASM engine note, the
- * route links, the repository and MIT license links, the course context, the
+ * route links, the repository and license links, the course context, the
  * open-source line, and the not-affiliated disclaimer. The one footer everywhere,
  * the landing included -- it carries the project's credibility facts itself so no
  * page needs a second footer-like band above it. Stays a server component (no
@@ -61,7 +61,7 @@ export function SiteFooter() {
             href={LICENSE_URL}
             target="_blank"
             rel="noreferrer noopener"
-            aria-label="MIT license"
+            aria-label="AGPL-3.0 license"
             className={LINK_CLASS}
           >
             {LICENSE_LABEL}
