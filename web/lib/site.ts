@@ -19,7 +19,7 @@ export const SHARE_CARD_IMAGE = {
 // source. The license link is derived from REPO_URL so the repository address
 // has one source too.
 export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
-export const LICENSE_LABEL = "MIT";
+export const LICENSE_LABEL = "AGPL-3.0";
 
 export const CREDIBILITY = {
   // One-line description of what the project is.
