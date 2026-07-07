@@ -3,7 +3,7 @@ name = "aarch64-emulator"
 version = "1.6.0"
 edition = "2021"
 description = "ARMv8 instruction emulator for the browser"
-license = "MIT"
+license = "AGPL-3.0-only"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
