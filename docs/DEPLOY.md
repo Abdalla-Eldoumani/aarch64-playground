@@ -34,7 +34,7 @@ The `--webpack` flag is required: the `next.config` webpack hook (the `?raw` sou
 - `Content-Type: application/wasm` on `.wasm`, and `text/plain; charset=utf-8` on `/examples/*.s`.
 - Security headers on every route: `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()`.
 
-The CSP is `default-src 'self'` with scripts from self plus the Monaco CDN (`cdn.jsdelivr.net`) and Vercel analytics, workers from self and `blob:`, and no framing or objects. See [`security.md`](security.md) for the full policy and rationale; `middleware.ts` keeps the same headers in lockstep for `next start` and dev.
+The CSP is `default-src 'self'` with scripts from self plus the Monaco CDN (`cdn.jsdelivr.net`) and Vercel analytics, workers from self and `blob:`, and no framing or objects. See [`security.md`](security.md) for the full policy and rationale; `proxy.ts` keeps the same headers in lockstep for `next start` and dev.
 
 ## Troubleshooting
 
