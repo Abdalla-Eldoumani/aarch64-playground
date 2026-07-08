@@ -206,7 +206,7 @@ reaches React, the editor, or the emulator (full caps in
 
 Security headers (CSP, HSTS, COOP, X-Frame-Options DENY, Referrer-Policy,
 Permissions-Policy) are defined in both
-[`web/middleware.ts`](../web/middleware.ts) and `vercel.json`, kept in
+[`web/proxy.ts`](../web/proxy.ts) and `vercel.json`, kept in
 lockstep so they hold under `next start`, in dev, and on Vercel. The CSP
 allow-lists the Vercel analytics and speed-insights endpoints.
 `vercel.json` additionally sets immutable cache headers for
