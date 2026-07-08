@@ -5,7 +5,7 @@
 You need:
 
 - **Rust** (stable, installed via rustup) with the `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`. Use rustup, not a standalone package; wasm-pack requires it.
-- **wasm-pack**: `cargo install wasm-pack`, or the installer at <https://rustwasm.github.io/wasm-pack/installer/>.
+- **wasm-pack**: `cargo install wasm-pack`, or the installer at <https://wasm-bindgen.github.io/wasm-pack/installer/>.
 - **Node.js** 20+.
 - Optional: `cargo install cargo-watch` enables the WASM auto-rebuild half of `npm run dev:all` (without it, `dev:all` still runs the web dev server).
 
