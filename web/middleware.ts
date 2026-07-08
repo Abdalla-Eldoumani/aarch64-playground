@@ -18,7 +18,13 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
   "Content-Security-Policy":
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +
+    // 'unsafe-eval' is only needed by the Next.js dev runtime (React Refresh
+    // evaluates modules with eval). Production must never ship it -- it would
+    // reopen the eval-based XSS the CSP exists to close -- so it is gated to
+    // development. vercel.json carries the production policy without it.
+    "script-src 'self' " +
+    (process.env.NODE_ENV === "development" ? "'unsafe-eval' " : "") +
+    "'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
     "font-src 'self' data:; " +
     "img-src 'self' data: blob:; " +
