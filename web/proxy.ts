@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * Apply security headers in code so they work for `next start` and dev,
  * not just on Vercel's edge. vercel.json carries the same set as a
- * deploy-time guarantee; this middleware is the framework-level one.
+ * deploy-time guarantee; this proxy is the framework-level one.
  *
  * Keep in lockstep with vercel.json -- both should reject anything we
  * promise in docs/security.md.
@@ -39,7 +39,7 @@ const SECURITY_HEADERS: Record<string, string> = {
     "upgrade-insecure-requests",
 };
 
-export function middleware(_req: NextRequest) {
+export function proxy(_req: NextRequest) {
   const res = NextResponse.next();
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     res.headers.set(name, value);
