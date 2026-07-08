@@ -18,7 +18,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
   "Content-Security-Policy":
     "default-src 'self'; " +
-    "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +
+    "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
     "font-src 'self' data:; " +
     "img-src 'self' data: blob:; " +
