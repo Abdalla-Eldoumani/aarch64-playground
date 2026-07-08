@@ -38,7 +38,7 @@
     },
     {
       "type": "editor",
-      "starter": "// This is an editor tab. Codes can be included, and it renders a small IDE debugger like tab."
+      "starter": "This is the file by default the StringJson reads to by default\n    Change the content of this file appropriate to your desire conversion."
     }
   ]
 }
