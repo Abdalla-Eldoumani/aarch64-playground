@@ -7,7 +7,7 @@ You need:
 - **Rust** (stable, installed via rustup) with the `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`. Use rustup, not a standalone package; wasm-pack requires it.
 - **wasm-pack**: `cargo install wasm-pack`, or the installer at <https://rustwasm.github.io/wasm-pack/installer/>.
 - **Node.js** 20+.
-- Optional: `cargo install cargo-watch` for the `npm run dev:all` loop.
+- Optional: `cargo install cargo-watch` enables the WASM auto-rebuild half of `npm run dev:all` (without it, `dev:all` still runs the web dev server).
 
 First build:
 
@@ -31,7 +31,7 @@ Open <http://localhost:3000>. If "loading emulator..." persists, check the brows
 
 ## Day-to-day
 
-From `web/`, `npm run dev:all` runs the full loop: cargo-watch rebuilds the WASM on every change under `emulator/src` and `Cargo.toml`, and Next dev reloads when `web/lib/wasm/` updates. Both run under `concurrently` with color-prefixed output.
+From `web/`, `npm run dev:all` runs the full loop: cargo-watch rebuilds the WASM on every change under `emulator/src` and `Cargo.toml`, and Next dev reloads when `web/lib/wasm/` updates. Both run under `concurrently` with color-prefixed output. When cargo-watch is not installed, `dev:all` prints the install hint and runs the web dev server alone.
 
 ```bash
 cd web && npm run dev:all
