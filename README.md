@@ -90,7 +90,7 @@ Live at <https://aarch64-playground.vercel.app>.
 **Requirements:**
 
 - [Rust](https://rustup.rs/) 1.75+ with `rustup target add wasm32-unknown-unknown`
-- [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/) 0.12+
+- [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/installer/) 0.12+
 - Node.js 20+
 - Optional, only needed if you want to use `npm run dev:all`: `cargo install cargo-watch`
 
