@@ -21,7 +21,7 @@ exfiltrate beyond the browser.
 ### HTTP response headers
 
 The security headers are defined in both `vercel.json` (deploy-time) and
-`web/middleware.ts` (framework-level, so they also hold under `next start` and
+`web/proxy.ts` (framework-level, so they also hold under `next start` and
 dev), kept in lockstep.
 
 | Header | Value | Why |
@@ -37,6 +37,15 @@ dev), kept in lockstep.
 Static assets and the WASM module are served `immutable`; `/sw.js` is
 `must-revalidate` so updates land immediately. These cache headers are
 per-route in `vercel.json`.
+
+The script policy allows `'wasm-unsafe-eval'` so the emulator can instantiate
+its WebAssembly. It allows `'unsafe-eval'` only in development, where the
+Next.js dev runtime (React Refresh) evaluates modules with `eval` -- without it
+the in-page editor renders blank. Production and `next start` never include
+`'unsafe-eval'`: `web/proxy.ts` gates it behind `NODE_ENV`, and `vercel.json`
+(production-only) omits it, so the deployed policy keeps the `eval`-based XSS
+surface closed. Exercise the editor under `npm run dev`, where the dev-only
+allowance applies, not against production.
 
 ### Input validation gates
 
