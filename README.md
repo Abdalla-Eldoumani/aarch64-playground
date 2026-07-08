@@ -48,7 +48,8 @@ npm run dev
 ```
 
 Open <http://localhost:3000>. For one terminal that rebuilds the WASM and
-serves the app together, run `npm run dev:all` from `web/`.
+serves the app together, run `npm run dev:all` from `web/` (it serves the app
+either way; `cargo install cargo-watch` enables the WASM auto-rebuild).
 
 ## Stack
 
