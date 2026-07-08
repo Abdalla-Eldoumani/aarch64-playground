@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "wasm:watch": "cd ../emulator && cargo watch -w src -w Cargo.toml -s \"wasm-pack build --dev --target web --out-dir ../web/lib/wasm\"",
+    "wasm:watch": "node ../scripts/wasm-watch.mjs",
     "dev:all": "concurrently --kill-others-on-fail --names wasm,web --prefix-colors yellow,cyan \"npm run wasm:watch\" \"npm run dev\"",
     "build": "next build --webpack",
     "start": "next start",
