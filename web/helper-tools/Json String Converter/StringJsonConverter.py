@@ -1,14 +1,36 @@
 # This is a python helper script
 # This program will read a program file, convert it to a long json string.
-# Json String can be copied and pasted into the contents file in the web template
+# Json String can be copied and pasted into the contents file in the web template.
+# Converted String is automatically copied to clipboard for convenience.
 # Install pyperclip module to copy the result to clipboard automatically
 # pip install pyperclip
 
+# Line that starts with -- will be ignored, as this is indicates a comment.
+# Anything between /" and "/ will be treated as a block and will be converted to a single line, with all newlines replaced by a space.
+
+import re
 import pyperclip
+
 
 def file_to_single_string(filename="toJson.txt"):
     with open(filename, "r", encoding="utf-8") as file:
-        return "\\n".join(line.rstrip("\n") for line in file)
+        text = file.read()
+
+    lines = text.splitlines()
+    filtered_lines = [
+        line for line in lines
+        if not line.lstrip().startswith("--")
+    ]
+    text = "\n".join(filtered_lines)
+
+    def collapse_block(match):
+        content = match.group(1)
+        content = " ".join(content.splitlines())
+        return f'/"{content}"/'
+
+    text = re.sub(r'/"(.*?)"/', collapse_block, text, flags=re.DOTALL)
+
+    return text.replace("\n", "\\n")
 
 
 if __name__ == "__main__":
