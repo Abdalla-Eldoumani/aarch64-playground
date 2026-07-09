@@ -56,7 +56,7 @@ Next dev picks up `web/lib/wasm/` automatically; a hard-refresh (Ctrl+Shift+R) s
 
 `main` is the protected trunk. Branch off `main`, push, and open one pull request; the maintainer reviews and merges (squash preferred). There is no long-lived integration branch.
 
-1. Branch with a conventional prefix: `git checkout -b docs/<short-name>` (or `fix/`, `feature/`).
+1. Branch with a conventional prefix: `git checkout -b docs/<short-name>` (or `fix/`, `feat/`).
 2. One logical change per commit. Messages are one line, lowercase, imperative, three sentences max; match `git log --oneline`.
 3. Open a PR with the template and fill the "How to verify" checklist honestly. [`TESTING.md`](TESTING.md) is the canonical command list.
 
