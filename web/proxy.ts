@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * Apply security headers in code so they work for `next start` and dev,
  * not just on Vercel's edge. vercel.json carries the same set as a
- * deploy-time guarantee; this middleware is the framework-level one.
+ * deploy-time guarantee; this proxy is the framework-level one.
  *
  * Keep in lockstep with vercel.json -- both should reject anything we
  * promise in docs/security.md.
@@ -18,7 +18,13 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
   "Content-Security-Policy":
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +
+    // 'unsafe-eval' is only needed by the Next.js dev runtime (React Refresh
+    // evaluates modules with eval). Production must never ship it -- it would
+    // reopen the eval-based XSS the CSP exists to close -- so it is gated to
+    // development. vercel.json carries the production policy without it.
+    "script-src 'self' " +
+    (process.env.NODE_ENV === "development" ? "'unsafe-eval' " : "") +
+    "'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
     "font-src 'self' data:; " +
     "img-src 'self' data: blob:; " +
@@ -33,7 +39,7 @@ const SECURITY_HEADERS: Record<string, string> = {
     "upgrade-insecure-requests",
 };
 
-export function middleware(_req: NextRequest) {
+export function proxy(_req: NextRequest) {
   const res = NextResponse.next();
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     res.headers.set(name, value);

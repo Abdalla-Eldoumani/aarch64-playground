@@ -127,4 +127,4 @@ reference).
 | Upload size caps | `web/lib/upload-guard.ts` |
 | Bundle / share validators | `web/lib/diagnostic-bundle.ts`, `web/lib/share.ts` |
 | Bookmark validator | `web/lib/named-saves.ts::isValidSave` |
-| Response headers (CSP, COOP, ...) | `web/middleware.ts`, `vercel.json` |
+| Response headers (CSP, COOP, ...) | `web/proxy.ts`, `vercel.json` |
