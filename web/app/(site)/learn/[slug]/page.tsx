@@ -59,5 +59,8 @@ export default async function LessonPage({
   const { slug } = await params;
   const lesson = loadLesson(slug);
   if (!lesson) notFound();
-  return <LessonArticle lesson={lesson} />;
+  // The sheet coordinate is the lesson's 1-based position in the sorted
+  // order — presentation only, derived at build time, schema untouched.
+  const position = loadAllLessons().findIndex((entry) => entry.slug === lesson.slug);
+  return <LessonArticle lesson={lesson} sheetNumber={`4.${position + 1}`} />;
 }
