@@ -48,6 +48,7 @@ const FIXTURE: ReferenceInstruction[] = [
     syntax: "add xd, xn, xm",
     summary: "add summary prose",
     example: "add x0, x1, x2",
+    cExample: "x0 = x1 + x2;",
     encoding: [
       { bits: 1, label: "sf", value: "1", meaning: "x width" },
       { bits: 31, label: "rest", value: "0".repeat(31) },
@@ -209,6 +210,44 @@ describe("InstructionReference", () => {
     fireEvent.click(screen.getByRole("button", { name: "add" }));
     expect(screen.getByText("add x19, x0, 8")).toBeTruthy();
     expect(screen.getByLabelText("assembled word")).toBeTruthy();
+  });
+
+  it("shows the C-equivalent chip only when the data carries one", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    // mov (default selection) has no cExample -> no section
+    expect(screen.queryByText("c equivalent")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(screen.getByText("c equivalent")).toBeTruthy();
+    expect(screen.getByText("x0 = x1 + x2;")).toBeTruthy();
+  });
+
+  it("dims the flags row for non-setters and notes nzcv for setters", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    // mov sets no flags: the four chips render dimmed with the quiet note
+    const movFlags = screen.getByRole("group", { name: "mov flags" });
+    for (const flag of ["N", "Z", "C", "V"]) {
+      expect(within(movFlags).getByText(flag).className).toContain(
+        "text-[var(--text-tertiary)]",
+      );
+    }
+    expect(within(movFlags).getByText("does not set flags")).toBeTruthy();
+    // cmp sets nzcv: the chips take ink and the note flips
+    fireEvent.click(screen.getByRole("button", { name: "cmp" }));
+    const cmpFlags = screen.getByRole("group", { name: "cmp flags" });
+    expect(within(cmpFlags).getByText("N").className).toContain(
+      "text-[var(--text-secondary)]",
+    );
+    expect(within(cmpFlags).getByText("sets nzcv")).toBeTruthy();
+  });
+
+  it("labels the encoding section and renders the diagram with bit headers", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "add" }));
+    expect(screen.getByText("encoding")).toBeTruthy();
+    // The reference size shows the per-field bit ranges (sf is bit 31 alone).
+    const diagram = screen.getByLabelText("add encoding");
+    expect(within(diagram as HTMLElement).getByText("31")).toBeTruthy();
+    expect(within(diagram as HTMLElement).getByText("30 : 0")).toBeTruthy();
   });
 
   it("marks the selected index item with aria-current", () => {
