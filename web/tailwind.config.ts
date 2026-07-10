@@ -7,9 +7,6 @@ const config: Config = {
       fontFamily: {
         mono: ["JetBrains Mono", "Fira Code", "Consolas", "monospace"],
       },
-      colors: {
-        "reg-changed": "#facc15",
-      },
     },
   },
   plugins: [],

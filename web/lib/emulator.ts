@@ -139,15 +139,6 @@ export class EmulatorInstance {
     return typeof v === "bigint" ? Number(v) : Number(v);
   }
 
-  takePcTrace(): number[] {
-    const raw = this.inner.take_pc_trace();
-    const out: number[] = [];
-    for (const v of raw) {
-      out.push(typeof v === "bigint" ? Number(v) : Number(v));
-    }
-    return out;
-  }
-
   takeDirtyAddrs(): number[] {
     return Array.from(this.inner.take_dirty_addrs());
   }
@@ -291,7 +282,6 @@ interface WasmEmulatorInstance {
   read_vfs_file(path: string): Uint8Array;
   delete_vfs_file(path: string): boolean;
   resolve_label(name: string): bigint | number | null | undefined;
-  take_pc_trace(): BigUint64Array | bigint[];
   take_dirty_addrs(): Uint32Array;
   clear_console(): void;
 }

@@ -75,9 +75,9 @@ Open an issue first if the change is larger than a single file or touches the as
 Logic (`web/lib/`) is separate from React components (`web/components/`). Write logic as a pure module with tests first, then wire it in.
 
 1. **Pure module**: `web/lib/<feature>.ts` with types and pure functions, plus `web/lib/<feature>.test.ts` (happy path + edge cases). Tests run in jsdom with plain DOM assertions; `@testing-library/jest-dom` is not installed.
-2. **Hook** (if it holds React state): `web/lib/use-<feature>.ts`. For localStorage toggles, copy the `useSyncExternalStore` shape from `use-cpsc355-mode.ts` so cross-tab sync works.
+2. **Hook** (if it holds React state): `web/lib/use-<feature>.ts`. For localStorage-backed state, copy the `useSyncExternalStore` shape from `use-named-saves.ts` so cross-tab sync works.
 3. **Component**: `web/components/<Feature>.tsx`, marked `"use client"` if it uses hooks or browser APIs. Lazy-load heavy components (anything pulling Monaco or xterm) via `next/dynamic` with `ssr: false`.
-4. **Wire in**: `web/app/page.tsx` is the orchestrator; render into an existing `*Block` node so the resizable/mobile/two-column layouts pick it up.
+4. **Wire in**: `web/components/EmbeddablePlayground.tsx` orchestrates the emulator surface (`web/app/playground/page.tsx` mounts it); render into one of its existing panel slots so the resizable and mobile layouts pick it up.
 5. **Docs**: add a row to `docs/features.md`, and the README if it adds a deep-link param or shortcut.
 
 If the feature accepts external input (URL params, uploads, paste), add a validator in the same PR. See [`security.md`](security.md).

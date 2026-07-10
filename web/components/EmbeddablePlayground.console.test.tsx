@@ -52,7 +52,6 @@ function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
     canStepBack: false,
     stepCount: 0,
     savedStates: [] as string[],
-    lineCounts: new Map<number, number>(),
     dirtyAddrs: [] as Array<[number, number]>,
     replayFrames: [],
     assemble: vi.fn(),

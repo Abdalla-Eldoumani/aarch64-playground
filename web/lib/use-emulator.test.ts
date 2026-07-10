@@ -87,7 +87,6 @@ function snap(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
     vfsFiles: [],
     savedStates: [],
     changedMem: false,
-    pcTrace: [],
     dirtyAddrs: [],
     ...overrides,
   };
@@ -434,19 +433,6 @@ describe("useEmulator load + snapshot application", () => {
       fake.fire({ stderrDelta: "e2" });
     });
     expect(result.current.stderr).toBe("e1e2");
-  });
-
-  it("bumps per-line hotspot counts from the pc trace", async () => {
-    const fake = makeBackend();
-    const { result } = await mountLoaded(fake);
-    await act(async () => {
-      await result.current.assemble(HOSTED_SOURCE);
-    });
-    act(() => {
-      fake.fire({ pcTrace: [CODE_BASE, CODE_BASE + 4, CODE_BASE] });
-    });
-    expect(result.current.lineCounts.get(9)).toBe(2);
-    expect(result.current.lineCounts.get(10)).toBe(1);
   });
 
   it("exposes dirty memory ranges as address/length pairs", async () => {
