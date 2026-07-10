@@ -3,7 +3,9 @@
 /**
  * The reference surface shell: four sections behind the shared Tabs primitive
  * (the WAI-ARIA tablist with roving tabindex and arrow-key nav). Instructions is
- * the default and renders the two-pane reference fed the instruction array;
+ * the default and renders the two-pane reference fed the instruction array with
+ * the static AAPCS64 register-file rail as its third column on xl screens (the
+ * rail drops below the detail on anything narrower);
  * Calling convention renders the aapcs64 guide; Pitfalls renders the catalog;
  * Converter mounts the shared base converter (loaded on demand so the route
  * chunk stays free of it) for checking an encoding without leaving the page.
@@ -15,6 +17,7 @@
 import { useState, type JSX } from "react";
 import dynamic from "next/dynamic";
 import { Tabs, type TabItem } from "@/components/Tabs";
+import { AapcsRail } from "@/components/AapcsRail";
 import { InstructionReference } from "@/components/InstructionReference";
 import { CallingConventionGuide } from "@/components/CallingConventionGuide";
 import { PitfallsCatalog } from "@/components/PitfallsCatalog";
@@ -62,7 +65,10 @@ export function ReferenceView({
           under prefers-reduced-motion the panel appears in place, static. */}
       <div key={active} className={`${switched ? "anim-panel-in " : ""}mt-8`}>
         {active === "instructions" && (
-          <InstructionReference instructions={instructions} />
+          <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_280px] xl:gap-11">
+            <InstructionReference instructions={instructions} />
+            <AapcsRail />
+          </div>
         )}
         {active === "calling-convention" && <CallingConventionGuide />}
         {active === "pitfalls" && <PitfallsCatalog />}
