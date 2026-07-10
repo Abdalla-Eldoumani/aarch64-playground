@@ -26,8 +26,13 @@ export function SiteNav({ variant }: { variant: "full" | "slim" }) {
   return (
     <nav
       aria-label="primary"
-      className={`safe-area-top w-full border-b border-[var(--border)] bg-[var(--bg-base)] ${
-        full ? "h-14 md:h-16" : "h-14 md:h-12"
+      // The full nav floats over the blueprint paper, so it takes a
+      // translucent base with a backdrop blur (the artboards' rgba band);
+      // the slim playground nav stays opaque over the flat debugger.
+      className={`safe-area-top w-full border-b border-[var(--border)] ${
+        full
+          ? "h-14 bg-[color-mix(in_srgb,var(--bg-base)_72%,transparent)] backdrop-blur-md md:h-16"
+          : "h-14 bg-[var(--bg-base)] md:h-12"
       }`}
     >
       <div className="mx-auto flex h-full w-full max-w-screen-xl items-center justify-between gap-3 px-4">
@@ -44,10 +49,10 @@ export function SiteNav({ variant }: { variant: "full" | "slim" }) {
                 <Link
                   href={route.href}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] px-3 font-sans text-[14px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
+                  className={`inline-flex min-h-[44px] items-center px-3 font-sans text-[14px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
                     active
                       ? "text-[var(--cyan)] [box-shadow:inset_0_-2px_0_0_var(--cyan)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
                   {route.label}
