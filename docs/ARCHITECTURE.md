@@ -164,7 +164,7 @@ backend emits a `StateSnapshot` (defined in `worker/protocol.ts`):
   surface, which the UI feature-detects
 - `stdoutDelta`/`stderrDelta`, `exitCode`, `blocked`, `halted`,
   `canStepBack`
-- `pcTrace`, `dirtyAddrs`, and `changedMem` for the memory cache;
+- `dirtyAddrs` and `changedMem` for the memory cache;
   `vfsFiles` and `savedStates`
 - `frame`: a monotonic counter the React side uses to invalidate caches
 
