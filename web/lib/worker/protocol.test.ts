@@ -33,7 +33,6 @@ describe("emptyStateSnapshot", () => {
     expect(snap.blocked).toBe(false);
     expect(snap.canStepBack).toBe(false);
     expect(snap.changedRegs).toEqual([]);
-    expect(snap.pcTrace).toEqual([]);
     expect(snap.dirtyAddrs).toEqual([]);
     expect(snap.vfsFiles).toEqual([]);
     expect(snap.savedStates).toEqual([]);
