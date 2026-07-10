@@ -323,6 +323,13 @@ body {
   to   { border-color: var(--border); }
 }
 
+/* The block caret blinks unconditionally, like a native text caret (browsers
+   blink those under reduced motion too): a ~1s hard on/off toggle of a small
+   static box, not movement. Every other animation stays motion-gated below. */
+.anim-cursor-blink {
+  animation: cursor-blink var(--cursor-blink) infinite;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .anim-step-pop {
     animation: step-pop var(--step-pop) var(--ease) 1;
@@ -357,11 +364,6 @@ body {
     /* ~2s amber pulse on the running program-counter row, looping until the run
        stops. Outside this block (reduced motion) the class has no animation. */
     animation: run-breathe var(--run-breathe) var(--ease) infinite;
-  }
-  .anim-cursor-blink {
-    /* ~1s hard on/off blink from the --cursor-blink token. Outside this block
-       (reduced motion) the class has no animation, so the cursor stays solid. */
-    animation: cursor-blink var(--cursor-blink) infinite;
   }
   .anim-modal-rise {
     /* modal fade + ~8px rise over the --modal-rise token. Outside this block
