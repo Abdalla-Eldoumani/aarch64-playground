@@ -567,14 +567,6 @@ impl Emulator {
         self.cpu.resolve_label(name)
     }
 
-    /// Drain the per-step PC trace accumulated since the last call.
-    /// JS converts each PC to a source line and bumps `lineCounts`
-    /// for the hotspot heat map. Without this drain the trace grows
-    /// unbounded across long runs.
-    pub fn take_pc_trace(&mut self) -> Vec<u64> {
-        self.cpu.take_pc_trace()
-    }
-
     /// Drain the dirty-write buffer (per-write `(addr, len)` ranges)
     /// accumulated since the last call. JS uses these to highlight
     /// changed memory cells during replay scrubbing. Returned as a
