@@ -201,6 +201,17 @@ export class EmulatorInstance {
     return this.inner.get_changed_registers();
   }
 
+  /** The 32 FP registers (d0-d31) as "0x…" bit patterns, or [] when the
+   *  loaded WASM predates the FP surface (feature-detected, never throws). */
+  getFpRegisters(): string[] {
+    return this.inner.get_fp_registers?.() ?? [];
+  }
+
+  /** Indices of d-registers the last step wrote; [] on an older WASM. */
+  getChangedFpRegisters(): Uint8Array {
+    return this.inner.get_changed_fp_registers?.() ?? new Uint8Array(0);
+  }
+
   setBreakpoint(address: number): void {
     this.inner.set_breakpoint(address);
   }
@@ -262,6 +273,9 @@ interface WasmEmulatorInstance {
   get_all_registers(): unknown;
   get_memory_range(addr: number, len: number): Uint8Array;
   get_changed_registers(): Uint8Array;
+  /** Optional: present once the emulator crate ships the FP surface. */
+  get_fp_registers?(): string[];
+  get_changed_fp_registers?(): Uint8Array;
   set_breakpoint(address: number): void;
   clear_breakpoint(address: number): void;
   is_halted(): boolean;
