@@ -5,13 +5,6 @@ import { DiagnosticBundle } from "@/components/DiagnosticBundle";
 import type { DiagnosticBundle as DiagnosticBundleData } from "@/lib/diagnostic-bundle";
 
 export interface ToolbarProps {
-  /** view and modes: each is a labeled toggle reflecting a persisted mode. */
-  cpsc355Enabled: boolean;
-  onToggleCpsc355: () => void;
-  lectureEnabled: boolean;
-  onToggleLecture: () => void;
-  hotspotEnabled: boolean;
-  onToggleHotspot: () => void;
   /** share and tools. */
   onShare: () => void;
   onTour: () => void;
@@ -38,7 +31,6 @@ const CONTROL =
   "focus-visible:[box-shadow:var(--ring)] active:translate-y-px";
 const INACTIVE =
   "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]";
-const ACTIVE = "bg-[var(--cyan)] text-[var(--on-cyan)]";
 
 function GroupLabel({ children }: { children: ReactNode }) {
   // --type-label: mono, 12px, uppercase, 0.08em tracking.
@@ -50,21 +42,14 @@ function GroupLabel({ children }: { children: ReactNode }) {
 }
 
 /**
- * The playground's labeled, grouped toolbar. Two on-screen groups -- "view and
- * modes" (the persisted lint / lecture / hotspot toggles) and "share and tools"
- * (share, diagnostic bundle, guided tour, theme, source, and the command-palette
- * opener) -- replace the former unlabeled "..." overflow drawer, so every action
- * has a visible, named home and discovery never depends on a memorized shortcut.
+ * The playground's labeled toolbar: one "tools" group (share, diagnostic
+ * bundle, guided tour, theme, source, and the command-palette opener) that
+ * replaces the former unlabeled "..." overflow drawer, so every action has a
+ * visible, named home and discovery never depends on a memorized shortcut.
  * The run controls (Assemble / Run / Step / Back / Reset) keep their dedicated
  * bottom bar, matching the reference layout.
  */
 export function Toolbar({
-  cpsc355Enabled,
-  onToggleCpsc355,
-  lectureEnabled,
-  onToggleLecture,
-  hotspotEnabled,
-  onToggleHotspot,
   onShare,
   onTour,
   onToggleTheme,
@@ -75,39 +60,8 @@ export function Toolbar({
 }: ToolbarProps) {
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 ${className}`}>
-      <div role="group" aria-label="view and modes" className="flex flex-wrap items-center gap-2">
-        <GroupLabel>view and modes</GroupLabel>
-        <button
-          type="button"
-          onClick={onToggleCpsc355}
-          aria-pressed={cpsc355Enabled}
-          aria-label="toggle cpsc 355 lint mode"
-          className={`${CONTROL} ${cpsc355Enabled ? ACTIVE : INACTIVE}`}
-        >
-          cpsc 355
-        </button>
-        <button
-          type="button"
-          onClick={onToggleLecture}
-          aria-pressed={lectureEnabled}
-          aria-label="toggle lecture mode"
-          className={`${CONTROL} ${lectureEnabled ? ACTIVE : INACTIVE}`}
-        >
-          lecture
-        </button>
-        <button
-          type="button"
-          onClick={onToggleHotspot}
-          aria-pressed={hotspotEnabled}
-          aria-label="toggle hotspot heat map"
-          className={`${CONTROL} ${hotspotEnabled ? ACTIVE : INACTIVE}`}
-        >
-          hotspot
-        </button>
-      </div>
-
       <div role="group" aria-label="share and tools" className="flex flex-wrap items-center gap-2">
-        <GroupLabel>share and tools</GroupLabel>
+        <GroupLabel>tools</GroupLabel>
         <button
           type="button"
           onClick={onShare}

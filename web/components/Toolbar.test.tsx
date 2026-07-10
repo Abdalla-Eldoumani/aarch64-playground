@@ -6,12 +6,6 @@ afterEach(() => cleanup());
 
 function setup(overrides: Partial<ToolbarProps> = {}) {
   const props: ToolbarProps = {
-    cpsc355Enabled: false,
-    onToggleCpsc355: vi.fn(),
-    lectureEnabled: false,
-    onToggleLecture: vi.fn(),
-    hotspotEnabled: false,
-    onToggleHotspot: vi.fn(),
     onShare: vi.fn(),
     onTour: vi.fn(),
     onToggleTheme: vi.fn(),
@@ -29,20 +23,15 @@ function setup(overrides: Partial<ToolbarProps> = {}) {
 }
 
 describe("Toolbar", () => {
-  it("labels both on-screen groups", () => {
+  it("labels the tools group", () => {
     setup();
-    expect(screen.getByText("view and modes")).toBeTruthy();
-    expect(screen.getByText("share and tools")).toBeTruthy();
-    expect(screen.getByRole("group", { name: "view and modes" })).toBeTruthy();
+    expect(screen.getByText("tools")).toBeTruthy();
     expect(screen.getByRole("group", { name: "share and tools" })).toBeTruthy();
   });
 
   it("gives every control a visible accessible name (no unlabeled overflow)", () => {
     setup();
     for (const name of [
-      "toggle cpsc 355 lint mode",
-      "toggle lecture mode",
-      "toggle hotspot heat map",
       "share program",
       "copy diagnostic bundle to clipboard",
       "start guided tour",
@@ -61,11 +50,5 @@ describe("Toolbar", () => {
     expect(props.onOpenCommandPalette).toHaveBeenCalledTimes(1);
   });
 
-  it("reflects an active mode with aria-pressed", () => {
-    setup({ cpsc355Enabled: true });
-    const cpsc = screen.getByRole("button", { name: "toggle cpsc 355 lint mode" });
-    expect(cpsc.getAttribute("aria-pressed")).toBe("true");
-    const lecture = screen.getByRole("button", { name: "toggle lecture mode" });
-    expect(lecture.getAttribute("aria-pressed")).toBe("false");
-  });
+
 });
