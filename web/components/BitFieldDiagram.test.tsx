@@ -117,6 +117,45 @@ describe("BitFieldDiagram", () => {
     expect(screen.queryByText("Rd = 00010011 -> x19")).toBeNull();
   });
 
+  it("renders bit-range headers and the amber destination when bitHeaders is set", () => {
+    render(<BitFieldDiagram fields={WORKED_FIELDS} bitHeaders />);
+    // Ranges count down from bit 31, one per field, msb first.
+    expect(screen.getByText("31 : 24")).toBeTruthy();
+    expect(screen.getByText("23 : 16")).toBeTruthy();
+    expect(screen.getByText("15 : 8")).toBeTruthy();
+    expect(screen.getByText("7 : 0")).toBeTruthy();
+    // The destination field (Rd) takes the amber treatment.
+    const rd = screen.getAllByRole("listitem")[3];
+    expect(rd.className).toContain("var(--amber)");
+    expect(rd.style.borderTopColor).toBe("var(--amber)");
+    // ...and the worked-encoding interactivity is intact underneath it.
+    fireEvent.focus(screen.getByRole("button", { name: "Rd, 8 bits, 00010011, x19" }));
+    expect(screen.getByText("Rd = 00010011 -> x19")).toBeTruthy();
+  });
+
+  it("prints a single bit number for a one-bit field", () => {
+    render(
+      <BitFieldDiagram
+        bitHeaders
+        fields={[
+          { bits: 1, label: "sf" },
+          { bits: 5, label: "op" },
+          { bits: 26, label: "rest" },
+        ]}
+      />,
+    );
+    expect(screen.getByText("31")).toBeTruthy();
+    expect(screen.getByText("30 : 26")).toBeTruthy();
+    expect(screen.getByText("25 : 0")).toBeTruthy();
+  });
+
+  it("stays free of bit headers and amber by default", () => {
+    render(<BitFieldDiagram fields={WORKED_FIELDS} />);
+    expect(screen.queryByText("31 : 24")).toBeNull();
+    const rd = screen.getAllByRole("listitem")[3];
+    expect(rd.className).not.toContain("var(--amber)");
+  });
+
   it("renders the default form under every theme without crashing", () => {
     for (const theme of THEMES) {
       document.documentElement.setAttribute("data-theme", theme);
