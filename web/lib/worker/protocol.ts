@@ -135,10 +135,13 @@ export interface RunResultPayload {
 export interface StateSnapshot {
   frame: number;
   registers: string[];
+  /** d0-d31 as "0x…" IEEE-754 bit patterns; [] when the WASM predates FP. */
+  fpRegisters: string[];
   sp: string;
   pc: string;
   nzcv: number;
   changedRegs: number[];
+  changedFpRegs: number[];
   halted: boolean;
   blocked: boolean;
   exitCode: number | null;
@@ -174,10 +177,12 @@ export function emptyStateSnapshot(frame = 0): StateSnapshot {
   return {
     frame,
     registers: Array(31).fill("0x0000000000000000"),
+    fpRegisters: [],
     sp: "0x0000000080000000",
     pc: "0x0000000000400000",
     nzcv: 0,
     changedRegs: [],
+    changedFpRegs: [],
     halted: false,
     blocked: false,
     exitCode: null,
