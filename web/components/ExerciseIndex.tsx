@@ -1,12 +1,17 @@
 "use client";
 
 /**
- * The practice index: exercise cards ordered by metadata, with a labeled search
- * box, topic and difficulty filters, a solved/unsolved indicator, and empty +
- * loading states. It receives already-validated exercises as props from the
- * server index page and renders every card field as plain React text
+ * The practice index: ruled datasheet rows ordered by metadata, with a labeled
+ * search box, topic and difficulty filters, a solved/unsolved indicator, and
+ * empty + loading states. It receives already-validated exercises as props from
+ * the server index page and renders every row field as plain React text
  * (auto-escaped) - the blurb is plain-text-derived from the prompt, never
  * Markdown - so there is no markdown/HTML injection path here.
+ *
+ * Each row leads with its sheet number `5.N` (the 1-based position in the
+ * sorted order, stable under filtering), then the title, a quieter blurb line,
+ * and the topic/difficulty/solved meta, inside one bordered container with
+ * hairlines between rows.
  *
  * Solved state comes from a useSyncExternalStore over the solved-state store:
  * the server snapshot is empty, so the server and first client render agree and
@@ -48,8 +53,8 @@ function subscribeSolvedSnapshot(callback: () => void): () => void {
 const DIFFICULTY_RANK: Record<string, number> = { intro: 0, core: 1, challenge: 2 };
 
 /**
- * A plain-text card summary from the prompt: the first non-empty line with
- * leading Markdown markers (#, >, -, *) stripped, clipped to a card-sized
+ * A plain-text row summary from the prompt: the first non-empty line with
+ * leading Markdown markers (#, >, -, *) stripped, clipped to a row-sized
  * length. Rendered as plain text, never Markdown.
  */
 function blurbFromPrompt(prompt: string): string {
@@ -62,14 +67,11 @@ function blurbFromPrompt(prompt: string): string {
   return plain.length > 140 ? `${plain.slice(0, 140)}...` : plain;
 }
 
-const CARD_CLASS =
-  "flex min-h-[44px] flex-col gap-1 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-5 py-4 outline-none hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)]";
+const ROW_CLASS =
+  "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
 const CHIP_CLASS =
-  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:text-[var(--cyan)]";
-const TAG_CLASS =
-  "rounded-[var(--radius-control)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[var(--text-tertiary)] [font:var(--type-small)]";
-const BADGE_CLASS =
-  "rounded-[var(--radius-control)] border border-[var(--border)] px-2 py-0.5 text-[var(--text-secondary)] [font:var(--type-small)]";
+  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
+const META_CLASS = "font-mono text-[11px] text-[var(--text-tertiary)]";
 
 /** A quiet placeholder card, reused for the no-exercises and no-match states. */
 function EmptyCard({ message }: { message: string }): JSX.Element {
@@ -105,29 +107,33 @@ export function ExerciseIndex({
   const solved = useSyncExternalStore(subscribeSolvedSnapshot, readSolved, readServerSolved);
   const solvedSet = useMemo(() => new Set(solved), [solved]);
 
-  const cards = useMemo(
+  // Sheet numbers come from the sorted position, so they stay stable when the
+  // search or filters hide rows.
+  const rows = useMemo(
     () =>
-      [...exercises]
-        .sort(compareByOrder)
-        .map((exercise) => ({ exercise, blurb: blurbFromPrompt(exercise.prompt) })),
+      [...exercises].sort(compareByOrder).map((exercise, index) => ({
+        exercise,
+        blurb: blurbFromPrompt(exercise.prompt),
+        sheetNumber: `5.${index + 1}`,
+      })),
     [exercises],
   );
 
   const allTopics = useMemo(() => {
     const set = new Set<string>();
-    for (const { exercise } of cards) if (exercise.topic) set.add(exercise.topic);
+    for (const { exercise } of rows) if (exercise.topic) set.add(exercise.topic);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [cards]);
+  }, [rows]);
 
   const allDifficulties = useMemo(() => {
     const set = new Set<string>();
-    for (const { exercise } of cards) if (exercise.difficulty) set.add(exercise.difficulty);
+    for (const { exercise } of rows) if (exercise.difficulty) set.add(exercise.difficulty);
     return [...set].sort((a, b) => (DIFFICULTY_RANK[a] ?? 99) - (DIFFICULTY_RANK[b] ?? 99));
-  }, [cards]);
+  }, [rows]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return cards.filter(({ exercise, blurb }) => {
+    return rows.filter(({ exercise, blurb }) => {
       const haystack = [exercise.title, exercise.topic ?? "", exercise.difficulty ?? "", blurb]
         .join(" ")
         .toLowerCase();
@@ -139,22 +145,23 @@ export function ExerciseIndex({
         (exercise.difficulty ? activeDifficulties.has(exercise.difficulty) : false);
       return matchesQuery && matchesTopic && matchesDifficulty;
     });
-  }, [cards, query, activeTopics, activeDifficulties]);
+  }, [rows, query, activeTopics, activeDifficulties]);
 
   if (loading) {
     return (
-      <div aria-busy="true" data-testid="exercise-index-skeleton" className="space-y-3">
+      <div
+        aria-busy="true"
+        data-testid="exercise-index-skeleton"
+        className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]"
+      >
         {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="h-20 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]"
-          />
+          <div key={i} className="h-[52px] bg-[var(--bg-sunken)]" />
         ))}
       </div>
     );
   }
 
-  if (cards.length === 0) {
+  if (rows.length === 0) {
     return <EmptyCard message="No exercises yet." />;
   }
 
@@ -209,37 +216,40 @@ export function ExerciseIndex({
       {filtered.length === 0 ? (
         <EmptyCard message="No exercises match your search." />
       ) : (
-        <ul className="space-y-3">
-          {filtered.map(({ exercise, blurb }) => {
-            const isCardSolved = solvedSet.has(exercise.slug);
+        <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
+          {filtered.map(({ exercise, blurb, sheetNumber }) => {
+            const isRowSolved = solvedSet.has(exercise.slug);
             return (
               <li key={exercise.slug}>
-                <Link href={`/practice/${exercise.slug}`} className={CARD_CLASS}>
-                  <span className="text-[var(--text-primary)] [font:var(--type-h3)]">
-                    {exercise.title}
+                <Link href={`/practice/${exercise.slug}`} className={ROW_CLASS}>
+                  <span className="font-mono text-[13px] font-medium text-[var(--text-tertiary)] group-hover:text-[var(--amber)]">
+                    {sheetNumber}
                   </span>
-                  {blurb && (
-                    <span className="text-[var(--text-secondary)] [font:var(--type-body)]">
-                      {blurb}
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-sans text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--cyan)]">
+                      {exercise.title}
                     </span>
-                  )}
-                  {(exercise.topic || exercise.difficulty || isCardSolved) && (
-                    <span className="mt-1 flex flex-wrap items-center gap-2">
-                      {exercise.topic && <span className={TAG_CLASS}>{exercise.topic}</span>}
-                      {exercise.difficulty && (
-                        <span className={BADGE_CLASS}>{exercise.difficulty}</span>
-                      )}
-                      {isCardSolved && (
-                        <span className="inline-flex items-center gap-1 text-[var(--success)] [font:var(--type-small)]">
-                          <span
-                            aria-hidden="true"
-                            className="h-2 w-2 rounded-full bg-[var(--success)]"
-                          />
-                          solved
-                        </span>
-                      )}
-                    </span>
-                  )}
+                    {blurb && (
+                      <span className="text-sm text-[var(--text-secondary)]">{blurb}</span>
+                    )}
+                    {(exercise.topic || exercise.difficulty || isRowSolved) && (
+                      <span className="mt-1 flex flex-wrap items-center gap-3">
+                        {exercise.topic && <span className={META_CLASS}>{exercise.topic}</span>}
+                        {exercise.difficulty && (
+                          <span className={META_CLASS}>{exercise.difficulty}</span>
+                        )}
+                        {isRowSolved && (
+                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--success)]">
+                            <span
+                              aria-hidden="true"
+                              className="h-2 w-2 rounded-full bg-[var(--success)]"
+                            />
+                            solved
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </span>
                 </Link>
               </li>
             );
