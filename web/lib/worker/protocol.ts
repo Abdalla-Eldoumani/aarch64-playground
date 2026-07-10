@@ -153,11 +153,6 @@ export interface StateSnapshot {
   /// True if any memory page was written this frame; the cache uses this
   /// to invalidate panel ranges that might be stale.
   changedMem: boolean;
-  /// PCs of every instruction executed since the previous snapshot.
-  /// JS converts each PC to a source line and bumps `lineCounts` for
-  /// the hotspot heat map. Empty after non-stepping mutations
-  /// (push-stdin, vfs-upload, etc.).
-  pcTrace: number[];
   /// `(addr, len)` pairs of memory ranges written since the previous
   /// snapshot. Drives memory-cell diff highlighting in the replay
   /// scrubber. Flat array of `[addr, len, addr, len, ...]`.
@@ -192,7 +187,6 @@ export function emptyStateSnapshot(frame = 0): StateSnapshot {
     vfsFiles: [],
     savedStates: [],
     changedMem: false,
-    pcTrace: [],
     dirtyAddrs: [],
   };
 }
