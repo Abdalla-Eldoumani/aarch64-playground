@@ -19,6 +19,7 @@ reference).
 | Exercise checker (no stored solution) | `web/lib/exercise-checker.ts` |
 | Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/ReferenceView.tsx`, `InstructionReference.tsx`, `InstructionView.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/reference-data.ts` |
 | Reference interactivity (NZCV panel, worked encodings, frame walk, runnable pitfalls) | `web/components/FlagEffect.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `PitfallsCatalog.tsx` |
+| AAPCS64 register-file rail (with the fp convention) | `web/components/AapcsRail.tsx` |
 | Link preview card (og/twitter image) | `web/lib/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
 | Content schemas + author JSON | `web/lib/lesson-schema.ts`, `exercise-schema.ts`, `web/content/` |
 
@@ -31,7 +32,6 @@ reference).
 | Source formatter (`Ctrl+Shift+F`) | `web/lib/asm-formatter.ts` |
 | Context-aware completion provider | `web/lib/asm-completion.ts` |
 | Per-mnemonic Monaco hover docs | `web/lib/instruction-docs.ts`, `error-explain.ts` |
-| CPSC 355 mode lint rules | `web/lib/cpsc355-lint.ts`, `use-cpsc355-mode.ts` |
 | Multi-file tabs (concat at assemble) | `web/components/MultiFileTabs.tsx` |
 | Glyph-margin breakpoint dots | `web/components/Editor.tsx` |
 
@@ -46,20 +46,20 @@ reference).
 | Named save states (session-scoped) | `web/lib/use-emulator.ts`, `web/components/SavesPanel.tsx` |
 | Persistent bookmarks (across reloads) | `web/lib/named-saves.ts`, `use-named-saves.ts` |
 | Diagnostic bundle (clipboard + URL) | `web/components/DiagnosticBundle.tsx`, `web/lib/diagnostic-bundle.ts` |
-| Hotspot mode (instruction heat map) | `web/lib/use-hotspot-mode.ts` |
 
 ## Panels & state
 
 | Feature | Lives in |
 | --- | --- |
 | Register panel with ABI aliases | `web/components/RegisterPanel.tsx`, `RegisterRow.tsx` |
+| Floating-point register view (`d0`–`d31`, dec/hex) | `web/components/RegisterPanel.tsx`, `DRegisterRow.tsx` |
 | Memory panel (sparse, paged) | `web/components/MemoryPanel.tsx` |
 | Stack panel + frame-pointer chase | `web/components/StackPanel.tsx`, `web/lib/frame-labels.ts` |
 | Watch expressions (`x0`, `*x0`, `[fp, name]`, `arr[i]`) | `web/components/WatchPanel.tsx`, `web/lib/watch-expr.ts` |
 | Memory address watches | `web/components/MemoryWatches.tsx` |
 | Console (stdout/stderr + stdin) | `web/components/ConsolePanel.tsx` |
 | Base converter (convert tab) | `web/components/BaseConverter.tsx`, `web/lib/base-convert.ts` |
-| Current-instruction strip | `web/components/CurrentStrip.tsx`, `web/lib/explain-line.ts` |
+| Live decode strip (bit fields under the pc) | `web/components/DecodeStrip.tsx`, `web/lib/decode-fields.ts`, `explain-line.ts` |
 
 ## Layout & responsive
 
@@ -70,7 +70,7 @@ reference).
 | Mobile nav drawer (< md) | `web/components/MobileNavDrawer.tsx` |
 | Layout persistence | `web/lib/use-layout-persistence.ts` |
 | Three-way theme cycle | `web/lib/use-theme.ts`, `web/components/ThemeControl.tsx` |
-| Lecture mode (HC + fullscreen) | `web/lib/use-lecture-mode.ts`, `web/components/LectureBar.tsx` |
+| Token-driven select (collapsed listbox) | `web/components/Select.tsx` |
 | Per-panel zoom (`Ctrl+Wheel`) | `web/lib/use-zoom.ts`, `web/components/ZoomControl.tsx` |
 | Breakpoint hook | `web/lib/use-breakpoint.ts` |
 | Command palette (`Ctrl+K`) | `web/components/CommandPalette.tsx` |
