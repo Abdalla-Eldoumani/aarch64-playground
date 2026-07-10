@@ -23,6 +23,8 @@ import { Callout } from "@/components/Callout";
 import { EmbeddablePlayground } from "@/components/EmbeddablePlayground";
 import { buildShareHash } from "@/lib/share";
 import { validateStdin } from "@/lib/upload-guard";
+import { DocRule } from "@/components/DocRule";
+import { Kicker } from "@/components/Kicker";
 
 /**
  * The author stdin only when it is present and within the stdin cap; otherwise
@@ -39,8 +41,22 @@ const OPEN_IN_PLAYGROUND_CLASS =
 const TOC_LINK_CLASS =
   "flex min-h-[44px] items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] [font:var(--type-small)] outline-none transition-colors hover:text-[var(--cyan)] focus-visible:[box-shadow:var(--ring)]";
 
-export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
+export function LessonArticle({
+  lesson,
+  sheetNumber = "4.x",
+}: {
+  lesson: Lesson;
+  /** Datasheet coordinate for this lesson, e.g. "4.3" (position in the
+   *  sorted order); drives the kicker, the numbered TOC, and the figure
+   *  captions. Purely presentational — the lesson schema is untouched. */
+  sheetNumber?: string;
+}): JSX.Element {
   const toc = extractToc(lesson);
+  // Editor blocks are the numbered figures: FIGURE 4.N.k in body order.
+  const editorOrdinals = new Map<number, number>();
+  lesson.body.forEach((block, index) => {
+    if (block.type === "editor") editorOrdinals.set(index, editorOrdinals.size + 1);
+  });
   // The opening paragraph of the first prose block carries the editorial serif
   // lead; every other paragraph keeps the body type. Found once so the per-block
   // map stays a pure switch.
@@ -56,8 +72,8 @@ export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
           open
           className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 lg:border-0 lg:bg-transparent lg:p-0"
         >
-          <summary className="cursor-pointer select-none text-[var(--text-secondary)] [font:var(--type-small)] lg:hidden">
-            On this page
+          <summary className="cursor-pointer select-none font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] lg:list-none">
+            on this sheet
           </summary>
           <ul className="mt-3 flex flex-col lg:mt-0">
             {toc.map((entry, i) => (
@@ -70,6 +86,9 @@ export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
                       : TOC_LINK_CLASS
                   }
                 >
+                  <span className="mr-2 font-mono text-[11px] text-[var(--text-tertiary)]">
+                    {sheetNumber}.{i}
+                  </span>
                   {entry.text}
                 </a>
               </li>
@@ -79,6 +98,8 @@ export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
       </nav>
 
       <article className="w-full min-w-0 max-w-2xl">
+        <DocRule section={`sheet ${sheetNumber} · ${lesson.slug}`} context="learn" className="mb-6" />
+        <Kicker number={sheetNumber} title={lesson.title} className="mb-4" />
         <h1 className="mb-8 font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
           {lesson.title}
         </h1>
@@ -138,17 +159,25 @@ export function LessonArticle({ lesson }: { lesson: Lesson }): JSX.Element {
                       readOnly={false}
                     />
                   </div>
-                  <Link
-                    href={`/playground${buildShareHash({
-                      source: block.starter,
-                      args: block.args,
-                      stdin: safeStdin(block.stdin),
-                    })}`}
-                    className={OPEN_IN_PLAYGROUND_CLASS}
-                  >
-                    Open in playground
-                    <span aria-hidden="true">-&gt;</span>
-                  </Link>
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                      figure {sheetNumber}.{editorOrdinals.get(index)}
+                      <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
+                        runnable — step it and watch the registers
+                      </span>
+                    </span>
+                    <Link
+                      href={`/playground${buildShareHash({
+                        source: block.starter,
+                        args: block.args,
+                        stdin: safeStdin(block.stdin),
+                      })}`}
+                      className={OPEN_IN_PLAYGROUND_CLASS}
+                    >
+                      Open in playground
+                      <span aria-hidden="true">-&gt;</span>
+                    </Link>
+                  </div>
                 </div>
               );
           }

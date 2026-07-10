@@ -68,7 +68,7 @@ describe("LessonArticle", () => {
     const [codeLink, editorLink] = screen.getAllByRole("link", {
       name: /open in playground/i,
     });
-    const noteLabel = screen.getByText("Note");
+    const noteLabel = screen.getByText("note");
     const embed = screen.getByTestId("embed");
     const secondProse = screen.getByText(/more body text here/i);
 
@@ -127,9 +127,9 @@ describe("LessonArticle", () => {
       ],
     };
     render(<LessonArticle lesson={lesson} />);
-    expect(screen.getByText("Note")).toBeTruthy();
-    expect(screen.getByText("Warning")).toBeTruthy();
-    expect(screen.getByText("Pitfall")).toBeTruthy();
+    expect(screen.getByText("note")).toBeTruthy();
+    expect(screen.getByText("warning")).toBeTruthy();
+    expect(screen.getByText("pitfall")).toBeTruthy();
   });
 
   it("renders the editor block as the reused embed with its starter and args", () => {
