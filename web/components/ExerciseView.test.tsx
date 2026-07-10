@@ -127,9 +127,9 @@ describe("ExerciseView", () => {
     expect(screen.getByText(/the prompt body text here/i)).toBeTruthy();
   });
 
-  it("renders shape-only acceptance criteria and never the expected values", () => {
+  it("renders a shape-only specification table and never the expected values", () => {
     render(<ExerciseView exercise={writeExercise} />);
-    const criteria = screen.getByRole("region", { name: /acceptance criteria/i });
+    const criteria = screen.getByRole("region", { name: /specification/i });
     const text = criteria.textContent ?? "";
     expect(text).toContain("leaves the expected value in x0");
     expect(text).toContain("exits with the expected code");
