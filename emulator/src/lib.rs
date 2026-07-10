@@ -459,6 +459,20 @@ impl Emulator {
         self.cpu.changed_registers().to_vec()
     }
 
+    /// The 32 FP registers (d0-d31) as raw IEEE-754 bit patterns, hex-encoded
+    /// ("0x…"), so the UI can render both the decimal double and the raw bits
+    /// without a lossy float round-trip at the boundary.
+    pub fn get_fp_registers(&self) -> Vec<String> {
+        (0..32)
+            .map(|i| format!("0x{:016x}", self.cpu.regs.read_fpr_bits(i)))
+            .collect()
+    }
+
+    /// Indices of FP registers (0-31 for d0-d31) that changed during the last step.
+    pub fn get_changed_fp_registers(&self) -> Vec<u8> {
+        self.cpu.changed_fp_registers().to_vec()
+    }
+
     /// Set a breakpoint at an address.
     pub fn set_breakpoint(&mut self, address: u32) {
         self.cpu.set_breakpoint(address as u64);
