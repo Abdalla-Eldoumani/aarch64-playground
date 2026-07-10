@@ -76,6 +76,8 @@ function snap(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
     pc: ENTRY_PC_HEX,
     nzcv: 0,
     changedRegs: [],
+    fpRegisters: [],
+    changedFpRegs: [],
     halted: false,
     blocked: false,
     exitCode: null,
