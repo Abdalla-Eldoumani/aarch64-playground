@@ -3,11 +3,14 @@
 /**
  * The two-pane instruction reference. The left pane is a sticky, filterable,
  * keyboard-navigable index grouped by category; the right pane is the
- * per-instruction detail. Usage prose renders only through the shared
- * sanitizing Markdown renderer, the example through the read-only code block,
- * and the encoding through the bit-field diagram when the instruction has one
- * (with the worked field bits when the data authors them); the
- * try-in-playground link composes the shared share-hash. Every entry can also
+ * per-instruction detail, laid out as the datasheet reads: the mnemonic with
+ * its plain-language summary (through the shared sanitizing Markdown renderer,
+ * so register tokens keep their hover-defines), the syntax as a bordered mono
+ * chip, the full-width encoding bit-field with bit-range headers when the
+ * instruction has one (with the worked field bits when the data authors them),
+ * the C equivalent as a second chip, and an NZCV flags row driven by the
+ * FLAG_SETTERS set; the try-in-playground link composes the shared share-hash
+ * and sits quietly at the top right of the detail. Every entry can also
  * run its worked example in place: "run this example" swaps the static block
  * for the one shared EmbeddablePlayground seeded with the same
  * playgroundSource payload the deep link carries, so reading and running are
@@ -61,17 +64,6 @@ function hashId(mnemonic: string): string {
   return mnemonic.toLowerCase().replace(/\./g, "-");
 }
 
-/**
- * The usage prose handed to the single sanitizing renderer: the one-line summary
- * plus the C-equivalent as inline code when the data carries one, so register
- * and instruction tokens in the prose still hover-define.
- */
-function buildUsage(instruction: ReferenceInstruction): string {
-  return instruction.cExample
-    ? `${instruction.summary}\n\nin C: \`${instruction.cExample}\``
-    : instruction.summary;
-}
-
 // The URL fragment as an external store: the server snapshot and the first
 // client render read empty (matching the server), then the post-hydration read
 // returns the real fragment id without a setState-in-effect.
@@ -86,16 +78,22 @@ function readHashFragment(): string {
 }
 
 const ITEM_BASE =
-  "flex min-h-[44px] w-full items-center rounded-[var(--radius-control)] border-l-2 px-3 text-left font-mono text-[14px] outline-none transition-colors focus-visible:[box-shadow:var(--ring)]";
-const ITEM_SELECTED = "border-[var(--cyan)] text-[var(--cyan)]";
-const ITEM_IDLE =
-  "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
+  "flex min-h-[36px] w-full items-center px-3 text-left font-mono text-[13px] outline-none transition-colors focus-visible:[box-shadow:var(--ring)]";
+const ITEM_SELECTED =
+  "bg-[color-mix(in_srgb,var(--cyan)_8%,transparent)] text-[var(--cyan)] [box-shadow:inset_2px_0_0_0_var(--cyan)]";
+const ITEM_IDLE = "text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
 const GROUP_LABEL =
   "px-2 [font:var(--type-label)] uppercase tracking-wide text-[var(--text-tertiary)]";
-const DETAIL_CATEGORY =
-  "[font:var(--type-label)] uppercase tracking-wide text-[var(--text-tertiary)]";
+// The datasheet section label: ENCODING, C EQUIVALENT, FLAGS, and the category.
+const LABEL =
+  "font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]";
+// The bordered mono chip that carries the syntax and the C-equivalent lines.
+const CHIP =
+  "self-start rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-1.5 font-mono text-[var(--text-primary)]";
 const ACTION_LINK =
-  "inline-flex min-h-[44px] items-center gap-1.5 text-[var(--cyan)] [font:var(--type-small)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+  "ml-auto inline-flex min-h-[44px] items-center gap-1 font-mono text-[11px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+// NZCV in register order, the four condition-flag chips of the FLAGS row.
+const NZCV = ["N", "Z", "C", "V"] as const;
 const PERMALINK =
   "inline-flex min-h-[44px] items-center font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
 
@@ -270,7 +268,7 @@ export function InstructionReference({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+    <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)]">
       <div className="flex flex-col gap-3 lg:sticky lg:top-24 lg:h-fit lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
         <label
           htmlFor={filterId}
@@ -338,18 +336,74 @@ export function InstructionReference({
       >
         {current && (
           <>
-            <header className="flex flex-col gap-1">
-              <h2 className="font-mono text-[26px] font-semibold text-[var(--text-primary)]">
+            <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="font-mono text-[28px] font-bold leading-none tracking-[-0.01em] text-[var(--text-primary)]">
                 {current.mnemonic}
               </h2>
-              <p className={DETAIL_CATEGORY}>{current.category}</p>
+              {/* The plain-language name: the one-line summary, inlined beside
+                  the mnemonic so its register tokens keep the hover-define. */}
+              <div className="min-w-0 font-sans text-[15px] leading-normal text-[var(--text-secondary)] [&_p]:m-0 [&_p]:inline">
+                <LessonMarkdown markdown={current.summary} />
+              </div>
+              <Link
+                href={`/playground${buildShareHash({ source: playgroundSource(current) })}`}
+                aria-label={`try in playground: ${current.mnemonic}`}
+                className={ACTION_LINK}
+              >
+                run example <span aria-hidden="true">{"\u2197"}</span>
+              </Link>
             </header>
 
-            <p className="font-mono text-[14px] text-[var(--text-secondary)]">
-              {current.syntax}
-            </p>
+            <p className={LABEL}>{current.category}</p>
 
-            <LessonMarkdown markdown={buildUsage(current)} />
+            <p className={`${CHIP} text-[14px]`}>{current.syntax}</p>
+
+            {current.encoding && (
+              <div className="flex flex-col gap-2">
+                <p className={LABEL}>encoding</p>
+                <BitFieldDiagram
+                  fields={current.encoding}
+                  label={`${current.mnemonic} encoding`}
+                  asm={current.encodedAsm}
+                  bitHeaders
+                  className="w-full"
+                />
+              </div>
+            )}
+
+            {current.cExample && (
+              <div className="flex flex-col gap-2">
+                <p className={LABEL}>c equivalent</p>
+                <p className={`${CHIP} text-[13px]`}>{current.cExample}</p>
+              </div>
+            )}
+
+            <div
+              role="group"
+              aria-label={`${current.mnemonic} flags`}
+              className="flex flex-wrap items-center gap-3"
+            >
+              <p className={LABEL}>flags</p>
+              <span className="flex gap-1.5">
+                {NZCV.map((flag) => (
+                  <span
+                    key={flag}
+                    className={`flex h-5 w-5 items-center justify-center rounded-[3px] border font-mono text-[10px] ${
+                      FLAG_SETTERS.has(current.mnemonic)
+                        ? "border-[var(--border-strong)] text-[var(--text-secondary)]"
+                        : "border-[var(--border)] text-[var(--text-tertiary)]"
+                    }`}
+                  >
+                    {flag}
+                  </span>
+                ))}
+              </span>
+              <span className="font-sans text-[13px] text-[var(--text-secondary)]">
+                {FLAG_SETTERS.has(current.mnemonic)
+                  ? "sets nzcv"
+                  : "does not set flags"}
+              </span>
+            </div>
 
             {benchFor === current.mnemonic ? (
               // Fixed frame so the editor loading never shifts the page; the
@@ -398,25 +452,12 @@ export function InstructionReference({
               />
             )}
 
-            {current.encoding && (
-              <BitFieldDiagram
-                fields={current.encoding}
-                label={`${current.mnemonic} encoding`}
-                asm={current.encodedAsm}
-              />
-            )}
-
-            <div className="flex flex-wrap items-center gap-4">
-              <Link
-                href={`/playground${buildShareHash({ source: playgroundSource(current) })}`}
-                className={ACTION_LINK}
-              >
-                Try in playground <span aria-hidden="true">-&gt;</span>
-              </Link>
-              <a href={`#${hashId(current.mnemonic)}`} className={PERMALINK}>
-                #{hashId(current.mnemonic)}
-              </a>
-            </div>
+            <a
+              href={`#${hashId(current.mnemonic)}`}
+              className={`${PERMALINK} self-start`}
+            >
+              #{hashId(current.mnemonic)}
+            </a>
           </>
         )}
       </section>
