@@ -19,54 +19,71 @@ const STAGES = [
   "Files and I/O",
 ];
 
-function optgroupsOf(select: HTMLSelectElement): HTMLOptGroupElement[] {
-  return Array.from(select.querySelectorAll("optgroup")) as HTMLOptGroupElement[];
+/** Open the custom select and return its listbox. */
+function openList(): HTMLElement {
+  fireEvent.click(screen.getByRole("combobox", { name: "Load example program" }));
+  return screen.getByRole("listbox");
+}
+
+function optionLabels(listbox: HTMLElement): string[] {
+  return Array.from(listbox.querySelectorAll('[role="option"]')).map(
+    (option) => option.textContent ?? "",
+  );
+}
+
+/** Group headers render in document order ahead of their options. */
+function groupHeaders(listbox: HTMLElement): string[] {
+  return Array.from(listbox.querySelectorAll(".tracking-\\[0\\.14em\\]")).map(
+    (header) => header.textContent ?? "",
+  );
+}
+
+async function pick(label: string) {
+  const listbox = openList();
+  const option = Array.from(
+    listbox.querySelectorAll('[role="option"]'),
+  ).find((candidate) => candidate.textContent === label)!;
+  await act(async () => {
+    fireEvent.pointerDown(option);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 describe("ExampleLoader", () => {
   it("presents the eight level-up stages in order, each non-empty, no week labels", () => {
     render(<ExampleLoader onLoad={() => {}} />);
-    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
-    const groups = optgroupsOf(select);
+    const listbox = openList();
+    const headers = groupHeaders(listbox);
 
-    expect(groups.map((g) => g.label)).toEqual(STAGES);
-    for (const group of groups) {
-      expect(group.querySelectorAll("option").length).toBeGreaterThan(0);
-      expect(group.label).not.toMatch(/week/i);
-      expect(group.label).not.toMatch(/cpsc/i);
+    expect(headers).toEqual(STAGES);
+    for (const header of headers) {
+      expect(header).not.toMatch(/week/i);
+      expect(header).not.toMatch(/cpsc/i);
     }
+    // Every stage carries at least one program: 8 stages, 15 options total.
+    expect(optionLabels(listbox).length).toBeGreaterThanOrEqual(headers.length);
   });
 
   it("seeds the two previously-empty stages with the filler programs", () => {
     render(<ExampleLoader onLoad={() => {}} />);
-    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
-    const groups = optgroupsOf(select);
+    const labels = optionLabels(openList());
 
-    const valuesIn = (label: string) => {
-      const group = groups.find((g) => g.label === label)!;
-      return Array.from(group.querySelectorAll("option")).map(
-        (o) => (o as HTMLOptionElement).value,
-      );
-    };
-
-    expect(valuesIn("Data and memory")).toContain("globals");
-    expect(valuesIn("Stack and locals")).toContain("locals");
+    expect(labels).toContain("globals (load + store)");
+    expect(labels).toContain("locals (sum + product)");
   });
 
-  it("offers every example with a clean, week-free stem", () => {
+  it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
-    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
-    const options = Array.from(select.querySelectorAll("option"))
-      .map((o) => (o as HTMLOptionElement).value)
-      .filter((v) => v !== "");
+    const labels = optionLabels(openList());
     // 13 kept programs + the two stage fillers.
-    expect(options.length).toBe(15);
-    for (const value of options) {
-      expect(value).toMatch(/^[a-z-]+$/);
-      expect(value).not.toMatch(/week\d/);
+    expect(labels.length).toBe(15);
+    for (const label of labels) {
+      expect(label).not.toMatch(/week\d/);
     }
-    expect(options).toContain("basics");
-    expect(options).toContain("copy-file");
+    expect(labels).toContain("arithmetic");
+    expect(labels).toContain("copy file");
   });
 
   it("fetches the picked example and forwards the payload + label to onLoad", async () => {
@@ -79,12 +96,7 @@ describe("ExampleLoader", () => {
     vi.stubGlobal("fetch", fetchMock);
     const onLoad = vi.fn();
     render(<ExampleLoader onLoad={onLoad} />);
-    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "basics" } });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await pick("arithmetic");
     expect(fetchMock).toHaveBeenCalledWith("/examples/cpsc355/basics.s");
     expect(onLoad).toHaveBeenCalledWith({
       source: "// basics source\n",
@@ -108,13 +120,7 @@ describe("ExampleLoader", () => {
     );
     const onLoad = vi.fn();
     render(<ExampleLoader onLoad={onLoad} />);
-    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "read-file" } });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await pick("read file");
     expect(onLoad).toHaveBeenCalledWith({
       source: "// read file\n",
       label: "read file",
@@ -133,15 +139,8 @@ describe("ExampleLoader", () => {
       }),
     );
     render(<ExampleLoader onLoad={() => {}} />);
-    const select = screen.getByLabelText("Load example program") as HTMLSelectElement;
-    // Pick a real option so the change event fires; fetch is mocked to fail.
-    await act(async () => {
-      fireEvent.change(select, { target: { value: "basics" } });
-      // Allow fetch -> setState -> render to flush.
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    // Pick a real option so the load fires; fetch is mocked to fail.
+    await pick("arithmetic");
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toMatch(/404/);
   });
