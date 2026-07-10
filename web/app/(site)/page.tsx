@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Hero } from "@/components/Hero";
 import { RoutesRegisterFile } from "@/components/RoutesRegisterFile";
 import { FeatureCatalog } from "@/components/FeatureCatalog";
+import { BitRuler } from "@/components/BitRuler";
+import { DocRule } from "@/components/DocRule";
 import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 const DESCRIPTION =
@@ -42,6 +44,13 @@ export const metadata: Metadata = {
 export default function LandingPage() {
   return (
     <>
+      {/* The datasheet marginalia open the sheet: the bit-ruler calibration
+          strip runs full-bleed under the nav, then the document rule heads
+          the measure. Both are decorative chrome; the hero owns the h1. */}
+      <BitRuler />
+      <div className="mx-auto w-full max-w-5xl px-6 pt-6">
+        <DocRule section="sheet 1 · overview" context="cpsc 355 study aid" />
+      </div>
       <Hero />
       <RoutesRegisterFile />
       <FeatureCatalog />
