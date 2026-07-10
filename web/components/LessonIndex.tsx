@@ -1,11 +1,15 @@
 "use client";
 
 /**
- * The learn index: lesson cards ordered by metadata, with a labeled search box,
- * a tag filter, and empty + loading states. It receives already-validated
- * lessons as props from the server index page and renders every card field as
- * plain React text (auto-escaped), so there is no markdown/HTML injection path
- * here.
+ * The learn index: ruled datasheet rows ordered by metadata, with a labeled
+ * search box, a tag filter, and empty + loading states. It receives
+ * already-validated lessons as props from the server index page and renders
+ * every row field as plain React text (auto-escaped), so there is no
+ * markdown/HTML injection path here.
+ *
+ * Each row leads with its sheet number `4.N` (the 1-based position in the
+ * sorted order, stable under filtering), then the title and a quieter
+ * description line, inside one bordered container with hairlines between rows.
  */
 
 import { useId, useMemo, useState, type JSX } from "react";
@@ -13,10 +17,10 @@ import Link from "next/link";
 import type { Lesson } from "@/lib/lesson-schema";
 import { compareByOrder } from "@/lib/content-order";
 
-const CARD_CLASS =
-  "flex min-h-[44px] flex-col gap-1 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-5 py-4 outline-none hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)]";
+const ROW_CLASS =
+  "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
 const CHIP_CLASS =
-  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:text-[var(--cyan)]";
+  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
 
 /** A quiet placeholder card, reused for the no-lessons and no-match states. */
 function EmptyCard({ message }: { message: string }): JSX.Element {
@@ -38,20 +42,25 @@ export function LessonIndex({
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const searchId = useId();
 
-  const sorted = useMemo(
-    () => [...lessons].sort(compareByOrder),
+  // Sheet numbers come from the sorted position, so they stay stable when the
+  // search or tag filter hides rows.
+  const numbered = useMemo(
+    () =>
+      [...lessons]
+        .sort(compareByOrder)
+        .map((lesson, index) => ({ lesson, sheetNumber: `4.${index + 1}` })),
     [lessons],
   );
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
-    for (const lesson of sorted) for (const tag of lesson.tags ?? []) set.add(tag);
+    for (const { lesson } of numbered) for (const tag of lesson.tags ?? []) set.add(tag);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [sorted]);
+  }, [numbered]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sorted.filter((lesson) => {
+    return numbered.filter(({ lesson }) => {
       const haystack = [lesson.title, lesson.summary ?? "", ...(lesson.tags ?? [])]
         .join(" ")
         .toLowerCase();
@@ -60,7 +69,7 @@ export function LessonIndex({
         activeTags.size === 0 || (lesson.tags ?? []).some((tag) => activeTags.has(tag));
       return matchesQuery && matchesTags;
     });
-  }, [sorted, query, activeTags]);
+  }, [numbered, query, activeTags]);
 
   function toggleTag(tag: string): void {
     setActiveTags((prev) => {
@@ -73,18 +82,19 @@ export function LessonIndex({
 
   if (loading) {
     return (
-      <div aria-busy="true" data-testid="lesson-index-skeleton" className="space-y-3">
+      <div
+        aria-busy="true"
+        data-testid="lesson-index-skeleton"
+        className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]"
+      >
         {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="h-20 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]"
-          />
+          <div key={i} className="h-[52px] bg-[var(--bg-sunken)]" />
         ))}
       </div>
     );
   }
 
-  if (sorted.length === 0) {
+  if (numbered.length === 0) {
     return <EmptyCard message="No lessons yet." />;
   }
 
@@ -124,30 +134,33 @@ export function LessonIndex({
       {filtered.length === 0 ? (
         <EmptyCard message="No lessons match your search." />
       ) : (
-        <ul className="space-y-3">
-          {filtered.map((lesson) => (
+        <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
+          {filtered.map(({ lesson, sheetNumber }) => (
             <li key={lesson.slug}>
-              <Link href={`/learn/${lesson.slug}`} className={CARD_CLASS}>
-                <span className="text-[var(--text-primary)] [font:var(--type-h3)]">
-                  {lesson.title}
+              <Link href={`/learn/${lesson.slug}`} className={ROW_CLASS}>
+                <span className="font-mono text-[13px] font-medium text-[var(--text-tertiary)] group-hover:text-[var(--amber)]">
+                  {sheetNumber}
                 </span>
-                {lesson.summary && (
-                  <span className="text-[var(--text-secondary)] [font:var(--type-body)]">
-                    {lesson.summary}
+                <span className="flex flex-col gap-0.5">
+                  <span className="font-sans text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--cyan)]">
+                    {lesson.title}
                   </span>
-                )}
-                {lesson.tags && lesson.tags.length > 0 && (
-                  <span className="mt-1 flex flex-wrap gap-2">
-                    {lesson.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-[var(--radius-control)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[var(--text-tertiary)] [font:var(--type-small)]"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </span>
-                )}
+                  {lesson.summary && (
+                    <span className="text-sm text-[var(--text-secondary)]">{lesson.summary}</span>
+                  )}
+                  {lesson.tags && lesson.tags.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-2">
+                      {lesson.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="font-mono text-[11px] text-[var(--text-tertiary)]"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </span>
               </Link>
             </li>
           ))}
