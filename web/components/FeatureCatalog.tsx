@@ -1,4 +1,5 @@
 import { FEATURES } from "@/lib/landing-content";
+import { Kicker } from "@/components/Kicker";
 
 /**
  * The capability listing: one ruled row per FEATURES entry, read like a
@@ -17,12 +18,10 @@ export function FeatureCatalog() {
       aria-labelledby="features-heading"
       className="mx-auto w-full max-w-5xl px-6 py-12 sm:py-16"
     >
-      <h2
-        id="features-heading"
-        className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--text-tertiary)]"
-      >
+      <h2 id="features-heading" className="sr-only">
         what it does
       </h2>
+      <Kicker number="02" title="what it does" className="mb-4" />
       <ul className="grid gap-x-12 lg:grid-cols-2">
         {FEATURES.map((feature) => (
           <li

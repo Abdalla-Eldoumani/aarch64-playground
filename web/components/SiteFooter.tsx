@@ -24,10 +24,10 @@ const LINK_CLASS =
  */
 export function SiteFooter() {
   return (
-    <footer className="border-t border-[var(--border)] bg-[var(--bg-sunken)] px-6 py-8">
+    <footer className="border-t border-[var(--border)] px-6 py-8">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 md:flex-row md:items-start md:justify-between">
         <div className="flex max-w-xs flex-col gap-3">
-          <Wordmark showLabel />
+          <Wordmark showLabel size="footer" />
           <p className="font-serif text-[15px] leading-relaxed text-[var(--text-secondary)]">
             {CREDIBILITY.tagline}
           </p>
@@ -72,9 +72,13 @@ export function SiteFooter() {
         </div>
       </div>
 
-      <p className="mx-auto mt-8 w-full max-w-5xl font-mono text-xs text-[var(--text-tertiary)]">
-        Open source, free to use and study. {CREDIBILITY.disclaimer}
-      </p>
+      {/* The closing doc-rule line: the sheet's colophon in the datasheet
+          voice, over a hairline like the document rule that opened it,
+          segments spread across the measure. */}
+      <div className="mx-auto mt-8 flex w-full max-w-5xl flex-wrap justify-between gap-x-6 gap-y-1 border-t border-[var(--border)] pt-3 font-mono text-[10px] uppercase leading-[1.6] tracking-[0.08em] text-[var(--text-tertiary)]">
+        <span>Open source · free to use and study</span>
+        <span>{CREDIBILITY.disclaimer}</span>
+      </div>
     </footer>
   );
 }

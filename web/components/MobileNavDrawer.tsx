@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { REPO_URL, NAV_ROUTES, isActiveRoute } from "@/lib/site";
 import { CloseIcon, GitHubIcon, MenuIcon } from "@/components/SiteIcons";
 import { ThemeControl } from "@/components/ThemeControl";
@@ -31,17 +32,21 @@ export function MobileNavDrawer() {
         aria-expanded={open}
         aria-controls={panelId}
         aria-label={open ? "close navigation" : "open navigation"}
-        className="relative z-[60] inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        className="relative z-[80] inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
       >
         {open ? <CloseIcon /> : <MenuIcon />}
       </button>
 
+      {/* Portaled to <body>: the nav's backdrop-blur makes the nav the
+          containing block for fixed descendants, which would clip the
+          full-height overlay to the nav band. */}
       {open ? (
-        <>
+        createPortal(
+          <>
           <div
             aria-hidden="true"
             onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40 bg-black/60"
+            className="fixed inset-0 z-[65] bg-black/60"
           />
           <div
             ref={panelRef}
@@ -49,7 +54,7 @@ export function MobileNavDrawer() {
             role="dialog"
             aria-modal="true"
             aria-label="site navigation"
-            className="anim-modal-rise fixed inset-y-0 right-0 z-50 flex w-[min(20rem,85vw)] flex-col gap-1 border-l border-[var(--border)] bg-[var(--bg-panel)] p-4 shadow-[var(--shadow-overlay)]"
+            className="anim-modal-rise fixed inset-y-0 right-0 z-[70] flex w-[min(20rem,85vw)] flex-col gap-1 border-l border-[var(--border-strong)] bg-[var(--bg-panel)] p-4 pt-[calc(var(--safe-top)+1rem)] [box-shadow:var(--shadow-overlay)]"
           >
             <nav aria-label="mobile" className="flex flex-col gap-1">
               {NAV_ROUTES.map((route) => {
@@ -87,7 +92,9 @@ export function MobileNavDrawer() {
               <span>source on github</span>
             </a>
           </div>
-        </>
+        </>,
+          document.body,
+        )
       ) : null}
     </div>
   );

@@ -592,16 +592,16 @@ describe("program delivery from recents and the tutorial", () => {
         vfs: { "stale.txt": "x" },
       }),
     );
-    const select = screen.getByLabelText(
-      "load recent program",
-    ) as HTMLSelectElement;
-    const entry = Array.from(select.options).find(
-      (o) => o.value && o.value !== "__clear__",
-    );
+    // The custom Select opens as a listbox; pick the first real recent row
+    // (any option that is not the clear-history sentinel).
+    fireEvent.click(screen.getByRole("combobox", { name: "load recent program" }));
+    const entry = screen
+      .getAllByRole("option")
+      .find((option) => option.textContent !== "clear history");
     expect(entry).toBeDefined();
     (hub.reset as ReturnType<typeof vi.fn>).mockClear();
     (hub.uploadVfsFile as ReturnType<typeof vi.fn>).mockClear();
-    fireEvent.change(select, { target: { value: entry!.value } });
+    fireEvent.pointerDown(entry!);
     // The recall is a program delivery, not a text swap: fresh machine,
     // recalled source, no inherited args.
     expect(hub.reset).toHaveBeenCalledTimes(1);

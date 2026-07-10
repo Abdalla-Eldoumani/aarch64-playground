@@ -6,7 +6,7 @@ import { SITE_URL } from "@/lib/site";
 // next/font/google only runs inside the Next build; stub the three loaders so
 // the layout module can be imported for its metadata export.
 vi.mock("next/font/google", () => ({
-  Hanken_Grotesk: () => ({ variable: "--font-sans" }),
+  IBM_Plex_Sans: () => ({ variable: "--font-sans" }),
   JetBrains_Mono: () => ({ variable: "--font-mono" }),
   Source_Serif_4: () => ({ variable: "--font-serif" }),
 }));

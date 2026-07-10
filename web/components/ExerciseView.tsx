@@ -1,8 +1,11 @@
 "use client";
 
 /**
- * The single-exercise layout: the prompt, an acceptance-criteria summary, the
- * shared embeddable editor in checker chrome, and a pass/fail result region.
+ * The single-exercise layout, as a two-column datasheet: a 420px statement
+ * column (kicker, serif title, prompt, SPECIFICATION table, behavior-check
+ * disclaimer) beside a work column (the shared embeddable editor in checker
+ * chrome and a RESULTS panel). Below `lg` the columns stack: statement, then
+ * editor, then results.
  *
  * Reuse, no fork: the prompt renders ONLY through the single sanitizing
  * LessonMarkdown (no second Markdown path, no raw-HTML injection), and the
@@ -12,13 +15,13 @@
  * so structural checks see what the student actually wrote. A passing check
  * marks the exercise solved once.
  *
- * No answer leak: the criteria summary describes the SHAPE of each check (no
- * expected values); the fail panel shows expected-vs-actual as feedback but the
- * view never holds or renders a reference solution. An author/student stdin is
- * bounded by validateStdin before it reaches the embed.
+ * No answer leak: the SPECIFICATION table describes the SHAPE of each check (no
+ * expected values); the RESULTS panel shows expected-vs-actual as feedback but
+ * the view never holds or renders a reference solution. An author/student stdin
+ * is bounded by validateStdin before it reaches the embed.
  */
 
-import { useRef, useState, type JSX, type ReactNode } from "react";
+import { useId, useRef, useState, type JSX, type ReactNode } from "react";
 import Link from "next/link";
 import { buildShareHash } from "@/lib/share";
 import type {
@@ -31,6 +34,7 @@ import { markSolved } from "@/lib/solved-state";
 import { validateStdin } from "@/lib/upload-guard";
 import { LessonMarkdown } from "@/components/LessonMarkdown";
 import { Callout } from "@/components/Callout";
+import { Kicker } from "@/components/Kicker";
 import {
   EmbeddablePlayground,
   type EmbeddablePlaygroundHandle,
@@ -52,7 +56,7 @@ const CRITERION_CODE =
 
 /**
  * A shape-only label for one result assertion: it names WHAT is checked, never
- * the expected value, so the criteria summary cannot leak the answer.
+ * the expected value, so the specification table cannot leak the answer.
  */
 function resultCriterion(assertion: ResultAssertion): ReactNode {
   switch (assertion.kind) {
@@ -71,8 +75,8 @@ function resultCriterion(assertion: ResultAssertion): ReactNode {
 
 /**
  * A shape-only label for one structural assertion. forbids-literal is described
- * as "computes the result" without naming the forbidden value, so the summary
- * and the fail panel never reveal the hardcoded answer.
+ * as "computes the result" without naming the forbidden value, so the table
+ * and the results panel never reveal the hardcoded answer.
  */
 function structuralCriterion(assertion: StructuralAssertion): ReactNode {
   switch (assertion.kind) {
@@ -91,15 +95,46 @@ function structuralCriterion(assertion: StructuralAssertion): ReactNode {
   }
 }
 
-const PANEL_BASE =
-  "rounded-[var(--radius-card)] border-l-4 px-4 py-3 text-[var(--text-primary)]";
-const PASS_PANEL = `${PANEL_BASE} border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_14%,transparent)]`;
-const FAIL_PANEL = `${PANEL_BASE} border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_14%,transparent)]`;
-const PANEL_LABEL = "mb-1 font-sans text-[12px] font-semibold uppercase tracking-wide";
+/** One SPECIFICATION row: mono label column over a hairline, shape-only value. */
+function SpecRow({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  return (
+    <div className="grid grid-cols-[6rem_1fr] items-baseline gap-x-4 border-b border-[var(--border)] py-2.5">
+      <span className="w-24 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+        {label}
+      </span>
+      <span className="font-mono text-[13px] leading-relaxed text-[var(--text-primary)]">
+        {children}
+      </span>
+    </div>
+  );
+}
 
-export function ExerciseView({ exercise }: { exercise: Exercise }): JSX.Element {
+/** The 14px pass/fail square with its ✓/✗ glyph, plus text for screen readers. */
+function CheckSquare({ pass }: { pass: boolean }): JSX.Element {
+  const tone = pass
+    ? "border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_15%,transparent)] text-[var(--success)]"
+    : "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_15%,transparent)] text-[var(--danger)]";
+  return (
+    <span
+      className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center border font-mono text-[9px] font-bold leading-none ${tone}`}
+    >
+      <span aria-hidden="true">{pass ? "✓" : "✗"}</span>
+      <span className="sr-only">{pass ? "passed" : "failed"}</span>
+    </span>
+  );
+}
+
+export function ExerciseView({
+  exercise,
+  sheetNumber = "5.x",
+}: {
+  exercise: Exercise;
+  /** Datasheet coordinate, e.g. "5.2"; the [slug] page derives it from the sorted order. */
+  sheetNumber?: string;
+}): JSX.Element {
   const [result, setResult] = useState<CheckResult | null>(null);
   const embedRef = useRef<EmbeddablePlaygroundHandle>(null);
+  const specHeadingId = useId();
 
   const handleCheck = (snapshot: EmbeddableState): void => {
     // Read the LIVE editor source so structural checks run on what the student
@@ -110,100 +145,136 @@ export function ExerciseView({ exercise }: { exercise: Exercise }): JSX.Element 
     if (outcome.pass) markSolved(exercise.slug);
   };
 
-  const criteria: ReactNode[] = [
-    ...exercise.acceptance.results.map(resultCriterion),
-    ...(exercise.acceptance.structural ?? []).map(structuralCriterion),
-  ];
-
-  const failedResults = result?.results.filter((check) => !check.pass) ?? [];
-  const failedStructural = result?.structural.filter((check) => !check.pass) ?? [];
+  const allChecks = result ? [...result.results, ...result.structural] : [];
+  const passingCount = allChecks.filter((check) => check.pass).length;
 
   return (
-    <article className="mx-auto w-full max-w-2xl px-6 py-12">
-      <h1 className="mb-8 font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
-        {exercise.title}
-      </h1>
+    <article className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-12 lg:grid lg:grid-cols-[420px_minmax(0,1fr)] lg:items-start lg:gap-12">
+      {/* Statement column */}
+      <div className="flex flex-col gap-5">
+        <Kicker number={sheetNumber} title="exercise" />
+        <h1 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
+          {exercise.title}
+        </h1>
 
-      {exercise.variant === "identify-bug" && (
-        <div className="my-6">
+        {exercise.variant === "identify-bug" && (
           <Callout type="warning">
             This program is broken. Find the bug and fix it so the checks pass.
           </Callout>
-        </div>
-      )}
+        )}
 
-      <LessonMarkdown markdown={exercise.prompt} />
+        <LessonMarkdown markdown={exercise.prompt} />
 
-      <section
-        aria-labelledby="acceptance-criteria-heading"
-        className="my-8"
-      >
-        <h2
-          id="acceptance-criteria-heading"
-          className="mb-3 text-[var(--text-primary)] [font:var(--type-h3)]"
-        >
-          acceptance criteria
-        </h2>
-        <ul className="flex list-disc flex-col gap-1 pl-6 text-[var(--text-primary)] [font:var(--type-body)]">
-          {criteria.map((criterion, index) => (
-            <li key={index}>{criterion}</li>
+        <section aria-labelledby={specHeadingId}>
+          <h2
+            id={specHeadingId}
+            className="border-b border-[var(--border-strong)] pb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]"
+          >
+            Specification
+          </h2>
+          {exercise.args !== undefined && <SpecRow label="args">{exercise.args}</SpecRow>}
+          {exercise.stdin !== undefined && (
+            <SpecRow label="stdin">
+              <span className="whitespace-pre-wrap break-words">{exercise.stdin}</span>
+            </SpecRow>
+          )}
+          {exercise.acceptance.results.map((assertion, index) => (
+            <SpecRow key={`result-${index}`} label={assertion.kind}>
+              {resultCriterion(assertion)}
+            </SpecRow>
           ))}
-        </ul>
-      </section>
+          {(exercise.acceptance.structural ?? []).map((assertion, index) => (
+            <SpecRow key={`structural-${index}`} label="source">
+              {structuralCriterion(assertion)}
+            </SpecRow>
+          ))}
+        </section>
 
-      {/* Fixed frame at every breakpoint (no shift as the editor loads); the
-          embed's container-driven layout gives the editor the full prose
-          measure above a registers | console split. */}
-      <div className="my-6 flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
-        <EmbeddablePlayground
-          ref={embedRef}
-          chrome="checker"
-          startSource={exercise.starter}
-          startArgs={exercise.args}
-          startStdin={safeStdin(exercise.stdin)}
-          readOnly={false}
-          onCheck={handleCheck}
-        />
+        <p className="font-sans text-[12px] leading-relaxed text-[var(--text-tertiary)]">
+          Checked by running your program against expected behavior, never by matching a stored
+          solution.
+        </p>
       </div>
 
-      <Link
-        href={`/playground${buildShareHash({
-          source: exercise.starter,
-          args: exercise.args,
-          stdin: safeStdin(exercise.stdin),
-        })}`}
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] text-[var(--cyan)] [font:var(--type-small)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]"
-      >
-        Open in playground
-        <span aria-hidden="true">-&gt;</span>
-      </Link>
+      {/* Work column */}
+      <div className="mt-8 flex flex-col gap-4 lg:mt-0">
+        {/* Fixed frame at every breakpoint (no shift as the editor loads); the
+            embed's container-driven layout gives the editor the full column
+            measure above a registers | console split. */}
+        <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+          <EmbeddablePlayground
+            ref={embedRef}
+            chrome="checker"
+            startSource={exercise.starter}
+            startArgs={exercise.args}
+            startStdin={safeStdin(exercise.stdin)}
+            readOnly={false}
+            onCheck={handleCheck}
+          />
+        </div>
 
-      <div role="status" className="my-6">
-        {result && result.pass && (
-          <div className={PASS_PANEL}>
-            <p className={PANEL_LABEL}>passed</p>
-            <p className="font-sans text-[16px] leading-relaxed">all checks passed</p>
-          </div>
-        )}
-        {result && !result.pass && (
-          <div className={FAIL_PANEL}>
-            <p className={PANEL_LABEL}>not yet</p>
-            <p className="mb-2 font-sans text-[16px] leading-relaxed">
-              some checks did not pass:
-            </p>
-            <ul className="flex list-disc flex-col gap-1 pl-6 font-sans text-[15px] leading-relaxed">
-              {failedResults.map((check, index) => (
-                <li key={`result-${index}`}>
-                  {resultCriterion(check.assertion)} - expected {check.expected}, got{" "}
-                  {check.actual}
-                </li>
+        <Link
+          href={`/playground${buildShareHash({
+            source: exercise.starter,
+            args: exercise.args,
+            stdin: safeStdin(exercise.stdin),
+          })}`}
+          className="inline-flex min-h-[44px] items-center gap-1.5 self-start rounded-[var(--radius-control)] text-[var(--cyan)] [font:var(--type-small)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]"
+        >
+          Open in playground
+          <span aria-hidden="true">-&gt;</span>
+        </Link>
+
+        <div role="status">
+          {result && (
+            <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
+              <div className="flex items-baseline justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-2.5">
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                  Results
+                </span>
+                <span className="font-mono text-[11px] uppercase text-[var(--text-tertiary)]">
+                  {passingCount} of {allChecks.length} passing
+                </span>
+              </div>
+              {result.results.map((check, index) => (
+                <div
+                  key={`result-${index}`}
+                  className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-2.5 last:border-b-0"
+                >
+                  <CheckSquare pass={check.pass} />
+                  <span className="font-mono text-[13px] leading-snug text-[var(--text-primary)]">
+                    {resultCriterion(check.assertion)}
+                    {!check.pass && (
+                      <span className="text-[var(--danger)]">
+                        {" "}
+                        — expected {check.expected}, got {check.actual}
+                      </span>
+                    )}
+                  </span>
+                </div>
               ))}
-              {failedStructural.map((check, index) => (
-                <li key={`structural-${index}`}>{structuralCriterion(check.assertion)}</li>
+              {result.structural.map((check, index) => (
+                <div
+                  key={`structural-${index}`}
+                  className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-2.5 last:border-b-0"
+                >
+                  <CheckSquare pass={check.pass} />
+                  <span className="font-mono text-[13px] leading-snug text-[var(--text-primary)]">
+                    {structuralCriterion(check.assertion)}
+                  </span>
+                </div>
               ))}
-            </ul>
-          </div>
-        )}
+              {result.pass && (
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  <CheckSquare pass />
+                  <span className="font-mono text-[13px] leading-snug text-[var(--text-primary)]">
+                    {result.summary}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </article>
   );

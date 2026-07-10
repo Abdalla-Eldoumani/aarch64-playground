@@ -1,6 +1,27 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { ROUTE_REGISTERS } from "@/lib/landing-content";
+import { Kicker } from "@/components/Kicker";
+
+/** Micro field-box: the row's bit lit in the row's ink — the wordmark's
+ *  lockup grammar at jump-table scale. */
+function MicroFieldBox({ lit, onPrimary }: { lit: number; onPrimary: boolean }) {
+  const stroke = onPrimary ? "border-[var(--on-cyan)]" : "border-[var(--border-strong)]";
+  const fill = onPrimary ? "bg-[var(--on-cyan)]" : "bg-[var(--cyan)]";
+  return (
+    <span aria-hidden="true" className="inline-flex h-[10px]">
+      {[0, 1, 2, 3].map((cell) => (
+        <span
+          key={cell}
+          className={`inline-block border-y border-r ${stroke} ${
+            cell === 0 ? "border-l" : ""
+          } ${cell === lit ? fill : ""}`}
+          style={{ width: cell === 0 ? 14 : 8, height: 10 }}
+        />
+      ))}
+    </span>
+  );
+}
 
 /**
  * The site routes rendered as a register file / memory map: each destination is
@@ -18,13 +39,11 @@ export function RoutesRegisterFile() {
       aria-labelledby="routes-heading"
       className="mx-auto w-full max-w-5xl px-6 py-12 sm:py-16"
     >
-      <h2
-        id="routes-heading"
-        className="mb-4 font-mono text-xs uppercase tracking-widest text-[var(--text-tertiary)]"
-      >
+      <h2 id="routes-heading" className="sr-only">
         jump table
       </h2>
-      <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+      <Kicker number="01" title="jump table" className="mb-4" />
+      <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)]">
         {ROUTE_REGISTERS.map((route, index) => (
           // Each row plays the register-write flash once on first paint,
           // staggered 70ms per row so the block powers on like values landing
@@ -38,20 +57,23 @@ export function RoutesRegisterFile() {
           >
             <Link
               href={route.href}
-              className={`grid min-h-[44px] grid-cols-[3rem_1fr_auto] items-center gap-3 px-4 transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
+              className={`grid min-h-[48px] grid-cols-[5.5rem_1fr_auto] items-center gap-3 px-4 transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
                 route.primary
                   ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
                   : "text-[var(--text-primary)] hover:bg-[var(--bg-raised)] hover:text-[var(--cyan)]"
               }`}
             >
-              <span
-                className={`font-mono text-[13px] ${
-                  route.primary
-                    ? "text-[var(--on-cyan)]"
-                    : "text-[var(--text-secondary)]"
-                }`}
-              >
-                {route.reg}
+              <span className="inline-flex items-center gap-2.5">
+                <MicroFieldBox lit={index} onPrimary={Boolean(route.primary)} />
+                <span
+                  className={`font-mono text-[13px] ${
+                    route.primary
+                      ? "text-[var(--on-cyan)]"
+                      : "text-[var(--text-secondary)]"
+                  }`}
+                >
+                  {route.reg}
+                </span>
               </span>
               <span className="font-sans text-sm font-medium">{route.label}</span>
               <span

@@ -10,6 +10,8 @@ function makeSnapshot(): StateSnapshot {
     pc: "0x0000000000400000",
     nzcv: 0,
     changedRegs: [],
+    fpRegisters: [],
+    changedFpRegs: [],
     halted: false,
     blocked: false,
     exitCode: null,

@@ -242,10 +242,12 @@ class MainThreadBackend implements EmulatorBackend {
     return {
       frame: this.frame,
       registers: regs.gpr,
+      fpRegisters: this.emu.getFpRegisters(),
       sp: regs.sp,
       pc: regs.pc,
       nzcv: regs.nzcv,
       changedRegs: Array.from(this.emu.getChangedRegisters()),
+      changedFpRegs: Array.from(this.emu.getChangedFpRegisters()),
       halted: this.emu.isHalted(),
       blocked: this.emu.isBlocked(),
       exitCode: this.emu.getExitCode(),

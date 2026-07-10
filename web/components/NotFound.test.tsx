@@ -26,9 +26,10 @@ describe("NotFound", () => {
     expect(link.getAttribute("href")).toBe("/playground");
   });
 
-  it("includes the 404 / signal 11 marquee for atmosphere", () => {
+  it("includes the 0x404 doc rule and mono gloss for atmosphere", () => {
     render(<NotFound />);
-    expect(screen.getByText("404")).toBeTruthy();
+    expect(screen.getByText("0x00000404")).toBeTruthy();
     expect(screen.getByText(/signal 11/i)).toBeTruthy();
+    expect(screen.getByText(/branch target does not exist/)).toBeTruthy();
   });
 });

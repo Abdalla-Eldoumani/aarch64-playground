@@ -18,9 +18,6 @@ import { parseFrameSlots } from "@/lib/frame-labels";
 import { parseArgs } from "@/lib/args";
 import { formatAsm } from "@/lib/asm-formatter";
 import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/upload-guard";
-import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
-import { useLectureMode } from "@/lib/use-lecture-mode";
-import { useHotspotMode } from "@/lib/use-hotspot-mode";
 import {
   describeTarget,
   getImportTarget,
@@ -31,7 +28,7 @@ import { Editor } from "@/components/Editor";
 import { RegisterPanel } from "@/components/RegisterPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
 import { Controls } from "@/components/Controls";
-import { CurrentStrip } from "@/components/CurrentStrip";
+import { DecodeStrip } from "@/components/DecodeStrip";
 import { FirstRunState } from "@/components/FirstRunState";
 import { ExampleLoader } from "@/components/ExampleLoader";
 import { RecentPrograms } from "@/components/RecentPrograms";
@@ -40,7 +37,6 @@ import { MobileLayout } from "@/components/MobileLayout";
 import { ImportExport } from "@/components/ImportExport";
 import { Toolbar } from "@/components/Toolbar";
 import { ArgsInput } from "@/components/ArgsInput";
-import { LectureBar } from "@/components/LectureBar";
 import {
   MultiFileTabs,
   combineSources,
@@ -258,9 +254,6 @@ function EmbeddableCore({
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
-  const cpsc = useCpsc355Mode();
-  const lecture = useLectureMode();
-  const hotspot = useHotspotMode();
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
   );
@@ -933,7 +926,6 @@ function EmbeddableCore({
               onToggleBreakpoint={emu.toggleBreakpoint}
               assemblyErrors={emu.assemblyErrors}
               onCursorChange={setCursor}
-              lineCounts={emu.lineCounts}
             />
           </div>
           <div className="embed-area-registers min-h-0 min-w-0 overflow-auto">
@@ -1044,7 +1036,6 @@ function EmbeddableCore({
           onToggleBreakpoint={emu.toggleBreakpoint}
           assemblyErrors={isMain ? emu.assemblyErrors : []}
           onCursorChange={isMain ? setCursor : undefined}
-          lineCounts={isMain ? emu.lineCounts : undefined}
           onFormat={() => {
             if (!isMain) return;
             const next = formatAsm(source);
@@ -1075,9 +1066,16 @@ function EmbeddableCore({
 
   const regsBlock = (
     <div className="h-full flex flex-col">
-      {/* The prominent, always-on CURRENT instruction strip heads the registers
-          column -- the beginner's lifeline -- replacing the thin bottom strip. */}
-      <CurrentStrip source={source} currentLine={emu.currentLine} />
+      {/* The prominent, always-on decode strip heads the registers column --
+          the beginner's lifeline: the plain-language gloss plus the live
+          bit-field view of the word under the program counter. */}
+      <DecodeStrip
+        source={source}
+        currentLine={emu.currentLine}
+        encodingHex={
+          emu.instructions.find((instr) => instr.address === emu.pc)?.hex ?? null
+        }
+      />
       <ReplayScrubber
         frames={emu.replayFrames}
         currentStep={emu.stepCount}
@@ -1087,6 +1085,8 @@ function EmbeddableCore({
         <RegisterPanel
           registers={emu.registers}
           changedRegs={emu.changedRegs}
+          fpRegisters={emu.fpRegisters}
+          changedFpRegs={emu.changedFpRegs}
           sp={emu.sp}
           pc={emu.pc}
           nzcv={emu.nzcv}
@@ -1246,10 +1246,10 @@ function EmbeddableCore({
           itself, so the editor stays near the top of a phone screen instead
           of sitting under seven rows of chrome. */}
       <div className="header-band safe-area-top flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
-        <span className="hidden sm:inline font-serif text-[15px] font-semibold tracking-tight text-[var(--text-primary)] whitespace-nowrap shrink-0">
-          cpsc 355 playground
+        <span className="hidden sm:inline font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
+          aarch64-pg
         </span>
-        <div className="min-w-0 shrink-0 overflow-hidden">
+        <div className="min-w-0 shrink-0">
           <ExampleLoader onLoad={loadProgram} />
         </div>
         <ImportExport source={source} target={importTarget} onImport={handleImport} />
@@ -1265,12 +1265,6 @@ function EmbeddableCore({
         <ArgsInput source={source} value={argsText} onChange={setArgsText} />
         <Toolbar
           className="ml-auto"
-          cpsc355Enabled={cpsc.enabled}
-          onToggleCpsc355={cpsc.toggle}
-          lectureEnabled={lecture.enabled}
-          onToggleLecture={lecture.toggle}
-          hotspotEnabled={hotspot.enabled}
-          onToggleHotspot={hotspot.toggle}
           onShare={() => onOpenShareDialog?.()}
           onTour={() => setTutorialOpen(true)}
           onToggleTheme={() => onToggleTheme?.()}
@@ -1377,15 +1371,6 @@ function EmbeddableCore({
         )}
       </main>
 
-      {lecture.enabled && (
-        <LectureBar
-          onStep={emu.step}
-          onReset={emu.reset}
-          stepCount={emu.stepCount}
-          isHalted={emu.isHalted}
-          programLoaded={emu.programLoaded}
-        />
-      )}
       <Controls
         onAssemble={assembleWithHistory}
         onStep={emu.step}

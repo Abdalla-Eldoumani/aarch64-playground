@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { REFERENCE_INSTRUCTIONS } from "@/lib/reference-data";
 import { ReferenceView } from "@/components/ReferenceView";
+import { DocRule } from "@/components/DocRule";
+import { Kicker } from "@/components/Kicker";
 import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 const DESCRIPTION =
@@ -33,9 +35,11 @@ export const metadata: Metadata = {
 // guide and catalog keep their own inner measure.
 export default function ReferencePage() {
   return (
-    <section className="mx-auto w-full max-w-6xl px-6 py-12 sm:py-16">
-      <h1 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)]">
-        reference
+    <section className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
+      <DocRule section="sheet 06 · reference" context="cpsc 355 study aid" className="mb-8" />
+      <Kicker number="06" title="reference" className="mb-5" />
+      <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">
+        Reference
       </h1>
       <p className="mt-4 text-[var(--text-secondary)] [font:var(--type-lead)]">
         A searchable map of the supported instructions and the calling convention.

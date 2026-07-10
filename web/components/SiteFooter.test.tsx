@@ -55,7 +55,7 @@ describe("SiteFooter", () => {
     // The footer is the single home for the facts the landing's credibility band
     // used to restate: how the emulator is built, and that it is open source.
     expect(screen.getByText(CREDIBILITY.engineNote)).toBeTruthy();
-    expect(screen.getByText(/open source, free to use and study/i)).toBeTruthy();
+    expect(screen.getByText(/open source · free to use and study/i)).toBeTruthy();
   });
 
   it("links the repository and the license exactly once each", () => {

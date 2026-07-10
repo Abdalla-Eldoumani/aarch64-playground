@@ -5,9 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/use-emulator";
 import { lookupDoc } from "@/lib/instruction-docs";
 import { explainError } from "@/lib/error-explain";
-import { lintSource } from "@/lib/cpsc355-lint";
-import { useCpsc355Mode } from "@/lib/use-cpsc355-mode";
-import { useHotspotMode } from "@/lib/use-hotspot-mode";
 import { buildSuggestions, type Suggestion } from "@/lib/asm-completion";
 import { useToast } from "@/components/Toast";
 import { validateSource } from "@/lib/upload-guard";
@@ -20,8 +17,6 @@ interface EditorProps {
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
   onCursorChange?: (pos: { line: number; column: number }) => void;
-  /** Per-source-line execution counter for the hotspot heat map. */
-  lineCounts?: Map<number, number>;
   /** Format-source command bound to Ctrl+Shift+F inside Monaco. The
    *  parent owns the formatter implementation so the keybinding and
    *  the command-palette entry share one code path. */
@@ -74,22 +69,12 @@ export function Editor({
   onToggleBreakpoint,
   assemblyErrors,
   onCursorChange,
-  lineCounts,
   onFormat,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
   const [fallback, setFallback] = useState<boolean>(() => isNarrow());
-  const { enabled: cpscEnabled } = useCpsc355Mode();
-  const { enabled: hotspotEnabled } = useHotspotMode();
-  // Stash the live flag in a ref so the model.onDidChangeContent
-  // listener registered inside handleMount sees the current value
-  // without re-registering each time the toggle flips.
-  const cpscEnabledRef = useRef(cpscEnabled);
-  useEffect(() => {
-    cpscEnabledRef.current = cpscEnabled;
-  }, [cpscEnabled]);
   // Keep the latest format handler accessible from the Monaco command
   // (registered once at mount).
   const onFormatRef = useRef(onFormat);
@@ -132,24 +117,6 @@ export function Editor({
     if (!editor || !monaco) return;
 
     const decorations: Parameters<typeof editor.deltaDecorations>[1] = [];
-
-    // hotspot heat map: cool blue -> hot red, painted first so the
-    // current-line / breakpoint / error rules overlay it
-    if (hotspotEnabled && lineCounts && lineCounts.size > 0) {
-      let max = 1;
-      for (const v of lineCounts.values()) if (v > max) max = v;
-      for (const [line, count] of lineCounts.entries()) {
-        // bucket into 1..5 based on relative heat (round half up)
-        const bucket = Math.max(1, Math.min(5, Math.ceil((count / max) * 5)));
-        decorations.push({
-          range: new monaco.Range(line, 1, line, 1),
-          options: {
-            isWholeLine: true,
-            className: `hotspot-${bucket}`,
-          },
-        });
-      }
-    }
 
     // current line highlight
     if (currentLine != null) {
@@ -207,7 +174,7 @@ export function Editor({
       decorationsRef.current,
       decorations
     );
-  }, [currentLine, breakpoints, assemblyErrors, hotspotEnabled, lineCounts]);
+  }, [currentLine, breakpoints, assemblyErrors]);
 
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
@@ -247,20 +214,20 @@ export function Editor({
         base: "vs-dark",
         inherit: true,
         rules: [
-          { token: "keyword", foreground: "60a5fa", fontStyle: "bold" },
-          { token: "variable", foreground: "f472b6" },
-          { token: "number", foreground: "a78bfa" },
-          { token: "number.hex", foreground: "a78bfa" },
-          { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-          { token: "type.identifier", foreground: "34d399" },
+          { token: "keyword", foreground: "6fa8ff", fontStyle: "bold" },
+          { token: "variable", foreground: "ff7eb6" },
+          { token: "number", foreground: "b49bff" },
+          { token: "number.hex", foreground: "b49bff" },
+          { token: "comment", foreground: "7a828c", fontStyle: "italic" },
+          { token: "type.identifier", foreground: "3dd68c" },
         ],
         colors: {
-          "editor.background": "#0B0C0E",
-          "editor.lineHighlightBackground": "#16181CAA",
-          "editorGutter.background": "#0B0C0E",
-          "editorLineNumber.foreground": "#6C737B",
-          "editorCursor.foreground": "#F5B53D",
-          "editorCursor.background": "#0B0C0E",
+          "editor.background": "#0B0C10",
+          "editor.lineHighlightBackground": "#14171DAA",
+          "editorGutter.background": "#0B0C10",
+          "editorLineNumber.foreground": "#6F7681",
+          "editorCursor.foreground": "#FFB224",
+          "editorCursor.background": "#0B0C10",
         },
       });
 
@@ -277,10 +244,10 @@ export function Editor({
         ],
         colors: {
           "editor.background": "#FFFFFF",
-          "editor.lineHighlightBackground": "#F6F7F9CC",
+          "editor.lineHighlightBackground": "#F4F5F7CC",
           "editorGutter.background": "#FFFFFF",
-          "editorLineNumber.foreground": "#686F78",
-          "editorCursor.foreground": "#B5791A",
+          "editorLineNumber.foreground": "#6A727C",
+          "editorCursor.foreground": "#A86A0F",
           "editorCursor.background": "#FFFFFF",
         },
       });
@@ -298,7 +265,7 @@ export function Editor({
         ],
         colors: {
           "editor.background": "#000000",
-          "editor.lineHighlightBackground": "#1a1a1a",
+          "editor.lineHighlightBackground": "#1A1A1A",
           "editorGutter.background": "#000000",
           "editorLineNumber.foreground": "#C7C7C7",
           "editorCursor.foreground": "#FFC247",
@@ -403,35 +370,6 @@ export function Editor({
         onCursorChange?.({ line: e.position.lineNumber, column: e.position.column });
       });
 
-      // cpsc 355 lint: debounced model-content listener that converts
-      // `lintSource` markers into Monaco model markers. Cleared when
-      // the toggle is off so old warnings don't linger.
-      let lintTimer: ReturnType<typeof setTimeout> | null = null;
-      const runLint = () => {
-        const model = editor.getModel();
-        if (!model) return;
-        if (!cpscEnabledRef.current) {
-          monaco.editor.setModelMarkers(model, "cpsc355", []);
-          return;
-        }
-        const markers = lintSource(model.getValue()).map((mk) => ({
-          severity: monaco.MarkerSeverity.Warning,
-          message: mk.message,
-          startLineNumber: mk.line,
-          startColumn: mk.column,
-          endLineNumber: mk.line,
-          endColumn: mk.endColumn,
-          source: "cpsc 355",
-        }));
-        monaco.editor.setModelMarkers(model, "cpsc355", markers);
-      };
-      const debouncedLint = () => {
-        if (lintTimer) clearTimeout(lintTimer);
-        lintTimer = setTimeout(runLint, 150);
-      };
-      editor.getModel()?.onDidChangeContent(() => debouncedLint());
-      runLint();
-
       // Set an aria-label so screen readers announce the editor as more
       // than "edit text"; Monaco's default label is generic.
       editor.getDomNode()?.setAttribute("aria-label", "ARM64 assembly source code editor");
@@ -489,31 +427,6 @@ export function Editor({
     updateDecorations();
   }, [currentLine, breakpoints, assemblyErrors, updateDecorations]);
 
-  // Re-run cpsc 355 lint when the toggle flips. The handleMount
-  // listener already keeps markers fresh on edits via the ref-backed
-  // flag; this effect handles the toggle itself.
-  useEffect(() => {
-    const editor = editorRef.current;
-    const monaco = monacoRef.current;
-    if (!editor || !monaco) return;
-    const model = editor.getModel();
-    if (!model) return;
-    if (!cpscEnabled) {
-      monaco.editor.setModelMarkers(model, "cpsc355", []);
-      return;
-    }
-    const markers = lintSource(model.getValue()).map((mk) => ({
-      severity: monaco.MarkerSeverity.Warning,
-      message: mk.message,
-      startLineNumber: mk.line,
-      startColumn: mk.column,
-      endLineNumber: mk.line,
-      endColumn: mk.endColumn,
-      source: "cpsc 355",
-    }));
-    monaco.editor.setModelMarkers(model, "cpsc355", markers);
-  }, [cpscEnabled]);
-
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       const file = e.dataTransfer?.files?.[0];
@@ -551,15 +464,10 @@ export function Editor({
       onDrop={onDrop}
     >
       <style>{`
-        .current-line-highlight { background: color-mix(in srgb, var(--amber) 16%, transparent) !important; box-shadow: inset 2px 0 0 0 var(--amber); }
+        .current-line-highlight { background: color-mix(in srgb, var(--amber) 14%, transparent) !important; box-shadow: inset 2px 0 0 0 var(--amber); }
         .current-line-glyph { background: var(--amber); border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .breakpoint-glyph { background: var(--danger); border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .error-line-highlight { background: color-mix(in srgb, var(--danger) 15%, transparent) !important; }
-        .hotspot-1 { background: rgba(56, 189, 248, 0.10) !important; }
-        .hotspot-2 { background: rgba(125, 211, 252, 0.16) !important; }
-        .hotspot-3 { background: rgba(253, 224, 71, 0.18) !important; }
-        .hotspot-4 { background: rgba(251, 146, 60, 0.22) !important; }
-        .hotspot-5 { background: rgba(248, 113, 113, 0.28) !important; }
         .error-glyph { background: var(--danger); border-radius: 2px; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         @media (pointer: coarse) {
           .monaco-editor .glyph-margin { width: 32px !important; }

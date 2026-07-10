@@ -353,6 +353,14 @@ function snapshot(): StateSnapshot {
     nzcv: number;
   };
   const changed = emulator.get_changed_registers() as Uint8Array;
+  // Optional FP surface: present once the emulator crate ships it; the
+  // worker keeps working against an older cached WASM by sending [].
+  const emulatorFp = emulator as unknown as {
+    get_fp_registers?: () => string[];
+    get_changed_fp_registers?: () => Uint8Array;
+  };
+  const fpRegisters = emulatorFp.get_fp_registers?.() ?? [];
+  const changedFp = emulatorFp.get_changed_fp_registers?.() ?? new Uint8Array(0);
   // Drain stdout/stderr so React can append the delta as new bytes
   // arrive (versus polling the full buffer each frame).
   const stdoutDelta = emulator.take_stdout();
@@ -361,10 +369,12 @@ function snapshot(): StateSnapshot {
   return {
     frame,
     registers: regs.gpr,
+    fpRegisters,
     sp: regs.sp,
     pc: regs.pc,
     nzcv: regs.nzcv,
     changedRegs: Array.from(changed),
+    changedFpRegs: Array.from(changedFp),
     halted: emulator.is_halted(),
     blocked: emulator.is_blocked(),
     exitCode: exit == null ? null : Number(exit),

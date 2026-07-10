@@ -30,8 +30,13 @@ export interface RegisterRowProps {
 export function RegisterRow({ name, alias, value, changed = false }: RegisterRowProps) {
   return (
     <div
+      // A written row also carries a 2px amber edge bar -- the machine's
+      // write marker -- alongside the --changed tint, so the write reads
+      // even while the background flash fades.
       className={`flex flex-wrap items-center gap-x-2 rounded-[var(--radius-control)] px-2 py-1 ${
-        changed ? "anim-reg-flash" : ""
+        changed
+          ? "anim-reg-flash [box-shadow:inset_2px_0_0_0_var(--amber)]"
+          : ""
       }`}
     >
       <span className="w-10 shrink-0 font-mono text-[13px] text-[var(--text-secondary)]">

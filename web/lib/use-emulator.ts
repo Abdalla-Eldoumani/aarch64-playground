@@ -29,10 +29,14 @@ export interface EmulatorState {
   isLoaded: boolean;
   loadError: string | null;
   registers: string[];
+  /** d0-d31 as raw IEEE-754 bit patterns ("0x…"); [] until the loaded WASM
+   *  ships the FP surface, which is the UI's cue to hide the d-view. */
+  fpRegisters: string[];
   sp: string;
   pc: number;
   nzcv: number;
   changedRegs: Set<number>;
+  changedFpRegs: Set<number>;
   isRunning: boolean;
   isHalted: boolean;
   /** True only while a successfully assembled (or state-restored) program
@@ -179,6 +183,8 @@ export function useEmulator(): EmulatorState {
   const [pc, setPc] = useState(0x400000);
   const [nzcv, setNzcv] = useState(0);
   const [changedRegs, setChangedRegs] = useState<Set<number>>(new Set());
+  const [fpRegisters, setFpRegisters] = useState<string[]>([]);
+  const [changedFpRegs, setChangedFpRegs] = useState<Set<number>>(new Set());
   const [isRunning, setIsRunning] = useState(false);
   const [isHalted, setIsHalted] = useState(false);
   const [programLoaded, setProgramLoaded] = useState(false);
@@ -215,6 +221,8 @@ export function useEmulator(): EmulatorState {
     setPc(pcNum);
     setNzcv(snap.nzcv);
     setChangedRegs(new Set(snap.changedRegs));
+    setFpRegisters(snap.fpRegisters);
+    setChangedFpRegs(new Set(snap.changedFpRegs));
     latestSnapRef.current = {
       registers: snap.registers,
       pc: pcNum,
@@ -753,6 +761,8 @@ export function useEmulator(): EmulatorState {
       isLoaded,
       loadError,
       registers,
+      fpRegisters,
+      changedFpRegs,
       sp,
       pc,
       nzcv,

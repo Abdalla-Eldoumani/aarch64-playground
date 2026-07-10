@@ -26,6 +26,12 @@ export interface BitFieldDiagramProps {
   label?: string;
   /** The concrete instruction the worked bits encode, shown as the caption. */
   asm?: string;
+  /** Reference-size chrome, off by default so existing callers are untouched:
+   *  each field gains a top line with its bit range ("30 : 21"), computed
+   *  right-to-left from bit 31, and the destination field (the datasheet's
+   *  "the machine is about to write here" convention: label `Rd`) takes the
+   *  amber treatment -- 1px amber border, 8% amber fill, amber ink. */
+  bitHeaders?: boolean;
   className?: string;
 }
 
@@ -69,6 +75,25 @@ function buildWorkedWord(fields: BitField[]): WorkedWord | null {
   return { owners, chars, hex: word.toString(16).padStart(8, "0") };
 }
 
+/**
+ * Per-field bit ranges, msb first from bit 31 (the printed "30 : 21" headers
+ * of the reference size). A single-bit field prints just its bit number.
+ */
+function buildBitRanges(fields: BitField[]): string[] {
+  let hi = 31;
+  return fields.map((field) => {
+    const lo = hi - field.bits + 1;
+    const text = field.bits === 1 ? `${hi}` : `${hi} : ${lo}`;
+    hi = lo - 1;
+    return text;
+  });
+}
+
+/** The destination convention: the data marks the written register as `Rd`. */
+function isDestination(field: BitField): boolean {
+  return field.label === "Rd";
+}
+
 /** Amber = the machine's bits: the traced field lights in the word readout. */
 const TRACE_STYLE = {
   backgroundColor: "color-mix(in srgb, var(--amber) 22%, transparent)",
@@ -76,6 +101,10 @@ const TRACE_STYLE = {
 
 const FIELD_LI =
   "flex min-w-0 flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
+// The amber destination cell: the 1px border rides an inset shadow so the
+// shared cell edges and the proportional widths stay untouched.
+const FIELD_LI_DEST =
+  " [box-shadow:inset_0_0_0_1px_var(--amber)] bg-[color-mix(in_srgb,var(--amber)_8%,transparent)]";
 
 /**
  * Bit-field encoding diagram: a horizontal row of labeled boxes whose widths
@@ -93,10 +122,15 @@ export function BitFieldDiagram({
   fields = SAMPLE_FIELDS,
   label = "instruction encoding",
   asm,
+  bitHeaders = false,
   className = "",
 }: BitFieldDiagramProps) {
   const [active, setActive] = useState<number | null>(null);
   const worked = useMemo(() => buildWorkedWord(fields), [fields]);
+  const ranges = useMemo(
+    () => (bitHeaders ? buildBitRanges(fields) : null),
+    [bitHeaders, fields],
+  );
 
   const nibbles = useMemo(() => {
     if (!worked) return [];
@@ -121,56 +155,79 @@ export function BitFieldDiagram({
         </p>
       )}
 
-      <ul className="flex w-full overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)]">
-        {fields.map((field, index) => (
-          <li
-            key={index}
-            style={{
-              flexGrow: field.bits,
-              flexBasis: 0,
-              borderTopColor: field.color,
-            }}
-            className={FIELD_LI}
-          >
-            {worked ? (
-              <button
-                type="button"
-                onMouseEnter={() => setActive(index)}
-                onMouseLeave={() =>
-                  setActive((current) => (current === index ? null : current))
-                }
-                onFocus={() => setActive(index)}
-                onBlur={() =>
-                  setActive((current) => (current === index ? null : current))
-                }
-                aria-label={`${field.label}, ${field.bits} bits, ${field.value}${
-                  field.meaning ? `, ${field.meaning}` : ""
-                }`}
-                className={`flex min-h-[44px] w-full min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-2 outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
-                  active === index
-                    ? "bg-[color-mix(in_srgb,var(--amber)_10%,transparent)]"
-                    : ""
-                }`}
-              >
-                <span className="w-full truncate font-mono text-[12px] text-[var(--text-primary)]">
-                  {field.label}
+      <ul className="flex w-full overflow-x-auto rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+        {fields.map((field, index) => {
+          const dest = bitHeaders && isDestination(field);
+          const rangeLine = ranges && (
+            <span
+              className={`w-full truncate font-mono text-[9px] ${
+                dest ? "text-[var(--amber)]" : "text-[var(--text-tertiary)]"
+              }`}
+            >
+              {ranges[index]}
+            </span>
+          );
+          const labelInk = dest
+            ? "text-[var(--amber)]"
+            : "text-[var(--text-primary)]";
+          const valueInk = dest
+            ? "text-[var(--amber)]"
+            : "text-[var(--text-secondary)]";
+          return (
+            <li
+              key={index}
+              style={{
+                flexGrow: field.bits,
+                // Floor per field: 1-bit boxes stay readable (labels like
+                // "sf" and a bit-range header need ~44px); wider fields
+                // scale with their bit count.
+                flexBasis: `${Math.max(44, field.bits * 22)}px`,
+                borderTopColor: dest ? "var(--amber)" : field.color,
+              }}
+              className={`${FIELD_LI}${dest ? FIELD_LI_DEST : ""}`}
+            >
+              {worked ? (
+                <button
+                  type="button"
+                  onMouseEnter={() => setActive(index)}
+                  onMouseLeave={() =>
+                    setActive((current) => (current === index ? null : current))
+                  }
+                  onFocus={() => setActive(index)}
+                  onBlur={() =>
+                    setActive((current) => (current === index ? null : current))
+                  }
+                  aria-label={`${field.label}, ${field.bits} bits, ${field.value}${
+                    field.meaning ? `, ${field.meaning}` : ""
+                  }`}
+                  className={`flex min-h-[44px] w-full min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-2 outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
+                    active === index
+                      ? "bg-[color-mix(in_srgb,var(--amber)_10%,transparent)]"
+                      : ""
+                  }`}
+                >
+                  {rangeLine}
+                  <span className={`w-full truncate font-mono text-[12px] ${labelInk}`}>
+                    {field.label}
+                  </span>
+                  <span className={`w-full truncate font-mono text-[11px] ${valueInk}`}>
+                    {field.value}
+                  </span>
+                </button>
+              ) : (
+                <span className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-2">
+                  {rangeLine}
+                  <span className={`w-full truncate font-mono text-[12px] ${labelInk}`}>
+                    {field.label}
+                  </span>
+                  <span className={`font-mono text-[11px] ${valueInk}`}>
+                    {field.bits}
+                  </span>
                 </span>
-                <span className="w-full truncate font-mono text-[11px] text-[var(--text-secondary)]">
-                  {field.value}
-                </span>
-              </button>
-            ) : (
-              <span className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-2">
-                <span className="w-full truncate font-mono text-[12px] text-[var(--text-primary)]">
-                  {field.label}
-                </span>
-                <span className="font-mono text-[11px] text-[var(--text-secondary)]">
-                  {field.bits}
-                </span>
-              </span>
-            )}
-          </li>
-        ))}
+              )}
+            </li>
+          );
+        })}
       </ul>
 
       {worked && (

@@ -32,8 +32,8 @@ export function ToastHost({ children }: { children: ReactNode }) {
           duration: 3000,
           // Match the playground's design tokens so the toast doesn't
           // look transplanted from another app. Uses CSS vars so each
-          // theme (dark / light / high-contrast / lecture) renders the
-          // toast in its own palette.
+          // theme (dark / light / high-contrast) renders the toast in
+          // its own palette.
           style: {
             background: "var(--bg-panel)",
             color: "var(--text-primary)",
