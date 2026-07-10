@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Hanken_Grotesk, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
+import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -8,26 +8,28 @@ import { OfflineBadge } from "@/components/OfflineBadge";
 import { RegisterSW } from "@/components/RegisterSW";
 import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/site";
 
-// Engineering-notebook trio: Source Serif 4 in editorial chrome (page
-// titles, empty-state heads), Hanken Grotesk for display, body, and
-// controls, JetBrains Mono everywhere code or registers appear. Each font is
-// pinned to a CSS variable so component-level utility classes can pull
-// the right family without a Tailwind config rewrite.
+// Datasheet trio: Source Serif 4 in editorial chrome (reading-surface
+// titles, leads, empty-state heads), IBM Plex Sans for UI controls, body,
+// and display headlines, JetBrains Mono everywhere code, registers, labels,
+// or document rules appear. Each font is pinned to a CSS variable so
+// component-level utility classes can pull the right family without a
+// Tailwind config rewrite.
 const fontSerif = Source_Serif_4({
   subsets: ["latin"],
   weight: ["400", "600"],
+  style: ["normal", "italic"],
   display: "swap",
   variable: "--font-serif",
 });
-const fontSans = Hanken_Grotesk({
+const fontSans = IBM_Plex_Sans({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
   variable: "--font-sans",
 });
 const fontMono = JetBrains_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
   variable: "--font-mono",
 });
@@ -64,7 +66,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0B0C0E",
+  themeColor: "#0B0C10",
 };
 
 export default function RootLayout({
