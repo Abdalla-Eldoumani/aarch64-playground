@@ -47,6 +47,13 @@ the in-page editor renders blank. Production and `next start` never include
 surface closed. Exercise the editor under `npm run dev`, where the dev-only
 allowance applies, not against production.
 
+The script and style policies also carry `'unsafe-inline'`: Next.js emits
+inline bootstrap scripts and inline styles without a nonce pipeline, and
+Monaco injects inline style tags at runtime. Script injection remains
+covered by the input-validation gates below (no `dangerouslySetInnerHTML`
+with unsanitized content, and every URL-borne payload is validated before
+use).
+
 ### Input validation gates
 
 Every URL-borne or file-borne payload runs through a typed validator before any
