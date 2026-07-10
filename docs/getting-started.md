@@ -124,9 +124,8 @@ for the full index of where each lives.
 - **Base converter** (the convert tab) keeps hex, binary, decimal, and the signed and unsigned readings in sync at 8, 16, 32, or 64 bits; click a bit to flip it. Also on the reference page and in the command palette.
 - **Multi-file assembly** (the **+** by the file tab) registers extra source files, concatenated before assembly.
 - **Terminal** (the term tab) is an xterm.js shell with `./program [args]`, redirections, basic VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
-- **CPSC 355 mode** (toolbar toggle) turns on lints for course idioms: alias suffixes, canonical prologues, 16-byte stack alignment, and no bare `x29`/`x30`.
-- **Lecture mode** switches to high-contrast, fullscreen, oversized controls for projector use.
-- **Hotspot mode** highlights the hottest instructions across a run.
+- **Decode strip** above the registers shows the instruction under the pc as its actual encoding fields, with the destination field lit amber; it re-latches on every step.
+- **Floating-point registers**: the register panel switches between `x0`–`x30` and `d0`–`d31`, with decimal and raw-bits readings for the d view.
 - **Three themes** cycle through dark, light, and high-contrast from the header.
 - **Per-panel zoom** with `Ctrl+Wheel` over a panel.
 - **Source formatter** (`Ctrl+Shift+F`) lowercases mnemonics, indents to 8 spaces, and aligns trailing comments to column 40.
