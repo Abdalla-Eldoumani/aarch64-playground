@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useZoom } from "@/lib/use-zoom";
 import { ZoomControl } from "@/components/ZoomControl";
+import { Select } from "@/components/Select";
 import { isAtLeast, useBreakpoint } from "@/lib/use-breakpoint";
 
 interface MemoryPanelProps {
@@ -75,24 +76,15 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
           aria-label="memory base address"
           className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
         />
-        <select
-          onChange={(e) => {
-            if (e.target.value) setBaseAddr(e.target.value);
-            e.target.value = "";
-          }}
-          defaultValue=""
-          aria-label="jump to section"
-          className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[10px] text-[var(--text-secondary)]"
-        >
-          <option value="" disabled>
-            jump...
-          </option>
-          {JUMP_TARGETS.map((j) => (
-            <option key={j.label} value={j.addr}>
-              {j.label}
-            </option>
-          ))}
-        </select>
+        <Select
+          size="xs"
+          placeholder="jump..."
+          ariaLabel="jump to section"
+          groups={[
+            { options: JUMP_TARGETS.map((j) => ({ value: j.addr, label: j.label })) },
+          ]}
+          onSelect={(addrValue) => setBaseAddr(addrValue)}
+        />
         <ZoomControl
           scale={zoom.scale}
           onZoomIn={zoom.zoomIn}
