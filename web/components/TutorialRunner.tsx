@@ -9,6 +9,7 @@ import {
   type Tutorial,
 } from "@/lib/tutorials";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { Select } from "@/components/Select";
 
 export interface TutorialRunnerProps {
   open: boolean;
@@ -131,18 +132,15 @@ export function TutorialRunner({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)]">
-          <select
+          <Select
             value={activeId}
-            onChange={(e) => setActiveId(e.target.value)}
-            className="bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)]"
-            aria-label="tutorial"
-          >
-            {TUTORIALS.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title}
-              </option>
-            ))}
-          </select>
+            placeholder="tutorial..."
+            ariaLabel="tutorial"
+            groups={[
+              { options: TUTORIALS.map((t) => ({ value: t.id, label: t.title })) },
+            ]}
+            onSelect={(id) => setActiveId(id)}
+          />
           <span className="text-[11px] text-[var(--text-secondary)]">
             step {stepIndex + 1} / {tutorial.steps.length}
           </span>
