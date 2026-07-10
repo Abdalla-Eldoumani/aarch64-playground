@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { fetchExample, type HandoffPayload } from "@/lib/playground-handoff";
+import { Select } from "@/components/Select";
 
 interface ExampleLoaderProps {
   /** Receives the complete program payload: source plus any args, stdin,
@@ -80,8 +81,7 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const handleSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const stem = e.target.value;
+    async (stem: string) => {
       if (!stem) return;
 
       setLoadError(null);
@@ -98,8 +98,6 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
         onLoad({ ...payload, label });
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "failed to load example");
-      } finally {
-        e.target.value = "";
       }
     },
     [onLoad],
@@ -107,25 +105,15 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <select
-        onChange={handleSelect}
-        defaultValue=""
-        className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] max-w-[14rem]"
-        aria-label="Load example program"
-      >
-        <option value="" disabled>
-          load example...
-        </option>
-        {GROUPS.map((group) => (
-          <optgroup key={group.label} label={group.label}>
-            {group.items.map((ex) => (
-              <option key={ex.stem} value={ex.stem}>
-                {ex.name}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
+      <Select
+        placeholder="load example..."
+        ariaLabel="Load example program"
+        onSelect={(stem) => void handleSelect(stem)}
+        groups={GROUPS.map((group) => ({
+          label: group.label,
+          options: group.items.map((ex) => ({ value: ex.stem, label: ex.name })),
+        }))}
+      />
       {loadError && (
         <span className="text-[var(--danger)] text-xs" role="alert">
           {loadError}
