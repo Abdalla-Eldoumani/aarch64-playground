@@ -45,3 +45,6 @@ design-reference/
 .DS_Store
 Thumbs.db
 .lighthouse/
+
+# Web Template
+web/content/lessons/lesson-template.json

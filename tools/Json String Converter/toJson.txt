@@ -1,0 +1,17 @@
+-- Introduction
+
+-- However, printing in Assembly is not as simple. Several additional steps must be performed before data can be displayed on the standard output. This page will explore these steps and provide an understanding of how printing is achieved in ARMv8 Assembly.
+
+-- The Big Picture. 
+-- In order to print to standard output in Assembly, the following steps must be performed:
+--    1. Store the string to be displayed in memory.
+--    2. Load the string's address and required values into the appropriate registers.
+--    3. Call the printf function to handle the process of displaying the output.
+
+-- Storing the string
+--
+main: 
+    // program prologe
+    ldr x0, =message
+    ..
+    // program epilogue
