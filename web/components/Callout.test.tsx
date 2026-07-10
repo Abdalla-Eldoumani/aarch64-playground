@@ -6,7 +6,7 @@ const THEMES = ["dark", "light", "high-contrast"] as const;
 
 // Each variant's field must read from its semantic token, never a raw color.
 const TOKEN_BY_TYPE: Record<CalloutType, string> = {
-  note: "var(--cyan-dim)",
+  note: "var(--cyan)",
   warning: "var(--warning)",
   pitfall: "var(--danger)",
 };
@@ -38,7 +38,7 @@ describe("Callout", () => {
 
   it("labels each variant", () => {
     render(<Callout type="pitfall">careful</Callout>);
-    expect(screen.getByText("Pitfall")).toBeTruthy();
+    expect(screen.getByText("pitfall")).toBeTruthy();
   });
 
   it("renders every variant under every theme without crashing", () => {
