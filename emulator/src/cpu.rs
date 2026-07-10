@@ -112,6 +112,9 @@ pub struct Cpu {
     pub mem: Memory,
     breakpoints: HashSet<u64>,
     changed_regs: Vec<u8>,
+    /// FP registers (d0-d31) the last step wrote, tracked alongside the
+    /// integer set so the UI's d-register view can flash writes.
+    changed_fprs: Vec<u8>,
     halted: bool,
     /// Bytes printf/puts/write(1) have emitted since the last `clear_console`.
     pub stdout: Vec<u8>,
@@ -175,6 +178,7 @@ impl Cpu {
             mem: Memory::new(),
             breakpoints: HashSet::new(),
             changed_regs: Vec::new(),
+            changed_fprs: Vec::new(),
             halted: false,
             stdout: Vec::new(),
             stderr: Vec::new(),
@@ -460,6 +464,7 @@ impl Cpu {
         }
 
         let snapshot = self.regs.snapshot();
+        let fpr_snapshot = self.regs.snapshot_fpr();
         let word = self.mem.read_u32(pc)?;
         let instr = decoder::decode(word)?;
         let result = match executor::execute(&instr, &mut self.regs, &mut self.mem) {
@@ -517,6 +522,13 @@ impl Cpu {
         for i in 0..32 {
             if snapshot[i] != current[i] {
                 self.changed_regs.push(i as u8);
+            }
+        }
+        let fpr_current = self.regs.snapshot_fpr();
+        self.changed_fprs.clear();
+        for i in 0..32 {
+            if fpr_snapshot[i] != fpr_current[i] {
+                self.changed_fprs.push(i as u8);
             }
         }
 
@@ -619,6 +631,7 @@ impl Cpu {
         // Snapshot registers so the change highlighter still works across a
         // host call.
         let snapshot = self.regs.snapshot();
+        let fpr_snapshot = self.regs.snapshot_fpr();
         // The table is read-only during dispatch; split the borrow by
         // temporarily taking the entries, dispatching, then restoring.
         let table = std::mem::take(&mut self.host);
@@ -661,6 +674,13 @@ impl Cpu {
         for i in 0..32 {
             if snapshot[i] != current[i] {
                 self.changed_regs.push(i as u8);
+            }
+        }
+        let fpr_current = self.regs.snapshot_fpr();
+        self.changed_fprs.clear();
+        for i in 0..32 {
+            if fpr_snapshot[i] != fpr_current[i] {
+                self.changed_fprs.push(i as u8);
             }
         }
 
@@ -754,6 +774,7 @@ impl Cpu {
         self.mem.map_page(DATA_BASE);
         self.mem.map_page(BSS_BASE);
         self.changed_regs.clear();
+        self.changed_fprs.clear();
         self.halted = false;
         self.steps_total = 0;
         self.abort_message = None;
@@ -821,6 +842,7 @@ impl Cpu {
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.changed_regs.clear();
+        self.changed_fprs.clear();
         true
     }
 
@@ -862,6 +884,7 @@ impl Cpu {
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.changed_regs.clear();
+        self.changed_fprs.clear();
         if self.halted {
             match self.exit_code {
                 Some(code) => StepOutcome::Exited(code),
@@ -877,6 +900,11 @@ impl Cpu {
     /// Indices of registers that changed during the last step.
     pub fn changed_registers(&self) -> &[u8] {
         &self.changed_regs
+    }
+
+    /// Indices of FP registers (d0-d31) that changed during the last step.
+    pub fn changed_fp_registers(&self) -> &[u8] {
+        &self.changed_fprs
     }
 
     /// Whether the CPU has halted (SVC executed).
@@ -975,6 +1003,27 @@ mod tests {
 
         cpu.step().unwrap();
         assert!(cpu.changed_registers().contains(&5));
+    }
+
+    #[test]
+    fn changed_fp_regs_tracked() {
+        // movz x5, 42 (integer step: fp set stays empty), then fmov d0, #1.5.
+        // The VFP8 immediate for 1.5 is 0x78 and the IEEE-754 double bits are
+        // 0x3FF8000000000000 -- both independent literals from the ARM ARM,
+        // never recomputed through the code under test.
+        let mut cpu = Cpu::new();
+        let code = vec![
+            encode_movz(5, 42, 0),
+            0x1E60_1000u32 | (0x78 << 13), // fmov d0, #1.5
+            encode_svc(0),
+        ];
+        cpu.load_program(&code);
+
+        cpu.step().unwrap();
+        assert!(cpu.changed_fp_registers().is_empty());
+        cpu.step().unwrap();
+        assert!(cpu.changed_fp_registers().contains(&0));
+        assert_eq!(cpu.regs.read_fpr_bits(0), 0x3FF8_0000_0000_0000);
     }
 
     #[test]
