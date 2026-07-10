@@ -11,10 +11,13 @@ Live at <https://aarch64-playground.vercel.app>.
 ## Features
 
 - **Playground** (`/playground`): a Monaco editor with assemble, run, step,
-  and step-back; breakpoints; register, memory, and stack views; a console
-  with stdin and a virtual filesystem; a terminal pane with a gdb-style
-  command subset; a hex/binary/decimal/two's-complement converter; share
-  links; and dark, light, and high-contrast themes.
+  and step-back; breakpoints; a live decode strip that renders the
+  instruction under the pc as its actual encoding fields; register views for
+  both the integer (`x0`–`x30`) and floating-point (`d0`–`d31`) files with
+  decimal and raw-bit readings; memory and stack views; a console with stdin
+  and a virtual filesystem; a terminal pane with a gdb-style command subset;
+  a hex/binary/decimal/two's-complement converter; share links; and dark,
+  light, and high-contrast themes.
 - **Learn** (`/learn`): short lessons with runnable inline editors.
 - **Practice** (`/practice`): exercises checked by running your program
   against expected behavior (registers, exit code, stdout), never against a
