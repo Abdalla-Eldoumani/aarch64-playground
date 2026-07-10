@@ -102,21 +102,14 @@ export interface EmulatorState {
   }) => Promise<void>;
   clearConsole: () => void;
   /**
-   * Per-source-line execution counter. Increments by one for every
-   * instruction the snapshot's `pcTrace` reports (granular both for
-   * `step` and `runUntilBreak`); cleared on `reset` and `assemble`.
-   * Drives the hotspot overlay.
-   */
-  lineCounts: Map<number, number>;
-  /**
    * Most-recent snapshot's `(addr, len)` memory writes. Drives the
    * replay scrubber's memory-diff highlighting and any future
    * "show me what changed last step" UI.
    */
   dirtyAddrs: Array<[number, number]>;
   /**
-   * Last N captured frames for the replay scrubber. Populated by the
-   * same step/run path that bumps `lineCounts`. Capacity 128.
+   * Last N captured frames for the replay scrubber. Populated after
+   * every step and run stop. Capacity 128.
    */
   replayFrames: ReplayFrame[];
   /**
@@ -140,10 +133,6 @@ export function useEmulator(): EmulatorState {
   // panels never read stale bytes. Stores Uint8Arrays keyed by addr+len.
   const memCacheRef = useRef<Map<string, Uint8Array>>(new Map());
   const memPendingRef = useRef<Set<string>>(new Set());
-  // Hotspot tracking. Source of truth lives in a ref so applySnapshot
-  // can write without forcing the hook to render every snapshot. Tick
-  // bump triggers consumers to re-read.
-  const lineCountsRef = useRef<Map<number, number>>(new Map());
   const currentLineRef = useRef<number | null>(null);
   // Authoritative linker address -> editor-line map for the current
   // assembly. Empty until the first successful hosted assemble; an empty
@@ -205,7 +194,7 @@ export function useEmulator(): EmulatorState {
   const [savedStates, setSavedStates] = useState<string[]>([]);
   // Tick increments whenever cache state changes so panels re-render.
   const [memTick, setMemTick] = useState(0);
-  const [lineCountsTick, setLineCountsTick] = useState(0);
+  const [replayTick, setReplayTick] = useState(0);
   const [dirtyAddrsTick, setDirtyAddrsTick] = useState(0);
 
   const applySnapshot = useCallback((snap: StateSnapshot) => {
@@ -262,29 +251,6 @@ export function useEmulator(): EmulatorState {
         currentLineRef.current = newLine;
       }
     }
-    // Trace-driven hotspot bumping. Each PC in pcTrace maps to a
-    // source line via the same authoritative map; we bump the count for
-    // every executed instruction (not just the snapshot's terminal PC).
-    // This is the granular run-mode hotspot -- a long loop lights up
-    // across all its lines, not just the final one.
-    if (snap.pcTrace && snap.pcTrace.length > 0) {
-      const counts = lineCountsRef.current;
-      const mapped = !isEmptyLineMap(map);
-      let mutated = false;
-      for (const tracePc of snap.pcTrace) {
-        let line: number | null;
-        if (mapped) {
-          line = pcToSourceLineFromMap(tracePc, map);
-        } else {
-          const idx = (tracePc - codeBase) / 4;
-          line = idx < 0 ? null : pcToSourceLine(idx, sourceRef.current);
-        }
-        if (line == null) continue;
-        counts.set(line, (counts.get(line) ?? 0) + 1);
-        mutated = true;
-      }
-      if (mutated) setLineCountsTick((t) => t + 1);
-    }
     // dirtyAddrs are surfaced through a separate ref so the memory
     // panel + replay scrubber can highlight changed cells without
     // forcing a full memory cache invalidation.
@@ -303,11 +269,8 @@ export function useEmulator(): EmulatorState {
 
   // Push a replay frame using the latest snapshot data + the
   // current line. Called by step / runUntilBreak after the snapshot
-  // listener has updated currentLineRef + latestSnapRef. The
-  // hotspot heat map now drives off the snapshot's `pcTrace` field
-  // (handled inside applySnapshot) so this function does NOT bump
-  // lineCounts -- it would double-count.
-  const bumpLineCount = useCallback((newStepCount: number) => {
+  // listener has updated currentLineRef + latestSnapRef.
+  const pushReplayFrame = useCallback((newStepCount: number) => {
     const ln = currentLineRef.current;
     const snap = latestSnapRef.current;
     replayRingRef.current.push({
@@ -318,7 +281,7 @@ export function useEmulator(): EmulatorState {
       changedRegs: snap.changedRegs,
       currentLine: ln,
     });
-    setLineCountsTick((t) => t + 1);
+    setReplayTick((t) => t + 1);
   }, []);
 
   // Ref and state move together so the guards (refs) and the controls
@@ -328,10 +291,9 @@ export function useEmulator(): EmulatorState {
     setProgramLoaded(loaded);
   }, []);
 
-  const resetLineCounts = useCallback(() => {
-    lineCountsRef.current = new Map();
+  const resetReplayHistory = useCallback(() => {
     replayRingRef.current.clear();
-    setLineCountsTick((t) => t + 1);
+    setReplayTick((t) => t + 1);
   }, []);
 
   const seekReplay = useCallback((frameIndex: number) => {
@@ -391,7 +353,7 @@ export function useEmulator(): EmulatorState {
       // program is gone the moment one starts; the flag comes back only on
       // success. A failed assemble leaves the controls gated.
       markProgramLoaded(false);
-      resetLineCounts();
+      resetReplayHistory();
       // Drop any prior line map; a failed assemble or the bare-metal path
       // then falls back to the legacy line-count heuristic.
       lineMapRef.current = emptyLineMap();
@@ -476,7 +438,7 @@ export function useEmulator(): EmulatorState {
           return false;
         });
     },
-    [resetLineCounts, markProgramLoaded],
+    [resetReplayHistory, markProgramLoaded],
   );
 
   const step = useCallback(() => {
@@ -494,14 +456,14 @@ export function useEmulator(): EmulatorState {
           // currentLineRef + latestSnapRef are already updated because
           // notifyAndReturn fires the listener before the promise
           // resolves.
-          bumpLineCount(next);
+          pushReplayFrame(next);
           return next;
         });
       })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
       });
-  }, [bumpLineCount]);
+  }, [pushReplayFrame]);
 
   const stepBack = useCallback(() => {
     const backend = backendRef.current;
@@ -551,10 +513,10 @@ export function useEmulator(): EmulatorState {
         setStepCount((c) => {
           const next = c + runResult.steps_executed;
           if (runResult.error) setError(runResult.error);
-          // Approximate hotspot + replay capture: only the final frame
-          // of the run chunk is captured. Per-step granularity would
-          // require a Rust delta in the snapshot; tracked in BACKLOG.
-          bumpLineCount(next);
+          // Approximate replay capture: only the final frame of the run
+          // chunk is captured. Per-step granularity would require a
+          // Rust delta in the snapshot.
+          pushReplayFrame(next);
           return next;
         });
       })
@@ -565,7 +527,7 @@ export function useEmulator(): EmulatorState {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [bumpLineCount]);
+  }, [pushReplayFrame]);
 
   const pause = useCallback(() => {
     const backend = backendRef.current;
@@ -588,9 +550,9 @@ export function useEmulator(): EmulatorState {
     setStderr("");
     setStepCount(0);
     markProgramLoaded(false);
-    resetLineCounts();
+    resetReplayHistory();
     void backend.reset();
-  }, [resetLineCounts, markProgramLoaded]);
+  }, [resetReplayHistory, markProgramLoaded]);
 
   const pushStdin = useCallback((s: string) => {
     const backend = backendRef.current;
@@ -659,7 +621,7 @@ export function useEmulator(): EmulatorState {
       // Same gate discipline as assemble: the backend call below wipes the
       // machine, so the flag drops now and returns only on success.
       markProgramLoaded(false);
-      resetLineCounts();
+      resetReplayHistory();
       const argList = params.args
         ? params.args.split(/\s+/).filter((s) => s.length > 0)
         : [];
@@ -687,9 +649,9 @@ export function useEmulator(): EmulatorState {
         if (stepResult.halted || stepResult.error) break;
         if (stepResult.outcome === "waiting") break;
       }
-      bumpLineCount(stepped);
+      pushReplayFrame(stepped);
     },
-    [bumpLineCount, resetLineCounts, markProgramLoaded],
+    [pushReplayFrame, resetReplayHistory, markProgramLoaded],
   );
 
   const toggleBreakpoint = useCallback((line: number) => {
@@ -805,15 +767,14 @@ export function useEmulator(): EmulatorState {
       clearBreakpointAddress,
       restoreBookmark,
       clearConsole,
-      lineCounts: lineCountsRef.current,
       dirtyAddrs: dirtyAddrsRef.current,
       replayFrames: replayRingRef.current.range(),
       seekReplay,
     }),
-    // lineCountsTick is intentionally a dep so consumers re-render when
-    // the underlying lineCountsRef mutates (the ref identity itself
-    // never changes). eslint can't see that the returned `lineCounts`
-    // points at the ref's current value.
+    // replayTick is intentionally a dep so consumers re-render when the
+    // underlying replay ring mutates (the ref identity itself never
+    // changes). eslint can't see that the returned `replayFrames` reads
+    // through the ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
@@ -824,7 +785,7 @@ export function useEmulator(): EmulatorState {
       deleteState, run, pause, reset, toggleBreakpoint, getMemory,
       pushStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
-      clearConsole, lineCountsTick, dirtyAddrsTick, seekReplay,
+      clearConsole, replayTick, dirtyAddrsTick, seekReplay,
     ],
   );
 }
