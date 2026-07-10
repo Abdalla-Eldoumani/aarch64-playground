@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { loadAllExercises } from "@/lib/exercises";
 import { ExerciseIndex } from "@/components/ExerciseIndex";
+import { DocRule } from "@/components/DocRule";
+import { Kicker } from "@/components/Kicker";
 import { SHARE_CARD_IMAGE } from "@/lib/site";
 
 const DESCRIPTION =
@@ -33,9 +35,11 @@ export const metadata: Metadata = {
 export default function PracticePage() {
   const exercises = loadAllExercises();
   return (
-    <section className="mx-auto w-full max-w-2xl px-6 py-12 sm:py-16">
-      <h1 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)]">
-        practice
+    <section className="mx-auto w-full max-w-2xl px-6 py-10 sm:py-14">
+      <DocRule section="sheet 05 · practice" context="cpsc 355 study aid" className="mb-8" />
+      <Kicker number="05" title="practice" className="mb-5" />
+      <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">
+        Exercises
       </h1>
       <p className="mt-4 text-[var(--text-secondary)] [font:var(--type-lead)]">
         Exercises checked by running your program against expected behavior, never by matching a stored solution.
