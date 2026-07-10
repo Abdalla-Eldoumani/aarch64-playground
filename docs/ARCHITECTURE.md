@@ -159,6 +159,9 @@ backend emits a `StateSnapshot` (defined in `worker/protocol.ts`):
 
 - `registers`, `sp`, `pc`, `nzcv`, and `changedRegs` (indices that differ
   from the previous frame)
+- `fpRegisters` (`d0`–`d31` as raw IEEE-754 bit patterns) and
+  `changedFpRegs`; both empty when the loaded WASM predates the fp
+  surface, which the UI feature-detects
 - `stdoutDelta`/`stderrDelta`, `exitCode`, `blocked`, `halted`,
   `canStepBack`
 - `pcTrace`, `dirtyAddrs`, and `changedMem` for the memory cache;
