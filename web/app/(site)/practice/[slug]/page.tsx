@@ -61,5 +61,9 @@ export default async function ExercisePage({
   const { slug } = await params;
   const exercise = loadExercise(slug);
   if (!exercise) notFound();
-  return <ExerciseView exercise={exercise} />;
+  // The loader returns exercises already sorted by `order`, so the 1-based
+  // position is the exercise's sheet number on the practice datasheet (5.N).
+  const position = loadAllExercises().findIndex((entry) => entry.slug === slug);
+  const sheetNumber = position >= 0 ? `5.${position + 1}` : "5.x";
+  return <ExerciseView exercise={exercise} sheetNumber={sheetNumber} />;
 }
