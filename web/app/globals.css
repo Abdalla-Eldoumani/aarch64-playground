@@ -3,75 +3,81 @@
 @tailwind utilities;
 
 /* =============================================================================
-   aarch64 playground: design tokens v1
+   aarch64 playground: design tokens v2 — "look inside the machine"
    One system, two densities. Amber = the machine acting. Cyan = you acting.
-   One token drives each semantic state across all three themes.
+   One semantic token drives each state across all three themes. The 32-bit
+   instruction word is the brand: field boxes, bit rulers, blueprint paper.
 ============================================================================= */
 
 /* ----- DARK · primary surface (default) ----- */
 :root,
 [data-theme="dark"] {
-  --bg-base:        #0B0C0E;
-  --bg-sunken:      #111316;
-  --bg-raised:      #16181C;
-  --bg-panel:       #1B1E22;
-  --bg-elevated:    #22262B;
-  --border:         #2A2E34;
-  --border-strong:  #3A3F47;
+  --bg-base:        #0B0C10;
+  --bg-sunken:      #0F1116;
+  --bg-raised:      #14171D;
+  --bg-panel:       #191D24;
+  --bg-elevated:    #212630;
+  --border:         #262B33;
+  --border-strong:  #3A414C;
 
-  --text-primary:   #ECEDEF;
-  --text-secondary: #A4ABB3;
-  --text-tertiary:  #6C737B;
+  --text-primary:   #EDEEF1;
+  --text-secondary: #A5ACB6;
+  --text-tertiary:  #6F7681;
 
-  --amber:          #F5B53D;  /* execution: pc, current line, run, links into live things */
-  --amber-dim:      #8A6722;
+  --amber:          #FFB224;  /* execution: pc, current line, run, decode-strip Rd */
+  --amber-dim:      #7A5510;
 
-  --cyan:           #39C0DE;  /* interaction: links, focus, primary actions, selected tab/nav */
-  --cyan-dim:       #1C6576;
-  --on-cyan:        #04222A;  /* text/icon on a filled cyan control */
+  --cyan:           #3EC5E8;  /* interaction: links, focus, primary actions, selected tab/nav */
+  --cyan-dim:       #1B6376;
+  --on-cyan:        #052430;  /* text/icon on a filled cyan control */
 
-  --success:        #56D364;
+  --success:        #4ADE80;
   --warning:        #FFB454;
   --danger:         #FF6B6B;
-  --changed:        #FFCC66;  /* register-write flash: drives the animation so it follows the theme */
+  --changed:        #FFCB5E;  /* register-write flash: drives the animation so it follows the theme */
 
   --focus:          var(--cyan);
+
+  /* Blueprint paper + datasheet marginalia. The grid is CSS-only (see .paper)
+     and self-disabling in high-contrast where --grid-line goes transparent. */
+  --grid-line:      rgba(237, 238, 241, 0.03);
+  --crop:           #4A515C;
 
   /* Syntax colors for the read-only CodeBlock, matched per theme to the editor's
      Monaco palette (web/components/Editor.tsx) so the editor and read-only code
      read the same. --syntax-comment is lifted from the editor's gray to clear
      WCAG AA on the code surface; --syntax-string reuses the literal (number) hue
      since the editor grammar has no string token. */
-  --syntax-keyword:  #60A5FA;
-  --syntax-register: #F472B6;
-  --syntax-number:   #A78BFA;
-  --syntax-string:   #A78BFA;
+  --syntax-keyword:  #6FA8FF;
+  --syntax-register: #FF7EB6;
+  --syntax-number:   #B49BFF;
+  --syntax-string:   #B49BFF;
   --syntax-comment:  #8B939E;
-  --syntax-label:    #34D399;
+  --syntax-label:    #3DD68C;
 
-  /* Viewport-safe insets and the lecture-mode font scale are theme-independent,
+  /* Viewport-safe insets and the panel font scale are theme-independent,
      so the base/dark block owns them; they cascade to every theme via :root. */
   --safe-bottom:    env(safe-area-inset-bottom, 0px);
   --safe-top:       env(safe-area-inset-top, 0px);
   --font-scale:     1;
 }
 
-/* ----- LIGHT · true light ----- */
+/* ----- LIGHT · true light (ink on blueprint paper) ----- */
 [data-theme="light"] {
-  --bg-base:        #FFFFFF;
-  --bg-sunken:      #F6F7F9;
+  --bg-base:        #FCFCFD;
+  --bg-sunken:      #F4F5F7;
   --bg-raised:      #FFFFFF;
   --bg-panel:       #FFFFFF;
-  --bg-elevated:    #ECEEF1;
-  --border:         #E5E8EC;
-  --border-strong:  #D2D7DD;
+  --bg-elevated:    #E9EBEF;
+  --border:         #E2E5EA;
+  --border-strong:  #C9CED6;
 
-  --text-primary:   #0E1013;
-  --text-secondary: #5A626B;
-  --text-tertiary:  #686F78;
+  --text-primary:   #14161A;
+  --text-secondary: #565E68;
+  --text-tertiary:  #6A727C;
 
-  --amber:          #B5791A;
-  --amber-dim:      #E7C98A;
+  --amber:          #A86A0F;
+  --amber-dim:      #E7CD96;
   --cyan:           #0E7490;
   --cyan-dim:       #9AD3DF;
   --on-cyan:        #FFFFFF;
@@ -79,9 +85,12 @@
   --success:        #1F8A3B;
   --warning:        #B26A00;
   --danger:         #C2362F;
-  --changed:        #B5791A;
+  --changed:        #8A5700;
 
   --focus:          var(--cyan);
+
+  --grid-line:      rgba(20, 22, 26, 0.04);
+  --crop:           #B9C0C9;
 
   --syntax-keyword:  #1D4ED8;
   --syntax-register: #BE185D;
@@ -91,7 +100,7 @@
   --syntax-label:    #047857;
 }
 
-/* ----- HIGH-CONTRAST · pure-black, bright hairlines, targets WCAG AAA ----- */
+/* ----- HIGH-CONTRAST · pure-black, white hairlines, WCAG AAA, texture off ----- */
 [data-theme="high-contrast"] {
   --bg-base:        #000000;
   --bg-sunken:      #0A0A0A;
@@ -118,6 +127,9 @@
 
   --focus:          #FFFFFF;
 
+  --grid-line:      transparent;  /* texture off: nothing competes with text */
+  --crop:           #FFFFFF;
+
   --syntax-keyword:  #8BE0FF;
   --syntax-register: #FFB6E6;
   --syntax-number:   #D4B6FF;
@@ -127,22 +139,26 @@
 }
 
 /* =============================================================================
-   TYPE: Hanken Grotesk (display/UI), JetBrains Mono (signature), Source Serif 4
-   (lead). next/font binds --font-sans/--font-mono/--font-serif on <html> to the
-   self-hosted hashed families (layout.tsx); the --type-* shorthands reference
-   those vars so they resolve to the self-hosted fonts. The family vars are
-   intentionally NOT redeclared here — doing so would shadow next/font.
+   TYPE: IBM Plex Sans (UI/display), JetBrains Mono (signature), Source Serif 4
+   (editorial leads + margin notes). next/font binds --font-sans/--font-mono/
+   --font-serif on <html> to the self-hosted hashed families (layout.tsx); the
+   --type-* shorthands reference those vars so they resolve to the self-hosted
+   fonts. The family vars are intentionally NOT redeclared here — doing so
+   would shadow next/font.
 ============================================================================= */
 :root {
-  --type-display:  800 56px/1.04  var(--font-sans);   /* tracking -0.02em  */
-  --type-h1:       700 36px/1.10  var(--font-sans);   /* tracking -0.015em */
+  --type-display:  700 64px/1.03  var(--font-sans);   /* tracking -0.03em  */
+  --type-h1:       700 40px/1.10  var(--font-sans);   /* tracking -0.02em  */
+  --type-h1-serif: 600 40px/1.15  var(--font-serif);  /* reading surfaces  */
   --type-h2:       600 26px/1.20  var(--font-sans);   /* tracking -0.01em  */
   --type-h3:       600 19px/1.30  var(--font-sans);
   --type-lead:     400 19px/1.60  var(--font-serif);  /* editorial lead only */
-  --type-body:     400 16px/1.60  var(--font-sans);
+  --type-body:     400 15px/1.75  var(--font-sans);
   --type-small:    400 13px/1.50  var(--font-sans);
-  --type-code:     400 14px/1.60  var(--font-mono);
-  --type-label:    500 12px/1.40  var(--font-mono);   /* .08em, uppercase   */
+  --type-code:     400 14px/1.50  var(--font-mono);   /* editor: 14/21px    */
+  --type-label:    500 10px/1.40  var(--font-mono);   /* .14em, uppercase   */
+  --type-kicker:   600 11px/1.40  var(--font-mono);   /* .18em, uppercase   */
+  --type-docrule:  400 10px/1.40  var(--font-mono);   /* .08em, uppercase   */
 }
 
 /* =============================================================================
@@ -156,11 +172,12 @@
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
   --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
 
-  --radius-control: 6px;
-  --radius-card:    10px;
-  --radius-modal:   14px;
+  --radius-control: 4px;
+  --radius-card:    8px;
+  --radius-modal:   10px;
 
   --shadow-overlay: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  --shadow-frame:   0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
 
   --ring: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--focus);
 
@@ -173,11 +190,18 @@
   --cursor-blink: 1000ms;
   --error-shake: 200ms;
   --modal-rise: 160ms;
+  --decode-latch: 120ms;
 }
 
 html {
   /* 16px base on iOS kills form-field auto-zoom when the keyboard opens. */
   font-size: 16px;
+}
+
+/* Text selection carries the interaction pole: a cyan wash in every theme. */
+::selection {
+  background: color-mix(in srgb, var(--cyan) 30%, transparent);
+  color: var(--text-primary);
 }
 
 body {
@@ -189,18 +213,33 @@ body {
   font-family: var(--font-mono), "JetBrains Mono", "Fira Code", "Consolas", monospace;
 }
 
-/* Editorial-chrome typography. The serif lands on titles and empty-
-   state heads; the sans owns labels, buttons, controls, and dropdowns
+/* Editorial-chrome typography. The serif lands on reading-surface titles and
+   empty-state heads; the sans owns labels, buttons, controls, and dropdowns
    so the chrome reads quietly while the mono code stays loud. */
 .font-serif {
   font-family: var(--font-serif), "Source Serif 4", "Iowan Old Style", Georgia, serif;
   letter-spacing: -0.005em;
 }
 .font-sans {
-  font-family: var(--font-sans), "Hanken Grotesk", "Helvetica Neue", system-ui, sans-serif;
+  font-family: var(--font-sans), "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
 }
 .font-mono {
   font-family: var(--font-mono), "JetBrains Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* =============================================================================
+   BLUEPRINT PAPER
+   A faint 24px cell grid on page roots (landing, learn, practice, reference).
+   Never on the playground main surface: the debugger stays optically flat,
+   density is its texture. In high-contrast --grid-line is transparent, so the
+   helper is self-disabling there.
+============================================================================= */
+.paper {
+  background-color: var(--bg-base);
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 /* Motion. Each animation is opt-in via a class so existing layout is
@@ -274,6 +313,16 @@ body {
   85%      { transform: translateX(1px); }
 }
 
+/* Decode-strip re-latch: when the decode panel re-renders on a step, every
+   field box's border flashes from amber back to the resting hairline, the
+   fields latching the new instruction word. The destination field stays amber
+   via its own inline styling. Static under prefers-reduced-motion: the fields
+   simply swap. */
+@keyframes decode-latch {
+  from { border-color: var(--amber); }
+  to   { border-color: var(--border); }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .anim-step-pop {
     animation: step-pop var(--step-pop) var(--ease) 1;
@@ -319,6 +368,11 @@ body {
        (reduced motion) the class has no animation, so the modal is static. */
     animation: modal-rise var(--modal-rise) var(--ease) 1;
   }
+  .anim-decode-latch {
+    /* Field boxes settle from amber to the hairline over --decode-latch.
+       Outside this block (reduced motion) the fields swap instantly. */
+    animation: decode-latch var(--decode-latch) var(--ease) 1;
+  }
 }
 
 /* Safe-area inset top, applied to the first flex child (the header) so the
@@ -330,7 +384,8 @@ body {
 
 /* Resize-handle styling for react-resizable-panels. The `data-` attributes
    come from the library; we widen the hit target on coarse pointers so
-   phone drags don't miss the handle. */
+   phone drags don't miss the handle. On hover/drag a centered cyan grip bar
+   marks the draggable seam (interaction = cyan). */
 [data-panel-resize-handle-enabled] {
   background: transparent;
   position: relative;
@@ -344,6 +399,25 @@ body {
 [data-panel-resize-handle-enabled]:hover,
 [data-panel-resize-handle-enabled][data-resize-handle-active="pointer"] {
   background: var(--cyan-dim);
+}
+[data-panel-resize-handle-enabled]:hover::after,
+[data-panel-resize-handle-enabled][data-resize-handle-active="pointer"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--cyan);
+}
+[data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"]:hover::after,
+[data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"][data-resize-handle-active="pointer"]::after {
+  width: 2px;
+  height: 24px;
+}
+[data-panel-resize-handle-enabled][data-panel-group-direction="vertical"]:hover::after,
+[data-panel-resize-handle-enabled][data-panel-group-direction="vertical"][data-resize-handle-active="pointer"]::after {
+  width: 24px;
+  height: 2px;
 }
 @media (pointer: coarse) {
   [data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"] {
@@ -455,17 +529,12 @@ body {
   border-radius: 3px;
 }
 
-/* Lecture mode bumps font scale so the playground reads from
-   the back of a classroom. The class lands on `<html>` together with
-   data-theme="high-contrast" via useLectureMode. */
-.lecture-mode {
-  --font-scale: 1.25;
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
 }
-.lecture-mode .font-mono,
-.lecture-mode .font-sans,
-.lecture-mode .font-serif {
-  font-size: calc(1em * var(--font-scale));
-}
-.lecture-mode .monaco-editor {
-  font-size: calc(16px * var(--font-scale)) !important;
+
+/* High-contrast keeps the thumb at full white so the scroll position reads
+   at AAA against the near-black track. */
+[data-theme="high-contrast"] ::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
 }
