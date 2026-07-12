@@ -2,13 +2,13 @@
 
 import { useState, type JSX } from "react";
 import dynamic from "next/dynamic";
-import { CodeBlock } from "./CodeBlock";
-import { LessonMarkdown } from "./LessonMarkdown";
-import { Button } from "./Button";
-import { PITFALLS } from "@/lib/pitfall-data";
+import { CodeBlock } from "@/components/ui/CodeBlock";
+import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
+import { Button } from "@/components/ui/Button";
+import { PITFALLS } from "@/lib/content/pitfall-data";
 
 /**
- * The five recurring CPSC 355 traps. Each card keeps the compact wrong/right
+ * The seven recurring CPSC 355 traps. Each card keeps the compact wrong/right
  * snippets (read-only CodeBlock, token accents, never color alone) and gains
  * the run-it-live affordance: "run the fault" seeds the complete faulty
  * program into the one shared EmbeddablePlayground and the student watches it
@@ -27,7 +27,7 @@ import { PITFALLS } from "@/lib/pitfall-data";
 // itself stays free of the embed's chunk.
 const EmbeddablePlayground = dynamic(
   () =>
-    import("@/components/EmbeddablePlayground").then(
+    import("@/components/playground/EmbeddablePlayground").then(
       (m) => m.EmbeddablePlayground,
     ),
   { ssr: false, loading: () => null },
