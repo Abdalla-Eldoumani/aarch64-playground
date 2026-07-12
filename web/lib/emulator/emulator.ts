@@ -203,6 +203,15 @@ export class EmulatorInstance {
     return this.inner.get_changed_fp_registers?.() ?? new Uint8Array(0);
   }
 
+  /** Run the m4 pass alone (the terminal's `m4` command). Null when the
+   *  loaded WASM predates the export (feature-detected, never throws). */
+  m4Expand(source: string): { success: boolean; text?: string; error?: string; error_line?: number } | null {
+    const result = this.inner.m4_expand?.(source);
+    return (result ?? null) as
+      | { success: boolean; text?: string; error?: string; error_line?: number }
+      | null;
+  }
+
   setBreakpoint(address: number): void {
     this.inner.set_breakpoint(address);
   }
@@ -267,6 +276,8 @@ interface WasmEmulatorInstance {
   /** Optional: present once the emulator crate ships the FP surface. */
   get_fp_registers?(): string[];
   get_changed_fp_registers?(): Uint8Array;
+  /** Optional: standalone m4 pass, present once the crate ships it. */
+  m4_expand?(source: string): unknown;
   set_breakpoint(address: number): void;
   clear_breakpoint(address: number): void;
   is_halted(): boolean;
