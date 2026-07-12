@@ -10,81 +10,82 @@ import {
   useState,
 } from "react";
 import dynamic from "next/dynamic";
-import { useEmulator } from "@/lib/use-emulator";
-import { useBreakpoint, isAtLeast } from "@/lib/use-breakpoint";
-import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/auto-save";
-import type { HandoffPayload } from "@/lib/playground-handoff";
-import { parseFrameSlots } from "@/lib/frame-labels";
-import { parseArgs } from "@/lib/args";
-import { formatAsm } from "@/lib/asm-formatter";
-import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/upload-guard";
+import { useEmulator } from "@/lib/emulator/use-emulator";
+import { useBreakpoint, isAtLeast } from "@/lib/hooks/use-breakpoint";
+import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
+import type { HandoffPayload } from "@/lib/playground/playground-handoff";
+import { parseFrameSlots } from "@/lib/emulator/frame-labels";
+import { parseArgs } from "@/lib/playground/args";
+import { formatAsm } from "@/lib/asm/asm-formatter";
+import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
+import { loadPersistedVfs, savePersistedVfs } from "@/lib/playground/vfs-persist";
 import {
   describeTarget,
   getImportTarget,
   type ImportTarget,
-} from "@/lib/use-import-target";
-import type { Action } from "@/lib/commands";
-import { Editor } from "@/components/Editor";
-import { RegisterPanel } from "@/components/RegisterPanel";
-import { ConsolePanel } from "@/components/ConsolePanel";
-import { Controls } from "@/components/Controls";
-import { DecodeStrip } from "@/components/DecodeStrip";
-import { FirstRunState } from "@/components/FirstRunState";
-import { ExampleLoader } from "@/components/ExampleLoader";
-import { RecentPrograms } from "@/components/RecentPrograms";
-import { ResizableLayout } from "@/components/ResizableLayout";
-import { MobileLayout } from "@/components/MobileLayout";
-import { ImportExport } from "@/components/ImportExport";
-import { Toolbar } from "@/components/Toolbar";
-import { ArgsInput } from "@/components/ArgsInput";
+} from "@/lib/hooks/use-import-target";
+import type { Action } from "@/lib/playground/commands";
+import { Editor } from "@/components/playground/Editor";
+import { RegisterPanel } from "@/components/panels/RegisterPanel";
+import { ConsolePanel } from "@/components/panels/ConsolePanel";
+import { Controls } from "@/components/playground/Controls";
+import { DecodeStrip } from "@/components/panels/DecodeStrip";
+import { FirstRunState } from "@/components/playground/FirstRunState";
+import { ExampleLoader } from "@/components/playground/ExampleLoader";
+import { RecentPrograms } from "@/components/playground/RecentPrograms";
+import { ResizableLayout } from "@/components/playground/ResizableLayout";
+import { MobileLayout } from "@/components/playground/MobileLayout";
+import { ImportExport } from "@/components/playground/ImportExport";
+import { Toolbar } from "@/components/playground/Toolbar";
+import { ArgsInput } from "@/components/playground/ArgsInput";
 import {
   MultiFileTabs,
   combineSources,
   useSourceFiles,
   type SourceFile,
-} from "@/components/MultiFileTabs";
-import { useToast } from "@/components/Toast";
+} from "@/components/playground/MultiFileTabs";
+import { useToast } from "@/components/ui/Toast";
 
 // Full-only / heavy panels load on first render so a multi-embed page (and
 // the embed/checker chrome) never ships their code.
 const InstructionView = dynamic(
-  () => import("@/components/InstructionView").then((m) => m.InstructionView),
+  () => import("@/components/reference/InstructionView").then((m) => m.InstructionView),
   { ssr: false },
 );
 const MemoryPanel = dynamic(
-  () => import("@/components/MemoryPanel").then((m) => m.MemoryPanel),
+  () => import("@/components/panels/MemoryPanel").then((m) => m.MemoryPanel),
   { ssr: false },
 );
 const StackPanel = dynamic(
-  () => import("@/components/StackPanel").then((m) => m.StackPanel),
+  () => import("@/components/panels/StackPanel").then((m) => m.StackPanel),
   { ssr: false },
 );
 const WatchPanel = dynamic(
-  () => import("@/components/WatchPanel").then((m) => m.WatchPanel),
+  () => import("@/components/panels/WatchPanel").then((m) => m.WatchPanel),
   { ssr: false },
 );
 const MemoryWatches = dynamic(
-  () => import("@/components/MemoryWatches").then((m) => m.MemoryWatches),
+  () => import("@/components/panels/MemoryWatches").then((m) => m.MemoryWatches),
   { ssr: false },
 );
 const BaseConverter = dynamic(
-  () => import("@/components/BaseConverter").then((m) => m.BaseConverter),
+  () => import("@/components/panels/BaseConverter").then((m) => m.BaseConverter),
   { ssr: false },
 );
 const ReplayScrubber = dynamic(
-  () => import("@/components/ReplayScrubber").then((m) => m.ReplayScrubber),
+  () => import("@/components/playground/ReplayScrubber").then((m) => m.ReplayScrubber),
   { ssr: false },
 );
 const SavesPanel = dynamic(
-  () => import("@/components/SavesPanel").then((m) => m.SavesPanel),
+  () => import("@/components/panels/SavesPanel").then((m) => m.SavesPanel),
   { ssr: false },
 );
 const TerminalPane = dynamic(
-  () => import("@/components/TerminalPane").then((m) => m.TerminalPane),
+  () => import("@/components/panels/TerminalPane").then((m) => m.TerminalPane),
   { ssr: false, loading: () => null },
 );
 const TutorialRunner = dynamic(
-  () => import("@/components/TutorialRunner").then((m) => m.TutorialRunner),
+  () => import("@/components/playground/TutorialRunner").then((m) => m.TutorialRunner),
   { ssr: false },
 );
 
@@ -326,6 +327,43 @@ function EmbeddableCore({
     }
   }, []);
 
+  // The working file set is the seeds' vfs map: everything the student put
+  // there on purpose (uploads, terminal redirect outputs, a program's loaded
+  // fixtures). Routing every user write through these helpers keeps the map
+  // authoritative, which buys two behaviors at once: assemble's machine
+  // reset re-seeds the files instead of losing them, and the full
+  // playground mirrors the map into IndexedDB so it survives reloads and
+  // route changes. Embed and checker chromes stay session-only sandboxes.
+  const persistWorkingSet = useCallback(() => {
+    if (chrome !== "full") return;
+    void savePersistedVfs(seedsRef.current.vfs ?? {});
+  }, [chrome]);
+
+  const stageVfsFile = useCallback(
+    (name: string, data: Uint8Array | string) => {
+      const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+      const body = typeof data === "string" ? data : new TextDecoder().decode(data);
+      seedsRef.current.vfs = { ...(seedsRef.current.vfs ?? {}), [name]: body };
+      emuRef.current.uploadVfsFile(name, bytes);
+      persistWorkingSet();
+    },
+    [persistWorkingSet],
+  );
+
+  const removeVfsFile = useCallback(
+    async (path: string) => {
+      if (seedsRef.current.vfs && path in seedsRef.current.vfs) {
+        const next = { ...seedsRef.current.vfs };
+        delete next[path];
+        seedsRef.current.vfs = next;
+      }
+      const removed = await emuRef.current.deleteVfsFile(path);
+      persistWorkingSet();
+      return removed;
+    },
+    [persistWorkingSet],
+  );
+
   const loadProgram = useCallback(
     (payload: HandoffPayload) => {
       // The replaced buffer stays recoverable through recents; entries are
@@ -337,15 +375,33 @@ function EmbeddableCore({
       // A fresh program starts on a fresh machine: registers, memory,
       // console, exit code, stdin queue, and VFS all clear.
       emuRef.current.reset();
-      seedsRef.current = { stdin: payload.stdin, vfs: payload.vfs };
+      // Interactive input is the point in the full playground: a program
+      // that reads stdin should block at its scanf and pull the student to
+      // the console, so example stdin fixtures do not pre-seed there. The
+      // embed and checker chromes keep authored seeds (lesson figures and
+      // exercise checks must run exactly as written), and VFS fixtures
+      // always seed -- the file examples need their inputs on disk.
+      // Full chrome treats the VFS as the student's home directory: a new
+      // program's fixtures land beside (and on name collisions, over) the
+      // files already there, never wiping them. Embed and checker keep the
+      // strict replace: a lesson figure must see exactly its own fixtures.
+      const workingVfs =
+        chrome === "full"
+          ? { ...(seedsRef.current.vfs ?? {}), ...(payload.vfs ?? {}) }
+          : payload.vfs;
+      seedsRef.current = {
+        stdin: chrome === "full" ? undefined : payload.stdin,
+        vfs: workingVfs,
+      };
       // Seed the VFS now so the console's file list shows the program's
       // fixtures immediately; assemble re-seeds after its machine reset.
-      if (payload.vfs) {
+      if (workingVfs) {
         const enc = new TextEncoder();
-        for (const [name, body] of Object.entries(payload.vfs)) {
+        for (const [name, body] of Object.entries(workingVfs)) {
           emuRef.current.uploadVfsFile(name, enc.encode(body));
         }
       }
+      persistWorkingSet();
       setSource(payload.source);
       setActiveFile(-1);
       setArgsText(payload.args ?? "");
@@ -353,8 +409,26 @@ function EmbeddableCore({
       setShareBanner(Boolean(payload.fromShare));
       lastRunSourceRef.current = null;
     },
-    [chrome, recent],
+    [chrome, recent, persistWorkingSet],
   );
+
+  // Rehydrate the home directory once the hub is live: the persisted files
+  // sit underneath anything a boot handoff (share link, bundle, example)
+  // already staged, so a link's fixtures win their name collisions. Runs
+  // once per mount; embed and checker chromes never touch the store.
+  const hydratedVfsRef = useRef(false);
+  useEffect(() => {
+    if (chrome !== "full" || hydratedVfsRef.current || !emu.isLoaded) return;
+    hydratedVfsRef.current = true;
+    void loadPersistedVfs().then((files) => {
+      if (!files || Object.keys(files).length === 0) return;
+      seedsRef.current.vfs = { ...files, ...(seedsRef.current.vfs ?? {}) };
+      const enc = new TextEncoder();
+      for (const [name, body] of Object.entries(seedsRef.current.vfs)) {
+        emuRef.current.uploadVfsFile(name, enc.encode(body));
+      }
+    });
+  }, [chrome, emu.isLoaded]);
 
   // Push the current buffer onto the recent list whenever the user
   // assembles, and concatenate any extra files so `bl func` resolves across
@@ -404,7 +478,11 @@ function EmbeddableCore({
   useEffect(() => {
     if (emu.blocked && !lastBlockedRef.current) {
       lastBlockedRef.current = true;
-      queueMicrotask(() => setActiveTab("console"));
+      queueMicrotask(() => {
+        setActiveTab("console");
+        // Phones route panes through the pane switcher, not the tab state.
+        setPaneRequest({ pane: "console", nonce: Date.now() });
+      });
     } else if (!emu.blocked) {
       lastBlockedRef.current = false;
     }
@@ -426,29 +504,41 @@ function EmbeddableCore({
         label: "Step",
         // The hint mirrors step-back's: the hub ignores step/run without a
         // loaded program, so the palette says why instead of no-oping mutely.
-        description: emu.programLoaded
-          ? "execute one instruction"
-          : "(no program; assemble first)",
+        description: emu.blocked
+          ? "(waiting for stdin; feed the console first)"
+          : emu.programLoaded
+            ? "execute one instruction"
+            : "(no program; assemble first)",
         shortcut: "F10",
-        run: () => emu.step(),
+        run: () => {
+          if (!emu.blocked) emu.step();
+        },
       },
       {
         id: "step-back",
         label: "Step back",
-        description: emu.canStepBack
-          ? "undo the last instruction from the snapshot ring"
-          : "(no snapshots; run a step first)",
+        description: emu.blocked
+          ? "(waiting for stdin; feed the console first)"
+          : emu.canStepBack
+            ? "undo the last instruction from the snapshot ring"
+            : "(no snapshots; run a step first)",
         shortcut: "Shift+F10",
-        run: () => emu.stepBack(),
+        run: () => {
+          if (!emu.blocked) emu.stepBack();
+        },
       },
       {
         id: "run",
         label: "Run",
-        description: emu.programLoaded
-          ? "run until halt or breakpoint"
-          : "(no program; assemble first)",
+        description: emu.blocked
+          ? "(waiting for stdin; feed the console first)"
+          : emu.programLoaded
+            ? "run until halt or breakpoint"
+            : "(no program; assemble first)",
         shortcut: "F5",
-        run: () => emu.run(),
+        run: () => {
+          if (!emu.blocked) emu.run();
+        },
       },
       {
         id: "pause",
@@ -739,10 +829,19 @@ function EmbeddableCore({
   const handle = useMemo<EmbeddablePlaygroundHandle>(
     () => ({
       assemble: () => assembleRef.current(),
-      run: () => emuRef.current.run(),
+      // Run, step, and back cannot pass a blocked read (the machine just
+      // re-blocks), so while stdin is awaited they no-op like the disabled
+      // buttons; assemble and reset stay live as the two real exits.
+      run: () => {
+        if (!emuRef.current.blocked) emuRef.current.run();
+      },
       pause: () => emuRef.current.pause(),
-      step: () => emuRef.current.step(),
-      stepBack: () => emuRef.current.stepBack(),
+      step: () => {
+        if (!emuRef.current.blocked) emuRef.current.step();
+      },
+      stepBack: () => {
+        if (!emuRef.current.blocked) emuRef.current.stepBack();
+      },
       reset: () => emuRef.current.reset(),
       loadSource: (next: string) => loadSource(next),
       loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
@@ -794,8 +893,37 @@ function EmbeddableCore({
   // that can never change and report the pre-run stdout and exit code.
   // The refs also keep this callback's identity stable, so the terminal
   // pane never re-initializes underneath an open session.
+  // `gcc -o name` registers compiled source here; `./name` runs it. A ref,
+  // so the registry survives every per-snapshot context rebuild.
+  const terminalExecutablesRef = useRef<Map<string, string>>(new Map());
+
   const buildTerminalContext = useCallback(() => {
     const dec = new TextDecoder();
+    // One wait loop for every terminal-run shape: sleep BEFORE checking so
+    // React has committed run()'s isRunning=true into the ref (see the
+    // comment on the original runProgram).
+    const waitForHalt = async () => {
+      const startedAt = Date.now();
+      do {
+        await new Promise<void>((r) => setTimeout(r, 16));
+      } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
+    };
+    const runText = async (text: string, args: string[], stdin?: string) => {
+      const ok = await emuRef.current.assemble(text, args.slice(1));
+      if (!ok) {
+        const e = emuRef.current;
+        return { stdout: e.stdout, stderr: e.stderr, exitCode: e.exitCode ?? 0 };
+      }
+      if (stdin) emuRef.current.pushStdin(stdin);
+      emuRef.current.run();
+      await waitForHalt();
+      const e = emuRef.current;
+      return {
+        stdout: e.stdout,
+        stderr: e.stderr,
+        exitCode: e.exitCode ?? 0,
+      };
+    };
     return {
       vfs: new Map<string, string>(),
       listVfs: () => emuRef.current.vfsFiles.slice().sort(),
@@ -807,37 +935,13 @@ function EmbeddableCore({
         return dec.decode(bytes);
       },
       writeVfs: (path: string, body: string) => {
-        const enc = new TextEncoder();
-        emuRef.current.uploadVfsFile(path, enc.encode(body));
+        stageVfsFile(path, body);
       },
-      deleteVfs: async (path: string) => emuRef.current.deleteVfsFile(path),
-      runProgram: async (args: string[], stdin?: string) => {
-        // Await the assemble: run() gates on the loaded-program flag, so
-        // firing it while the assemble is still in flight would no-op.
-        const ok = await emuRef.current.assemble(sourceRef.current, args.slice(1));
-        if (!ok) {
-          const e = emuRef.current;
-          return { stdout: e.stdout, stderr: e.stderr, exitCode: e.exitCode ?? 0 };
-        }
-        if (stdin) emuRef.current.pushStdin(stdin);
-        emuRef.current.run();
-        const startedAt = Date.now();
-        // Sleep BEFORE checking: run() raises isRunning through React
-        // state, which reaches emuRef only on the next commit, so an
-        // immediate check reads the pre-run false and would report the
-        // previous stdout and exit code. Each 16ms sleep yields to React,
-        // so the ref advances with the live run and the loop ends on the
-        // real halt.
-        do {
-          await new Promise<void>((r) => setTimeout(r, 16));
-        } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
-        const e = emuRef.current;
-        return {
-          stdout: e.stdout,
-          stderr: e.stderr,
-          exitCode: e.exitCode ?? 0,
-        };
-      },
+      deleteVfs: async (path: string) => removeVfsFile(path),
+      // The editor's program: the same run shape as a compiled executable,
+      // over the live buffer.
+      runProgram: async (args: string[], stdin?: string) =>
+        runText(sourceRef.current, args, stdin),
       step: async () => {
         emuRef.current.step();
         const e = emuRef.current;
@@ -857,6 +961,19 @@ function EmbeddableCore({
       setBreakpoint: async (addr: number) => emuRef.current.setBreakpointAddress(addr),
       clearBreakpoint: async (addr: number) => emuRef.current.clearBreakpointAddress(addr),
       resolveLabel: async (name: string) => emuRef.current.resolveLabel(name),
+      m4Expand: async (text: string) => emuRef.current.m4Expand(text),
+      assembleSource: async (text: string) => {
+        const ok = await emuRef.current.assemble(text, []);
+        const e = emuRef.current;
+        const errors = e.assemblyErrors.length
+          ? e.assemblyErrors.map((err) => `line ${err.line}: ${err.message}`)
+          : e.error
+            ? [e.error]
+            : [];
+        return { success: ok, errors: ok ? [] : errors };
+      },
+      runSource: runText,
+      executables: terminalExecutablesRef.current,
       readRegister: (name: string) => {
         const e = emuRef.current;
         const lower = name.toLowerCase();
@@ -884,7 +1001,7 @@ function EmbeddableCore({
       pcAddress: () => emuRef.current.pc,
       reset: async () => emuRef.current.reset(),
     };
-  }, []);
+  }, [stageVfsFile, removeVfsFile]);
 
   if (emu.loadError) {
     return (
@@ -945,7 +1062,7 @@ function EmbeddableCore({
               exitCode={emu.exitCode}
               vfsFiles={emu.vfsFiles}
               pushStdin={emu.pushStdin}
-              uploadVfsFile={emu.uploadVfsFile}
+              uploadVfsFile={stageVfsFile}
               clearConsole={emu.clearConsole}
             />
           </div>
@@ -1114,7 +1231,7 @@ function EmbeddableCore({
       exitCode={emu.exitCode}
       vfsFiles={emu.vfsFiles}
       pushStdin={emu.pushStdin}
-      uploadVfsFile={emu.uploadVfsFile}
+      uploadVfsFile={stageVfsFile}
       clearConsole={emu.clearConsole}
     />
   );
@@ -1134,7 +1251,7 @@ function EmbeddableCore({
             return;
           }
           f.arrayBuffer().then((buf) => {
-            emu.uploadVfsFile(f.name, new Uint8Array(buf));
+            stageVfsFile(f.name, new Uint8Array(buf));
           });
           e.target.value = "";
         }}
@@ -1382,6 +1499,7 @@ function EmbeddableCore({
         isRunning={emu.isRunning}
         isHalted={emu.isHalted}
         programLoaded={emu.programLoaded}
+        blocked={emu.blocked}
         error={emu.error}
         stepCount={emu.stepCount}
       />
