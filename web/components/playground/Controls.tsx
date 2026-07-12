@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@/components/Button";
-import { explainError } from "@/lib/error-explain";
+import { Button } from "@/components/ui/Button";
+import { explainError } from "@/lib/asm/error-explain";
 
 interface ControlsProps {
   onAssemble: () => void;
@@ -17,6 +17,11 @@ interface ControlsProps {
    *  failed one. Run, step, and back have nothing to execute without a
    *  program, so they render disabled instead of silently no-oping. */
   programLoaded: boolean;
+  /** True while the program sits at a blocked read waiting for stdin. Run,
+   *  step, and back cannot make progress past the read (the machine just
+   *  re-blocks), so they disable; assemble and reset stay live because both
+   *  genuinely escape the wait by starting over. */
+  blocked?: boolean;
   error: string | null;
   stepCount?: number;
 }
@@ -32,6 +37,7 @@ export function Controls({
   isRunning,
   isHalted,
   programLoaded,
+  blocked = false,
   error,
   stepCount,
 }: ControlsProps) {
@@ -66,7 +72,7 @@ export function Controls({
         aria-label={isRunning ? "pause" : "run"}
         aria-keyshortcuts="F5"
         title="F5"
-        disabled={!programLoaded || (isHalted && !isRunning)}
+        disabled={!programLoaded || (isHalted && !isRunning) || (blocked && !isRunning)}
       >
         <span>{isRunning ? "pause" : "run"}</span>
         <Shortcut keys="F5" />
@@ -77,7 +83,7 @@ export function Controls({
         aria-label="step"
         aria-keyshortcuts="F10"
         title="F10"
-        disabled={!programLoaded || isRunning || isHalted}
+        disabled={!programLoaded || isRunning || isHalted || blocked}
       >
         <span>step</span>
         <Shortcut keys="F10" />
@@ -89,7 +95,7 @@ export function Controls({
           aria-label="back"
           aria-keyshortcuts="Shift+F10"
           title="Shift+F10"
-          disabled={!programLoaded || isRunning || !canStepBack}
+          disabled={!programLoaded || isRunning || !canStepBack || blocked}
         >
           <span>back</span>
           <Shortcut keys="Shift+F10" />
