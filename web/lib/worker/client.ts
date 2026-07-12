@@ -169,6 +169,12 @@ export class WorkerClient {
     return this.send<number | null>({ id: 0, kind: "resolveLabel", name });
   }
 
+  m4Expand(
+    source: string,
+  ): Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null> {
+    return this.send({ id: 0, kind: "m4Expand", source });
+  }
+
   clearConsole(): Promise<StateSnapshot> {
     return this.send<StateSnapshot>({ id: 0, kind: "clearConsole" });
   }
