@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useReducer, useState } from "react";
-import { useZoom } from "@/lib/use-zoom";
-import { ZoomControl } from "@/components/ZoomControl";
-import { RegisterRow } from "@/components/RegisterRow";
-import { DRegisterRow } from "@/components/DRegisterRow";
+import { useCallback, useEffect, useReducer, useState } from "react";
+import { useZoom } from "@/lib/hooks/use-zoom";
+import { ZoomControl } from "@/components/ui/ZoomControl";
+import { RegisterRow } from "@/components/panels/RegisterRow";
+import { DRegisterRow } from "@/components/panels/DRegisterRow";
 
 interface RegisterPanelProps {
   registers: string[];
@@ -54,14 +54,14 @@ function usePersistedFlag(key: string): [boolean, (next: boolean) => void] {
       /* storage unavailable: session-only state */
     }
   }, [key]);
-  const set = (next: boolean) => {
+  const set = useCallback((next: boolean) => {
     setValue(next);
     try {
       window.localStorage.setItem(key, next ? "1" : "0");
     } catch {
       /* storage unavailable */
     }
-  };
+  }, [key]);
   return [value, set];
 }
 
@@ -113,6 +113,18 @@ export function RegisterPanel({
   useEffect(() => {
     bumpFpPulses(changedFpRegs);
   }, [changedFpRegs]);
+
+  // Auto-follow the executing instruction's register class: a step that
+  // writes a d-register flips to the fp file, an integer-only write flips
+  // back, so a mixed program narrates itself without manual switching. The
+  // toggle still works between steps (a click just sets the view the next
+  // write may move again); a step that writes both files, or none, leaves
+  // the student's choice alone.
+  useEffect(() => {
+    if (!hasFp) return;
+    if (changedFpRegs.size > 0 && changedRegs.size === 0) setDView(true);
+    else if (changedRegs.size > 0 && changedFpRegs.size === 0) setDView(false);
+  }, [changedFpRegs, changedRegs, hasFp, setDView]);
 
   const zoom = useZoom("registers");
 
