@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { pickBackend, type EmulatorBackend } from "@/lib/backend";
-import { detectHostedMode } from "@/lib/emulator";
+import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
+import { detectHostedMode } from "@/lib/emulator/emulator";
 import {
   emptyLineMap,
   isEmptyLineMap,
@@ -10,8 +10,8 @@ import {
   parseLineMap,
   pcToSourceLineFromMap,
   type LineMap,
-} from "@/lib/line-map";
-import { ReplayRing, type ReplayFrame } from "@/lib/replay";
+} from "@/lib/emulator/line-map";
+import { ReplayRing, type ReplayFrame } from "@/lib/emulator/replay";
 import type { StateSnapshot } from "@/lib/worker/protocol";
 
 export interface AssemblyError {
@@ -82,6 +82,8 @@ export interface EmulatorState {
   readVfsFile: (path: string) => Promise<Uint8Array>;
   deleteVfsFile: (path: string) => Promise<boolean>;
   resolveLabel: (name: string) => Promise<number | null>;
+  /** Standalone m4 pass for the terminal; null when the WASM predates it. */
+  m4Expand: (source: string) => Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
   /** Address-based breakpoint setter, used by `gdb b <label>` once the
    *  label resolves. The line-based `toggleBreakpoint` stays the
    *  primary path for the gutter UI. */
@@ -593,6 +595,12 @@ export function useEmulator(): EmulatorState {
     return backend.resolveLabel(name);
   }, []);
 
+  const m4Expand = useCallback(async (source: string) => {
+    const backend = backendRef.current;
+    if (!backend) return null;
+    return backend.m4Expand(source);
+  }, []);
+
   const setBreakpointAddress = useCallback(async (addr: number) => {
     const backend = backendRef.current;
     if (!backend) return;
@@ -763,6 +771,7 @@ export function useEmulator(): EmulatorState {
       readVfsFile,
       deleteVfsFile,
       resolveLabel,
+      m4Expand,
       setBreakpointAddress,
       clearBreakpointAddress,
       restoreBookmark,
