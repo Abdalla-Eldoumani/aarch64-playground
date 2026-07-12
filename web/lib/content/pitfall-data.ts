@@ -1,11 +1,12 @@
 /**
- * The five recurring CPSC 355 traps: the catalog's card content plus a
+ * The seven recurring CPSC 355 traps: the catalog's card content plus a
  * runnable fault/fix program pair per trap. Everything here is authored
  * payload, kept in one data module so the course-style guard
  * (course-style.test.ts) can raw-scan it and the behavioral test
  * (pitfall-data.playground.test.ts) can assemble and run every program on the
  * real emulator -- each fault misbehaves observably (a printed misalignment,
- * a run that never comes home, a wild-address fault, a wrong sum) and each
+ * a run that never comes home, a wild-address fault, a wrong sum,
+ * a value a callee scratched away) and each
  * fix demonstrably lands. The wrong/right snippets are the compact card
  * illustrations; fault/fix are complete course-style programs for the
  * run-it-live embed.
@@ -387,6 +388,161 @@ main:
         bl      printf                  // sp & 15 = 0
         mov     w0, 0
         ldp     fp, lr, [sp], dealloc
+        ret
+`,
+  },
+  {
+    title: "caller-saved registers do not survive a call",
+    cause:
+      "a routine you call may overwrite x9-x15, so a value that must live across the call belongs in a callee-saved register.",
+    wrong: `        mov     x9, 42
+        bl      announce
+        mov     x1, x9`,
+    right: `        str     x19, [fp, 16]
+        mov     x19, 42
+        bl      announce
+        mov     x1, x19
+        ldr     x19, [fp, 16]`,
+    watch:
+      "the fault prints sum = 1: announce scratched x9, exactly as a callee may. this emulator's printf happens to leave x9 alone; real printf makes no such promise. the fix rides the sum in x19 and prints 42.",
+    fault: `// the fault: the sum lives in x9, and the routine it calls uses x9 too
+define(fp, x29)
+define(lr, x30)
+
+        .data
+note:   .string "step %ld done\\n"
+fmt:    .string "sum = %ld\\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x9, 40
+        add     x9, x9, 2               // sum = 42, parked in a temporary
+        bl      announce                // any callee may scratch x9
+        ldr     x0, =fmt
+        mov     x1, x9                  // fault: x9 holds announce's leftover
+        bl      printf                  // prints sum = 1, not 42
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+announce:                               // x9 is caller-saved: free scratch here
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x9, 1                   // its own step counter
+        ldr     x0, =note
+        mov     x1, x9
+        bl      printf
+        ldp     fp, lr, [sp], 16
+        ret
+`,
+    fix: `// the fix: the sum rides in callee-saved x19, which main saves and restores
+define(fp, x29)
+define(lr, x30)
+
+alloc = -(16 + 8) & -16                 // pair + the x19 slot, rounded: 32
+dealloc = -alloc
+
+        .data
+note:   .string "step %ld done\\n"
+fmt:    .string "sum = %ld\\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        str     x19, [fp, 16]           // callee-saved: save before use
+        mov     x19, 40
+        add     x19, x19, 2             // sum = 42, safe across any call
+        bl      announce
+        ldr     x0, =fmt
+        mov     x1, x19                 // still 42
+        bl      printf
+        mov     w0, 0
+        ldr     x19, [fp, 16]           // the caller's x19 is back
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+announce:                               // unchanged: x9 is its scratch
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x9, 1
+        ldr     x0, =note
+        mov     x1, x9
+        bl      printf
+        ldp     fp, lr, [sp], 16
+        ret
+`,
+  },
+  {
+    title: "misaligned stack at a call",
+    cause:
+      "sub sp, sp, 8 reserves a local but parks sp off the 16-byte boundary the next bl needs.",
+    wrong: `        sub     sp, sp, 8
+        str     x9, [sp]
+        bl      printf
+        add     sp, sp, 8`,
+    right: `        sub     sp, sp, 16
+        str     x9, [sp]
+        bl      printf
+        add     sp, sp, 16`,
+    watch:
+      "the fault prints sp & 15 = 8: the local reads back fine, yet the call leaves on a broken boundary. this emulator forgives that bl; linux faults inside printf. the fix rounds 8 up to 16 and prints 0.",
+    fault: `// the fault: 8 bytes for one local leaves sp off the boundary at the call
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "n = %ld, sp & 15 = %ld\\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     sp, sp, 8               // the fault: 8 is not a 16 multiple
+        mov     x9, 7
+        str     x9, [sp]                // the local itself works fine
+        ldr     x1, [sp]
+        mov     x2, sp
+        and     x2, x2, 15              // the bits sp must keep clear at a call
+        ldr     x0, =fmt
+        bl      printf                  // real hardware faults inside this call
+        add     sp, sp, 8
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`,
+    fix: `// the fix: one 8-byte local still costs 16, so the boundary holds
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "n = %ld, sp & 15 = %ld\\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     sp, sp, 16              // one 8-byte local, rounded up to 16
+        mov     x9, 7
+        str     x9, [sp]
+        ldr     x1, [sp]
+        mov     x2, sp
+        and     x2, x2, 15
+        ldr     x0, =fmt
+        bl      printf                  // prints sp & 15 = 0: aligned at the call
+        add     sp, sp, 16
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
         ret
 `,
   },
