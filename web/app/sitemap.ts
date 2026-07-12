@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { SITE_URL, NAV_ROUTES } from "@/lib/site";
+import { SITE_URL, NAV_ROUTES } from "@/lib/content/site";
 
 // The landing owns the site root as its own top-priority entry; every nav route
 // (the playground plus the content routes) follows from the single NAV_ROUTES

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { loadAllExercises } from "@/lib/exercises";
-import { ExerciseIndex } from "@/components/ExerciseIndex";
-import { DocRule } from "@/components/DocRule";
-import { Kicker } from "@/components/Kicker";
-import { SHARE_CARD_IMAGE } from "@/lib/site";
+import { loadAllExercises } from "@/lib/content/exercises";
+import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
+import { DocRule } from "@/components/ui/DocRule";
+import { Kicker } from "@/components/ui/Kicker";
+import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 
 const DESCRIPTION =
   "AArch64 exercises checked by running your program against expected behavior, not a stored solution.";

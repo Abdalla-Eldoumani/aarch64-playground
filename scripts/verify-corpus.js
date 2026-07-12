@@ -13,7 +13,7 @@ const wasm = require(path.join(wasmDir, "aarch64_emulator.js"));
 const examplesDir = path.join(__dirname, "..", "web", "public", "examples");
 
 // Whitespace-quoted parser to keep the verifier's .args handling in sync
-// with the in-app `parseArgs` (web/lib/args.ts). Supports double + single
+// with the in-app `parseArgs` (web/lib/playground/args.ts). Supports double + single
 // quotes and `\` escapes; tolerant of unterminated quotes (rest of line
 // becomes the final token).
 function parseArgsLine(input) {

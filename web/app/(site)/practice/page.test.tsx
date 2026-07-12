@@ -5,11 +5,11 @@ import { cleanup, render, screen } from "@testing-library/react";
 // server route wiring (loader -> page -> props) without pulling in the editor,
 // worker, or markdown stack. The markers echo what the pages hand them, so the
 // assertions prove the data actually flowed through.
-vi.mock("@/components/ExerciseIndex", () => ({
+vi.mock("@/components/practice/ExerciseIndex", () => ({
   ExerciseIndex: ({ exercises }: { exercises: Array<{ slug: string }> }) =>
     `exercise-index:${exercises.length}`,
 }));
-vi.mock("@/components/ExerciseView", () => ({
+vi.mock("@/components/practice/ExerciseView", () => ({
   ExerciseView: ({ exercise }: { exercise: { slug: string } }) =>
     `exercise-view:${exercise.slug}`,
 }));
@@ -23,7 +23,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { notFound } from "next/navigation";
-import { loadAllExercises } from "@/lib/exercises";
+import { loadAllExercises } from "@/lib/content/exercises";
 import PracticePage from "./page";
 import ExercisePage, { dynamicParams, generateStaticParams } from "./[slug]/page";
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import sitemap from "./sitemap";
 import robots from "./robots";
-import { SITE_URL } from "@/lib/site";
+import { SITE_URL } from "@/lib/content/site";
 
 describe("sitemap", () => {
   const entries = sitemap();

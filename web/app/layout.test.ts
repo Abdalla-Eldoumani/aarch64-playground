@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SITE_URL } from "@/lib/site";
+import { SITE_URL } from "@/lib/content/site";
 
 // next/font/google only runs inside the Next build; stub the three loaders so
 // the layout module can be imported for its metadata export.

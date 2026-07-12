@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { NotFound } from "@/components/NotFound";
-import { SiteNav } from "@/components/SiteNav";
-import { SiteFooter } from "@/components/SiteFooter";
-import { SHARE_CARD_IMAGE } from "@/lib/site";
+import { NotFound } from "@/components/chrome/NotFound";
+import { SiteNav } from "@/components/chrome/SiteNav";
+import { SiteFooter } from "@/components/chrome/SiteFooter";
+import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 
 export const metadata: Metadata = {
   title: "404",

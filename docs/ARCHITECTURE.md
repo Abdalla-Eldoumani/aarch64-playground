@@ -17,6 +17,27 @@ Two workspaces:
 - `emulator/`: the Rust crate `aarch64-emulator`, compiled to WASM with
   wasm-pack. Output lands in `web/lib/wasm/` (gitignored).
 
+Web modules, grouped by domain (tests live under a `test/` tree in each,
+mirroring these groups):
+
+```
+components/ui/          shared primitives + brand marks
+components/chrome/      site shell (nav, footer, drawer, theme, PWA)
+components/landing/     home page
+components/diagrams/    teaching visuals and interactives
+components/learn/       lesson surfaces        components/practice/  exercises
+components/reference/   reference surfaces
+components/playground/  emulator surface shell (editor, controls, dialogs)
+components/panels/      right-tab machine views
+lib/emulator/           state hub, backends, replay, decode fields
+lib/asm/                completion, formatting, hover docs, error explaining
+lib/content/            lessons, exercises, reference + pitfall data, schemas
+lib/playground/         program delivery, persistence, sharing, upload guards
+lib/hooks/              generic React hooks
+lib/terminal/           xterm shell engine     lib/worker/           worker boundary
+lib/wasm/, lib/wasm-node/  generated wasm-pack output (gitignored)
+```
+
 Emulator modules:
 
 ```
@@ -153,7 +174,7 @@ survives stepping while the rolling 128-frame history stays intact.
 
 ## State sync
 
-[`use-emulator.ts`](../web/lib/use-emulator.ts) owns an `EmulatorBackend`
+[`use-emulator.ts`](../web/lib/emulator/use-emulator.ts) owns an `EmulatorBackend`
 and subscribes via `onSnapshot`. After every state-mutating call the
 backend emits a `StateSnapshot` (defined in `worker/protocol.ts`):
 
@@ -185,7 +206,7 @@ freeze the UI. The boundary is three files in
 forwards messages), and `client.ts` (`WorkerClient`, which implements
 `EmulatorBackend` over the message channel).
 
-`pickBackend()` in [`web/lib/backend.ts`](../web/lib/backend.ts) returns a
+`pickBackend()` in [`web/lib/emulator/backend.ts`](../web/lib/emulator/backend.ts) returns a
 `WorkerClient` when `Worker` exists, otherwise a `MainThreadBackend`
 wrapping the emulator directly. Force the main thread with
 `localStorage["aarch64-playground:backend"] = "main"`.
@@ -223,8 +244,8 @@ from the App Router. [`web/public/sw.js`](../web/public/sw.js) splits
 fetches: cross-origin or non-GET is network-only; navigations are
 network-first falling back to cached `/`; `/_next/static/`, `/examples/`,
 and `/icons/` are cache-first; everything else is network-first falling
-back to cache. [`web/components/RegisterSW.tsx`](../web/components/RegisterSW.tsx)
-registers once via `lib/register-sw.ts`, which no-ops on SSR, non-secure
+back to cache. [`web/components/chrome/RegisterSW.tsx`](../web/components/chrome/RegisterSW.tsx)
+registers once via `lib/playground/register-sw.ts`, which no-ops on SSR, non-secure
 contexts (except localhost), and browsers without
 `navigator.serviceWorker`.
 
