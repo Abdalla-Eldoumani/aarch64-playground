@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useToast } from "@/components/Toast";
-import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/upload-guard";
+import { useToast } from "@/components/ui/Toast";
+import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/playground/upload-guard";
 
 interface ConsolePanelProps {
   stdout: string;
@@ -33,6 +33,18 @@ export function ConsolePanel({
 }: ConsolePanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRef = useRef(true);
+  const stdinRef = useRef<HTMLInputElement | null>(null);
+
+  // The machine just stalled in scanf/read: put the caret where the answer
+  // goes. Focus only on the false->true edge so the student can still click
+  // away while the program stays blocked.
+  const lastBlockedRef = useRef(false);
+  useEffect(() => {
+    if (blocked && !lastBlockedRef.current) {
+      stdinRef.current?.focus();
+    }
+    lastBlockedRef.current = blocked;
+  }, [blocked]);
   const [stdinValue, setStdinValue] = useState("");
   const toast = useToast();
 
@@ -148,6 +160,7 @@ export function ConsolePanel({
         className="flex gap-1 px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)]"
       >
         <input
+          ref={stdinRef}
           type="text"
           value={stdinValue}
           onChange={(e) => setStdinValue(e.target.value)}
