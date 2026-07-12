@@ -1926,4 +1926,221 @@ mod tests {
         // 0 - (0x10000 * 0x10000) wraps in 32 bits to 0.
         assert_eq!(regs.read_gpr(0, false), 0);
     }
+
+    // -- flag boundaries --
+
+    #[test]
+    fn subs_signed_overflow_at_i64_min() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, i64::MIN as u64);
+        let instr = Instruction::DpImm {
+            op: DpOp::Subs, sf: true, rd: 0, rn: 1, imm: 1, shift: 0,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        // i64::MIN - 1 wraps to i64::MAX: v set, n clear, c set (no borrow).
+        assert!(regs.nzcv.v);
+        assert!(!regs.nzcv.n);
+        assert!(regs.nzcv.c);
+        assert_eq!(regs.read_gpr(0, true), i64::MAX as u64);
+    }
+
+    #[test]
+    fn subs_32bit_signed_overflow_at_i32_min() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, false, 0x8000_0000);
+        let instr = Instruction::DpImm {
+            op: DpOp::Subs, sf: false, rd: 0, rn: 1, imm: 1, shift: 0,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert!(regs.nzcv.v);
+        assert!(!regs.nzcv.n);
+        assert!(regs.nzcv.c);
+        assert_eq!(regs.read_gpr(0, false), 0x7FFF_FFFF);
+    }
+
+    #[test]
+    fn adds_carry_64bit_wraps_to_zero() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, u64::MAX);
+        let instr = Instruction::DpImm {
+            op: DpOp::Adds, sf: true, rd: 0, rn: 1, imm: 1, shift: 0,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0);
+        assert!(regs.nzcv.c);
+        assert!(regs.nzcv.z);
+        assert!(!regs.nzcv.v);
+    }
+
+    // -- rd = 31: XZR for flag-setting ops, SP otherwise --
+
+    #[test]
+    fn subs_rd_31_discards_result_without_touching_sp() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_sp(0x8000_0000);
+        regs.write_gpr(1, true, 3);
+        let instr = Instruction::DpImm {
+            op: DpOp::Subs, sf: true, rd: 31, rn: 1, imm: 5, shift: 0,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert!(regs.nzcv.n, "3 - 5 is negative");
+        assert!(!regs.nzcv.c, "borrow clears carry");
+        assert_eq!(regs.read_sp(), 0x8000_0000, "cmp must not write sp");
+        assert_eq!(regs.read_gpr(31, true), 0, "xzr stays zero");
+    }
+
+    #[test]
+    fn add_imm_rd_31_writes_sp() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_sp(0x8000_0000);
+        // add sp, sp, #16: the non-flag-setting form treats rd = 31 as SP.
+        let instr = Instruction::DpImm {
+            op: DpOp::Add, sf: true, rd: 31, rn: 31, imm: 16, shift: 0,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_sp(), 0x8000_0010);
+    }
+
+    // -- conditional select edges --
+
+    #[test]
+    fn csel_not_taken_picks_second_source() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, 10);
+        regs.write_gpr(2, true, 20);
+        regs.nzcv.z = false;
+        let instr = Instruction::CondSel {
+            op: CondSelOp::Csel, sf: true, rd: 0, rn: 1, rm: 2, cond: Condition::EQ,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 20);
+    }
+
+    #[test]
+    fn cset_idiom_via_csinc_with_zr_sources() {
+        // cset x0, eq lowers to csinc x0, xzr, xzr, ne.
+        let (mut regs, mut mem) = fresh();
+        let instr = Instruction::CondSel {
+            op: CondSelOp::Csinc, sf: true, rd: 0, rn: 31, rm: 31, cond: Condition::NE,
+        };
+        // z set -> eq holds -> ne not taken -> xzr + 1 = 1.
+        regs.nzcv.z = true;
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 1);
+        // z clear -> ne taken -> xzr = 0.
+        regs.nzcv.z = false;
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0);
+    }
+
+    #[test]
+    fn csinc_32bit_increment_wraps_to_zero() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(2, false, 0xFFFF_FFFF);
+        regs.nzcv.z = false;
+        let instr = Instruction::CondSel {
+            op: CondSelOp::Csinc, sf: false, rd: 0, rn: 1, rm: 2, cond: Condition::EQ,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0);
+    }
+
+    // -- division edges --
+
+    #[test]
+    fn sdiv_by_zero_returns_zero() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, (-9i64) as u64);
+        regs.write_gpr(2, true, 0);
+        let instr = Instruction::MulDiv {
+            op: MulDivOp::Sdiv, sf: true, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0);
+    }
+
+    #[test]
+    fn sdiv_min_by_minus_one_wraps_to_min() {
+        // The one signed quotient that overflows; wrapping_div keeps it at
+        // i64::MIN instead of panicking.
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, true, i64::MIN as u64);
+        regs.write_gpr(2, true, (-1i64) as u64);
+        let instr = Instruction::MulDiv {
+            op: MulDivOp::Sdiv, sf: true, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), i64::MIN as u64);
+    }
+
+    #[test]
+    fn madd_32bit_masks_the_result() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, false, 0x8000_0000);
+        regs.write_gpr(2, false, 2);
+        regs.write_gpr(3, false, 5);
+        let instr = Instruction::MulAccumulate {
+            op: MulAccumulateOp::Madd, sf: false, rd: 0, rn: 1, rm: 2, ra: 3,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        // 5 + 0x8000_0000 * 2 = 0x1_0000_0005, masked to 32 bits = 5.
+        assert_eq!(regs.read_gpr(0, true), 5);
+    }
+
+    // -- ldp/stp writeback --
+
+    #[test]
+    fn ldp_post_index_reads_then_advances_base() {
+        let (mut regs, mut mem) = fresh();
+        mem.write_u64(0x8000_0000, 0x1111).unwrap();
+        mem.write_u64(0x8000_0008, 0x2222).unwrap();
+        regs.write_sp(0x8000_0000);
+        let ldp = Instruction::LdStPair {
+            op: LdStPairOp::Ldp, sf: true, rt: 0, rt2: 1, rn: 31,
+            imm7: 16, mode: IndexMode::PostIndex,
+        };
+        execute(&ldp, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0x1111);
+        assert_eq!(regs.read_gpr(1, true), 0x2222);
+        assert_eq!(regs.read_sp(), 0x8000_0010, "post-index writes back after the access");
+    }
+
+    #[test]
+    fn stp_32bit_pair_packs_adjacent_words() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(0, false, 0xAAAA_0001);
+        regs.write_gpr(1, false, 0xBBBB_0002);
+        regs.write_gpr(2, true, 0x0070_0000);
+        let stp = Instruction::LdStPair {
+            op: LdStPairOp::Stp, sf: false, rt: 0, rt2: 1, rn: 2,
+            imm7: 0, mode: IndexMode::SignedOffset,
+        };
+        execute(&stp, &mut regs, &mut mem).unwrap();
+        assert_eq!(mem.read_u32(0x0070_0000).unwrap(), 0xAAAA_0001);
+        assert_eq!(mem.read_u32(0x0070_0004).unwrap(), 0xBBBB_0002);
+    }
+
+    // -- b.cond on the signed boundary --
+
+    #[test]
+    fn bcond_lt_taken_when_n_differs_from_v() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0000);
+        regs.nzcv = NzcvFlags { n: true, z: false, c: false, v: false };
+        let instr = Instruction::BCond { cond: Condition::LT, offset: 8 };
+        let result = execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(result, ExecResult::Branched);
+        assert_eq!(regs.read_pc(), 0x0040_0008);
+    }
+
+    #[test]
+    fn bcond_ge_not_taken_when_n_differs_from_v() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_pc(0x0040_0000);
+        regs.nzcv = NzcvFlags { n: true, z: false, c: false, v: false };
+        let instr = Instruction::BCond { cond: Condition::GE, offset: 8 };
+        let result = execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(result, ExecResult::Advance);
+        assert_eq!(regs.read_pc(), 0x0040_0000);
+    }
 }

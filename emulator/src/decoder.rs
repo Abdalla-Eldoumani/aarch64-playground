@@ -1981,4 +1981,152 @@ mod tests {
             other => panic!("expected Adr, got {other:?}"),
         }
     }
+
+    // -- conditional select --
+
+    #[test]
+    fn decode_csel_x0_x1_x2_eq() {
+        // CSEL X0, X1, X2, EQ
+        // 1_0_0_11010100_00010_0000_00_00001_00000
+        let decoded = decode(0x9A82_0020).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::CondSel {
+                op: CondSelOp::Csel,
+                sf: true,
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                cond: Condition::EQ,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_csinc_w0_w1_w2_ne() {
+        // CSINC W0, W1, W2, NE
+        // 0_0_0_11010100_00010_0001_01_00001_00000
+        let decoded = decode(0x1A82_1420).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::CondSel {
+                op: CondSelOp::Csinc,
+                sf: false,
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                cond: Condition::NE,
+            }
+        );
+    }
+
+    // -- divide and multiply-accumulate --
+
+    #[test]
+    fn decode_udiv_x0_x1_x2() {
+        // UDIV X0, X1, X2
+        // 1_0_0_11010110_00010_000010_00001_00000
+        let decoded = decode(0x9AC2_0820).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::MulDiv { op: MulDivOp::Udiv, sf: true, rd: 0, rn: 1, rm: 2 }
+        );
+    }
+
+    #[test]
+    fn decode_sdiv_x0_x1_x2() {
+        // SDIV X0, X1, X2
+        // 1_0_0_11010110_00010_000011_00001_00000
+        let decoded = decode(0x9AC2_0C20).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::MulDiv { op: MulDivOp::Sdiv, sf: true, rd: 0, rn: 1, rm: 2 }
+        );
+    }
+
+    #[test]
+    fn decode_madd_x0_x1_x2_x3() {
+        // MADD X0, X1, X2, X3
+        // 1_00_11011_000_00010_0_00011_00001_00000
+        let decoded = decode(0x9B02_0C20).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::MulAccumulate {
+                op: MulAccumulateOp::Madd,
+                sf: true,
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                ra: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_msub_x0_x1_x2_x3() {
+        // MSUB X0, X1, X2, X3
+        // 1_00_11011_000_00010_1_00011_00001_00000
+        let decoded = decode(0x9B02_8C20).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::MulAccumulate {
+                op: MulAccumulateOp::Msub,
+                sf: true,
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                ra: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_madd_with_zr_accumulator_is_mul() {
+        // MADD X0, X1, X2, XZR stays on the MulDiv::Mul path.
+        let decoded = decode(0x9B02_7C20).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::MulDiv { op: MulDivOp::Mul, sf: true, rd: 0, rn: 1, rm: 2 }
+        );
+    }
+
+    // -- load/store pair index modes --
+
+    #[test]
+    fn decode_ldp_post_index_scales_imm7_by_eight() {
+        // LDP X0, X1, [SP], #16 (raw imm7 = 2, scaled by 8)
+        // 10_101_0_001_1_0000010_00001_11111_00000
+        let decoded = decode(0xA8C1_07E0).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::LdStPair {
+                op: LdStPairOp::Ldp,
+                sf: true,
+                rt: 0,
+                rt2: 1,
+                rn: 31,
+                imm7: 16,
+                mode: IndexMode::PostIndex,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_stp_w_signed_offset_scales_imm7_by_four() {
+        // STP W0, W1, [X2, #4] (raw imm7 = 1, scaled by 4)
+        // 00_101_0_010_0_0000001_00001_00010_00000
+        let decoded = decode(0x2900_8440).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::LdStPair {
+                op: LdStPairOp::Stp,
+                sf: false,
+                rt: 0,
+                rt2: 1,
+                rn: 2,
+                imm7: 4,
+                mode: IndexMode::SignedOffset,
+            }
+        );
+    }
 }

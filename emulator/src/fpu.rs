@@ -73,4 +73,53 @@ mod tests {
         let f = fcmp_flags(-0.0, 0.0);
         assert!(f.z);
     }
+
+    #[test]
+    fn nan_in_either_or_both_operands_is_unordered() {
+        for (a, b) in [(1.0, f64::NAN), (f64::NAN, f64::NAN)] {
+            let f = fcmp_flags(a, b);
+            assert!(!f.n);
+            assert!(!f.z);
+            assert!(f.c);
+            assert!(f.v);
+        }
+    }
+
+    #[test]
+    fn negative_infinity_is_less_than_any_finite_value() {
+        let f = fcmp_flags(f64::NEG_INFINITY, f64::MIN);
+        assert!(f.n);
+        assert!(!f.z);
+        assert!(!f.c);
+        assert!(!f.v);
+    }
+
+    #[test]
+    fn positive_infinity_is_greater_than_any_finite_value() {
+        let f = fcmp_flags(f64::INFINITY, f64::MAX);
+        assert!(!f.n);
+        assert!(!f.z);
+        assert!(f.c);
+        assert!(!f.v);
+    }
+
+    #[test]
+    fn infinity_compares_equal_to_itself() {
+        let f = fcmp_flags(f64::INFINITY, f64::INFINITY);
+        assert!(!f.n);
+        assert!(f.z);
+        assert!(f.c);
+        assert!(!f.v);
+    }
+
+    #[test]
+    fn zero_and_negative_zero_are_equal_in_both_orders() {
+        for (a, b) in [(0.0f64, -0.0f64), (-0.0f64, 0.0f64)] {
+            let f = fcmp_flags(a, b);
+            assert!(!f.n);
+            assert!(f.z);
+            assert!(f.c);
+            assert!(!f.v);
+        }
+    }
 }
