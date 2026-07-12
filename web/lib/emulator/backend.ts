@@ -1,6 +1,6 @@
 "use client";
 
-import { loadEmulator, type EmulatorInstance } from "@/lib/emulator";
+import { loadEmulator, type EmulatorInstance } from "@/lib/emulator/emulator";
 import {
   emptyStateSnapshot,
   type AssembleResultPayload,
@@ -40,6 +40,8 @@ export interface EmulatorBackend {
   readVfsFile(path: string): Promise<Uint8Array>;
   deleteVfsFile(path: string): Promise<{ removed: boolean; snapshot: StateSnapshot }>;
   resolveLabel(name: string): Promise<number | null>;
+  /** Standalone m4 pass; null when the WASM predates the export. */
+  m4Expand(source: string): Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
   clearConsole(): Promise<StateSnapshot>;
   codeBase(): Promise<number>;
   /** Flat `[addr, line, addr, line, ...]` editor-line map from the most
@@ -205,6 +207,10 @@ class MainThreadBackend implements EmulatorBackend {
 
   async resolveLabel(name: string): Promise<number | null> {
     return this.requireEmu().resolveLabel(name);
+  }
+
+  async m4Expand(source: string) {
+    return this.requireEmu().m4Expand(source);
   }
 
   async clearConsole(): Promise<StateSnapshot> {
