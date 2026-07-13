@@ -145,6 +145,38 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "section directives",
     };
   }
+  if (detail.includes("unterminated string literal")) {
+    return {
+      what: "A string literal opened on this line but never closed: no ending double-quote before the line ended.",
+      why: "Strings cannot span lines, exactly like the real assembler. A newline you meant to PRINT must be written as the two characters \\n inside the quotes, not typed as a real line break.",
+      fix: 'Close the string on the same line it opens, and write escapes for control characters: `.string "Hello\\n"`. If the string looks closed, check for a stray unescaped `"` earlier in the line.',
+      styleSection: "naming conventions",
+    };
+  }
+  if (detail.includes("all s or all d")) {
+    return {
+      what: "One floating-point instruction mixed an S register with a D register.",
+      why: "The register width picks the instruction's precision, so every operand must agree: fadd s0, s1, s2 is single, fadd d0, d1, d2 is double, and a mix has no encoding.",
+      fix: "Make all the operands the same width, or convert first: `fcvt d0, s0` widens a float to a double, `fcvt s0, d0` narrows.",
+      styleSection: "general",
+    };
+  }
+  if (detail.includes("converts between widths")) {
+    return {
+      what: "fcvt was given two registers of the same width, but its whole job is changing width.",
+      why: "fcvt is the S<->D precision converter: one operand names the source width, the other the destination. Same-width fcvt has no encoding.",
+      fix: "For a same-width copy use `fmov d0, d1` (or `fmov s0, s1`). To change precision, pair one S with one D: `fcvt d0, s1` widens, `fcvt s0, d1` narrows.",
+      styleSection: "general",
+    };
+  }
+  if (detail.includes("fmov") && detail.includes("8-bit float immediate")) {
+    return {
+      what: "The float constant does not fit FMOV's tiny 8-bit immediate encoding.",
+      why: "FMOV can only encode a power-of-two multiple of 1.0 through 1.9375 (values like 0.5, 1.0, 2.0, 5.0, 9.0). Most decimals, 0.0 included, have no 8-bit form.",
+      fix: "Put the constant in the data section (`pi: .double 3.14159` or `half: .float 0.5`) and load it: `ldr x9, =pi` then `ldr d0, [x9]`.",
+      styleSection: "literal pool",
+    };
+  }
   if (detail.includes("invalid utf-8") || detail.includes("invalid escape")) {
     return {
       what: "A `.string`, `.asciz`, or `.ascii` directive contains characters the lexer cannot decode.",

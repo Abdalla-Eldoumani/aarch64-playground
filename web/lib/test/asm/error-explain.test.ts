@@ -65,6 +65,38 @@ describe("explainError", () => {
     expect(e!.styleSection).toBe("addressing modes");
   });
 
+  it("explains an unterminated string with the same-line rule and the escape fix", () => {
+    const e = explainError(
+      'parse error at line 6: unterminated string literal: no closing " before the end of the line (write \\n for a newline)',
+    );
+    expect(e!.what).toContain("never closed");
+    expect(e!.why).toContain("cannot span lines");
+    expect(e!.fix).toContain("\\n");
+  });
+
+  it("explains mixed S/D operands and points at fcvt", () => {
+    const e = explainError(
+      "assembly error at line 4: fadd needs all S or all D registers (use fcvt to convert between widths)",
+    );
+    expect(e!.why).toContain("precision");
+    expect(e!.fix).toContain("fcvt");
+  });
+
+  it("explains a same-width fcvt and points at fmov", () => {
+    const e = explainError(
+      "assembly error at line 7: fcvt converts between widths: one operand must be an S register and the other a D register (use fmov to copy at the same width)",
+    );
+    expect(e!.fix).toContain("fmov");
+  });
+
+  it("explains an unencodable fmov immediate with the data-section fallback", () => {
+    const e = explainError(
+      "assembly error at line 3: 0.1 does not fit the FMOV 8-bit float immediate; load it from a .double instead",
+    );
+    expect(e!.styleSection).toBe("literal pool");
+    expect(e!.fix).toContain(".float");
+  });
+
   it("falls back to a generic block for wrapped errors that don't match a pattern", () => {
     const e = explainError("assembly error at line 5: something genuinely strange");
     expect(e).not.toBeNull();
