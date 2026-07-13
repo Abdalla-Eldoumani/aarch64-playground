@@ -10,6 +10,8 @@ afterEach(() => {
 });
 
 // Every row group of the rail: range on the left, role note on the right.
+// The integer and float callee-saved rows share one note on purpose: the
+// role is one story across both files.
 const ROWS: Array<[string, string]> = [
   ["x0 – x7", "arguments · results"],
   ["x8", "indirect result"],
@@ -18,7 +20,7 @@ const ROWS: Array<[string, string]> = [
   ["x19 – x28", "callee-saved"],
   ["x29 · x30", "fp · lr — the frame record"],
   ["d0 – d7", "float args · results"],
-  ["d8 – d15", "callee-saved (low 64 bits)"],
+  ["d8 – d15", "callee-saved"],
   ["d16 – d31", "caller-saved float temps"],
 ];
 
@@ -33,17 +35,16 @@ describe("AapcsRail", () => {
     expect(items).toHaveLength(ROWS.length);
     for (const [range, note] of ROWS) {
       expect(within(rail).getByText(range)).toBeTruthy();
-      expect(within(rail).getByText(note)).toBeTruthy();
+      expect(within(rail).getAllByText(note).length).toBeGreaterThanOrEqual(1);
     }
   });
 
-  it("keeps the amber/cyan legend under the rail", () => {
+  it("keeps the amber/cyan legend under the rail, with the two-views note", () => {
     render(<AapcsRail />);
     expect(
-      screen.getByText(
-        "Amber = the callee must preserve it. Cyan = yours to pass and receive.",
-      ),
+      screen.getByText(/Amber = the callee must preserve it/),
     ).toBeTruthy();
+    expect(screen.getByText(/two names, one register, one role/)).toBeTruthy();
   });
 
   it("tints the argument rows cyan and the callee-saved rows amber", () => {

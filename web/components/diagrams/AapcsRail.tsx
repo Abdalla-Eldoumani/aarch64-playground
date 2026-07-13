@@ -29,7 +29,7 @@ const ROWS: RailRow[] = [
   { range: "x19 – x28", note: "callee-saved", tint: "amber" },
   { range: "x29 · x30", note: "fp · lr — the frame record", tint: "amber-strong" },
   { range: "d0 – d7", note: "float args · results", tint: "cyan" },
-  { range: "d8 – d15", note: "callee-saved (low 64 bits)", tint: "amber" },
+  { range: "d8 – d15", note: "callee-saved", tint: "amber" },
   { range: "d16 – d31", note: "caller-saved float temps", tint: "neutral" },
 ];
 
@@ -94,6 +94,11 @@ export function AapcsRail({
       </ul>
       <p className="mt-1 font-serif text-[13px] italic leading-relaxed text-[var(--text-secondary)]">
         Amber = the callee must preserve it. Cyan = yours to pass and receive.
+        Each <span className="font-mono not-italic">x</span> row covers its{" "}
+        <span className="font-mono not-italic">w</span> view and each{" "}
+        <span className="font-mono not-italic">d</span> row its{" "}
+        <span className="font-mono not-italic">s</span> view: two names, one
+        register, one role.
       </p>
     </aside>
   );

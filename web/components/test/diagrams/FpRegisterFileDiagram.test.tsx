@@ -12,19 +12,26 @@ afterEach(() => {
 describe("FpRegisterFileDiagram", () => {
   it("renders the three ABI role bands edge to edge", () => {
     render(<FpRegisterFileDiagram />);
+    // The footer prose also names d0/s0, so match within the cell list.
     for (const reg of ["d0", "d7", "d8", "d15", "d16", "d31"]) {
-      expect(screen.getByText(reg)).toBeTruthy();
+      expect(screen.getAllByText(reg).length).toBeGreaterThanOrEqual(1);
     }
   });
 
-  it("labels the callee-saved band with its low-64-bit catch", () => {
+  it("pairs every d cell with its s view, the way the course names them", () => {
     render(<FpRegisterFileDiagram />);
-    expect(
-      screen.getByText("callee-saved, low 64 bits only (d8-d15)"),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/only the double-sized view is preserved/),
-    ).toBeTruthy();
+    for (const sview of ["s0", "s8", "s15", "s31"]) {
+      expect(screen.getAllByText(sview).length).toBeGreaterThanOrEqual(1);
+    }
+    // No vector-register talk anywhere: the course teaches s and d only.
+    expect(screen.queryByText(/vector/)).toBeNull();
+  });
+
+  it("labels the callee-saved band and teaches the two views in the footer", () => {
+    render(<FpRegisterFileDiagram />);
+    expect(screen.getByText("callee-saved (d8-d15)")).toBeTruthy();
+    expect(screen.getByText(/two views the course uses/)).toBeTruthy();
+    expect(screen.getByText(/converts between them/)).toBeTruthy();
   });
 
   it("notes there is no floating-point frame pointer", () => {
