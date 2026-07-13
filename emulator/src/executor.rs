@@ -152,8 +152,8 @@ pub fn execute(
         Instruction::LdrSignExtended { rt, rn, offset, size, mode, sf } => {
             exec_ldrs(*rt, *rn, offset, *size, *mode, *sf, regs, mem)
         }
-        Instruction::FpBinary { op, fd, fn_, fm } => {
-            exec_fp_binary(*op, *fd, *fn_, *fm, regs)
+        Instruction::FpBinary { op, fd, fn_, fm, single } => {
+            exec_fp_binary(*op, *fd, *fn_, *fm, *single, regs)
         }
         Instruction::FpLdSt { load, ft, rn, offset, size, mode } => {
             // Base register 31 means SP here, exactly as in the integer
@@ -205,42 +205,67 @@ pub fn execute(
             }
             Ok(ExecResult::Advance)
         }
-        Instruction::FpMoveImm { fd, imm_bits } => {
+        Instruction::FpMoveImm { fd, imm_bits, single } => {
+            // The decoder already expanded the immediate to the right
+            // width's bit pattern; an S write leaves the upper 32 zero.
+            let _ = single;
             regs.write_fpr_bits(*fd, *imm_bits);
             Ok(ExecResult::Advance)
         }
-        Instruction::FpMoveReg { fd, fn_ } => {
+        Instruction::FpMoveReg { fd, fn_, single } => {
             let v = regs.read_fpr_bits(*fn_);
+            let v = if *single { v & 0xFFFF_FFFF } else { v };
             regs.write_fpr_bits(*fd, v);
             Ok(ExecResult::Advance)
         }
-        Instruction::FpUnary { op, fd, fn_ } => {
-            let v = regs.read_fpr_f64(*fn_);
-            let result = match op {
-                FpUnaryOp::Fneg => -v,
-                FpUnaryOp::Fabs => v.abs(),
-            };
-            regs.write_fpr_f64(*fd, result);
+        Instruction::FpUnary { op, fd, fn_, single } => {
+            if *single {
+                let v = regs.read_fpr_f32(*fn_);
+                let result = match op {
+                    FpUnaryOp::Fneg => -v,
+                    FpUnaryOp::Fabs => v.abs(),
+                };
+                regs.write_fpr_f32(*fd, result);
+            } else {
+                let v = regs.read_fpr_f64(*fn_);
+                let result = match op {
+                    FpUnaryOp::Fneg => -v,
+                    FpUnaryOp::Fabs => v.abs(),
+                };
+                regs.write_fpr_f64(*fd, result);
+            }
             Ok(ExecResult::Advance)
         }
-        Instruction::FpCompare { fn_, fm } => {
-            let a = regs.read_fpr_f64(*fn_);
-            let b = regs.read_fpr_f64(*fm);
+        Instruction::FpCompare { fn_, fm, single } => {
+            // Widening f32 -> f64 is exact, so the single compare can
+            // share the double flag logic (NaN stays NaN, order holds).
+            let (a, b) = if *single {
+                (regs.read_fpr_f32(*fn_) as f64, regs.read_fpr_f32(*fm) as f64)
+            } else {
+                (regs.read_fpr_f64(*fn_), regs.read_fpr_f64(*fm))
+            };
             regs.nzcv = crate::fpu::fcmp_flags(a, b);
             Ok(ExecResult::Advance)
         }
-        Instruction::FpScvtf { fd, rn, sf } => {
+        Instruction::FpScvtf { fd, rn, sf, single } => {
             let raw = regs.read_gpr(*rn, *sf);
-            let value = if *sf {
-                raw as i64 as f64
+            let int_value = if *sf { raw as i64 } else { (raw as u32 as i32) as i64 };
+            if *single {
+                regs.write_fpr_f32(*fd, int_value as f32);
             } else {
-                (raw as u32 as i32) as f64
-            };
-            regs.write_fpr_f64(*fd, value);
+                regs.write_fpr_f64(*fd, int_value as f64);
+            }
             Ok(ExecResult::Advance)
         }
-        Instruction::FpFcvtzs { rd, fn_, sf } => {
-            let value = regs.read_fpr_f64(*fn_);
+        Instruction::FpFcvtzs { rd, fn_, sf, single } => {
+            // Read at the instruction's width, then truncate toward zero
+            // with saturation. The f32 -> f64 widening is exact, so one
+            // f64 saturation path serves both widths.
+            let value = if *single {
+                regs.read_fpr_f32(*fn_) as f64
+            } else {
+                regs.read_fpr_f64(*fn_)
+            };
             let truncated = value.trunc();
             let int_value = if *sf {
                 if truncated.is_nan() { 0i64 }
@@ -254,6 +279,18 @@ pub fn execute(
                 else { truncated as i32 as i64 }
             };
             regs.write_gpr(*rd, *sf, int_value as u64);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpCvt { fd, fn_, widen } => {
+            if *widen {
+                // FCVT Dd, Sn: every f32 is exactly representable as f64.
+                let v = regs.read_fpr_f32(*fn_);
+                regs.write_fpr_f64(*fd, v as f64);
+            } else {
+                // FCVT Sd, Dn: rounds to the nearest single.
+                let v = regs.read_fpr_f64(*fn_);
+                regs.write_fpr_f32(*fd, v as f32);
+            }
             Ok(ExecResult::Advance)
         }
         Instruction::Bitfield { op, sf, rd, rn, immr, imms } => {
@@ -709,17 +746,33 @@ fn exec_fp_binary(
     fd: u8,
     fn_: u8,
     fm: u8,
+    single: bool,
     regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
-    let a = regs.read_fpr_f64(fn_);
-    let b = regs.read_fpr_f64(fm);
-    let result = match op {
-        FpBinOp::Fadd => a + b,
-        FpBinOp::Fsub => a - b,
-        FpBinOp::Fmul => a * b,
-        FpBinOp::Fdiv => a / b,
-    };
-    regs.write_fpr_f64(fd, result);
+    // Single precision must compute IN f32: rounding each operation to
+    // single is what the hardware does, and computing in f64 then
+    // narrowing would double-round.
+    if single {
+        let a = regs.read_fpr_f32(fn_);
+        let b = regs.read_fpr_f32(fm);
+        let result = match op {
+            FpBinOp::Fadd => a + b,
+            FpBinOp::Fsub => a - b,
+            FpBinOp::Fmul => a * b,
+            FpBinOp::Fdiv => a / b,
+        };
+        regs.write_fpr_f32(fd, result);
+    } else {
+        let a = regs.read_fpr_f64(fn_);
+        let b = regs.read_fpr_f64(fm);
+        let result = match op {
+            FpBinOp::Fadd => a + b,
+            FpBinOp::Fsub => a - b,
+            FpBinOp::Fmul => a * b,
+            FpBinOp::Fdiv => a / b,
+        };
+        regs.write_fpr_f64(fd, result);
+    }
     Ok(ExecResult::Advance)
 }
 
@@ -1068,11 +1121,11 @@ mod tests {
     fn fneg_flips_sign_both_ways() {
         let (mut regs, mut mem) = fresh();
         regs.write_fpr_f64(1, 2.5);
-        let instr = Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: 0, fn_: 1 };
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: 0, fn_: 1, single: false };
         execute(&instr, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_fpr_f64(0), -2.5);
         // Negating the result lands back on the original value.
-        let back = Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: 0, fn_: 0 };
+        let back = Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: 0, fn_: 0, single: false };
         execute(&back, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_fpr_f64(0), 2.5);
     }
@@ -1081,11 +1134,11 @@ mod tests {
     fn fabs_clears_sign_and_keeps_positive() {
         let (mut regs, mut mem) = fresh();
         regs.write_fpr_f64(1, -0.75);
-        let instr = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 1 };
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 1, single: false };
         execute(&instr, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_fpr_f64(0), 0.75);
         // Already-positive values pass through unchanged.
-        let again = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 0 };
+        let again = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 0, single: false };
         execute(&again, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_fpr_f64(0), 0.75);
     }
@@ -1704,6 +1757,7 @@ mod tests {
             fd: 0,
             fn_: 1,
             fm: 2,
+            single: false,
         };
         execute(&fadd, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_fpr_f64(0), 4.0);
@@ -1715,7 +1769,7 @@ mod tests {
         regs.write_fpr_f64(1, 5.0);
         regs.write_fpr_f64(2, 2.0);
         execute(
-            &Instruction::FpBinary { op: FpBinOp::Fsub, fd: 0, fn_: 1, fm: 2 },
+            &Instruction::FpBinary { op: FpBinOp::Fsub, fd: 0, fn_: 1, fm: 2, single: false },
             &mut regs,
             &mut mem,
         )
@@ -1729,7 +1783,7 @@ mod tests {
         regs.write_fpr_f64(1, 3.0);
         regs.write_fpr_f64(2, 4.0);
         execute(
-            &Instruction::FpBinary { op: FpBinOp::Fmul, fd: 0, fn_: 1, fm: 2 },
+            &Instruction::FpBinary { op: FpBinOp::Fmul, fd: 0, fn_: 1, fm: 2, single: false },
             &mut regs,
             &mut mem,
         )
@@ -1737,7 +1791,7 @@ mod tests {
         assert_eq!(regs.read_fpr_f64(0), 12.0);
 
         execute(
-            &Instruction::FpBinary { op: FpBinOp::Fdiv, fd: 3, fn_: 0, fm: 2 },
+            &Instruction::FpBinary { op: FpBinOp::Fdiv, fd: 3, fn_: 0, fm: 2, single: false },
             &mut regs,
             &mut mem,
         )
@@ -1750,12 +1804,113 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_fpr_f64(2, std::f64::consts::PI);
         execute(
-            &Instruction::FpMoveReg { fd: 5, fn_: 2 },
+            &Instruction::FpMoveReg { fd: 5, fn_: 2, single: false },
             &mut regs,
             &mut mem,
         )
         .unwrap();
         assert_eq!(regs.read_fpr_f64(5), std::f64::consts::PI);
+    }
+
+    // -- single precision (S view) --
+
+    #[test]
+    fn fadd_single_rounds_in_f32_not_f64() {
+        // 16777216 is the last exactly-representable integer in f32:
+        // adding 1.0 rounds back to 16777216 in single precision, while a
+        // compute-in-double-then-narrow path would produce 16777218 after
+        // the final rounding of 16777217. This pins true f32 arithmetic.
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f32(1, 16_777_216.0);
+        regs.write_fpr_f32(2, 1.0);
+        execute(
+            &Instruction::FpBinary { op: FpBinOp::Fadd, fd: 0, fn_: 1, fm: 2, single: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_f32(0), 16_777_216.0);
+    }
+
+    #[test]
+    fn single_writes_zero_the_upper_bits() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_bits(1, 0xFFFF_FFFF_FFFF_FFFF);
+        regs.write_fpr_f32(2, 2.0);
+        regs.write_fpr_bits(0, 0xAAAA_BBBB_CCCC_DDDD);
+        execute(
+            &Instruction::FpBinary { op: FpBinOp::Fmul, fd: 0, fn_: 2, fm: 2, single: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_bits(0), (4.0f32).to_bits() as u64);
+    }
+
+    #[test]
+    fn fcvt_widens_exactly_and_narrows_with_rounding() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f32(1, 2.5);
+        execute(&Instruction::FpCvt { fd: 0, fn_: 1, widen: true }, &mut regs, &mut mem)
+            .unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 2.5);
+
+        regs.write_fpr_f64(3, 0.1);
+        execute(&Instruction::FpCvt { fd: 4, fn_: 3, widen: false }, &mut regs, &mut mem)
+            .unwrap();
+        assert_eq!(regs.read_fpr_f32(4), 0.1f32);
+        // The narrow really is the f32 rounding of the f64, not bit noise.
+        assert_eq!(regs.read_fpr_bits(4), (0.1f32).to_bits() as u64);
+    }
+
+    #[test]
+    fn scvtf_single_converts_int_to_f32() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_gpr(1, false, (-7i32) as u32 as u64);
+        execute(
+            &Instruction::FpScvtf { fd: 0, rn: 1, sf: false, single: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_fpr_f32(0), -7.0);
+        assert_eq!(regs.read_fpr_bits(0), (-7.0f32).to_bits() as u64);
+    }
+
+    #[test]
+    fn fcvtzs_single_truncates_toward_zero() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f32(1, -2.7);
+        execute(
+            &Instruction::FpFcvtzs { rd: 0, fn_: 1, sf: false, single: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert_eq!(regs.read_gpr(0, false) as u32 as i32, -2);
+    }
+
+    #[test]
+    fn fcmp_single_orders_and_flags_nan_unordered() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f32(1, 1.0);
+        regs.write_fpr_f32(2, 2.0);
+        execute(
+            &Instruction::FpCompare { fn_: 1, fm: 2, single: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        assert!(regs.nzcv.n); // 1.0 < 2.0
+        regs.write_fpr_f32(3, f32::NAN);
+        execute(
+            &Instruction::FpCompare { fn_: 1, fm: 3, single: true },
+            &mut regs,
+            &mut mem,
+        )
+        .unwrap();
+        // Unordered: C and V set.
+        assert!(regs.nzcv.c && regs.nzcv.v);
     }
 
     #[test]
@@ -1764,7 +1919,7 @@ mod tests {
         regs.write_fpr_f64(1, 1.5);
         regs.write_fpr_f64(2, 1.5);
         execute(
-            &Instruction::FpCompare { fn_: 1, fm: 2 },
+            &Instruction::FpCompare { fn_: 1, fm: 2, single: false },
             &mut regs,
             &mut mem,
         )
@@ -1781,7 +1936,7 @@ mod tests {
         regs.write_fpr_f64(1, 1.0);
         regs.write_fpr_f64(2, 2.0);
         execute(
-            &Instruction::FpCompare { fn_: 1, fm: 2 },
+            &Instruction::FpCompare { fn_: 1, fm: 2, single: false },
             &mut regs,
             &mut mem,
         )
@@ -1797,7 +1952,7 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_gpr(3, true, 42);
         execute(
-            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true },
+            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true, single: false },
             &mut regs,
             &mut mem,
         )
@@ -1810,7 +1965,7 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_gpr(3, true, (-7i64) as u64);
         execute(
-            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true },
+            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true, single: false },
             &mut regs,
             &mut mem,
         )
@@ -1823,7 +1978,7 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_fpr_f64(2, 3.9);
         execute(
-            &Instruction::FpFcvtzs { rd: 0, fn_: 2, sf: true },
+            &Instruction::FpFcvtzs { rd: 0, fn_: 2, sf: true, single: false },
             &mut regs,
             &mut mem,
         )
@@ -1832,7 +1987,7 @@ mod tests {
 
         regs.write_fpr_f64(2, -3.9);
         execute(
-            &Instruction::FpFcvtzs { rd: 1, fn_: 2, sf: true },
+            &Instruction::FpFcvtzs { rd: 1, fn_: 2, sf: true, single: false },
             &mut regs,
             &mut mem,
         )
