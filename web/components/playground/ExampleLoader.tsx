@@ -63,7 +63,10 @@ const GROUPS: ExampleGroup[] = [
   },
   {
     label: "Floating point",
-    items: [{ name: "circle area", stem: "circle-area" }],
+    items: [
+      { name: "circle area", stem: "circle-area" },
+      { name: "triangle area (single)", stem: "triangle-area" },
+    ],
   },
   {
     label: "Files and I/O",

@@ -77,13 +77,14 @@ describe("ExampleLoader", () => {
   it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
-    // 13 kept programs + the two stage fillers.
-    expect(labels.length).toBe(15);
+    // 14 kept programs + the two stage fillers.
+    expect(labels.length).toBe(16);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
     expect(labels).toContain("arithmetic");
     expect(labels).toContain("copy file");
+    expect(labels).toContain("triangle area (single)");
   });
 
   it("fetches the picked example and forwards the payload + label to onLoad", async () => {
