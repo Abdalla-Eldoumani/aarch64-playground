@@ -155,33 +155,41 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   },
   NOP: { summary: "Do nothing; PC advances." },
   FMOV: {
-    summary: "Copy FP register bit-for-bit, or load an 8-bit float immediate.",
+    summary: "Copy FP register bit-for-bit, or load an 8-bit float immediate (S or D form).",
     details: [
-      "`FMOV Dd, #imm` takes a small power-of-two multiple of 1.0-1.9375 (1.0, 2.0, 5.0, 9.0 all fit).",
-      "Values outside that set (0.0, 0.1, 100.0) do not encode; load them from a `.double` instead.",
+      "`FMOV Dd, #imm` / `FMOV Sd, #imm` takes a small power-of-two multiple of 1.0-1.9375 (0.5, 1.0, 2.0, 5.0, 9.0 all fit).",
+      "Values outside that set (0.0, 0.1, 100.0) do not encode; load them from a `.double` / `.float` instead.",
     ],
     example: "fmov d9, 5.0",
   },
-  FADD: { summary: "Dd = Dn + Dm (double precision)." },
-  FSUB: { summary: "Dd = Dn - Dm." },
-  FMUL: { summary: "Dd = Dn * Dm." },
-  FDIV: { summary: "Dd = Dn / Dm." },
+  FADD: { summary: "Fd = Fn + Fm; the register width picks single (`Sd`) or double (`Dd`)." },
+  FSUB: { summary: "Fd = Fn - Fm (S or D form)." },
+  FMUL: { summary: "Fd = Fn * Fm (S or D form)." },
+  FDIV: { summary: "Fd = Fn / Fm (S or D form)." },
   FNEG: {
-    summary: "Dd = -Dn (flips the sign bit).",
+    summary: "Fd = -Fn (flips the sign bit; S or D form).",
     example: "fneg d16, d16",
     cExample: "Dd = -Dn;",
   },
   FABS: {
-    summary: "Dd = fabs(Dn) (clears the sign bit).",
+    summary: "Fd = fabs(Fn) (clears the sign bit; S or D form).",
     example: "fabs d0, d1",
     cExample: "Dd = fabs(Dn);",
   },
   FCMP: {
-    summary: "Set NZCV from Dn vs Dm.",
+    summary: "Set NZCV from Fn vs Fm (S or D form).",
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
   },
-  SCVTF: { summary: "Signed-int -> double (`SCVTF Dd, Xn` / `Dd, Wn`)." },
-  FCVTZS: { summary: "Double -> signed-int with truncation." },
+  FCVT: {
+    summary: "Convert between the float views: `FCVT Dd, Sn` widens exactly, `FCVT Sd, Dn` narrows with rounding.",
+    details: [
+      "The step before printing a float: printf takes doubles, so widen with `fcvt d0, s0` first.",
+    ],
+    example: "fcvt d0, s0",
+    cExample: "double d = (double)f;",
+  },
+  SCVTF: { summary: "Signed-int -> float (`SCVTF Dd, Xn` / `Dd, Wn` / `Sd, Wn`)." },
+  FCVTZS: { summary: "Float -> signed-int with truncation (`FCVTZS Wd, Dn` / `Wd, Sn`)." },
 };
 
 /** Case-insensitive lookup; condition variants collapse to B.COND. */
