@@ -33,7 +33,9 @@ const leadMarkdown = [
 ].join("\n");
 
 const integerMarkdown = [
-  "The first eight arguments and the return value travel in `x0` through `x7`. A routine you call may use them freely, so treat anything in `x0`-`x7` as gone once the call returns. `x8` carries an indirect result address, and it also holds the syscall number for an `svc`.",
+  "Every general-purpose register has two names for one storage location: `x19` is all 64 bits and `w19` is the same register's low 32 bits, the view you use when the value is an int or narrower. Writing the `w` form zeroes the top half. Everything below applies to both views at once: a role belongs to the register, so `w19` is exactly as callee-saved as `x19`, and `scanf`'s `%d` result read back into `w19` enjoys the same protection.",
+  "",
+  "The first eight arguments and the return value travel in `x0` through `x7` (or `w0`-`w7` for int-sized values). A routine you call may use them freely, so treat anything in `x0`-`x7` as gone once the call returns. `x8` carries an indirect result address, and it also holds the syscall number for an `svc`.",
   "",
   "`x9` through `x15` are caller-saved temporaries: a routine you call may overwrite any of them, so stash a value you still need before the call. `x16` and `x17` are the intra-procedure-call scratch registers (ip0 and ip1), and `x18` is reserved by the platform, so do not use it.",
   "",
@@ -41,7 +43,9 @@ const integerMarkdown = [
 ].join("\n");
 
 const fpMarkdown = [
-  "Floating-point values ride their own register file, with the same caller/callee split. `d0` through `d7` carry the first eight floating-point arguments and return the result, just as `x0`-`x7` do for integers. `d8` through `d15` are callee-saved, but only their low 64 bits: a callee may clobber the top half of the underlying vector register, and because a double is exactly 64 bits, the `d` values this course computes with are effectively preserved. `d16` through `d31` are caller-saved temporaries, so treat them as gone once a call returns. There is no floating-point frame pointer: `x29` and `x30` still hold the frame record, whatever type the function computes with.",
+  "Floating-point values ride their own register file of 32 registers, and like the integer file each register has two views the course uses: `s0` is the low 32 bits (a C `float`) and `d0` is the low 64 bits (a C `double`) of the same register — `s0` and `d0` overlap. The registers are wider still underneath, but the extra width belongs to SIMD, which this course never touches; think in `s` and `d` only. `fcvt d0, s0` widens a float to a double exactly, and `fcvt s0, d0` narrows with rounding — the step a program takes before handing a float to `printf`, which always receives doubles.",
+  "",
+  "The calling convention mirrors the integer split. `d0` through `d7` (or `s0`-`s7` for floats) carry the first eight floating-point arguments and return the result, a separate bank from `x0`-`x7`, so `printf(\"%d %f\", ...)` puts the int in `w1` and the double in `d0` without collision. `d8` through `d15` are callee-saved — a routine that writes one must restore it, which is why the course parks long-lived floats there. `d16` through `d31` are caller-saved temporaries, so treat them as gone once a call returns. There is no floating-point frame pointer: `x29` and `x30` still hold the frame record, whatever type the function computes with.",
 ].join("\n");
 
 const frameMarkdown = [

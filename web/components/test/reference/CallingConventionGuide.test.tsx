@@ -34,15 +34,27 @@ describe("CallingConventionGuide", () => {
     }
   });
 
-  it("teaches the floating-point register file under section 02", () => {
+  it("teaches the floating-point register file under section 02 in s/d terms", () => {
     const { container } = render(<CallingConventionGuide />);
     const strip = screen.getByLabelText("aapcs64 floating-point register file");
     for (const reg of ["d0", "d8", "d16", "d31"]) {
-      expect(within(strip).getByText(reg)).toBeTruthy();
+      expect(within(strip).getAllByText(reg).length).toBeGreaterThanOrEqual(1);
     }
+    // The s view sits on every cell, and fcvt bridges the two widths.
+    expect(within(strip).getAllByText("s8").length).toBeGreaterThanOrEqual(1);
     const text = container.textContent ?? "";
-    expect(text).toContain("low 64 bits");
+    expect(text).toContain("s0");
+    expect(text).toContain("fcvt");
     expect(text).toContain("no floating-point frame pointer");
+    // The course never teaches vector registers; the guide must not either.
+    expect(text).not.toContain("vector");
+  });
+
+  it("teaches the w view of the integer registers under section 01", () => {
+    const { container } = render(<CallingConventionGuide />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("low 32 bits");
+    expect(text).toContain("w19");
   });
 
   it("mounts the stack alignment probe with its presets under section 04", () => {
