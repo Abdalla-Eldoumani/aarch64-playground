@@ -15,10 +15,33 @@
  *   parseArgs("")                   -> []
  */
 export function parseArgs(input: string): string[] {
-  const out: string[] = [];
+  return parseArgsDetailed(input).map((t) => t.text);
+}
+
+export interface ParsedToken {
+  text: string;
+  /** True when any part of the token was quoted or backslash-escaped.
+   *  The terminal uses this to tell a redirect operator `>` from a
+   *  literal `">"` the student deliberately protected. */
+  quoted: boolean;
+}
+
+/** The tokenizer behind `parseArgs`, keeping the quoting facts. */
+export function parseArgsDetailed(input: string): ParsedToken[] {
+  const out: ParsedToken[] = [];
   let buf = "";
   let inQuote: '"' | "'" | null = null;
   let hasToken = false;
+  let quoted = false;
+
+  const flush = () => {
+    if (hasToken) {
+      out.push({ text: buf, quoted });
+      buf = "";
+      hasToken = false;
+      quoted = false;
+    }
+  };
 
   for (let i = 0; i < input.length; i++) {
     const ch = input[i];
@@ -26,6 +49,7 @@ export function parseArgs(input: string): string[] {
     if (ch === "\\" && i + 1 < input.length) {
       buf += input[i + 1];
       hasToken = true;
+      quoted = true;
       i++;
       continue;
     }
@@ -43,15 +67,12 @@ export function parseArgs(input: string): string[] {
     if (ch === '"' || ch === "'") {
       inQuote = ch;
       hasToken = true;
+      quoted = true;
       continue;
     }
 
     if (/\s/.test(ch)) {
-      if (hasToken) {
-        out.push(buf);
-        buf = "";
-        hasToken = false;
-      }
+      flush();
       continue;
     }
 
@@ -59,9 +80,6 @@ export function parseArgs(input: string): string[] {
     hasToken = true;
   }
 
-  if (hasToken) {
-    out.push(buf);
-  }
-
+  flush();
   return out;
 }

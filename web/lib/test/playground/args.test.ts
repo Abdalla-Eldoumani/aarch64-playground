@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseArgs } from "@/lib/playground/args";
+import { parseArgs, parseArgsDetailed } from "@/lib/playground/args";
 
 describe("parseArgs", () => {
   test("empty input yields empty array", () => {
@@ -44,5 +44,23 @@ describe("parseArgs", () => {
 
   test("tabs separate like spaces", () => {
     expect(parseArgs("a\tb")).toEqual(["a", "b"]);
+  });
+});
+
+describe("parseArgsDetailed", () => {
+  test("marks quoted and escaped tokens, leaves bare ones unmarked", () => {
+    const tokens = parseArgsDetailed('run ">" plain \\> "two words"');
+    expect(tokens).toEqual([
+      { text: "run", quoted: false },
+      { text: ">", quoted: true },
+      { text: "plain", quoted: false },
+      { text: ">", quoted: true },
+      { text: "two words", quoted: true },
+    ]);
+  });
+
+  test("parseArgs stays the plain-text view of the same tokenizer", () => {
+    const line = 'a "b c" d\ e';
+    expect(parseArgs(line)).toEqual(parseArgsDetailed(line).map((t) => t.text));
   });
 });
