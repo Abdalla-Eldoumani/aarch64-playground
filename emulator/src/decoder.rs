@@ -131,7 +131,8 @@ pub enum MulAccumulateOp {
     Msub,
 }
 
-/// Floating-point binary operation. Double precision only.
+/// Floating-point binary operation. The instruction's `single` flag picks
+/// the S (f32) or D (f64) form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FpBinOp {
     Fadd,
@@ -141,7 +142,8 @@ pub enum FpBinOp {
 }
 
 /// Floating-point one-source operation (FP data-processing 1-source space,
-/// same opcode field FMOV-register lives in). Double precision only.
+/// same opcode field FMOV-register lives in). The instruction's `single`
+/// flag picks the S (f32) or D (f64) form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FpUnaryOp {
     Fneg,
@@ -330,47 +332,64 @@ pub enum Instruction {
         mode: IndexMode,
         sf: bool,
     },
-    /// FADD / FSUB / FMUL / FDIV in double precision.
+    /// FADD / FSUB / FMUL / FDIV. `single` picks the S (f32) form over D.
     FpBinary {
         op: FpBinOp,
         fd: u8,
         fn_: u8,
         fm: u8,
+        single: bool,
     },
-    /// FMOV Dd, #imm (8-bit VFP immediate, already expanded to the full
-    /// IEEE 754 double bit pattern so the executor just writes it).
+    /// FMOV Fd, #imm (8-bit VFP immediate, already expanded to the full
+    /// IEEE 754 bit pattern -- f32 bits for the S form, f64 for D -- so
+    /// the executor just writes it).
     FpMoveImm {
         fd: u8,
         imm_bits: u64,
+        single: bool,
     },
-    /// FMOV Dd, Dn (reg-to-reg).
+    /// FMOV Fd, Fn (reg-to-reg). The S form copies and zero-extends the
+    /// low 32 bits.
     FpMoveReg {
         fd: u8,
         fn_: u8,
+        single: bool,
     },
-    /// FCMP Dn, Dm. Sets NZCV; Dd is unused in the encoding.
+    /// FCMP Fn, Fm. Sets NZCV; Fd is unused in the encoding.
     FpCompare {
         fn_: u8,
         fm: u8,
+        single: bool,
     },
-    /// FNEG / FABS Dd, Dn: double-precision sign flip / sign clear.
+    /// FNEG / FABS Fd, Fn: sign flip / sign clear.
     FpUnary {
         op: FpUnaryOp,
         fd: u8,
         fn_: u8,
+        single: bool,
     },
-    /// SCVTF Dd, Rn: signed int (W or X) to double. `sf` picks Xn vs Wn.
+    /// SCVTF Fd, Rn: signed int (W or X) to float. `sf` picks Xn vs Wn;
+    /// `single` picks Sd vs Dd.
     FpScvtf {
         fd: u8,
         rn: u8,
         sf: bool,
+        single: bool,
     },
-    /// FCVTZS Rd, Dn: double to signed int (W or X), round-toward-zero.
-    /// `sf` picks Xd vs Wd.
+    /// FCVTZS Rd, Fn: float to signed int (W or X), round-toward-zero.
+    /// `sf` picks Xd vs Wd; `single` picks Sn vs Dn.
     FpFcvtzs {
         rd: u8,
         fn_: u8,
         sf: bool,
+        single: bool,
+    },
+    /// FCVT: precision convert. `widen` = FCVT Dd, Sn (exact); otherwise
+    /// FCVT Sd, Dn (rounds to nearest single).
+    FpCvt {
+        fd: u8,
+        fn_: u8,
+        widen: bool,
     },
     /// SBFM / UBFM extract-and-extend (the form behind `sxtb`/`sxth`/
     /// `sxtw`/`uxtb`/`uxth` and `sbfx`/`ubfx`). `immr` is the rotate/lsb,
@@ -633,27 +652,28 @@ pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
-    // Data-processing (1 source): FMOV (reg), FNEG, FABS, FSQRT.
+    // Data-processing (1 source): FMOV (reg), FNEG, FABS, FCVT.
     //   Encoding: 0_0_0_11110_ftype_1_00_000_1_op_000_Rn_Rd  (opcode in bits 20:15)
     // Data-processing (2 source): FADD/FSUB/FMUL/FDIV.
     //   Encoding: 0_0_0_11110_ftype_1_Rm_opcode_10_Rn_Rd
     // FCMP:
     //   Encoding: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_opcode2
-    // FCVTZS (double -> Xd/Wd, round toward zero):
+    // FCVTZS (float -> Xd/Wd, round toward zero):
     //   Encoding: sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
-    // SCVTF (Xn/Wn -> double):
+    // SCVTF (Xn/Wn -> float):
     //   Encoding: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
-    // We only handle double precision (ftype=01).
+    // ftype picks the scalar width: 00 = single (S), 01 = double (D) --
+    // the two views the course uses. Half precision (11) stays unhandled.
 
     let bits_28_24 = bits(instr, 28, 24);
     if bits_28_24 != 0b11110 {
         return Err(EmuError::UnknownInstruction(instr));
     }
     let ftype = bits(instr, 23, 22);
-    if ftype != 0b01 {
-        // Only double precision for now.
+    if ftype != 0b00 && ftype != 0b01 {
         return Err(EmuError::UnknownInstruction(instr));
     }
+    let single = ftype == 0b00;
     if bit(instr, 21) != 1 {
         return Err(EmuError::UnknownInstruction(instr));
     }
@@ -672,46 +692,62 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
             0b0011 => FpBinOp::Fsub,
             _ => return Err(EmuError::UnknownInstruction(instr)),
         };
-        return Ok(Instruction::FpBinary { op, fd: rd, fn_: rn, fm: rm });
+        return Ok(Instruction::FpBinary { op, fd: rd, fn_: rn, fm: rm, single });
     }
 
     // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.
-    // FMOV keeps its dedicated variant; FABS/FNEG share FpUnary.
+    // FMOV keeps its dedicated variant; FABS/FNEG share FpUnary. FCVT's
+    // opcode is 0001‖dest-type: the ftype names the SOURCE width, so only
+    // the cross-width pairs are valid encodings.
     if bits(instr, 14, 10) == 0b10000 {
         match bits(instr, 20, 15) {
-            0b000000 => return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn }),
+            0b000000 => return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn, single }),
             0b000001 => {
-                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: rd, fn_: rn })
+                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: rd, fn_: rn, single })
             }
             0b000010 => {
-                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: rd, fn_: rn })
+                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: rd, fn_: rn, single })
+            }
+            // FCVT Sd, Dn: dest single, source double (narrow).
+            0b000100 if !single => {
+                return Ok(Instruction::FpCvt { fd: rd, fn_: rn, widen: false })
+            }
+            // FCVT Dd, Sn: dest double, source single (widen, exact).
+            0b000101 if single => {
+                return Ok(Instruction::FpCvt { fd: rd, fn_: rn, widen: true })
             }
             _ => {}
         }
     }
 
     // FMOV (scalar, immediate): imm8 in bits 20:13, bits 12:10 = 100, and
-    // the Rn field is zero. Expanded here so the executor writes raw bits.
+    // the Rn field is zero. Expanded here so the executor writes raw bits;
+    // the S form expands to f32 bits (every VFP immediate is exact in f32).
     if bits(instr, 12, 10) == 0b100 && bits(instr, 9, 5) == 0 {
         let imm8 = bits(instr, 20, 13) as u8;
-        return Ok(Instruction::FpMoveImm { fd: rd, imm_bits: expand_fmov_imm8(imm8) });
+        let imm_bits = if single {
+            (f64::from_bits(expand_fmov_imm8(imm8)) as f32).to_bits() as u64
+        } else {
+            expand_fmov_imm8(imm8)
+        };
+        return Ok(Instruction::FpMoveImm { fd: rd, imm_bits, single });
     }
 
     // FCMP: opcode2 = 001000 in bits 15:10, bits 4:0 = 00000, bits 20:16 = Rm.
     if bits(instr, 15, 10) == 0b001000 && bits(instr, 4, 0) == 0 {
-        return Ok(Instruction::FpCompare { fn_: rn, fm: rm });
+        return Ok(Instruction::FpCompare { fn_: rn, fm: rm, single });
     }
 
-    // FCVTZS (double -> signed int): sf_0_0_11110_01_1_11_000_000000_Rn_Rd
+    // FCVTZS (float -> signed int): sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
     if bits(instr, 20, 10) == 0b11000_000000 {
         let sf = bit(instr, 31) == 1;
-        return Ok(Instruction::FpFcvtzs { rd, fn_: rn, sf });
+        return Ok(Instruction::FpFcvtzs { rd, fn_: rn, sf, single });
     }
 
-    // SCVTF (signed int -> double): sf_0_0_11110_01_1_00_010_000000_Rn_Rd
+    // SCVTF (signed int -> float): sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
     if bits(instr, 20, 10) == 0b00010_000000 {
         let sf = bit(instr, 31) == 1;
-        return Ok(Instruction::FpScvtf { fd: rd, rn, sf });
+        return Ok(Instruction::FpScvtf { fd: rd, rn, sf, single });
     }
 
     Err(EmuError::UnknownInstruction(instr))
