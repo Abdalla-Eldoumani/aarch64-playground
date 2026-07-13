@@ -19,6 +19,15 @@ export interface AssemblyError {
   message: string;
 }
 
+/** The direct verdict of one assemble attempt, returned to tool callers
+ *  (the terminal's gcc) so they never read error state that has not
+ *  flushed through React yet. */
+export interface AssembleOutcome {
+  success: boolean;
+  error: string | null;
+  errorLine: number | null;
+}
+
 export interface DecodedInstruction {
   address: number;
   hex: string;
@@ -58,6 +67,10 @@ export interface EmulatorState {
   /** Resolves true on a successful assemble, false on any failure, so
    *  callers can chain work (input seeding, run) on a loaded program. */
   assemble: (source: string, args?: string[]) => Promise<boolean>;
+  /** Assemble for the terminal toolchain: same machine bookkeeping, but
+   *  the precise verdict comes back directly and the editor's error
+   *  markers stay untouched. */
+  assembleForTool: (source: string, args?: string[]) => Promise<AssembleOutcome>;
   step: () => void;
   stepBack: () => void;
   canStepBack: boolean;
@@ -339,13 +352,21 @@ export function useEmulator(): EmulatorState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const assemble = useCallback(
-    (source: string, args: string[] = []): Promise<boolean> => {
+  const assembleWith = useCallback(
+    (
+      source: string,
+      args: string[],
+      surfaceErrors: boolean,
+    ): Promise<AssembleOutcome> => {
       const backend = backendRef.current;
-      if (!backend) return Promise.resolve(false);
+      if (!backend) {
+        return Promise.resolve({ success: false, error: "emulator not loaded", errorLine: null });
+      }
       sourceRef.current = source;
-      setError(null);
-      setAssemblyErrors([]);
+      if (surfaceErrors) {
+        setError(null);
+        setAssemblyErrors([]);
+      }
       setIsRunning(false);
       runningRef.current = false;
       setStepCount(0);
@@ -368,9 +389,13 @@ export function useEmulator(): EmulatorState {
           return trimmed.length > 0 && !trimmed.endsWith(":");
         });
       if (!hasContent) {
-        setError("no instructions to assemble");
+        if (surfaceErrors) setError("no instructions to assemble");
         setInstructions([]);
-        return Promise.resolve(false);
+        return Promise.resolve({
+          success: false,
+          error: "no instructions to assemble",
+          errorLine: null,
+        });
       }
 
       // Return the promise chain so callers that must run only after the
@@ -378,15 +403,21 @@ export function useEmulator(): EmulatorState {
       // separate Assemble control) can await assembly.
       return backend
         .assemble(source, args)
-        .then(async ({ result }) => {
+        .then(async ({ result }): Promise<AssembleOutcome> => {
           if (!result.success) {
-            const errors: AssemblyError[] = [];
-            if (result.error_line != null && result.error != null) {
-              errors.push({ line: result.error_line, message: result.error });
+            if (surfaceErrors) {
+              const errors: AssemblyError[] = [];
+              if (result.error_line != null && result.error != null) {
+                errors.push({ line: result.error_line, message: result.error });
+              }
+              setAssemblyErrors(errors);
+              setError(result.error ?? null);
             }
-            setAssemblyErrors(errors);
-            setError(result.error ?? null);
-            return false;
+            return {
+              success: false,
+              error: result.error ?? null,
+              errorLine: result.error_line ?? null,
+            };
           }
           const base = await backend.codeBase();
           // Fetch the authoritative line map alongside codeBase (mirroring
@@ -433,14 +464,31 @@ export function useEmulator(): EmulatorState {
           }
           setInstructions(instrs);
           markProgramLoaded(true);
-          return true;
+          return { success: true, error: null, errorLine: null };
         })
-        .catch((e: unknown) => {
-          setError(e instanceof Error ? e.message : String(e));
-          return false;
+        .catch((e: unknown): AssembleOutcome => {
+          const message = e instanceof Error ? e.message : String(e);
+          if (surfaceErrors) setError(message);
+          return { success: false, error: message, errorLine: null };
         });
     },
     [resetReplayHistory, markProgramLoaded],
+  );
+
+  const assemble = useCallback(
+    (source: string, args: string[] = []): Promise<boolean> =>
+      assembleWith(source, args, true).then((r) => r.success),
+    [assembleWith],
+  );
+
+  // The terminal's gcc/as path: same machine bookkeeping, but the verdict
+  // comes back directly (no stale state reads) and nothing is written to
+  // the editor's error markers -- the terminal's error belongs to the
+  // terminal's file, not the source the editor happens to show.
+  const assembleForTool = useCallback(
+    (source: string, args: string[] = []): Promise<AssembleOutcome> =>
+      assembleWith(source, args, false),
+    [assembleWith],
   );
 
   const step = useCallback(() => {
@@ -753,6 +801,7 @@ export function useEmulator(): EmulatorState {
       hostedMode,
       vfsFiles,
       assemble,
+      assembleForTool,
       step,
       stepBack,
       canStepBack,
@@ -790,7 +839,7 @@ export function useEmulator(): EmulatorState {
       isRunning, isHalted, programLoaded, error, assemblyErrors, breakpoints,
       currentLine, instructions, codeBase, stdout, stderr, blocked,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
-      savedStates, assemble, step, stepBack, saveState, loadState,
+      savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, getMemory,
       pushStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,

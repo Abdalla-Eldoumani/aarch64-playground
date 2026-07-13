@@ -487,6 +487,31 @@ describe("useEmulator assemble", () => {
     expect(result.current.instructions).toEqual([]);
   });
 
+  it("assembleForTool returns the precise verdict and never touches error state", async () => {
+    const fake = makeBackend({
+      assembleSuccess: false,
+      assembleError: "unknown mnemonic: MOVQ",
+      assembleErrorLine: 2,
+    });
+    const { result } = await mountLoaded(fake);
+
+    let verdict: { success: boolean; error: string | null; errorLine: number | null } | null =
+      null;
+    await act(async () => {
+      verdict = await result.current.assembleForTool(HOSTED_SOURCE);
+    });
+
+    // The caller gets the full verdict directly...
+    expect(verdict).toEqual({
+      success: false,
+      error: "unknown mnemonic: MOVQ",
+      errorLine: 2,
+    });
+    // ...and the editor-facing error surface stays exactly as it was.
+    expect(result.current.error).toBeNull();
+    expect(result.current.assemblyErrors).toEqual([]);
+  });
+
   it("sets a bare error without a line when the failure has no error_line", async () => {
     const fake = makeBackend({
       assembleSuccess: false,
