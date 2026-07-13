@@ -187,6 +187,45 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
                 i += 1;
             }
             let text = &source[start..i];
+            // A plain decimal run followed by `.digit` is a float literal
+            // the way the real assembler reads it (`.double 3.14`); the
+            // lone `.` current-address symbol never has digits on both
+            // sides, so this stays unambiguous.
+            let plain_decimal = text.bytes().all(|c| c.is_ascii_digit());
+            if plain_decimal
+                && i + 1 < bytes.len()
+                && bytes[i] == b'.'
+                && bytes[i + 1].is_ascii_digit()
+            {
+                i += 1;
+                while i < bytes.len() && bytes[i].is_ascii_digit() {
+                    i += 1;
+                }
+                // Optional exponent; the sign belongs to the float only
+                // right after the `e`, never as a trailing operator.
+                if i < bytes.len() && (bytes[i] == b'e' || bytes[i] == b'E') {
+                    let mut j = i + 1;
+                    if j < bytes.len() && (bytes[j] == b'+' || bytes[j] == b'-') {
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j].is_ascii_digit() {
+                        i = j;
+                        while i < bytes.len() && bytes[i].is_ascii_digit() {
+                            i += 1;
+                        }
+                    }
+                }
+                let text = &source[start..i];
+                let value: f64 = text.parse().map_err(|_| {
+                    lex_err(line, &format!("invalid float literal `{text}`"))
+                })?;
+                tokens.push(Token {
+                    kind: TokenKind::FloatLit(value),
+                    line,
+                    col,
+                });
+                continue;
+            }
             let value = parse_int(text).ok_or_else(|| {
                 lex_err(line, &format!("invalid integer literal `{text}`"))
             })?;
@@ -328,7 +367,12 @@ fn parse_char_literal(s: &str, line: usize) -> Result<(u32, usize), EmuError> {
 }
 
 fn parse_string_literal(s: &str, line: usize) -> Result<(Vec<u8>, usize), EmuError> {
-    // s starts with the opening quote.
+    // s starts with the opening quote. Like the real assembler, a string
+    // may not span lines: a raw newline before the closing quote is an
+    // unterminated literal, reported at the line where the quote opened
+    // (write \n for a newline byte). Without this stop, a stray quote
+    // later in the file would silently swallow the lines in between and
+    // the student would get a baffling error far from the real mistake.
     let bytes = s.as_bytes();
     let mut out = Vec::new();
     let mut i = 1;
@@ -336,6 +380,12 @@ fn parse_string_literal(s: &str, line: usize) -> Result<(Vec<u8>, usize), EmuErr
         let b = bytes[i];
         if b == b'"' {
             return Ok((out, i + 1));
+        }
+        if b == b'\n' || b == b'\r' {
+            return Err(lex_err(
+                line,
+                "unterminated string literal: no closing \" before the end of the line (write \\n for a newline)",
+            ));
         }
         if b == b'\\' {
             let (v, used) = decode_escape(&bytes[i..], line)?;
@@ -346,7 +396,10 @@ fn parse_string_literal(s: &str, line: usize) -> Result<(Vec<u8>, usize), EmuErr
         out.push(b);
         i += 1;
     }
-    Err(lex_err(line, "unterminated string literal"))
+    Err(lex_err(
+        line,
+        "unterminated string literal: no closing \" before the end of the line (write \\n for a newline)",
+    ))
 }
 
 fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
@@ -453,6 +506,39 @@ mod tests {
     }
 
     #[test]
+    fn plain_decimal_float_lexes_like_the_real_assembler() {
+        // `.double 3.14` works in the real toolchain with no 0r prefix.
+        let t = lex("3.14", 1).unwrap();
+        match t[0].kind {
+            TokenKind::FloatLit(v) => assert_eq!(v, 3.14),
+            ref other => panic!("expected FloatLit, got {other:?}"),
+        }
+        // Exponent forms, signed and unsigned.
+        let t = lex("1.5e3", 1).unwrap();
+        assert!(matches!(t[0].kind, TokenKind::FloatLit(v) if v == 1500.0));
+        let t = lex("2.5e-2", 1).unwrap();
+        assert!(matches!(t[0].kind, TokenKind::FloatLit(v) if v == 0.025));
+    }
+
+    #[test]
+    fn float_lexing_never_eats_expression_operators() {
+        // `2.5-1` must lex as float minus int, not one malformed float,
+        // and the current-address `.` keeps working next to numbers.
+        let t = lex("2.5-1", 1).unwrap();
+        let ks = kinds(&t);
+        assert_eq!(
+            ks,
+            vec![
+                TokenKind::FloatLit(2.5),
+                TokenKind::Minus,
+                TokenKind::IntLit(1)
+            ]
+        );
+        let t = lex(". - msg - 1", 1).unwrap();
+        assert!(matches!(t[0].kind, TokenKind::Dot));
+    }
+
+    #[test]
     fn char_literal_plain() {
         let t = lex("'A'", 1).unwrap();
         assert_eq!(kinds(&t), vec![TokenKind::CharLit(65)]);
@@ -489,7 +575,23 @@ mod tests {
 
     #[test]
     fn unterminated_string_errors() {
-        assert!(lex("\"not closed", 1).is_err());
+        let err = lex("\"not closed", 1).unwrap_err();
+        assert!(err.to_string().contains("unterminated string literal"));
+    }
+
+    #[test]
+    fn string_may_not_span_lines() {
+        // A stray quote on a later line must NOT terminate this string;
+        // the error names the problem and blames the opening line.
+        let err = lex("\"broken", 5).unwrap_err();
+        match err {
+            crate::errors::EmuError::ParseError { line, message } => {
+                assert_eq!(line, 5);
+                assert!(message.contains("unterminated string literal"));
+                assert!(message.contains("end of the line"));
+            }
+            other => panic!("expected ParseError, got {other:?}"),
+        }
     }
 
     #[test]
