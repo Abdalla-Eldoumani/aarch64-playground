@@ -34,6 +34,13 @@ describe("DRegisterRow", () => {
     expect(screen.queryByText(/arg|save/)).toBeNull();
   });
 
+  it("reads an s-written pattern as the float it is, suffixed f", () => {
+    // An S write zero-extends: 4.5f is 0x40900000 in the low 32 bits.
+    // The f64 reading of those bits would be a meaningless denormal.
+    render(<DRegisterRow index={0} bitsHex="0x40900000" />);
+    expect(screen.getByText("4.5f")).toBeTruthy();
+  });
+
   it("renders integral doubles with one decimal and zero as 0.0", () => {
     // 42.0 is 0x4045000000000000.
     render(<DRegisterRow index={1} bitsHex="0x4045000000000000" />);

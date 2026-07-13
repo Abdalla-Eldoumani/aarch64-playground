@@ -27,20 +27,32 @@ function fpAlias(index: number): string | undefined {
   return undefined;
 }
 
-/** Decimal rendering of the double stored in the register. */
-function decodeDouble(bitsHex: string): string {
+function formatFloat(value: number): string {
+  if (Number.isNaN(value)) return "nan";
+  if (!Number.isFinite(value)) return value > 0 ? "+inf" : "-inf";
+  // Integral floats print with one decimal so they still read as floats.
+  if (Number.isInteger(value) && Math.abs(value) < 1e15) {
+    return `${value.toFixed(1)}`;
+  }
+  return `${value}`;
+}
+
+/** Decimal rendering of the register's value. An S write zeroes the top
+ *  32 bits, so a pattern living entirely in the low half is read as the
+ *  f32 the program put there (suffixed `f`, C float style) -- the f64
+ *  reading of such bits would be a meaningless denormal. Everything else
+ *  reads as the double it is. */
+function decodeFp(bitsHex: string): string {
   try {
     const bits = BigInt(bitsHex);
+    if (bits !== 0n && bits <= 0xffff_ffffn) {
+      const buffer = new ArrayBuffer(4);
+      new DataView(buffer).setUint32(0, Number(bits));
+      return `${formatFloat(new DataView(buffer).getFloat32(0))}f`;
+    }
     const buffer = new ArrayBuffer(8);
     new DataView(buffer).setBigUint64(0, bits);
-    const value = new DataView(buffer).getFloat64(0);
-    if (Number.isNaN(value)) return "nan";
-    if (!Number.isFinite(value)) return value > 0 ? "+inf" : "-inf";
-    // Integral doubles print with one decimal so they still read as floats.
-    if (Number.isInteger(value) && Math.abs(value) < 1e15) {
-      return `${value.toFixed(1)}`;
-    }
-    return `${value}`;
+    return formatFloat(new DataView(buffer).getFloat64(0));
   } catch {
     return "0.0";
   }
@@ -52,7 +64,7 @@ export function DRegisterRow({
   hexMode = false,
   changed = false,
 }: DRegisterRowProps) {
-  const decimal = decodeDouble(bitsHex);
+  const decimal = decodeFp(bitsHex);
   const primary = hexMode ? bitsHex : decimal;
   const secondary = hexMode ? decimal : bitsHex;
   return (
