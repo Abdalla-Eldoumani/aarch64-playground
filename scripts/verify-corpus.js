@@ -41,8 +41,8 @@ function parseArgsLine(input) {
 
 // Feed optional stdin / argv / vfs inputs, run until halt or exit, then
 // return stdout + exit code + the post-run state of every VFS file the
-// program may have created. Used for hosted corpus fixtures (phase E
-// extends fixture coverage to all 13 cpsc 355 examples).
+// program may have created. Every cpsc 355 example with a fixture pair
+// under fixtures/ runs through here.
 function runHosted(file, stdin, args, vfsIn) {
   const src = fs.readFileSync(file, "utf8");
   const emu = new wasm.Emulator();
