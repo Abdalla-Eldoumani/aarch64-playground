@@ -77,16 +77,41 @@ describe("MemoryWatches", () => {
     expect(JSON.parse(window.localStorage.getItem(STORE_KEY) ?? "null")).toEqual([]);
   });
 
-  it("rejects an unparseable address", () => {
+  it("accepts a decimal address, matching the hint", () => {
+    const { getMemory } = renderWatches();
+    addWatch("dec", "100", "4");
+    // 100 reads as decimal one hundred, never silently as hex 0x100.
+    expect(getMemory).toHaveBeenCalledWith(100, 4);
+    expect(screen.getByText("dec")).toBeTruthy();
+  });
+
+  it("rejects an unparseable address with a visible message", () => {
     renderWatches();
     addWatch("bad", "zz", "4");
     expect(screen.queryByText("bad")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe(
+      "address must be hex (0x...) or decimal",
+    );
     expect(screen.getByText("Pin an address; the bytes follow you across runs.")).toBeTruthy();
+  });
+
+  it("rejects hex digits without the 0x prefix instead of guessing", () => {
+    renderWatches();
+    // "4000a0" is neither decimal nor prefixed hex; guessing a base here
+    // is how a watch ends up silently reading the wrong bytes.
+    addWatch("bare", "4000a0", "4");
+    expect(screen.queryByText("bare")).toBeNull();
+    expect(screen.getByRole("alert")).toBeTruthy();
   });
 
   it("rejects a length beyond the 512-byte cap", () => {
     renderWatches();
+    // The browser's own constraint validation gates the submit: the
+    // number input carries max=512, so an over-cap value never reaches
+    // the handler and the native "must be <= 512" message shows instead.
     addWatch("big", "0x00600000", "600");
     expect(screen.queryByText("big")).toBeNull();
+    const lenInput = screen.getByLabelText("watch byte length") as HTMLInputElement;
+    expect(lenInput.validity.rangeOverflow).toBe(true);
   });
 });

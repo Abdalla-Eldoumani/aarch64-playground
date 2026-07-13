@@ -43,6 +43,15 @@ function persist(entries: MemoryWatch[]): void {
   }
 }
 
+/** Strict address parse: `0x...` is hex, bare digits are decimal, anything
+ *  else is rejected so a typo never silently reads the wrong bytes. */
+function parseAddress(raw: string): number | null {
+  const t = raw.trim();
+  if (/^0x[0-9a-f]+$/i.test(t)) return parseInt(t, 16);
+  if (/^\d+$/.test(t)) return parseInt(t, 10);
+  return null;
+}
+
 function hexRow(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -68,12 +77,21 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
   const [label, setLabel] = useState("");
   const [addr, setAddr] = useState("0x00400000");
   const [length, setLength] = useState(32);
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => persist(watches), [watches]);
 
   const add = useCallback(() => {
-    const parsed = parseInt(addr, 16);
-    if (Number.isNaN(parsed) || length <= 0 || length > 512) return;
+    const parsed = parseAddress(addr);
+    if (parsed == null) {
+      setAddError("address must be hex (0x...) or decimal");
+      return;
+    }
+    if (length <= 0 || length > 512) {
+      setAddError("byte count must be 1-512");
+      return;
+    }
+    setAddError(null);
     const entry: MemoryWatch = {
       label: label.trim() || `0x${parsed.toString(16)}`,
       addr: parsed,
@@ -130,6 +148,11 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
         >
           add
         </button>
+        {addError && (
+          <span role="alert" className="w-full text-[10px] text-[var(--danger)]">
+            {addError}
+          </span>
+        )}
       </form>
       <div className="flex-1 overflow-auto">
         {watches.length === 0 && (
