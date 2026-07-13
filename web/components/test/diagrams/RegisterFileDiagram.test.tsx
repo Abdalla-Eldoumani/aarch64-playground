@@ -12,12 +12,24 @@ afterEach(() => {
 describe("RegisterFileDiagram", () => {
   it("renders representative cells across every ABI role band", () => {
     render(<RegisterFileDiagram />);
-    // argument area, a caller-saved temporary, a callee-saved register, then the
-    // fp / lr aliases and sp -- one from each color family.
-    expect(screen.getByText("x0")).toBeTruthy();
-    expect(screen.getByText("x9")).toBeTruthy();
-    expect(screen.getByText("x19")).toBeTruthy();
+    // argument area, a caller-saved temporary, a callee-saved register, then
+    // the fp / lr aliases and sp -- one from each color family. The footer
+    // prose also names registers, so allow more than one match.
+    expect(screen.getAllByText("x0").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("x9").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("x19").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("sp")).toBeTruthy();
+  });
+
+  it("shows the w view on the register cells and teaches it in the footer", () => {
+    render(<RegisterFileDiagram />);
+    // Every plain x cell carries its wN low-32 view; role-aliased cells
+    // (ip0/ip1, fp, lr) keep their role name instead.
+    for (const w of ["w0", "w8", "w9", "w19", "w28"]) {
+      expect(screen.getAllByText(w).length).toBeGreaterThanOrEqual(1);
+    }
+    expect(screen.getByText(/low 32 bits/)).toBeTruthy();
+    expect(screen.getByText(/zeroes the top half/)).toBeTruthy();
   });
 
   it("shows the fp and lr aliases on x29 and x30", () => {

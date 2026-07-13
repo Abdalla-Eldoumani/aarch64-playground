@@ -30,13 +30,19 @@ interface RoleGroup {
 
 function xrange(lo: number, hi: number): RegisterCell[] {
   const cells: RegisterCell[] = [];
-  for (let n = lo; n <= hi; n++) cells.push({ name: `x${n}` });
+  // Every xN carries its wN view in the secondary slot: the same
+  // register's low 32 bits, the form 32-bit course code writes.
+  for (let n = lo; n <= hi; n++) cells.push({ name: `x${n}`, alias: `w${n}` });
   return cells;
 }
 
 const GROUPS: RoleGroup[] = [
   { role: "arguments & return", family: "args", regs: xrange(0, 7) },
-  { role: "indirect result / syscall", family: "args", regs: [{ name: "x8" }] },
+  {
+    role: "indirect result / syscall",
+    family: "args",
+    regs: [{ name: "x8", alias: "w8" }],
+  },
   { role: "caller-saved temporaries", family: "caller", regs: xrange(9, 15) },
   {
     role: "intra-procedure scratch",
@@ -46,7 +52,11 @@ const GROUPS: RoleGroup[] = [
       { name: "x17", alias: "ip1" },
     ],
   },
-  { role: "platform register (reserved)", family: "special", regs: [{ name: "x18" }] },
+  {
+    role: "platform register (reserved)",
+    family: "special",
+    regs: [{ name: "x18", alias: "w18" }],
+  },
   { role: "callee-saved", family: "callee", regs: xrange(19, 28) },
   { role: "frame pointer", family: "callee", regs: [{ name: "x29", alias: "fp" }] },
   { role: "link register", family: "special", regs: [{ name: "x30", alias: "lr" }] },
@@ -126,9 +136,21 @@ export function RegisterFileDiagram({
       </div>
 
       <p className="text-[12px] text-[var(--text-secondary)]">
-        <span className="font-mono text-[var(--text-primary)]">xzr</span> /{" "}
-        <span className="font-mono text-[var(--text-primary)]">wzr</span> is the
-        zero register: it reads as zero and discards writes.
+        {"Every "}
+        <span className="font-mono text-[var(--text-primary)]">x</span>
+        {" register has a "}
+        <span className="font-mono text-[var(--text-primary)]">w</span>
+        {" view: the same register's low 32 bits, used whenever the value is an int or narrower. Writing the "}
+        <span className="font-mono text-[var(--text-primary)]">w</span>
+        {" form zeroes the top half, and the role above applies to both views — "}
+        <span className="font-mono text-[var(--text-primary)]">w19</span>
+        {" is as callee-saved as "}
+        <span className="font-mono text-[var(--text-primary)]">x19</span>
+        {". "}
+        <span className="font-mono text-[var(--text-primary)]">xzr</span>
+        {" / "}
+        <span className="font-mono text-[var(--text-primary)]">wzr</span>
+        {" is the zero register: it reads as zero and discards writes."}
       </p>
     </section>
   );
