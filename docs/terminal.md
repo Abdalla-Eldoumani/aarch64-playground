@@ -35,9 +35,15 @@ gcc lab5.s -o lab5        # assemble
 | `as <file.s> -o name` | Alias for `gcc`. |
 
 `gcc` rejects `.asm` inputs and points you at the `m4` pass first, exactly
-like the real toolchain would choke on unexpanded macros. Other gcc flags
-are accepted and ignored; there is no C compiler here, only the assembler.
-Executables live for the session and are re-assembled on each run.
+like the real toolchain would choke on unexpanded macros. A failed
+assemble prints the assembler's own error with its line number in the
+terminal, and leaves the editor's error markers alone -- the build belongs
+to the terminal's file, not whatever the editor happens to show. Other gcc
+flags are accepted and ignored; there is no C compiler here, only the
+assembler. Executables live for the session and are re-assembled on each
+run. Builds and runs reset the machine like any assemble, and the home
+directory is re-seeded right after, so `ls` keeps showing your files and a
+program run with `./name` can read them.
 
 ### Filesystem
 
@@ -54,7 +60,7 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | `cat <file>` | Print a VFS file's contents. |
 | `cp <src> <dst>` | Copy a VFS file. |
 | `rm <file>` | Remove a VFS file. |
-| `mv <old> <new>` | Rename a VFS file. |
+| `mv <old> <new>` | Rename a VFS file. `mv f f` refuses, like the real tool. |
 | `upload` | Open the host file picker to add a file to the VFS. |
 | `clear` | Clear the terminal scrollback. |
 | `reset` | Reset the emulator (memory, registers); the VFS is preserved. |
@@ -81,6 +87,6 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 
 ## Implementation
 
-- `web/lib/terminal/dispatch.ts` parses each command line and routes it to a handler. It reuses the shell-style tokenizer in `web/lib/playground/args.ts`, so quoting works the same as the args input.
+- `web/lib/terminal/dispatch.ts` parses each command line and routes it to a handler. It reuses the shell-style tokenizer in `web/lib/playground/args.ts`, so quoting works the same as the args input. Redirection follows shell rules: only a bare `<` or `>` redirects, while a quoted `">"` or escaped `\>` stays a literal argument.
 - `web/lib/terminal/input-state.ts` is a pure class for the buffer, cursor, history, and tab completion, unit-tested without xterm.
 - `web/components/panels/TerminalPane.tsx` wraps `@xterm/xterm` and `@xterm/addon-fit` and writes each dispatch result back to the terminal. It is lazy-loaded so the xterm bundle ships only when the term tab is opened.
