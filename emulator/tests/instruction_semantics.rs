@@ -254,3 +254,102 @@ main:
     assert!(r.halted, "ret lands on the main-return sentinel and exits");
     assert_eq!(cpu.exit_code(), Some(3), "w0 becomes the exit code");
 }
+
+// ---------------------------------------------------------------------------
+// single precision (S registers) through the full pipeline: the course
+// teaches s/d as two views of one register file, with fcvt bridging them
+// and plain %f meaning a 4-byte float.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn single_precision_scanf_compute_fcvt_printf_flow() {
+    // scanf %f stores a 4-byte float; the program reads it into s0,
+    // halves it in single precision, widens with fcvt, and prints it as
+    // the double printf expects. This is the canonical C float flow.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+val_s = 16
+
+        .data
+fmt_in:  .string "%f"
+fmt_out: .string "half = %.2f\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_in
+        add     x1, fp, val_s
+        bl      scanf
+
+        ldr     s0, [fp, val_s]
+        fmov    s1, 0.5
+        fmul    s2, s0, s1
+        fcvt    d0, s2
+        ldr     x0, =fmt_out
+        bl      printf
+
+        mov     x0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+    let mut cpu = assemble(src);
+    cpu.push_stdin(b"9.0\n");
+    let r = cpu.run_until_break(1_000_000).expect("run failed");
+    assert!(r.halted, "program did not halt");
+    assert_eq!(cpu.exit_code(), Some(0));
+    let out = String::from_utf8(cpu.take_stdout()).unwrap();
+    assert_eq!(out, "half = 4.50\n");
+}
+
+#[test]
+fn single_precision_arithmetic_rounds_in_f32_end_to_end() {
+    // 16777216 + 1 stays 16777216 in single precision (the f32 integer
+    // ceiling); a double-precision path would print 16777217.
+    let src = r#"
+        .text
+        .global main
+main:
+        mov     w1, 0x100
+        lsl     w1, w1, 16
+        scvtf   s0, w1
+        fmov    s1, 1.0
+        fadd    s2, s0, s1
+        fcvt    d0, s2
+        mov     x8, 93
+        mov     x0, 0
+        svc     0
+"#;
+    let cpu = run(src);
+    assert_eq!(cpu.regs.read_fpr_f64(0), 16_777_216.0);
+    // The s write cleared the upper half of the register before fcvt.
+    assert_eq!(cpu.regs.read_fpr_bits(2), (16_777_216.0f32).to_bits() as u64);
+}
+
+#[test]
+fn unterminated_string_reports_itself_at_the_opening_line() {
+    // A string missing its closing quote must say exactly that, at the
+    // line where the quote opened -- never swallow following lines and
+    // blame a directive further down.
+    let src = r#"        .text
+msg:    .string "broken
+        .global main
+main:   mov     x0, 0
+        ret
+"#;
+    let cpu = Cpu::new();
+    let err = assemble_hosted(src, &cpu.host).expect_err("must not assemble");
+    let text = err.to_string();
+    assert!(
+        text.contains("unterminated string literal"),
+        "error should name the real problem, got: {text}"
+    );
+    assert!(text.contains("line 2"), "error should blame line 2, got: {text}");
+}
