@@ -700,4 +700,61 @@ mod tests {
         let r = exp("define (fp, x29)\nmov x0, fp\n");
         assert_eq!(r.text, "\nmov x0, x29");
     }
+
+    #[test]
+    fn define_substitutes_every_use_on_one_line() {
+        let r = exp("define(i_r, w20)\nadd i_r, i_r, 1\n");
+        assert_eq!(r.text, "\nadd w20, w20, 1");
+    }
+
+    #[test]
+    fn two_aliases_substitute_on_the_same_line() {
+        let r = exp("define(fp, x29)\ndefine(lr, x30)\nstp fp, lr, [sp, -16]!\n");
+        assert_eq!(r.text, "\n\nstp x29, x30, [sp, -16]!");
+    }
+
+    #[test]
+    fn define_in_the_middle_keeps_lines_aligned() {
+        let r = exp("mov x0, 1\ndefine(t_r, x9)\nmov t_r, 2\n");
+        assert_eq!(r.text, "mov x0, 1\n\nmov x9, 2");
+        assert_eq!(r.text.lines().count(), 3);
+        assert_eq!(r.line_map, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn chained_defines_resolve_across_a_forward_reference() {
+        // A -> B is defined before use, B -> x5 only after; pass 1 walks
+        // the whole file first so the chain still lands on x5.
+        let r = exp("define(A, B)\nmov x0, A\ndefine(B, x5)\n");
+        assert_eq!(r.text, "\nmov x0, x5\n");
+    }
+
+    #[test]
+    fn source_without_macros_passes_through_unchanged() {
+        let src = "mov x0, 3\nadd x1, x0, 4\nsvc 0";
+        let r = exp(src);
+        assert_eq!(r.text, src);
+        assert!(r.defines.is_empty());
+        assert!(r.assignments.is_empty());
+        assert_eq!(r.line_map, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn unsupported_construct_error_carries_its_line_number() {
+        let err = expand("mov x0, 1\nmov x1, 2\ndnl skip the rest\n").unwrap_err();
+        match err {
+            EmuError::PreprocError { line, message } => {
+                assert_eq!(line, 3, "the error points at the dnl line");
+                assert!(message.contains("dnl"), "message was: {message}");
+            }
+            other => panic!("expected PreprocError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn block_comment_lines_blank_but_keep_line_count() {
+        let r = exp("mov x0, 1/* header\nprose */\nmov x1, 2\n");
+        assert_eq!(r.text, "mov x0, 1\n\nmov x1, 2");
+        assert_eq!(r.line_map, vec![1, 2, 3]);
+    }
 }

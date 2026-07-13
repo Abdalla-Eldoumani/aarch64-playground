@@ -2,25 +2,25 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
-import type { ShareState } from "@/lib/share";
-import { parseDeepLink } from "@/lib/use-deep-link";
+import type { ShareState } from "@/lib/playground/share";
+import { parseDeepLink } from "@/lib/hooks/use-deep-link";
 import {
   fetchExample,
   resolveBoot,
   resolveHandoff,
   type PlaygroundBoot,
-} from "@/lib/playground-handoff";
-import { loadAutoSavedBuffer } from "@/lib/auto-save";
-import { useTheme } from "@/lib/use-theme";
-import type { Action } from "@/lib/commands";
-import type { Shortcut } from "@/components/ShortcutsHelp";
+} from "@/lib/playground/playground-handoff";
+import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
+import { useTheme } from "@/lib/hooks/use-theme";
+import type { Action } from "@/lib/playground/commands";
+import type { Shortcut } from "@/components/playground/ShortcutsHelp";
 import {
   EmbeddablePlayground,
   type EmbeddableChrome,
   type EmbeddablePlaygroundHandle,
   type EmbeddableState,
-} from "@/components/EmbeddablePlayground";
-import { SiteNav } from "@/components/SiteNav";
+} from "@/components/playground/EmbeddablePlayground";
+import { SiteNav } from "@/components/chrome/SiteNav";
 // The cold-load default program is the arithmetic basics example. Import its
 // single source -- the same file the example loader serves and the corpus
 // verifier checks against fixtures -- so the default can never drift from it.
@@ -29,15 +29,15 @@ import DEFAULT_SOURCE from "@/public/examples/cpsc355/basics.s?raw";
 // The three page-level modals mount only when opened. The emulator surface
 // itself lives in EmbeddablePlayground, which owns the single hub.
 const CommandPalette = dynamic(
-  () => import("@/components/CommandPalette").then((m) => m.CommandPalette),
+  () => import("@/components/playground/CommandPalette").then((m) => m.CommandPalette),
   { ssr: false },
 );
 const ShortcutsHelp = dynamic(
-  () => import("@/components/ShortcutsHelp").then((m) => m.ShortcutsHelp),
+  () => import("@/components/playground/ShortcutsHelp").then((m) => m.ShortcutsHelp),
   { ssr: false },
 );
 const ShareDialog = dynamic(
-  () => import("@/components/ShareDialog").then((m) => m.ShareDialog),
+  () => import("@/components/playground/ShareDialog").then((m) => m.ShareDialog),
   { ssr: false },
 );
 

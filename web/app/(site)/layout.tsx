@@ -1,6 +1,6 @@
-import { SiteNav } from "@/components/SiteNav";
-import { SiteFooter } from "@/components/SiteFooter";
-import { CropMarks } from "@/components/CropMarks";
+import { SiteNav } from "@/components/chrome/SiteNav";
+import { SiteFooter } from "@/components/chrome/SiteFooter";
+import { CropMarks } from "@/components/ui/CropMarks";
 
 // The content route group ((site) adds no URL segment) gives every content page
 // the persistent full nav and footer in normal document flow. Its own min-h-dvh

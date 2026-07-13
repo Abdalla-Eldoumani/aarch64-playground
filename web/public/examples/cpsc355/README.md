@@ -16,6 +16,7 @@ surface for `write`/`read`/`exit`/`openat`/`close`/`lseek`.
 - `static-counter.s` -- a static local that persists across calls
 - `command-line-args.s` -- iterate argc/argv
 - `circle-area.s` -- floating-point area of a circle
+- `triangle-area.s` -- single-precision (s register) area of a triangle
 - `is-prime.s` -- a primality check
 - `hello.s` -- write to stdout via syscall
 - `echo.s` -- read a line and echo it

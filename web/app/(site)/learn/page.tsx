@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { loadAllLessons } from "@/lib/lessons";
-import { LessonIndex } from "@/components/LessonIndex";
-import { DocRule } from "@/components/DocRule";
-import { Kicker } from "@/components/Kicker";
-import { SHARE_CARD_IMAGE } from "@/lib/site";
+import { loadAllLessons } from "@/lib/content/lessons";
+import { LessonIndex } from "@/components/learn/LessonIndex";
+import { DocRule } from "@/components/ui/DocRule";
+import { Kicker } from "@/components/ui/Kicker";
+import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 
 const DESCRIPTION =
   "Step-by-step AArch64 lessons that pair a short reading with a live, runnable editor.";

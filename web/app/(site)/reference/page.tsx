@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { REFERENCE_INSTRUCTIONS } from "@/lib/reference-data";
-import { ReferenceView } from "@/components/ReferenceView";
-import { DocRule } from "@/components/DocRule";
-import { Kicker } from "@/components/Kicker";
-import { SHARE_CARD_IMAGE } from "@/lib/site";
+import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
+import { ReferenceView } from "@/components/reference/ReferenceView";
+import { DocRule } from "@/components/ui/DocRule";
+import { Kicker } from "@/components/ui/Kicker";
+import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 
 const DESCRIPTION =
   "A searchable map of the supported AArch64 instructions and the calling convention.";

@@ -1,6 +1,6 @@
 {
   "name": "aarch64-playground",
-  "version": "1.6.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Monorepo root. The real Next.js app lives in web/; installs and builds happen there. This manifest exists so Vercel's Next.js framework preset can detect the project. Don't add a workspaces field -- it collides with web/package-lock.json.",
   "dependencies": {

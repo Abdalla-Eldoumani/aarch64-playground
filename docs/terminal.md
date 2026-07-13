@@ -11,11 +11,47 @@ fits the task.
 
 | Command | Effect |
 | --- | --- |
-| `./program [args]` | Re-assemble the current source with `args` and run to halt. |
-| `./program < file` | Same, with the named VFS file fed to stdin. |
-| `./program > file` | Same, with stdout captured into the named VFS file. |
+| `./program [args]` | Re-assemble the current editor source with `args` and run to halt. |
+| `./name [args]` | Run an executable built with `gcc` (see the toolchain below). |
+| `./program < file` | Either form, with the named VFS file fed to stdin. |
+| `./program > file` | Either form, with stdout captured into the named VFS file. |
+
+### Toolchain
+
+The course workflow from the lab machines, replayed against the VFS:
+
+```
+upload                    # add lab5.asm to the VFS
+m4 lab5.asm > lab5.s      # expand the m4 macros
+gcc lab5.s -o lab5        # assemble
+./lab5 12 34              # run
+```
+
+| Command | Effect |
+| --- | --- |
+| `m4 <file>` | Run the m4 pass over a VFS file and print the expansion. |
+| `m4 <file> > out` | Same, captured into a VFS file. |
+| `gcc <file.s> -o name` | Assemble a VFS source into an executable named `name` (default `a.out`). |
+| `as <file.s> -o name` | Alias for `gcc`. |
+
+`gcc` rejects `.asm` inputs and points you at the `m4` pass first, exactly
+like the real toolchain would choke on unexpanded macros. A failed
+assemble prints the assembler's own error with its line number in the
+terminal, and leaves the editor's error markers alone -- the build belongs
+to the terminal's file, not whatever the editor happens to show. Other gcc
+flags are accepted and ignored; there is no C compiler here, only the
+assembler. Executables live for the session and are re-assembled on each
+run. Builds and runs reset the machine like any assemble, and the home
+directory is re-seeded right after, so `ls` keeps showing your files and a
+program run with `./name` can read them.
 
 ### Filesystem
+
+Files live in a small virtual filesystem (VFS). In the full playground the
+VFS is your home directory: uploads, redirect outputs, and loaded example
+fixtures persist in your browser (IndexedDB) across reloads, route changes,
+and closed tabs, and they survive re-assembling. `rm` removes a file for
+good. Embedded lesson and exercise players stay session-only sandboxes.
 
 | Command | Effect |
 | --- | --- |
@@ -24,7 +60,7 @@ fits the task.
 | `cat <file>` | Print a VFS file's contents. |
 | `cp <src> <dst>` | Copy a VFS file. |
 | `rm <file>` | Remove a VFS file. |
-| `mv <old> <new>` | Rename a VFS file. |
+| `mv <old> <new>` | Rename a VFS file. `mv f f` refuses, like the real tool. |
 | `upload` | Open the host file picker to add a file to the VFS. |
 | `clear` | Clear the terminal scrollback. |
 | `reset` | Reset the emulator (memory, registers); the VFS is preserved. |
@@ -51,6 +87,6 @@ fits the task.
 
 ## Implementation
 
-- `web/lib/terminal/dispatch.ts` parses each command line and routes it to a handler. It reuses the shell-style tokenizer in `web/lib/args.ts`, so quoting works the same as the args input.
+- `web/lib/terminal/dispatch.ts` parses each command line and routes it to a handler. It reuses the shell-style tokenizer in `web/lib/playground/args.ts`, so quoting works the same as the args input. Redirection follows shell rules: only a bare `<` or `>` redirects, while a quoted `">"` or escaped `\>` stays a literal argument.
 - `web/lib/terminal/input-state.ts` is a pure class for the buffer, cursor, history, and tab completion, unit-tested without xterm.
-- `web/components/TerminalPane.tsx` wraps `@xterm/xterm` and `@xterm/addon-fit` and writes each dispatch result back to the terminal. It is lazy-loaded so the xterm bundle ships only when the term tab is opened.
+- `web/components/panels/TerminalPane.tsx` wraps `@xterm/xterm` and `@xterm/addon-fit` and writes each dispatch result back to the terminal. It is lazy-loaded so the xterm bundle ships only when the term tab is opened.

@@ -27,7 +27,46 @@ Open <http://localhost:3000>. If "loading emulator..." persists, check the brows
 - `emulator/`: Rust crate, no browser deps in the core. Compiles to WASM via wasm-pack.
 - `web/`: Next.js 16 + React 19 app. Imports the WASM module the crate produces.
 - `docs/`: this directory. Design rationale lives here and in `ARCHITECTURE.md`; skim the relevant doc before changing an unfamiliar area.
-- `scripts/`: `vercel-build.sh` (Vercel build entrypoint) and `verify-corpus.js` (end-to-end WASM smoke test for the example corpus).
+- `scripts/`: build and audit helpers (`vercel-build.sh`, `verify-corpus.js`, `check-headers.js`, `audit-deps.js`, `verify-examples.js`, `firefox-smoke.mjs`, `wasm-watch.mjs`).
+- `tools/`: course helper utilities that are not part of the app or its build (nothing here ships, runs in CI, or is imported by `web/` or `emulator/`).
+
+### Inside `web/`
+
+Components and client logic are grouped by domain so a change lands in an
+obvious place and a newcomer can navigate by directory name alone:
+
+- `web/components/` -- one React component per file, grouped by surface:
+  - `ui/` shared primitives and brand marks (Button, Select, Tabs, Kicker, ...)
+  - `chrome/` the site shell (nav, footer, drawer, theme control, PWA bits)
+  - `landing/` the home page (hero, feature catalog, die floorplan)
+  - `diagrams/` teaching visuals and interactives (bit fields, register files, frame walk, stack alignment)
+  - `learn/`, `practice/`, `reference/` the three reading surfaces
+  - `playground/` the emulator surface shell (embeddable playground, editor, controls, dialogs)
+  - `panels/` the right-tab machine views (registers, memory, stack, console, terminal, watches, converter, saves)
+  - `test/` every component test, mirroring the groups above (`test/panels/RegisterPanel.test.tsx`)
+- `web/lib/` -- client logic, kebab-case one-purpose modules, grouped the same way:
+  - `emulator/` talking to the machine (the state hub, backends, replay, decode fields)
+  - `asm/` the assembly-language surface (completion, formatting, hover docs, error explaining)
+  - `content/` authored lessons, exercises, reference and pitfall data, schemas, site metadata
+  - `playground/` program delivery, workspace persistence, sharing, upload guards
+  - `hooks/` generic React hooks (`use-emulator` stays in `emulator/` with the machine glue it drives)
+  - `terminal/`, `worker/` the shell engine and the Web Worker boundary
+  - `test/` every lib test, mirroring the groups (`test/terminal/dispatch.test.ts`)
+  - `wasm/`, `wasm-node/` generated wasm-pack output (gitignored; never edit)
+
+### Naming conventions
+
+- Component files are `PascalCase.tsx`, matching the exported component --
+  the React and Next.js community standard, so a file name is the symbol
+  you import.
+- Everything else (lib modules, scripts, docs) is lowercase kebab-case
+  (`use-emulator.ts`, `verify-corpus.js`): dashes are the least ambiguous
+  word separator in URLs and shells (no escaping, no case-sensitivity
+  traps across macOS/Windows/Linux filesystems), which is why it is the
+  prevailing convention for non-component files in web projects.
+- Directories are short lowercase nouns. Tests live under a `test/` tree
+  beside the code they cover, in the same group as their subject, so the
+  source directories stay browsable.
 
 ## Day-to-day
 
@@ -77,7 +116,7 @@ Logic (`web/lib/`) is separate from React components (`web/components/`). Write 
 1. **Pure module**: `web/lib/<feature>.ts` with types and pure functions, plus `web/lib/<feature>.test.ts` (happy path + edge cases). Tests run in jsdom with plain DOM assertions; `@testing-library/jest-dom` is not installed.
 2. **Hook** (if it holds React state): `web/lib/use-<feature>.ts`. For localStorage-backed state, copy the `useSyncExternalStore` shape from `use-named-saves.ts` so cross-tab sync works.
 3. **Component**: `web/components/<Feature>.tsx`, marked `"use client"` if it uses hooks or browser APIs. Lazy-load heavy components (anything pulling Monaco or xterm) via `next/dynamic` with `ssr: false`.
-4. **Wire in**: `web/components/EmbeddablePlayground.tsx` orchestrates the emulator surface (`web/app/playground/page.tsx` mounts it); render into one of its existing panel slots so the resizable and mobile layouts pick it up.
+4. **Wire in**: `web/components/playground/EmbeddablePlayground.tsx` orchestrates the emulator surface (`web/app/playground/page.tsx` mounts it); render into one of its existing panel slots so the resizable and mobile layouts pick it up.
 5. **Docs**: add a row to `docs/features.md`, and the README if it adds a deep-link param or shortcut.
 
 If the feature accepts external input (URL params, uploads, paste), add a validator in the same PR. See [`security.md`](security.md).
@@ -96,14 +135,14 @@ If the feature accepts external input (URL params, uploads, paste), add a valida
 - **WASM caching in dev**: Next.js hard-caches compiled WASM under `web/.next/`. If a rebuild doesn't take, delete `web/.next/` and restart `npm run dev`.
 - **Webpack flag on Next 16**: the `dev` and `build` scripts pass `--webpack` because the build relies on `webpack.experiments.asyncWebAssembly`. Next 16 defaults to Turbopack, whose async-wasm support isn't sufficient yet; removing the flag breaks the build.
 - **Root package.json**: the repo-root `package.json` lists `next` only so Vercel's framework detector finds a Next.js dep at the configured root; the real install happens in `web/`. Don't add unrelated deps there, and don't add a `workspaces` field.
-- **tsconfig `strict: true`**: add types, don't reach for `any`. Widen a gnarly wasm-bindgen type in `web/lib/emulator.ts`, not at the call site.
+- **tsconfig `strict: true`**: add types, don't reach for `any`. Widen a gnarly wasm-bindgen type in `web/lib/emulator/emulator.ts`, not at the call site.
 - **`next-env.d.ts` drift**: `next dev` and `next build` write slightly different import lines. If CI complains, normalize to the production path (`./.next/types/routes.d.ts`).
 - **Multiple Rust installs on Windows**: a standalone MSVC `rustc` ahead of rustup on `PATH` lacks the wasm32 target, so `wasm-pack build` fails with `can't find crate for 'std'` even though `rustup target list --installed` shows wasm32. Uninstall the standalone toolchain, or build with `RUSTC=$(rustup which rustc) wasm-pack build --target web --out-dir ../web/lib/wasm`.
 - **AV quarantine on Windows**: some consumer antivirus (seen with AVG 2025) quarantines the `build_script_build-*.exe` cargo emits for `serde_core` in the debug profile, surfacing as `LNK1104: cannot open file ... build_script_build-*.exe`. `cargo test --release --lib` produces unflagged hashes and is the workaround. CI is unaffected.
 - **`next lint` is gone in Next 16**: lint runs through ESLint flat config. `web/eslint.config.mjs` re-exports `eslint-config-next`'s flat array plus ignores for `lib/wasm/` and `lib/wasm-node/` (wasm-pack-generated). `npm run lint` runs `eslint .`.
 - **Light theme is CSS-var driven**: overrides live under `[data-theme="light"]` in `globals.css`; read `var(--bg-primary)` and friends. Don't hardcode hex.
 - **vitest setup**: `web/vitest.setup.ts` stubs `window.matchMedia` (jsdom lacks it). Stub other jsdom gaps there, not at the call site.
-- **Worker-first backend**: the emulator runs in a Web Worker by default. `EmulatorBackend` in `web/lib/backend.ts` has `WorkerClient` and `MainThreadBackend` implementations so React doesn't care which is active. Force the main thread via `localStorage.aarch64-playground:backend = "main"`.
+- **Worker-first backend**: the emulator runs in a Web Worker by default. `EmulatorBackend` in `web/lib/emulator/backend.ts` has `WorkerClient` and `MainThreadBackend` implementations so React doesn't care which is active. Force the main thread via `localStorage.aarch64-playground:backend = "main"`.
 - **Service worker skips non-localhost dev**: `register-sw.ts` registers only when `window.isSecureContext` is true or the host is localhost/127.0.0.1. Testing offline over a LAN IP gets no service worker.
 - **Toast queue is module-level**: `react-hot-toast` keeps its queue between renders. Tests that mount `<ToastHost>` should match the most-recent toast, not assume a clean slate.
 

@@ -1,4 +1,4 @@
-import { parseArgs } from "@/lib/args";
+import { parseArgsDetailed } from "@/lib/playground/args";
 
 /**
  * Result of running a single command line. `lines` is the printable
@@ -22,29 +22,31 @@ export interface ParsedCommandLine {
 
 /**
  * Tokenize a shell-style command line into command + args + optional
- * `<file` and `>file` redirections. Re-uses `parseArgs` for quoting so
- * the terminal honors the same rules as the args input above the editor.
+ * `<file` and `>file` redirections. Re-uses the shared tokenizer for
+ * quoting so the terminal honors the same rules as the args input above
+ * the editor. Like a real shell, only a BARE `<` or `>` redirects: a
+ * quoted `">"` or escaped `\>` stays a literal argument.
  */
 export function parseCommandLine(line: string): ParsedCommandLine {
   const trimmed = line.trim();
   if (!trimmed) return { cmd: "", args: [] };
-  const tokens = parseArgs(trimmed);
+  const tokens = parseArgsDetailed(trimmed);
   let stdinFrom: string | undefined;
   let stdoutTo: string | undefined;
   const remaining: string[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
-    if (t === "<" && i + 1 < tokens.length) {
-      stdinFrom = tokens[i + 1];
+    if (!t.quoted && t.text === "<" && i + 1 < tokens.length) {
+      stdinFrom = tokens[i + 1].text;
       i += 1;
       continue;
     }
-    if (t === ">" && i + 1 < tokens.length) {
-      stdoutTo = tokens[i + 1];
+    if (!t.quoted && t.text === ">" && i + 1 < tokens.length) {
+      stdoutTo = tokens[i + 1].text;
       i += 1;
       continue;
     }
-    remaining.push(t);
+    remaining.push(t.text);
   }
   const [cmd = "", ...args] = remaining;
   return { cmd, args, stdinFrom, stdoutTo };
@@ -72,6 +74,23 @@ export interface DispatchContext {
   clearBreakpoint(addr: number): Promise<void>;
   /** Look up a label's runtime address. Returns null when unresolved. */
   resolveLabel(label: string): Promise<number | null> | number | null;
+  /** Standalone m4 pass over source text; null when the emulator build
+   *  predates the export (the command explains instead of crashing). */
+  m4Expand(
+    source: string,
+  ): Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
+  /** Assemble source text into the machine (the `gcc` step). Resolves with
+   *  the assembler's verdict; errors carry the student-facing message. */
+  assembleSource(source: string): Promise<{ success: boolean; errors: string[] }>;
+  /** Run previously-compiled source (a `gcc` output) with argv and stdin. */
+  runSource(
+    source: string,
+    args: string[],
+    stdin?: string,
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  /** The terminal's executable registry: `gcc -o name` writes it, `./name`
+   *  reads it. Survives across commands within the pane's lifetime. */
+  executables: Map<string, string>;
   /** Read a single register by name (`x0`..`x30`, `sp`, `pc`). */
   readRegister(name: string): bigint | null;
   /** Read every register the gdb `info registers` block should print. */
@@ -83,7 +102,10 @@ export interface DispatchContext {
 
 const HELP_LINES = [
   "available commands:",
-  "  ./program [args]                  run the currently-loaded program",
+  "  m4 prog.asm > prog.s              expand m4 macros, exactly like the course toolchain",
+  "  gcc prog.s -o prog                assemble a VFS file into an executable",
+  "  ./prog [args]                     run an executable built with gcc",
+  "  ./program [args]                  run the editor's currently-loaded program",
   "  ./program < file                  feed stdin from a VFS file",
   "  ./program > file                  capture stdout into a VFS file",
   "  cat <file>                        print a VFS file",
@@ -161,6 +183,11 @@ export async function dispatchCommand(
   if (cmd === "mv") {
     const [src, dst] = args;
     if (!src || !dst) return { status: "err", lines: ["mv: usage: mv <old> <new>"] };
+    if (src === dst) {
+      // Real mv refuses a self-move; the old copy-then-delete shape
+      // deleted the file instead.
+      return { status: "err", lines: [`mv: '${src}' and '${dst}' are the same file`] };
+    }
     const body = await ctx.readVfs(src);
     if (body === undefined) return { status: "err", lines: [`mv: ${src}: no such file in vfs`] };
     ctx.writeVfs(dst, body);
@@ -174,15 +201,94 @@ export async function dispatchCommand(
   if (cmd === "upload") {
     return { status: "ok", lines: ["upload: launching host file picker..."], control: undefined };
   }
-  if (cmd === "./program" || cmd === "program") {
+  if (cmd === "m4") {
+    const target = args[0];
+    if (!target) return { status: "err", lines: ["m4: usage: m4 <file> [> out.s]"] };
+    const body = await ctx.readVfs(target);
+    if (body === undefined) return { status: "err", lines: [`m4: ${target}: no such file in vfs`] };
+    const result = await ctx.m4Expand(body);
+    if (result === null) {
+      return {
+        status: "err",
+        lines: ["m4: this emulator build predates the standalone m4 pass; rebuild the WASM to enable it"],
+      };
+    }
+    if (!result.success) {
+      const where = result.error_line != null ? `${target}:${result.error_line}: ` : "";
+      return { status: "err", lines: [`m4: ${where}${result.error ?? "expansion failed"}`] };
+    }
+    const text = result.text ?? "";
+    if (stdoutTo) {
+      ctx.writeVfs(stdoutTo, text);
+      return { status: "ok", lines: [] };
+    }
+    return { status: "ok", lines: text.split("\n") };
+  }
+
+  if (cmd === "gcc" || cmd === "as") {
+    // Course shape: gcc prog.s -o prog. Optimization/debug flags are
+    // accepted and ignored; the output name defaults to a.out like the
+    // real driver.
+    const positional: string[] = [];
+    let outName = "a.out";
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (a === "-o" && i + 1 < args.length) {
+        outName = args[i + 1];
+        i += 1;
+      } else if (a.startsWith("-")) {
+        continue; // -g, -O2, -Wall... accepted silently
+      } else {
+        positional.push(a);
+      }
+    }
+    const src = positional[0];
+    if (!src) return { status: "err", lines: [`${cmd}: no input files`] };
+    if (positional.length > 1) {
+      return { status: "err", lines: [`${cmd}: one input file at a time in the playground`] };
+    }
+    if (src.endsWith(".asm")) {
+      return {
+        status: "err",
+        lines: [
+          `${cmd}: ${src}: run the m4 pass first, the way the course toolchain does:`,
+          `  m4 ${src} > ${src.replace(/\.asm$/, ".s")}`,
+        ],
+      };
+    }
+    const body = await ctx.readVfs(src);
+    if (body === undefined) return { status: "err", lines: [`${cmd}: ${src}: no such file in vfs`] };
+    const verdict = await ctx.assembleSource(body);
+    if (!verdict.success) {
+      const lines = verdict.errors.length
+        ? verdict.errors.map((e) => `${src}: ${e}`)
+        : [`${cmd}: ${src}: assembly failed`];
+      return { status: "err", lines };
+    }
+    ctx.executables.set(outName, body);
+    return { status: "ok", lines: [] };
+  }
+
+  if (cmd === "./program" || cmd === "program" || cmd.startsWith("./")) {
+    const name = cmd.startsWith("./") ? cmd.slice(2) : cmd;
+    const isEditorProgram = name === "program";
+    const compiled = isEditorProgram ? undefined : ctx.executables.get(name);
+    if (!isEditorProgram && compiled === undefined) {
+      return {
+        status: "err",
+        lines: [`./${name}: no such executable. Build one first: gcc <file.s> -o ${name}`],
+      };
+    }
     let stdin: string | undefined;
     if (stdinFrom) {
       const body = await ctx.readVfs(stdinFrom);
-      if (body === undefined) return { status: "err", lines: [`./program: ${stdinFrom}: no such file in vfs`] };
+      if (body === undefined) return { status: "err", lines: [`./${name}: ${stdinFrom}: no such file in vfs`] };
       stdin = body;
     }
-    const argv = ["./program", ...args];
-    const result = await ctx.runProgram(argv, stdin);
+    const argv = [`./${name}`, ...args];
+    const result = isEditorProgram
+      ? await ctx.runProgram(argv, stdin)
+      : await ctx.runSource(compiled as string, argv, stdin);
     if (stdoutTo) ctx.writeVfs(stdoutTo, result.stdout);
     const lines: string[] = [];
     if (!stdoutTo && result.stdout) lines.push(...result.stdout.split("\n"));

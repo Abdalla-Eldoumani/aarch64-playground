@@ -62,8 +62,14 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         while f < fmt_chars.len() && fmt_chars[f].is_ascii_digit() {
             f += 1;
         }
-        // Length modifier; ignored because every register is 64-bit.
+        // Length modifier. Integer conversions can ignore it (every
+        // register is 64-bit), but float conversions cannot: C's plain
+        // %f stores a 4-byte float where %lf stores an 8-byte double.
+        let mut long_modifier = false;
         while f < fmt_chars.len() && matches!(fmt_chars[f], 'l' | 'h' | 'z' | 'j' | 't') {
+            if fmt_chars[f] == 'l' {
+                long_modifier = true;
+            }
             f += 1;
         }
         if f >= fmt_chars.len() {
@@ -210,7 +216,14 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 if !suppress {
                     let ptr = ctx.regs.read_gpr(arg_idx, true);
                     arg_idx = arg_idx.saturating_add(1);
-                    ctx.mem.write_u64(ptr, value.to_bits())?;
+                    if long_modifier {
+                        // %lf: the pointer names a double, store 8 bytes.
+                        ctx.mem.write_u64(ptr, value.to_bits())?;
+                    } else {
+                        // %f: the pointer names a float, store 4 bytes,
+                        // exactly like C's scanf.
+                        ctx.mem.write_u32(ptr, (value as f32).to_bits())?;
+                    }
                     matched += 1;
                 }
             }
@@ -511,9 +524,27 @@ mod tests {
     }
 
     #[test]
-    fn scanf_float_reads_ieee_double() {
+    fn scanf_plain_f_stores_a_4_byte_float() {
+        // C contract: scanf("%f", &x) writes a 4-byte float. A program
+        // then reads it back with `ldr s0, [addr]`.
         let mut h = Host::new();
         h.place_fmt("%f");
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.stdin.extend_from_slice(b"3.14 ");
+        // Sentinel just past the float: %f must not touch bytes 4..8.
+        h.mem.write_u32(0x0060_0004, 0xDEAD_BEEF).unwrap();
+        scanf(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 1);
+        let bits = h.mem.read_u32(0x0060_0000).unwrap();
+        let value = f32::from_bits(bits);
+        assert!((value - 3.14).abs() < 1e-6);
+        assert_eq!(h.mem.read_u32(0x0060_0004).unwrap(), 0xDEAD_BEEF);
+    }
+
+    #[test]
+    fn scanf_lf_stores_an_8_byte_double() {
+        let mut h = Host::new();
+        h.place_fmt("%lf");
         h.regs.write_gpr(1, true, 0x0060_0000);
         h.stdin.extend_from_slice(b"3.14 ");
         scanf(&mut h.ctx()).unwrap();

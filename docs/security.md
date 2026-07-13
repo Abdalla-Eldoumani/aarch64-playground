@@ -61,14 +61,14 @@ of its fields touch React state, the editor, or the WASM emulator.
 
 | Surface | Validator | What it rejects |
 | --- | --- | --- |
-| `?bundle=<lz>` deep link | `lib/diagnostic-bundle.ts::decodeBundle` | non-version-1 payloads, malformed field types, > 1 MB inflated |
-| `#p2=<lz>` share hash | `lib/share.ts::readShareHash` | non-string source, malformed cursor, > 1 MB inflated |
+| `?bundle=<lz>` deep link | `lib/playground/diagnostic-bundle.ts::decodeBundle` | non-version-1 payloads, malformed field types, > 1 MB inflated |
+| `#p2=<lz>` share hash | `lib/playground/share.ts::readShareHash` | non-string source, malformed cursor, > 1 MB inflated |
 | `?example=<id>` | regex `/^[\w.-]+$/` | path traversal, special chars |
 | `?theme=<name>` | enum check | unknown values |
-| Bookmark JSON import | `lib/named-saves.ts::isValidSave` | per-field type check, no-clobber on name collision |
-| `.s` / `.asm` / `.txt` upload | `lib/upload-guard.ts` + `MAX_SOURCE_BYTES` | files > 1 MB |
-| VFS upload (console + terminal) | `lib/upload-guard.ts` + `MAX_VFS_BYTES` | files > 10 MB |
-| Bookmark JSON upload | `lib/upload-guard.ts` + `MAX_BOOKMARK_JSON_BYTES` | files > 1 MB |
+| Bookmark JSON import | `lib/playground/named-saves.ts::isValidSave` | per-field type check, no-clobber on name collision |
+| `.s` / `.asm` / `.txt` upload | `lib/playground/upload-guard.ts` + `MAX_SOURCE_BYTES` | files > 1 MB |
+| VFS upload (console + terminal) | `lib/playground/upload-guard.ts` + `MAX_VFS_BYTES` | files > 10 MB |
+| Bookmark JSON upload | `lib/playground/upload-guard.ts` + `MAX_BOOKMARK_JSON_BYTES` | files > 1 MB |
 
 ### Emulator bounds
 

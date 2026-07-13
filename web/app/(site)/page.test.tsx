@@ -1,23 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { CREDIBILITY } from "@/lib/site";
+import { CREDIBILITY } from "@/lib/content/site";
 
 // Stub the three sections so this test proves only the page's composition --
 // the order it stacks them in -- without pulling Monaco, the WASM worker, or the
 // shared embeddable through the live Hero. Each section has its own test; here
 // each is a lightweight marker carrying a unique data-testid.
-vi.mock("@/components/Hero", async () => {
+vi.mock("@/components/landing/Hero", async () => {
   const React = await import("react");
   return { Hero: () => React.createElement("div", { "data-testid": "hero" }) };
 });
-vi.mock("@/components/RoutesRegisterFile", async () => {
+vi.mock("@/components/diagrams/RoutesRegisterFile", async () => {
   const React = await import("react");
   return {
     RoutesRegisterFile: () =>
       React.createElement("div", { "data-testid": "routes" }),
   };
 });
-vi.mock("@/components/FeatureCatalog", async () => {
+vi.mock("@/components/landing/FeatureCatalog", async () => {
   const React = await import("react");
   return {
     FeatureCatalog: () =>

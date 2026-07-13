@@ -14,10 +14,11 @@ Live at <https://aarch64-playground.vercel.app>.
   and step-back; breakpoints; a live decode strip that renders the
   instruction under the pc as its actual encoding fields; register views for
   both the integer (`x0`–`x30`) and floating-point (`d0`–`d31`) files with
-  decimal and raw-bit readings; memory and stack views; a console with stdin
-  and a virtual filesystem; a terminal pane with a gdb-style command subset;
-  a hex/binary/decimal/two's-complement converter; share links; and dark,
-  light, and high-contrast themes.
+  decimal and raw-bit readings; memory and stack views; a console with
+  interactive stdin and a persistent virtual filesystem; a terminal pane
+  with the course toolchain (`m4`, `gcc`, `./prog`) and a gdb-style command
+  subset; a hex/binary/decimal/two's-complement converter; share links; and
+  dark, light, and high-contrast themes.
 - **Learn** (`/learn`): short lessons with runnable inline editors.
 - **Practice** (`/practice`): exercises checked by running your program
   against expected behavior (registers, exit code, stdout), never against a
@@ -29,7 +30,8 @@ Live at <https://aarch64-playground.vercel.app>.
 - **Realistic hosted runtime**: m4 register-alias macros, GAS directives and
   sections, frame-pointer prologues, the `ldr xN, =label` literal pool, the
   AAPCS64 `printf`/`scanf` path, Linux syscalls via `svc 0`, argc/argv on
-  entry, and double-precision floating point.
+  entry, and single- and double-precision floating point (the `s`/`d`
+  register views with `fcvt` between them).
 - **Fully client-side and installable**: runs offline as a PWA. The emulator
   runs in a Web Worker with a main-thread fallback, and is bounded so a
   runaway program halts cleanly instead of freezing the tab.

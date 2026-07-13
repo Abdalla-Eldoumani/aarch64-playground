@@ -3,10 +3,10 @@ import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
-import { ToastHost } from "@/components/Toast";
-import { OfflineBadge } from "@/components/OfflineBadge";
-import { RegisterSW } from "@/components/RegisterSW";
-import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/site";
+import { ToastHost } from "@/components/ui/Toast";
+import { OfflineBadge } from "@/components/chrome/OfflineBadge";
+import { RegisterSW } from "@/components/chrome/RegisterSW";
+import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/content/site";
 
 // Datasheet trio: Source Serif 4 in editorial chrome (reading-surface
 // titles, leads, empty-state heads), IBM Plex Sans for UI controls, body,

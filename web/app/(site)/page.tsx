@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Hero } from "@/components/Hero";
-import { RoutesRegisterFile } from "@/components/RoutesRegisterFile";
-import { FeatureCatalog } from "@/components/FeatureCatalog";
-import { BitRuler } from "@/components/BitRuler";
-import { DocRule } from "@/components/DocRule";
-import { SHARE_CARD_IMAGE } from "@/lib/site";
+import { Hero } from "@/components/landing/Hero";
+import { RoutesRegisterFile } from "@/components/diagrams/RoutesRegisterFile";
+import { FeatureCatalog } from "@/components/landing/FeatureCatalog";
+import { BitRuler } from "@/components/ui/BitRuler";
+import { DocRule } from "@/components/ui/DocRule";
+import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 
 const DESCRIPTION =
   "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";

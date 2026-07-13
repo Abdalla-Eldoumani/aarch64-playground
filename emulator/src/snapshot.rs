@@ -154,4 +154,53 @@ mod tests {
         assert!(ring.is_empty());
         assert!(ring.pop().is_none());
     }
+
+    #[test]
+    fn popped_frame_preserves_registers_and_memory() {
+        let mut ring = SnapshotRing::new(2);
+        let mut s = empty_snap();
+        s.regs.write_gpr(5, true, 0xABCD);
+        s.regs.write_sp(0x8000_0000);
+        s.mem.write_u32(0x1000, 0xDEAD_BEEF).unwrap();
+        ring.push(s);
+        let restored = ring.pop().unwrap();
+        assert_eq!(restored.regs.read_gpr(5, true), 0xABCD);
+        assert_eq!(restored.regs.read_sp(), 0x8000_0000);
+        assert_eq!(restored.mem.read_u32(0x1000).unwrap(), 0xDEAD_BEEF);
+    }
+
+    #[test]
+    fn named_saves_survive_clear() {
+        let mut ring = SnapshotRing::new(2);
+        let mut s = empty_snap();
+        s.regs.write_gpr(0, true, 7);
+        ring.save_named("checkpoint", s);
+        ring.push(empty_snap());
+        ring.clear();
+        assert!(ring.is_empty());
+        let restored = ring.load_named("checkpoint").expect("named save survives clear");
+        assert_eq!(restored.regs.read_gpr(0, true), 7);
+        assert!(ring.load_named("missing").is_none());
+    }
+
+    #[test]
+    fn save_named_overwrites_and_keys_stay_sorted() {
+        let mut ring = SnapshotRing::new(2);
+        ring.save_named("beta", empty_snap());
+        ring.save_named("alpha", empty_snap());
+        let mut newer = empty_snap();
+        newer.regs.write_gpr(0, true, 2);
+        ring.save_named("beta", newer);
+        assert_eq!(ring.named_keys(), vec!["alpha".to_string(), "beta".to_string()]);
+        assert_eq!(ring.load_named("beta").unwrap().regs.read_gpr(0, true), 2);
+    }
+
+    #[test]
+    fn remove_named_reports_whether_an_entry_existed() {
+        let mut ring = SnapshotRing::new(2);
+        ring.save_named("slot", empty_snap());
+        assert!(ring.remove_named("slot"));
+        assert!(!ring.remove_named("slot"));
+        assert!(ring.named_keys().is_empty());
+    }
 }

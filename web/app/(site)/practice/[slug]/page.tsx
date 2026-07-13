@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { loadAllExercises, loadExercise } from "@/lib/exercises";
-import { ExerciseView } from "@/components/ExerciseView";
-import { SHARE_CARD_IMAGE } from "@/lib/site";
+import { loadAllExercises, loadExercise } from "@/lib/content/exercises";
+import { ExerciseView } from "@/components/practice/ExerciseView";
+import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 
 // Fully static: the build enumerates every valid exercise slug and, with
 // dynamicParams off, only those slugs exist. Any other path falls through to the

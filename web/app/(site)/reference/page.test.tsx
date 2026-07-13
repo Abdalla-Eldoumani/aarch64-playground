@@ -5,13 +5,13 @@ import { cleanup, render, screen } from "@testing-library/react";
 // server route wiring (data module -> page -> props) without pulling in the
 // Tabs, markdown, diagram, or share stacks. The marker echoes the instruction
 // count it receives, so the assertion proves the data actually flowed through.
-vi.mock("@/components/ReferenceView", () => ({
+vi.mock("@/components/reference/ReferenceView", () => ({
   ReferenceView: ({ instructions }: { instructions: unknown[] }) =>
     `reference-view:${instructions.length}`,
 }));
 
-import { REFERENCE_INSTRUCTIONS } from "@/lib/reference-data";
-import { SHARE_CARD_IMAGE } from "@/lib/site";
+import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
+import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 import ReferencePage, { metadata } from "./page";
 
 afterEach(() => {

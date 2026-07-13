@@ -149,6 +149,18 @@ struct RunResultJs {
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
+struct M4ResultJs {
+    success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_line: Option<u32>,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
 struct RegistersJs {
     /// X0-X30 as hex strings (BigInt-safe)
     gpr: Vec<String>,
@@ -471,6 +483,39 @@ impl Emulator {
     /// Indices of FP registers (0-31 for d0-d31) that changed during the last step.
     pub fn get_changed_fp_registers(&self) -> Vec<u8> {
         self.cpu.changed_fp_registers().to_vec()
+    }
+
+    /// Run the m4 pass alone over a source file, exactly as `assemble_and_load`
+    /// would before lexing: block comments blanked, `define()` aliases
+    /// substituted (their lines left blank so line numbers hold), `name = expr`
+    /// assignments kept inline. Powers the terminal's `m4 file.asm > file.s`
+    /// step so the course toolchain replays one command at a time. Returns
+    /// `{ success, text?, error?, error_line? }`.
+    pub fn m4_expand(&self, source: &str) -> JsValue {
+        match frontend::m4::expand(source) {
+            Ok(expanded) => serde_wasm_bindgen::to_value(&M4ResultJs {
+                success: true,
+                text: Some(expanded.text),
+                error: None,
+                error_line: None,
+            })
+            .unwrap(),
+            Err(err) => {
+                let (message, line) = match &err {
+                    errors::EmuError::PreprocError { line, message } => {
+                        (message.clone(), Some(*line as u32))
+                    }
+                    other => (other.to_string(), None),
+                };
+                serde_wasm_bindgen::to_value(&M4ResultJs {
+                    success: false,
+                    text: None,
+                    error: Some(message),
+                    error_line: line,
+                })
+                .unwrap()
+            }
+        }
     }
 
     /// Set a breakpoint at an address.

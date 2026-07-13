@@ -10,100 +10,105 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | Landing page (`/`) | `web/app/(site)/page.tsx` |
-| Hero, feature catalog, routes | `web/components/Hero.tsx`, `FeatureCatalog.tsx`, `RoutesRegisterFile.tsx` |
-| Landing data (features, routes, hero program) | `web/lib/landing-content.ts` |
-| Routes, nav, footer | `web/lib/site.ts`, `web/components/SiteNav.tsx`, `SiteFooter.tsx` |
-| Shared embeddable emulator | `web/components/EmbeddablePlayground.tsx` |
-| Lessons (`/learn`) | `web/app/(site)/learn/`, `web/components/LessonIndex.tsx`, `LessonArticle.tsx`, `LessonMarkdown.tsx`, `web/lib/lessons.ts` |
-| Exercises (`/practice`) | `web/app/(site)/practice/`, `web/components/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/exercises.ts` |
-| Exercise checker (no stored solution) | `web/lib/exercise-checker.ts` |
-| Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/ReferenceView.tsx`, `InstructionReference.tsx`, `InstructionView.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/reference-data.ts` |
-| Reference interactivity (NZCV panel, worked encodings, frame walk, runnable pitfalls) | `web/components/FlagEffect.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `PitfallsCatalog.tsx` |
-| AAPCS64 register-file rail (with the fp convention) | `web/components/AapcsRail.tsx` |
-| Link preview card (og/twitter image) | `web/lib/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
-| Content schemas + author JSON | `web/lib/lesson-schema.ts`, `exercise-schema.ts`, `web/content/` |
+| Hero, feature catalog, routes | `web/components/landing/Hero.tsx`, `FeatureCatalog.tsx`, `web/components/diagrams/RoutesRegisterFile.tsx` |
+| Landing data (features, routes, hero program) | `web/lib/content/landing-content.ts` |
+| Routes, nav, footer | `web/lib/content/site.ts`, `web/components/chrome/SiteNav.tsx`, `SiteFooter.tsx` |
+| Shared embeddable emulator | `web/components/playground/EmbeddablePlayground.tsx` |
+| Lessons (`/learn`) | `web/app/(site)/learn/`, `web/components/learn/LessonIndex.tsx`, `LessonArticle.tsx`, `LessonMarkdown.tsx`, `web/lib/content/lessons.ts` |
+| Exercises (`/practice`) | `web/app/(site)/practice/`, `web/components/practice/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/content/exercises.ts` |
+| Exercise checker (no stored solution) | `web/lib/content/exercise-checker.ts` |
+| Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/ReferenceView.tsx`, `InstructionReference.tsx`, `InstructionView.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/content/reference-data.ts` |
+| Reference interactivity (NZCV panel, worked encodings, frame walk, alignment probe, runnable pitfalls) | `web/components/diagrams/FlagEffect.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `StackAlignment.tsx`, `web/components/reference/PitfallsCatalog.tsx` |
+| Register-file teaching diagrams (x/w and d/s views) | `web/components/diagrams/RegisterFileDiagram.tsx`, `FpRegisterFileDiagram.tsx` |
+| AAPCS64 register-file rail (with the fp convention) | `web/components/diagrams/AapcsRail.tsx` |
+| Link preview card (og/twitter image) | `web/lib/content/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
+| Content schemas + author JSON | `web/lib/content/lesson-schema.ts`, `exercise-schema.ts`, `web/content/` |
 
 ## Editor & assembly
 
 | Feature | Lives in |
 | --- | --- |
-| Monaco editor with three themes | `web/components/Editor.tsx` |
-| Mobile fallback editor (textarea) | `web/components/Editor.tsx::FallbackEditor` |
-| Source formatter (`Ctrl+Shift+F`) | `web/lib/asm-formatter.ts` |
-| Context-aware completion provider | `web/lib/asm-completion.ts` |
-| Per-mnemonic Monaco hover docs | `web/lib/instruction-docs.ts`, `error-explain.ts` |
-| Multi-file tabs (concat at assemble) | `web/components/MultiFileTabs.tsx` |
-| Glyph-margin breakpoint dots | `web/components/Editor.tsx` |
+| Monaco editor with three themes | `web/components/playground/Editor.tsx` |
+| Mobile fallback editor (textarea) | `web/components/playground/Editor.tsx::FallbackEditor` |
+| Source formatter (`Ctrl+Shift+F`) | `web/lib/asm/asm-formatter.ts` |
+| Context-aware completion provider | `web/lib/asm/asm-completion.ts` |
+| Per-mnemonic Monaco hover docs | `web/lib/asm/instruction-docs.ts`, `error-explain.ts` |
+| Multi-file tabs (concat at assemble) | `web/components/playground/MultiFileTabs.tsx` |
+| Glyph-margin breakpoint dots | `web/components/playground/Editor.tsx` |
 
 ## Run loop & debugging
 
 | Feature | Lives in |
 | --- | --- |
-| Assemble / step / run / pause | `web/components/Controls.tsx`, `web/lib/use-emulator.ts` |
-| Pre-assemble gating + cold-load state | `web/components/Controls.tsx`, `FirstRunState.tsx` |
+| Assemble / step / run / pause | `web/components/playground/Controls.tsx`, `web/lib/emulator/use-emulator.ts` |
+| Pre-assemble gating + cold-load state | `web/components/playground/Controls.tsx`, `FirstRunState.tsx` |
 | 128-frame step-back | `emulator/src/snapshot.rs::SnapshotRing` |
-| Replay scrubber (visual seek) | `web/components/ReplayScrubber.tsx`, `web/lib/replay.ts` |
-| Named save states (session-scoped) | `web/lib/use-emulator.ts`, `web/components/SavesPanel.tsx` |
-| Persistent bookmarks (across reloads) | `web/lib/named-saves.ts`, `use-named-saves.ts` |
-| Diagnostic bundle (clipboard + URL) | `web/components/DiagnosticBundle.tsx`, `web/lib/diagnostic-bundle.ts` |
+| Replay scrubber (visual seek) | `web/components/playground/ReplayScrubber.tsx`, `web/lib/emulator/replay.ts` |
+| Named save states (session-scoped) | `web/lib/emulator/use-emulator.ts`, `web/components/panels/SavesPanel.tsx` |
+| Persistent bookmarks (across reloads) | `web/lib/playground/named-saves.ts`, `web/lib/hooks/use-named-saves.ts` |
+| Diagnostic bundle (clipboard + URL) | `web/components/playground/DiagnosticBundle.tsx`, `web/lib/playground/diagnostic-bundle.ts` |
 
 ## Panels & state
 
 | Feature | Lives in |
 | --- | --- |
-| Register panel with ABI aliases | `web/components/RegisterPanel.tsx`, `RegisterRow.tsx` |
-| Floating-point register view (`d0`–`d31`, dec/hex) | `web/components/RegisterPanel.tsx`, `DRegisterRow.tsx` |
-| Memory panel (sparse, paged) | `web/components/MemoryPanel.tsx` |
-| Stack panel + frame-pointer chase | `web/components/StackPanel.tsx`, `web/lib/frame-labels.ts` |
-| Watch expressions (`x0`, `*x0`, `[fp, name]`, `arr[i]`) | `web/components/WatchPanel.tsx`, `web/lib/watch-expr.ts` |
-| Memory address watches | `web/components/MemoryWatches.tsx` |
-| Console (stdout/stderr + stdin) | `web/components/ConsolePanel.tsx` |
-| Base converter (convert tab) | `web/components/BaseConverter.tsx`, `web/lib/base-convert.ts` |
-| Live decode strip (bit fields under the pc) | `web/components/DecodeStrip.tsx`, `web/lib/decode-fields.ts`, `explain-line.ts` |
+| Register panel with ABI aliases | `web/components/panels/RegisterPanel.tsx`, `RegisterRow.tsx` |
+| Floating-point register view (`d0`–`d31`, dec/hex, s-written values read as floats) | `web/components/panels/RegisterPanel.tsx`, `DRegisterRow.tsx` |
+| Memory panel (sparse, paged) | `web/components/panels/MemoryPanel.tsx` |
+| Stack panel + frame-pointer chase | `web/components/panels/StackPanel.tsx`, `web/lib/emulator/frame-labels.ts` |
+| Watch expressions (`x0`, `*x0`, `[fp, name]`, `arr[i]`) | `web/components/panels/WatchPanel.tsx`, `web/lib/emulator/watch-expr.ts` |
+| Memory address watches | `web/components/panels/MemoryWatches.tsx` |
+| Console (stdout/stderr + stdin) | `web/components/panels/ConsolePanel.tsx` |
+| Interactive stdin (blocked read pulls the console forward, gates run/step/back) | `web/components/panels/ConsolePanel.tsx`, `web/components/playground/Controls.tsx`, `EmbeddablePlayground.tsx` |
+| Persistent VFS home directory (IndexedDB, full playground only) | `web/lib/playground/vfs-persist.ts`, `web/components/playground/EmbeddablePlayground.tsx` |
+| Register auto-follow (fp write flips to the d file) | `web/components/panels/RegisterPanel.tsx` |
+| Base converter (convert tab) | `web/components/panels/BaseConverter.tsx`, `web/lib/asm/base-convert.ts` |
+| Live decode strip (bit fields under the pc) | `web/components/panels/DecodeStrip.tsx`, `web/lib/emulator/decode-fields.ts`, `web/lib/asm/explain-line.ts` |
 
 ## Layout & responsive
 
 | Feature | Lives in |
 | --- | --- |
-| Resizable nested panels (lg+) | `web/components/ResizableLayout.tsx` |
-| Bottom tab strip (< md) | `web/components/MobileLayout.tsx` |
-| Mobile nav drawer (< md) | `web/components/MobileNavDrawer.tsx` |
-| Layout persistence | `web/lib/use-layout-persistence.ts` |
-| Three-way theme cycle | `web/lib/use-theme.ts`, `web/components/ThemeControl.tsx` |
-| Token-driven select (collapsed listbox) | `web/components/Select.tsx` |
-| Per-panel zoom (`Ctrl+Wheel`) | `web/lib/use-zoom.ts`, `web/components/ZoomControl.tsx` |
-| Breakpoint hook | `web/lib/use-breakpoint.ts` |
-| Command palette (`Ctrl+K`) | `web/components/CommandPalette.tsx` |
-| Keyboard shortcuts help (`?`) | `web/components/ShortcutsHelp.tsx` |
+| Resizable nested panels (lg+) | `web/components/playground/ResizableLayout.tsx` |
+| Bottom tab strip (< md) | `web/components/playground/MobileLayout.tsx` |
+| Mobile nav drawer (< md) | `web/components/chrome/MobileNavDrawer.tsx` |
+| Layout persistence | `web/lib/hooks/use-layout-persistence.ts` |
+| Three-way theme cycle | `web/lib/hooks/use-theme.ts`, `web/components/chrome/ThemeControl.tsx` |
+| Token-driven select (collapsed listbox) | `web/components/ui/Select.tsx` |
+| Per-panel zoom (`Ctrl+Wheel`) | `web/lib/hooks/use-zoom.ts`, `web/components/ui/ZoomControl.tsx` |
+| Breakpoint hook | `web/lib/hooks/use-breakpoint.ts` |
+| Command palette (`Ctrl+K`) | `web/components/playground/CommandPalette.tsx` |
+| Keyboard shortcuts help (`?`) | `web/components/playground/ShortcutsHelp.tsx` |
 
 ## Input & deep-link
 
 | Feature | Lives in |
 | --- | --- |
-| Args bar (argv at entry) | `web/components/ArgsInput.tsx`, `web/lib/args.ts` |
-| Share link (`#p2=<lz>`) | `web/lib/share.ts`, `web/components/ShareDialog.tsx` |
-| Deep-link query parsing | `web/lib/use-deep-link.ts` |
-| Program handoff (boot precedence, example fetch) | `web/lib/playground-handoff.ts` |
-| `?bundle=<lz>` restore | `web/lib/diagnostic-bundle.ts` |
+| Args bar (argv at entry) | `web/components/playground/ArgsInput.tsx`, `web/lib/playground/args.ts` |
+| Share link (`#p2=<lz>`) | `web/lib/playground/share.ts`, `web/components/playground/ShareDialog.tsx` |
+| Deep-link query parsing | `web/lib/hooks/use-deep-link.ts` |
+| Program handoff (boot precedence, example fetch) | `web/lib/playground/playground-handoff.ts` |
+| `?bundle=<lz>` restore | `web/lib/playground/diagnostic-bundle.ts` |
 | `?embed=1` chrome-stripped mode | `web/app/playground/page.tsx` (uses `useDeepLink`) |
-| Import / export source | `web/components/ImportExport.tsx` |
-| Import target router | `web/lib/use-import-target.ts` |
+| Import / export source | `web/components/playground/ImportExport.tsx` |
+| Import target router | `web/lib/hooks/use-import-target.ts` |
 
 ## Terminal pane
 
 | Feature | Lives in |
 | --- | --- |
-| xterm.js wrapper | `web/components/TerminalPane.tsx` |
-| Command parser (`./prog`, `gdb`) | `web/lib/terminal/dispatch.ts` |
+| xterm.js wrapper | `web/components/panels/TerminalPane.tsx` |
+| Command parser (`./prog`, VFS commands, `gdb` subset) | `web/lib/terminal/dispatch.ts` |
+| Course toolchain (`m4 f.asm > f.s`, `gcc f.s -o prog`, `./prog`) | `web/lib/terminal/dispatch.ts`, the wasm `m4_expand` export, the hub's `assembleForTool` in `web/lib/emulator/use-emulator.ts` |
 | Input + history + tab-completion | `web/lib/terminal/input-state.ts` |
 
 ## Tutorials & examples
 
 | Feature | Lives in |
 | --- | --- |
-| Tutorial runner with `expect` checks | `web/components/TutorialRunner.tsx`, `web/lib/tutorials.ts` |
-| Example loader (stage-grouped) | `web/components/ExampleLoader.tsx` |
-| Recent programs | `web/components/RecentPrograms.tsx`, `web/lib/auto-save.ts` |
+| Tutorial runner with `expect` checks | `web/components/playground/TutorialRunner.tsx`, `web/lib/content/tutorials.ts` |
+| Example loader (stage-grouped) | `web/components/playground/ExampleLoader.tsx` |
+| Recent programs | `web/components/playground/RecentPrograms.tsx`, `web/lib/playground/auto-save.ts` |
 
 ## PWA & offline
 
@@ -111,20 +116,20 @@ reference).
 | --- | --- |
 | Manifest | `web/app/manifest.ts` |
 | Service worker (cache-first / network-first split) | `web/public/sw.js` |
-| SW registration (idempotent) | `web/lib/register-sw.ts`, `web/components/RegisterSW.tsx` |
-| Online / offline badge | `web/components/OfflineBadge.tsx` |
+| SW registration (idempotent) | `web/lib/playground/register-sw.ts`, `web/components/chrome/RegisterSW.tsx` |
+| Online / offline badge | `web/components/chrome/OfflineBadge.tsx` |
 
 ## Notifications
 
 | Feature | Lives in |
 | --- | --- |
-| Toast queue (react-hot-toast) | `web/components/Toast.tsx` (`<ToastHost>`, `useToast`) |
+| Toast queue (react-hot-toast) | `web/components/ui/Toast.tsx` (`<ToastHost>`, `useToast`) |
 
 ## Security gates
 
 | Feature | Lives in |
 | --- | --- |
-| Upload size caps | `web/lib/upload-guard.ts` |
-| Bundle / share validators | `web/lib/diagnostic-bundle.ts`, `web/lib/share.ts` |
-| Bookmark validator | `web/lib/named-saves.ts::isValidSave` |
+| Upload size caps | `web/lib/playground/upload-guard.ts` |
+| Bundle / share validators | `web/lib/playground/diagnostic-bundle.ts`, `web/lib/playground/share.ts` |
+| Bookmark validator | `web/lib/playground/named-saves.ts::isValidSave` |
 | Response headers (CSP, COOP, ...) | `web/proxy.ts`, `vercel.json` |

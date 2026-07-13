@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { loadAllLessons, loadLesson } from "@/lib/lessons";
-import { LessonArticle } from "@/components/LessonArticle";
-import { SHARE_CARD_IMAGE } from "@/lib/site";
+import { loadAllLessons, loadLesson } from "@/lib/content/lessons";
+import { LessonArticle } from "@/components/learn/LessonArticle";
+import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 
 // Fully static: the build enumerates every valid lesson slug and, with
 // dynamicParams off, only those slugs exist. Any other path falls through to the

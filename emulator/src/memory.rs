@@ -398,4 +398,60 @@ mod tests {
         // The cap held: no new page was allocated.
         assert_eq!(mem.mapped_page_count(), MAX_MAPPED_PAGES);
     }
+
+    #[test]
+    fn read_from_unmapped_page_faults_with_read_access() {
+        let mem = Memory::new();
+        let err = mem.read_u32(0x5000).unwrap_err();
+        assert_eq!(
+            err,
+            EmuError::MemoryFault { address: 0x5000, access: MemAccess::Read }
+        );
+    }
+
+    #[test]
+    fn page_crossing_read_faults_on_the_unmapped_second_page() {
+        let mut mem = Memory::new();
+        mem.map_page(0x1000);
+        let err = mem.read_u32(0x1FFE).unwrap_err();
+        assert_eq!(
+            err,
+            EmuError::MemoryFault { address: 0x2000, access: MemAccess::Read }
+        );
+    }
+
+    #[test]
+    fn little_endian_byte_order_u64() {
+        let mut mem = Memory::new();
+        mem.write_u64(0x4000, 0x0807_0605_0403_0201).unwrap();
+        for i in 0..8u64 {
+            assert_eq!(mem.read_u8(0x4000 + i).unwrap(), (i + 1) as u8);
+        }
+    }
+
+    #[test]
+    fn unaligned_u16_round_trips_within_a_page() {
+        // Same SCTLR.A = 0 stance as the u32/u64 cases: odd addresses
+        // succeed instead of faulting.
+        let mut mem = Memory::new();
+        mem.write_u16(0x1001, 0xBEEF).unwrap();
+        assert_eq!(mem.read_u16(0x1001).unwrap(), 0xBEEF);
+    }
+
+    #[test]
+    fn multi_byte_write_auto_maps_exactly_one_page() {
+        let mut mem = Memory::new();
+        assert_eq!(mem.mapped_page_count(), 0);
+        mem.write_u64(0x8000, 0x1122_3344_5566_7788).unwrap();
+        assert!(mem.is_mapped(0x8000));
+        assert_eq!(mem.mapped_page_count(), 1);
+    }
+
+    #[test]
+    fn read_bytes_zero_fills_unmapped_gaps() {
+        let mut mem = Memory::new();
+        mem.write_u8(0x1000, 0xAA).unwrap();
+        let out = mem.read_bytes(0x0FFE, 4).unwrap();
+        assert_eq!(out, vec![0, 0, 0xAA, 0]);
+    }
 }

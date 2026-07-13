@@ -117,20 +117,21 @@ The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` giv
 
 ## Floating point
 
-Arithmetic is double-precision only. S registers can be loaded and stored (the `.float` data form) but have no single-precision arithmetic: convert through a D register.
+Every scalar instruction takes both course views of the register file: the S form (single precision, a C `float`, the register's low 32 bits) and the D form (double precision, a C `double`). Widths never mix inside one instruction; `FCVT` converts between them. Single-precision arithmetic rounds in single precision, exactly like the hardware, and an S write zeroes the upper half of the register.
 
 | Mnemonic | Form                              | Notes                                   |
 | -------- | --------------------------------- | --------------------------------------- |
-| `FMOV`   | `FMOV Dd, Dn` / `FMOV Dd, #imm`   | Bit-for-bit copy, or an 8-bit float immediate (`fmov d9, 5.0`). The immediate must be a small power-of-two multiple of 1.0-1.9375 (so 1.0, 2.0, 5.0, 9.0 work; 0.0 and 100.0 do not: load those from a `.double`). |
-| `FADD`   | `FADD Dd, Dn, Dm`                 | `d` is double precision.                |
-| `FSUB`   | `FSUB Dd, Dn, Dm`                 |                                         |
-| `FMUL`   | `FMUL Dd, Dn, Dm`                 |                                         |
-| `FDIV`   | `FDIV Dd, Dn, Dm`                 |                                         |
-| `FNEG`   | `FNEG Dd, Dn`                     | Flip the sign: `Dd = -Dn`.              |
-| `FABS`   | `FABS Dd, Dn`                     | Absolute value: clears the sign bit.    |
-| `FCMP`   | `FCMP Dn, Dm`                     | Updates NZCV. Unordered sets C and V.   |
-| `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Dd, Wn`   | Signed integer to double.               |
-| `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` | Truncate double to signed integer.      |
+| `FMOV`   | `FMOV Dd, Dn` / `FMOV Sd, Sn` / `FMOV Dd, #imm` / `FMOV Sd, #imm` | Bit-for-bit copy, or an 8-bit float immediate (`fmov d9, 5.0`, `fmov s1, 0.5`). The immediate must be a small power-of-two multiple of 1.0-1.9375 (so 0.5, 1.0, 2.0, 5.0, 9.0 work; 0.0 and 100.0 do not: load those from a `.double` / `.float`). |
+| `FADD`   | `FADD Dd, Dn, Dm` / `FADD Sd, Sn, Sm` | The register width picks the precision. |
+| `FSUB`   | `FSUB Dd, Dn, Dm` / `FSUB Sd, Sn, Sm` |                                     |
+| `FMUL`   | `FMUL Dd, Dn, Dm` / `FMUL Sd, Sn, Sm` |                                     |
+| `FDIV`   | `FDIV Dd, Dn, Dm` / `FDIV Sd, Sn, Sm` |                                     |
+| `FNEG`   | `FNEG Dd, Dn` / `FNEG Sd, Sn`     | Flip the sign: `Fd = -Fn`.              |
+| `FABS`   | `FABS Dd, Dn` / `FABS Sd, Sn`     | Absolute value: clears the sign bit.    |
+| `FCMP`   | `FCMP Dn, Dm` / `FCMP Sn, Sm`     | Updates NZCV. Unordered sets C and V.   |
+| `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). |
+| `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Dd, Wn` / `SCVTF Sd, Wn` | Signed integer to float.  |
+| `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` / `FCVTZS Wd, Sn` | Truncate float to signed integer. |
 
 ## Directives
 

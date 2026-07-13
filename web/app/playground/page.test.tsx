@@ -25,7 +25,7 @@ const handle = vi.hoisted(() => ({
 // buffer the page resolved without rendering the heavy surface.
 const receivedPropsRef = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
-vi.mock("@/components/EmbeddablePlayground", async () => {
+vi.mock("@/components/playground/EmbeddablePlayground", async () => {
   const React = await import("react");
   return {
     EmbeddablePlayground: React.forwardRef(function Stub(
@@ -40,13 +40,13 @@ vi.mock("@/components/EmbeddablePlayground", async () => {
     }),
   };
 });
-vi.mock("@/components/CommandPalette", () => ({ CommandPalette: () => null }));
-vi.mock("@/components/ShortcutsHelp", () => ({ ShortcutsHelp: () => null }));
-vi.mock("@/components/ShareDialog", () => ({ ShareDialog: () => null }));
-vi.mock("@/components/SiteNav", () => ({ SiteNav: () => null }));
+vi.mock("@/components/playground/CommandPalette", () => ({ CommandPalette: () => null }));
+vi.mock("@/components/playground/ShortcutsHelp", () => ({ ShortcutsHelp: () => null }));
+vi.mock("@/components/playground/ShareDialog", () => ({ ShareDialog: () => null }));
+vi.mock("@/components/chrome/SiteNav", () => ({ SiteNav: () => null }));
 
 import Home from "./page";
-import { buildShareHash } from "@/lib/share";
+import { buildShareHash } from "@/lib/playground/share";
 
 afterEach(() => {
   cleanup();

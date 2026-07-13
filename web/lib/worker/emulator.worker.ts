@@ -276,6 +276,16 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: { removed, snapshot: snapshot() } });
         return;
       }
+      case "m4Expand": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Optional export: an older cached WASM answers null so the terminal
+        // can explain instead of crashing the worker.
+        const emulatorM4 = emu as unknown as { m4_expand?: (s: string) => unknown };
+        const value = emulatorM4.m4_expand ? emulatorM4.m4_expand(msg.source) : null;
+        post({ id: msg.id, kind: "ok", value });
+        return;
+      }
       case "resolveLabel": {
         await ensureWasm();
         const emu = require_emulator();

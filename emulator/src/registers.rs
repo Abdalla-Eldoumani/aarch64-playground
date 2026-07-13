@@ -261,6 +261,18 @@ impl RegisterFile {
         self.write_fpr_bits(index, value.to_bits());
     }
 
+    /// Read an FP register as f32: the S view is the low 32 bits of the
+    /// same register the D view reads.
+    pub fn read_fpr_f32(&self, index: u8) -> f32 {
+        f32::from_bits(self.read_fpr_bits(index) as u32)
+    }
+
+    /// Write an FP register as f32. Like the hardware, an S write zeroes
+    /// everything above the low 32 bits.
+    pub fn write_fpr_f32(&mut self, index: u8, value: f32) {
+        self.write_fpr_bits(index, value.to_bits() as u64);
+    }
+
     /// Snapshot all 32 FP registers for change detection alongside GPRs.
     pub fn snapshot_fpr(&self) -> [u64; 32] {
         self.fpr
@@ -420,5 +432,51 @@ mod tests {
         let snap = rf.snapshot();
         assert_eq!(snap[0], 100);
         assert_eq!(snap[31], 200);
+    }
+
+    #[test]
+    fn shift_amount_zero_is_identity_for_all_types() {
+        let val: u64 = 0x8000_0000_0000_0001;
+        assert_eq!(apply_shift(val, ShiftType::LSL, 0, true), val);
+        assert_eq!(apply_shift(val, ShiftType::LSR, 0, true), val);
+        assert_eq!(apply_shift(val, ShiftType::ASR, 0, true), val);
+        assert_eq!(apply_shift(val, ShiftType::ROR, 0, true), val);
+    }
+
+    #[test]
+    fn shift_amount_63_at_the_64_bit_boundary() {
+        assert_eq!(apply_shift(1, ShiftType::LSL, 63, true), 0x8000_0000_0000_0000);
+        assert_eq!(apply_shift(0x8000_0000_0000_0000, ShiftType::LSR, 63, true), 1);
+        assert_eq!(apply_shift(0x8000_0000_0000_0000, ShiftType::ASR, 63, true), u64::MAX);
+        assert_eq!(apply_shift(1, ShiftType::ROR, 63, true), 2);
+    }
+
+    #[test]
+    fn shift_amount_31_at_the_32_bit_boundary() {
+        assert_eq!(apply_shift(0x8000_0000, ShiftType::ASR, 31, false), 0xFFFF_FFFF);
+        assert_eq!(apply_shift(1, ShiftType::ROR, 31, false), 2);
+    }
+
+    #[test]
+    fn shift_masks_the_operand_to_32_bits_when_sf_clear() {
+        // the upper half of the input never leaks into a 32-bit shift
+        assert_eq!(apply_shift(0xFFFF_FFFF_0000_00F0, ShiftType::LSL, 0, false), 0xF0);
+        assert_eq!(apply_shift(0xFFFF_FFFF_8000_0000, ShiftType::LSR, 31, false), 1);
+    }
+
+    #[test]
+    fn sp_access_masks_like_a_w_register_when_sf_clear() {
+        let mut rf = RegisterFile::new();
+        rf.write_sp(0x0000_0001_2345_6789);
+        assert_eq!(rf.read_gpr_or_sp(31, false), 0x2345_6789);
+        rf.write_gpr_or_sp(31, false, 0xFFFF_FFFF_0000_0010);
+        assert_eq!(rf.read_sp(), 0x10);
+    }
+
+    #[test]
+    fn fpr_index_past_31_reads_zero_and_ignores_writes() {
+        let mut rf = RegisterFile::new();
+        rf.write_fpr_bits(32, 0xDEAD);
+        assert_eq!(rf.read_fpr_bits(32), 0);
     }
 }
