@@ -41,11 +41,11 @@ lib/wasm/, lib/wasm-node/  generated wasm-pack output (gitignored)
 Emulator modules:
 
 ```
-registers.rs  X0..X30, SP, PC, NZCV, 32 FP registers
+registers.rs  X0..X30, SP, PC, NZCV, 32 FP registers (f32 + f64 views)
 memory.rs     sparse HashMap of 4 KiB pages
 decoder.rs    32-bit word to Instruction
 executor.rs   per-instruction semantics + NZCV math
-fpu.rs        f64 compare flags (NZCV for fcmp)
+fpu.rs        float compare flags (NZCV for fcmp)
 snapshot.rs   step-back ring + named save states
 cpu.rs        step / run loop, host stubs, syscalls, VFS, FDs, bounds
 assembler.rs  legacy one-pass encoder (bare-metal source)
@@ -116,8 +116,10 @@ first-class. This keeps the executor to canonical encodings only.
 
 ARMv8 instructions are fixed 32-bit. The decoder is a cascade of
 `(word & mask) == pattern` checks, most-specific first, returning a typed
-`Instruction`. Verbose but easy to single-step. FP ops dispatch through
-`fpu.rs` on execution.
+`Instruction`. Verbose but easy to single-step. Scalar FP instructions
+carry their width (the ftype field): the S forms compute in f32 and the
+D forms in f64, with `fcvt` converting between the two views; compares
+dispatch through `fpu.rs` on execution.
 
 ## Memory model
 
