@@ -460,7 +460,7 @@ fn single_float(tokens: &[Token], line: usize) -> Result<f64, EmuError> {
         }] => Ok(-(*v as f64)),
         _ => Err(err(
             line,
-            "expected a float literal (0r...) or integer for .double/.float",
+            "expected a number for .double/.float, like 3.14, -2.5, 0r1.5e10, or an integer",
         )),
     }
 }
@@ -984,6 +984,24 @@ mod tests {
         arr.copy_from_slice(&bytes);
         let v = f32::from_bits(u32::from_le_bytes(arr));
         assert_eq!(v, 1.5_f32);
+    }
+
+    #[test]
+    fn plain_decimal_float_in_data_directives() {
+        // The real toolchain takes `.double 3.14` and `.float -2.5`
+        // without any radix prefix; the playground must too.
+        let p = parse_ok(".data\n.double 3.14\n");
+        let bytes = section_bytes(&p, SectionKind::Data);
+        assert_eq!(bytes.len(), 8);
+        let mut arr = [0u8; 8];
+        arr.copy_from_slice(&bytes);
+        assert_eq!(f64::from_bits(u64::from_le_bytes(arr)), 3.14);
+
+        let p = parse_ok(".data\n.float -2.5\n");
+        let bytes = section_bytes(&p, SectionKind::Data);
+        let mut arr = [0u8; 4];
+        arr.copy_from_slice(&bytes);
+        assert_eq!(f32::from_bits(u32::from_le_bytes(arr)), -2.5_f32);
     }
 
     #[test]
