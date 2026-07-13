@@ -261,6 +261,18 @@ impl RegisterFile {
         self.write_fpr_bits(index, value.to_bits());
     }
 
+    /// Read an FP register as f32: the S view is the low 32 bits of the
+    /// same register the D view reads.
+    pub fn read_fpr_f32(&self, index: u8) -> f32 {
+        f32::from_bits(self.read_fpr_bits(index) as u32)
+    }
+
+    /// Write an FP register as f32. Like the hardware, an S write zeroes
+    /// everything above the low 32 bits.
+    pub fn write_fpr_f32(&mut self, index: u8, value: f32) {
+        self.write_fpr_bits(index, value.to_bits() as u64);
+    }
+
     /// Snapshot all 32 FP registers for change detection alongside GPRs.
     pub fn snapshot_fpr(&self) -> [u64; 32] {
         self.fpr
