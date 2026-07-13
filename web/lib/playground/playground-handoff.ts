@@ -165,6 +165,7 @@ export const EXAMPLE_INPUTS: Record<
   locals: { stdin: true },
   "read-file": { vfs: true },
   "student-record": { stdin: true },
+  "triangle-area": { stdin: true },
 };
 
 /**
