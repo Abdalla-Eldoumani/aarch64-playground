@@ -909,11 +909,17 @@ function EmbeddableCore({
       } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
     };
     const runText = async (text: string, args: string[], stdin?: string) => {
-      const ok = await emuRef.current.assemble(text, args.slice(1));
-      if (!ok) {
+      // Tool-channel assemble: the terminal's program must not paint the
+      // editor's error markers, and the verdict comes back directly. The
+      // assemble wiped the machine, home directory included, so put the
+      // working set back whatever the outcome.
+      const verdict = await emuRef.current.assembleForTool(text, args.slice(1));
+      applySeeds();
+      if (!verdict.success) {
         const e = emuRef.current;
         return { stdout: e.stdout, stderr: e.stderr, exitCode: e.exitCode ?? 0 };
       }
+      // Any `< file` stdin goes on top of the reseeded working set.
       if (stdin) emuRef.current.pushStdin(stdin);
       emuRef.current.run();
       await waitForHalt();
@@ -963,14 +969,20 @@ function EmbeddableCore({
       resolveLabel: async (name: string) => emuRef.current.resolveLabel(name),
       m4Expand: async (text: string) => emuRef.current.m4Expand(text),
       assembleSource: async (text: string) => {
-        const ok = await emuRef.current.assemble(text, []);
-        const e = emuRef.current;
-        const errors = e.assemblyErrors.length
-          ? e.assemblyErrors.map((err) => `line ${err.line}: ${err.message}`)
-          : e.error
-            ? [e.error]
-            : [];
-        return { success: ok, errors: ok ? [] : errors };
+        const verdict = await emuRef.current.assembleForTool(text, []);
+        // The gcc assemble wiped the home directory with the rest of the
+        // machine; reseed it either way so `ls` right after a build (or
+        // a failed one) still shows the student's files.
+        applySeeds();
+        if (verdict.success) return { success: true, errors: [] };
+        const errors = verdict.error
+          ? [
+              verdict.errorLine != null
+                ? `line ${verdict.errorLine}: ${verdict.error}`
+                : verdict.error,
+            ]
+          : [];
+        return { success: false, errors };
       },
       runSource: runText,
       executables: terminalExecutablesRef.current,
@@ -1001,7 +1013,7 @@ function EmbeddableCore({
       pcAddress: () => emuRef.current.pc,
       reset: async () => emuRef.current.reset(),
     };
-  }, [stageVfsFile, removeVfsFile]);
+  }, [stageVfsFile, removeVfsFile, applySeeds]);
 
   if (emu.loadError) {
     return (

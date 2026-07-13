@@ -29,6 +29,12 @@ const terminalProps = vi.hoisted(() => ({
     buildContext: () => {
       writeVfs: (path: string, body: string) => void;
       deleteVfs: (path: string) => Promise<boolean>;
+      assembleSource: (text: string) => Promise<{ success: boolean; errors: string[] }>;
+      runSource: (
+        text: string,
+        args: string[],
+        stdin?: string,
+      ) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
     };
   },
 }));
@@ -83,6 +89,9 @@ function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
     dirtyAddrs: [] as Array<[number, number]>,
     replayFrames: [],
     assemble: vi.fn().mockResolvedValue(true),
+    assembleForTool: vi
+      .fn()
+      .mockResolvedValue({ success: true, error: null, errorLine: null }),
     step: vi.fn(),
     stepBack: vi.fn(),
     run: vi.fn(),
@@ -249,6 +258,84 @@ describe("the persistent working set (full chrome)", () => {
         "numbers.txt": "1 2 3\n",
       }),
     );
+  });
+});
+
+describe("the terminal toolchain and the working set", () => {
+  it("gcc reseeds the home directory after its machine wipe", async () => {
+    persistMock.loadPersistedVfs.mockImplementation(async () => ({
+      "notes.txt": "keep me\n",
+    }));
+    const hub: Hub = makeHub();
+    useEmulatorMock.mockReturnValue(hub);
+    setWidth(800);
+    const { container } = render(
+      <EmbeddablePlayground chrome="full" startSource="mov x0, 1" />,
+    );
+    engage(container);
+    await waitFor(() =>
+      expect(uploads(hub)).toContainEqual(["notes.txt", "keep me\n"]),
+    );
+    const terminal = await openTerminal();
+    hub.uploadVfsFile.mockClear();
+    await act(async () => {
+      await terminal.buildContext().assembleSource("mov x0, 0\nsvc 0\n");
+    });
+    // The tool-channel assemble ran (not the marker-painting one), and
+    // the student's files came back after the wipe.
+    expect(hub.assembleForTool).toHaveBeenCalled();
+    expect(hub.assemble).not.toHaveBeenCalled();
+    expect(uploads(hub)).toContainEqual(["notes.txt", "keep me\n"]);
+  });
+
+  it("a failing gcc reports the precise line and message from the verdict", async () => {
+    const hub: Hub = makeHub({
+      assembleForTool: vi.fn().mockResolvedValue({
+        success: false,
+        error: "unknown mnemonic: MOVQ",
+        errorLine: 3,
+      }),
+    });
+    useEmulatorMock.mockReturnValue(hub);
+    setWidth(800);
+    const { container } = render(
+      <EmbeddablePlayground chrome="full" startSource="mov x0, 1" />,
+    );
+    engage(container);
+    const terminal = await openTerminal();
+    let verdict: { success: boolean; errors: string[] } | null = null;
+    await act(async () => {
+      verdict = await terminal.buildContext().assembleSource("movq x0, 1\n");
+    });
+    expect(verdict).toEqual({
+      success: false,
+      errors: ["line 3: unknown mnemonic: MOVQ"],
+    });
+    expect(hub.assemble).not.toHaveBeenCalled();
+  });
+
+  it("a terminal program run reseeds the home directory before running", async () => {
+    persistMock.loadPersistedVfs.mockImplementation(async () => ({
+      "input.txt": "1 2 3\n",
+    }));
+    const hub: Hub = makeHub();
+    useEmulatorMock.mockReturnValue(hub);
+    setWidth(800);
+    const { container } = render(
+      <EmbeddablePlayground chrome="full" startSource="mov x0, 1" />,
+    );
+    engage(container);
+    await waitFor(() =>
+      expect(uploads(hub)).toContainEqual(["input.txt", "1 2 3\n"]),
+    );
+    const terminal = await openTerminal();
+    hub.uploadVfsFile.mockClear();
+    await act(async () => {
+      await terminal.buildContext().runSource("mov x0, 0\nsvc 0\n", ["prog"]);
+    });
+    expect(hub.assembleForTool).toHaveBeenCalled();
+    expect(uploads(hub)).toContainEqual(["input.txt", "1 2 3\n"]);
+    expect(hub.run).toHaveBeenCalled();
   });
 });
 

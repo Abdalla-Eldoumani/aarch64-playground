@@ -55,6 +55,9 @@ function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
     dirtyAddrs: [] as Array<[number, number]>,
     replayFrames: [],
     assemble: vi.fn(),
+    assembleForTool: vi
+      .fn()
+      .mockResolvedValue({ success: true, error: null, errorLine: null }),
     step: vi.fn(),
     stepBack: vi.fn(),
     run: vi.fn(),
