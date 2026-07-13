@@ -410,14 +410,12 @@ describe("file command chains over one VFS", () => {
     expect(files.get("b.txt")).toBe("new");
   });
 
-  it("mv to the same name leaves no file behind", async () => {
-    // mv is copy-then-delete, so `mv a.txt a.txt` writes a.txt and then
-    // deletes it: the file is gone. Worth pinning as the (surprising)
-    // contract of the flat VFS rather than discovering it in class.
+  it("mv to the same name refuses like the real tool and keeps the file", async () => {
     const { ctx, files } = vfsCtx({ "a.txt": "body" });
     const r = await dispatchCommand("mv a.txt a.txt", ctx);
-    expect(r.status).toBe("ok");
-    expect(files.has("a.txt")).toBe(false);
+    expect(r.status).toBe("err");
+    expect(r.lines[0]).toBe("mv: 'a.txt' and 'a.txt' are the same file");
+    expect(files.get("a.txt")).toBe("body");
   });
 
   it("rm on a missing file reports an error", async () => {
@@ -474,10 +472,16 @@ describe("redirection semantics", () => {
     expect(files.get("out/run.txt")).toBe("x");
   });
 
-  it("a quoted > is still a redirect: quoting does not survive tokenization", () => {
+  it("a quoted > stays a literal argument, like a real shell", () => {
     const r = parseCommandLine('cat ">" out.txt');
     expect(r.cmd).toBe("cat");
-    expect(r.args).toEqual([]);
+    expect(r.args).toEqual([">", "out.txt"]);
+    expect(r.stdoutTo).toBeUndefined();
+  });
+
+  it("an escaped \\> stays literal while a bare > still redirects", () => {
+    const r = parseCommandLine("./prog \\> literal > out.txt");
+    expect(r.args).toEqual([">", "literal"]);
     expect(r.stdoutTo).toBe("out.txt");
   });
 

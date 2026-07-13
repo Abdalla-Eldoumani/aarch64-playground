@@ -1,4 +1,4 @@
-import { parseArgs } from "@/lib/playground/args";
+import { parseArgsDetailed } from "@/lib/playground/args";
 
 /**
  * Result of running a single command line. `lines` is the printable
@@ -22,29 +22,31 @@ export interface ParsedCommandLine {
 
 /**
  * Tokenize a shell-style command line into command + args + optional
- * `<file` and `>file` redirections. Re-uses `parseArgs` for quoting so
- * the terminal honors the same rules as the args input above the editor.
+ * `<file` and `>file` redirections. Re-uses the shared tokenizer for
+ * quoting so the terminal honors the same rules as the args input above
+ * the editor. Like a real shell, only a BARE `<` or `>` redirects: a
+ * quoted `">"` or escaped `\>` stays a literal argument.
  */
 export function parseCommandLine(line: string): ParsedCommandLine {
   const trimmed = line.trim();
   if (!trimmed) return { cmd: "", args: [] };
-  const tokens = parseArgs(trimmed);
+  const tokens = parseArgsDetailed(trimmed);
   let stdinFrom: string | undefined;
   let stdoutTo: string | undefined;
   const remaining: string[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
-    if (t === "<" && i + 1 < tokens.length) {
-      stdinFrom = tokens[i + 1];
+    if (!t.quoted && t.text === "<" && i + 1 < tokens.length) {
+      stdinFrom = tokens[i + 1].text;
       i += 1;
       continue;
     }
-    if (t === ">" && i + 1 < tokens.length) {
-      stdoutTo = tokens[i + 1];
+    if (!t.quoted && t.text === ">" && i + 1 < tokens.length) {
+      stdoutTo = tokens[i + 1].text;
       i += 1;
       continue;
     }
-    remaining.push(t);
+    remaining.push(t.text);
   }
   const [cmd = "", ...args] = remaining;
   return { cmd, args, stdinFrom, stdoutTo };
@@ -181,6 +183,11 @@ export async function dispatchCommand(
   if (cmd === "mv") {
     const [src, dst] = args;
     if (!src || !dst) return { status: "err", lines: ["mv: usage: mv <old> <new>"] };
+    if (src === dst) {
+      // Real mv refuses a self-move; the old copy-then-delete shape
+      // deleted the file instead.
+      return { status: "err", lines: [`mv: '${src}' and '${dst}' are the same file`] };
+    }
     const body = await ctx.readVfs(src);
     if (body === undefined) return { status: "err", lines: [`mv: ${src}: no such file in vfs`] };
     ctx.writeVfs(dst, body);
