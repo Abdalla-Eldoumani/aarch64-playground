@@ -169,14 +169,15 @@ fn encode_line(
         "LDRSW" => encode_ldrs(&ops, 0b10, line_num),
 
         // -- floating-point --
-        "FADD" => encode_fp_binary(&ops, 0b0010, line_num),
-        "FSUB" => encode_fp_binary(&ops, 0b0011, line_num),
-        "FMUL" => encode_fp_binary(&ops, 0b0000, line_num),
-        "FDIV" => encode_fp_binary(&ops, 0b0001, line_num),
+        "FADD" => encode_fp_binary(&ops, 0b0010, "fadd", line_num),
+        "FSUB" => encode_fp_binary(&ops, 0b0011, "fsub", line_num),
+        "FMUL" => encode_fp_binary(&ops, 0b0000, "fmul", line_num),
+        "FDIV" => encode_fp_binary(&ops, 0b0001, "fdiv", line_num),
         "FMOV" => encode_fmov(&ops, line_num),
-        "FNEG" => encode_fp_unary(&ops, 0b000010, line_num),
-        "FABS" => encode_fp_unary(&ops, 0b000001, line_num),
+        "FNEG" => encode_fp_unary(&ops, 0b000010, "fneg", line_num),
+        "FABS" => encode_fp_unary(&ops, 0b000001, "fabs", line_num),
         "FCMP" => encode_fcmp(&ops, line_num),
+        "FCVT" => encode_fcvt(&ops, line_num),
         "SCVTF" => encode_scvtf(&ops, line_num),
         "FCVTZS" => encode_fcvtzs(&ops, line_num),
         "LDP" => encode_ldst_pair(&ops, 1, line_num),
@@ -869,15 +870,40 @@ fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
     Ok((idx, prefix))
 }
 
-fn encode_fp_binary(ops: &[&str], opcode: u32, ln: usize) -> Result<u32, EmuError> {
-    if ops.len() != 3 {
-        return asm_err(ln, "FP binary op requires 3 operands");
+/// The ftype field (bits 23:22) for a scalar FP width: 0b01 for D, 0b00
+/// for S. Every scalar FP base opcode below is written in its S (ftype=00)
+/// form and this adds the D bit back.
+fn fp_ftype(width: char) -> u32 {
+    if width == 'D' { 0x0040_0000 } else { 0 }
+}
+
+/// All operands of one FP instruction must share a width; mixing S and D
+/// silently computing in the wrong precision would be far worse than an
+/// error, so name the mnemonic and both widths.
+fn require_same_fp_width(name: &str, widths: &[char], ln: usize) -> Result<char, EmuError> {
+    let first = widths[0];
+    if widths.iter().any(|w| *w != first) {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} needs all S or all D registers (use fcvt to convert between widths)"
+            ),
+        );
     }
-    let (fd, _) = parse_fp_register(ops[0], ln)?;
-    let (fn_, _) = parse_fp_register(ops[1], ln)?;
-    let (fm, _) = parse_fp_register(ops[2], ln)?;
-    // Double-precision 2-source: 0_0_0_11110_01_1_Rm_opcode_10_Rn_Rd
-    Ok(0x1E60_0800
+    Ok(first)
+}
+
+fn encode_fp_binary(ops: &[&str], opcode: u32, name: &str, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 3 {
+        return asm_err(ln, &format!("{name} requires 3 operands: {name} fd, fn, fm"));
+    }
+    let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let (fm, wm) = parse_fp_register(ops[2], ln)?;
+    let width = require_same_fp_width(name, &[wd, wn, wm], ln)?;
+    // 2-source: 0_0_0_11110_ftype_1_Rm_opcode_10_Rn_Rd
+    Ok(0x1E20_0800
+        | fp_ftype(width)
         | ((fm as u32) << 16)
         | ((opcode & 0xF) << 12)
         | ((fn_ as u32) << 5)
@@ -886,14 +912,14 @@ fn encode_fp_binary(ops: &[&str], opcode: u32, ln: usize) -> Result<u32, EmuErro
 
 fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
-        return asm_err(ln, "FMOV requires 2 operands");
+        return asm_err(ln, "fmov requires 2 operands");
     }
-    let (fd, _) = parse_fp_register(ops[0], ln)?;
+    let (fd, wd) = parse_fp_register(ops[0], ln)?;
 
-    // Immediate form: `fmov d9, 9.0` (course style, `#` optional). The
-    // operand is anything that reads as a float literal rather than a
-    // register. Only the 8-bit VFP immediates encode; everything else
-    // points the student at the `.double` fallback.
+    // Immediate form: `fmov d9, 9.0` / `fmov s0, 0.5` (course style, `#`
+    // optional). The operand is anything that reads as a float literal
+    // rather than a register. Only the 8-bit VFP immediates encode;
+    // everything else points the student at the data-section fallback.
     let op2 = ops[1].trim();
     let imm_text = op2.strip_prefix('#').unwrap_or(op2);
     if !imm_text.is_empty()
@@ -905,69 +931,94 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         let value: f64 = imm_text.parse().map_err(|_| {
             asm_error(ln, &format!("cannot parse '{op2}' as an FMOV float immediate"))
         })?;
-        // 256 candidates; exact bit match is the correctness test.
+        // 256 candidates; exact bit match is the correctness test. Every
+        // VFP immediate is exact in f32, so one f64 table serves S too.
         let imm8 = (0u16..=255)
             .map(|c| c as u8)
             .find(|&c| crate::decoder::expand_fmov_imm8(c) == value.to_bits());
         let Some(imm8) = imm8 else {
+            let fallback = if wd == 'D' { ".double" } else { ".float" };
             return asm_err(
                 ln,
                 &format!(
-                    "{op2} does not fit the FMOV 8-bit float immediate; load it from a .double instead"
+                    "{op2} does not fit the FMOV 8-bit float immediate; load it from a {fallback} instead"
                 ),
             );
         };
-        // FMOV Dd, #imm: 0_0_0_11110_01_1_imm8_100_00000_Rd
-        return Ok(0x1E60_1000 | ((imm8 as u32) << 13) | (fd as u32));
+        // FMOV Fd, #imm: 0_0_0_11110_ftype_1_imm8_100_00000_Rd
+        return Ok(0x1E20_1000 | fp_ftype(wd) | ((imm8 as u32) << 13) | (fd as u32));
     }
 
-    let (fn_, _) = parse_fp_register(ops[1], ln)?;
-    // FMOV Dd, Dn: 0_0_0_11110_01_1_00000_010000_Rn_Rd
-    Ok(0x1E60_4000 | ((fn_ as u32) << 5) | (fd as u32))
+    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let width = require_same_fp_width("fmov", &[wd, wn], ln)?;
+    // FMOV Fd, Fn: 0_0_0_11110_ftype_1_00000_010000_Rn_Rd
+    Ok(0x1E20_4000 | fp_ftype(width) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
-/// Encode an FP data-processing 1-source op (`FNEG` / `FABS` `Dd, Dn`).
-/// `opcode` fills bits 20:15 of the double-precision 1-source layout:
-/// 0_0_0_11110_01_1_opcode_10000_Rn_Rd.
-fn encode_fp_unary(ops: &[&str], opcode: u32, ln: usize) -> Result<u32, EmuError> {
+/// Encode an FP data-processing 1-source op (`FNEG` / `FABS` `Fd, Fn`).
+/// `opcode` fills bits 20:15 of the 1-source layout:
+/// 0_0_0_11110_ftype_1_opcode_10000_Rn_Rd.
+fn encode_fp_unary(ops: &[&str], opcode: u32, name: &str, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
-        return asm_err(ln, "FNEG/FABS requires 2 operands");
+        return asm_err(ln, &format!("{name} requires 2 operands: {name} fd, fn"));
     }
-    let (fd, _) = parse_fp_register(ops[0], ln)?;
-    let (fn_, _) = parse_fp_register(ops[1], ln)?;
-    Ok(0x1E60_4000 | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
+    let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let width = require_same_fp_width(name, &[wd, wn], ln)?;
+    Ok(0x1E20_4000 | fp_ftype(width) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
+}
+
+/// FCVT converts between the S and D views: `fcvt d0, s1` widens (exact),
+/// `fcvt s0, d1` narrows (rounds). The ftype field names the SOURCE width
+/// and the opcode's low bits name the destination width.
+fn encode_fcvt(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "fcvt requires 2 operands: fcvt fd, fn");
+    }
+    let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    if wd == wn {
+        return asm_err(
+            ln,
+            "fcvt converts between widths: one operand must be an S register and the other a D register (use fmov to copy at the same width)",
+        );
+    }
+    // 1-source with opcode 0b0001‖dest-type; ftype = source width.
+    let opcode: u32 = if wd == 'D' { 0b000101 } else { 0b000100 };
+    Ok(0x1E20_4000 | fp_ftype(wn) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 fn encode_fcmp(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
-        return asm_err(ln, "FCMP requires 2 operands");
+        return asm_err(ln, "fcmp requires 2 operands");
     }
-    let (fn_, _) = parse_fp_register(ops[0], ln)?;
-    let (fm, _) = parse_fp_register(ops[1], ln)?;
-    // FCMP Dn, Dm: 0_0_0_11110_01_1_Rm_00_1000_Rn_0_0000
-    Ok(0x1E60_2000 | ((fm as u32) << 16) | ((fn_ as u32) << 5))
+    let (fn_, wn) = parse_fp_register(ops[0], ln)?;
+    let (fm, wm) = parse_fp_register(ops[1], ln)?;
+    let width = require_same_fp_width("fcmp", &[wn, wm], ln)?;
+    // FCMP Fn, Fm: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_0_0000
+    Ok(0x1E20_2000 | fp_ftype(width) | ((fm as u32) << 16) | ((fn_ as u32) << 5))
 }
 
 fn encode_scvtf(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
-        return asm_err(ln, "SCVTF requires 2 operands");
+        return asm_err(ln, "scvtf requires 2 operands: scvtf fd, rn");
     }
-    let (fd, _) = parse_fp_register(ops[0], ln)?;
+    let (fd, wd) = parse_fp_register(ops[0], ln)?;
     let (rn, sf) = parse_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
-    // SCVTF Dd, Rn: sf_0_0_11110_01_1_00_010_000000_Rn_Rd
-    Ok((sf_bit << 31) | 0x1E62_0000 | ((rn as u32) << 5) | (fd as u32))
+    // SCVTF Fd, Rn: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
+    Ok((sf_bit << 31) | 0x1E22_0000 | fp_ftype(wd) | ((rn as u32) << 5) | (fd as u32))
 }
 
 fn encode_fcvtzs(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
-        return asm_err(ln, "FCVTZS requires 2 operands");
+        return asm_err(ln, "fcvtzs requires 2 operands: fcvtzs rd, fn");
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
-    let (fn_, _) = parse_fp_register(ops[1], ln)?;
+    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
-    // FCVTZS Rd, Dn: sf_0_0_11110_01_1_11_000_000000_Rn_Rd
-    Ok((sf_bit << 31) | 0x1E78_0000 | ((fn_ as u32) << 5) | (rd as u32))
+    // FCVTZS Rd, Fn: sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
+    Ok((sf_bit << 31) | 0x1E38_0000 | fp_ftype(wn) | ((fn_ as u32) << 5) | (rd as u32))
 }
 
 fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
@@ -2054,7 +2105,7 @@ mod tests {
         let code = assemble("FADD D0, D1, D2").unwrap();
         let decoded = crate::decoder::decode(code[0]).unwrap();
         match decoded {
-            crate::decoder::Instruction::FpBinary { op, fd, fn_, fm } => {
+            crate::decoder::Instruction::FpBinary { op, fd, fn_, fm, single: false } => {
                 assert_eq!(op, crate::decoder::FpBinOp::Fadd);
                 assert_eq!(fd, 0);
                 assert_eq!(fn_, 1);
@@ -2083,7 +2134,7 @@ mod tests {
     fn assemble_fneg_round_trips() {
         let code = assemble("fneg d16, d16").unwrap();
         match crate::decoder::decode(code[0]).unwrap() {
-            crate::decoder::Instruction::FpUnary { op, fd, fn_ } => {
+            crate::decoder::Instruction::FpUnary { op, fd, fn_, single: false } => {
                 assert_eq!(op, crate::decoder::FpUnaryOp::Fneg);
                 assert_eq!((fd, fn_), (16, 16));
             }
@@ -2105,7 +2156,7 @@ mod tests {
     fn assemble_fabs_round_trips() {
         let code = assemble("fabs d10, d11").unwrap();
         match crate::decoder::decode(code[0]).unwrap() {
-            crate::decoder::Instruction::FpUnary { op, fd, fn_ } => {
+            crate::decoder::Instruction::FpUnary { op, fd, fn_, single: false } => {
                 assert_eq!(op, crate::decoder::FpUnaryOp::Fabs);
                 assert_eq!((fd, fn_), (10, 11));
             }
@@ -2127,7 +2178,7 @@ mod tests {
         for (src, expected) in cases {
             let code = assemble(src).unwrap();
             match crate::decoder::decode(code[0]).unwrap() {
-                crate::decoder::Instruction::FpMoveImm { imm_bits, .. } => {
+                crate::decoder::Instruction::FpMoveImm { imm_bits, single: false, .. } => {
                     assert_eq!(
                         f64::from_bits(imm_bits),
                         expected,
@@ -2148,12 +2199,108 @@ mod tests {
         assert!(assemble("fmov d0, 0.0").is_err());
     }
 
+    // -- single precision (S registers) --
+
+    #[test]
+    fn assemble_fadd_single_round_trips() {
+        let code = assemble("fadd s1, s2, s3").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::FpBinary { op, fd, fn_, fm, single: true } => {
+                assert_eq!(op, crate::decoder::FpBinOp::Fadd);
+                assert_eq!((fd, fn_, fm), (1, 2, 3));
+            }
+            other => panic!("expected single FpBinary, got {other:?}"),
+        }
+        // Pin the exact word against the real assembler's output.
+        assert_eq!(code[0], 0x1E23_2841);
+    }
+
+    #[test]
+    fn assemble_rejects_mixed_fp_widths_with_a_clear_error() {
+        let err = assemble("fadd s0, d1, s2").unwrap_err().to_string();
+        assert!(err.contains("all S or all D"), "got: {err}");
+        assert!(err.contains("fcvt"), "should point at fcvt: {err}");
+        assert!(assemble("fmov s0, d1").is_err());
+        assert!(assemble("fcmp s0, d1").is_err());
+    }
+
+    #[test]
+    fn assemble_fcvt_widen_and_narrow() {
+        // Words pinned against the real assembler: fcvt d0, s1 / fcvt s0, d1.
+        let widen = assemble("fcvt d0, s1").unwrap();
+        assert_eq!(widen[0], 0x1E22_C020);
+        match crate::decoder::decode(widen[0]).unwrap() {
+            crate::decoder::Instruction::FpCvt { fd, fn_, widen: true } => {
+                assert_eq!((fd, fn_), (0, 1));
+            }
+            other => panic!("expected widening FpCvt, got {other:?}"),
+        }
+        let narrow = assemble("fcvt s0, d1").unwrap();
+        assert_eq!(narrow[0], 0x1E62_4020);
+        match crate::decoder::decode(narrow[0]).unwrap() {
+            crate::decoder::Instruction::FpCvt { fd, fn_, widen: false } => {
+                assert_eq!((fd, fn_), (0, 1));
+            }
+            other => panic!("expected narrowing FpCvt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_fcvt_same_width_is_an_error_naming_the_fix() {
+        let err = assemble("fcvt d0, d1").unwrap_err().to_string();
+        assert!(err.contains("converts between widths"), "got: {err}");
+        assert!(err.contains("fmov"), "should point at fmov: {err}");
+    }
+
+    #[test]
+    fn assemble_scvtf_and_fcvtzs_single_round_trip() {
+        // scvtf s0, w1 pinned against the real assembler.
+        let scvtf = assemble("scvtf s0, w1").unwrap();
+        assert_eq!(scvtf[0], 0x1E22_0020);
+        match crate::decoder::decode(scvtf[0]).unwrap() {
+            crate::decoder::Instruction::FpScvtf { fd, rn, sf: false, single: true } => {
+                assert_eq!((fd, rn), (0, 1));
+            }
+            other => panic!("expected single FpScvtf, got {other:?}"),
+        }
+        let fcvtzs = assemble("fcvtzs w0, s1").unwrap();
+        match crate::decoder::decode(fcvtzs[0]).unwrap() {
+            crate::decoder::Instruction::FpFcvtzs { rd, fn_, sf: false, single: true } => {
+                assert_eq!((rd, fn_), (0, 1));
+            }
+            other => panic!("expected single FpFcvtzs, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_fmov_single_immediate_expands_to_f32_bits() {
+        let code = assemble("fmov s2, 0.5").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::FpMoveImm { fd, imm_bits, single: true } => {
+                assert_eq!(fd, 2);
+                assert_eq!(imm_bits, (0.5f32).to_bits() as u64);
+            }
+            other => panic!("expected single FpMoveImm, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_fcmp_single_round_trips() {
+        let code = assemble("fcmp s8, s9").unwrap();
+        match crate::decoder::decode(code[0]).unwrap() {
+            crate::decoder::Instruction::FpCompare { fn_, fm, single: true } => {
+                assert_eq!((fn_, fm), (8, 9));
+            }
+            other => panic!("expected single FpCompare, got {other:?}"),
+        }
+    }
+
     #[test]
     fn assemble_fmov_reg_reg() {
         let code = assemble("FMOV D3, D5").unwrap();
         let decoded = crate::decoder::decode(code[0]).unwrap();
         match decoded {
-            crate::decoder::Instruction::FpMoveReg { fd, fn_ } => {
+            crate::decoder::Instruction::FpMoveReg { fd, fn_, single: false } => {
                 assert_eq!(fd, 3);
                 assert_eq!(fn_, 5);
             }
@@ -2168,9 +2315,9 @@ mod tests {
             let code = assemble(src).unwrap();
             let decoded = crate::decoder::decode(code[0]).unwrap();
             match decoded {
-                crate::decoder::Instruction::FpCompare { .. }
-                | crate::decoder::Instruction::FpScvtf { .. }
-                | crate::decoder::Instruction::FpFcvtzs { .. } => {}
+                crate::decoder::Instruction::FpCompare { single: false, .. }
+                | crate::decoder::Instruction::FpScvtf { single: false, .. }
+                | crate::decoder::Instruction::FpFcvtzs { single: false, .. } => {}
                 other => panic!("unexpected decode for `{src}`: {other:?}"),
             }
         }
