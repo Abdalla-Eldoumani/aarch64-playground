@@ -1001,7 +1001,7 @@ ret                         // back to the caller: exit code 7`,
   {
     mnemonic: "fmov",
     category: "Floating point",
-    syntax: "fmov dd, dn / fmov dd, #imm",
+    syntax: "fmov dd, dn / fmov sd, sn / fmov dd, #imm",
     example: `fmov    d16, 5.0            // one of the encodable immediates
 fcvtzs  x9, d16             // x9 = 5: the double, made visible`,
     gotchas: [
@@ -1011,7 +1011,7 @@ fcvtzs  x9, d16             // x9 = 5: the double, made visible`,
   {
     mnemonic: "fadd",
     category: "Floating point",
-    syntax: "fadd dd, dn, dm",
+    syntax: "fadd dd, dn, dm / fadd sd, sn, sm",
     example: `fmov    d16, 1.5
 fmov    d17, 2.5
 fadd    d18, d16, d17       // d18 = 4.0
@@ -1020,7 +1020,7 @@ fcvtzs  x9, d18             // x9 = 4`,
   {
     mnemonic: "fsub",
     category: "Floating point",
-    syntax: "fsub dd, dn, dm",
+    syntax: "fsub dd, dn, dm / fsub sd, sn, sm",
     example: `fmov    d16, 5.0
 fmov    d17, 1.5
 fsub    d18, d16, d17       // d18 = 3.5
@@ -1029,7 +1029,7 @@ fcvtzs  x9, d18             // x9 = 3: conversion truncates`,
   {
     mnemonic: "fmul",
     category: "Floating point",
-    syntax: "fmul dd, dn, dm",
+    syntax: "fmul dd, dn, dm / fmul sd, sn, sm",
     example: `fmov    d16, 2.5
 fmov    d17, 4.0
 fmul    d18, d16, d17       // d18 = 10.0
@@ -1038,7 +1038,7 @@ fcvtzs  x9, d18             // x9 = 10`,
   {
     mnemonic: "fdiv",
     category: "Floating point",
-    syntax: "fdiv dd, dn, dm",
+    syntax: "fdiv dd, dn, dm / fdiv sd, sn, sm",
     example: `fmov    d16, 9.0
 fmov    d17, 2.0
 fdiv    d18, d16, d17       // d18 = 4.5
@@ -1047,7 +1047,7 @@ fcvtzs  x9, d18             // x9 = 4: the fraction is cut, not rounded`,
   {
     mnemonic: "fneg",
     category: "Floating point",
-    syntax: "fneg dd, dn",
+    syntax: "fneg dd, dn / fneg sd, sn",
     example: `fmov    d16, 2.0
 fneg    d16, d16            // d16 = -2.0: just the sign bit flips
 fcvtzs  x9, d16             // x9 = -2`,
@@ -1058,7 +1058,7 @@ fcvtzs  x9, d16             // x9 = -2`,
   {
     mnemonic: "fabs",
     category: "Floating point",
-    syntax: "fabs dd, dn",
+    syntax: "fabs dd, dn / fabs sd, sn",
     example: `fmov    d16, 3.0
 fneg    d16, d16            // d16 = -3.0
 fabs    d17, d16            // d17 = 3.0: distance from zero
@@ -1070,16 +1070,28 @@ fcvtzs  x9, d17             // x9 = 3`,
   {
     mnemonic: "fcmp",
     category: "Floating point",
-    syntax: "fcmp dn, dm",
+    syntax: "fcmp dn, dm / fcmp sn, sm",
     example: `fmov    d16, 1.5
 fmov    d17, 2.5
 fcmp    d16, d17            // same nzcv flags as integer cmp
 cset    w9, lt              // w9 = 1: d16 is below d17`,
   },
   {
+    mnemonic: "fcvt",
+    category: "Floating point",
+    syntax: "fcvt dd, sn / fcvt sd, dn",
+    example: `fmov    s0, 2.5             // a float, in the register's low 32 bits
+fcvt    d1, s0              // widen: d1 = 2.5 exactly
+fcvtzs  x9, d1              // x9 = 2`,
+    gotchas: [
+      "printf takes doubles, never floats: widen with `fcvt d0, s0` before `bl printf`, or the printed value is garbage.",
+      "narrowing `fcvt s0, d0` rounds to the nearest float; wide doubles lose precision on the way down.",
+    ],
+  },
+  {
     mnemonic: "scvtf",
     category: "Floating point",
-    syntax: "scvtf dd, xn / scvtf dd, wn",
+    syntax: "scvtf dd, xn / scvtf dd, wn / scvtf sd, wn",
     example: `mov     x9, 7
 scvtf   d16, x9             // d16 = 7.0
 fcvtzs  x10, d16            // x10 = 7: round-tripped`,
@@ -1087,7 +1099,7 @@ fcvtzs  x10, d16            // x10 = 7: round-tripped`,
   {
     mnemonic: "fcvtzs",
     category: "Floating point",
-    syntax: "fcvtzs xd, dn / fcvtzs wd, dn",
+    syntax: "fcvtzs xd, dn / fcvtzs wd, dn / fcvtzs wd, sn",
     example: `fmov    d16, 1.9375         // the largest encodable mantissa
 fcvtzs  w9, d16             // w9 = 1: toward zero, never rounding`,
   },
