@@ -18,7 +18,8 @@ reference).
 | Exercises (`/practice`) | `web/app/(site)/practice/`, `web/components/practice/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/content/exercises.ts` |
 | Exercise checker (no stored solution) | `web/lib/content/exercise-checker.ts` |
 | Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/ReferenceView.tsx`, `InstructionReference.tsx`, `InstructionView.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/content/reference-data.ts` |
-| Reference interactivity (NZCV panel, worked encodings, frame walk, runnable pitfalls) | `web/components/diagrams/FlagEffect.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `web/components/reference/PitfallsCatalog.tsx` |
+| Reference interactivity (NZCV panel, worked encodings, frame walk, alignment probe, runnable pitfalls) | `web/components/diagrams/FlagEffect.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `StackAlignment.tsx`, `web/components/reference/PitfallsCatalog.tsx` |
+| Register-file teaching diagrams (x/w and d/s views) | `web/components/diagrams/RegisterFileDiagram.tsx`, `FpRegisterFileDiagram.tsx` |
 | AAPCS64 register-file rail (with the fp convention) | `web/components/diagrams/AapcsRail.tsx` |
 | Link preview card (og/twitter image) | `web/lib/content/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
 | Content schemas + author JSON | `web/lib/content/lesson-schema.ts`, `exercise-schema.ts`, `web/content/` |
@@ -52,12 +53,15 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | Register panel with ABI aliases | `web/components/panels/RegisterPanel.tsx`, `RegisterRow.tsx` |
-| Floating-point register view (`d0`–`d31`, dec/hex) | `web/components/panels/RegisterPanel.tsx`, `DRegisterRow.tsx` |
+| Floating-point register view (`d0`–`d31`, dec/hex, s-written values read as floats) | `web/components/panels/RegisterPanel.tsx`, `DRegisterRow.tsx` |
 | Memory panel (sparse, paged) | `web/components/panels/MemoryPanel.tsx` |
 | Stack panel + frame-pointer chase | `web/components/panels/StackPanel.tsx`, `web/lib/emulator/frame-labels.ts` |
 | Watch expressions (`x0`, `*x0`, `[fp, name]`, `arr[i]`) | `web/components/panels/WatchPanel.tsx`, `web/lib/emulator/watch-expr.ts` |
 | Memory address watches | `web/components/panels/MemoryWatches.tsx` |
 | Console (stdout/stderr + stdin) | `web/components/panels/ConsolePanel.tsx` |
+| Interactive stdin (blocked read pulls the console forward, gates run/step/back) | `web/components/panels/ConsolePanel.tsx`, `web/components/playground/Controls.tsx`, `EmbeddablePlayground.tsx` |
+| Persistent VFS home directory (IndexedDB, full playground only) | `web/lib/playground/vfs-persist.ts`, `web/components/playground/EmbeddablePlayground.tsx` |
+| Register auto-follow (fp write flips to the d file) | `web/components/panels/RegisterPanel.tsx` |
 | Base converter (convert tab) | `web/components/panels/BaseConverter.tsx`, `web/lib/asm/base-convert.ts` |
 | Live decode strip (bit fields under the pc) | `web/components/panels/DecodeStrip.tsx`, `web/lib/emulator/decode-fields.ts`, `web/lib/asm/explain-line.ts` |
 
@@ -94,7 +98,8 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | xterm.js wrapper | `web/components/panels/TerminalPane.tsx` |
-| Command parser (`./prog`, `gdb`) | `web/lib/terminal/dispatch.ts` |
+| Command parser (`./prog`, VFS commands, `gdb` subset) | `web/lib/terminal/dispatch.ts` |
+| Course toolchain (`m4 f.asm > f.s`, `gcc f.s -o prog`, `./prog`) | `web/lib/terminal/dispatch.ts`, the wasm `m4_expand` export, the hub's `assembleForTool` in `web/lib/emulator/use-emulator.ts` |
 | Input + history + tab-completion | `web/lib/terminal/input-state.ts` |
 
 ## Tutorials & examples
