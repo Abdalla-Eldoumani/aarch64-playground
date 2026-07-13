@@ -51,7 +51,9 @@ export function evaluateWatch(expr: string, ctx: EvalContext): EvalOutcome {
     const innerResult = evaluateWatch(inner, ctx);
     if ("error" in innerResult) return innerResult;
     const addr = innerResult.value;
-    const size = 8;
+    // The deref width follows the inner expression: *x0 reads a quad,
+    // *w0 reads a word -- the 4-byte view students want for .word data.
+    const size = innerResult.size;
     const v = ctx.readMemory(addr, size);
     if (v == null) return { error: `fault reading ${toHex(addr, 8)}` };
     return { value: v, size, display: toHex(v, size) };

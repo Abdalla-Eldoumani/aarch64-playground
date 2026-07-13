@@ -178,18 +178,19 @@ describe("watch expression edge cases", () => {
     expect(r.size).toBe(8);
   });
 
-  it("*w0 dereferences the 32-bit-masked address and reads 8 bytes", () => {
+  it("*w0 dereferences the 32-bit-masked address and reads 4 bytes", () => {
     // w0's raw backing is 0xffffffff000000ab; the W read masks the address
-    // to 0xab, and the deref itself is always an 8-byte load.
+    // to 0xab, and the deref width follows the register: a w deref reads
+    // a 4-byte word, the view students want for .word data.
     const ctx: EvalContext = {
       readRegister: (name) => (name === "w0" ? 0xffff_ffff_0000_00abn : null),
-      readMemory: (addr, size) => (addr === 0xabn && size === 8 ? 5n : null),
+      readMemory: (addr, size) => (addr === 0xabn && size === 4 ? 5n : null),
       resolveSymbol: () => null,
     };
     const r = evaluateWatch("*w0", ctx);
     if ("error" in r) throw new Error(r.error);
     expect(r.value).toBe(5n);
-    expect(r.size).toBe(8);
+    expect(r.size).toBe(4);
   });
 
   it("supports nested dereference **reg", () => {
