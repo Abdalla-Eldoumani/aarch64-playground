@@ -89,7 +89,7 @@ reference).
 | Deep-link query parsing | `web/lib/hooks/use-deep-link.ts` |
 | Program handoff (boot precedence, example fetch) | `web/lib/playground/playground-handoff.ts` |
 | `?bundle=<lz>` restore | `web/lib/playground/diagnostic-bundle.ts` |
-| `?embed=1` chrome-stripped mode | `web/app/playground/page.tsx` (uses `useDeepLink`) |
+| `?embed=1` chrome-stripped mode | `web/app/playground/page.tsx` (uses `parseDeepLink`) |
 | Import / export source | `web/components/playground/ImportExport.tsx` |
 | Import target router | `web/lib/hooks/use-import-target.ts` |
 
