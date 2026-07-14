@@ -152,7 +152,7 @@ useful for requiring an approach or ruling out a shortcut:
 - `{ "kind": "uses-instruction", "mnemonic": "sub" }`: the source must use an
   instruction.
 - `{ "kind": "forbids-literal", "value": 12 }`: the source must not contain a
-  literal, which stops someone hardcoding the answer.
+  literal (a number or a string), which stops someone hardcoding the answer.
 
 The checker runs the program and compares its output against these checks. It
 never compares against a stored solution, so any correct approach passes and
