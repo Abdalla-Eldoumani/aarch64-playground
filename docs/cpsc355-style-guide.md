@@ -62,7 +62,7 @@ The list above is what the machine accepts, which is wider than what the
 course writes. Course tutorial and assignment files use a fixed directive
 vocabulary, so every program the site ships as course-style source (lesson
 and exercise programs, the built-in examples, the authoring-guide payloads)
-stays inside it. A content test (`web/lib/course-style.test.ts`) enforces
+stays inside it. A content test (`web/lib/test/content/course-style.test.ts`) enforces
 the difference list:
 
 | never authored     | what course files write               |
@@ -127,7 +127,7 @@ Pre-registered libc stubs at addresses `0xFFFF_0000 + idx * 16`:
 
 ```
 printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy,
-memset, memcpy, exit, atof
+memset, memcpy, atoi, rand, srand, time, exit, atof
 ```
 
 Pre-registered syscalls (via `svc 0` with the syscall number in `x8`):
