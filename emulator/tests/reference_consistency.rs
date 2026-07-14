@@ -19,7 +19,7 @@
 //!
 //! Scope: this guards the canonical reference (`docs/instruction-reference.md`,
 //! which feeds the `/reference` pages). The Monaco hover-card list
-//! (`web/lib/instruction-docs.ts`) is a separate surface and is not parsed
+//! (`web/lib/asm/instruction-docs.ts`) is a separate surface and is not parsed
 //! here.
 
 use std::collections::BTreeSet;
