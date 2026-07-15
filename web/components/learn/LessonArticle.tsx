@@ -14,12 +14,12 @@
  */
 
 import type { JSX } from "react";
-import Link from "next/link";
 import type { Lesson } from "@/lib/content/lesson-schema";
 import { extractToc } from "@/lib/content/lesson-toc";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Callout } from "@/components/ui/Callout";
+import { OpenInPlayground } from "@/components/ui/OpenInPlayground";
 import { EmbeddablePlayground } from "@/components/playground/EmbeddablePlayground";
 import { buildShareHash } from "@/lib/playground/share";
 import { validateStdin } from "@/lib/playground/upload-guard";
@@ -34,15 +34,6 @@ function safeStdin(stdin: string | undefined): string | undefined {
   if (stdin === undefined) return undefined;
   return validateStdin(stdin) === null ? stdin : undefined;
 }
-
-// Rendered as a bordered cyan pill (cyan = the reader acting), not a bare text
-// link, so the playground hand-off reads as a real control. 44px tall for a
-// coarse-pointer target; hover tints the fill, focus shows the ring token.
-const OPEN_IN_PLAYGROUND_CLASS =
-  "mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] " +
-  "border border-[color-mix(in_srgb,var(--cyan)_40%,transparent)] px-3 " +
-  "text-[var(--cyan)] [font:var(--type-small)] outline-none transition-colors " +
-  "hover:bg-[color-mix(in_srgb,var(--cyan)_8%,transparent)] focus-visible:[box-shadow:var(--ring)]";
 
 const TOC_LINK_CLASS =
   "flex min-h-[44px] items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] [font:var(--type-small)] outline-none transition-colors hover:text-[var(--cyan)] focus-visible:[box-shadow:var(--ring)]";
@@ -136,13 +127,10 @@ export function LessonArticle({
                     language={block.language === "asm" ? "arm64" : block.language}
                   />
                   {openable && (
-                    <Link
+                    <OpenInPlayground
                       href={`/playground${buildShareHash({ source: block.source })}`}
-                      className={OPEN_IN_PLAYGROUND_CLASS}
-                    >
-                      Open in playground
-                      <span aria-hidden="true">-&gt;</span>
-                    </Link>
+                      className="mt-2"
+                    />
                   )}
                 </div>
               );
@@ -178,17 +166,14 @@ export function LessonArticle({
                         runnable — step it and watch the registers
                       </span>
                     </span>
-                    <Link
+                    <OpenInPlayground
                       href={`/playground${buildShareHash({
                         source: block.starter,
                         args: block.args,
                         stdin: safeStdin(block.stdin),
                       })}`}
-                      className={OPEN_IN_PLAYGROUND_CLASS}
-                    >
-                      Open in playground
-                      <span aria-hidden="true">-&gt;</span>
-                    </Link>
+                      className="mt-2"
+                    />
                   </div>
                 </div>
               );
