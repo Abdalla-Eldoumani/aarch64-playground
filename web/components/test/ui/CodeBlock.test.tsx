@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 
 const THEMES = ["dark", "light", "high-contrast"] as const;
@@ -81,5 +81,19 @@ describe("CodeBlock", () => {
       expect(container.innerHTML).toContain("var(--syntax-keyword)");
       unmount();
     }
+  });
+
+  it("copies the source to the clipboard on a single click", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<CodeBlock code={SNIPPET} />);
+    fireEvent.click(screen.getByRole("button", { name: /copy code to clipboard/i }));
+    // A single press writes once, with the exact source: no reveal step, no
+    // second click needed to land the text on the clipboard.
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith(SNIPPET);
   });
 });
