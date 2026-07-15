@@ -35,8 +35,14 @@ function safeStdin(stdin: string | undefined): string | undefined {
   return validateStdin(stdin) === null ? stdin : undefined;
 }
 
+// Rendered as a bordered cyan pill (cyan = the reader acting), not a bare text
+// link, so the playground hand-off reads as a real control. 44px tall for a
+// coarse-pointer target; hover tints the fill, focus shows the ring token.
 const OPEN_IN_PLAYGROUND_CLASS =
-  "mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] text-[var(--cyan)] [font:var(--type-small)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+  "mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] " +
+  "border border-[color-mix(in_srgb,var(--cyan)_40%,transparent)] px-3 " +
+  "text-[var(--cyan)] [font:var(--type-small)] outline-none transition-colors " +
+  "hover:bg-[color-mix(in_srgb,var(--cyan)_8%,transparent)] focus-visible:[box-shadow:var(--ring)]";
 
 const TOC_LINK_CLASS =
   "flex min-h-[44px] items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] [font:var(--type-small)] outline-none transition-colors hover:text-[var(--cyan)] focus-visible:[box-shadow:var(--ring)]";
@@ -119,22 +125,28 @@ export function LessonArticle({
                   <LessonMarkdown markdown={block.markdown} />
                 </div>
               );
-            case "code":
+            case "code": {
+              // Only assembly runs in the playground; C and plain-text blocks
+              // render without the hand-off (the emulator can't open them).
+              const openable = block.language === "asm";
               return (
                 <div key={index} className="my-6">
                   <CodeBlock
                     code={block.source}
                     language={block.language === "asm" ? "arm64" : block.language}
                   />
-                  <Link
-                    href={`/playground${buildShareHash({ source: block.source })}`}
-                    className={OPEN_IN_PLAYGROUND_CLASS}
-                  >
-                    Open in playground
-                    <span aria-hidden="true">-&gt;</span>
-                  </Link>
+                  {openable && (
+                    <Link
+                      href={`/playground${buildShareHash({ source: block.source })}`}
+                      className={OPEN_IN_PLAYGROUND_CLASS}
+                    >
+                      Open in playground
+                      <span aria-hidden="true">-&gt;</span>
+                    </Link>
+                  )}
                 </div>
               );
+            }
             case "callout":
               return (
                 <div key={index} className="my-6">
@@ -159,7 +171,7 @@ export function LessonArticle({
                       readOnly={false}
                     />
                   </div>
-                  <div className="flex items-baseline justify-between gap-4">
+                  <div className="flex items-center justify-between gap-4">
                     <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                       figure {sheetNumber}.{editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
