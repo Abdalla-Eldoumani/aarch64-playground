@@ -127,7 +127,8 @@ hosted-runtime unit tests.
 
 ## Dependency posture
 
-Direct dependencies are pinned to exact versions. `npm audit` against `web/`
+Direct dependencies are pinned to exact versions, save for the `playwright` dev
+tool (`^1.59.1`). `npm audit` against `web/`
 reports zero vulnerabilities, and two transitive packages are held to patched
 lines through `overrides` in `package.json` (`postcss` and `dompurify`) to keep
 known XSS fixes in place.
