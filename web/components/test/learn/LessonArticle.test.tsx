@@ -100,6 +100,28 @@ describe("LessonArticle", () => {
     expect(decoded).toEqual({ source: "mov x0, #1\nret" });
   });
 
+  it("shows the open-in-playground link only for assembly code blocks", () => {
+    const lesson: Lesson = {
+      title: "Languages",
+      slug: "languages",
+      order: 1,
+      body: [
+        { type: "code", language: "asm", source: "mov x0, #1\nret" },
+        { type: "code", language: "c", source: "int main(){ return 0; }" },
+        { type: "code", language: "text", source: "plain listing" },
+      ],
+    };
+    render(<LessonArticle lesson={lesson} />);
+    // The emulator only runs assembly, so exactly one block (the asm one)
+    // carries the hand-off; the C and text blocks render without it.
+    const links = screen.getAllByRole("link", { name: /open in playground/i });
+    expect(links).toHaveLength(1);
+    const decoded = readShareHash(
+      (links[0].getAttribute("href") ?? "").slice("/playground".length),
+    );
+    expect(decoded).toEqual({ source: "mov x0, #1\nret" });
+  });
+
   it("gives the editor block a deep link carrying starter, args, and stdin", () => {
     render(<LessonArticle lesson={fullLesson} />);
     const [, editorLink] = screen.getAllByRole("link", {

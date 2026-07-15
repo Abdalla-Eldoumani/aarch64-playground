@@ -14,12 +14,12 @@
  */
 
 import type { JSX } from "react";
-import Link from "next/link";
 import type { Lesson } from "@/lib/content/lesson-schema";
 import { extractToc } from "@/lib/content/lesson-toc";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Callout } from "@/components/ui/Callout";
+import { OpenInPlayground } from "@/components/ui/OpenInPlayground";
 import { EmbeddablePlayground } from "@/components/playground/EmbeddablePlayground";
 import { buildShareHash } from "@/lib/playground/share";
 import { validateStdin } from "@/lib/playground/upload-guard";
@@ -34,9 +34,6 @@ function safeStdin(stdin: string | undefined): string | undefined {
   if (stdin === undefined) return undefined;
   return validateStdin(stdin) === null ? stdin : undefined;
 }
-
-const OPEN_IN_PLAYGROUND_CLASS =
-  "mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] text-[var(--cyan)] [font:var(--type-small)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
 
 const TOC_LINK_CLASS =
   "flex min-h-[44px] items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] [font:var(--type-small)] outline-none transition-colors hover:text-[var(--cyan)] focus-visible:[box-shadow:var(--ring)]";
@@ -119,22 +116,25 @@ export function LessonArticle({
                   <LessonMarkdown markdown={block.markdown} />
                 </div>
               );
-            case "code":
+            case "code": {
+              // Only assembly runs in the playground; C and plain-text blocks
+              // render without the hand-off (the emulator can't open them).
+              const openable = block.language === "asm";
               return (
                 <div key={index} className="my-6">
                   <CodeBlock
                     code={block.source}
                     language={block.language === "asm" ? "arm64" : block.language}
                   />
-                  <Link
-                    href={`/playground${buildShareHash({ source: block.source })}`}
-                    className={OPEN_IN_PLAYGROUND_CLASS}
-                  >
-                    Open in playground
-                    <span aria-hidden="true">-&gt;</span>
-                  </Link>
+                  {openable && (
+                    <OpenInPlayground
+                      href={`/playground${buildShareHash({ source: block.source })}`}
+                      className="mt-2"
+                    />
+                  )}
                 </div>
               );
+            }
             case "callout":
               return (
                 <div key={index} className="my-6">
@@ -159,24 +159,21 @@ export function LessonArticle({
                       readOnly={false}
                     />
                   </div>
-                  <div className="flex items-baseline justify-between gap-4">
+                  <div className="flex items-center justify-between gap-4">
                     <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                       figure {sheetNumber}.{editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
                         runnable — step it and watch the registers
                       </span>
                     </span>
-                    <Link
+                    <OpenInPlayground
                       href={`/playground${buildShareHash({
                         source: block.starter,
                         args: block.args,
                         stdin: safeStdin(block.stdin),
                       })}`}
-                      className={OPEN_IN_PLAYGROUND_CLASS}
-                    >
-                      Open in playground
-                      <span aria-hidden="true">-&gt;</span>
-                    </Link>
+                      className="mt-2"
+                    />
                   </div>
                 </div>
               );

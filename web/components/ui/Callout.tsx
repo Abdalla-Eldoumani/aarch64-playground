@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-export type CalloutType = "note" | "warning" | "pitfall";
+export type CalloutType = "note" | "warning" | "pitfall" | "prereq";
 
 export interface CalloutProps {
   type: CalloutType;
@@ -19,23 +19,26 @@ const BORDER: Record<CalloutType, string> = {
   note: "border-[color-mix(in_srgb,var(--cyan)_45%,transparent)]",
   warning: "border-[color-mix(in_srgb,var(--warning)_45%,transparent)]",
   pitfall: "border-[color-mix(in_srgb,var(--danger)_45%,transparent)]",
+  prereq: "border-[color-mix(in_srgb,var(--success)_45%,transparent)]",
 };
 
 const BAND: Record<CalloutType, string> = {
   note: "bg-[color-mix(in_srgb,var(--cyan)_10%,transparent)] text-[var(--cyan)]",
   warning: "bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] text-[var(--warning)]",
   pitfall: "bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]",
+  prereq: "bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]",
 };
 
 const LABEL: Record<CalloutType, string> = {
   note: "note",
   warning: "warning",
   pitfall: "pitfall",
+  prereq: "prerequisite",
 };
 
 /**
- * The base callout the reference and lessons draw from. One component, three
- * types: note / warning / pitfall, each reading from its semantic token — a
+ * The base callout the reference and lessons draw from. One component, four
+ * types: note / warning / pitfall / prereq, each reading from its semantic token — a
  * bordered field with a tinted header band carrying the mono status label,
  * the datasheet's warning-box grammar rather than a left-rule aside. Renders
  * caller-supplied React children only (no HTML-string injection).

@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useState } from "react";
+
 export interface CodeBlockProps {
   /** The source to render, read-only. */
   code: string;
@@ -84,7 +86,8 @@ const KIND_CLASS: Record<TokenKind, string> = {
  * colors read from the `--syntax-*` tokens (defined per theme in globals.css to
  * match the editor), so the block and the editor stay visually consistent. Code
  * is rendered as text spans only (no HTML-string injection path), so a
- * caller-supplied string cannot inject markup.
+ * caller-supplied string cannot inject markup. A corner button copies the
+ * source to the clipboard in a single click.
  */
 export function CodeBlock({
   code,
@@ -98,29 +101,56 @@ export function CodeBlock({
       ? lines.map(tokenizeLine)
       : lines.map((line): Token[] => [{ text: line, kind: "text" }]);
 
+  const [copied, setCopied] = useState(false);
+  // One press copies the source outright: write the buffer and flash the
+  // label, no hidden textarea and no reveal step, so a single click lands the
+  // code on the clipboard. Insecure contexts reject the write; the label just
+  // stays put rather than lying about a copy that did not happen.
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard is unavailable outside a secure context; no fallback here.
+    }
+  }, [code]);
+
   return (
-    <pre
-      className={`overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)] ${className}`}
-    >
-      <code>
-        {tokenizedLines.map((tokens, lineIndex) => (
-          <span
-            key={lineIndex}
-            data-current={lineIndex === highlightLine || undefined}
-            className={`block min-h-[1.4em] ${
-              lineIndex === highlightLine
-                ? "bg-[color-mix(in_srgb,var(--amber)_10%,transparent)] [box-shadow:inset_3px_0_0_0_var(--amber)]"
-                : ""
-            }`}
-          >
-            {tokens.map((token, tokenIndex) => (
-              <span key={tokenIndex} className={KIND_CLASS[token.kind]}>
-                {token.text}
-              </span>
-            ))}
-          </span>
-        ))}
-      </code>
-    </pre>
+    <div className={`relative ${className}`}>
+      <pre className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]">
+        <code>
+          {tokenizedLines.map((tokens, lineIndex) => (
+            <span
+              key={lineIndex}
+              data-current={lineIndex === highlightLine || undefined}
+              className={`block min-h-[1.4em] ${
+                lineIndex === highlightLine
+                  ? "bg-[color-mix(in_srgb,var(--amber)_10%,transparent)] [box-shadow:inset_3px_0_0_0_var(--amber)]"
+                  : ""
+              }`}
+            >
+              {tokens.map((token, tokenIndex) => (
+                <span key={tokenIndex} className={KIND_CLASS[token.kind]}>
+                  {token.text}
+                </span>
+              ))}
+            </span>
+          ))}
+        </code>
+      </pre>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label="copy code to clipboard"
+        className={`absolute right-2 top-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-2 py-1 font-mono text-[10px] leading-none outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
+          copied
+            ? "text-[var(--success)]"
+            : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+        }`}
+      >
+        {copied ? "copied" : "copy"}
+      </button>
+    </div>
   );
 }

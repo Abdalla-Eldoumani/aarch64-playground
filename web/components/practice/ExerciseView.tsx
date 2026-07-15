@@ -22,7 +22,6 @@
  */
 
 import { useId, useRef, useState, type JSX, type ReactNode } from "react";
-import Link from "next/link";
 import { buildShareHash } from "@/lib/playground/share";
 import type {
   Exercise,
@@ -35,6 +34,7 @@ import { validateStdin } from "@/lib/playground/upload-guard";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { Callout } from "@/components/ui/Callout";
 import { Kicker } from "@/components/ui/Kicker";
+import { OpenInPlayground } from "@/components/ui/OpenInPlayground";
 import {
   EmbeddablePlayground,
   type EmbeddablePlaygroundHandle,
@@ -213,17 +213,14 @@ export function ExerciseView({
           />
         </div>
 
-        <Link
+        <OpenInPlayground
           href={`/playground${buildShareHash({
             source: exercise.starter,
             args: exercise.args,
             stdin: safeStdin(exercise.stdin),
           })}`}
-          className="inline-flex min-h-[44px] items-center gap-1.5 self-start rounded-[var(--radius-control)] text-[var(--cyan)] [font:var(--type-small)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]"
-        >
-          Open in playground
-          <span aria-hidden="true">-&gt;</span>
-        </Link>
+          className="self-start"
+        />
 
         <div role="status">
           {result && (

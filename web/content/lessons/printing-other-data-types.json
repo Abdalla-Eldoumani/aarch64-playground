@@ -1,0 +1,128 @@
+{
+  "title": "Printing Integer and Other Data Types in ARMv8 AArch64 Assembly",
+  "slug": "printing-other-data-types",
+  "order": 5,
+  "summary": "A lesson on how to print integer and other data types.",
+  "tags": [
+    "printing",
+    "printing integers",
+    "printing other data types",
+    "printing character"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
+    },
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Before starting this lesson, you should have a basic understanding of the following prerequisite lesson:\n\n- [Printing Hello World in ARMv8 AArch64 Assembly](/learn/printing-strings-hello-world)"    },
+    {
+      "type": "prose",
+      "markdown": "Printing integers and other data types in assembly is slightly more involved than printing a string; however, the process remains straightforward once the underlying steps are understood. In this lesson, we will examine how to print integers and other data types in the low-level Assembly programming language."
+    },
+    {
+      "type": "prose",
+      "markdown": "In the C programming language, printing different data types is accomplished by providing the appropriate format specifier to the `printf` function along with the corresponding value. For example, printing an integer requires the integer format specifier (`%d`), while printing a character requires the character format specifier (`%c`). This concept can be demonstrated using the following C code:"
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "#include <stdio.h>\n\nint main() {\n    int myInteger = 42;\n    char myCharacter = 'A';\n\n    printf(\"Integer: %d\\n\", myInteger);\n    // Output:\n    // Integer: 42\n\n    printf(\"Character: %c\\n\", myCharacter);\n    // Output:\n    // Character: A\n\n    return 0;\n}"
+    },
+    {
+      "type": "prose",
+      "markdown": "The format specifier informs `printf` how the provided data should be interpreted and displayed. A similar approach is used when printing data types in Assembly, where the programmer must provide the correct format specifier and pass the corresponding value accordingly to the `printf` function."
+    },
+    {
+      "type": "prose",
+      "markdown": "\n## The Big Picture\n\nJust like printing strings, printing other data types in AArch64 Assembly uses the `printf` function. The general process is:\n\n1. Define a format string containing the appropriate format specifier.\n2. Load the address of the format string into `x0`.\n3. Place the value to be printed into the appropriate argument register.\n4. Call `printf`."    
+    },
+    {
+      "type": "prose",
+      "markdown": "The example below demonstrates how to use `printf` in Assembly to print both an integer and a character. In this example, the program prints the integer 67 and the character L."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Defining the Format String\n\nThe first step in printing an integer and a character is to define a format string containing the appropriate format specifiers. Since we are printing both an integer and a character, we need a string that includes the `%d` format specifier for the integer and the `%c` format specifier for the character.\n\nThis can be achieved by declaring a string variable in the `.data` section. The following code demonstrates this process:\n"    
+    }, 
+    {
+      "type": "code",
+      "language": "asm",
+      "source": ".data\n    // Format string for printing an integer\n    format1:   .string  \"Integer: %d\\n\"\n\n    // Format string for printing a character\n    format2:   .string  \"Character: %c\\n\"" 
+    },  
+    {
+      "type": "prose",
+      "markdown": "In the above code, the variable `format1` serves as the format string for printing an integer using the `%d` format specifier. Similarly, the variable `format2` serves as the format string for printing a character using the `%c` format specifier. Both strings are defined using the `.string` directive.\n"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "You can print any data types in Assembly by defining the appropriate format string with the corresponding format specifier. The format specifiers for different data types are similar to those used in C programming."
+
+    },
+    {
+      "type": "prose",
+      "markdown": "## Loading the Format String Address\n\nLoading the format string address is done in the same way as loading the address of a string variable when printing a string. The `ldr` instruction can be used to load the address of the format string into the appropriate register.\n\nThe following code demonstrates the process of loading the format string address:\n"
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    // calling printf to print the integer value.\n    ..\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    // calling printf to print the character value.\n    ..\n\n    // program epilogue"
+    }, 
+    {
+      "type": "prose",
+      "markdown": "In the code above, the address of the format strings for the integer (`format1`) and character (`format2`) are loaded into the register `x0`. Each format string is loaded into `x0` before its corresponding `printf` call because the integer and character are printed using different format strings. This explains why the code contains two separate `ldr` instructions."
+
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "The format string is always loaded into the first argument register (`x0`) before calling `printf`, regardless of the data type being printed. This is because `printf` expects the format string to be passed as its first argument.\n\n The corresponding values are then passed to the subsequent argument registers (`x1`, `x2`, etc.). If the format string contains multiple format specifiers, the corresponding values must be passed in the order they appear in the format string."
+
+    },
+    {
+      "type": "prose",
+      "markdown": "## Passing the Corresponding Values to Print\n\nThe corresponding values can be passed to the format string by placing them in the next available argument register. Since the next available argument register is `x1`, the integer value `67` and the character `L` are placed in x1 before their respective `printf` calls.\n\nThe following code demonstrates how values are passed to the format string:"
+    }, 
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    mov x1, 67\n    // calling printf to print the integer value.\n    ..\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    mov x1, 'L'\n    // calling printf to print the character value.\n    ..\n\n    // program epilogue"
+    },
+    {
+      "type": "prose",
+      "markdown": "In the code above, the integer value `67` and the character `L` are placed in `x1` before their respective `printf` call.\nThis ensures that the correct values are passed to the corresponding format specifiers in the format strings.\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Calling `printf`\n\nOnce all the required arguments have been set up correctly, the final step is to call the `printf` function. This can be achieved by using the `bl` instruction.\nThe following code demonstrates how to call the `printf` function:\n"
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    mov x1, 67\n    // calling printf to print the integer value.\n    bl printf\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    mov x1, 'L'\n    // calling printf to print the character value.\n    bl printf\n    ..\n\n    // program epilogue"
+    },
+    {
+      "type": "prose",
+      "markdown": "The code above calls the `printf` function to print the format string along with the corresponding values passed through the argument registers."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "In Assembly, you can call any function using the `bl` instruction. To call a function, you can use the `bl` instruction followed by the function name."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Putting it All Together\n\nThe following code demonstrates how to print an integer and a character in ARMv8 AArch64 Assembly using the `printf` function. The program prints the integer `67` and the character `L`."
+    },
+    {
+      "type" : "editor",
+      "language": "asm",
+      "starter": ".data\n    // Format string for printing an integer\n    format1:   .string  \"Integer: %d\\n\"\n    // Format string for printing a character\n    format2:   .string  \"Character: %c\\n\"\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    mov x1, 67\n    // calling printf to print the integer value.\n    bl printf\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    mov x1, 'L'\n    // calling printf to print the character value.\n    bl printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"   
+    }
+
+  ]
+}
