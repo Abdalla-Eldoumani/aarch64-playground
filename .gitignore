@@ -48,6 +48,3 @@ Thumbs.db
 
 # Web Template
 web/content/lessons/lesson-template.json
-
-# next-env.d.ts
-web/next-env.d.ts

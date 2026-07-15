@@ -33,7 +33,7 @@ const LABEL: Record<CalloutType, string> = {
   note: "note",
   warning: "warning",
   pitfall: "pitfall",
-  prereq: "Prerequisite",
+  prereq: "prerequisite",
 };
 
 /**
