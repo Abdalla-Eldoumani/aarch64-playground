@@ -107,15 +107,15 @@ Open an issue first if the change is larger than a single file or touches the as
 2. **Executor**: in [`emulator/src/executor.rs`](../emulator/src/executor.rs), add the semantics. Route NZCV through `NzcvFlags::set_from_*`; FP arithmetic goes through `fpu.rs`; faults return the right `EmuError`.
 3. **Assembler**: in [`emulator/src/assembler.rs`](../emulator/src/assembler.rs), add the mnemonic to the `match` in `encode_line` and implement the encoder (register vs. immediate forms, shifts, the usual ARM64 quirks). Text-only CPSC 355 source flows through [`emulator/src/frontend/pipeline.rs`](../emulator/src/frontend/pipeline.rs) via `lower_operands` into the same backend.
 4. **Tests**: each file has a `#[cfg(test)] mod tests`. Add a round-trip test (assemble, run, assert state). If the instruction appears in the corpus, also exercise it through `tests/cpsc355_corpus.rs` or `tests/hosted_end_to_end.rs`.
-5. **Docs**: append the mnemonic to [`docs/instruction-reference.md`](instruction-reference.md) and the README's supported-instructions list. For hosted-runtime instructions, also update [`docs/cpsc355-style-guide.md`](cpsc355-style-guide.md). `emulator/tests/reference_consistency.rs` enforces that the reference and the assembler agree.
+5. **Docs**: append the mnemonic to [`docs/instruction-reference.md`](instruction-reference.md), and add its hover card in `web/lib/asm/instruction-docs.ts` with the matching `/reference` entry in `web/lib/content/reference-data.ts` (kept in sync by the reference-encoding test and `emulator/tests/reference_consistency.rs`). For hosted-runtime instructions, also update [`docs/cpsc355-style-guide.md`](cpsc355-style-guide.md).
 
 ## Adding a visible feature
 
 Logic (`web/lib/`) is separate from React components (`web/components/`). Write logic as a pure module with tests first, then wire it in.
 
-1. **Pure module**: `web/lib/<feature>.ts` with types and pure functions, plus `web/lib/<feature>.test.ts` (happy path + edge cases). Tests run in jsdom with plain DOM assertions; `@testing-library/jest-dom` is not installed.
-2. **Hook** (if it holds React state): `web/lib/use-<feature>.ts`. For localStorage-backed state, copy the `useSyncExternalStore` shape from `use-named-saves.ts` so cross-tab sync works.
-3. **Component**: `web/components/<Feature>.tsx`, marked `"use client"` if it uses hooks or browser APIs. Lazy-load heavy components (anything pulling Monaco or xterm) via `next/dynamic` with `ssr: false`.
+1. **Pure module**: `web/lib/<group>/<feature>.ts` with types and pure functions, plus its test at `web/lib/test/<group>/<feature>.test.ts` (happy path + edge cases). Tests run in jsdom with plain DOM assertions; `@testing-library/jest-dom` is not installed.
+2. **Hook** (if it holds React state): `web/lib/hooks/use-<feature>.ts`. For localStorage-backed state, copy the `useSyncExternalStore` shape from `use-named-saves.ts` so cross-tab sync works.
+3. **Component**: `web/components/<group>/<Feature>.tsx`, marked `"use client"` if it uses hooks or browser APIs. Lazy-load heavy components (anything pulling Monaco or xterm) via `next/dynamic` with `ssr: false`.
 4. **Wire in**: `web/components/playground/EmbeddablePlayground.tsx` orchestrates the emulator surface (`web/app/playground/page.tsx` mounts it); render into one of its existing panel slots so the resizable and mobile layouts pick it up.
 5. **Docs**: add a row to `docs/features.md`, and the README if it adds a deep-link param or shortcut.
 

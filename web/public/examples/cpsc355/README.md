@@ -10,6 +10,8 @@ the AAPCS64 varargs path through `printf`/`scanf`, and the Linux syscall
 surface for `write`/`read`/`exit`/`openat`/`close`/`lseek`.
 
 - `basics.s` -- arithmetic operations
+- `globals.s` -- a global variable in `.data` (load and store)
+- `locals.s` -- locals on the stack (sum and product)
 - `array-scores.s` -- read three scores and average them
 - `student-record.s` -- a record on the stack
 - `find-max.s` -- a leaf function over an array

@@ -145,7 +145,7 @@ compatibility).
 
 BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc
 (printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy, memset,
-memcpy, exit, atof). Stubs read argument registers per AAPCS64, call into
+memcpy, exit, atof, atoi, rand, srand, time). Stubs read argument registers per AAPCS64, call into
 Rust, write results to `x0`/`d0`, then return via `pc = lr`. `main`
 returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
 the exit code.
@@ -168,7 +168,7 @@ Each abort is a calm halt with a plain-language message in the result
 ## Snapshots and save states
 
 `SnapshotRing` (capacity 128) captures a `Snapshot { regs, mem, halted,
-blocked, exit_code, stdin, vfs, open_files, next_fd }` before each
+blocked, exit_code, stdin, vfs, open_files, next_fd, rand_state }` before each
 `step()`; `step_back()` pops the newest frame. Stdout and stderr are not
 rolled back. Named save states live in a separate
 `HashMap<String, Snapshot>` on the same ring, so a named snapshot

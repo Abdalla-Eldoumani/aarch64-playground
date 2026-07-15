@@ -21,7 +21,7 @@ interface Token {
 
 // The mnemonics the editor's Monaco grammar colors as keywords, mirrored so a
 // read-only block matches the editor's keyword set. The editor owns the Monaco
-// copy (web/components/Editor.tsx); both are the curated CPSC 355 set, kept in
+// copy (web/components/playground/Editor.tsx); both are the curated CPSC 355 set, kept in
 // step so the two surfaces color the same tokens.
 const MNEMONICS = new Set<string>([
   "mov", "movz", "movk", "movn", "add", "adds", "sub", "subs", "mul", "madd",
