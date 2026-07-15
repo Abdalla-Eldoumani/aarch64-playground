@@ -9,6 +9,7 @@ const TOKEN_BY_TYPE: Record<CalloutType, string> = {
   note: "var(--cyan)",
   warning: "var(--warning)",
   pitfall: "var(--danger)",
+  prereq: "var(--success)",
 };
 
 afterEach(() => {
@@ -18,7 +19,7 @@ afterEach(() => {
 
 describe("Callout", () => {
   it("drives each variant from its semantic token", () => {
-    for (const type of ["note", "warning", "pitfall"] as const) {
+    for (const type of ["note", "warning", "pitfall", "prereq"] as const) {
       const { container, unmount } = render(<Callout type={type}>body</Callout>);
       const field = container.firstElementChild as HTMLElement;
       expect(field.className).toContain(TOKEN_BY_TYPE[type]);
@@ -44,7 +45,7 @@ describe("Callout", () => {
   it("renders every variant under every theme without crashing", () => {
     for (const theme of THEMES) {
       document.documentElement.setAttribute("data-theme", theme);
-      for (const type of ["note", "warning", "pitfall"] as const) {
+      for (const type of ["note", "warning", "pitfall", "prereq"] as const) {
         const { unmount } = render(<Callout type={type}>body</Callout>);
         expect(screen.getByText("body")).toBeTruthy();
         unmount();
