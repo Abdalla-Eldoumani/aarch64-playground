@@ -40,8 +40,9 @@ its remaining fields:
 
 - `{ "type": "prose", "markdown": "..." }`: a passage of Markdown.
 - `{ "type": "code", "language": "asm", "source": "..." }`: a read-only
-  listing with a button to open it in the playground. `language` is `asm`,
-  `c`, or `text`.
+  listing with a corner copy button. `language` is `asm`, `c`, or `text`; an
+  `asm` listing also gets a button to open it in the playground, while `c` and
+  `text` render without one since the emulator only runs assembly.
 - `{ "type": "callout", "variant": "note", "markdown": "..." }`: a
   highlighted aside. `variant` is `note`, `warning`, `pitfall`, or `prereq`.
 - `{ "type": "editor", "starter": "...", "args": "...", "stdin": "..." }`: an
