@@ -43,7 +43,7 @@ its remaining fields:
   listing with a button to open it in the playground. `language` is `asm`,
   `c`, or `text`.
 - `{ "type": "callout", "variant": "note", "markdown": "..." }`: a
-  highlighted aside. `variant` is `note`, `warning`, `prereq` or `pitfall`.
+  highlighted aside. `variant` is `note`, `warning`, `pitfall`, or `prereq`.
 - `{ "type": "editor", "starter": "...", "args": "...", "stdin": "..." }`: an
   inline editor the reader can run and change in place. Only `starter` is
   required; `args` and `stdin` are optional.
