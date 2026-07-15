@@ -1,0 +1,76 @@
+{
+  "title": "Printing Variables in ARMv8 AArch64 Assembly",
+  "slug": "printing-defined-variables",
+  "order": 6,
+  "summary": "Learn how to print defined variables in ARMv8 AArch64 Assembly.",
+  "tags": [
+    "Printing Variables",
+    "Printing"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
+    },
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Before starting this lesson, you should have a basic understanding of the following prerequisite lesson:\n\n- [Printing Hello World in ARMv8 AArch64 Assembly](/learn/printing-strings-hello-world)\n\n- [Printing Integer and Other Data Types in ARMv8 AArch64 Assembly](/learn/printing-other-data-types)" 
+    },
+    {
+    "type": "prose",
+    "markdown": "In many Assembly programs, data is stored in variables within the `.data` section before it is used. While printing values directly using immediate constants is straightforward, accessing and printing values stored in memory requires additional steps. \n\n In this lesson, we will explore how to print variables defined in the `.data` section in Assembly. We will examine how to access stored values, load them into registers, and pass them correctly to the `printf` function for output."
+
+    },
+    {
+        "type": "prose",
+        "markdown": "## A Review of Printing with `printf`\n\nIf you have reached this point, you should be familiar with the general process of printing in Assembly using the `printf` function. Although printing in Assembly requires more manual preparation compared to high-level programming languages, the overall workflow remains consistent.\n\nThe printing process can be summarized into the following steps:\n\n1. Define the string or format string.\n2. Load the address of the string or format string into `x0`.\n3. Place the corresponding value to be printed into the appropriate argument registers (if any).\n4. Call `printf`.\n\nThese steps remain the same when printing variables stored in the `.data` section. However, the main difference is found in step 3.\n\nIn previous lessons, the values being printed were provided directly as immediate values and moved into the appropriate argument registers. For example:\n\n`mov x1, 67`\n\nIn this lesson, we will follow the same principle of placing the value to be printed into the appropriate argument register. However, instead of moving an immediate value directly into the register, we will first retrieve the value stored in a variable defined in the `.data` section and then pass it to `printf`.\n"
+    },
+    {
+        "type": "prose",
+        "markdown": "## Loading Values from the `.data` Section\n\nSuppose we have an integer value of `85` stored in a variable named `importantNumber` within the `.data` section, as shown below:\n\n"
+    },
+    {
+        "type": "code",
+        "language": "asm",
+        "source": ".data\n    importantNumber: .word 85"
+    },
+    {
+        "type": "prose",
+        "markdown" : "\nTo load the value stored in the `importantNumber` variable defined in the `.data` section, we must first retrieve the address of the variable. Once the address has been obtained, we can use it to access and load the value stored at that memory location. The following code demonstrates this process:\n"
+
+    },
+    {
+        "type": "code",
+        "language": "asm",
+        "source": "// pseudo-ops and directives\nmain: \n    // program prologue\n    ..\n    ldr x21, =importantNumber\n    ldr x1, [x21]\n    ..\n\n    // program epilogue"
+
+    },
+    {
+        "type": "prose",
+        "markdown": "\nThe ldr instruction is used to retrieve both the address of the variable and the value stored at that address. In this process, two `ldr` instructions are required.\n\nThe first `ldr` instruction retrieves the address of the variable and stores it in register `x21`. The second `ldr` instruction uses this address to access the value stored in memory and loads the retrieved value into register `x1`. The register `x0` is preserved for the address of the format string, which is passed to `printf` as the first argument."
+    },
+    {
+        "type": "callout",
+        "variant": "note",
+        "markdown": "The square brackets `[]` in the `ldr` instruction indicate memory access (dereferencing). They tell the processor to use the value inside the register as a memory address and access the data stored at that location."
+    },
+    {
+        "type": "prose",
+        "markdown": "## Printing Out the Variable Content\n\nOnce the variable value and format string have been loaded into the appropriate argument registers, the `printf` function can be called to display the formatted output. The following code demonstrates the complete process:\n\n"    
+    },
+    {
+        "type": "editor",
+        "starter": ".data\n    // Format string for printing an integer\n    format1:   .string  \"Integer Variable Content: %d\\n\"\n\n    // Variable storing the number 85\n    importantNumber:      .word 85\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n    \n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // Passing the integer value to be printed to the next argument register.\n    ldr  x21, =importantNumber\n    ldr x1, [x21]\n    // Calling printf to print the integer value.\n    bl printf\n\n    // Program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
+    },
+    {
+        "type": "callout",
+        "variant":"note",
+        "markdown": "You can print variables of any data type using the process shown above. An important consideration is ensuring that you use the correct format specifier and the appropriate registers when retrieving values from variables defined in the `.data` section.\n\nWhen calling printf, you must pass arguments whose data types match their corresponding format specifiers. Passing an argument whose type does not match the expected format specifier may result in unintended or incorrect output."
+
+    }
+
+   
+  ]
+}
