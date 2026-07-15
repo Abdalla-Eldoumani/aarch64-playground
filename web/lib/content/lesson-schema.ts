@@ -15,7 +15,7 @@
 export type LessonBlock =
   | { type: "prose"; markdown: string }
   | { type: "code"; language: "asm" | "c" | "text"; source: string }
-  | { type: "callout"; variant: "note" | "warning" | "pitfall"; markdown: string }
+  | { type: "callout"; variant: "note" | "warning" | "pitfall" | "prereq"; markdown: string }
   | { type: "editor"; starter: string; args?: string; stdin?: string };
 
 /** Lesson metadata plus an ordered, non-empty body of blocks. */
@@ -75,10 +75,10 @@ function validateBlock(
     }
     case "callout": {
       const variant = b.variant;
-      if (variant !== "note" && variant !== "warning" && variant !== "pitfall") {
+      if (variant !== "note" && variant !== "warning" && variant !== "pitfall" && variant !== "prereq") {
         return {
           ok: false,
-          error: `body[${index}] (callout): variant must be one of note|warning|pitfall`,
+          error: `body[${index}] (callout): variant must be one of note|warning|pitfall|prereq`,
         };
       }
       if (typeof b.markdown !== "string") {
