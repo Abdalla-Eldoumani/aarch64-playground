@@ -1434,11 +1434,24 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     if offset_val % scale != 0 {
         return asm_err(ln, "pair offset must be aligned to register size");
     }
-    let imm7 = (offset_val / scale) as i8;
-    if imm7 < -64 || imm7 > 63 {
-        return asm_err(ln, "pair offset out of range");
+    // Range-check the full-width quotient BEFORE narrowing: an `as i8`
+    // cast wraps mod 256, so an out-of-range offset whose wrapped value
+    // landed back in [-64, 63] used to encode a silently wrong frame
+    // offset (a 20x20 table's -1616 moved SP up by 432).
+    let quotient = offset_val / scale;
+    if !(-64..=63).contains(&quotient) {
+        return asm_err(
+            ln,
+            &format!(
+                "pair offset {offset_val} is out of range: stp/ldp reaches [{}, {}] \
+                 for this register width; for a larger frame, push the pair first \
+                 (stp x29, x30, [sp, -16]!) and move sp separately (sub sp, sp, #N)",
+                -64 * scale,
+                63 * scale
+            ),
+        );
     }
-    let imm7_enc = (imm7 as u32) & 0x7F;
+    let imm7_enc = (quotient as u32) & 0x7F;
 
     let opc: u32 = if sf { 0b10 } else { 0b00 };
     let mode_bits: u32 = match mode {
@@ -1958,6 +1971,33 @@ mod tests {
 
         assert_eq!(cpu.regs.read_gpr(2, true), 100);
         assert_eq!(cpu.regs.read_gpr(3, true), 200);
+    }
+
+    #[test]
+    fn pair_offset_out_of_range_is_rejected_not_wrapped() {
+        // -1616 / 8 = -202, which wraps to +54 through an i8 cast; the
+        // encoder must reject it, naming the reachable range.
+        let err = assemble("STP X29, X30, [SP, #-1616]!").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("-1616"), "message was: {msg}");
+        assert!(msg.contains("[-512, 504]"), "message was: {msg}");
+
+        // +1536 / 8 = 192 wraps to -64: also silently in range before.
+        assert!(assemble("STP X0, X1, [SP, #1536]").is_err());
+
+        // W pairs scale by 4, halving the reach: 768 / 4 = 192 wraps too.
+        let err = assemble("STP W0, W1, [SP, #768]").unwrap_err();
+        assert!(err.to_string().contains("[-256, 252]"), "was: {err}");
+    }
+
+    #[test]
+    fn pair_offset_boundaries_encode() {
+        assert!(assemble("STP X0, X1, [SP, #-512]").is_ok());
+        assert!(assemble("STP X0, X1, [SP, #504]").is_ok());
+        assert!(assemble("STP W0, W1, [SP, #-256]").is_ok());
+        assert!(assemble("STP W0, W1, [SP, #252]").is_ok());
+        assert!(assemble("STP X0, X1, [SP, #-520]").is_err());
+        assert!(assemble("STP X0, X1, [SP, #512]").is_err());
     }
 
     #[test]
