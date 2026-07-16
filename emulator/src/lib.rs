@@ -607,6 +607,13 @@ impl Emulator {
         self.cpu.push_stdin(s.as_bytes());
     }
 
+    /// Signal end-of-input (ctrl-d / a fully-queued `< file` redirect):
+    /// getchar answers -1, read answers 0, scanf answers its matched
+    /// count or -1, so read-until-EOF loops can terminate.
+    pub fn close_stdin(&mut self) {
+        self.cpu.close_stdin();
+    }
+
     /// Whether the CPU is paused waiting for stdin.
     pub fn is_blocked(&self) -> bool {
         self.cpu.is_blocked()
