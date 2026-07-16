@@ -139,6 +139,11 @@ pub fn sys_read(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let count = ctx.regs.read_gpr(2, true);
     if fd == 0 {
         if ctx.stdin.is_empty() {
+            // Closed stdin: read() reports EOF with a 0 return.
+            if ctx.stdin_closed {
+                ctx.regs.write_gpr(0, true, 0);
+                return Ok(HostOutcome::Continue);
+            }
             return Ok(HostOutcome::NeedInput);
         }
         let n = (count as usize).min(ctx.stdin.len());
@@ -309,6 +314,7 @@ mod tests {
                 stdout: &mut self.stdout,
                 stderr: &mut self.stderr,
                 stdin: &mut self.stdin,
+                stdin_closed: false,
                 vfs: &mut self.vfs,
                 open_files: &mut self.open_files,
                 next_fd: &mut self.next_fd,
