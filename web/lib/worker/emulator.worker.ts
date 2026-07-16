@@ -75,6 +75,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
           pc: Number(raw.pc as bigint | number),
           halted: Boolean(raw.halted),
           error: (raw.error as string | undefined) ?? null,
+          error_line: (raw.error_line as number | undefined) ?? null,
           outcome: (raw.outcome as string | undefined) ?? "advance",
           exitCode: raw.exit_code != null ? Number(raw.exit_code as bigint | number) : null,
         };
@@ -133,10 +134,20 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
             steps_executed: stepsThis,
             hit_breakpoint: Boolean(raw.hit_breakpoint),
             error: (raw.error as string | undefined) ?? null,
+            error_line: (raw.error_line as number | undefined) ?? null,
           };
           bumpFrame();
           if (lastResult.error || lastResult.halted || lastResult.hit_breakpoint) break;
           if (emu.is_blocked()) break;
+          // Anti-wedge guard: a chunk that executed zero steps while the
+          // machine claims to be neither halted, blocked, nor stopped at a
+          // breakpoint can only repeat forever. Stop and say so rather
+          // than re-issuing chunks at full speed against a stuck CPU.
+          if (stepsThis === 0) {
+            lastResult.error =
+              "the emulator made no progress and was stopped; this is a playground bug -- use 'copy diagnostic bundle' to report it";
+            break;
+          }
           // Yield + heartbeat at most every ~50ms so panels stay
           // responsive without flooding postMessage.
           const now = performance.now();
