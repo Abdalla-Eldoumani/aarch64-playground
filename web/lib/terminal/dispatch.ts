@@ -355,6 +355,15 @@ async function runGdbExamine(args: string[], ctx: DispatchContext): Promise<Disp
   }
   const m = fmt.match(/^x\/(\d+)i$/);
   const count = m ? Number(m[1]) : 4;
+  // The count is untrusted free text; an absurd one froze the worker for
+  // minutes building megabytes of hex lines nobody could read.
+  const MAX_EXAMINE_COUNT = 1024;
+  if (!Number.isFinite(count) || count > MAX_EXAMINE_COUNT) {
+    return {
+      status: "err",
+      lines: [`gdb: x/Ni shows at most ${MAX_EXAMINE_COUNT} instructions at a time`],
+    };
+  }
   const name = target.slice(1).toLowerCase();
   const base = name === "pc" ? ctx.pcAddress() : Number(ctx.readRegister(name) ?? 0n);
   const bytes = await ctx.readMemory(base, count * 4);
