@@ -519,9 +519,45 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
 
     // register form
     let (rm, _) = parse_register(op3, ln)?;
+    // parse_register collapses SP and XZR to index 31, but the hardware
+    // separates them by encoding: the shifted form (bit 21 = 0) reads
+    // register 31 as XZR, and only the EXTENDED form (bit 21 = 1) reaches
+    // SP. Route SP operands to the extended encoding -- emitting shifted
+    // for `add x0, sp, x1` silently computed with 0 -- and reject the
+    // placements no encoding covers, exactly as GAS does.
+    let rd_is_sp = is_sp_name(ops[0]);
+    let rn_is_sp = is_sp_name(ops[1]);
+    if is_sp_name(op3) {
+        return asm_err(
+            ln,
+            "sp cannot be the last operand here; copy it out first (mov xN, sp)",
+        );
+    }
+    if rd_is_sp && s_bit == 1 {
+        return asm_err(
+            ln,
+            "the flag-setting form cannot write sp; drop the s (add/sub) or use another destination",
+        );
+    }
+    if rd_is_sp || rn_is_sp {
+        // Extended-register form, LSL #0: option = UXTX for X, UXTW for W,
+        // the alias GAS emits for `add x0, sp, x1`.
+        let option: u32 = if sf { 0b011 } else { 0b010 };
+        return Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
+            | (0b01011 << 24) | (1 << 21) | ((rm as u32) << 16)
+            | (option << 13) | ((rn as u32) << 5) | (rd as u32));
+    }
     Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
         | (0b01011 << 24) | ((rm as u32) << 16)
         | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Whether an operand as written names the stack pointer. Needed wherever
+/// index 31's meaning depends on the chosen encoding, since parse_register
+/// cannot carry the distinction.
+fn is_sp_name(operand: &str) -> bool {
+    let t = operand.trim();
+    t.eq_ignore_ascii_case("sp") || t.eq_ignore_ascii_case("wsp")
 }
 
 fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
@@ -1971,6 +2007,50 @@ mod tests {
 
         assert_eq!(cpu.regs.read_gpr(2, true), 100);
         assert_eq!(cpu.regs.read_gpr(3, true), 200);
+    }
+
+    #[test]
+    fn sp_register_operands_use_the_extended_encoding() {
+        // GAS byte-matches: only the extended form (bit 21) reaches SP.
+        assert_eq!(assemble("ADD X0, SP, X1").unwrap()[0], 0x8B21_63E0);
+        assert_eq!(assemble("SUB SP, SP, X2").unwrap()[0], 0xCB22_63FF);
+        assert_eq!(assemble("CMP SP, X1").unwrap()[0], 0xEB21_63FF);
+        // Register 31 written as XZR stays the shifted form (reads zero).
+        assert_eq!(assemble("ADD X0, XZR, X1").unwrap()[0], 0x8B01_03E0);
+    }
+
+    #[test]
+    fn sp_in_unencodable_positions_is_rejected() {
+        // No encoding lets SP be Rm, and the flag-setting forms cannot
+        // write SP; GAS rejects both.
+        let err = assemble("ADD X0, X1, SP").unwrap_err();
+        assert!(err.to_string().contains("sp"), "was: {err}");
+        let err = assemble("CMP X0, SP").unwrap_err();
+        assert!(err.to_string().contains("sp"), "was: {err}");
+    }
+
+    #[test]
+    fn sp_register_arithmetic_executes_with_sp_semantics() {
+        // `add x0, sp, x1` read rn=31 as XZR before the extended form
+        // existed: x0 became 16 and the frame maths silently collapsed.
+        let source = r#"
+            MOV X2, SP
+            MOV X1, #16
+            ADD X0, SP, X1
+            SUB SP, SP, X1
+            MOV X3, SP
+            ADD SP, SP, X1
+            MOV X4, SP
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        let sp0 = cpu.regs.read_gpr(2, true);
+        assert_eq!(cpu.regs.read_gpr(0, true), sp0 + 16);
+        assert_eq!(cpu.regs.read_gpr(3, true), sp0 - 16);
+        assert_eq!(cpu.regs.read_gpr(4, true), sp0);
     }
 
     #[test]
