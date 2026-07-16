@@ -117,6 +117,9 @@ export interface EmulatorState {
   readVfsFile: (path: string) => Promise<Uint8Array>;
   deleteVfsFile: (path: string) => Promise<boolean>;
   resolveLabel: (name: string) => Promise<number | null>;
+  /** Pre-assembly structural lint: advisory warnings with a line and a
+   *  one-line remedy. Empty on a wasm build that predates the export. */
+  lint: (source: string) => Promise<AssemblyError[]>;
   /** Standalone m4 pass for the terminal; null when the WASM predates it. */
   m4Expand: (source: string) => Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
   /** Address-based breakpoint setter, used by `gdb b <label>` once the
@@ -703,6 +706,17 @@ export function useEmulator(): EmulatorState {
     void backend.closeStdin();
   }, []);
 
+  const lint = useCallback(async (source: string): Promise<AssemblyError[]> => {
+    const backend = backendRef.current;
+    if (!backend) return [];
+    try {
+      return await backend.lint(source);
+    } catch {
+      // Advisory only: a lint failure must never surface as a problem.
+      return [];
+    }
+  }, []);
+
   const uploadVfsFile = useCallback((path: string, data: Uint8Array) => {
     const backend = backendRef.current;
     if (!backend) return;
@@ -962,6 +976,7 @@ export function useEmulator(): EmulatorState {
       getMemoryMapped,
       pushStdin,
       closeStdin,
+      lint,
       uploadVfsFile,
       readVfsFile,
       deleteVfsFile,
@@ -987,7 +1002,7 @@ export function useEmulator(): EmulatorState {
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, getMemory, getMemoryMapped,
-      pushStdin, closeStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
+      pushStdin, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, replayTick, dirtyAddrsTick, seekReplay,
     ],
