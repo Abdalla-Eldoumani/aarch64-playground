@@ -916,18 +916,37 @@ function EmbeddableCore({
       const verdict = await emuRef.current.assembleForTool(text, args.slice(1));
       applySeeds();
       if (!verdict.success) {
+        // The verdict is the only carrier of the assemble error here;
+        // dropping it left the student with a bare "[no exit]" line.
         const e = emuRef.current;
-        return { stdout: e.stdout, stderr: e.stderr, exitCode: e.exitCode ?? 0 };
+        const detail = verdict.error
+          ? verdict.errorLine != null
+            ? `line ${verdict.errorLine}: ${verdict.error}`
+            : verdict.error
+          : "";
+        return {
+          stdout: e.stdout,
+          stderr: [e.stderr, detail].filter(Boolean).join("\n"),
+          exitCode: null,
+        };
       }
-      // Any `< file` stdin goes on top of the reseeded working set.
-      if (stdin) emuRef.current.pushStdin(stdin);
+      // Any `< file` stdin goes on top of the reseeded working set. A
+      // redirect IS the whole input, so close stdin behind it: that is
+      // what lets a read-until-EOF loop finish, exactly like
+      // `./prog < file` on the course shell.
+      if (stdin !== undefined) {
+        emuRef.current.pushStdin(stdin);
+        emuRef.current.closeStdin();
+      }
       emuRef.current.run();
       await waitForHalt();
       const e = emuRef.current;
       return {
         stdout: e.stdout,
         stderr: e.stderr,
-        exitCode: e.exitCode ?? 0,
+        // null means "never exited" (blocked or timed out); the terminal
+        // says so instead of inventing an exit 0.
+        exitCode: e.exitCode,
       };
     };
     return {
@@ -1074,6 +1093,7 @@ function EmbeddableCore({
               exitCode={emu.exitCode}
               vfsFiles={emu.vfsFiles}
               pushStdin={emu.pushStdin}
+              closeStdin={emu.closeStdin}
               uploadVfsFile={stageVfsFile}
               clearConsole={emu.clearConsole}
             />
@@ -1243,6 +1263,7 @@ function EmbeddableCore({
       exitCode={emu.exitCode}
       vfsFiles={emu.vfsFiles}
       pushStdin={emu.pushStdin}
+      closeStdin={emu.closeStdin}
       uploadVfsFile={stageVfsFile}
       clearConsole={emu.clearConsole}
     />
