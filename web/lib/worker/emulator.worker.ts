@@ -212,6 +212,15 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
+      case "clearAllBreakpoints": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect for an older local wasm build.
+        const clear = (emu as { clear_all_breakpoints?: () => void }).clear_all_breakpoints;
+        if (typeof clear === "function") clear.call(emu);
+        post({ id: msg.id, kind: "ok", value: null });
+        return;
+      }
       case "closeStdin": {
         await ensureWasm();
         const emu = require_emulator();
