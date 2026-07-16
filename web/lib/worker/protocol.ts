@@ -25,6 +25,7 @@ export type RequestKind =
   | "takeStdout"
   | "takeStderr"
   | "getMemory"
+  | "isRangeMapped"
   | "getSnapshot"
   | "setBreakpoint"
   | "clearBreakpoint"
@@ -61,6 +62,7 @@ export type Request =
   | BaseRequest<"takeStdout">
   | BaseRequest<"takeStderr">
   | (BaseRequest<"getMemory"> & { addr: number; len: number })
+  | (BaseRequest<"isRangeMapped"> & { addr: number; len: number })
   | BaseRequest<"getSnapshot">
   | (BaseRequest<"setBreakpoint"> & { addr: number })
   | (BaseRequest<"clearBreakpoint"> & { addr: number })
