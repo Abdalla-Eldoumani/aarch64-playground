@@ -42,6 +42,13 @@ describe("StackPanel window", () => {
     expect(screen.getByText("SP = 0x0000000080000000")).toBeTruthy();
   });
 
+  it("renders a genuinely zero SP as zero, not as a fresh stack", () => {
+    // mov sp, x29 with x29 never set: the register panel says SP = 0 and
+    // this panel must agree instead of fabricating 0x80000000.
+    renderPanel({ sp: "0x0" });
+    expect(screen.getByText("SP = 0x0000000000000000")).toBeTruthy();
+  });
+
   it("reads exactly 16 rows of 8 bytes starting at sp", () => {
     const { getMemory, container } = renderPanel();
     expect(getMemory).toHaveBeenCalledWith(SP, 128);
