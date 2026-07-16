@@ -373,7 +373,12 @@ function EmbeddableCore({
         recent.push(nameForRecents(prev), prev);
       }
       // A fresh program starts on a fresh machine: registers, memory,
-      // console, exit code, stdin queue, and VFS all clear.
+      // console, exit code, stdin queue, and VFS all clear. Breakpoints
+      // too -- reset deliberately keeps them for the SAME program, but a
+      // different program must not inherit another's gutter dots and CPU
+      // addresses (when the new program is shorter, those addresses were
+      // unreachable by any click and only a reload recovered).
+      emuRef.current.clearAllBreakpoints();
       emuRef.current.reset();
       // Interactive input is the point in the full playground: a program
       // that reads stdin should block at its scanf and pull the student to
