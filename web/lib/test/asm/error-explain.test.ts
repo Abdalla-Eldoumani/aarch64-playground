@@ -1,12 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { explainError } from "@/lib/asm/error-explain";
 
+// Every string below is the shape production actually delivers: assemble
+// errors arrive as the BARE inner message (the wasm boundary strips the
+// "X error at line N:" prefix and ships the line separately); runtime
+// aborts pass through Display unchanged. Testing prefixed strings gave the
+// old generic fallback false confidence -- it could never fire in
+// production.
 describe("explainError", () => {
-  it("recognizes unknown instruction", () => {
-    const e = explainError("unknown instruction: 0x12345678");
+  it("explains falling off the end as a missing ret", () => {
+    const e = explainError(
+      "execution ran past the last instruction of the program -- main needs a `ret` (with an epilogue if it pushed one) or an exit call as its final step",
+    );
     expect(e).not.toBeNull();
-    expect(e!.styleSection).toBe("general");
+    expect(e!.fix).toContain("ret");
+    expect(e!.fix.toLowerCase()).toContain("epilogue");
+  });
+
+  it("explains unknown instructions without inventing causes", () => {
+    const e = explainError("unknown instruction: 0x00600000");
+    expect(e).not.toBeNull();
     expect(e!.what.toLowerCase()).toContain("decoder");
+    // The old block asserted an off-by-one stack write "overwrote your
+    // own code" -- a cause the common triggers never had.
+    expect(e!.why.toLowerCase()).not.toContain("junk over");
+    expect(e!.why.toLowerCase()).toContain("data");
   });
 
   it("recognizes memory faults and distinguishes read from write", () => {
@@ -19,8 +37,8 @@ describe("explainError", () => {
     expect(r!.styleSection).toBe("addressing modes");
   });
 
-  it("recognizes invalid register index", () => {
-    const e = explainError("invalid register index: 32");
+  it("recognizes the assembler's out-of-range register message", () => {
+    const e = explainError("register index out of range: X32");
     expect(e).not.toBeNull();
     expect(e!.styleSection).toBe("naming conventions");
   });
@@ -31,9 +49,20 @@ describe("explainError", () => {
     expect(e!.what).toContain("4-byte alignment");
   });
 
-  it("recognizes stack overflow", () => {
-    const e = explainError("stack overflow");
+  it("explains a stack overflow via the recursion base case first", () => {
+    const e = explainError(
+      "stack overflow: sp has moved more than 1 MiB below the stack base -- usually recursion with no base case, a prologue that repeats without its epilogue, or sp loaded from a register that was never set up",
+    );
     expect(e).not.toBeNull();
+    expect(e!.fix.toLowerCase()).toContain("base case");
+  });
+
+  it("explains an unterminated C string via .asciz", () => {
+    const e = explainError(
+      "strlen: the string at 0x600000 has no terminating zero byte within 64 KiB -- declare strings with .asciz or .string (not .ascii), and check nothing wrote over the terminator",
+    );
+    expect(e).not.toBeNull();
+    expect(e!.fix).toContain(".asciz");
   });
 
   it("recognizes argv overflow", () => {
@@ -42,32 +71,32 @@ describe("explainError", () => {
     expect(e!.styleSection).toBe("hosted runtime");
   });
 
-  it("dispatches inside wrapped errors via the inner detail", () => {
-    const e = explainError("preprocess error at line 7: unsupported m4 construct: ifelse");
+  it("matches bare inner messages, the shape production sends", () => {
+    const e = explainError("unsupported m4 construct: ifelse");
     expect(e).not.toBeNull();
     expect(e!.styleSection).toBe("m4 preprocessing");
   });
 
-  it("recognizes unknown symbol regardless of which stage reported it", () => {
-    const a = explainError("link error at line 30: unknown symbol `score_1_r`");
-    const b = explainError("parse error at line 12: undefined symbol foo");
-    expect(a!.styleSection).toBe("naming conventions");
-    expect(b!.styleSection).toBe("naming conventions");
+  it("recognizes unknown symbol in bare and prefixed shapes", () => {
+    const bare = explainError("unknown symbol `score_1_r`");
+    const prefixed = explainError("link error at line 30: unknown symbol `score_1_r`");
+    expect(bare!.styleSection).toBe("naming conventions");
+    expect(prefixed!.styleSection).toBe("naming conventions");
   });
 
   it("recognizes immediate-out-of-range encodings", () => {
-    const e = explainError("assembly error at line 18: immediate out of range for movz");
+    const e = explainError("immediate out of range for movz");
     expect(e!.styleSection).toBe("literal pool");
   });
 
   it("recognizes unbalanced bracket diagnostics", () => {
-    const e = explainError("link error at line 9: unbalanced addressing bracket");
+    const e = explainError("unbalanced addressing bracket");
     expect(e!.styleSection).toBe("addressing modes");
   });
 
   it("explains an unterminated string with the same-line rule and the escape fix", () => {
     const e = explainError(
-      'parse error at line 6: unterminated string literal: no closing " before the end of the line (write \\n for a newline)',
+      'unterminated string literal: no closing " before the end of the line (write \\n for a newline)',
     );
     expect(e!.what).toContain("never closed");
     expect(e!.why).toContain("cannot span lines");
@@ -76,7 +105,7 @@ describe("explainError", () => {
 
   it("explains mixed S/D operands and points at fcvt", () => {
     const e = explainError(
-      "assembly error at line 4: fadd needs all S or all D registers (use fcvt to convert between widths)",
+      "fadd needs all S or all D registers (use fcvt to convert between widths)",
     );
     expect(e!.why).toContain("precision");
     expect(e!.fix).toContain("fcvt");
@@ -84,26 +113,42 @@ describe("explainError", () => {
 
   it("explains a same-width fcvt and points at fmov", () => {
     const e = explainError(
-      "assembly error at line 7: fcvt converts between widths: one operand must be an S register and the other a D register (use fmov to copy at the same width)",
+      "fcvt converts between widths: one operand must be an S register and the other a D register (use fmov to copy at the same width)",
     );
     expect(e!.fix).toContain("fmov");
   });
 
   it("explains an unencodable fmov immediate with the data-section fallback", () => {
     const e = explainError(
-      "assembly error at line 3: 0.1 does not fit the FMOV 8-bit float immediate; load it from a .double instead",
+      "0.1 does not fit the FMOV 8-bit float immediate; load it from a .double instead",
     );
     expect(e!.styleSection).toBe("literal pool");
     expect(e!.fix).toContain(".float");
   });
 
-  it("falls back to a generic block for wrapped errors that don't match a pattern", () => {
-    const e = explainError("assembly error at line 5: something genuinely strange");
+  it("tells an unsupported metadata section to be deleted", () => {
+    // gcc -S emits `.section .note.GNU-stack,...`; the parser names the
+    // first dotted word.
+    const e = explainError("unsupported section `note`");
     expect(e).not.toBeNull();
-    expect(e!.styleSection).toBe("general");
+    expect(e!.fix.toLowerCase()).toContain("delete");
+    expect(e!.styleSection).toBe("section directives");
   });
 
-  it("returns null for completely unfamiliar messages", () => {
+  it("matches the escape messages the lexer really emits", () => {
+    // A Windows path in a .string is the routine trigger.
+    const unknown = explainError("unknown escape \\d");
+    expect(unknown).not.toBeNull();
+    expect(unknown!.fix.toLowerCase()).toContain("backslash");
+    expect(explainError("dangling backslash in literal")).not.toBeNull();
+    expect(explainError("incomplete \\xNN escape")).not.toBeNull();
+  });
+
+  it("returns null when no tailored block exists, so the raw message renders", () => {
+    // The old generic fallback was unreachable in production and its
+    // advice was content-free; deleted, not repaired. The emulator's own
+    // wording carries the remedy in these cases.
     expect(explainError("nope, just nope")).toBeNull();
+    expect(explainError("empty value in this list -- remove the extra comma")).toBeNull();
   });
 });
