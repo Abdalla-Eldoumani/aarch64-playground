@@ -12,47 +12,7 @@
 //!   reads ints and doubles from the same NSAA cursor in source order.
 
 use crate::errors::EmuError;
-use crate::hosted::{HostContext, HostOutcome};
-
-/// AAPCS64 vararg cursor. Tracks how many GP and SIMD registers have
-/// been consumed and where on the stack the next spilled arg lives.
-struct VarargWalker {
-    /// Next GP register index. <= 7 means read xN; > 7 means spill.
-    gp_idx: u8,
-    /// Next SIMD register index. <= 7 means read dN; > 7 means spill.
-    fp_idx: u8,
-    /// Bytes above SP-at-call-site for the next spilled arg. Shared
-    /// between int and float spills per AAPCS64.
-    stack_off: u64,
-}
-
-impl VarargWalker {
-    fn next_int(&mut self, ctx: &mut HostContext<'_>) -> u64 {
-        if self.gp_idx <= 7 {
-            let v = ctx.regs.read_gpr(self.gp_idx, true);
-            self.gp_idx = self.gp_idx.saturating_add(1);
-            v
-        } else {
-            let sp = ctx.regs.read_sp();
-            let addr = sp.wrapping_add(self.stack_off);
-            self.stack_off = self.stack_off.wrapping_add(8);
-            ctx.mem.read_u64(addr).unwrap_or(0)
-        }
-    }
-
-    fn next_double(&mut self, ctx: &mut HostContext<'_>) -> f64 {
-        if self.fp_idx <= 7 {
-            let v = ctx.regs.read_fpr_f64(self.fp_idx);
-            self.fp_idx = self.fp_idx.saturating_add(1);
-            v
-        } else {
-            let sp = ctx.regs.read_sp();
-            let addr = sp.wrapping_add(self.stack_off);
-            self.stack_off = self.stack_off.wrapping_add(8);
-            ctx.mem.read_u64(addr).map(f64::from_bits).unwrap_or(0.0)
-        }
-    }
-}
+use crate::hosted::{HostContext, HostOutcome, VarargWalker};
 
 pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
