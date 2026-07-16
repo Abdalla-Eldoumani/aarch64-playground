@@ -149,6 +149,50 @@ describe("TerminalPane", () => {
     expect(output).not.toContain("not found");
   });
 
+  it("serializes a pasted command sequence so later lines see earlier writes", async () => {
+    // The course toolchain paste depends on ordering: line 2 reads the
+    // file line 1 creates. Concurrent dispatch read it too early.
+    const files = new Map<string, string>([["a.txt", "payload\n"]]);
+    const ctx = makeContext({
+      readVfs: vi.fn(async (path: string) => {
+        // A real VFS read suspends; that suspension is what let the next
+        // pasted command run ahead.
+        await new Promise((r) => setTimeout(r, 5));
+        return files.get(path);
+      }),
+      writeVfs: vi.fn((path: string, body: string) => {
+        files.set(path, body);
+      }),
+    });
+    render(<TerminalPane buildContext={() => ctx} />);
+    instances[0].dataCb!("cp a.txt b.txt\rcat b.txt\r");
+    await vi.waitFor(() => {
+      const output = instances[0].writes.join("");
+      expect(output).toContain("payload");
+      expect(output).not.toContain("no such file");
+    });
+  });
+
+  it("prints a line and restores the prompt when a command rejects", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const ctx = makeContext({
+      readVfs: vi.fn(async () => {
+        throw new Error("recursive use of an object detected");
+      }),
+    });
+    render(<TerminalPane buildContext={() => ctx} />);
+    instances[0].dataCb!("cat a.txt\r");
+    await vi.waitFor(() => {
+      const output = instances[0].writes.join("");
+      expect(output).toContain("cat: the command failed unexpectedly");
+      // The internal wording must not reach the student.
+      expect(output).not.toContain("recursive use");
+      // The prompt came back.
+      expect(output.lastIndexOf("$ ")).toBeGreaterThan(output.indexOf("cat a.txt"));
+    });
+    warn.mockRestore();
+  });
+
   it("routes the upload pseudo-command to the host picker through the latest prop", async () => {
     const onUploadRequest = vi.fn();
     render(
