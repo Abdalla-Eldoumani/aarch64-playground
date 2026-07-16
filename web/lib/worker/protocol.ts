@@ -113,6 +113,13 @@ export interface StepResultPayload {
   pc: number;
   halted: boolean;
   error: string | null;
+  /**
+   * Editor line of the instruction a runtime error names, resolved by the
+   * wasm side through the authoritative line map (call site via LR-4 for
+   * faults inside host stubs). Absent on success and on wasm builds that
+   * predate the field.
+   */
+  error_line?: number | null;
   outcome: string;
   exitCode: number | null;
 }
@@ -123,6 +130,8 @@ export interface RunResultPayload {
   steps_executed: number;
   hit_breakpoint: boolean;
   error: string | null;
+  /** Editor line for a runtime error (see StepResultPayload). */
+  error_line?: number | null;
 }
 
 /**
