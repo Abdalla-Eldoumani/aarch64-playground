@@ -1481,7 +1481,22 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
         return asm_err(ln, "LDP/STP requires at least 3 operands");
     }
     let (rt, sf) = parse_register(ops[0], ln)?;
-    let (rt2, _) = parse_register(ops[1], ln)?;
+    let (rt2, sf2) = parse_register(ops[1], ln)?;
+    // GAS rejects a mixed-width pair; accepting one took the width (and
+    // the address scale) from the first register only, so both slots
+    // reloaded garbage with no message.
+    if sf != sf2 {
+        return asm_err(
+            ln,
+            &format!(
+                "ldp/stp needs both registers the same width: `{}` is {}-bit but `{}` is {}-bit",
+                ops[0].trim(),
+                if sf { 64 } else { 32 },
+                ops[1].trim(),
+                if sf2 { 64 } else { 32 }
+            ),
+        );
+    }
 
     let addr_str: String = ops[2..].join(",");
     let am = parse_addressing_mode(addr_str.trim(), ln)?;
@@ -2144,6 +2159,18 @@ mod tests {
         // W pairs scale by 4, halving the reach: 768 / 4 = 192 wraps too.
         let err = assemble("STP W0, W1, [SP, #768]").unwrap_err();
         assert!(err.to_string().contains("[-256, 252]"), "was: {err}");
+    }
+
+    #[test]
+    fn mixed_width_pairs_are_rejected() {
+        // GAS rejects these; accepting them stored the wrong width and
+        // both registers reloaded garbage.
+        let err = assemble("STP X0, W1, [SP, #0]").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("same width"), "was: {msg}");
+        assert!(assemble("STP W0, X1, [SP, #0]").is_err());
+        assert!(assemble("LDP X0, W1, [SP, #0]").is_err());
+        assert!(assemble("LDP W2, W3, [SP], #16").is_ok());
     }
 
     #[test]
