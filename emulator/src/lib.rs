@@ -506,6 +506,26 @@ impl Emulator {
             .unwrap_or_default()
     }
 
+    /// Whether every page in `[addr, addr + len)` is mapped. The watch
+    /// panel needs this to tell "reads as zero" from "was never mapped":
+    /// `get_memory_range` deliberately zero-fills unmapped bytes for the
+    /// hex dump, so the bytes alone cannot express a fault.
+    pub fn is_range_mapped(&self, addr: u32, len: u32) -> bool {
+        if len == 0 {
+            return self.cpu.mem.is_mapped(addr as u64);
+        }
+        let start = addr as u64;
+        let end = start + (len as u64) - 1;
+        let mut page = start & !0xFFF;
+        while page <= end {
+            if !self.cpu.mem.is_mapped(page) {
+                return false;
+            }
+            page += 0x1000;
+        }
+        true
+    }
+
     /// Indices of registers that changed during the last step (0-31, where 31=SP).
     pub fn get_changed_registers(&self) -> Vec<u8> {
         self.cpu.changed_registers().to_vec()
