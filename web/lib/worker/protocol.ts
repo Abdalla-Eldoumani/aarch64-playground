@@ -141,6 +141,13 @@ export interface RunResultPayload {
    * infinite loop stopped silently.
    */
   step_limit_reached?: boolean;
+  /**
+   * True when a reset/assemble/state-restore landed mid-run and this
+   * result describes a machine that no longer exists. The hub discards
+   * it: acting on it painted `unknown instruction: 0x00000000` right
+   * after the student pressed Reset.
+   */
+  cancelled?: boolean;
 }
 
 /**
