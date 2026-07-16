@@ -297,6 +297,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     clearAllBreakpoints() {
       return Promise.resolve();
     },
+    isRangeMapped() {
+      return Promise.resolve(true);
+    },
     setBreakpoint(addr) {
       calls.setBreakpoint.push(addr);
       return Promise.resolve();
