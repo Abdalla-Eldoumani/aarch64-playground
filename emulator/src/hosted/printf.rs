@@ -83,6 +83,19 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         let conv = chars[i];
         i += 1;
         format_conversion(&spec, conv, ctx, &mut walker, &mut out)?;
+        // Per-call transient bound: MAX_FIELD_WIDTH clamps ONE conversion,
+        // but a 64 KiB format stuffed with wide conversions could still
+        // stage tens of megabytes here before the cumulative output wall
+        // ever saw it. No real program prints a megabyte in one call.
+        if out.len() > MAX_PRINTF_CALL_BYTES {
+            return Err(EmuError::AssemblyError {
+                line: 0,
+                message: format!(
+                    "printf produced over {} KiB in a single call and was stopped",
+                    MAX_PRINTF_CALL_BYTES / 1024
+                ),
+            });
+        }
     }
 
     ctx.stdout.extend_from_slice(&out);
@@ -115,6 +128,11 @@ pub fn read_c_string(mem: &crate::memory::Memory, addr: u64) -> Result<Vec<u8>, 
 /// would build a multi-gigabyte host string and abort the allocator. 4096 is
 /// far wider than any real format.
 const MAX_FIELD_WIDTH: usize = 4096;
+
+/// Upper bound on ONE printf call's total output. Checked per conversion in
+/// the format loop; the cumulative `cpu::MAX_OUTPUT_BYTES` wall bounds the
+/// program as a whole.
+const MAX_PRINTF_CALL_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Default, Clone)]
 struct FormatSpec {
@@ -350,6 +368,13 @@ mod tests {
     use std::collections::HashMap;
 
     fn call(fmt: &str, setup: impl FnOnce(&mut RegisterFile, &mut Memory)) -> (String, usize) {
+        try_call(fmt, setup).expect("printf should succeed")
+    }
+
+    fn try_call(
+        fmt: &str,
+        setup: impl FnOnce(&mut RegisterFile, &mut Memory),
+    ) -> Result<(String, usize), EmuError> {
         let mut regs = RegisterFile::new();
         let mut mem = Memory::new();
         let fmt_addr = 0x0050_0000u64;
@@ -379,10 +404,23 @@ mod tests {
             next_fd: &mut next_fd,
             rand_state: &mut rand_state,
         };
-        printf(&mut ctx).unwrap();
+        printf(&mut ctx)?;
         let written = ctx.regs.read_gpr(0, true) as usize;
         let s = String::from_utf8(stdout).unwrap();
-        (s, written)
+        Ok((s, written))
+    }
+
+    #[test]
+    fn one_call_cannot_stage_megabytes() {
+        // MAX_FIELD_WIDTH clamps one conversion; a 64 KiB format stuffed
+        // with wide conversions used to stage ~45 MB in the transient
+        // buffer before any wall saw it. The per-call bound must trip.
+        let fmt = "%4096d".repeat(300);
+        let err = try_call(&fmt, |_, _| {}).unwrap_err();
+        assert!(
+            err.to_string().contains("single call"),
+            "error was: {err}"
+        );
     }
 
     #[test]
