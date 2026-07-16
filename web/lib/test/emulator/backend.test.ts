@@ -8,6 +8,38 @@ vi.mock("@/lib/worker/client", () => ({
   spawnEmulatorWorker: () => h.worker,
 }));
 
+// A minimal fake wasm wrapper: runs never halt, so runUntilBreak only
+// stops when a flag (pause, cap) says so. Only the members the backend
+// touches during runUntilBreak/snapshot exist.
+function fakeEmu() {
+  return {
+    runUntilBreak: (max: number) => ({
+      pc: 0x400000,
+      halted: false,
+      steps_executed: max,
+      hit_breakpoint: false,
+      error: null,
+    }),
+    isBlocked: () => false,
+    isHalted: () => false,
+    getAllRegisters: () => ({ gpr: [], sp: "0", pc: "0", nzcv: 0 }),
+    getFpRegisters: () => [],
+    getChangedRegisters: () => [],
+    getChangedFpRegisters: () => [],
+    getExitCode: () => null,
+    canStepBack: () => false,
+    takeStdout: () => "",
+    takeStderr: () => "",
+    listVfsFiles: () => [],
+    listStates: () => [],
+    takeDirtyAddrs: () => [],
+  };
+}
+
+vi.mock("@/lib/emulator/emulator", () => ({
+  loadEmulator: async () => fakeEmu(),
+}));
+
 import { pickBackend } from "@/lib/emulator/backend";
 
 const BACKEND_KEY = "aarch64-playground:backend";
@@ -69,5 +101,31 @@ describe("pickBackend", () => {
       throw new Error("storage denied");
     });
     expect(pickBackend()).toBe(sentinel);
+  });
+});
+
+describe("MainThreadBackend pause parity", () => {
+  test("a pause between chunks stops the loop like the worker's flag", async () => {
+    setPref("main");
+    const backend = pickBackend()!;
+    await backend.init();
+    // 100 chunks of 10k; pause lands during the first between-chunk yield.
+    const run = backend.runUntilBreak(1_000_000);
+    await backend.pause();
+    const { runResult } = await run;
+    expect(runResult.steps_executed).toBeLessThan(1_000_000);
+  });
+
+  test("a fresh run clears the previous pause", async () => {
+    setPref("main");
+    const backend = pickBackend()!;
+    await backend.init();
+    const first = backend.runUntilBreak(1_000_000);
+    await backend.pause();
+    await first;
+    // The next run must not inherit the stale flag: with the fake's
+    // never-halting machine it runs its full budget.
+    const { runResult } = await backend.runUntilBreak(30_000);
+    expect(runResult.steps_executed).toBe(30_000);
   });
 });
