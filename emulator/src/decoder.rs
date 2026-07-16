@@ -88,6 +88,36 @@ pub enum ExtendType {
     Sxtx,
 }
 
+/// Extension applied to Rm in the extended-register ADD/SUB form (the
+/// 3-bit option field). UXTX doubles as LSL when the other operand is SP,
+/// which is the alias GAS emits for `add x0, sp, x1`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegExtend {
+    Uxtb,
+    Uxth,
+    Uxtw,
+    Uxtx,
+    Sxtb,
+    Sxth,
+    Sxtw,
+    Sxtx,
+}
+
+impl RegExtend {
+    fn from_option(option: u8) -> Self {
+        match option & 0b111 {
+            0b000 => RegExtend::Uxtb,
+            0b001 => RegExtend::Uxth,
+            0b010 => RegExtend::Uxtw,
+            0b011 => RegExtend::Uxtx,
+            0b100 => RegExtend::Sxtb,
+            0b101 => RegExtend::Sxth,
+            0b110 => RegExtend::Sxtw,
+            _ => RegExtend::Sxtx,
+        }
+    }
+}
+
 /// Offset for single-register load/store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LdStOffset {
@@ -188,6 +218,19 @@ pub enum Instruction {
         rm: u8,
         shift: ShiftType,
         amount: u8,
+    },
+    /// ADD/SUB/ADDS/SUBS with EXTENDED register operand (bit 21 = 1) --
+    /// the only register form that reaches SP: Rn = 31 reads SP, and
+    /// Rd = 31 writes SP for the non-flag-setting ops. Rm = 31 stays XZR.
+    DpRegExt {
+        op: DpOp,
+        sf: bool,
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        extend: RegExtend,
+        /// Left shift applied after the extend, 0..=4.
+        shift: u8,
     },
     /// MOVZ/MOVK/MOVN.
     MoveWide {
@@ -1311,6 +1354,13 @@ fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 fn decode_add_sub_reg(instr: u32) -> Result<Instruction, EmuError> {
+    // Bit 21 splits the register family: 0 is the shifted form (register
+    // 31 reads as XZR), 1 is the extended form (register 31 is SP). The
+    // two must not be conflated -- executing `add x0, sp, x1` as shifted
+    // silently computes with 0.
+    if bit(instr, 21) == 1 {
+        return decode_add_sub_ext(instr);
+    }
     let sf = bit(instr, 31) == 1;
     let op_bit = bit(instr, 30);
     let s = bit(instr, 29);
@@ -1336,6 +1386,43 @@ fn decode_add_sub_reg(instr: u32) -> Result<Instruction, EmuError> {
         rm,
         shift,
         amount: imm6,
+    })
+}
+
+fn decode_add_sub_ext(instr: u32) -> Result<Instruction, EmuError> {
+    let sf = bit(instr, 31) == 1;
+    let op_bit = bit(instr, 30);
+    let s = bit(instr, 29);
+    // The opt field (23:22) is reserved-zero in this form, and the
+    // post-extend shift caps at 4; anything else is not an instruction.
+    if bits(instr, 23, 22) != 0 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    let rm = bits(instr, 20, 16) as u8;
+    let option = bits(instr, 15, 13) as u8;
+    let shift = bits(instr, 12, 10) as u8;
+    if shift > 4 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    let rn = bits(instr, 9, 5) as u8;
+    let rd = bits(instr, 4, 0) as u8;
+
+    let dp_op = match (op_bit, s) {
+        (0, 0) => DpOp::Add,
+        (0, 1) => DpOp::Adds,
+        (1, 0) => DpOp::Sub,
+        (1, 1) => DpOp::Subs,
+        _ => unreachable!(),
+    };
+
+    Ok(Instruction::DpRegExt {
+        op: dp_op,
+        sf,
+        rd,
+        rn,
+        rm,
+        extend: RegExtend::from_option(option),
+        shift,
     })
 }
 
