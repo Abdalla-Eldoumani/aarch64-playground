@@ -53,6 +53,11 @@ pub enum EmuError {
     /// Combined argv pointer-table + string pool would exceed the 4 KiB
     /// page reserved at `ARGV_BASE`.
     ArgvTooLarge { bytes: usize },
+    /// A runtime failure inside the hosted runtime (a libc stub or a
+    /// syscall), already worded for the student. The editor line is
+    /// resolved at the wasm boundary through the line map, so this
+    /// variant carries no line of its own.
+    RuntimeError { message: String },
 }
 
 impl fmt::Display for EmuError {
@@ -94,6 +99,7 @@ impl fmt::Display for EmuError {
             Self::ArgvTooLarge { bytes } => {
                 write!(f, "argv layout would need {bytes} bytes, exceeds the 4096-byte argv page")
             }
+            Self::RuntimeError { message } => write!(f, "{message}"),
         }
     }
 }
