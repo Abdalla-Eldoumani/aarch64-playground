@@ -291,6 +291,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       calls.pushStdin.push(text);
       return Promise.resolve(fire());
     },
+    closeStdin() {
+      return Promise.resolve(fire());
+    },
     setBreakpoint(addr) {
       calls.setBreakpoint.push(addr);
       return Promise.resolve();
