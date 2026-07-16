@@ -70,12 +70,36 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     let mut text_len: u64 = 0;
     let mut assignments: Vec<(String, String, u64, usize)> = Vec::new();
     let mut reserve_sizes: HashMap<(SectionKind, usize), u64> = HashMap::new();
+    // First-definition lines, for duplicate-label errors that name both
+    // sites. GAS rejects a redefined label; accepting it here made the
+    // last definition win silently, so branches jumped to the wrong copy.
+    let mut label_lines: HashMap<String, usize> = HashMap::new();
     for section in &prog.sections {
         let base = section.kind.default_base();
         let mut offset: u64 = 0;
         for (idx, item) in section.items.iter().enumerate() {
             match item {
-                Item::Label(name) => {
+                Item::Label { name, original_line } => {
+                    if let Some(first) = label_lines.get(name) {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "label `{name}` is already defined on line {first} -- \
+                                 give each label a unique name (labels are file-wide, \
+                                 not per-function)"
+                            ),
+                        });
+                    }
+                    if symbols.contains_key(name) {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "label `{name}` collides with the `{name} = ...` \
+                                 constant defined earlier -- rename one of them"
+                            ),
+                        });
+                    }
+                    label_lines.insert(name.clone(), *original_line);
                     symbols.insert(name.clone(), base + offset);
                 }
                 Item::Bytes(b) => offset += b.len() as u64,
@@ -89,6 +113,15 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                 }
                 Item::SymbolAssignment { name, body, original_line } => {
+                    if let Some(first) = label_lines.get(name) {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "`{name} = ...` collides with the label `{name}:` \
+                                 on line {first} -- rename one of them"
+                            ),
+                        });
+                    }
                     if !symbols.contains_key(name) {
                         if let Some(v) = try_evaluate_at(body, base + offset, &symbols, *original_line) {
                             symbols.insert(name.clone(), v as u64);
@@ -140,6 +173,17 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         let mut remaining: Vec<(String, String, u64, usize)> = Vec::new();
         for (name, body, here, line) in &assignments {
             if symbols.contains_key(name) {
+                // A pending assignment whose name turned out to be a label
+                // (defined after it) must not vanish silently.
+                if let Some(first) = label_lines.get(name) {
+                    return Err(EmuError::AssemblyError {
+                        line: *line,
+                        message: format!(
+                            "`{name} = ...` collides with the label `{name}:` \
+                             on line {first} -- rename one of them"
+                        ),
+                    });
+                }
                 continue;
             }
             if let Some(v) = try_evaluate_at(body, *here, &symbols, *line) {
@@ -230,7 +274,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         let mut offset: u64 = 0;
         for (idx, item) in section.items.iter().enumerate() {
             match item {
-                Item::Label(_) => {}
+                Item::Label { .. } => {}
                 Item::Bytes(b) => {
                     writes.push((base + offset, b.clone()));
                     offset += b.len() as u64;
