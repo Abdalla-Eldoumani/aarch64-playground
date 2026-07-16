@@ -212,6 +212,17 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
+      case "isRangeMapped": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build reports everything
+        // mapped, degrading to the previous zero-fill behavior.
+        const probe = (emu as { is_range_mapped?: (a: number, l: number) => boolean })
+          .is_range_mapped;
+        const mapped = typeof probe === "function" ? probe.call(emu, msg.addr, msg.len) : true;
+        post({ id: msg.id, kind: "ok", value: mapped });
+        return;
+      }
       case "clearAllBreakpoints": {
         await ensureWasm();
         const emu = require_emulator();
