@@ -57,6 +57,58 @@ fn instructions_in_rodata_are_rejected_with_the_section_name() {
 }
 
 #[test]
+fn duplicate_labels_are_rejected_naming_both_lines() {
+    // Last-definition-wins silently rerouted branches: the first loop
+    // jumped into the second loop's body and spun to the step ceiling.
+    let src = ".text\n\
+               .global main\n\
+               main:\n\
+               loop:\n\
+               sub w0, w0, 1\n\
+               cbnz w0, loop\n\
+               loop:\n\
+               ret\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("`loop`"), "message was: {msg}");
+    assert!(msg.contains("line 4"), "message was: {msg}");
+    assert!(msg.contains("line 7"), "message was: {msg}");
+}
+
+#[test]
+fn cross_section_duplicate_labels_are_rejected() {
+    let src = ".data\n\
+               buf: .word 1\n\
+               .bss\n\
+               buf: .skip 8\n\
+               .text\n\
+               main: ret\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("`buf`"), "message was: {msg}");
+}
+
+#[test]
+fn label_colliding_with_an_equate_is_rejected_in_both_orders() {
+    // Equate first: the label used to clobber it, then the innocent use
+    // site got "immediate out of range for MOV".
+    let src = "count = 7\n\
+               .text\n\
+               main:\n\
+               mov x0, count\n\
+               ret\n\
+               count:\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("count"), "message was: {msg}");
+    // Label first: the equate used to vanish silently.
+    let src = ".text\n\
+               main:\n\
+               ret\n\
+               count:\n\
+               count = 7\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("count"), "message was: {msg}");
+}
+
+#[test]
 fn data_before_text_still_assembles() {
     // The reject must key on the section an instruction lands in, not on
     // section order: .data-first programs are the course norm.
