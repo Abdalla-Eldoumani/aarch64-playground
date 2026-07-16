@@ -30,6 +30,11 @@ pub const BSS_BASE: u64 = 0x0070_0000;
 /// Initial stack pointer (grows downward).
 pub const STACK_BASE: u64 = 0x8000_0000;
 
+/// Lowest address sp may legally reach: 1 MiB of stack. Course programs
+/// use a few KiB; only unbounded recursion (or a garbage sp) gets here,
+/// and it deserves a stack-overflow message, not the memory-cap one.
+pub const STACK_FLOOR: u64 = STACK_BASE - 1024 * 1024;
+
 /// Base address of the synthetic host-function stubs. `BL` targets inside
 /// this range are intercepted by the executor and dispatched to a Rust
 /// implementation (printf, scanf, etc.) instead of being executed as real
@@ -507,6 +512,14 @@ impl Cpu {
                 error: Some(msg),
                 outcome: StepOutcome::Halted,
             });
+        }
+
+        // Stack wall: sp far below the base is runaway recursion (or a
+        // frame pointer that was never set up). Without this check the
+        // store path silently mapped page after page downward until the
+        // memory cap fired blaming "too much memory" -- the wrong cause.
+        if self.regs.read_sp() < STACK_FLOOR {
+            return Ok(self.runtime_error_halt(EmuError::StackOverflow));
         }
 
         let pc = self.regs.read_pc();
@@ -1740,6 +1753,28 @@ mod tests {
         let r = cpu.run_until_break(10).unwrap();
         assert!(r.halted);
         assert_eq!(r.error, Some(step_ceiling_message()));
+    }
+
+    #[test]
+    fn a_runaway_sp_halts_with_the_stack_overflow_cause() {
+        // Never run real deep recursion here (slow in debug); park sp past
+        // the floor directly and take one step.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        cpu.regs.write_sp(STACK_FLOOR - 16);
+        let r = cpu.step().unwrap();
+        assert!(r.halted);
+        let msg = r.error.unwrap_or_default();
+        assert!(msg.contains("stack overflow"), "was: {msg}");
+        assert!(msg.contains("recursion"), "was: {msg}");
+        assert!(cpu.is_halted());
+
+        // A normal frame nowhere near the floor is untouched.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        cpu.regs.write_sp(STACK_BASE - 4096);
+        let r = cpu.step().unwrap();
+        assert!(r.error.is_none());
     }
 
     #[test]
