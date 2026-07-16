@@ -67,7 +67,7 @@ export interface DispatchContext {
   writeVfs(path: string, body: string): void;
   deleteVfs(path: string): Promise<boolean> | boolean;
   /** Run the currently-loaded program with argv and optional stdin. */
-  runProgram(args: string[], stdin?: string): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  runProgram(args: string[], stdin?: string): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
   step(): Promise<{ halted: boolean; line: number | null }>;
   runUntilBreak(): Promise<{ halted: boolean; hit_breakpoint: boolean }>;
   setBreakpoint(addr: number): Promise<void>;
@@ -87,7 +87,7 @@ export interface DispatchContext {
     source: string,
     args: string[],
     stdin?: string,
-  ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  ): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
   /** The terminal's executable registry: `gcc -o name` writes it, `./name`
    *  reads it. Survives across commands within the pane's lifetime. */
   executables: Map<string, string>;
@@ -271,8 +271,11 @@ export async function dispatchCommand(
 
   if (cmd === "./program" || cmd === "program" || cmd.startsWith("./")) {
     const name = cmd.startsWith("./") ? cmd.slice(2) : cmd;
-    const isEditorProgram = name === "program";
-    const compiled = isEditorProgram ? undefined : ctx.executables.get(name);
+    // A compiled artifact always wins: `gcc x.s -o program` used to be
+    // silently shadowed by the editor buffer, with no command able to
+    // reveal the built executable existed.
+    const compiled = ctx.executables.get(name);
+    const isEditorProgram = name === "program" && compiled === undefined;
     if (!isEditorProgram && compiled === undefined) {
       return {
         status: "err",
@@ -294,7 +297,12 @@ export async function dispatchCommand(
     if (!stdoutTo && result.stdout) lines.push(...result.stdout.split("\n"));
     if (result.stderr) lines.push(...result.stderr.split("\n").map((l) => `stderr: ${l}`));
     if (result.exitCode != null) lines.push(`[exit ${result.exitCode}]`);
-    return { status: result.exitCode === 0 ? "ok" : "err", lines, exitCode: result.exitCode };
+    else lines.push("[no exit -- the program did not finish]");
+    return {
+      status: result.exitCode === 0 ? "ok" : "err",
+      lines,
+      exitCode: result.exitCode ?? undefined,
+    };
   }
 
   if (cmd === "gdb") {
