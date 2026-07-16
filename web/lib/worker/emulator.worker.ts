@@ -23,6 +23,10 @@ import {
 let emulator: Emulator | null = null;
 let frame = 0;
 let pauseRequested = false;
+// Bumped by every operation that replaces the machine (reset, assemble,
+// loadState, stepBack). A run loop that wakes into a different epoch is
+// driving a machine that no longer exists and must stand down.
+let runEpoch = 0;
 let wasmReady: Promise<void> | null = null;
 
 // Defer the WASM fetch + Emulator construction until the first
@@ -52,6 +56,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "assemble": {
+        runEpoch++;
         await ensureWasm();
         const emu = require_emulator();
         const result =
@@ -87,6 +92,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "stepBack": {
+        runEpoch++;
         await ensureWasm();
         const emu = require_emulator();
         const raw = emu.step_back() as Record<string, unknown>;
@@ -112,6 +118,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         // event queue between chunks so heartbeats actually fire and
         // pause requests are picked up.
         pauseRequested = false;
+        const epoch = runEpoch;
         const HEARTBEAT_STEPS = 10_000;
         let totalSteps = 0;
         let lastResult: RunResultPayload = {
@@ -155,6 +162,12 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
             postHeartbeat();
             lastHeartbeat = now;
             await new Promise<void>((resolve) => setTimeout(resolve, 0));
+            // The yield is where a reset/assemble can land; a stale run
+            // must stop driving the replaced machine.
+            if (epoch !== runEpoch) {
+              lastResult = { ...lastResult, cancelled: true };
+              break;
+            }
           }
         }
         // Fold totalSteps into the result so the caller can update its
@@ -183,6 +196,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "reset": {
+        runEpoch++;
         await ensureWasm();
         const emu = require_emulator();
         emu.reset();
@@ -257,6 +271,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "loadState": {
+        runEpoch++;
         await ensureWasm();
         const emu = require_emulator();
         const ok = emu.load_state(msg.name);
