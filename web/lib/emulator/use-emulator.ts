@@ -592,6 +592,10 @@ export function useEmulator(): EmulatorState {
     backend
       .runUntilBreak(1_000_000)
       .then(({ runResult }) => {
+        // A run cancelled by reset/assemble describes a machine that no
+        // longer exists; acting on it painted `unknown instruction:
+        // 0x00000000` right after the student pressed Reset.
+        if (runResult.cancelled) return;
         setStepCount((c) => {
           const next = c + runResult.steps_executed;
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
