@@ -21,6 +21,7 @@ export type RequestKind =
   | "pause"
   | "reset"
   | "pushStdin"
+  | "closeStdin"
   | "takeStdout"
   | "takeStderr"
   | "getMemory"
@@ -55,6 +56,7 @@ export type Request =
   | BaseRequest<"pause">
   | BaseRequest<"reset">
   | (BaseRequest<"pushStdin"> & { text: string })
+  | BaseRequest<"closeStdin">
   | BaseRequest<"takeStdout">
   | BaseRequest<"takeStderr">
   | (BaseRequest<"getMemory"> & { addr: number; len: number })
