@@ -175,7 +175,7 @@ pub fn sys_read(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 /// exit(status). Set exit code and halt the CPU.
 pub fn sys_exit(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
-    let code = ctx.regs.read_gpr(0, true) as i64;
+    let code = crate::hosted::exit_status(ctx.regs);
     Ok(HostOutcome::Exited(code))
 }
 
@@ -188,8 +188,15 @@ pub fn sys_openat(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     // x0 = dirfd (ignored), x1 = pathname, x2 = flags, x3 = mode.
     let path_ptr = ctx.regs.read_gpr(1, true);
     let flags = ctx.regs.read_gpr(2, true) as u32;
-    let bytes = read_c_string(ctx.mem, path_ptr)?;
+    let bytes = read_c_string(ctx.mem, path_ptr, "the openat path")?;
     let path = String::from_utf8_lossy(&bytes).into_owned();
+
+    if path.is_empty() {
+        // Linux returns -1/ENOENT for an empty path. The usual cause here
+        // is a filename buffer that was reserved (.skip) but never filled.
+        ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        return Ok(HostOutcome::Continue);
+    }
 
     let writable = (flags & O_WRONLY) != 0 || (flags & O_RDWR) != 0;
     let create = (flags & O_CREAT) != 0;
@@ -402,6 +409,32 @@ mod tests {
             h.mem.write_u8(addr + i as u64, *b).unwrap();
         }
         h.mem.write_u8(addr + path.len() as u64, 0).unwrap();
+    }
+
+    #[test]
+    fn sys_exit_reads_a_signed_int() {
+        // The raw-syscall path (mov w0, #-1; mov x8, #93; svc 0) must
+        // report the same -1 the libc exit path does.
+        let mut h = Host::new();
+        h.regs.write_gpr(0, false, 0xFFFF_FFFF);
+        let out = dispatch(SYS_EXIT, &mut h.ctx()).unwrap();
+        assert_eq!(out, HostOutcome::Exited(-1));
+    }
+
+    #[test]
+    fn openat_empty_path_returns_minus_one_and_creates_nothing() {
+        // Linux answers "" with ENOENT; accepting it minted a phantom ""
+        // file every write then landed in. The usual cause is a filename
+        // buffer that was reserved but never filled.
+        let mut h = Host::new();
+        place_path(&mut h, 0x0060_0000, "");
+        h.regs.write_gpr(0, true, (-100i64) as u64);
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, (O_WRONLY | O_CREAT) as u64);
+        dispatch(SYS_OPENAT, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert!(h.vfs.is_empty());
+        assert!(h.open_files.is_empty());
     }
 
     #[test]
