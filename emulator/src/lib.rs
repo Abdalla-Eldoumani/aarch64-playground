@@ -349,6 +349,12 @@ impl Emulator {
     /// recovered from LR-4, because stub addresses are synthetic and never
     /// appear in the line map.
     fn error_line_for(&self, pc: u64) -> Option<u32> {
+        // The fell-off-the-end halt stops one word past the image; point
+        // the marker at the LAST mapped instruction line -- the place the
+        // missing ret belongs.
+        if self.cpu.text_end() == Some(pc) {
+            return self.line_map.chunks_exact(2).last().map(|pair| pair[1]);
+        }
         let lookup = if self.cpu.host.contains_address(pc) {
             self.cpu.regs.read_gpr(30, true).wrapping_sub(4)
         } else {
