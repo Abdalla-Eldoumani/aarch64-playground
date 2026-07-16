@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { parseAddress } from "@/lib/emulator/parse-address";
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { Select } from "@/components/ui/Select";
@@ -34,6 +35,10 @@ const JUMP_TARGETS: Array<{ label: string; addr: string }> = [
 
 export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
   const [baseAddr, setBaseAddr] = useState("0x00400000");
+  // The last address that parsed. A mistyped character keeps the window
+  // here instead of silently truncating to a low address whose zeros read
+  // as "my .data is empty".
+  const [lastGoodAddr, setLastGoodAddr] = useState(0x00400000);
   const [rows] = useState(DEFAULT_ROWS);
   const zoom = useZoom("memory");
   // 16 bytes/row reads naturally on a desktop monospace grid; below sm
@@ -42,13 +47,16 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
   const bp = useBreakpoint();
   const bytesPerRow = isAtLeast(bp, "sm") ? 16 : 8;
 
-  const addr = parseInt(baseAddr, 16) || 0;
+  const parsed = parseAddress(baseAddr);
+  const addr = parsed ?? lastGoodAddr;
   const totalBytes = rows * bytesPerRow;
   const data = getMemory(addr, totalBytes);
 
   const handleAddrChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setBaseAddr(e.target.value);
+      const p = parseAddress(e.target.value);
+      if (p != null) setLastGoodAddr(p);
     },
     []
   );
@@ -83,7 +91,11 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
           groups={[
             { options: JUMP_TARGETS.map((j) => ({ value: j.addr, label: j.label })) },
           ]}
-          onSelect={(addrValue) => setBaseAddr(addrValue)}
+          onSelect={(addrValue) => {
+            setBaseAddr(addrValue);
+            const p = parseAddress(addrValue);
+            if (p != null) setLastGoodAddr(p);
+          }}
         />
         <ZoomControl
           scale={zoom.scale}
@@ -93,6 +105,12 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
           className="ml-auto"
         />
       </div>
+      {parsed == null && (
+        <div role="alert" className="text-[var(--error)] text-[10px] mb-2">
+          address must be hex (0x...) or decimal -- showing 0x
+          {lastGoodAddr.toString(16).padStart(8, "0")}
+        </div>
+      )}
 
       <table className="w-full font-mono">
         <thead>
