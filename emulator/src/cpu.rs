@@ -57,6 +57,23 @@ pub fn step_ceiling_message() -> String {
     format!("stopped after {MAX_TOTAL_STEPS} steps -- possible infinite loop")
 }
 
+/// Cumulative stdout+stderr ceiling (the output-flood wall). The step and
+/// page walls do not cover printing: one printf is one step, and the host
+/// buffers live outside guest pages, so a print in a tight loop -- or one
+/// crafted wide-format call -- could grow the console without bound. The
+/// counter survives the UI draining the buffers, so it measures what the
+/// program produced, not what happens to be queued. 4 MiB dwarfs any real
+/// course program's output.
+pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+
+/// Calm, plain-language abort surfaced when the output ceiling is hit.
+pub fn output_ceiling_message() -> String {
+    format!(
+        "stopped -- the program printed over {} MiB of output; check for a print inside a loop that never ends",
+        MAX_OUTPUT_BYTES / (1024 * 1024)
+    )
+}
+
 /// What happened during a single step, beyond the "did it advance or halt"
 /// dichotomy. Runtime I/O (scanf, read syscall) introduces a third state
 /// where the CPU is paused waiting for stdin data to arrive.
@@ -156,6 +173,9 @@ pub struct Cpu {
     /// the `MAX_TOTAL_STEPS` runaway-loop wall; persistent across repeated
     /// `run_until_break` calls so chunked running still reaches the ceiling.
     steps_total: u64,
+    /// Cumulative stdout+stderr bytes since the last load/reset. Drives the
+    /// `MAX_OUTPUT_BYTES` wall; survives the UI draining the buffers.
+    output_total: usize,
     /// Set when a bound (step ceiling or memory cap) aborts the run. The
     /// run/step result carries it through `error` while `halted` stays true,
     /// so the UI shows a calm message instead of a silent stop or a raw
@@ -186,6 +206,7 @@ impl Cpu {
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
             steps_total: 0,
+            output_total: 0,
             abort_message: None,
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
@@ -246,6 +267,7 @@ impl Cpu {
         self.halted = false;
         // A freshly loaded program starts a fresh runaway budget.
         self.steps_total = 0;
+        self.output_total = 0;
         self.abort_message = None;
     }
 
@@ -272,6 +294,7 @@ impl Cpu {
         // A fresh program starts a fresh runaway budget and clears any
         // prior bounds-abort message.
         self.steps_total = 0;
+        self.output_total = 0;
         self.abort_message = None;
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes)?;
@@ -364,6 +387,29 @@ impl Cpu {
     fn memory_cap_halt(&mut self) -> StepResult {
         self.halted = true;
         let msg = MEMORY_CAP_MESSAGE.to_string();
+        self.abort_message = Some(msg.clone());
+        StepResult {
+            pc: self.regs.read_pc(),
+            halted: true,
+            error: Some(msg),
+            outcome: StepOutcome::Halted,
+        }
+    }
+
+    /// Add whatever a host stub or syscall just printed to the cumulative
+    /// output counter; true means the `MAX_OUTPUT_BYTES` wall is breached.
+    /// `before` is `stdout.len() + stderr.len()` captured before the call,
+    /// so UI drains between steps never reset the accounting.
+    fn charge_output(&mut self, before: usize) -> bool {
+        let now = self.stdout.len() + self.stderr.len();
+        self.output_total += now.saturating_sub(before);
+        self.output_total > MAX_OUTPUT_BYTES
+    }
+
+    /// Build the calm output-ceiling halt, mirroring `memory_cap_halt`.
+    fn output_cap_halt(&mut self) -> StepResult {
+        self.halted = true;
+        let msg = output_ceiling_message();
         self.abort_message = Some(msg.clone());
         StepResult {
             pc: self.regs.read_pc(),
@@ -466,7 +512,12 @@ impl Cpu {
             // buffer-filling scanf when the program has already neared the
             // cap) gets the same calm halt as a write in normal code, never
             // a raw fault. Any other stub failure halts calmly too.
-            return match self.dispatch_host_stub(pc) {
+            let produced = self.stdout.len() + self.stderr.len();
+            let dispatched = self.dispatch_host_stub(pc);
+            if self.charge_output(produced) {
+                return Ok(self.output_cap_halt());
+            }
+            return match dispatched {
                 Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
                     Ok(self.memory_cap_halt())
                 }
@@ -520,7 +571,12 @@ impl Cpu {
                 // a buffer when the program has already neared the cap) gets
                 // the same calm halt as a write in normal code, never a raw
                 // fault.
-                match self.dispatch_syscall(syscall_num) {
+                let produced = self.stdout.len() + self.stderr.len();
+                let dispatched = self.dispatch_syscall(syscall_num);
+                if self.charge_output(produced) {
+                    return Ok(self.output_cap_halt());
+                }
+                match dispatched {
                     Ok(()) => {}
                     Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
                         return Ok(self.memory_cap_halt());
@@ -800,6 +856,7 @@ impl Cpu {
         self.changed_fprs.clear();
         self.halted = false;
         self.steps_total = 0;
+        self.output_total = 0;
         self.abort_message = None;
         self.stdout.clear();
         self.stderr.clear();
@@ -1197,6 +1254,53 @@ mod tests {
         let r = cpu.step().unwrap();
         assert_eq!(r.outcome, StepOutcome::Halted);
         assert!(r.halted);
+    }
+
+    #[test]
+    fn output_ceiling_halts_calmly() {
+        // The step and page walls never covered printing; a write syscall
+        // crossing MAX_OUTPUT_BYTES must halt with the calm message.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(8, 64, 0),   // x8 = write
+            encode_movz(0, 1, 0),    // x0 = stdout
+            encode_movz(1, 0x60, 1), // x1 = DATA_BASE (0x0060_0000)
+            encode_movz(2, 16, 0),   // x2 = 16 bytes
+            encode_svc(0),
+        ]);
+        for i in 0..16 {
+            cpu.mem.write_u8(0x0060_0000 + i, b'x').unwrap();
+        }
+        cpu.output_total = MAX_OUTPUT_BYTES - 8;
+        let r = cpu.run_until_break(100).unwrap();
+        assert!(r.halted);
+        assert_eq!(r.error, Some(output_ceiling_message()));
+        assert_eq!(cpu.abort_message, Some(output_ceiling_message()));
+    }
+
+    #[test]
+    fn output_accounting_survives_console_drains() {
+        // The wall measures what the program produced, not what happens to
+        // be queued: draining stdout between steps must not reset it.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(8, 64, 0),
+            encode_movz(0, 1, 0),
+            encode_movz(1, 0x60, 1),
+            encode_movz(2, 16, 0),
+            encode_svc(0),
+        ]);
+        for i in 0..16 {
+            cpu.mem.write_u8(0x0060_0000 + i, b'x').unwrap();
+        }
+        cpu.output_total = MAX_OUTPUT_BYTES - 8;
+        for _ in 0..4 {
+            cpu.step().unwrap();
+            let _ = cpu.take_stdout(); // UI heartbeat drain
+        }
+        let r = cpu.step().unwrap(); // the svc that crosses the wall
+        assert!(r.halted);
+        assert_eq!(r.error, Some(output_ceiling_message()));
     }
 
     #[test]
