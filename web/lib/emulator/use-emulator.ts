@@ -106,6 +106,8 @@ export interface EmulatorState {
    */
   getMemory: (addr: number, len: number) => Uint8Array;
   pushStdin: (s: string) => void;
+  /** Signal end-of-input (ctrl-d): getchar sees EOF, scanf finishes. */
+  closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   readVfsFile: (path: string) => Promise<Uint8Array>;
   deleteVfsFile: (path: string) => Promise<boolean>;
@@ -646,6 +648,12 @@ export function useEmulator(): EmulatorState {
     void backend.pushStdin(s);
   }, []);
 
+  const closeStdin = useCallback(() => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    void backend.closeStdin();
+  }, []);
+
   const uploadVfsFile = useCallback((path: string, data: Uint8Array) => {
     const backend = backendRef.current;
     if (!backend) return;
@@ -852,6 +860,7 @@ export function useEmulator(): EmulatorState {
       toggleBreakpoint,
       getMemory,
       pushStdin,
+      closeStdin,
       uploadVfsFile,
       readVfsFile,
       deleteVfsFile,
@@ -877,7 +886,7 @@ export function useEmulator(): EmulatorState {
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, getMemory,
-      pushStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
+      pushStdin, closeStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, replayTick, dirtyAddrsTick, seekReplay,
     ],
