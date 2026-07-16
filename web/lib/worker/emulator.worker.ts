@@ -160,6 +160,16 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         // Fold totalSteps into the result so the caller can update its
         // step counter accurately even though we ran in chunks.
         lastResult.steps_executed = totalSteps;
+        // A fall-out of the while condition with nothing else to report
+        // means the budget alone stopped the run; say so, or an infinite
+        // loop reads as a clean finish.
+        lastResult.step_limit_reached =
+          totalSteps >= msg.maxSteps &&
+          !pauseRequested &&
+          !lastResult.halted &&
+          !lastResult.hit_breakpoint &&
+          !lastResult.error &&
+          !emu.is_blocked();
         post({
           id: msg.id,
           kind: "ok",
