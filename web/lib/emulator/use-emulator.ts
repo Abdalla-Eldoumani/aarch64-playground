@@ -615,8 +615,12 @@ export function useEmulator(): EmulatorState {
     if (!backend) return;
     // A restored save is a live machine with a program in memory, so the
     // execution controls come back even when a reset preceded the load.
+    // Any error banner describes a run the restored state never took.
     void backend.loadState(name).then(({ ok }) => {
-      if (ok) markProgramLoaded(true);
+      if (ok) {
+        setError(null);
+        markProgramLoaded(true);
+      }
     });
   }, [markProgramLoaded]);
 
