@@ -491,6 +491,21 @@ export function useEmulator(): EmulatorState {
     [assembleWith],
   );
 
+  /**
+   * Surface a runtime stop with its editor line when the wasm side could
+   * resolve one: the banner carries "line N" and the editor gets a line
+   * marker, so a fault raised inside printf or a syscall points at the
+   * call site instead of at nothing.
+   */
+  const surfaceRuntimeError = useCallback((message: string, line?: number | null) => {
+    if (line != null && line > 0) {
+      setError(`line ${line}: ${message}`);
+      setAssemblyErrors([{ line, message }]);
+    } else {
+      setError(message);
+    }
+  }, []);
+
   const step = useCallback(() => {
     const backend = backendRef.current;
     // Gate on a loaded program (through the ref, like run) so the controls,
@@ -500,7 +515,7 @@ export function useEmulator(): EmulatorState {
     backend
       .step()
       .then(({ stepResult }) => {
-        if (stepResult.error) setError(stepResult.error);
+        if (stepResult.error) surfaceRuntimeError(stepResult.error, stepResult.error_line);
         setStepCount((c) => {
           const next = c + 1;
           // currentLineRef + latestSnapRef are already updated because
@@ -513,7 +528,7 @@ export function useEmulator(): EmulatorState {
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
       });
-  }, [pushReplayFrame]);
+  }, [pushReplayFrame, surfaceRuntimeError]);
 
   const stepBack = useCallback(() => {
     const backend = backendRef.current;
@@ -562,7 +577,7 @@ export function useEmulator(): EmulatorState {
       .then(({ runResult }) => {
         setStepCount((c) => {
           const next = c + runResult.steps_executed;
-          if (runResult.error) setError(runResult.error);
+          if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
           // Approximate replay capture: only the final frame of the run
           // chunk is captured. Per-step granularity would require a
           // Rust delta in the snapshot.
@@ -577,7 +592,7 @@ export function useEmulator(): EmulatorState {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [pushReplayFrame]);
+  }, [pushReplayFrame, surfaceRuntimeError]);
 
   const pause = useCallback(() => {
     const backend = backendRef.current;
