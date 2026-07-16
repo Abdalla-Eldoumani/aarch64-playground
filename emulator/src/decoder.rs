@@ -219,6 +219,15 @@ pub enum Instruction {
         shift: ShiftType,
         amount: u8,
     },
+    /// LSLV/LSRV/ASRV/RORV: shift Rn left/right by the amount in Rm,
+    /// modulo the register width (the dp2 register-shift family).
+    VarShift {
+        sf: bool,
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        shift: ShiftType,
+    },
     /// ADD/SUB/ADDS/SUBS with EXTENDED register operand (bit 21 = 1) --
     /// the only register form that reaches SP: Rn = 31 reads SP, and
     /// Rd = 31 writes SP for the non-flag-setting ops. Rm = 31 stays XZR.
@@ -1497,6 +1506,19 @@ fn decode_dp2(instr: u32) -> Result<Instruction, EmuError> {
 
     if s != 0 {
         return Err(EmuError::UnknownInstruction(instr));
+    }
+
+    // LSLV/LSRV/ASRV/RORV share the dp2 space: shift Rn by Rm modulo the
+    // register width. The assembler emits these for `lsl x0, x1, x2`, so
+    // decode must read them back or the register-form shifts die mid-run.
+    if (opcode & !0b11) == 0b001000 {
+        return Ok(Instruction::VarShift {
+            sf,
+            rd,
+            rn,
+            rm,
+            shift: ShiftType::from_u8((opcode & 0b11) as u8),
+        });
     }
 
     let op = match opcode {
