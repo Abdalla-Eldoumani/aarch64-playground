@@ -35,6 +35,8 @@ export interface EmulatorBackend {
   getMemory(addr: number, len: number): Promise<Uint8Array>;
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
+  /** Remove every breakpoint at once (program switch / re-assemble). */
+  clearAllBreakpoints(): Promise<void>;
   saveState(name: string): Promise<StateSnapshot>;
   loadState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }>;
   deleteState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }>;
@@ -215,6 +217,10 @@ class MainThreadBackend implements EmulatorBackend {
 
   async clearBreakpoint(addr: number): Promise<void> {
     this.requireEmu().clearBreakpoint(addr);
+  }
+
+  async clearAllBreakpoints(): Promise<void> {
+    this.requireEmu().clearAllBreakpoints();
   }
 
   async saveState(name: string): Promise<StateSnapshot> {
