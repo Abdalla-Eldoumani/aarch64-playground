@@ -109,6 +109,34 @@ fn label_colliding_with_an_equate_is_rejected_in_both_orders() {
 }
 
 #[test]
+fn out_of_reach_conditional_branches_are_rejected_not_wrapped() {
+    // imm19 reaches +/-1 MiB and imm14 +/-32 KiB; section bases sit 1-2
+    // MiB apart, so a branch to a data label used to wrap silently into
+    // an infinite loop blamed on the step ceiling.
+    let src = ".data\n\
+               flag: .word 1\n\
+               .text\n\
+               .global main\n\
+               main:\n\
+               mov x0, 1\n\
+               b.eq flag\n\
+               ret\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("out of reach"), "message was: {msg}");
+    assert!(msg.contains("line 7"), "message was: {msg}");
+
+    let src = ".bss\n\
+               buf: .skip 8\n\
+               .text\n\
+               .global main\n\
+               main:\n\
+               tbz x0, 0, buf\n\
+               ret\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("out of reach"), "message was: {msg}");
+}
+
+#[test]
 fn data_before_text_still_assembles() {
     // The reject must key on the section an instruction lands in, not on
     // section order: .data-first programs are the course norm.
