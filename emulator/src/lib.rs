@@ -131,6 +131,9 @@ struct StepResultJs {
     pc: u64,
     halted: bool,
     error: Option<String>,
+    /// Editor line of the instruction the error names, when the line map
+    /// can resolve it. None when there is no error or no mapping.
+    error_line: Option<u32>,
     /// "advance" | "halted" | "waiting" | "exited"
     outcome: &'static str,
     /// Populated when outcome == "exited".
@@ -145,6 +148,8 @@ struct RunResultJs {
     steps_executed: u32,
     hit_breakpoint: bool,
     error: Option<String>,
+    /// Editor line of the instruction the error names (see StepResultJs).
+    error_line: Option<u32>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -331,15 +336,38 @@ impl Emulator {
         }
     }
 
+    /// Resolve the editor line for a runtime stop. The calm-halt boundary
+    /// leaves PC on the faulting instruction; a fault raised inside a host
+    /// stub (printf, scanf, a syscall helper) reports the CALL site instead,
+    /// recovered from LR-4, because stub addresses are synthetic and never
+    /// appear in the line map.
+    fn error_line_for(&self, pc: u64) -> Option<u32> {
+        let lookup = if self.cpu.host.contains_address(pc) {
+            self.cpu.regs.read_gpr(30, true).wrapping_sub(4)
+        } else {
+            pc
+        };
+        let target = lookup as u32;
+        self.line_map
+            .chunks_exact(2)
+            .find(|pair| pair[0] == target)
+            .map(|pair| pair[1])
+    }
+
     /// Execute one instruction.
     pub fn step(&mut self) -> JsValue {
         match self.cpu.step() {
             Ok(result) => {
                 let (outcome, exit_code) = outcome_to_js(&result.outcome);
+                let error_line = result
+                    .error
+                    .as_ref()
+                    .and_then(|_| self.error_line_for(result.pc));
                 serde_wasm_bindgen::to_value(&StepResultJs {
                     pc: result.pc,
                     halted: result.halted,
                     error: result.error,
+                    error_line,
                     outcome,
                     exit_code,
                 })
@@ -349,6 +377,7 @@ impl Emulator {
                 pc: self.cpu.regs.read_pc(),
                 halted: true,
                 error: Some(e.to_string()),
+                error_line: self.error_line_for(self.cpu.regs.read_pc()),
                 outcome: "error",
                 exit_code: None,
             })
@@ -367,6 +396,7 @@ impl Emulator {
             pc: self.cpu.regs.read_pc(),
             halted: self.cpu.is_halted(),
             error: None,
+            error_line: None,
             outcome: outcome_str,
             exit_code,
         })
@@ -403,19 +433,27 @@ impl Emulator {
     /// Run until breakpoint, halt, error, or max_steps reached.
     pub fn run_until_break(&mut self, max_steps: u32) -> JsValue {
         match self.cpu.run_until_break(max_steps) {
-            Ok(result) => serde_wasm_bindgen::to_value(&RunResultJs {
-                pc: result.pc,
-                halted: result.halted,
-                steps_executed: result.steps_executed,
-                hit_breakpoint: result.hit_breakpoint,
-                error: result.error,
-            }).unwrap(),
+            Ok(result) => {
+                let error_line = result
+                    .error
+                    .as_ref()
+                    .and_then(|_| self.error_line_for(result.pc));
+                serde_wasm_bindgen::to_value(&RunResultJs {
+                    pc: result.pc,
+                    halted: result.halted,
+                    steps_executed: result.steps_executed,
+                    hit_breakpoint: result.hit_breakpoint,
+                    error: result.error,
+                    error_line,
+                }).unwrap()
+            }
             Err(e) => serde_wasm_bindgen::to_value(&RunResultJs {
                 pc: self.cpu.regs.read_pc(),
                 halted: true,
                 steps_executed: 0,
                 hit_breakpoint: false,
                 error: Some(e.to_string()),
+                error_line: self.error_line_for(self.cpu.regs.read_pc()),
             }).unwrap(),
         }
     }
