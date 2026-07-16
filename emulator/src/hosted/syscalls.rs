@@ -14,6 +14,9 @@ use crate::hosted::{HostContext, HostOutcome};
 pub const SYS_READ: u64 = 63;
 pub const SYS_WRITE: u64 = 64;
 pub const SYS_EXIT: u64 = 93;
+/// glibc's exit() issues exit_group on AArch64 Linux, and most online
+/// tutorials teach 94, so both numbers terminate the program.
+pub const SYS_EXIT_GROUP: u64 = 94;
 pub const SYS_OPENAT: u64 = 56;
 pub const SYS_CLOSE: u64 = 57;
 pub const SYS_LSEEK: u64 = 62;
@@ -47,13 +50,16 @@ pub fn dispatch(number: u64, ctx: &mut HostContext<'_>) -> Result<HostOutcome, E
     match number {
         SYS_WRITE => sys_write(ctx),
         SYS_READ => sys_read(ctx),
-        SYS_EXIT => sys_exit(ctx),
+        SYS_EXIT | SYS_EXIT_GROUP => sys_exit(ctx),
         SYS_OPENAT => sys_openat(ctx),
         SYS_CLOSE => sys_close(ctx),
         SYS_LSEEK => sys_lseek(ctx),
-        _ => Err(EmuError::AssemblyError {
-            line: 0,
-            message: format!("unsupported syscall {number} (x8)"),
+        _ => Err(EmuError::RuntimeError {
+            message: format!(
+                "syscall {number} (x8) is not supported -- this emulator implements \
+                 openat(56), close(57), lseek(62), read(63), write(64), and \
+                 exit(93/94); use `mov x8, 93` then `svc 0` to exit"
+            ),
         }),
     }
 }
