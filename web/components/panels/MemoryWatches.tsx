@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { parseAddress } from "@/lib/emulator/parse-address";
 
 const STORE_KEY = "aarch64-playground:memory-watches";
 
@@ -45,13 +46,6 @@ function persist(entries: MemoryWatch[]): void {
 
 /** Strict address parse: `0x...` is hex, bare digits are decimal, anything
  *  else is rejected so a typo never silently reads the wrong bytes. */
-function parseAddress(raw: string): number | null {
-  const t = raw.trim();
-  if (/^0x[0-9a-f]+$/i.test(t)) return parseInt(t, 16);
-  if (/^\d+$/.test(t)) return parseInt(t, 10);
-  return null;
-}
-
 function hexRow(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
