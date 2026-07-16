@@ -110,6 +110,15 @@ pub fn execute(
         Instruction::DpRegExt { op, sf, rd, rn, rm, extend, shift } => {
             exec_dp_ext(*op, *sf, *rd, *rn, *rm, *extend, *shift, regs)
         }
+        Instruction::VarShift { sf, rd, rn, rm, shift } => {
+            // Shift amount is Rm modulo the register width (apply_shift
+            // owns the modulo); truncating to u8 first keeps the low bits
+            // that matter.
+            let amount = regs.read_gpr(*rm, *sf) as u8;
+            let result = apply_shift(regs.read_gpr(*rn, *sf), *shift, amount, *sf);
+            regs.write_gpr(*rd, *sf, result);
+            Ok(ExecResult::Advance)
+        }
         Instruction::MoveWide { op, sf, rd, imm16, hw } => {
             exec_move_wide(*op, *sf, *rd, *imm16, *hw, regs)
         }
