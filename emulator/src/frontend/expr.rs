@@ -261,7 +261,10 @@ impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
                 self.advance();
                 Ok(self.here)
             }
-            TokenKind::Ident(name) => {
+            // Dotted local labels (`.L2`, GCC jump-table entries) resolve
+            // exactly like plain identifiers; they lex as DirectiveIdent
+            // because of the leading dot.
+            TokenKind::Ident(name) | TokenKind::DirectiveIdent(name) => {
                 let resolved = (self.resolve)(name).ok_or_else(|| {
                     err(line, &format!("unknown symbol `{name}`"))
                 })?;
@@ -283,7 +286,17 @@ impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
             }
             other => Err(err(
                 line,
-                &format!("unexpected token `{other:?}` in expression"),
+                &format!(
+                    "unexpected {} in this expression{}",
+                    crate::frontend::lexer::describe(other),
+                    match other {
+                        TokenKind::Hash =>
+                            " -- values in data directives are written without the #",
+                        TokenKind::StringLit(_) =>
+                            " -- text belongs in .string/.asciz, not a numeric directive",
+                        _ => "",
+                    }
+                ),
             )),
         }
     }
