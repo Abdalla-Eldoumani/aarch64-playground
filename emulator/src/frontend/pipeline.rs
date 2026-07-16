@@ -32,6 +32,11 @@ pub struct LinkedImage {
     /// Absolute address of the first instruction in `.text`, for debugger
     /// decoration.
     pub text_base: u64,
+    /// First address past the last real `.text` byte. Execution arriving
+    /// here fell off the end of the program (a `main` with no ret/exit);
+    /// the trampolines start at least 4 bytes later, so this address is
+    /// never a legitimate branch target.
+    pub text_end: u64,
     /// Resolved label -> absolute address for every label the linker
     /// saw (instructions, data symbols, m4 expression symbols, plus
     /// the synthetic `__tramp_<libc>` trampolines). Used by the
@@ -297,7 +302,12 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // = 8 bytes. They sit between .text and the literal pool so BL's
     // imm26 range easily reaches them, and so their LDR literal's imm19
     // reaches the pool entries that hold the real host stub addresses.
-    let tramp_base = CODE_BASE + ((text_len + 7) & !7);
+    // `+ 8` (not `+ 7`): always leave a gap of at least 4 bytes between
+    // the last real instruction and the first trampoline, so sequential
+    // fall-through can be told apart from a `bl printf` arriving at a
+    // trampoline. With plain 8-alignment an 8-aligned .text fell straight
+    // into the first trampoline and silently called that libc function.
+    let tramp_base = CODE_BASE + ((text_len + 8) & !7);
     let tramp_bytes = (host_trampolines.len() as u64) * 8;
     let pool_base = tramp_base + tramp_bytes;
 
@@ -506,6 +516,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         entry_point,
         instruction_count,
         text_base: CODE_BASE,
+        text_end: CODE_BASE + text_len,
         symbols,
         line_map,
     })
