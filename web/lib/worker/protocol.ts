@@ -132,6 +132,13 @@ export interface RunResultPayload {
   error: string | null;
   /** Editor line for a runtime error (see StepResultPayload). */
   error_line?: number | null;
+  /**
+   * True when the run stopped only because it exhausted the caller's step
+   * budget: not halted, not blocked, no breakpoint, no error. Without this
+   * flag a budget stop was indistinguishable from a clean finish and an
+   * infinite loop stopped silently.
+   */
+  step_limit_reached?: boolean;
 }
 
 /**
