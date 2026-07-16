@@ -109,6 +109,10 @@ export class WorkerClient {
     return this.send<StateSnapshot>({ id: 0, kind: "pushStdin", text });
   }
 
+  closeStdin(): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "closeStdin" });
+  }
+
   takeStdout(): Promise<string> {
     return this.send<string>({ id: 0, kind: "takeStdout" });
   }
