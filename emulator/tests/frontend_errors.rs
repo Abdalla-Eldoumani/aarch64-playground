@@ -174,6 +174,254 @@ fn global_main_without_the_label_fails_the_assemble() {
 }
 
 #[test]
+fn ldr_eq_with_a_bad_register_reports_its_line() {
+    // `x40` parsed into u8 fine and sailed to the linker's line-0 err;
+    // the Monaco marker then highlighted line 1.
+    let src = ".text
+.global main
+main:
+ldr x40, =99
+ret
+";
+    let msg = assemble_err(src);
+    assert!(msg.contains("line 4"), "message was: {msg}");
+    assert!(msg.contains("x40"), "message was: {msg}");
+}
+
+#[test]
+fn data_in_text_names_the_alignment_cause_at_the_instruction() {
+    // The misaligned pool offset used to surface as "ldr literal offset 29
+    // is not a multiple of 4" at line 0, blaming the student's correct ldr.
+    let src = ".text
+               .global main
+               msg: .string \"hi\"
+               main:
+               ldr x0, =msg
+               ret
+";
+    let msg = assemble_err(src);
+    assert!(msg.contains("line 5"), "message was: {msg}");
+    assert!(msg.contains(".balign"), "message was: {msg}");
+    assert!(msg.contains(".data") || msg.contains(".rodata"), "message was: {msg}");
+}
+
+#[test]
+fn a_section_outgrowing_its_window_is_rejected_not_overlapped() {
+    // 1 MiB of .data used to place the next label at the .bss base: two
+    // symbols on one address, stores clobbering unrelated variables.
+    let src = ".data
+               big: .skip 1048576
+               after: .word 7
+               .text
+               .global main
+               main:
+               ret
+";
+    let msg = assemble_err(src);
+    assert!(msg.contains(".data"), "message was: {msg}");
+    assert!(msg.contains("1 MiB"), "message was: {msg}");
+    // The absurd-count case is a message too, never a wrap or panic.
+    let src = ".data
+huge: .skip 9223372036854775807
+.text
+.global main
+main:
+ret
+";
+    let msg = assemble_err(src);
+    assert!(msg.contains(".data"), "message was: {msg}");
+}
+
+#[test]
+fn a_typod_macro_name_in_an_operand_names_the_symbol() {
+    // The evaluator's `unknown symbol` was swallowed into "invalid
+    // immediate", pointing the student at ranges instead of the typo.
+    let src = "define(SIZE, 10)
+               .text
+               .global main
+               main:
+               mov x0, #(SZIE + 1)
+               ret
+";
+    let msg = assemble_err(src);
+    assert!(msg.contains("SZIE"), "message was: {msg}");
+    assert!(msg.contains("line 5"), "message was: {msg}");
+    // Division by zero keeps its own diagnosis on the same path.
+    let msg = assemble_err(".text
+.global main
+main:
+mov x0, #(5 / 0)
+ret
+");
+    assert!(msg.contains("zero"), "message was: {msg}");
+}
+
+#[test]
+fn equ_and_set_point_at_the_supported_spelling() {
+    let msg = assemble_err(".equ FOO, 5
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("NAME = expression"), "message was: {msg}");
+    assert!(msg.contains("line 1"), "message was: {msg}");
+    let msg = assemble_err(".set FOO, 5
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("NAME = expression"), "message was: {msg}");
+}
+
+#[test]
+fn a_malformed_define_is_diagnosed_not_blamed_on_a_mnemonic() {
+    // `define(fp, x29` used to pass through and report "unknown mnemonic:
+    // DEFINE(FP," -- uppercased, truncated, describing the macro as a CPU
+    // instruction.
+    let msg = assemble_err("define(fp, x29
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("define"), "message was: {msg}");
+    assert!(msg.contains(")"), "message was: {msg}");
+    assert!(msg.contains("line 1"), "message was: {msg}");
+    let msg = assemble_err("define(fp x29)
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("comma"), "message was: {msg}");
+    let msg = assemble_err("define(, x29)
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("name"), "message was: {msg}");
+    let msg = assemble_err("define(fp, x29) x
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("after the closing"), "message was: {msg}");
+}
+
+#[test]
+fn a_hash_comment_line_names_the_comment_characters() {
+    let msg = assemble_err(".text
+.global main
+main:
+# set up
+ret
+");
+    assert!(msg.contains("//"), "message was: {msg}");
+    assert!(msg.contains("line 4"), "message was: {msg}");
+}
+
+#[test]
+fn exponent_floats_lex_in_double_and_float_lists() {
+    // `.double 1e5` was "invalid integer literal `1e5`"; `.double 1e-3`
+    // quoted text the student never typed ("1e").
+    let cpu = Cpu::new();
+    let src = ".data
+d: .double 1e5
+e: .double 1e-3
+f: .float 2E4
+.text
+.global main
+main:
+ret
+";
+    assert!(assemble_hosted(src, &cpu.host).is_ok(), "exponent floats should assemble");
+}
+
+#[test]
+fn an_empty_value_between_commas_names_the_extra_comma() {
+    let msg = assemble_err(".data
+v: .word 1,,2
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("comma"), "message was: {msg}");
+    assert!(msg.contains("line 2"), "message was: {msg}");
+    // Leading, trailing, and the deferred label-list path all reject.
+    assert!(assemble_err(".data
+v: .word ,1
+.text
+.global main
+main:
+ret
+").contains("comma"));
+    assert!(assemble_err(".data
+v: .word 1,2,
+.text
+.global main
+main:
+ret
+").contains("comma"));
+    let msg = assemble_err(".data
+t: .dword a,,b
+.text
+.global main
+main:
+a: ret
+b: ret
+");
+    assert!(msg.contains("comma"), "message was: {msg}");
+}
+
+#[test]
+fn tokens_in_expression_errors_read_as_source_not_debug() {
+    // `.word #5` used to say "unexpected token `Hash`"; `.word "hi"`
+    // dumped StringLit([104, 105]).
+    let msg = assemble_err(".data
+v: .word #5
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("`#`"), "message was: {msg}");
+    assert!(msg.contains("without the #"), "message was: {msg}");
+    assert!(!msg.contains("Hash"), "message was: {msg}");
+    let msg = assemble_err(".data
+v: .word \"hi\"
+.text
+.global main
+main:
+ret
+");
+    assert!(msg.contains("string literal"), "message was: {msg}");
+    assert!(msg.contains(".asciz"), "message was: {msg}");
+    assert!(!msg.contains("StringLit"), "message was: {msg}");
+}
+
+#[test]
+fn dotted_local_labels_work_in_data_slots() {
+    // `.quad .L2` is literal GCC jump-table output; the deferral test
+    // only knew Ident and Dot, so DirectiveIdent fell into the evaluator.
+    let cpu = Cpu::new();
+    let src = ".text
+               .global main
+               main:
+               ret
+               .L2:
+               ret
+               .data
+               table: .quad .L2
+";
+    assert!(assemble_hosted(src, &cpu.host).is_ok(), ".quad .L2 should assemble");
+}
+
+#[test]
 fn the_conformance_corpus_lints_clean() {
     // The lint is advisory and heuristic; a false positive on correct
     // course-style code would teach students to distrust it. Every
