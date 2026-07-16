@@ -34,6 +34,20 @@ export function buildShareHash(state: ShareState): string {
 }
 
 /**
+ * lz-string does not fail closed: a fragment whose 2-bit header bits
+ * decode to the unhandled case leaves the decoder's state undefined and
+ * it throws mid-stream instead of returning null. readShareHash runs
+ * during render on boot, so an uncontained throw is a blank page.
+ */
+function safeDecompress(compressed: string): string | null {
+  try {
+    return LZString.decompressFromEncodedURIComponent(compressed);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Parse a share hash (with or without leading `#`). Tries the v2 JSON
  * payload first, then falls back to the v1 source-only form. Returns
  * `null` if the hash isn't ours or the payload is malformed.
@@ -46,7 +60,7 @@ export function readShareHash(hash: string): ShareState | null {
   if (trimmed.length > MAX_SHARE_HASH_BYTES) return null;
   if (trimmed.startsWith(PREFIX_V2)) {
     const compressed = trimmed.slice(PREFIX_V2.length);
-    const decoded = LZString.decompressFromEncodedURIComponent(compressed);
+    const decoded = safeDecompress(compressed);
     if (!decoded) return null;
     if (decoded.length > MAX_SHARE_DECOMPRESSED_BYTES) return null;
     try {
@@ -73,7 +87,7 @@ export function readShareHash(hash: string): ShareState | null {
   }
   if (trimmed.startsWith(PREFIX_V1)) {
     const compressed = trimmed.slice(PREFIX_V1.length);
-    const decoded = LZString.decompressFromEncodedURIComponent(compressed);
+    const decoded = safeDecompress(compressed);
     if (!decoded || decoded.length === 0) return null;
     if (decoded.length > MAX_SHARE_DECOMPRESSED_BYTES) return null;
     return { source: decoded };
