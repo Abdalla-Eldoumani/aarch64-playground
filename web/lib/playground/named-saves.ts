@@ -60,6 +60,11 @@ function isValidSave(v: unknown): v is NamedSave {
     o.name.length > 0 &&
     typeof o.source === "string" &&
     typeof o.stepCount === "number" &&
+    // An imported bundle is untrusted: a 1e12 or negative count passed
+    // the bare typeof check and drove the restore loop unbounded.
+    Number.isInteger(o.stepCount) &&
+    o.stepCount >= 0 &&
+    o.stepCount <= 10_000_000 &&
     typeof o.savedAt === "string"
   );
 }
