@@ -16,7 +16,7 @@ use crate::hosted::{HostContext, HostOutcome, VarargWalker};
 
 pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
-    let fmt_bytes = read_c_string(ctx.mem, fmt_ptr)?;
+    let fmt_bytes = read_c_string(ctx.mem, fmt_ptr, "printf's format string")?;
     let fmt = String::from_utf8_lossy(&fmt_bytes).into_owned();
 
     // x0 is the format string (fixed param), so vararg ints start at x1.
@@ -63,8 +63,15 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
-/// Read a null-terminated byte sequence from guest memory.
-pub fn read_c_string(mem: &crate::memory::Memory, addr: u64) -> Result<Vec<u8>, EmuError> {
+/// Read a null-terminated byte sequence from guest memory. `what` names the
+/// operation for the student ("strlen", "printf %s", "the openat path"), so
+/// an unterminated string is blamed on the call that read it, never on
+/// printf by default.
+pub fn read_c_string(
+    mem: &crate::memory::Memory,
+    addr: u64,
+    what: &str,
+) -> Result<Vec<u8>, EmuError> {
     let mut out = Vec::new();
     let mut a = addr;
     // 64 KiB cap keeps a runaway pointer from looping forever; adjust if
@@ -77,9 +84,12 @@ pub fn read_c_string(mem: &crate::memory::Memory, addr: u64) -> Result<Vec<u8>, 
         out.push(b);
         a = a.wrapping_add(1);
     }
-    Err(EmuError::AssemblyError {
-        line: 0,
-        message: "unterminated C string in printf argument".into(),
+    Err(EmuError::RuntimeError {
+        message: format!(
+            "{what}: the string at 0x{addr:x} has no terminating zero byte \
+             within 64 KiB -- declare strings with .asciz or .string (not \
+             .ascii), and check nothing wrote over the terminator"
+        ),
     })
 }
 
@@ -160,6 +170,19 @@ fn format_conversion(
     walker: &mut VarargWalker,
     out: &mut Vec<u8>,
 ) -> Result<(), EmuError> {
+    // C ignores the `0` flag when a precision is given, but only for the
+    // integer conversions (d i o u x X); %f keeps zero padding, and the
+    // non-numeric conversions never pad with zeros. Resolved here so
+    // pad_and_emit needs no knowledge of which conversion it is padding.
+    let spec = &FormatSpec {
+        zero_pad: spec.zero_pad
+            && match conv {
+                'd' | 'i' | 'u' | 'x' | 'X' | 'o' | 'p' => spec.precision.is_none(),
+                'f' | 'F' => true,
+                _ => false,
+            },
+        ..spec.clone()
+    };
     match conv {
         '%' => out.push(b'%'),
         'd' | 'i' => {
@@ -222,11 +245,20 @@ fn format_conversion(
         }
         'c' => {
             let value = walker.next_int(ctx) as u8;
-            out.push(value);
+            pad_and_emit_bytes(&[value], spec, out);
         }
         's' => {
             let ptr = walker.next_int(ctx);
-            let bytes = read_c_string(ctx.mem, ptr)?;
+            let bytes = read_c_string(ctx.mem, ptr, "printf %s").map_err(|e| match e {
+                EmuError::MemoryFault { .. } => EmuError::RuntimeError {
+                    message: format!(
+                        "printf %s was handed the pointer 0x{ptr:x}, which does not \
+                         point at readable memory -- check that the argument register \
+                         holds a string address (ldr xN, =label)"
+                    ),
+                },
+                other => other,
+            })?;
             let mut s = String::from_utf8_lossy(&bytes).into_owned();
             if let Some(p) = spec.precision {
                 s.truncate(p);
@@ -304,37 +336,41 @@ fn apply_precision_int(body: &mut String, spec: &FormatSpec) {
 }
 
 fn pad_and_emit(body: &str, spec: &FormatSpec, out: &mut Vec<u8>) {
+    pad_and_emit_bytes(body.as_bytes(), spec, out);
+}
+
+fn pad_and_emit_bytes(body: &[u8], spec: &FormatSpec, out: &mut Vec<u8>) {
     if body.len() >= spec.width {
-        out.extend_from_slice(body.as_bytes());
+        out.extend_from_slice(body);
         return;
     }
     let pad_count = spec.width - body.len();
     if spec.left_align {
-        out.extend_from_slice(body.as_bytes());
+        out.extend_from_slice(body);
         for _ in 0..pad_count {
             out.push(b' ');
         }
-    } else if spec.zero_pad && spec.precision.is_none() {
+    } else if spec.zero_pad {
         // Zero-pad numbers on the right side of any sign.
-        if let Some(first) = body.chars().next() {
-            if matches!(first, '-' | '+' | ' ') {
-                out.push(first as u8);
+        if let Some(first) = body.first() {
+            if matches!(first, b'-' | b'+' | b' ') {
+                out.push(*first);
                 for _ in 0..pad_count {
                     out.push(b'0');
                 }
-                out.extend_from_slice(&body.as_bytes()[1..]);
+                out.extend_from_slice(&body[1..]);
                 return;
             }
         }
         for _ in 0..pad_count {
             out.push(b'0');
         }
-        out.extend_from_slice(body.as_bytes());
+        out.extend_from_slice(body);
     } else {
         for _ in 0..pad_count {
             out.push(b' ');
         }
-        out.extend_from_slice(body.as_bytes());
+        out.extend_from_slice(body);
     }
 }
 
@@ -538,6 +574,80 @@ mod tests {
             regs.write_gpr(1, true, 7);
         });
         assert_eq!(s, "00007");
+    }
+
+    #[test]
+    fn percent_c_honors_field_width() {
+        // Verified against gcc/glibc: "%5c|" of 'x' is "    x|" and the
+        // left-aligned form pads on the right.
+        let (s, _) = call("%5c|", |regs, _| {
+            regs.write_gpr(1, true, 'x' as u64);
+        });
+        assert_eq!(s, "    x|");
+        let (s, _) = call("%-5c|", |regs, _| {
+            regs.write_gpr(1, true, 'x' as u64);
+        });
+        assert_eq!(s, "x    |");
+        // The 0 flag never zero-pads a character.
+        let (s, _) = call("%05c|", |regs, _| {
+            regs.write_gpr(1, true, 'x' as u64);
+        });
+        assert_eq!(s, "    x|");
+    }
+
+    #[test]
+    fn zero_flag_with_precision_keeps_padding_floats_only() {
+        // C drops the 0 flag under a precision for the integer conversions
+        // but keeps it for %f. Expected strings verified against glibc.
+        let (s, _) = call("%08.2f", |regs, _| {
+            regs.write_fpr_f64(0, 3.5);
+        });
+        assert_eq!(s, "00003.50");
+        let (s, _) = call("%08.3f", |regs, _| {
+            regs.write_fpr_f64(0, -3.5);
+        });
+        assert_eq!(s, "-003.500");
+        // The integer form stays space-padded (precision already
+        // zero-extended the digits).
+        let (s, _) = call("%05.3d", |regs, _| {
+            regs.write_gpr(1, true, 7);
+        });
+        assert_eq!(s, "  007");
+    }
+
+    #[test]
+    fn unterminated_string_names_the_caller_not_printf() {
+        // 64 KiB of non-zero bytes: the scan gives up and the message
+        // blames the operation that read the string, with its address.
+        let err = try_call("%s", |regs, mem| {
+            let base = 0x0060_0000u64;
+            for page in 0..17 {
+                mem.map_page(base + page * 4096);
+            }
+            for i in 0..(64 * 1024 + 8) {
+                mem.write_u8(base + i as u64, b'A').unwrap();
+            }
+            regs.write_gpr(1, true, base);
+        })
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("printf %s"), "was: {msg}");
+        assert!(msg.contains("0x600000"), "was: {msg}");
+        assert!(msg.contains(".asciz"), "was: {msg}");
+    }
+
+    #[test]
+    fn percent_s_with_a_bad_pointer_names_the_conversion() {
+        // A null (unmapped) pointer must not surface as a bare memory
+        // fault; the message names printf %s, the pointer, and the remedy.
+        let err = try_call("%s", |regs, _| {
+            regs.write_gpr(1, true, 0);
+        })
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("printf %s"), "was: {msg}");
+        assert!(msg.contains("0x0"), "was: {msg}");
+        assert!(msg.contains("ldr"), "was: {msg}");
     }
 
     #[test]
