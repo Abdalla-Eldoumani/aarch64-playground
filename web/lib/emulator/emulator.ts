@@ -16,6 +16,12 @@ export interface StepResult {
   pc: number;
   halted: boolean;
   error: string | null;
+  /**
+   * Editor line the runtime error resolves to through the authoritative
+   * line map (LR-4 recovers the call site for host-stub faults). Null on
+   * success and on wasm builds that predate the field.
+   */
+  error_line: number | null;
   outcome: StepOutcome;
   exitCode: number | null;
 }
@@ -26,6 +32,8 @@ export interface RunResult {
   steps_executed: number;
   hit_breakpoint: boolean;
   error: string | null;
+  /** Editor line for a runtime error (see StepResult). */
+  error_line: number | null;
 }
 
 export interface RegisterState {
@@ -60,6 +68,7 @@ export class EmulatorInstance {
       pc: Number(raw.pc),
       halted: raw.halted,
       error: raw.error ?? null,
+      error_line: raw.error_line ?? null,
       outcome: raw.outcome ?? "advance",
       exitCode: raw.exit_code != null ? Number(raw.exit_code) : null,
     };
@@ -71,6 +80,7 @@ export class EmulatorInstance {
       pc: Number(raw.pc),
       halted: raw.halted,
       error: raw.error ?? null,
+      error_line: raw.error_line ?? null,
       outcome: raw.outcome ?? "advance",
       exitCode: raw.exit_code != null ? Number(raw.exit_code) : null,
     };
@@ -155,6 +165,7 @@ export class EmulatorInstance {
       steps_executed: raw.steps_executed,
       hit_breakpoint: raw.hit_breakpoint,
       error: raw.error ?? null,
+      error_line: raw.error_line ?? null,
     };
   }
 
@@ -241,6 +252,7 @@ interface RawStepResult {
   pc: bigint | number;
   halted: boolean;
   error?: string;
+  error_line?: number | null;
   outcome?: StepOutcome;
   exit_code?: bigint | number | null;
 }
@@ -251,6 +263,7 @@ interface RawRunResult {
   steps_executed: number;
   hit_breakpoint: boolean;
   error?: string;
+  error_line?: number | null;
 }
 
 // the WASM module's Emulator instance shape
