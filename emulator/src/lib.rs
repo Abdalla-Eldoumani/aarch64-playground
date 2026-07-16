@@ -497,7 +497,9 @@ impl Emulator {
         }).unwrap()
     }
 
-    /// Read a range of memory as a byte array. Returns empty on fault.
+    /// Read a range of memory as a byte array. Unmapped bytes read as
+    /// zero; a length past the whole page budget returns empty (the only
+    /// error `read_bytes` produces).
     pub fn get_memory_range(&self, addr: u32, len: u32) -> Vec<u8> {
         self.cpu.mem
             .read_bytes(addr as u64, len as usize)
