@@ -137,6 +137,42 @@ fn out_of_reach_conditional_branches_are_rejected_not_wrapped() {
 }
 
 #[test]
+fn a_broken_equate_reports_its_own_line_and_cause() {
+    // `size = cont + 1` with `cont` undefined used to vanish, and the USE
+    // site got "invalid immediate: size" -- pointing at correct code.
+    let src = ".text\n\
+               .global main\n\
+               size = cont + 1\n\
+               main:\n\
+               mov x0, size\n\
+               ret\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("cont"), "message was: {msg}");
+    assert!(msg.contains("line 3"), "message was: {msg}");
+
+    let src = ".text\nmain:\nsize = 1 / 0\nmov x0, 1\nret\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("division by zero"), "message was: {msg}");
+}
+
+#[test]
+fn a_program_with_no_instructions_fails_the_assemble() {
+    let msg = assemble_err(".text\n.global main\n");
+    assert!(msg.contains("no instructions"), "message was: {msg}");
+}
+
+#[test]
+fn global_main_without_the_label_fails_the_assemble() {
+    let src = ".text\n\
+               .global main\n\
+               mian:\n\
+               mov x0, 0\n\
+               ret\n";
+    let msg = assemble_err(src);
+    assert!(msg.contains("main"), "message was: {msg}");
+}
+
+#[test]
 fn data_before_text_still_assembles() {
     // The reject must key on the section an instruction lands in, not on
     // section order: .data-first programs are the course norm.
