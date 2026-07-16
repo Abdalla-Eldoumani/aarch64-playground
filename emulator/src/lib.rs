@@ -607,6 +607,14 @@ impl Emulator {
         self.cpu.push_stdin(s.as_bytes());
     }
 
+    /// Remove every breakpoint. The UI calls this when a different
+    /// program loads or the source is re-assembled, then re-arms the
+    /// surviving gutter lines through the fresh line map -- the CPU's
+    /// address set otherwise outlives the assembly it belonged to.
+    pub fn clear_all_breakpoints(&mut self) {
+        self.cpu.clear_all_breakpoints();
+    }
+
     /// Signal end-of-input (ctrl-d / a fully-queued `< file` redirect):
     /// getchar answers -1, read answers 0, scanf answers its matched
     /// count or -1, so read-until-EOF loops can terminate.
