@@ -114,6 +114,13 @@ export class EmulatorInstance {
     return this.inner.take_stderr();
   }
 
+  /** Signal end-of-input. A pre-close wasm build lacks the export, so
+   *  the call quietly does nothing there (feature detection). */
+  closeStdin(): void {
+    const close = (this.inner as { close_stdin?: () => void }).close_stdin;
+    if (typeof close === "function") close.call(this.inner);
+  }
+
   pushStdin(s: string): void {
     this.inner.push_stdin(s);
   }
