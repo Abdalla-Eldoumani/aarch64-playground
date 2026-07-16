@@ -60,6 +60,45 @@ pub enum TokenKind {
     Hash,
 }
 
+/// Render one token the way it reads in source, for error messages. The
+/// derived Debug form leaked compiler internals (``unexpected token
+/// `StringLit([104, 105])```) into student-facing errors.
+pub fn describe(kind: &TokenKind) -> String {
+    match kind {
+        TokenKind::Ident(s) | TokenKind::DirectiveIdent(s) => format!("`{s}`"),
+        TokenKind::IntLit(v) => format!("`{v}`"),
+        TokenKind::FloatLit(v) => format!("`{v}`"),
+        TokenKind::CharLit(v) => match char::from_u32(*v) {
+            Some(c) => format!("a character literal ('{c}')"),
+            None => "a character literal".to_string(),
+        },
+        TokenKind::StringLit(_) => "a string literal".to_string(),
+        TokenKind::Comma => "`,`".to_string(),
+        TokenKind::Plus => "`+`".to_string(),
+        TokenKind::Minus => "`-`".to_string(),
+        TokenKind::Star => "`*`".to_string(),
+        TokenKind::Slash => "`/`".to_string(),
+        TokenKind::Percent => "`%`".to_string(),
+        TokenKind::Amp => "`&`".to_string(),
+        TokenKind::Pipe => "`|`".to_string(),
+        TokenKind::Caret => "`^`".to_string(),
+        TokenKind::Tilde => "`~`".to_string(),
+        TokenKind::Bang => "`!`".to_string(),
+        TokenKind::LShift => "`<<`".to_string(),
+        TokenKind::RShift => "`>>`".to_string(),
+        TokenKind::LParen => "`(`".to_string(),
+        TokenKind::RParen => "`)`".to_string(),
+        TokenKind::LBracket => "`[`".to_string(),
+        TokenKind::RBracket => "`]`".to_string(),
+        TokenKind::LBrace => "`{`".to_string(),
+        TokenKind::RBrace => "`}`".to_string(),
+        TokenKind::Dot => "`.`".to_string(),
+        TokenKind::Colon => "`:`".to_string(),
+        TokenKind::Equals => "`=`".to_string(),
+        TokenKind::Hash => "`#`".to_string(),
+    }
+}
+
 /// Lex a source string. `starting_line` is the 1-based line number of the
 /// first line of `source`, letting callers pass a single line from a larger
 /// file and still get correct error line numbers.
@@ -225,6 +264,44 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
                     col,
                 });
                 continue;
+            }
+            // `1e5` / `1e-3`: an integer-looking run that is really an
+            // exponent float (`is_int_body`'s hex range swallows the `e`).
+            // GAS reads these as floats in .double/.float lists; extend
+            // across a sign directly after the e/E and hand the text to
+            // the float path instead of calling it a bad integer.
+            let mut text = text;
+            let exponential = {
+                let b = text.as_bytes();
+                b.iter()
+                    .position(|&c| c == b'e' || c == b'E')
+                    .is_some_and(|p| {
+                        p > 0
+                            && b[..p].iter().all(u8::is_ascii_digit)
+                            && b[p + 1..].iter().all(u8::is_ascii_digit)
+                    })
+            };
+            if exponential {
+                if i < bytes.len()
+                    && (bytes[i] == b'+' || bytes[i] == b'-')
+                    && text.as_bytes().last().is_some_and(|&c| c == b'e' || c == b'E')
+                    && i + 1 < bytes.len()
+                    && bytes[i + 1].is_ascii_digit()
+                {
+                    i += 1;
+                    while i < bytes.len() && bytes[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    text = &source[start..i];
+                }
+                if let Ok(value) = text.parse::<f64>() {
+                    tokens.push(Token {
+                        kind: TokenKind::FloatLit(value),
+                        line,
+                        col,
+                    });
+                    continue;
+                }
             }
             let value = parse_int(text).ok_or_else(|| {
                 lex_err(line, &format!("invalid integer literal `{text}`"))
