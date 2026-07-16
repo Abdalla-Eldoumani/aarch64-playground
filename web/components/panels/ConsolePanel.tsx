@@ -11,6 +11,8 @@ interface ConsolePanelProps {
   exitCode: number | null;
   vfsFiles: string[];
   pushStdin: (s: string) => void;
+  /** Signal end-of-input (wired to ctrl-d in the stdin box). */
+  closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   clearConsole: () => void;
 }
@@ -28,6 +30,7 @@ export function ConsolePanel({
   exitCode,
   vfsFiles,
   pushStdin,
+  closeStdin,
   uploadVfsFile,
   clearConsole,
 }: ConsolePanelProps) {
@@ -164,7 +167,15 @@ export function ConsolePanel({
           type="text"
           value={stdinValue}
           onChange={(e) => setStdinValue(e.target.value)}
-          placeholder={blocked ? "program is waiting for input..." : "stdin"}
+          onKeyDown={(e) => {
+            // Ctrl-D on an empty line ends input, exactly like a shell:
+            // getchar sees EOF and read-until-EOF loops can finish.
+            if (e.ctrlKey && (e.key === "d" || e.key === "D") && stdinValue === "") {
+              e.preventDefault();
+              closeStdin();
+            }
+          }}
+          placeholder={blocked ? "program is waiting for input... (ctrl-d = end of input)" : "stdin"}
           aria-label="Standard input"
           className="flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)]"
         />
