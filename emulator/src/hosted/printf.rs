@@ -384,6 +384,7 @@ mod tests {
             stdout: &mut stdout,
             stderr: &mut stderr,
             stdin: &mut stdin,
+            stdin_closed: false,
             vfs: &mut vfs,
             open_files: &mut open_files,
             next_fd: &mut next_fd,
