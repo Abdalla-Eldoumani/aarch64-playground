@@ -40,6 +40,7 @@ export type RequestKind =
   | "deleteVfsFile"
   | "resolveLabel"
   | "m4Expand"
+  | "lint"
   | "clearConsole"
   | "codeBase"
   | "lineMap";
@@ -77,6 +78,7 @@ export type Request =
   | (BaseRequest<"deleteVfsFile"> & { path: string })
   | (BaseRequest<"resolveLabel"> & { name: string })
   | (BaseRequest<"m4Expand"> & { source: string })
+  | (BaseRequest<"lint"> & { source: string })
   | BaseRequest<"clearConsole">
   | BaseRequest<"codeBase">
   | BaseRequest<"lineMap">;
