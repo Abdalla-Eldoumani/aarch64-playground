@@ -3,6 +3,7 @@
 //! never panic, silently mis-encode, or report success.
 
 use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::frontend::lint::lint;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
 fn assemble_err(src: &str) -> String {
@@ -170,6 +171,35 @@ fn global_main_without_the_label_fails_the_assemble() {
                ret\n";
     let msg = assemble_err(src);
     assert!(msg.contains("main"), "message was: {msg}");
+}
+
+#[test]
+fn the_conformance_corpus_lints_clean() {
+    // The lint is advisory and heuristic; a false positive on correct
+    // course-style code would teach students to distrust it. Every
+    // conformance fixture must produce zero warnings.
+    for (name, src) in [
+        ("sum-to-n", include_str!("conformance/sum-to-n.s")),
+        ("sort-three", include_str!("conformance/sort-three.s")),
+        ("stack-average", include_str!("conformance/stack-average.s")),
+        ("prime-test", include_str!("conformance/prime-test.s")),
+        ("count-evens", include_str!("conformance/count-evens.s")),
+        ("greeting", include_str!("conformance/greeting.s")),
+        ("circle-metrics", include_str!("conformance/circle-metrics.s")),
+        ("line-count", include_str!("conformance/line-count.s")),
+        ("pack-color", include_str!("conformance/pack-color.s")),
+        ("alt-series", include_str!("conformance/alt-series.s")),
+        ("alias-sum", include_str!("conformance/alias-sum.s")),
+        ("weekday-name", include_str!("conformance/weekday-name.s")),
+        ("lucky-draws", include_str!("conformance/lucky-draws.s")),
+        ("value-stack", include_str!("conformance/value-stack.s")),
+    ] {
+        let warnings = lint(src);
+        assert!(
+            warnings.is_empty(),
+            "{name} produced lint warnings: {warnings:?}"
+        );
+    }
 }
 
 #[test]
