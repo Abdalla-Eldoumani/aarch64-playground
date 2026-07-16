@@ -39,6 +39,14 @@ pub enum HostOutcome {
 /// Context passed to each host stub. Split out so stubs can borrow what
 /// they need without holding a `&mut Cpu` (which would conflict with the
 /// dispatcher's mutable borrow of the table).
+/// The exit status C hands around: `exit(int)`, `return` from `int main`,
+/// and the Linux exit syscalls all take a 32-bit value in w0. Reading x0 at
+/// full width made `exit(-1)` report 4294967295 while `return -1` reported
+/// -1. One reader keeps every exit route on the sign-extended int.
+pub fn exit_status(regs: &crate::registers::RegisterFile) -> i64 {
+    regs.read_gpr(0, false) as i32 as i64
+}
+
 pub struct HostContext<'a> {
     pub regs: &'a mut crate::registers::RegisterFile,
     pub mem: &'a mut crate::memory::Memory,
