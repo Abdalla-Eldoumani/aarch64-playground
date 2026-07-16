@@ -16,6 +16,9 @@ interface EditorProps {
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
+  /** Advisory pre-assembly lint warnings, rendered as Monaco WARNING
+   *  markers (yellow squiggles with the remedy in the hover). */
+  lintWarnings?: AssemblyError[];
   onCursorChange?: (pos: { line: number; column: number }) => void;
   /** Format-source command bound to Ctrl+Shift+F inside Monaco. The
    *  parent owns the formatter implementation so the keybinding and
@@ -68,12 +71,34 @@ export function Editor({
   breakpoints,
   onToggleBreakpoint,
   assemblyErrors,
+  lintWarnings = [],
   onCursorChange,
   onFormat,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
+  // Lint markers live in Monaco's marker system (owner "lint"), separate
+  // from the decoration pipeline: markers give the yellow squiggle, the
+  // hover message, and the problems affordance for free.
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    const model = editor?.getModel();
+    if (!editor || !monaco || !model) return;
+    monaco.editor.setModelMarkers(
+      model,
+      "lint",
+      lintWarnings.map((w) => ({
+        severity: monaco.MarkerSeverity.Warning,
+        message: w.message,
+        startLineNumber: w.line,
+        startColumn: 1,
+        endLineNumber: w.line,
+        endColumn: model.getLineMaxColumn(Math.min(w.line, model.getLineCount())),
+      })),
+    );
+  }, [lintWarnings]);
   const [fallback, setFallback] = useState<boolean>(() => isNarrow());
   // Keep the latest format handler accessible from the Monaco command
   // (registered once at mount).
