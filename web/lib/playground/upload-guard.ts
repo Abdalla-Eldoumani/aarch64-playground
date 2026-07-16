@@ -9,8 +9,13 @@
 
 /** 1 MB cap on pasted / imported / dropped source. */
 export const MAX_SOURCE_BYTES = 1 * 1024 * 1024;
-/** 10 MB cap on raw VFS payloads (terminal upload + console upload). */
-export const MAX_VFS_BYTES = 10 * 1024 * 1024;
+/**
+ * 4 MiB cap on raw VFS payloads (terminal upload + console upload).
+ * Matches the emulator's own whole-VFS wall (`syscalls::MAX_VFS_TOTAL_BYTES`),
+ * which is sized against the step-back ring cloning the VFS every step;
+ * a larger upload would be refused by the machine it is headed for.
+ */
+export const MAX_VFS_BYTES = 4 * 1024 * 1024;
 /** 1000-character cap on command-line arguments. */
 export const MAX_ARGS_CHARS = 1000;
 /** 100 KB cap on a single stdin submission. */
