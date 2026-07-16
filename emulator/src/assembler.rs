@@ -1641,6 +1641,7 @@ fn encode_branch_imm(
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
     }
+    check_branch_reach(offset_bytes / 4, 26, if link { "bl" } else { "b" }, ln)?;
     let imm26 = ((offset_bytes / 4) as u32) & 0x3FF_FFFF;
 
     let op = if link { 1u32 } else { 0 };
@@ -1670,6 +1671,7 @@ fn encode_bcond(
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
     }
+    check_branch_reach(offset_bytes / 4, 19, "b.cond", ln)?;
     let imm19 = ((offset_bytes / 4) as u32) & 0x7FFFF;
 
     Ok(0x5400_0000 | (imm19 << 5) | (cond as u32))
@@ -1692,6 +1694,7 @@ fn encode_compare_branch(
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
     }
+    check_branch_reach(offset_bytes / 4, 19, "cbz/cbnz", ln)?;
     let imm19 = ((offset_bytes / 4) as u32) & 0x7_FFFF;
     let sf_bit: u32 = if sf { 1 } else { 0 };
     let op_bit: u32 = if nonzero { 1 } else { 0 };
@@ -1725,6 +1728,7 @@ fn encode_test_branch(
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
     }
+    check_branch_reach(offset_bytes / 4, 14, "tbz/tbnz", ln)?;
     let imm14 = ((offset_bytes / 4) as u32) & 0x3FFF;
     let b5 = ((bit as u32) >> 5) & 1;
     let b40 = (bit as u32) & 0x1F;
@@ -1735,6 +1739,31 @@ fn encode_test_branch(
         | (b40 << 19)
         | (imm14 << 5)
         | (rt as u32))
+}
+
+/// Range-check a branch displacement (in instructions) against the
+/// encoding's signed immediate width BEFORE masking: masking alone wraps
+/// an out-of-reach target into a silent branch to the wrong place. GAS
+/// reports "branch out of range" for all of these.
+fn check_branch_reach(
+    offset_instrs: i64,
+    imm_bits: u32,
+    mnemonic: &str,
+    ln: usize,
+) -> Result<(), EmuError> {
+    let lo = -(1i64 << (imm_bits - 1));
+    let hi = (1i64 << (imm_bits - 1)) - 1;
+    if !(lo..=hi).contains(&offset_instrs) {
+        return Err(EmuError::AssemblyError {
+            line: ln,
+            message: format!(
+                "{mnemonic} target is out of reach ({} bytes away; this branch reaches {} bytes each way) --                  branch to a nearer label, or load the address and use br",
+                offset_instrs * 4,
+                hi * 4
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn resolve_branch_target(
