@@ -92,6 +92,7 @@ class MainThreadBackend implements EmulatorBackend {
       pc: raw.pc,
       halted: raw.halted,
       error: raw.error,
+      error_line: raw.error_line,
       outcome: raw.outcome ?? "advance",
       exitCode: raw.exitCode,
     };
@@ -106,6 +107,7 @@ class MainThreadBackend implements EmulatorBackend {
       pc: raw.pc,
       halted: raw.halted,
       error: raw.error,
+      error_line: raw.error_line,
       outcome: raw.outcome ?? "advance",
       exitCode: raw.exitCode,
     };
@@ -137,6 +139,17 @@ class MainThreadBackend implements EmulatorBackend {
       this.notify(this.snapshot());
       if (raw.error || raw.halted || raw.hit_breakpoint) break;
       if (emu.isBlocked()) break;
+      // Anti-wedge guard, mirroring the worker: a chunk that executed
+      // zero steps while the machine claims to be neither halted,
+      // blocked, nor at a breakpoint can only repeat forever.
+      if (raw.steps_executed === 0) {
+        lastResult = {
+          ...raw,
+          error:
+            "the emulator made no progress and was stopped; this is a playground bug -- use 'copy diagnostic bundle' to report it",
+        };
+        break;
+      }
       // Yield to the UI thread between chunks so panels paint.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
