@@ -9,6 +9,7 @@
 pub mod expr;
 pub mod lexer;
 pub mod linker;
+pub mod lint;
 pub mod m4;
 pub mod parser;
 pub mod pipeline;
