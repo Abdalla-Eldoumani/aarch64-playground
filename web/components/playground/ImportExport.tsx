@@ -77,6 +77,10 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
           return;
         }
         onImport(target, text);
+      }).catch(() => {
+        // A moved or unreadable file rejects file.text(); without this
+        // the rejection was silent and the student saw nothing at all.
+        toast.error("could not read the file -- try picking it again");
       });
       e.target.value = "";
     },
