@@ -246,6 +246,12 @@ function EmbeddableCore({
   const emu = useEmulator();
   const bp = useBreakpoint();
   const [source, setSource] = useState(startSource ?? "");
+  // Advisory pre-assembly lint: frame-balance and m4-hygiene warnings,
+  // refreshed shortly after the student stops typing. Warnings, never
+  // errors -- assembling stays available regardless.
+  const [lintWarnings, setLintWarnings] = useState<
+    Array<{ line: number; message: string }>
+  >([]);
   const [activeTab, setActiveTab] = useState<
     "memory" | "stack" | "console" | "term" | "watches" | "convert" | "memwatch" | "saves"
   >("memory");
@@ -892,6 +898,16 @@ function EmbeddableCore({
 
   // Hidden file picker the terminal's `upload` command triggers.
   const terminalUploadRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void emuRef.current
+        .lint(source)
+        .then(setLintWarnings)
+        .catch(() => setLintWarnings([]));
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [source]);
   // Reads go through emuRef / sourceRef, not the render's hub object:
   // the hub is a new object every snapshot, so a closure over it freezes
   // mid-command state -- runProgram's wait loop would poll an isRunning
@@ -1078,6 +1094,7 @@ function EmbeddableCore({
               breakpoints={emu.breakpoints}
               onToggleBreakpoint={emu.toggleBreakpoint}
               assemblyErrors={emu.assemblyErrors}
+              lintWarnings={lintWarnings}
               onCursorChange={setCursor}
             />
           </div>
@@ -1189,6 +1206,7 @@ function EmbeddableCore({
           breakpoints={emu.breakpoints}
           onToggleBreakpoint={emu.toggleBreakpoint}
           assemblyErrors={isMain ? emu.assemblyErrors : []}
+          lintWarnings={isMain ? lintWarnings : []}
           onCursorChange={isMain ? setCursor : undefined}
           onFormat={() => {
             if (!isMain) return;
