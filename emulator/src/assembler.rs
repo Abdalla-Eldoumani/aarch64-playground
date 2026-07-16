@@ -487,6 +487,9 @@ fn encode_movzk(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError> {
         return asm_err(ln, "immediate exceeds 16 bits");
     }
 
+    if ops.len() > 3 {
+        return asm_err(ln, "MOVZ/MOVK/MOVN takes at most 3 operands");
+    }
     let mut hw: u8 = 0;
     if ops.len() > 2 {
         // parse LSL #16 / LSL #32 / LSL #48
@@ -500,6 +503,18 @@ fn encode_movzk(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError> {
                 48 => 3,
                 _ => return asm_err(ln, "MOVZ/MOVK shift must be 0, 16, 32, or 48"),
             };
+        } else {
+            // Silently dropping a non-LSL third operand left hw = 0, so
+            // `movk x0, #0xdead, #16` overwrote the LOW halfword with no
+            // message. GAS rejects anything that is not spelled lsl.
+            return asm_err(
+                ln,
+                &format!(
+                    "expected `lsl #0|#16|#32|#48` as the third operand of \
+                     MOVZ/MOVK/MOVN, got `{}`",
+                    ops[2].trim()
+                ),
+            );
         }
     }
 
@@ -2178,6 +2193,18 @@ mod tests {
         // W pairs scale by 4, halving the reach: 768 / 4 = 192 wraps too.
         let err = assemble("STP W0, W1, [SP, #768]").unwrap_err();
         assert!(err.to_string().contains("[-256, 252]"), "was: {err}");
+    }
+
+    #[test]
+    fn movk_with_a_non_lsl_shift_is_rejected() {
+        // A dropped third operand left hw = 0: `movk x0, #0xDEAD, #16`
+        // destroyed the low halfword the movz just placed, silently.
+        let err = assemble("MOVK X0, #0xDEAD, #16").unwrap_err();
+        assert!(err.to_string().contains("lsl"), "was: {err}");
+        assert!(assemble("MOVK X0, #0xDEAD, LSR #16").is_err());
+        assert!(assemble("MOVZ X0, #1, FOO #16").is_err());
+        assert!(assemble("MOVZ X0, #1, LSL #16, LSL #32").is_err());
+        assert!(assemble("MOVK X0, #0xDEAD, LSL #16").is_ok());
     }
 
     #[test]
