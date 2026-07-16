@@ -586,7 +586,10 @@ export function useEmulator(): EmulatorState {
     // Guard through the refs, not state: callers that await an assemble
     // and then invoke a run captured earlier (the embed's Run, the
     // checker) must see the fresh post-assemble halt and loaded flags.
+    // The in-flight guard stops a second concurrent loop (hold-F5, the
+    // palette's Run) from stacking another 1M-step budget on the machine.
     if (!backend || !programLoadedRef.current || haltedRef.current) return;
+    if (runningRef.current) return;
     setIsRunning(true);
     runningRef.current = true;
     backend
