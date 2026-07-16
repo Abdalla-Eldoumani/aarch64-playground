@@ -1117,6 +1117,24 @@ mod tests {
         cpu.mem.write_u32(BSS_BASE, 0xcafe_babe).unwrap();
     }
 
+    #[test]
+    fn reset_returns_the_page_budget_to_baseline() {
+        // A program that exhausts MAX_MAPPED_PAGES must not leave the
+        // budget spent: reset gives the pages back, so the next program
+        // starts from the same baseline as a fresh tab.
+        let mut cpu = Cpu::new();
+        let baseline = cpu.mem.mapped_page_count();
+        let mut addr = 0x0100_0000u64;
+        while cpu.mem.write_u8(addr, 1).is_ok() {
+            addr += 4096;
+        }
+        assert!(cpu.mem.mapped_page_count() >= crate::memory::MAX_MAPPED_PAGES);
+        cpu.reset();
+        assert_eq!(cpu.mem.mapped_page_count(), baseline);
+        // And the budget is genuinely usable again.
+        cpu.mem.write_u8(0x0100_0000, 1).unwrap();
+    }
+
     // -- step outcome and hosted state --
 
     #[test]
