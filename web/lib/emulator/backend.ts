@@ -153,7 +153,18 @@ class MainThreadBackend implements EmulatorBackend {
       // Yield to the UI thread between chunks so panels paint.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
-    lastResult = { ...lastResult, steps_executed: totalSteps };
+    lastResult = {
+      ...lastResult,
+      steps_executed: totalSteps,
+      // Mirror the worker: a budget-only stop must say so, or an
+      // infinite loop reads as a clean finish.
+      step_limit_reached:
+        totalSteps >= maxSteps &&
+        !lastResult.halted &&
+        !lastResult.hit_breakpoint &&
+        !lastResult.error &&
+        !emu.isBlocked(),
+    };
     return { runResult: lastResult, snapshot: this.snapshot() };
   }
 
