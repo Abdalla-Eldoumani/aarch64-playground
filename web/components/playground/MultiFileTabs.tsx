@@ -145,10 +145,16 @@ export function useSourceFiles(): [
   return [files, save];
 }
 
-/** Concatenate main + extras with file-boundary comments. */
+/**
+ * Concatenate main + extras with file-boundary comments AFTER main only.
+ * main.asm must stay line-for-line identical to the editor buffer: a
+ * header line above it shifted every line map entry, error line, and
+ * breakpoint by one for the whole session, since the editor shows
+ * main.asm while the assembler sees the combined string.
+ */
 export function combineSources(main: string, extras: SourceFile[]): string {
   if (extras.length === 0) return main;
-  const parts = [`// ---- main.asm ----`, main];
+  const parts = [main];
   for (const f of extras) {
     parts.push(`// ---- ${f.name} ----`);
     parts.push(f.body);
