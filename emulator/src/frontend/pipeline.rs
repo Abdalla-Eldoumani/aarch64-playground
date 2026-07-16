@@ -271,10 +271,34 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     offset += (exprs.len() * width) as u64;
                 }
                 Item::Instruction { tokens, original_line } => {
+                    // Pass 1d (literal pool + trampolines) only scans
+                    // .text, so an instruction landing anywhere else has
+                    // no pool slot and no trampoline: `ldr xN, =sym`
+                    // panicked on a missing key and `bl printf` truncated
+                    // its offset into a garbage branch. On the course
+                    // toolchain code outside .text faults at runtime;
+                    // here we say what is missing while the line is known.
+                    if section.kind != SectionKind::Text {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "instruction in the {} section -- add a `.text` \
+                                 directive above your code",
+                                section.kind.name()
+                            ),
+                        });
+                    }
                     let pc = base + offset;
                     let word = if let Some(target_text) = extract_ldr_eq_operand(tokens) {
                         let (rt, sf) = parse_ldr_eq_rt(tokens, *original_line)?;
-                        let slot = pool_slots[&target_text];
+                        let slot = *pool_slots.get(&target_text).ok_or_else(|| {
+                            EmuError::LinkError {
+                                line: *original_line,
+                                message: format!(
+                                    "no literal pool slot for `{target_text}`"
+                                ),
+                            }
+                        })?;
                         let slot_addr = pool_base + slot;
                         let byte_offset = slot_addr as i64 - pc as i64;
                         encode_ldr_literal(sf, rt, byte_offset)?
@@ -319,13 +343,10 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     };
                     writes.push((pc, word.to_le_bytes().to_vec()));
                     // Record the authoritative pc -> editor-line entry for
-                    // every real `.text` instruction. Only `.text` carries
-                    // executable instructions; trampolines and the literal
-                    // pool are emitted separately below and intentionally
-                    // get no entries.
-                    if section.kind == SectionKind::Text {
-                        line_map.push((pc, *original_line as u32));
-                    }
+                    // every instruction (all are .text by the guard above);
+                    // trampolines and the literal pool are emitted
+                    // separately below and intentionally get no entries.
+                    line_map.push((pc, *original_line as u32));
                     offset += 4;
                     instruction_count += 1;
                 }
