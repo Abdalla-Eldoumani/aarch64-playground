@@ -154,6 +154,13 @@ struct RunResultJs {
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
+struct LintWarningJs {
+    line: usize,
+    message: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
 struct M4ResultJs {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -551,6 +558,17 @@ impl Emulator {
     /// assignments kept inline. Powers the terminal's `m4 file.asm > file.s`
     /// step so the course toolchain replays one command at a time. Returns
     /// `{ success, text?, error?, error_line? }`.
+    /// Pre-assembly structural lint: advisory warnings, each with a line
+    /// and a one-line remedy. Never blocks assembling; serialized as
+    /// `[{ line, message }, ...]`.
+    pub fn lint_source(&self, source: &str) -> JsValue {
+        let warnings: Vec<LintWarningJs> = frontend::lint::lint(source)
+            .into_iter()
+            .map(|w| LintWarningJs { line: w.line, message: w.message })
+            .collect();
+        serde_wasm_bindgen::to_value(&warnings).unwrap()
+    }
+
     pub fn m4_expand(&self, source: &str) -> JsValue {
         match frontend::m4::expand(source) {
             Ok(expanded) => serde_wasm_bindgen::to_value(&M4ResultJs {
