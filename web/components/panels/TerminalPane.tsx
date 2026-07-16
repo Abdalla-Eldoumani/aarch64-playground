@@ -248,6 +248,12 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
 
     // Paste support (mobile keyboards, clipboard).
     const pasteSub = term.onData((data) => {
+      // xterm fires onKey AND onData for the same keypress with the same
+      // string, and special keys (arrows, Home, Delete, F-keys) arrive as
+      // multi-character escape sequences. Those belong to onKey alone: fed
+      // into the buffer they are invisible on screen but corrupt the
+      // submitted command and scramble the scrollback on repaint.
+      if (data.charCodeAt(0) === 0x1b) return;
       // Only treat multi-character data as a paste; single-char keys are
       // already handled by onKey above.
       if (data.length <= 1) return;
