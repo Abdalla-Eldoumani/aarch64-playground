@@ -19,10 +19,22 @@ pub const SYS_CLOSE: u64 = 57;
 pub const SYS_LSEEK: u64 = 62;
 
 /// Upper bound on a virtual-filesystem file size. `lseek` lets a guest pick
-/// the offset a later `write` lands at, so without a cap a one-byte write at a
-/// huge offset would resize the backing `Vec` to gigabytes and abort the host
-/// allocator. 16 MiB is far above anything the corpus needs.
-pub const MAX_VFS_FILE_BYTES: usize = 16 * 1024 * 1024;
+/// the offset a later `write` lands at, so without a cap a one-byte write at
+/// a huge offset would resize the backing `Vec` to gigabytes and abort the
+/// host allocator. Sized against the step-back snapshot ring, which clones
+/// the whole VFS every step (~129x amplification, the same budget math as
+/// `memory::MAX_MAPPED_PAGES`): 4 MiB keeps the worst-case ring cost near
+/// half a GiB while staying far above anything the corpus needs.
+pub const MAX_VFS_FILE_BYTES: usize = 4 * 1024 * 1024;
+
+/// Upper bound on the VFS as a whole. The per-file cap alone would let N
+/// files multiply the ring amplification N times over; the total holds the
+/// worst case to one cap's worth regardless of file count.
+pub const MAX_VFS_TOTAL_BYTES: usize = 4 * 1024 * 1024;
+
+/// Upper bound on how many files `openat` may create. Entries were
+/// previously inserted unbounded; course programs open one or two.
+pub const MAX_VFS_FILES: usize = 16;
 
 /// Linux `O_*` flag bits we care about. Matches the AArch64 Linux ABI.
 const O_WRONLY: u32 = 0o1;
@@ -80,6 +92,15 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             // Reject a write that would grow the file past the cap rather than
             // resizing the backing Vec to a guest-chosen (possibly huge) size.
             if offset.saturating_add(bytes.len()) > MAX_VFS_FILE_BYTES {
+                ctx.regs.write_gpr(0, true, (-1i64) as u64);
+                return Ok(HostOutcome::Continue);
+            }
+            // The whole-VFS bound: growth in this file counts against the
+            // total, so several files cannot multiply the per-file cap.
+            let current_len = ctx.vfs.get(&path).map_or(0, Vec::len);
+            let growth = offset.saturating_add(bytes.len()).saturating_sub(current_len);
+            let total: usize = ctx.vfs.values().map(Vec::len).sum();
+            if total.saturating_add(growth) > MAX_VFS_TOTAL_BYTES {
                 ctx.regs.write_gpr(0, true, (-1i64) as u64);
                 return Ok(HostOutcome::Continue);
             }
@@ -166,6 +187,12 @@ pub fn sys_openat(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
     if !ctx.vfs.contains_key(&path) {
         if !create {
+            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+            return Ok(HostOutcome::Continue);
+        }
+        // File-count wall: a create loop could otherwise insert entries
+        // without bound, each eligible for its own per-file growth.
+        if ctx.vfs.len() >= MAX_VFS_FILES {
             ctx.regs.write_gpr(0, true, (-1i64) as u64);
             return Ok(HostOutcome::Continue);
         }
@@ -545,5 +572,67 @@ mod tests {
         dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
         assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
         assert!(h.vfs["f"].len() <= MAX_VFS_FILE_BYTES);
+    }
+
+    #[test]
+    fn write_past_the_total_vfs_cap_fails_even_across_files() {
+        // The per-file cap alone let N files multiply the snapshot-ring
+        // amplification N times over; the total must hold regardless of
+        // how the bytes are spread.
+        let mut h = Host::new();
+        h.vfs.insert("a".into(), vec![0u8; MAX_VFS_TOTAL_BYTES - 1]);
+        h.vfs.insert("b".into(), Vec::new());
+        h.open_files.insert(
+            3,
+            crate::cpu::OpenFile { path: "b".into(), offset: 0, writable: true },
+        );
+        h.mem.write_u8(0x0060_0000, b'x').unwrap();
+        h.mem.write_u8(0x0060_0001, b'y').unwrap();
+        h.regs.write_gpr(0, true, 3);
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, 2);
+        dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert!(h.vfs["b"].is_empty());
+    }
+
+    #[test]
+    fn rewriting_existing_bytes_at_the_total_cap_still_succeeds() {
+        // Overwrites grow nothing, so a full VFS must still accept them.
+        let mut h = Host::new();
+        h.vfs.insert("a".into(), vec![0u8; MAX_VFS_TOTAL_BYTES]);
+        h.open_files.insert(
+            3,
+            crate::cpu::OpenFile { path: "a".into(), offset: 0, writable: true },
+        );
+        h.mem.write_u8(0x0060_0000, b'x').unwrap();
+        h.regs.write_gpr(0, true, 3);
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, 1);
+        dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 1);
+        assert_eq!(h.vfs["a"][0], b'x');
+    }
+
+    #[test]
+    fn openat_refuses_to_create_past_the_file_count_cap() {
+        let mut h = Host::new();
+        for i in 0..MAX_VFS_FILES {
+            h.vfs.insert(format!("f{i}"), Vec::new());
+        }
+        place_path(&mut h, 0x0060_0000, "one_more.txt");
+        h.regs.write_gpr(0, true, (-100i64) as u64);
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, (0o1 | 0o100) as u64); // O_WRONLY|O_CREAT
+        dispatch(SYS_OPENAT, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.vfs.len(), MAX_VFS_FILES);
+        // An EXISTING file still opens at the cap.
+        place_path(&mut h, 0x0060_0000, "f0");
+        h.regs.write_gpr(0, true, (-100i64) as u64);
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, 0);
+        dispatch(SYS_OPENAT, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 3);
     }
 }
