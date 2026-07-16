@@ -212,6 +212,15 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
+      case "lint": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build simply has no lint.
+        const probe = (emu as { lint_source?: (s: string) => unknown }).lint_source;
+        const warnings = typeof probe === "function" ? probe.call(emu, msg.source) : [];
+        post({ id: msg.id, kind: "ok", value: warnings });
+        return;
+      }
       case "isRangeMapped": {
         await ensureWasm();
         const emu = require_emulator();
