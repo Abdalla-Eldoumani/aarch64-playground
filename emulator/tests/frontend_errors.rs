@@ -422,6 +422,46 @@ fn dotted_local_labels_work_in_data_slots() {
 }
 
 #[test]
+fn falling_off_main_names_the_missing_ret() {
+    // A main with no ret used to fetch the zero padding (or, when .text
+    // was 8-aligned, silently EXECUTE the first libc trampoline) and
+    // report `unknown instruction: 0x00000000`.
+    let mut cpu = Cpu::new();
+    let src = ".text
+.global main
+main:
+mov w0, 5
+";
+    let image = assemble_hosted(src, &cpu.host).unwrap();
+    cpu.load_linked_image(&image).unwrap();
+    let r = cpu.run_until_break(100).unwrap();
+    assert!(r.halted);
+    let msg = r.error.unwrap_or_default();
+    assert!(msg.contains("last instruction"), "was: {msg}");
+    assert!(msg.contains("ret"), "was: {msg}");
+
+    // The 8-aligned shape is the dangerous one: the fall-through address
+    // used to be the first trampoline itself.
+    let mut cpu = Cpu::new();
+    let src = ".text
+.global main
+main:
+mov w0, 5
+mov w1, 6
+";
+    let image = assemble_hosted(src, &cpu.host).unwrap();
+    cpu.load_linked_image(&image).unwrap();
+    let r = cpu.run_until_break(100).unwrap();
+    assert!(r.halted);
+    assert!(
+        r.error.unwrap_or_default().contains("last instruction"),
+        "the guard must fire before the trampoline executes"
+    );
+    // Nothing printed: the trampoline never ran.
+    assert!(cpu.stdout.is_empty());
+}
+
+#[test]
 fn the_conformance_corpus_lints_clean() {
     // The lint is advisory and heuristic; a false positive on correct
     // course-style code would teach students to distrust it. Every
