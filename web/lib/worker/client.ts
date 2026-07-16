@@ -113,6 +113,10 @@ export class WorkerClient {
     return this.send<StateSnapshot>({ id: 0, kind: "closeStdin" });
   }
 
+  clearAllBreakpoints(): Promise<void> {
+    return this.send<void>({ id: 0, kind: "clearAllBreakpoints" });
+  }
+
   takeStdout(): Promise<string> {
     return this.send<string>({ id: 0, kind: "takeStdout" });
   }
