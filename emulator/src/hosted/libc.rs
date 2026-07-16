@@ -173,24 +173,48 @@ pub fn atof(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let ptr = ctx.regs.read_gpr(0, true);
     let bytes = read_c_string(ctx.mem, ptr)?;
     let s = String::from_utf8_lossy(&bytes);
-    // C's atof skips leading whitespace then parses; anything trailing
-    // stops the scan but doesn't error. `str::parse::<f64>` is stricter,
-    // so trim and retry if it fails.
+    // C's atof skips leading whitespace, parses the longest strtod-shaped
+    // prefix, and returns 0.0 when nothing parses -- trailing junk never
+    // errors. Scan the grammar over bytes: slicing at `char_indices() + 1`
+    // panicked mid-character on any non-ASCII byte (a pasted degree sign
+    // or accented letter), which in wasm killed the whole instance.
     let trimmed = s.trim_start();
-    let value = trimmed.parse::<f64>().unwrap_or_else(|_| {
-        // Find the longest valid prefix.
-        let mut end = 0;
-        for (i, _) in trimmed.char_indices() {
-            if trimmed[..=i].parse::<f64>().is_ok() {
-                end = i + 1;
-            }
+    let bytes = trimmed.as_bytes();
+    let mut end = 0;
+    if end < bytes.len() && (bytes[end] == b'-' || bytes[end] == b'+') {
+        end += 1;
+    }
+    let mut seen_digit = false;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
+        seen_digit = true;
+    }
+    if end < bytes.len() && bytes[end] == b'.' {
+        end += 1;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+            seen_digit = true;
         }
-        if end > 0 {
-            trimmed[..end].parse::<f64>().unwrap_or(0.0)
-        } else {
-            0.0
+    }
+    if seen_digit && end < bytes.len() && (bytes[end] == b'e' || bytes[end] == b'E') {
+        let before_exp = end;
+        end += 1;
+        if end < bytes.len() && (bytes[end] == b'-' || bytes[end] == b'+') {
+            end += 1;
         }
-    });
+        let exp_start = end;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        if end == exp_start {
+            end = before_exp;
+        }
+    }
+    let value = if seen_digit {
+        trimmed[..end].parse::<f64>().unwrap_or(0.0)
+    } else {
+        0.0
+    };
     ctx.regs.write_fpr_f64(0, value);
     Ok(HostOutcome::Continue)
 }
@@ -482,5 +506,32 @@ mod tests {
         h.regs.write_gpr(0, true, 0x0050_0000);
         atof(&mut h.ctx()).unwrap();
         assert_eq!(h.regs.read_fpr_f64(0), 0.0);
+    }
+
+    #[test]
+    fn atof_survives_non_ascii_bytes() {
+        // Slicing at char_indices()+1 panicked inside a multi-byte char --
+        // in wasm that killed the whole instance. A typed degree sign or
+        // a raw 0x80 byte must parse the numeric prefix calmly.
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, "3.5\u{b0}".as_bytes());
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        atof(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_fpr_f64(0), 3.5);
+
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, &[0x80, b'1']);
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        atof(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_fpr_f64(0), 0.0);
+    }
+
+    #[test]
+    fn atof_backs_a_dangling_exponent_off_to_the_mantissa() {
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"1.5e");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        atof(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_fpr_f64(0), 1.5);
     }
 }
