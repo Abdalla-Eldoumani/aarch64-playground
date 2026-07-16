@@ -198,6 +198,17 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
+      case "closeStdin": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build has no close_stdin,
+        // so end-of-input quietly stays unavailable instead of crashing.
+        const close = (emu as { close_stdin?: () => void }).close_stdin;
+        if (typeof close === "function") close.call(emu);
+        bumpFrame();
+        post({ id: msg.id, kind: "ok", value: snapshot() });
+        return;
+      }
       case "takeStdout": {
         await ensureWasm();
         const emu = require_emulator();
