@@ -62,6 +62,9 @@ export interface EmulatorBackend {
 class MainThreadBackend implements EmulatorBackend {
   private emu: EmulatorInstance | null = null;
   private frame = 0;
+  // Bumped by every machine-replacing operation; a run loop that wakes
+  // into a different epoch stands down (see runUntilBreak).
+  private runEpoch = 0;
   private listeners = new Set<(snap: StateSnapshot) => void>();
 
   async init(): Promise<StateSnapshot> {
@@ -73,6 +76,7 @@ class MainThreadBackend implements EmulatorBackend {
     source: string,
     args: string[],
   ): Promise<{ result: AssembleResultPayload; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     const emu = this.requireEmu();
     const raw = args.length > 0
       ? emu.assembleAndLoadWithArgs(source, args)
@@ -103,6 +107,7 @@ class MainThreadBackend implements EmulatorBackend {
   }
 
   async stepBack(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     const emu = this.requireEmu();
     const raw = emu.stepBack();
     const stepResult: StepResultPayload = {
@@ -121,6 +126,7 @@ class MainThreadBackend implements EmulatorBackend {
     maxSteps: number,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
     const emu = this.requireEmu();
+    const epoch = this.runEpoch;
     // Run in chunks so we can yield to the UI thread between batches
     // and emit snapshots that look like worker heartbeats.
     const HEARTBEAT_STEPS = 10_000;
@@ -152,8 +158,13 @@ class MainThreadBackend implements EmulatorBackend {
         };
         break;
       }
-      // Yield to the UI thread between chunks so panels paint.
+      // Yield to the UI thread between chunks so panels paint. It is
+      // also where a reset/assemble can land; a stale run stands down.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (epoch !== this.runEpoch) {
+        lastResult = { ...lastResult, cancelled: true };
+        break;
+      }
     }
     lastResult = {
       ...lastResult,
@@ -176,6 +187,7 @@ class MainThreadBackend implements EmulatorBackend {
   }
 
   async reset(): Promise<StateSnapshot> {
+    this.runEpoch++;
     this.requireEmu().reset();
     this.frame++;
     return this.notifyAndReturn(this.snapshot());
@@ -211,6 +223,7 @@ class MainThreadBackend implements EmulatorBackend {
   }
 
   async loadState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     const ok = this.requireEmu().loadState(name);
     if (ok) this.frame++;
     return this.notifyAndReturn({ ok, snapshot: this.snapshot() });
