@@ -275,8 +275,18 @@ impl Memory {
         start_page != end_page
     }
 
-    /// Read a contiguous range of bytes. Unmapped bytes read as zero.
+    /// Read a contiguous range of bytes. Unmapped bytes read as zero. A
+    /// length past the whole page budget is refused rather than served:
+    /// the cap proves no real request needs it, `Vec::with_capacity` on a
+    /// wasm32 boundary value panics with `capacity overflow`, and even a
+    /// successful giant read wedges the caller for minutes.
     pub fn read_bytes(&self, addr: u64, len: usize) -> Result<Vec<u8>, EmuError> {
+        if len > MAX_MAPPED_PAGES * PAGE_SIZE {
+            return Err(EmuError::MemoryFault {
+                address: addr,
+                access: MemAccess::Read,
+            });
+        }
         let mut out = Vec::with_capacity(len);
         for i in 0..len {
             match self.read_u8(addr + i as u64) {
@@ -436,6 +446,16 @@ mod tests {
             err,
             EmuError::MemoryFault { address: 0x5000, access: MemAccess::Read }
         );
+    }
+
+    #[test]
+    fn read_bytes_refuses_a_length_past_the_page_budget() {
+        // A giant length used to reach Vec::with_capacity (a wasm32
+        // capacity-overflow panic past 2^31) or wedge the worker for
+        // minutes on a HashMap walk.
+        let mem = Memory::new();
+        assert!(mem.read_bytes(0, MAX_MAPPED_PAGES * 4096).is_ok());
+        assert!(mem.read_bytes(0, MAX_MAPPED_PAGES * 4096 + 1).is_err());
     }
 
     #[test]
