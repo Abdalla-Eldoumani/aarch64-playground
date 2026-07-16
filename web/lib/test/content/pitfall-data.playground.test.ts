@@ -86,7 +86,9 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     const pitfall = demo("sign extension");
     const fault = runProgram(pitfall.fault, 100_000);
     expect(fault.error).toMatch(/memory fault/);
-    expect(fault.halted).toBe(false);
+    // A runtime fault is now a calm halt (the machine stops and the
+    // controls disable) instead of a live CPU wedged on the same error.
+    expect(fault.halted).toBe(true);
     const fix = runProgram(pitfall.fix, 100_000);
     expect(fix.stdout).toBe("neighbor = 200\n");
     expect(fix.exitCode).toBe(0);
