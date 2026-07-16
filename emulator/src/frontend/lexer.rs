@@ -290,6 +290,31 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
             });
             continue;
         }
+        if b >= 0x80 {
+            // A non-ASCII byte outside a string literal is almost always a
+            // paste artifact (NBSP, curly quote, em dash). Name the real
+            // character, not its first byte latin-1-widened, and say where
+            // it came from so the student knows to retype the line.
+            let c = source[i..].chars().next().unwrap_or('\u{fffd}');
+            let name = match c {
+                '\u{a0}' => " (non-breaking space)",
+                '\u{2018}' | '\u{2019}' => " (curly single quote)",
+                '\u{201c}' | '\u{201d}' => " (curly double quote)",
+                '\u{2013}' => " (en dash)",
+                '\u{2014}' => " (em dash)",
+                '\u{200b}' => " (zero-width space)",
+                '\u{feff}' => " (byte-order mark)",
+                _ => "",
+            };
+            return Err(lex_err(
+                line,
+                &format!(
+                    "column {col}: non-ASCII character U+{:04X}{name} -- retype this line; \
+                     pasting from a PDF or web page often inserts invisible characters",
+                    c as u32
+                ),
+            ));
+        }
         return Err(lex_err(line, &format!("unexpected character `{}`", b as char)));
     }
     Ok(tokens)
@@ -709,6 +734,25 @@ mod tests {
     #[test]
     fn unknown_char_errors() {
         assert!(lex("$", 1).is_err());
+    }
+
+    #[test]
+    fn non_ascii_char_is_named_with_its_code_point() {
+        // A pasted NBSP is invisible in the editor; the error must name it
+        // rather than echoing an unprintable byte.
+        let err = lex("mov x0,\u{a0}1", 3).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("U+00A0"), "message was: {msg}");
+        assert!(msg.contains("non-breaking space"), "message was: {msg}");
+        assert!(msg.contains("line 3"), "message was: {msg}");
+    }
+
+    #[test]
+    fn curly_quote_is_named_with_its_code_point() {
+        let err = lex("mov x0, \u{2019}a\u{2019}", 1).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("U+2019"), "message was: {msg}");
+        assert!(msg.contains("curly single quote"), "message was: {msg}");
     }
 
     #[test]
