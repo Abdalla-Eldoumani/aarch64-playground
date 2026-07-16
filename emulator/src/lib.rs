@@ -578,9 +578,11 @@ impl Emulator {
     }
 
     /// Register a virtual file. Subsequent `openat(path, ...)` finds it.
-    pub fn upload_vfs_file(&mut self, path: &str, data: &[u8]) {
+    /// Returns false when the upload would breach a VFS wall (per-file,
+    /// whole-VFS, or file count); the web guards use matching caps.
+    pub fn upload_vfs_file(&mut self, path: &str, data: &[u8]) -> bool {
         self.cpu
-            .upload_vfs_file(path.to_string(), data.to_vec());
+            .upload_vfs_file(path.to_string(), data.to_vec())
     }
 
     /// Names of every file currently in the virtual filesystem.
