@@ -9,10 +9,16 @@ import { lookupDoc } from "@/lib/asm/instruction-docs";
 /**
  * Collect `define(name, value)` macro aliases from the full source so a gloss
  * can show `score1_r=w19` next to the operand a student wrote.
+ *
+ * The regex is deliberately free of overlapping quantifiers: an earlier
+ * shape (`\s*` around a lazy `[^)]+?`, all three matching whitespace across
+ * lines) backtracked in O(n^3) on an unclosed `define(` and froze the tab
+ * on boot. One greedy body run bounded to the line keeps matching linear,
+ * and matches the emulator's own line-based define parsing.
  */
 export function extractAliases(source: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const re = /^\s*define\(\s*([A-Za-z_][\w]*)\s*,\s*([^)]+?)\s*\)\s*$/gm;
+  const re = /^[ \t]*define\([ \t]*([A-Za-z_]\w*)[ \t]*,([^)\n]*)\)[ \t]*$/gm;
   for (const m of source.matchAll(re)) {
     out[m[1]] = m[2].trim();
   }
