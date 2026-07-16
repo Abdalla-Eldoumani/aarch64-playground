@@ -10,7 +10,7 @@ use crate::hosted::{HostContext, HostOutcome};
 
 pub fn puts(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let ptr = ctx.regs.read_gpr(0, true);
-    let bytes = read_c_string(ctx.mem, ptr)?;
+    let bytes = read_c_string(ctx.mem, ptr, "puts")?;
     ctx.stdout.extend_from_slice(&bytes);
     ctx.stdout.push(b'\n');
     ctx.regs.write_gpr(0, true, (bytes.len() + 1) as u64);
@@ -42,7 +42,7 @@ pub fn getchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 pub fn strlen(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let ptr = ctx.regs.read_gpr(0, true);
-    let bytes = read_c_string(ctx.mem, ptr)?;
+    let bytes = read_c_string(ctx.mem, ptr, "strlen")?;
     ctx.regs.write_gpr(0, true, bytes.len() as u64);
     Ok(HostOutcome::Continue)
 }
@@ -50,8 +50,8 @@ pub fn strlen(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 pub fn strcmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let a_ptr = ctx.regs.read_gpr(0, true);
     let b_ptr = ctx.regs.read_gpr(1, true);
-    let a = read_c_string(ctx.mem, a_ptr)?;
-    let b = read_c_string(ctx.mem, b_ptr)?;
+    let a = read_c_string(ctx.mem, a_ptr, "strcmp")?;
+    let b = read_c_string(ctx.mem, b_ptr, "strcmp")?;
     let result = match a.cmp(&b) {
         std::cmp::Ordering::Less => -1i64,
         std::cmp::Ordering::Equal => 0,
@@ -64,7 +64,7 @@ pub fn strcmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 pub fn strcpy(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let dst = ctx.regs.read_gpr(0, true);
     let src = ctx.regs.read_gpr(1, true);
-    let bytes = read_c_string(ctx.mem, src)?;
+    let bytes = read_c_string(ctx.mem, src, "strcpy")?;
     for (i, b) in bytes.iter().enumerate() {
         ctx.mem.write_u8(dst + i as u64, *b)?;
     }
@@ -98,7 +98,7 @@ pub fn memcpy(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 }
 
 pub fn exit(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
-    let code = ctx.regs.read_gpr(0, true) as i64;
+    let code = crate::hosted::exit_status(ctx.regs);
     Ok(HostOutcome::Exited(code))
 }
 
@@ -148,13 +148,13 @@ pub fn time(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 pub fn main_return(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     // Only the low 32 bits of x0 are meaningful as an exit code when
     // `int main()` returns.
-    let code = ctx.regs.read_gpr(0, false) as i32 as i64;
+    let code = crate::hosted::exit_status(ctx.regs);
     Ok(HostOutcome::Exited(code))
 }
 
 pub fn atoi(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let ptr = ctx.regs.read_gpr(0, true);
-    let bytes = read_c_string(ctx.mem, ptr)?;
+    let bytes = read_c_string(ctx.mem, ptr, "atoi")?;
     let s = String::from_utf8_lossy(&bytes);
     // C's atoi: skip leading whitespace, take an optional sign, then
     // digits until the first non-digit; no digits at all yields 0.
@@ -178,7 +178,7 @@ pub fn atoi(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 pub fn atof(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let ptr = ctx.regs.read_gpr(0, true);
-    let bytes = read_c_string(ctx.mem, ptr)?;
+    let bytes = read_c_string(ctx.mem, ptr, "atof")?;
     let s = String::from_utf8_lossy(&bytes);
     // C's atof skips leading whitespace, parses the longest strtod-shaped
     // prefix, and returns 0.0 when nothing parses -- trailing junk never
@@ -286,6 +286,18 @@ mod tests {
     }
 
     #[test]
+    fn exit_reads_a_signed_int_like_main_return() {
+        // mov w0, #-1 leaves x0 = 0x00000000FFFFFFFF; exit(int) must see
+        // -1, the same value `return -1` from main reports.
+        let mut h = Host::new();
+        h.regs.write_gpr(0, false, 0xFFFF_FFFF);
+        let out = exit(&mut h.ctx()).unwrap();
+        assert_eq!(out, HostOutcome::Exited(-1));
+        let out = main_return(&mut h.ctx()).unwrap();
+        assert_eq!(out, HostOutcome::Exited(-1));
+    }
+
+    #[test]
     fn puts_appends_newline_and_returns_length() {
         let mut h = Host::new();
         h.place_string(0x0050_0000, b"hello");
@@ -355,7 +367,7 @@ mod tests {
         h.regs.write_gpr(0, true, 0x0050_0000);
         h.regs.write_gpr(1, true, 0x0050_0010);
         strcpy(&mut h.ctx()).unwrap();
-        let copied = read_c_string(&h.mem, 0x0050_0000).unwrap();
+        let copied = read_c_string(&h.mem, 0x0050_0000, "test").unwrap();
         assert_eq!(copied, b"source");
     }
 
