@@ -124,6 +124,31 @@ describe("TerminalPane", () => {
     });
   });
 
+  it("keeps special-key escape sequences out of the command line", async () => {
+    // Real xterm fires onKey AND onData for the same keypress with the
+    // identical string; ArrowUp arrives as the 3-character "\x1b[A". The
+    // data path must not treat it as a paste: the sequence is invisible
+    // on screen but corrupts the submitted command.
+    const ctx = makeContext();
+    render(<TerminalPane buildContext={() => ctx} />);
+    const term = instances[0];
+    const press = (key: string, domKey: string) => {
+      term.keyCb!({ key, domEvent: { key: domKey } as KeyboardEvent });
+      term.dataCb!(key);
+    };
+    press("l", "l");
+    press("s", "s");
+    press("\x1b[A", "ArrowUp"); // empty history: onKey is a no-op
+    press("\x1bOP", "F1");
+    press("\r", "Enter");
+    await vi.waitFor(() => expect(ctx.listVfs).toHaveBeenCalled());
+    // A corrupted buffer would have dispatched "ls\x1b[A\x1bOP" and printed
+    // a command-not-found line containing the raw sequence.
+    const output = instances[0].writes.join("");
+    expect(output).not.toContain("\x1b[A: command not found");
+    expect(output).not.toContain("not found");
+  });
+
   it("routes the upload pseudo-command to the host picker through the latest prop", async () => {
     const onUploadRequest = vi.fn();
     render(
