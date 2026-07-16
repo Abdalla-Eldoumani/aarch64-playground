@@ -38,6 +38,15 @@ describe("share hash p2", () => {
     expect(readShareHash("#")).toBeNull();
   });
 
+  it("returns null when lz-string throws instead of failing closed", () => {
+    // "z" decodes to the 2-bit header case lz-string's switch does not
+    // handle, so the decoder throws mid-stream (it does NOT return null).
+    // This runs during render on boot: an uncontained throw is a blank
+    // page with no recovery.
+    expect(readShareHash("#p2=z")).toBeNull();
+    expect(readShareHash("#p=z")).toBeNull();
+  });
+
   it("returns null on malformed p2 payloads", () => {
     expect(readShareHash("#p2=notrealgibberish!!!")).toBeNull();
   });
