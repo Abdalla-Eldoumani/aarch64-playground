@@ -105,9 +105,11 @@ describe("combineSources", () => {
     expect(combineSources("mov x0, 1", [])).toBe("mov x0, 1");
   });
 
-  it("joins main and extras with file-boundary comments", () => {
+  it("keeps main line-for-line and labels only the extras", () => {
+    // main.asm must stay 1:1 with the editor buffer: a header line above
+    // it shifted the line map, error lines, and breakpoints by one.
     expect(combineSources("mov x0, 1", [{ name: "util.asm", body: "ret" }])).toBe(
-      "// ---- main.asm ----\nmov x0, 1\n// ---- util.asm ----\nret",
+      "mov x0, 1\n// ---- util.asm ----\nret",
     );
   });
 });
