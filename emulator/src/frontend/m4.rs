@@ -60,7 +60,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
-    let source = strip_block_comments(source);
+    let source = strip_block_comments(source)?;
     let source = source.as_str();
     // Pass 1: collect `define()` aliases for substitution, record `name =
     // expr` assignments separately (they stay inline so the parser can
@@ -222,9 +222,9 @@ pub(crate) fn substitute_once(line: &str, defines: &HashMap<String, String>) -> 
 /// at each newline because both literal forms are single-line in
 /// assembly, which keeps a stray quote from poisoning the rest of the
 /// file.
-fn strip_block_comments(source: &str) -> String {
+fn strip_block_comments(source: &str) -> Result<String, EmuError> {
     if !source.contains("/*") {
-        return source.to_string();
+        return Ok(source.to_string());
     }
     let bytes = source.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -232,6 +232,8 @@ fn strip_block_comments(source: &str) -> String {
     let mut in_string = false;
     let mut in_char = false;
     let mut in_block = false;
+    let mut line = 1usize;
+    let mut block_open_line = 0usize;
     while i < bytes.len() {
         let b = bytes[i];
         if b == b'\n' {
@@ -239,6 +241,7 @@ fn strip_block_comments(source: &str) -> String {
             in_char = false;
             out.push(b'\n');
             i += 1;
+            line += 1;
             continue;
         }
         if in_block {
@@ -269,6 +272,7 @@ fn strip_block_comments(source: &str) -> String {
             }
             b'/' if !in_string && !in_char && i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
                 in_block = true;
+                block_open_line = line;
                 i += 2;
                 continue;
             }
@@ -277,8 +281,18 @@ fn strip_block_comments(source: &str) -> String {
         out.push(b);
         i += 1;
     }
+    // An unclosed block swallowed everything after it while keeping the
+    // line count intact, so the build reported SUCCESS on a program
+    // reduced to nothing. gcc/as reject with the opening line; so do we.
+    if in_block {
+        return Err(EmuError::PreprocError {
+            line: block_open_line,
+            message: "unterminated /* comment: no closing */ before the end of the file".into(),
+        });
+    }
     // Only ASCII spans were removed, so the bytes are still valid UTF-8.
-    String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+    Ok(String::from_utf8(out)
+        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
 }
 
 fn strip_comment(line: &str) -> &str {
@@ -640,6 +654,27 @@ mod tests {
     fn define_substitutes_on_a_line_with_non_ascii_string_text() {
         let r = exp("define(fp, x29)\nmov x0, fp\n.string \"r\u{e9}sum\u{e9} fp\"\n");
         assert_eq!(r.text, "\nmov x0, x29\n.string \"r\u{e9}sum\u{e9} fp\"");
+    }
+
+    #[test]
+    fn unterminated_block_comment_fails_naming_its_opening_line() {
+        // The unclosed block used to swallow the rest of the file while
+        // keeping line numbers aligned, so assemble reported SUCCESS on a
+        // program reduced to nothing (or missing its ret).
+        let err = expand("main:\n    mov x0, 1\n/*  mov x1, 2\n    ret\n").unwrap_err();
+        match err {
+            EmuError::PreprocError { line, message } => {
+                assert_eq!(line, 3);
+                assert!(message.contains("unterminated"), "message was: {message}");
+            }
+            other => panic!("expected PreprocError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn closed_block_comments_still_blank_correctly() {
+        let r = exp("/* header\nspanning lines */\nmov x0, 1\n");
+        assert_eq!(r.text, "\n\nmov x0, 1");
     }
 
     #[test]
