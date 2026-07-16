@@ -1307,6 +1307,7 @@ function EmbeddableCore({
       pc={emu.pc}
       frameSlots={frameSlots}
       getMemory={emu.getMemory}
+      getMemoryMapped={emu.getMemoryMapped}
     />
   );
   const memWatchBlock = <MemoryWatches getMemory={emu.getMemory} />;
