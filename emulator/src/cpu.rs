@@ -571,8 +571,27 @@ impl Cpu {
     }
 
     /// Register a virtual file the VFS-backed syscalls can read from.
-    pub fn upload_vfs_file(&mut self, path: String, data: Vec<u8>) {
+    /// Enforces the same walls as the syscall path (per-file, whole-VFS,
+    /// file count) so an upload cannot bypass what `write` refuses; the
+    /// web layer pre-checks with matching caps, so a `false` here means a
+    /// caller skipped its own guard. Returns whether the file was stored.
+    pub fn upload_vfs_file(&mut self, path: String, data: Vec<u8>) -> bool {
+        use crate::hosted::syscalls::{
+            MAX_VFS_FILES, MAX_VFS_FILE_BYTES, MAX_VFS_TOTAL_BYTES,
+        };
+        if data.len() > MAX_VFS_FILE_BYTES {
+            return false;
+        }
+        let replaced = self.vfs.get(&path).map_or(0, Vec::len);
+        let total: usize = self.vfs.values().map(Vec::len).sum();
+        if total - replaced + data.len() > MAX_VFS_TOTAL_BYTES {
+            return false;
+        }
+        if !self.vfs.contains_key(&path) && self.vfs.len() >= MAX_VFS_FILES {
+            return false;
+        }
         self.vfs.insert(path, data);
+        true
     }
 
     /// Dispatch a Linux syscall (`svc #0` with x8 != 0). Applies the
