@@ -354,7 +354,7 @@ impl Cpu {
                             }
                         }
                     }
-                    Item::Label(_) => {}
+                    Item::Label { .. } => {}
                     Item::SymbolAssignment { .. } => {}
                     Item::Instruction { .. } => {
                         offset += 4;
