@@ -838,15 +838,27 @@ impl Cpu {
             steps += 1;
         }
 
+        let pc = self.regs.read_pc();
+        // Both backends drive a run as a series of max_steps chunks, and the
+        // first-step resume exemption above would silently skip a breakpoint
+        // sitting exactly on a chunk boundary. If the budget (not a halt or
+        // a stall) ended this call while PC rests on a breakpoint, report the
+        // hit now, before the next chunk's first step would step past it.
+        let at_cap = steps >= max_steps && !self.halted && !self.blocked;
         Ok(RunResult {
-            pc: self.regs.read_pc(),
+            pc,
             halted: self.halted,
             steps_executed: steps,
-            hit_breakpoint: false,
+            hit_breakpoint: at_cap && self.breakpoints.contains(&pc),
             // Surface a bounds abort (step ceiling / memory cap) through
-            // `error` so the UI shows the calm message; `None` on a normal
-            // halt, a breakpoint, or a max_steps stop.
-            error: self.abort_message.clone(),
+            // `error` so the UI shows the calm message. Gated on `halted` so
+            // a run resumed from a restored save never re-reports the abort
+            // that an earlier, pre-restore run recorded.
+            error: if self.halted {
+                self.abort_message.clone()
+            } else {
+                None
+            },
         })
     }
 
@@ -955,6 +967,11 @@ impl Cpu {
         self.rand_state = snap.rand_state;
         self.changed_regs.clear();
         self.changed_fprs.clear();
+        // The abort message describes a run the restored state never took;
+        // left in place it would resurface on the next run's result. The
+        // step budget stays deliberately (see MAX_TOTAL_STEPS): clearing it
+        // here would let a save/restore loop hop past the runaway wall.
+        self.abort_message = None;
         true
     }
 
@@ -998,6 +1015,13 @@ impl Cpu {
         self.rand_state = snap.rand_state;
         self.changed_regs.clear();
         self.changed_fprs.clear();
+        // Un-count the step this frame undoes and drop any abort recorded
+        // after it; otherwise a step taken right after backing off the step
+        // ceiling would re-halt reporting a runaway loop for an instruction
+        // that never executed. Bounded: each backward step refunds exactly
+        // one forward step, and the ring holds at most its capacity.
+        self.steps_total = self.steps_total.saturating_sub(1);
+        self.abort_message = None;
         if self.halted {
             match self.exit_code {
                 Some(code) => StepOutcome::Exited(code),
@@ -1616,6 +1640,73 @@ mod tests {
         assert!(r.halted);
         assert_eq!(r.error, Some(step_ceiling_message()));
         assert_eq!(r.outcome, StepOutcome::Halted);
+    }
+
+    #[test]
+    fn breakpoint_on_a_chunk_boundary_is_reported_not_skipped() {
+        // Both backends drive runs in fixed-size chunks; a breakpoint whose
+        // first arrival lands exactly on a chunk boundary must be reported
+        // by the ending chunk, because the next chunk's first-step resume
+        // exemption would otherwise run straight through it.
+        let mut cpu = Cpu::new();
+        let code = vec![
+            encode_movz(0, 1, 0),
+            encode_movz(1, 2, 0),
+            encode_movz(2, 3, 0),
+            encode_movz(3, 4, 0),
+            encode_svc(0),
+        ];
+        cpu.load_program(&code);
+        cpu.set_breakpoint(CODE_BASE + 8); // the third instruction
+
+        // Chunk of exactly 2 steps: the loop stops at the cap with PC
+        // resting on the breakpoint that has not yet been reported.
+        let chunk = cpu.run_until_break(2).unwrap();
+        assert_eq!(chunk.pc, CODE_BASE + 8);
+        assert!(chunk.hit_breakpoint, "the boundary chunk must report the hit");
+        assert_eq!(cpu.regs.read_gpr(2, true), 0, "the breakpoint line must not execute");
+
+        // A true resume steps past it and runs to the halt.
+        let resumed = cpu.run_until_break(100).unwrap();
+        assert!(resumed.halted);
+        assert_eq!(cpu.regs.read_gpr(2, true), 3);
+    }
+
+    #[test]
+    fn restore_paths_clear_a_stale_abort_message() {
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        cpu.save_state("checkpoint");
+        cpu.step().unwrap();
+
+        // A recorded abort must not survive into a restored save...
+        cpu.abort_message = Some("stale abort".to_string());
+        assert!(cpu.load_state("checkpoint"));
+        assert!(cpu.abort_message.is_none());
+        let r = cpu.run_until_break(10).unwrap();
+        assert!(r.halted);
+        assert!(r.error.is_none(), "a clean run after restore reports no error");
+
+        // ...nor past a backward step, which also refunds the step budget.
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        cpu.step().unwrap();
+        let spent = cpu.steps_total;
+        cpu.abort_message = Some("stale abort".to_string());
+        cpu.step_back();
+        assert!(cpu.abort_message.is_none());
+        assert_eq!(cpu.steps_total, spent - 1);
+    }
+
+    #[test]
+    fn a_halted_run_still_reports_its_own_abort() {
+        // The stale-message gate must not swallow a genuine abort raised by
+        // the run itself.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[0x1400_0000]); // b .
+        cpu.steps_total = MAX_TOTAL_STEPS - 1;
+        let r = cpu.run_until_break(10).unwrap();
+        assert!(r.halted);
+        assert_eq!(r.error, Some(step_ceiling_message()));
     }
 
     #[test]
