@@ -19,6 +19,21 @@ export interface AssemblyError {
   message: string;
 }
 
+/** Retained console scrollback. The panel renders the whole string as one
+ *  text node, so an unbounded buffer turns a print-happy runaway into
+ *  seconds of layout jank per heartbeat; 256 KB is thousands of lines. */
+export const MAX_CONSOLE_CHARS = 256 * 1024;
+/** Visible marker so trimmed output is never mistaken for all of it. */
+export const CONSOLE_TRIM_MARKER = "[...earlier output trimmed...]\n";
+
+/** Append a delta to console scrollback, keeping only the newest
+ *  MAX_CONSOLE_CHARS and saying so when older output is dropped. */
+export function appendBounded(prev: string, delta: string): string {
+  const next = prev + delta;
+  if (next.length <= MAX_CONSOLE_CHARS) return next;
+  return CONSOLE_TRIM_MARKER + next.slice(next.length - MAX_CONSOLE_CHARS);
+}
+
 /** The direct verdict of one assemble attempt, returned to tool callers
  *  (the terminal's gcc) so they never read error state that has not
  *  flushed through React yet. */
@@ -240,8 +255,8 @@ export function useEmulator(): EmulatorState {
     setCanStepBack(snap.canStepBack);
     setVfsFiles(snap.vfsFiles);
     setSavedStates(snap.savedStates);
-    if (snap.stdoutDelta) setStdout((prev) => prev + snap.stdoutDelta);
-    if (snap.stderrDelta) setStderr((prev) => prev + snap.stderrDelta);
+    if (snap.stdoutDelta) setStdout((prev) => appendBounded(prev, snap.stdoutDelta));
+    if (snap.stderrDelta) setStderr((prev) => appendBounded(prev, snap.stderrDelta));
     // Drive the current-line marker off the linker's authoritative
     // address->editor-line map: look the snapshot pc up directly instead
     // of counting non-label source lines (which double-counts data/macro
@@ -578,6 +593,12 @@ export function useEmulator(): EmulatorState {
         setStepCount((c) => {
           const next = c + runResult.steps_executed;
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
+          else if (runResult.step_limit_reached) {
+            setError(
+              `paused after ${runResult.steps_executed.toLocaleString()} steps without finishing -- ` +
+                "press run to continue, or check for a loop whose exit condition never becomes true",
+            );
+          }
           // Approximate replay capture: only the final frame of the run
           // chunk is captured. Per-step granularity would require a
           // Rust delta in the snapshot.
