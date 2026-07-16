@@ -33,6 +33,17 @@ pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
             if name.is_empty() {
                 return asm_err(*line_num, "empty label");
             }
+            // GAS rejects a redefined label; a silent last-wins insert sent
+            // branches to whichever copy came later.
+            if labels.contains_key(&name) {
+                return asm_err(
+                    *line_num,
+                    &format!(
+                        "label `{name}` is already defined -- give each label a \
+                         unique name (labels are file-wide, not per-function)"
+                    ),
+                );
+            }
             labels.insert(name, instr_count * 4);
         } else {
             instr_count += 1;
