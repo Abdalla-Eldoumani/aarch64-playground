@@ -232,8 +232,26 @@ fn format_conversion(
             let body = format_fixed(value, prec, spec.plus, spec.space);
             pad_and_emit(&body, spec, out);
         }
+        'e' | 'E' | 'g' | 'G' | 'a' | 'A' => {
+            // Real glibc formats these. Echoing the specifier literally
+            // also left its argument unconsumed, silently shifting every
+            // later conversion of the same class -- worse than stopping.
+            return Err(EmuError::RuntimeError {
+                message: format!(
+                    "printf %{conv} is not supported by this emulator; format the value with %f"
+                ),
+            });
+        }
+        '*' => {
+            return Err(EmuError::RuntimeError {
+                message: "printf's `*` width is not supported; write the width as digits, like %8d"
+                    .into(),
+            });
+        }
         _ => {
-            // Unknown conversion: emit '%' followed by the character verbatim.
+            // Unknown conversion: emit '%' followed by the character
+            // verbatim, matching glibc's handling of genuinely undefined
+            // specifiers (no argument is consumed there either).
             out.push(b'%');
             push_char(out, conv);
         }
@@ -368,6 +386,16 @@ mod tests {
         let written = ctx.regs.read_gpr(0, true) as usize;
         let s = String::from_utf8(stdout).unwrap();
         Ok((s, written))
+    }
+
+    #[test]
+    fn unimplemented_float_conversions_stop_with_a_remedy() {
+        // Echoing `%e` literally desynced later float conversions; the
+        // student saw a plausible wrong number with no message.
+        let err = try_call("%e", |_, _| {}).unwrap_err();
+        assert!(err.to_string().contains("%f"), "was: {err}");
+        let err = try_call("%*d", |_, _| {}).unwrap_err();
+        assert!(err.to_string().contains("width"), "was: {err}");
     }
 
     #[test]
