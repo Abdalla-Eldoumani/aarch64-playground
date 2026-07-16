@@ -198,6 +198,12 @@ pub struct Cpu {
     /// so the UI shows a calm message instead of a silent stop or a raw
     /// fault. Cleared on load/reset.
     pub abort_message: Option<String>,
+    /// First address past the loaded program's last instruction. A fetch
+    /// landing exactly here means execution fell off the end (a main with
+    /// no ret), which deserves its own message -- without the guard the
+    /// zero-filled page decoded as `unknown instruction: 0x00000000` and
+    /// the teaching layer guessed at causes that never happened.
+    text_end: Option<u64>,
 }
 
 impl Cpu {
@@ -226,6 +232,7 @@ impl Cpu {
             steps_total: 0,
             output_total: 0,
             abort_message: None,
+            text_end: None,
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -287,6 +294,7 @@ impl Cpu {
         self.steps_total = 0;
         self.output_total = 0;
         self.abort_message = None;
+        self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
     }
 
     /// Load a `LinkedImage` from `frontend::pipeline`. Writes each (addr,
@@ -331,6 +339,7 @@ impl Cpu {
         // surfaces (`gdb b <label>`, future symbolic features) can
         // resolve names without going through the frontend again.
         self.symbols = image.symbols.clone();
+        self.text_end = Some(image.text_end);
         Ok(())
     }
 
@@ -544,6 +553,24 @@ impl Cpu {
                 Err(e) => Ok(self.runtime_error_halt(e)),
                 other => other,
             };
+        }
+
+        // Fell off the end of the program: the previous instruction was the
+        // image's last and nothing branched. Name the real cause instead of
+        // decoding the padding that happens to live here.
+        if self.text_end == Some(pc) {
+            self.halted = true;
+            let msg = "execution ran past the last instruction of the program -- \
+                       main needs a `ret` (with an epilogue if it pushed one) or an \
+                       exit call as its final step"
+                .to_string();
+            self.abort_message = Some(msg.clone());
+            return Ok(StepResult {
+                pc,
+                halted: true,
+                error: Some(msg),
+                outcome: StepOutcome::Halted,
+            });
         }
 
         let snapshot = self.regs.snapshot();
@@ -919,6 +946,12 @@ impl Cpu {
         // Drain dirty so the next snapshot doesn't surface fake writes
         // from the page-mapping work above.
         let _ = self.mem.take_dirty();
+    }
+
+    /// First address past the loaded program's last instruction, if a
+    /// program is loaded. See the fall-through guard in `step`.
+    pub fn text_end(&self) -> Option<u64> {
+        self.text_end
     }
 
     /// Whether the CPU has at least one recorded snapshot; i.e. whether
