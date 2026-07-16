@@ -33,6 +33,8 @@ export interface EmulatorBackend {
   /** Signal end-of-input (ctrl-d / a fully-queued redirect). */
   closeStdin(): Promise<StateSnapshot>;
   getMemory(addr: number, len: number): Promise<Uint8Array>;
+  /** Whether every page in the range is mapped (watch fault display). */
+  isRangeMapped(addr: number, len: number): Promise<boolean>;
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
   /** Remove every breakpoint at once (program switch / re-assemble). */
@@ -221,6 +223,10 @@ class MainThreadBackend implements EmulatorBackend {
 
   async clearAllBreakpoints(): Promise<void> {
     this.requireEmu().clearAllBreakpoints();
+  }
+
+  async isRangeMapped(addr: number, len: number): Promise<boolean> {
+    return this.requireEmu().isRangeMapped(addr, len);
   }
 
   async saveState(name: string): Promise<StateSnapshot> {
