@@ -35,6 +35,8 @@ export interface EmulatorBackend {
   getMemory(addr: number, len: number): Promise<Uint8Array>;
   /** Whether every page in the range is mapped (watch fault display). */
   isRangeMapped(addr: number, len: number): Promise<boolean>;
+  /** Pre-assembly structural lint warnings (advisory, line + remedy). */
+  lint(source: string): Promise<Array<{ line: number; message: string }>>;
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
   /** Remove every breakpoint at once (program switch / re-assemble). */
@@ -227,6 +229,10 @@ class MainThreadBackend implements EmulatorBackend {
 
   async isRangeMapped(addr: number, len: number): Promise<boolean> {
     return this.requireEmu().isRangeMapped(addr, len);
+  }
+
+  async lint(source: string): Promise<Array<{ line: number; message: string }>> {
+    return this.requireEmu().lintSource(source);
   }
 
   async saveState(name: string): Promise<StateSnapshot> {
