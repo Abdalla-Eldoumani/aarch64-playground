@@ -76,13 +76,14 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         1 => ctx.stdout.extend_from_slice(&bytes),
         2 => ctx.stderr.extend_from_slice(&bytes),
         _ => {
-            // Find the file, append if writable.
-            let file = ctx.open_files.get_mut(&(fd as u32)).ok_or_else(|| {
-                EmuError::AssemblyError {
-                    line: 0,
-                    message: format!("write to unknown fd {fd}"),
-                }
-            })?;
+            // Unknown fd: Linux returns -1/EBADF and the program keeps
+            // running, letting the student's own openat error check fire.
+            // (The low-32-bit truncation matches the kernel, which reads
+            // an int fd, so a stored -1 looks up as 4294967295 and misses.)
+            let Some(file) = ctx.open_files.get_mut(&(fd as u32)) else {
+                ctx.regs.write_gpr(0, true, (-1i64) as u64);
+                return Ok(HostOutcome::Continue);
+            };
             if !file.writable {
                 ctx.regs.write_gpr(0, true, (-1i64) as u64);
                 return Ok(HostOutcome::Continue);
@@ -142,14 +143,12 @@ pub fn sys_read(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         ctx.regs.write_gpr(0, true, n as u64);
         return Ok(HostOutcome::Continue);
     }
-    // VFS-backed fd. B.7 will wire openat; for now we accept an fd that
-    // was pre-registered by tests or future phases.
-    let file = ctx.open_files.get_mut(&(fd as u32)).ok_or_else(|| {
-        EmuError::AssemblyError {
-            line: 0,
-            message: format!("read from unknown fd {fd}"),
-        }
-    })?;
+    // VFS-backed fd. Unknown means -1/EBADF, same as write: the program
+    // keeps running and the student's own error check can fire.
+    let Some(file) = ctx.open_files.get_mut(&(fd as u32)) else {
+        ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        return Ok(HostOutcome::Continue);
+    };
     let path = file.path.clone();
     let offset = file.offset as usize;
     let data = ctx.vfs.get(&path).cloned().unwrap_or_default();
@@ -572,6 +571,24 @@ mod tests {
         dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
         assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
         assert!(h.vfs["f"].len() <= MAX_VFS_FILE_BYTES);
+    }
+
+    #[test]
+    fn unknown_fd_write_and_read_return_minus_one() {
+        // Storing openat's -1 and calling write is the universal beginner
+        // slip; Linux answers EBADF, never terminates the program.
+        let mut h = Host::new();
+        h.mem.write_u8(0x0060_0000, b'x').unwrap();
+        h.regs.write_gpr(0, true, 0xFFFF_FFFF); // w-register -1
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, 1);
+        dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        h.regs.write_gpr(0, true, 0xFFFF_FFFF);
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, 1);
+        dispatch(SYS_READ, &mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
     }
 
     #[test]
