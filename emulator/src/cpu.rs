@@ -153,6 +153,9 @@ pub struct Cpu {
     pub stderr: Vec<u8>,
     /// Bytes pushed by the frontend; scanf/read(0) drain them.
     pub stdin: Vec<u8>,
+    /// True once the caller signalled end-of-input; getchar/read/scanf
+    /// answer EOF instead of blocking when stdin is empty.
+    pub stdin_closed: bool,
     /// True when the last step stalled in scanf/read with an empty stdin;
     /// cleared automatically when more stdin arrives.
     pub blocked: bool,
@@ -210,6 +213,7 @@ impl Cpu {
             stdout: Vec::new(),
             stderr: Vec::new(),
             stdin: Vec::new(),
+            stdin_closed: false,
             blocked: false,
             exit_code: None,
             vfs: HashMap::new(),
@@ -310,6 +314,7 @@ impl Cpu {
         self.steps_total = 0;
         self.output_total = 0;
         self.abort_message = None;
+        self.stdin_closed = false;
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
@@ -508,6 +513,7 @@ impl Cpu {
             blocked: self.blocked,
             exit_code: self.exit_code,
             stdin: self.stdin.clone(),
+            stdin_closed: self.stdin_closed,
             vfs: self.vfs.clone(),
             open_files: self.open_files.clone(),
             next_fd: self.next_fd,
@@ -646,6 +652,14 @@ impl Cpu {
         self.blocked = false;
     }
 
+    /// Signal end-of-input (ctrl-d / a redirected file fully queued).
+    /// A blocked read resumes and sees EOF; the canonical
+    /// read-until-EOF loop can finally terminate.
+    pub fn close_stdin(&mut self) {
+        self.stdin_closed = true;
+        self.blocked = false;
+    }
+
     /// Drain accumulated stdout as a byte vector, clearing the buffer.
     pub fn take_stdout(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.stdout)
@@ -700,6 +714,7 @@ impl Cpu {
             stdout: &mut self.stdout,
             stderr: &mut self.stderr,
             stdin: &mut self.stdin,
+            stdin_closed: self.stdin_closed,
             vfs: &mut self.vfs,
             open_files: &mut self.open_files,
             next_fd: &mut self.next_fd,
@@ -734,6 +749,7 @@ impl Cpu {
             stdout: &mut self.stdout,
             stderr: &mut self.stderr,
             stdin: &mut self.stdin,
+            stdin_closed: self.stdin_closed,
             vfs: &mut self.vfs,
             open_files: &mut self.open_files,
             next_fd: &mut self.next_fd,
@@ -875,6 +891,7 @@ impl Cpu {
         self.stdout.clear();
         self.stderr.clear();
         self.stdin.clear();
+        self.stdin_closed = false;
         self.blocked = false;
         self.exit_code = None;
         self.vfs.clear();
@@ -910,6 +927,7 @@ impl Cpu {
             blocked: self.blocked,
             exit_code: self.exit_code,
             stdin: self.stdin.clone(),
+            stdin_closed: self.stdin_closed,
             vfs: self.vfs.clone(),
             open_files: self.open_files.clone(),
             next_fd: self.next_fd,
@@ -930,6 +948,7 @@ impl Cpu {
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
         self.stdin = snap.stdin;
+        self.stdin_closed = snap.stdin_closed;
         self.vfs = snap.vfs;
         self.open_files = snap.open_files;
         self.next_fd = snap.next_fd;
@@ -972,6 +991,7 @@ impl Cpu {
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
         self.stdin = snap.stdin;
+        self.stdin_closed = snap.stdin_closed;
         self.vfs = snap.vfs;
         self.open_files = snap.open_files;
         self.next_fd = snap.next_fd;
