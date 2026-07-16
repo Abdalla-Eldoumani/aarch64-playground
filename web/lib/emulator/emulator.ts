@@ -206,6 +206,14 @@ export class EmulatorInstance {
     return this.inner.get_memory_range(addr, len);
   }
 
+  /** Whether every page in the range is mapped; true on a wasm build
+   *  that predates the export (degrades to the zero-fill behavior). */
+  isRangeMapped(addr: number, len: number): boolean {
+    const probe = (this.inner as { is_range_mapped?: (a: number, l: number) => boolean })
+      .is_range_mapped;
+    return typeof probe === "function" ? probe.call(this.inner, addr, len) : true;
+  }
+
   getChangedRegisters(): Uint8Array {
     return this.inner.get_changed_registers();
   }
