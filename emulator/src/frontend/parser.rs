@@ -134,7 +134,10 @@ fn parse_line(
         {
             let label = name.clone();
             let section = prog.section_or_insert(*current);
-            section.items.push(Item::Label(label.clone()));
+            section.items.push(Item::Label {
+                name: label.clone(),
+                original_line: first.line,
+            });
             prog.symbols.insert(
                 label,
                 SymbolValue::Address {
@@ -157,7 +160,10 @@ fn parse_line(
             // same line. Emit the label, then recurse on the remainder.
             let label = name.clone();
             let section = prog.section_or_insert(*current);
-            section.items.push(Item::Label(label.clone()));
+            section.items.push(Item::Label {
+                name: label.clone(),
+                original_line: first.line,
+            });
             prog.symbols.insert(
                 label,
                 SymbolValue::Address {
@@ -892,7 +898,7 @@ mod tests {
         }
         // Label item precedes instruction item in the .text section.
         let text = p.section(SectionKind::Text).unwrap();
-        assert!(matches!(text.items[0], Item::Label(ref n) if n == "main"));
+        assert!(matches!(text.items[0], Item::Label { ref name, .. } if name == "main"));
         assert!(matches!(text.items[1], Item::Instruction { .. }));
     }
 
@@ -900,7 +906,7 @@ mod tests {
     fn label_with_instruction_on_same_line() {
         let p = parse_ok("main: mov x0, #1\n");
         let text = p.section(SectionKind::Text).unwrap();
-        assert!(matches!(text.items[0], Item::Label(_)));
+        assert!(matches!(text.items[0], Item::Label { .. }));
         assert!(matches!(text.items[1], Item::Instruction { .. }));
     }
 
