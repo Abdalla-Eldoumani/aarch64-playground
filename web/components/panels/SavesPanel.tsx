@@ -25,7 +25,7 @@ export interface SavesPanelProps {
     args?: string;
     stdin?: string;
     stepCount: number;
-  }) => Promise<void>;
+  }) => Promise<{ success: boolean; stepped: number }>;
 }
 
 /**
@@ -236,13 +236,22 @@ export function SavesPanel({
                   // surfaces the result so the student sees what
                   // happened.
                   try {
-                    await onRestoreBookmark({
+                    const verdict = await onRestoreBookmark({
                       source: s.source,
                       args: s.args,
                       stdin: s.stdin,
                       stepCount: s.stepCount,
                     });
-                    toast.show(`restored ${s.name} (step ${s.stepCount})`);
+                    // Report what actually happened: a failed assemble
+                    // used to green-toast "restored", and the saved count
+                    // was reported even when the walk stopped early.
+                    if (!verdict.success) {
+                      toast.error(`${s.name} no longer assembles -- fix the source, then bookmark again`);
+                    } else if (verdict.stepped < s.stepCount) {
+                      toast.show(`restored ${s.name} (stopped at step ${verdict.stepped} of ${s.stepCount})`);
+                    } else {
+                      toast.show(`restored ${s.name} (step ${verdict.stepped})`);
+                    }
                   } catch {
                     toast.error(`restore failed for ${s.name}`);
                   }
