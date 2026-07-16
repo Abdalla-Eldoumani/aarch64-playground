@@ -17,9 +17,17 @@ use crate::errors::EmuError;
 use crate::hosted::printf::read_c_string;
 use crate::hosted::{HostContext, HostOutcome, VarargWalker};
 
+/// C's isspace in the default locale: space, \t, \n, \v, \f, \r. Byte-level
+/// on purpose -- Rust's Unicode `char::is_whitespace` on a raw byte treated
+/// 0xA0 (the tail of a UTF-8 NBSP) as a separator and split tokens
+/// mid-character; glibc's scanf never does.
+fn is_c_space(b: u8) -> bool {
+    b.is_ascii_whitespace() || b == 0x0B
+}
+
 pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
-    let fmt_bytes = read_c_string(ctx.mem, fmt_ptr)?;
+    let fmt_bytes = read_c_string(ctx.mem, fmt_ptr, "scanf's format string")?;
     let fmt = String::from_utf8_lossy(&fmt_bytes).into_owned();
 
     // Snapshot stdin so we can roll back if we stall mid-field.
@@ -34,10 +42,10 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let mut f = 0;
     while f < fmt_chars.len() {
         let c = fmt_chars[f];
-        if c.is_whitespace() {
+        if c.is_ascii_whitespace() || c == '\x0B' {
             // Skip any run of whitespace in the input; matches zero-or-more.
             while in_pos < ctx.stdin.len()
-                && (ctx.stdin[in_pos] as char).is_whitespace()
+                && is_c_space(ctx.stdin[in_pos])
             {
                 in_pos += 1;
             }
@@ -117,7 +125,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             'd' | 'i' => {
                 // Skip leading whitespace.
                 while in_pos < ctx.stdin.len()
-                    && (ctx.stdin[in_pos] as char).is_whitespace()
+                    && is_c_space(ctx.stdin[in_pos])
                 {
                     in_pos += 1;
                 }
@@ -142,7 +150,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             }
             'u' => {
                 while in_pos < ctx.stdin.len()
-                    && (ctx.stdin[in_pos] as char).is_whitespace()
+                    && is_c_space(ctx.stdin[in_pos])
                 {
                     in_pos += 1;
                 }
@@ -167,7 +175,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             }
             'x' | 'X' => {
                 while in_pos < ctx.stdin.len()
-                    && (ctx.stdin[in_pos] as char).is_whitespace()
+                    && is_c_space(ctx.stdin[in_pos])
                 {
                     in_pos += 1;
                 }
@@ -193,7 +201,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             's' => {
                 // Skip leading whitespace, then read until whitespace/EOF.
                 while in_pos < ctx.stdin.len()
-                    && (ctx.stdin[in_pos] as char).is_whitespace()
+                    && is_c_space(ctx.stdin[in_pos])
                 {
                     in_pos += 1;
                 }
@@ -204,7 +212,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 let start = in_pos;
                 while in_pos < ctx.stdin.len()
                     && in_pos - start < limit
-                    && !(ctx.stdin[in_pos] as char).is_whitespace()
+                    && !is_c_space(ctx.stdin[in_pos])
                 {
                     in_pos += 1;
                 }
@@ -226,7 +234,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             }
             'f' | 'F' | 'e' | 'E' | 'g' | 'G' => {
                 while in_pos < ctx.stdin.len()
-                    && (ctx.stdin[in_pos] as char).is_whitespace()
+                    && is_c_space(ctx.stdin[in_pos])
                 {
                     in_pos += 1;
                 }
@@ -528,6 +536,26 @@ mod tests {
         let mut ctx = h.ctx();
         ctx.stdin_closed = true;
         ctx
+    }
+
+    #[test]
+    fn a_pasted_nbsp_does_not_split_a_percent_s_token() {
+        // stdin "a\u{a0}b\n" arrives as UTF-8 bytes 61 C2 A0 62 0A. C's
+        // isspace rejects both 0xC2 and 0xA0, so glibc reads the whole
+        // run "a\u{a0}b" as one %s token; the Unicode predicate split it
+        // after the C2 lead byte, storing a string ending mid-character.
+        let mut h = Host::new();
+        h.place_fmt("%s");
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.stdin.extend_from_slice("a\u{a0}b\n".as_bytes());
+        let outcome = scanf(&mut h.ctx()).unwrap();
+        assert_eq!(outcome, HostOutcome::Continue);
+        assert_eq!(h.regs.read_gpr(0, true), 1);
+        let mut stored = Vec::new();
+        for i in 0..5 {
+            stored.push(h.mem.read_u8(0x0060_0000 + i).unwrap());
+        }
+        assert_eq!(stored, vec![0x61, 0xC2, 0xA0, 0x62, 0x00]);
     }
 
     #[test]
