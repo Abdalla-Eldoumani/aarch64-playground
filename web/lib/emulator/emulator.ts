@@ -229,6 +229,14 @@ export class EmulatorInstance {
     return this.inner.get_changed_fp_registers?.() ?? new Uint8Array(0);
   }
 
+  /** Pre-assembly structural lint warnings; [] on a wasm build that
+   *  predates the export (feature-detected, never throws). */
+  lintSource(source: string): Array<{ line: number; message: string }> {
+    const probe = (this.inner as { lint_source?: (s: string) => unknown }).lint_source;
+    if (typeof probe !== "function") return [];
+    return probe.call(this.inner, source) as Array<{ line: number; message: string }>;
+  }
+
   /** Run the m4 pass alone (the terminal's `m4` command). Null when the
    *  loaded WASM predates the export (feature-detected, never throws). */
   m4Expand(source: string): { success: boolean; text?: string; error?: string; error_line?: number } | null {
