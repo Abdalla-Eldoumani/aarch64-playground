@@ -71,6 +71,7 @@ class MainThreadBackend implements EmulatorBackend {
   // Bumped by every machine-replacing operation; a run loop that wakes
   // into a different epoch stands down (see runUntilBreak).
   private runEpoch = 0;
+  private pauseRequested = false;
   private listeners = new Set<(snap: StateSnapshot) => void>();
 
   async init(): Promise<StateSnapshot> {
@@ -133,6 +134,7 @@ class MainThreadBackend implements EmulatorBackend {
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
     const emu = this.requireEmu();
     const epoch = this.runEpoch;
+    this.pauseRequested = false;
     // Run in chunks so we can yield to the UI thread between batches
     // and emit snapshots that look like worker heartbeats.
     const HEARTBEAT_STEPS = 10_000;
@@ -167,6 +169,7 @@ class MainThreadBackend implements EmulatorBackend {
       // Yield to the UI thread between chunks so panels paint. It is
       // also where a reset/assemble can land; a stale run stands down.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (this.pauseRequested) break;
       if (epoch !== this.runEpoch) {
         lastResult = { ...lastResult, cancelled: true };
         break;
@@ -188,8 +191,11 @@ class MainThreadBackend implements EmulatorBackend {
   }
 
   async pause(): Promise<void> {
-    // Run loop runs synchronously chunk-by-chunk; nothing to flag.
-    return undefined;
+    // Observed by runUntilBreak at its between-chunk yield, mirroring the
+    // worker's flag -- the comment that claimed there was "nothing to
+    // flag" was wrong, and the loop ran all remaining chunks while the
+    // button already showed run again.
+    this.pauseRequested = true;
   }
 
   async reset(): Promise<StateSnapshot> {
