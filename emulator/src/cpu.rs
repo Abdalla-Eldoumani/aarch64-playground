@@ -373,6 +373,25 @@ impl Cpu {
         }
     }
 
+    /// Convert a propagated runtime error -- a fetch fault, an undecodable
+    /// word, an executor fault, or a failed host stub / syscall -- into the
+    /// same calm halt the bounds use. Without this boundary the CPU stayed
+    /// live at the faulting PC: Step re-derived the identical error forever,
+    /// Run re-issued chunks against the wedged machine at full speed, and
+    /// `is_halted()` disagreed with the step payload. PC is left unadvanced
+    /// so the fault resolves to the line that raised it.
+    fn runtime_error_halt(&mut self, e: EmuError) -> StepResult {
+        self.halted = true;
+        let msg = e.to_string();
+        self.abort_message = Some(msg.clone());
+        StepResult {
+            pc: self.regs.read_pc(),
+            halted: true,
+            error: Some(msg),
+            outcome: StepOutcome::Halted,
+        }
+    }
+
     /// Execute one instruction at the current PC.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
         if self.halted {
@@ -446,19 +465,26 @@ impl Cpu {
             // A page-cap write fault inside a hosted libc routine (e.g. a
             // buffer-filling scanf when the program has already neared the
             // cap) gets the same calm halt as a write in normal code, never
-            // a raw fault.
+            // a raw fault. Any other stub failure halts calmly too.
             return match self.dispatch_host_stub(pc) {
                 Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
                     Ok(self.memory_cap_halt())
                 }
+                Err(e) => Ok(self.runtime_error_halt(e)),
                 other => other,
             };
         }
 
         let snapshot = self.regs.snapshot();
         let fpr_snapshot = self.regs.snapshot_fpr();
-        let word = self.mem.read_u32(pc)?;
-        let instr = decoder::decode(word)?;
+        let word = match self.mem.read_u32(pc) {
+            Ok(w) => w,
+            Err(e) => return Ok(self.runtime_error_halt(e)),
+        };
+        let instr = match decoder::decode(word) {
+            Ok(i) => i,
+            Err(e) => return Ok(self.runtime_error_halt(e)),
+        };
         let result = match executor::execute(&instr, &mut self.regs, &mut self.mem) {
             Ok(r) => r,
             Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
@@ -469,7 +495,7 @@ impl Cpu {
                 // here is unambiguously the cap.)
                 return Ok(self.memory_cap_halt());
             }
-            Err(e) => return Err(e),
+            Err(e) => return Ok(self.runtime_error_halt(e)),
         };
 
         // advance PC if the instruction didn't branch
@@ -499,7 +525,7 @@ impl Cpu {
                     Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
                         return Ok(self.memory_cap_halt());
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => return Ok(self.runtime_error_halt(e)),
                 }
                 // After a syscall returns normally, PC moves past the svc.
                 if !self.blocked {
@@ -1171,6 +1197,59 @@ mod tests {
         let r = cpu.step().unwrap();
         assert_eq!(r.outcome, StepOutcome::Halted);
         assert!(r.halted);
+    }
+
+    #[test]
+    fn unsupported_syscall_halts_calmly_instead_of_wedging() {
+        // The wedge this guards: the error used to propagate raw with
+        // `halted` left false and PC unmoved, so Run re-issued chunks
+        // against the same fault at full speed and froze the tab, and
+        // every Step reproduced the identical error forever.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(8, 94, 0), encode_svc(0)]);
+        cpu.step().unwrap(); // mov x8, 94
+        let r = cpu.step().unwrap(); // svc 0
+        assert!(r.halted);
+        assert!(r.error.as_deref().unwrap_or("").contains("94"));
+        assert!(cpu.is_halted());
+        assert!(cpu.abort_message.is_some());
+        // A further step must not re-execute anything.
+        let pc_before = cpu.regs.read_pc();
+        let again = cpu.step().unwrap();
+        assert_eq!(again.outcome, StepOutcome::Halted);
+        assert_eq!(cpu.regs.read_pc(), pc_before);
+    }
+
+    #[test]
+    fn undecodable_word_halts_calmly_with_the_message_preserved() {
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[0x0000_0000]);
+        let r = cpu.step().unwrap();
+        assert!(r.halted);
+        assert!(
+            r.error.as_deref().unwrap_or("").contains("unknown instruction"),
+            "error was: {:?}",
+            r.error
+        );
+        assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn runtime_fault_during_run_keeps_the_executed_step_count() {
+        // Three good instructions then a read fault; the run result must
+        // report the steps that DID execute, halted, and the message.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(0, 1, 0),
+            encode_movz(1, 2, 0),
+            encode_movz(2, 3, 0),
+            0xF940_0020, // ldr x0, [x1] -- x1 = 2, unmapped/unaligned
+        ]);
+        let r = cpu.run_until_break(100).unwrap();
+        assert!(r.halted);
+        assert_eq!(r.steps_executed, 4);
+        assert!(r.error.is_some());
+        assert_eq!(cpu.regs.read_gpr(2, true), 3);
     }
 
     #[test]
