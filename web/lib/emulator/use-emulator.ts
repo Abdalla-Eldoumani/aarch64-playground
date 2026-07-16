@@ -98,6 +98,8 @@ export interface EmulatorState {
   pause: () => void;
   reset: () => void;
   toggleBreakpoint: (line: number) => void;
+  /** Drop every breakpoint, gutter and CPU alike (program switch). */
+  clearAllBreakpoints: () => void;
   /**
    * Returns the cached bytes for `[addr, addr + len)`. On a cache miss
    * the returned array is empty and an async fetch is queued; the next
@@ -171,6 +173,11 @@ export function useEmulator(): EmulatorState {
   // map signals the legacy source-text line-count fallback (bare-metal,
   // where instruction index and non-label source line are already 1:1).
   const lineMapRef = useRef<LineMap>(emptyLineMap());
+  // Which gutter LINES share each armed CPU address. Labels, blanks, and
+  // comments forward-resolve to the next instruction, so several dots can
+  // legitimately share one address; the CPU breakpoint is cleared only
+  // when the LAST of them goes.
+  const bpLinesByAddrRef = useRef<Map<number, Set<number>>>(new Map());
   // Replay ring + the latest snapshot snapshot-cache so step/run callbacks
   // can read regs/pc/nzcv without piping them through React state and
   // racing the snapshot listener.
@@ -445,6 +452,31 @@ export function useEmulator(): EmulatorState {
           const map = parseLineMap(flatMap);
           lineMapRef.current = map;
           const mapped = !isEmptyLineMap(map);
+          // Re-key the gutter breakpoints through the FRESH map: the CPU
+          // deliberately keeps its address set across assemble, but those
+          // addresses belong to the previous assembly of possibly
+          // different source. Clear them all and re-arm the lines that
+          // still resolve; lines that no longer map lose their dot.
+          await backend.clearAllBreakpoints();
+          bpLinesByAddrRef.current = new Map();
+          setBreakpoints((prev) => {
+            const survivors = new Set<number>();
+            for (const line of prev) {
+              const addr = mapped
+                ? lineToAddrFromMap(line, map)
+                : (() => {
+                    const idx = sourceLineToInstrIndex(line, source);
+                    return idx === null ? null : base + idx * 4;
+                  })();
+              if (addr === null) continue;
+              survivors.add(line);
+              const lines = bpLinesByAddrRef.current.get(addr) ?? new Set<number>();
+              if (lines.size === 0) void backend.setBreakpoint(addr);
+              lines.add(line);
+              bpLinesByAddrRef.current.set(addr, lines);
+            }
+            return survivors;
+          });
           // The post-assemble snapshot was applied while the loaded flag was
           // still down (and before this map existed), so it left no marker.
           // Recompute the entry marker from the live PC now: through the map
@@ -761,35 +793,57 @@ export function useEmulator(): EmulatorState {
     [pushReplayFrame, resetReplayHistory, markProgramLoaded],
   );
 
+  // Resolve an editor line to an instruction address via the
+  // authoritative reverse map: a breakpoint on a label, blank, or
+  // comment line lands on the next real instruction. Fall back to index
+  // counting only when the map is empty (bare-metal, already 1:1).
+  const resolveBreakpointAddr = useCallback((line: number): number | null => {
+    const map = lineMapRef.current;
+    if (!isEmptyLineMap(map)) {
+      return lineToAddrFromMap(line, map);
+    }
+    const instrIndex = sourceLineToInstrIndex(line, sourceRef.current);
+    return instrIndex === null ? null : codeBase + instrIndex * 4;
+  }, [codeBase]);
+
   const toggleBreakpoint = useCallback((line: number) => {
     const backend = backendRef.current;
     if (!backend) return;
-    // Resolve the editor line to an instruction address via the
-    // authoritative reverse map: a breakpoint on a label, blank, or
-    // comment line lands on the next real instruction. Fall back to index
-    // counting only when the map is empty (bare-metal, already 1:1).
-    const map = lineMapRef.current;
-    let resolved: number | null;
-    if (!isEmptyLineMap(map)) {
-      resolved = lineToAddrFromMap(line, map);
-    } else {
-      const instrIndex = sourceLineToInstrIndex(line, sourceRef.current);
-      resolved = instrIndex === null ? null : codeBase + instrIndex * 4;
-    }
-    if (resolved === null) return;
-    const addr = resolved;
+    const addr = resolveBreakpointAddr(line);
+    if (addr === null) return;
+    const byAddr = bpLinesByAddrRef.current;
     setBreakpoints((prev) => {
       const next = new Set(prev);
+      const lines = byAddr.get(addr) ?? new Set<number>();
       if (next.has(line)) {
         next.delete(line);
-        void backend.clearBreakpoint(addr);
+        lines.delete(line);
+        // Removing one of several dots sharing this instruction used to
+        // silently disarm the CPU breakpoint under the dots that stayed.
+        if (lines.size === 0) {
+          byAddr.delete(addr);
+          void backend.clearBreakpoint(addr);
+        } else {
+          byAddr.set(addr, lines);
+        }
       } else {
         next.add(line);
-        void backend.setBreakpoint(addr);
+        if (lines.size === 0) void backend.setBreakpoint(addr);
+        lines.add(line);
+        byAddr.set(addr, lines);
       }
       return next;
     });
-  }, [codeBase]);
+  }, [resolveBreakpointAddr]);
+
+  /** Drop every breakpoint, gutter and CPU alike: a different program's
+   *  dots and addresses must never survive into this one. */
+  const clearAllBreakpoints = useCallback(() => {
+    bpLinesByAddrRef.current = new Map();
+    setBreakpoints(new Set());
+    const backend = backendRef.current;
+    if (backend) void backend.clearAllBreakpoints();
+  }, []);
 
   // Synchronous read from the per-frame cache. On a miss we kick off
   // an async fetch; the next snapshot/heartbeat will trigger a re-
@@ -865,6 +919,7 @@ export function useEmulator(): EmulatorState {
       pause,
       reset,
       toggleBreakpoint,
+      clearAllBreakpoints,
       getMemory,
       pushStdin,
       closeStdin,
@@ -892,7 +947,7 @@ export function useEmulator(): EmulatorState {
       currentLine, instructions, codeBase, stdout, stderr, blocked,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
-      deleteState, run, pause, reset, toggleBreakpoint, getMemory,
+      deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, getMemory,
       pushStdin, closeStdin, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, replayTick, dirtyAddrsTick, seekReplay,
