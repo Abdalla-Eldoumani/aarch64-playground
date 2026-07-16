@@ -26,6 +26,13 @@ pub fn putchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 pub fn getchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     if ctx.stdin.is_empty() {
+        // Closed stdin means EOF (-1), so the canonical read-until-EOF
+        // loop can terminate; before the close signal existed this state
+        // was an unbreakable wait.
+        if ctx.stdin_closed {
+            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+            return Ok(HostOutcome::Continue);
+        }
         return Ok(HostOutcome::NeedInput);
     }
     let byte = ctx.stdin.remove(0);
@@ -263,6 +270,7 @@ mod tests {
                 stdout: &mut self.stdout,
                 stderr: &mut self.stderr,
                 stdin: &mut self.stdin,
+                stdin_closed: false,
                 vfs: &mut self.vfs,
                 open_files: &mut self.open_files,
                 next_fd: &mut self.next_fd,
@@ -479,6 +487,21 @@ mod tests {
         h.regs.write_gpr(0, true, 0x0050_0000);
         atoi(&mut h.ctx()).unwrap();
         assert_eq!(h.regs.read_gpr(0, true), 0);
+    }
+
+    #[test]
+    fn getchar_returns_eof_once_stdin_is_closed() {
+        let mut h = Host::new();
+        let mut ctx = h.ctx();
+        ctx.stdin_closed = true;
+        getchar(&mut ctx).unwrap();
+        assert_eq!(ctx.regs.read_gpr(0, true) as i64, -1);
+    }
+
+    #[test]
+    fn getchar_still_blocks_while_stdin_is_open() {
+        let mut h = Host::new();
+        assert_eq!(getchar(&mut h.ctx()).unwrap(), HostOutcome::NeedInput);
     }
 
     #[test]
