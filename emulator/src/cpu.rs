@@ -66,6 +66,20 @@ pub fn step_ceiling_message() -> String {
 /// course program's output.
 pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 
+/// Map a Write fault into the calm page-cap message. Stores are the only
+/// writer that faults (memory.rs's cap check is the sole producer), so a
+/// Write fault anywhere -- executing code, a host stub, or loading an
+/// image whose sections need pages the budget no longer covers -- always
+/// means the cap, never a raw internal fault worth showing a student.
+fn map_write_fault(e: EmuError) -> EmuError {
+    match e {
+        EmuError::MemoryFault { access: MemAccess::Write, .. } => EmuError::RuntimeError {
+            message: MEMORY_CAP_MESSAGE.to_string(),
+        },
+        other => other,
+    }
+}
+
 /// Calm, plain-language abort surfaced when the output ceiling is hit.
 pub fn output_ceiling_message() -> String {
     format!(
@@ -297,7 +311,7 @@ impl Cpu {
         self.output_total = 0;
         self.abort_message = None;
         for (addr, bytes) in &image.writes {
-            self.mem.write_bytes(*addr, bytes)?;
+            self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
         self.regs.write_pc(image.entry_point);
         // Stash the `__main_return` sentinel in LR so a hosted program
@@ -306,7 +320,7 @@ impl Cpu {
         if let Some(ret_addr) = self.host.lookup("__main_return") {
             self.regs.write_gpr(30, true, ret_addr);
         }
-        crate::argv::setup_argv(&mut self.regs, &mut self.mem, args)?;
+        crate::argv::setup_argv(&mut self.regs, &mut self.mem, args).map_err(map_write_fault)?;
         self.halted = false;
         // Refresh the symbol table from the linker so debugger
         // surfaces (`gdb b <label>`, future symbolic features) can
