@@ -142,8 +142,10 @@ fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
         }
         spec.precision = Some(prec);
     }
-    // Length modifier. We ignore it because every integer register here is
-    // already 64-bit wide; `%ld`, `%lld`, `%d` all fetch from the same slot.
+    // Length modifier. The fetch slot is the same 64-bit register either
+    // way, but the WIDTH read out of it must follow C: plain `%d` is an
+    // int and consumes w-register bits only -- glibc on the course
+    // machine prints 85 for a `.word`, not the neighbor's bytes.
     while *i < chars.len() && matches!(chars[*i], 'l' | 'h' | 'z' | 'j' | 't') {
         spec.long = chars[*i] == 'l';
         *i += 1;
@@ -162,7 +164,8 @@ fn format_conversion(
         '%' => out.push(b'%'),
         'd' | 'i' => {
             let raw = walker.next_int(ctx);
-            let value = raw as i64;
+            // Plain %d is C's int: only w-register bits, sign-extended.
+            let value = if spec.long { raw as i64 } else { raw as u32 as i32 as i64 };
             let mut body = if value < 0 {
                 format!("-{}", (value as i128).unsigned_abs())
             } else if spec.plus {
@@ -176,13 +179,15 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'u' => {
-            let value = walker.next_int(ctx);
+            let raw = walker.next_int(ctx);
+            let value = if spec.long { raw } else { raw as u32 as u64 };
             let mut body = format!("{value}");
             apply_precision_int(&mut body, spec);
             pad_and_emit(&body, spec, out);
         }
         'x' => {
-            let value = walker.next_int(ctx);
+            let raw = walker.next_int(ctx);
+            let value = if spec.long { raw } else { raw as u32 as u64 };
             let mut body = format!("{value:x}");
             if spec.alt && value != 0 {
                 body = format!("0x{body}");
@@ -191,7 +196,8 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'X' => {
-            let value = walker.next_int(ctx);
+            let raw = walker.next_int(ctx);
+            let value = if spec.long { raw } else { raw as u32 as u64 };
             let mut body = format!("{value:X}");
             if spec.alt && value != 0 {
                 body = format!("0X{body}");
@@ -200,7 +206,8 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'o' => {
-            let value = walker.next_int(ctx);
+            let raw = walker.next_int(ctx);
+            let value = if spec.long { raw } else { raw as u32 as u64 };
             let mut body = format!("{value:o}");
             if spec.alt && !body.starts_with('0') {
                 body = format!("0{body}");
@@ -386,6 +393,30 @@ mod tests {
         let written = ctx.regs.read_gpr(0, true) as usize;
         let s = String::from_utf8(stdout).unwrap();
         Ok((s, written))
+    }
+
+    #[test]
+    fn plain_percent_d_reads_int_width_like_glibc() {
+        // glibc's %d consumes an int: a `.word` loaded with `ldr w1` (or
+        // even a 64-bit load that dragged neighbor bytes along) prints the
+        // low 32 bits sign-extended, exactly like the course machine.
+        let (s, _) = call("%d", |regs, _| {
+            regs.write_gpr(1, true, 0x0000_0007_0000_0055);
+        });
+        assert_eq!(s, "85");
+        let (s, _) = call("%d", |regs, _| {
+            regs.write_gpr(1, true, 0x0000_0000_FFFF_FFFB);
+        });
+        assert_eq!(s, "-5");
+        // %ld keeps the full register.
+        let (s, _) = call("%ld", |regs, _| {
+            regs.write_gpr(1, true, 0x0000_0007_0000_0055);
+        });
+        assert_eq!(s, "30064771157");
+        let (s, _) = call("%x", |regs, _| {
+            regs.write_gpr(1, true, u64::MAX);
+        });
+        assert_eq!(s, "ffffffff");
     }
 
     #[test]
