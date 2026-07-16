@@ -442,10 +442,15 @@ export function useEmulator(): EmulatorState {
         .assemble(source, args)
         .then(async ({ result }): Promise<AssembleOutcome> => {
           if (!result.success) {
+            // A non-positive line means "no line available" (a few linker
+            // errors); Monaco clamps a 0 range to line 1, which painted
+            // the error onto an innocent first line.
+            const errorLine =
+              result.error_line != null && result.error_line > 0 ? result.error_line : null;
             if (surfaceErrors) {
               const errors: AssemblyError[] = [];
-              if (result.error_line != null && result.error != null) {
-                errors.push({ line: result.error_line, message: result.error });
+              if (errorLine != null && result.error != null) {
+                errors.push({ line: errorLine, message: result.error });
               }
               setAssemblyErrors(errors);
               setError(result.error ?? null);
@@ -453,7 +458,7 @@ export function useEmulator(): EmulatorState {
             return {
               success: false,
               error: result.error ?? null,
-              errorLine: result.error_line ?? null,
+              errorLine,
             };
           }
           const base = await backend.codeBase();
