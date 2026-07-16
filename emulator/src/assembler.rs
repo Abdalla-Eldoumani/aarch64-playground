@@ -769,7 +769,22 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
 
     // immediate form via UBFM/SBFM
     if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-        let amt = parse_immediate(op3, ln)? as u8;
+        // Validate the full-width value BEFORE narrowing: `as u8` wraps
+        // mod 256, and the UBFM field math below wraps again, so an
+        // out-of-range amount used to assemble silently into a different
+        // instruction (`lsl x0, x1, #64` became `lsr x0, x1, #3`). GAS
+        // rejects anything outside the register width.
+        let raw = parse_immediate(op3, ln)?;
+        if !(0..reg_size as i64).contains(&raw) {
+            return asm_err(
+                ln,
+                &format!(
+                    "shift amount {raw} is out of range for a {reg_size}-bit register (valid: 0-{})",
+                    reg_size - 1
+                ),
+            );
+        }
+        let amt = raw as u8;
         let (opc, immr, imms) = match shift_type {
             0 => {
                 // LSL: UBFM Xd, Xn, #(reg_size - amt), #(reg_size - 1 - amt)
@@ -2007,6 +2022,56 @@ mod tests {
 
         assert_eq!(cpu.regs.read_gpr(2, true), 100);
         assert_eq!(cpu.regs.read_gpr(3, true), 200);
+    }
+
+    #[test]
+    fn out_of_range_shift_amounts_are_rejected_not_rewritten() {
+        // Each of these used to assemble silently into a DIFFERENT
+        // instruction through u8 wrap + field overflow; GAS rejects all.
+        for src in [
+            "LSL X0, X1, #64",
+            "LSL W0, W1, #32",
+            "LSL X0, X1, #65",
+            "LSR X0, X1, #64",
+            "LSR W0, W1, #32",
+            "ASR X0, X1, #300",
+            "LSL X0, X1, #256",
+            "LSL X0, X1, #-1",
+        ] {
+            let err = assemble(src).unwrap_err();
+            assert!(
+                err.to_string().contains("out of range"),
+                "{src} was: {err}"
+            );
+        }
+        // The boundaries stay legal.
+        assert!(assemble("LSL X0, X1, #63").is_ok());
+        assert!(assemble("LSR W0, W1, #31").is_ok());
+        assert!(assemble("ASR X0, X1, #0").is_ok());
+    }
+
+    #[test]
+    fn register_form_shifts_assemble_and_execute() {
+        // The LSLV/LSRV/ASRV encoders existed but the decoder could not
+        // read them back: `lsl x0, x1, x2` assembled fine then died
+        // mid-run with a raw hex word.
+        let source = r#"
+            MOV X1, #5
+            MOV X2, #3
+            LSL X3, X1, X2
+            LSR X4, X3, X2
+            MOV X5, #-16
+            MOV X6, #2
+            ASR X7, X5, X6
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(3, true), 40);
+        assert_eq!(cpu.regs.read_gpr(4, true), 5);
+        assert_eq!(cpu.regs.read_gpr(7, true) as i64, -4);
     }
 
     #[test]
