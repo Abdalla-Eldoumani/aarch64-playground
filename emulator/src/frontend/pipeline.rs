@@ -67,6 +67,13 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // equate during this very walk; the rest wait for pass 1c's rounds.
     // Reserve sizes resolved here are kept for pass 2, which must walk
     // the identical layout.
+    // Section bases sit 1 MiB apart (SectionKind::default_base), so any
+    // section that outgrows this window silently runs into the next one's
+    // addresses: two labels on one address, stores clobbering unrelated
+    // variables. Checked during this walk, where the offending line is
+    // still known.
+    const SECTION_WINDOW: u64 = 1024 * 1024;
+
     let mut text_len: u64 = 0;
     let mut assignments: Vec<(String, String, u64, usize)> = Vec::new();
     let mut reserve_sizes: HashMap<(SectionKind, usize), u64> = HashMap::new();
@@ -77,9 +84,11 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     for section in &prog.sections {
         let base = section.kind.default_base();
         let mut offset: u64 = 0;
+        let mut last_line: usize = 0;
         for (idx, item) in section.items.iter().enumerate() {
             match item {
                 Item::Label { name, original_line } => {
+                    last_line = *original_line;
                     if let Some(first) = label_lines.get(name) {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
@@ -103,7 +112,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     symbols.insert(name.clone(), base + offset);
                 }
                 Item::Bytes(b) => offset += b.len() as u64,
-                Item::Reserve(n) => offset += n,
+                Item::Reserve(n) => offset = offset.saturating_add(*n),
                 Item::AlignToBytes(n) => {
                     if *n > 0 {
                         let rem = offset % n;
@@ -113,6 +122,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                 }
                 Item::SymbolAssignment { name, body, original_line } => {
+                    last_line = *original_line;
                     if let Some(first) = label_lines.get(name) {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
@@ -130,11 +140,31 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                     assignments.push((name.clone(), body.clone(), base + offset, *original_line));
                 }
-                Item::Instruction { .. } => offset += 4,
-                Item::DataExprs { exprs, width, .. } => {
+                Item::Instruction { original_line, .. } => {
+                    last_line = *original_line;
+                    // Data emitted into .text above this point knocked every
+                    // following instruction off its 4-byte boundary; report
+                    // it here, where the line is known, instead of letting
+                    // the linker blame an internal literal-pool offset.
+                    if section.kind == SectionKind::Text && offset % 4 != 0 {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "this instruction lands at a misaligned address: {} byte(s) of \
+                                 data sit in .text above it -- move the data to .data or \
+                                 .rodata, or add `.balign 4` between the data and the code",
+                                offset % 4
+                            ),
+                        });
+                    }
+                    offset += 4;
+                }
+                Item::DataExprs { exprs, width, original_line } => {
+                    last_line = *original_line;
                     offset += (exprs.len() * width) as u64;
                 }
                 Item::ReserveExpr { tokens, original_line } => {
+                    last_line = *original_line;
                     let value = evaluate(
                         tokens,
                         &|name| symbols.get(name).map(|v| *v as i64),
@@ -148,8 +178,20 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         });
                     }
                     reserve_sizes.insert((section.kind, idx), value as u64);
-                    offset += value as u64;
+                    offset = offset.saturating_add(value as u64);
                 }
+            }
+            if offset > SECTION_WINDOW {
+                return Err(EmuError::AssemblyError {
+                    line: last_line,
+                    message: format!(
+                        "{} has grown past its 1 MiB window ({} bytes so far) and would \
+                         overlap the next section's addresses -- shrink the data or .skip \
+                         reservations (check any size equate for a typo)",
+                        section.kind.name(),
+                        offset
+                    ),
+                });
             }
         }
         if section.kind == SectionKind::Text {
@@ -539,6 +581,12 @@ fn parse_ldr_eq_rt(
     let idx: u8 = idx_str
         .parse()
         .map_err(|_| err(line, &format!("bad register index in `{reg}`")))?;
+    if idx > 31 {
+        return Err(err(
+            line,
+            &format!("`{reg}` is not a register; the register file runs x0-x30 (plus xzr/sp)"),
+        ));
+    }
     Ok((idx, sf))
 }
 
@@ -702,7 +750,7 @@ fn rewrite_operand(
     if !looks_like_expression(body, symbols) {
         return Ok(trimmed.to_string());
     }
-    match try_evaluate_operand(body, pc, symbols, ln) {
+    match try_evaluate_operand(body, pc, symbols, ln)? {
         Some(value) => Ok(format!("{value}")),
         None => Ok(trimmed.to_string()),
     }
@@ -783,20 +831,44 @@ fn is_register_or_shift_keyword(s: &str) -> bool {
     )
 }
 
+/// Evaluate an operand body that looked like an expression. `Ok(None)`
+/// means "not an integer expression, hand the text to the encoder" (float
+/// immediates, shift-modifier operands); a genuine broken expression
+/// propagates its own diagnosis -- swallowing it into the encoder's
+/// "invalid immediate" hid `unknown symbol \`SZIE\`` behind a message about
+/// immediate ranges when a macro name was typo'd.
 fn try_evaluate_operand(
     body: &str,
     pc: u64,
     symbols: &HashMap<String, u64>,
     ln: usize,
-) -> Option<i64> {
-    let tokens = lex(body, ln).ok()?;
-    evaluate(
+) -> Result<Option<i64>, EmuError> {
+    // A shift modifier's keyword-plus-amount shape (`lsl #(1 + 1)`) is an
+    // encoder operand, never an expression.
+    let first_word = body.split_whitespace().next().unwrap_or("");
+    if is_register_or_shift_keyword(first_word) {
+        return Ok(None);
+    }
+    let Ok(tokens) = lex(body, ln) else {
+        return Ok(None);
+    };
+    // A float immediate (`fmov d0, #1.5`) must reach the FP encoder as
+    // written; the evaluator only speaks integers.
+    if tokens
+        .iter()
+        .any(|t| matches!(t.kind, TokenKind::FloatLit(_)))
+    {
+        return Ok(None);
+    }
+    match evaluate(
         &tokens,
         &|name| symbols.get(name).map(|v| *v as i64),
         pc as i64,
         ln,
-    )
-    .ok()
+    ) {
+        Ok(v) => Ok(Some(v)),
+        Err(e) => Err(e),
+    }
 }
 
 /// If this instruction is `bl <ident>`, return the target identifier.
