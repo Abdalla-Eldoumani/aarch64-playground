@@ -32,14 +32,14 @@ describe("upload-guard", () => {
 
   test("error string interpolates the cap in MB rounded to integer", () => {
     expect(checkUploadSize(2_000_000_000, 1_048_576, "x")).toBe("x too large (max 1 MB)");
-    expect(checkUploadSize(2_000_000_000, MAX_VFS_BYTES, "y")).toBe("y too large (max 10 MB)");
+    expect(checkUploadSize(2_000_000_000, MAX_VFS_BYTES, "y")).toBe("y too large (max 4 MB)");
   });
 });
 
 describe("upload-guard caps", () => {
   test("the locked sizes match the security decision", () => {
     expect(MAX_SOURCE_BYTES).toBe(1 * 1024 * 1024);
-    expect(MAX_VFS_BYTES).toBe(10 * 1024 * 1024);
+    expect(MAX_VFS_BYTES).toBe(4 * 1024 * 1024);
     expect(MAX_ARGS_CHARS).toBe(1000);
     expect(MAX_STDIN_BYTES).toBe(100 * 1024);
     expect(MAX_SHARE_HASH_BYTES).toBe(64 * 1024);
