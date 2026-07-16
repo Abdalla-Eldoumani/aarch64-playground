@@ -45,6 +45,10 @@ pub struct HostContext<'a> {
     pub stdout: &'a mut Vec<u8>,
     pub stderr: &'a mut Vec<u8>,
     pub stdin: &'a mut Vec<u8>,
+    /// True once the caller has signalled end-of-input (ctrl-d, or a
+    /// terminal `< file` redirect): an empty stdin then means EOF, not
+    /// "pause and wait for more".
+    pub stdin_closed: bool,
     pub vfs: &'a mut std::collections::HashMap<String, Vec<u8>>,
     pub open_files: &'a mut std::collections::HashMap<u32, crate::cpu::OpenFile>,
     pub next_fd: &'a mut u32,
@@ -189,6 +193,7 @@ mod tests {
             stdout,
             stderr,
             stdin,
+            stdin_closed: false,
             vfs,
             open_files,
             next_fd,
