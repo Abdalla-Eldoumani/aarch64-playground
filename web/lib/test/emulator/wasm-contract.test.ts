@@ -81,6 +81,25 @@ after:
         ret
 `;
 
+describe("lint_source over the real build", () => {
+  it("warns on the missing-prologue shape and stays quiet on clean code", () => {
+    withEmulator((emu) => {
+      const lintSource = (emu as unknown as { lint_source: (s: string) => unknown }).lint_source.bind(emu);
+      const warn = lintSource(
+        ".text\n.global main\nmain:\nmov x0, 0\nldp x29, x30, [sp], 16\nret\n",
+      ) as Array<{ line: number; message: string }>;
+      expect(warn).toHaveLength(1);
+      expect(warn[0].line).toBe(5);
+      expect(warn[0].message).toContain("never pushed");
+
+      const clean = lintSource(
+        ".text\n.global main\nmain:\nstp x29, x30, [sp, -16]!\nmov x0, 0\nldp x29, x30, [sp], 16\nret\n",
+      ) as Array<{ line: number; message: string }>;
+      expect(clean).toHaveLength(0);
+    });
+  });
+});
+
 describe("step_back restores registers and memory", () => {
   it("undoes a str's memory write and a mov's register write, one frame at a time", () => {
     withEmulator((emu) => {
