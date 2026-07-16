@@ -429,13 +429,26 @@ export function Editor({
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
+      // Cancel the drop FIRST: an early return before preventDefault let
+      // the browser's default run, and the default for a dropped file is
+      // navigating the tab to file:// -- the whole machine state gone.
+      e.preventDefault();
       const file = e.dataTransfer?.files?.[0];
       if (!file) return;
-      if (!/\.(s|asm|txt)$/i.test(file.name)) return;
-      e.preventDefault();
-      file.text().then((text) => handleChange(text));
+      if (!/\.(s|asm|txt)$/i.test(file.name)) {
+        toast.error(
+          "only .s, .asm, and .txt files can be dropped here -- rename the file or paste its contents",
+        );
+        return;
+      }
+      file
+        .text()
+        .then((text) => handleChange(text))
+        .catch(() => {
+          toast.error("could not read the dropped file -- try again or paste its contents");
+        });
     },
-    [handleChange],
+    [handleChange, toast],
   );
 
   if (fallback) {
