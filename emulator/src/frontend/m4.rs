@@ -85,6 +85,19 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             stripped.push(String::new());
             continue;
         }
+        // The line got past both define gates (the keyword and the paren)
+        // but failed to parse: it is a broken define, not an instruction.
+        // Passing it through blamed the student for an unknown mnemonic
+        // spelled DEFINE(FP,.
+        if is_attempted_define(trimmed) {
+            return Err(EmuError::PreprocError {
+                line: line_num,
+                message: format!(
+                    "malformed m4 define: {} -- write `define(NAME, body)`",
+                    diagnose_define(trimmed)
+                ),
+            });
+        }
         if let Some((name, body)) = parse_assignment(trimmed) {
             assignments.insert(name, body);
             // Keep the assignment line intact so the parser can produce
@@ -339,6 +352,45 @@ fn strip_comment(line: &str) -> &str {
         i += 1;
     }
     line
+}
+
+/// The same two gates `parse_define` opens with: the keyword and an
+/// opening paren. A line that passes both is an attempted define even when
+/// the rest is malformed.
+fn is_attempted_define(trimmed: &str) -> bool {
+    trimmed
+        .strip_prefix("define")
+        .map(str::trim_start)
+        .is_some_and(|rest| rest.starts_with('('))
+}
+
+/// Name what is wrong with an attempted define. Only called after
+/// `parse_define` returned None, so some branch below always fires.
+fn diagnose_define(trimmed: &str) -> String {
+    let rest = trimmed
+        .strip_prefix("define")
+        .map(str::trim_start)
+        .unwrap_or("");
+    let Some(inside_plus) = rest.strip_prefix('(') else {
+        return "expected `(` after define".to_string();
+    };
+    let Some((inside, after)) = split_outer_parens(inside_plus) else {
+        return "the closing `)` is missing".to_string();
+    };
+    if !after.trim().is_empty() {
+        return format!("unexpected text after the closing `)`: `{}`", after.trim());
+    }
+    let Some((name, _body)) = split_top_level_comma(inside) else {
+        return "the comma between the name and the body is missing".to_string();
+    };
+    let name = name.trim();
+    if name.is_empty() {
+        return "the macro name is empty".to_string();
+    }
+    format!(
+        "`{name}` is not a valid macro name (letters, digits and _ only, \
+         not starting with a digit)"
+    )
 }
 
 fn parse_define(trimmed: &str) -> Option<(String, String)> {
