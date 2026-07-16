@@ -207,9 +207,19 @@ fn parse_line(
             });
             Ok(())
         }
-        _ => Err(err(
+        // `#` starts a comment in x86/MIPS/ARM32 assembly but not here;
+        // name the habit and the fix rather than a bare "unexpected token".
+        TokenKind::Hash => Err(err(
             first.line,
-            "unexpected token at start of line",
+            "`#` is not a comment character here -- write comments with `//` or `;`",
+        )),
+        other => Err(err(
+            first.line,
+            &format!(
+                "unexpected {} at the start of a line -- a line starts with a label, \
+                 an instruction, or a directive",
+                crate::frontend::lexer::describe(other)
+            ),
         )),
     }
 }
@@ -328,6 +338,13 @@ fn parse_directive(
         ".quad" | ".dword" => emit_int_list(rest, prog, *current, line, 8),
         ".double" => emit_float_list(rest, prog, *current, line, true),
         ".float" => emit_float_list(rest, prog, *current, line, false),
+        // Constants are supported, just not under these spellings; say so
+        // instead of calling the directive unknown.
+        ".equ" | ".set" => Err(err(
+            line,
+            "`.equ`/`.set` are not supported; write `NAME = expression` instead \
+             (for example `SIZE = 40`)",
+        )),
         other => Err(err(line, &format!("unknown directive `{other}`"))),
     }
 }
@@ -385,16 +402,25 @@ fn emit_int_list(
     width: usize,
 ) -> Result<(), EmuError> {
     let exprs = split_comma_groups(rest);
+    // Catch a doubled/leading/trailing comma here, where the directive is
+    // known, instead of letting the evaluator (or the linker, for deferred
+    // symbol lists) report a baffling "end of input" for a file that ends
+    // nowhere near this line.
+    reject_empty_groups(&exprs, rest, line)?;
     // A value that names a symbol or `.` cannot be computed here: label
     // addresses exist only after the linker places every section. Course
     // pointer tables (`.dword label_january, ...`) are the motivating
-    // case. Defer the whole list so slot addressing stays contiguous;
-    // pure-constant lists keep the immediate Bytes path and its
-    // parse-time error reporting.
+    // case, and dotted local labels (`.quad .L2`, GCC jump tables) lex as
+    // DirectiveIdent. Defer the whole list so slot addressing stays
+    // contiguous; pure-constant lists keep the immediate Bytes path and
+    // its parse-time error reporting.
     let needs_link_resolution = exprs.iter().any(|group| {
-        group
-            .iter()
-            .any(|t| matches!(t.kind, TokenKind::Ident(_) | TokenKind::Dot))
+        group.iter().any(|t| {
+            matches!(
+                t.kind,
+                TokenKind::Ident(_) | TokenKind::DirectiveIdent(_) | TokenKind::Dot
+            )
+        })
     });
     if needs_link_resolution {
         prog.section_or_insert(current).items.push(Item::DataExprs {
@@ -415,6 +441,24 @@ fn emit_int_list(
     Ok(())
 }
 
+/// Reject the empty slots a doubled, leading, or trailing comma leaves in
+/// a data-directive value list, naming the fix. GAS rejects all three.
+fn reject_empty_groups(
+    exprs: &[&[Token]],
+    rest: &[Token],
+    line: usize,
+) -> Result<(), EmuError> {
+    if exprs.iter().any(|g| g.is_empty())
+        || (!rest.is_empty() && matches!(rest[rest.len() - 1].kind, TokenKind::Comma))
+    {
+        return Err(err(
+            line,
+            "empty value in this list -- remove the extra comma",
+        ));
+    }
+    Ok(())
+}
+
 fn emit_float_list(
     rest: &[Token],
     prog: &mut Program,
@@ -423,6 +467,7 @@ fn emit_float_list(
     is_double: bool,
 ) -> Result<(), EmuError> {
     let exprs = split_comma_groups(rest);
+    reject_empty_groups(&exprs, rest, line)?;
     let mut out = Vec::new();
     for expr in exprs {
         let value = single_float(expr, line)?;
