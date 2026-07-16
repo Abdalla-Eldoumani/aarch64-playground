@@ -53,6 +53,49 @@ pub struct HostContext<'a> {
     pub rand_state: &'a mut u64,
 }
 
+/// AAPCS64 vararg cursor, shared by printf and scanf: both walk the same
+/// convention (ints in the next GP register through x7, doubles through
+/// d7, then a SHARED stack spill at the caller's SP advancing 8 bytes per
+/// arg). scanf once walked a bare register counter instead, so its 8th
+/// pointer read x8 -- a live scratch register -- rather than `[sp]`.
+pub(crate) struct VarargWalker {
+    /// Next GP register index. <= 7 means read xN; > 7 means spill.
+    pub(crate) gp_idx: u8,
+    /// Next SIMD register index. <= 7 means read dN; > 7 means spill.
+    pub(crate) fp_idx: u8,
+    /// Bytes above SP-at-call-site for the next spilled arg. Shared
+    /// between int and float spills per AAPCS64.
+    pub(crate) stack_off: u64,
+}
+
+impl VarargWalker {
+    pub(crate) fn next_int(&mut self, ctx: &mut HostContext<'_>) -> u64 {
+        if self.gp_idx <= 7 {
+            let v = ctx.regs.read_gpr(self.gp_idx, true);
+            self.gp_idx = self.gp_idx.saturating_add(1);
+            v
+        } else {
+            let sp = ctx.regs.read_sp();
+            let addr = sp.wrapping_add(self.stack_off);
+            self.stack_off = self.stack_off.wrapping_add(8);
+            ctx.mem.read_u64(addr).unwrap_or(0)
+        }
+    }
+
+    pub(crate) fn next_double(&mut self, ctx: &mut HostContext<'_>) -> f64 {
+        if self.fp_idx <= 7 {
+            let v = ctx.regs.read_fpr_f64(self.fp_idx);
+            self.fp_idx = self.fp_idx.saturating_add(1);
+            v
+        } else {
+            let sp = ctx.regs.read_sp();
+            let addr = sp.wrapping_add(self.stack_off);
+            self.stack_off = self.stack_off.wrapping_add(8);
+            ctx.mem.read_u64(addr).map(f64::from_bits).unwrap_or(0.0)
+        }
+    }
+}
+
 /// Table of host stubs, indexed by symbolic name and addressable via a
 /// stable 64-bit address in the `HOST_STUB_BASE` range. The linker reads
 /// `lookup(name)` to resolve `bl printf`; the executor calls `dispatch`
