@@ -31,10 +31,27 @@ pub const MAX_MAPPED_PAGES: usize = 1024;
 /// for the replay scrubber's memory-diff highlighting. The buffer is
 /// drained by `take_dirty()` between steps; without that drain it
 /// grows unbounded.
-#[derive(Clone)]
 pub struct Memory {
     pages: HashMap<u64, Vec<u8>>,
+    /// Zeroed page buffers recycled by `clear()`. Never freed: dropping
+    /// 4 KiB buffers under wasm32's bundled `dlmalloc` can corrupt its
+    /// free list (an `unreachable` trap inside `__rdl_dealloc`), so the
+    /// buffers are parked here and reused before any new allocation.
+    free: Vec<Vec<u8>>,
     dirty: Vec<(u64, usize)>,
+}
+
+impl Clone for Memory {
+    /// Snapshots need the live pages, never the recycle pool: cloning the
+    /// pool would copy megabytes of zeroed buffers into every step-back
+    /// frame.
+    fn clone(&self) -> Self {
+        Self {
+            pages: self.pages.clone(),
+            free: Vec::new(),
+            dirty: self.dirty.clone(),
+        }
+    }
 }
 
 fn new_page() -> Vec<u8> {
@@ -46,6 +63,7 @@ impl Memory {
     pub fn new() -> Self {
         Self {
             pages: HashMap::new(),
+            free: Vec::new(),
             dirty: Vec::new(),
         }
     }
@@ -60,7 +78,10 @@ impl Memory {
     /// Explicitly map a page so it can be read before being written.
     pub fn map_page(&mut self, addr: u64) {
         let base = addr & PAGE_MASK;
-        self.pages.entry(base).or_insert_with(new_page);
+        let Self { pages, free, .. } = self;
+        pages
+            .entry(base)
+            .or_insert_with(|| free.pop().unwrap_or_else(new_page));
     }
 
     /// Check whether the page containing `addr` is mapped.
@@ -74,15 +95,19 @@ impl Memory {
         self.pages.len()
     }
 
-    /// Zero every mapped page in place, keeping the allocations.
+    /// Unmap every page, parking the zeroed buffers in the recycle pool.
     ///
-    /// Dropping and re-allocating 4 KiB page buffers under wasm32's bundled
-    /// `dlmalloc` can trigger a free-list corruption that manifests as an
-    /// `unreachable` trap inside `__rdl_dealloc`. Zeroing in place avoids
-    /// the allocator churn that triggers it.
+    /// The buffers are recycled rather than dropped to keep the dlmalloc
+    /// workaround (see `free`) closed, while `mapped_page_count()` -- the
+    /// `MAX_MAPPED_PAGES` budget -- returns to zero. Without the unmap,
+    /// a program that hit the page cap left the budget exhausted forever
+    /// and the NEXT program was blamed for it: reset never gave the pages
+    /// back.
     pub fn clear(&mut self) {
-        for page in self.pages.values_mut() {
+        let Self { pages, free, .. } = self;
+        for (_, mut page) in pages.drain() {
             page.fill(0);
+            free.push(page);
         }
     }
 
@@ -114,7 +139,11 @@ impl Memory {
                 access: MemAccess::Write,
             });
         }
-        Ok(self.pages.entry(base).or_insert_with(new_page).as_mut_slice())
+        let Self { pages, free, .. } = self;
+        Ok(pages
+            .entry(base)
+            .or_insert_with(|| free.pop().unwrap_or_else(new_page))
+            .as_mut_slice())
     }
 
     // -- public read/write --
@@ -407,6 +436,45 @@ mod tests {
             err,
             EmuError::MemoryFault { address: 0x5000, access: MemAccess::Read }
         );
+    }
+
+    #[test]
+    fn clear_returns_the_page_budget() {
+        // Exhaust the cap, clear, and confirm the budget is back: the next
+        // program must never be blamed for the previous one's allocation.
+        let mut mem = Memory::new();
+        for i in 0..MAX_MAPPED_PAGES {
+            mem.write_u8((i as u64) * 4096, 1).unwrap();
+        }
+        assert!(mem.write_u8((MAX_MAPPED_PAGES as u64) * 4096, 1).is_err());
+        mem.clear();
+        assert_eq!(mem.mapped_page_count(), 0);
+        assert!(mem.write_u8(0x9000, 0xAB).is_ok());
+        assert_eq!(mem.read_u8(0x9000).unwrap(), 0xAB);
+    }
+
+    #[test]
+    fn recycled_pages_come_back_zeroed() {
+        let mut mem = Memory::new();
+        mem.write_u64(0x1000, u64::MAX).unwrap();
+        mem.clear();
+        mem.map_page(0x1000);
+        assert_eq!(mem.read_u64(0x1000).unwrap(), 0);
+    }
+
+    #[test]
+    fn cloning_memory_does_not_carry_the_recycle_pool() {
+        // The snapshot ring clones Memory every step; a cloned pool would
+        // copy megabytes of parked buffers into each frame.
+        let mut mem = Memory::new();
+        for i in 0..64 {
+            mem.write_u8(i * 4096, 1).unwrap();
+        }
+        mem.clear();
+        let cloned = mem.clone();
+        assert_eq!(cloned.mapped_page_count(), 0);
+        assert_eq!(cloned.free.len(), 0);
+        assert_eq!(mem.free.len(), 64);
     }
 
     #[test]
