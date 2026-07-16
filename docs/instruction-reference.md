@@ -204,6 +204,7 @@ Pre-registered and available without setup:
 | 63 | read        | `x0=fd`, `x1=buf`, `x2=count`            |
 | 64 | write       | `x0=fd`, `x1=buf`, `x2=count`            |
 | 93 | exit        | `x0=status`                              |
+| 94 | exit_group  | `x0=status` (what glibc's `exit()` issues; same effect as 93) |
 
 ## NZCV flags
 
