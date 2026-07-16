@@ -1310,11 +1310,11 @@ mod tests {
         // against the same fault at full speed and froze the tab, and
         // every Step reproduced the identical error forever.
         let mut cpu = Cpu::new();
-        cpu.load_program(&[encode_movz(8, 94, 0), encode_svc(0)]);
-        cpu.step().unwrap(); // mov x8, 94
+        cpu.load_program(&[encode_movz(8, 172, 0), encode_svc(0)]);
+        cpu.step().unwrap(); // mov x8, 172 (getpid -- not implemented)
         let r = cpu.step().unwrap(); // svc 0
         assert!(r.halted);
-        assert!(r.error.as_deref().unwrap_or("").contains("94"));
+        assert!(r.error.as_deref().unwrap_or("").contains("172"));
         assert!(cpu.is_halted());
         assert!(cpu.abort_message.is_some());
         // A further step must not re-execute anything.
@@ -1322,6 +1322,22 @@ mod tests {
         let again = cpu.step().unwrap();
         assert_eq!(again.outcome, StepOutcome::Halted);
         assert_eq!(cpu.regs.read_pc(), pc_before);
+    }
+
+    #[test]
+    fn exit_group_terminates_like_exit() {
+        // glibc's exit() issues exit_group (94) on AArch64 Linux; the
+        // course machine accepts it, so the playground must too.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(0, 7, 0),
+            encode_movz(8, 94, 0),
+            encode_svc(0),
+        ]);
+        let r = cpu.run_until_break(10).unwrap();
+        assert!(r.halted);
+        assert_eq!(r.error, None);
+        assert_eq!(cpu.exit_code(), Some(7));
     }
 
     #[test]
