@@ -28,6 +28,7 @@ export type RequestKind =
   | "getSnapshot"
   | "setBreakpoint"
   | "clearBreakpoint"
+  | "clearAllBreakpoints"
   | "saveState"
   | "loadState"
   | "deleteState"
@@ -63,6 +64,7 @@ export type Request =
   | BaseRequest<"getSnapshot">
   | (BaseRequest<"setBreakpoint"> & { addr: number })
   | (BaseRequest<"clearBreakpoint"> & { addr: number })
+  | BaseRequest<"clearAllBreakpoints">
   | (BaseRequest<"saveState"> & { name: string })
   | (BaseRequest<"loadState"> & { name: string })
   | (BaseRequest<"deleteState"> & { name: string })
