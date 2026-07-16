@@ -124,16 +124,17 @@ export interface EmulatorState {
   /**
    * Restore a named bookmark: assemble the saved source with the saved
    * args, push the saved stdin (if any), then step the live CPU forward
-   * to `stepCount`. The Promise resolves once the step loop completes
-   * or stops early because the program halted / blocked. Used by the
-   * bookmarks list "load" button.
+   * to `stepCount` (clamped to the run ceiling). Resolves a verdict --
+   * `success` false means the saved source no longer assembles, and
+   * `stepped` is how far the machine actually got (a halt, fault, or
+   * input wait stops the walk early) so the caller reports the truth.
    */
   restoreBookmark: (params: {
     source: string;
     args?: string;
     stdin?: string;
     stepCount: number;
-  }) => Promise<void>;
+  }) => Promise<{ success: boolean; stepped: number }>;
   clearConsole: () => void;
   /**
    * Most-recent snapshot's `(addr, len)` memory writes. Drives the
@@ -745,52 +746,50 @@ export function useEmulator(): EmulatorState {
   }, []);
 
   const restoreBookmark = useCallback(
-    async (params: { source: string; args?: string; stdin?: string; stepCount: number }) => {
+    async (params: {
+      source: string;
+      args?: string;
+      stdin?: string;
+      stepCount: number;
+    }): Promise<{ success: boolean; stepped: number }> => {
       const backend = backendRef.current;
-      if (!backend) return;
-      // Reset frontend state in the same shape `assemble` does, then
-      // drive the backend through the bookmark-recorded sequence:
-      // assemble -> push stdin -> step N times.
-      sourceRef.current = params.source;
-      setError(null);
-      setAssemblyErrors([]);
-      setStepCount(0);
-      setStdout("");
-      setStderr("");
-      // Same gate discipline as assemble: the backend call below wipes the
-      // machine, so the flag drops now and returns only on success.
-      markProgramLoaded(false);
+      if (!backend) return { success: false, stepped: 0 };
       resetReplayHistory();
       const argList = params.args
         ? params.args.split(/\s+/).filter((s) => s.length > 0)
         : [];
-      const { result } = await backend.assemble(params.source, argList);
-      if (!result.success) {
-        if (result.error_line != null && result.error != null) {
-          setAssemblyErrors([{ line: result.error_line, message: result.error }]);
-        }
-        setError(result.error ?? null);
-        return;
-      }
-      markProgramLoaded(true);
+      // One assemble path for every program delivery: the direct
+      // backend.assemble call this used to make skipped the line-map
+      // refresh, hosted-mode detection, the instruction decode, and the
+      // entry marker -- so the debugger kept describing the PREVIOUS
+      // program (both link at CODE_BASE, so stale lookups hit rather
+      // than miss).
+      const outcome = await assembleWith(params.source, argList, true);
+      if (!outcome.success) return { success: false, stepped: 0 };
       if (params.stdin) {
         await backend.pushStdin(params.stdin);
       }
-      // Step in chunks rather than one-step-per-await to keep the round
-      // trip cost bounded. runUntilBreak has chunking already, but it
-      // doesn't accept a stop-at-step-N argument; the per-step loop
-      // gives the most precise restoration semantics.
+      // The persisted count is untrusted (an imported bundle passes a
+      // bare typeof check); clamp it to the same ceiling run() uses.
+      const target = Math.min(Math.max(0, Math.floor(params.stepCount)), 1_000_000);
       let stepped = 0;
-      while (stepped < params.stepCount) {
+      while (stepped < target) {
         const { stepResult } = await backend.step();
         stepped++;
         setStepCount(stepped);
         if (stepResult.halted || stepResult.error) break;
         if (stepResult.outcome === "waiting") break;
+        // On the main-thread backend each await is only a microtask;
+        // without a real yield this loop starves rendering and input
+        // for the whole restore.
+        if (stepped % 1024 === 0) {
+          await new Promise<void>((r) => setTimeout(r, 0));
+        }
       }
       pushReplayFrame(stepped);
+      return { success: true, stepped };
     },
-    [pushReplayFrame, resetReplayHistory, markProgramLoaded],
+    [assembleWith, pushReplayFrame, resetReplayHistory],
   );
 
   // Resolve an editor line to an instruction address via the
