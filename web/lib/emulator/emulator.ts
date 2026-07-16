@@ -234,6 +234,13 @@ export class EmulatorInstance {
     this.inner.set_breakpoint(address);
   }
 
+  /** Remove every breakpoint; a no-op on a wasm build that predates the
+   *  export (feature detection). */
+  clearAllBreakpoints(): void {
+    const clear = (this.inner as { clear_all_breakpoints?: () => void }).clear_all_breakpoints;
+    if (typeof clear === "function") clear.call(this.inner);
+  }
+
   clearBreakpoint(address: number): void {
     this.inner.clear_breakpoint(address);
   }
