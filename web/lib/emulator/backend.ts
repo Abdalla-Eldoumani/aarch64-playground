@@ -30,6 +30,8 @@ export interface EmulatorBackend {
   pause(): Promise<void>;
   reset(): Promise<StateSnapshot>;
   pushStdin(text: string): Promise<StateSnapshot>;
+  /** Signal end-of-input (ctrl-d / a fully-queued redirect). */
+  closeStdin(): Promise<StateSnapshot>;
   getMemory(addr: number, len: number): Promise<Uint8Array>;
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
@@ -181,6 +183,12 @@ class MainThreadBackend implements EmulatorBackend {
 
   async pushStdin(text: string): Promise<StateSnapshot> {
     this.requireEmu().pushStdin(text);
+    this.frame++;
+    return this.notifyAndReturn(this.snapshot());
+  }
+
+  async closeStdin(): Promise<StateSnapshot> {
+    this.requireEmu().closeStdin();
     this.frame++;
     return this.notifyAndReturn(this.snapshot());
   }
