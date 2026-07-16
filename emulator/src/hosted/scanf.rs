@@ -1,6 +1,9 @@
-//! scanf implementation. Supports `%d %u %x %s %c %f`, plus literal
-//! whitespace in the format matching any number of input whitespace
-//! characters.
+//! scanf implementation. Supports `%d %u %x %s %c %f` with maximum
+//! field widths honored (`%4s` writes at most 4 bytes plus NUL, `%2d`
+//! parses at most 2 digits), plus literal whitespace in the format
+//! matching any number of input whitespace characters. Pointer varargs
+//! follow AAPCS64 (x1..x7 then the caller's stack), sharing printf's
+//! walker.
 //!
 //! When stdin runs out mid-field, scanf returns `NeedInput` WITHOUT
 //! consuming the partial match. The caller pauses the run loop; on
@@ -12,7 +15,7 @@
 
 use crate::errors::EmuError;
 use crate::hosted::printf::read_c_string;
-use crate::hosted::{HostContext, HostOutcome};
+use crate::hosted::{HostContext, HostOutcome, VarargWalker};
 
 pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
@@ -23,7 +26,8 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let original_stdin = ctx.stdin.clone();
 
     let mut in_pos: usize = 0;
-    let mut arg_idx: u8 = 1; // x0 is the format string
+    // Pointer args follow AAPCS64 varargs: x1..x7 then the stack spill.
+    let mut walker = VarargWalker { gp_idx: 1, fp_idx: 0, stack_off: 0 };
     let mut matched: i64 = 0;
 
     let fmt_chars: Vec<char> = fmt.chars().collect();
@@ -58,8 +62,13 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         if suppress {
             f += 1;
         }
-        // Optional width (currently unused but parsed).
+        // Optional maximum field width. This is the one overflow defense
+        // C gives students (`%4s` on a 5-byte buffer), so it must truly
+        // bound the read; it used to be parsed and thrown away.
+        let mut width: Option<usize> = None;
         while f < fmt_chars.len() && fmt_chars[f].is_ascii_digit() {
+            let digit = (fmt_chars[f] as usize) - ('0' as usize);
+            width = Some(width.unwrap_or(0).saturating_mul(10).saturating_add(digit));
             f += 1;
         }
         // Length modifier. Integer conversions can ignore it (every
@@ -90,15 +99,18 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 in_pos += 1;
             }
             'c' => {
-                if in_pos >= ctx.stdin.len() {
+                // `%Nc` reads exactly N bytes (no NUL, no whitespace skip).
+                let count = width.unwrap_or(1).max(1);
+                if in_pos + count > ctx.stdin.len() {
                     return stall(ctx, original_stdin);
                 }
-                let byte = ctx.stdin[in_pos];
-                in_pos += 1;
+                let start = in_pos;
+                in_pos += count;
                 if !suppress {
-                    let ptr = ctx.regs.read_gpr(arg_idx, true);
-                    arg_idx = arg_idx.saturating_add(1);
-                    ctx.mem.write_u8(ptr, byte)?;
+                    let ptr = walker.next_int(ctx);
+                    for (i, b) in ctx.stdin[start..in_pos].iter().enumerate() {
+                        ctx.mem.write_u8(ptr + i as u64, *b)?;
+                    }
                     matched += 1;
                 }
             }
@@ -109,8 +121,11 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 {
                     in_pos += 1;
                 }
+                let limit = width.unwrap_or(usize::MAX);
+                let end = in_pos.saturating_add(limit).min(ctx.stdin.len());
+                let complete = in_pos.saturating_add(limit) <= ctx.stdin.len();
                 let (value, consumed, stalled) =
-                    parse_signed_int(&ctx.stdin[in_pos..], conv == 'i');
+                    parse_signed_int(&ctx.stdin[in_pos..end], conv == 'i', complete);
                 if stalled {
                     return stall(ctx, original_stdin);
                 }
@@ -119,8 +134,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 }
                 in_pos += consumed;
                 if !suppress {
-                    let ptr = ctx.regs.read_gpr(arg_idx, true);
-                    arg_idx = arg_idx.saturating_add(1);
+                    let ptr = walker.next_int(ctx);
                     ctx.mem.write_u32(ptr, value as u32)?;
                     matched += 1;
                 }
@@ -131,7 +145,11 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 {
                     in_pos += 1;
                 }
-                let (value, consumed, stalled) = parse_unsigned_int(&ctx.stdin[in_pos..], 10);
+                let limit = width.unwrap_or(usize::MAX);
+                let end = in_pos.saturating_add(limit).min(ctx.stdin.len());
+                let complete = in_pos.saturating_add(limit) <= ctx.stdin.len();
+                let (value, consumed, stalled) =
+                    parse_unsigned_int(&ctx.stdin[in_pos..end], 10, complete);
                 if stalled {
                     return stall(ctx, original_stdin);
                 }
@@ -140,8 +158,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 }
                 in_pos += consumed;
                 if !suppress {
-                    let ptr = ctx.regs.read_gpr(arg_idx, true);
-                    arg_idx = arg_idx.saturating_add(1);
+                    let ptr = walker.next_int(ctx);
                     ctx.mem.write_u32(ptr, value as u32)?;
                     matched += 1;
                 }
@@ -152,7 +169,11 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 {
                     in_pos += 1;
                 }
-                let (value, consumed, stalled) = parse_unsigned_int(&ctx.stdin[in_pos..], 16);
+                let limit = width.unwrap_or(usize::MAX);
+                let end = in_pos.saturating_add(limit).min(ctx.stdin.len());
+                let complete = in_pos.saturating_add(limit) <= ctx.stdin.len();
+                let (value, consumed, stalled) =
+                    parse_unsigned_int(&ctx.stdin[in_pos..end], 16, complete);
                 if stalled {
                     return stall(ctx, original_stdin);
                 }
@@ -161,8 +182,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 }
                 in_pos += consumed;
                 if !suppress {
-                    let ptr = ctx.regs.read_gpr(arg_idx, true);
-                    arg_idx = arg_idx.saturating_add(1);
+                    let ptr = walker.next_int(ctx);
                     ctx.mem.write_u32(ptr, value as u32)?;
                     matched += 1;
                 }
@@ -177,20 +197,22 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 if in_pos >= ctx.stdin.len() {
                     return stall(ctx, original_stdin);
                 }
+                let limit = width.unwrap_or(usize::MAX);
                 let start = in_pos;
                 while in_pos < ctx.stdin.len()
+                    && in_pos - start < limit
                     && !(ctx.stdin[in_pos] as char).is_whitespace()
                 {
                     in_pos += 1;
                 }
-                // If we ran out of buffer without hitting whitespace, stall;
-                // the next stdin push may continue the token.
-                if in_pos == ctx.stdin.len() {
+                // Stall only when the token ran into the end of the buffer
+                // with field width to spare: more of it may still arrive.
+                // A width-terminated token is complete by definition.
+                if in_pos == ctx.stdin.len() && in_pos - start < limit {
                     return stall(ctx, original_stdin);
                 }
                 if !suppress {
-                    let ptr = ctx.regs.read_gpr(arg_idx, true);
-                    arg_idx = arg_idx.saturating_add(1);
+                    let ptr = walker.next_int(ctx);
                     for (i, b) in ctx.stdin[start..in_pos].iter().enumerate() {
                         ctx.mem.write_u8(ptr + i as u64, *b)?;
                     }
@@ -205,7 +227,10 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 {
                     in_pos += 1;
                 }
-                let (value, consumed, stalled) = parse_float(&ctx.stdin[in_pos..]);
+                let limit = width.unwrap_or(usize::MAX);
+                let end = in_pos.saturating_add(limit).min(ctx.stdin.len());
+                let complete = in_pos.saturating_add(limit) <= ctx.stdin.len();
+                let (value, consumed, stalled) = parse_float(&ctx.stdin[in_pos..end], complete);
                 if stalled {
                     return stall(ctx, original_stdin);
                 }
@@ -214,8 +239,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 }
                 in_pos += consumed;
                 if !suppress {
-                    let ptr = ctx.regs.read_gpr(arg_idx, true);
-                    arg_idx = arg_idx.saturating_add(1);
+                    let ptr = walker.next_int(ctx);
                     if long_modifier {
                         // %lf: the pointer names a double, store 8 bytes.
                         ctx.mem.write_u64(ptr, value.to_bits())?;
@@ -243,13 +267,14 @@ fn stall(ctx: &mut HostContext<'_>, original: Vec<u8>) -> Result<HostOutcome, Em
     Ok(HostOutcome::NeedInput)
 }
 
-/// Parse a signed base-10 integer at the start of `buf`. `flexible` true
-/// lets `0x...` slip into hex (matching C's `%i` behavior). Returns
-/// `(value, bytes_consumed, stalled)` where `stalled` is true when the
-/// buffer ended before the token was obviously complete.
-fn parse_signed_int(buf: &[u8], flexible: bool) -> (i64, usize, bool) {
+/// Parse a signed integer at the start of `buf`. `flexible` lets a
+/// 0x/0X prefix switch to hex (C's `%i`). `complete` means the slice
+/// ends at a hard field boundary (a width limit), so running out of
+/// bytes finishes the token instead of stalling for more input. Returns
+/// `(value, bytes_consumed, stalled)`.
+fn parse_signed_int(buf: &[u8], flexible: bool, complete: bool) -> (i64, usize, bool) {
     if buf.is_empty() {
-        return (0, 0, true);
+        return (0, 0, !complete);
     }
     let mut i = 0;
     let negative = match buf[0] {
@@ -263,57 +288,105 @@ fn parse_signed_int(buf: &[u8], flexible: bool) -> (i64, usize, bool) {
         }
         _ => false,
     };
-    let start = i;
-    let base = if flexible && buf[i..].starts_with(b"0x") {
+    let mut base = 10;
+    let mut prefixed = false;
+    if flexible
+        && i + 1 < buf.len()
+        && buf[i] == b'0'
+        && (buf[i + 1] == b'x' || buf[i + 1] == b'X')
+    {
+        base = 16;
+        prefixed = true;
         i += 2;
-        16
-    } else if flexible && buf[i..].starts_with(b"0") && i + 1 < buf.len() {
-        10 // Could be octal per strict `%i`, but the corpus only uses decimal.
-    } else {
-        10
+    }
+    // `start` AFTER the prefix skip: capturing it before left `0x` inside
+    // the digits slice, so every `%i` hex read parsed as Err and stored 0
+    // while still reporting a match.
+    let start = i;
+    while i < buf.len() && is_digit_for_base(buf[i], base) {
+        i += 1;
+    }
+    if i == start {
+        // Nothing after the prefix (or no digits at all). At a soft
+        // buffer end the token may still arrive.
+        if i == buf.len() && !complete {
+            return (0, 0, true);
+        }
+        if prefixed {
+            // `0xzz`: the longest valid token is the bare `0`, exactly
+            // strtol's answer -- consume sign+`0` and leave the rest.
+            return (0, start - 1, false);
+        }
+        return (0, 0, false);
+    }
+    // Stall if the digits ran into a soft end-of-buffer: a longer run
+    // might follow in the next stdin push.
+    if i == buf.len() && !complete {
+        return (0, 0, true);
+    }
+    let s = std::str::from_utf8(&buf[start..i]).unwrap_or("");
+    // The slice is nonempty valid digits, so the only possible parse
+    // failure is overflow; glibc saturates (strtol + ERANGE) and still
+    // reports the field matched.
+    let value = match i64::from_str_radix(s, base) {
+        Ok(v) => {
+            if negative {
+                -v
+            } else {
+                v
+            }
+        }
+        Err(_) => {
+            if negative {
+                i64::MIN
+            } else {
+                i64::MAX
+            }
+        }
     };
-    while i < buf.len() && is_digit_for_base(buf[i], base) {
-        i += 1;
-    }
-    if i == start {
-        return (0, 0, false);
-    }
-    // Stall if we hit end-of-buffer right after the digits, since a longer
-    // digit run might follow.
-    if i == buf.len() {
-        return (0, 0, true);
-    }
-    let s = std::str::from_utf8(&buf[start..i]).unwrap_or("");
-    let value = i64::from_str_radix(s, base).unwrap_or(0);
-    (if negative { -value } else { value }, i, false)
-}
-
-fn parse_unsigned_int(buf: &[u8], base: u32) -> (u64, usize, bool) {
-    if buf.is_empty() {
-        return (0, 0, true);
-    }
-    let mut i = 0;
-    if base == 16 && buf.starts_with(b"0x") {
-        i += 2;
-    }
-    let start = i;
-    while i < buf.len() && is_digit_for_base(buf[i], base) {
-        i += 1;
-    }
-    if i == start {
-        return (0, 0, false);
-    }
-    if i == buf.len() {
-        return (0, 0, true);
-    }
-    let s = std::str::from_utf8(&buf[start..i]).unwrap_or("");
-    let value = u64::from_str_radix(s, base).unwrap_or(0);
     (value, i, false)
 }
 
-fn parse_float(buf: &[u8]) -> (f64, usize, bool) {
+fn parse_unsigned_int(buf: &[u8], base: u32, complete: bool) -> (u64, usize, bool) {
     if buf.is_empty() {
-        return (0.0, 0, true);
+        return (0, 0, !complete);
+    }
+    let mut i = 0;
+    let mut prefixed = false;
+    if base == 16
+        && buf.len() >= 2
+        && buf[0] == b'0'
+        && (buf[1] == b'x' || buf[1] == b'X')
+    {
+        prefixed = true;
+        i += 2;
+    }
+    let start = i;
+    while i < buf.len() && is_digit_for_base(buf[i], base) {
+        i += 1;
+    }
+    if i == start {
+        if i == buf.len() && !complete {
+            return (0, 0, true);
+        }
+        if prefixed {
+            // `0Xzz`: strtoul's answer is the bare `0`.
+            return (0, 1, false);
+        }
+        return (0, 0, false);
+    }
+    if i == buf.len() && !complete {
+        return (0, 0, true);
+    }
+    let s = std::str::from_utf8(&buf[start..i]).unwrap_or("");
+    // Only overflow can fail here; glibc saturates and reports a match.
+    let value = u64::from_str_radix(s, base).unwrap_or(u64::MAX);
+    (value, i, false)
+}
+
+fn parse_float(buf: &[u8], complete: bool) -> (f64, usize, bool) {
+    if buf.is_empty() {
+        return (0.0, 0, !complete);
     }
     // Accept: optional sign, digits, optional '.', digits, optional e/E+digits.
     let mut i = 0;
@@ -332,19 +405,31 @@ fn parse_float(buf: &[u8]) -> (f64, usize, bool) {
             seen_digit = true;
         }
     }
-    if i < buf.len() && (buf[i] == b'e' || buf[i] == b'E') {
+    if seen_digit && i < buf.len() && (buf[i] == b'e' || buf[i] == b'E') {
+        let before_exp = i;
         i += 1;
         if i < buf.len() && (buf[i] == b'+' || buf[i] == b'-') {
             i += 1;
         }
+        let exp_start = i;
         while i < buf.len() && buf[i].is_ascii_digit() {
             i += 1;
         }
+        if i == exp_start {
+            // `1.5e` with nothing after: on a soft buffer end the exponent
+            // may still arrive; otherwise back the field off to the
+            // well-formed mantissa (C behavior) instead of parsing the
+            // dangling `e` into an error that stored 0.
+            if i == buf.len() && !complete {
+                return (0.0, 0, true);
+            }
+            i = before_exp;
+        }
     }
     if !seen_digit {
-        return (0.0, 0, false);
+        return (0.0, 0, i == buf.len() && !complete);
     }
-    if i == buf.len() {
+    if i == buf.len() && !complete {
         return (0.0, 0, true);
     }
     let s = std::str::from_utf8(&buf[..i]).unwrap_or("");
@@ -421,6 +506,129 @@ mod tests {
                 .unwrap();
             self.regs.write_gpr(0, true, fmt_addr);
         }
+    }
+
+    #[test]
+    fn field_width_bounds_a_string_read() {
+        // `%4s` is the defensive idiom C gives students; it used to write
+        // the whole token unbounded.
+        let mut h = Host::new();
+        h.place_fmt("%4s");
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.mem.write_u32(0x0060_0008, 0xDEAD_BEEF).unwrap();
+        h.stdin.extend_from_slice(b"AAAAAAAAAAAAAAAAAAAA \n");
+        scanf(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 1);
+        assert_eq!(h.mem.read_u32(0x0060_0000).unwrap(), 0x4141_4141);
+        assert_eq!(h.mem.read_u8(0x0060_0004).unwrap(), 0);
+        // The sentinel two words up must be untouched.
+        assert_eq!(h.mem.read_u32(0x0060_0008).unwrap(), 0xDEAD_BEEF);
+        // The unread tail stays queued for the next read.
+        assert_eq!(&h.stdin[..3], b"AAA");
+    }
+
+    #[test]
+    fn field_width_bounds_an_int_read() {
+        let mut h = Host::new();
+        h.place_fmt("%2d%2d");
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, 0x0060_0004);
+        h.stdin.extend_from_slice(b"12345 \n");
+        scanf(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 2);
+        assert_eq!(h.mem.read_u32(0x0060_0000).unwrap(), 12);
+        assert_eq!(h.mem.read_u32(0x0060_0004).unwrap(), 34);
+        assert_eq!(&h.stdin[..2], b"5 ");
+    }
+
+    #[test]
+    fn width_qualified_char_reads_that_many_bytes() {
+        let mut h = Host::new();
+        h.place_fmt("%3c");
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.stdin.extend_from_slice(b"abcd");
+        scanf(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 1);
+        assert_eq!(h.mem.read_u8(0x0060_0000).unwrap(), b'a');
+        assert_eq!(h.mem.read_u8(0x0060_0002).unwrap(), b'c');
+        assert_eq!(h.stdin, b"d");
+    }
+
+    #[test]
+    fn eighth_pointer_comes_from_the_stack_spill() {
+        // AAPCS64 passes the 9th arg (fmt + 8 pointers) at [sp]; walking a
+        // bare register counter read x8, a live scratch register.
+        let mut h = Host::new();
+        h.place_fmt("%d %d %d %d %d %d %d %d");
+        for i in 0..7 {
+            h.regs
+                .write_gpr(1 + i, true, 0x0060_0000 + (i as u64) * 4);
+        }
+        // A fresh RegisterFile has sp = 0; park it inside the mapped page.
+        let sp = 0x0060_0800u64;
+        h.regs.write_sp(sp);
+        h.mem.write_u64(sp, 0x0060_0000 + 7 * 4).unwrap();
+        // Poison x8 so a regression to the register walk shows up.
+        h.regs.write_gpr(8, true, 0x0060_0100);
+        h.mem.write_u32(0x0060_0100, 0xCAFE_F00D).unwrap();
+        h.stdin.extend_from_slice(b"1 2 3 4 5 6 7 8\n");
+        scanf(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 8);
+        assert_eq!(h.mem.read_u32(0x0060_0000 + 7 * 4).unwrap(), 8);
+        assert_eq!(h.mem.read_u32(0x0060_0100).unwrap(), 0xCAFE_F00D);
+    }
+
+    #[test]
+    fn percent_i_reads_hex_with_either_prefix_case() {
+        for input in [b"0x1f \n".as_slice(), b"0X1F \n".as_slice()] {
+            let mut h = Host::new();
+            h.place_fmt("%i");
+            h.regs.write_gpr(1, true, 0x0060_0000);
+            h.stdin.extend_from_slice(input);
+            scanf(&mut h.ctx()).unwrap();
+            assert_eq!(h.regs.read_gpr(0, true), 1, "input {input:?}");
+            assert_eq!(h.mem.read_u32(0x0060_0000).unwrap(), 0x1F, "input {input:?}");
+        }
+    }
+
+    #[test]
+    fn percent_x_accepts_an_uppercase_prefix() {
+        let mut h = Host::new();
+        h.place_fmt("%x");
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.stdin.extend_from_slice(b"0X1F\n");
+        scanf(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 1);
+        assert_eq!(h.mem.read_u32(0x0060_0000).unwrap(), 0x1F);
+    }
+
+    #[test]
+    fn overflowing_digits_saturate_like_strtol() {
+        let (v, consumed, stalled) = parse_signed_int(b"99999999999999999999 ", false, false);
+        assert!(!stalled);
+        assert_eq!(consumed, 20);
+        assert_eq!(v, i64::MAX);
+        let (v, _, _) = parse_signed_int(b"-99999999999999999999 ", false, false);
+        assert_eq!(v, i64::MIN);
+    }
+
+    #[test]
+    fn hex_prefix_with_no_digits_consumes_the_bare_zero() {
+        // strtol's answer for `0xzz` is 0 consuming just the `0`, leaving
+        // `xzz` -- not a phantom match that eats the prefix.
+        let (v, consumed, stalled) = parse_signed_int(b"0xzz ", true, false);
+        assert!(!stalled);
+        assert_eq!((v, consumed), (0, 1));
+        let (v, consumed, _) = parse_unsigned_int(b"0Xzz ", 16, false);
+        assert_eq!((v, consumed), (0, 1));
+    }
+
+    #[test]
+    fn dangling_exponent_backs_off_to_the_mantissa() {
+        let (v, consumed, stalled) = parse_float(b"1.5e \n", false);
+        assert!(!stalled);
+        assert_eq!(consumed, 3);
+        assert_eq!(v, 1.5);
     }
 
     #[test]
