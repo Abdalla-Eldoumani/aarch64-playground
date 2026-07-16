@@ -1215,11 +1215,28 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
             rn,
             rm,
             option,
-            shift_applied,
+            shift_amount,
         } => {
             // LDR/STR register. Encoding:
             //   size | 111 0 00 | V=0 | load(2b) | 1 | Rm | option(3) | S | 10 | Rn | Rt
-            let s_bit: u32 = if shift_applied { 1 } else { 0 };
+            // The S bit means "scale the index by the access size", so the
+            // only legal written amounts are 0 and log2(access bytes) --
+            // exactly what GAS enforces. `size` is that log2.
+            let s_bit: u32 = match shift_amount {
+                None | Some(0) => 0,
+                Some(a) if a == size as i64 => 1,
+                Some(a) => {
+                    return asm_err(
+                        ln,
+                        &format!(
+                            "a {}-bit access can only scale its index register by #0 or #{}, got #{}",
+                            8u32 << size,
+                            size,
+                            a
+                        ),
+                    );
+                }
+            };
             Ok(((size as u32) << 30)
                 | (0b111000 << 24)
                 | ((load as u32) << 22)
@@ -1258,10 +1275,11 @@ enum AddressingMode {
         /// ARM-spec 3-bit option encoding: 010=UXTW, 011=LSL/UXTX,
         /// 110=SXTW, 111=SXTX.
         option: u8,
-        /// 1 when a `#<amount>` was present (even if it was 0 for some
-        /// instruction widths); the access-size scaling bit in the
-        /// encoding rides along with this.
-        shift_applied: bool,
+        /// The written `#<amount>`, if any. The encoder decides the S
+        /// (scale) bit from the VALUE against the access size; riding it
+        /// on mere presence turned `lsl #0` into an 8x offset and
+        /// silently rescaled wrong amounts.
+        shift_amount: Option<i64>,
     },
 }
 
@@ -1299,7 +1317,7 @@ fn parse_reg_offset_tail(parts: &[&str], ln: usize) -> Result<AddressingMode, Em
             rn,
             rm,
             option,
-            shift_applied: false,
+            shift_amount: None,
         });
     }
     let modifier = parts[2].trim();
@@ -1321,15 +1339,16 @@ fn parse_reg_offset_tail(parts: &[&str], ln: usize) -> Result<AddressingMode, Em
     if matches!(keyword_lower.as_str(), "lsl" | "uxtx" | "sxtx") && !rm_is_x {
         return asm_err(ln, "LSL/UXTX/SXTX require an X index register");
     }
-    let shift_applied = !shift_str.trim().is_empty();
-    if shift_applied {
-        let _ = parse_immediate(shift_str, ln)?; // validate shape, value unused here
-    }
+    let shift_amount = if shift_str.trim().is_empty() {
+        None
+    } else {
+        Some(parse_immediate(shift_str, ln)?)
+    };
     Ok(AddressingMode::RegOffset {
         rn,
         rm,
         option,
-        shift_applied,
+        shift_amount,
     })
 }
 
@@ -2159,6 +2178,24 @@ mod tests {
         // W pairs scale by 4, halving the reach: 768 / 4 = 192 wraps too.
         let err = assemble("STP W0, W1, [SP, #768]").unwrap_err();
         assert!(err.to_string().contains("[-256, 252]"), "was: {err}");
+    }
+
+    #[test]
+    fn register_offset_scale_follows_the_written_amount() {
+        // The S bit used to ride on the mere PRESENCE of an amount, so
+        // `lsl #0` scaled by 8 and every wrong amount silently rescaled.
+        assert_eq!(assemble("LDR X0, [X1, X2]").unwrap()[0], 0xF862_6820);
+        assert_eq!(assemble("LDR X0, [X1, X2, LSL #0]").unwrap()[0], 0xF862_6820);
+        assert_eq!(assemble("LDR X0, [X1, X2, LSL #3]").unwrap()[0], 0xF862_7820);
+        assert_eq!(assemble("LDR W0, [X1, X2, LSL #2]").unwrap()[0], 0xB862_7820);
+        // Non-canonical amounts are GAS hard errors, never a rescale.
+        let err = assemble("LDR X0, [X1, X2, LSL #2]").unwrap_err();
+        assert!(err.to_string().contains("#0 or #3"), "was: {err}");
+        assert!(assemble("LDR W0, [X1, X2, LSL #3]").is_err());
+        assert!(assemble("LDR X0, [X1, W2, SXTW #7]").is_err());
+        // SXTW with the canonical amount still scales.
+        assert!(assemble("LDR X0, [X1, W2, SXTW #3]").is_ok());
+        assert!(assemble("LDR X0, [X1, W2, SXTW #0]").is_ok());
     }
 
     #[test]
