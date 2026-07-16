@@ -199,6 +199,23 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         }
     }
 
+    // Whatever is still pending is permanently broken -- a typo'd symbol,
+    // a division by zero, a cycle. Re-run the evaluation WITHOUT the
+    // `.ok()` so its own error (which names the cause at the assignment's
+    // line) surfaces; silently dropping it used to blame the innocent USE
+    // site with "invalid immediate".
+    if let Some((_, body, here, line)) = assignments.first() {
+        let tokens = lex(body, *line)?;
+        evaluate(
+            &tokens,
+            &|name| symbols.get(name).map(|v| *v as i64),
+            *here as i64,
+            *line,
+        )?;
+        // Unreachable in practice: the fixpoint loop already failed this
+        // assignment against the same symbol table.
+    }
+
     // Pass 1d: scan .text instructions for `ldr xN, =expr` to size the
     // literal pool, and for `bl <hostname>` calls that need a trampoline
     // because direct BL cannot reach the 0xFFFF_0000 host-stub range.
@@ -419,6 +436,27 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         writes.push((addr, value.to_le_bytes().to_vec()));
     }
 
+    // A program that produced no instructions "assembled" and then died on
+    // step 1 with `unknown instruction: 0x00000000`; real ld rejects it.
+    if instruction_count == 0 {
+        return Err(EmuError::LinkError {
+            line: 0,
+            message: "the program has no instructions -- if a comment or a \
+                      missing .text swallowed your code, put it back under \
+                      `.text`"
+                .into(),
+        });
+    }
+    // `.global main` with no `main:` silently fell back to CODE_BASE;
+    // real ld reports the undefined reference.
+    if prog.globals.contains("main") && !symbols.contains_key("main") {
+        return Err(EmuError::LinkError {
+            line: 0,
+            message: "no `main:` label found -- `.global main` was declared \
+                      and execution starts at `main`"
+                .into(),
+        });
+    }
     let entry_point = symbols.get("main").copied().unwrap_or(CODE_BASE);
 
     Ok(LinkedImage {
