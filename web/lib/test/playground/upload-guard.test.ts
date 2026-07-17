@@ -42,7 +42,9 @@ describe("upload-guard caps", () => {
     expect(MAX_VFS_BYTES).toBe(4 * 1024 * 1024);
     expect(MAX_ARGS_CHARS).toBe(1000);
     expect(MAX_STDIN_BYTES).toBe(100 * 1024);
-    expect(MAX_SHARE_HASH_BYTES).toBe(64 * 1024);
+    // 12 KB: sized from lz-string's quadratic worst case so an
+    // under-cap bomb stays a bounded transient (see upload-guard.ts).
+    expect(MAX_SHARE_HASH_BYTES).toBe(12 * 1024);
   });
 
   test("caps are sane and ordered for the cpsc 355 corpus", () => {
