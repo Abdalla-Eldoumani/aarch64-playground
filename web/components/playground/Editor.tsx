@@ -11,6 +11,15 @@ import { validateSource } from "@/lib/playground/upload-guard";
 
 let arm64Registered = false;
 
+/** Set Monaco's global theme from the document's data-theme. Called per
+ *  mount (the MonacoEditor `theme` prop re-asserts arm64-dark on every
+ *  mount) and by the module-level attribute observer on theme switches. */
+function applyDocumentTheme(monaco: Parameters<OnMount>[1]): void {
+  const t = document.documentElement.getAttribute("data-theme");
+  const id = t === "light" ? "arm64-light" : t === "high-contrast" ? "arm64-hc" : "arm64-dark";
+  monaco.editor.setTheme(id);
+}
+
 /**
  * One-time global Monaco setup: the arm64 language, its tokenizer and
  * themes, the theme-attribute observer, and the completion + hover
@@ -116,13 +125,7 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
     },
   });
 
-  const applyTheme = () => {
-    const t = document.documentElement.getAttribute("data-theme");
-    const id = t === "light" ? "arm64-light" : t === "high-contrast" ? "arm64-hc" : "arm64-dark";
-    monaco.editor.setTheme(id);
-  };
-  applyTheme();
-  const observer = new MutationObserver(applyTheme);
+  const observer = new MutationObserver(() => applyDocumentTheme(monaco));
   observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["data-theme"],
@@ -405,6 +408,9 @@ export function Editor({
       monacoRef.current = monaco;
 
       ensureArm64Registered(monaco);
+      // Per mount: the component prop above just forced arm64-dark; put
+      // the document's theme back before first paint settles.
+      applyDocumentTheme(monaco);
 
       // Surface cursor position to the parent so the share-state hash
       // can encode it. The callback fires on arrow keys, click, and any
