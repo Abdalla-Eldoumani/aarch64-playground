@@ -39,6 +39,6 @@ the source tree, not a rendered page.
 
 ## Test coverage
 
-The suite gates every PR and is green on `main`: 641 Rust tests, 1407 web
-tests, and 15 end-to-end example programs as of v2.0.0. See
+The suite gates every PR and is green on `main`: 756 Rust tests, 1450 web
+tests, and 15 end-to-end example programs as of the correctness pass. See
 [TESTING.md](TESTING.md) for how to run each layer.
