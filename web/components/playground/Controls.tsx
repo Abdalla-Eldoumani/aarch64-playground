@@ -12,6 +12,9 @@ interface ControlsProps {
   onPause: () => void;
   onReset: () => void;
   isRunning: boolean;
+  /** True while an assemble is in flight; the first one also downloads
+   *  and compiles the emulator, so the button must visibly say so. */
+  isAssembling?: boolean;
   isHalted: boolean;
   /** False until a successful assemble, and false again after reset or a
    *  failed one. Run, step, and back have nothing to execute without a
@@ -35,6 +38,7 @@ export function Controls({
   onPause,
   onReset,
   isRunning,
+  isAssembling = false,
   isHalted,
   programLoaded,
   blocked = false,
@@ -59,11 +63,13 @@ export function Controls({
       <Button
         variant="primary"
         onClick={onAssemble}
+        disabled={isAssembling}
         aria-label="assemble"
+        aria-busy={isAssembling}
         aria-keyshortcuts="F6"
         title="F6"
       >
-        <span>assemble</span>
+        <span>{isAssembling ? "loading…" : "assemble"}</span>
         <Shortcut keys="F6" />
       </Button>
       <Button
