@@ -17,7 +17,11 @@ interface RegisterPanelProps {
   nzcv: number;
 }
 
-const FLAG_NAMES = ["V", "C", "Z", "N"];
+// nzcv packs N at bit 3, Z at bit 2, C at bit 1, V at bit 0 (see the
+// emulator's NzcvFlags::pack). Rendered left-to-right against `bitPos = 3 - i`
+// so each label reads its own bit, in the conventional ARM N Z C V order --
+// the prior ["V","C","Z","N"] paired every label with the wrong bit.
+const FLAG_NAMES = ["N", "Z", "C", "V"];
 
 const VIEW_KEY = "aarch64-playground:regfile-view";
 const HEX_KEY = "aarch64-playground:regfile-fp-hex";
