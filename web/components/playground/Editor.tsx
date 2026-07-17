@@ -9,6 +9,204 @@ import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
 import { useToast } from "@/components/ui/Toast";
 import { validateSource } from "@/lib/playground/upload-guard";
 
+let arm64Registered = false;
+
+/**
+ * One-time global Monaco setup: the arm64 language, its tokenizer and
+ * themes, the theme-attribute observer, and the completion + hover
+ * providers. Monaco's registries are tab-global and CONCATENATE
+ * providers, so registering per mount stacked N copies of every hover
+ * card and completion after N mounts (the pitfalls catalog remounts
+ * the embed on every fault/fix toggle). Per-editor wiring stays in
+ * handleMount.
+ */
+function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
+  if (arm64Registered) return;
+  arm64Registered = true;
+
+  // register ARM64 language
+  monaco.languages.register({ id: "arm64" });
+  monaco.languages.setMonarchTokensProvider("arm64", {
+    ignoreCase: true,
+    tokenizer: {
+      root: [
+        [/\/\/.*$/, "comment"],
+        [/;.*$/, "comment"],
+        [
+          new RegExp(
+            `\\b(${[...ARM64_MNEMONICS, ...COND_BRANCHES].join("|")})\\b`,
+            "i"
+          ),
+          "keyword",
+        ],
+        [/\b(X[0-9]|X[12][0-9]|X30|W[0-9]|W[12][0-9]|W30|SP|XZR|WZR)\b/i, "variable"],
+        [/#-?0x[0-9a-fA-F]+/, "number.hex"],
+        [/#-?[0-9]+/, "number"],
+        [/\w+:/, "type.identifier"],
+      ],
+    },
+  });
+
+  // Monaco themes take literal hex only, so these restate token values
+  // from app/globals.css: the editor sits on --bg-base with --bg-raised
+  // as the resting line highlight, line numbers read --text-tertiary,
+  // and the caret is the brand block cursor in --amber (the machine's
+  // color: the block marks where the machine will write next). Keep the
+  // two files in step when a token moves.
+  monaco.editor.defineTheme("arm64-dark", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "6fa8ff", fontStyle: "bold" },
+      { token: "variable", foreground: "ff7eb6" },
+      { token: "number", foreground: "b49bff" },
+      { token: "number.hex", foreground: "b49bff" },
+      { token: "comment", foreground: "7a828c", fontStyle: "italic" },
+      { token: "type.identifier", foreground: "3dd68c" },
+    ],
+    colors: {
+      "editor.background": "#0B0C10",
+      "editor.lineHighlightBackground": "#14171DAA",
+      "editorGutter.background": "#0B0C10",
+      "editorLineNumber.foreground": "#6F7681",
+      "editorCursor.foreground": "#FFB224",
+      "editorCursor.background": "#0B0C10",
+    },
+  });
+
+  monaco.editor.defineTheme("arm64-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "1d4ed8", fontStyle: "bold" },
+      { token: "variable", foreground: "be185d" },
+      { token: "number", foreground: "6d28d9" },
+      { token: "number.hex", foreground: "6d28d9" },
+      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
+      { token: "type.identifier", foreground: "047857" },
+    ],
+    colors: {
+      "editor.background": "#FFFFFF",
+      "editor.lineHighlightBackground": "#F4F5F7CC",
+      "editorGutter.background": "#FFFFFF",
+      "editorLineNumber.foreground": "#6A727C",
+      "editorCursor.foreground": "#A86A0F",
+      "editorCursor.background": "#FFFFFF",
+    },
+  });
+
+  monaco.editor.defineTheme("arm64-hc", {
+    base: "hc-black",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "8be0ff", fontStyle: "bold" },
+      { token: "variable", foreground: "ffb6e6" },
+      { token: "number", foreground: "d4b6ff" },
+      { token: "number.hex", foreground: "d4b6ff" },
+      { token: "comment", foreground: "d1d5db", fontStyle: "italic" },
+      { token: "type.identifier", foreground: "9ef0c1" },
+    ],
+    colors: {
+      "editor.background": "#000000",
+      "editor.lineHighlightBackground": "#1A1A1A",
+      "editorGutter.background": "#000000",
+      "editorLineNumber.foreground": "#C7C7C7",
+      "editorCursor.foreground": "#FFC247",
+      "editorCursor.background": "#000000",
+    },
+  });
+
+  const applyTheme = () => {
+    const t = document.documentElement.getAttribute("data-theme");
+    const id = t === "light" ? "arm64-light" : t === "high-contrast" ? "arm64-hc" : "arm64-dark";
+    monaco.editor.setTheme(id);
+  };
+  applyTheme();
+  const observer = new MutationObserver(applyTheme);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+
+  // Completion provider: builds context-aware suggestions from the
+  // current line + the full source (for labels and m4 aliases).
+  type CompletionModel = Parameters<
+    Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
+  >[0];
+  type CompletionPos = Parameters<
+    Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
+  >[1];
+  monaco.languages.registerCompletionItemProvider("arm64", {
+    triggerCharacters: [".", " ", ",", "[", "$", "_"],
+    provideCompletionItems(model: CompletionModel, position: CompletionPos) {
+      const line = model.getLineContent(position.lineNumber);
+      const source = model.getValue();
+      const word = model.getWordUntilPosition(position);
+      const range = new monaco.Range(
+        position.lineNumber,
+        word.startColumn,
+        position.lineNumber,
+        word.endColumn,
+      );
+      const suggestions = buildSuggestions({
+        source,
+        line,
+        position: position.column,
+      });
+      return {
+        suggestions: suggestions.map((s) => mapSuggestion(s, monaco, range)),
+      };
+    },
+  });
+
+  // Hover provider: surface a short course-voice summary of the
+  // mnemonic under the cursor. Falls back to no-hover when the
+  // token under the cursor isn't one we recognize.
+  type MonacoModule = typeof monaco;
+  type TextModel = Parameters<
+    Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
+  >[0];
+  type MonacoPosition = Parameters<
+    Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
+  >[1];
+  monaco.languages.registerHoverProvider("arm64", {
+    provideHover(model: TextModel, position: MonacoPosition) {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      // Grab the possibly-dotted conditional form (e.g. "B.EQ").
+      const line = model.getLineContent(position.lineNumber);
+      const dotStart = word.startColumn - 1;
+      const extended =
+        line[dotStart - 1] === "." && /[A-Za-z]/.test(line[dotStart - 2] ?? "")
+          ? `${line[dotStart - 2]}.${word.word}`
+          : word.word;
+      const doc = lookupDoc(extended) ?? lookupDoc(word.word);
+      if (!doc) return null;
+      const lines: string[] = [
+        `**${word.word.toUpperCase()}** — ${doc.summary}`,
+      ];
+      if (doc.details) {
+        lines.push("", ...doc.details);
+      }
+      if (doc.example) {
+        lines.push("", "```", doc.example, "```");
+      }
+      if (doc.cExample) {
+        lines.push("", `**c equivalent:** \`${doc.cExample}\``);
+      }
+      return {
+        range: new monaco.Range(
+          position.lineNumber,
+          word.startColumn,
+          position.lineNumber,
+          word.endColumn,
+        ),
+        contents: [{ value: lines.join("\n") }],
+      };
+    },
+  });
+}
+
 interface EditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -206,187 +404,7 @@ export function Editor({
       editorRef.current = editor;
       monacoRef.current = monaco;
 
-      // register ARM64 language
-      monaco.languages.register({ id: "arm64" });
-      monaco.languages.setMonarchTokensProvider("arm64", {
-        ignoreCase: true,
-        tokenizer: {
-          root: [
-            [/\/\/.*$/, "comment"],
-            [/;.*$/, "comment"],
-            [
-              new RegExp(
-                `\\b(${[...ARM64_MNEMONICS, ...COND_BRANCHES].join("|")})\\b`,
-                "i"
-              ),
-              "keyword",
-            ],
-            [/\b(X[0-9]|X[12][0-9]|X30|W[0-9]|W[12][0-9]|W30|SP|XZR|WZR)\b/i, "variable"],
-            [/#-?0x[0-9a-fA-F]+/, "number.hex"],
-            [/#-?[0-9]+/, "number"],
-            [/\w+:/, "type.identifier"],
-          ],
-        },
-      });
-
-      // Monaco themes take literal hex only, so these restate token values
-      // from app/globals.css: the editor sits on --bg-base with --bg-raised
-      // as the resting line highlight, line numbers read --text-tertiary,
-      // and the caret is the brand block cursor in --amber (the machine's
-      // color: the block marks where the machine will write next). Keep the
-      // two files in step when a token moves.
-      monaco.editor.defineTheme("arm64-dark", {
-        base: "vs-dark",
-        inherit: true,
-        rules: [
-          { token: "keyword", foreground: "6fa8ff", fontStyle: "bold" },
-          { token: "variable", foreground: "ff7eb6" },
-          { token: "number", foreground: "b49bff" },
-          { token: "number.hex", foreground: "b49bff" },
-          { token: "comment", foreground: "7a828c", fontStyle: "italic" },
-          { token: "type.identifier", foreground: "3dd68c" },
-        ],
-        colors: {
-          "editor.background": "#0B0C10",
-          "editor.lineHighlightBackground": "#14171DAA",
-          "editorGutter.background": "#0B0C10",
-          "editorLineNumber.foreground": "#6F7681",
-          "editorCursor.foreground": "#FFB224",
-          "editorCursor.background": "#0B0C10",
-        },
-      });
-
-      monaco.editor.defineTheme("arm64-light", {
-        base: "vs",
-        inherit: true,
-        rules: [
-          { token: "keyword", foreground: "1d4ed8", fontStyle: "bold" },
-          { token: "variable", foreground: "be185d" },
-          { token: "number", foreground: "6d28d9" },
-          { token: "number.hex", foreground: "6d28d9" },
-          { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-          { token: "type.identifier", foreground: "047857" },
-        ],
-        colors: {
-          "editor.background": "#FFFFFF",
-          "editor.lineHighlightBackground": "#F4F5F7CC",
-          "editorGutter.background": "#FFFFFF",
-          "editorLineNumber.foreground": "#6A727C",
-          "editorCursor.foreground": "#A86A0F",
-          "editorCursor.background": "#FFFFFF",
-        },
-      });
-
-      monaco.editor.defineTheme("arm64-hc", {
-        base: "hc-black",
-        inherit: true,
-        rules: [
-          { token: "keyword", foreground: "8be0ff", fontStyle: "bold" },
-          { token: "variable", foreground: "ffb6e6" },
-          { token: "number", foreground: "d4b6ff" },
-          { token: "number.hex", foreground: "d4b6ff" },
-          { token: "comment", foreground: "d1d5db", fontStyle: "italic" },
-          { token: "type.identifier", foreground: "9ef0c1" },
-        ],
-        colors: {
-          "editor.background": "#000000",
-          "editor.lineHighlightBackground": "#1A1A1A",
-          "editorGutter.background": "#000000",
-          "editorLineNumber.foreground": "#C7C7C7",
-          "editorCursor.foreground": "#FFC247",
-          "editorCursor.background": "#000000",
-        },
-      });
-
-      const applyTheme = () => {
-        const t = document.documentElement.getAttribute("data-theme");
-        const id = t === "light" ? "arm64-light" : t === "high-contrast" ? "arm64-hc" : "arm64-dark";
-        monaco.editor.setTheme(id);
-      };
-      applyTheme();
-      const observer = new MutationObserver(applyTheme);
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["data-theme"],
-      });
-
-      // Completion provider: builds context-aware suggestions from the
-      // current line + the full source (for labels and m4 aliases).
-      type CompletionModel = Parameters<
-        Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
-      >[0];
-      type CompletionPos = Parameters<
-        Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
-      >[1];
-      monaco.languages.registerCompletionItemProvider("arm64", {
-        triggerCharacters: [".", " ", ",", "[", "$", "_"],
-        provideCompletionItems(model: CompletionModel, position: CompletionPos) {
-          const line = model.getLineContent(position.lineNumber);
-          const source = model.getValue();
-          const word = model.getWordUntilPosition(position);
-          const range = new monaco.Range(
-            position.lineNumber,
-            word.startColumn,
-            position.lineNumber,
-            word.endColumn,
-          );
-          const suggestions = buildSuggestions({
-            source,
-            line,
-            position: position.column,
-          });
-          return {
-            suggestions: suggestions.map((s) => mapSuggestion(s, monaco, range)),
-          };
-        },
-      });
-
-      // Hover provider: surface a short course-voice summary of the
-      // mnemonic under the cursor. Falls back to no-hover when the
-      // token under the cursor isn't one we recognize.
-      type MonacoModule = typeof monaco;
-      type TextModel = Parameters<
-        Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
-      >[0];
-      type MonacoPosition = Parameters<
-        Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
-      >[1];
-      monaco.languages.registerHoverProvider("arm64", {
-        provideHover(model: TextModel, position: MonacoPosition) {
-          const word = model.getWordAtPosition(position);
-          if (!word) return null;
-          // Grab the possibly-dotted conditional form (e.g. "B.EQ").
-          const line = model.getLineContent(position.lineNumber);
-          const dotStart = word.startColumn - 1;
-          const extended =
-            line[dotStart - 1] === "." && /[A-Za-z]/.test(line[dotStart - 2] ?? "")
-              ? `${line[dotStart - 2]}.${word.word}`
-              : word.word;
-          const doc = lookupDoc(extended) ?? lookupDoc(word.word);
-          if (!doc) return null;
-          const lines: string[] = [
-            `**${word.word.toUpperCase()}** — ${doc.summary}`,
-          ];
-          if (doc.details) {
-            lines.push("", ...doc.details);
-          }
-          if (doc.example) {
-            lines.push("", "```", doc.example, "```");
-          }
-          if (doc.cExample) {
-            lines.push("", `**c equivalent:** \`${doc.cExample}\``);
-          }
-          return {
-            range: new monaco.Range(
-              position.lineNumber,
-              word.startColumn,
-              position.lineNumber,
-              word.endColumn,
-            ),
-            contents: [{ value: lines.join("\n") }],
-          };
-        },
-      });
+      ensureArm64Registered(monaco);
 
       // Surface cursor position to the parent so the share-state hash
       // can encode it. The callback fires on arrow keys, click, and any
@@ -439,6 +457,9 @@ export function Editor({
         if (vv) {
           const onVvResize = () => editor.layout();
           vv.addEventListener("resize", onVvResize);
+          // The listener holds the editor alive; every remount (the
+          // pitfalls catalog toggles remount the embed) stacked another.
+          editor.onDidDispose(() => vv.removeEventListener("resize", onVvResize));
         }
       }
 
