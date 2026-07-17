@@ -101,7 +101,7 @@ self.addEventListener("fetch", (event) => {
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();
-          caches.open(RUNTIME_CACHE).then((cache) => cache.put(req, copy));
+          event.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put(req, copy)));
         }
         return res;
       })
