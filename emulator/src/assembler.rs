@@ -28,8 +28,9 @@ pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
         if trimmed.is_empty() {
             continue;
         }
-        if let Some(label) = trimmed.strip_suffix(':') {
-            let name = label.trim().to_lowercase();
+        let (label, rest) = split_label(trimmed);
+        if let Some(label) = label {
+            let name = label.to_lowercase();
             if name.is_empty() {
                 return asm_err(*line_num, "empty label");
             }
@@ -45,7 +46,9 @@ pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
                 );
             }
             labels.insert(name, instr_count * 4);
-        } else {
+        }
+        // A same-line `label: instr` still carries an instruction.
+        if !rest.is_empty() {
             instr_count += 1;
         }
     }
@@ -55,15 +58,39 @@ pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
     let mut pc: u64 = 0;
     for (line_num, line) in &lines {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.ends_with(':') {
+        if trimmed.is_empty() {
             continue;
         }
-        let word = encode_line(trimmed, pc, &labels, *line_num)?;
+        let (_label, rest) = split_label(trimmed);
+        if rest.is_empty() {
+            continue;
+        }
+        let word = encode_line(rest, pc, &labels, *line_num)?;
         code.push(word);
         pc += 4;
     }
 
     Ok(code)
+}
+
+/// Split a leading `name:` label off a line. GAS lets a label and an
+/// instruction share a line (`loop: subs x0, x0, 1`); the two-pass encoder
+/// only recognized a label when it was the WHOLE line, so the same-line
+/// idiom reached `encode_line` with `loop:` read as the mnemonic. The legacy
+/// (non-hosted) grammar has no other leading-colon construct, so a leading
+/// identifier immediately followed by `:` is unambiguously a label.
+fn split_label(trimmed: &str) -> (Option<&str>, &str) {
+    if let Some(colon) = trimmed.find(':') {
+        let head = trimmed[..colon].trim_end();
+        if !head.is_empty()
+            && head
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '$')
+        {
+            return (Some(head), trimmed[colon + 1..].trim_start());
+        }
+    }
+    (None, trimmed)
 }
 
 // ---------------------------------------------------------------------------
@@ -455,14 +482,23 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
                 }
             }
         }
-        if imm < 0 {
-            // MOVN: ~imm
-            let not_imm = !(imm as u64);
-            let trunc = if sf { not_imm } else { not_imm & 0xFFFF_FFFF };
-            if trunc <= 0xFFFF {
-                let sf_bit = if sf { 1u32 } else { 0 };
-                return Ok((sf_bit << 31) | (0b00 << 29) | (0b100101 << 23)
-                    | ((trunc as u32) << 5) | (rd as u32));
+        // MOVN: encode any value whose width-masked inverse fits a single
+        // 16-bit shifted halfword. GAS encodes `mov w0, #0xffffffff` and
+        // `mov x0, #-1` this way; the old path only tried MOVN for negative
+        // literals and only unshifted, so the positive hex form (and shifted
+        // inverses like 0xffff0000) were wrongly rejected.
+        {
+            let width_mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
+            let inv = !(imm as u64) & width_mask;
+            let limit: u64 = if sf { 4 } else { 2 };
+            for hw in 0..limit {
+                let shift = hw * 16;
+                if inv & !(0xFFFF_u64 << shift) == 0 {
+                    let val = ((inv >> shift) as u32) & 0xFFFF;
+                    let sf_bit = if sf { 1u32 } else { 0 };
+                    return Ok((sf_bit << 31) | (0b00 << 29) | (0b100101 << 23)
+                        | ((hw as u32) << 21) | (val << 5) | (rd as u32));
+                }
             }
         }
         return asm_err(ln, "immediate out of range for MOV (needs MOVZ+MOVK)");
@@ -2494,6 +2530,40 @@ mod tests {
         assert_eq!(dec, assemble("CMP W1, #-0x10").unwrap()[0]);
         assert_eq!(dec, assemble("CMP W1, #-0b10000").unwrap()[0]);
         assert_eq!(dec, assemble("CMN W1, #16").unwrap()[0]);
+    }
+
+    #[test]
+    fn same_line_label_and_instruction_assemble() {
+        // GAS lets a label share a line with an instruction; the two-pass
+        // encoder used to read `loop:` as the mnemonic. The same-line form
+        // must assemble identically to the own-line form and resolve the
+        // branch target correctly.
+        let same = assemble("mov x0, 5
+loop: subs x0, x0, 1
+b.ne loop
+svc 0").unwrap();
+        let own = assemble("mov x0, 5
+loop:
+subs x0, x0, 1
+b.ne loop
+svc 0").unwrap();
+        assert_eq!(same, own);
+        assert_eq!(same.len(), 4);
+    }
+
+    #[test]
+    fn mov_encodes_positive_all_ones_as_movn() {
+        // GAS encodes `mov w0, #0xffffffff` as MOVN w0, #0 (0x12800000) and
+        // `mov x0, #-1` as MOVN x0, #0 (0x92800000). The old path only tried
+        // MOVN for negative literals, rejecting the positive hex form.
+        assert_eq!(assemble("mov w0, #0xffffffff").unwrap()[0], 0x1280_0000);
+        assert_eq!(assemble("mov x0, #-1").unwrap()[0], 0x9280_0000);
+        // 0xfffffffe fits MOVN but not MOVZ (both halves nonzero): the
+        // inverse is 0x1, so MOVN w0, #1 (0x12800020). (0xffff0000 would
+        // reach the MOVZ-shifted path first, so it is not a MOVN case.)
+        assert_eq!(assemble("mov w0, #0xfffffffe").unwrap()[0], 0x1280_0020);
+        // a value that fits neither MOVZ nor MOVN still needs movz+movk.
+        assert!(assemble("mov w0, #0x12345678").is_err());
     }
 
     #[test]
