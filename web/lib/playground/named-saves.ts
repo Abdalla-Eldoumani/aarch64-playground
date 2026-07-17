@@ -68,6 +68,10 @@ function isValidSave(v: unknown): v is NamedSave {
     Number.isInteger(o.stepCount) &&
     o.stepCount >= 0 &&
     o.stepCount <= 10_000_000 &&
+    // args/stdin are optional strings; an imported bundle is untrusted, and
+    // a non-string here would later crash the restore (`args.split(...)`).
+    (o.args === undefined || typeof o.args === "string") &&
+    (o.stdin === undefined || typeof o.stdin === "string") &&
     typeof o.savedAt === "string"
   );
 }
