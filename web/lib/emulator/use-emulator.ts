@@ -12,6 +12,7 @@ import {
   type LineMap,
 } from "@/lib/emulator/line-map";
 import { ReplayRing, type ReplayFrame } from "@/lib/emulator/replay";
+import { parseArgs } from "@/lib/playground/args";
 import type { StateSnapshot } from "@/lib/worker/protocol";
 
 export interface AssemblyError {
@@ -802,9 +803,10 @@ export function useEmulator(): EmulatorState {
       const backend = backendRef.current;
       if (!backend) return { success: false, stepped: 0 };
       resetReplayHistory();
-      const argList = params.args
-        ? params.args.split(/\s+/).filter((s) => s.length > 0)
-        : [];
+      // Tokenize with the shared quoting-aware parser, not a bare
+      // whitespace split: a bookmarked `"hello world"` is one argv entry
+      // everywhere else, so the restore must not split it into two.
+      const argList = params.args ? parseArgs(params.args) : [];
       // One assemble path for every program delivery: the direct
       // backend.assemble call this used to make skipped the line-map
       // refresh, hosted-mode detection, the instruction decode, and the
