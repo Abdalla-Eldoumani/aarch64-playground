@@ -1557,6 +1557,7 @@ function EmbeddableCore({
         onPause={emu.pause}
         onReset={emu.reset}
         isRunning={emu.isRunning}
+        isAssembling={emu.isAssembling}
         isHalted={emu.isHalted}
         programLoaded={emu.programLoaded}
         blocked={emu.blocked}
