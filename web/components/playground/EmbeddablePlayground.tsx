@@ -1041,13 +1041,15 @@ function EmbeddableCore({
         const lower = name.toLowerCase();
         if (lower === "sp") return BigInt(e.sp);
         if (lower === "pc") return BigInt(e.pc);
-        const m = lower.match(/^[xw](\d+)$/);
+        const m = lower.match(/^([xw])(\d+)$/);
         if (!m) return null;
-        const idx = Number(m[1]);
+        const idx = Number(m[2]);
         if (idx < 0 || idx > 30) return null;
         const raw = e.registers[idx];
         if (!raw) return null;
-        return BigInt(raw);
+        // A `wN` name reads the low 32 bits, not the full 64-bit x register.
+        const val = BigInt(raw);
+        return m[1] === "w" ? val & 0xffff_ffffn : val;
       },
       readRegisters: () => {
         const e = emuRef.current;
