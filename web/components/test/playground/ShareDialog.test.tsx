@@ -7,6 +7,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { ShareDialog } from "@/components/playground/ShareDialog";
 import { readShareHash, type ShareState } from "@/lib/playground/share";
 
+// readShareHash returns a discriminated verdict; these tests only
+// care about the ok payload.
+function okShareState(hash: string) {
+  const r = readShareHash(hash);
+  if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
+  return r.state;
+}
+
 afterEach(() => {
   cleanup();
   Reflect.deleteProperty(window.navigator, "clipboard");
@@ -49,7 +57,7 @@ describe("ShareDialog", () => {
     const url = urlValue();
     expect(url.startsWith(`${window.location.origin}/`)).toBe(true);
     expect(url).toContain("#p2=");
-    const decoded = readShareHash(url.slice(url.indexOf("#")));
+    const decoded = okShareState(url.slice(url.indexOf("#")));
     expect(decoded).toEqual(STATE);
   });
 
