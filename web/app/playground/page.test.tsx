@@ -19,6 +19,7 @@ const handle = vi.hoisted(() => ({
   getArgs: vi.fn(() => ""),
   getCursor: vi.fn(() => ({ line: 1, column: 1 })),
   getCommands: vi.fn(() => []),
+  notifyError: vi.fn(),
 }));
 
 // The last props the stub received, so boot tests can assert what start
@@ -45,10 +46,10 @@ vi.mock("@/components/playground/ShortcutsHelp", () => ({ ShortcutsHelp: () => n
 vi.mock("@/components/playground/ShareDialog", () => ({ ShareDialog: () => null }));
 vi.mock("@/components/chrome/SiteNav", () => ({ SiteNav: () => null }));
 
-const toastError = vi.fn();
-vi.mock("@/components/ui/Toast", () => ({
-  useToast: () => ({ show: vi.fn(), success: vi.fn(), error: toastError }),
-}));
+// Boot failures surface through the playground handle's notifyError (the
+// page entry's own toast binding is a dead module instance in prod); the
+// tests observe the handle mock.
+const toastError = () => handle.notifyError as ReturnType<typeof vi.fn>;
 
 import Home from "./page";
 import { buildShareHash } from "@/lib/playground/share";
@@ -166,8 +167,10 @@ describe("page boot and handoff", () => {
     expect(handle.loadProgram).not.toHaveBeenCalled();
     // ...but the student is told: the old empty catch shipped the wrong
     // buffer to a whole class off one typo'd instructor link, silently.
-    expect(toastError).toHaveBeenCalledTimes(1);
-    expect(String(toastError.mock.calls[0][0])).toContain("404");
+    // Boot toasts fire on a short delay (the Toaster subscribes after the
+    // first commit), so wait past it.
+    await waitFor(() => expect(toastError()).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    expect(String(toastError().mock.calls[0][0])).toContain("404");
   });
 
   it("reports a damaged share link instead of silently booting the autosave", async () => {
@@ -177,7 +180,7 @@ describe("page boot and handoff", () => {
       await Promise.resolve();
     });
     expect(handle.loadProgram).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledTimes(1);
-    expect(String(toastError.mock.calls[0][0])).toContain("damaged");
+    await waitFor(() => expect(toastError()).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    expect(String(toastError().mock.calls[0][0])).toContain("damaged");
   });
 });
