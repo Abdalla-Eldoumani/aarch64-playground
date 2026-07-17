@@ -13,8 +13,14 @@ fits the task.
 | --- | --- |
 | `./program [args]` | Re-assemble the current editor source with `args` and run to halt. |
 | `./name [args]` | Run an executable built with `gcc` (see the toolchain below). |
-| `./program < file` | Either form, with the named VFS file fed to stdin. |
+| `./program < file` | Either form, with the named VFS file fed to stdin. The file is the WHOLE input: stdin closes after it, so a read-until-EOF loop finishes instead of waiting. |
 | `./program > file` | Either form, with stdout captured into the named VFS file. |
+
+A run prints the program's exit status when it finishes; a program that
+stops without exiting (a fault, the step budget) prints
+`[no exit -- the program did not finish]` instead of a made-up code. A
+compiled executable named `program` takes precedence over the editor-source
+alias, matching a real shell's lookup.
 
 ### Toolchain
 
@@ -76,7 +82,7 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table). |
 | `gdb p $xN` | Print a register in hex (`$x0`..`$x30`, `$sp`, `$pc`). |
 | `gdb info registers` | Print every register. |
-| `gdb x/Ni $pc` | Show N words of memory at the current PC. |
+| `gdb x/Ni $pc` | Show N words of memory at the current PC (N capped at 1024). |
 | `gdb bt` | One-frame backtrace at the current PC. |
 
 ## Input handling
