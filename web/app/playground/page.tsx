@@ -12,6 +12,7 @@ import {
 } from "@/lib/playground/playground-handoff";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 import { useTheme } from "@/lib/hooks/use-theme";
+import { useToast } from "@/components/ui/Toast";
 import type { Action } from "@/lib/playground/commands";
 import type { Shortcut } from "@/components/playground/ShortcutsHelp";
 import {
@@ -102,6 +103,7 @@ export default function Home() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareState, setShareState] = useState<ShareState>({ source: "" });
   const [, toggleTheme, setTheme] = useTheme();
+  const toast = useToast();
   // The outcome slice mirrors the hub for the F5 run/pause decision and the
   // future outcome checker; the page never holds the hub itself.
   const outcomeRef = useRef<EmbeddableState | null>(null);
@@ -136,16 +138,38 @@ export default function Home() {
     if (typeof window === "undefined") return;
     const dl = parseDeepLink(window.location.search);
     if (dl.theme) setTheme(dl.theme);
+    // A share link that failed to decode fell back to the autosave; say
+    // so -- the only signal used to be the ABSENCE of the share banner.
+    if (boot.shareError) {
+      toast.error(
+        boot.shareError === "too-large"
+          ? "that share link is too large to load -- showing your own buffer instead"
+          : "that share link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
+      );
+    }
     const handoff = resolveHandoff(boot, window.location.search, window.location.hash);
     if (!handoff) return;
+    if (handoff.kind === "share-error") {
+      toast.error(
+        handoff.reason === "too-large"
+          ? "that share link is too large to load"
+          : "that share link is damaged (often a partial copy) -- ask for the link again",
+      );
+      return;
+    }
     if (handoff.kind === "example") {
+      // fetchExample's failures are already student-readable ("invalid
+      // example name", "failed to load example: 404"); swallowing them
+      // shipped the wrong buffer to a whole class off one typo'd link.
       void fetchExample(handoff.stem)
         .then((payload) => playgroundRef.current?.loadProgram(payload))
-        .catch(() => {});
+        .catch((e: unknown) => {
+          toast.error(e instanceof Error ? e.message : "could not load that example");
+        });
     } else {
       playgroundRef.current?.loadProgram(handoff.payload);
     }
-  }, [setTheme, boot]);
+  }, [setTheme, boot, toast]);
 
   // Global shortcuts, single owner. Every execution key delegates to the
   // component through the imperative handle; palette / help toggle page state.
