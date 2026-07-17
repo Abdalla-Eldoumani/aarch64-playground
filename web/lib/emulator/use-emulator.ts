@@ -62,6 +62,11 @@ export interface EmulatorState {
   changedRegs: Set<number>;
   changedFpRegs: Set<number>;
   isRunning: boolean;
+  /** True while an assemble is in flight. The FIRST assemble also fetches
+   *  and compiles the wasm inside the worker, which can take visible time
+   *  on a cold load -- without this flag that first click looks like a
+   *  hang. */
+  isAssembling: boolean;
   isHalted: boolean;
   /** True only while a successfully assembled (or state-restored) program
    *  is in the machine. `run`, `step`, and `stepBack` are inert without
@@ -225,6 +230,7 @@ export function useEmulator(): EmulatorState {
   const [fpRegisters, setFpRegisters] = useState<string[]>([]);
   const [changedFpRegs, setChangedFpRegs] = useState<Set<number>>(new Set());
   const [isRunning, setIsRunning] = useState(false);
+  const [isAssembling, setIsAssembling] = useState(false);
   const [isHalted, setIsHalted] = useState(false);
   const [programLoaded, setProgramLoaded] = useState(false);
   const [canStepBack, setCanStepBack] = useState(false);
@@ -438,6 +444,7 @@ export function useEmulator(): EmulatorState {
       // Return the promise chain so callers that must run only after the
       // backend has loaded the program (the embed/checker Run, which has no
       // separate Assemble control) can await assembly.
+      setIsAssembling(true);
       return backend
         .assemble(source, args)
         .then(async ({ result }): Promise<AssembleOutcome> => {
@@ -507,14 +514,21 @@ export function useEmulator(): EmulatorState {
           setCurrentLine(entryLine);
           currentLineRef.current = entryLine;
           const instrs: DecodedInstruction[] = [];
+          // One bulk read for the whole code region: the per-instruction
+          // loop used to make instruction_count sequential worker
+          // round-trips on every assemble.
+          const codeBytes =
+            result.instruction_count > 0
+              ? await backend.getMemory(base, result.instruction_count * 4)
+              : new Uint8Array(0);
           for (let i = 0; i < result.instruction_count; i++) {
             const addr = base + i * 4;
-            const bytes = await backend.getMemory(addr, 4);
+            const off = i * 4;
             const word =
-              (bytes[0] ?? 0) |
-              ((bytes[1] ?? 0) << 8) |
-              ((bytes[2] ?? 0) << 16) |
-              ((bytes[3] ?? 0) << 24);
+              (codeBytes[off] ?? 0) |
+              ((codeBytes[off + 1] ?? 0) << 8) |
+              ((codeBytes[off + 2] ?? 0) << 16) |
+              ((codeBytes[off + 3] ?? 0) << 24);
             const hex = "0x" + (word >>> 0).toString(16).padStart(8, "0");
             // The map gives the editor line for this instruction's
             // address; render that line's text. Fall back to the
@@ -537,7 +551,8 @@ export function useEmulator(): EmulatorState {
           const message = e instanceof Error ? e.message : String(e);
           if (surfaceErrors) setError(message);
           return { success: false, error: message, errorLine: null };
-        });
+        })
+        .finally(() => setIsAssembling(false));
     },
     [resetReplayHistory, markProgramLoaded],
   );
@@ -952,6 +967,7 @@ export function useEmulator(): EmulatorState {
       nzcv,
       changedRegs,
       isRunning,
+      isAssembling,
       isHalted,
       programLoaded,
       error,
@@ -1006,7 +1022,7 @@ export function useEmulator(): EmulatorState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
-      isRunning, isHalted, programLoaded, error, assemblyErrors, breakpoints,
+      isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
       currentLine, instructions, codeBase, stdout, stderr, blocked,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
