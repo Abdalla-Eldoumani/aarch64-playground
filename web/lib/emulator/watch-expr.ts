@@ -112,7 +112,11 @@ function readAt(ctx: EvalContext, addr: bigint, size: number): EvalOutcome {
 
 function parseOffset(s: string, ctx: EvalContext): bigint | null {
   const t = s.trim();
-  if (t.startsWith("0x") || t.startsWith("0X")) return BigInt(t);
+  // Validate before BigInt: `BigInt("0xZZ")` THROWS, and an unguarded throw
+  // here white-screens the whole playground on a malformed watch offset.
+  if (t.startsWith("0x") || t.startsWith("0X")) {
+    return /^[0-9a-f]+$/i.test(t.slice(2)) ? BigInt(t) : null;
+  }
   if (/^-?\d+$/.test(t)) return BigInt(t);
   const reg = regName(t);
   if (reg) {
