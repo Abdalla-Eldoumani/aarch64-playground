@@ -225,7 +225,7 @@ reaches React, the editor, or the emulator (full caps in
   on `#p2=<lz>` and `#p=`.
 - `named-saves.ts::isValidSave`: per-field type check on bookmark JSON;
   collisions are skipped, not overwritten.
-- `upload-guard.ts`: size caps for source (1 MB), VFS (10 MB), and
+- `upload-guard.ts`: size caps for source (1 MB), VFS (4 MiB), and
   bookmark JSON (1 MB) uploads.
 - `use-deep-link.ts`: enum checks on `?theme`/`?view`, regex on
   `?example`.
