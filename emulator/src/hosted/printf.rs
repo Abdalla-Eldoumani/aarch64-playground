@@ -259,10 +259,15 @@ fn format_conversion(
                 },
                 other => other,
             })?;
-            let mut s = String::from_utf8_lossy(&bytes).into_owned();
-            if let Some(p) = spec.precision {
-                s.truncate(p);
-            }
+            // C's %s precision is a maximum BYTE count. Truncate the raw
+            // bytes (not the decoded String): `String::truncate` panics when
+            // the cut lands mid-UTF-8-char, so `%.1s` on a multi-byte string
+            // used to abort the whole wasm instance.
+            let shown: &[u8] = match spec.precision {
+                Some(p) if p < bytes.len() => &bytes[..p],
+                _ => &bytes,
+            };
+            let s = String::from_utf8_lossy(shown).into_owned();
             pad_and_emit(&s, spec, out);
         }
         'f' | 'F' => {
@@ -613,6 +618,24 @@ mod tests {
             regs.write_gpr(1, true, 7);
         });
         assert_eq!(s, "  007");
+    }
+
+    #[test]
+    fn percent_s_precision_does_not_panic_on_multibyte() {
+        // `%.1s` on a multi-byte UTF-8 string used to hit String::truncate
+        // mid-char and panic the wasm instance. Precision counts bytes (C
+        // semantics), so it must truncate the raw bytes, not the decoded
+        // String.
+        let (s, _) = call("[%.1s]", |regs, mem| {
+            // place the 2-byte UTF-8 'e-acute' (0xC3 0xA9) then NUL.
+            let addr = 0x0060_0000u64;
+            mem.write_u8(addr, 0xC3).unwrap();
+            mem.write_u8(addr + 1, 0xA9).unwrap();
+            mem.write_u8(addr + 2, 0).unwrap();
+            regs.write_gpr(1, true, addr);
+        });
+        // one byte kept -> lossy decode of a lone 0xC3 -> U+FFFD.
+        assert!(s.starts_with("[") && s.ends_with("]"));
     }
 
     #[test]
