@@ -258,4 +258,24 @@ describe("EXAMPLE_INPUTS manifest", () => {
     }
     expect(EXAMPLE_INPUTS).toEqual(onDisk);
   });
+
+  describe("share failure verdicts", () => {
+    it("boot falls back and carries the share error", () => {
+      const boot = resolveBoot("", "#p2=z", "saved buffer", "default");
+      expect(boot.source).toBe("saved buffer");
+      expect(boot.fromShare).toBe(false);
+      expect(boot.shareError).toBe("corrupt");
+    });
+
+    it("handoff reports a share failure the boot did not already report", () => {
+      const boot = { fromShare: false, fromBundle: false };
+      const decision = resolveHandoff(boot, "", "#p2=z");
+      expect(decision).toEqual({ kind: "share-error", reason: "corrupt" });
+    });
+
+    it("handoff stays quiet when the boot already reported the failure", () => {
+      const boot = { fromShare: false, fromBundle: false, shareError: "corrupt" as const };
+      expect(resolveHandoff(boot, "", "#p2=z")).toBeNull();
+    });
+  });
 });
