@@ -36,6 +36,27 @@ describe("extractAliases", () => {
     expect(aliases.fp).toBe("x29");
     expect(aliases.score1_r).toBe("w19");
   });
+
+  it("tolerates leading whitespace and spaced arguments", () => {
+    const aliases = extractAliases("  define( fp ,  x29 )  \n");
+    expect(aliases.fp).toBe("x29");
+  });
+
+  it("does not match a define whose body spans lines", () => {
+    // The emulator's m4 pass is line-based; the gloss must agree.
+    const aliases = extractAliases("define(fp,\nx29)\n");
+    expect(aliases.fp).toBeUndefined();
+  });
+
+  it("returns quickly on an unclosed define followed by whitespace", () => {
+    // An earlier regex backtracked in O(n^3) here: 4000 spaces took 21
+    // seconds and froze the tab during boot. Linear matching stays well
+    // under the bound even on slow CI.
+    const source = `define(a,${" ".repeat(20000)}`;
+    const started = performance.now();
+    expect(extractAliases(source)).toEqual({});
+    expect(performance.now() - started).toBeLessThan(100);
+  });
 });
 
 describe("resolveAliases", () => {

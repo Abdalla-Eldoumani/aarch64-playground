@@ -131,6 +131,9 @@ struct StepResultJs {
     pc: u64,
     halted: bool,
     error: Option<String>,
+    /// Editor line of the instruction the error names, when the line map
+    /// can resolve it. None when there is no error or no mapping.
+    error_line: Option<u32>,
     /// "advance" | "halted" | "waiting" | "exited"
     outcome: &'static str,
     /// Populated when outcome == "exited".
@@ -145,6 +148,15 @@ struct RunResultJs {
     steps_executed: u32,
     hit_breakpoint: bool,
     error: Option<String>,
+    /// Editor line of the instruction the error names (see StepResultJs).
+    error_line: Option<u32>,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct LintWarningJs {
+    line: usize,
+    message: String,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -331,15 +343,44 @@ impl Emulator {
         }
     }
 
+    /// Resolve the editor line for a runtime stop. The calm-halt boundary
+    /// leaves PC on the faulting instruction; a fault raised inside a host
+    /// stub (printf, scanf, a syscall helper) reports the CALL site instead,
+    /// recovered from LR-4, because stub addresses are synthetic and never
+    /// appear in the line map.
+    fn error_line_for(&self, pc: u64) -> Option<u32> {
+        // The fell-off-the-end halt stops one word past the image; point
+        // the marker at the LAST mapped instruction line -- the place the
+        // missing ret belongs.
+        if self.cpu.text_end() == Some(pc) {
+            return self.line_map.chunks_exact(2).last().map(|pair| pair[1]);
+        }
+        let lookup = if self.cpu.host.contains_address(pc) {
+            self.cpu.regs.read_gpr(30, true).wrapping_sub(4)
+        } else {
+            pc
+        };
+        let target = lookup as u32;
+        self.line_map
+            .chunks_exact(2)
+            .find(|pair| pair[0] == target)
+            .map(|pair| pair[1])
+    }
+
     /// Execute one instruction.
     pub fn step(&mut self) -> JsValue {
         match self.cpu.step() {
             Ok(result) => {
                 let (outcome, exit_code) = outcome_to_js(&result.outcome);
+                let error_line = result
+                    .error
+                    .as_ref()
+                    .and_then(|_| self.error_line_for(result.pc));
                 serde_wasm_bindgen::to_value(&StepResultJs {
                     pc: result.pc,
                     halted: result.halted,
                     error: result.error,
+                    error_line,
                     outcome,
                     exit_code,
                 })
@@ -349,6 +390,7 @@ impl Emulator {
                 pc: self.cpu.regs.read_pc(),
                 halted: true,
                 error: Some(e.to_string()),
+                error_line: self.error_line_for(self.cpu.regs.read_pc()),
                 outcome: "error",
                 exit_code: None,
             })
@@ -367,6 +409,7 @@ impl Emulator {
             pc: self.cpu.regs.read_pc(),
             halted: self.cpu.is_halted(),
             error: None,
+            error_line: None,
             outcome: outcome_str,
             exit_code,
         })
@@ -403,19 +446,27 @@ impl Emulator {
     /// Run until breakpoint, halt, error, or max_steps reached.
     pub fn run_until_break(&mut self, max_steps: u32) -> JsValue {
         match self.cpu.run_until_break(max_steps) {
-            Ok(result) => serde_wasm_bindgen::to_value(&RunResultJs {
-                pc: result.pc,
-                halted: result.halted,
-                steps_executed: result.steps_executed,
-                hit_breakpoint: result.hit_breakpoint,
-                error: result.error,
-            }).unwrap(),
+            Ok(result) => {
+                let error_line = result
+                    .error
+                    .as_ref()
+                    .and_then(|_| self.error_line_for(result.pc));
+                serde_wasm_bindgen::to_value(&RunResultJs {
+                    pc: result.pc,
+                    halted: result.halted,
+                    steps_executed: result.steps_executed,
+                    hit_breakpoint: result.hit_breakpoint,
+                    error: result.error,
+                    error_line,
+                }).unwrap()
+            }
             Err(e) => serde_wasm_bindgen::to_value(&RunResultJs {
                 pc: self.cpu.regs.read_pc(),
                 halted: true,
                 steps_executed: 0,
                 hit_breakpoint: false,
                 error: Some(e.to_string()),
+                error_line: self.error_line_for(self.cpu.regs.read_pc()),
             }).unwrap(),
         }
     }
@@ -459,11 +510,33 @@ impl Emulator {
         }).unwrap()
     }
 
-    /// Read a range of memory as a byte array. Returns empty on fault.
+    /// Read a range of memory as a byte array. Unmapped bytes read as
+    /// zero; a length past the whole page budget returns empty (the only
+    /// error `read_bytes` produces).
     pub fn get_memory_range(&self, addr: u32, len: u32) -> Vec<u8> {
         self.cpu.mem
             .read_bytes(addr as u64, len as usize)
             .unwrap_or_default()
+    }
+
+    /// Whether every page in `[addr, addr + len)` is mapped. The watch
+    /// panel needs this to tell "reads as zero" from "was never mapped":
+    /// `get_memory_range` deliberately zero-fills unmapped bytes for the
+    /// hex dump, so the bytes alone cannot express a fault.
+    pub fn is_range_mapped(&self, addr: u32, len: u32) -> bool {
+        if len == 0 {
+            return self.cpu.mem.is_mapped(addr as u64);
+        }
+        let start = addr as u64;
+        let end = start + (len as u64) - 1;
+        let mut page = start & !0xFFF;
+        while page <= end {
+            if !self.cpu.mem.is_mapped(page) {
+                return false;
+            }
+            page += 0x1000;
+        }
+        true
     }
 
     /// Indices of registers that changed during the last step (0-31, where 31=SP).
@@ -491,6 +564,17 @@ impl Emulator {
     /// assignments kept inline. Powers the terminal's `m4 file.asm > file.s`
     /// step so the course toolchain replays one command at a time. Returns
     /// `{ success, text?, error?, error_line? }`.
+    /// Pre-assembly structural lint: advisory warnings, each with a line
+    /// and a one-line remedy. Never blocks assembling; serialized as
+    /// `[{ line, message }, ...]`.
+    pub fn lint_source(&self, source: &str) -> JsValue {
+        let warnings: Vec<LintWarningJs> = frontend::lint::lint(source)
+            .into_iter()
+            .map(|w| LintWarningJs { line: w.line, message: w.message })
+            .collect();
+        serde_wasm_bindgen::to_value(&warnings).unwrap()
+    }
+
     pub fn m4_expand(&self, source: &str) -> JsValue {
         match frontend::m4::expand(source) {
             Ok(expanded) => serde_wasm_bindgen::to_value(&M4ResultJs {
@@ -567,6 +651,21 @@ impl Emulator {
         self.cpu.push_stdin(s.as_bytes());
     }
 
+    /// Remove every breakpoint. The UI calls this when a different
+    /// program loads or the source is re-assembled, then re-arms the
+    /// surviving gutter lines through the fresh line map -- the CPU's
+    /// address set otherwise outlives the assembly it belonged to.
+    pub fn clear_all_breakpoints(&mut self) {
+        self.cpu.clear_all_breakpoints();
+    }
+
+    /// Signal end-of-input (ctrl-d / a fully-queued `< file` redirect):
+    /// getchar answers -1, read answers 0, scanf answers its matched
+    /// count or -1, so read-until-EOF loops can terminate.
+    pub fn close_stdin(&mut self) {
+        self.cpu.close_stdin();
+    }
+
     /// Whether the CPU is paused waiting for stdin.
     pub fn is_blocked(&self) -> bool {
         self.cpu.is_blocked()
@@ -578,9 +677,11 @@ impl Emulator {
     }
 
     /// Register a virtual file. Subsequent `openat(path, ...)` finds it.
-    pub fn upload_vfs_file(&mut self, path: &str, data: &[u8]) {
+    /// Returns false when the upload would breach a VFS wall (per-file,
+    /// whole-VFS, or file count); the web guards use matching caps.
+    pub fn upload_vfs_file(&mut self, path: &str, data: &[u8]) -> bool {
         self.cpu
-            .upload_vfs_file(path.to_string(), data.to_vec());
+            .upload_vfs_file(path.to_string(), data.to_vec())
     }
 
     /// Names of every file currently in the virtual filesystem.

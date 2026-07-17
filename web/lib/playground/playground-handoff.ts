@@ -43,6 +43,11 @@ export interface PlaygroundBoot {
   cursor?: { line: number; column: number };
   fromShare: boolean;
   fromBundle: boolean;
+  /** Set when the URL carried OUR share prefix but the payload failed:
+   *  the boot fell back to autosave/default and the page must say so --
+   *  an absent "loaded from a share link" banner is not a signal anyone
+   *  notices. */
+  shareError?: "corrupt" | "too-large";
 }
 
 /**
@@ -67,12 +72,12 @@ export function resolveBoot(
     };
   }
   const shared = readShareHash(hash);
-  if (shared) {
+  if (shared.kind === "ok") {
     return {
-      source: shared.source,
-      args: shared.args ?? "",
-      stdin: shared.stdin,
-      cursor: shared.cursor,
+      source: shared.state.source,
+      args: shared.state.args ?? "",
+      stdin: shared.state.stdin,
+      cursor: shared.state.cursor,
       fromShare: true,
       fromBundle: false,
     };
@@ -82,12 +87,15 @@ export function resolveBoot(
     args: "",
     fromShare: false,
     fromBundle: false,
+    shareError:
+      shared.kind === "corrupt" || shared.kind === "too-large" ? shared.kind : undefined,
   };
 }
 
 export type HandoffDecision =
   | { kind: "bundle" | "share"; payload: HandoffPayload }
   | { kind: "example"; stem: string }
+  | { kind: "share-error"; reason: "corrupt" | "too-large" }
   | null;
 
 /**
@@ -100,7 +108,7 @@ export type HandoffDecision =
  * payload with the example file.
  */
 export function resolveHandoff(
-  boot: Pick<PlaygroundBoot, "fromShare" | "fromBundle">,
+  boot: Pick<PlaygroundBoot, "fromShare" | "fromBundle" | "shareError">,
   search: string,
   hash: string,
 ): HandoffDecision {
@@ -118,19 +126,24 @@ export function resolveHandoff(
     };
   }
   const shared = readShareHash(hash);
-  if (shared) {
+  if (shared.kind === "ok") {
     if (boot.fromShare) return null;
     return {
       kind: "share",
       payload: {
-        source: shared.source,
-        args: shared.args,
-        stdin: shared.stdin,
-        cursor: shared.cursor,
+        source: shared.state.source,
+        args: shared.state.args,
+        stdin: shared.state.stdin,
+        cursor: shared.state.cursor,
         label: "shared program",
         fromShare: true,
       },
     };
+  }
+  if (shared.kind === "corrupt" || shared.kind === "too-large") {
+    // The boot pass already reported a hard load's failure; a client-side
+    // navigation reaches it only here.
+    return boot.shareError ? null : { kind: "share-error", reason: shared.kind };
   }
   if (dl.example) {
     return { kind: "example", stem: resolveExampleStem(dl.example) };

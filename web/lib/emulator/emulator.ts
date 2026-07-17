@@ -16,6 +16,12 @@ export interface StepResult {
   pc: number;
   halted: boolean;
   error: string | null;
+  /**
+   * Editor line the runtime error resolves to through the authoritative
+   * line map (LR-4 recovers the call site for host-stub faults). Null on
+   * success and on wasm builds that predate the field.
+   */
+  error_line: number | null;
   outcome: StepOutcome;
   exitCode: number | null;
 }
@@ -26,6 +32,8 @@ export interface RunResult {
   steps_executed: number;
   hit_breakpoint: boolean;
   error: string | null;
+  /** Editor line for a runtime error (see StepResult). */
+  error_line: number | null;
 }
 
 export interface RegisterState {
@@ -60,6 +68,7 @@ export class EmulatorInstance {
       pc: Number(raw.pc),
       halted: raw.halted,
       error: raw.error ?? null,
+      error_line: raw.error_line ?? null,
       outcome: raw.outcome ?? "advance",
       exitCode: raw.exit_code != null ? Number(raw.exit_code) : null,
     };
@@ -71,6 +80,7 @@ export class EmulatorInstance {
       pc: Number(raw.pc),
       halted: raw.halted,
       error: raw.error ?? null,
+      error_line: raw.error_line ?? null,
       outcome: raw.outcome ?? "advance",
       exitCode: raw.exit_code != null ? Number(raw.exit_code) : null,
     };
@@ -102,6 +112,13 @@ export class EmulatorInstance {
 
   takeStderr(): string {
     return this.inner.take_stderr();
+  }
+
+  /** Signal end-of-input. A pre-close wasm build lacks the export, so
+   *  the call quietly does nothing there (feature detection). */
+  closeStdin(): void {
+    const close = (this.inner as { close_stdin?: () => void }).close_stdin;
+    if (typeof close === "function") close.call(this.inner);
   }
 
   pushStdin(s: string): void {
@@ -155,6 +172,7 @@ export class EmulatorInstance {
       steps_executed: raw.steps_executed,
       hit_breakpoint: raw.hit_breakpoint,
       error: raw.error ?? null,
+      error_line: raw.error_line ?? null,
     };
   }
 
@@ -188,6 +206,14 @@ export class EmulatorInstance {
     return this.inner.get_memory_range(addr, len);
   }
 
+  /** Whether every page in the range is mapped; true on a wasm build
+   *  that predates the export (degrades to the zero-fill behavior). */
+  isRangeMapped(addr: number, len: number): boolean {
+    const probe = (this.inner as { is_range_mapped?: (a: number, l: number) => boolean })
+      .is_range_mapped;
+    return typeof probe === "function" ? probe.call(this.inner, addr, len) : true;
+  }
+
   getChangedRegisters(): Uint8Array {
     return this.inner.get_changed_registers();
   }
@@ -203,6 +229,14 @@ export class EmulatorInstance {
     return this.inner.get_changed_fp_registers?.() ?? new Uint8Array(0);
   }
 
+  /** Pre-assembly structural lint warnings; [] on a wasm build that
+   *  predates the export (feature-detected, never throws). */
+  lintSource(source: string): Array<{ line: number; message: string }> {
+    const probe = (this.inner as { lint_source?: (s: string) => unknown }).lint_source;
+    if (typeof probe !== "function") return [];
+    return probe.call(this.inner, source) as Array<{ line: number; message: string }>;
+  }
+
   /** Run the m4 pass alone (the terminal's `m4` command). Null when the
    *  loaded WASM predates the export (feature-detected, never throws). */
   m4Expand(source: string): { success: boolean; text?: string; error?: string; error_line?: number } | null {
@@ -214,6 +248,13 @@ export class EmulatorInstance {
 
   setBreakpoint(address: number): void {
     this.inner.set_breakpoint(address);
+  }
+
+  /** Remove every breakpoint; a no-op on a wasm build that predates the
+   *  export (feature detection). */
+  clearAllBreakpoints(): void {
+    const clear = (this.inner as { clear_all_breakpoints?: () => void }).clear_all_breakpoints;
+    if (typeof clear === "function") clear.call(this.inner);
   }
 
   clearBreakpoint(address: number): void {
@@ -241,6 +282,7 @@ interface RawStepResult {
   pc: bigint | number;
   halted: boolean;
   error?: string;
+  error_line?: number | null;
   outcome?: StepOutcome;
   exit_code?: bigint | number | null;
 }
@@ -251,6 +293,7 @@ interface RawRunResult {
   steps_executed: number;
   hit_breakpoint: boolean;
   error?: string;
+  error_line?: number | null;
 }
 
 // the WASM module's Emulator instance shape

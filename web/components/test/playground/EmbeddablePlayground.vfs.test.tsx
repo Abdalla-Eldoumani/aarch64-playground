@@ -98,6 +98,8 @@ function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
     pause: vi.fn(),
     reset: vi.fn(),
     toggleBreakpoint: vi.fn(),
+    clearAllBreakpoints: vi.fn(),
+    lint: vi.fn(async () => []),
     getMemory: vi.fn(() => new Uint8Array()),
     pushStdin: vi.fn(),
     uploadVfsFile: vi.fn(),

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSaves,
   exportBundle,
@@ -65,15 +65,35 @@ describe("named-saves", () => {
       saves: [makeSave("alpha", 99), makeSave("gamma", 3)],
     };
     const result = importBundle(incoming);
-    expect(result.added).toBe(1);
-    expect(result.skipped).toBe(1);
+    expect(result).toEqual({ ok: true, added: 1, skipped: 1, stored: true });
     expect(getSave("alpha")?.stepCount).toBe(5); // not clobbered
     expect(getSave("gamma")?.stepCount).toBe(3);
   });
 
-  it("importBundle rejects malformed input", () => {
-    expect(importBundle({ wrong: true })).toEqual({ added: 0, skipped: 0 });
-    expect(importBundle(null)).toEqual({ added: 0, skipped: 0 });
-    expect(importBundle("nope")).toEqual({ added: 0, skipped: 0 });
+  it("importBundle names a structurally wrong payload instead of counting zeros", () => {
+    // The flat {added: 0, skipped: 0} let the panel green-check a
+    // rejection; wrong shape is its own outcome now.
+    expect(importBundle({ wrong: true })).toEqual({ ok: false, reason: "not-a-bundle" });
+    expect(importBundle(null)).toEqual({ ok: false, reason: "not-a-bundle" });
+    expect(importBundle("nope")).toEqual({ ok: false, reason: "not-a-bundle" });
+    expect(importBundle({ version: 2, saves: [] })).toEqual({ ok: false, reason: "not-a-bundle" });
+  });
+
+  it("importBundle reports an all-rejected bundle as ok with zero added", () => {
+    const result = importBundle({ version: 1, saves: [{ junk: true }, 42] });
+    expect(result).toEqual({ ok: true, added: 0, skipped: 2, stored: true });
+  });
+
+  it("putSave reports whether storage accepted the write", () => {
+    expect(putSave(makeSave("alpha"))).toBe(true);
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    try {
+      expect(putSave(makeSave("beta"))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(getSave("beta")).toBeNull();
   });
 });

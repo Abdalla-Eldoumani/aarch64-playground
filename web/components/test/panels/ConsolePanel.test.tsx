@@ -27,6 +27,7 @@ beforeEach(() => {
 
 function setup(overrides: Partial<ComponentProps<typeof ConsolePanel>> = {}) {
   const pushStdin = vi.fn();
+  const closeStdin = vi.fn();
   const uploadVfsFile = vi.fn();
   const clearConsole = vi.fn();
   render(
@@ -37,13 +38,14 @@ function setup(overrides: Partial<ComponentProps<typeof ConsolePanel>> = {}) {
       exitCode={null}
       vfsFiles={[]}
       pushStdin={pushStdin}
+      closeStdin={closeStdin}
       uploadVfsFile={uploadVfsFile}
       clearConsole={clearConsole}
       {...overrides}
     />,
   );
   const input = screen.getByLabelText("Standard input") as HTMLInputElement;
-  return { pushStdin, uploadVfsFile, clearConsole, input };
+  return { pushStdin, closeStdin, uploadVfsFile, clearConsole, input };
 }
 
 describe("ConsolePanel stdin validation", () => {
@@ -53,6 +55,17 @@ describe("ConsolePanel stdin validation", () => {
     fireEvent.submit(input.closest("form")!);
     expect(pushStdin).toHaveBeenCalledWith("42\n");
     expect(input.value).toBe("");
+  });
+
+  it("ctrl-d on an empty line signals end of input", () => {
+    const { closeStdin, pushStdin, input } = setup();
+    fireEvent.keyDown(input, { key: "d", ctrlKey: true });
+    expect(closeStdin).toHaveBeenCalledTimes(1);
+    expect(pushStdin).not.toHaveBeenCalled();
+    // With text pending, ctrl-d must not eat the line.
+    fireEvent.change(input, { target: { value: "42" } });
+    fireEvent.keyDown(input, { key: "d", ctrlKey: true });
+    expect(closeStdin).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an over-cap stdin submission without reaching the emulator", () => {
@@ -116,7 +129,9 @@ describe("ConsolePanel controls and state", () => {
   it("surfaces the waiting-for-input status and placeholder when blocked", () => {
     const { input } = setup({ blocked: true });
     expect(screen.getByRole("status").textContent).toBe("waiting for input");
-    expect(input.placeholder).toBe("program is waiting for input...");
+    expect(input.placeholder).toBe(
+      "program is waiting for input... (ctrl-d = end of input)",
+    );
   });
 
   it("shows a zero exit code (the != null edge, not falsiness)", () => {
@@ -133,6 +148,7 @@ describe("ConsolePanel controls and state", () => {
         exitCode={null}
         vfsFiles={[]}
         pushStdin={vi.fn()}
+        closeStdin={vi.fn()}
         uploadVfsFile={vi.fn()}
         clearConsole={vi.fn()}
       />,
@@ -147,6 +163,7 @@ describe("ConsolePanel controls and state", () => {
         exitCode={null}
         vfsFiles={[]}
         pushStdin={vi.fn()}
+        closeStdin={vi.fn()}
         uploadVfsFile={vi.fn()}
         clearConsole={vi.fn()}
       />,

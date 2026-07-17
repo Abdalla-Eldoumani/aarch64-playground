@@ -12,51 +12,11 @@
 //!   reads ints and doubles from the same NSAA cursor in source order.
 
 use crate::errors::EmuError;
-use crate::hosted::{HostContext, HostOutcome};
-
-/// AAPCS64 vararg cursor. Tracks how many GP and SIMD registers have
-/// been consumed and where on the stack the next spilled arg lives.
-struct VarargWalker {
-    /// Next GP register index. <= 7 means read xN; > 7 means spill.
-    gp_idx: u8,
-    /// Next SIMD register index. <= 7 means read dN; > 7 means spill.
-    fp_idx: u8,
-    /// Bytes above SP-at-call-site for the next spilled arg. Shared
-    /// between int and float spills per AAPCS64.
-    stack_off: u64,
-}
-
-impl VarargWalker {
-    fn next_int(&mut self, ctx: &mut HostContext<'_>) -> u64 {
-        if self.gp_idx <= 7 {
-            let v = ctx.regs.read_gpr(self.gp_idx, true);
-            self.gp_idx = self.gp_idx.saturating_add(1);
-            v
-        } else {
-            let sp = ctx.regs.read_sp();
-            let addr = sp.wrapping_add(self.stack_off);
-            self.stack_off = self.stack_off.wrapping_add(8);
-            ctx.mem.read_u64(addr).unwrap_or(0)
-        }
-    }
-
-    fn next_double(&mut self, ctx: &mut HostContext<'_>) -> f64 {
-        if self.fp_idx <= 7 {
-            let v = ctx.regs.read_fpr_f64(self.fp_idx);
-            self.fp_idx = self.fp_idx.saturating_add(1);
-            v
-        } else {
-            let sp = ctx.regs.read_sp();
-            let addr = sp.wrapping_add(self.stack_off);
-            self.stack_off = self.stack_off.wrapping_add(8);
-            ctx.mem.read_u64(addr).map(f64::from_bits).unwrap_or(0.0)
-        }
-    }
-}
+use crate::hosted::{HostContext, HostOutcome, VarargWalker};
 
 pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
-    let fmt_bytes = read_c_string(ctx.mem, fmt_ptr)?;
+    let fmt_bytes = read_c_string(ctx.mem, fmt_ptr, "printf's format string")?;
     let fmt = String::from_utf8_lossy(&fmt_bytes).into_owned();
 
     // x0 is the format string (fixed param), so vararg ints start at x1.
@@ -83,6 +43,19 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         let conv = chars[i];
         i += 1;
         format_conversion(&spec, conv, ctx, &mut walker, &mut out)?;
+        // Per-call transient bound: MAX_FIELD_WIDTH clamps ONE conversion,
+        // but a 64 KiB format stuffed with wide conversions could still
+        // stage tens of megabytes here before the cumulative output wall
+        // ever saw it. No real program prints a megabyte in one call.
+        if out.len() > MAX_PRINTF_CALL_BYTES {
+            return Err(EmuError::AssemblyError {
+                line: 0,
+                message: format!(
+                    "printf produced over {} KiB in a single call and was stopped",
+                    MAX_PRINTF_CALL_BYTES / 1024
+                ),
+            });
+        }
     }
 
     ctx.stdout.extend_from_slice(&out);
@@ -90,8 +63,15 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
-/// Read a null-terminated byte sequence from guest memory.
-pub fn read_c_string(mem: &crate::memory::Memory, addr: u64) -> Result<Vec<u8>, EmuError> {
+/// Read a null-terminated byte sequence from guest memory. `what` names the
+/// operation for the student ("strlen", "printf %s", "the openat path"), so
+/// an unterminated string is blamed on the call that read it, never on
+/// printf by default.
+pub fn read_c_string(
+    mem: &crate::memory::Memory,
+    addr: u64,
+    what: &str,
+) -> Result<Vec<u8>, EmuError> {
     let mut out = Vec::new();
     let mut a = addr;
     // 64 KiB cap keeps a runaway pointer from looping forever; adjust if
@@ -104,9 +84,12 @@ pub fn read_c_string(mem: &crate::memory::Memory, addr: u64) -> Result<Vec<u8>, 
         out.push(b);
         a = a.wrapping_add(1);
     }
-    Err(EmuError::AssemblyError {
-        line: 0,
-        message: "unterminated C string in printf argument".into(),
+    Err(EmuError::RuntimeError {
+        message: format!(
+            "{what}: the string at 0x{addr:x} has no terminating zero byte \
+             within 64 KiB -- declare strings with .asciz or .string (not \
+             .ascii), and check nothing wrote over the terminator"
+        ),
     })
 }
 
@@ -115,6 +98,11 @@ pub fn read_c_string(mem: &crate::memory::Memory, addr: u64) -> Result<Vec<u8>, 
 /// would build a multi-gigabyte host string and abort the allocator. 4096 is
 /// far wider than any real format.
 const MAX_FIELD_WIDTH: usize = 4096;
+
+/// Upper bound on ONE printf call's total output. Checked per conversion in
+/// the format loop; the cumulative `cpu::MAX_OUTPUT_BYTES` wall bounds the
+/// program as a whole.
+const MAX_PRINTF_CALL_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Default, Clone)]
 struct FormatSpec {
@@ -164,8 +152,10 @@ fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
         }
         spec.precision = Some(prec);
     }
-    // Length modifier. We ignore it because every integer register here is
-    // already 64-bit wide; `%ld`, `%lld`, `%d` all fetch from the same slot.
+    // Length modifier. The fetch slot is the same 64-bit register either
+    // way, but the WIDTH read out of it must follow C: plain `%d` is an
+    // int and consumes w-register bits only -- glibc on the course
+    // machine prints 85 for a `.word`, not the neighbor's bytes.
     while *i < chars.len() && matches!(chars[*i], 'l' | 'h' | 'z' | 'j' | 't') {
         spec.long = chars[*i] == 'l';
         *i += 1;
@@ -180,11 +170,25 @@ fn format_conversion(
     walker: &mut VarargWalker,
     out: &mut Vec<u8>,
 ) -> Result<(), EmuError> {
+    // C ignores the `0` flag when a precision is given, but only for the
+    // integer conversions (d i o u x X); %f keeps zero padding, and the
+    // non-numeric conversions never pad with zeros. Resolved here so
+    // pad_and_emit needs no knowledge of which conversion it is padding.
+    let spec = &FormatSpec {
+        zero_pad: spec.zero_pad
+            && match conv {
+                'd' | 'i' | 'u' | 'x' | 'X' | 'o' | 'p' => spec.precision.is_none(),
+                'f' | 'F' => true,
+                _ => false,
+            },
+        ..spec.clone()
+    };
     match conv {
         '%' => out.push(b'%'),
         'd' | 'i' => {
             let raw = walker.next_int(ctx);
-            let value = raw as i64;
+            // Plain %d is C's int: only w-register bits, sign-extended.
+            let value = if spec.long { raw as i64 } else { raw as u32 as i32 as i64 };
             let mut body = if value < 0 {
                 format!("-{}", (value as i128).unsigned_abs())
             } else if spec.plus {
@@ -198,13 +202,15 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'u' => {
-            let value = walker.next_int(ctx);
+            let raw = walker.next_int(ctx);
+            let value = if spec.long { raw } else { raw as u32 as u64 };
             let mut body = format!("{value}");
             apply_precision_int(&mut body, spec);
             pad_and_emit(&body, spec, out);
         }
         'x' => {
-            let value = walker.next_int(ctx);
+            let raw = walker.next_int(ctx);
+            let value = if spec.long { raw } else { raw as u32 as u64 };
             let mut body = format!("{value:x}");
             if spec.alt && value != 0 {
                 body = format!("0x{body}");
@@ -213,7 +219,8 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'X' => {
-            let value = walker.next_int(ctx);
+            let raw = walker.next_int(ctx);
+            let value = if spec.long { raw } else { raw as u32 as u64 };
             let mut body = format!("{value:X}");
             if spec.alt && value != 0 {
                 body = format!("0X{body}");
@@ -222,7 +229,8 @@ fn format_conversion(
             pad_and_emit(&body, spec, out);
         }
         'o' => {
-            let value = walker.next_int(ctx);
+            let raw = walker.next_int(ctx);
+            let value = if spec.long { raw } else { raw as u32 as u64 };
             let mut body = format!("{value:o}");
             if spec.alt && !body.starts_with('0') {
                 body = format!("0{body}");
@@ -237,11 +245,20 @@ fn format_conversion(
         }
         'c' => {
             let value = walker.next_int(ctx) as u8;
-            out.push(value);
+            pad_and_emit_bytes(&[value], spec, out);
         }
         's' => {
             let ptr = walker.next_int(ctx);
-            let bytes = read_c_string(ctx.mem, ptr)?;
+            let bytes = read_c_string(ctx.mem, ptr, "printf %s").map_err(|e| match e {
+                EmuError::MemoryFault { .. } => EmuError::RuntimeError {
+                    message: format!(
+                        "printf %s was handed the pointer 0x{ptr:x}, which does not \
+                         point at readable memory -- check that the argument register \
+                         holds a string address (ldr xN, =label)"
+                    ),
+                },
+                other => other,
+            })?;
             let mut s = String::from_utf8_lossy(&bytes).into_owned();
             if let Some(p) = spec.precision {
                 s.truncate(p);
@@ -254,8 +271,26 @@ fn format_conversion(
             let body = format_fixed(value, prec, spec.plus, spec.space);
             pad_and_emit(&body, spec, out);
         }
+        'e' | 'E' | 'g' | 'G' | 'a' | 'A' => {
+            // Real glibc formats these. Echoing the specifier literally
+            // also left its argument unconsumed, silently shifting every
+            // later conversion of the same class -- worse than stopping.
+            return Err(EmuError::RuntimeError {
+                message: format!(
+                    "printf %{conv} is not supported by this emulator; format the value with %f"
+                ),
+            });
+        }
+        '*' => {
+            return Err(EmuError::RuntimeError {
+                message: "printf's `*` width is not supported; write the width as digits, like %8d"
+                    .into(),
+            });
+        }
         _ => {
-            // Unknown conversion: emit '%' followed by the character verbatim.
+            // Unknown conversion: emit '%' followed by the character
+            // verbatim, matching glibc's handling of genuinely undefined
+            // specifiers (no argument is consumed there either).
             out.push(b'%');
             push_char(out, conv);
         }
@@ -301,37 +336,41 @@ fn apply_precision_int(body: &mut String, spec: &FormatSpec) {
 }
 
 fn pad_and_emit(body: &str, spec: &FormatSpec, out: &mut Vec<u8>) {
+    pad_and_emit_bytes(body.as_bytes(), spec, out);
+}
+
+fn pad_and_emit_bytes(body: &[u8], spec: &FormatSpec, out: &mut Vec<u8>) {
     if body.len() >= spec.width {
-        out.extend_from_slice(body.as_bytes());
+        out.extend_from_slice(body);
         return;
     }
     let pad_count = spec.width - body.len();
     if spec.left_align {
-        out.extend_from_slice(body.as_bytes());
+        out.extend_from_slice(body);
         for _ in 0..pad_count {
             out.push(b' ');
         }
-    } else if spec.zero_pad && spec.precision.is_none() {
+    } else if spec.zero_pad {
         // Zero-pad numbers on the right side of any sign.
-        if let Some(first) = body.chars().next() {
-            if matches!(first, '-' | '+' | ' ') {
-                out.push(first as u8);
+        if let Some(first) = body.first() {
+            if matches!(first, b'-' | b'+' | b' ') {
+                out.push(*first);
                 for _ in 0..pad_count {
                     out.push(b'0');
                 }
-                out.extend_from_slice(&body.as_bytes()[1..]);
+                out.extend_from_slice(&body[1..]);
                 return;
             }
         }
         for _ in 0..pad_count {
             out.push(b'0');
         }
-        out.extend_from_slice(body.as_bytes());
+        out.extend_from_slice(body);
     } else {
         for _ in 0..pad_count {
             out.push(b' ');
         }
-        out.extend_from_slice(body.as_bytes());
+        out.extend_from_slice(body);
     }
 }
 
@@ -350,6 +389,13 @@ mod tests {
     use std::collections::HashMap;
 
     fn call(fmt: &str, setup: impl FnOnce(&mut RegisterFile, &mut Memory)) -> (String, usize) {
+        try_call(fmt, setup).expect("printf should succeed")
+    }
+
+    fn try_call(
+        fmt: &str,
+        setup: impl FnOnce(&mut RegisterFile, &mut Memory),
+    ) -> Result<(String, usize), EmuError> {
         let mut regs = RegisterFile::new();
         let mut mem = Memory::new();
         let fmt_addr = 0x0050_0000u64;
@@ -374,15 +420,63 @@ mod tests {
             stdout: &mut stdout,
             stderr: &mut stderr,
             stdin: &mut stdin,
+            stdin_closed: false,
             vfs: &mut vfs,
             open_files: &mut open_files,
             next_fd: &mut next_fd,
             rand_state: &mut rand_state,
         };
-        printf(&mut ctx).unwrap();
+        printf(&mut ctx)?;
         let written = ctx.regs.read_gpr(0, true) as usize;
         let s = String::from_utf8(stdout).unwrap();
-        (s, written)
+        Ok((s, written))
+    }
+
+    #[test]
+    fn plain_percent_d_reads_int_width_like_glibc() {
+        // glibc's %d consumes an int: a `.word` loaded with `ldr w1` (or
+        // even a 64-bit load that dragged neighbor bytes along) prints the
+        // low 32 bits sign-extended, exactly like the course machine.
+        let (s, _) = call("%d", |regs, _| {
+            regs.write_gpr(1, true, 0x0000_0007_0000_0055);
+        });
+        assert_eq!(s, "85");
+        let (s, _) = call("%d", |regs, _| {
+            regs.write_gpr(1, true, 0x0000_0000_FFFF_FFFB);
+        });
+        assert_eq!(s, "-5");
+        // %ld keeps the full register.
+        let (s, _) = call("%ld", |regs, _| {
+            regs.write_gpr(1, true, 0x0000_0007_0000_0055);
+        });
+        assert_eq!(s, "30064771157");
+        let (s, _) = call("%x", |regs, _| {
+            regs.write_gpr(1, true, u64::MAX);
+        });
+        assert_eq!(s, "ffffffff");
+    }
+
+    #[test]
+    fn unimplemented_float_conversions_stop_with_a_remedy() {
+        // Echoing `%e` literally desynced later float conversions; the
+        // student saw a plausible wrong number with no message.
+        let err = try_call("%e", |_, _| {}).unwrap_err();
+        assert!(err.to_string().contains("%f"), "was: {err}");
+        let err = try_call("%*d", |_, _| {}).unwrap_err();
+        assert!(err.to_string().contains("width"), "was: {err}");
+    }
+
+    #[test]
+    fn one_call_cannot_stage_megabytes() {
+        // MAX_FIELD_WIDTH clamps one conversion; a 64 KiB format stuffed
+        // with wide conversions used to stage ~45 MB in the transient
+        // buffer before any wall saw it. The per-call bound must trip.
+        let fmt = "%4096d".repeat(300);
+        let err = try_call(&fmt, |_, _| {}).unwrap_err();
+        assert!(
+            err.to_string().contains("single call"),
+            "error was: {err}"
+        );
     }
 
     #[test]
@@ -480,6 +574,80 @@ mod tests {
             regs.write_gpr(1, true, 7);
         });
         assert_eq!(s, "00007");
+    }
+
+    #[test]
+    fn percent_c_honors_field_width() {
+        // Verified against gcc/glibc: "%5c|" of 'x' is "    x|" and the
+        // left-aligned form pads on the right.
+        let (s, _) = call("%5c|", |regs, _| {
+            regs.write_gpr(1, true, 'x' as u64);
+        });
+        assert_eq!(s, "    x|");
+        let (s, _) = call("%-5c|", |regs, _| {
+            regs.write_gpr(1, true, 'x' as u64);
+        });
+        assert_eq!(s, "x    |");
+        // The 0 flag never zero-pads a character.
+        let (s, _) = call("%05c|", |regs, _| {
+            regs.write_gpr(1, true, 'x' as u64);
+        });
+        assert_eq!(s, "    x|");
+    }
+
+    #[test]
+    fn zero_flag_with_precision_keeps_padding_floats_only() {
+        // C drops the 0 flag under a precision for the integer conversions
+        // but keeps it for %f. Expected strings verified against glibc.
+        let (s, _) = call("%08.2f", |regs, _| {
+            regs.write_fpr_f64(0, 3.5);
+        });
+        assert_eq!(s, "00003.50");
+        let (s, _) = call("%08.3f", |regs, _| {
+            regs.write_fpr_f64(0, -3.5);
+        });
+        assert_eq!(s, "-003.500");
+        // The integer form stays space-padded (precision already
+        // zero-extended the digits).
+        let (s, _) = call("%05.3d", |regs, _| {
+            regs.write_gpr(1, true, 7);
+        });
+        assert_eq!(s, "  007");
+    }
+
+    #[test]
+    fn unterminated_string_names_the_caller_not_printf() {
+        // 64 KiB of non-zero bytes: the scan gives up and the message
+        // blames the operation that read the string, with its address.
+        let err = try_call("%s", |regs, mem| {
+            let base = 0x0060_0000u64;
+            for page in 0..17 {
+                mem.map_page(base + page * 4096);
+            }
+            for i in 0..(64 * 1024 + 8) {
+                mem.write_u8(base + i as u64, b'A').unwrap();
+            }
+            regs.write_gpr(1, true, base);
+        })
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("printf %s"), "was: {msg}");
+        assert!(msg.contains("0x600000"), "was: {msg}");
+        assert!(msg.contains(".asciz"), "was: {msg}");
+    }
+
+    #[test]
+    fn percent_s_with_a_bad_pointer_names_the_conversion() {
+        // A null (unmapped) pointer must not surface as a bare memory
+        // fault; the message names printf %s, the pointer, and the remedy.
+        let err = try_call("%s", |regs, _| {
+            regs.write_gpr(1, true, 0);
+        })
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("printf %s"), "was: {msg}");
+        assert!(msg.contains("0x0"), "was: {msg}");
+        assert!(msg.contains("ldr"), "was: {msg}");
     }
 
     #[test]

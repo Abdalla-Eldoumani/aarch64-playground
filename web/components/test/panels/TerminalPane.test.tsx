@@ -124,6 +124,75 @@ describe("TerminalPane", () => {
     });
   });
 
+  it("keeps special-key escape sequences out of the command line", async () => {
+    // Real xterm fires onKey AND onData for the same keypress with the
+    // identical string; ArrowUp arrives as the 3-character "\x1b[A". The
+    // data path must not treat it as a paste: the sequence is invisible
+    // on screen but corrupts the submitted command.
+    const ctx = makeContext();
+    render(<TerminalPane buildContext={() => ctx} />);
+    const term = instances[0];
+    const press = (key: string, domKey: string) => {
+      term.keyCb!({ key, domEvent: { key: domKey } as KeyboardEvent });
+      term.dataCb!(key);
+    };
+    press("l", "l");
+    press("s", "s");
+    press("\x1b[A", "ArrowUp"); // empty history: onKey is a no-op
+    press("\x1bOP", "F1");
+    press("\r", "Enter");
+    await vi.waitFor(() => expect(ctx.listVfs).toHaveBeenCalled());
+    // A corrupted buffer would have dispatched "ls\x1b[A\x1bOP" and printed
+    // a command-not-found line containing the raw sequence.
+    const output = instances[0].writes.join("");
+    expect(output).not.toContain("\x1b[A: command not found");
+    expect(output).not.toContain("not found");
+  });
+
+  it("serializes a pasted command sequence so later lines see earlier writes", async () => {
+    // The course toolchain paste depends on ordering: line 2 reads the
+    // file line 1 creates. Concurrent dispatch read it too early.
+    const files = new Map<string, string>([["a.txt", "payload\n"]]);
+    const ctx = makeContext({
+      readVfs: vi.fn(async (path: string) => {
+        // A real VFS read suspends; that suspension is what let the next
+        // pasted command run ahead.
+        await new Promise((r) => setTimeout(r, 5));
+        return files.get(path);
+      }),
+      writeVfs: vi.fn((path: string, body: string) => {
+        files.set(path, body);
+      }),
+    });
+    render(<TerminalPane buildContext={() => ctx} />);
+    instances[0].dataCb!("cp a.txt b.txt\rcat b.txt\r");
+    await vi.waitFor(() => {
+      const output = instances[0].writes.join("");
+      expect(output).toContain("payload");
+      expect(output).not.toContain("no such file");
+    });
+  });
+
+  it("prints a line and restores the prompt when a command rejects", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const ctx = makeContext({
+      readVfs: vi.fn(async () => {
+        throw new Error("recursive use of an object detected");
+      }),
+    });
+    render(<TerminalPane buildContext={() => ctx} />);
+    instances[0].dataCb!("cat a.txt\r");
+    await vi.waitFor(() => {
+      const output = instances[0].writes.join("");
+      expect(output).toContain("cat: the command failed unexpectedly");
+      // The internal wording must not reach the student.
+      expect(output).not.toContain("recursive use");
+      // The prompt came back.
+      expect(output.lastIndexOf("$ ")).toBeGreaterThan(output.indexOf("cat a.txt"));
+    });
+    warn.mockRestore();
+  });
+
   it("routes the upload pseudo-command to the host picker through the latest prop", async () => {
     const onUploadRequest = vi.fn();
     render(

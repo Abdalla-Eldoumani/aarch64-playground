@@ -17,17 +17,13 @@ pub enum EmuError {
         address: u64,
         access: MemAccess,
     },
-    /// Register index out of range (> 31).
-    InvalidRegister(u8),
     /// Access requires natural alignment that the address does not satisfy.
     UnalignedAccess {
         address: u64,
         required: u8,
     },
-    /// SP moved below the stack limit.
+    /// SP moved below the stack floor (`cpu::STACK_FLOOR`).
     StackOverflow,
-    /// SVC or explicit halt executed.
-    ExecutionHalted,
     /// The assembler could not parse the source.
     AssemblyError {
         line: usize,
@@ -53,6 +49,11 @@ pub enum EmuError {
     /// Combined argv pointer-table + string pool would exceed the 4 KiB
     /// page reserved at `ARGV_BASE`.
     ArgvTooLarge { bytes: usize },
+    /// A runtime failure inside the hosted runtime (a libc stub or a
+    /// syscall), already worded for the student. The editor line is
+    /// resolved at the wasm boundary through the line map, so this
+    /// variant carries no line of its own.
+    RuntimeError { message: String },
 }
 
 impl fmt::Display for EmuError {
@@ -68,17 +69,16 @@ impl fmt::Display for EmuError {
                 };
                 write!(f, "memory fault: {kind} at 0x{address:016x}")
             }
-            Self::InvalidRegister(idx) => {
-                write!(f, "invalid register index: {idx}")
-            }
             Self::UnalignedAccess { address, required } => {
                 write!(
                     f,
                     "unaligned access at 0x{address:016x} (requires {required}-byte alignment)"
                 )
             }
-            Self::StackOverflow => write!(f, "stack overflow"),
-            Self::ExecutionHalted => write!(f, "execution halted"),
+            Self::StackOverflow => write!(
+                f,
+                "stack overflow: sp has moved more than 1 MiB below the stack base --                  usually recursion with no base case, a prologue that repeats without                  its epilogue, or sp loaded from a register that was never set up"
+            ),
             Self::AssemblyError { line, message } => {
                 write!(f, "assembly error at line {line}: {message}")
             }
@@ -94,6 +94,7 @@ impl fmt::Display for EmuError {
             Self::ArgvTooLarge { bytes } => {
                 write!(f, "argv layout would need {bytes} bytes, exceeds the 4096-byte argv page")
             }
+            Self::RuntimeError { message } => write!(f, "{message}"),
         }
     }
 }

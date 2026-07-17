@@ -72,8 +72,13 @@ pub enum Item {
     /// Realign the offset to a byte boundary. `.balign N` sets `N`;
     /// `.align N` converts to `2^N` for us. Padding bytes are zero.
     AlignToBytes(u64),
-    /// A label fixed at the current offset, captured during parsing.
-    Label(String),
+    /// A label fixed at the current offset, captured during parsing. The
+    /// line lets the linker reject a duplicate definition where it is
+    /// discovered, naming both sites.
+    Label {
+        name: String,
+        original_line: usize,
+    },
     /// `name = expr` assignment encountered inline in a section. The body
     /// is evaluated at this point in the section's byte walk so `.` means
     /// the address where the assignment appears, not where the symbol is

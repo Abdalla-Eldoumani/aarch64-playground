@@ -136,6 +136,40 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
+  // Add/sub EXTENDED register (bit 21 = 1): the form that reaches SP.
+  // Rn (and Rd for the non-flag-setting ops) read as SP when 31.
+  if (bits(w, 28, 24) === 0b01011 && bits(w, 23, 22) === 0b00 && bits(w, 21, 21) === 1) {
+    const extendNames = ["uxtb", "uxth", "uxtw", "uxtx", "sxtb", "sxth", "sxtw", "sxtx"];
+    const setsFlags = bits(w, 29, 29) === 1;
+    const spName = (x: number, hi: number, lo: number) => {
+      const idx = bits(x, hi, lo);
+      return idx === 31 ? (sf ? "sp" : "wsp") : xreg(sf, idx);
+    };
+    return slice(
+      w,
+      [
+        { label: "sf", hi: 31, lo: 31, kind: "opcode" },
+        { label: "op", hi: 30, lo: 30, kind: "opcode", meaning: (x) => (bits(x, 30, 30) ? "sub" : "add") },
+        { label: "S", hi: 29, lo: 29, kind: "opcode" },
+        { label: "01011", hi: 28, lo: 24, kind: "opcode" },
+        { label: "00", hi: 23, lo: 22, kind: "opcode" },
+        { label: "1", hi: 21, lo: 21, kind: "opcode" },
+        { label: "Rm", hi: 20, lo: 16, kind: "register", meaning: (x) => xreg(sf, bits(x, 20, 16)) },
+        { label: "option", hi: 15, lo: 13, kind: "opcode", meaning: (x) => extendNames[bits(x, 15, 13)] },
+        { label: "imm3", hi: 12, lo: 10, kind: "immediate" },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => spName(x, 9, 5) },
+        {
+          label: "Rd",
+          hi: 4,
+          lo: 0,
+          kind: "register",
+          meaning: (x) => (setsFlags ? xreg(sf, bits(x, 4, 0)) : spName(x, 4, 0)),
+        },
+      ],
+      "Rd",
+    );
+  }
+
   // Logical shifted register: sf opc(2) 01010 shift(2) N Rm imm6 Rn Rd.
   if (bits(w, 28, 24) === 0b01010) {
     return slice(
@@ -247,6 +281,55 @@ export function decodeFields(word: number): DecodedWord {
           { label: "01", hi: 25, lo: 24, kind: "opcode" },
           { label: "opc", hi: 23, lo: 22, kind: "opcode", meaning: (x) => (bits(x, 23, 22) ? "ldr" : "str") },
           { label: "imm12", hi: 21, lo: 10, kind: "immediate", meaning: (x) => `${bits(x, 21, 10)}` },
+          { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => xreg(1, bits(x, 9, 5)) },
+          { label: "Rt", hi: 4, lo: 0, kind: "register", meaning: (x) => xreg(regSf, bits(x, 4, 0)) },
+        ],
+        load ? "Rt" : null,
+      );
+    }
+    // Bit 21 splits the 00 family: 1 with idx bits 10 means REGISTER
+    // offset (Rm + option + S), everything else is the 9-bit-immediate
+    // pre/post-index form. Slicing register-offset words through the
+    // imm9 layout fabricated an immediate and hid the index register.
+    if (bits(w, 21, 21) === 1 && bits(w, 11, 10) === 0b10) {
+      const optionNames: Record<number, string> = {
+        0b010: "uxtw",
+        0b011: "lsl",
+        0b110: "sxtw",
+        0b111: "sxtx",
+      };
+      return slice(
+        w,
+        [
+          { label: "size", hi: 31, lo: 30, kind: "opcode" },
+          { label: "111", hi: 29, lo: 27, kind: "opcode" },
+          { label: "V", hi: 26, lo: 26, kind: "opcode" },
+          { label: "00", hi: 25, lo: 24, kind: "opcode" },
+          { label: "opc", hi: 23, lo: 22, kind: "opcode", meaning: (x) => (bits(x, 23, 22) ? "ldr" : "str") },
+          { label: "1", hi: 21, lo: 21, kind: "opcode" },
+          {
+            label: "Rm",
+            hi: 20,
+            lo: 16,
+            kind: "register",
+            // UXTW/SXTW take a W index; LSL/UXTX/SXTX take an X index.
+            meaning: (x) => xreg(bits(x, 15, 13) === 0b010 || bits(x, 15, 13) === 0b110 ? 0 : 1, bits(x, 20, 16)),
+          },
+          {
+            label: "option",
+            hi: 15,
+            lo: 13,
+            kind: "opcode",
+            meaning: (x) => optionNames[bits(x, 15, 13)] ?? "reserved",
+          },
+          {
+            label: "S",
+            hi: 12,
+            lo: 12,
+            kind: "opcode",
+            meaning: (x) => (bits(x, 12, 12) ? "scaled by the access size" : "unscaled"),
+          },
+          { label: "10", hi: 11, lo: 10, kind: "opcode" },
           { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => xreg(1, bits(x, 9, 5)) },
           { label: "Rt", hi: 4, lo: 0, kind: "register", meaning: (x) => xreg(regSf, bits(x, 4, 0)) },
         ],

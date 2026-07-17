@@ -88,6 +88,36 @@ pub enum ExtendType {
     Sxtx,
 }
 
+/// Extension applied to Rm in the extended-register ADD/SUB form (the
+/// 3-bit option field). UXTX doubles as LSL when the other operand is SP,
+/// which is the alias GAS emits for `add x0, sp, x1`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegExtend {
+    Uxtb,
+    Uxth,
+    Uxtw,
+    Uxtx,
+    Sxtb,
+    Sxth,
+    Sxtw,
+    Sxtx,
+}
+
+impl RegExtend {
+    fn from_option(option: u8) -> Self {
+        match option & 0b111 {
+            0b000 => RegExtend::Uxtb,
+            0b001 => RegExtend::Uxth,
+            0b010 => RegExtend::Uxtw,
+            0b011 => RegExtend::Uxtx,
+            0b100 => RegExtend::Sxtb,
+            0b101 => RegExtend::Sxth,
+            0b110 => RegExtend::Sxtw,
+            _ => RegExtend::Sxtx,
+        }
+    }
+}
+
 /// Offset for single-register load/store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LdStOffset {
@@ -188,6 +218,28 @@ pub enum Instruction {
         rm: u8,
         shift: ShiftType,
         amount: u8,
+    },
+    /// LSLV/LSRV/ASRV/RORV: shift Rn left/right by the amount in Rm,
+    /// modulo the register width (the dp2 register-shift family).
+    VarShift {
+        sf: bool,
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        shift: ShiftType,
+    },
+    /// ADD/SUB/ADDS/SUBS with EXTENDED register operand (bit 21 = 1) --
+    /// the only register form that reaches SP: Rn = 31 reads SP, and
+    /// Rd = 31 writes SP for the non-flag-setting ops. Rm = 31 stays XZR.
+    DpRegExt {
+        op: DpOp,
+        sf: bool,
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        extend: RegExtend,
+        /// Left shift applied after the extend, 0..=4.
+        shift: u8,
     },
     /// MOVZ/MOVK/MOVN.
     MoveWide {
@@ -883,12 +935,21 @@ fn decode_logical_imm(instr: u32) -> Result<Instruction, EmuError> {
 fn decode_bitfield(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
     let opc = bits(instr, 30, 29);
+    let n = bit(instr, 22) == 1;
     let immr = bits(instr, 21, 16) as u8;
     let imms = bits(instr, 15, 10) as u8;
     let rn = bits(instr, 9, 5) as u8;
     let rd = bits(instr, 4, 0) as u8;
 
     let reg_size: u8 = if sf { 64 } else { 32 };
+
+    // The 32-bit form requires N == 0 with both fields inside the register
+    // (immr/imms < 32); the 64-bit form requires N == 1. Anything else is
+    // a reserved encoding: without this check `reg_size - immr` underflowed
+    // on crafted words and fabricated a shift instead of rejecting.
+    if sf != n || (!sf && (immr >= 32 || imms >= 32)) {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
 
     // We represent shift-immediates as ORR Xd, XZR, Xn, <shift> #amount.
     // This reuses the LogReg path in the executor.
@@ -1209,9 +1270,7 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
 
     // pre/post-index and register offset: xx11_1000 xx0o_oooo oooo_MMnn nnnt_tttt
     if bits(instr, 29, 28) == 0b11 && bit(instr, 24) == 0 {
-        let is_load = bit(instr, 22) == 1;
-        let op = if is_load { LdStOp::Ldr } else { LdStOp::Str };
-
+        let opc = bits(instr, 23, 22);
         let idx_type = bits(instr, 11, 10);
 
         if idx_type == 0b10 {
@@ -1236,30 +1295,59 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
             } else {
                 0
             };
+            let offset = LdStOffset::Register {
+                rm,
+                extend,
+                shift_amount,
+            };
 
-            return Ok(Instruction::LdSt {
-                op,
-                rt,
-                rn,
-                offset: LdStOffset::Register {
-                    rm,
-                    extend,
-                    shift_amount,
-                },
-                size,
-                mode: IndexMode::SignedOffset,
-            });
+            // opc 00/01 are STR/LDR; 10/11 are the sign-extending loads
+            // (LDRSB/LDRSH/LDRSW with an Xt or Wt target). Keying only on
+            // bit 22 misread LDRSB-register as a plain STR/LDR.
+            return match opc {
+                0b00 | 0b01 => Ok(Instruction::LdSt {
+                    op: if opc == 0b01 { LdStOp::Ldr } else { LdStOp::Str },
+                    rt,
+                    rn,
+                    offset,
+                    size,
+                    mode: IndexMode::SignedOffset,
+                }),
+                _ => {
+                    // size=X is reserved for the sign-extending forms
+                    // (prefetch space); LDRSW is size=W with an Xt target.
+                    if matches!(size, MemSize::X) {
+                        return Err(EmuError::UnknownInstruction(instr));
+                    }
+                    Ok(Instruction::LdrSignExtended {
+                        rt,
+                        rn,
+                        offset,
+                        size,
+                        mode: IndexMode::SignedOffset,
+                        sf: opc == 0b10,
+                    })
+                }
+            };
         }
+
+        // The sign-extending 9-bit-immediate forms (LDURS*, LDRS* with
+        // pre/post writeback) stay unsupported: reject them here so they
+        // cannot fall through and misdecode as a plain LDR/STR of the
+        // wrong direction and width.
+        if opc >= 0b10 {
+            return Err(EmuError::UnknownInstruction(instr));
+        }
+        let op = if opc == 0b01 { LdStOp::Ldr } else { LdStOp::Str };
 
         // 9-bit signed immediate family: unscaled offset (the LDUR/STUR
         // encodings GAS emits for negative or unaligned LDR/STR offsets),
-        // pre-index, and post-index. idx=00 with opc bit 23 set is the
-        // sign-extending LDURS* family, which stays unsupported.
+        // pre-index, and post-index.
         let imm9 = bits(instr, 20, 12);
         let offset = sign_extend(imm9, 9);
 
         let mode = match idx_type {
-            0b00 if bit(instr, 23) == 0 => IndexMode::SignedOffset,
+            0b00 => IndexMode::SignedOffset,
             0b01 => IndexMode::PostIndex,
             0b11 => IndexMode::PreIndex,
             _ => return Err(EmuError::UnknownInstruction(instr)),
@@ -1311,6 +1399,13 @@ fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 fn decode_add_sub_reg(instr: u32) -> Result<Instruction, EmuError> {
+    // Bit 21 splits the register family: 0 is the shifted form (register
+    // 31 reads as XZR), 1 is the extended form (register 31 is SP). The
+    // two must not be conflated -- executing `add x0, sp, x1` as shifted
+    // silently computes with 0.
+    if bit(instr, 21) == 1 {
+        return decode_add_sub_ext(instr);
+    }
     let sf = bit(instr, 31) == 1;
     let op_bit = bit(instr, 30);
     let s = bit(instr, 29);
@@ -1336,6 +1431,43 @@ fn decode_add_sub_reg(instr: u32) -> Result<Instruction, EmuError> {
         rm,
         shift,
         amount: imm6,
+    })
+}
+
+fn decode_add_sub_ext(instr: u32) -> Result<Instruction, EmuError> {
+    let sf = bit(instr, 31) == 1;
+    let op_bit = bit(instr, 30);
+    let s = bit(instr, 29);
+    // The opt field (23:22) is reserved-zero in this form, and the
+    // post-extend shift caps at 4; anything else is not an instruction.
+    if bits(instr, 23, 22) != 0 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    let rm = bits(instr, 20, 16) as u8;
+    let option = bits(instr, 15, 13) as u8;
+    let shift = bits(instr, 12, 10) as u8;
+    if shift > 4 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    let rn = bits(instr, 9, 5) as u8;
+    let rd = bits(instr, 4, 0) as u8;
+
+    let dp_op = match (op_bit, s) {
+        (0, 0) => DpOp::Add,
+        (0, 1) => DpOp::Adds,
+        (1, 0) => DpOp::Sub,
+        (1, 1) => DpOp::Subs,
+        _ => unreachable!(),
+    };
+
+    Ok(Instruction::DpRegExt {
+        op: dp_op,
+        sf,
+        rd,
+        rn,
+        rm,
+        extend: RegExtend::from_option(option),
+        shift,
     })
 }
 
@@ -1410,6 +1542,19 @@ fn decode_dp2(instr: u32) -> Result<Instruction, EmuError> {
 
     if s != 0 {
         return Err(EmuError::UnknownInstruction(instr));
+    }
+
+    // LSLV/LSRV/ASRV/RORV share the dp2 space: shift Rn by Rm modulo the
+    // register width. The assembler emits these for `lsl x0, x1, x2`, so
+    // decode must read them back or the register-form shifts die mid-run.
+    if (opcode & !0b11) == 0b001000 {
+        return Ok(Instruction::VarShift {
+            sf,
+            rd,
+            rn,
+            rm,
+            shift: ShiftType::from_u8((opcode & 0b11) as u8),
+        });
     }
 
     let op = match opcode {
@@ -1949,6 +2094,45 @@ mod tests {
             }
             other => panic!("expected Bitfield, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn ldrs_register_offset_decodes_as_a_sign_extending_load() {
+        // 0x38E26820 = ldrsb w0, [x1, x2]; keying the family on bit 22
+        // alone misread it as a plain STR. 0xB8A27823 = ldrsw x3,
+        // [x1, x2, lsl #2].
+        match decode(0x38E2_6820).unwrap() {
+            Instruction::LdrSignExtended { rt, rn, size, sf, offset, .. } => {
+                assert_eq!(rt, 0);
+                assert_eq!(rn, 1);
+                assert_eq!(size, MemSize::B);
+                assert!(!sf);
+                assert!(matches!(offset, LdStOffset::Register { rm: 2, .. }));
+            }
+            other => panic!("expected LdrSignExtended, got {other:?}"),
+        }
+        match decode(0xB8A2_7823).unwrap() {
+            Instruction::LdrSignExtended { rt, size, sf, .. } => {
+                assert_eq!(rt, 3);
+                assert_eq!(size, MemSize::W);
+                assert!(sf);
+            }
+            other => panic!("expected LdrSignExtended, got {other:?}"),
+        }
+        // The unsupported sign-extending writeback forms reject instead of
+        // misdecoding: 0x38C00421 = ldrsb w1, [x1], #0 (post-index).
+        assert!(decode(0x38C0_0421).is_err());
+    }
+
+    #[test]
+    fn reserved_32bit_bitfield_encodings_are_rejected() {
+        // sf=0 with immr/imms >= 32 (or N != sf) is reserved; the LSL-alias
+        // arm used to compute reg_size - immr and underflow. Both words are
+        // from the audit: immr=33/imms=32 and immr=46/imms=45.
+        assert!(decode(0x5321_8000).is_err());
+        assert!(decode(0x536E_B400).is_err());
+        // N=1 with sf=0 is reserved even with small fields.
+        assert!(decode(0x5340_0C41).is_err());
     }
 
     #[test]

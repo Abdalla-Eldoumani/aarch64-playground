@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TerminalInputState, splitPasteLines } from "@/lib/terminal/input-state";
+import { TerminalInputState, sanitizeInput, splitPasteLines } from "@/lib/terminal/input-state";
 
 describe("splitPasteLines", () => {
   it("splits the bare carriage returns xterm delivers for pasted line breaks", () => {
@@ -26,7 +26,41 @@ describe("splitPasteLines", () => {
   });
 });
 
+describe("sanitizeInput", () => {
+  it("removes whole escape sequences, not just the ESC byte", () => {
+    // A pasted colored shell transcript carries full SGR sequences; the
+    // sequence must go as a unit or "[32m" survives as literal text.
+    expect(sanitizeInput("\x1b[32mhello\x1b[0m")).toBe("hello");
+    expect(sanitizeInput("ls\x1b[A")).toBe("ls");
+    expect(sanitizeInput("\x1bOP")).toBe("");
+  });
+
+  it("removes stray C0 and C1 control bytes", () => {
+    expect(sanitizeInput("a\x07b\x9cc")).toBe("abc");
+    expect(sanitizeInput("del\x7f")).toBe("del");
+  });
+
+  it("turns tabs into spaces so token separation survives", () => {
+    expect(sanitizeInput("ls\t-l")).toBe("ls -l");
+  });
+
+  it("passes ordinary command text through untouched", () => {
+    expect(sanitizeInput("gcc prog.s -o prog")).toBe("gcc prog.s -o prog");
+    expect(sanitizeInput("gdb x/4i $pc [sp]")).toBe("gdb x/4i $pc [sp]");
+  });
+});
+
 describe("TerminalInputState", () => {
+  it("keeps escape sequences out of the buffer", () => {
+    // xterm fires onData with "\x1b[A" for ArrowUp; if that reaches the
+    // buffer it is invisible on screen but corrupts the submission.
+    const s = new TerminalInputState();
+    s.handlePrintable("ls");
+    s.handlePrintable("\x1b[A");
+    expect(s.buffer).toBe("ls");
+    expect(s.takeSubmission()).toBe("ls");
+  });
+
   it("appends printable characters to the buffer", () => {
     const s = new TerminalInputState();
     s.handlePrintable("l");

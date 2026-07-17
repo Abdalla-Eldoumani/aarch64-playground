@@ -9,17 +9,27 @@
  *   `[fp, score1_s]`      8-byte memory at X29 + alias offset
  *   `[fp, 16]`            same with a literal offset
  *   `[x0, 4]`             same with any base register
- *   `arr[3]`              8-byte memory at (label `arr` address) + 3*8
+ *   `arr[3]`              8-byte memory at (label `arr` address) + 3*8,
+ *                         or at fp + slot offset + 3*8 for a frame slot
  *   `arr[i]` / `arr[w3]`  same with i read from a register (wN only)
  *
  * The parser is deliberately minimal; unsupported syntax returns a
  * descriptive error rather than throwing.
  */
 
+/** A memory read is three-valued: bytes, a definite fault, or a verdict
+ *  still in flight (the panel reads a sync view over an async cache). */
+export type MemRead = bigint | "unmapped" | "pending";
+
 export interface EvalContext {
   readRegister: (name: string) => bigint | null;
-  readMemory: (addr: bigint, size: number) => bigint | null;
-  resolveSymbol: (name: string) => bigint | null;
+  readMemory: (addr: bigint, size: number) => MemRead;
+  /** `name = value` frame-slot offset, for `[reg, name]`. */
+  resolveSlotOffset: (name: string) => bigint | null;
+  /** Absolute address of a data label, for `arr[i]`. The two meanings
+   *  used to share one callback, so a frame-slot OFFSET was dereferenced
+   *  as an absolute address and read a zero from low memory. */
+  resolveLabelAddress: (name: string) => bigint | null;
 }
 
 export interface EvalOk {
@@ -28,7 +38,7 @@ export interface EvalOk {
   display: string;
 }
 
-export type EvalOutcome = EvalOk | { error: string };
+export type EvalOutcome = EvalOk | { error: string } | { pending: true };
 
 export function evaluateWatch(expr: string, ctx: EvalContext): EvalOutcome {
   const trimmed = expr.trim();
@@ -49,14 +59,12 @@ export function evaluateWatch(expr: string, ctx: EvalContext): EvalOutcome {
   if (trimmed.startsWith("*")) {
     const inner = trimmed.slice(1).trim();
     const innerResult = evaluateWatch(inner, ctx);
-    if ("error" in innerResult) return innerResult;
+    if ("error" in innerResult || "pending" in innerResult) return innerResult;
     const addr = innerResult.value;
     // The deref width follows the inner expression: *x0 reads a quad,
     // *w0 reads a word -- the 4-byte view students want for .word data.
     const size = innerResult.size;
-    const v = ctx.readMemory(addr, size);
-    if (v == null) return { error: `fault reading ${toHex(addr, 8)}` };
-    return { value: v, size, display: toHex(v, size) };
+    return readAt(ctx, addr, size);
   }
 
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
@@ -67,27 +75,39 @@ export function evaluateWatch(expr: string, ctx: EvalContext): EvalOutcome {
     if (regVal == null) return { error: `unknown register ${parts[0]}` };
     const offset = parseOffset(parts[1], ctx);
     if (offset == null) return { error: `unknown offset ${parts[1]}` };
-    const addr = regVal + offset;
-    const v = ctx.readMemory(addr, 8);
-    if (v == null) return { error: `fault reading ${toHex(addr, 8)}` };
-    return { value: v, size: 8, display: toHex(v, 8) };
+    return readAt(ctx, regVal + offset, 8);
   }
 
   const arrayMatch = /^([A-Za-z_][A-Za-z0-9_]*)\[([^\]]+)\]$/.exec(trimmed);
   if (arrayMatch) {
     const name = arrayMatch[1];
     const index = arrayMatch[2].trim();
-    const base = ctx.resolveSymbol(name);
-    if (base == null) return { error: `unknown symbol ${name}` };
     const idx = parseOffset(index, ctx);
     if (idx == null) return { error: `unknown index ${index}` };
-    const addr = base + idx * 8n;
-    const v = ctx.readMemory(addr, 8);
-    if (v == null) return { error: `fault reading ${toHex(addr, 8)}` };
-    return { value: v, size: 8, display: toHex(v, 8) };
+    const label = ctx.resolveLabelAddress(name);
+    if (label != null) {
+      return readAt(ctx, label + idx * 8n, 8);
+    }
+    // A frame-slot name is an OFFSET from fp, never an address; resolve
+    // it against the live frame pointer so `a_s[0]` reads the array on
+    // the stack instead of dereferencing the offset as low memory.
+    const slot = ctx.resolveSlotOffset(name);
+    if (slot != null) {
+      const fp = ctx.readRegister("fp");
+      if (fp == null) return { error: "fp is not available" };
+      return readAt(ctx, fp + slot + idx * 8n, 8);
+    }
+    return { error: `unknown symbol ${name}` };
   }
 
   return { error: "unsupported expression" };
+}
+
+function readAt(ctx: EvalContext, addr: bigint, size: number): EvalOutcome {
+  const v = ctx.readMemory(addr, size);
+  if (v === "unmapped") return { error: `fault reading ${toHex(addr, 8)}` };
+  if (v === "pending") return { pending: true };
+  return { value: v, size, display: toHex(v, size) };
 }
 
 function parseOffset(s: string, ctx: EvalContext): bigint | null {
@@ -99,7 +119,7 @@ function parseOffset(s: string, ctx: EvalContext): bigint | null {
     const v = ctx.readRegister(reg);
     if (v != null) return v;
   }
-  const sym = ctx.resolveSymbol(t);
+  const sym = ctx.resolveSlotOffset(t);
   if (sym != null) return sym;
   return null;
 }

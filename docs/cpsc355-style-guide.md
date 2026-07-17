@@ -30,6 +30,27 @@ Comments strip before substitution: `//` to end of line.
 `ifdef`, `ifelse`, `forloop`, `dnl`, and backtick quoting are rejected
 with a clear error rather than silently ignored.
 
+### Where the playground's m4 differs from GNU m4 on the servers
+
+Real GNU m4 (the `m4 prog.asm | gcc` pipeline on the university Linux
+machines) knows nothing about assembly syntax, which produces three
+behaviors the playground deliberately does not copy. The pre-assembly
+lint warns whenever a program would hit one:
+
+- GNU m4 substitutes a macro name **anywhere** it appears as a whole
+  word, including inside `"..."` strings and `'.'` character literals.
+  `define(register, w19)` turns `.string "register count:"` into
+  `.string "w19 count:"` on the server. The playground leaves string and
+  character literals alone; rename the macro (`register_r`) so both
+  behave the same.
+- GNU m4 treats `#` as a comment start: nothing after `#` on a line is
+  expanded. `mov x0, #SIZE` with `define(SIZE, 40)` never expands on the
+  server and the assembler rejects it. Use an equate (`SIZE = 40`),
+  which the assembler itself resolves, for any value used after `#`.
+- A defined name immediately followed by `(` is an m4 macro **call**
+  on the server, and the parenthesized text is consumed as arguments.
+  Put a space before the `(` or rename the macro.
+
 ## section directives
 
 ```

@@ -64,6 +64,8 @@ main:
         ldr     x25, =main
         str     x19, [sp, 8]
         ldr     x26, [sp, 8]
+        ldr     w27, [x19, x20, lsl 2]
+        add     x28, sp, x19
         cmp     x19, 0
         b.ne    skip
         cbz     x19, skip
@@ -95,6 +97,25 @@ describe("decodeFields", () => {
     expect(decoded.fields[4].meaning).toBe("42");
     expect(decoded.fields[5].meaning).toBe("x19");
     expect(decoded.destIndex).toBe(5);
+  });
+
+  it("slices a register-offset load into Rm/option/S, never a fabricated imm9", () => {
+    // The strip used to route this word through the pre/post-index
+    // layout: a fabricated imm9 box, a `0` box showing 1, and no sign of
+    // the index register anywhere.
+    const [word] = assembleWords(
+      "        .text\n        .global main\nmain:\n        ldr     w0, [x1, x2, lsl 2]\n        ret\n",
+    );
+    const decoded = decodeFields(word);
+    const labels = decoded.fields.map((field) => field.label);
+    expect(labels).toContain("Rm");
+    expect(labels).toContain("option");
+    expect(labels).toContain("S");
+    expect(labels).not.toContain("imm9");
+    const rm = decoded.fields.find((field) => field.label === "Rm");
+    expect(rm?.meaning).toContain("x2");
+    const option = decoded.fields.find((field) => field.label === "option");
+    expect(option?.meaning).toBe("lsl");
   });
 
   it("marks loads but not stores as register writes", () => {

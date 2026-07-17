@@ -27,6 +27,13 @@ use crate::errors::EmuError;
 
 const MAX_RECURSION: usize = 32;
 
+/// Hard ceiling on a single expanded line. Course lines are tens of bytes;
+/// anything approaching this is a define() chain growing geometrically,
+/// which the round guard alone cannot stop (a doubling chain settles within
+/// 32 rounds while the text explodes). Fails loudly instead of exhausting
+/// the wasm heap.
+const MAX_EXPANDED_LINE_BYTES: usize = 64 * 1024;
+
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
 pub struct Expanded {
@@ -53,7 +60,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
-    let source = strip_block_comments(source);
+    let source = strip_block_comments(source)?;
     let source = source.as_str();
     // Pass 1: collect `define()` aliases for substitution, record `name =
     // expr` assignments separately (they stay inline so the parser can
@@ -77,6 +84,19 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             defines.insert(name, body);
             stripped.push(String::new());
             continue;
+        }
+        // The line got past both define gates (the keyword and the paren)
+        // but failed to parse: it is a broken define, not an instruction.
+        // Passing it through blamed the student for an unknown mnemonic
+        // spelled DEFINE(FP,.
+        if is_attempted_define(trimmed) {
+            return Err(EmuError::PreprocError {
+                line: line_num,
+                message: format!(
+                    "malformed m4 define: {} -- write `define(NAME, body)`",
+                    diagnose_define(trimmed)
+                ),
+            });
         }
         if let Some((name, body)) = parse_assignment(trimmed) {
             assignments.insert(name, body);
@@ -119,6 +139,15 @@ fn expand_recursively(
         if next == current {
             return Ok(current);
         }
+        if next.len() > MAX_EXPANDED_LINE_BYTES {
+            return Err(EmuError::PreprocError {
+                line: line_num,
+                message: format!(
+                    "m4 expansion grew this line past {MAX_EXPANDED_LINE_BYTES} bytes; \
+                     a define() chain is expanding without settling"
+                ),
+            });
+        }
         current = next;
     }
     // One more pass: if it still changes after MAX_RECURSION rounds, the
@@ -136,6 +165,14 @@ fn expand_recursively(
 /// One token-boundary substitution pass over a line. String and char
 /// literals are copied verbatim. Shared with the parser's `.req` alias
 /// pass, which substitutes register aliases the same way defines expand.
+///
+/// Everything outside an identifier is copied as a byte-exact slice of the
+/// input, never widened through `as char`: widening a byte >= 0x80 (a
+/// latin-1 promotion) re-encodes it as two UTF-8 bytes, so a single pasted
+/// NBSP or accented letter doubled every round and expansion could never
+/// reach its fixed point. Slice boundaries here always sit on ASCII bytes
+/// (quotes, identifier edges) or the end of the line, so the slicing is
+/// UTF-8 safe even while the scan itself walks raw bytes.
 pub(crate) fn substitute_once(line: &str, defines: &HashMap<String, String>) -> String {
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
@@ -146,22 +183,20 @@ pub(crate) fn substitute_once(line: &str, defines: &HashMap<String, String>) -> 
             // Copy a string or char literal verbatim, including the
             // delimiters and any backslash-escaped bytes.
             let quote = b;
-            out.push(b as char);
+            let start = i;
             i += 1;
             while i < bytes.len() {
                 let c = bytes[i];
                 if c == b'\\' && i + 1 < bytes.len() {
-                    out.push(c as char);
-                    out.push(bytes[i + 1] as char);
                     i += 2;
                     continue;
                 }
-                out.push(c as char);
                 i += 1;
                 if c == quote {
                     break;
                 }
             }
+            out.push_str(&line[start..i]);
             continue;
         }
         if is_id_start_byte(b) {
@@ -177,8 +212,17 @@ pub(crate) fn substitute_once(line: &str, defines: &HashMap<String, String>) -> 
             }
             continue;
         }
-        out.push(b as char);
+        // Copy the run up to the next literal or identifier verbatim.
+        let start = i;
         i += 1;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if c == b'"' || c == b'\'' || is_id_start_byte(c) {
+                break;
+            }
+            i += 1;
+        }
+        out.push_str(&line[start..i]);
     }
     out
 }
@@ -191,9 +235,9 @@ pub(crate) fn substitute_once(line: &str, defines: &HashMap<String, String>) -> 
 /// at each newline because both literal forms are single-line in
 /// assembly, which keeps a stray quote from poisoning the rest of the
 /// file.
-fn strip_block_comments(source: &str) -> String {
+fn strip_block_comments(source: &str) -> Result<String, EmuError> {
     if !source.contains("/*") {
-        return source.to_string();
+        return Ok(source.to_string());
     }
     let bytes = source.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -201,6 +245,8 @@ fn strip_block_comments(source: &str) -> String {
     let mut in_string = false;
     let mut in_char = false;
     let mut in_block = false;
+    let mut line = 1usize;
+    let mut block_open_line = 0usize;
     while i < bytes.len() {
         let b = bytes[i];
         if b == b'\n' {
@@ -208,6 +254,7 @@ fn strip_block_comments(source: &str) -> String {
             in_char = false;
             out.push(b'\n');
             i += 1;
+            line += 1;
             continue;
         }
         if in_block {
@@ -238,6 +285,7 @@ fn strip_block_comments(source: &str) -> String {
             }
             b'/' if !in_string && !in_char && i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
                 in_block = true;
+                block_open_line = line;
                 i += 2;
                 continue;
             }
@@ -246,8 +294,18 @@ fn strip_block_comments(source: &str) -> String {
         out.push(b);
         i += 1;
     }
+    // An unclosed block swallowed everything after it while keeping the
+    // line count intact, so the build reported SUCCESS on a program
+    // reduced to nothing. gcc/as reject with the opening line; so do we.
+    if in_block {
+        return Err(EmuError::PreprocError {
+            line: block_open_line,
+            message: "unterminated /* comment: no closing */ before the end of the file".into(),
+        });
+    }
     // Only ASCII spans were removed, so the bytes are still valid UTF-8.
-    String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+    Ok(String::from_utf8(out)
+        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
 }
 
 fn strip_comment(line: &str) -> &str {
@@ -294,6 +352,45 @@ fn strip_comment(line: &str) -> &str {
         i += 1;
     }
     line
+}
+
+/// The same two gates `parse_define` opens with: the keyword and an
+/// opening paren. A line that passes both is an attempted define even when
+/// the rest is malformed.
+fn is_attempted_define(trimmed: &str) -> bool {
+    trimmed
+        .strip_prefix("define")
+        .map(str::trim_start)
+        .is_some_and(|rest| rest.starts_with('('))
+}
+
+/// Name what is wrong with an attempted define. Only called after
+/// `parse_define` returned None, so some branch below always fires.
+fn diagnose_define(trimmed: &str) -> String {
+    let rest = trimmed
+        .strip_prefix("define")
+        .map(str::trim_start)
+        .unwrap_or("");
+    let Some(inside_plus) = rest.strip_prefix('(') else {
+        return "expected `(` after define".to_string();
+    };
+    let Some((inside, after)) = split_outer_parens(inside_plus) else {
+        return "the closing `)` is missing".to_string();
+    };
+    if !after.trim().is_empty() {
+        return format!("unexpected text after the closing `)`: `{}`", after.trim());
+    }
+    let Some((name, _body)) = split_top_level_comma(inside) else {
+        return "the comma between the name and the body is missing".to_string();
+    };
+    let name = name.trim();
+    if name.is_empty() {
+        return "the macro name is empty".to_string();
+    }
+    format!(
+        "`{name}` is not a valid macro name (letters, digits and _ only, \
+         not starting with a digit)"
+    )
 }
 
 fn parse_define(trimmed: &str) -> Option<(String, String)> {
@@ -586,6 +683,68 @@ mod tests {
     fn unknown_identifier_passes_through() {
         let r = exp("mov x0, xyzzy\n");
         assert_eq!(r.text, "mov x0, xyzzy");
+    }
+
+    #[test]
+    fn non_ascii_in_string_literal_round_trips_verbatim() {
+        // Widening bytes >= 0x80 through `as char` re-encodes them as two
+        // bytes, so every non-ASCII byte doubled per round and expansion
+        // never reached a fixed point. One accented char must round-trip.
+        let r = exp(".string \"caf\u{e9}\"\n");
+        assert_eq!(r.text, ".string \"caf\u{e9}\"");
+    }
+
+    #[test]
+    fn non_ascii_outside_literals_round_trips_verbatim() {
+        // An invisible NBSP pasted from a PDF must not detonate expansion;
+        // the lexer owns rejecting it with a useful message.
+        let r = exp("mov x0, 1\u{a0}\n");
+        assert_eq!(r.text, "mov x0, 1\u{a0}");
+    }
+
+    #[test]
+    fn define_substitutes_on_a_line_with_non_ascii_string_text() {
+        let r = exp("define(fp, x29)\nmov x0, fp\n.string \"r\u{e9}sum\u{e9} fp\"\n");
+        assert_eq!(r.text, "\nmov x0, x29\n.string \"r\u{e9}sum\u{e9} fp\"");
+    }
+
+    #[test]
+    fn unterminated_block_comment_fails_naming_its_opening_line() {
+        // The unclosed block used to swallow the rest of the file while
+        // keeping line numbers aligned, so assemble reported SUCCESS on a
+        // program reduced to nothing (or missing its ret).
+        let err = expand("main:\n    mov x0, 1\n/*  mov x1, 2\n    ret\n").unwrap_err();
+        match err {
+            EmuError::PreprocError { line, message } => {
+                assert_eq!(line, 3);
+                assert!(message.contains("unterminated"), "message was: {message}");
+            }
+            other => panic!("expected PreprocError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn closed_block_comments_still_blank_correctly() {
+        let r = exp("/* header\nspanning lines */\nmov x0, 1\n");
+        assert_eq!(r.text, "\n\nmov x0, 1");
+    }
+
+    #[test]
+    fn runaway_define_growth_is_capped_by_line_length() {
+        // A doubling chain stays under the 32-round recursion guard while
+        // growing the line geometrically; the byte cap must stop it.
+        let mut src = String::new();
+        for i in 0..20 {
+            src.push_str(&format!("define(g{i}, g{} g{})\n", i + 1, i + 1));
+        }
+        src.push_str("define(g20, x)\ng0\n");
+        let err = expand(&src).unwrap_err();
+        match err {
+            EmuError::PreprocError { message, .. } => {
+                assert!(message.contains("expansion"), "message was: {message}");
+            }
+            other => panic!("expected PreprocError, got {other:?}"),
+        }
     }
 
     #[test]

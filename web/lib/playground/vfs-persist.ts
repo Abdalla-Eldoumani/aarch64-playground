@@ -2,7 +2,7 @@
 // its working file set (uploads, terminal redirect outputs, loaded example
 // fixtures) into IndexedDB so the files are still there after a reload, a
 // route change, or a closed tab. IndexedDB rather than localStorage because
-// the VFS cap (MAX_VFS_BYTES, 10 MiB) exceeds typical localStorage quotas.
+// the VFS cap (MAX_VFS_BYTES, 4 MiB) crowds typical localStorage quotas.
 // Every entry point degrades to session-only silently: no IndexedDB (SSR,
 // some private windows), a blocked open, or a broken transaction must never
 // take the playground down over a convenience feature.

@@ -9,6 +9,25 @@ export function splitPasteLines(data: string): string[] {
   return data.split(/\r\n|\r|\n/);
 }
 
+const ESCAPE_SEQUENCES = /\x1b(?:\[[0-?]*[ -/]*[@-~]|O[@-~]|[@-Z\\-_])/g;
+const CONTROL_BYTES = /[\x00-\x1f\x7f\x80-\x9f]/g;
+
+/**
+ * Drop terminal control data from text entering the input buffer: whole
+ * ANSI escape sequences first (a special key's CSI/SS3 sequence, or a
+ * pasted colored shell transcript), then any remaining C0/C1 control
+ * bytes. Tabs become single spaces so pasted token separation survives.
+ * The buffer can then never hold bytes that repaint as cursor movement --
+ * an ESC[A smuggled into the line is invisible on screen but corrupts
+ * the submitted command and scrambles the scrollback on repaint.
+ */
+export function sanitizeInput(text: string): string {
+  return text
+    .replace(ESCAPE_SEQUENCES, "")
+    .replace(/\t/g, " ")
+    .replace(CONTROL_BYTES, "");
+}
+
 /**
  * In-memory state for a single terminal input line: buffer + cursor +
  * history navigation + tab completion. Pure logic so it can be unit
@@ -24,8 +43,10 @@ export class TerminalInputState {
   private pending = "";
 
   handlePrintable(ch: string): void {
-    this.buffer = this.buffer.slice(0, this.cursor) + ch + this.buffer.slice(this.cursor);
-    this.cursor += ch.length;
+    const clean = sanitizeInput(ch);
+    if (!clean) return;
+    this.buffer = this.buffer.slice(0, this.cursor) + clean + this.buffer.slice(this.cursor);
+    this.cursor += clean.length;
     this.historyIndex = -1;
   }
 

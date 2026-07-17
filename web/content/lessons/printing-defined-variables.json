@@ -44,12 +44,12 @@
     {
         "type": "code",
         "language": "asm",
-        "source": "// pseudo-ops and directives\nmain: \n    // program prologue\n    ..\n    ldr x21, =importantNumber\n    ldr x1, [x21]\n    ..\n\n    // program epilogue"
+        "source": "// pseudo-ops and directives\nmain: \n    // program prologue\n    ..\n    ldr x21, =importantNumber\n    ldr w1, [x21]\n    ..\n\n    // program epilogue"
 
     },
     {
         "type": "prose",
-        "markdown": "\nThe ldr instruction is used to retrieve both the address of the variable and the value stored at that address. In this process, two `ldr` instructions are required.\n\nThe first `ldr` instruction retrieves the address of the variable and stores it in register `x21`. The second `ldr` instruction uses this address to access the value stored in memory and loads the retrieved value into register `x1`. The register `x0` is preserved for the address of the format string, which is passed to `printf` as the first argument."
+        "markdown": "\nThe ldr instruction is used to retrieve both the address of the variable and the value stored at that address. In this process, two `ldr` instructions are required.\n\nThe first `ldr` instruction retrieves the address of the variable and stores it in register `x21`. The second `ldr` instruction uses this address to access the value stored in memory and loads the retrieved value into register `w1`. A `.word` is 32 bits, so the load uses the 32-bit `w` form of the register; an `x1` load would drag in the 4 bytes stored after the variable too. The register `x0` is preserved for the address of the format string, which is passed to `printf` as the first argument."
     },
     {
         "type": "callout",
@@ -62,7 +62,7 @@
     },
     {
         "type": "editor",
-        "starter": ".data\n    // Format string for printing an integer\n    format1:   .string  \"Integer Variable Content: %d\\n\"\n\n    // Variable storing the number 85\n    importantNumber:      .word 85\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n    \n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // Passing the integer value to be printed to the next argument register.\n    ldr  x21, =importantNumber\n    ldr x1, [x21]\n    // Calling printf to print the integer value.\n    bl printf\n\n    // Program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
+        "starter": ".data\n    // Format string for printing an integer\n    format1:   .string  \"Integer Variable Content: %d\\n\"\n\n    // Variable storing the number 85\n    importantNumber:      .word 85\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n    \n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // Passing the integer value to be printed to the next argument register.\n    ldr  x21, =importantNumber\n    ldr w1, [x21]\n    // Calling printf to print the integer value.\n    bl printf\n\n    // Program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
     },
     {
         "type": "callout",

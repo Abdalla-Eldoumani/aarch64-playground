@@ -9,8 +9,13 @@
 
 /** 1 MB cap on pasted / imported / dropped source. */
 export const MAX_SOURCE_BYTES = 1 * 1024 * 1024;
-/** 10 MB cap on raw VFS payloads (terminal upload + console upload). */
-export const MAX_VFS_BYTES = 10 * 1024 * 1024;
+/**
+ * 4 MiB cap on raw VFS payloads (terminal upload + console upload).
+ * Matches the emulator's own whole-VFS wall (`syscalls::MAX_VFS_TOTAL_BYTES`),
+ * which is sized against the step-back ring cloning the VFS every step;
+ * a larger upload would be refused by the machine it is headed for.
+ */
+export const MAX_VFS_BYTES = 4 * 1024 * 1024;
 /** 1000-character cap on command-line arguments. */
 export const MAX_ARGS_CHARS = 1000;
 /** 100 KB cap on a single stdin submission. */
@@ -22,12 +27,16 @@ export const MAX_BUNDLE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
 /** Maximum decompressed size of a `#p2=` share hash (1 MB). */
 export const MAX_SHARE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
 /**
- * 64 KB cap on a raw (still-compressed) URL-borne fragment: the `#p2=` /
- * `#p=` share hash and the `?bundle=` deep link. Checked BEFORE
- * decompression so a tiny compressed payload cannot be expanded to
- * exhaust the tab (a decompression-bomb guard).
+ * 12 KB cap on a raw (still-compressed) URL-borne fragment: the `#p2=` /
+ * `#p=` share hash and the `?bundle=` deep link. lz-string output grows
+ * QUADRATICALLY in fragment length for a crafted payload (measured:
+ * fragment ~ 3 * sqrt(chars-out), so a 30 KB fragment inflated to ~100M
+ * chars / ~200 MB), which a raw-length cap alone cannot bound linearly.
+ * At 12 KB the worst case is ~16M chars (~33 MB transient), freed the
+ * moment the post-decode 1 MB ceiling rejects it -- a hiccup, not a
+ * tab-killer. Legitimate course programs compress to well under 4 KB.
  */
-export const MAX_SHARE_HASH_BYTES = 64 * 1024;
+export const MAX_SHARE_HASH_BYTES = 12 * 1024;
 
 const encoder = new TextEncoder();
 

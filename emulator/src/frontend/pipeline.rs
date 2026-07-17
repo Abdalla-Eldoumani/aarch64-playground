@@ -32,6 +32,11 @@ pub struct LinkedImage {
     /// Absolute address of the first instruction in `.text`, for debugger
     /// decoration.
     pub text_base: u64,
+    /// First address past the last real `.text` byte. Execution arriving
+    /// here fell off the end of the program (a `main` with no ret/exit);
+    /// the trampolines start at least 4 bytes later, so this address is
+    /// never a legitimate branch target.
+    pub text_end: u64,
     /// Resolved label -> absolute address for every label the linker
     /// saw (instructions, data symbols, m4 expression symbols, plus
     /// the synthetic `__tramp_<libc>` trampolines). Used by the
@@ -67,19 +72,52 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // equate during this very walk; the rest wait for pass 1c's rounds.
     // Reserve sizes resolved here are kept for pass 2, which must walk
     // the identical layout.
+    // Section bases sit 1 MiB apart (SectionKind::default_base), so any
+    // section that outgrows this window silently runs into the next one's
+    // addresses: two labels on one address, stores clobbering unrelated
+    // variables. Checked during this walk, where the offending line is
+    // still known.
+    const SECTION_WINDOW: u64 = 1024 * 1024;
+
     let mut text_len: u64 = 0;
     let mut assignments: Vec<(String, String, u64, usize)> = Vec::new();
     let mut reserve_sizes: HashMap<(SectionKind, usize), u64> = HashMap::new();
+    // First-definition lines, for duplicate-label errors that name both
+    // sites. GAS rejects a redefined label; accepting it here made the
+    // last definition win silently, so branches jumped to the wrong copy.
+    let mut label_lines: HashMap<String, usize> = HashMap::new();
     for section in &prog.sections {
         let base = section.kind.default_base();
         let mut offset: u64 = 0;
+        let mut last_line: usize = 0;
         for (idx, item) in section.items.iter().enumerate() {
             match item {
-                Item::Label(name) => {
+                Item::Label { name, original_line } => {
+                    last_line = *original_line;
+                    if let Some(first) = label_lines.get(name) {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "label `{name}` is already defined on line {first} -- \
+                                 give each label a unique name (labels are file-wide, \
+                                 not per-function)"
+                            ),
+                        });
+                    }
+                    if symbols.contains_key(name) {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "label `{name}` collides with the `{name} = ...` \
+                                 constant defined earlier -- rename one of them"
+                            ),
+                        });
+                    }
+                    label_lines.insert(name.clone(), *original_line);
                     symbols.insert(name.clone(), base + offset);
                 }
                 Item::Bytes(b) => offset += b.len() as u64,
-                Item::Reserve(n) => offset += n,
+                Item::Reserve(n) => offset = offset.saturating_add(*n),
                 Item::AlignToBytes(n) => {
                     if *n > 0 {
                         let rem = offset % n;
@@ -89,6 +127,16 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                 }
                 Item::SymbolAssignment { name, body, original_line } => {
+                    last_line = *original_line;
+                    if let Some(first) = label_lines.get(name) {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "`{name} = ...` collides with the label `{name}:` \
+                                 on line {first} -- rename one of them"
+                            ),
+                        });
+                    }
                     if !symbols.contains_key(name) {
                         if let Some(v) = try_evaluate_at(body, base + offset, &symbols, *original_line) {
                             symbols.insert(name.clone(), v as u64);
@@ -97,11 +145,31 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                     assignments.push((name.clone(), body.clone(), base + offset, *original_line));
                 }
-                Item::Instruction { .. } => offset += 4,
-                Item::DataExprs { exprs, width, .. } => {
+                Item::Instruction { original_line, .. } => {
+                    last_line = *original_line;
+                    // Data emitted into .text above this point knocked every
+                    // following instruction off its 4-byte boundary; report
+                    // it here, where the line is known, instead of letting
+                    // the linker blame an internal literal-pool offset.
+                    if section.kind == SectionKind::Text && offset % 4 != 0 {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "this instruction lands at a misaligned address: {} byte(s) of \
+                                 data sit in .text above it -- move the data to .data or \
+                                 .rodata, or add `.balign 4` between the data and the code",
+                                offset % 4
+                            ),
+                        });
+                    }
+                    offset += 4;
+                }
+                Item::DataExprs { exprs, width, original_line } => {
+                    last_line = *original_line;
                     offset += (exprs.len() * width) as u64;
                 }
                 Item::ReserveExpr { tokens, original_line } => {
+                    last_line = *original_line;
                     let value = evaluate(
                         tokens,
                         &|name| symbols.get(name).map(|v| *v as i64),
@@ -115,8 +183,20 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         });
                     }
                     reserve_sizes.insert((section.kind, idx), value as u64);
-                    offset += value as u64;
+                    offset = offset.saturating_add(value as u64);
                 }
+            }
+            if offset > SECTION_WINDOW {
+                return Err(EmuError::AssemblyError {
+                    line: last_line,
+                    message: format!(
+                        "{} has grown past its 1 MiB window ({} bytes so far) and would \
+                         overlap the next section's addresses -- shrink the data or .skip \
+                         reservations (check any size equate for a typo)",
+                        section.kind.name(),
+                        offset
+                    ),
+                });
             }
         }
         if section.kind == SectionKind::Text {
@@ -140,6 +220,17 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         let mut remaining: Vec<(String, String, u64, usize)> = Vec::new();
         for (name, body, here, line) in &assignments {
             if symbols.contains_key(name) {
+                // A pending assignment whose name turned out to be a label
+                // (defined after it) must not vanish silently.
+                if let Some(first) = label_lines.get(name) {
+                    return Err(EmuError::AssemblyError {
+                        line: *line,
+                        message: format!(
+                            "`{name} = ...` collides with the label `{name}:` \
+                             on line {first} -- rename one of them"
+                        ),
+                    });
+                }
                 continue;
             }
             if let Some(v) = try_evaluate_at(body, *here, &symbols, *line) {
@@ -153,6 +244,23 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         if !changed {
             break;
         }
+    }
+
+    // Whatever is still pending is permanently broken -- a typo'd symbol,
+    // a division by zero, a cycle. Re-run the evaluation WITHOUT the
+    // `.ok()` so its own error (which names the cause at the assignment's
+    // line) surfaces; silently dropping it used to blame the innocent USE
+    // site with "invalid immediate".
+    if let Some((_, body, here, line)) = assignments.first() {
+        let tokens = lex(body, *line)?;
+        evaluate(
+            &tokens,
+            &|name| symbols.get(name).map(|v| *v as i64),
+            *here as i64,
+            *line,
+        )?;
+        // Unreachable in practice: the fixpoint loop already failed this
+        // assignment against the same symbol table.
     }
 
     // Pass 1d: scan .text instructions for `ldr xN, =expr` to size the
@@ -194,7 +302,12 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // = 8 bytes. They sit between .text and the literal pool so BL's
     // imm26 range easily reaches them, and so their LDR literal's imm19
     // reaches the pool entries that hold the real host stub addresses.
-    let tramp_base = CODE_BASE + ((text_len + 7) & !7);
+    // `+ 8` (not `+ 7`): always leave a gap of at least 4 bytes between
+    // the last real instruction and the first trampoline, so sequential
+    // fall-through can be told apart from a `bl printf` arriving at a
+    // trampoline. With plain 8-alignment an 8-aligned .text fell straight
+    // into the first trampoline and silently called that libc function.
+    let tramp_base = CODE_BASE + ((text_len + 8) & !7);
     let tramp_bytes = (host_trampolines.len() as u64) * 8;
     let pool_base = tramp_base + tramp_bytes;
 
@@ -230,7 +343,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         let mut offset: u64 = 0;
         for (idx, item) in section.items.iter().enumerate() {
             match item {
-                Item::Label(_) => {}
+                Item::Label { .. } => {}
                 Item::Bytes(b) => {
                     writes.push((base + offset, b.clone()));
                     offset += b.len() as u64;
@@ -271,10 +384,34 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     offset += (exprs.len() * width) as u64;
                 }
                 Item::Instruction { tokens, original_line } => {
+                    // Pass 1d (literal pool + trampolines) only scans
+                    // .text, so an instruction landing anywhere else has
+                    // no pool slot and no trampoline: `ldr xN, =sym`
+                    // panicked on a missing key and `bl printf` truncated
+                    // its offset into a garbage branch. On the course
+                    // toolchain code outside .text faults at runtime;
+                    // here we say what is missing while the line is known.
+                    if section.kind != SectionKind::Text {
+                        return Err(EmuError::AssemblyError {
+                            line: *original_line,
+                            message: format!(
+                                "instruction in the {} section -- add a `.text` \
+                                 directive above your code",
+                                section.kind.name()
+                            ),
+                        });
+                    }
                     let pc = base + offset;
                     let word = if let Some(target_text) = extract_ldr_eq_operand(tokens) {
                         let (rt, sf) = parse_ldr_eq_rt(tokens, *original_line)?;
-                        let slot = pool_slots[&target_text];
+                        let slot = *pool_slots.get(&target_text).ok_or_else(|| {
+                            EmuError::LinkError {
+                                line: *original_line,
+                                message: format!(
+                                    "no literal pool slot for `{target_text}`"
+                                ),
+                            }
+                        })?;
                         let slot_addr = pool_base + slot;
                         let byte_offset = slot_addr as i64 - pc as i64;
                         encode_ldr_literal(sf, rt, byte_offset)?
@@ -319,13 +456,10 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     };
                     writes.push((pc, word.to_le_bytes().to_vec()));
                     // Record the authoritative pc -> editor-line entry for
-                    // every real `.text` instruction. Only `.text` carries
-                    // executable instructions; trampolines and the literal
-                    // pool are emitted separately below and intentionally
-                    // get no entries.
-                    if section.kind == SectionKind::Text {
-                        line_map.push((pc, *original_line as u32));
-                    }
+                    // every instruction (all are .text by the guard above);
+                    // trampolines and the literal pool are emitted
+                    // separately below and intentionally get no entries.
+                    line_map.push((pc, *original_line as u32));
                     offset += 4;
                     instruction_count += 1;
                 }
@@ -354,6 +488,27 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         writes.push((addr, value.to_le_bytes().to_vec()));
     }
 
+    // A program that produced no instructions "assembled" and then died on
+    // step 1 with `unknown instruction: 0x00000000`; real ld rejects it.
+    if instruction_count == 0 {
+        return Err(EmuError::LinkError {
+            line: 0,
+            message: "the program has no instructions -- if a comment or a \
+                      missing .text swallowed your code, put it back under \
+                      `.text`"
+                .into(),
+        });
+    }
+    // `.global main` with no `main:` silently fell back to CODE_BASE;
+    // real ld reports the undefined reference.
+    if prog.globals.contains("main") && !symbols.contains_key("main") {
+        return Err(EmuError::LinkError {
+            line: 0,
+            message: "no `main:` label found -- `.global main` was declared \
+                      and execution starts at `main`"
+                .into(),
+        });
+    }
     let entry_point = symbols.get("main").copied().unwrap_or(CODE_BASE);
 
     Ok(LinkedImage {
@@ -361,6 +516,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         entry_point,
         instruction_count,
         text_base: CODE_BASE,
+        text_end: CODE_BASE + text_len,
         symbols,
         line_map,
     })
@@ -436,6 +592,12 @@ fn parse_ldr_eq_rt(
     let idx: u8 = idx_str
         .parse()
         .map_err(|_| err(line, &format!("bad register index in `{reg}`")))?;
+    if idx > 31 {
+        return Err(err(
+            line,
+            &format!("`{reg}` is not a register; the register file runs x0-x30 (plus xzr/sp)"),
+        ));
+    }
     Ok((idx, sf))
 }
 
@@ -599,7 +761,7 @@ fn rewrite_operand(
     if !looks_like_expression(body, symbols) {
         return Ok(trimmed.to_string());
     }
-    match try_evaluate_operand(body, pc, symbols, ln) {
+    match try_evaluate_operand(body, pc, symbols, ln)? {
         Some(value) => Ok(format!("{value}")),
         None => Ok(trimmed.to_string()),
     }
@@ -680,20 +842,44 @@ fn is_register_or_shift_keyword(s: &str) -> bool {
     )
 }
 
+/// Evaluate an operand body that looked like an expression. `Ok(None)`
+/// means "not an integer expression, hand the text to the encoder" (float
+/// immediates, shift-modifier operands); a genuine broken expression
+/// propagates its own diagnosis -- swallowing it into the encoder's
+/// "invalid immediate" hid `unknown symbol \`SZIE\`` behind a message about
+/// immediate ranges when a macro name was typo'd.
 fn try_evaluate_operand(
     body: &str,
     pc: u64,
     symbols: &HashMap<String, u64>,
     ln: usize,
-) -> Option<i64> {
-    let tokens = lex(body, ln).ok()?;
-    evaluate(
+) -> Result<Option<i64>, EmuError> {
+    // A shift modifier's keyword-plus-amount shape (`lsl #(1 + 1)`) is an
+    // encoder operand, never an expression.
+    let first_word = body.split_whitespace().next().unwrap_or("");
+    if is_register_or_shift_keyword(first_word) {
+        return Ok(None);
+    }
+    let Ok(tokens) = lex(body, ln) else {
+        return Ok(None);
+    };
+    // A float immediate (`fmov d0, #1.5`) must reach the FP encoder as
+    // written; the evaluator only speaks integers.
+    if tokens
+        .iter()
+        .any(|t| matches!(t.kind, TokenKind::FloatLit(_)))
+    {
+        return Ok(None);
+    }
+    match evaluate(
         &tokens,
         &|name| symbols.get(name).map(|v| *v as i64),
         pc as i64,
         ln,
-    )
-    .ok()
+    ) {
+        Ok(v) => Ok(Some(v)),
+        Err(e) => Err(e),
+    }
 }
 
 /// If this instruction is `bl <ident>`, return the target identifier.

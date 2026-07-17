@@ -25,7 +25,7 @@ export interface SavesPanelProps {
     args?: string;
     stdin?: string;
     stepCount: number;
-  }) => Promise<void>;
+  }) => Promise<{ success: boolean; stepped: number }>;
 }
 
 /**
@@ -161,7 +161,17 @@ export function SavesPanel({
             const text = await file.text();
             const parsed = JSON.parse(text);
             const result = namedSaves.importBundle(parsed);
-            toast.show(`imported ${result.added} added, ${result.skipped} skipped`);
+            // Three real outcomes; the flat count used to green-check a
+            // structurally wrong file as "imported 0 added, 0 skipped".
+            if (!result.ok) {
+              toast.error("that file isn't a bookmark bundle (expected version 1 with a saves list)");
+            } else if (!result.stored) {
+              toast.error("import failed: browser storage is full or blocked");
+            } else if (result.added === 0 && result.skipped > 0) {
+              toast.error(`no bookmarks imported -- all ${result.skipped} entries were invalid or already exist`);
+            } else {
+              toast.show(`imported ${result.added} added, ${result.skipped} skipped`);
+            }
           } catch {
             toast.error("invalid bookmark bundle");
           } finally {
@@ -175,13 +185,19 @@ export function SavesPanel({
           e.preventDefault();
           const name = bookmarkName.trim();
           if (!name) return;
-          namedSaves.put({
+          const stored = namedSaves.put({
             name,
             source,
             args: args || undefined,
             stepCount,
             savedAt: new Date().toISOString(),
           });
+          // An overwrite that failed to store keeps rendering the stale
+          // record; without the toast that reads as a successful update.
+          if (!stored) {
+            toast.error("bookmark not saved: browser storage is full or blocked -- export json to keep it, or delete old bookmarks");
+            return;
+          }
           setBookmarkName("");
         }}
         className="flex gap-1 mb-2"
@@ -236,13 +252,22 @@ export function SavesPanel({
                   // surfaces the result so the student sees what
                   // happened.
                   try {
-                    await onRestoreBookmark({
+                    const verdict = await onRestoreBookmark({
                       source: s.source,
                       args: s.args,
                       stdin: s.stdin,
                       stepCount: s.stepCount,
                     });
-                    toast.show(`restored ${s.name} (step ${s.stepCount})`);
+                    // Report what actually happened: a failed assemble
+                    // used to green-toast "restored", and the saved count
+                    // was reported even when the walk stopped early.
+                    if (!verdict.success) {
+                      toast.error(`${s.name} no longer assembles -- fix the source, then bookmark again`);
+                    } else if (verdict.stepped < s.stepCount) {
+                      toast.show(`restored ${s.name} (stopped at step ${verdict.stepped} of ${s.stepCount})`);
+                    } else {
+                      toast.show(`restored ${s.name} (step ${verdict.stepped})`);
+                    }
                   } catch {
                     toast.error(`restore failed for ${s.name}`);
                   }

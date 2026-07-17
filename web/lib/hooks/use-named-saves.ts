@@ -4,6 +4,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import {
   exportBundle as moduleExportBundle,
   importBundle as moduleImportBundle,
+  type ImportResult,
   listSaves,
   putSave,
   removeSave,
@@ -57,10 +58,11 @@ function serverSnapshot(): NamedSave[] {
 
 export interface NamedSavesApi {
   saves: NamedSave[];
-  put: (save: NamedSave) => void;
-  remove: (name: string) => void;
+  /** Returns whether the bookmark actually reached storage. */
+  put: (save: NamedSave) => boolean;
+  remove: (name: string) => boolean;
   exportBundle: () => SaveBundle;
-  importBundle: (bundle: unknown) => { added: number; skipped: number };
+  importBundle: (bundle: unknown) => ImportResult;
 }
 
 /**

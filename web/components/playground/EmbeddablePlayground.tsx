@@ -152,6 +152,12 @@ export type EmbeddablePlaygroundHandle = {
   /** The command Action[] built inside the component so a host-rendered
    *  palette has no duplicate logic. */
   getCommands(): Action[];
+  /** Surface a host-page failure (bad share link, failed example fetch)
+   *  through this component's toast instance. The page entry's own
+   *  react-hot-toast binding is a separate module instance in the
+   *  production chunk graph, so toasts dispatched there never reach the
+   *  mounted Toaster; this component's binding provably does. */
+  notifyError(message: string): void;
 };
 
 export type EmbeddablePlaygroundProps = {
@@ -246,6 +252,12 @@ function EmbeddableCore({
   const emu = useEmulator();
   const bp = useBreakpoint();
   const [source, setSource] = useState(startSource ?? "");
+  // Advisory pre-assembly lint: frame-balance and m4-hygiene warnings,
+  // refreshed shortly after the student stops typing. Warnings, never
+  // errors -- assembling stays available regardless.
+  const [lintWarnings, setLintWarnings] = useState<
+    Array<{ line: number; message: string }>
+  >([]);
   const [activeTab, setActiveTab] = useState<
     "memory" | "stack" | "console" | "term" | "watches" | "convert" | "memwatch" | "saves"
   >("memory");
@@ -373,7 +385,12 @@ function EmbeddableCore({
         recent.push(nameForRecents(prev), prev);
       }
       // A fresh program starts on a fresh machine: registers, memory,
-      // console, exit code, stdin queue, and VFS all clear.
+      // console, exit code, stdin queue, and VFS all clear. Breakpoints
+      // too -- reset deliberately keeps them for the SAME program, but a
+      // different program must not inherit another's gutter dots and CPU
+      // addresses (when the new program is shorter, those addresses were
+      // unreachable by any click and only a reload recovered).
+      emuRef.current.clearAllBreakpoints();
       emuRef.current.reset();
       // Interactive input is the point in the full playground: a program
       // that reads stdin should block at its scanf and pull the student to
@@ -810,16 +827,19 @@ function EmbeddableCore({
     if (emu.instructions.length === 0 || lastRunSourceRef.current !== source) {
       lastRunSourceRef.current = source;
       const ok = await emu.assemble(source, parseArgs(argsText));
-      if (ok) {
-        // Same post-assemble seeding as Run: the exercise's stdin and
-        // fixtures must be on the freshly reset machine before it runs.
-        applySeeds();
-        emu.run();
-        const startedAt = Date.now();
-        do {
-          await new Promise<void>((resolve) => setTimeout(resolve, 16));
-        } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
-      }
+      // A failed assemble must not reach the grader (mirroring runEmbed):
+      // grading the stale machine marked structural checks green against
+      // source that never built. The editor markers and the error banner
+      // already say why nothing was graded.
+      if (!ok) return;
+      // Same post-assemble seeding as Run: the exercise's stdin and
+      // fixtures must be on the freshly reset machine before it runs.
+      applySeeds();
+      emu.run();
+      const startedAt = Date.now();
+      do {
+        await new Promise<void>((resolve) => setTimeout(resolve, 16));
+      } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
     }
     onCheck?.(currentState());
   }, [emu, source, argsText, onCheck, currentState, applySeeds]);
@@ -843,6 +863,7 @@ function EmbeddableCore({
         if (!emuRef.current.blocked) emuRef.current.stepBack();
       },
       reset: () => emuRef.current.reset(),
+      notifyError: (message: string) => toast.error(message),
       loadSource: (next: string) => loadSource(next),
       loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
       getSource: () => sourceRef.current,
@@ -887,6 +908,16 @@ function EmbeddableCore({
 
   // Hidden file picker the terminal's `upload` command triggers.
   const terminalUploadRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void emuRef.current
+        .lint(source)
+        .then(setLintWarnings)
+        .catch(() => setLintWarnings([]));
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [source]);
   // Reads go through emuRef / sourceRef, not the render's hub object:
   // the hub is a new object every snapshot, so a closure over it freezes
   // mid-command state -- runProgram's wait loop would poll an isRunning
@@ -916,18 +947,37 @@ function EmbeddableCore({
       const verdict = await emuRef.current.assembleForTool(text, args.slice(1));
       applySeeds();
       if (!verdict.success) {
+        // The verdict is the only carrier of the assemble error here;
+        // dropping it left the student with a bare "[no exit]" line.
         const e = emuRef.current;
-        return { stdout: e.stdout, stderr: e.stderr, exitCode: e.exitCode ?? 0 };
+        const detail = verdict.error
+          ? verdict.errorLine != null
+            ? `line ${verdict.errorLine}: ${verdict.error}`
+            : verdict.error
+          : "";
+        return {
+          stdout: e.stdout,
+          stderr: [e.stderr, detail].filter(Boolean).join("\n"),
+          exitCode: null,
+        };
       }
-      // Any `< file` stdin goes on top of the reseeded working set.
-      if (stdin) emuRef.current.pushStdin(stdin);
+      // Any `< file` stdin goes on top of the reseeded working set. A
+      // redirect IS the whole input, so close stdin behind it: that is
+      // what lets a read-until-EOF loop finish, exactly like
+      // `./prog < file` on the course shell.
+      if (stdin !== undefined) {
+        emuRef.current.pushStdin(stdin);
+        emuRef.current.closeStdin();
+      }
       emuRef.current.run();
       await waitForHalt();
       const e = emuRef.current;
       return {
         stdout: e.stdout,
         stderr: e.stderr,
-        exitCode: e.exitCode ?? 0,
+        // null means "never exited" (blocked or timed out); the terminal
+        // says so instead of inventing an exit 0.
+        exitCode: e.exitCode,
       };
     };
     return {
@@ -1054,6 +1104,7 @@ function EmbeddableCore({
               breakpoints={emu.breakpoints}
               onToggleBreakpoint={emu.toggleBreakpoint}
               assemblyErrors={emu.assemblyErrors}
+              lintWarnings={lintWarnings}
               onCursorChange={setCursor}
             />
           </div>
@@ -1074,6 +1125,7 @@ function EmbeddableCore({
               exitCode={emu.exitCode}
               vfsFiles={emu.vfsFiles}
               pushStdin={emu.pushStdin}
+              closeStdin={emu.closeStdin}
               uploadVfsFile={stageVfsFile}
               clearConsole={emu.clearConsole}
             />
@@ -1164,6 +1216,7 @@ function EmbeddableCore({
           breakpoints={emu.breakpoints}
           onToggleBreakpoint={emu.toggleBreakpoint}
           assemblyErrors={isMain ? emu.assemblyErrors : []}
+          lintWarnings={isMain ? lintWarnings : []}
           onCursorChange={isMain ? setCursor : undefined}
           onFormat={() => {
             if (!isMain) return;
@@ -1243,6 +1296,7 @@ function EmbeddableCore({
       exitCode={emu.exitCode}
       vfsFiles={emu.vfsFiles}
       pushStdin={emu.pushStdin}
+      closeStdin={emu.closeStdin}
       uploadVfsFile={stageVfsFile}
       clearConsole={emu.clearConsole}
     />
@@ -1281,6 +1335,7 @@ function EmbeddableCore({
       pc={emu.pc}
       frameSlots={frameSlots}
       getMemory={emu.getMemory}
+      getMemoryMapped={emu.getMemoryMapped}
     />
   );
   const memWatchBlock = <MemoryWatches getMemory={emu.getMemory} />;
@@ -1509,6 +1564,7 @@ function EmbeddableCore({
         onPause={emu.pause}
         onReset={emu.reset}
         isRunning={emu.isRunning}
+        isAssembling={emu.isAssembling}
         isHalted={emu.isHalted}
         programLoaded={emu.programLoaded}
         blocked={emu.blocked}
@@ -1627,6 +1683,8 @@ export const EmbeddablePlayground = forwardRef<
         runOrQueue((handle) => handle.loadSource(next, label)),
       loadProgram: (payload: HandoffPayload) =>
         runOrQueue((handle) => handle.loadProgram(payload)),
+      notifyError: (message: string) =>
+        runOrQueue((handle) => handle.notifyError(message)),
       getSource: () => innerHandleRef.current?.getSource() ?? startSource ?? "",
       getArgs: () => innerHandleRef.current?.getArgs() ?? startArgs ?? "",
       getCursor: () =>

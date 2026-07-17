@@ -23,6 +23,10 @@ import {
 let emulator: Emulator | null = null;
 let frame = 0;
 let pauseRequested = false;
+// Bumped by every operation that replaces the machine (reset, assemble,
+// loadState, stepBack). A run loop that wakes into a different epoch is
+// driving a machine that no longer exists and must stand down.
+let runEpoch = 0;
 let wasmReady: Promise<void> | null = null;
 
 // Defer the WASM fetch + Emulator construction until the first
@@ -52,6 +56,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "assemble": {
+        runEpoch++;
         await ensureWasm();
         const emu = require_emulator();
         const result =
@@ -75,6 +80,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
           pc: Number(raw.pc as bigint | number),
           halted: Boolean(raw.halted),
           error: (raw.error as string | undefined) ?? null,
+          error_line: (raw.error_line as number | undefined) ?? null,
           outcome: (raw.outcome as string | undefined) ?? "advance",
           exitCode: raw.exit_code != null ? Number(raw.exit_code as bigint | number) : null,
         };
@@ -86,6 +92,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "stepBack": {
+        runEpoch++;
         await ensureWasm();
         const emu = require_emulator();
         const raw = emu.step_back() as Record<string, unknown>;
@@ -111,6 +118,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         // event queue between chunks so heartbeats actually fire and
         // pause requests are picked up.
         pauseRequested = false;
+        const epoch = runEpoch;
         const HEARTBEAT_STEPS = 10_000;
         let totalSteps = 0;
         let lastResult: RunResultPayload = {
@@ -133,10 +141,20 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
             steps_executed: stepsThis,
             hit_breakpoint: Boolean(raw.hit_breakpoint),
             error: (raw.error as string | undefined) ?? null,
+            error_line: (raw.error_line as number | undefined) ?? null,
           };
           bumpFrame();
           if (lastResult.error || lastResult.halted || lastResult.hit_breakpoint) break;
           if (emu.is_blocked()) break;
+          // Anti-wedge guard: a chunk that executed zero steps while the
+          // machine claims to be neither halted, blocked, nor stopped at a
+          // breakpoint can only repeat forever. Stop and say so rather
+          // than re-issuing chunks at full speed against a stuck CPU.
+          if (stepsThis === 0) {
+            lastResult.error =
+              "the emulator made no progress and was stopped; this is a playground bug -- use 'copy diagnostic bundle' to report it";
+            break;
+          }
           // Yield + heartbeat at most every ~50ms so panels stay
           // responsive without flooding postMessage.
           const now = performance.now();
@@ -144,11 +162,27 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
             postHeartbeat();
             lastHeartbeat = now;
             await new Promise<void>((resolve) => setTimeout(resolve, 0));
+            // The yield is where a reset/assemble can land; a stale run
+            // must stop driving the replaced machine.
+            if (epoch !== runEpoch) {
+              lastResult = { ...lastResult, cancelled: true };
+              break;
+            }
           }
         }
         // Fold totalSteps into the result so the caller can update its
         // step counter accurately even though we ran in chunks.
         lastResult.steps_executed = totalSteps;
+        // A fall-out of the while condition with nothing else to report
+        // means the budget alone stopped the run; say so, or an infinite
+        // loop reads as a clean finish.
+        lastResult.step_limit_reached =
+          totalSteps >= msg.maxSteps &&
+          !pauseRequested &&
+          !lastResult.halted &&
+          !lastResult.hit_breakpoint &&
+          !lastResult.error &&
+          !emu.is_blocked();
         post({
           id: msg.id,
           kind: "ok",
@@ -162,6 +196,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "reset": {
+        runEpoch++;
         await ensureWasm();
         const emu = require_emulator();
         emu.reset();
@@ -173,6 +208,46 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         await ensureWasm();
         const emu = require_emulator();
         emu.push_stdin(msg.text);
+        bumpFrame();
+        post({ id: msg.id, kind: "ok", value: snapshot() });
+        return;
+      }
+      case "lint": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build simply has no lint.
+        const probe = (emu as { lint_source?: (s: string) => unknown }).lint_source;
+        const warnings = typeof probe === "function" ? probe.call(emu, msg.source) : [];
+        post({ id: msg.id, kind: "ok", value: warnings });
+        return;
+      }
+      case "isRangeMapped": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build reports everything
+        // mapped, degrading to the previous zero-fill behavior.
+        const probe = (emu as { is_range_mapped?: (a: number, l: number) => boolean })
+          .is_range_mapped;
+        const mapped = typeof probe === "function" ? probe.call(emu, msg.addr, msg.len) : true;
+        post({ id: msg.id, kind: "ok", value: mapped });
+        return;
+      }
+      case "clearAllBreakpoints": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect for an older local wasm build.
+        const clear = (emu as { clear_all_breakpoints?: () => void }).clear_all_breakpoints;
+        if (typeof clear === "function") clear.call(emu);
+        post({ id: msg.id, kind: "ok", value: null });
+        return;
+      }
+      case "closeStdin": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build has no close_stdin,
+        // so end-of-input quietly stays unavailable instead of crashing.
+        const close = (emu as { close_stdin?: () => void }).close_stdin;
+        if (typeof close === "function") close.call(emu);
         bumpFrame();
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
@@ -225,6 +300,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         return;
       }
       case "loadState": {
+        runEpoch++;
         await ensureWasm();
         const emu = require_emulator();
         const ok = emu.load_state(msg.name);

@@ -6,6 +6,14 @@ import type { CheckResult } from "@/lib/content/exercise-checker";
 import { checkExercise } from "@/lib/content/exercise-checker";
 import { markSolved } from "@/lib/playground/solved-state";
 import { readShareHash } from "@/lib/playground/share";
+
+// readShareHash returns a discriminated verdict; these tests only
+// care about the ok payload.
+function okShareState(hash: string) {
+  const r = readShareHash(hash);
+  if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
+  return r.state;
+}
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 
 // Shared between the embed mock and the assertions: the snapshot the embed
@@ -151,7 +159,7 @@ describe("ExerciseView", () => {
     const link = screen.getByRole("link", { name: /open in playground/i });
     const href = link.getAttribute("href") ?? "";
     expect(href.startsWith("/playground#p2=")).toBe(true);
-    const decoded = readShareHash(href.slice("/playground".length));
+    const decoded = okShareState(href.slice("/playground".length));
     expect(decoded).toEqual({
       source: "// starter program\nret",
       args: "3 4",
@@ -166,7 +174,7 @@ describe("ExerciseView", () => {
     };
     render(<ExerciseView exercise={exercise} />);
     const link = screen.getByRole("link", { name: /open in playground/i });
-    const decoded = readShareHash(
+    const decoded = okShareState(
       (link.getAttribute("href") ?? "").slice("/playground".length),
     );
     expect(decoded).toEqual({ source: "// starter program\nret" });

@@ -36,6 +36,10 @@ export interface WatchPanelProps {
   pc: number;
   frameSlots: StackSlot[];
   getMemory: (addr: number, len: number) => Uint8Array;
+  /** Mapped verdict for a range: true/false once known, null while the
+   *  async fetch is in flight. Defaults to "always mapped" so mounts
+   *  without the surface keep the old zero-fill behavior. */
+  getMemoryMapped?: (addr: number, len: number) => boolean | null;
   labelAddresses?: Record<string, number>;
 }
 
@@ -44,6 +48,7 @@ export function WatchPanel({
   sp,
   frameSlots,
   getMemory,
+  getMemoryMapped = () => true,
   labelAddresses = {},
 }: WatchPanelProps) {
   const [watches, setWatches] = useState<string[]>(loadInitial);
@@ -72,25 +77,32 @@ export function WatchPanel({
         return null;
       },
       readMemory: (addr, size) => {
-        if (addr < 0n || addr > 0xFFFFFFFFFFFFFFFFn) return null;
+        if (addr < 0n || addr > 0xFFFFFFFFFFFFFFFFn) return "unmapped";
         const addrNum = Number(addr & 0xFFFFFFFFn);
+        // The mapped verdict must gate the bytes: get_memory_range
+        // deliberately zero-fills unmapped reads for the hex dump, so a
+        // null dereference used to render as a confident 0x0.
+        const mapped = getMemoryMapped(addrNum, size);
+        if (mapped === null) return "pending";
+        if (!mapped) return "unmapped";
         const bytes = getMemory(addrNum, size);
-        if (bytes.length === 0) return null;
+        if (bytes.length === 0) return "pending";
         let v = 0n;
         for (let i = bytes.length - 1; i >= 0; i--) {
           v = (v << 8n) | BigInt(bytes[i]);
         }
         return v;
       },
-      resolveSymbol: (name) => {
+      resolveSlotOffset: (name) => {
         const slot = frameSlots.find((s) => s.name === name);
-        if (slot) return BigInt(slot.offset);
+        return slot ? BigInt(slot.offset) : null;
+      },
+      resolveLabelAddress: (name) => {
         const addr = labelAddresses[name];
-        if (addr != null) return BigInt(addr);
-        return null;
+        return addr != null ? BigInt(addr) : null;
       },
     }),
-    [registers, sp, frameSlots, getMemory, labelAddresses],
+    [registers, sp, frameSlots, getMemory, getMemoryMapped, labelAddresses],
   );
 
   const submit = useCallback(() => {
@@ -169,7 +181,11 @@ export function WatchPanel({
                   }
                   title={"error" in result ? result.error : undefined}
                 >
-                  {"error" in result ? result.error : result.display}
+                  {"error" in result
+                    ? result.error
+                    : "pending" in result
+                      ? "..."
+                      : result.display}
                 </span>
                 <button
                   type="button"

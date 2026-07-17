@@ -4,9 +4,12 @@
  * error marker to surface context the student can act on, plus a link to
  * the relevant section of `docs/cpsc355-style-guide.md`.
  *
- * The Rust side sends flat strings via wasm-bindgen, so we recover the
- * variant by matching on the canonical prefix produced by `EmuError`'s
- * Display impl.
+ * The Rust side sends flat strings via wasm-bindgen. Assemble-stage
+ * errors arrive as the BARE inner message (the wasm boundary strips the
+ * "X error at line N:" Display prefix and ships the line separately), so
+ * every predicate here matches on substrings of the inner text; the
+ * prefix regex below only serves strings that arrive Display-formatted
+ * (runtime aborts pass through Display unchanged).
  */
 export type StyleSection =
   | "m4 preprocessing"
@@ -41,11 +44,19 @@ export function explainError(message: string): ErrorExplanation | null {
 
   // The five top-level prefix-matched variants come first; assembler /
   // parser / preprocess / link errors then dispatch on the inner detail.
+  if (lower.includes("ran past the last instruction")) {
+    return {
+      what: "Execution walked off the end of the program: the last instruction ran and nothing said stop.",
+      why: "main has no `ret` on its final path (with the matching epilogue if it pushed a frame), and no exit call, so the CPU kept fetching past your code.",
+      fix: "End main with the epilogue + `ret` pair (`ldp x29, x30, [sp], 16` then `ret`), or call exit. If main branches, make sure every path reaches the ret.",
+      styleSection: "general",
+    };
+  }
   if (lower.startsWith("unknown instruction")) {
     return {
       what: "The emulator's decoder did not recognize this 32-bit word as any AArch64 instruction it implements.",
-      why: "Either the encoding is for an extension the playground does not support, or earlier code wrote junk over the .text section so the next fetch saw garbage.",
-      fix: "If you wrote the instruction by hand, check the mnemonic and operand widths against the instruction reference. If the program ran for a while before this, look for an off-by-one stack write that overwrote your own code.",
+      why: "Execution usually got here by branching somewhere that holds data, not code -- a branch to a data label, a wrong jump-table entry, or a return address that was overwritten on the stack. (An instruction from an extension the playground does not implement reports this too.)",
+      fix: "Check where the shown address falls: if it is in .data/.rodata, find the branch that took you there; if it is in .text, compare the mnemonic against the instruction reference.",
       styleSection: "general",
     };
   }
@@ -58,7 +69,7 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "addressing modes",
     };
   }
-  if (lower.startsWith("invalid register index")) {
+  if (lower.includes("register index out of range")) {
     return {
       what: "An instruction referenced a register index outside 0..30.",
       why: "Almost always a typo (W32 instead of W3, X31 instead of XZR or SP) or a stale operand left over from refactoring.",
@@ -78,10 +89,18 @@ export function explainError(message: string): ErrorExplanation | null {
   }
   if (lower.startsWith("stack overflow")) {
     return {
-      what: "SP moved below the bottom of the stack page (the stack base is 0x80000000; it grows down).",
-      why: "Usually a missing `ldp fp, lr, [sp], dealloc` in the epilogue, or recursion deep enough that the per-call frame chain ate the page.",
-      fix: "Check that every prologue has a matching epilogue with the same dealloc. For deep recursion, increase the stack page size or convert to iteration.",
+      what: "SP moved more than 1 MiB below the stack base (0x80000000, growing down) -- far past any legitimate frame chain.",
+      why: "Recursion with no reachable base case is the usual cause; a prologue that repeats without its epilogue, or sp loaded from a register that was never set up, gets here too.",
+      fix: "Check the recursion's stopping condition first (does the base case compare the right register?). Then check that every prologue has a matching epilogue with the same dealloc.",
       styleSection: "general",
+    };
+  }
+  if (lower.includes("no terminating zero byte")) {
+    return {
+      what: "A string operation scanned 64 KiB from the shown address without finding the closing zero byte.",
+      why: "C strings end at a NUL. `.ascii` emits the characters WITHOUT one; `.asciz`/`.string` add it. A store past the end of a buffer can also overwrite the terminator.",
+      fix: "Declare the string with .asciz or .string, and check any loop that writes into the buffer stops before its last byte.",
+      styleSection: "naming conventions",
     };
   }
   if (lower.startsWith("argv layout")) {
@@ -137,6 +156,14 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "general",
     };
   }
+  if (detail.includes("unsupported section")) {
+    return {
+      what: "A .section directive names a section the playground does not lay out (only .text/.data/.rodata/.bss have addresses here).",
+      why: "gcc -S output carries linker-metadata sections like `.note.GNU-stack` or `.init_array` that only matter to a real ELF linker; the dot-separated name means the message may show just the first word of it.",
+      fix: "If the line is compiler metadata (`.note.GNU-stack`, `.init_array`, `.comment`), delete the line -- nothing references it. If you meant program data, use the plain `.data` or `.rodata` directive.",
+      styleSection: "section directives",
+    };
+  }
   if (detail.includes("section") && detail.includes("directive")) {
     return {
       what: "A section directive was used in a position the parser doesn't accept.",
@@ -177,23 +204,16 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "literal pool",
     };
   }
-  if (detail.includes("invalid utf-8") || detail.includes("invalid escape")) {
+  if (
+    detail.includes("unknown escape") ||
+    detail.includes("dangling backslash") ||
+    (detail.includes("escape") && (detail.includes("invalid") || detail.includes("incomplete")))
+  ) {
     return {
-      what: "A `.string`, `.asciz`, or `.ascii` directive contains characters the lexer cannot decode.",
-      why: "Only the standard escapes `\\n \\t \\r \\\\ \\' \\\" \\0 \\xNN` are recognized. A bare backslash followed by something else fails.",
-      fix: "Replace stray backslashes with `\\\\`, or rewrite the literal as raw bytes with `.byte 0xAB, 0xCD, ...`.",
+      what: "A string or character literal contains a backslash sequence the lexer does not recognize.",
+      why: "Only the standard escapes `\\n \\t \\r \\\\ \\' \\\" \\0 \\xNN` exist. A Windows path like \"C:\\dir\" reads `\\d` as an escape.",
+      fix: "Double every literal backslash (`C:\\\\dir`), or rewrite the data as raw bytes with `.byte 0xAB, 0xCD, ...`.",
       styleSection: "naming conventions",
-    };
-  }
-
-  // Fallback for any other wrapped error: still useful to point at the
-  // relevant section even when we don't have a tailored block.
-  if (inner) {
-    return {
-      what: message.replace(/\s+/g, " ").trim(),
-      why: "The frontend pipeline could not finish this stage on the source as written.",
-      fix: "Check the line shown in the editor margin, then re-read the relevant section of the style guide to confirm the directive or instruction shape.",
-      styleSection: "general",
     };
   }
 

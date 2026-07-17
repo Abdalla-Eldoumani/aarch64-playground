@@ -39,18 +39,73 @@ pub enum HostOutcome {
 /// Context passed to each host stub. Split out so stubs can borrow what
 /// they need without holding a `&mut Cpu` (which would conflict with the
 /// dispatcher's mutable borrow of the table).
+/// The exit status C hands around: `exit(int)`, `return` from `int main`,
+/// and the Linux exit syscalls all take a 32-bit value in w0. Reading x0 at
+/// full width made `exit(-1)` report 4294967295 while `return -1` reported
+/// -1. One reader keeps every exit route on the sign-extended int.
+pub fn exit_status(regs: &crate::registers::RegisterFile) -> i64 {
+    regs.read_gpr(0, false) as i32 as i64
+}
+
 pub struct HostContext<'a> {
     pub regs: &'a mut crate::registers::RegisterFile,
     pub mem: &'a mut crate::memory::Memory,
     pub stdout: &'a mut Vec<u8>,
     pub stderr: &'a mut Vec<u8>,
     pub stdin: &'a mut Vec<u8>,
+    /// True once the caller has signalled end-of-input (ctrl-d, or a
+    /// terminal `< file` redirect): an empty stdin then means EOF, not
+    /// "pause and wait for more".
+    pub stdin_closed: bool,
     pub vfs: &'a mut std::collections::HashMap<String, Vec<u8>>,
     pub open_files: &'a mut std::collections::HashMap<u32, crate::cpu::OpenFile>,
     pub next_fd: &'a mut u32,
     /// State for the rand/srand stubs. Lives on the `Cpu` (and in every
     /// snapshot) so draws are deterministic and replay-stable.
     pub rand_state: &'a mut u64,
+}
+
+/// AAPCS64 vararg cursor, shared by printf and scanf: both walk the same
+/// convention (ints in the next GP register through x7, doubles through
+/// d7, then a SHARED stack spill at the caller's SP advancing 8 bytes per
+/// arg). scanf once walked a bare register counter instead, so its 8th
+/// pointer read x8 -- a live scratch register -- rather than `[sp]`.
+pub(crate) struct VarargWalker {
+    /// Next GP register index. <= 7 means read xN; > 7 means spill.
+    pub(crate) gp_idx: u8,
+    /// Next SIMD register index. <= 7 means read dN; > 7 means spill.
+    pub(crate) fp_idx: u8,
+    /// Bytes above SP-at-call-site for the next spilled arg. Shared
+    /// between int and float spills per AAPCS64.
+    pub(crate) stack_off: u64,
+}
+
+impl VarargWalker {
+    pub(crate) fn next_int(&mut self, ctx: &mut HostContext<'_>) -> u64 {
+        if self.gp_idx <= 7 {
+            let v = ctx.regs.read_gpr(self.gp_idx, true);
+            self.gp_idx = self.gp_idx.saturating_add(1);
+            v
+        } else {
+            let sp = ctx.regs.read_sp();
+            let addr = sp.wrapping_add(self.stack_off);
+            self.stack_off = self.stack_off.wrapping_add(8);
+            ctx.mem.read_u64(addr).unwrap_or(0)
+        }
+    }
+
+    pub(crate) fn next_double(&mut self, ctx: &mut HostContext<'_>) -> f64 {
+        if self.fp_idx <= 7 {
+            let v = ctx.regs.read_fpr_f64(self.fp_idx);
+            self.fp_idx = self.fp_idx.saturating_add(1);
+            v
+        } else {
+            let sp = ctx.regs.read_sp();
+            let addr = sp.wrapping_add(self.stack_off);
+            self.stack_off = self.stack_off.wrapping_add(8);
+            ctx.mem.read_u64(addr).map(f64::from_bits).unwrap_or(0.0)
+        }
+    }
 }
 
 /// Table of host stubs, indexed by symbolic name and addressable via a
@@ -146,6 +201,7 @@ mod tests {
             stdout,
             stderr,
             stdin,
+            stdin_closed: false,
             vfs,
             open_files,
             next_fd,

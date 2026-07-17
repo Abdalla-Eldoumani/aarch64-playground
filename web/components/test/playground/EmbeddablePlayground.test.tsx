@@ -111,6 +111,8 @@ function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
     pause: vi.fn(),
     reset: vi.fn(),
     toggleBreakpoint: vi.fn(),
+    clearAllBreakpoints: vi.fn(),
+    lint: vi.fn(async () => []),
     getMemory: vi.fn(() => new Uint8Array()),
     pushStdin: vi.fn(),
     uploadVfsFile: vi.fn(),
@@ -265,6 +267,24 @@ describe("EmbeddablePlayground", () => {
       hub.run.mock.invocationCallOrder[0],
     );
     expect((onCheck.mock.calls[0][0] as EmbeddableState).exitCode).toBe(7);
+  });
+
+  it("checker Check never grades a program that failed to assemble", async () => {
+    const hub: Hub = makeHub({ exitCode: 7 });
+    hub.assemble = vi.fn().mockResolvedValue(false);
+    useEmulatorMock.mockReturnValue(hub);
+    const onCheck = vi.fn();
+    const { container } = render(
+      <EmbeddablePlayground chrome="checker" startSource="mvo x0, #1" onCheck={onCheck} />,
+    );
+    engage(container);
+    fireEvent.click(screen.getByLabelText("check"));
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalledTimes(1));
+    // The old unconditional callback graded the stale machine, ticking
+    // structural checks green against source that never built.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(hub.run).not.toHaveBeenCalled();
+    expect(onCheck).not.toHaveBeenCalled();
   });
 
   it("checker Check re-runs after a source edit, but not when the source is unchanged", async () => {

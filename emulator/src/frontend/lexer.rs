@@ -60,6 +60,45 @@ pub enum TokenKind {
     Hash,
 }
 
+/// Render one token the way it reads in source, for error messages. The
+/// derived Debug form leaked compiler internals (``unexpected token
+/// `StringLit([104, 105])```) into student-facing errors.
+pub fn describe(kind: &TokenKind) -> String {
+    match kind {
+        TokenKind::Ident(s) | TokenKind::DirectiveIdent(s) => format!("`{s}`"),
+        TokenKind::IntLit(v) => format!("`{v}`"),
+        TokenKind::FloatLit(v) => format!("`{v}`"),
+        TokenKind::CharLit(v) => match char::from_u32(*v) {
+            Some(c) => format!("a character literal ('{c}')"),
+            None => "a character literal".to_string(),
+        },
+        TokenKind::StringLit(_) => "a string literal".to_string(),
+        TokenKind::Comma => "`,`".to_string(),
+        TokenKind::Plus => "`+`".to_string(),
+        TokenKind::Minus => "`-`".to_string(),
+        TokenKind::Star => "`*`".to_string(),
+        TokenKind::Slash => "`/`".to_string(),
+        TokenKind::Percent => "`%`".to_string(),
+        TokenKind::Amp => "`&`".to_string(),
+        TokenKind::Pipe => "`|`".to_string(),
+        TokenKind::Caret => "`^`".to_string(),
+        TokenKind::Tilde => "`~`".to_string(),
+        TokenKind::Bang => "`!`".to_string(),
+        TokenKind::LShift => "`<<`".to_string(),
+        TokenKind::RShift => "`>>`".to_string(),
+        TokenKind::LParen => "`(`".to_string(),
+        TokenKind::RParen => "`)`".to_string(),
+        TokenKind::LBracket => "`[`".to_string(),
+        TokenKind::RBracket => "`]`".to_string(),
+        TokenKind::LBrace => "`{`".to_string(),
+        TokenKind::RBrace => "`}`".to_string(),
+        TokenKind::Dot => "`.`".to_string(),
+        TokenKind::Colon => "`:`".to_string(),
+        TokenKind::Equals => "`=`".to_string(),
+        TokenKind::Hash => "`#`".to_string(),
+    }
+}
+
 /// Lex a source string. `starting_line` is the 1-based line number of the
 /// first line of `source`, letting callers pass a single line from a larger
 /// file and still get correct error line numbers.
@@ -226,6 +265,44 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
                 });
                 continue;
             }
+            // `1e5` / `1e-3`: an integer-looking run that is really an
+            // exponent float (`is_int_body`'s hex range swallows the `e`).
+            // GAS reads these as floats in .double/.float lists; extend
+            // across a sign directly after the e/E and hand the text to
+            // the float path instead of calling it a bad integer.
+            let mut text = text;
+            let exponential = {
+                let b = text.as_bytes();
+                b.iter()
+                    .position(|&c| c == b'e' || c == b'E')
+                    .is_some_and(|p| {
+                        p > 0
+                            && b[..p].iter().all(u8::is_ascii_digit)
+                            && b[p + 1..].iter().all(u8::is_ascii_digit)
+                    })
+            };
+            if exponential {
+                if i < bytes.len()
+                    && (bytes[i] == b'+' || bytes[i] == b'-')
+                    && text.as_bytes().last().is_some_and(|&c| c == b'e' || c == b'E')
+                    && i + 1 < bytes.len()
+                    && bytes[i + 1].is_ascii_digit()
+                {
+                    i += 1;
+                    while i < bytes.len() && bytes[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    text = &source[start..i];
+                }
+                if let Ok(value) = text.parse::<f64>() {
+                    tokens.push(Token {
+                        kind: TokenKind::FloatLit(value),
+                        line,
+                        col,
+                    });
+                    continue;
+                }
+            }
             let value = parse_int(text).ok_or_else(|| {
                 lex_err(line, &format!("invalid integer literal `{text}`"))
             })?;
@@ -289,6 +366,31 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
                 col,
             });
             continue;
+        }
+        if b >= 0x80 {
+            // A non-ASCII byte outside a string literal is almost always a
+            // paste artifact (NBSP, curly quote, em dash). Name the real
+            // character, not its first byte latin-1-widened, and say where
+            // it came from so the student knows to retype the line.
+            let c = source[i..].chars().next().unwrap_or('\u{fffd}');
+            let name = match c {
+                '\u{a0}' => " (non-breaking space)",
+                '\u{2018}' | '\u{2019}' => " (curly single quote)",
+                '\u{201c}' | '\u{201d}' => " (curly double quote)",
+                '\u{2013}' => " (en dash)",
+                '\u{2014}' => " (em dash)",
+                '\u{200b}' => " (zero-width space)",
+                '\u{feff}' => " (byte-order mark)",
+                _ => "",
+            };
+            return Err(lex_err(
+                line,
+                &format!(
+                    "column {col}: non-ASCII character U+{:04X}{name} -- retype this line; \
+                     pasting from a PDF or web page often inserts invisible characters",
+                    c as u32
+                ),
+            ));
         }
         return Err(lex_err(line, &format!("unexpected character `{}`", b as char)));
     }
@@ -709,6 +811,25 @@ mod tests {
     #[test]
     fn unknown_char_errors() {
         assert!(lex("$", 1).is_err());
+    }
+
+    #[test]
+    fn non_ascii_char_is_named_with_its_code_point() {
+        // A pasted NBSP is invisible in the editor; the error must name it
+        // rather than echoing an unprintable byte.
+        let err = lex("mov x0,\u{a0}1", 3).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("U+00A0"), "message was: {msg}");
+        assert!(msg.contains("non-breaking space"), "message was: {msg}");
+        assert!(msg.contains("line 3"), "message was: {msg}");
+    }
+
+    #[test]
+    fn curly_quote_is_named_with_its_code_point() {
+        let err = lex("mov x0, \u{2019}a\u{2019}", 1).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("U+2019"), "message was: {msg}");
+        assert!(msg.contains("curly single quote"), "message was: {msg}");
     }
 
     #[test]

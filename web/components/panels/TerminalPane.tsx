@@ -150,15 +150,27 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
         writePrompt();
         return;
       }
-      const ctx = buildContextRef.current();
-      const result = await dispatchCommand(line, ctx);
-      if (result.control === "clear") {
-        t.clear();
+      // A rejection used to vanish into an unhandled promise: the command
+      // echoed, then nothing -- no output, no error, no prompt. Whatever
+      // happens, the student gets a line and their prompt back; the raw
+      // detail (often internal wording) goes to the console only.
+      try {
+        const ctx = buildContextRef.current();
+        const result = await dispatchCommand(line, ctx);
+        if (result.control === "clear") {
+          t.clear();
+          return;
+        }
+        writeLines(result.lines);
+      } catch (err) {
+        console.warn("terminal command failed:", err);
+        const name = line.split(/\s+/)[0] ?? line;
+        writeLines([
+          `${name}: the command failed unexpectedly -- try again, or press reset`,
+        ]);
+      } finally {
         writePrompt();
-        return;
       }
-      writeLines(result.lines);
-      writePrompt();
     },
     [writePrompt, writeLines],
   );
@@ -248,6 +260,12 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
 
     // Paste support (mobile keyboards, clipboard).
     const pasteSub = term.onData((data) => {
+      // xterm fires onKey AND onData for the same keypress with the same
+      // string, and special keys (arrows, Home, Delete, F-keys) arrive as
+      // multi-character escape sequences. Those belong to onKey alone: fed
+      // into the buffer they are invisible on screen but corrupt the
+      // submitted command and scramble the scrollback on repaint.
+      if (data.charCodeAt(0) === 0x1b) return;
       // Only treat multi-character data as a paste; single-char keys are
       // already handled by onKey above.
       if (data.length <= 1) return;
@@ -260,12 +278,20 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       // submit a separate command.
       s.handlePrintable(lines[0]);
       repaintInput();
-      for (let i = 1; i < lines.length; i++) {
-        const submitted = s.takeSubmission();
-        if (submitted) void runLine(submitted);
-        if (lines[i]) s.handlePrintable(lines[i]);
-        repaintInput();
-      }
+      if (lines.length === 1) return;
+      // Serialize the pasted commands: each must FINISH before the next
+      // dispatches. Fire-and-forget ran them concurrently, so the course
+      // toolchain paste (m4 > prog.s, gcc prog.s, ./prog) failed
+      // deterministically -- gcc read prog.s before m4 wrote it, with
+      // the errors printing in reverse causal order.
+      void (async () => {
+        for (let i = 1; i < lines.length; i++) {
+          const submitted = s.takeSubmission();
+          if (submitted) await runLine(submitted);
+          if (lines[i]) s.handlePrintable(lines[i]);
+          repaintInput();
+        }
+      })();
     });
 
     // Refit on container resize -- important when the parent panel

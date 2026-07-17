@@ -30,9 +30,17 @@ export interface EmulatorBackend {
   pause(): Promise<void>;
   reset(): Promise<StateSnapshot>;
   pushStdin(text: string): Promise<StateSnapshot>;
+  /** Signal end-of-input (ctrl-d / a fully-queued redirect). */
+  closeStdin(): Promise<StateSnapshot>;
   getMemory(addr: number, len: number): Promise<Uint8Array>;
+  /** Whether every page in the range is mapped (watch fault display). */
+  isRangeMapped(addr: number, len: number): Promise<boolean>;
+  /** Pre-assembly structural lint warnings (advisory, line + remedy). */
+  lint(source: string): Promise<Array<{ line: number; message: string }>>;
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
+  /** Remove every breakpoint at once (program switch / re-assemble). */
+  clearAllBreakpoints(): Promise<void>;
   saveState(name: string): Promise<StateSnapshot>;
   loadState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }>;
   deleteState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }>;
@@ -60,6 +68,10 @@ export interface EmulatorBackend {
 class MainThreadBackend implements EmulatorBackend {
   private emu: EmulatorInstance | null = null;
   private frame = 0;
+  // Bumped by every machine-replacing operation; a run loop that wakes
+  // into a different epoch stands down (see runUntilBreak).
+  private runEpoch = 0;
+  private pauseRequested = false;
   private listeners = new Set<(snap: StateSnapshot) => void>();
 
   async init(): Promise<StateSnapshot> {
@@ -71,6 +83,7 @@ class MainThreadBackend implements EmulatorBackend {
     source: string,
     args: string[],
   ): Promise<{ result: AssembleResultPayload; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     const emu = this.requireEmu();
     const raw = args.length > 0
       ? emu.assembleAndLoadWithArgs(source, args)
@@ -92,6 +105,7 @@ class MainThreadBackend implements EmulatorBackend {
       pc: raw.pc,
       halted: raw.halted,
       error: raw.error,
+      error_line: raw.error_line,
       outcome: raw.outcome ?? "advance",
       exitCode: raw.exitCode,
     };
@@ -100,12 +114,14 @@ class MainThreadBackend implements EmulatorBackend {
   }
 
   async stepBack(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     const emu = this.requireEmu();
     const raw = emu.stepBack();
     const stepResult: StepResultPayload = {
       pc: raw.pc,
       halted: raw.halted,
       error: raw.error,
+      error_line: raw.error_line,
       outcome: raw.outcome ?? "advance",
       exitCode: raw.exitCode,
     };
@@ -117,6 +133,8 @@ class MainThreadBackend implements EmulatorBackend {
     maxSteps: number,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
     const emu = this.requireEmu();
+    const epoch = this.runEpoch;
+    this.pauseRequested = false;
     // Run in chunks so we can yield to the UI thread between batches
     // and emit snapshots that look like worker heartbeats.
     const HEARTBEAT_STEPS = 10_000;
@@ -137,19 +155,51 @@ class MainThreadBackend implements EmulatorBackend {
       this.notify(this.snapshot());
       if (raw.error || raw.halted || raw.hit_breakpoint) break;
       if (emu.isBlocked()) break;
-      // Yield to the UI thread between chunks so panels paint.
+      // Anti-wedge guard, mirroring the worker: a chunk that executed
+      // zero steps while the machine claims to be neither halted,
+      // blocked, nor at a breakpoint can only repeat forever.
+      if (raw.steps_executed === 0) {
+        lastResult = {
+          ...raw,
+          error:
+            "the emulator made no progress and was stopped; this is a playground bug -- use 'copy diagnostic bundle' to report it",
+        };
+        break;
+      }
+      // Yield to the UI thread between chunks so panels paint. It is
+      // also where a reset/assemble can land; a stale run stands down.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (this.pauseRequested) break;
+      if (epoch !== this.runEpoch) {
+        lastResult = { ...lastResult, cancelled: true };
+        break;
+      }
     }
-    lastResult = { ...lastResult, steps_executed: totalSteps };
+    lastResult = {
+      ...lastResult,
+      steps_executed: totalSteps,
+      // Mirror the worker: a budget-only stop must say so, or an
+      // infinite loop reads as a clean finish.
+      step_limit_reached:
+        totalSteps >= maxSteps &&
+        !lastResult.halted &&
+        !lastResult.hit_breakpoint &&
+        !lastResult.error &&
+        !emu.isBlocked(),
+    };
     return { runResult: lastResult, snapshot: this.snapshot() };
   }
 
   async pause(): Promise<void> {
-    // Run loop runs synchronously chunk-by-chunk; nothing to flag.
-    return undefined;
+    // Observed by runUntilBreak at its between-chunk yield, mirroring the
+    // worker's flag -- the comment that claimed there was "nothing to
+    // flag" was wrong, and the loop ran all remaining chunks while the
+    // button already showed run again.
+    this.pauseRequested = true;
   }
 
   async reset(): Promise<StateSnapshot> {
+    this.runEpoch++;
     this.requireEmu().reset();
     this.frame++;
     return this.notifyAndReturn(this.snapshot());
@@ -157,6 +207,12 @@ class MainThreadBackend implements EmulatorBackend {
 
   async pushStdin(text: string): Promise<StateSnapshot> {
     this.requireEmu().pushStdin(text);
+    this.frame++;
+    return this.notifyAndReturn(this.snapshot());
+  }
+
+  async closeStdin(): Promise<StateSnapshot> {
+    this.requireEmu().closeStdin();
     this.frame++;
     return this.notifyAndReturn(this.snapshot());
   }
@@ -173,12 +229,25 @@ class MainThreadBackend implements EmulatorBackend {
     this.requireEmu().clearBreakpoint(addr);
   }
 
+  async clearAllBreakpoints(): Promise<void> {
+    this.requireEmu().clearAllBreakpoints();
+  }
+
+  async isRangeMapped(addr: number, len: number): Promise<boolean> {
+    return this.requireEmu().isRangeMapped(addr, len);
+  }
+
+  async lint(source: string): Promise<Array<{ line: number; message: string }>> {
+    return this.requireEmu().lintSource(source);
+  }
+
   async saveState(name: string): Promise<StateSnapshot> {
     this.requireEmu().saveState(name);
     return this.notifyAndReturn(this.snapshot());
   }
 
   async loadState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     const ok = this.requireEmu().loadState(name);
     if (ok) this.frame++;
     return this.notifyAndReturn({ ok, snapshot: this.snapshot() });

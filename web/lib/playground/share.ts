@@ -21,6 +21,29 @@ export interface ShareOptions {
 }
 
 /**
+ * The four distinct outcomes of reading a location hash. Collapsing the
+ * failure kinds into null made a truncated link silently boot the default
+ * buffer -- an absent banner was the only signal.
+ */
+export type ShareReadResult =
+  | { kind: "none" }
+  | { kind: "ok"; state: ShareState }
+  | { kind: "corrupt" }
+  | { kind: "too-large" };
+
+/** djb2 over the source, hex, as a paste-corruption checksum. Not a
+ *  security boundary: it exists to catch the one-character mangles a
+ *  chat app or a partial copy introduces, which can decode to a valid
+ *  payload whose source differs from what the sender shared. */
+function sourceChecksum(source: string): string {
+  let h = 5381;
+  for (let i = 0; i < source.length; i++) {
+    h = ((h << 5) + h + source.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(16);
+}
+
+/**
  * Encode the editor state as a shareable URL hash. lz-string's
  * `compressToEncodedURIComponent` keeps the payload safe inside a
  * `#p2=...` fragment and survives copy-paste through chat apps. The
@@ -29,31 +52,51 @@ export interface ShareOptions {
  * shared before this change keep working.
  */
 export function buildShareHash(state: ShareState): string {
-  const json = JSON.stringify(state);
+  const json = JSON.stringify({ ...state, h: sourceChecksum(state.source) });
   return `#${PREFIX_V2}${LZString.compressToEncodedURIComponent(json)}`;
 }
 
 /**
- * Parse a share hash (with or without leading `#`). Tries the v2 JSON
- * payload first, then falls back to the v1 source-only form. Returns
- * `null` if the hash isn't ours or the payload is malformed.
+ * lz-string does not fail closed: a fragment whose 2-bit header bits
+ * decode to the unhandled case leaves the decoder's state undefined and
+ * it throws mid-stream instead of returning null. readShareHash runs
+ * during render on boot, so an uncontained throw is a blank page.
  */
-export function readShareHash(hash: string): ShareState | null {
+function safeDecompress(compressed: string): string | null {
+  try {
+    return LZString.decompressFromEncodedURIComponent(compressed);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a share hash (with or without leading `#`). Tries the v2 JSON
+ * payload first, then falls back to the v1 source-only form. The prefix
+ * check runs FIRST so the caps and decode failures apply only to hashes
+ * that are provably ours, and each failure keeps its identity.
+ */
+export function readShareHash(hash: string): ShareReadResult {
   const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
-  // Decompression-bomb guard: bound the raw (still-compressed) fragment
-  // before lz-string runs, so a tiny payload can't expand to exhaust the
-  // tab. The caller falls back to the default editor state on null.
-  if (trimmed.length > MAX_SHARE_HASH_BYTES) return null;
   if (trimmed.startsWith(PREFIX_V2)) {
     const compressed = trimmed.slice(PREFIX_V2.length);
-    const decoded = LZString.decompressFromEncodedURIComponent(compressed);
-    if (!decoded) return null;
-    if (decoded.length > MAX_SHARE_DECOMPRESSED_BYTES) return null;
+    // Bomb wall: bound the raw fragment before lz-string runs (see
+    // MAX_SHARE_HASH_BYTES for the sizing math).
+    if (compressed.length > MAX_SHARE_HASH_BYTES) return { kind: "too-large" };
+    const decoded = safeDecompress(compressed);
+    if (!decoded) return { kind: "corrupt" };
+    if (decoded.length > MAX_SHARE_DECOMPRESSED_BYTES) return { kind: "too-large" };
     try {
       const parsed = JSON.parse(decoded) as unknown;
-      if (parsed == null || typeof parsed !== "object") return null;
+      if (parsed == null || typeof parsed !== "object") return { kind: "corrupt" };
       const o = parsed as Record<string, unknown>;
-      if (typeof o.source !== "string") return null;
+      if (typeof o.source !== "string") return { kind: "corrupt" };
+      // Checksum (v2 links carry one): a mangled fragment can decode to a
+      // VALID payload with a different program; 17 of 68 one-character
+      // substitutions did in the audit. Old links without it still load.
+      if (typeof o.h === "string" && o.h !== sourceChecksum(o.source)) {
+        return { kind: "corrupt" };
+      }
       const out: ShareState = { source: o.source };
       if (typeof o.args === "string") out.args = o.args;
       if (typeof o.stdin === "string") out.stdin = o.stdin;
@@ -66,19 +109,20 @@ export function readShareHash(hash: string): ShareState | null {
         const c = o.cursor as { line: number; column: number };
         out.cursor = { line: c.line, column: c.column };
       }
-      return out;
+      return { kind: "ok", state: out };
     } catch {
-      return null;
+      return { kind: "corrupt" };
     }
   }
   if (trimmed.startsWith(PREFIX_V1)) {
     const compressed = trimmed.slice(PREFIX_V1.length);
-    const decoded = LZString.decompressFromEncodedURIComponent(compressed);
-    if (!decoded || decoded.length === 0) return null;
-    if (decoded.length > MAX_SHARE_DECOMPRESSED_BYTES) return null;
-    return { source: decoded };
+    if (compressed.length > MAX_SHARE_HASH_BYTES) return { kind: "too-large" };
+    const decoded = safeDecompress(compressed);
+    if (!decoded || decoded.length === 0) return { kind: "corrupt" };
+    if (decoded.length > MAX_SHARE_DECOMPRESSED_BYTES) return { kind: "too-large" };
+    return { kind: "ok", state: { source: decoded } };
   }
-  return null;
+  return { kind: "none" };
 }
 
 /**

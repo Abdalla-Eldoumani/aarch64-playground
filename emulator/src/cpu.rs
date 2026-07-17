@@ -30,6 +30,11 @@ pub const BSS_BASE: u64 = 0x0070_0000;
 /// Initial stack pointer (grows downward).
 pub const STACK_BASE: u64 = 0x8000_0000;
 
+/// Lowest address sp may legally reach: 1 MiB of stack. Course programs
+/// use a few KiB; only unbounded recursion (or a garbage sp) gets here,
+/// and it deserves a stack-overflow message, not the memory-cap one.
+pub const STACK_FLOOR: u64 = STACK_BASE - 1024 * 1024;
+
 /// Base address of the synthetic host-function stubs. `BL` targets inside
 /// this range are intercepted by the executor and dispatched to a Rust
 /// implementation (printf, scanf, etc.) instead of being executed as real
@@ -55,6 +60,37 @@ pub const MEMORY_CAP_MESSAGE: &str = "stopped -- program tried to use too much m
 /// hit. Built dynamically so the count always matches `MAX_TOTAL_STEPS`.
 pub fn step_ceiling_message() -> String {
     format!("stopped after {MAX_TOTAL_STEPS} steps -- possible infinite loop")
+}
+
+/// Cumulative stdout+stderr ceiling (the output-flood wall). The step and
+/// page walls do not cover printing: one printf is one step, and the host
+/// buffers live outside guest pages, so a print in a tight loop -- or one
+/// crafted wide-format call -- could grow the console without bound. The
+/// counter survives the UI draining the buffers, so it measures what the
+/// program produced, not what happens to be queued. 4 MiB dwarfs any real
+/// course program's output.
+pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+
+/// Map a Write fault into the calm page-cap message. Stores are the only
+/// writer that faults (memory.rs's cap check is the sole producer), so a
+/// Write fault anywhere -- executing code, a host stub, or loading an
+/// image whose sections need pages the budget no longer covers -- always
+/// means the cap, never a raw internal fault worth showing a student.
+fn map_write_fault(e: EmuError) -> EmuError {
+    match e {
+        EmuError::MemoryFault { access: MemAccess::Write, .. } => EmuError::RuntimeError {
+            message: MEMORY_CAP_MESSAGE.to_string(),
+        },
+        other => other,
+    }
+}
+
+/// Calm, plain-language abort surfaced when the output ceiling is hit.
+pub fn output_ceiling_message() -> String {
+    format!(
+        "stopped -- the program printed over {} MiB of output; check for a print inside a loop that never ends",
+        MAX_OUTPUT_BYTES / (1024 * 1024)
+    )
 }
 
 /// What happened during a single step, beyond the "did it advance or halt"
@@ -122,6 +158,9 @@ pub struct Cpu {
     pub stderr: Vec<u8>,
     /// Bytes pushed by the frontend; scanf/read(0) drain them.
     pub stdin: Vec<u8>,
+    /// True once the caller signalled end-of-input; getchar/read/scanf
+    /// answer EOF instead of blocking when stdin is empty.
+    pub stdin_closed: bool,
     /// True when the last step stalled in scanf/read with an empty stdin;
     /// cleared automatically when more stdin arrives.
     pub blocked: bool,
@@ -156,11 +195,20 @@ pub struct Cpu {
     /// the `MAX_TOTAL_STEPS` runaway-loop wall; persistent across repeated
     /// `run_until_break` calls so chunked running still reaches the ceiling.
     steps_total: u64,
+    /// Cumulative stdout+stderr bytes since the last load/reset. Drives the
+    /// `MAX_OUTPUT_BYTES` wall; survives the UI draining the buffers.
+    output_total: usize,
     /// Set when a bound (step ceiling or memory cap) aborts the run. The
     /// run/step result carries it through `error` while `halted` stays true,
     /// so the UI shows a calm message instead of a silent stop or a raw
     /// fault. Cleared on load/reset.
     pub abort_message: Option<String>,
+    /// First address past the loaded program's last instruction. A fetch
+    /// landing exactly here means execution fell off the end (a main with
+    /// no ret), which deserves its own message -- without the guard the
+    /// zero-filled page decoded as `unknown instruction: 0x00000000` and
+    /// the teaching layer guessed at causes that never happened.
+    text_end: Option<u64>,
 }
 
 impl Cpu {
@@ -176,6 +224,7 @@ impl Cpu {
             stdout: Vec::new(),
             stderr: Vec::new(),
             stdin: Vec::new(),
+            stdin_closed: false,
             blocked: false,
             exit_code: None,
             vfs: HashMap::new(),
@@ -186,7 +235,9 @@ impl Cpu {
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
             steps_total: 0,
+            output_total: 0,
             abort_message: None,
+            text_end: None,
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -246,7 +297,9 @@ impl Cpu {
         self.halted = false;
         // A freshly loaded program starts a fresh runaway budget.
         self.steps_total = 0;
+        self.output_total = 0;
         self.abort_message = None;
+        self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
     }
 
     /// Load a `LinkedImage` from `frontend::pipeline`. Writes each (addr,
@@ -272,9 +325,11 @@ impl Cpu {
         // A fresh program starts a fresh runaway budget and clears any
         // prior bounds-abort message.
         self.steps_total = 0;
+        self.output_total = 0;
         self.abort_message = None;
+        self.stdin_closed = false;
         for (addr, bytes) in &image.writes {
-            self.mem.write_bytes(*addr, bytes)?;
+            self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
         self.regs.write_pc(image.entry_point);
         // Stash the `__main_return` sentinel in LR so a hosted program
@@ -283,12 +338,13 @@ impl Cpu {
         if let Some(ret_addr) = self.host.lookup("__main_return") {
             self.regs.write_gpr(30, true, ret_addr);
         }
-        crate::argv::setup_argv(&mut self.regs, &mut self.mem, args)?;
+        crate::argv::setup_argv(&mut self.regs, &mut self.mem, args).map_err(map_write_fault)?;
         self.halted = false;
         // Refresh the symbol table from the linker so debugger
         // surfaces (`gdb b <label>`, future symbolic features) can
         // resolve names without going through the frontend again.
         self.symbols = image.symbols.clone();
+        self.text_end = Some(image.text_end);
         Ok(())
     }
 
@@ -331,7 +387,7 @@ impl Cpu {
                             }
                         }
                     }
-                    Item::Label(_) => {}
+                    Item::Label { .. } => {}
                     Item::SymbolAssignment { .. } => {}
                     Item::Instruction { .. } => {
                         offset += 4;
@@ -364,6 +420,48 @@ impl Cpu {
     fn memory_cap_halt(&mut self) -> StepResult {
         self.halted = true;
         let msg = MEMORY_CAP_MESSAGE.to_string();
+        self.abort_message = Some(msg.clone());
+        StepResult {
+            pc: self.regs.read_pc(),
+            halted: true,
+            error: Some(msg),
+            outcome: StepOutcome::Halted,
+        }
+    }
+
+    /// Add whatever a host stub or syscall just printed to the cumulative
+    /// output counter; true means the `MAX_OUTPUT_BYTES` wall is breached.
+    /// `before` is `stdout.len() + stderr.len()` captured before the call,
+    /// so UI drains between steps never reset the accounting.
+    fn charge_output(&mut self, before: usize) -> bool {
+        let now = self.stdout.len() + self.stderr.len();
+        self.output_total += now.saturating_sub(before);
+        self.output_total > MAX_OUTPUT_BYTES
+    }
+
+    /// Build the calm output-ceiling halt, mirroring `memory_cap_halt`.
+    fn output_cap_halt(&mut self) -> StepResult {
+        self.halted = true;
+        let msg = output_ceiling_message();
+        self.abort_message = Some(msg.clone());
+        StepResult {
+            pc: self.regs.read_pc(),
+            halted: true,
+            error: Some(msg),
+            outcome: StepOutcome::Halted,
+        }
+    }
+
+    /// Convert a propagated runtime error -- a fetch fault, an undecodable
+    /// word, an executor fault, or a failed host stub / syscall -- into the
+    /// same calm halt the bounds use. Without this boundary the CPU stayed
+    /// live at the faulting PC: Step re-derived the identical error forever,
+    /// Run re-issued chunks against the wedged machine at full speed, and
+    /// `is_halted()` disagreed with the step payload. PC is left unadvanced
+    /// so the fault resolves to the line that raised it.
+    fn runtime_error_halt(&mut self, e: EmuError) -> StepResult {
+        self.halted = true;
+        let msg = e.to_string();
         self.abort_message = Some(msg.clone());
         StepResult {
             pc: self.regs.read_pc(),
@@ -416,6 +514,14 @@ impl Cpu {
             });
         }
 
+        // Stack wall: sp far below the base is runaway recursion (or a
+        // frame pointer that was never set up). Without this check the
+        // store path silently mapped page after page downward until the
+        // memory cap fired blaming "too much memory" -- the wrong cause.
+        if self.regs.read_sp() < STACK_FLOOR {
+            return Ok(self.runtime_error_halt(EmuError::StackOverflow));
+        }
+
         let pc = self.regs.read_pc();
 
         // Snapshot CPU state before we touch anything so `step_back` can
@@ -429,6 +535,7 @@ impl Cpu {
             blocked: self.blocked,
             exit_code: self.exit_code,
             stdin: self.stdin.clone(),
+            stdin_closed: self.stdin_closed,
             vfs: self.vfs.clone(),
             open_files: self.open_files.clone(),
             next_fd: self.next_fd,
@@ -446,19 +553,49 @@ impl Cpu {
             // A page-cap write fault inside a hosted libc routine (e.g. a
             // buffer-filling scanf when the program has already neared the
             // cap) gets the same calm halt as a write in normal code, never
-            // a raw fault.
-            return match self.dispatch_host_stub(pc) {
+            // a raw fault. Any other stub failure halts calmly too.
+            let produced = self.stdout.len() + self.stderr.len();
+            let dispatched = self.dispatch_host_stub(pc);
+            if self.charge_output(produced) {
+                return Ok(self.output_cap_halt());
+            }
+            return match dispatched {
                 Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
                     Ok(self.memory_cap_halt())
                 }
+                Err(e) => Ok(self.runtime_error_halt(e)),
                 other => other,
             };
         }
 
+        // Fell off the end of the program: the previous instruction was the
+        // image's last and nothing branched. Name the real cause instead of
+        // decoding the padding that happens to live here.
+        if self.text_end == Some(pc) {
+            self.halted = true;
+            let msg = "execution ran past the last instruction of the program -- \
+                       main needs a `ret` (with an epilogue if it pushed one) or an \
+                       exit call as its final step"
+                .to_string();
+            self.abort_message = Some(msg.clone());
+            return Ok(StepResult {
+                pc,
+                halted: true,
+                error: Some(msg),
+                outcome: StepOutcome::Halted,
+            });
+        }
+
         let snapshot = self.regs.snapshot();
         let fpr_snapshot = self.regs.snapshot_fpr();
-        let word = self.mem.read_u32(pc)?;
-        let instr = decoder::decode(word)?;
+        let word = match self.mem.read_u32(pc) {
+            Ok(w) => w,
+            Err(e) => return Ok(self.runtime_error_halt(e)),
+        };
+        let instr = match decoder::decode(word) {
+            Ok(i) => i,
+            Err(e) => return Ok(self.runtime_error_halt(e)),
+        };
         let result = match executor::execute(&instr, &mut self.regs, &mut self.mem) {
             Ok(r) => r,
             Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
@@ -469,7 +606,7 @@ impl Cpu {
                 // here is unambiguously the cap.)
                 return Ok(self.memory_cap_halt());
             }
-            Err(e) => return Err(e),
+            Err(e) => return Ok(self.runtime_error_halt(e)),
         };
 
         // advance PC if the instruction didn't branch
@@ -494,12 +631,17 @@ impl Cpu {
                 // a buffer when the program has already neared the cap) gets
                 // the same calm halt as a write in normal code, never a raw
                 // fault.
-                match self.dispatch_syscall(syscall_num) {
+                let produced = self.stdout.len() + self.stderr.len();
+                let dispatched = self.dispatch_syscall(syscall_num);
+                if self.charge_output(produced) {
+                    return Ok(self.output_cap_halt());
+                }
+                match dispatched {
                     Ok(()) => {}
                     Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
                         return Ok(self.memory_cap_halt());
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => return Ok(self.runtime_error_halt(e)),
                 }
                 // After a syscall returns normally, PC moves past the svc.
                 if !self.blocked {
@@ -550,6 +692,14 @@ impl Cpu {
         self.blocked = false;
     }
 
+    /// Signal end-of-input (ctrl-d / a redirected file fully queued).
+    /// A blocked read resumes and sees EOF; the canonical
+    /// read-until-EOF loop can finally terminate.
+    pub fn close_stdin(&mut self) {
+        self.stdin_closed = true;
+        self.blocked = false;
+    }
+
     /// Drain accumulated stdout as a byte vector, clearing the buffer.
     pub fn take_stdout(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.stdout)
@@ -571,8 +721,27 @@ impl Cpu {
     }
 
     /// Register a virtual file the VFS-backed syscalls can read from.
-    pub fn upload_vfs_file(&mut self, path: String, data: Vec<u8>) {
+    /// Enforces the same walls as the syscall path (per-file, whole-VFS,
+    /// file count) so an upload cannot bypass what `write` refuses; the
+    /// web layer pre-checks with matching caps, so a `false` here means a
+    /// caller skipped its own guard. Returns whether the file was stored.
+    pub fn upload_vfs_file(&mut self, path: String, data: Vec<u8>) -> bool {
+        use crate::hosted::syscalls::{
+            MAX_VFS_FILES, MAX_VFS_FILE_BYTES, MAX_VFS_TOTAL_BYTES,
+        };
+        if data.len() > MAX_VFS_FILE_BYTES {
+            return false;
+        }
+        let replaced = self.vfs.get(&path).map_or(0, Vec::len);
+        let total: usize = self.vfs.values().map(Vec::len).sum();
+        if total - replaced + data.len() > MAX_VFS_TOTAL_BYTES {
+            return false;
+        }
+        if !self.vfs.contains_key(&path) && self.vfs.len() >= MAX_VFS_FILES {
+            return false;
+        }
         self.vfs.insert(path, data);
+        true
     }
 
     /// Dispatch a Linux syscall (`svc #0` with x8 != 0). Applies the
@@ -585,6 +754,7 @@ impl Cpu {
             stdout: &mut self.stdout,
             stderr: &mut self.stderr,
             stdin: &mut self.stdin,
+            stdin_closed: self.stdin_closed,
             vfs: &mut self.vfs,
             open_files: &mut self.open_files,
             next_fd: &mut self.next_fd,
@@ -619,6 +789,7 @@ impl Cpu {
             stdout: &mut self.stdout,
             stderr: &mut self.stderr,
             stdin: &mut self.stdin,
+            stdin_closed: self.stdin_closed,
             vfs: &mut self.vfs,
             open_files: &mut self.open_files,
             next_fd: &mut self.next_fd,
@@ -707,15 +878,27 @@ impl Cpu {
             steps += 1;
         }
 
+        let pc = self.regs.read_pc();
+        // Both backends drive a run as a series of max_steps chunks, and the
+        // first-step resume exemption above would silently skip a breakpoint
+        // sitting exactly on a chunk boundary. If the budget (not a halt or
+        // a stall) ended this call while PC rests on a breakpoint, report the
+        // hit now, before the next chunk's first step would step past it.
+        let at_cap = steps >= max_steps && !self.halted && !self.blocked;
         Ok(RunResult {
-            pc: self.regs.read_pc(),
+            pc,
             halted: self.halted,
             steps_executed: steps,
-            hit_breakpoint: false,
+            hit_breakpoint: at_cap && self.breakpoints.contains(&pc),
             // Surface a bounds abort (step ceiling / memory cap) through
-            // `error` so the UI shows the calm message; `None` on a normal
-            // halt, a breakpoint, or a max_steps stop.
-            error: self.abort_message.clone(),
+            // `error` so the UI shows the calm message. Gated on `halted` so
+            // a run resumed from a restored save never re-reports the abort
+            // that an earlier, pre-restore run recorded.
+            error: if self.halted {
+                self.abort_message.clone()
+            } else {
+                None
+            },
         })
     }
 
@@ -755,10 +938,12 @@ impl Cpu {
         self.changed_fprs.clear();
         self.halted = false;
         self.steps_total = 0;
+        self.output_total = 0;
         self.abort_message = None;
         self.stdout.clear();
         self.stderr.clear();
         self.stdin.clear();
+        self.stdin_closed = false;
         self.blocked = false;
         self.exit_code = None;
         self.vfs.clear();
@@ -774,6 +959,12 @@ impl Cpu {
         // Drain dirty so the next snapshot doesn't surface fake writes
         // from the page-mapping work above.
         let _ = self.mem.take_dirty();
+    }
+
+    /// First address past the loaded program's last instruction, if a
+    /// program is loaded. See the fall-through guard in `step`.
+    pub fn text_end(&self) -> Option<u64> {
+        self.text_end
     }
 
     /// Whether the CPU has at least one recorded snapshot; i.e. whether
@@ -794,6 +985,7 @@ impl Cpu {
             blocked: self.blocked,
             exit_code: self.exit_code,
             stdin: self.stdin.clone(),
+            stdin_closed: self.stdin_closed,
             vfs: self.vfs.clone(),
             open_files: self.open_files.clone(),
             next_fd: self.next_fd,
@@ -814,12 +1006,18 @@ impl Cpu {
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
         self.stdin = snap.stdin;
+        self.stdin_closed = snap.stdin_closed;
         self.vfs = snap.vfs;
         self.open_files = snap.open_files;
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.changed_regs.clear();
         self.changed_fprs.clear();
+        // The abort message describes a run the restored state never took;
+        // left in place it would resurface on the next run's result. The
+        // step budget stays deliberately (see MAX_TOTAL_STEPS): clearing it
+        // here would let a save/restore loop hop past the runaway wall.
+        self.abort_message = None;
         true
     }
 
@@ -856,12 +1054,20 @@ impl Cpu {
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
         self.stdin = snap.stdin;
+        self.stdin_closed = snap.stdin_closed;
         self.vfs = snap.vfs;
         self.open_files = snap.open_files;
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.changed_regs.clear();
         self.changed_fprs.clear();
+        // Un-count the step this frame undoes and drop any abort recorded
+        // after it; otherwise a step taken right after backing off the step
+        // ceiling would re-halt reporting a runaway loop for an instruction
+        // that never executed. Bounded: each backward step refunds exactly
+        // one forward step, and the ring holds at most its capacity.
+        self.steps_total = self.steps_total.saturating_sub(1);
+        self.abort_message = None;
         if self.halted {
             match self.exit_code {
                 Some(code) => StepOutcome::Exited(code),
@@ -1117,6 +1323,24 @@ mod tests {
         cpu.mem.write_u32(BSS_BASE, 0xcafe_babe).unwrap();
     }
 
+    #[test]
+    fn reset_returns_the_page_budget_to_baseline() {
+        // A program that exhausts MAX_MAPPED_PAGES must not leave the
+        // budget spent: reset gives the pages back, so the next program
+        // starts from the same baseline as a fresh tab.
+        let mut cpu = Cpu::new();
+        let baseline = cpu.mem.mapped_page_count();
+        let mut addr = 0x0100_0000u64;
+        while cpu.mem.write_u8(addr, 1).is_ok() {
+            addr += 4096;
+        }
+        assert!(cpu.mem.mapped_page_count() >= crate::memory::MAX_MAPPED_PAGES);
+        cpu.reset();
+        assert_eq!(cpu.mem.mapped_page_count(), baseline);
+        // And the budget is genuinely usable again.
+        cpu.mem.write_u8(0x0100_0000, 1).unwrap();
+    }
+
     // -- step outcome and hosted state --
 
     #[test]
@@ -1134,6 +1358,122 @@ mod tests {
         let r = cpu.step().unwrap();
         assert_eq!(r.outcome, StepOutcome::Halted);
         assert!(r.halted);
+    }
+
+    #[test]
+    fn output_ceiling_halts_calmly() {
+        // The step and page walls never covered printing; a write syscall
+        // crossing MAX_OUTPUT_BYTES must halt with the calm message.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(8, 64, 0),   // x8 = write
+            encode_movz(0, 1, 0),    // x0 = stdout
+            encode_movz(1, 0x60, 1), // x1 = DATA_BASE (0x0060_0000)
+            encode_movz(2, 16, 0),   // x2 = 16 bytes
+            encode_svc(0),
+        ]);
+        for i in 0..16 {
+            cpu.mem.write_u8(0x0060_0000 + i, b'x').unwrap();
+        }
+        cpu.output_total = MAX_OUTPUT_BYTES - 8;
+        let r = cpu.run_until_break(100).unwrap();
+        assert!(r.halted);
+        assert_eq!(r.error, Some(output_ceiling_message()));
+        assert_eq!(cpu.abort_message, Some(output_ceiling_message()));
+    }
+
+    #[test]
+    fn output_accounting_survives_console_drains() {
+        // The wall measures what the program produced, not what happens to
+        // be queued: draining stdout between steps must not reset it.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(8, 64, 0),
+            encode_movz(0, 1, 0),
+            encode_movz(1, 0x60, 1),
+            encode_movz(2, 16, 0),
+            encode_svc(0),
+        ]);
+        for i in 0..16 {
+            cpu.mem.write_u8(0x0060_0000 + i, b'x').unwrap();
+        }
+        cpu.output_total = MAX_OUTPUT_BYTES - 8;
+        for _ in 0..4 {
+            cpu.step().unwrap();
+            let _ = cpu.take_stdout(); // UI heartbeat drain
+        }
+        let r = cpu.step().unwrap(); // the svc that crosses the wall
+        assert!(r.halted);
+        assert_eq!(r.error, Some(output_ceiling_message()));
+    }
+
+    #[test]
+    fn unsupported_syscall_halts_calmly_instead_of_wedging() {
+        // The wedge this guards: the error used to propagate raw with
+        // `halted` left false and PC unmoved, so Run re-issued chunks
+        // against the same fault at full speed and froze the tab, and
+        // every Step reproduced the identical error forever.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(8, 172, 0), encode_svc(0)]);
+        cpu.step().unwrap(); // mov x8, 172 (getpid -- not implemented)
+        let r = cpu.step().unwrap(); // svc 0
+        assert!(r.halted);
+        assert!(r.error.as_deref().unwrap_or("").contains("172"));
+        assert!(cpu.is_halted());
+        assert!(cpu.abort_message.is_some());
+        // A further step must not re-execute anything.
+        let pc_before = cpu.regs.read_pc();
+        let again = cpu.step().unwrap();
+        assert_eq!(again.outcome, StepOutcome::Halted);
+        assert_eq!(cpu.regs.read_pc(), pc_before);
+    }
+
+    #[test]
+    fn exit_group_terminates_like_exit() {
+        // glibc's exit() issues exit_group (94) on AArch64 Linux; the
+        // course machine accepts it, so the playground must too.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(0, 7, 0),
+            encode_movz(8, 94, 0),
+            encode_svc(0),
+        ]);
+        let r = cpu.run_until_break(10).unwrap();
+        assert!(r.halted);
+        assert_eq!(r.error, None);
+        assert_eq!(cpu.exit_code(), Some(7));
+    }
+
+    #[test]
+    fn undecodable_word_halts_calmly_with_the_message_preserved() {
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[0x0000_0000]);
+        let r = cpu.step().unwrap();
+        assert!(r.halted);
+        assert!(
+            r.error.as_deref().unwrap_or("").contains("unknown instruction"),
+            "error was: {:?}",
+            r.error
+        );
+        assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn runtime_fault_during_run_keeps_the_executed_step_count() {
+        // Three good instructions then a read fault; the run result must
+        // report the steps that DID execute, halted, and the message.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(0, 1, 0),
+            encode_movz(1, 2, 0),
+            encode_movz(2, 3, 0),
+            0xF940_0020, // ldr x0, [x1] -- x1 = 2, unmapped/unaligned
+        ]);
+        let r = cpu.run_until_break(100).unwrap();
+        assert!(r.halted);
+        assert_eq!(r.steps_executed, 4);
+        assert!(r.error.is_some());
+        assert_eq!(cpu.regs.read_gpr(2, true), 3);
     }
 
     #[test]
@@ -1346,6 +1686,95 @@ mod tests {
         assert!(r.halted);
         assert_eq!(r.error, Some(step_ceiling_message()));
         assert_eq!(r.outcome, StepOutcome::Halted);
+    }
+
+    #[test]
+    fn breakpoint_on_a_chunk_boundary_is_reported_not_skipped() {
+        // Both backends drive runs in fixed-size chunks; a breakpoint whose
+        // first arrival lands exactly on a chunk boundary must be reported
+        // by the ending chunk, because the next chunk's first-step resume
+        // exemption would otherwise run straight through it.
+        let mut cpu = Cpu::new();
+        let code = vec![
+            encode_movz(0, 1, 0),
+            encode_movz(1, 2, 0),
+            encode_movz(2, 3, 0),
+            encode_movz(3, 4, 0),
+            encode_svc(0),
+        ];
+        cpu.load_program(&code);
+        cpu.set_breakpoint(CODE_BASE + 8); // the third instruction
+
+        // Chunk of exactly 2 steps: the loop stops at the cap with PC
+        // resting on the breakpoint that has not yet been reported.
+        let chunk = cpu.run_until_break(2).unwrap();
+        assert_eq!(chunk.pc, CODE_BASE + 8);
+        assert!(chunk.hit_breakpoint, "the boundary chunk must report the hit");
+        assert_eq!(cpu.regs.read_gpr(2, true), 0, "the breakpoint line must not execute");
+
+        // A true resume steps past it and runs to the halt.
+        let resumed = cpu.run_until_break(100).unwrap();
+        assert!(resumed.halted);
+        assert_eq!(cpu.regs.read_gpr(2, true), 3);
+    }
+
+    #[test]
+    fn restore_paths_clear_a_stale_abort_message() {
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        cpu.save_state("checkpoint");
+        cpu.step().unwrap();
+
+        // A recorded abort must not survive into a restored save...
+        cpu.abort_message = Some("stale abort".to_string());
+        assert!(cpu.load_state("checkpoint"));
+        assert!(cpu.abort_message.is_none());
+        let r = cpu.run_until_break(10).unwrap();
+        assert!(r.halted);
+        assert!(r.error.is_none(), "a clean run after restore reports no error");
+
+        // ...nor past a backward step, which also refunds the step budget.
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        cpu.step().unwrap();
+        let spent = cpu.steps_total;
+        cpu.abort_message = Some("stale abort".to_string());
+        cpu.step_back();
+        assert!(cpu.abort_message.is_none());
+        assert_eq!(cpu.steps_total, spent - 1);
+    }
+
+    #[test]
+    fn a_halted_run_still_reports_its_own_abort() {
+        // The stale-message gate must not swallow a genuine abort raised by
+        // the run itself.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[0x1400_0000]); // b .
+        cpu.steps_total = MAX_TOTAL_STEPS - 1;
+        let r = cpu.run_until_break(10).unwrap();
+        assert!(r.halted);
+        assert_eq!(r.error, Some(step_ceiling_message()));
+    }
+
+    #[test]
+    fn a_runaway_sp_halts_with_the_stack_overflow_cause() {
+        // Never run real deep recursion here (slow in debug); park sp past
+        // the floor directly and take one step.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        cpu.regs.write_sp(STACK_FLOOR - 16);
+        let r = cpu.step().unwrap();
+        assert!(r.halted);
+        let msg = r.error.unwrap_or_default();
+        assert!(msg.contains("stack overflow"), "was: {msg}");
+        assert!(msg.contains("recursion"), "was: {msg}");
+        assert!(cpu.is_halted());
+
+        // A normal frame nowhere near the floor is untouched.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        cpu.regs.write_sp(STACK_BASE - 4096);
+        let r = cpu.step().unwrap();
+        assert!(r.error.is_none());
     }
 
     #[test]

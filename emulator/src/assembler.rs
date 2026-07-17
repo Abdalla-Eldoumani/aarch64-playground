@@ -33,6 +33,17 @@ pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
             if name.is_empty() {
                 return asm_err(*line_num, "empty label");
             }
+            // GAS rejects a redefined label; a silent last-wins insert sent
+            // branches to whichever copy came later.
+            if labels.contains_key(&name) {
+                return asm_err(
+                    *line_num,
+                    &format!(
+                        "label `{name}` is already defined -- give each label a \
+                         unique name (labels are file-wide, not per-function)"
+                    ),
+                );
+            }
             labels.insert(name, instr_count * 4);
         } else {
             instr_count += 1;
@@ -268,18 +279,27 @@ fn split_operands(s: &str) -> Vec<&str> {
 }
 
 fn parse_register(s: &str, line_num: usize) -> Result<(u8, bool), EmuError> {
-    let s = s.trim().to_uppercase();
+    let original = s.trim();
+    let s = original.to_uppercase();
     match s.as_str() {
         "SP" => Ok((31, true)), // sf=true for SP
         "XZR" => Ok((31, true)),
         "WZR" => Ok((31, false)),
+        // Real GNU as predefines the frame-pointer and link-register
+        // aliases, so course prologues written with bare fp/lr assemble
+        // without a define(fp, x29) line.
+        "FP" => Ok((29, true)),
+        "LR" => Ok((30, true)),
         _ => {
             let (prefix, sf) = if let Some(rest) = s.strip_prefix('X') {
                 (rest, true)
             } else if let Some(rest) = s.strip_prefix('W') {
                 (rest, false)
             } else {
-                return asm_err(line_num, &format!("expected register, got: {s}"));
+                return asm_err(
+                    line_num,
+                    &format!("expected a register here, got `{original}`"),
+                );
             };
             let num: u8 = prefix
                 .parse()
@@ -476,6 +496,9 @@ fn encode_movzk(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError> {
         return asm_err(ln, "immediate exceeds 16 bits");
     }
 
+    if ops.len() > 3 {
+        return asm_err(ln, "MOVZ/MOVK/MOVN takes at most 3 operands");
+    }
     let mut hw: u8 = 0;
     if ops.len() > 2 {
         // parse LSL #16 / LSL #32 / LSL #48
@@ -489,6 +512,18 @@ fn encode_movzk(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError> {
                 48 => 3,
                 _ => return asm_err(ln, "MOVZ/MOVK shift must be 0, 16, 32, or 48"),
             };
+        } else {
+            // Silently dropping a non-LSL third operand left hw = 0, so
+            // `movk x0, #0xdead, #16` overwrote the LOW halfword with no
+            // message. GAS rejects anything that is not spelled lsl.
+            return asm_err(
+                ln,
+                &format!(
+                    "expected `lsl #0|#16|#32|#48` as the third operand of \
+                     MOVZ/MOVK/MOVN, got `{}`",
+                    ops[2].trim()
+                ),
+            );
         }
     }
 
@@ -497,14 +532,73 @@ fn encode_movzk(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError> {
         | ((hw as u32) << 21) | ((imm as u32) << 5) | (rd as u32))
 }
 
+/// Parse a trailing shift-modifier operand: `lsl #3`, or the course
+/// spelling `LSL 3`. `allow_ror` admits ROR for the logical ops; ADD/SUB
+/// reserve that encoding.
+fn parse_shift_modifier(
+    op: &str,
+    reg_size: u8,
+    allow_ror: bool,
+    ln: usize,
+) -> Result<(u32, u8), EmuError> {
+    let t = op.trim();
+    let upper = t.to_uppercase();
+    let (shift_bits, rest) = if let Some(r) = upper.strip_prefix("LSL") {
+        (0b00u32, r)
+    } else if let Some(r) = upper.strip_prefix("LSR") {
+        (0b01, r)
+    } else if let Some(r) = upper.strip_prefix("ASR") {
+        (0b10, r)
+    } else if let Some(r) = upper.strip_prefix("ROR") {
+        if !allow_ror {
+            return asm_err(ln, "ROR is not a valid shift for ADD/SUB/CMP/CMN");
+        }
+        (0b11, r)
+    } else {
+        return asm_err(
+            ln,
+            &format!("expected a shift modifier like `lsl #3` as the last operand, got `{t}`"),
+        );
+    };
+    let amt = parse_immediate(rest.trim(), ln)?;
+    if !(0..reg_size as i64).contains(&amt) {
+        return asm_err(
+            ln,
+            &format!(
+                "shift amount {amt} is out of range for a {reg_size}-bit register (valid: 0-{})",
+                reg_size - 1
+            ),
+        );
+    }
+    Ok((shift_bits, amt as u8))
+}
+
 fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuError> {
-    if ops.len() != 3 {
-        return asm_err(ln, "ADD/SUB requires 3 operands");
+    if ops.len() != 3 && ops.len() != 4 {
+        return asm_err(
+            ln,
+            "ADD/SUB takes 3 operands, or 4 with a shift modifier (add x0, x1, x2, lsl #3)",
+        );
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
     let op3 = ops[2].trim();
     let sf_bit = if sf { 1u32 } else { 0 };
+
+    // The optional shifted-register modifier (only registers can carry it;
+    // resolved before the immediate branch so `add x0, x1, #1, lsl #12`
+    // gets a targeted message rather than an operand-count failure).
+    let (shift_bits, shift_amt) = if ops.len() == 4 {
+        if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+            return asm_err(
+                ln,
+                "a shift modifier only applies to the register form; write the shifted value directly",
+            );
+        }
+        parse_shift_modifier(ops[3], if sf { 64 } else { 32 }, false, ln)?
+    } else {
+        (0, 0)
+    };
 
     // immediate form
     if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit()) {
@@ -519,30 +613,87 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
 
     // register form
     let (rm, _) = parse_register(op3, ln)?;
+    // parse_register collapses SP and XZR to index 31, but the hardware
+    // separates them by encoding: the shifted form (bit 21 = 0) reads
+    // register 31 as XZR, and only the EXTENDED form (bit 21 = 1) reaches
+    // SP. Route SP operands to the extended encoding -- emitting shifted
+    // for `add x0, sp, x1` silently computed with 0 -- and reject the
+    // placements no encoding covers, exactly as GAS does.
+    let rd_is_sp = is_sp_name(ops[0]);
+    let rn_is_sp = is_sp_name(ops[1]);
+    if is_sp_name(op3) {
+        return asm_err(
+            ln,
+            "sp cannot be the last operand here; copy it out first (mov xN, sp)",
+        );
+    }
+    if rd_is_sp && s_bit == 1 {
+        return asm_err(
+            ln,
+            "the flag-setting form cannot write sp; drop the s (add/sub) or use another destination",
+        );
+    }
+    if rd_is_sp || rn_is_sp {
+        if ops.len() == 4 {
+            // The extended-register (SP-capable) encoding carries its own
+            // narrow extend+shift fields; combining SP with a plain shift
+            // modifier has no encoding here.
+            return asm_err(
+                ln,
+                "a shift modifier cannot be combined with sp; compute the shift into a scratch register first",
+            );
+        }
+        // Extended-register form, LSL #0: option = UXTX for X, UXTW for W,
+        // the alias GAS emits for `add x0, sp, x1`.
+        let option: u32 = if sf { 0b011 } else { 0b010 };
+        return Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
+            | (0b01011 << 24) | (1 << 21) | ((rm as u32) << 16)
+            | (option << 13) | ((rn as u32) << 5) | (rd as u32));
+    }
     Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
-        | (0b01011 << 24) | ((rm as u32) << 16)
-        | ((rn as u32) << 5) | (rd as u32))
+        | (0b01011 << 24) | (shift_bits << 22) | ((rm as u32) << 16)
+        | ((shift_amt as u32) << 10) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Whether an operand as written names the stack pointer. Needed wherever
+/// index 31's meaning depends on the chosen encoding, since parse_register
+/// cannot carry the distinction.
+fn is_sp_name(operand: &str) -> bool {
+    let t = operand.trim();
+    t.eq_ignore_ascii_case("sp") || t.eq_ignore_ascii_case("wsp")
 }
 
 fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     // CMP Xn, op2 -> SUBS XZR, Xn, op2
     // CMN Xn, op2 -> ADDS XZR, Xn, op2
-    if ops.len() != 2 {
-        return asm_err(ln, "CMP/CMN requires 2 operands");
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(
+            ln,
+            "CMP/CMN takes 2 operands, or 3 with a shift modifier (cmp x1, x2, lsl #2)",
+        );
     }
     let (_, sf) = parse_register(ops[0], ln)?;
     let zr = if sf { "XZR" } else { "WZR" };
+    if ops.len() == 3 {
+        let new_ops = [zr, ops[0], ops[1], ops[2]];
+        return encode_dp(&new_ops, op_bit, 1, ln);
+    }
     // A negative comparison immediate has no direct encoding; GAS flips
     // the alias instead (`cmp w1, -1` assembles as `cmn w1, 1`), and
-    // sentinel tests like top == -1 rely on that. Flip the same way.
+    // sentinel tests like top == -1 rely on that. Flip the same way, going
+    // through parse_immediate so `#-0x10` and `#-0b10000` flip exactly
+    // like `#-16` (a bare parse::<i64> only understood decimal).
     let imm_body = ops[1].trim();
-    let imm_body = imm_body.strip_prefix('#').unwrap_or(imm_body).trim();
-    if let Ok(v) = imm_body.parse::<i64>() {
-        if v < 0 {
-            if let Some(positive) = v.checked_neg() {
-                let flipped = positive.to_string();
-                let new_ops = [zr, ops[0], flipped.as_str()];
-                return encode_dp(&new_ops, 1 - op_bit, 1, ln);
+    if imm_body.starts_with('#')
+        || imm_body.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+    {
+        if let Ok(v) = parse_immediate(imm_body, ln) {
+            if v < 0 {
+                if let Some(positive) = v.checked_neg() {
+                    let flipped = positive.to_string();
+                    let new_ops = [zr, ops[0], flipped.as_str()];
+                    return encode_dp(&new_ops, 1 - op_bit, 1, ln);
+                }
             }
         }
     }
@@ -551,8 +702,11 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
 }
 
 fn encode_log_reg(ops: &[&str], opc: u8, n: bool, _set_flags: bool, ln: usize) -> Result<u32, EmuError> {
-    if ops.len() != 3 {
-        return asm_err(ln, "logical op requires 3 operands");
+    if ops.len() != 3 && ops.len() != 4 {
+        return asm_err(
+            ln,
+            "this logical op takes 3 operands, or 4 with a shift modifier (and x0, x1, x2, lsr #4)",
+        );
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
@@ -560,9 +714,15 @@ fn encode_log_reg(ops: &[&str], opc: u8, n: bool, _set_flags: bool, ln: usize) -
     let sf_bit = if sf { 1u32 } else { 0 };
     // N inverts Rm: AND+N is BIC, ORR+N is ORN (the MVN encoder sets it inline).
     let n_bit = if n { 1u32 } else { 0 };
+    let (shift_bits, shift_amt) = if ops.len() == 4 {
+        parse_shift_modifier(ops[3], if sf { 64 } else { 32 }, true, ln)?
+    } else {
+        (0, 0)
+    };
 
-    Ok((sf_bit << 31) | ((opc as u32) << 29) | (0b01010 << 24) | (n_bit << 21)
-        | ((rm as u32) << 16) | ((rn as u32) << 5) | (rd as u32))
+    Ok((sf_bit << 31) | ((opc as u32) << 29) | (0b01010 << 24) | (shift_bits << 22)
+        | (n_bit << 21) | ((rm as u32) << 16) | ((shift_amt as u32) << 10)
+        | ((rn as u32) << 5) | (rd as u32))
 }
 
 /// Encode `BIC Xd, Xn, Xm` (bit clear: `Xd = Xn & ~Xm`). AND-shifted-register
@@ -678,10 +838,18 @@ fn encode_log_dispatch(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError
 
 fn encode_tst(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     // TST Xn, Xm/imm -> ANDS XZR, Xn, Xm/imm.
-    if ops.len() != 2 {
-        return asm_err(ln, "TST requires 2 operands");
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(
+            ln,
+            "TST takes 2 operands, or 3 with a shift modifier (tst x0, x1, lsl #2)",
+        );
     }
     let (rn, sf) = parse_register(ops[0], ln)?;
+    if ops.len() == 3 {
+        let zr = if sf { "XZR" } else { "WZR" };
+        let new_ops = [zr, ops[0], ops[1], ops[2]];
+        return encode_log_reg(&new_ops, 0b11, false, true, ln);
+    }
     let op2 = ops[1].trim();
     // Immediate form: emit ANDS-immediate with Rd=ZR.
     if op2.starts_with('#') || op2.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
@@ -707,8 +875,21 @@ fn encode_log_imm_fields(
     opc: u32,
     ln: usize,
 ) -> Result<u32, EmuError> {
+    // GAS truncates a negative or inverted logical immediate to the operand
+    // width (`and w0, w1, #~1` is `#0xfffffffe`); without the mask the
+    // sign-extended 64-bit value can never be a valid 32-bit pattern and
+    // the error quoted a number the student never wrote.
+    let value = if sf { value } else { value & 0xFFFF_FFFF };
     let (n_bit, immr, imms) = crate::decoder::encode_bitmask_imm(value, sf)
-        .ok_or_else(|| asm_error(ln, &format!("{value:#x} is not a valid bitmask immediate")))?;
+        .ok_or_else(|| {
+            asm_error(
+                ln,
+                &format!(
+                    "{value:#x} is not a valid bitmask immediate (AND/ORR/EOR take only \
+                     repeating-bit patterns; load the constant with mov/ldr = first)"
+                ),
+            )
+        })?;
     let sf_bit: u32 = if sf { 1 } else { 0 };
     let n_enc: u32 = if n_bit { 1 } else { 0 };
     Ok((sf_bit << 31)
@@ -733,7 +914,22 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
 
     // immediate form via UBFM/SBFM
     if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-        let amt = parse_immediate(op3, ln)? as u8;
+        // Validate the full-width value BEFORE narrowing: `as u8` wraps
+        // mod 256, and the UBFM field math below wraps again, so an
+        // out-of-range amount used to assemble silently into a different
+        // instruction (`lsl x0, x1, #64` became `lsr x0, x1, #3`). GAS
+        // rejects anything outside the register width.
+        let raw = parse_immediate(op3, ln)?;
+        if !(0..reg_size as i64).contains(&raw) {
+            return asm_err(
+                ln,
+                &format!(
+                    "shift amount {raw} is out of range for a {reg_size}-bit register (valid: 0-{})",
+                    reg_size - 1
+                ),
+            );
+        }
+        let amt = raw as u8;
         let (opc, immr, imms) = match shift_type {
             0 => {
                 // LSL: UBFM Xd, Xn, #(reg_size - amt), #(reg_size - 1 - amt)
@@ -1034,6 +1230,13 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
     }
     let addr_str: String = ops[1..].join(",");
     let am = parse_addressing_mode(addr_str.trim(), ln)?;
+    let (name, unsigned_load, extend) = match size {
+        0b00 => ("ldrsb", "ldrb", "sxtb"),
+        0b01 => ("ldrsh", "ldrh", "sxth"),
+        _ => ("ldrsw", "ldr", "sxtw"),
+    };
+    // opc=10 for Xt target, opc=11 for Wt target.
+    let inner_opc: u32 = if target_is_x { 0b10 } else { 0b11 };
     match am {
         AddressingMode::Immediate {
             rn,
@@ -1047,15 +1250,32 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
                 0b10 => 4,
                 _ => unreachable!(),
             };
-            if offset_val < 0 || (offset_val as u64) % scale != 0 {
-                return asm_err(ln, "unsigned offset must be positive and aligned");
+            // Two distinct rejections, named separately: one message that
+            // asserted "must be positive and aligned" blamed alignment for
+            // ldrsb, whose scale of 1 makes alignment impossible to violate.
+            if offset_val < 0 {
+                return asm_err(
+                    ln,
+                    &format!(
+                        "{name} takes only a non-negative offset here; load unsigned and \
+                         sign-extend instead ({unsigned_load} then {extend}), or index from a \
+                         lower base address"
+                    ),
+                );
+            }
+            if (offset_val as u64) % scale != 0 {
+                return asm_err(
+                    ln,
+                    &format!("the {name} offset {offset_val} must be a multiple of {scale}"),
+                );
             }
             let imm12 = (offset_val as u64 / scale) as u32;
             if imm12 > 4095 {
-                return asm_err(ln, "offset out of range");
+                return asm_err(
+                    ln,
+                    &format!("the {name} offset {offset_val} is out of range (0-{})", 4095 * scale),
+                );
             }
-            // opc=10 for Xt target, opc=11 for Wt target.
-            let inner_opc: u32 = if target_is_x { 0b10 } else { 0b11 };
             Ok(((size as u32) << 30)
                 | (0b111001 << 24)
                 | (inner_opc << 22)
@@ -1063,11 +1283,44 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
                 | ((rn as u32) << 5)
                 | (rt as u32))
         }
-        AddressingMode::Immediate { .. } => {
-            asm_err(ln, "LDRS* pre/post-index not yet supported by the assembler")
-        }
-        AddressingMode::RegOffset { .. } => {
-            asm_err(ln, "LDRS* register-offset form not yet supported by the assembler")
+        AddressingMode::Immediate { .. } => asm_err(
+            ln,
+            &format!(
+                "{name} has no pre/post-index form here; adjust the base with add/sub and use \
+                 the plain [xN, offset] form"
+            ),
+        ),
+        AddressingMode::RegOffset {
+            rn,
+            rm,
+            option,
+            shift_amount,
+        } => {
+            // LDRSB/LDRSH/LDRSW register offset -- the array-indexing form
+            // (`ldrsb w0, [x1, x2]`). Same S-bit rule as plain LDR/STR:
+            // the only legal written amounts are 0 and log2(access bytes).
+            let s_bit: u32 = match shift_amount {
+                None | Some(0) => 0,
+                Some(a) if a == size as i64 => 1,
+                Some(a) => {
+                    return asm_err(
+                        ln,
+                        &format!(
+                            "{name} can only scale its index register by #0 or #{size}, got #{a}"
+                        ),
+                    );
+                }
+            };
+            Ok(((size as u32) << 30)
+                | (0b111000 << 24)
+                | (inner_opc << 22)
+                | (1 << 21)
+                | ((rm as u32) << 16)
+                | ((option as u32) << 13)
+                | (s_bit << 12)
+                | (0b10 << 10)
+                | ((rn as u32) << 5)
+                | (rt as u32))
         }
     }
 }
@@ -1153,11 +1406,28 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
             rn,
             rm,
             option,
-            shift_applied,
+            shift_amount,
         } => {
             // LDR/STR register. Encoding:
             //   size | 111 0 00 | V=0 | load(2b) | 1 | Rm | option(3) | S | 10 | Rn | Rt
-            let s_bit: u32 = if shift_applied { 1 } else { 0 };
+            // The S bit means "scale the index by the access size", so the
+            // only legal written amounts are 0 and log2(access bytes) --
+            // exactly what GAS enforces. `size` is that log2.
+            let s_bit: u32 = match shift_amount {
+                None | Some(0) => 0,
+                Some(a) if a == size as i64 => 1,
+                Some(a) => {
+                    return asm_err(
+                        ln,
+                        &format!(
+                            "a {}-bit access can only scale its index register by #0 or #{}, got #{}",
+                            8u32 << size,
+                            size,
+                            a
+                        ),
+                    );
+                }
+            };
             Ok(((size as u32) << 30)
                 | (0b111000 << 24)
                 | ((load as u32) << 22)
@@ -1196,10 +1466,11 @@ enum AddressingMode {
         /// ARM-spec 3-bit option encoding: 010=UXTW, 011=LSL/UXTX,
         /// 110=SXTW, 111=SXTX.
         option: u8,
-        /// 1 when a `#<amount>` was present (even if it was 0 for some
-        /// instruction widths); the access-size scaling bit in the
-        /// encoding rides along with this.
-        shift_applied: bool,
+        /// The written `#<amount>`, if any. The encoder decides the S
+        /// (scale) bit from the VALUE against the access size; riding it
+        /// on mere presence turned `lsl #0` into an 8x offset and
+        /// silently rescaled wrong amounts.
+        shift_amount: Option<i64>,
     },
 }
 
@@ -1237,7 +1508,7 @@ fn parse_reg_offset_tail(parts: &[&str], ln: usize) -> Result<AddressingMode, Em
             rn,
             rm,
             option,
-            shift_applied: false,
+            shift_amount: None,
         });
     }
     let modifier = parts[2].trim();
@@ -1259,15 +1530,16 @@ fn parse_reg_offset_tail(parts: &[&str], ln: usize) -> Result<AddressingMode, Em
     if matches!(keyword_lower.as_str(), "lsl" | "uxtx" | "sxtx") && !rm_is_x {
         return asm_err(ln, "LSL/UXTX/SXTX require an X index register");
     }
-    let shift_applied = !shift_str.trim().is_empty();
-    if shift_applied {
-        let _ = parse_immediate(shift_str, ln)?; // validate shape, value unused here
-    }
+    let shift_amount = if shift_str.trim().is_empty() {
+        None
+    } else {
+        Some(parse_immediate(shift_str, ln)?)
+    };
     Ok(AddressingMode::RegOffset {
         rn,
         rm,
         option,
-        shift_applied,
+        shift_amount,
     })
 }
 
@@ -1419,7 +1691,22 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
         return asm_err(ln, "LDP/STP requires at least 3 operands");
     }
     let (rt, sf) = parse_register(ops[0], ln)?;
-    let (rt2, _) = parse_register(ops[1], ln)?;
+    let (rt2, sf2) = parse_register(ops[1], ln)?;
+    // GAS rejects a mixed-width pair; accepting one took the width (and
+    // the address scale) from the first register only, so both slots
+    // reloaded garbage with no message.
+    if sf != sf2 {
+        return asm_err(
+            ln,
+            &format!(
+                "ldp/stp needs both registers the same width: `{}` is {}-bit but `{}` is {}-bit",
+                ops[0].trim(),
+                if sf { 64 } else { 32 },
+                ops[1].trim(),
+                if sf2 { 64 } else { 32 }
+            ),
+        );
+    }
 
     let addr_str: String = ops[2..].join(",");
     let am = parse_addressing_mode(addr_str.trim(), ln)?;
@@ -1434,11 +1721,24 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     if offset_val % scale != 0 {
         return asm_err(ln, "pair offset must be aligned to register size");
     }
-    let imm7 = (offset_val / scale) as i8;
-    if imm7 < -64 || imm7 > 63 {
-        return asm_err(ln, "pair offset out of range");
+    // Range-check the full-width quotient BEFORE narrowing: an `as i8`
+    // cast wraps mod 256, so an out-of-range offset whose wrapped value
+    // landed back in [-64, 63] used to encode a silently wrong frame
+    // offset (a 20x20 table's -1616 moved SP up by 432).
+    let quotient = offset_val / scale;
+    if !(-64..=63).contains(&quotient) {
+        return asm_err(
+            ln,
+            &format!(
+                "pair offset {offset_val} is out of range: stp/ldp reaches [{}, {}] \
+                 for this register width; for a larger frame, push the pair first \
+                 (stp x29, x30, [sp, -16]!) and move sp separately (sub sp, sp, #N)",
+                -64 * scale,
+                63 * scale
+            ),
+        );
     }
-    let imm7_enc = (imm7 as u32) & 0x7F;
+    let imm7_enc = (quotient as u32) & 0x7F;
 
     let opc: u32 = if sf { 0b10 } else { 0b00 };
     let mode_bits: u32 = match mode {
@@ -1517,6 +1817,7 @@ fn encode_branch_imm(
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
     }
+    check_branch_reach(offset_bytes / 4, 26, if link { "bl" } else { "b" }, ln)?;
     let imm26 = ((offset_bytes / 4) as u32) & 0x3FF_FFFF;
 
     let op = if link { 1u32 } else { 0 };
@@ -1546,6 +1847,7 @@ fn encode_bcond(
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
     }
+    check_branch_reach(offset_bytes / 4, 19, "b.cond", ln)?;
     let imm19 = ((offset_bytes / 4) as u32) & 0x7FFFF;
 
     Ok(0x5400_0000 | (imm19 << 5) | (cond as u32))
@@ -1568,6 +1870,7 @@ fn encode_compare_branch(
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
     }
+    check_branch_reach(offset_bytes / 4, 19, "cbz/cbnz", ln)?;
     let imm19 = ((offset_bytes / 4) as u32) & 0x7_FFFF;
     let sf_bit: u32 = if sf { 1 } else { 0 };
     let op_bit: u32 = if nonzero { 1 } else { 0 };
@@ -1601,6 +1904,7 @@ fn encode_test_branch(
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
     }
+    check_branch_reach(offset_bytes / 4, 14, "tbz/tbnz", ln)?;
     let imm14 = ((offset_bytes / 4) as u32) & 0x3FFF;
     let b5 = ((bit as u32) >> 5) & 1;
     let b40 = (bit as u32) & 0x1F;
@@ -1611,6 +1915,31 @@ fn encode_test_branch(
         | (b40 << 19)
         | (imm14 << 5)
         | (rt as u32))
+}
+
+/// Range-check a branch displacement (in instructions) against the
+/// encoding's signed immediate width BEFORE masking: masking alone wraps
+/// an out-of-reach target into a silent branch to the wrong place. GAS
+/// reports "branch out of range" for all of these.
+fn check_branch_reach(
+    offset_instrs: i64,
+    imm_bits: u32,
+    mnemonic: &str,
+    ln: usize,
+) -> Result<(), EmuError> {
+    let lo = -(1i64 << (imm_bits - 1));
+    let hi = (1i64 << (imm_bits - 1)) - 1;
+    if !(lo..=hi).contains(&offset_instrs) {
+        return Err(EmuError::AssemblyError {
+            line: ln,
+            message: format!(
+                "{mnemonic} target is out of reach ({} bytes away; this branch reaches {} bytes each way) --                  branch to a nearer label, or load the address and use br",
+                offset_instrs * 4,
+                hi * 4
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn resolve_branch_target(
@@ -1958,6 +2287,265 @@ mod tests {
 
         assert_eq!(cpu.regs.read_gpr(2, true), 100);
         assert_eq!(cpu.regs.read_gpr(3, true), 200);
+    }
+
+    #[test]
+    fn out_of_range_shift_amounts_are_rejected_not_rewritten() {
+        // Each of these used to assemble silently into a DIFFERENT
+        // instruction through u8 wrap + field overflow; GAS rejects all.
+        for src in [
+            "LSL X0, X1, #64",
+            "LSL W0, W1, #32",
+            "LSL X0, X1, #65",
+            "LSR X0, X1, #64",
+            "LSR W0, W1, #32",
+            "ASR X0, X1, #300",
+            "LSL X0, X1, #256",
+            "LSL X0, X1, #-1",
+        ] {
+            let err = assemble(src).unwrap_err();
+            assert!(
+                err.to_string().contains("out of range"),
+                "{src} was: {err}"
+            );
+        }
+        // The boundaries stay legal.
+        assert!(assemble("LSL X0, X1, #63").is_ok());
+        assert!(assemble("LSR W0, W1, #31").is_ok());
+        assert!(assemble("ASR X0, X1, #0").is_ok());
+    }
+
+    #[test]
+    fn register_form_shifts_assemble_and_execute() {
+        // The LSLV/LSRV/ASRV encoders existed but the decoder could not
+        // read them back: `lsl x0, x1, x2` assembled fine then died
+        // mid-run with a raw hex word.
+        let source = r#"
+            MOV X1, #5
+            MOV X2, #3
+            LSL X3, X1, X2
+            LSR X4, X3, X2
+            MOV X5, #-16
+            MOV X6, #2
+            ASR X7, X5, X6
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(3, true), 40);
+        assert_eq!(cpu.regs.read_gpr(4, true), 5);
+        assert_eq!(cpu.regs.read_gpr(7, true) as i64, -4);
+    }
+
+    #[test]
+    fn sp_register_operands_use_the_extended_encoding() {
+        // GAS byte-matches: only the extended form (bit 21) reaches SP.
+        assert_eq!(assemble("ADD X0, SP, X1").unwrap()[0], 0x8B21_63E0);
+        assert_eq!(assemble("SUB SP, SP, X2").unwrap()[0], 0xCB22_63FF);
+        assert_eq!(assemble("CMP SP, X1").unwrap()[0], 0xEB21_63FF);
+        // Register 31 written as XZR stays the shifted form (reads zero).
+        assert_eq!(assemble("ADD X0, XZR, X1").unwrap()[0], 0x8B01_03E0);
+    }
+
+    #[test]
+    fn sp_in_unencodable_positions_is_rejected() {
+        // No encoding lets SP be Rm, and the flag-setting forms cannot
+        // write SP; GAS rejects both.
+        let err = assemble("ADD X0, X1, SP").unwrap_err();
+        assert!(err.to_string().contains("sp"), "was: {err}");
+        let err = assemble("CMP X0, SP").unwrap_err();
+        assert!(err.to_string().contains("sp"), "was: {err}");
+    }
+
+    #[test]
+    fn sp_register_arithmetic_executes_with_sp_semantics() {
+        // `add x0, sp, x1` read rn=31 as XZR before the extended form
+        // existed: x0 became 16 and the frame maths silently collapsed.
+        let source = r#"
+            MOV X2, SP
+            MOV X1, #16
+            ADD X0, SP, X1
+            SUB SP, SP, X1
+            MOV X3, SP
+            ADD SP, SP, X1
+            MOV X4, SP
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        let sp0 = cpu.regs.read_gpr(2, true);
+        assert_eq!(cpu.regs.read_gpr(0, true), sp0 + 16);
+        assert_eq!(cpu.regs.read_gpr(3, true), sp0 - 16);
+        assert_eq!(cpu.regs.read_gpr(4, true), sp0);
+    }
+
+    #[test]
+    fn pair_offset_out_of_range_is_rejected_not_wrapped() {
+        // -1616 / 8 = -202, which wraps to +54 through an i8 cast; the
+        // encoder must reject it, naming the reachable range.
+        let err = assemble("STP X29, X30, [SP, #-1616]!").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("-1616"), "message was: {msg}");
+        assert!(msg.contains("[-512, 504]"), "message was: {msg}");
+
+        // +1536 / 8 = 192 wraps to -64: also silently in range before.
+        assert!(assemble("STP X0, X1, [SP, #1536]").is_err());
+
+        // W pairs scale by 4, halving the reach: 768 / 4 = 192 wraps too.
+        let err = assemble("STP W0, W1, [SP, #768]").unwrap_err();
+        assert!(err.to_string().contains("[-256, 252]"), "was: {err}");
+    }
+
+    #[test]
+    fn ldrs_register_offset_matches_gas_bytes() {
+        // The array-indexing form the course loops use. Expected words
+        // hand-derived from the A64 tables and checked against GAS.
+        assert_eq!(assemble("LDRSB W0, [X1, X2]").unwrap()[0], 0x38E2_6820);
+        assert_eq!(assemble("LDRSW X3, [X1, X2, LSL #2]").unwrap()[0], 0xB8A2_7823);
+        assert_eq!(assemble("LDRSH X0, [X1, W2, SXTW]").unwrap()[0], 0x78A2_C820);
+        // A wrong scale names the instruction and the legal amounts.
+        let err = assemble("LDRSH W0, [X1, X2, LSL #3]").unwrap_err();
+        assert!(err.to_string().contains("ldrsh"), "was: {err}");
+    }
+
+    #[test]
+    fn ldrs_offset_rejections_name_the_actual_cause() {
+        // A negative offset must not be blamed on alignment (ldrsb has
+        // scale 1; alignment cannot apply).
+        let err = assemble("LDRSB W0, [X1, #-1]").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("ldrsb"), "was: {msg}");
+        assert!(msg.contains("sxtb"), "was: {msg}");
+        assert!(!msg.contains("align"), "was: {msg}");
+        // A misaligned positive offset names the offset and the multiple.
+        let err = assemble("LDRSH W0, [X1, #3]").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("multiple of 2"), "was: {msg}");
+        // Zero stays accepted.
+        assert!(assemble("LDRSB W0, [X1]").is_ok());
+        assert!(assemble("LDRSB W0, [X1, #0]").is_ok());
+    }
+
+    #[test]
+    fn shifted_register_dp_forms_match_gas_bytes() {
+        // Expected words derived by hand from the A64 encoding tables
+        // (and cross-checked against GAS output), never recomputed
+        // through the encoder under test.
+        assert_eq!(assemble("ADD X0, X1, X2, LSL #3").unwrap()[0], 0x8B02_0C20);
+        // The course deck spells it without the # and uppercased.
+        assert_eq!(assemble("add w19, w0, w1, LSL 3").unwrap()[0], 0x0B01_0C13);
+        assert_eq!(assemble("SUB X0, X1, X2, ASR #4").unwrap()[0], 0xCB82_1020);
+        assert_eq!(assemble("AND W0, W1, W2, LSR #4").unwrap()[0], 0x0A42_1020);
+        assert_eq!(assemble("ORR X0, X1, X2, ROR #8").unwrap()[0], 0xAAC2_2020);
+        assert_eq!(assemble("CMP X1, X2, LSL #2").unwrap()[0], 0xEB02_083F);
+        assert_eq!(assemble("TST X0, X1, LSL #2").unwrap()[0], 0xEA01_081F);
+        // ROR stays rejected where the hardware reserves it.
+        let err = assemble("ADD X0, X1, X2, ROR #3").unwrap_err();
+        assert!(err.to_string().contains("ROR"), "was: {err}");
+        // Out-of-width amounts and junk modifiers get named.
+        assert!(assemble("ADD W0, W1, W2, LSL #32").is_err());
+        let err = assemble("ADD X0, X1, X2, FOO #3").unwrap_err();
+        assert!(err.to_string().contains("shift modifier"), "was: {err}");
+    }
+
+    #[test]
+    fn bare_fp_and_lr_are_predefined_like_gas() {
+        // stp fp, lr, [sp, #-16]! == stp x29, x30, [sp, #-16]!
+        assert_eq!(
+            assemble("STP FP, LR, [SP, #-16]!").unwrap()[0],
+            assemble("STP X29, X30, [SP, #-16]!").unwrap()[0]
+        );
+        assert_eq!(
+            assemble("MOV FP, SP").unwrap()[0],
+            assemble("MOV X29, SP").unwrap()[0]
+        );
+        assert_eq!(
+            assemble("LDR X0, [FP, #8]").unwrap()[0],
+            assemble("LDR X0, [X29, #8]").unwrap()[0]
+        );
+        // The fallback echoes the token as typed.
+        let err = assemble("mov foo, #1").unwrap_err();
+        assert!(err.to_string().contains("`foo`"), "was: {err}");
+    }
+
+    #[test]
+    fn logical_immediates_mask_to_the_register_width() {
+        // GAS accepts `and w0, w1, #-2` as #0xfffffffe (31 ones, one zero);
+        // 0x0A7D_F820 read off the A64 logical-immediate tables: sf=0,
+        // opc=00, N=0, immr=63&31->31? -- verified against gcc output.
+        let w = assemble("AND W0, W1, #-2").unwrap()[0];
+        assert_eq!(w, assemble("AND W0, W1, #0xFFFFFFFE").unwrap()[0]);
+        // The evaluator's ~1 spelling arrives here as -2 as well.
+        let x = assemble("AND X0, X1, #-2").unwrap()[0];
+        assert_eq!(x, 0x927F_F820);
+        // A genuinely invalid pattern names the remedy.
+        let err = assemble("AND W0, W1, #0x12345").unwrap_err();
+        assert!(err.to_string().contains("mov"), "was: {err}");
+    }
+
+    #[test]
+    fn cmp_flips_negative_hex_and_binary_immediates() {
+        // cmp w1, #-16 == cmn w1, #16 in every base GAS accepts.
+        let dec = assemble("CMP W1, #-16").unwrap()[0];
+        assert_eq!(dec, assemble("CMP W1, #-0x10").unwrap()[0]);
+        assert_eq!(dec, assemble("CMP W1, #-0b10000").unwrap()[0]);
+        assert_eq!(dec, assemble("CMN W1, #16").unwrap()[0]);
+    }
+
+    #[test]
+    fn movk_with_a_non_lsl_shift_is_rejected() {
+        // A dropped third operand left hw = 0: `movk x0, #0xDEAD, #16`
+        // destroyed the low halfword the movz just placed, silently.
+        let err = assemble("MOVK X0, #0xDEAD, #16").unwrap_err();
+        assert!(err.to_string().contains("lsl"), "was: {err}");
+        assert!(assemble("MOVK X0, #0xDEAD, LSR #16").is_err());
+        assert!(assemble("MOVZ X0, #1, FOO #16").is_err());
+        assert!(assemble("MOVZ X0, #1, LSL #16, LSL #32").is_err());
+        assert!(assemble("MOVK X0, #0xDEAD, LSL #16").is_ok());
+    }
+
+    #[test]
+    fn register_offset_scale_follows_the_written_amount() {
+        // The S bit used to ride on the mere PRESENCE of an amount, so
+        // `lsl #0` scaled by 8 and every wrong amount silently rescaled.
+        assert_eq!(assemble("LDR X0, [X1, X2]").unwrap()[0], 0xF862_6820);
+        assert_eq!(assemble("LDR X0, [X1, X2, LSL #0]").unwrap()[0], 0xF862_6820);
+        assert_eq!(assemble("LDR X0, [X1, X2, LSL #3]").unwrap()[0], 0xF862_7820);
+        assert_eq!(assemble("LDR W0, [X1, X2, LSL #2]").unwrap()[0], 0xB862_7820);
+        // Non-canonical amounts are GAS hard errors, never a rescale.
+        let err = assemble("LDR X0, [X1, X2, LSL #2]").unwrap_err();
+        assert!(err.to_string().contains("#0 or #3"), "was: {err}");
+        assert!(assemble("LDR W0, [X1, X2, LSL #3]").is_err());
+        assert!(assemble("LDR X0, [X1, W2, SXTW #7]").is_err());
+        // SXTW with the canonical amount still scales.
+        assert!(assemble("LDR X0, [X1, W2, SXTW #3]").is_ok());
+        assert!(assemble("LDR X0, [X1, W2, SXTW #0]").is_ok());
+    }
+
+    #[test]
+    fn mixed_width_pairs_are_rejected() {
+        // GAS rejects these; accepting them stored the wrong width and
+        // both registers reloaded garbage.
+        let err = assemble("STP X0, W1, [SP, #0]").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("same width"), "was: {msg}");
+        assert!(assemble("STP W0, X1, [SP, #0]").is_err());
+        assert!(assemble("LDP X0, W1, [SP, #0]").is_err());
+        assert!(assemble("LDP W2, W3, [SP], #16").is_ok());
+    }
+
+    #[test]
+    fn pair_offset_boundaries_encode() {
+        assert!(assemble("STP X0, X1, [SP, #-512]").is_ok());
+        assert!(assemble("STP X0, X1, [SP, #504]").is_ok());
+        assert!(assemble("STP W0, W1, [SP, #-256]").is_ok());
+        assert!(assemble("STP W0, W1, [SP, #252]").is_ok());
+        assert!(assemble("STP X0, X1, [SP, #-520]").is_err());
+        assert!(assemble("STP X0, X1, [SP, #512]").is_err());
     }
 
     #[test]

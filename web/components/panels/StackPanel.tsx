@@ -15,7 +15,12 @@ const STACK_BASE = 0x80000000;
 const ROWS_TO_SHOW = 16;
 
 export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelProps) {
-  const spVal = parseInt(sp, 16) || STACK_BASE;
+  // `|| STACK_BASE` treated a genuinely-zero SP (broken prologue, x29
+  // never set) as unparseable and asserted a fresh untouched stack while
+  // the register panel showed SP = 0 -- the one anomaly this panel exists
+  // to show.
+  const parsedSp = parseInt(sp, 16);
+  const spVal = Number.isNaN(parsedSp) ? STACK_BASE : parsedSp;
   const bytesToShow = ROWS_TO_SHOW * 8;
   const data = getMemory(spVal, bytesToShow);
   const zoom = useZoom("stack");

@@ -25,6 +25,14 @@
 use super::lexer::{Token, TokenKind};
 use crate::errors::EmuError;
 
+/// Nesting ceiling for parentheses and stacked unary operators. The
+/// grammar recurses ~8 stack frames per level, and a wasm stack overflow
+/// is unrecoverable (the trap skips wasm-bindgen's borrow-guard Drop and
+/// every later call fails on the stuck borrow flag), so depth is counted
+/// and refused long before the stack is at risk. Real course expressions
+/// nest two or three levels.
+const MAX_EXPR_DEPTH: usize = 128;
+
 /// Evaluate a token slice as an integer expression.
 pub fn evaluate<F>(
     tokens: &[Token],
@@ -41,6 +49,7 @@ where
         resolve,
         here,
         line,
+        depth: 0,
     };
     let result = p.parse_or()?;
     if p.pos != tokens.len() {
@@ -58,6 +67,7 @@ struct Parser<'a, F: Fn(&str) -> Option<i64>> {
     resolve: &'a F,
     here: i64,
     line: usize,
+    depth: usize,
 }
 
 impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
@@ -184,21 +194,45 @@ impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
         Ok(left)
     }
 
+    /// Count one level of nesting, refusing past the ceiling. Callers
+    /// decrement on the way back out; an error aborts the whole parse so
+    /// no unwinding bookkeeping is needed.
+    fn enter_nested(&mut self) -> Result<(), EmuError> {
+        self.depth += 1;
+        if self.depth > MAX_EXPR_DEPTH {
+            return Err(err(
+                self.current_line(),
+                &format!(
+                    "expression nests too deeply (more than {MAX_EXPR_DEPTH} \
+                     levels of parentheses or unary operators)"
+                ),
+            ));
+        }
+        Ok(())
+    }
+
     fn parse_unary(&mut self) -> Result<i64, EmuError> {
         match self.peek() {
             Some(TokenKind::Minus) => {
+                self.enter_nested()?;
                 self.advance();
                 let inner = self.parse_unary()?;
+                self.depth -= 1;
                 Ok(inner.wrapping_neg())
             }
             Some(TokenKind::Tilde) => {
+                self.enter_nested()?;
                 self.advance();
                 let inner = self.parse_unary()?;
+                self.depth -= 1;
                 Ok(!inner)
             }
             Some(TokenKind::Plus) => {
+                self.enter_nested()?;
                 self.advance();
-                self.parse_unary()
+                let inner = self.parse_unary()?;
+                self.depth -= 1;
+                Ok(inner)
             }
             _ => self.parse_primary(),
         }
@@ -227,7 +261,10 @@ impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
                 self.advance();
                 Ok(self.here)
             }
-            TokenKind::Ident(name) => {
+            // Dotted local labels (`.L2`, GCC jump-table entries) resolve
+            // exactly like plain identifiers; they lex as DirectiveIdent
+            // because of the leading dot.
+            TokenKind::Ident(name) | TokenKind::DirectiveIdent(name) => {
                 let resolved = (self.resolve)(name).ok_or_else(|| {
                     err(line, &format!("unknown symbol `{name}`"))
                 })?;
@@ -235,8 +272,10 @@ impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
                 Ok(resolved)
             }
             TokenKind::LParen => {
+                self.enter_nested()?;
                 self.advance();
                 let inner = self.parse_or()?;
+                self.depth -= 1;
                 match self.peek() {
                     Some(TokenKind::RParen) => {
                         self.advance();
@@ -247,7 +286,17 @@ impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
             }
             other => Err(err(
                 line,
-                &format!("unexpected token `{other:?}` in expression"),
+                &format!(
+                    "unexpected {} in this expression{}",
+                    crate::frontend::lexer::describe(other),
+                    match other {
+                        TokenKind::Hash =>
+                            " -- values in data directives are written without the #",
+                        TokenKind::StringLit(_) =>
+                            " -- text belongs in .string/.asciz, not a numeric directive",
+                        _ => "",
+                    }
+                ),
             )),
         }
     }
@@ -285,6 +334,41 @@ mod tests {
     #[test]
     fn simple_addition() {
         assert_eq!(run("2 + 3").unwrap(), 5);
+    }
+
+    #[test]
+    fn deep_paren_nesting_is_refused_by_the_depth_counter() {
+        // Never test the raw overflow: a real stack overflow aborts the
+        // whole test process. The counter must fire far below it.
+        let src = format!("{}1{}", "(".repeat(2000), ")".repeat(2000));
+        let msg = run(&src).unwrap_err().to_string();
+        assert!(msg.contains("nests too deeply"), "message was: {msg}");
+    }
+
+    #[test]
+    fn deep_unary_nesting_is_refused_by_the_depth_counter() {
+        let src = format!("{}1", "~".repeat(2000));
+        let msg = run(&src).unwrap_err().to_string();
+        assert!(msg.contains("nests too deeply"), "message was: {msg}");
+    }
+
+    #[test]
+    fn nesting_at_the_ceiling_still_evaluates() {
+        let src = format!("{}1{}", "(".repeat(128), ")".repeat(128));
+        assert_eq!(run(&src).unwrap(), 1);
+        let src = format!("{}1{}", "(".repeat(129), ")".repeat(129));
+        assert!(run(&src).is_err());
+    }
+
+    #[test]
+    fn depth_counts_nesting_not_sequential_groups() {
+        // 200 sibling groups never exceed depth 1; only true nesting
+        // should trip the ceiling.
+        let src = std::iter::repeat("(1)")
+            .take(200)
+            .collect::<Vec<_>>()
+            .join(" + ");
+        assert_eq!(run(&src).unwrap(), 200);
     }
 
     #[test]

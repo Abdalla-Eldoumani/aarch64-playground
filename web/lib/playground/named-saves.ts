@@ -42,13 +42,16 @@ function readAll(): NamedSave[] {
   }
 }
 
-function writeAll(saves: NamedSave[]): void {
-  if (typeof window === "undefined") return;
+function writeAll(saves: NamedSave[]): boolean {
+  if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
     window.dispatchEvent(new CustomEvent(SAVES_CHANGED_EVENT));
+    return true;
   } catch {
-    // ignore quota / private mode failures
+    // Quota / private mode: report it. Swallowing the failure let an
+    // overwrite render the STALE record as if the update landed.
+    return false;
   }
 }
 
@@ -60,6 +63,11 @@ function isValidSave(v: unknown): v is NamedSave {
     o.name.length > 0 &&
     typeof o.source === "string" &&
     typeof o.stepCount === "number" &&
+    // An imported bundle is untrusted: a 1e12 or negative count passed
+    // the bare typeof check and drove the restore loop unbounded.
+    Number.isInteger(o.stepCount) &&
+    o.stepCount >= 0 &&
+    o.stepCount <= 10_000_000 &&
     typeof o.savedAt === "string"
   );
 }
@@ -72,39 +80,45 @@ export function getSave(name: string): NamedSave | null {
   return readAll().find((s) => s.name === name) ?? null;
 }
 
-export function putSave(save: NamedSave): void {
+/** Returns whether the bookmark actually reached storage. */
+export function putSave(save: NamedSave): boolean {
   const all = readAll();
   const idx = all.findIndex((s) => s.name === save.name);
   if (idx >= 0) all[idx] = save;
   else all.push(save);
-  writeAll(all);
+  return writeAll(all);
 }
 
-export function removeSave(name: string): void {
+export function removeSave(name: string): boolean {
   const all = readAll().filter((s) => s.name !== name);
-  writeAll(all);
+  return writeAll(all);
 }
 
-export function clearSaves(): void {
-  writeAll([]);
+export function clearSaves(): boolean {
+  return writeAll([]);
 }
 
 export function exportBundle(): SaveBundle {
   return { version: 1, saves: readAll() };
 }
 
+export type ImportResult =
+  | { ok: false; reason: "not-a-bundle" }
+  | { ok: true; added: number; skipped: number; stored: boolean };
+
 /**
  * Validate + merge a foreign bundle. Existing names take precedence
- * (no clobber). Returns a count of added vs skipped.
+ * (no clobber). A structurally wrong payload is a distinct outcome, not
+ * a zero count -- the flat counts let the panel green-check a rejection.
  */
-export function importBundle(bundle: unknown): { added: number; skipped: number } {
+export function importBundle(bundle: unknown): ImportResult {
   if (
     bundle == null ||
     typeof bundle !== "object" ||
     (bundle as { version?: unknown }).version !== 1 ||
     !Array.isArray((bundle as { saves?: unknown }).saves)
   ) {
-    return { added: 0, skipped: 0 };
+    return { ok: false, reason: "not-a-bundle" };
   }
   const existing = readAll();
   const existingNames = new Set(existing.map((s) => s.name));
@@ -124,6 +138,6 @@ export function importBundle(bundle: unknown): { added: number; skipped: number 
     existingNames.add(candidate.name);
     added++;
   }
-  if (added > 0) writeAll(existing);
-  return { added, skipped };
+  const stored = added > 0 ? writeAll(existing) : true;
+  return { ok: true, added, skipped, stored };
 }

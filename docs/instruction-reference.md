@@ -28,9 +28,9 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `EOR`    | `EOR Xd, Xn, Xm`                 | Exclusive OR.                            |
 | `MVN`    | `MVN Xd, Xm`                     | Bitwise NOT.                             |
 | `BIC`    | `BIC Xd, Xn, Xm`                 | Bit clear: `Xd = Xn & ~Xm`. Register form only; AArch64 has no BIC-immediate. |
-| `LSL`    | `LSL Xd, Xn, #imm`               | Logical shift left by an immediate.      |
-| `LSR`    | `LSR Xd, Xn, #imm`               | Logical shift right by an immediate.     |
-| `ASR`    | `ASR Xd, Xn, #imm`               | Arithmetic shift right by an immediate.  |
+| `LSL`    | `LSL Xd, Xn, #imm` / `LSL Xd, Xn, Xm` | Logical shift left by an immediate (0 to width-1) or by a register, modulo the width. |
+| `LSR`    | `LSR Xd, Xn, #imm` / `LSR Xd, Xn, Xm` | Logical shift right, immediate or register amount. |
+| `ASR`    | `ASR Xd, Xn, #imm` / `ASR Xd, Xn, Xm` | Arithmetic shift right, immediate or register amount. |
 | `UBFX`   | `UBFX Xd, Xn, #lsb, #width`      | Unsigned bitfield extract: pulls `width` bits starting at `lsb` down to bit 0, zeros the rest. Alias for `UBFM`. |
 | `BFI`    | `BFI Xd, Xn, #lsb, #width`       | Bitfield insert: drops the low `width` bits of `Xn` into `Xd` at `lsb`; every other `Xd` bit survives. Alias for `BFM`. |
 | `SXTB`   | `SXTB Xd, Wn` / `SXTB Wd, Wn`    | Sign-extend a byte. Alias for `SBFM`.    |
@@ -204,6 +204,7 @@ Pre-registered and available without setup:
 | 63 | read        | `x0=fd`, `x1=buf`, `x2=count`            |
 | 64 | write       | `x0=fd`, `x1=buf`, `x2=count`            |
 | 93 | exit        | `x0=status`                              |
+| 94 | exit_group  | `x0=status` (what glibc's `exit()` issues; same effect as 93) |
 
 ## NZCV flags
 

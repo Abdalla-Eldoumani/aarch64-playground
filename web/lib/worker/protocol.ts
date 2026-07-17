@@ -21,12 +21,15 @@ export type RequestKind =
   | "pause"
   | "reset"
   | "pushStdin"
+  | "closeStdin"
   | "takeStdout"
   | "takeStderr"
   | "getMemory"
+  | "isRangeMapped"
   | "getSnapshot"
   | "setBreakpoint"
   | "clearBreakpoint"
+  | "clearAllBreakpoints"
   | "saveState"
   | "loadState"
   | "deleteState"
@@ -37,6 +40,7 @@ export type RequestKind =
   | "deleteVfsFile"
   | "resolveLabel"
   | "m4Expand"
+  | "lint"
   | "clearConsole"
   | "codeBase"
   | "lineMap";
@@ -55,12 +59,15 @@ export type Request =
   | BaseRequest<"pause">
   | BaseRequest<"reset">
   | (BaseRequest<"pushStdin"> & { text: string })
+  | BaseRequest<"closeStdin">
   | BaseRequest<"takeStdout">
   | BaseRequest<"takeStderr">
   | (BaseRequest<"getMemory"> & { addr: number; len: number })
+  | (BaseRequest<"isRangeMapped"> & { addr: number; len: number })
   | BaseRequest<"getSnapshot">
   | (BaseRequest<"setBreakpoint"> & { addr: number })
   | (BaseRequest<"clearBreakpoint"> & { addr: number })
+  | BaseRequest<"clearAllBreakpoints">
   | (BaseRequest<"saveState"> & { name: string })
   | (BaseRequest<"loadState"> & { name: string })
   | (BaseRequest<"deleteState"> & { name: string })
@@ -71,6 +78,7 @@ export type Request =
   | (BaseRequest<"deleteVfsFile"> & { path: string })
   | (BaseRequest<"resolveLabel"> & { name: string })
   | (BaseRequest<"m4Expand"> & { source: string })
+  | (BaseRequest<"lint"> & { source: string })
   | BaseRequest<"clearConsole">
   | BaseRequest<"codeBase">
   | BaseRequest<"lineMap">;
@@ -113,6 +121,13 @@ export interface StepResultPayload {
   pc: number;
   halted: boolean;
   error: string | null;
+  /**
+   * Editor line of the instruction a runtime error names, resolved by the
+   * wasm side through the authoritative line map (call site via LR-4 for
+   * faults inside host stubs). Absent on success and on wasm builds that
+   * predate the field.
+   */
+  error_line?: number | null;
   outcome: string;
   exitCode: number | null;
 }
@@ -123,6 +138,22 @@ export interface RunResultPayload {
   steps_executed: number;
   hit_breakpoint: boolean;
   error: string | null;
+  /** Editor line for a runtime error (see StepResultPayload). */
+  error_line?: number | null;
+  /**
+   * True when the run stopped only because it exhausted the caller's step
+   * budget: not halted, not blocked, no breakpoint, no error. Without this
+   * flag a budget stop was indistinguishable from a clean finish and an
+   * infinite loop stopped silently.
+   */
+  step_limit_reached?: boolean;
+  /**
+   * True when a reset/assemble/state-restore landed mid-run and this
+   * result describes a machine that no longer exists. The hub discards
+   * it: acting on it painted `unknown instruction: 0x00000000` right
+   * after the student pressed Reset.
+   */
+  cancelled?: boolean;
 }
 
 /**

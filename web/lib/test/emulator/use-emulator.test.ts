@@ -23,7 +23,26 @@ vi.mock("@/lib/emulator/emulator", () => ({
   detectHostedMode: () => Promise.resolve(true),
 }));
 
-import { useEmulator } from "@/lib/emulator/use-emulator";
+import {
+  CONSOLE_TRIM_MARKER,
+  MAX_CONSOLE_CHARS,
+  appendBounded,
+  useEmulator,
+} from "@/lib/emulator/use-emulator";
+
+describe("appendBounded", () => {
+  it("passes output through untouched under the cap", () => {
+    expect(appendBounded("hello ", "world")).toBe("hello world");
+  });
+
+  it("keeps the newest output and marks the trim visibly", () => {
+    const prev = "x".repeat(MAX_CONSOLE_CHARS);
+    const next = appendBounded(prev, "TAIL");
+    expect(next.startsWith(CONSOLE_TRIM_MARKER)).toBe(true);
+    expect(next.endsWith("TAIL")).toBe(true);
+    expect(next.length).toBe(MAX_CONSOLE_CHARS + CONSOLE_TRIM_MARKER.length);
+  });
+});
 
 const CODE_BASE = 0x400000;
 const ENTRY_PC_HEX = "0x0000000000400000";
@@ -271,6 +290,18 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     pushStdin(text) {
       calls.pushStdin.push(text);
       return Promise.resolve(fire());
+    },
+    closeStdin() {
+      return Promise.resolve(fire());
+    },
+    clearAllBreakpoints() {
+      return Promise.resolve();
+    },
+    isRangeMapped() {
+      return Promise.resolve(true);
+    },
+    lint() {
+      return Promise.resolve([]);
     },
     setBreakpoint(addr) {
       calls.setBreakpoint.push(addr);

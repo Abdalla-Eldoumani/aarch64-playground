@@ -107,6 +107,18 @@ pub fn execute(
         Instruction::DpReg { op, sf, rd, rn, rm, shift, amount } => {
             exec_dp_reg(*op, *sf, *rd, *rn, *rm, *shift, *amount, regs)
         }
+        Instruction::DpRegExt { op, sf, rd, rn, rm, extend, shift } => {
+            exec_dp_ext(*op, *sf, *rd, *rn, *rm, *extend, *shift, regs)
+        }
+        Instruction::VarShift { sf, rd, rn, rm, shift } => {
+            // Shift amount is Rm modulo the register width (apply_shift
+            // owns the modulo); truncating to u8 first keeps the low bits
+            // that matter.
+            let amount = regs.read_gpr(*rm, *sf) as u8;
+            let result = apply_shift(regs.read_gpr(*rn, *sf), *shift, amount, *sf);
+            regs.write_gpr(*rd, *sf, result);
+            Ok(ExecResult::Advance)
+        }
         Instruction::MoveWide { op, sf, rd, imm16, hw } => {
             exec_move_wide(*op, *sf, *rd, *imm16, *hw, regs)
         }
@@ -378,6 +390,54 @@ fn exec_dp_reg(
         regs.nzcv = flags;
     }
     regs.write_gpr(rd, sf, result);
+
+    Ok(ExecResult::Advance)
+}
+
+/// Extend Rm's value per the extended-register option field. Widths
+/// narrower than the register zero- or sign-extend the low bits.
+fn extend_reg(value: u64, extend: RegExtend) -> u64 {
+    match extend {
+        RegExtend::Uxtb => value & 0xFF,
+        RegExtend::Uxth => value & 0xFFFF,
+        RegExtend::Uxtw => value & 0xFFFF_FFFF,
+        RegExtend::Uxtx => value,
+        RegExtend::Sxtb => value as u8 as i8 as i64 as u64,
+        RegExtend::Sxth => value as u16 as i16 as i64 as u64,
+        RegExtend::Sxtw => value as u32 as i32 as i64 as u64,
+        RegExtend::Sxtx => value,
+    }
+}
+
+fn exec_dp_ext(
+    op: DpOp, sf: bool, rd: u8, rn: u8, rm: u8,
+    extend: RegExtend, shift: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
+    // Register 31 means SP for Rn (and for Rd in the non-flag-setting
+    // ops) -- reaching SP is this form's whole purpose. Rm = 31 is XZR.
+    let operand1 = regs.read_gpr_or_sp(rn, sf);
+    let operand2 = (extend_reg(regs.read_gpr(rm, sf), extend) << shift) & mask;
+
+    let (result, flags) = match op {
+        DpOp::Add | DpOp::Adds => {
+            let r = operand1.wrapping_add(operand2) & mask;
+            (r, add_flags(operand1, operand2, r, sf))
+        }
+        DpOp::Sub | DpOp::Subs => {
+            let r = operand1.wrapping_sub(operand2) & mask;
+            (r, sub_flags(operand1, operand2, r, sf))
+        }
+    };
+
+    if matches!(op, DpOp::Adds | DpOp::Subs) {
+        regs.nzcv = flags;
+        // The flag-setting forms keep Rd = 31 as XZR (CMP/CMN discard).
+        regs.write_gpr(rd, sf, result);
+    } else {
+        regs.write_gpr_or_sp(rd, sf, result);
+    }
 
     Ok(ExecResult::Advance)
 }

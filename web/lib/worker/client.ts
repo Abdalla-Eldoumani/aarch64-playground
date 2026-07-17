@@ -109,6 +109,26 @@ export class WorkerClient {
     return this.send<StateSnapshot>({ id: 0, kind: "pushStdin", text });
   }
 
+  closeStdin(): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "closeStdin" });
+  }
+
+  clearAllBreakpoints(): Promise<void> {
+    return this.send<void>({ id: 0, kind: "clearAllBreakpoints" });
+  }
+
+  isRangeMapped(addr: number, len: number): Promise<boolean> {
+    return this.send<boolean>({ id: 0, kind: "isRangeMapped", addr, len });
+  }
+
+  lint(source: string): Promise<Array<{ line: number; message: string }>> {
+    return this.send<Array<{ line: number; message: string }>>({
+      id: 0,
+      kind: "lint",
+      source,
+    });
+  }
+
   takeStdout(): Promise<string> {
     return this.send<string>({ id: 0, kind: "takeStdout" });
   }

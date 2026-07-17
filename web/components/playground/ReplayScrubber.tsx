@@ -35,15 +35,26 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
   }, [frames, currentStep]);
 
   // Stop the playback timer if the frame set shrinks under us
-  // (assemble / reset clears the ring).
+  // (assemble / reset clears the ring). The pin clears whether or not
+  // playback is running -- gating it on the timer left a scrubbed
+  // position stuck across reset.
   useEffect(() => {
-    if (frames.length < 2 && playTimerRef.current) {
-      clearInterval(playTimerRef.current);
-      playTimerRef.current = null;
+    if (frames.length < 2) {
+      if (playTimerRef.current) {
+        clearInterval(playTimerRef.current);
+        playTimerRef.current = null;
+      }
       setPlaying(false);
       setSliderIdx(null);
     }
   }, [frames.length]);
+
+  // Forward progress releases the scrubbed pin: after a Step or Run the
+  // handle and label must track the live machine again, or the panel
+  // above shows step 6's registers while the scrubber claims step 2.
+  useEffect(() => {
+    setSliderIdx(null);
+  }, [currentStep]);
 
   if (frames.length < 2) return null;
 
@@ -80,6 +91,10 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
           playTimerRef.current = null;
         }
         setPlaying(false);
+        // Land the finished replay on the live frame, releasing the pin;
+        // leaving it set froze the scrubber at the last played index for
+        // the rest of the session.
+        setSliderIdx(null);
         return;
       }
       setSliderIdx(i);

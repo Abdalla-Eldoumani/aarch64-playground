@@ -67,10 +67,25 @@ describe("MemoryPanel", () => {
     expect(screen.queryByText("0x00400000")).toBeNull();
   });
 
-  it("treats an unparseable address as zero", () => {
+  it("holds the window and says so on an unparseable address", () => {
     renderPanel();
     fireEvent.change(addrInput(), { target: { value: "zz" } });
-    expect(screen.getByText("0x00000000")).toBeTruthy();
+    // The window stays at the last good address, with a visible verdict,
+    // instead of silently reading address 0.
+    expect(screen.getByRole("alert").textContent).toContain("hex");
+    expect(screen.getByText("0x00400000")).toBeTruthy();
+  });
+
+  it("does not truncate a hex address at a mistyped character", () => {
+    const { getMemory } = renderPanel();
+    fireEvent.change(addrInput(), { target: { value: "0x00600000" } });
+    expect(getMemory).toHaveBeenCalledWith(0x00600000, 256);
+    // Capital O for zero: parseInt would have read 0x60 and silently
+    // relocated the window; the strict parse holds at 0x00600000.
+    fireEvent.change(addrInput(), { target: { value: "0x0060O000" } });
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByText("0x00600000")).toBeTruthy();
+    expect(getMemory).not.toHaveBeenCalledWith(0x60, 256);
   });
 
   it("jumps to a named section from the select", () => {

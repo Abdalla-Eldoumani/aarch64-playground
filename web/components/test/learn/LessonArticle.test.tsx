@@ -2,6 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { slugify } from "@/lib/content/lesson-toc";
 import { readShareHash } from "@/lib/playground/share";
+
+// readShareHash returns a discriminated verdict; these tests only
+// care about the ok payload.
+function okShareState(hash: string) {
+  const r = readShareHash(hash);
+  if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
+  return r.state;
+}
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type { Lesson } from "@/lib/content/lesson-schema";
 
@@ -96,7 +104,7 @@ describe("LessonArticle", () => {
     });
     const href = codeLink.getAttribute("href") ?? "";
     expect(href.startsWith("/playground#p2=")).toBe(true);
-    const decoded = readShareHash(href.slice("/playground".length));
+    const decoded = okShareState(href.slice("/playground".length));
     expect(decoded).toEqual({ source: "mov x0, #1\nret" });
   });
 
@@ -116,7 +124,7 @@ describe("LessonArticle", () => {
     // carries the hand-off; the C and text blocks render without it.
     const links = screen.getAllByRole("link", { name: /open in playground/i });
     expect(links).toHaveLength(1);
-    const decoded = readShareHash(
+    const decoded = okShareState(
       (links[0].getAttribute("href") ?? "").slice("/playground".length),
     );
     expect(decoded).toEqual({ source: "mov x0, #1\nret" });
@@ -129,7 +137,7 @@ describe("LessonArticle", () => {
     });
     const href = editorLink.getAttribute("href") ?? "";
     expect(href.startsWith("/playground#p2=")).toBe(true);
-    const decoded = readShareHash(href.slice("/playground".length));
+    const decoded = okShareState(href.slice("/playground".length));
     expect(decoded).toEqual({
       source: "// starter program\nret",
       args: "1 2",
@@ -199,7 +207,7 @@ describe("LessonArticle", () => {
     expect(embed.getAttribute("data-startsource")).toBe("ret");
     // The deep link drops it the same way: no oversize stdin in the URL.
     const link = screen.getByRole("link", { name: /open in playground/i });
-    const decoded = readShareHash((link.getAttribute("href") ?? "").slice("/playground".length));
+    const decoded = okShareState((link.getAttribute("href") ?? "").slice("/playground".length));
     expect(decoded).toEqual({ source: "ret" });
   });
 });

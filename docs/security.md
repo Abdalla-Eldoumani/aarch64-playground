@@ -67,7 +67,7 @@ of its fields touch React state, the editor, or the WASM emulator.
 | `?theme=<name>` | enum check | unknown values |
 | Bookmark JSON import | `lib/playground/named-saves.ts::isValidSave` | per-field type check, no-clobber on name collision |
 | `.s` / `.asm` / `.txt` upload | `lib/playground/upload-guard.ts` + `MAX_SOURCE_BYTES` | files > 1 MB |
-| VFS upload (console + terminal) | `lib/playground/upload-guard.ts` + `MAX_VFS_BYTES` | files > 10 MB |
+| VFS upload (console + terminal) | `lib/playground/upload-guard.ts` + `MAX_VFS_BYTES` | files > 4 MiB |
 | Bookmark JSON upload | `lib/playground/upload-guard.ts` + `MAX_BOOKMARK_JSON_BYTES` | files > 1 MB |
 
 ### Emulator bounds
@@ -82,9 +82,15 @@ tab. The walls live in the Rust core and hold however the program arrived
   the cap faults, and the step converts that fault to a halt.
 - Host-runtime caps so one libc or syscall call cannot allocate without bound
   from a guest-supplied size: `write` reads into a growable buffer instead of
-  pre-reserving its count, `printf` clamps field width and precision
-  (`MAX_FIELD_WIDTH`), and a virtual-filesystem file cannot grow past
-  `syscalls::MAX_VFS_FILE_BYTES` (16 MiB) through `lseek` then `write`.
+  pre-reserving its count, and `printf` clamps field width and precision
+  (`MAX_FIELD_WIDTH`).
+- Virtual-filesystem walls sized against the step-back snapshot ring, which
+  clones the whole VFS every step (~129x amplification, the same budget math
+  as the page cap): one file cannot grow past `syscalls::MAX_VFS_FILE_BYTES`
+  (4 MiB) through `lseek` then `write`, the VFS as a whole is bounded by
+  `MAX_VFS_TOTAL_BYTES` (4 MiB), and `openat` refuses to create more than
+  `MAX_VFS_FILES` (16) files. Over-cap calls return -1, the same signal a
+  full disk gives on Linux.
 
 Every limit is a calm halt or a refused call carrying a plain-language result,
 never a panic or a silent stop. Proven by `emulator/tests/bounds.rs` and the
