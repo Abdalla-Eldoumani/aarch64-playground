@@ -821,16 +821,19 @@ function EmbeddableCore({
     if (emu.instructions.length === 0 || lastRunSourceRef.current !== source) {
       lastRunSourceRef.current = source;
       const ok = await emu.assemble(source, parseArgs(argsText));
-      if (ok) {
-        // Same post-assemble seeding as Run: the exercise's stdin and
-        // fixtures must be on the freshly reset machine before it runs.
-        applySeeds();
-        emu.run();
-        const startedAt = Date.now();
-        do {
-          await new Promise<void>((resolve) => setTimeout(resolve, 16));
-        } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
-      }
+      // A failed assemble must not reach the grader (mirroring runEmbed):
+      // grading the stale machine marked structural checks green against
+      // source that never built. The editor markers and the error banner
+      // already say why nothing was graded.
+      if (!ok) return;
+      // Same post-assemble seeding as Run: the exercise's stdin and
+      // fixtures must be on the freshly reset machine before it runs.
+      applySeeds();
+      emu.run();
+      const startedAt = Date.now();
+      do {
+        await new Promise<void>((resolve) => setTimeout(resolve, 16));
+      } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
     }
     onCheck?.(currentState());
   }, [emu, source, argsText, onCheck, currentState, applySeeds]);
