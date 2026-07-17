@@ -16,6 +16,7 @@ const SITE = process.argv[2] || process.env.SITE || "https://aarch64-playground.
 
 const REQUIRED = {
   "x-content-type-options": (v) => v === "nosniff",
+  "strict-transport-security": (v) => /max-age=\d/.test(v),
   "x-frame-options": (v) => v === "DENY",
   "referrer-policy": (v) => v === "strict-origin-when-cross-origin",
   "permissions-policy": (v) => /camera=\(\)/.test(v) && /microphone=\(\)/.test(v),
