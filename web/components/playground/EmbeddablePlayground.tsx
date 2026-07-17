@@ -152,6 +152,12 @@ export type EmbeddablePlaygroundHandle = {
   /** The command Action[] built inside the component so a host-rendered
    *  palette has no duplicate logic. */
   getCommands(): Action[];
+  /** Surface a host-page failure (bad share link, failed example fetch)
+   *  through this component's toast instance. The page entry's own
+   *  react-hot-toast binding is a separate module instance in the
+   *  production chunk graph, so toasts dispatched there never reach the
+   *  mounted Toaster; this component's binding provably does. */
+  notifyError(message: string): void;
 };
 
 export type EmbeddablePlaygroundProps = {
@@ -857,6 +863,7 @@ function EmbeddableCore({
         if (!emuRef.current.blocked) emuRef.current.stepBack();
       },
       reset: () => emuRef.current.reset(),
+      notifyError: (message: string) => toast.error(message),
       loadSource: (next: string) => loadSource(next),
       loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
       getSource: () => sourceRef.current,
@@ -1676,6 +1683,8 @@ export const EmbeddablePlayground = forwardRef<
         runOrQueue((handle) => handle.loadSource(next, label)),
       loadProgram: (payload: HandoffPayload) =>
         runOrQueue((handle) => handle.loadProgram(payload)),
+      notifyError: (message: string) =>
+        runOrQueue((handle) => handle.notifyError(message)),
       getSource: () => innerHandleRef.current?.getSource() ?? startSource ?? "",
       getArgs: () => innerHandleRef.current?.getArgs() ?? startArgs ?? "",
       getCursor: () =>
