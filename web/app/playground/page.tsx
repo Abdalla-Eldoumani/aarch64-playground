@@ -48,7 +48,7 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "F5", description: "run / pause" },
   { keys: "Shift+F5", description: "reset" },
   { keys: "Ctrl+K", description: "open command palette" },
-  { keys: "Ctrl+S", description: "auto-save (also runs every 500ms)" },
+  { keys: "Ctrl+S", description: "your buffer is auto-saved continuously" },
   { keys: "?", description: "show this help" },
 ];
 
@@ -191,6 +191,10 @@ export default function Home() {
         e.preventDefault();
         setPaletteActions(playgroundRef.current?.getCommands() ?? []);
         setPaletteOpen((v) => !v);
+      } else if (meta && e.key.toLowerCase() === "s") {
+        // The buffer autosaves continuously; intercept Ctrl+S so it does not
+        // open the browser's save-page dialog. The help entry documents this.
+        e.preventDefault();
       } else if (
         e.key === "?" &&
         !(e.target instanceof HTMLInputElement) &&
