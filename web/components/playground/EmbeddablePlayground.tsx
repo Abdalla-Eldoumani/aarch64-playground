@@ -871,7 +871,9 @@ function EmbeddableCore({
       getCursor: () => cursorRef.current,
       getCommands: () => buildCommandsRef.current(),
     }),
-    [loadSource],
+    // `toast` is referentially stable (useToast memoizes it); notifyError
+    // reads it, so it belongs in the dependency list.
+    [loadSource, toast],
   );
 
   // Register the handle only once the hub is loaded, so a queued host action
