@@ -69,7 +69,12 @@ function instructionSuggestions(): Suggestion[] {
   }));
 }
 
-const DEFINE_RE = /\bdefine\s*\(\s*([A-Za-z_][\w]*)\s*,\s*([^)]+?)\s*\)/g;
+// `[^)]*` is greedy with no trailing `\s*`, so the body scan is linear. The
+// old `([^)]+?)\s*\)` overlapped a lazy quantifier with `\s*` on whitespace,
+// which backtracks O(n^2) on a long unclosed `define(` -- and this runs on
+// the main thread on every keystroke. The body's trailing space is trimmed
+// below.
+const DEFINE_RE = /\bdefine\s*\(\s*([A-Za-z_][\w]*)\s*,\s*([^)]*)\)/g;
 
 function aliasSuggestions(source: string): Suggestion[] {
   const out: Suggestion[] = [];

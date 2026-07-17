@@ -35,12 +35,20 @@ let wasmReady: Promise<void> | null = null;
 // WASM blob only downloads when a student actually clicks `assemble`
 // (or imports a program through any other path that mutates state).
 function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = init().then(() => {
+  if (wasmReady) return wasmReady;
+  const p = init()
+    .then(() => {
       emulator = new Emulator();
+    })
+    .catch((e: unknown) => {
+      // A transient fetch/compile failure must not brick the worker: a
+      // cached rejected promise would fail every future assemble until a
+      // page reload. Clear it so the next mutating message retries.
+      wasmReady = null;
+      throw e;
     });
-  }
-  return wasmReady;
+  wasmReady = p;
+  return p;
 }
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
