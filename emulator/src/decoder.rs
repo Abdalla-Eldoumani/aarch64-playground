@@ -1508,6 +1508,13 @@ fn decode_logical_reg(instr: u32) -> Result<Instruction, EmuError> {
 
 fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
+    // Bit 30 is the op field: 0 = CSEL/CSINC (supported; CSET lowers to
+    // CSINC), 1 = CSINV/CSNEG. The executor has no CsInv/CsNeg and the
+    // assembler never emits them, so reject rather than silently decode a
+    // hand-crafted `.word` csinv as csel.
+    if bit(instr, 30) != 0 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
     let op2 = bit(instr, 10);
     let rm = bits(instr, 20, 16) as u8;
     let cond_bits = bits(instr, 15, 12) as u8;
@@ -1534,6 +1541,12 @@ fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
 
 fn decode_dp2(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
+    // Bit 30 set marks the 1-source data-processing group (rev/rev32/rbit/
+    // clz), which shares this decode entry. Without this guard a `.word`-
+    // crafted rev32 fell through to the 2-source table and ran as udiv.
+    if bit(instr, 30) != 0 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
     let s = bit(instr, 29);
     let opcode = bits(instr, 15, 10);
     let rm = bits(instr, 20, 16) as u8;
@@ -2122,6 +2135,21 @@ mod tests {
         // The unsupported sign-extending writeback forms reject instead of
         // misdecoding: 0x38C00421 = ldrsb w1, [x1], #0 (post-index).
         assert!(decode(0x38C0_0421).is_err());
+    }
+
+    #[test]
+    fn unsupported_condsel_and_dp1_source_are_rejected() {
+        // csinv/csneg (cond-select op bit set) and rev/rev32 (DP 1-source,
+        // bit 30 set) are not implemented and the assembler never emits
+        // them; a hand-crafted .word must reject, not silently run as
+        // csel/csinc or udiv/sdiv.
+        assert!(decode(0x5A80_0000).is_err(), "csinv w0,w0,w0,eq");
+        assert!(decode(0xDA80_0400).is_err(), "csinv x0,x0,x0 variant");
+        assert!(decode(0xDAC0_0800).is_err(), "rev32 x0,x0");
+        assert!(decode(0x5AC0_0800).is_err(), "dp2 group with the op bit set");
+        // sanity: the supported forms still decode.
+        assert!(decode(0x1A80_0000).is_ok(), "csel w0,w0,w0,eq");
+        assert!(decode(0x1AC0_0800).is_ok(), "udiv w0,w0,w0");
     }
 
     #[test]
