@@ -177,7 +177,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 if !suppress {
                     let ptr = walker.next_int(ctx);
                     if long_modifier {
-                        ctx.mem.write_u64(ptr, value as u64)?;
+                        ctx.mem.write_u64(ptr, value)?;
                     } else {
                         ctx.mem.write_u32(ptr, value as u32)?;
                     }
@@ -206,7 +206,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 if !suppress {
                     let ptr = walker.next_int(ctx);
                     if long_modifier {
-                        ctx.mem.write_u64(ptr, value as u64)?;
+                        ctx.mem.write_u64(ptr, value)?;
                     } else {
                         ctx.mem.write_u32(ptr, value as u32)?;
                     }
@@ -873,6 +873,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal stdin text, not an approximation of pi
     fn scanf_plain_f_stores_a_4_byte_float() {
         // C contract: scanf("%f", &x) writes a 4-byte float. A program
         // then reads it back with `ldr s0, [addr]`.
@@ -891,6 +892,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal stdin text, not an approximation of pi
     fn scanf_lf_stores_an_8_byte_double() {
         let mut h = Host::new();
         h.place_fmt("%lf");
