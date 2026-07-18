@@ -1,6 +1,6 @@
 "use client";
 
-import MonacoEditor, { type OnMount } from "@monaco-editor/react";
+import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
 import { lookupDoc } from "@/lib/asm/instruction-docs";
@@ -9,6 +9,15 @@ import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
 import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
 import { useToast } from "@/components/ui/Toast";
 import { validateSource } from "@/lib/playground/upload-guard";
+
+// Pin the monaco build the loader fetches. The loader ships a default CDN
+// version that moves with its own releases (a transitive dep), so without
+// this a lockfile refresh could silently swap the editor build the site
+// runs; the devDependency pin keeps the compile-time types on the same
+// version. Keep the two in step when bumping.
+loader.config({
+  paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs" },
+});
 
 let arm64Registered = false;
 
