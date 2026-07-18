@@ -1097,6 +1097,7 @@ function EmbeddableCore({
               assemblyErrors={emu.assemblyErrors}
               lintWarnings={lintWarnings}
               onCursorChange={setCursor}
+              readOnly={readOnly}
             />
           </div>
           <div className="embed-area-registers min-h-0 min-w-0 overflow-auto">
