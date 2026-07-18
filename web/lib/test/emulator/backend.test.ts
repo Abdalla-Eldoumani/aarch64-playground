@@ -33,6 +33,7 @@ function fakeEmu() {
     listVfsFiles: () => [],
     listStates: () => [],
     takeDirtyAddrs: () => [],
+    wantsTerminal: () => false,
   };
 }
 
