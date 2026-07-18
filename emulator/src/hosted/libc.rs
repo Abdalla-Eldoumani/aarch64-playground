@@ -244,6 +244,7 @@ mod tests {
         open_files: HashMap<u32, OpenFile>,
         next_fd: u32,
         rand_state: u64,
+        term: crate::cpu::TermState,
     }
 
     impl Host {
@@ -261,6 +262,7 @@ mod tests {
                 open_files: HashMap::new(),
                 next_fd: 3,
                 rand_state: 1,
+                term: crate::cpu::TermState::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -275,6 +277,7 @@ mod tests {
                 open_files: &mut self.open_files,
                 next_fd: &mut self.next_fd,
                 rand_state: &mut self.rand_state,
+                term: &mut self.term,
             }
         }
         fn place_string(&mut self, addr: u64, s: &[u8]) {
