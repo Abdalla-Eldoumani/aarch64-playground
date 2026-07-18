@@ -449,6 +449,7 @@ fn asm_error(line_num: usize, msg: &str) -> EmuError {
 // instruction encoders
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::identity_op)] // zero fields kept to document the full encoding layout
 fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "MOV requires 2 operands");
@@ -460,10 +461,10 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if op2.starts_with('#')
         || op2.starts_with('-')
         || op2.starts_with('\'')
-        || op2.chars().next().map_or(false, |c| c.is_ascii_digit())
+        || op2.chars().next().is_some_and(|c| c.is_ascii_digit())
     {
         let imm = parse_immediate(op2, ln)?;
-        if imm >= 0 && imm <= 0xFFFF {
+        if (0..=0xFFFF).contains(&imm) {
             return encode_movzk(&[ops[0], op2], 0b10, ln); // MOVZ
         }
         if imm > 0 {
@@ -625,7 +626,7 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
     // resolved before the immediate branch so `add x0, x1, #1, lsl #12`
     // gets a targeted message rather than an operand-count failure).
     let (shift_bits, shift_amt) = if ops.len() == 4 {
-        if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+        if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
             return asm_err(
                 ln,
                 "a shift modifier only applies to the register form; write the shifted value directly",
@@ -637,9 +638,9 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
     };
 
     // immediate form
-    if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         let imm = parse_immediate(op3, ln)?;
-        if imm < 0 || imm > 4095 {
+        if !(0..=4095).contains(&imm) {
             return asm_err(ln, "immediate out of range (0-4095)");
         }
         return Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
@@ -721,7 +722,7 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     // like `#-16` (a bare parse::<i64> only understood decimal).
     let imm_body = ops[1].trim();
     if imm_body.starts_with('#')
-        || imm_body.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+        || imm_body.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
     {
         if let Ok(v) = parse_immediate(imm_body, ln) {
             if v < 0 {
@@ -769,7 +770,7 @@ fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return asm_err(ln, "BIC requires 3 operands");
     }
     let op3 = ops[2].trim();
-    if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+    if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
     {
         return asm_err(ln, "BIC takes a register, not an immediate; use AND with the inverted mask");
     }
@@ -861,7 +862,7 @@ fn encode_log_dispatch(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError
     if ops.len() == 3 {
         let op3 = ops[2].trim();
         if op3.starts_with('#')
-            || op3.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+            || op3.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
         {
             let (rd, sf) = parse_register(ops[0], ln)?;
             let (rn, _) = parse_register(ops[1], ln)?;
@@ -888,7 +889,7 @@ fn encode_tst(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     }
     let op2 = ops[1].trim();
     // Immediate form: emit ANDS-immediate with Rd=ZR.
-    if op2.starts_with('#') || op2.chars().next().map_or(false, |c| c.is_ascii_digit() || c == '-')
+    if op2.starts_with('#') || op2.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
     {
         let value = parse_immediate(op2, ln)? as u64;
         return encode_log_imm_fields(rn, 31, value, sf, 0b11, ln);
@@ -949,7 +950,7 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
     let reg_size: u8 = if sf { 64 } else { 32 };
 
     // immediate form via UBFM/SBFM
-    if op3.starts_with('#') || op3.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         // Validate the full-width value BEFORE narrowing: `as u8` wraps
         // mod 256, and the UBFM field math below wraps again, so an
         // out-of-range amount used to assemble silently into a different
@@ -1005,6 +1006,7 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
 /// aliases with `immr = 0` and `imms` fixed per width (7/15/31). The
 /// destination width picks the 64- vs 32-bit form (and the N bit, which
 /// tracks `sf` for these encodings).
+#[allow(clippy::identity_op)] // zero fields kept to document the full encoding layout
 fn encode_extend(ops: &[&str], signed: bool, imms: u8, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "sign/zero extend requires 2 operands");
@@ -1158,7 +1160,7 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         && imm_text
             .chars()
             .next()
-            .map_or(false, |c| c.is_ascii_digit() || c == '-' || c == '+' || c == '.')
+            .is_some_and(|c| c.is_ascii_digit() || c == '-' || c == '+' || c == '.')
     {
         let value: f64 = imm_text.parse().map_err(|_| {
             asm_error(ln, &format!("cannot parse '{op2}' as an FMOV float immediate"))
@@ -1299,7 +1301,7 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
                     ),
                 );
             }
-            if (offset_val as u64) % scale != 0 {
+            if !(offset_val as u64).is_multiple_of(scale) {
                 return asm_err(
                     ln,
                     &format!("the {name} offset {offset_val} must be a multiple of {scale}"),
@@ -1402,7 +1404,7 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
                 0b11 => 8,
                 _ => unreachable!(),
             };
-            if offset_val < 0 || (offset_val as u64) % scale != 0 {
+            if offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
                 // Negative or unaligned offsets have no scaled form; GAS
                 // silently emits the unscaled LDUR/STUR encoding instead
                 // (struct fields at odd offsets, negative frame slots).
@@ -1430,7 +1432,7 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
         }
         AddressingMode::Immediate { rn, offset, mode } => {
             let offset_val = offset.unwrap_or(0);
-            if offset_val < -256 || offset_val > 255 {
+            if !(-256..=255).contains(&offset_val) {
                 return asm_err(ln, "pre/post-index offset must be in [-256, 255]");
             }
             let imm9 = (offset_val as u32) & 0x1FF;
@@ -1694,7 +1696,7 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
             mode: IndexMode::Unsigned,
         } => {
             let offset_val = offset.unwrap_or(0);
-            if offset_val < 0 || (offset_val as u64) % scale != 0 {
+            if offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
                 // Same GAS conversion as the integer path: negative or
                 // unaligned offsets ride the unscaled encoding.
                 return imm9_form(offset_val, 0b00, rn);
@@ -1722,6 +1724,7 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
     }
 }
 
+#[allow(clippy::identity_op)] // zero fields kept to document the full encoding layout
 fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
     if ops.len() < 3 {
         return asm_err(ln, "LDP/STP requires at least 3 operands");
@@ -1803,7 +1806,7 @@ fn encode_adr(
     let target = ops[1].trim();
     let target_addr = if target.starts_with('#')
         || target.starts_with('-')
-        || target.chars().next().map_or(false, |c| c.is_ascii_digit())
+        || target.chars().next().is_some_and(|c| c.is_ascii_digit())
     {
         parse_immediate(target, ln)? as u64
     } else {
@@ -1838,7 +1841,7 @@ fn encode_branch_imm(
     }
     let target = ops[0].trim();
 
-    let offset_bytes = if target.starts_with('#') || target.starts_with('-') || target.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    let offset_bytes = if target.starts_with('#') || target.starts_with('-') || target.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         parse_immediate(target, ln)?
     } else {
         // Labels in the cpsc 355 corpus are lowercase; the frontend
@@ -1868,7 +1871,7 @@ fn encode_bcond(
     }
     let target = ops[0].trim();
 
-    let offset_bytes = if target.starts_with('#') || target.starts_with('-') || target.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    let offset_bytes = if target.starts_with('#') || target.starts_with('-') || target.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         parse_immediate(target, ln)?
     } else {
         // Labels in the cpsc 355 corpus are lowercase; the frontend
@@ -1986,7 +1989,7 @@ fn resolve_branch_target(
 ) -> Result<i64, EmuError> {
     if target.starts_with('#')
         || target.starts_with('-')
-        || target.chars().next().map_or(false, |c| c.is_ascii_digit())
+        || target.chars().next().is_some_and(|c| c.is_ascii_digit())
     {
         parse_immediate(target, ln)
     } else {
