@@ -188,7 +188,7 @@ export const EXAMPLE_INPUTS: Record<
   echo: { stdin: true },
   locals: { stdin: true },
   "read-file": { vfs: true },
-  snake: { stdin: true },
+  "snake-console": { stdin: true },
   "student-record": { stdin: true },
   "triangle-area": { stdin: true },
 };
