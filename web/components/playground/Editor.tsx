@@ -225,6 +225,9 @@ interface EditorProps {
    *  parent owns the formatter implementation so the keybinding and
    *  the command-palette entry share one code path. */
   onFormat?: () => void;
+  /** When true the surface rejects input: Monaco and the phone fallback
+   *  both become read-only (embed and checker snapshots). */
+  readOnly?: boolean;
 }
 
 const ARM64_MNEMONICS = [
@@ -275,6 +278,7 @@ export function Editor({
   lintWarnings = [],
   onCursorChange,
   onFormat,
+  readOnly = false,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -519,6 +523,7 @@ export function Editor({
       assemblyErrors={assemblyErrors}
       onDrop={onDrop}
       onCursorChange={onCursorChange}
+      readOnly={readOnly}
     />;
   }
 
@@ -565,6 +570,7 @@ export function Editor({
           cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
           accessibilitySupport: "auto",
           accessibilityHelpUrl: "/docs/accessibility",
+          readOnly,
         }}
       />
     </div>
@@ -580,6 +586,7 @@ interface FallbackEditorProps {
   assemblyErrors: AssemblyError[];
   onDrop: (e: React.DragEvent) => void;
   onCursorChange?: (pos: { line: number; column: number }) => void;
+  readOnly?: boolean;
 }
 
 type MonacoForCompletion = Parameters<OnMount>[1];
@@ -629,6 +636,7 @@ function FallbackEditor({
   assemblyErrors,
   onDrop,
   onCursorChange,
+  readOnly = false,
 }: FallbackEditorProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const lineCount = Math.max(1, value.split("\n").length);
@@ -693,6 +701,7 @@ function FallbackEditor({
         }}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        readOnly={readOnly}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
