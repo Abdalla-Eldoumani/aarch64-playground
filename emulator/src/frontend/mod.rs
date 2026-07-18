@@ -2,9 +2,10 @@
 //!
 //!   m4 expansion -> lexer -> parser -> encoder -> linker.
 //!
-//! Populated incrementally across phase A. The legacy single-pass assembler
-//! in `crate::assembler` still handles every call for now; this module takes
-//! over once the new pipeline reaches feature parity with it.
+//! This front end handles hosted CPSC 355 source (sections, libc, syscalls).
+//! The legacy single-pass `crate::assembler` still handles bare-metal source;
+//! `detect_hosted_mode` in lib.rs routes each program to the right path, and
+//! the linker reuses `assembler::encode_line_absolute` for ordinary instructions.
 
 pub mod expr;
 pub mod lexer;
