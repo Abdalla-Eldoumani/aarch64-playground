@@ -99,17 +99,6 @@ const TutorialRunner = dynamic(
  */
 export type EmbeddableChrome = "full" | "embed" | "checker";
 
-/** Panels a host can force on/off on top of the chrome defaults. */
-export type PanelKey =
-  | "disassembly"
-  | "memory"
-  | "stack"
-  | "console"
-  | "terminal"
-  | "watches"
-  | "memwatch"
-  | "saves";
-
 /**
  * The outcome slice the host reads for in-place output and the future
  * outcome checker. Exactly these ten fields mirror the hub; this is the
@@ -176,8 +165,6 @@ export type EmbeddablePlaygroundProps = {
   autoplay?: boolean;
   /** How many steps the autoplay walk takes (clamped to a small ceiling). */
   autoplaySteps?: number;
-  /** Optional overrides on top of the chrome defaults. */
-  panels?: Partial<Record<PanelKey, boolean>>;
   showRun?: boolean;
   showReset?: boolean;
   /** Check only applies in checker chrome. */
