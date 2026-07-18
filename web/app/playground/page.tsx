@@ -49,6 +49,8 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "Shift+F5", description: "reset" },
   { keys: "Ctrl+K", description: "open command palette" },
   { keys: "Ctrl+S", description: "your buffer is auto-saved continuously" },
+  { keys: "Ctrl+/", description: "toggle line comment" },
+  { keys: "Shift+Alt+A", description: "toggle block comment" },
   { keys: "?", description: "show this help" },
 ];
 
