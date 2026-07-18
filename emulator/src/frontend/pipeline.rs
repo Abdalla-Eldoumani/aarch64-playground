@@ -311,6 +311,23 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     let tramp_bytes = (host_trampolines.len() as u64) * 8;
     let pool_base = tramp_base + tramp_bytes;
 
+    // The trampolines and literal pool are appended after .text; bound the
+    // whole .text image (not just its instructions) against the 1 MiB window
+    // so a large .text plus its pool cannot silently spill into .rodata.
+    let max_pool_slots = pool_values.len() as u64 + host_trampolines.len() as u64;
+    let image_end = pool_base + max_pool_slots * 8;
+    if image_end > CODE_BASE + SECTION_WINDOW {
+        return Err(EmuError::AssemblyError {
+            line: 0,
+            message: format!(
+                ".text plus its literal pool and libc trampolines reaches {} bytes, past \
+                 the 1 MiB code window -- shrink .text or reduce the `ldr xN, =...` \
+                 constants and libc calls",
+                image_end - CODE_BASE
+            ),
+        });
+    }
+
     // Each trampoline needs a pool slot that holds the host stub's real
     // 64-bit address. Pre-allocate those slots and wire the per-name
     // trampoline address into the symbol table so `bl printf` can route
@@ -439,6 +456,18 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         // plain numeric literals so the legacy encoder
                         // sees `[sp, -32]!` instead of `[sp, alloc]!`.
                         let line_text = if let Some(name) = extract_bl_target(&tokens_owned) {
+                            // `bl label+addend` used to silently drop the
+                            // addend and branch to the bare symbol. There is
+                            // no encoding for it here, so reject rather than
+                            // mislead. A plain `bl label` is exactly 2 tokens.
+                            if tokens_owned.len() > 2 {
+                                return Err(EmuError::AssemblyError {
+                                    line: *original_line,
+                                    message: "bl takes a single label with no addend; \
+                                              branch to the label directly"
+                                        .into(),
+                                });
+                            }
                             // Token redirect already produced the final
                             // mnemonic+target; bypass the string path so
                             // tab-separated lines reach the encoder
