@@ -105,7 +105,6 @@ function snap(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
     stderrDelta: "",
     vfsFiles: [],
     savedStates: [],
-    changedMem: false,
     dirtyAddrs: [],
     ...overrides,
   };

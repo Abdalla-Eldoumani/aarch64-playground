@@ -331,7 +331,6 @@ class MainThreadBackend implements EmulatorBackend {
       stderrDelta: this.emu.takeStderr(),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
-      changedMem: true,
       dirtyAddrs: this.emu.takeDirtyAddrs(),
     };
   }

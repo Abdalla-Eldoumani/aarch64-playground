@@ -20,7 +20,6 @@ function makeSnapshot(): StateSnapshot {
     stderrDelta: "",
     vfsFiles: [],
     savedStates: [],
-    changedMem: false,
     dirtyAddrs: [],
   };
 }

@@ -477,11 +477,6 @@ function snapshot(): StateSnapshot {
     stderrDelta,
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
-    // The Cpu doesn't currently expose a "wrote memory this step" flag;
-    // bump on every state-mutating call instead, which keeps panel caches
-    // honest at the cost of a re-fetch per step. The cache layer keys
-    // its read by `frame` so the fetches still dedup within a frame.
-    changedMem: true,
     // Drain the dirty addresses. They accumulate between snapshot
     // calls, so failing to drain would make them grow unbounded.
     dirtyAddrs: Array.from(emulator.take_dirty_addrs()).map(Number),
