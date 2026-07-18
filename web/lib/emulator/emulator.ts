@@ -34,6 +34,9 @@ export interface RunResult {
   error: string | null;
   /** Editor line for a runtime error (see StepResult). */
   error_line: number | null;
+  /** Pause the last nanosleep asked for, in ms; null when the run
+   *  stopped for any other reason (or the wasm predates pacing). */
+  sleep_ms: number | null;
 }
 
 export interface RegisterState {
@@ -164,6 +167,13 @@ export class EmulatorInstance {
     this.inner.clear_console();
   }
 
+  /** True once the program switched the terminal to raw mode; false on
+   *  wasm builds that predate the flag. */
+  wantsTerminal(): boolean {
+    const inner = this.inner as unknown as { wants_terminal?: () => boolean };
+    return inner.wants_terminal?.() ?? false;
+  }
+
   runUntilBreak(maxSteps: number): RunResult {
     const raw = this.inner.run_until_break(maxSteps) as RawRunResult;
     return {
@@ -173,6 +183,7 @@ export class EmulatorInstance {
       hit_breakpoint: raw.hit_breakpoint,
       error: raw.error ?? null,
       error_line: raw.error_line ?? null,
+      sleep_ms: raw.sleep_ms ?? null,
     };
   }
 
@@ -294,6 +305,7 @@ interface RawRunResult {
   hit_breakpoint: boolean;
   error?: string;
   error_line?: number | null;
+  sleep_ms?: number | null;
 }
 
 // the WASM module's Emulator instance shape
