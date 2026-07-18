@@ -204,7 +204,8 @@ export function useEmulator(): EmulatorState {
   );
   // Most-recent snapshot's `(addr, len)` writes. Drives memory-cell
   // diff highlighting in the replay scrubber and MemoryPanel. Cleared
-  // on assemble / reset.
+  // whenever a snapshot reports no writes (assemble, reset, or a
+  // non-storing step) so stale ranges never linger.
   const dirtyAddrsRef = useRef<Array<[number, number]>>([]);
   // Live halted flag for the run() guard. The embed and checker call a
   // `run` captured before their awaited assemble, so a state-closure
@@ -322,6 +323,11 @@ export function useEmulator(): EmulatorState {
         pairs.push([snap.dirtyAddrs[i], snap.dirtyAddrs[i + 1]]);
       }
       dirtyAddrsRef.current = pairs;
+      setDirtyAddrsTick((t) => t + 1);
+    } else if (dirtyAddrsRef.current.length > 0) {
+      // No writes in this snapshot (a non-storing step, or assemble/reset):
+      // drop the previous frame's ranges so stale cells stop highlighting.
+      dirtyAddrsRef.current = [];
       setDirtyAddrsTick((t) => t + 1);
     }
   }, [codeBase]);
