@@ -12,6 +12,7 @@ import {
   type LineMap,
 } from "@/lib/emulator/line-map";
 import { ReplayRing, type ReplayFrame } from "@/lib/emulator/replay";
+import { parseArgs } from "@/lib/playground/args";
 import type { StateSnapshot } from "@/lib/worker/protocol";
 
 export interface AssemblyError {
@@ -198,12 +199,27 @@ export function useEmulator(): EmulatorState {
   // can read regs/pc/nzcv without piping them through React state and
   // racing the snapshot listener.
   const replayRingRef = useRef<ReplayRing>(new ReplayRing(128));
-  const latestSnapRef = useRef<{ registers: string[]; pc: number; nzcv: number; changedRegs: number[] }>(
-    { registers: [], pc: 0, nzcv: 0, changedRegs: [] },
-  );
+  const latestSnapRef = useRef<{
+    registers: string[];
+    sp: string;
+    fpRegisters: string[];
+    pc: number;
+    nzcv: number;
+    changedRegs: number[];
+    changedFpRegs: number[];
+  }>({
+    registers: [],
+    sp: "0x0000000080000000",
+    fpRegisters: [],
+    pc: 0,
+    nzcv: 0,
+    changedRegs: [],
+    changedFpRegs: [],
+  });
   // Most-recent snapshot's `(addr, len)` writes. Drives memory-cell
   // diff highlighting in the replay scrubber and MemoryPanel. Cleared
-  // on assemble / reset.
+  // whenever a snapshot reports no writes (assemble, reset, or a
+  // non-storing step) so stale ranges never linger.
   const dirtyAddrsRef = useRef<Array<[number, number]>>([]);
   // Live halted flag for the run() guard. The embed and checker call a
   // `run` captured before their awaited assemble, so a state-closure
@@ -272,9 +288,12 @@ export function useEmulator(): EmulatorState {
     setChangedFpRegs(new Set(snap.changedFpRegs));
     latestSnapRef.current = {
       registers: snap.registers,
+      sp: snap.sp,
+      fpRegisters: snap.fpRegisters,
       pc: pcNum,
       nzcv: snap.nzcv,
       changedRegs: snap.changedRegs,
+      changedFpRegs: snap.changedFpRegs,
     };
     setIsHalted(snap.halted);
     haltedRef.current = snap.halted;
@@ -322,6 +341,11 @@ export function useEmulator(): EmulatorState {
       }
       dirtyAddrsRef.current = pairs;
       setDirtyAddrsTick((t) => t + 1);
+    } else if (dirtyAddrsRef.current.length > 0) {
+      // No writes in this snapshot (a non-storing step, or assemble/reset):
+      // drop the previous frame's ranges so stale cells stop highlighting.
+      dirtyAddrsRef.current = [];
+      setDirtyAddrsTick((t) => t + 1);
     }
   }, [codeBase]);
 
@@ -334,9 +358,12 @@ export function useEmulator(): EmulatorState {
     replayRingRef.current.push({
       stepCount: newStepCount,
       registers: snap.registers,
+      sp: snap.sp,
+      fpRegisters: snap.fpRegisters,
       pc: snap.pc,
       nzcv: snap.nzcv,
       changedRegs: snap.changedRegs,
+      changedFpRegs: snap.changedFpRegs,
       currentLine: ln,
     });
     setReplayTick((t) => t + 1);
@@ -358,9 +385,12 @@ export function useEmulator(): EmulatorState {
     const frame = replayRingRef.current.at(frameIndex);
     if (!frame) return;
     setRegisters(frame.registers);
+    setSp(frame.sp);
+    setFpRegisters(frame.fpRegisters);
     setPc(frame.pc);
     setNzcv(frame.nzcv);
     setChangedRegs(new Set(frame.changedRegs));
+    setChangedFpRegs(new Set(frame.changedFpRegs));
     setCurrentLine(frame.currentLine);
   }, []);
 
@@ -802,9 +832,10 @@ export function useEmulator(): EmulatorState {
       const backend = backendRef.current;
       if (!backend) return { success: false, stepped: 0 };
       resetReplayHistory();
-      const argList = params.args
-        ? params.args.split(/\s+/).filter((s) => s.length > 0)
-        : [];
+      // Tokenize with the shared quoting-aware parser, not a bare
+      // whitespace split: a bookmarked `"hello world"` is one argv entry
+      // everywhere else, so the restore must not split it into two.
+      const argList = params.args ? parseArgs(params.args) : [];
       // One assemble path for every program delivery: the direct
       // backend.assemble call this used to make skipped the line-map
       // refresh, hosted-mode detection, the instruction decode, and the

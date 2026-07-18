@@ -3,7 +3,7 @@
 //!
 //! The lexer classifies at the cheapest possible level. It does not know
 //! which identifiers are mnemonics or registers (the parser decides that
-//! when it has context). It does handle the two tricky numeric forms the
+//! when it has context). It does handle the three tricky numeric forms the
 //! course uses: hex `0x...`, binary `0b...`, and GAS-radix doubles `0r...`.
 //! String and char literals resolve their escapes here so later stages
 //! never have to look at a `\n`.
@@ -514,7 +514,21 @@ fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
         b'n' => Ok((b'\n' as u32, 2)),
         b't' => Ok((b'\t' as u32, 2)),
         b'r' => Ok((b'\r' as u32, 2)),
-        b'0' => Ok((0, 2)),
+        d @ b'0'..=b'7' => {
+            // GAS octal escape: backslash + 1 to 3 octal digits, value mod
+            // 256. `\0` alone is still NUL; `\012` is a newline; `\101` is
+            // 'A'. The old arm only handled `\0` and rejected `\1`..`\7`.
+            let mut val = u32::from(d - b'0');
+            let mut consumed = 2; // backslash + first digit
+            while consumed < 4
+                && consumed < bytes.len()
+                && (b'0'..=b'7').contains(&bytes[consumed])
+            {
+                val = val * 8 + u32::from(bytes[consumed] - b'0');
+                consumed += 1;
+            }
+            Ok((val & 0xFF, consumed))
+        }
         b'\\' => Ok((b'\\' as u32, 2)),
         b'"' => Ok((b'"' as u32, 2)),
         b'\'' => Ok((b'\'' as u32, 2)),
@@ -608,6 +622,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal source text, not an approximation of pi
     fn plain_decimal_float_lexes_like_the_real_assembler() {
         // `.double 3.14` works in the real toolchain with no 0r prefix.
         let t = lex("3.14", 1).unwrap();
@@ -667,6 +682,16 @@ mod tests {
     fn string_literal_with_newline_escape() {
         let t = lex("\"Hello\\n\"", 1).unwrap();
         assert_eq!(kinds(&t), vec![TokenKind::StringLit(b"Hello\n".to_vec())]);
+    }
+
+    #[test]
+    fn string_literal_with_octal_escape() {
+        // GAS octal: backslash + up to 3 octal digits (value mod 256).
+        // \101 = 'A', \0 = NUL, \11 = tab; the old
+        // lexer only handled \0 and rejected \1..\7.
+        assert_eq!(kinds(&lex(r#""\101""#, 1).unwrap()), vec![TokenKind::StringLit(b"A".to_vec())]);
+        assert_eq!(kinds(&lex(r#""a\0b""#, 1).unwrap()), vec![TokenKind::StringLit(vec![b'a', 0, b'b'])]);
+        assert_eq!(kinds(&lex(r#""\11""#, 1).unwrap()), vec![TokenKind::StringLit(vec![9u8])]);
     }
 
     #[test]

@@ -79,9 +79,10 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             width = Some(width.unwrap_or(0).saturating_mul(10).saturating_add(digit));
             f += 1;
         }
-        // Length modifier. Integer conversions can ignore it (every
-        // register is 64-bit), but float conversions cannot: C's plain
-        // %f stores a 4-byte float where %lf stores an 8-byte double.
+        // Length modifier. The store WIDTH follows it: `%d` writes a
+        // 4-byte int, `%ld` an 8-byte long; a plain `%f` stores a 4-byte
+        // float where `%lf` stores an 8-byte double. (The VALUE parse is
+        // width-agnostic; only the memory write differs.)
         let mut long_modifier = false;
         while f < fmt_chars.len() && matches!(fmt_chars[f], 'l' | 'h' | 'z' | 'j' | 't') {
             if fmt_chars[f] == 'l' {
@@ -109,7 +110,9 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             'c' => {
                 // `%Nc` reads exactly N bytes (no NUL, no whitespace skip).
                 let count = width.unwrap_or(1).max(1);
-                if in_pos + count > ctx.stdin.len() {
+                // saturating: a huge `%<big>c` width made `in_pos + count`
+                // wrap and then slice out of order, panicking the instance.
+                if in_pos.saturating_add(count) > ctx.stdin.len() {
                     return stall(ctx, original_stdin, matched);
                 }
                 let start = in_pos;
@@ -144,7 +147,11 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 in_pos += consumed;
                 if !suppress {
                     let ptr = walker.next_int(ctx);
-                    ctx.mem.write_u32(ptr, value as u32)?;
+                    if long_modifier {
+                        ctx.mem.write_u64(ptr, value as u64)?;
+                    } else {
+                        ctx.mem.write_u32(ptr, value as u32)?;
+                    }
                     matched += 1;
                 }
             }
@@ -169,7 +176,11 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 in_pos += consumed;
                 if !suppress {
                     let ptr = walker.next_int(ctx);
-                    ctx.mem.write_u32(ptr, value as u32)?;
+                    if long_modifier {
+                        ctx.mem.write_u64(ptr, value)?;
+                    } else {
+                        ctx.mem.write_u32(ptr, value as u32)?;
+                    }
                     matched += 1;
                 }
             }
@@ -194,7 +205,11 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 in_pos += consumed;
                 if !suppress {
                     let ptr = walker.next_int(ctx);
-                    ctx.mem.write_u32(ptr, value as u32)?;
+                    if long_modifier {
+                        ctx.mem.write_u64(ptr, value)?;
+                    } else {
+                        ctx.mem.write_u32(ptr, value as u32)?;
+                    }
                     matched += 1;
                 }
             }
@@ -539,6 +554,45 @@ mod tests {
     }
 
     #[test]
+    fn percent_ld_writes_eight_bytes() {
+        // scanf("%ld", &x) must write 8 bytes; the store used to be a fixed
+        // write_u32, leaving the top 4 bytes of a .dword stale. Pre-fill the
+        // destination with 0xFF so a 4-byte write would leave the high half set.
+        let mut h = Host::new();
+        h.place_fmt("%ld");
+        let dst = 0x0060_0000u64;
+        h.mem.write_u64(dst, 0xFFFF_FFFF_FFFF_FFFF).unwrap();
+        h.regs.write_gpr(1, true, dst);
+        h.stdin.extend_from_slice(b"5
+");
+        scanf(&mut closed_ctx(&mut h)).unwrap();
+        assert_eq!(h.mem.read_u64(dst).unwrap(), 5, "the full 8 bytes were written");
+        // plain %d still writes only the low 4 bytes.
+        let mut h = Host::new();
+        h.place_fmt("%d");
+        h.mem.write_u64(dst, 0xFFFF_FFFF_0000_0000).unwrap();
+        h.regs.write_gpr(1, true, dst);
+        h.stdin.extend_from_slice(b"7
+");
+        scanf(&mut closed_ctx(&mut h)).unwrap();
+        assert_eq!(h.mem.read_u32(dst).unwrap(), 7);
+        assert_eq!(h.mem.read_u32(dst + 4).unwrap(), 0xFFFF_FFFF, "high half untouched");
+    }
+
+    #[test]
+    fn percent_c_with_a_huge_width_does_not_panic() {
+        // A `%<huge>c` width saturated to usize::MAX and `in_pos + count`
+        // wrapped, then sliced out of order and panicked the instance. It
+        // must instead stall (waiting for input that cannot arrive).
+        let mut h = Host::new();
+        h.place_fmt("%2000000000c");
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.stdin.extend_from_slice(b"ab");
+        let outcome = scanf(&mut h.ctx()).unwrap();
+        assert_eq!(outcome, HostOutcome::NeedInput);
+    }
+
+    #[test]
     fn a_pasted_nbsp_does_not_split_a_percent_s_token() {
         // stdin "a\u{a0}b\n" arrives as UTF-8 bytes 61 C2 A0 62 0A. C's
         // isspace rejects both 0xC2 and 0xA0, so glibc reads the whole
@@ -819,6 +873,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal stdin text, not an approximation of pi
     fn scanf_plain_f_stores_a_4_byte_float() {
         // C contract: scanf("%f", &x) writes a 4-byte float. A program
         // then reads it back with `ldr s0, [addr]`.
@@ -837,6 +892,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal stdin text, not an approximation of pi
     fn scanf_lf_stores_an_8_byte_double() {
         let mut h = Host::new();
         h.place_fmt("%lf");

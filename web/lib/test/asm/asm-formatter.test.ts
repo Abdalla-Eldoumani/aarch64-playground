@@ -75,4 +75,15 @@ describe("formatAsm", () => {
     const got = formatAsm(input);
     expect(got).toBe(`// just a comment\n;; another\n`);
   });
+
+  it("keeps a register-shaped label at its defined case", () => {
+    // `LR` is a branch target here, not the link register: lowercasing
+    // the reference to `lr` would make the branch miss the label. Real
+    // registers on other lines still lowercase.
+    const input = `LR:\n  B LR\n  MOV X0, X1\n`;
+    const got = formatAsm(input);
+    expect(got).toContain("LR:");
+    expect(got).toContain("b       LR");
+    expect(got).toContain("mov     x0, x1");
+  });
 });

@@ -1,6 +1,6 @@
 [package]
 name = "aarch64-emulator"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 description = "ARMv8 instruction emulator for the browser"
 license = "AGPL-3.0-only"

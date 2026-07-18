@@ -183,9 +183,6 @@ export interface StateSnapshot {
   stderrDelta: string;
   vfsFiles: string[];
   savedStates: string[];
-  /// True if any memory page was written this frame; the cache uses this
-  /// to invalidate panel ranges that might be stale.
-  changedMem: boolean;
   /// `(addr, len)` pairs of memory ranges written since the previous
   /// snapshot. Drives memory-cell diff highlighting in the replay
   /// scrubber. Flat array of `[addr, len, addr, len, ...]`.
@@ -219,7 +216,6 @@ export function emptyStateSnapshot(frame = 0): StateSnapshot {
     stderrDelta: "",
     vfsFiles: [],
     savedStates: [],
-    changedMem: false,
     dirtyAddrs: [],
   };
 }

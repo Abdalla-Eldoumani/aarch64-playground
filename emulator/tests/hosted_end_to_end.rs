@@ -583,7 +583,7 @@ fn delete_vfs_file_removes_entry() {
     assert_eq!(cpu.vfs.get("foo.txt"), Some(&b"hello".to_vec()));
     let removed = cpu.vfs.remove("foo.txt").is_some();
     assert!(removed);
-    assert!(cpu.vfs.get("foo.txt").is_none());
+    assert!(!cpu.vfs.contains_key("foo.txt"));
     // Removing again is a no-op.
     assert!(cpu.vfs.remove("foo.txt").is_none());
 }

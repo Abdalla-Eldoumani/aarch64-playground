@@ -1,14 +1,14 @@
 //! Section-aware parser. Runs after m4 expansion and lexing. Produces a
-//! `Program` with sections, labels, globals, aliases, and source map.
+//! `Program` with sections, labels, globals, and aliases.
 //!
-//! Instruction encoding is deferred to the linker in phase A.7: we hold
-//! each instruction as a raw token slice and its original line number,
-//! because the token stream contains enough information to encode once
-//! the symbol table (labels, section base addresses) is final.
+//! Instruction encoding is deferred to the linker: we hold each instruction
+//! as a raw token slice and its original line number, because the token
+//! stream contains enough information to encode once the symbol table
+//! (labels, section base addresses) is final.
 //!
-//! Data directive expressions evaluate immediately with an empty resolver
-//! for now. Label-typed forward references in data slots are a phase A.7
-//! concern; the corpus does not use them.
+//! Data directive expressions evaluate eagerly with an empty resolver; a
+//! slot that names a label defers, holding its raw tokens for the linker to
+//! fold once the symbol table is final (GCC jump tables rely on this).
 
 use std::collections::HashMap;
 
@@ -27,7 +27,6 @@ pub fn parse(source: &str) -> Result<Program, EmuError> {
     let mut prog = Program::new();
     prog.aliases = expanded.defines;
     prog.aliases.extend(req_aliases);
-    prog.source_map = expanded.line_map;
     prog.expanded_source = text.clone();
     let tokens = lex(&text, 1)?;
     // Always initialize .text even if nothing goes into it; existing callers
@@ -1038,6 +1037,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal source text, not an approximation of pi
     fn plain_decimal_float_in_data_directives() {
         // The real toolchain takes `.double 3.14` and `.float -2.5`
         // without any radix prefix; the playground must too.

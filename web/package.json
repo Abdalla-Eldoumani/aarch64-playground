@@ -1,6 +1,6 @@
 {
   "name": "aarch64-playground-web",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
@@ -81,6 +81,7 @@
     "eslint-config-next": "16.2.10",
     "jsdom": "29.1.1",
     "lighthouse": "13.4.0",
+    "monaco-editor": "0.55.1",
     "playwright": "^1.59.1",
     "postcss": "8.5.15",
     "size-limit": "12.1.0",

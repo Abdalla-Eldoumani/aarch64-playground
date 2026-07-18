@@ -77,6 +77,19 @@ export default function RootLayout({
   const fontClasses = `${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`;
   return (
     <html lang="en" className={fontClasses}>
+      <head>
+        {/* Set data-theme from the saved preference BEFORE first paint, so a
+            light or high-contrast user does not see a flash of the default
+            dark theme every load. Static, code-authored script (no user
+            input); the CSP permits inline scripts. Kept in lockstep with the
+            "aarch64-playground:theme" key in lib/hooks/use-theme. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{var t=localStorage.getItem("aarch64-playground:theme");if(t==="light"||t==="dark"||t==="high-contrast")document.documentElement.setAttribute("data-theme",t);}catch(e){}',
+          }}
+        />
+      </head>
       <body className="flex flex-col min-h-dvh font-mono">
         <RegisterSW />
         <OfflineBadge />

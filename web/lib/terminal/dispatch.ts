@@ -152,9 +152,12 @@ export async function dispatchCommand(
     const names = ctx.listVfs().slice().sort();
     if (!long) return { status: "ok", lines: names };
     const lines: string[] = [];
+    const enc = new TextEncoder();
     for (const n of names) {
       const body = (await ctx.readVfs(n)) ?? "";
-      lines.push(`${String(body.length).padStart(6)} bytes  ${n}`);
+      // Byte count, not string.length: a multi-byte UTF-8 file would
+      // otherwise report its UTF-16 code-unit count.
+      lines.push(`${String(enc.encode(body).length).padStart(6)} bytes  ${n}`);
     }
     return { status: "ok", lines };
   }
@@ -294,7 +297,11 @@ export async function dispatchCommand(
       : await ctx.runSource(compiled as string, argv, stdin);
     if (stdoutTo) ctx.writeVfs(stdoutTo, result.stdout);
     const lines: string[] = [];
-    if (!stdoutTo && result.stdout) lines.push(...result.stdout.split("\n"));
+    // Strip a single trailing newline before splitting: a normal
+    // `printf("...\n")` otherwise renders a spurious blank line.
+    if (!stdoutTo && result.stdout) {
+      lines.push(...result.stdout.replace(/\n$/, "").split("\n"));
+    }
     if (result.stderr) lines.push(...result.stderr.split("\n").map((l) => `stderr: ${l}`));
     if (result.exitCode != null) lines.push(`[exit ${result.exitCode}]`);
     else lines.push("[no exit -- the program did not finish]");

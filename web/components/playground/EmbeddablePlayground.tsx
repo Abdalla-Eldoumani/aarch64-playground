@@ -99,17 +99,6 @@ const TutorialRunner = dynamic(
  */
 export type EmbeddableChrome = "full" | "embed" | "checker";
 
-/** Panels a host can force on/off on top of the chrome defaults. */
-export type PanelKey =
-  | "disassembly"
-  | "memory"
-  | "stack"
-  | "console"
-  | "terminal"
-  | "watches"
-  | "memwatch"
-  | "saves";
-
 /**
  * The outcome slice the host reads for in-place output and the future
  * outcome checker. Exactly these ten fields mirror the hub; this is the
@@ -176,8 +165,6 @@ export type EmbeddablePlaygroundProps = {
   autoplay?: boolean;
   /** How many steps the autoplay walk takes (clamped to a small ceiling). */
   autoplaySteps?: number;
-  /** Optional overrides on top of the chrome defaults. */
-  panels?: Partial<Record<PanelKey, boolean>>;
   showRun?: boolean;
   showReset?: boolean;
   /** Check only applies in checker chrome. */
@@ -871,7 +858,9 @@ function EmbeddableCore({
       getCursor: () => cursorRef.current,
       getCommands: () => buildCommandsRef.current(),
     }),
-    [loadSource],
+    // `toast` is referentially stable (useToast memoizes it); notifyError
+    // reads it, so it belongs in the dependency list.
+    [loadSource, toast],
   );
 
   // Register the handle only once the hub is loaded, so a queued host action
@@ -1041,13 +1030,15 @@ function EmbeddableCore({
         const lower = name.toLowerCase();
         if (lower === "sp") return BigInt(e.sp);
         if (lower === "pc") return BigInt(e.pc);
-        const m = lower.match(/^[xw](\d+)$/);
+        const m = lower.match(/^([xw])(\d+)$/);
         if (!m) return null;
-        const idx = Number(m[1]);
+        const idx = Number(m[2]);
         if (idx < 0 || idx > 30) return null;
         const raw = e.registers[idx];
         if (!raw) return null;
-        return BigInt(raw);
+        // A `wN` name reads the low 32 bits, not the full 64-bit x register.
+        const val = BigInt(raw);
+        return m[1] === "w" ? val & 0xffff_ffffn : val;
       },
       readRegisters: () => {
         const e = emuRef.current;
@@ -1106,6 +1097,7 @@ function EmbeddableCore({
               assemblyErrors={emu.assemblyErrors}
               lintWarnings={lintWarnings}
               onCursorChange={setCursor}
+              readOnly={readOnly}
             />
           </div>
           <div className="embed-area-registers min-h-0 min-w-0 overflow-auto">

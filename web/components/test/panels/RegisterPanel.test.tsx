@@ -53,4 +53,24 @@ describe("RegisterPanel", () => {
     expect(grid!.className).not.toContain("sm:grid-cols-2");
     expect(grid!.className).toContain("min(16.5rem,100%)");
   });
+  it("labels each NZCV flag with its own bit, in N Z C V order", () => {
+    // nzcv packs N at bit 3, Z bit 2, C bit 1, V bit 0. 0b1010 = N set,
+    // Z clear, C set, V clear. A set flag renders bold-amber, an unset one
+    // recedes to the tertiary token, so the label must sit over its OWN bit.
+    render(
+      <RegisterPanel
+        registers={registers}
+        changedRegs={new Set()}
+        sp="0x0000fffffffff000"
+        pc={0x400000}
+        nzcv={0b1010}
+      />,
+    );
+    const cls = (name: string) => screen.getByText(name).className;
+    expect(cls("N")).toContain("amber");
+    expect(cls("C")).toContain("amber");
+    expect(cls("Z")).toContain("tertiary");
+    expect(cls("V")).toContain("tertiary");
+  });
+
 });

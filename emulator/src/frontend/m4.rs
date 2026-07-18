@@ -34,6 +34,12 @@ const MAX_RECURSION: usize = 32;
 /// the wasm heap.
 const MAX_EXPANDED_LINE_BYTES: usize = 64 * 1024;
 
+/// Cap on the TOTAL expanded output. The per-line cap bounds one line, but a
+/// ~60 KiB macro body referenced across thousands of lines could still sum to
+/// gigabytes and trap the instance. 8 MiB is far above any real course
+/// program (source itself is capped at 1 MiB upstream).
+const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
+
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
 pub struct Expanded {
@@ -114,9 +120,23 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // left untouched so the parser sees `name = expr` verbatim.
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
+    let mut total: usize = 0;
     for (idx, line) in stripped.iter().enumerate() {
         let line_num = idx + 1;
-        out.push(expand_recursively(line, &defines, line_num)?);
+        let expanded = expand_recursively(line, &defines, line_num)?;
+        total = total.saturating_add(expanded.len());
+        if total > MAX_EXPANDED_TOTAL_BYTES {
+            return Err(EmuError::PreprocError {
+                line: line_num,
+                message: format!(
+                    "m4 expansion grew the whole source past {} MiB -- a macro body \
+                     repeated across many lines can blow up the output; shrink the \
+                     macro or the number of references",
+                    MAX_EXPANDED_TOTAL_BYTES / (1024 * 1024)
+                ),
+            });
+        }
+        out.push(expanded);
         line_map.push(line_num);
     }
 
@@ -592,6 +612,22 @@ fn is_id_continue_char(c: char) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn aggregate_expansion_is_bounded() {
+        // A 1 KiB macro body referenced 10000 times expands to ~10 MiB,
+        // over the 8 MiB total cap. Each line is under the per-line cap, so
+        // only the aggregate guard stops it.
+        let body = "x".repeat(1024);
+        let mut src = format!("define(big, {body})
+");
+        for _ in 0..10_000 {
+            src.push_str("big
+");
+        }
+        let err = expand(&src).unwrap_err();
+        assert!(err.to_string().contains("MiB"), "was: {err}");
+    }
+
     fn exp(src: &str) -> Expanded {
         expand(src).expect("expansion should succeed")
     }
@@ -644,7 +680,7 @@ mod tests {
     #[test]
     fn assignment_form_keeps_line_in_output_and_omits_from_defines() {
         let r = exp("alloc = 32\nmov x0, 1\n");
-        assert!(r.defines.get("alloc").is_none());
+        assert!(!r.defines.contains_key("alloc"));
         assert_eq!(r.assignments.get("alloc").map(String::as_str), Some("32"));
         assert!(r.text.contains("alloc = 32"));
     }

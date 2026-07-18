@@ -227,4 +227,12 @@ describe("watch expression edge cases", () => {
     const r = ok(evaluateWatch("**x0", ctx));
     expect(r.value).toBe(99n);
   });
+  it("returns an error, never throws, on a malformed hex offset", () => {
+    // BigInt("0xZZ") throws; an unguarded throw here white-screened the
+    // whole playground (WatchPanel renders evaluateWatch results directly).
+    expect(() => evaluateWatch("[fp, 0xZZ]", baseCtx)).not.toThrow();
+    const r = evaluateWatch("[fp, 0xZZ]", baseCtx);
+    expect("error" in r).toBe(true);
+  });
+
 });

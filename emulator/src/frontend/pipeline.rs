@@ -151,7 +151,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     // following instruction off its 4-byte boundary; report
                     // it here, where the line is known, instead of letting
                     // the linker blame an internal literal-pool offset.
-                    if section.kind == SectionKind::Text && offset % 4 != 0 {
+                    if section.kind == SectionKind::Text && !offset.is_multiple_of(4) {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
                             message: format!(
@@ -277,9 +277,9 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         for item in &section.items {
             if let Item::Instruction { tokens, original_line } = item {
                 if let Some(target_text) = extract_ldr_eq_operand(tokens) {
-                    if !pool_slots.contains_key(&target_text) {
-                        let value = resolve_ldr_eq_target(&target_text, &symbols, *original_line)?;
-                        pool_slots.insert(target_text, pool_values.len() as u64 * 8);
+                    if let std::collections::hash_map::Entry::Vacant(slot) = pool_slots.entry(target_text) {
+                        let value = resolve_ldr_eq_target(slot.key(), &symbols, *original_line)?;
+                        slot.insert(pool_values.len() as u64 * 8);
                         pool_values.push(value);
                     }
                     continue;
@@ -310,6 +310,23 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     let tramp_base = CODE_BASE + ((text_len + 8) & !7);
     let tramp_bytes = (host_trampolines.len() as u64) * 8;
     let pool_base = tramp_base + tramp_bytes;
+
+    // The trampolines and literal pool are appended after .text; bound the
+    // whole .text image (not just its instructions) against the 1 MiB window
+    // so a large .text plus its pool cannot silently spill into .rodata.
+    let max_pool_slots = pool_values.len() as u64 + host_trampolines.len() as u64;
+    let image_end = pool_base + max_pool_slots * 8;
+    if image_end > CODE_BASE + SECTION_WINDOW {
+        return Err(EmuError::AssemblyError {
+            line: 0,
+            message: format!(
+                ".text plus its literal pool and libc trampolines reaches {} bytes, past \
+                 the 1 MiB code window -- shrink .text or reduce the `ldr xN, =...` \
+                 constants and libc calls",
+                image_end - CODE_BASE
+            ),
+        });
+    }
 
     // Each trampoline needs a pool slot that holds the host stub's real
     // 64-bit address. Pre-allocate those slots and wire the per-name
@@ -439,6 +456,18 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         // plain numeric literals so the legacy encoder
                         // sees `[sp, -32]!` instead of `[sp, alloc]!`.
                         let line_text = if let Some(name) = extract_bl_target(&tokens_owned) {
+                            // `bl label+addend` used to silently drop the
+                            // addend and branch to the bare symbol. There is
+                            // no encoding for it here, so reject rather than
+                            // mislead. A plain `bl label` is exactly 2 tokens.
+                            if tokens_owned.len() > 2 {
+                                return Err(EmuError::AssemblyError {
+                                    line: *original_line,
+                                    message: "bl takes a single label with no addend; \
+                                              branch to the label directly"
+                                        .into(),
+                                });
+                            }
                             // Token redirect already produced the final
                             // mnemonic+target; bypass the string path so
                             // tab-separated lines reach the encoder
@@ -901,7 +930,7 @@ fn extract_bl_target(tokens: &[crate::frontend::lexer::Token]) -> Option<String>
 
 fn is_host_address(addr: u64) -> bool {
     const HOST_STUB_BASE: u64 = 0xFFFF_0000;
-    addr >= HOST_STUB_BASE && addr < HOST_STUB_BASE + 0x1_0000
+    (HOST_STUB_BASE..HOST_STUB_BASE + 0x1_0000).contains(&addr)
 }
 
 /// Token-based BL redirect. When the line is `bl <ident>` and `<ident>`
@@ -912,7 +941,7 @@ fn is_host_address(addr: u64) -> bool {
 /// (already collapsed by the lexer) cannot break the match the way the
 /// raw-string version did.
 pub(crate) fn redirect_bl_to_trampoline_tokens(
-    tokens: &mut Vec<crate::frontend::lexer::Token>,
+    tokens: &mut [crate::frontend::lexer::Token],
     tramp_addr: &HashMap<String, u64>,
 ) -> bool {
     if tokens.len() < 2 {

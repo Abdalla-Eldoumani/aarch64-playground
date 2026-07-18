@@ -50,7 +50,7 @@ pub fn setup_argv(
     let pointer_table_bytes = ((argc + 1) * 8) as usize;
     let mut total = pointer_table_bytes;
     for s in args {
-        total += s.as_bytes().len() + 1;
+        total += s.len() + 1;
     }
     if total > ARGV_MAX_BYTES {
         return Err(EmuError::ArgvTooLarge { bytes: total });

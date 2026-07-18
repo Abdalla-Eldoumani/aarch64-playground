@@ -32,7 +32,7 @@ dev), kept in lockstep.
 | `X-Frame-Options` | `DENY` | Blocks framing (clickjacking) |
 | `Cross-Origin-Opener-Policy` | `same-origin` | Windows we open cannot script us |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | Limits referer leakage |
-| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), interest-cohort=()` | Disables sensors we never request and opts out of FLoC |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Disables sensors we never request |
 
 Static assets and the WASM module are served `immutable`; `/sw.js` is
 `must-revalidate` so updates land immediately. These cache headers are

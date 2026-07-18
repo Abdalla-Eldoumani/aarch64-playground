@@ -9,9 +9,12 @@ function frame(stepCount: number): ReplayFrame {
   return {
     stepCount,
     registers: Array(31).fill("0x0"),
+    sp: "0x0000000080000000",
+    fpRegisters: [],
     pc: 0x400000 + stepCount * 4,
     nzcv: 0,
     changedRegs: [],
+    changedFpRegs: [],
     currentLine: stepCount,
   };
 }

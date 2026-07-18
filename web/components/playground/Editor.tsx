@@ -1,13 +1,23 @@
 "use client";
 
-import MonacoEditor, { type OnMount } from "@monaco-editor/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
 import { lookupDoc } from "@/lib/asm/instruction-docs";
 import { explainError } from "@/lib/asm/error-explain";
 import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
+import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
 import { useToast } from "@/components/ui/Toast";
 import { validateSource } from "@/lib/playground/upload-guard";
+
+// Pin the monaco build the loader fetches. The loader ships a default CDN
+// version that moves with its own releases (a transitive dep), so without
+// this a lockfile refresh could silently swap the editor build the site
+// runs; the devDependency pin keeps the compile-time types on the same
+// version. Keep the two in step when bumping.
+loader.config({
+  paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs" },
+});
 
 let arm64Registered = false;
 
@@ -35,10 +45,18 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
 
   // register ARM64 language
   monaco.languages.register({ id: "arm64" });
+  // Comment tokens drive Monaco's built-in toggles: Ctrl+/ (Cmd+/) line-
+  // toggles with `//`, Shift+Alt+A block-toggles with the GAS `/* */` pair
+  // the m4 pass strips. The commands read this config live, so registering
+  // it here (once, before first keypress) is enough.
+  monaco.languages.setLanguageConfiguration("arm64", {
+    comments: { lineComment: LINE_COMMENT, blockComment: ["/*", "*/"] },
+  });
   monaco.languages.setMonarchTokensProvider("arm64", {
     ignoreCase: true,
     tokenizer: {
       root: [
+        [/\/\*/, "comment", "@blockComment"],
         [/\/\/.*$/, "comment"],
         [/;.*$/, "comment"],
         [
@@ -52,6 +70,11 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
         [/#-?0x[0-9a-fA-F]+/, "number.hex"],
         [/#-?[0-9]+/, "number"],
         [/\w+:/, "type.identifier"],
+      ],
+      blockComment: [
+        [/[^/*]+/, "comment"],
+        [/\*\//, "comment", "@pop"],
+        [/[/*]/, "comment"],
       ],
     },
   });
@@ -225,6 +248,9 @@ interface EditorProps {
    *  parent owns the formatter implementation so the keybinding and
    *  the command-palette entry share one code path. */
   onFormat?: () => void;
+  /** When true the surface rejects input: Monaco and the phone fallback
+   *  both become read-only (embed and checker snapshots). */
+  readOnly?: boolean;
 }
 
 const ARM64_MNEMONICS = [
@@ -275,6 +301,7 @@ export function Editor({
   lintWarnings = [],
   onCursorChange,
   onFormat,
+  readOnly = false,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -519,6 +546,7 @@ export function Editor({
       assemblyErrors={assemblyErrors}
       onDrop={onDrop}
       onCursorChange={onCursorChange}
+      readOnly={readOnly}
     />;
   }
 
@@ -565,6 +593,7 @@ export function Editor({
           cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
           accessibilitySupport: "auto",
           accessibilityHelpUrl: "/docs/accessibility",
+          readOnly,
         }}
       />
     </div>
@@ -580,6 +609,7 @@ interface FallbackEditorProps {
   assemblyErrors: AssemblyError[];
   onDrop: (e: React.DragEvent) => void;
   onCursorChange?: (pos: { line: number; column: number }) => void;
+  readOnly?: boolean;
 }
 
 type MonacoForCompletion = Parameters<OnMount>[1];
@@ -629,10 +659,39 @@ function FallbackEditor({
   assemblyErrors,
   onDrop,
   onCursorChange,
+  readOnly = false,
 }: FallbackEditorProps) {
   const [scrollTop, setScrollTop] = useState(0);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  // A comment toggle changes the controlled `value`, so the DOM selection is
+  // lost on the re-render. Stash the target range and reapply it after the
+  // new value lands (before paint, so the caret never visibly jumps).
+  const pendingSelRef = useRef<{ start: number; end: number } | null>(null);
   const lineCount = Math.max(1, value.split("\n").length);
   const errorLines = new Set(assemblyErrors.map((e) => e.line));
+
+  useLayoutEffect(() => {
+    const pending = pendingSelRef.current;
+    const ta = taRef.current;
+    if (!pending || !ta) return;
+    pendingSelRef.current = null;
+    const max = ta.value.length;
+    ta.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
+  });
+
+  // Ctrl/Cmd + / toggles line comments on the touched lines, mirroring the
+  // desktop Monaco editor's built-in commentLine. `onChange` (the parent's
+  // over-cap guard) may reject a near-cap add, in which case nothing changes.
+  const handleCommentToggle = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (readOnly) return;
+    if (!(e.ctrlKey || e.metaKey) || e.key !== "/") return;
+    e.preventDefault();
+    const ta = e.currentTarget;
+    const next = toggleLineComment(ta.value, ta.selectionStart, ta.selectionEnd);
+    if (next.text === ta.value) return;
+    pendingSelRef.current = { start: next.selStart, end: next.selEnd };
+    onChange(next.text);
+  };
 
   // Outer wrapper carries `min-h-0 overflow-hidden` so the gutter's
   // natural content height (lineCount * 24px, often well past the
@@ -691,8 +750,11 @@ function FallbackEditor({
           lineHeight: `${FALLBACK_LINE_H}px`,
           overflow: "auto",
         }}
+        ref={taRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={handleCommentToggle}
+        readOnly={readOnly}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"

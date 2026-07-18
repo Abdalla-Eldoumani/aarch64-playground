@@ -9,6 +9,9 @@ export interface DeepLink {
   embed: boolean;
   /** Decoded `?bundle=<lz>` payload, when present and well-formed. */
   bundle?: DiagnosticBundle;
+  /** Set when a `?bundle=` was present but failed to decode, so the boot
+   *  can report it instead of silently loading a different buffer. */
+  bundleError?: "corrupt" | "too-large";
 }
 
 /**
@@ -32,7 +35,11 @@ export function parseDeepLink(search: string): DeepLink {
   result.embed = params.get("embed") === "1";
 
   const bundle = decodeBundle(params.get("bundle"));
-  if (bundle) result.bundle = bundle;
+  if (bundle.kind === "ok") {
+    result.bundle = bundle.bundle;
+  } else if (bundle.kind === "corrupt" || bundle.kind === "too-large") {
+    result.bundleError = bundle.kind;
+  }
 
   return result;
 }

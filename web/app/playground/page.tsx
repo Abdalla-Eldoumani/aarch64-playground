@@ -48,7 +48,9 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "F5", description: "run / pause" },
   { keys: "Shift+F5", description: "reset" },
   { keys: "Ctrl+K", description: "open command palette" },
-  { keys: "Ctrl+S", description: "auto-save (also runs every 500ms)" },
+  { keys: "Ctrl+S", description: "your buffer is auto-saved continuously" },
+  { keys: "Ctrl+/", description: "toggle line comment" },
+  { keys: "Shift+Alt+A", description: "toggle block comment" },
   { keys: "?", description: "show this help" },
 ];
 
@@ -157,12 +159,25 @@ export default function Home() {
           : "that share link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
       );
     }
+    if (boot.bundleError) {
+      toastSoon(
+        boot.bundleError === "too-large"
+          ? "that diagnostic-bundle link is too large to load -- showing your own buffer instead"
+          : "that diagnostic-bundle link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
+      );
+    }
     const handoff = resolveHandoff(boot, window.location.search, window.location.hash);
     if (handoff?.kind === "share-error") {
       toastSoon(
         handoff.reason === "too-large"
           ? "that share link is too large to load"
           : "that share link is damaged (often a partial copy) -- ask for the link again",
+      );
+    } else if (handoff?.kind === "bundle-error") {
+      toastSoon(
+        handoff.reason === "too-large"
+          ? "that diagnostic-bundle link is too large to load"
+          : "that diagnostic-bundle link is damaged (often a partial copy) -- ask for the link again",
       );
     } else if (handoff?.kind === "example") {
       // fetchExample's failures are already student-readable ("invalid
@@ -191,6 +206,10 @@ export default function Home() {
         e.preventDefault();
         setPaletteActions(playgroundRef.current?.getCommands() ?? []);
         setPaletteOpen((v) => !v);
+      } else if (meta && e.key.toLowerCase() === "s") {
+        // The buffer autosaves continuously; intercept Ctrl+S so it does not
+        // open the browser's save-page dialog. The help entry documents this.
+        e.preventDefault();
       } else if (
         e.key === "?" &&
         !(e.target instanceof HTMLInputElement) &&

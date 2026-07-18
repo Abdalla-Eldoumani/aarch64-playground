@@ -26,7 +26,6 @@ function splitOffComment(line: string): { code: string; comment: string | null }
   // string literals. The cpsc 355 corpus only uses `//` and `;` as
   // comment markers.
   let inString = false;
-  let lastQuote = -1;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     if (c === "\\" && inString) {
@@ -35,7 +34,6 @@ function splitOffComment(line: string): { code: string; comment: string | null }
     }
     if (c === '"') {
       inString = !inString;
-      lastQuote = i;
       continue;
     }
     if (inString) continue;
@@ -46,8 +44,6 @@ function splitOffComment(line: string): { code: string; comment: string | null }
       return { code: line.slice(0, i), comment: line.slice(i) };
     }
   }
-  // dummy use of lastQuote so the linter doesn't drop the binding
-  void lastQuote;
   return { code: line, comment: null };
 }
 
@@ -89,13 +85,33 @@ function classifyCode(code: string):
 // m4 aliases are case-sensitive and stay untouched.
 const REGISTER_RE = /\b(X[0-9]|X[12][0-9]|X30|W[0-9]|W[12][0-9]|W30|SP|XZR|WZR|FP|LR|D[0-9]|D[12][0-9]|D3[01])\b/g;
 
-function lowercaseRegisters(operands: string): string {
-  return operands.replace(REGISTER_RE, (m) => m.toLowerCase());
+// Names the source defines (labels, m4 defines, `.req` aliases, and
+// `name = expr` assignments). A label or alias shaped like a register --
+// `LR:`, `SP`, `D0` -- must keep its exact case, so it is excluded from
+// register lowercasing.
+function collectDefinedSymbols(source: string): Set<string> {
+  const names = new Set<string>();
+  for (const raw of source.split("\n")) {
+    const line = raw.trim();
+    const label = line.match(/^([A-Za-z_.$][\w.$]*)\s*:/);
+    if (label) names.add(label[1]);
+    const define = line.match(/^define\s*\(\s*`?([A-Za-z_]\w*)'?\s*,/i);
+    if (define) names.add(define[1]);
+    const assign = line.match(/^([A-Za-z_]\w*)\s*=\s*[^=]/);
+    if (assign) names.add(assign[1]);
+    const req = line.match(/^([A-Za-z_]\w*)\s+\.req\b/i);
+    if (req) names.add(req[1]);
+  }
+  return names;
 }
 
-function formatInstruction(mnemonic: string, operands: string): string {
+function lowercaseRegisters(operands: string, defined: Set<string>): string {
+  return operands.replace(REGISTER_RE, (m) => (defined.has(m) ? m : m.toLowerCase()));
+}
+
+function formatInstruction(mnemonic: string, operands: string, defined: Set<string>): string {
   const padded = mnemonic.padEnd(MNEMONIC_WIDTH);
-  const normalisedOps = lowercaseRegisters(operands);
+  const normalisedOps = lowercaseRegisters(operands, defined);
   const code = normalisedOps.length > 0 ? `${padded}${normalisedOps}` : mnemonic;
   return `${INSTRUCTION_INDENT}${code}`;
 }
@@ -111,7 +127,8 @@ function attachComment(code: string, comment: string | null): string {
   return `${code}${gap}${trimmedComment}`;
 }
 
-export function formatAsm(source: string): string {
+export function formatAsm(source: string, defined?: Set<string>): string {
+  const symbols = defined ?? collectDefinedSymbols(source);
   const lines = source.split("\n");
   const out: string[] = [];
   for (const raw of lines) {
@@ -141,7 +158,7 @@ export function formatAsm(source: string): string {
         break;
       case "label-rest": {
         // Re-format the rest using the same classifier.
-        const restFormatted = formatAsm(cls.rest).trimEnd();
+        const restFormatted = formatAsm(cls.rest, symbols).trimEnd();
         if (restFormatted.startsWith(INSTRUCTION_INDENT)) {
           formattedCode = `${cls.label}:${restFormatted.slice(INSTRUCTION_INDENT.length - 1)}`;
         } else {
@@ -151,7 +168,7 @@ export function formatAsm(source: string): string {
         break;
       }
       case "instruction":
-        formattedCode = formatInstruction(cls.mnemonic, cls.operands);
+        formattedCode = formatInstruction(cls.mnemonic, cls.operands, symbols);
         break;
     }
     out.push(attachComment(formattedCode, comment));

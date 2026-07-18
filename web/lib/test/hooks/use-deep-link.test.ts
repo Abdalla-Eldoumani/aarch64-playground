@@ -62,9 +62,10 @@ describe("parseDeepLink", () => {
     expect(dl.bundle!.exitCode).toBe(9);
   });
 
-  test("malformed ?bundle is silently dropped", () => {
+  test("malformed ?bundle reports a corrupt bundle error", () => {
     const dl = parseDeepLink("?bundle=not-a-payload");
     expect(dl.bundle).toBeUndefined();
+    expect(dl.bundleError).toBe("corrupt");
   });
 
   test("an oversized ?bundle= payload falls back to no bundle before decompressing", () => {
@@ -72,6 +73,7 @@ describe("parseDeepLink", () => {
     const oversized = "a".repeat(MAX_SHARE_HASH_BYTES + 1);
     const dl = parseDeepLink(`?bundle=${oversized}`);
     expect(dl.bundle).toBeUndefined();
+    expect(dl.bundleError).toBe("too-large");
     // The decompression-bomb guard rejects the raw fragment before lz-string
     // is invoked, so a tiny payload cannot expand to exhaust the tab.
     expect(spy).not.toHaveBeenCalled();
@@ -138,7 +140,9 @@ describe("parseDeepLink typed-param guards", () => {
     const future = LZString.compressToEncodedURIComponent(
       JSON.stringify({ v: 99, b: { source: "ret" } }),
     );
-    expect(parseDeepLink(`?bundle=${future}`).bundle).toBeUndefined();
+    const dl = parseDeepLink(`?bundle=${future}`);
+    expect(dl.bundle).toBeUndefined();
+    expect(dl.bundleError).toBe("corrupt");
   });
 
   test("a bundle combines with the other params in one query", async () => {

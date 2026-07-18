@@ -35,12 +35,20 @@ let wasmReady: Promise<void> | null = null;
 // WASM blob only downloads when a student actually clicks `assemble`
 // (or imports a program through any other path that mutates state).
 function ensureWasm(): Promise<void> {
-  if (!wasmReady) {
-    wasmReady = init().then(() => {
+  if (wasmReady) return wasmReady;
+  const p = init()
+    .then(() => {
       emulator = new Emulator();
+    })
+    .catch((e: unknown) => {
+      // A transient fetch/compile failure must not brick the worker: a
+      // cached rejected promise would fail every future assemble until a
+      // page reload. Clear it so the next mutating message retries.
+      wasmReady = null;
+      throw e;
     });
-  }
-  return wasmReady;
+  wasmReady = p;
+  return p;
 }
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
@@ -469,11 +477,6 @@ function snapshot(): StateSnapshot {
     stderrDelta,
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
-    // The Cpu doesn't currently expose a "wrote memory this step" flag;
-    // bump on every state-mutating call instead, which keeps panel caches
-    // honest at the cost of a re-fetch per step. The cache layer keys
-    // its read by `frame` so the fetches still dedup within a frame.
-    changedMem: true,
     // Drain the dirty addresses. They accumulate between snapshot
     // calls, so failing to drain would make them grow unbounded.
     dirtyAddrs: Array.from(emulator.take_dirty_addrs()).map(Number),

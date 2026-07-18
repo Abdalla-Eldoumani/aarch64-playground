@@ -517,6 +517,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal source text, not an approximation of pi
     fn atof_parses_plain_decimal() {
         let mut h = Host::new();
         h.place_string(0x0050_0000, b"3.14");

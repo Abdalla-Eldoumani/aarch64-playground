@@ -145,29 +145,42 @@ function isValidBundle(b: unknown): b is DiagnosticBundle {
 }
 
 /**
- * Decode a `?bundle=...` query value. Returns null when the payload is
- * absent, badly encoded, oversized, or comes from a future bundle
- * version we don't understand. Keeps the playground's deep-link
- * bootstrap defensive against URL-borne attacks.
+ * The four outcomes of reading a `?bundle=` query, mirroring
+ * `ShareReadResult`. Collapsing them into null let a truncated bundle link
+ * silently boot the default buffer, with an absent banner as the only
+ * signal; the page now surfaces corrupt / too-large as a notice.
  */
-export function decodeBundle(value: string | null): DiagnosticBundle | null {
-  if (!value) return null;
+export type BundleReadResult =
+  | { kind: "none" }
+  | { kind: "ok"; bundle: DiagnosticBundle }
+  | { kind: "corrupt" }
+  | { kind: "too-large" };
+
+/**
+ * Decode a `?bundle=...` query value into a discriminated verdict: absent
+ * (`none`), decoded and shape-valid (`ok`), oversized (`too-large`), or
+ * anything else -- bad encoding, malformed JSON, a future version, a failed
+ * shape check (`corrupt`). Keeps the playground's deep-link bootstrap
+ * defensive against URL-borne attacks.
+ */
+export function decodeBundle(value: string | null): BundleReadResult {
+  if (!value) return { kind: "none" };
   // Bomb wall: bound the raw (still-compressed) `?bundle=` fragment
   // before lz-string runs. The cap is sized so even the quadratic
   // worst case stays a bounded transient (see MAX_SHARE_HASH_BYTES);
   // the post-decode ceiling below rejects anything oversized.
-  if (value.length > MAX_SHARE_HASH_BYTES) return null;
+  if (value.length > MAX_SHARE_HASH_BYTES) return { kind: "too-large" };
   try {
     const decompressed = LZString.decompressFromEncodedURIComponent(value);
-    if (!decompressed) return null;
-    if (decompressed.length > MAX_BUNDLE_DECOMPRESSED_BYTES) return null;
+    if (!decompressed) return { kind: "corrupt" };
+    if (decompressed.length > MAX_BUNDLE_DECOMPRESSED_BYTES) return { kind: "too-large" };
     const parsed = JSON.parse(decompressed) as unknown;
-    if (parsed == null || typeof parsed !== "object") return null;
+    if (parsed == null || typeof parsed !== "object") return { kind: "corrupt" };
     const versioned = parsed as { v?: unknown; b?: unknown };
-    if (versioned.v !== BUNDLE_VERSION) return null;
-    if (!isValidBundle(versioned.b)) return null;
-    return versioned.b;
+    if (versioned.v !== BUNDLE_VERSION) return { kind: "corrupt" };
+    if (!isValidBundle(versioned.b)) return { kind: "corrupt" };
+    return { kind: "ok", bundle: versioned.b };
   } catch {
-    return null;
+    return { kind: "corrupt" };
   }
 }

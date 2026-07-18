@@ -278,4 +278,24 @@ describe("EXAMPLE_INPUTS manifest", () => {
       expect(resolveHandoff(boot, "", "#p2=z")).toBeNull();
     });
   });
+
+  describe("bundle failure verdicts", () => {
+    it("boot falls back and carries the bundle error", () => {
+      const boot = resolveBoot("?bundle=not-a-payload", "", "saved buffer", "default");
+      expect(boot.source).toBe("saved buffer");
+      expect(boot.fromBundle).toBe(false);
+      expect(boot.bundleError).toBe("corrupt");
+    });
+
+    it("handoff reports a bundle failure the boot did not already report", () => {
+      const boot = { fromShare: false, fromBundle: false };
+      const decision = resolveHandoff(boot, "?bundle=not-a-payload", "");
+      expect(decision).toEqual({ kind: "bundle-error", reason: "corrupt" });
+    });
+
+    it("handoff stays quiet when the boot already reported the bundle failure", () => {
+      const boot = { fromShare: false, fromBundle: false, bundleError: "corrupt" as const };
+      expect(resolveHandoff(boot, "?bundle=not-a-payload", "")).toBeNull();
+    });
+  });
 });

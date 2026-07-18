@@ -63,38 +63,39 @@ describe("diagnostic-bundle round-trip", () => {
     expect(typeof encoded).toBe("string");
     expect(encoded.length).toBeGreaterThan(0);
     const decoded = decodeBundle(encoded);
-    expect(decoded).not.toBeNull();
-    expect(decoded!.source).toBe(sample.source);
-    expect(decoded!.args).toBe(sample.args);
-    expect(decoded!.exitCode).toBe(0);
-    expect(decoded!.registers).toEqual(sample.registers);
+    expect(decoded.kind).toBe("ok");
+    if (decoded.kind !== "ok") throw new Error("expected ok");
+    expect(decoded.bundle.source).toBe(sample.source);
+    expect(decoded.bundle.args).toBe(sample.args);
+    expect(decoded.bundle.exitCode).toBe(0);
+    expect(decoded.bundle.registers).toEqual(sample.registers);
   });
 
-  it("decodeBundle returns null for missing or malformed input", () => {
-    expect(decodeBundle(null)).toBeNull();
-    expect(decodeBundle("")).toBeNull();
-    expect(decodeBundle("not-a-real-payload")).toBeNull();
+  it("decodeBundle reports none for missing input and corrupt for malformed", () => {
+    expect(decodeBundle(null)).toEqual({ kind: "none" });
+    expect(decodeBundle("")).toEqual({ kind: "none" });
+    expect(decodeBundle("not-a-real-payload")).toEqual({ kind: "corrupt" });
   });
 
   it("decodeBundle rejects a non-string args field (type-confusion guard)", () => {
     const evil = LZString.compressToEncodedURIComponent(
       JSON.stringify({ v: 1, b: { source: "ret", args: { toString: "x" } } }),
     );
-    expect(decodeBundle(evil)).toBeNull();
+    expect(decodeBundle(evil)).toEqual({ kind: "corrupt" });
   });
 
   it("decodeBundle rejects non-string entries in registers", () => {
     const evil = LZString.compressToEncodedURIComponent(
       JSON.stringify({ v: 1, b: { source: "ret", registers: ["0x1", 42] } }),
     );
-    expect(decodeBundle(evil)).toBeNull();
+    expect(decodeBundle(evil)).toEqual({ kind: "corrupt" });
   });
 
   it("decodeBundle rejects a future bundle version", () => {
     const future = LZString.compressToEncodedURIComponent(
       JSON.stringify({ v: 99, b: { source: "ret" } }),
     );
-    expect(decodeBundle(future)).toBeNull();
+    expect(decodeBundle(future)).toEqual({ kind: "corrupt" });
   });
 
   it("decodeBundle rejects an oversized decompressed payload", () => {
@@ -102,13 +103,14 @@ describe("diagnostic-bundle round-trip", () => {
     const evil = LZString.compressToEncodedURIComponent(
       JSON.stringify({ v: 1, b: { source: huge } }),
     );
-    expect(decodeBundle(evil)).toBeNull();
+    expect(decodeBundle(evil)).toEqual({ kind: "too-large" });
   });
 
   it("decodeBundle accepts an empty source string", () => {
     const encoded = encodeBundle({ source: "" });
     const decoded = decodeBundle(encoded);
-    expect(decoded).not.toBeNull();
-    expect(decoded!.source).toBe("");
+    expect(decoded.kind).toBe("ok");
+    if (decoded.kind !== "ok") throw new Error("expected ok");
+    expect(decoded.bundle.source).toBe("");
   });
 });
