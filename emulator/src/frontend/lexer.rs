@@ -622,6 +622,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal source text, not an approximation of pi
     fn plain_decimal_float_lexes_like_the_real_assembler() {
         // `.double 3.14` works in the real toolchain with no 0r prefix.
         let t = lex("3.14", 1).unwrap();
