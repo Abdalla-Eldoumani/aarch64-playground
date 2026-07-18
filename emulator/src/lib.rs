@@ -65,12 +65,16 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     {
         return true;
     }
+    // Collapse whitespace runs so `bl   printf` and `bl\tprintf` detect the
+    // same as `bl printf`; the raw `contains("bl printf")` matched only a
+    // single space.
+    let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
     for libc in [
         "printf", "scanf", "puts", "putchar", "getchar", "strlen", "strcmp", "strcpy",
         "memset", "memcpy", "atof", "atoi", "exit", "rand", "srand", "time",
     ] {
         let pat = format!("bl {libc}");
-        if lower.contains(&pat) {
+        if normalized.contains(&pat) {
             return true;
         }
     }
@@ -760,6 +764,9 @@ mod hosted_mode_tests {
         assert!(detect_hosted_mode("main: bl atoi\n"));
         assert!(detect_hosted_mode("main: bl srand\n"));
         assert!(detect_hosted_mode("main: bl rand\n"));
+        // multiple spaces / tabs between bl and the name still detect.
+        assert!(detect_hosted_mode("main:\n    bl   printf\n"));
+        assert!(detect_hosted_mode("main:\n\tbl\tputs\n"));
     }
 
     #[test]
