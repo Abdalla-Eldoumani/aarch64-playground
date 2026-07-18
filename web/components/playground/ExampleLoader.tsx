@@ -81,7 +81,10 @@ const GROUPS: ExampleGroup[] = [
   },
   {
     label: "Miscellaneous",
-    items: [{ name: "snake (turn-based game)", stem: "snake" }],
+    items: [
+      { name: "snake (arcade, in the terminal)", stem: "snake" },
+      { name: "snake (turn-based console)", stem: "snake-console" },
+    ],
   },
 ];
 
