@@ -25,3 +25,8 @@ surface for `write`/`read`/`exit`/`openat`/`close`/`lseek`.
 - `write-file.s` -- create and write a file
 - `read-file.s` -- open and read a file
 - `copy-file.s` -- copy one file to another
+
+One extra program is served beyond the tutorial set:
+
+- `snake.s` -- a turn-based snake game for the console, adapted from
+  https://github.com/Abdalla-Eldoumani/snake-game
