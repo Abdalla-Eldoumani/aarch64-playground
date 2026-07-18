@@ -562,12 +562,6 @@ impl Emulator {
         self.cpu.changed_fp_registers().to_vec()
     }
 
-    /// Run the m4 pass alone over a source file, exactly as `assemble_and_load`
-    /// would before lexing: block comments blanked, `define()` aliases
-    /// substituted (their lines left blank so line numbers hold), `name = expr`
-    /// assignments kept inline. Powers the terminal's `m4 file.asm > file.s`
-    /// step so the course toolchain replays one command at a time. Returns
-    /// `{ success, text?, error?, error_line? }`.
     /// Pre-assembly structural lint: advisory warnings, each with a line
     /// and a one-line remedy. Never blocks assembling; serialized as
     /// `[{ line, message }, ...]`.
@@ -579,6 +573,12 @@ impl Emulator {
         serde_wasm_bindgen::to_value(&warnings).unwrap()
     }
 
+    /// Run the m4 pass alone over a source file, exactly as `assemble_and_load`
+    /// would before lexing: block comments blanked, `define()` aliases
+    /// substituted (their lines left blank so line numbers hold), `name = expr`
+    /// assignments kept inline. Powers the terminal's `m4 file.asm > file.s`
+    /// step so the course toolchain replays one command at a time. Returns
+    /// `{ success, text?, error?, error_line? }`.
     pub fn m4_expand(&self, source: &str) -> JsValue {
         match frontend::m4::expand(source) {
             Ok(expanded) => serde_wasm_bindgen::to_value(&M4ResultJs {
@@ -709,10 +709,8 @@ impl Emulator {
     }
 
     /// Resolve a label name to its absolute address. Powers
-    /// `gdb b <label>` in the terminal pane. Returns the address as
-    /// `u32` for JS-friendly typing (the address space sits well below
-    /// 2^32 for cpsc 355 programs); JS-side callers cast back to
-    /// number. `None` -> JS `undefined`.
+    /// `gdb b <label>` in the terminal pane. Returns the address as a
+    /// `u64` (`None` -> JS `undefined`).
     pub fn resolve_label(&self, name: &str) -> Option<u64> {
         self.cpu.resolve_label(name)
     }
