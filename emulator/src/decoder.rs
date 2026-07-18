@@ -1631,6 +1631,10 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
 
 #[cfg(test)]
 mod tests {
+    // Binary literals here group digits by instruction field (sf/opcode/imm/rn/rd)
+    // rather than by nibble, and zero-valued fields stay written out -- both
+    // deliberate, so the encodings read like the architecture manual.
+    #![allow(clippy::unusual_byte_groupings, clippy::identity_op)]
     use super::*;
 
     // -- bitmask immediate tests --
@@ -2200,8 +2204,9 @@ mod tests {
     #[test]
     fn decode_adrp_recovers_page_displacement() {
         // ADRP X0, +1 page (imm21 = 1 -> byte displacement 0x1000).
-        let immlo = 1u32 & 0x3;
-        let immhi = (1u32 >> 2) & 0x7_FFFF;
+        let imm21 = 1u32;
+        let immlo = imm21 & 0x3;
+        let immhi = (imm21 >> 2) & 0x7_FFFF;
         let word: u32 = (1 << 31) | (immlo << 29) | (0b10000 << 24) | (immhi << 5);
         match decode(word).unwrap() {
             Instruction::Adr { adrp, rd, imm } => {
