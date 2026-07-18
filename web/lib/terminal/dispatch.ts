@@ -57,6 +57,21 @@ export function parseCommandLine(line: string): ParsedCommandLine {
  * emulator backend, register reads, and a label resolver. Tests pass in
  * stubbed implementations; the production wiring sits in TerminalPane.
  */
+/** A running foreground program's input surface: the pane forwards raw
+ *  keystrokes here and Ctrl+C cancels. */
+export interface TerminalForegroundProgram {
+  pushInput(data: string): void;
+  cancel(): void;
+}
+
+/** The terminal pane's I/O surface for interactive program runs: output
+ *  streams into xterm as it is produced, and the pane routes keystrokes
+ *  to whichever program is registered as foreground. */
+export interface TerminalProgramIO {
+  write(text: string): void;
+  setForeground(fg: TerminalForegroundProgram | null): void;
+}
+
 export interface DispatchContext {
   /** Lower-level VFS handle (rare; helpers below are usually enough). */
   vfs: Map<string, string>;
@@ -66,8 +81,14 @@ export interface DispatchContext {
   readVfs(path: string): Promise<string | undefined> | string | undefined;
   writeVfs(path: string, body: string): void;
   deleteVfs(path: string): Promise<boolean> | boolean;
-  /** Run the currently-loaded program with argv and optional stdin. */
-  runProgram(args: string[], stdin?: string): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
+  /** Run the currently-loaded program with argv and optional stdin.
+   *  With `io`, the run is interactive: output streams to the pane and
+   *  keystrokes reach stdin while the program lives. */
+  runProgram(
+    args: string[],
+    stdin?: string,
+    io?: TerminalProgramIO,
+  ): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
   step(): Promise<{ halted: boolean; line: number | null }>;
   runUntilBreak(): Promise<{ halted: boolean; hit_breakpoint: boolean }>;
   setBreakpoint(addr: number): Promise<void>;
@@ -87,6 +108,7 @@ export interface DispatchContext {
     source: string,
     args: string[],
     stdin?: string,
+    io?: TerminalProgramIO,
   ): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
   /** The terminal's executable registry: `gcc -o name` writes it, `./name`
    *  reads it. Survives across commands within the pane's lifetime. */
@@ -98,6 +120,9 @@ export interface DispatchContext {
   readMemory(addr: number, len: number): Promise<Uint8Array>;
   pcAddress(): number;
   reset(): Promise<void>;
+  /** Present when the pane can host interactive programs; dispatch hands
+   *  it to runProgram/runSource for `./name` runs without a `>` capture. */
+  terminalIO?: TerminalProgramIO;
 }
 
 const HELP_LINES = [
@@ -292,9 +317,12 @@ export async function dispatchCommand(
       stdin = body;
     }
     const argv = [`./${name}`, ...args];
+    // A `> file` capture stays a batch run; everything else streams
+    // through the pane when it offers interactive I/O.
+    const io = stdoutTo ? undefined : ctx.terminalIO;
     const result = isEditorProgram
-      ? await ctx.runProgram(argv, stdin)
-      : await ctx.runSource(compiled as string, argv, stdin);
+      ? await ctx.runProgram(argv, stdin, io)
+      : await ctx.runSource(compiled as string, argv, stdin, io);
     if (stdoutTo) ctx.writeVfs(stdoutTo, result.stdout);
     const lines: string[] = [];
     // Strip a single trailing newline before splitting: a normal
