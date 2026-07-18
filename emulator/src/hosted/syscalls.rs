@@ -2,9 +2,8 @@
 //! syscall number from `x8`, the arguments from `x0..x5`, and writes the
 //! result back into `x0`.
 //!
-//! Phase B.6 covers the minimum the corpus needs for weeks 13 onward:
-//! `write` (64), `read` (63), `exit` (93). The VFS-backed set (openat,
-//! close, lseek) arrives in phase B.7.
+//! Covers the set the corpus needs: `write` (64), `read` (63), `exit` (93),
+//! and the VFS-backed file syscalls (openat, close, lseek).
 
 use crate::cpu::OpenFile;
 use crate::errors::EmuError;
