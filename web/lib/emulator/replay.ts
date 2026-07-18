@@ -8,16 +8,19 @@
  * returns oldest-to-newest.
  *
  * Replay is visual-only: scrubbing applies a captured frame's
- * registers / changedRegs / currentLine to the React tree without
- * touching the underlying CPU. Stepping forward resumes from the live
- * PC.
+ * registers / sp / fp registers / changedRegs / currentLine to the React
+ * tree without touching the underlying CPU. Stepping forward resumes from
+ * the live PC.
  */
 export interface ReplayFrame {
   stepCount: number;
   registers: string[];
+  sp: string;
+  fpRegisters: string[];
   pc: number;
   nzcv: number;
   changedRegs: number[];
+  changedFpRegs: number[];
   currentLine: number | null;
 }
 
