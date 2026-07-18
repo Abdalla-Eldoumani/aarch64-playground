@@ -638,7 +638,7 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
     };
 
     // immediate form
-    if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+    if op3.starts_with('#') || op3.starts_with('\'') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         let imm = parse_immediate(op3, ln)?;
         if !(0..=4095).contains(&imm) {
             return asm_err(ln, "immediate out of range (0-4095)");
@@ -722,6 +722,7 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     // like `#-16` (a bare parse::<i64> only understood decimal).
     let imm_body = ops[1].trim();
     if imm_body.starts_with('#')
+        || imm_body.starts_with('\'')
         || imm_body.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
     {
         if let Ok(v) = parse_immediate(imm_body, ln) {
@@ -770,7 +771,7 @@ fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return asm_err(ln, "BIC requires 3 operands");
     }
     let op3 = ops[2].trim();
-    if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
+    if op3.starts_with('#') || op3.starts_with('\'') || op3.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
     {
         return asm_err(ln, "BIC takes a register, not an immediate; use AND with the inverted mask");
     }
@@ -862,6 +863,7 @@ fn encode_log_dispatch(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError
     if ops.len() == 3 {
         let op3 = ops[2].trim();
         if op3.starts_with('#')
+            || op3.starts_with('\'')
             || op3.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
         {
             let (rd, sf) = parse_register(ops[0], ln)?;
@@ -889,7 +891,7 @@ fn encode_tst(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     }
     let op2 = ops[1].trim();
     // Immediate form: emit ANDS-immediate with Rd=ZR.
-    if op2.starts_with('#') || op2.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
+    if op2.starts_with('#') || op2.starts_with('\'') || op2.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
     {
         let value = parse_immediate(op2, ln)? as u64;
         return encode_log_imm_fields(rn, 31, value, sf, 0b11, ln);
