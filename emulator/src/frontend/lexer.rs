@@ -3,7 +3,7 @@
 //!
 //! The lexer classifies at the cheapest possible level. It does not know
 //! which identifiers are mnemonics or registers (the parser decides that
-//! when it has context). It does handle the two tricky numeric forms the
+//! when it has context). It does handle the three tricky numeric forms the
 //! course uses: hex `0x...`, binary `0b...`, and GAS-radix doubles `0r...`.
 //! String and char literals resolve their escapes here so later stages
 //! never have to look at a `\n`.
