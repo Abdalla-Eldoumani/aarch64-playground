@@ -141,7 +141,6 @@ pub struct Program {
     pub symbols: HashMap<String, SymbolValue>,
     pub aliases: HashMap<String, String>,
     pub globals: HashSet<String>,
-    pub source_map: Vec<usize>,
     /// Post-m4-expansion source text, kept so the linker can reconstruct
     /// each instruction's original line for the legacy encoder.
     pub expanded_source: String,
@@ -154,7 +153,6 @@ impl Program {
             symbols: HashMap::new(),
             aliases: HashMap::new(),
             globals: HashSet::new(),
-            source_map: Vec::new(),
             expanded_source: String::new(),
         }
     }
