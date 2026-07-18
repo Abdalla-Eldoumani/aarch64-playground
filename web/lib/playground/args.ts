@@ -2,7 +2,8 @@
  * Shell-style command-line argument parser. Splits on whitespace,
  * preserves the contents of double- or single-quoted spans, and treats
  * `\\` followed by any character as an escape (the next character is
- * inserted literally).
+ * inserted literally) -- except inside single quotes, where bash keeps
+ * the backslash literal.
  *
  * Empty input produces an empty array. Unterminated quotes are tolerant:
  * the rest of the line is treated as the final argument's contents.
@@ -46,7 +47,9 @@ export function parseArgsDetailed(input: string): ParsedToken[] {
   for (let i = 0; i < input.length; i++) {
     const ch = input[i];
 
-    if (ch === "\\" && i + 1 < input.length) {
+    // Backslash escapes the next char OUTSIDE single quotes; bash keeps it
+    // literal inside '...' (so `'C:\dir'` stays `C:\dir`).
+    if (ch === "\\" && i + 1 < input.length && inQuote !== "'") {
       buf += input[i + 1];
       hasToken = true;
       quoted = true;
