@@ -63,4 +63,10 @@ describe("parseArgsDetailed", () => {
     const line = 'a "b c" d\ e';
     expect(parseArgs(line)).toEqual(parseArgsDetailed(line).map((t) => t.text));
   });
+  test("keeps a backslash literal inside single quotes (bash)", () => {
+    expect(parseArgs("'C:\\dir'")).toEqual(["C:\\dir"]);
+    // outside single quotes the backslash still escapes.
+    expect(parseArgs("a\\ b")).toEqual(["a b"]);
+  });
+
 });
