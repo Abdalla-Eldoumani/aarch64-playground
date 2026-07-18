@@ -1969,7 +1969,7 @@ fn check_branch_reach(
         return Err(EmuError::AssemblyError {
             line: ln,
             message: format!(
-                "{mnemonic} target is out of reach ({} bytes away; this branch reaches {} bytes each way) --                  branch to a nearer label, or load the address and use br",
+                "{mnemonic} target is out of reach ({} bytes away; this branch reaches {} bytes each way) -- branch to a nearer label, or load the address and use br",
                 offset_instrs * 4,
                 hi * 4
             ),
