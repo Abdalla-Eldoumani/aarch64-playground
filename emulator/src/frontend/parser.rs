@@ -1,5 +1,5 @@
 //! Section-aware parser. Runs after m4 expansion and lexing. Produces a
-//! `Program` with sections, labels, globals, aliases, and source map.
+//! `Program` with sections, labels, globals, and aliases.
 //!
 //! Instruction encoding is deferred to the linker: we hold each instruction
 //! as a raw token slice and its original line number, because the token
@@ -27,7 +27,6 @@ pub fn parse(source: &str) -> Result<Program, EmuError> {
     let mut prog = Program::new();
     prog.aliases = expanded.defines;
     prog.aliases.extend(req_aliases);
-    prog.source_map = expanded.line_map;
     prog.expanded_source = text.clone();
     let tokens = lex(&text, 1)?;
     // Always initialize .text even if nothing goes into it; existing callers
