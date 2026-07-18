@@ -79,15 +79,16 @@ describe("ExampleLoader", () => {
   it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
-    // 14 kept programs + the two stage fillers + the snake game.
-    expect(labels.length).toBe(17);
+    // 14 kept programs + the two stage fillers + the two snake games.
+    expect(labels.length).toBe(18);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
     expect(labels).toContain("arithmetic");
     expect(labels).toContain("copy file");
     expect(labels).toContain("triangle area (single)");
-    expect(labels).toContain("snake (turn-based game)");
+    expect(labels).toContain("snake (arcade, in the terminal)");
+    expect(labels).toContain("snake (turn-based console)");
   });
 
   it("fetches the picked example and forwards the payload + label to onLoad", async () => {
