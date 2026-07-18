@@ -26,7 +26,6 @@ function splitOffComment(line: string): { code: string; comment: string | null }
   // string literals. The cpsc 355 corpus only uses `//` and `;` as
   // comment markers.
   let inString = false;
-  let lastQuote = -1;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
     if (c === "\\" && inString) {
@@ -35,7 +34,6 @@ function splitOffComment(line: string): { code: string; comment: string | null }
     }
     if (c === '"') {
       inString = !inString;
-      lastQuote = i;
       continue;
     }
     if (inString) continue;
@@ -46,8 +44,6 @@ function splitOffComment(line: string): { code: string; comment: string | null }
       return { code: line.slice(0, i), comment: line.slice(i) };
     }
   }
-  // dummy use of lastQuote so the linter doesn't drop the binding
-  void lastQuote;
   return { code: line, comment: null };
 }
 
