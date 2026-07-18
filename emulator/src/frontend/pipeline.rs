@@ -151,7 +151,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     // following instruction off its 4-byte boundary; report
                     // it here, where the line is known, instead of letting
                     // the linker blame an internal literal-pool offset.
-                    if section.kind == SectionKind::Text && offset % 4 != 0 {
+                    if section.kind == SectionKind::Text && !offset.is_multiple_of(4) {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
                             message: format!(
@@ -277,9 +277,9 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         for item in &section.items {
             if let Item::Instruction { tokens, original_line } = item {
                 if let Some(target_text) = extract_ldr_eq_operand(tokens) {
-                    if !pool_slots.contains_key(&target_text) {
-                        let value = resolve_ldr_eq_target(&target_text, &symbols, *original_line)?;
-                        pool_slots.insert(target_text, pool_values.len() as u64 * 8);
+                    if let std::collections::hash_map::Entry::Vacant(slot) = pool_slots.entry(target_text) {
+                        let value = resolve_ldr_eq_target(slot.key(), &symbols, *original_line)?;
+                        slot.insert(pool_values.len() as u64 * 8);
                         pool_values.push(value);
                     }
                     continue;
@@ -930,7 +930,7 @@ fn extract_bl_target(tokens: &[crate::frontend::lexer::Token]) -> Option<String>
 
 fn is_host_address(addr: u64) -> bool {
     const HOST_STUB_BASE: u64 = 0xFFFF_0000;
-    addr >= HOST_STUB_BASE && addr < HOST_STUB_BASE + 0x1_0000
+    (HOST_STUB_BASE..HOST_STUB_BASE + 0x1_0000).contains(&addr)
 }
 
 /// Token-based BL redirect. When the line is `bl <ident>` and `<ident>`
@@ -941,7 +941,7 @@ fn is_host_address(addr: u64) -> bool {
 /// (already collapsed by the lexer) cannot break the match the way the
 /// raw-string version did.
 pub(crate) fn redirect_bl_to_trampoline_tokens(
-    tokens: &mut Vec<crate::frontend::lexer::Token>,
+    tokens: &mut [crate::frontend::lexer::Token],
     tramp_addr: &HashMap<String, u64>,
 ) -> bool {
     if tokens.len() < 2 {
