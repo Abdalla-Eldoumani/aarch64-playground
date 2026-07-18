@@ -7,7 +7,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// The eight fixed level-up stages, in the order the concepts build.
+// The fixed level-up stages, in the order the concepts build, plus the
+// closing miscellaneous stage for playable extras.
 const STAGES = [
   "First programs",
   "Data and memory",
@@ -17,6 +18,7 @@ const STAGES = [
   "Static data and command-line arguments",
   "Floating point",
   "Files and I/O",
+  "Miscellaneous",
 ];
 
 /** Open the custom select and return its listbox. */
@@ -52,7 +54,7 @@ async function pick(label: string) {
 }
 
 describe("ExampleLoader", () => {
-  it("presents the eight level-up stages in order, each non-empty, no week labels", () => {
+  it("presents the level-up stages in order, each non-empty, no week labels", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const listbox = openList();
     const headers = groupHeaders(listbox);
@@ -62,7 +64,7 @@ describe("ExampleLoader", () => {
       expect(header).not.toMatch(/week/i);
       expect(header).not.toMatch(/cpsc/i);
     }
-    // Every stage carries at least one program: 8 stages, 15 options total.
+    // Every stage carries at least one program.
     expect(optionLabels(listbox).length).toBeGreaterThanOrEqual(headers.length);
   });
 
@@ -77,14 +79,15 @@ describe("ExampleLoader", () => {
   it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
-    // 14 kept programs + the two stage fillers.
-    expect(labels.length).toBe(16);
+    // 14 kept programs + the two stage fillers + the snake game.
+    expect(labels.length).toBe(17);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
     expect(labels).toContain("arithmetic");
     expect(labels).toContain("copy file");
     expect(labels).toContain("triangle area (single)");
+    expect(labels).toContain("snake (turn-based game)");
   });
 
   it("fetches the picked example and forwards the payload + label to onLoad", async () => {
