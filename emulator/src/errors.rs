@@ -77,7 +77,7 @@ impl fmt::Display for EmuError {
             }
             Self::StackOverflow => write!(
                 f,
-                "stack overflow: sp has moved more than 1 MiB below the stack base --                  usually recursion with no base case, a prologue that repeats without                  its epilogue, or sp loaded from a register that was never set up"
+                "stack overflow: sp has moved more than 1 MiB below the stack base -- usually recursion with no base case, a prologue that repeats without its epilogue, or sp loaded from a register that was never set up"
             ),
             Self::AssemblyError { line, message } => {
                 write!(f, "assembly error at line {line}: {message}")
