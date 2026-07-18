@@ -1037,6 +1037,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 is the literal source text, not an approximation of pi
     fn plain_decimal_float_in_data_directives() {
         // The real toolchain takes `.double 3.14` and `.float -2.5`
         // without any radix prefix; the playground must too.
