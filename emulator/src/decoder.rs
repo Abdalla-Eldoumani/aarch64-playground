@@ -465,7 +465,7 @@ pub enum Instruction {
     },
     /// NOP.
     Nop,
-    /// SVC (treated as halt).
+    /// SVC supervisor call: `svc #0` enters the syscall dispatcher; any other immediate halts.
     Svc {
         imm16: u16,
     },
