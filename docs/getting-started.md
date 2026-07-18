@@ -143,6 +143,8 @@ for the full index of where each lives.
 | `Shift+F5` | Reset |
 | `Ctrl+K` | Command palette |
 | `Ctrl+Shift+F` | Format the source |
+| `Ctrl+/` | Toggle line comment (on the selected lines) |
+| `Shift+Alt+A` | Toggle block comment |
 | `Ctrl+Wheel` | Zoom the focused panel |
 | `?` | Keyboard shortcuts help |
 
