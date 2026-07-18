@@ -419,6 +419,7 @@ mod tests {
         let mut open_files: HashMap<u32, OpenFile> = HashMap::new();
         let mut next_fd = 3u32;
         let mut rand_state = 1u64;
+        let mut term = crate::cpu::TermState::default();
         let mut ctx = HostContext {
             regs: &mut regs,
             mem: &mut mem,
@@ -430,6 +431,7 @@ mod tests {
             open_files: &mut open_files,
             next_fd: &mut next_fd,
             rand_state: &mut rand_state,
+            term: &mut term,
         };
         printf(&mut ctx)?;
         let written = ctx.regs.read_gpr(0, true) as usize;
