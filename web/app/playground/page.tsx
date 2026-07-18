@@ -157,12 +157,25 @@ export default function Home() {
           : "that share link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
       );
     }
+    if (boot.bundleError) {
+      toastSoon(
+        boot.bundleError === "too-large"
+          ? "that diagnostic-bundle link is too large to load -- showing your own buffer instead"
+          : "that diagnostic-bundle link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
+      );
+    }
     const handoff = resolveHandoff(boot, window.location.search, window.location.hash);
     if (handoff?.kind === "share-error") {
       toastSoon(
         handoff.reason === "too-large"
           ? "that share link is too large to load"
           : "that share link is damaged (often a partial copy) -- ask for the link again",
+      );
+    } else if (handoff?.kind === "bundle-error") {
+      toastSoon(
+        handoff.reason === "too-large"
+          ? "that diagnostic-bundle link is too large to load"
+          : "that diagnostic-bundle link is damaged (often a partial copy) -- ask for the link again",
       );
     } else if (handoff?.kind === "example") {
       // fetchExample's failures are already student-readable ("invalid

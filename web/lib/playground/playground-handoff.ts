@@ -48,6 +48,8 @@ export interface PlaygroundBoot {
    *  an absent "loaded from a share link" banner is not a signal anyone
    *  notices. */
   shareError?: "corrupt" | "too-large";
+  /** Same idea for a `?bundle=` deep-link that failed to decode. */
+  bundleError?: "corrupt" | "too-large";
 }
 
 /**
@@ -89,6 +91,7 @@ export function resolveBoot(
     fromBundle: false,
     shareError:
       shared.kind === "corrupt" || shared.kind === "too-large" ? shared.kind : undefined,
+    bundleError: dl.bundleError,
   };
 }
 
@@ -96,6 +99,7 @@ export type HandoffDecision =
   | { kind: "bundle" | "share"; payload: HandoffPayload }
   | { kind: "example"; stem: string }
   | { kind: "share-error"; reason: "corrupt" | "too-large" }
+  | { kind: "bundle-error"; reason: "corrupt" | "too-large" }
   | null;
 
 /**
@@ -108,7 +112,7 @@ export type HandoffDecision =
  * payload with the example file.
  */
 export function resolveHandoff(
-  boot: Pick<PlaygroundBoot, "fromShare" | "fromBundle" | "shareError">,
+  boot: Pick<PlaygroundBoot, "fromShare" | "fromBundle" | "shareError" | "bundleError">,
   search: string,
   hash: string,
 ): HandoffDecision {
@@ -139,6 +143,13 @@ export function resolveHandoff(
         fromShare: true,
       },
     };
+  }
+  // Neither a usable bundle nor a usable share; report whichever failed.
+  // A corrupt bundle never blocks a valid share above (boot precedence).
+  if (dl.bundleError) {
+    // The boot pass already reported a hard load's failure; a client-side
+    // navigation reaches it only here.
+    return boot.bundleError ? null : { kind: "bundle-error", reason: dl.bundleError };
   }
   if (shared.kind === "corrupt" || shared.kind === "too-large") {
     // The boot pass already reported a hard load's failure; a client-side
