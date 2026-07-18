@@ -365,6 +365,7 @@ fn exec_dp_imm(
     Ok(ExecResult::Advance)
 }
 
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
 fn exec_dp_reg(
     op: DpOp, sf: bool, rd: u8, rn: u8, rm: u8,
     shift: ShiftType, amount: u8,
@@ -409,6 +410,7 @@ fn extend_reg(value: u64, extend: RegExtend) -> u64 {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
 fn exec_dp_ext(
     op: DpOp, sf: bool, rd: u8, rn: u8, rm: u8,
     extend: RegExtend, shift: u8,
@@ -490,6 +492,7 @@ fn exec_log_imm(
     Ok(ExecResult::Advance)
 }
 
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
 fn exec_log_reg(
     op: LogOp, sf: bool, rd: u8, rn: u8, rm: u8,
     shift: ShiftType, amount: u8, set_flags: bool, invert: bool,
@@ -517,6 +520,7 @@ fn exec_log_reg(
     Ok(ExecResult::Advance)
 }
 
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
 fn exec_ldst(
     op: LdStOp, rt: u8, rn: u8, offset: &LdStOffset, size: MemSize,
     mode: IndexMode, regs: &mut RegisterFile, mem: &mut Memory,
@@ -584,6 +588,7 @@ fn exec_ldst(
     Ok(ExecResult::Advance)
 }
 
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
 fn exec_ldst_pair(
     op: LdStPairOp, sf: bool, rt: u8, rt2: u8, rn: u8,
     imm7: i16, mode: IndexMode,
@@ -784,7 +789,7 @@ fn exec_mul_div(
     let result = match op {
         MulDivOp::Mul => a.wrapping_mul(b) & mask,
         MulDivOp::Udiv => {
-            if b == 0 { 0 } else { (a / b) & mask }
+            a.checked_div(b).map_or(0, |q| q & mask)
         }
         MulDivOp::Sdiv => {
             if b == 0 {
@@ -836,6 +841,7 @@ fn exec_fp_binary(
     Ok(ExecResult::Advance)
 }
 
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
 fn exec_ldrs(
     rt: u8,
     rn: u8,
