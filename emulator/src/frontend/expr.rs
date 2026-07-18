@@ -364,8 +364,7 @@ mod tests {
     fn depth_counts_nesting_not_sequential_groups() {
         // 200 sibling groups never exceed depth 1; only true nesting
         // should trip the ceiling.
-        let src = std::iter::repeat("(1)")
-            .take(200)
+        let src = std::iter::repeat_n("(1)", 200)
             .collect::<Vec<_>>()
             .join(" + ");
         assert_eq!(run(&src).unwrap(), 200);
