@@ -680,7 +680,7 @@ mod tests {
     #[test]
     fn assignment_form_keeps_line_in_output_and_omits_from_defines() {
         let r = exp("alloc = 32\nmov x0, 1\n");
-        assert!(r.defines.get("alloc").is_none());
+        assert!(!r.defines.contains_key("alloc"));
         assert_eq!(r.assignments.get("alloc").map(String::as_str), Some("32"));
         assert!(r.text.contains("alloc = 32"));
     }
