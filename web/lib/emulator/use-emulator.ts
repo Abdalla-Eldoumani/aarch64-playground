@@ -82,6 +82,12 @@ export interface EmulatorState {
   stdout: string;
   stderr: string;
   blocked: boolean;
+  /** True once the running program put the terminal in raw mode; the
+   *  terminal pane takes over I/O and the console stays quiet. */
+  wantsTerminal: boolean;
+  /** Route program stdout away from the console (into the terminal
+   *  pane) while a tap is set; pass null to restore console routing. */
+  setOutputTap: (tap: ((text: string) => void) | null) => void;
   exitCode: number | null;
   hostedMode: boolean;
   vfsFiles: string[];
@@ -260,6 +266,9 @@ export function useEmulator(): EmulatorState {
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
   const [blocked, setBlocked] = useState(false);
+  const [wantsTerminal, setWantsTerminal] = useState(false);
+  const wantsTerminalRef = useRef(false);
+  const outputTapRef = useRef<((text: string) => void) | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [hostedMode, setHostedMode] = useState(false);
   const [vfsFiles, setVfsFiles] = useState<string[]>([]);
@@ -298,11 +307,19 @@ export function useEmulator(): EmulatorState {
     setIsHalted(snap.halted);
     haltedRef.current = snap.halted;
     setBlocked(snap.blocked);
+    wantsTerminalRef.current = snap.wantsTerminal;
+    setWantsTerminal(snap.wantsTerminal);
     setExitCode(snap.exitCode);
     setCanStepBack(snap.canStepBack);
     setVfsFiles(snap.vfsFiles);
     setSavedStates(snap.savedStates);
-    if (snap.stdoutDelta) setStdout((prev) => appendBounded(prev, snap.stdoutDelta));
+    if (snap.stdoutDelta) {
+      // While the terminal pane holds the tap, program output belongs to
+      // xterm; mirroring it into the console doubled every frame.
+      const tap = outputTapRef.current;
+      if (tap) tap(snap.stdoutDelta);
+      else setStdout((prev) => appendBounded(prev, snap.stdoutDelta));
+    }
     if (snap.stderrDelta) setStderr((prev) => appendBounded(prev, snap.stderrDelta));
     // Drive the current-line marker off the linker's authoritative
     // address->editor-line map: look the snapshot pc up directly instead
@@ -691,19 +708,34 @@ export function useEmulator(): EmulatorState {
     if (runningRef.current) return;
     setIsRunning(true);
     runningRef.current = true;
-    backend
-      .runUntilBreak(1_000_000)
-      .then(({ runResult }) => {
+    const drive = async (): Promise<void> => {
+      let total = 0;
+      for (;;) {
+        const { runResult } = await backend.runUntilBreak(1_000_000);
         // A run cancelled by reset/assemble describes a machine that no
         // longer exists; acting on it painted `unknown instruction:
         // 0x00000000` right after the student pressed Reset.
         if (runResult.cancelled) return;
+        total += runResult.steps_executed;
+        // A pacing pause (nanosleep): honor it in real time and keep the
+        // same run going, unless pause/reset stood the drive down while
+        // it waited. The steps so far still land on the counter below.
+        if (
+          runResult.sleep_ms != null &&
+          !runResult.halted &&
+          !runResult.error &&
+          !runResult.hit_breakpoint
+        ) {
+          const ms = Math.max(1, Math.min(runResult.sleep_ms, 2000));
+          await new Promise<void>((resolve) => setTimeout(resolve, ms));
+          if (runningRef.current) continue;
+        }
         setStepCount((c) => {
-          const next = c + runResult.steps_executed;
+          const next = c + total;
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
           else if (runResult.step_limit_reached) {
             setError(
-              `paused after ${runResult.steps_executed.toLocaleString()} steps without finishing -- ` +
+              `paused after ${total.toLocaleString()} steps without finishing -- ` +
                 "press run to continue, or check for a loop whose exit condition never becomes true",
             );
           }
@@ -713,7 +745,10 @@ export function useEmulator(): EmulatorState {
           pushReplayFrame(next);
           return next;
         });
-      })
+        return;
+      }
+    };
+    drive()
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
       })
@@ -753,6 +788,13 @@ export function useEmulator(): EmulatorState {
     if (!backend) return;
     void backend.pushStdin(s);
   }, []);
+
+  const setOutputTap = useCallback(
+    (tap: ((text: string) => void) | null) => {
+      outputTapRef.current = tap;
+    },
+    [],
+  );
 
   const closeStdin = useCallback(() => {
     const backend = backendRef.current;
@@ -1010,6 +1052,8 @@ export function useEmulator(): EmulatorState {
       stdout,
       stderr,
       blocked,
+      wantsTerminal,
+      setOutputTap,
       exitCode,
       hostedMode,
       vfsFiles,
@@ -1055,6 +1099,7 @@ export function useEmulator(): EmulatorState {
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
       currentLine, instructions, codeBase, stdout, stderr, blocked,
+      wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, getMemory, getMemoryMapped,
