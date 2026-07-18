@@ -96,6 +96,7 @@ fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
         StepOutcome::Advance => ("advance", None),
         StepOutcome::Halted => ("halted", None),
         StepOutcome::WaitingForInput => ("waiting", None),
+        StepOutcome::Sleeping(_) => ("sleeping", None),
         StepOutcome::Exited(code) => ("exited", Some(*code)),
     }
 }
@@ -138,7 +139,7 @@ struct StepResultJs {
     /// Editor line of the instruction the error names, when the line map
     /// can resolve it. None when there is no error or no mapping.
     error_line: Option<u32>,
-    /// "advance" | "halted" | "waiting" | "exited"
+    /// "advance" | "halted" | "waiting" | "sleeping" | "exited"
     outcome: &'static str,
     /// Populated when outcome == "exited".
     exit_code: Option<i64>,
@@ -154,6 +155,10 @@ struct RunResultJs {
     error: Option<String>,
     /// Editor line of the instruction the error names (see StepResultJs).
     error_line: Option<u32>,
+    /// Milliseconds the program's last nanosleep asked to pause, when the
+    /// run stopped for one. A real-time runner waits this out then calls
+    /// run again; a batch runner just calls run again immediately.
+    sleep_ms: Option<f64>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -455,6 +460,10 @@ impl Emulator {
                     .error
                     .as_ref()
                     .and_then(|_| self.error_line_for(result.pc));
+                let sleep_ms = self
+                    .cpu
+                    .take_pending_sleep_ns()
+                    .map(|ns| ns as f64 / 1_000_000.0);
                 serde_wasm_bindgen::to_value(&RunResultJs {
                     pc: result.pc,
                     halted: result.halted,
@@ -462,6 +471,7 @@ impl Emulator {
                     hit_breakpoint: result.hit_breakpoint,
                     error: result.error,
                     error_line,
+                    sleep_ms,
                 }).unwrap()
             }
             Err(e) => serde_wasm_bindgen::to_value(&RunResultJs {
@@ -471,6 +481,7 @@ impl Emulator {
                 hit_breakpoint: false,
                 error: Some(e.to_string()),
                 error_line: self.error_line_for(self.cpu.regs.read_pc()),
+                sleep_ms: None,
             }).unwrap(),
         }
     }
@@ -671,6 +682,13 @@ impl Emulator {
     }
 
     /// Whether the CPU is paused waiting for stdin.
+    /// True once the running program has put the terminal in raw mode
+    /// (ioctl TCSETS clearing ICANON/ECHO): the UI treats it as a
+    /// terminal program and hands it the terminal pane.
+    pub fn wants_terminal(&self) -> bool {
+        self.cpu.term.raw_mode
+    }
+
     pub fn is_blocked(&self) -> bool {
         self.cpu.is_blocked()
     }
