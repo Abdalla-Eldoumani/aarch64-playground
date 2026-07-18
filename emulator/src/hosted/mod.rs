@@ -147,7 +147,7 @@ impl HostTable {
         let end = HOST_STUB_BASE + (self.entries.len() as u64) * HOST_STUB_STRIDE;
         address >= HOST_STUB_BASE
             && address < end
-            && (address - HOST_STUB_BASE) % HOST_STUB_STRIDE == 0
+            && (address - HOST_STUB_BASE).is_multiple_of(HOST_STUB_STRIDE)
     }
 
     /// Dispatch to the stub at `address`. Returns `None` when the address
@@ -184,6 +184,7 @@ mod tests {
     use crate::registers::RegisterFile;
     use std::collections::HashMap;
 
+    #[allow(clippy::too_many_arguments)] // one borrow per Cpu field the host context carries
     fn fresh_ctx<'a>(
         regs: &'a mut RegisterFile,
         mem: &'a mut Memory,
