@@ -737,7 +737,7 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     encode_dp(&new_ops, op_bit, 1, ln)
 }
 
-fn encode_log_reg(ops: &[&str], opc: u8, n: bool, _set_flags: bool, ln: usize) -> Result<u32, EmuError> {
+fn encode_log_reg(ops: &[&str], opc: u8, n: bool, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 3 && ops.len() != 4 {
         return asm_err(
             ln,
@@ -773,7 +773,7 @@ fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     {
         return asm_err(ln, "BIC takes a register, not an immediate; use AND with the inverted mask");
     }
-    encode_log_reg(ops, 0b00, true, false, ln)
+    encode_log_reg(ops, 0b00, true, ln)
 }
 
 /// Encode `UBFX Rd, Rn, #lsb, #width` (unsigned bitfield extract), the
@@ -869,7 +869,7 @@ fn encode_log_dispatch(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError
             return encode_log_imm_fields(rn, rd, value, sf, opc as u32, ln);
         }
     }
-    encode_log_reg(ops, opc, false, false, ln)
+    encode_log_reg(ops, opc, false, ln)
 }
 
 fn encode_tst(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -884,7 +884,7 @@ fn encode_tst(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() == 3 {
         let zr = if sf { "XZR" } else { "WZR" };
         let new_ops = [zr, ops[0], ops[1], ops[2]];
-        return encode_log_reg(&new_ops, 0b11, false, true, ln);
+        return encode_log_reg(&new_ops, 0b11, false, ln);
     }
     let op2 = ops[1].trim();
     // Immediate form: emit ANDS-immediate with Rd=ZR.
@@ -895,7 +895,7 @@ fn encode_tst(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     }
     let zr = if sf { "XZR" } else { "WZR" };
     let new_ops = [zr, ops[0], ops[1]];
-    encode_log_reg(&new_ops, 0b11, false, true, ln)
+    encode_log_reg(&new_ops, 0b11, false, ln)
 }
 
 /// Emit a logical immediate encoding: `AND/ORR/EOR/ANDS Rd, Rn, #imm`.
