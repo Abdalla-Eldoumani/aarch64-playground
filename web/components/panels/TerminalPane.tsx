@@ -95,6 +95,10 @@ export interface TerminalPaneProps {
   buildContext: () => DispatchContext;
   /** Optional handler for the "upload" pseudo-command (host file picker). */
   onUploadRequest?: () => void;
+  /** Hands the pane's interactive-program I/O surface to the host so a
+   *  raw-mode program started from the run button can self-attach; the
+   *  pane deregisters it (null) on unmount. */
+  onRegisterIO?: (io: TerminalProgramIO | null) => void;
 }
 
 const PROMPT = "$ ";
@@ -106,7 +110,7 @@ const PROMPT = "$ ";
  * so the xterm bundle only ships when the user actually opens the
  * terminal tab.
  */
-export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProps) {
+export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -121,6 +125,19 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
     write: (text: string) => termRef.current?.write(text),
     setForeground: (fg: TerminalForegroundProgram | null) => {
       foregroundRef.current = fg;
+      // A program taking the pane over should also take the keyboard:
+      // without focus its first frames render but keys go nowhere.
+      if (fg) termRef.current?.focus();
+    },
+    sessionEnded: (exitCode: number | null) => {
+      const t = termRef.current;
+      if (!t) return;
+      t.write(
+        exitCode != null
+          ? `\r\n[exit ${exitCode}]\r\n`
+          : "\r\n[program stopped]\r\n",
+      );
+      t.write(PROMPT);
     },
   });
 
@@ -133,9 +150,11 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
   // mid-session -- including during the terminal's own program runs.
   const buildContextRef = useRef(buildContext);
   const onUploadRequestRef = useRef(onUploadRequest);
+  const onRegisterIORef = useRef(onRegisterIO);
   useEffect(() => {
     buildContextRef.current = buildContext;
     onUploadRequestRef.current = onUploadRequest;
+    onRegisterIORef.current = onRegisterIO;
   });
 
   const writePrompt = useCallback(() => {
@@ -221,6 +240,7 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
 
     termRef.current = term;
     fitRef.current = fit;
+    onRegisterIORef.current?.(terminalIORef.current);
 
     term.writeln("cpsc 355 playground -- terminal. type 'help' for commands.");
     term.write(PROMPT);
@@ -338,6 +358,7 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       pasteSub.dispose();
       ro.disconnect();
       themeObserver.disconnect();
+      onRegisterIORef.current?.(null);
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
