@@ -494,6 +494,14 @@ function EmbeddableCore({
     }
   }, [emu.blocked, emu.wantsTerminal]);
 
+  // The terminal pane's interactive I/O surface. State, not a ref: the
+  // pane mounts lazily on first tab activation, which happens AFTER a
+  // raw-mode program's rising edge switches the tab -- the self-attach
+  // effect must re-fire when the registration lands.
+  const [termIO, setTermIO] =
+    useState<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
+  const foregroundActiveRef = useRef(false);
+
   // A program that switches the terminal to raw mode is a terminal
   // program: hand it the terminal pane on the false->true edge, the same
   // way blocked hands scanf programs the console.
@@ -509,6 +517,68 @@ function EmbeddableCore({
       lastWantsTermRef.current = false;
     }
   }, [emu.wantsTerminal]);
+
+  // The one foreground drive both entry paths share: stream output to
+  // the pane, forward its keystrokes to stdin, resume input-starved
+  // stops, and stand down on halt, error, cancel, or a user pause.
+  const driveForeground = useCallback(
+    async (io: import("@/lib/terminal/dispatch").TerminalProgramIO): Promise<number | null> => {
+      if (foregroundActiveRef.current) return null;
+      foregroundActiveRef.current = true;
+      let cancelled = false;
+      emuRef.current.setOutputTap((t) => io.write(t));
+      io.setForeground({
+        pushInput: (d) => emuRef.current.pushStdin(d),
+        cancel: () => {
+          cancelled = true;
+          emuRef.current.pause();
+        },
+      });
+      try {
+        {
+          const e = emuRef.current;
+          if (!e.isRunning && !e.isHalted) e.run();
+        }
+        let resumeArmed = false;
+        for (;;) {
+          await new Promise<void>((r) => setTimeout(r, 32));
+          const e = emuRef.current;
+          if (cancelled || e.isHalted || e.error) break;
+          if (e.isRunning) continue;
+          if (e.blocked) {
+            resumeArmed = true;
+            continue;
+          }
+          if (resumeArmed) {
+            resumeArmed = false;
+            emuRef.current.run();
+            continue;
+          }
+          break;
+        }
+      } finally {
+        emuRef.current.setOutputTap(null);
+        io.setForeground(null);
+        foregroundActiveRef.current = false;
+      }
+      const e = emuRef.current;
+      return e.isHalted ? e.exitCode : null;
+    },
+    [],
+  );
+
+  // Self-attach: a raw-mode program started from the run button (not
+  // `./name`) still deserves live terminal I/O. When the flag rises and
+  // no session owns the pane, the pane takes the program over and
+  // prints the exit line itself when the session ends.
+  useEffect(() => {
+    if (!emu.wantsTerminal) return;
+    if (!termIO || foregroundActiveRef.current) return;
+    const io = termIO;
+    void driveForeground(io).then((exitCode) => {
+      io.sessionEnded?.(exitCode);
+    });
+  }, [emu.wantsTerminal, termIO, driveForeground]);
 
   // The command Action[] is built here (where source / modes / hub live) and
   // surfaced through the handle so a host-rendered palette reuses it.
@@ -986,47 +1056,12 @@ function EmbeddableCore({
         // produced, keystrokes reach stdin while the program lives, and
         // there is no wall-clock cap -- the machine's own step/output
         // walls bound a runaway, and the player owns the exit.
-        let cancelled = false;
-        emuRef.current.setOutputTap((t) => io.write(t));
-        io.setForeground({
-          pushInput: (d) => emuRef.current.pushStdin(d),
-          cancel: () => {
-            cancelled = true;
-            emuRef.current.pause();
-          },
-        });
-        try {
-          emuRef.current.run();
-          // Resume only stops caused by input starvation: a blocked ->
-          // unblocked transition re-arms run, while a user pause or the
-          // step-budget stop hands the shell back.
-          let resumeArmed = false;
-          for (;;) {
-            await new Promise<void>((r) => setTimeout(r, 32));
-            const e = emuRef.current;
-            if (cancelled || e.isHalted || e.error) break;
-            if (e.isRunning) continue;
-            if (e.blocked) {
-              resumeArmed = true;
-              continue;
-            }
-            if (resumeArmed) {
-              resumeArmed = false;
-              emuRef.current.run();
-              continue;
-            }
-            break;
-          }
-        } finally {
-          emuRef.current.setOutputTap(null);
-          io.setForeground(null);
-        }
-        const e = emuRef.current;
+        const exitCode = await driveForeground(io);
         return {
           // Already streamed through the tap; nothing left to print.
           stdout: "",
-          stderr: e.stderr,
-          exitCode: e.isHalted ? e.exitCode : null,
+          stderr: emuRef.current.stderr,
+          exitCode,
         };
       }
       emuRef.current.run();
@@ -1391,6 +1426,7 @@ function EmbeddableCore({
       <TerminalPane
         buildContext={buildTerminalContext}
         onUploadRequest={() => terminalUploadRef.current?.click()}
+        onRegisterIO={setTermIO}
       />
     </div>
   );
