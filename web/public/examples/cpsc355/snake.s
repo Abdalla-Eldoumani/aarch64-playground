@@ -3,11 +3,15 @@
 // The full project (build files, releases, history) lives at
 //   https://github.com/Abdalla-Eldoumani/snake-game
 //
-// Run it and the playground hands it the terminal: pick a mode with
-// w/s or the arrow keys, press enter, then steer with wasd or the
-// arrows. Four modes, power-ups, combo streaks, three lives, and
-// per-mode high scores saved to file.txt in the virtual filesystem.
-// q quits, and ctrl+c in the terminal stops the program.
+// how to run: press assemble, then run -- the game takes over the
+// terminal pane and grabs the keyboard. Or run it the course way
+// from the term tab:  ./program
+//
+// how to play: pick a mode with w/s or the arrow keys, enter to
+// start, steer with wasd or the arrows, space pauses, q quits.
+// Four modes, power-ups, combo streaks, three lives, and per-mode
+// high scores saved to file.txt in the virtual filesystem. ctrl+c
+// in the terminal stops the program at any point.
 
 define(fp, x29)
 define(lr, x30)
