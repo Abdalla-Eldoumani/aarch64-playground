@@ -13,6 +13,7 @@
 // high scores saved to file.txt in the virtual filesystem. ctrl+c
 // in the terminal stops the program at any point.
 
+
 define(fp, x29)
 define(lr, x30)
 
@@ -64,10 +65,16 @@ LEVEL_NORMAL = 1
 LEVEL_NO_WALLS = 2
 LEVEL_SUPER_FAST = 3
 LEVEL_OBSTACLES = 4
-LEVEL_QUIT = 5
+LEVEL_HYPER = 5
+LEVEL_MINEFIELD = 6
+LEVEL_QUIT = 7
 
-// Score constants
-MAX_SCORE = 65535
+// Score constants. The cap exists so the add and the file parse share
+// one clamp; nine digits keeps every rendering column stable.
+MAX_SCORE = 999999999
+
+// Minefield pacing: one new mine this many seconds apart
+MINE_INTERVAL_SEC = 5
 
 // Direction constants
 DIR_UP = 0
@@ -717,6 +724,56 @@ display_level_4_text:
     mov     x8, SYS_WRITE
     svc     0
 
+    // Display Level 5
+    cmp     w19, LEVEL_HYPER
+    b.ne    display_level_5_normal
+
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =level_indicator
+    mov     x2, level_indicator_len
+    mov     x8, SYS_WRITE
+    svc     0
+    b       display_level_5_text
+
+display_level_5_normal:
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =no_indicator
+    mov     x2, no_indicator_len
+    mov     x8, SYS_WRITE
+    svc     0
+
+display_level_5_text:
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =level_5_text
+    mov     x2, level_5_text_len
+    mov     x8, SYS_WRITE
+    svc     0
+
+    // Display Level 6
+    cmp     w19, LEVEL_MINEFIELD
+    b.ne    display_level_6_normal
+
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =level_indicator
+    mov     x2, level_indicator_len
+    mov     x8, SYS_WRITE
+    svc     0
+    b       display_level_6_text
+
+display_level_6_normal:
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =no_indicator
+    mov     x2, no_indicator_len
+    mov     x8, SYS_WRITE
+    svc     0
+
+display_level_6_text:
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =level_6_text
+    mov     x2, level_6_text_len
+    mov     x8, SYS_WRITE
+    svc     0
+
     // Display Quit option
     cmp     w19, LEVEL_QUIT
     b.ne    display_quit_normal
@@ -808,6 +865,40 @@ display_quit_text:
     svc     0
 
     ldr     x0, =high_score_level4
+    ldr     w0, [x0]
+    ldr     x1, =score_buffer
+    bl      int_to_string
+    mov     x2, x0
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =score_buffer
+    mov     x8, SYS_WRITE
+    svc     0
+
+    // Hyper high score
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =hs_hyper_label
+    mov     x2, hs_hyper_label_len
+    mov     x8, SYS_WRITE
+    svc     0
+
+    ldr     x0, =high_score_level5
+    ldr     w0, [x0]
+    ldr     x1, =score_buffer
+    bl      int_to_string
+    mov     x2, x0
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =score_buffer
+    mov     x8, SYS_WRITE
+    svc     0
+
+    // Mines high score
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =hs_mines_label
+    mov     x2, hs_mines_label_len
+    mov     x8, SYS_WRITE
+    svc     0
+
+    ldr     x0, =high_score_level6
     ldr     w0, [x0]
     ldr     x1, =score_buffer
     bl      int_to_string
@@ -1038,6 +1129,9 @@ init_game:
     str     wzr, [x0]
     ldr     x0, =obstacle_count
     str     wzr, [x0]
+    ldr     x0, =next_mine_sec
+    mov     w1, MINE_INTERVAL_SEC
+    str     w1, [x0]
 
     // Record game start time
     bl      get_current_time
@@ -1501,10 +1595,13 @@ check_collisions:
     ldr     w2, [x1]
     ldr     w3, [x1, 4]
     
-    // Check current level for wall collision behavior
+    // Check current level for wall collision behavior. Endless and
+    // minefield both wrap; every other mode treats the edge as a wall.
     ldr     x0, =current_level
     ldr     w4, [x0]
     cmp     w4, LEVEL_NO_WALLS
+    b.eq    handle_wall_wrapping
+    cmp     w4, LEVEL_MINEFIELD
     b.eq    handle_wall_wrapping
     
     // Normal wall collision detection (Level 1 and 3)
@@ -1748,7 +1845,8 @@ add_score:
     ldr     w1, [x0]
     
     // Check for potential overflow
-    mov     w3, MAX_SCORE
+    movz    w3, 0xC9FF
+    movk    w3, 0x3B9A, lsl 16
     sub     w4, w3, w1  // w4 = MAX_SCORE - current_score
     cmp     w2, w4      // Compare points_to_add with remaining capacity
     b.le    safe_add    // If points_to_add <= remaining, safe to add
@@ -1794,6 +1892,9 @@ no_food_collision:
 
     // Golden food does not wait around forever
     bl      update_gold_timer
+
+    // Minefield mode grows its hazard on a timer
+    bl      update_minefield
 
     // Update grid with new snake position
     bl      update_grid
@@ -2163,11 +2264,15 @@ snake_placed:
     mov     w3, CELL_FOOD
     strb    w3, [x0, x1]
 
-    // Place obstacles (only for Level 4)
+    // Place obstacles (maze and minefield carry them)
     ldr     x0, =current_level
     ldr     w0, [x0]
     cmp     w0, LEVEL_OBSTACLES
+    b.eq    place_obstacles_start
+    cmp     w0, LEVEL_MINEFIELD
     b.ne    skip_place_obstacles
+
+place_obstacles_start:
 
     ldr     x19, =obstacle_positions
     mov     w20, 0
@@ -2823,7 +2928,16 @@ display_game_over:
 
     // Play game over sound
     bl      play_game_over_sound
-    
+
+    // Start the panel on a blank screen: drawn over the board (or over
+    // a previous game over) the lines interleave with stale text
+    bl      clear_screen
+    mov     x0, STDOUT_FILENO
+    ldr     x1, =move_cursor_home
+    mov     x2, move_cursor_home_len
+    mov     x8, SYS_WRITE
+    svc     0
+
     mov     x0, STDOUT_FILENO
     ldr     x1, =game_over_text
     mov     x2, game_over_text_len
@@ -3230,6 +3344,35 @@ gold_timer_done:
     ldp     fp, lr, [sp], 16
     ret
 
+// Drop one new mine every MINE_INTERVAL_SEC seconds of play in
+// minefield mode. add_obstacle stays away from the head and gives up
+// quietly at the array's capacity, so the field grows hostile without
+// ever becoming unfair or unbounded.
+update_minefield:
+    stp     fp, lr, [sp, -16]!
+    mov     fp, sp
+
+    ldr     x0, =current_level
+    ldr     w1, [x0]
+    cmp     w1, LEVEL_MINEFIELD
+    b.ne    minefield_done
+
+    bl      calculate_elapsed_time
+    ldr     x0, =elapsed_seconds
+    ldr     w1, [x0]
+    ldr     x2, =next_mine_sec
+    ldr     w3, [x2]
+    cmp     w1, w3
+    b.lt    minefield_done
+
+    add     w3, w3, MINE_INTERVAL_SEC
+    str     w3, [x2]
+    bl      add_obstacle
+
+minefield_done:
+    ldp     fp, lr, [sp], 16
+    ret
+
 // Calculate current speed level (1-10)
 calculate_speed_level:
     ldr     x0, =snake_length
@@ -3306,6 +3449,10 @@ set_no_file_flag:
     ldr     x0, =high_score_level3
     str     wzr, [x0]
     ldr     x0, =high_score_level4
+    str     wzr, [x0]
+    ldr     x0, =high_score_level5
+    str     wzr, [x0]
+    ldr     x0, =high_score_level6
     str     wzr, [x0]
 
 load_high_scores_done:
@@ -3418,6 +3565,50 @@ build_multilevel_file_format:
     ldr     x0, =speed_buffer
     bl      copy_string_to_buffer
 
+    // Add newline
+    mov     w0, 10
+    strb    w0, [x19], 1
+    add     x20, x20, 1
+
+    // Add LEVEL5: label and score (loaded fresh; the preserved
+    // register set ran out at four levels)
+    ldr     x0, =level5_label
+    mov     w1, level5_label_len
+    bl      copy_string_to_buffer
+
+    ldr     x0, =high_score_level5
+    ldr     w0, [x0]
+    ldr     x25, =level5_backup
+    ldr     w25, [x25]
+    cmp     w0, w25
+    csel    w0, w25, w0, lt
+    ldr     x1, =speed_buffer
+    bl      int_to_string
+    mov     w1, w0
+    ldr     x0, =speed_buffer
+    bl      copy_string_to_buffer
+
+    mov     w0, 10
+    strb    w0, [x19], 1
+    add     x20, x20, 1
+
+    // Add LEVEL6: label and score
+    ldr     x0, =level6_label
+    mov     w1, level6_label_len
+    bl      copy_string_to_buffer
+
+    ldr     x0, =high_score_level6
+    ldr     w0, [x0]
+    ldr     x25, =level6_backup
+    ldr     w25, [x25]
+    cmp     w0, w25
+    csel    w0, w25, w0, lt
+    ldr     x1, =speed_buffer
+    bl      int_to_string
+    mov     w1, w0
+    ldr     x0, =speed_buffer
+    bl      copy_string_to_buffer
+
     // Add final newline
     mov     w0, 10
     strb    w0, [x19], 1
@@ -3517,6 +3708,10 @@ preserve_all_levels_from_file:
     str     wzr, [x0]
     ldr     x0, =level4_backup
     str     wzr, [x0]
+    ldr     x0, =level5_backup
+    str     wzr, [x0]
+    ldr     x0, =level6_backup
+    str     wzr, [x0]
 
     // Try to read the current file
     mov     x0, AT_FDCWD
@@ -3588,10 +3783,36 @@ preserve_level4:
     mov     w2, level4_label_len
     bl      find_string_in_buffer
     cmp     x0, 0
-    b.eq    preserve_all_done
+    b.eq    preserve_level5
     add     x19, x0, level4_label_len
     bl      parse_number_from_position
     ldr     x1, =level4_backup
+    str     w0, [x1]
+
+preserve_level5:
+    // Extract Level 5 from file
+    ldr     x19, =high_score_buffer
+    ldr     x1, =level5_label
+    mov     w2, level5_label_len
+    bl      find_string_in_buffer
+    cmp     x0, 0
+    b.eq    preserve_level6
+    add     x19, x0, level5_label_len
+    bl      parse_number_from_position
+    ldr     x1, =level5_backup
+    str     w0, [x1]
+
+preserve_level6:
+    // Extract Level 6 from file
+    ldr     x19, =high_score_buffer
+    ldr     x1, =level6_label
+    mov     w2, level6_label_len
+    bl      find_string_in_buffer
+    cmp     x0, 0
+    b.eq    preserve_all_done
+    add     x19, x0, level6_label_len
+    bl      parse_number_from_position
+    ldr     x1, =level6_backup
     str     w0, [x1]
 
 preserve_all_done:
@@ -3748,11 +3969,12 @@ save_high_scores_done:
 
 // Check for new records and update high scores (level-specific)
 check_and_update_records:
-    stp     fp, lr, [sp, -48]!
+    stp     fp, lr, [sp, -64]!
     mov     fp, sp
     stp     x22, x23, [sp, 16]
     stp     x24, x25, [sp, 32]
-    
+    stp     x26, x27, [sp, 48]
+
     // Save all high scores before any operations
     ldr     x0, =high_score_level1
     ldr     w22, [x0]  // Save Level 1
@@ -3765,6 +3987,10 @@ check_and_update_records:
     ldr     w24, [x0]  // Save Level 3
     ldr     x0, =high_score_level4
     ldr     w25, [x0]  // Save Level 4
+    ldr     x0, =high_score_level5
+    ldr     w26, [x0]  // Save Level 5
+    ldr     x0, =high_score_level6
+    ldr     w27, [x0]  // Save Level 6
 
     // Get current score
     ldr     x0, =score
@@ -3783,6 +4009,10 @@ check_and_update_records:
     b.eq    check_level3_record
     cmp     w0, LEVEL_OBSTACLES
     b.eq    check_level4_record
+    cmp     w0, LEVEL_HYPER
+    b.eq    check_level5_record
+    cmp     w0, LEVEL_MINEFIELD
+    b.eq    check_level6_record
     b       check_records_done  // Unknown level, skip
 
 check_level1_record:
@@ -3799,6 +4029,14 @@ check_level3_record:
 
 check_level4_record:
     ldr     x20, =high_score_level4
+    b       compare_and_update
+
+check_level5_record:
+    ldr     x20, =high_score_level5
+    b       compare_and_update
+
+check_level6_record:
+    ldr     x20, =high_score_level6
     b       compare_and_update
 
 compare_and_update:
@@ -3830,6 +4068,10 @@ compare_and_update:
     b.eq    verify_backup_level3
     cmp     w0, LEVEL_OBSTACLES
     b.eq    verify_backup_level4
+    cmp     w0, LEVEL_HYPER
+    b.eq    verify_backup_level5
+    cmp     w0, LEVEL_MINEFIELD
+    b.eq    verify_backup_level6
     b       check_records_done  // Unknown level, skip message
 
 verify_backup_level1:
@@ -3843,6 +4085,12 @@ verify_backup_level3:
     b       do_backup_verify
 verify_backup_level4:
     ldr     x0, =level4_backup
+    b       do_backup_verify
+verify_backup_level5:
+    ldr     x0, =level5_backup
+    b       do_backup_verify
+verify_backup_level6:
+    ldr     x0, =level6_backup
     b       do_backup_verify
 
 do_backup_verify:
@@ -3892,9 +4140,24 @@ skip_level3_restore:
     str     w25, [x1]
 skip_level4_restore:
 
+    // If we're not in Level 5, restore Level 5
+    cmp     w0, LEVEL_HYPER
+    b.eq    skip_level5_restore
+    ldr     x1, =high_score_level5
+    str     w26, [x1]
+skip_level5_restore:
+
+    // If we're not in Level 6, restore Level 6
+    cmp     w0, LEVEL_MINEFIELD
+    b.eq    skip_level6_restore
+    ldr     x1, =high_score_level6
+    str     w27, [x1]
+skip_level6_restore:
+
     ldp     x22, x23, [sp, 16]
     ldp     x24, x25, [sp, 32]
-    ldp     fp, lr, [sp], 48
+    ldp     x26, x27, [sp, 48]
+    ldp     fp, lr, [sp], 64
     ret
 
 // Sound effects functions
@@ -4090,6 +4353,8 @@ game_sleep:
     ldr     w0, [x0]
     cmp     w0, LEVEL_SUPER_FAST
     b.eq    super_fast_speed
+    cmp     w0, LEVEL_HYPER
+    b.eq    hyper_speed
 
     // Normal speed calculation for Level 1, 2, 4
     // Base speed: 200ms, reduce by 5ms per segment, minimum 80ms
@@ -4118,14 +4383,30 @@ super_fast_speed:
     // Base speed: 60ms, reduce by 2ms per segment, minimum 30ms
     ldr     x0, =snake_length
     ldr     w1, [x0]
-    
+
     sub     w1, w1, INITIAL_SNAKE_LENGTH
     mov     w2, 2
     mul     w1, w1, w2
-    
+
     mov     w3, 60
     subs    w3, w3, w1
     mov     w4, 30
+    cmp     w3, w4
+    csel    w3, w4, w3, lt
+    b       apply_sleep_time
+
+hyper_speed:
+    // Level 5: starts leisurely and accelerates with every meal, not
+    // with length: max(50ms, 250ms - food*10ms). Around the twentieth
+    // bite it is faster than SPEED ever gets.
+    ldr     x0, =food_count
+    ldr     w1, [x0]
+    mov     w2, 10
+    mul     w1, w1, w2
+
+    mov     w3, 250
+    subs    w3, w3, w1
+    mov     w4, 50
     cmp     w3, w4
     csel    w3, w4, w3, lt
 
@@ -4177,7 +4458,8 @@ parse_loop:
     b.gt    parse_loop
     
     // Check for potential overflow before adding digit
-    mov     w5, MAX_SCORE
+    movz    w5, 0xC9FF
+    movk    w5, 0x3B9A, lsl 16
     udiv    w6, w5, w3      // w6 = MAX_SCORE / 10 (max safe value before multiply)
     cmp     w2, w6
     b.gt    clamp_to_max    // If current > max_safe, clamp to max
@@ -4189,7 +4471,8 @@ parse_loop:
     b.le    safe_digit_add  // If digit <= remaining, safe to add
     
 clamp_to_max:
-    mov     w2, MAX_SCORE
+    movz    w2, 0xC9FF
+    movk    w2, 0x3B9A, lsl 16
     b       parse_loop
     
 safe_digit_add:
@@ -4198,7 +4481,8 @@ safe_digit_add:
     
 parse_done:
     // Ensure final result doesn't exceed MAX_SCORE
-    mov     w5, MAX_SCORE
+    movz    w5, 0xC9FF
+    movk    w5, 0x3B9A, lsl 16
     cmp     w2, w5
     csel    w2, w2, w5, le  // w2 = min(w2, MAX_SCORE)
     
@@ -4223,6 +4507,10 @@ parse_multilevel_scores:
     ldr     x0, =high_score_level3
     str     wzr, [x0]
     ldr     x0, =high_score_level4
+    str     wzr, [x0]
+    ldr     x0, =high_score_level5
+    str     wzr, [x0]
+    ldr     x0, =high_score_level6
     str     wzr, [x0]
 
     // Parse each level entry
@@ -4261,6 +4549,20 @@ parse_next_level:
     cmp     x0, 1
     b.eq    parse_level4_score
 
+    // Check for LEVEL5:
+    ldr     x1, =level5_label
+    mov     w2, level5_label_len
+    bl      compare_string
+    cmp     x0, 1
+    b.eq    parse_level5_score
+
+    // Check for LEVEL6:
+    ldr     x1, =level6_label
+    mov     w2, level6_label_len
+    bl      compare_string
+    cmp     x0, 1
+    b.eq    parse_level6_score
+
     // Skip to next line if no match
     bl      skip_to_next_line
     b       parse_next_level
@@ -4291,6 +4593,20 @@ parse_level4_score:
     add     x19, x19, level4_label_len
     bl      parse_number_from_position
     ldr     x1, =high_score_level4
+    str     w0, [x1]
+    b       parse_next_level
+
+parse_level5_score:
+    add     x19, x19, level5_label_len
+    bl      parse_number_from_position
+    ldr     x1, =high_score_level5
+    str     w0, [x1]
+    b       parse_next_level
+
+parse_level6_score:
+    add     x19, x19, level6_label_len
+    bl      parse_number_from_position
+    ldr     x1, =high_score_level6
     str     w0, [x1]
     b       parse_next_level
 
@@ -4430,12 +4746,15 @@ last_eat_sec:   .word 0
 best_combo:     .word 1
 max_length:     .word INITIAL_SNAKE_LENGTH
 gold_deadline:  .word 0
+next_mine_sec:  .word 0
 
 // High score data (level-specific)
 high_score_level1: .word 0
 high_score_level2: .word 0
 high_score_level3: .word 0
 high_score_level4: .word 0
+high_score_level5: .word 0
+high_score_level6: .word 0
 high_food_count: .word 0
 longest_time:   .word 0
 file_exists:    .word 0
@@ -4443,6 +4762,8 @@ level1_backup:  .word 0   // Backup storage for Level 1 score
 level2_backup:  .word 0   // Backup storage for Level 2 score
 level3_backup:  .word 0   // Backup storage for Level 3 score
 level4_backup:  .word 0   // Backup storage for Level 4 score
+level5_backup:  .word 0   // Backup storage for Level 5 score
+level6_backup:  .word 0   // Backup storage for Level 6 score
 
 // Input/output buffers
 input_buffer:   .skip 4
@@ -4469,6 +4790,11 @@ level3_label_len = . - level3_label
 
 level4_label: .ascii "LEVEL4:"
 level4_label_len = . - level4_label
+level5_label: .ascii "LEVEL5:"
+level5_label_len = . - level5_label
+
+level6_label: .ascii "LEVEL6:"
+level6_label_len = . - level6_label
 
 // Sleep timing
 sleep_time:
@@ -4617,15 +4943,19 @@ final_score_text: .ascii "\x1b[93m    Final Score: \x1b[0m\x1b[1m"
 final_score_text_len = . - final_score_text
 
 food_count_text: .ascii "\x1b[0m\n\x1b[96m    Food Eaten:  \x1b[0m"
+food_count_text_len = . - food_count_text
+
 stats_time_text: .ascii "\x1b[95m    Time Alive:  \x1b[0m"
 stats_time_text_len = . - stats_time_text
+
 stats_time_unit: .ascii "s\n"
 stats_time_unit_len = . - stats_time_unit
+
 stats_len_text: .ascii "\x1b[92m    Max Length:  \x1b[0m"
 stats_len_text_len = . - stats_len_text
+
 stats_combo_text: .ascii "\x1b[93m    Best Combo:  \x1b[0mx"
 stats_combo_text_len = . - stats_combo_text
-food_count_text_len = . - food_count_text
 
 pause_text: .ascii "\n\x1b[93m\x1b[1m  ╔═══════════════════════════════════╗\n  ║  PAUSED - Press SPACE to resume  ║\n  ╚═══════════════════════════════════╝\x1b[0m\n"
 pause_text_len = . - pause_text
@@ -4684,6 +5014,12 @@ level_3_text_len = . - level_3_text
 level_4_text: .ascii "\x1b[95m MAZE    \x1b[0m\x1b[90m- Navigate around obstacles\x1b[0m\n"
 level_4_text_len = . - level_4_text
 
+level_5_text: .ascii "\x1b[91m HYPER   \x1b[0m\x1b[90m- Accelerates with every bite\x1b[0m\n"
+level_5_text_len = . - level_5_text
+
+level_6_text: .ascii "\x1b[94m MINES   \x1b[0m\x1b[90m- Wrapping field, growing minefield\x1b[0m\n"
+level_6_text_len = . - level_6_text
+
 quit_option_text: .ascii "\x1b[91m EXIT   \x1b[0m\x1b[90m- Quit to terminal\x1b[0m\n\n"
 quit_option_text_len = . - quit_option_text
 
@@ -4702,6 +5038,12 @@ hs_speed_label_len = . - hs_speed_label
 
 hs_maze_label: .ascii "  \x1b[95mMaze:\x1b[0m    "
 hs_maze_label_len = . - hs_maze_label
+
+hs_hyper_label: .ascii "\n    \x1b[91mHyper:\x1b[0m   "
+hs_hyper_label_len = . - hs_hyper_label
+
+hs_mines_label: .ascii "  \x1b[94mMines:\x1b[0m   "
+hs_mines_label_len = . - hs_mines_label
 
 hs_divider: .ascii "\n\x1b[90m    ─────────────────────────────────\x1b[0m\n\n"
 hs_divider_len = . - hs_divider
