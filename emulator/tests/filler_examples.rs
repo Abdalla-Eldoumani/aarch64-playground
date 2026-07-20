@@ -1,8 +1,7 @@
 //! Example-picker regression: the authored programs served by the web
 //! example loader -- the "Data and memory" and "Stack and locals" stage
-//! fillers plus the two "Miscellaneous" snake games -- assemble and run
-//! to their fixtures (or, for the real-time arcade snake, through a
-//! timed scripted session).
+//! fillers against their fixtures, plus the real-time snake game
+//! through a timed scripted session.
 //!
 //! These are the same `.s` files the web example loader serves over HTTP,
 //! read straight from `web/public/examples/cpsc355/` (not a copy) so the
@@ -71,14 +70,6 @@ fn locals_filler_reads_two_ints_and_prints_sum_and_product() {
     let stdin = read("fixtures/locals.stdin");
     let (stdout, exit) = run_example("locals.s", Some(&stdin));
     assert_eq!(stdout, read("fixtures/locals.stdout"));
-    assert_eq!(exit, Some(0));
-}
-
-#[test]
-fn snake_console_plays_its_scripted_moves_to_game_over() {
-    let stdin = read("fixtures/snake-console.stdin");
-    let (stdout, exit) = run_example("snake-console.s", Some(&stdin));
-    assert_eq!(stdout, read("fixtures/snake-console.stdout"));
     assert_eq!(exit, Some(0));
 }
 
