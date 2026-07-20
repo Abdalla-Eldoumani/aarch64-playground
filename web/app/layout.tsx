@@ -76,7 +76,11 @@ export default function RootLayout({
 }) {
   const fontClasses = `${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`;
   return (
-    <html lang="en" className={fontClasses}>
+    // suppressHydrationWarning covers exactly one attribute mismatch: the
+    // pre-paint script below writes data-theme before React hydrates, so a
+    // saved light/high-contrast theme differs from the server markup by
+    // design. The suppression scopes to this element only.
+    <html lang="en" className={fontClasses} suppressHydrationWarning>
       <head>
         {/* Set data-theme from the saved preference BEFORE first paint, so a
             light or high-contrast user does not see a flash of the default

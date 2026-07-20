@@ -21,11 +21,12 @@ interface ExampleGroup {
 }
 
 /**
- * Examples presented as an eight-stage level-up path, in the order the
- * concepts build: first programs, data and memory, stack and locals,
- * records and arrays, subroutines, static data and arguments, floating
- * point, files and I/O. Each stage carries at least one program; the
- * labels are the stage names, with no course-week text.
+ * Examples presented as a level-up path, in the order the concepts
+ * build: first programs, data and memory, stack and locals, records
+ * and arrays, subroutines, static data and arguments, floating point,
+ * files and I/O, then a miscellaneous stage for playable extras. Each
+ * stage carries at least one program; the labels are the stage names,
+ * with no course-week text.
  */
 const GROUPS: ExampleGroup[] = [
   {
@@ -77,6 +78,10 @@ const GROUPS: ExampleGroup[] = [
       { name: "read file", stem: "read-file" },
       { name: "copy file", stem: "copy-file" },
     ],
+  },
+  {
+    label: "Miscellaneous",
+    items: [{ name: "snake", stem: "snake" }],
   },
 ];
 

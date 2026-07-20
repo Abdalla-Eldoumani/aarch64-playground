@@ -150,9 +150,13 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
             hit_breakpoint: Boolean(raw.hit_breakpoint),
             error: (raw.error as string | undefined) ?? null,
             error_line: (raw.error_line as number | undefined) ?? null,
+            sleep_ms: (raw.sleep_ms as number | undefined) ?? null,
           };
           bumpFrame();
           if (lastResult.error || lastResult.halted || lastResult.hit_breakpoint) break;
+          // A nanosleep pause belongs to the driver: hand the result up so
+          // it can wait the requested time in real time, then run again.
+          if (lastResult.sleep_ms != null) break;
           if (emu.is_blocked()) break;
           // Anti-wedge guard: a chunk that executed zero steps while the
           // machine claims to be neither halted, blocked, nor stopped at a
@@ -190,6 +194,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
           !lastResult.halted &&
           !lastResult.hit_breakpoint &&
           !lastResult.error &&
+          lastResult.sleep_ms == null &&
           !emu.is_blocked();
         post({
           id: msg.id,
@@ -455,6 +460,9 @@ function snapshot(): StateSnapshot {
   };
   const fpRegisters = emulatorFp.get_fp_registers?.() ?? [];
   const changedFp = emulatorFp.get_changed_fp_registers?.() ?? new Uint8Array(0);
+  // Optional terminal-mode surface, feature-detected the same way.
+  const emulatorTerm = emulator as unknown as { wants_terminal?: () => boolean };
+  const wantsTerminal = emulatorTerm.wants_terminal?.() ?? false;
   // Drain stdout/stderr so React can append the delta as new bytes
   // arrive (versus polling the full buffer each frame).
   const stdoutDelta = emulator.take_stdout();
@@ -477,6 +485,7 @@ function snapshot(): StateSnapshot {
     stderrDelta,
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
+    wantsTerminal,
     // Drain the dirty addresses. They accumulate between snapshot
     // calls, so failing to drain would make them grow unbounded.
     dirtyAddrs: Array.from(emulator.take_dirty_addrs()).map(Number),

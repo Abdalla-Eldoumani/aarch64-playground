@@ -32,6 +32,9 @@ pub struct Snapshot {
     /// PRNG state behind the rand/srand stubs. Restored with the rest of
     /// the machine so step-back and replay reproduce the same draws.
     pub rand_state: u64,
+    /// Terminal and virtual-clock state behind the interactive
+    /// syscalls, restored for the same replay-stability reason.
+    pub term: crate::cpu::TermState,
 }
 
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
@@ -115,6 +118,7 @@ mod tests {
             open_files: HashMap::new(),
             next_fd: 3,
             rand_state: 1,
+            term: crate::cpu::TermState::default(),
         }
     }
 

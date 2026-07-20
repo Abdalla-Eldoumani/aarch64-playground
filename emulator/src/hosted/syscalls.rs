@@ -19,6 +19,46 @@ pub const SYS_EXIT_GROUP: u64 = 94;
 pub const SYS_OPENAT: u64 = 56;
 pub const SYS_CLOSE: u64 = 57;
 pub const SYS_LSEEK: u64 = 62;
+/// The interactive set: terminal-mode programs (games, raw-input
+/// tools) configure the terminal with ioctl/fcntl, pace themselves
+/// with nanosleep, read the clock, and pull entropy.
+pub const SYS_IOCTL: u64 = 29;
+pub const SYS_FCNTL: u64 = 25;
+pub const SYS_NANOSLEEP: u64 = 101;
+pub const SYS_CLOCK_GETTIME: u64 = 113;
+pub const SYS_GETRANDOM: u64 = 278;
+
+/// Linux -EAGAIN, returned by a non-blocking read on empty stdin.
+const EAGAIN: i64 = -11;
+
+/// termios request numbers (AArch64 Linux ABI). TCSETSW/TCSETSF drain
+/// or flush first on real hardware; here all three just apply.
+const TCGETS: u64 = 0x5401;
+const TCSETS: u64 = 0x5402;
+const TCSETSW: u64 = 0x5403;
+const TCSETSF: u64 = 0x5404;
+
+/// termios c_lflag bits the raw-mode handshake cares about.
+const ICANON: u32 = 0o0002;
+const ECHO: u32 = 0o0010;
+/// A cooked terminal's typical c_lflag (ISIG|ICANON|ECHO|ECHOE|ECHOK|
+/// IEXTEN), what TCGETS reports before a program goes raw.
+const COOKED_LFLAG: u32 = 0o105073;
+
+/// fcntl commands and the flag bit the games use.
+const F_GETFL: u64 = 3;
+const F_SETFL: u64 = 4;
+const O_NONBLOCK: u64 = 0o4000;
+
+/// Byte size of the struct termios the kernel copies for TCGETS /
+/// TCSETS (4 u32 flag words, c_line, then c_cc). Programs typically
+/// reserve 60 bytes; only the four flag words matter here.
+const TERMIOS_BYTES: u64 = 36;
+
+/// getrandom fills at most this many bytes per call. Course-sized
+/// programs draw a byte or two; the cap keeps a huge len argument from
+/// stalling the tab filling gigabytes.
+const MAX_GETRANDOM_BYTES: u64 = 1024;
 
 /// Upper bound on a virtual-filesystem file size. `lseek` lets a guest pick
 /// the offset a later `write` lands at, so without a cap a one-byte write at
@@ -53,14 +93,134 @@ pub fn dispatch(number: u64, ctx: &mut HostContext<'_>) -> Result<HostOutcome, E
         SYS_OPENAT => sys_openat(ctx),
         SYS_CLOSE => sys_close(ctx),
         SYS_LSEEK => sys_lseek(ctx),
+        SYS_IOCTL => sys_ioctl(ctx),
+        SYS_FCNTL => sys_fcntl(ctx),
+        SYS_NANOSLEEP => sys_nanosleep(ctx),
+        SYS_CLOCK_GETTIME => sys_clock_gettime(ctx),
+        SYS_GETRANDOM => sys_getrandom(ctx),
         _ => Err(EmuError::RuntimeError {
             message: format!(
                 "syscall {number} (x8) is not supported -- this emulator implements \
-                 openat(56), close(57), lseek(62), read(63), write(64), and \
-                 exit(93/94); use `mov x8, 93` then `svc 0` to exit"
+                 fcntl(25), ioctl(29), openat(56), close(57), lseek(62), read(63), \
+                 write(64), exit(93/94), nanosleep(101), clock_gettime(113), and \
+                 getrandom(278); use `mov x8, 93` then `svc 0` to exit"
             ),
         }),
     }
+}
+
+/// ioctl(fd, request, argp). Supports the termios pair a raw-mode
+/// program needs: TCGETS reports a cooked terminal, and any TCSETS
+/// variant applies the caller's c_lflag -- clearing ICANON is the
+/// raw-mode handshake that marks this program as a terminal program.
+/// Unknown requests return -1 without halting, like the kernel's
+/// EINVAL, so a stray ioctl stays a program-visible error.
+pub fn sys_ioctl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let request = ctx.regs.read_gpr(1, true);
+    let argp = ctx.regs.read_gpr(2, true);
+    match request {
+        TCGETS => {
+            for off in 0..TERMIOS_BYTES {
+                ctx.mem.write_u8(argp + off, 0)?;
+            }
+            // c_iflag ICRNL|IXON, c_oflag OPOST|ONLCR, c_cflag CS8,
+            // c_lflag cooked: enough structure that the usual
+            // save/modify/restore dance behaves like a real terminal.
+            write_u32(ctx, argp, 0o2400)?;
+            write_u32(ctx, argp + 4, 0o5)?;
+            write_u32(ctx, argp + 8, 0o277)?;
+            write_u32(ctx, argp + 12, COOKED_LFLAG)?;
+            ctx.regs.write_gpr(0, true, 0);
+        }
+        TCSETS | TCSETSW | TCSETSF => {
+            let lflag = read_u32(ctx, argp + 12)?;
+            ctx.term.raw_mode = (lflag & ICANON) == 0 || (lflag & ECHO) == 0;
+            ctx.regs.write_gpr(0, true, 0);
+        }
+        _ => {
+            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        }
+    }
+    Ok(HostOutcome::Continue)
+}
+
+/// fcntl(fd, cmd, arg). F_GETFL reports fd 0's flags; F_SETFL applies
+/// O_NONBLOCK to fd 0, after which an empty read returns -EAGAIN
+/// instead of pausing the machine. Other commands return -1.
+pub fn sys_fcntl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let fd = ctx.regs.read_gpr(0, true);
+    let cmd = ctx.regs.read_gpr(1, true);
+    let arg = ctx.regs.read_gpr(2, true);
+    match cmd {
+        F_GETFL => {
+            let flags = if fd == 0 && ctx.term.stdin_nonblock { O_NONBLOCK } else { 0 };
+            ctx.regs.write_gpr(0, true, flags);
+        }
+        F_SETFL => {
+            if fd == 0 {
+                ctx.term.stdin_nonblock = (arg & O_NONBLOCK) != 0;
+            }
+            ctx.regs.write_gpr(0, true, 0);
+        }
+        _ => {
+            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        }
+    }
+    Ok(HostOutcome::Continue)
+}
+
+/// nanosleep(req, rem). Reads the timespec, returns success, and hands
+/// the duration up as `Sleep` -- the CPU advances its virtual clock and
+/// credits the pacing budgets, and a real-time runner waits it out.
+pub fn sys_nanosleep(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let req = ctx.regs.read_gpr(0, true);
+    let sec = ctx.mem.read_u64(req)?;
+    let nsec = ctx.mem.read_u64(req + 8)?;
+    let ns = sec
+        .saturating_mul(1_000_000_000)
+        .saturating_add(nsec.min(999_999_999));
+    ctx.regs.write_gpr(0, true, 0);
+    Ok(HostOutcome::Sleep(ns))
+}
+
+/// clock_gettime(clkid, tp). Every clock id reads the same virtual
+/// monotonic clock, which only nanosleep advances -- deterministic for
+/// replay, yet it tracks real pacing whenever the runner honors sleeps.
+pub fn sys_clock_gettime(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let tp = ctx.regs.read_gpr(1, true);
+    let ns = ctx.term.virtual_ns;
+    ctx.mem.write_u64(tp, ns / 1_000_000_000)?;
+    ctx.mem.write_u64(tp + 8, ns % 1_000_000_000)?;
+    ctx.regs.write_gpr(0, true, 0);
+    Ok(HostOutcome::Continue)
+}
+
+/// getrandom(buf, len, flags). Fills from the same deterministic
+/// generator behind rand/srand, so draws snapshot and replay exactly
+/// like every other machine state. Capped so a giant len cannot stall
+/// the tab.
+pub fn sys_getrandom(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let buf = ctx.regs.read_gpr(0, true);
+    let len = ctx.regs.read_gpr(1, true).min(MAX_GETRANDOM_BYTES);
+    for i in 0..len {
+        // Same LCG as the libc rand stub, taking the useful high bits.
+        *ctx.rand_state = ctx
+            .rand_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let byte = (*ctx.rand_state >> 33) as u8;
+        ctx.mem.write_u8(buf + i, byte)?;
+    }
+    ctx.regs.write_gpr(0, true, len);
+    Ok(HostOutcome::Continue)
+}
+
+fn read_u32(ctx: &mut HostContext<'_>, addr: u64) -> Result<u32, EmuError> {
+    ctx.mem.read_u32(addr)
+}
+
+fn write_u32(ctx: &mut HostContext<'_>, addr: u64, value: u32) -> Result<(), EmuError> {
+    ctx.mem.write_u32(addr, value)
 }
 
 /// write(fd, buf, count) -> bytes written.
@@ -141,6 +301,12 @@ pub fn sys_read(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             // Closed stdin: read() reports EOF with a 0 return.
             if ctx.stdin_closed {
                 ctx.regs.write_gpr(0, true, 0);
+                return Ok(HostOutcome::Continue);
+            }
+            // O_NONBLOCK polling: report -EAGAIN instead of pausing,
+            // so a game loop can poll the keyboard between frames.
+            if ctx.term.stdin_nonblock {
+                ctx.regs.write_gpr(0, true, EAGAIN as u64);
                 return Ok(HostOutcome::Continue);
             }
             return Ok(HostOutcome::NeedInput);
@@ -295,6 +461,7 @@ mod tests {
         open_files: HashMap<u32, OpenFile>,
         next_fd: u32,
         rand_state: u64,
+        term: crate::cpu::TermState,
     }
 
     impl Host {
@@ -311,6 +478,7 @@ mod tests {
                 open_files: HashMap::new(),
                 next_fd: 3,
                 rand_state: 1,
+                term: crate::cpu::TermState::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -325,6 +493,7 @@ mod tests {
                 open_files: &mut self.open_files,
                 next_fd: &mut self.next_fd,
                 rand_state: &mut self.rand_state,
+                term: &mut self.term,
             }
         }
     }

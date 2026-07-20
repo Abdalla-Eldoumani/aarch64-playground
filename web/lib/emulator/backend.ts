@@ -154,6 +154,8 @@ class MainThreadBackend implements EmulatorBackend {
       this.frame++;
       this.notify(this.snapshot());
       if (raw.error || raw.halted || raw.hit_breakpoint) break;
+      // A nanosleep pause belongs to the driver, mirroring the worker.
+      if (raw.sleep_ms != null) break;
       if (emu.isBlocked()) break;
       // Anti-wedge guard, mirroring the worker: a chunk that executed
       // zero steps while the machine claims to be neither halted,
@@ -185,6 +187,7 @@ class MainThreadBackend implements EmulatorBackend {
         !lastResult.halted &&
         !lastResult.hit_breakpoint &&
         !lastResult.error &&
+        lastResult.sleep_ms == null &&
         !emu.isBlocked(),
     };
     return { runResult: lastResult, snapshot: this.snapshot() };
@@ -331,6 +334,7 @@ class MainThreadBackend implements EmulatorBackend {
       stderrDelta: this.emu.takeStderr(),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
+      wantsTerminal: this.emu.wantsTerminal(),
       dirtyAddrs: this.emu.takeDirtyAddrs(),
     };
   }

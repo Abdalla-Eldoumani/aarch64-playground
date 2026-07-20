@@ -154,6 +154,12 @@ export interface RunResultPayload {
    * after the student pressed Reset.
    */
   cancelled?: boolean;
+  /**
+   * Milliseconds the program's last nanosleep asked to pause, when the
+   * run stopped for one. The driver waits this out in real time and
+   * resumes; absent on wasm builds that predate pacing.
+   */
+  sleep_ms?: number | null;
 }
 
 /**
@@ -183,6 +189,13 @@ export interface StateSnapshot {
   stderrDelta: string;
   vfsFiles: string[];
   savedStates: string[];
+  /**
+   * True once the running program has switched the terminal to raw
+   * mode (ioctl TCSETS clearing ICANON/ECHO): the UI hands it the
+   * terminal pane and routes keystrokes to stdin raw. False on wasm
+   * builds that predate the flag.
+   */
+  wantsTerminal: boolean;
   /// `(addr, len)` pairs of memory ranges written since the previous
   /// snapshot. Drives memory-cell diff highlighting in the replay
   /// scrubber. Flat array of `[addr, len, addr, len, ...]`.
@@ -216,6 +229,7 @@ export function emptyStateSnapshot(frame = 0): StateSnapshot {
     stderrDelta: "",
     vfsFiles: [],
     savedStates: [],
+    wantsTerminal: false,
     dirtyAddrs: [],
   };
 }

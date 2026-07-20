@@ -254,6 +254,17 @@ function EmbeddableCore({
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  // Jump-to-error: when an assemble or a line-carrying runtime fault
+  // lands, the editor reveals and focuses the offending line. Nonce so
+  // the same line re-fires when the student re-assembles unchanged.
+  const [errorFocus, setErrorFocus] = useState<{ line: number; nonce: number } | null>(null);
+  useEffect(() => {
+    const first = emu.assemblyErrors[0];
+    if (first && first.line > 0) {
+      setErrorFocus({ line: first.line, nonce: Date.now() });
+    }
+  }, [emu.assemblyErrors]);
+
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
   );
@@ -477,11 +488,13 @@ function EmbeddableCore({
 
   // Auto-switch to the console on the false->true edge of `blocked` so the
   // student sees the scanf prompt. queueMicrotask defers the flip out of the
-  // synchronous render phase.
+  // synchronous render phase. Terminal programs (raw mode) keep their
+  // input in the terminal pane, so the console jump stands down for them.
   const lastBlockedRef = useRef(false);
   useEffect(() => {
     if (emu.blocked && !lastBlockedRef.current) {
       lastBlockedRef.current = true;
+      if (emu.wantsTerminal) return;
       queueMicrotask(() => {
         setActiveTab("console");
         // Phones route panes through the pane switcher, not the tab state.
@@ -490,7 +503,105 @@ function EmbeddableCore({
     } else if (!emu.blocked) {
       lastBlockedRef.current = false;
     }
-  }, [emu.blocked]);
+  }, [emu.blocked, emu.wantsTerminal]);
+
+  // The terminal pane's interactive I/O surface. State, not a ref: the
+  // pane mounts lazily on first tab activation, which happens AFTER a
+  // raw-mode program's rising edge switches the tab -- the self-attach
+  // effect must re-fire when the registration lands.
+  const [termIO, setTermIO] =
+    useState<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
+  const foregroundActiveRef = useRef(false);
+
+  // A program that switches the terminal to raw mode is a terminal
+  // program: hand it the terminal pane on the false->true edge, the same
+  // way blocked hands scanf programs the console.
+  const lastWantsTermRef = useRef(false);
+  useEffect(() => {
+    if (emu.wantsTerminal && !lastWantsTermRef.current) {
+      lastWantsTermRef.current = true;
+      queueMicrotask(() => {
+        setActiveTab("term");
+        setPaneRequest({ pane: "term", nonce: Date.now() });
+      });
+    } else if (!emu.wantsTerminal) {
+      lastWantsTermRef.current = false;
+    }
+  }, [emu.wantsTerminal]);
+
+  // The one foreground drive both entry paths share: stream output to
+  // the pane, forward its keystrokes to stdin, resume input-starved
+  // stops, and stand down on halt, error, cancel, or a user pause.
+  const driveForeground = useCallback(
+    async (io: import("@/lib/terminal/dispatch").TerminalProgramIO): Promise<number | null> => {
+      if (foregroundActiveRef.current) return null;
+      foregroundActiveRef.current = true;
+      let cancelled = false;
+      // Wipe the pane once, the moment the program claims the terminal
+      // (already true on self-attach; flips mid-run for ./name), so the
+      // takeover starts on a clean screen with no earlier scrollback.
+      let cleared = false;
+      const clearOnce = () => {
+        if (!cleared) {
+          cleared = true;
+          io.clear?.();
+        }
+      };
+      if (emuRef.current.wantsTerminal) clearOnce();
+      emuRef.current.setOutputTap((t) => io.write(t));
+      io.setForeground({
+        pushInput: (d) => emuRef.current.pushStdin(d),
+        cancel: () => {
+          cancelled = true;
+          emuRef.current.pause();
+        },
+      });
+      try {
+        {
+          const e = emuRef.current;
+          if (!e.isRunning && !e.isHalted) e.run();
+        }
+        let resumeArmed = false;
+        for (;;) {
+          await new Promise<void>((r) => setTimeout(r, 32));
+          const e = emuRef.current;
+          if (e.wantsTerminal) clearOnce();
+          if (cancelled || e.isHalted || e.error) break;
+          if (e.isRunning) continue;
+          if (e.blocked) {
+            resumeArmed = true;
+            continue;
+          }
+          if (resumeArmed) {
+            resumeArmed = false;
+            emuRef.current.run();
+            continue;
+          }
+          break;
+        }
+      } finally {
+        emuRef.current.setOutputTap(null);
+        io.setForeground(null);
+        foregroundActiveRef.current = false;
+      }
+      const e = emuRef.current;
+      return e.isHalted ? e.exitCode : null;
+    },
+    [],
+  );
+
+  // Self-attach: a raw-mode program started from the run button (not
+  // `./name`) still deserves live terminal I/O. When the flag rises and
+  // no session owns the pane, the pane takes the program over and
+  // prints the exit line itself when the session ends.
+  useEffect(() => {
+    if (!emu.wantsTerminal) return;
+    if (!termIO || foregroundActiveRef.current) return;
+    const io = termIO;
+    void driveForeground(io).then((exitCode) => {
+      io.sessionEnded?.(exitCode);
+    });
+  }, [emu.wantsTerminal, termIO, driveForeground]);
 
   // The command Action[] is built here (where source / modes / hub live) and
   // surfaced through the handle so a host-rendered palette reuses it.
@@ -928,7 +1039,12 @@ function EmbeddableCore({
         await new Promise<void>((r) => setTimeout(r, 16));
       } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
     };
-    const runText = async (text: string, args: string[], stdin?: string) => {
+    const runText = async (
+      text: string,
+      args: string[],
+      stdin?: string,
+      io?: import("@/lib/terminal/dispatch").TerminalProgramIO,
+    ) => {
       // Tool-channel assemble: the terminal's program must not paint the
       // editor's error markers, and the verdict comes back directly. The
       // assemble wiped the machine, home directory included, so put the
@@ -958,6 +1074,19 @@ function EmbeddableCore({
         emuRef.current.pushStdin(stdin);
         emuRef.current.closeStdin();
       }
+      if (io) {
+        // Interactive run: output streams into the pane as it is
+        // produced, keystrokes reach stdin while the program lives, and
+        // there is no wall-clock cap -- the machine's own step/output
+        // walls bound a runaway, and the player owns the exit.
+        const exitCode = await driveForeground(io);
+        return {
+          // Already streamed through the tap; nothing left to print.
+          stdout: "",
+          stderr: emuRef.current.stderr,
+          exitCode,
+        };
+      }
       emuRef.current.run();
       await waitForHalt();
       const e = emuRef.current;
@@ -985,8 +1114,11 @@ function EmbeddableCore({
       deleteVfs: async (path: string) => removeVfsFile(path),
       // The editor's program: the same run shape as a compiled executable,
       // over the live buffer.
-      runProgram: async (args: string[], stdin?: string) =>
-        runText(sourceRef.current, args, stdin),
+      runProgram: async (
+        args: string[],
+        stdin?: string,
+        io?: import("@/lib/terminal/dispatch").TerminalProgramIO,
+      ) => runText(sourceRef.current, args, stdin, io),
       step: async () => {
         emuRef.current.step();
         const e = emuRef.current;
@@ -1097,6 +1229,7 @@ function EmbeddableCore({
               assemblyErrors={emu.assemblyErrors}
               lintWarnings={lintWarnings}
               onCursorChange={setCursor}
+              focusRequest={errorFocus}
               readOnly={readOnly}
             />
           </div>
@@ -1210,6 +1343,7 @@ function EmbeddableCore({
           assemblyErrors={isMain ? emu.assemblyErrors : []}
           lintWarnings={isMain ? lintWarnings : []}
           onCursorChange={isMain ? setCursor : undefined}
+          focusRequest={isMain ? errorFocus : null}
           onFormat={() => {
             if (!isMain) return;
             const next = formatAsm(source);
@@ -1317,6 +1451,7 @@ function EmbeddableCore({
       <TerminalPane
         buildContext={buildTerminalContext}
         onUploadRequest={() => terminalUploadRef.current?.click()}
+        onRegisterIO={setTermIO}
       />
     </div>
   );

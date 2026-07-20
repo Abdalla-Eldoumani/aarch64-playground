@@ -32,6 +32,11 @@ pub enum HostOutcome {
     /// Stalled waiting for input. Caller must NOT advance PC; the stub
     /// will be re-entered on the next step when stdin is ready.
     NeedInput,
+    /// nanosleep asked to pause for this many nanoseconds. The CPU
+    /// advances its virtual clock, credits the pacing budgets, and
+    /// surfaces the pause so the runner can wait in real time (or skip
+    /// straight past it in a batch run).
+    Sleep(u64),
     /// Program asked to exit.
     Exited(i64),
 }
@@ -63,6 +68,10 @@ pub struct HostContext<'a> {
     /// State for the rand/srand stubs. Lives on the `Cpu` (and in every
     /// snapshot) so draws are deterministic and replay-stable.
     pub rand_state: &'a mut u64,
+    /// Terminal and timing state for the interactive syscalls (raw
+    /// mode, fd 0 O_NONBLOCK, the virtual clock). Lives on the `Cpu`
+    /// and in every snapshot, like `rand_state`.
+    pub term: &'a mut crate::cpu::TermState,
 }
 
 /// AAPCS64 vararg cursor, shared by printf and scanf: both walk the same
@@ -195,6 +204,7 @@ mod tests {
         open_files: &'a mut HashMap<u32, crate::cpu::OpenFile>,
         next_fd: &'a mut u32,
         rand_state: &'a mut u64,
+        term: &'a mut crate::cpu::TermState,
     ) -> HostContext<'a> {
         HostContext {
             regs,
@@ -207,6 +217,7 @@ mod tests {
             open_files,
             next_fd,
             rand_state,
+                    term,
         }
     }
 
@@ -251,9 +262,10 @@ mod tests {
         let mut open = HashMap::new();
         let mut next = 3u32;
         let mut rand_state = 1u64;
+        let mut term = crate::cpu::TermState::default();
         let mut ctx = fresh_ctx(
             &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
-            &mut rand_state,
+            &mut rand_state, &mut term,
         );
         let outcome = t.dispatch(addr, &mut ctx).unwrap().unwrap();
         assert_eq!(outcome, HostOutcome::Continue);
@@ -272,9 +284,10 @@ mod tests {
         let mut open = HashMap::new();
         let mut next = 3u32;
         let mut rand_state = 1u64;
+        let mut term = crate::cpu::TermState::default();
         let mut ctx = fresh_ctx(
             &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
-            &mut rand_state,
+            &mut rand_state, &mut term,
         );
         // Address past the end of the table.
         assert!(t

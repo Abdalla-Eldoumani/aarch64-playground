@@ -4,7 +4,12 @@ import { useCallback, useEffect, useRef } from "react";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { dispatchCommand, type DispatchContext } from "@/lib/terminal/dispatch";
+import {
+  dispatchCommand,
+  type DispatchContext,
+  type TerminalForegroundProgram,
+  type TerminalProgramIO,
+} from "@/lib/terminal/dispatch";
 import { TerminalInputState, splitPasteLines } from "@/lib/terminal/input-state";
 
 // xterm takes literal hex only, so these restate token values from
@@ -90,6 +95,10 @@ export interface TerminalPaneProps {
   buildContext: () => DispatchContext;
   /** Optional handler for the "upload" pseudo-command (host file picker). */
   onUploadRequest?: () => void;
+  /** Hands the pane's interactive-program I/O surface to the host so a
+   *  raw-mode program started from the run button can self-attach; the
+   *  pane deregisters it (null) on unmount. */
+  onRegisterIO?: (io: TerminalProgramIO | null) => void;
 }
 
 const PROMPT = "$ ";
@@ -101,11 +110,41 @@ const PROMPT = "$ ";
  * so the xterm bundle only ships when the user actually opens the
  * terminal tab.
  */
-export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProps) {
+export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const stateRef = useRef<TerminalInputState>(new TerminalInputState());
+  // The running interactive program, when one owns the pane's input.
+  // While set, keystrokes bypass the shell's line editing and stream to
+  // the program's stdin verbatim (arrow-key CSI sequences included).
+  const foregroundRef = useRef<TerminalForegroundProgram | null>(null);
+  // One stable I/O surface handed to dispatch for `./name` runs; writes
+  // land in this pane's xterm and survive context-builder churn.
+  const terminalIORef = useRef<TerminalProgramIO>({
+    write: (text: string) => termRef.current?.write(text),
+    setForeground: (fg: TerminalForegroundProgram | null) => {
+      foregroundRef.current = fg;
+      // A program taking the pane over should also take the keyboard:
+      // without focus its first frames render but keys go nowhere.
+      if (fg) termRef.current?.focus();
+    },
+    clear: () => {
+      // reset() wipes scrollback and terminal state (SGR included),
+      // which is exactly what a raw-mode takeover wants.
+      termRef.current?.reset();
+    },
+    sessionEnded: (exitCode: number | null) => {
+      const t = termRef.current;
+      if (!t) return;
+      t.write(
+        exitCode != null
+          ? `\r\n[exit ${exitCode}]\r\n`
+          : "\r\n[program stopped]\r\n",
+      );
+      t.write(PROMPT);
+    },
+  });
 
   // The context builder closes over the emulator hub, which is a new
   // object after every machine snapshot, so this prop changes identity
@@ -116,9 +155,11 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
   // mid-session -- including during the terminal's own program runs.
   const buildContextRef = useRef(buildContext);
   const onUploadRequestRef = useRef(onUploadRequest);
+  const onRegisterIORef = useRef(onRegisterIO);
   useEffect(() => {
     buildContextRef.current = buildContext;
     onUploadRequestRef.current = onUploadRequest;
+    onRegisterIORef.current = onRegisterIO;
   });
 
   const writePrompt = useCallback(() => {
@@ -155,7 +196,7 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       // happens, the student gets a line and their prompt back; the raw
       // detail (often internal wording) goes to the console only.
       try {
-        const ctx = buildContextRef.current();
+        const ctx = { ...buildContextRef.current(), terminalIO: terminalIORef.current };
         const result = await dispatchCommand(line, ctx);
         if (result.control === "clear") {
           t.clear();
@@ -204,12 +245,15 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
 
     termRef.current = term;
     fitRef.current = fit;
+    onRegisterIORef.current?.(terminalIORef.current);
 
     term.writeln("cpsc 355 playground -- terminal. type 'help' for commands.");
     term.write(PROMPT);
 
     // Keep the cursor's visible position in sync with the input state.
     const handleKey = ({ key, domEvent }: { key: string; domEvent: KeyboardEvent }) => {
+      // A foreground program owns input; onData forwards it raw.
+      if (foregroundRef.current) return;
       const s = stateRef.current;
       if (domEvent.key === "Enter") {
         const submission = s.takeSubmission();
@@ -260,6 +304,19 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
 
     // Paste support (mobile keyboards, clipboard).
     const pasteSub = term.onData((data) => {
+      // Foreground program: every byte belongs to the program, escape
+      // sequences included (a game reads the arrow keys as raw CSI).
+      // Ctrl+C stays with the pane and cancels the run.
+      const fg = foregroundRef.current;
+      if (fg) {
+        if (data === "") {
+          term.write("^C\r\n");
+          fg.cancel();
+          return;
+        }
+        fg.pushInput(data);
+        return;
+      }
       // xterm fires onKey AND onData for the same keypress with the same
       // string, and special keys (arrows, Home, Delete, F-keys) arrive as
       // multi-character escape sequences. Those belong to onKey alone: fed
@@ -306,6 +363,7 @@ export function TerminalPane({ buildContext, onUploadRequest }: TerminalPaneProp
       pasteSub.dispose();
       ro.disconnect();
       themeObserver.disconnect();
+      onRegisterIORef.current?.(null);
       term.dispose();
       termRef.current = null;
       fitRef.current = null;

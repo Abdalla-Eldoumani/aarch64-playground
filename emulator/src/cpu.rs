@@ -105,10 +105,55 @@ pub enum StepOutcome {
     /// A hosted read/scanf ran short on stdin; caller should pause the run
     /// loop until more input arrives, then step again.
     WaitingForInput,
+    /// nanosleep asked for a pause of this many nanoseconds. The virtual
+    /// clock has already advanced; a real-time runner waits it out, a
+    /// batch runner just steps again.
+    Sleeping(u64),
     /// `exit(status)` was called. The CPU is halted and the status is
     /// available via `Cpu::exit_code()`.
     Exited(i64),
 }
+
+/// Terminal and timing state behind the interactive syscalls: ioctl's
+/// termios raw mode, fcntl's O_NONBLOCK on fd 0, and the virtual
+/// monotonic clock that nanosleep advances and clock_gettime reads.
+/// The clock is virtual (never the host's wall clock) so step-back and
+/// replay stay deterministic; it rides in every snapshot like
+/// `rand_state`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TermState {
+    /// Virtual monotonic clock, in nanoseconds since load.
+    pub virtual_ns: u64,
+    /// fd 0 carries O_NONBLOCK: an empty read returns -EAGAIN instead
+    /// of pausing the machine for input.
+    pub stdin_nonblock: bool,
+    /// A TCSETS that cleared ICANON put the terminal in raw mode. The
+    /// UI reads this as "this program is a terminal program" and hands
+    /// it the terminal pane.
+    pub raw_mode: bool,
+}
+
+/// Pacing credit for sleeping programs: each nanosecond a program asks
+/// nanosleep to pause refunds step and output budget at these rates
+/// (one step per microsecond slept, one output byte per ten
+/// microseconds). A paced game therefore runs indefinitely -- its
+/// budgets refill in real time while the tab sits idle -- yet a
+/// CPU-bound runaway still hits the walls, because refunds only come
+/// from real pauses the runner actually honors.
+pub const SLEEP_STEP_REFUND_NS_PER_STEP: u64 = 1_000;
+pub const SLEEP_OUTPUT_REFUND_NS_PER_BYTE: u64 = 10_000;
+
+/// A single nanosleep is clamped to this many nanoseconds (2 seconds)
+/// so one call cannot mint minutes of budget or park the runner on an
+/// hour-long timeout.
+pub const MAX_SLEEP_NS: u64 = 2_000_000_000;
+
+/// Lifetime cap on refunded steps per loaded program (~2 hours of a
+/// paced game). Without it, a batch runner that skips sleeps would let
+/// a never-exiting paced loop mint budget forever; with it, even that
+/// worst case is bounded at MAX_TOTAL_STEPS + this, a few seconds of
+/// CPU, before the step wall halts it calmly.
+pub const MAX_REFUND_STEPS: u64 = 200_000_000;
 
 /// Result of a single step.
 #[derive(Debug, Clone)]
@@ -177,6 +222,17 @@ pub struct Cpu {
     /// State for the rand/srand host stubs. Starts at 1 (C's unseeded
     /// default) and rides in every snapshot so step-back replays draws.
     pub rand_state: u64,
+    /// Terminal and timing state for the interactive syscalls (raw
+    /// mode, fd 0 O_NONBLOCK, the virtual clock). Snapshotted with the
+    /// rest of the machine.
+    pub term: TermState,
+    /// Set when the last dispatched instruction was a nanosleep; the
+    /// run loop breaks so the runner can honor the pause, and the
+    /// runner consumes it via `take_pending_sleep_ns`.
+    pub pending_sleep_ns: Option<u64>,
+    /// Steps refunded by sleeping so far, capped at MAX_REFUND_STEPS
+    /// per loaded program.
+    refund_steps_total: u64,
     /// Table of hosted libc / syscall stubs reachable by `bl` into the
     /// synthetic 0xFFFF_0000 range. Populated by `Cpu::new` with the
     /// default suite of stubs; the linker reads `host.lookup(name)` to
@@ -231,6 +287,9 @@ impl Cpu {
             open_files: HashMap::new(),
             next_fd: 3,
             rand_state: 1,
+            term: TermState::default(),
+            pending_sleep_ns: None,
+            refund_steps_total: 0,
             host: HostTable::new(),
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
@@ -299,6 +358,9 @@ impl Cpu {
         self.steps_total = 0;
         self.output_total = 0;
         self.abort_message = None;
+        self.term = TermState::default();
+        self.pending_sleep_ns = None;
+        self.refund_steps_total = 0;
         self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
     }
 
@@ -328,6 +390,9 @@ impl Cpu {
         self.output_total = 0;
         self.abort_message = None;
         self.stdin_closed = false;
+        self.term = TermState::default();
+        self.pending_sleep_ns = None;
+        self.refund_steps_total = 0;
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
@@ -527,20 +592,26 @@ impl Cpu {
         // Snapshot CPU state before we touch anything so `step_back` can
         // restore the exact pre-step state. Stdout/stderr are intentionally
         // excluded from the snapshot (rolling back already-seen output is
-        // more confusing than leaving it in place).
-        self.snapshots.push(Snapshot {
-            regs: self.regs.clone(),
-            mem: self.mem.clone(),
-            halted: self.halted,
-            blocked: self.blocked,
-            exit_code: self.exit_code,
-            stdin: self.stdin.clone(),
-            stdin_closed: self.stdin_closed,
-            vfs: self.vfs.clone(),
-            open_files: self.open_files.clone(),
-            next_fd: self.next_fd,
-            rand_state: self.rand_state,
-        });
+        // more confusing than leaving it in place). Raw-mode terminal
+        // programs skip the ring entirely: a paced game executes millions
+        // of steps, each clone costs far more than the step itself, and
+        // stepping back into the middle of a live game has no meaning.
+        if !self.term.raw_mode {
+            self.snapshots.push(Snapshot {
+                regs: self.regs.clone(),
+                mem: self.mem.clone(),
+                halted: self.halted,
+                blocked: self.blocked,
+                exit_code: self.exit_code,
+                stdin: self.stdin.clone(),
+                stdin_closed: self.stdin_closed,
+                vfs: self.vfs.clone(),
+                open_files: self.open_files.clone(),
+                next_fd: self.next_fd,
+                rand_state: self.rand_state,
+                term: self.term,
+            });
+        }
 
         // Count this executed step against the cumulative ceiling. Done
         // before the host-stub dispatch so synthetic libc calls count too.
@@ -673,6 +744,8 @@ impl Cpu {
             StepOutcome::Exited(code)
         } else if self.halted {
             StepOutcome::Halted
+        } else if let Some(ns) = self.pending_sleep_ns {
+            StepOutcome::Sleeping(ns)
         } else {
             StepOutcome::Advance
         };
@@ -759,17 +832,47 @@ impl Cpu {
             open_files: &mut self.open_files,
             next_fd: &mut self.next_fd,
             rand_state: &mut self.rand_state,
+            term: &mut self.term,
         };
         let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
         match outcome {
             HostOutcome::Continue => {}
             HostOutcome::NeedInput => self.blocked = true,
+            HostOutcome::Sleep(ns) => self.apply_sleep(ns),
             HostOutcome::Exited(code) => {
                 self.exit_code = Some(code);
                 self.halted = true;
             }
         }
         Ok(())
+    }
+
+    /// Honor a nanosleep: advance the virtual clock, credit the pacing
+    /// budgets (a sleeping program earns back steps and output bytes at
+    /// the documented real-time rates), and flag the pause so the run
+    /// loop hands control back to the runner.
+    fn apply_sleep(&mut self, ns: u64) {
+        let ns = ns.min(MAX_SLEEP_NS);
+        self.term.virtual_ns = self.term.virtual_ns.saturating_add(ns);
+        // Refunds stop at the lifetime cap so a runner that skips the
+        // real pauses (a batch fixture run) cannot mint budget forever.
+        let step_refund = (ns / SLEEP_STEP_REFUND_NS_PER_STEP)
+            .min(MAX_REFUND_STEPS.saturating_sub(self.refund_steps_total));
+        self.refund_steps_total += step_refund;
+        self.steps_total = self.steps_total.saturating_sub(step_refund);
+        if step_refund > 0 {
+            self.output_total = self
+                .output_total
+                .saturating_sub((ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize);
+        }
+        self.pending_sleep_ns = Some(ns);
+    }
+
+    /// Consume the pause the last nanosleep requested, if any. The
+    /// runner calls this once per run result and waits the returned
+    /// duration in real time; batch runners simply ignore it.
+    pub fn take_pending_sleep_ns(&mut self) -> Option<u64> {
+        self.pending_sleep_ns.take()
     }
 
     /// Dispatch a host-stub entry point at `pc`. Splits the mutable borrow
@@ -794,6 +897,7 @@ impl Cpu {
             open_files: &mut self.open_files,
             next_fd: &mut self.next_fd,
             rand_state: &mut self.rand_state,
+            term: &mut self.term,
         };
         let outcome = table
             .dispatch(pc, &mut ctx)
@@ -811,6 +915,13 @@ impl Cpu {
                 // Stay at the stub address so re-entry dispatches the same
                 // function when stdin arrives.
                 self.blocked = true;
+            }
+            HostOutcome::Sleep(ns) => {
+                // No libc stub sleeps today, but keep the arm honest: a
+                // sleeping stub returns to its caller like Continue.
+                self.apply_sleep(ns);
+                let lr = self.regs.read_gpr(30, true);
+                self.regs.write_pc(lr);
             }
             HostOutcome::Exited(code) => {
                 self.exit_code = Some(code);
@@ -836,6 +947,7 @@ impl Cpu {
         let result_outcome = match host_outcome {
             HostOutcome::Continue => StepOutcome::Advance,
             HostOutcome::NeedInput => StepOutcome::WaitingForInput,
+            HostOutcome::Sleep(ns) => StepOutcome::Sleeping(ns.min(MAX_SLEEP_NS)),
             HostOutcome::Exited(code) => StepOutcome::Exited(code),
         };
 
@@ -859,7 +971,7 @@ impl Cpu {
     pub fn run_until_break(&mut self, max_steps: u32) -> Result<RunResult, EmuError> {
         let mut steps: u32 = 0;
 
-        while steps < max_steps && !self.halted && !self.blocked {
+        while steps < max_steps && !self.halted && !self.blocked && self.pending_sleep_ns.is_none() {
             let pc = self.regs.read_pc();
 
             // check breakpoint before executing (but not on the very first step
@@ -950,6 +1062,9 @@ impl Cpu {
         self.open_files.clear();
         self.next_fd = 3;
         self.rand_state = 1;
+        self.term = TermState::default();
+        self.pending_sleep_ns = None;
+        self.refund_steps_total = 0;
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
         // the libc + hosted-printf/scanf stubs, and the frontend linker
         // needs them to resolve `bl printf` / `bl scanf` after a reset
@@ -990,6 +1105,7 @@ impl Cpu {
             open_files: self.open_files.clone(),
             next_fd: self.next_fd,
             rand_state: self.rand_state,
+            term: self.term,
         };
         self.snapshots.save_named(name, snap);
     }
@@ -1011,6 +1127,8 @@ impl Cpu {
         self.open_files = snap.open_files;
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
+        self.term = snap.term;
+        self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
         // The abort message describes a run the restored state never took;
@@ -1059,6 +1177,8 @@ impl Cpu {
         self.open_files = snap.open_files;
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
+        self.term = snap.term;
+        self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
         // Un-count the step this frame undoes and drop any abort recorded
