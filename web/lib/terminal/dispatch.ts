@@ -70,6 +70,10 @@ export interface TerminalForegroundProgram {
 export interface TerminalProgramIO {
   write(text: string): void;
   setForeground(fg: TerminalForegroundProgram | null): void;
+  /** Wipe the pane (scrollback included) the moment a program takes it
+   *  over, so the game starts on a clean screen instead of layering
+   *  onto whatever the shell ran before. */
+  clear?(): void;
   /** Called only by self-attached sessions (a raw-mode program started
    *  from the run button): the pane prints the exit line and a fresh
    *  prompt. `./name` runs skip it -- dispatch prints those lines. */
