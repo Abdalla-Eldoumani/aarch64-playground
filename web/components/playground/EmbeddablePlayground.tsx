@@ -254,6 +254,17 @@ function EmbeddableCore({
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  // Jump-to-error: when an assemble or a line-carrying runtime fault
+  // lands, the editor reveals and focuses the offending line. Nonce so
+  // the same line re-fires when the student re-assembles unchanged.
+  const [errorFocus, setErrorFocus] = useState<{ line: number; nonce: number } | null>(null);
+  useEffect(() => {
+    const first = emu.assemblyErrors[0];
+    if (first && first.line > 0) {
+      setErrorFocus({ line: first.line, nonce: Date.now() });
+    }
+  }, [emu.assemblyErrors]);
+
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
   );
@@ -526,6 +537,17 @@ function EmbeddableCore({
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
       let cancelled = false;
+      // Wipe the pane once, the moment the program claims the terminal
+      // (already true on self-attach; flips mid-run for ./name), so the
+      // takeover starts on a clean screen with no earlier scrollback.
+      let cleared = false;
+      const clearOnce = () => {
+        if (!cleared) {
+          cleared = true;
+          io.clear?.();
+        }
+      };
+      if (emuRef.current.wantsTerminal) clearOnce();
       emuRef.current.setOutputTap((t) => io.write(t));
       io.setForeground({
         pushInput: (d) => emuRef.current.pushStdin(d),
@@ -543,6 +565,7 @@ function EmbeddableCore({
         for (;;) {
           await new Promise<void>((r) => setTimeout(r, 32));
           const e = emuRef.current;
+          if (e.wantsTerminal) clearOnce();
           if (cancelled || e.isHalted || e.error) break;
           if (e.isRunning) continue;
           if (e.blocked) {
@@ -1206,6 +1229,7 @@ function EmbeddableCore({
               assemblyErrors={emu.assemblyErrors}
               lintWarnings={lintWarnings}
               onCursorChange={setCursor}
+              focusRequest={errorFocus}
               readOnly={readOnly}
             />
           </div>
@@ -1319,6 +1343,7 @@ function EmbeddableCore({
           assemblyErrors={isMain ? emu.assemblyErrors : []}
           lintWarnings={isMain ? lintWarnings : []}
           onCursorChange={isMain ? setCursor : undefined}
+          focusRequest={isMain ? errorFocus : null}
           onFormat={() => {
             if (!isMain) return;
             const next = formatAsm(source);
