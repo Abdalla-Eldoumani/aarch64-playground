@@ -26,10 +26,8 @@ surface for `write`/`read`/`exit`/`openat`/`close`/`lseek`.
 - `read-file.s` -- open and read a file
 - `copy-file.s` -- copy one file to another
 
-Two extra programs are served beyond the tutorial set, both from
-https://github.com/Abdalla-Eldoumani/snake-game:
+One extra program is served beyond the tutorial set:
 
-- `snake.s` -- the real-time arcade snake; run it and the playground
-  hands it the terminal pane for live keyboard play
-- `snake-console.s` -- a turn-based adaptation that plays in the
-  console, one typed line of moves per turn
+- `snake.s` -- the real-time snake game, six modes, from
+  https://github.com/Abdalla-Eldoumani/snake-game; run it and the
+  playground hands it the terminal pane for live keyboard play
