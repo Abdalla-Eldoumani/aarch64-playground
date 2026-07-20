@@ -251,6 +251,9 @@ interface EditorProps {
   /** When true the surface rejects input: Monaco and the phone fallback
    *  both become read-only (embed and checker snapshots). */
   readOnly?: boolean;
+  /** Jump the editor to a line (an error the student should fix): the
+   *  parent bumps the nonce so the same line can be requested twice. */
+  focusRequest?: { line: number; nonce: number } | null;
 }
 
 const ARM64_MNEMONICS = [
@@ -301,7 +304,8 @@ export function Editor({
   lintWarnings = [],
   onCursorChange,
   onFormat,
-  readOnly = false,
+  readOnly,
+  focusRequest,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -428,6 +432,17 @@ export function Editor({
       decorations
     );
   }, [currentLine, breakpoints, assemblyErrors]);
+
+  // Jump-to-error: reveal, place the cursor, and focus so the student
+  // lands on the offending line instead of hunting for it.
+  useEffect(() => {
+    if (!focusRequest) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.revealLineInCenter(focusRequest.line);
+    editor.setPosition({ lineNumber: focusRequest.line, column: 1 });
+    editor.focus();
+  }, [focusRequest]);
 
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
