@@ -149,18 +149,22 @@ export function Controls({
           // prefers-reduced-motion the class is inert and the danger-colored
           // text alone carries the state.
           key={error}
-          className="anim-error-shake flex flex-col items-end min-w-0 max-w-md text-right"
+          // A readable box, not a truncated line: long messages wrap in
+          // full view (scrolling only past ~4 lines) instead of hiding
+          // behind a hover title.
+          className="anim-error-shake min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left"
+          style={{
+            borderColor: "color-mix(in srgb, var(--danger) 45%, transparent)",
+            background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+          }}
         >
-          <span className="font-sans text-xs text-[var(--danger)] truncate w-full" title={error}>
+          <p className="max-h-16 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-snug text-[var(--danger)]">
             {error}
-          </span>
+          </p>
           {explanation && (
-            <span
-              className="hidden sm:block font-sans text-[11px] text-[var(--text-tertiary)] truncate w-full"
-              title={explanation.fix}
-            >
+            <p className="mt-0.5 hidden max-h-12 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[11px] leading-snug text-[var(--text-tertiary)] sm:block">
               {explanation.fix}
-            </span>
+            </p>
           )}
         </div>
       )}
