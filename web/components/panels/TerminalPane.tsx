@@ -129,6 +129,11 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       // without focus its first frames render but keys go nowhere.
       if (fg) termRef.current?.focus();
     },
+    clear: () => {
+      // reset() wipes scrollback and terminal state (SGR included),
+      // which is exactly what a raw-mode takeover wants.
+      termRef.current?.reset();
+    },
     sessionEnded: (exitCode: number | null) => {
       const t = termRef.current;
       if (!t) return;
