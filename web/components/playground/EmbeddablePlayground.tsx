@@ -44,6 +44,11 @@ import {
   useSourceFiles,
   type SourceFile,
 } from "@/components/playground/MultiFileTabs";
+import {
+  MAIN_FILE,
+  combinedLineFor,
+  resolveLine,
+} from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 
 // Full-only / heavy panels load on first render so a multi-embed page (and
@@ -136,6 +141,7 @@ export type EmbeddablePlaygroundHandle = {
    *  applies source, args, cursor, and the stdin/vfs input seeds. */
   loadProgram(payload: HandoffPayload): void;
   getSource(): string;
+  getFiles(): SourceFile[];
   getArgs(): string;
   getCursor(): { line: number; column: number };
   /** The command Action[] built inside the component so a host-rendered
@@ -152,6 +158,9 @@ export type EmbeddablePlaygroundHandle = {
 export type EmbeddablePlaygroundProps = {
   chrome: EmbeddableChrome;
   startSource?: string;
+  /** Extra files a share-link boot carried. Defined (even empty) means
+   *  "replace the persisted files strip"; undefined leaves it alone. */
+  startFiles?: SourceFile[];
   startArgs?: string;
   startStdin?: string;
   startCursor?: { line: number; column: number };
@@ -218,6 +227,7 @@ type EmbeddableCoreProps = EmbeddablePlaygroundProps & {
 function EmbeddableCore({
   chrome,
   startSource,
+  startFiles,
   startArgs,
   startStdin,
   startCursor,
@@ -254,22 +264,36 @@ function EmbeddableCore({
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
-  // Jump-to-error: when an assemble or a line-carrying runtime fault
-  // lands, the editor reveals and focuses the offending line. Nonce so
-  // the same line re-fires when the student re-assembles unchanged.
-  const [errorFocus, setErrorFocus] = useState<{ line: number; nonce: number } | null>(null);
-  useEffect(() => {
-    const first = emu.assemblyErrors[0];
-    if (first && first.line > 0) {
-      setErrorFocus({ line: first.line, nonce: Date.now() });
-    }
-  }, [emu.assemblyErrors]);
-
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
   );
   const [extraFiles, setExtraFiles] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
+
+  // A share-link boot carries its own workspace: replace the persisted
+  // files strip once, before the first assemble can mix the two.
+  const startFilesApplied = useRef(false);
+  useEffect(() => {
+    if (startFiles === undefined || startFilesApplied.current) return;
+    startFilesApplied.current = true;
+    setExtraFiles(startFiles);
+  }, [startFiles, setExtraFiles]);
+
+  // Jump-to-error: when an assemble or a line-carrying runtime fault
+  // lands, the editor switches to the owning file, then reveals and
+  // focuses the offending line. Nonce so the same line re-fires when the
+  // student re-assembles unchanged. Combined-string lines resolve through
+  // the file map so an error inside an extra file lands in that tab, not
+  // past the end of main.asm.
+  const [errorFocus, setErrorFocus] = useState<{ line: number; nonce: number } | null>(null);
+  useEffect(() => {
+    const first = emu.assemblyErrors[0];
+    if (first && first.line > 0) {
+      const loc = resolveLine(first.line, sourceRef.current, extraFilesRef.current);
+      setActiveFile(loc.file);
+      setErrorFocus({ line: loc.line, nonce: Date.now() });
+    }
+  }, [emu.assemblyErrors]);
   const toast = useToast();
   const importTarget = getImportTarget(activeFile);
 
@@ -294,6 +318,26 @@ function EmbeddableCore({
           return;
         }
       }
+    },
+    [extraFiles, setExtraFiles, toast],
+  );
+
+  // Multi-select import: a file named main.asm / main.s replaces the main
+  // buffer; every other file becomes (or refreshes) a named tab, so a
+  // whole multi-file program lands in one gesture.
+  const handleImportMany = useCallback(
+    (files: { name: string; body: string }[]) => {
+      const mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
+      if (mainIdx >= 0) setSource(files[mainIdx].body);
+      const rest = files.filter((_, i) => i !== mainIdx);
+      const next = [...extraFiles];
+      for (const f of rest) {
+        const at = next.findIndex((x) => x.name === f.name);
+        if (at >= 0) next[at] = { name: f.name, body: f.body };
+        else next.push({ name: f.name, body: f.body });
+      }
+      setExtraFiles(next);
+      toast.show(`imported ${files.length} files`);
     },
     [extraFiles, setExtraFiles, toast],
   );
@@ -418,13 +462,17 @@ function EmbeddableCore({
       }
       persistWorkingSet();
       setSource(payload.source);
+      // A program handoff replaces the whole workspace: stale helper
+      // files from earlier work must not concatenate into the new
+      // program at its next assemble.
+      setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
       setArgsText(payload.args ?? "");
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       setShareBanner(Boolean(payload.fromShare));
       lastRunSourceRef.current = null;
     },
-    [chrome, recent, persistWorkingSet],
+    [chrome, recent, persistWorkingSet, setExtraFiles],
   );
 
   // Rehydrate the home directory once the hub is live: the persisted files
@@ -787,6 +835,7 @@ function EmbeddableCore({
   // during render.
   const emuRef = useRef(emu);
   const sourceRef = useRef(source);
+  const extraFilesRef = useRef(extraFiles);
   const argsRef = useRef(argsText);
   const cursorRef = useRef(cursor);
   const onStateChangeRef = useRef(onStateChange);
@@ -796,13 +845,14 @@ function EmbeddableCore({
   useEffect(() => {
     emuRef.current = emu;
     sourceRef.current = source;
+    extraFilesRef.current = extraFiles;
     argsRef.current = argsText;
     cursorRef.current = cursor;
     onStateChangeRef.current = onStateChange;
     assembleRef.current = assembleWithHistory;
     loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
-  }, [emu, source, argsText, cursor, onStateChange, assembleWithHistory, loadProgram, buildCommands]);
+  }, [emu, source, extraFiles, argsText, cursor, onStateChange, assembleWithHistory, loadProgram, buildCommands]);
 
   // Seed starter stdin once the hub is live so a program that reads has its
   // input queued before the first run.
@@ -965,6 +1015,7 @@ function EmbeddableCore({
       loadSource: (next: string) => loadSource(next),
       loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
       getSource: () => sourceRef.current,
+      getFiles: () => extraFilesRef.current,
       getArgs: () => argsRef.current,
       getCursor: () => cursorRef.current,
       getCommands: () => buildCommandsRef.current(),
@@ -1012,12 +1063,66 @@ function EmbeddableCore({
   useEffect(() => {
     const handle = window.setTimeout(() => {
       void emuRef.current
-        .lint(source)
+        .lint(combineSources(source, extraFiles))
         .then(setLintWarnings)
         .catch(() => setLintWarnings([]));
     }, 400);
     return () => window.clearTimeout(handle);
-  }, [source]);
+  }, [source, extraFiles]);
+
+  // Per-file views of the combined-line diagnostics: the editor shows one
+  // buffer at a time, so markers, the current-line highlight, and gutter
+  // breakpoints each translate to the active file's local lines (and hide
+  // when they belong to another file).
+  const activeErrors = useMemo(
+    () =>
+      emu.assemblyErrors.flatMap((e) => {
+        if (e.line <= 0) return activeFile === MAIN_FILE ? [e] : [];
+        const loc = resolveLine(e.line, source, extraFiles);
+        return loc.file === activeFile ? [{ ...e, line: loc.line }] : [];
+      }),
+    [emu.assemblyErrors, source, extraFiles, activeFile],
+  );
+  const activeLint = useMemo(
+    () =>
+      lintWarnings.flatMap((w) => {
+        if (w.line <= 0) return activeFile === MAIN_FILE ? [w] : [];
+        const loc = resolveLine(w.line, source, extraFiles);
+        return loc.file === activeFile ? [{ ...w, line: loc.line }] : [];
+      }),
+    [lintWarnings, source, extraFiles, activeFile],
+  );
+  const activeCurrentLine = useMemo(() => {
+    if (emu.currentLine == null) return null;
+    const loc = resolveLine(emu.currentLine, source, extraFiles);
+    return loc.file === activeFile ? loc.line : null;
+  }, [emu.currentLine, source, extraFiles, activeFile]);
+  const activeBreakpoints = useMemo(() => {
+    const set = new Set<number>();
+    for (const line of emu.breakpoints) {
+      const loc = resolveLine(line, source, extraFiles);
+      if (loc.file === activeFile) set.add(loc.line);
+    }
+    return set;
+  }, [emu.breakpoints, source, extraFiles, activeFile]);
+  const toggleBreakpointInActive = useCallback(
+    (line: number) => {
+      emu.toggleBreakpoint(
+        combinedLineFor(activeFile, line, sourceRef.current, extraFilesRef.current),
+      );
+    },
+    [emu, activeFile],
+  );
+  // Controls shows the first error as plain text; name the owning file
+  // when it is not the buffer labelled main.asm.
+  const controlsError = useMemo(() => {
+    if (!emu.error) return emu.error;
+    const first = emu.assemblyErrors[0];
+    if (!first || first.line <= 0 || extraFiles.length === 0) return emu.error;
+    const loc = resolveLine(first.line, source, extraFiles);
+    if (loc.file === MAIN_FILE) return emu.error;
+    return `${loc.name} line ${loc.line}: ${emu.error}`;
+  }, [emu.error, emu.assemblyErrors, source, extraFiles]);
   // Reads go through emuRef / sourceRef, not the render's hub object:
   // the hub is a new object every snapshot, so a closure over it freezes
   // mid-command state -- runProgram's wait loop would poll an isRunning
@@ -1113,12 +1218,19 @@ function EmbeddableCore({
       },
       deleteVfs: async (path: string) => removeVfsFile(path),
       // The editor's program: the same run shape as a compiled executable,
-      // over the live buffer.
+      // over the live workspace (main plus any extra files, exactly what
+      // the assemble button builds).
       runProgram: async (
         args: string[],
         stdin?: string,
         io?: import("@/lib/terminal/dispatch").TerminalProgramIO,
-      ) => runText(sourceRef.current, args, stdin, io),
+      ) =>
+        runText(
+          combineSources(sourceRef.current, extraFilesRef.current),
+          args,
+          stdin,
+          io,
+        ),
       step: async () => {
         emuRef.current.step();
         const e = emuRef.current;
@@ -1337,13 +1449,13 @@ function EmbeddableCore({
         <Editor
           value={editorValue}
           onChange={onEditorChange}
-          currentLine={isMain ? emu.currentLine : null}
-          breakpoints={emu.breakpoints}
-          onToggleBreakpoint={emu.toggleBreakpoint}
-          assemblyErrors={isMain ? emu.assemblyErrors : []}
-          lintWarnings={isMain ? lintWarnings : []}
+          currentLine={activeCurrentLine}
+          breakpoints={activeBreakpoints}
+          onToggleBreakpoint={toggleBreakpointInActive}
+          assemblyErrors={activeErrors}
+          lintWarnings={activeLint}
           onCursorChange={isMain ? setCursor : undefined}
-          focusRequest={isMain ? errorFocus : null}
+          focusRequest={errorFocus}
           onFormat={() => {
             if (!isMain) return;
             const next = formatAsm(source);
@@ -1563,7 +1675,12 @@ function EmbeddableCore({
         <div className="min-w-0 shrink-0">
           <ExampleLoader onLoad={loadProgram} />
         </div>
-        <ImportExport source={source} target={importTarget} onImport={handleImport} />
+        <ImportExport
+          source={source}
+          target={importTarget}
+          onImport={handleImport}
+          onImportMany={handleImportMany}
+        />
         <RecentPrograms
           entries={recent.entries}
           // A recent is a program delivery, not a text swap: the machine
@@ -1695,7 +1812,7 @@ function EmbeddableCore({
         isHalted={emu.isHalted}
         programLoaded={emu.programLoaded}
         blocked={emu.blocked}
-        error={emu.error}
+        error={controlsError}
         stepCount={emu.stepCount}
       />
 
@@ -1813,6 +1930,7 @@ export const EmbeddablePlayground = forwardRef<
       notifyError: (message: string) =>
         runOrQueue((handle) => handle.notifyError(message)),
       getSource: () => innerHandleRef.current?.getSource() ?? startSource ?? "",
+      getFiles: () => innerHandleRef.current?.getFiles() ?? [],
       getArgs: () => innerHandleRef.current?.getArgs() ?? startArgs ?? "",
       getCursor: () =>
         innerHandleRef.current?.getCursor() ?? { line: 1, column: 1 },
