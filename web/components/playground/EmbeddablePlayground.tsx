@@ -269,6 +269,13 @@ function EmbeddableCore({
   );
   const [extraFiles, setExtraFiles] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
+  // The loaded program is a terminal program (the visualizer example):
+  // run hands it the terminal pane up front, the way snake's raw-mode
+  // flag does mid-run.
+  const [terminalProgram, setTerminalProgram] = useState(false);
+  // Nonce asking the attach effect to start a terminal-pane run once the
+  // pane's io registration lands (the pane mounts lazily on tab switch).
+  const [termRunRequest, setTermRunRequest] = useState<number | null>(null);
 
   // A share-link boot carries its own workspace: replace the persisted
   // files strip once, before the first assemble can mix the two.
@@ -467,6 +474,7 @@ function EmbeddableCore({
       // program at its next assemble.
       setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
+      setTerminalProgram(payload.terminal === true);
       setArgsText(payload.args ?? "");
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       setShareBanner(Boolean(payload.fromShare));
@@ -585,7 +593,10 @@ function EmbeddableCore({
   // the pane, forward its keystrokes to stdin, resume input-starved
   // stops, and stand down on halt, error, cancel, or a user pause.
   const driveForeground = useCallback(
-    async (io: import("@/lib/terminal/dispatch").TerminalProgramIO): Promise<number | null> => {
+    async (
+      io: import("@/lib/terminal/dispatch").TerminalProgramIO,
+      opts?: { clearAtStart?: boolean },
+    ): Promise<number | null> => {
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
       let cancelled = false;
@@ -599,16 +610,45 @@ function EmbeddableCore({
           io.clear?.();
         }
       };
-      if (emuRef.current.wantsTerminal) clearOnce();
+      if (opts?.clearAtStart || emuRef.current.wantsTerminal) clearOnce();
+      // Live sessions skip the step-back ring: the per-step clone costs
+      // more than the step, and stepping back mid-session has no meaning.
+      emuRef.current.setSnapshotsPaused(true);
       emuRef.current.setOutputTap((t) => io.write(t));
+      // Cooked-mode input works like a canonical tty: the line buffers
+      // locally with echo (so typed digits are visible) and backspace
+      // editing, and reaches the program as one line ending in \n on
+      // enter. Raw-mode programs (termios) get every byte untouched and
+      // draw their own screens.
+      let lineBuf = "";
       io.setForeground({
-        // Cooked-mode input gets the tty's ICRNL: xterm sends \r for
-        // Enter, but scanf and getchar wait for \n. Raw-mode programs
-        // (termios) read bytes themselves and keep the \r.
-        pushInput: (d) =>
-          emuRef.current.pushStdin(
-            emuRef.current.wantsTerminal ? d : d.replace(/\r/g, "\n"),
-          ),
+        pushInput: (d) => {
+          const e = emuRef.current;
+          if (e.wantsTerminal) {
+            e.pushStdin(d);
+            return;
+          }
+          for (let i = 0; i < d.length; i++) {
+            const ch = d[i];
+            if (ch === "\r" || ch === "\n") {
+              io.write("\r\n");
+              e.pushStdin(`${lineBuf}\n`);
+              lineBuf = "";
+            } else if (ch === "\x7f" || ch === "\b") {
+              if (lineBuf.length > 0) {
+                lineBuf = lineBuf.slice(0, -1);
+                io.write("\b \b");
+              }
+            } else if (ch === "\x1b") {
+              // Swallow the rest of an escape sequence (arrow keys):
+              // canonical reads have no use for it.
+              return;
+            } else if (ch >= " ") {
+              lineBuf += ch;
+              io.write(ch);
+            }
+          }
+        },
         cancel: () => {
           cancelled = true;
           emuRef.current.pause();
@@ -638,6 +678,7 @@ function EmbeddableCore({
           break;
         }
       } finally {
+        emuRef.current.setSnapshotsPaused(false);
         emuRef.current.setOutputTap(null);
         io.setForeground(null);
         foregroundActiveRef.current = false;
@@ -647,6 +688,37 @@ function EmbeddableCore({
     },
     [],
   );
+
+  // Run for a terminal-flagged program: hand it the pane up front --
+  // switch the tab, then let the attach effect below start the drive
+  // once the pane's io registration lands (the pane mounts lazily on
+  // the tab switch, so the drive cannot start synchronously here).
+  const handleRun = useCallback(() => {
+    if (terminalProgram && chrome === "full") {
+      setActiveTab("term");
+      setPaneRequest({ pane: "term", nonce: Date.now() });
+      setTermRunRequest(Date.now());
+      return;
+    }
+    emu.run();
+  }, [terminalProgram, chrome, emu]);
+  const handleRunRef = useRef(handleRun);
+  useEffect(() => {
+    handleRunRef.current = handleRun;
+  }, [handleRun]);
+
+  // Attach a requested terminal-pane run: clear the pane (a previous
+  // program's screen must not linger) and drive the workspace live,
+  // with the pane printing the exit line when the session ends.
+  useEffect(() => {
+    if (termRunRequest == null || !termIO) return;
+    setTermRunRequest(null);
+    if (foregroundActiveRef.current) return;
+    const io = termIO;
+    void driveForeground(io, { clearAtStart: true }).then((exitCode) => {
+      io.sessionEnded?.(exitCode);
+    });
+  }, [termRunRequest, termIO, driveForeground]);
 
   // Self-attach: a raw-mode program started from the run button (not
   // `./name`) still deserves live terminal I/O. When the flag rises and
@@ -710,7 +782,7 @@ function EmbeddableCore({
             : "(no program; assemble first)",
         shortcut: "F5",
         run: () => {
-          if (!emu.blocked) emu.run();
+          if (!emu.blocked) handleRun();
         },
       },
       {
@@ -836,7 +908,7 @@ function EmbeddableCore({
         },
       },
     ],
-    [emu, assembleWithHistory, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
+    [emu, assembleWithHistory, handleRun, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
   );
 
   // Latest-value refs so the imperative handle stays a stable object while
@@ -1011,7 +1083,7 @@ function EmbeddableCore({
       // re-blocks), so while stdin is awaited they no-op like the disabled
       // buttons; assemble and reset stay live as the two real exits.
       run: () => {
-        if (!emuRef.current.blocked) emuRef.current.run();
+        if (!emuRef.current.blocked) handleRunRef.current();
       },
       pause: () => emuRef.current.pause(),
       step: () => {
@@ -1814,7 +1886,7 @@ function EmbeddableCore({
         onStep={emu.step}
         onStepBack={emu.stepBack}
         canStepBack={emu.canStepBack}
-        onRun={emu.run}
+        onRun={handleRun}
         onPause={emu.pause}
         onReset={emu.reset}
         isRunning={emu.isRunning}
