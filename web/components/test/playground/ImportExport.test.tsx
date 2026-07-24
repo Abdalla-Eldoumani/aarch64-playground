@@ -32,11 +32,17 @@ beforeEach(() => {
 
 function setup(source = "mov x0, 1\nsvc 0\n") {
   const onImport = vi.fn();
+  const onImportMany = vi.fn();
   const { container } = render(
-    <ImportExport source={source} onImport={onImport} target={TARGET} />,
+    <ImportExport
+      source={source}
+      onImport={onImport}
+      onImportMany={onImportMany}
+      target={TARGET}
+    />,
   );
   const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-  return { onImport, fileInput };
+  return { onImport, onImportMany, fileInput };
 }
 
 describe("ImportExport import path", () => {
@@ -52,15 +58,32 @@ describe("ImportExport import path", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
+  it("hands a multi-select pick to onImportMany with names and bodies", async () => {
+    const { onImport, onImportMany, fileInput } = setup();
+    const a = new File(["main body\n"], "main.asm", { type: "text/plain" });
+    const b = new File(["helper body\n"], "helpers.asm", { type: "text/plain" });
+
+    fireEvent.change(fileInput, { target: { files: [a, b] } });
+
+    await waitFor(() => expect(onImportMany).toHaveBeenCalledTimes(1));
+    expect(onImportMany).toHaveBeenCalledWith([
+      { name: "main.asm", body: "main body\n" },
+      { name: "helpers.asm", body: "helper body\n" },
+    ]);
+    expect(onImport).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
   it("rejects an over-cap file by size with the guard message and never imports", () => {
     const { onImport, fileInput } = setup();
     const oversized = new File(["x".repeat(MAX_SOURCE_BYTES + 1)], "big.s");
 
     fireEvent.change(fileInput, { target: { files: [oversized] } });
 
-    // The size guard runs synchronously off file.size, before the body is read.
+    // The size guard runs synchronously off file.size, before the body is
+    // read; the toast names the offending file for multi-select imports.
     const expected = checkUploadSize(MAX_SOURCE_BYTES + 1, MAX_SOURCE_BYTES, "source file");
-    expect(toastError).toHaveBeenCalledWith(expected);
+    expect(toastError).toHaveBeenCalledWith(`big.s: ${expected}`);
     expect(onImport).not.toHaveBeenCalled();
   });
 
@@ -78,7 +101,9 @@ describe("ImportExport import path", () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     const expected = validateSource(huge);
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expected));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(`sneaky.s: ${expected}`),
+    );
     expect(onImport).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
   });
