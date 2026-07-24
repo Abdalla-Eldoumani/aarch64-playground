@@ -118,3 +118,55 @@ fn snake_arcade_plays_a_timed_session_and_exits_cleanly() {
     // the way out; a clean exit leaves the flag lowered.
     assert!(!cpu.term.raw_mode, "exit must restore the terminal");
 }
+
+/// The multi-file visualizer, combined exactly the way the web's files
+/// strip does it (main first, each extra behind a `// ---- name ----`
+/// boundary, in the loader manifest's order). Drives one operation per
+/// data structure at the fastest pace and leaves through every menu, so
+/// the whole surface assembles, links, and runs behind one gate.
+#[test]
+fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
+    const EXTRAS: [&str; 11] = [
+        "ansi.s", "display.s", "utils.s", "array.s", "stack.s", "queue.s",
+        "list.s", "bst.s", "rbt.s", "sort.s", "search.s",
+    ];
+    let mut source = read("dsav.s");
+    for name in EXTRAS {
+        source.push_str(&format!("\n// ---- {name} ----\n"));
+        source.push_str(&read(&format!("dsav/{name}")));
+    }
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(&source, &cpu.host)
+        .unwrap_or_else(|e| panic!("assemble dsav: {e}"));
+    cpu.load_linked_image(&image).expect("load dsav");
+    // array: user init 3 values, display, back; stack: push 5, pop,
+    // back; queue: enqueue 5, dequeue, back; list: insert 5, display,
+    // back; bst: insert 5, search hit, back; rbt: insert 5, search hit,
+    // back; then exit. One blank line per operation feeds wait_for_enter.
+    let drive = "1\n2\n3\n10\n20\n30\n\n3\n\n0\n\n\
+                 2\n1\n5\n\n2\n\n0\n\n\
+                 3\n1\n5\n\n2\n\n0\n\n\
+                 4\n1\n5\n\n5\n\n0\n\n\
+                 5\n1\n5\n\n3\n5\n\n0\n\n\
+                 6\n1\n5\n\n2\n5\n\n0\n\n\
+                 0\n";
+    cpu.push_stdin(drive.as_bytes());
+    cpu.close_stdin();
+    let mut sleeps = 0u32;
+    loop {
+        let r = cpu.run_until_break(10_000_000).expect("run dsav");
+        if r.halted {
+            break;
+        }
+        if cpu.take_pending_sleep_ns().is_some() {
+            sleeps += 1;
+            continue;
+        }
+        assert!(!cpu.is_blocked(), "dsav ran out of scripted input");
+    }
+    assert_eq!(cpu.exit_code, Some(0));
+    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    assert!(stdout.contains("DATA STRUCTURES & ALGORITHMS VISUALIZER"));
+    assert!(stdout.contains("Goodbye"), "the exit path prints the goodbye line");
+    assert!(sleeps > 0, "the animations pace themselves through usleep");
+}
