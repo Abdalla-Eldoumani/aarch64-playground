@@ -8,8 +8,12 @@ define(lr, x30)
 
 int_fmt:            .string "%d"
 press_enter_msg:    .string "\x1b[33mPress Enter to continue...\x1b[0m"
-invalid_input_msg:  .string "\x1b[31mInvalid input! Please try again.\x1b[0m\n"
+// the complaint clears its own line first, so retries overwrite it in
+// place instead of stacking a new copy under the menu every time
+invalid_input_msg:  .string "\x1b[2K\x1b[31mInvalid input! Please try again.\x1b[0m"
 input_prompt:       .string "> "
+save_input_pos:     .string "\x1b[s"        // remember where typing begins
+redo_input_pos:     .string "\x1b[u\x1b[0K" // jump back there and wipe the try
 
 input_buffer:       .skip 64                // scratch space for user input
 
@@ -41,12 +45,16 @@ delay_us:
     ret
 
 // read_int() -> w0 = value, w1 = 1 on success, 0 on end of input
-// a non-numeric line is flushed and reprompted, so callers get a real
-// number unless stdin has ended
+// remembers where typing begins; a bad line is flushed, the complaint
+// lands on the line below, and the cursor comes back to the same spot,
+// so retries never scroll the menu away
     .global read_int
 read_int:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
+
+    ldr     x0, =save_input_pos
+    bl      printf
 
 read_int_retry:
     sub     sp, sp, 16                      // scratch slot for scanf
@@ -68,9 +76,9 @@ read_int_no_value:
     b.lt    read_int_eof
 
     bl      clear_input_buffer              // flush the bad line
-    ldr     x0, =invalid_input_msg
+    ldr     x0, =invalid_input_msg          // complaint on the line below
     bl      printf
-    ldr     x0, =input_prompt
+    ldr     x0, =redo_input_pos             // back to the input spot
     bl      printf
     b       read_int_retry
 
@@ -83,7 +91,8 @@ read_int_done:
     ret
 
 // read_int_range(w0 = min, w1 = max) -> w0 = value in range
-// reprompts until a valid number in [min, max] is entered
+// reprompts in place until a number in [min, max] is entered; the
+// complaint sits on the line under the prompt and stays put
     .global read_int_range
 read_int_range:
     stp     fp, lr, [sp, -48]!
@@ -94,10 +103,10 @@ read_int_range:
     mov     w19, w0                         // min
     mov     w20, w1                         // max
 
-read_int_range_loop:
     ldr     x0, =input_prompt
     bl      printf
 
+read_int_range_loop:
     bl      read_int
     mov     w21, w0                         // value
     mov     w22, w1                         // success flag
@@ -113,7 +122,9 @@ read_int_range_loop:
     b       read_int_range_done
 
 read_int_range_invalid:
-    ldr     x0, =invalid_input_msg
+    ldr     x0, =invalid_input_msg          // complaint on the line below
+    bl      printf
+    ldr     x0, =redo_input_pos             // back to the input spot
     bl      printf
     b       read_int_range_loop
 
@@ -195,7 +206,7 @@ print_newline:
     ldp     fp, lr, [sp], 16
     ret
 
-    .data
+    .section .rodata
 .Lnewline: .string "\n"
     .text
 
