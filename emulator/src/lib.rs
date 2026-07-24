@@ -72,6 +72,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     for libc in [
         "printf", "scanf", "puts", "putchar", "getchar", "strlen", "strcmp", "strcpy",
         "memset", "memcpy", "atof", "atoi", "exit", "rand", "srand", "time",
+        "malloc", "free", "usleep", "fflush",
     ] {
         let pat = format!("bl {libc}");
         if normalized.contains(&pat) {
