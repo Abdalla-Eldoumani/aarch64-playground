@@ -6,9 +6,9 @@
 //   https://github.com/Abdalla-Eldoumani/dsav
 //
 // how to run: the program spans every file in the strip above; assemble
-// links them into one image. For the full-screen feel run it from the
-// term tab:  ./program  -- menus read a number plus enter, and every
-// animation paces itself, so take your time.
+// links them into one image, and run takes over the term pane -- menus
+// read a number plus enter, and every animation paces itself. The
+// course way works too, from the term tab:  ./program
 
 define(fp, x29)
 define(lr, x30)
