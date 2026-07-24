@@ -8,6 +8,10 @@ interface ConsolePanelProps {
   stdout: string;
   stderr: string;
   blocked: boolean;
+  /** A terminal program owns the pane's input: its reads are answered by
+   *  keystrokes in the terminal, so this console's stdin box would send
+   *  into a session it cannot see. Disabled, with a pointer to the tab. */
+  ownedByTerminal?: boolean;
   exitCode: number | null;
   vfsFiles: string[];
   pushStdin: (s: string) => void;
@@ -24,6 +28,7 @@ interface ConsolePanelProps {
  * stops auto-scrolling once the user has scrolled up on their own.
  */
 export function ConsolePanel({
+  ownedByTerminal = false,
   stdout,
   stderr,
   blocked,
@@ -67,6 +72,9 @@ export function ConsolePanel({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // A terminal session owns the program's input; the disabled box is the
+    // visible half of that, this is the half a stray submit cannot pass.
+    if (ownedByTerminal) return;
     // Validate the stdin ingress before it reaches the emulator as data.
     const error = validateStdin(stdinValue);
     if (error) {
@@ -102,12 +110,20 @@ export function ConsolePanel({
       <div className="flex items-center justify-between px-2 py-1 bg-[var(--bg-sunken)] border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
           <span className="font-semibold">console</span>
-          {blocked && (
+          {blocked && !ownedByTerminal && (
             <span
               role="status"
               className="px-1.5 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] text-[10px]"
             >
               waiting for input
+            </span>
+          )}
+          {ownedByTerminal && (
+            <span
+              role="status"
+              className="px-1.5 py-0.5 rounded bg-[var(--bg-raised)] text-[var(--text-secondary)] text-[10px]"
+            >
+              running in the terminal
             </span>
           )}
           {exitCode != null && (
@@ -175,13 +191,21 @@ export function ConsolePanel({
               closeStdin();
             }
           }}
-          placeholder={blocked ? "program is waiting for input... (ctrl-d = end of input)" : "stdin"}
+          placeholder={
+            ownedByTerminal
+              ? "this program reads from the terminal tab -- type there"
+              : blocked
+                ? "program is waiting for input... (ctrl-d = end of input)"
+                : "stdin"
+          }
+          disabled={ownedByTerminal}
           aria-label="Standard input"
-          className="flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)]"
+          className="flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)] disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           type="submit"
-          className="px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110"
+          disabled={ownedByTerminal}
+          className="px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           send
         </button>
