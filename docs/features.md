@@ -104,12 +104,24 @@ reference).
 | Course toolchain (`m4 f.asm > f.s`, `gcc f.s -o prog`, `./prog`) | `web/lib/terminal/dispatch.ts`, the wasm `m4_expand` export, the hub's `assembleForTool` in `web/lib/emulator/use-emulator.ts` |
 | Input + history + tab-completion | `web/lib/terminal/input-state.ts` |
 
+## Multi-file workspaces
+
+| Feature | Lives in |
+| --- | --- |
+| Files strip (main.asm + helper tabs, persisted) | `web/components/playground/MultiFileTabs.tsx` |
+| Combined-line <-> owning-file mapping (errors, marker, breakpoints, jump-to-error) | `web/lib/playground/file-map.ts`, wired in `web/components/playground/EmbeddablePlayground.tsx` |
+| Share links carrying the whole workspace | `web/lib/playground/share.ts` |
+| Multi-select import (main + helpers in one pick) | `web/components/playground/ImportExport.tsx` |
+| Multi-file example payloads (`EXAMPLE_FILES`) | `web/lib/playground/playground-handoff.ts` |
+| No-entry-point link gate (`main` or `_start` required) | `emulator/src/frontend/pipeline.rs` |
+
 ## Tutorials & examples
 
 | Feature | Lives in |
 | --- | --- |
 | Tutorial runner with `expect` checks | `web/components/playground/TutorialRunner.tsx`, `web/lib/content/tutorials.ts` |
 | Example loader (stage-grouped) | `web/components/playground/ExampleLoader.tsx` |
+| Terminal-first examples (snake, the data structures visualizer) | `EXAMPLE_TERMINAL` in `web/lib/playground/playground-handoff.ts`, the terminal takeover in `web/components/playground/EmbeddablePlayground.tsx` |
 | Recent programs | `web/components/playground/RecentPrograms.tsx`, `web/lib/playground/auto-save.ts` |
 
 ## PWA & offline
