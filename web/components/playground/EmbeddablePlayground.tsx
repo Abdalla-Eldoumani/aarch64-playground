@@ -51,6 +51,10 @@ import {
 } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 
+// Persisted beside the files strip so a reloaded workspace remembers
+// that its program owns the terminal pane on run.
+const TERMINAL_PROGRAM_KEY = "aarch64-playground:terminal-program";
+
 // Full-only / heavy panels load on first render so a multi-embed page (and
 // the embed/checker chrome) never ships their code.
 const InstructionView = dynamic(
@@ -271,8 +275,24 @@ function EmbeddableCore({
   const [activeFile, setActiveFile] = useState<number>(-1);
   // The loaded program is a terminal program (the visualizer example):
   // run hands it the terminal pane up front, the way snake's raw-mode
-  // flag does mid-run.
-  const [terminalProgram, setTerminalProgram] = useState(false);
+  // flag does mid-run. Persisted beside the files strip so a reloaded
+  // workspace keeps the takeover.
+  const [terminalProgram, setTerminalProgramState] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(TERMINAL_PROGRAM_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setTerminalProgram = useCallback((next: boolean) => {
+    setTerminalProgramState(next);
+    try {
+      window.localStorage.setItem(TERMINAL_PROGRAM_KEY, next ? "1" : "0");
+    } catch {
+      // storage full or blocked; the flag just won't survive a reload
+    }
+  }, []);
   // Nonce asking the attach effect to start a terminal-pane run once the
   // pane's io registration lands (the pane mounts lazily on tab switch).
   const [termRunRequest, setTermRunRequest] = useState<number | null>(null);
