@@ -39,6 +39,6 @@ the source tree, not a rendered page.
 
 ## Test coverage
 
-The suite gates every PR and is green on `main`: 783 Rust tests, 1479 web
+The suite gates every PR and is green on `main`: 783 Rust tests, 1482 web
 tests, and 16 end-to-end corpus fixtures as of the multi-file work. See
 [TESTING.md](TESTING.md) for how to run each layer.
