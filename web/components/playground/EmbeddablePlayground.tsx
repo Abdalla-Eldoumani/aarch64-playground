@@ -296,6 +296,12 @@ function EmbeddableCore({
   // Nonce asking the attach effect to start a terminal-pane run once the
   // pane's io registration lands (the pane mounts lazily on tab switch).
   const [termRunRequest, setTermRunRequest] = useState<number | null>(null);
+  // The terminal mounts lazily on first use and then stays mounted (see
+  // the tab panel below): a live session must survive tab switches.
+  const [termOpened, setTermOpened] = useState(false);
+  useEffect(() => {
+    if (activeTab === "term") setTermOpened(true);
+  }, [activeTab]);
 
   // A share-link boot carries its own workspace: replace the persisted
   // files strip once, before the first assemble can mix the two.
@@ -592,6 +598,9 @@ function EmbeddableCore({
   const [termIO, setTermIO] =
     useState<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
   const foregroundActiveRef = useRef(false);
+  // Mirrored as state so the console can render "this program reads from
+  // the terminal" and disable its own stdin box while a session owns it.
+  const [foregroundLive, setForegroundLive] = useState(false);
 
   // A program that switches the terminal to raw mode is a terminal
   // program: hand it the terminal pane on the false->true edge, the same
@@ -619,6 +628,7 @@ function EmbeddableCore({
     ): Promise<number | null> => {
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
+      setForegroundLive(true);
       let cancelled = false;
       // Wipe the pane once, the moment the program claims the terminal
       // (already true on self-attach; flips mid-run for ./name), so the
@@ -702,6 +712,7 @@ function EmbeddableCore({
         emuRef.current.setOutputTap(null);
         io.setForeground(null);
         foregroundActiveRef.current = false;
+        setForegroundLive(false);
       }
       const e = emuRef.current;
       return e.isHalted ? e.exitCode : null;
@@ -1633,6 +1644,7 @@ function EmbeddableCore({
       stdout={emu.stdout}
       stderr={emu.stderr}
       blocked={emu.blocked}
+      ownedByTerminal={foregroundLive}
       exitCode={emu.exitCode}
       vfsFiles={emu.vfsFiles}
       pushStdin={emu.pushStdin}
@@ -1745,7 +1757,16 @@ function EmbeddableCore({
         {activeTab === "console" && (
           <div className="h-full flex flex-col">{consoleBlock}</div>
         )}
-        {activeTab === "term" && <div className="h-full">{terminalBlock}</div>}
+        {/* The terminal stays MOUNTED once opened and hides with CSS.
+            Unmounting it disposed xterm and dropped the io registration,
+            so switching to another tab mid-session killed a running
+            program's screen and its input -- the student had to re-run
+            it. `hidden` keeps the DOM node (and the session) alive. */}
+        {termOpened && (
+          <div className={activeTab === "term" ? "h-full" : "hidden"}>
+            {terminalBlock}
+          </div>
+        )}
         {activeTab === "watches" && (
           <div className="h-full overflow-auto">{watchBlock}</div>
         )}
