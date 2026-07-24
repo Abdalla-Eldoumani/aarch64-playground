@@ -37,7 +37,7 @@
     {
         "type": "code",
         "language": "asm",
-        "source": ".data \n    message: .string \"Hello, World!\\n\""    },
+        "source": "    .data \n    message: .string \"Hello, World!\\n\""    },
     {
         "type": "prose",
         "markdown": "In the above code, the string `\"Hello, World!\\n\"` is stored in a variable named `message`. The `.string` directive specifies that the data being stored is a string."
@@ -75,7 +75,7 @@
     {
         "type": "editor",
         "language": "asm",
-        "starter": ".data\n    message:    .string  \"Hello, World!\\n\"\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // This is the program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // printf(\"%s\", message)\n    ldr     x0, =message            // Load address of message\n    bl      printf                  // Call printf\n\n    // This is the program epilogue\n    mov     x0, 0                   // End the program by returning 0.\n    ldp     x29, x30, [sp], 16\n    ret"    
+        "starter": "    .data\n    message:    .string  \"Hello, World!\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // This is the program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // printf(\"%s\", message)\n    ldr     x0, =message            // Load address of message\n    bl      printf                  // Call printf\n\n    // This is the program epilogue\n    mov     x0, 0                   // End the program by returning 0.\n    ldp     x29, x30, [sp], 16\n    ret"    
     }
   ]
 }
