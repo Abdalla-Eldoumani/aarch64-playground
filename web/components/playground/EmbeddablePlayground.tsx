@@ -602,7 +602,13 @@ function EmbeddableCore({
       if (emuRef.current.wantsTerminal) clearOnce();
       emuRef.current.setOutputTap((t) => io.write(t));
       io.setForeground({
-        pushInput: (d) => emuRef.current.pushStdin(d),
+        // Cooked-mode input gets the tty's ICRNL: xterm sends \r for
+        // Enter, but scanf and getchar wait for \n. Raw-mode programs
+        // (termios) read bytes themselves and keep the \r.
+        pushInput: (d) =>
+          emuRef.current.pushStdin(
+            emuRef.current.wantsTerminal ? d : d.replace(/\r/g, "\n"),
+          ),
         cancel: () => {
           cancelled = true;
           emuRef.current.pause();
