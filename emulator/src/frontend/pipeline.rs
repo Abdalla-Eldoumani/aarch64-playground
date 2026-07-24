@@ -591,6 +591,9 @@ fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
     for t in tokens {
         match &t.kind {
             TokenKind::Ident(s) => out.push_str(s),
+            // Dotted local labels (`ldr x0, =.Lmsg`) ride through like any
+            // other symbol; dropping them left an empty operand.
+            TokenKind::DirectiveIdent(s) => out.push_str(s),
             TokenKind::IntLit(v) => out.push_str(&format!("{v}")),
             TokenKind::CharLit(v) => out.push_str(&format!("{v}")),
             TokenKind::Comma => out.push(','),
