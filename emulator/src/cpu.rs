@@ -229,6 +229,12 @@ pub struct Cpu {
     /// malloc/free allocator state, snapshotted with the rest of the
     /// machine so step-back restores the heap exactly.
     pub heap: crate::hosted::heap::HeapState,
+    /// Host-requested pause of the step-back snapshot ring. The web sets
+    /// it for live terminal sessions, where per-step clones cost far more
+    /// than the steps and stepping back mid-session has no meaning.
+    /// Transient runner state: not part of any snapshot, cleared on
+    /// load/reset.
+    pub snapshots_paused: bool,
     /// Set when the last dispatched instruction was a nanosleep; the
     /// run loop breaks so the runner can honor the pause, and the
     /// runner consumes it via `take_pending_sleep_ns`.
@@ -292,6 +298,7 @@ impl Cpu {
             rand_state: 1,
             term: TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
+            snapshots_paused: false,
             pending_sleep_ns: None,
             refund_steps_total: 0,
             host: HostTable::new(),
@@ -604,7 +611,10 @@ impl Cpu {
         // programs skip the ring entirely: a paced game executes millions
         // of steps, each clone costs far more than the step itself, and
         // stepping back into the middle of a live game has no meaning.
-        if !self.term.raw_mode {
+        // A host can also pause the ring explicitly (the web pauses it
+        // while a program is driven live in the terminal pane, where the
+        // same cost argument applies to cooked-mode menus).
+        if !self.term.raw_mode && !self.snapshots_paused {
             self.snapshots.push(Snapshot {
                 regs: self.regs.clone(),
                 mem: self.mem.clone(),
@@ -1075,6 +1085,7 @@ impl Cpu {
         self.rand_state = 1;
         self.term = TermState::default();
         self.heap = crate::hosted::heap::HeapState::default();
+        self.snapshots_paused = false;
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
