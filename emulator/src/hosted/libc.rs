@@ -102,6 +102,27 @@ pub fn exit(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Exited(code))
 }
 
+/// usleep(w0 = microseconds) -> 0. Same pacing contract as the
+/// nanosleep syscall: the CPU advances the virtual clock and credits
+/// the sleep refunds, and a real-time runner waits it out.
+pub fn usleep(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    // useconds_t is 32-bit.
+    let us = ctx.regs.read_gpr(0, false);
+    ctx.regs.write_gpr(0, true, 0);
+    if us == 0 {
+        return Ok(HostOutcome::Continue);
+    }
+    Ok(HostOutcome::Sleep(us * 1_000))
+}
+
+/// fflush(stream) -> 0. Emulator output is unbuffered, so there is
+/// nothing to flush; the stub exists so the idiomatic fflush(0) before
+/// a delay works instead of halting on an unknown call.
+pub fn fflush(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    ctx.regs.write_gpr(0, true, 0);
+    Ok(HostOutcome::Continue)
+}
+
 /// C `RAND_MAX`: rand() draws land in `0..=32767`.
 pub const RAND_MAX: i64 = 32767;
 
@@ -245,6 +266,7 @@ mod tests {
         next_fd: u32,
         rand_state: u64,
         term: crate::cpu::TermState,
+        heap: crate::hosted::heap::HeapState,
     }
 
     impl Host {
@@ -263,6 +285,7 @@ mod tests {
                 next_fd: 3,
                 rand_state: 1,
                 term: crate::cpu::TermState::default(),
+                heap: crate::hosted::heap::HeapState::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -278,6 +301,7 @@ mod tests {
                 next_fd: &mut self.next_fd,
                 rand_state: &mut self.rand_state,
                 term: &mut self.term,
+                heap: &mut self.heap,
             }
         }
         fn place_string(&mut self, addr: u64, s: &[u8]) {
