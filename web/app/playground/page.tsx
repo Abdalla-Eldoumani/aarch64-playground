@@ -118,8 +118,10 @@ export default function Home() {
   }, []);
   const openShortcutsHelp = useCallback(() => setHelpOpen(true), []);
   const openShareDialog = useCallback(() => {
+    const files = playgroundRef.current?.getFiles() ?? [];
     setShareState({
       source: playgroundRef.current?.getSource() ?? "",
+      files: files.length > 0 ? files : undefined,
       args: playgroundRef.current?.getArgs() || undefined,
       cursor: playgroundRef.current?.getCursor(),
     });
@@ -250,6 +252,7 @@ export default function Home() {
           ref={playgroundRef}
           chrome={chrome}
           startSource={boot.source}
+          startFiles={boot.fromShare ? boot.files ?? [] : undefined}
           startArgs={boot.args}
           startStdin={boot.stdin}
           startCursor={boot.cursor}
