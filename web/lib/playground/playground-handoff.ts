@@ -28,6 +28,9 @@ export interface HandoffPayload {
    *  a payload without them clears the strip, so a loaded program never
    *  inherits another workspace's helpers. */
   files?: SourceFile[];
+  /** The program is a terminal program: run hands it the terminal pane
+   *  up front (clear, focus, live keys) instead of the console. */
+  terminal?: boolean;
   /** Recents label for the buffer this payload replaces / this program. */
   label?: string;
   args?: string;
@@ -192,6 +195,10 @@ export const MAX_VFS_FIXTURE_NAME_CHARS = 128;
  * served from `<stem>/<name>` beside the main `<stem>.s`. Order is the
  * tab order.
  */
+/** Examples whose whole point is the terminal pane: run takes it over
+ *  (clear, focus, live keys) instead of routing scanf to the console. */
+export const EXAMPLE_TERMINAL: Record<string, true> = { dsav: true };
+
 export const EXAMPLE_FILES: Record<string, string[]> = {
   dsav: [
     "ansi.s",
@@ -286,6 +293,7 @@ export async function fetchExample(stem: string): Promise<HandoffPayload> {
   if (sourceError) throw new Error(sourceError);
 
   const payload: HandoffPayload = { source, label: stem };
+  if (EXAMPLE_TERMINAL[stem]) payload.terminal = true;
 
   const extraNames = EXAMPLE_FILES[stem];
   if (extraNames) {
