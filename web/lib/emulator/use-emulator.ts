@@ -123,6 +123,8 @@ export interface EmulatorState {
    *  the async verdict is in flight (render a pending placeholder). */
   getMemoryMapped: (addr: number, len: number) => boolean | null;
   pushStdin: (s: string) => void;
+  /** Pause/resume the step-back snapshot ring (terminal sessions). */
+  setSnapshotsPaused: (paused: boolean) => void;
   /** Signal end-of-input (ctrl-d): getchar sees EOF, scanf finishes. */
   closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
@@ -802,6 +804,15 @@ export function useEmulator(): EmulatorState {
     void backend.closeStdin();
   }, []);
 
+  // Live terminal sessions pause the step-back ring: the per-step clone
+  // costs more than the step, and stepping back mid-session has no
+  // meaning. The drive resumes it when it stands down.
+  const setSnapshotsPaused = useCallback((paused: boolean) => {
+    const backend = backendRef.current;
+    if (!backend) return;
+    void backend.setSnapshotsPaused(paused);
+  }, []);
+
   const lint = useCallback(async (source: string): Promise<AssemblyError[]> => {
     const backend = backendRef.current;
     if (!backend) return [];
@@ -1076,6 +1087,7 @@ export function useEmulator(): EmulatorState {
       getMemoryMapped,
       pushStdin,
       closeStdin,
+      setSnapshotsPaused,
       lint,
       uploadVfsFile,
       readVfsFile,
