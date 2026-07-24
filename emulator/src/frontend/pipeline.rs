@@ -538,6 +538,18 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                 .into(),
         });
     }
+    // A file with neither entry symbol used to run from the top of
+    // .text, which turns a helpers-only file into a confusing crash.
+    // Real ld refuses to link it; so do we.
+    if !symbols.contains_key("main") && !symbols.contains_key("_start") {
+        return Err(EmuError::LinkError {
+            line: 0,
+            message: "no entry point -- define `main:` (declared `.global main`) \
+                      or `_start:`. A file holding only helper functions runs as \
+                      part of a program whose other file has `main`"
+                .into(),
+        });
+    }
     let entry_point = symbols.get("main").copied().unwrap_or(CODE_BASE);
 
     Ok(LinkedImage {
