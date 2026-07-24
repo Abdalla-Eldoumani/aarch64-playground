@@ -543,6 +543,10 @@ function EmbeddableCore({
     if (emu.blocked && !lastBlockedRef.current) {
       lastBlockedRef.current = true;
       if (emu.wantsTerminal) return;
+      // A foreground terminal session owns the program's input even
+      // without raw mode: a menu program run as `./program` reads its
+      // scanf lines from the term pane, so the console jump stands down.
+      if (foregroundActiveRef.current) return;
       queueMicrotask(() => {
         setActiveTab("console");
         // Phones route panes through the pane switcher, not the tab state.
