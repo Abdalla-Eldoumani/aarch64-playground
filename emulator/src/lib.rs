@@ -682,6 +682,14 @@ impl Emulator {
         self.cpu.close_stdin();
     }
 
+    /// Pause or resume the step-back snapshot ring. The terminal pane's
+    /// foreground drive pauses it for live sessions: the per-step clone
+    /// costs far more than the step, and stepping back into the middle
+    /// of a live session has no meaning. Cleared by load and reset.
+    pub fn set_snapshots_paused(&mut self, paused: bool) {
+        self.cpu.snapshots_paused = paused;
+    }
+
     /// Whether the CPU is paused waiting for stdin.
     /// True once the running program has put the terminal in raw mode
     /// (ioctl TCSETS clearing ICANON/ECHO): the UI treats it as a
