@@ -26,8 +26,13 @@ surface for `write`/`read`/`exit`/`openat`/`close`/`lseek`.
 - `read-file.s` -- open and read a file
 - `copy-file.s` -- copy one file to another
 
-One extra program is served beyond the tutorial set:
+Two extra programs are served beyond the tutorial set:
 
 - `snake.s` -- the real-time snake game, six modes, from
   https://github.com/Abdalla-Eldoumani/snake-game; run it and the
   playground hands it the terminal pane for live keyboard play
+- `dsav.s` + `dsav/` -- the data structures and algorithms visualizer
+  from https://github.com/Abdalla-Eldoumani/dsav, the multi-file
+  example: `dsav.s` holds `main`, the eleven files under `dsav/` load
+  into the files strip and link with it. Menu-driven; best run from the
+  term tab (`./program`) so the ansi animations land in a real terminal
