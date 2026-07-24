@@ -226,6 +226,9 @@ pub struct Cpu {
     /// mode, fd 0 O_NONBLOCK, the virtual clock). Snapshotted with the
     /// rest of the machine.
     pub term: TermState,
+    /// malloc/free allocator state, snapshotted with the rest of the
+    /// machine so step-back restores the heap exactly.
+    pub heap: crate::hosted::heap::HeapState,
     /// Set when the last dispatched instruction was a nanosleep; the
     /// run loop breaks so the runner can honor the pause, and the
     /// runner consumes it via `take_pending_sleep_ns`.
@@ -288,6 +291,7 @@ impl Cpu {
             next_fd: 3,
             rand_state: 1,
             term: TermState::default(),
+            heap: crate::hosted::heap::HeapState::default(),
             pending_sleep_ns: None,
             refund_steps_total: 0,
             host: HostTable::new(),
@@ -318,6 +322,10 @@ impl Cpu {
         cpu.host.register("rand", crate::hosted::libc::rand);
         cpu.host.register("srand", crate::hosted::libc::srand);
         cpu.host.register("time", crate::hosted::libc::time);
+        cpu.host.register("malloc", crate::hosted::heap::malloc);
+        cpu.host.register("free", crate::hosted::heap::free);
+        cpu.host.register("usleep", crate::hosted::libc::usleep);
+        cpu.host.register("fflush", crate::hosted::libc::fflush);
         // Sentinel used when a hosted program's `main` returns. Loader
         // stashes this address in LR so `ret` from main halts cleanly
         // with x0 as the exit code.
@@ -610,6 +618,7 @@ impl Cpu {
                 next_fd: self.next_fd,
                 rand_state: self.rand_state,
                 term: self.term,
+                heap: self.heap.clone(),
             });
         }
 
@@ -833,6 +842,7 @@ impl Cpu {
             next_fd: &mut self.next_fd,
             rand_state: &mut self.rand_state,
             term: &mut self.term,
+            heap: &mut self.heap,
         };
         let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
         match outcome {
@@ -898,6 +908,7 @@ impl Cpu {
             next_fd: &mut self.next_fd,
             rand_state: &mut self.rand_state,
             term: &mut self.term,
+            heap: &mut self.heap,
         };
         let outcome = table
             .dispatch(pc, &mut ctx)
@@ -1063,6 +1074,7 @@ impl Cpu {
         self.next_fd = 3;
         self.rand_state = 1;
         self.term = TermState::default();
+        self.heap = crate::hosted::heap::HeapState::default();
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
@@ -1106,6 +1118,7 @@ impl Cpu {
             next_fd: self.next_fd,
             rand_state: self.rand_state,
             term: self.term,
+            heap: self.heap.clone(),
         };
         self.snapshots.save_named(name, snap);
     }
@@ -1128,6 +1141,7 @@ impl Cpu {
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.term = snap.term;
+        self.heap = snap.heap;
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
@@ -1178,6 +1192,7 @@ impl Cpu {
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.term = snap.term;
+        self.heap = snap.heap;
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
