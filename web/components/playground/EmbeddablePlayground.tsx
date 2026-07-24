@@ -330,13 +330,20 @@ function EmbeddableCore({
   const toast = useToast();
   const importTarget = getImportTarget(activeFile);
 
+  // Replacing the program text drops the terminal-program flag: it
+  // belongs to the program that set it, and a stale flag would send an
+  // unrelated program's run to the terminal pane.
   const loadSource = useCallback(
-    (next: string, _label?: string) => setSource(next),
-    [],
+    (next: string, _label?: string) => {
+      setSource(next);
+      setTerminalProgram(false);
+    },
+    [setTerminalProgram],
   );
 
   const handleImport = useCallback(
     (target: ImportTarget, body: string) => {
+      setTerminalProgram(false);
       switch (target.kind) {
         case "main":
           setSource(body);
@@ -352,7 +359,7 @@ function EmbeddableCore({
         }
       }
     },
-    [extraFiles, setExtraFiles, toast],
+    [extraFiles, setExtraFiles, toast, setTerminalProgram],
   );
 
   // Multi-select import: a file named main.asm / main.s replaces the main
@@ -360,6 +367,7 @@ function EmbeddableCore({
   // whole multi-file program lands in one gesture.
   const handleImportMany = useCallback(
     (files: { name: string; body: string }[]) => {
+      setTerminalProgram(false);
       const mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
       if (mainIdx >= 0) setSource(files[mainIdx].body);
       const rest = files.filter((_, i) => i !== mainIdx);
@@ -372,7 +380,7 @@ function EmbeddableCore({
       setExtraFiles(next);
       toast.show(`imported ${files.length} files`);
     },
-    [extraFiles, setExtraFiles, toast],
+    [extraFiles, setExtraFiles, toast, setTerminalProgram],
   );
 
   // Only the full playground persists to the shared auto-save buffer; embed
@@ -595,12 +603,32 @@ function EmbeddableCore({
   // pane mounts lazily on first tab activation, which happens AFTER a
   // raw-mode program's rising edge switches the tab -- the self-attach
   // effect must re-fire when the registration lands.
+  // Live only while this component is mounted: a foreground drive polls
+  // on a timer and must not outlive the surface it drives.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  // Mirrors termIO for the poll loop, which must notice a pane that went
+  // away without waiting for a re-render.
+  const termIORef = useRef<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
   const [termIO, setTermIO] =
     useState<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
   const foregroundActiveRef = useRef(false);
   // Mirrored as state so the console can render "this program reads from
   // the terminal" and disable its own stdin box while a session owns it.
   const [foregroundLive, setForegroundLive] = useState(false);
+
+  // Hiding the pane blurs its textarea, so coming back to a live session
+  // needs the keyboard handed over again -- otherwise the student types
+  // into nothing while the console says "type in the terminal".
+  useEffect(() => {
+    if (activeTab !== "term" || !foregroundLive) return;
+    termIORef.current?.focus?.();
+  }, [activeTab, foregroundLive]);
 
   // A program that switches the terminal to raw mode is a terminal
   // program: hand it the terminal pane on the false->true edge, the same
@@ -692,6 +720,13 @@ function EmbeddableCore({
         let resumeArmed = false;
         for (;;) {
           await new Promise<void>((r) => setTimeout(r, 32));
+          // Stand down if this component unmounted (a route change) or
+          // the pane we are driving went away (a mobile pane switch
+          // unmounts it). Without this the loop spins forever on a
+          // blocked program, holding the console's stdin disabled and
+          // the snapshot ring paused with no way back.
+          if (!mountedRef.current) break;
+          if (termIORef.current !== null && termIORef.current !== io) break;
           const e = emuRef.current;
           if (e.wantsTerminal) clearOnce();
           if (cancelled || e.isHalted || e.error) break;
@@ -726,6 +761,12 @@ function EmbeddableCore({
   // the tab switch, so the drive cannot start synchronously here).
   const handleRun = useCallback(() => {
     if (terminalProgram && chrome === "full") {
+      // The terminal takeover WIPES the pane, so only start one when
+      // there is really something to run. The Run button already knows
+      // this; the F5 shortcut and the palette reach here too, and
+      // without the guard they cleared a finished program's output and
+      // printed an exit line onto an empty screen.
+      if (!emu.programLoaded || emu.isHalted || emu.isRunning) return;
       setActiveTab("term");
       setPaneRequest({ pane: "term", nonce: Date.now() });
       setTermRunRequest(Date.now());
@@ -743,8 +784,10 @@ function EmbeddableCore({
   // with the pane printing the exit line when the session ends.
   useEffect(() => {
     if (termRunRequest == null || !termIO) return;
-    setTermRunRequest(null);
+    // Check busy BEFORE consuming the nonce: dropping the request while
+    // a session owns the pane silently swallowed the student's Run.
     if (foregroundActiveRef.current) return;
+    setTermRunRequest(null);
     const io = termIO;
     void driveForeground(io, { clearAtStart: true }).then((exitCode) => {
       io.sessionEnded?.(exitCode);
@@ -1677,7 +1720,12 @@ function EmbeddableCore({
       <TerminalPane
         buildContext={buildTerminalContext}
         onUploadRequest={() => terminalUploadRef.current?.click()}
-        onRegisterIO={setTermIO}
+        onRegisterIO={(io) => {
+          // Keep the ref in lockstep so a live drive sees a pane
+          // teardown immediately, not one render later.
+          termIORef.current = io;
+          setTermIO(io);
+        }}
       />
     </div>
   );
