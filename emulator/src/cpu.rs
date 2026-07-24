@@ -376,6 +376,7 @@ impl Cpu {
         self.term = TermState::default();
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
+        self.snapshots_paused = false;
         self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
     }
 
@@ -408,6 +409,7 @@ impl Cpu {
         self.term = TermState::default();
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
+        self.snapshots_paused = false;
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
@@ -614,7 +616,14 @@ impl Cpu {
         // A host can also pause the ring explicitly (the web pauses it
         // while a program is driven live in the terminal pane, where the
         // same cost argument applies to cooked-mode menus).
-        if !self.term.raw_mode && !self.snapshots_paused {
+        if self.term.raw_mode || self.snapshots_paused {
+            // Not recording this step. Drop the frames recorded BEFORE
+            // this stretch too: keeping them lets one `step_back` leap
+            // over every unrecorded step into a state many instructions
+            // old while the step counter drops by one. An unrecorded
+            // stretch ends the history rather than hiding a hole in it.
+            self.snapshots.clear();
+        } else {
             self.snapshots.push(Snapshot {
                 regs: self.regs.clone(),
                 mem: self.mem.clone(),
