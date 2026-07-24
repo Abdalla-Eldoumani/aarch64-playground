@@ -34,5 +34,6 @@ Two extra programs are served beyond the tutorial set:
 - `dsav.s` + `dsav/` -- the data structures and algorithms visualizer
   from https://github.com/Abdalla-Eldoumani/dsav, the multi-file
   example: `dsav.s` holds `main`, the eleven files under `dsav/` load
-  into the files strip and link with it. Menu-driven; best run from the
-  term tab (`./program`) so the ansi animations land in a real terminal
+  into the files strip and link with it. Menu-driven; run hands it the
+  terminal pane (typed input echoes, animations pace themselves), and
+  the course way works too: `./program` from the term tab
