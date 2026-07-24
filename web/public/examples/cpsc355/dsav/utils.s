@@ -206,7 +206,7 @@ print_newline:
     ldp     fp, lr, [sp], 16
     ret
 
-    .section .rodata
+    .data
 .Lnewline: .string "\n"
     .text
 
