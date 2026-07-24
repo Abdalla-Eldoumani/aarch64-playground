@@ -124,6 +124,15 @@ export class EmulatorInstance {
     if (typeof close === "function") close.call(this.inner);
   }
 
+  /** Pause/resume the step-back snapshot ring for live terminal
+   *  sessions. Feature-detected so an older wasm build just keeps
+   *  snapshotting. */
+  setSnapshotsPaused(paused: boolean): void {
+    const set = (this.inner as { set_snapshots_paused?: (p: boolean) => void })
+      .set_snapshots_paused;
+    if (typeof set === "function") set.call(this.inner, paused);
+  }
+
   pushStdin(s: string): void {
     this.inner.push_stdin(s);
   }
