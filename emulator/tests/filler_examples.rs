@@ -102,7 +102,7 @@ fn snake_arcade_plays_a_timed_session_and_exits_cleanly() {
         }
         let _ = cpu.take_pending_sleep_ns();
         boundaries += 1;
-        if boundaries % 2 == 0 {
+        if boundaries.is_multiple_of(2) {
             if let Some(tok) = tokens.next() {
                 cpu.push_stdin(tok.as_bytes());
             }
