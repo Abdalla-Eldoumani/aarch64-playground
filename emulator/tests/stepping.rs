@@ -238,3 +238,22 @@ fn line_map_covers_every_text_instruction() {
         "one line-map entry per emitted .text instruction",
     );
 }
+
+/// The host can pause the snapshot ring (the web does this for live
+/// terminal sessions): paused steps push no frames, so step_back has
+/// nothing to undo, and resuming re-arms it.
+#[test]
+fn paused_snapshots_skip_the_ring() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(COMPLEX_SRC, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+
+    cpu.snapshots_paused = true;
+    cpu.step().expect("step");
+    cpu.step().expect("step");
+    assert!(!cpu.can_step_back(), "paused steps must not record frames");
+
+    cpu.snapshots_paused = false;
+    cpu.step().expect("step");
+    assert!(cpu.can_step_back(), "resuming re-arms the ring");
+}
