@@ -49,7 +49,6 @@ ui_nl:              .string "\n"
 
 ui_fmt_at:          .string "\x1b[%d;%dH"
 ui_fmt_str:         .string "%s"
-ui_fmt_pad:         .string "%*s"
 
 // Complexity card labels: the reason a reader trusts what they just
 // watched. Every algorithm screen carries one.
