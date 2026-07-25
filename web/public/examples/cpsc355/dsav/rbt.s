@@ -1700,7 +1700,10 @@ rb_render_empty:
 rb_render_stats:
     mov     w0, 16
     mov     w1, 56
-    mov     w2, 22
+    // 18 columns of literal plus two counts, and a full tree is 100 nodes.
+    // Wipe to the last inner column so the line can never leave a stale
+    // digit behind when it shrinks.
+    mov     w2, 24
     bl      rb_blank
 
     ldr     x0, =rb_root
@@ -1992,16 +1995,18 @@ rb_ask:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
+    str     x21, [sp, 32]
 
-    mov     x19, x0
-
+    mov     x21, x0                         // kept, so a refused value can
+                                            // be asked for again
+rb_ask_prompt:
     mov     w0, 18
     mov     w1, 2
     mov     w2, 78
     bl      rb_blank
     mov     w0, 18
     mov     w1, 4
-    mov     x2, x19
+    mov     x2, x21
     bl      ui_prompt
     bl      rb_flush
 
@@ -2021,20 +2026,21 @@ rb_ask:
     b       rb_ask_done
 
 rb_ask_range:
+    // Say why and ask again. Answering 0 here would be indistinguishable
+    // from a closed stdin, and the operation was being abandoned silently.
     ldr     x0, =rb_msg_range
     mov     w1, 0
     mov     w2, 0
     mov     w3, 0
     bl      rb_say
-    mov     w0, 0
-    mov     w1, 0
-    b       rb_ask_done
+    b       rb_ask_prompt
 
 rb_ask_stop:
     mov     w0, 0
     mov     w1, 0
 
 rb_ask_done:
+    ldr     x21, [sp, 32]
     ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 48
     ret
