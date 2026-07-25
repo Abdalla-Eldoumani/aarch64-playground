@@ -140,12 +140,17 @@ read_int_clear_message:
     ldp     fp, lr, [sp], 16
     ret
 
-// read_int_range(w0 = min, w1 = max) -> w0 = value in range
+// read_int_range(w0 = min, w1 = max) -> w0 = value in range,
+//                                       w1 = 1 typed, 0 at end of input
 // reprompts in place until a number in [min, max] is entered; the
 // complaint sits on the line under the prompt and stays put. End of
 // input answers min, which is the back/exit choice on every menu, so
 // a closed stdin walks the program out instead of spinning on a prompt
 // nobody can answer.
+//
+// A menu can read w0 alone: min is its back choice either way. A prompt
+// asking for a VALUE cannot -- min is a real answer there, and taking it
+// silently committed a number nobody typed. Those callers check w1.
     .global read_int_range
 read_int_range:
     stp     fp, lr, [sp, -48]!
@@ -172,6 +177,7 @@ read_int_range_loop:
     b.gt    read_int_range_invalid
 
     mov     w0, w21
+    mov     w1, 1
     b       read_int_range_done
 
 read_int_range_invalid:
@@ -180,6 +186,7 @@ read_int_range_invalid:
 
 read_int_range_eof:
     mov     w0, w19                         // min = back / exit
+    mov     w1, 0
 
 read_int_range_done:
     ldp     x21, x22, [sp, 32]
