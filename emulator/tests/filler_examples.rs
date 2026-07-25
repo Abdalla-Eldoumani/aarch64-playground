@@ -126,9 +126,10 @@ fn snake_arcade_plays_a_timed_session_and_exits_cleanly() {
 /// the whole surface assembles, links, and runs behind one gate.
 #[test]
 fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
-    const EXTRAS: [&str; 11] = [
-        "ansi.s", "display.s", "utils.s", "array.s", "stack.s", "queue.s",
-        "list.s", "bst.s", "rbt.s", "sort.s", "search.s",
+    const EXTRAS: [&str; 17] = [
+        "theme.s", "ui.s", "ansi.s", "display.s", "utils.s", "array.s",
+        "stack.s", "queue.s", "list.s", "bst.s", "rbt.s", "heap.s",
+        "hash.s", "graph.s", "sort.s", "search.s", "recursion.s",
     ];
     let mut source = read("dsav.s");
     for name in EXTRAS {
@@ -166,7 +167,15 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
     }
     assert_eq!(cpu.exit_code, Some(0));
     let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
-    assert!(stdout.contains("DATA STRUCTURES & ALGORITHMS VISUALIZER"));
-    assert!(stdout.contains("Goodbye"), "the exit path prints the goodbye line");
+    // the home screen: the app mark and this screen's name on the title
+    // bar, the two group headings, and the tagline the kernel sets beside
+    // them
+    assert!(stdout.contains("DSAV"), "the title bar carries the app mark");
+    assert!(stdout.contains("STRUCTURES") && stdout.contains("ALGORITHMS"));
+    assert!(stdout.contains("data structures & algorithms in ARMv8 assembly"));
+    assert!(
+        stdout.contains("thanks for using dsav"),
+        "the exit path prints the goodbye line"
+    );
     assert!(sleeps > 0, "the animations pace themselves through usleep");
 }
