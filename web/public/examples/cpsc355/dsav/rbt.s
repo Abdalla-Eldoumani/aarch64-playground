@@ -1,86 +1,183 @@
-// rbt_viz.asm - red-black tree: insert, delete, search, fixups
-// nodes are red or black, root and nil are black, a red node has black
-// children, and every root-to-nil path counts the same number of blacks
+// rbt_viz.asm - a red-black tree, and the repair work that keeps it short
+//
+// A search tree only stays fast while it stays shallow, and nothing in a
+// plain insert makes it stay shallow. This one pays a small, bounded
+// price on every insert instead: recolour, and rotate at most twice. The
+// three cases of that repair are the whole idea, so the insert screen
+// stops on each one, paints the family it is looking at, and says in
+// plain words what it is about to do and why.
+//
+// The rules, in the order they matter: the root is black; a red node
+// never has a red child; every path from a node down to a nil leaf passes
+// the same number of black nodes. The last one bounds the height, and the
+// first two are what keep it true.
 
 define(fp, x29)
 define(lr, x30)
 
+// node layout: value, links, parent, colour, and the flag a walk paints
+    RB_DATA   = 0
+    RB_LEFT   = 8
+    RB_RIGHT  = 16
+    RB_PARENT = 24
+    RB_COLOR  = 32
+    RB_SEEN   = 40
+    RB_SIZE   = 48
+
+// Colours are plain flags on the node, nothing to do with what is drawn
+    RB_BLACK = 0
+    RB_RED   = 1
+
+// Role numbers mirror the UI_ROLE_* set in ui.asm. They are repeated here
+// so this file also assembles on its own, the way the web build feeds it.
+    RB_ROLE_TEXT   = 0
+    RB_ROLE_DIM    = 1
+    RB_ROLE_FAINT  = 2
+    RB_ROLE_ACCENT = 3
+    RB_ROLE_KEY    = 4
+    RB_ROLE_OK     = 5
+    RB_ROLE_WARN   = 6
+    RB_ROLE_HOT    = 7
+    RB_ROLE_BAD    = 8
+    RB_ROLE_NODE   = 9
+
+    RB_TOP_ROW   = 5                        // where the root sits
+    RB_TOP_COL   = 38                       // the left edge of its cell
+    RB_SPREAD    = 16                       // half the width of level one
+    RB_LAST_LVL  = 4                        // deepest level with room to draw
+    RB_ORDER_MAX = 60                       // columns the order strip may use
+
     .data
     .balign 8
 
-// node field offsets and size
-define(RB_NODE_DATA, 0)
-define(RB_NODE_LEFT, 8)
-define(RB_NODE_RIGHT, 16)
-define(RB_NODE_PARENT, 24)
-define(RB_NODE_COLOR, 32)
-define(RB_NODE_SIZE, 40)
-
-// node colors are plain 0/1 flags, not the old shared ansi color numbers
-define(COLOR_BLACK, 0)
-define(COLOR_RED, 1)
-NULL = 0
-
-// tree state
 rb_root:            .dword 0
-rb_nil:             .dword 0
+rb_nil:             .dword 0                // one shared black leaf
+rb_hl_node:         .dword 0, 0, 0, 0       // nodes wearing a state colour
+
+    .balign 4
 rb_node_count:      .word 0
-rb_height:          .word 0
+rb_hl_role:         .word 0, 0, 0, 0
+rb_order_len:       .word 0
+rb_delay:           .word 600               // milliseconds between beats
+rb_narrate:         .word 0                 // is anyone watching the repair?
+rb_fix_steps:       .word 0                 // cases the last repair fired
 
-// ui strings
-rb_title:           .string "RED-BLACK TREE VISUALIZATION"
-rb_menu_title:      .string "RED-BLACK TREE OPERATIONS"
+rb_cell:            .skip 8                 // one value, formatted
+rb_order:           .skip 96                // the visit order, as text
 
-menu_rb_1:          .string "[1] Insert Node"
-menu_rb_2:          .string "[2] Search Node"
-menu_rb_3:          .string "[3] Delete Node"
-menu_rb_4:          .string "[4] Inorder Traversal"
-menu_rb_5:          .string "[5] Initialize Sample Tree"
-menu_rb_6:          .string "[6] Display Tree"
-menu_rb_7:          .string "[7] Verify RB Properties"
-menu_rb_0:          .string "[0] Back to Main Menu"
+rb_sp:              .string " "
+rb_dash:            .string "\xe2\x94\x80"
+rb_tee:             .string "\xe2\x94\xb4"  // a parent with both children
+rb_elbow_l:         .string "\xe2\x95\xad"  // down to the left child
+rb_elbow_r:         .string "\xe2\x95\xae"  // down to the right child
+rb_elbow_lo:        .string "\xe2\x95\xaf"  // a left child and nothing else
+rb_elbow_ro:        .string "\xe2\x95\xb0"  // a right child and nothing else
+rb_deeper:          .string "\xe2\x8b\xae"  // the tree carries on below
 
-rb_menu_prompt:        .string "Enter your choice: "
-rb_prompt_value:       .string "Enter value: "
+rb_fmt_cell:        .string "%2d"
+rb_fmt_order:       .string "%d "
+rb_fmt_stat:        .string "%d nodes  \xc2\xb7  height %d"
 
-rb_msg_inserted:       .string "\x1b[32m✓ Node %d inserted successfully\x1b[0m"
-rb_msg_found:          .string "\x1b[32m✓ Node %d found!\x1b[0m"
-rb_msg_not_found:      .string "\x1b[31m✗ Node %d not found\x1b[0m"
-rb_msg_empty_tree:     .string "\x1b[33mTree is empty!\x1b[0m"
-msg_duplicate:      .string "\x1b[33m⚠ Node %d already exists\x1b[0m"
-msg_searching:      .string "Searching for %d..."
-msg_visiting:       .string "Visiting node: %d"
-rb_msg_comparing:      .string "Comparing with node: %d"
-msg_inserted_at:    .string "Inserted %d as %s child"
-msg_left:           .string "LEFT"
-msg_right:          .string "RIGHT"
-rb_msg_deleted:        .string "\x1b[32m✓ Node %d deleted successfully\x1b[0m"
-msg_deleting:       .string "Deleting node: %d"
+rb_scr_menu:        .string "red-black tree  \xc2\xb7  it rebalances itself"
+rb_scr_insert:      .string "red-black tree  \xc2\xb7  insert, and the repair it triggers"
+rb_scr_search:      .string "red-black tree  \xc2\xb7  search"
+rb_scr_delete:      .string "red-black tree  \xc2\xb7  delete"
+rb_scr_in:          .string "red-black tree  \xc2\xb7  inorder traversal"
+rb_scr_sample:      .string "red-black tree  \xc2\xb7  build the sample tree"
+rb_scr_show:        .string "red-black tree  \xc2\xb7  the tree right now"
+rb_scr_verify:      .string "red-black tree  \xc2\xb7  check the rules"
 
-// property verification messages
-msg_prop_header:    .string "\x1b[1;36m=== RB TREE PROPERTIES ===\x1b[0m"
-msg_prop_1:         .string "✓ Property 1: All nodes are RED or BLACK"
-msg_prop_2:         .string "✓ Property 2: Root is BLACK"
-msg_prop_3:         .string "✓ Property 3: NIL leaves are BLACK"
-msg_prop_4:         .string "✓ Property 4: No consecutive RED nodes"
-msg_prop_5:         .string "✓ Property 5: Equal black-height on all paths"
-msg_prop_footer:    .string "\x1b[32mAll RB tree properties are satisfied!\x1b[0m"
-msg_node_info:      .string "Total nodes: %d | Tree height: %d | Balanced: ✓"
+rb_pan_ops:         .string "operations"
+rb_pan_tree:        .string "tree"
+rb_pan_rules:       .string "the rules, measured against this tree"
 
-// highlight colors
-color_red_node:     .string "\x1b[41;97m"
-color_black_node:   .string "\x1b[47;30m"
-color_nil_node:     .string "\x1b[100;37m"
-color_z:            .string "\x1b[43;30m"
-color_parent:       .string "\x1b[46;30m"
-color_gp:           .string "\x1b[45;37m"
-color_uncle:        .string "\x1b[42;30m"
-rb_color_reset:        .string "\x1b[0m"
+rb_hint_menu:       .string "pick an operation  \xc2\xb7  0 goes back to the main menu"
+rb_hint_run:        .string "enter returns to the tree menu  \xc2\xb7  red is a node colour, not a state"
+rb_hint_rules:      .string "enter returns to the tree menu  \xc2\xb7  every check runs over the live tree"
 
-rb_visual_delay:    .word 600
+rb_opt_1:           .string "insert a value and watch the tree rebalance"
+rb_opt_2:           .string "search for a value, one comparison a level"
+rb_opt_3:           .string "delete a value and repair the black heights"
+rb_opt_4:           .string "inorder: sorted order, off a tree that stays short"
+rb_opt_5:           .string "build the sample tree, one insert at a time"
+rb_opt_6:           .string "show the tree as it stands"
+rb_opt_7:           .string "check the five rules against the tree"
+rb_opt_0:           .string "back to the main menu"
+
+rb_key_1:           .string "1"
+rb_key_2:           .string "2"
+rb_key_3:           .string "3"
+rb_key_4:           .string "4"
+rb_key_5:           .string "5"
+rb_key_6:           .string "6"
+rb_key_7:           .string "7"
+rb_key_0:           .string "0"
+
+rb_lg_red:          .string "red"
+rb_lg_black:        .string "black"
+rb_lg_new:          .string "new"
+rb_lg_parent:       .string "parent"
+rb_lg_gp:           .string "grandparent"
+rb_lg_uncle:        .string "uncle"
+
+rb_lbl_rule:        .string "a red node never has a red child, and every path holds the same blacks"
+rb_lbl_order:       .string "order"
+rb_lbl_root:        .string "root"
+rb_lbl_none:        .string "no root yet"
+rb_lbl_yes:         .string "holds"
+rb_lbl_no:          .string "broken"
+
+rb_rule_1:          .string "every node is either red or black"
+rb_rule_2:          .string "the root is black"
+rb_rule_3:          .string "every empty branch ends at the same black nil leaf"
+rb_rule_4:          .string "a red node has no red child"
+rb_rule_5:          .string "every path down to a leaf passes the same number of blacks"
+
+rb_ask_choice:      .string "choice "
+rb_ask_insert:      .string "value to insert (0 to 99)  "
+rb_ask_delete:      .string "value to delete  "
+rb_ask_search:      .string "value to look for  "
+
+rb_o1:              .string "O(1)"
+rb_on:              .string "O(n)"
+rb_oh:              .string "O(h)"
+rb_ologn:           .string "O(log n)"
+
+rb_msg_empty:       .string "the tree is empty. insert a value, or build the sample tree"
+rb_msg_range:       .string "values run from 0 to 99, so every node stays two digits wide"
+rb_msg_alloc:       .string "the allocator refused a node, so nothing was inserted"
+rb_msg_start:       .string "a new node always arrives red, so no black height changes yet"
+rb_msg_root:        .string "the tree was empty, so %d becomes the root and is painted black"
+
+rb_msg_case1:       .string "the uncle is red too, so repaint parent and uncle black, grandparent red"
+rb_msg_case2:       .string "the new node bends inward, so one rotation straightens the run first"
+rb_msg_case3:       .string "the run is straight, so recolour and rotate once at the grandparent"
+rb_msg_fixed:       .string "no red node has a red child again, and the root is black"
+rb_msg_nofix:       .string "the parent was already black, so nothing had to be repaired"
+
+rb_fmt_cmp_lt:      .string "%d is smaller than %d, so the descent goes left"
+rb_fmt_cmp_gt:      .string "%d is larger than %d, so the descent goes right"
+rb_fmt_dup:         .string "%d is already in the tree, and a search tree keeps one of each"
+rb_fmt_arrived:     .string "%d hangs off %d, red, which is the colour that changes nothing"
+rb_fmt_placed:      .string "inserted %d  \xc2\xb7  comparisons %d  \xc2\xb7  repair steps %d"
+rb_fmt_found:       .string "found %d  \xc2\xb7  comparisons %d  \xc2\xb7  depth %d"
+rb_fmt_missing:     .string "the descent ran out of tree, so %d is not in here"
+rb_fmt_del_red:     .string "%d is red, so removing it changes no black height at all"
+rb_fmt_del_black:   .string "%d is black, so its path ends one black short and needs repair"
+rb_fmt_del_two:     .string "%d has two children, so its successor moves up and keeps the colour"
+rb_fmt_deleted:     .string "deleted %d, and every path still counts the same number of blacks"
+rb_fmt_visit:       .string "visit %d"
+rb_fmt_done_in:     .string "sorted order again, but off a tree that cannot go lopsided"
+rb_fmt_sample:      .string "eight values, and not one of them left the tree taller than it had to be"
+rb_fmt_state:       .string "%d nodes, %d levels. a plain search tree could be %d levels here"
+rb_fmt_facts:       .string "%d nodes  \xc2\xb7  height %d  \xc2\xb7  black height %d"
+rb_msg_all_ok:      .string "every rule holds, so no path down can be more than twice the shortest"
+rb_msg_broken:      .string "a rule is broken, which should not happen: the repair missed a case"
 
     .text
     .balign 4
+
+// ---------------------------------------------------------- the algorithm
 
 // rb_init_nil() - allocate the shared black nil sentinel (safe to call again)
     .global rb_init_nil
@@ -90,24 +187,25 @@ rb_init_nil:
 
     ldr     x0, =rb_nil
     ldr     x1, [x0]
-    cbnz    x1, init_nil_done
+    cbnz    x1, rb_init_nil_done
 
-    mov     x0, RB_NODE_SIZE
+    mov     x0, RB_SIZE
     bl      malloc
-    cbz     x0, init_nil_done
+    cbz     x0, rb_init_nil_done
 
     mov     x1, 0
-    str     x1, [x0, RB_NODE_DATA]
-    str     x1, [x0, RB_NODE_LEFT]
-    str     x1, [x0, RB_NODE_RIGHT]
-    str     x1, [x0, RB_NODE_PARENT]
-    mov     w1, COLOR_BLACK
-    strb    w1, [x0, RB_NODE_COLOR]
+    str     x1, [x0, RB_DATA]
+    str     x1, [x0, RB_LEFT]
+    str     x1, [x0, RB_RIGHT]
+    str     x1, [x0, RB_PARENT]
+    mov     w1, RB_BLACK
+    strb    w1, [x0, RB_COLOR]
+    str     xzr, [x0, RB_SEEN]
 
     ldr     x1, =rb_nil
     str     x0, [x1]
 
-init_nil_done:
+rb_init_nil_done:
     ldp     fp, lr, [sp], 16
     ret
 
@@ -122,24 +220,25 @@ rb_create_node:
 
     bl      rb_init_nil
 
-    mov     x0, RB_NODE_SIZE
+    mov     x0, RB_SIZE
     bl      malloc
-    cbz     x0, rb_create_node_fail
+    cbz     x0, rb_create_fail
 
-    str     w19, [x0, RB_NODE_DATA]
+    str     w19, [x0, RB_DATA]
 
     ldr     x1, =rb_nil
     ldr     x1, [x1]
-    str     x1, [x0, RB_NODE_LEFT]
-    str     x1, [x0, RB_NODE_RIGHT]
+    str     x1, [x0, RB_LEFT]
+    str     x1, [x0, RB_RIGHT]
 
     mov     x1, 0
-    str     x1, [x0, RB_NODE_PARENT]
+    str     x1, [x0, RB_PARENT]
 
-    mov     w1, COLOR_RED
-    strb    w1, [x0, RB_NODE_COLOR]
+    mov     w1, RB_RED
+    strb    w1, [x0, RB_COLOR]
+    str     xzr, [x0, RB_SEEN]
 
-rb_create_node_fail:
+rb_create_fail:
     ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 32
     ret
@@ -150,14 +249,14 @@ rb_get_color:
     ldr     x1, =rb_nil
     ldr     x1, [x1]
     cmp     x0, x1
-    b.eq    get_color_nil
-    cbz     x0, get_color_nil
+    b.eq    rb_get_color_nil
+    cbz     x0, rb_get_color_nil
 
-    ldrb    w0, [x0, RB_NODE_COLOR]
+    ldrb    w0, [x0, RB_COLOR]
     ret
 
-get_color_nil:
-    mov     w0, COLOR_BLACK
+rb_get_color_nil:
+    mov     w0, RB_BLACK
     ret
 
 // rb_set_color(x0 = node, w1 = color) - does nothing for nil or null
@@ -166,17 +265,17 @@ rb_set_color:
     ldr     x2, =rb_nil
     ldr     x2, [x2]
     cmp     x0, x2
-    b.eq    set_color_done
-    cbz     x0, set_color_done
+    b.eq    rb_set_color_done
+    cbz     x0, rb_set_color_done
 
-    strb    w1, [x0, RB_NODE_COLOR]
+    strb    w1, [x0, RB_COLOR]
 
-set_color_done:
+rb_set_color_done:
     ret
 
-// rotate_left(x0 = pivot) - the right child takes the pivot's place
-    .global rotate_left
-rotate_left:
+// rb_rotate_left(x0 = pivot) - the right child takes over the pivot slot
+    .global rb_rotate_left
+rb_rotate_left:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
@@ -184,32 +283,32 @@ rotate_left:
 
     mov     x19, x0
 
-    ldr     x20, [x19, RB_NODE_RIGHT]
+    ldr     x20, [x19, RB_RIGHT]
     cbz     x20, rotate_left_done
 
-    ldr     x21, [x20, RB_NODE_LEFT]
-    str     x21, [x19, RB_NODE_RIGHT]
+    ldr     x21, [x20, RB_LEFT]
+    str     x21, [x19, RB_RIGHT]
 
     ldr     x22, =rb_nil
     ldr     x22, [x22]
     cmp     x21, x22
     b.eq    rotate_left_skip_b_parent
-    str     x19, [x21, RB_NODE_PARENT]
+    str     x19, [x21, RB_PARENT]
 
 rotate_left_skip_b_parent:
-    ldr     x21, [x19, RB_NODE_PARENT]
-    str     x21, [x20, RB_NODE_PARENT]
+    ldr     x21, [x19, RB_PARENT]
+    str     x21, [x20, RB_PARENT]
 
     cbz     x21, rotate_left_at_root
-    ldr     x22, [x21, RB_NODE_LEFT]
+    ldr     x22, [x21, RB_LEFT]
     cmp     x22, x19
     b.eq    rotate_left_x_was_left
 
-    str     x20, [x21, RB_NODE_RIGHT]
+    str     x20, [x21, RB_RIGHT]
     b       rotate_left_finish
 
 rotate_left_x_was_left:
-    str     x20, [x21, RB_NODE_LEFT]
+    str     x20, [x21, RB_LEFT]
     b       rotate_left_finish
 
 rotate_left_at_root:
@@ -217,8 +316,8 @@ rotate_left_at_root:
     str     x20, [x21]
 
 rotate_left_finish:
-    str     x19, [x20, RB_NODE_LEFT]
-    str     x20, [x19, RB_NODE_PARENT]
+    str     x19, [x20, RB_LEFT]
+    str     x20, [x19, RB_PARENT]
 
 rotate_left_done:
     ldp     x21, x22, [sp, 32]
@@ -226,9 +325,9 @@ rotate_left_done:
     ldp     fp, lr, [sp], 48
     ret
 
-// rotate_right(x0 = pivot) - the left child takes the pivot's place
-    .global rotate_right
-rotate_right:
+// rb_rotate_right(x0 = pivot) - the left child takes over the pivot slot
+    .global rb_rotate_right
+rb_rotate_right:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
@@ -236,32 +335,32 @@ rotate_right:
 
     mov     x19, x0
 
-    ldr     x20, [x19, RB_NODE_LEFT]
+    ldr     x20, [x19, RB_LEFT]
     cbz     x20, rotate_right_done
 
-    ldr     x21, [x20, RB_NODE_RIGHT]
-    str     x21, [x19, RB_NODE_LEFT]
+    ldr     x21, [x20, RB_RIGHT]
+    str     x21, [x19, RB_LEFT]
 
     ldr     x22, =rb_nil
     ldr     x22, [x22]
     cmp     x21, x22
     b.eq    rotate_right_skip_b_parent
-    str     x19, [x21, RB_NODE_PARENT]
+    str     x19, [x21, RB_PARENT]
 
 rotate_right_skip_b_parent:
-    ldr     x21, [x19, RB_NODE_PARENT]
-    str     x21, [x20, RB_NODE_PARENT]
+    ldr     x21, [x19, RB_PARENT]
+    str     x21, [x20, RB_PARENT]
 
     cbz     x21, rotate_right_at_root
-    ldr     x22, [x21, RB_NODE_LEFT]
+    ldr     x22, [x21, RB_LEFT]
     cmp     x22, x19
     b.eq    rotate_right_y_was_left
 
-    str     x20, [x21, RB_NODE_RIGHT]
+    str     x20, [x21, RB_RIGHT]
     b       rotate_right_finish
 
 rotate_right_y_was_left:
-    str     x20, [x21, RB_NODE_LEFT]
+    str     x20, [x21, RB_LEFT]
     b       rotate_right_finish
 
 rotate_right_at_root:
@@ -269,8 +368,8 @@ rotate_right_at_root:
     str     x20, [x21]
 
 rotate_right_finish:
-    str     x19, [x20, RB_NODE_RIGHT]
-    str     x20, [x19, RB_NODE_PARENT]
+    str     x19, [x20, RB_RIGHT]
+    str     x20, [x19, RB_PARENT]
 
 rotate_right_done:
     ldp     x21, x22, [sp, 32]
@@ -289,92 +388,105 @@ rb_insert_fixup:
 
     mov     x19, x0
 
-fixup_loop:
-    ldr     x20, [x19, RB_NODE_PARENT]
-    cbz     x20, fixup_done
-    ldrb    w0, [x20, RB_NODE_COLOR]
-    cmp     w0, COLOR_BLACK
-    b.eq    fixup_done
+rb_fix_loop:
+    ldr     x20, [x19, RB_PARENT]
+    cbz     x20, rb_fix_done
+    ldrb    w0, [x20, RB_COLOR]
+    cmp     w0, RB_BLACK
+    b.eq    rb_fix_done
 
-    ldr     x21, [x20, RB_NODE_PARENT]
+    ldr     x21, [x20, RB_PARENT]
 
-    ldr     x22, [x21, RB_NODE_LEFT]
+    ldr     x22, [x21, RB_LEFT]
     cmp     x20, x22
-    b.eq    fixup_parent_is_left
+    b.eq    rb_fix_parent_is_left
 
-fixup_parent_is_right:
-    ldr     x23, [x21, RB_NODE_LEFT]
-    ldrb    w0, [x23, RB_NODE_COLOR]
-    cmp     w0, COLOR_RED
-    b.eq    fixup_case1_right
+rb_fix_parent_is_right:
+    ldr     x23, [x21, RB_LEFT]
+    ldrb    w0, [x23, RB_COLOR]
+    cmp     w0, RB_RED
+    b.eq    rb_fix_case1_right
 
-    ldr     x24, [x20, RB_NODE_LEFT]
+    ldr     x24, [x20, RB_LEFT]
     cmp     x19, x24
-    b.eq    fixup_case2_right
+    b.eq    rb_fix_case2_right
 
-fixup_case3_right:
-    mov     w1, COLOR_BLACK
-    strb    w1, [x20, RB_NODE_COLOR]
-    mov     w1, COLOR_RED
-    strb    w1, [x21, RB_NODE_COLOR]
+rb_fix_case3_right:
+    ldr     x0, =rb_msg_case3
+    bl      rb_note_case
+    mov     w1, RB_BLACK
+    strb    w1, [x20, RB_COLOR]
+    mov     w1, RB_RED
+    strb    w1, [x21, RB_COLOR]
     mov     x0, x21
-    bl      rotate_left
-    b       fixup_done
+    bl      rb_rotate_left
+    b       rb_fix_done
 
-fixup_case2_right:
+rb_fix_case2_right:
+    ldr     x0, =rb_msg_case2
+    bl      rb_note_case
     mov     x19, x20
     mov     x0, x20
-    bl      rotate_right
-    b       fixup_loop
+    bl      rb_rotate_right
+    b       rb_fix_loop
 
-fixup_case1_right:
-    mov     w1, COLOR_BLACK
-    strb    w1, [x20, RB_NODE_COLOR]
-    strb    w1, [x23, RB_NODE_COLOR]
-    mov     w1, COLOR_RED
-    strb    w1, [x21, RB_NODE_COLOR]
+rb_fix_case1_right:
+    ldr     x0, =rb_msg_case1
+    bl      rb_note_case
+    mov     w1, RB_BLACK
+    strb    w1, [x20, RB_COLOR]
+    strb    w1, [x23, RB_COLOR]
+    mov     w1, RB_RED
+    strb    w1, [x21, RB_COLOR]
     mov     x19, x21
-    b       fixup_loop
+    b       rb_fix_loop
 
-fixup_parent_is_left:
-    ldr     x23, [x21, RB_NODE_RIGHT]
-    ldrb    w0, [x23, RB_NODE_COLOR]
-    cmp     w0, COLOR_RED
-    b.eq    fixup_case1_left
+rb_fix_parent_is_left:
+    ldr     x23, [x21, RB_RIGHT]
+    ldrb    w0, [x23, RB_COLOR]
+    cmp     w0, RB_RED
+    b.eq    rb_fix_case1_left
 
-    ldr     x24, [x20, RB_NODE_RIGHT]
+    ldr     x24, [x20, RB_RIGHT]
     cmp     x19, x24
-    b.eq    fixup_case2_left
+    b.eq    rb_fix_case2_left
 
-fixup_case3_left:
-    mov     w1, COLOR_BLACK
-    strb    w1, [x20, RB_NODE_COLOR]
-    mov     w1, COLOR_RED
-    strb    w1, [x21, RB_NODE_COLOR]
+rb_fix_case3_left:
+    ldr     x0, =rb_msg_case3
+    bl      rb_note_case
+    mov     w1, RB_BLACK
+    strb    w1, [x20, RB_COLOR]
+    mov     w1, RB_RED
+    strb    w1, [x21, RB_COLOR]
     mov     x0, x21
-    bl      rotate_right
-    b       fixup_done
+    bl      rb_rotate_right
+    b       rb_fix_done
 
-fixup_case2_left:
+rb_fix_case2_left:
+    ldr     x0, =rb_msg_case2
+    bl      rb_note_case
     mov     x19, x20
     mov     x0, x20
-    bl      rotate_left
-    b       fixup_loop
+    bl      rb_rotate_left
+    b       rb_fix_loop
 
-fixup_case1_left:
-    mov     w1, COLOR_BLACK
-    strb    w1, [x20, RB_NODE_COLOR]
-    strb    w1, [x23, RB_NODE_COLOR]
-    mov     w1, COLOR_RED
-    strb    w1, [x21, RB_NODE_COLOR]
+rb_fix_case1_left:
+    ldr     x0, =rb_msg_case1
+    bl      rb_note_case
+    mov     w1, RB_BLACK
+    strb    w1, [x20, RB_COLOR]
+    strb    w1, [x23, RB_COLOR]
+    mov     w1, RB_RED
+    strb    w1, [x21, RB_COLOR]
     mov     x19, x21
-    b       fixup_loop
+    b       rb_fix_loop
 
-fixup_done:
+rb_fix_done:
     ldr     x0, =rb_root
     ldr     x0, [x0]
-    mov     w1, COLOR_BLACK
+    mov     w1, RB_BLACK
     bl      rb_set_color
+    bl      rb_note_settled
 
     ldp     x23, x24, [sp, 48]
     ldp     x21, x22, [sp, 32]
@@ -394,6 +506,7 @@ rb_insert:
 
     mov     x19, x0
     mov     w20, w1
+    mov     w26, 0                       // nothing is inserted until it is
 
     mov     w0, w20
     bl      rb_create_node
@@ -411,39 +524,39 @@ rb_insert:
     mov     x22, 0
 rb_insert_loop:
     mov     x22, x21
-    ldr     w0, [x21, RB_NODE_DATA]
+    ldr     w0, [x21, RB_DATA]
     cmp     w20, w0
     b.eq    rb_insert_duplicate
     b.lt    rb_insert_go_left
 
 rb_insert_go_right:
-    ldr     x21, [x21, RB_NODE_RIGHT]
+    ldr     x21, [x21, RB_RIGHT]
     cmp     x21, x25
     b.eq    rb_insert_right_child
     cbz     x21, rb_insert_right_child
     b       rb_insert_loop
 
 rb_insert_go_left:
-    ldr     x21, [x21, RB_NODE_LEFT]
+    ldr     x21, [x21, RB_LEFT]
     cmp     x21, x25
     b.eq    rb_insert_left_child
     cbz     x21, rb_insert_left_child
     b       rb_insert_loop
 
 rb_insert_right_child:
-    str     x24, [x22, RB_NODE_RIGHT]
-    str     x22, [x24, RB_NODE_PARENT]
+    str     x24, [x22, RB_RIGHT]
+    str     x22, [x24, RB_PARENT]
     b       rb_insert_fixup_call
 
 rb_insert_left_child:
-    str     x24, [x22, RB_NODE_LEFT]
-    str     x22, [x24, RB_NODE_PARENT]
+    str     x24, [x22, RB_LEFT]
+    str     x22, [x24, RB_PARENT]
     b       rb_insert_fixup_call
 
 rb_insert_as_root:
     str     x24, [x19]
-    mov     w1, COLOR_BLACK
-    strb    w1, [x24, RB_NODE_COLOR]
+    mov     w1, RB_BLACK
+    strb    w1, [x24, RB_COLOR]
     b       rb_insert_success
 
 rb_insert_duplicate:
@@ -489,17 +602,17 @@ rb_search_loop:
     b.eq    rb_search_not_found
     cbz     x0, rb_search_not_found
 
-    ldr     w3, [x0, RB_NODE_DATA]
+    ldr     w3, [x0, RB_DATA]
     cmp     w1, w3
     b.eq    rb_search_found
     b.lt    rb_search_left
 
 rb_search_right:
-    ldr     x0, [x0, RB_NODE_RIGHT]
+    ldr     x0, [x0, RB_RIGHT]
     b       rb_search_loop
 
 rb_search_left:
-    ldr     x0, [x0, RB_NODE_LEFT]
+    ldr     x0, [x0, RB_LEFT]
     b       rb_search_loop
 
 rb_search_not_found:
@@ -509,35 +622,367 @@ rb_search_found:
     ldp     fp, lr, [sp], 16
     ret
 
-// rb_inorder(x0 = node) - print the subtree in sorted order
-    .global rb_inorder
-rb_inorder:
+// rb_minimum(x0 = node) -> x0 = leftmost node of the subtree
+    .global rb_minimum
+rb_minimum:
+    stp     fp, lr, [sp, -32]!
+    mov     fp, sp
+    str     x19, [sp, 16]
+
+    mov     x19, x0
+
+    ldr     x1, =rb_nil
+    ldr     x1, [x1]
+
+rb_min_loop:
+    ldr     x2, [x19, RB_LEFT]
+    cmp     x2, x1
+    b.eq    rb_min_done
+    cbz     x2, rb_min_done
+    mov     x19, x2
+    b       rb_min_loop
+
+rb_min_done:
+    mov     x0, x19
+    ldr     x19, [sp, 16]
+    ldp     fp, lr, [sp], 32
+    ret
+
+// rb_transplant(x0 = u, x1 = v) - splice subtree v into the slot u held
+    .global rb_transplant
+rb_transplant:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
 
-    mov     x19, x0
+    mov     x19, x0                      // x19 = u
+    mov     x20, x1                      // x20 = v
 
-    ldr     x20, =rb_nil
-    ldr     x20, [x20]
-    cmp     x19, x20
-    b.eq    rb_inorder_done
-    cbz     x19, rb_inorder_done
+    ldr     x2, [x19, RB_PARENT]
+    cbz     x2, rb_transplant_root
 
-    ldr     x0, [x19, RB_NODE_LEFT]
-    bl      rb_inorder
+    ldr     x3, [x2, RB_LEFT]
+    cmp     x19, x3
+    b.eq    rb_transplant_left_child
 
-    ldr     x0, =.Lfmt_int
-    ldr     w1, [x19, RB_NODE_DATA]
-    bl      printf
+rb_transplant_right_child:
+    str     x20, [x2, RB_RIGHT]
+    b       rb_transplant_set_parent
 
-    ldr     x0, [x19, RB_NODE_RIGHT]
-    bl      rb_inorder
+rb_transplant_left_child:
+    str     x20, [x2, RB_LEFT]
+    b       rb_transplant_set_parent
+
+rb_transplant_root:
+    ldr     x2, =rb_root
+    str     x20, [x2]
+
+rb_transplant_set_parent:
+    // v takes over the parent link even when v is the nil sentinel: the
+    // delete fixup climbs from x through this pointer.
+    ldr     x2, [x19, RB_PARENT]
+    str     x2, [x20, RB_PARENT]
 
     ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 32
+    ret
 
-rb_inorder_done:
+// rb_delete_fixup(x0 = x) - rebalance after removing a black node
+    .global rb_delete_fixup
+rb_delete_fixup:
+    stp     fp, lr, [sp, -80]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+    stp     x23, x24, [sp, 48]
+    str     x25, [sp, 64]
+
+    mov     x19, x0                      // x19 = x (fixup node)
+
+    ldr     x25, =rb_nil
+    ldr     x25, [x25]
+
+rb_delete_fixup_loop:
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    cmp     x19, x0
+    b.eq    rb_delete_fixup_done
+
+    mov     x0, x19
+    bl      rb_get_color
+    cmp     w0, RB_RED
+    b.eq    rb_delete_fixup_done
+
+    ldr     x20, [x19, RB_PARENT]
+    ldr     x21, [x20, RB_LEFT]
+    cmp     x19, x21
+    b.eq    rb_delete_fixup_left_child
+
+rb_delete_fixup_right_child:
+    ldr     x21, [x20, RB_LEFT]     // x21 = sibling
+
+    mov     x0, x21
+    bl      rb_get_color
+    cmp     w0, RB_RED
+    b.eq    rb_delete_fixup_case1_right
+
+    ldr     x22, [x21, RB_RIGHT]
+    mov     x0, x22
+    bl      rb_get_color
+    cmp     w0, RB_RED
+    b.eq    rb_delete_fixup_case4_right
+
+    ldr     x22, [x21, RB_LEFT]
+    mov     x0, x22
+    bl      rb_get_color
+    cmp     w0, RB_RED
+    b.eq    rb_delete_fixup_case3_right
+
+rb_delete_fixup_case2_right:
+    mov     x0, x21
+    mov     w1, RB_RED
+    bl      rb_set_color
+    mov     x19, x20
+    b       rb_delete_fixup_loop
+
+rb_delete_fixup_case3_right:
+    mov     x0, x22
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+    mov     x0, x21
+    mov     w1, RB_RED
+    bl      rb_set_color
+    mov     x0, x21
+    bl      rb_rotate_right
+    ldr     x21, [x20, RB_LEFT]
+
+rb_delete_fixup_case4_right:
+    mov     x0, x20
+    bl      rb_get_color
+    mov     w1, w0
+    mov     x0, x21
+    bl      rb_set_color
+    mov     x0, x20
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+    ldr     x22, [x21, RB_RIGHT]
+    mov     x0, x22
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+    mov     x0, x20
+    bl      rb_rotate_right
+    b       rb_delete_fixup_done
+
+rb_delete_fixup_case1_right:
+    mov     x0, x21
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+    mov     x0, x20
+    mov     w1, RB_RED
+    bl      rb_set_color
+    mov     x0, x20
+    bl      rb_rotate_right
+    ldr     x21, [x20, RB_LEFT]
+    b       rb_delete_fixup_right_child
+
+rb_delete_fixup_left_child:
+    ldr     x21, [x20, RB_RIGHT]    // x21 = sibling
+
+    mov     x0, x21
+    bl      rb_get_color
+    cmp     w0, RB_RED
+    b.eq    rb_delete_fixup_case1_left
+
+    ldr     x22, [x21, RB_LEFT]
+    mov     x0, x22
+    bl      rb_get_color
+    cmp     w0, RB_RED
+    b.eq    rb_delete_fixup_case4_left
+
+    ldr     x22, [x21, RB_RIGHT]
+    mov     x0, x22
+    bl      rb_get_color
+    cmp     w0, RB_RED
+    b.eq    rb_delete_fixup_case3_left
+
+rb_delete_fixup_case2_left:
+    mov     x0, x21
+    mov     w1, RB_RED
+    bl      rb_set_color
+    mov     x19, x20
+    b       rb_delete_fixup_loop
+
+rb_delete_fixup_case3_left:
+    mov     x0, x22
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+    mov     x0, x21
+    mov     w1, RB_RED
+    bl      rb_set_color
+    mov     x0, x21
+    bl      rb_rotate_left
+    ldr     x21, [x20, RB_RIGHT]
+
+rb_delete_fixup_case4_left:
+    mov     x0, x20
+    bl      rb_get_color
+    mov     w1, w0
+    mov     x0, x21
+    bl      rb_set_color
+    mov     x0, x20
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+    ldr     x22, [x21, RB_LEFT]
+    mov     x0, x22
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+    mov     x0, x20
+    bl      rb_rotate_left
+    b       rb_delete_fixup_done
+
+rb_delete_fixup_case1_left:
+    mov     x0, x21
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+    mov     x0, x20
+    mov     w1, RB_RED
+    bl      rb_set_color
+    mov     x0, x20
+    bl      rb_rotate_left
+    ldr     x21, [x20, RB_RIGHT]
+    b       rb_delete_fixup_left_child
+
+rb_delete_fixup_done:
+    mov     x0, x19
+    mov     w1, RB_BLACK
+    bl      rb_set_color
+
+    ldr     x25, [sp, 64]
+    ldp     x23, x24, [sp, 48]
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 80
+    ret
+
+// rb_delete(x0 = &root, w1 = value) -> w0 = 1 if deleted
+    .global rb_delete
+rb_delete:
+    stp     fp, lr, [sp, -96]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+    stp     x23, x24, [sp, 48]
+    stp     x25, x26, [sp, 64]
+    str     x27, [sp, 80]
+
+    mov     x19, x0                      // x19 = &root
+    mov     w20, w1                      // w20 = value to delete
+
+    ldr     x0, [x19]
+    mov     w1, w20
+    bl      rb_search
+    mov     x21, x0                      // x21 = node to delete
+    cbz     x21, rb_delete_not_found
+
+    ldr     x25, =rb_nil
+    ldr     x25, [x25]
+
+    mov     x22, x21                     // x22 = y (node to splice out)
+    mov     x0, x21
+    bl      rb_get_color
+    mov     w23, w0                      // the colour y wore before all this
+
+    ldr     x24, [x21, RB_LEFT]
+    cmp     x24, x25
+    b.eq    rb_delete_no_left
+
+    ldr     x26, [x21, RB_RIGHT]
+    cmp     x26, x25
+    b.eq    rb_delete_no_right
+
+rb_delete_two_children:
+    ldr     x0, [x21, RB_RIGHT]
+    bl      rb_minimum
+    mov     x22, x0
+
+    mov     x0, x22
+    bl      rb_get_color
+    mov     w23, w0
+
+    ldr     x24, [x22, RB_RIGHT]
+
+    ldr     x26, [x22, RB_PARENT]
+    cmp     x26, x21
+    b.eq    rb_delete_successor_is_child
+
+    mov     x0, x22
+    mov     x1, x24
+    bl      rb_transplant
+
+    ldr     x26, [x21, RB_RIGHT]
+    str     x26, [x22, RB_RIGHT]
+    str     x22, [x26, RB_PARENT]
+
+rb_delete_successor_is_child:
+    // x may be the nil sentinel; it still needs y as its parent for
+    // the fixup climb.
+    str     x22, [x24, RB_PARENT]
+
+    mov     x0, x21
+    mov     x1, x22
+    bl      rb_transplant
+
+    ldr     x26, [x21, RB_LEFT]
+    str     x26, [x22, RB_LEFT]
+    str     x22, [x26, RB_PARENT]
+
+    ldrb    w0, [x21, RB_COLOR]
+    strb    w0, [x22, RB_COLOR]
+
+    b       rb_delete_fixup_check
+
+rb_delete_no_left:
+    ldr     x24, [x21, RB_RIGHT]
+    mov     x0, x21
+    mov     x1, x24
+    bl      rb_transplant
+    b       rb_delete_fixup_check
+
+rb_delete_no_right:
+    // x24 already holds the left child; splice it up (x26 is nil here)
+    mov     x0, x21
+    mov     x1, x24
+    bl      rb_transplant
+
+rb_delete_fixup_check:
+    cmp     w23, RB_BLACK
+    b.ne    rb_delete_success
+
+    mov     x0, x24
+    bl      rb_delete_fixup
+
+rb_delete_success:
+    mov     x0, x21
+    bl      free
+
+    ldr     x0, =rb_node_count
+    ldr     w1, [x0]
+    sub     w1, w1, 1
+    str     w1, [x0]
+
+    mov     w0, 1
+    b       rb_delete_done
+
+rb_delete_not_found:
+    mov     w0, 0
+
+rb_delete_done:
+    ldr     x27, [sp, 80]
+    ldp     x25, x26, [sp, 64]
+    ldp     x23, x24, [sp, 48]
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 96
     ret
 
 // rb_free_all(x0 = &root) - free the whole tree and zero the count
@@ -585,13 +1030,13 @@ rb_free_recursive:
     b.eq    rb_free_rec_done
     cbz     x19, rb_free_rec_done
 
-    ldr     x0, [x19, RB_NODE_LEFT]
+    ldr     x0, [x19, RB_LEFT]
     cmp     x0, x20
     b.eq    rb_free_skip_left
     bl      rb_free_recursive
 
 rb_free_skip_left:
-    ldr     x0, [x19, RB_NODE_RIGHT]
+    ldr     x0, [x19, RB_RIGHT]
     ldr     x20, =rb_nil
     ldr     x20, [x20]
     cmp     x0, x20
@@ -608,696 +1053,491 @@ rb_free_skip_right:
 rb_free_rec_done:
     ret
 
-// rb_draw_node_recursive(x0 = node, w1 = row, w2 = col, w3 = spread)
-// x4 and x5 pick nodes to draw highlighted
-    .global rb_draw_node_recursive
-rb_draw_node_recursive:
-    cbz     x0, rb_draw_node_done
+// ------------------------------------------------------- the small parts
 
-    stp     fp, lr, [sp, -112]!
+// rb_is_nil(x0 = pointer) -> w0 = 1 when it is the sentinel or nothing
+rb_is_nil:
+    cbz     x0, rb_is_nil_yes
+    ldr     x1, =rb_nil
+    ldr     x1, [x1]
+    cmp     x0, x1
+    b.eq    rb_is_nil_yes
+    mov     w0, 0
+    ret
+
+rb_is_nil_yes:
+    mov     w0, 1
+    ret
+
+// rb_child(x0 = node, w1 = offset of the link) -> x0 = the real child, or
+// 0 when the branch ends at the sentinel. Everything that walks the tree
+// goes through here, so nil is handled once instead of at every step.
+rb_child:
+    ldr     x2, [x0, w1, sxtw]
+    ldr     x3, =rb_nil
+    ldr     x3, [x3]
+    cmp     x2, x3
+    b.eq    rb_child_none
+    mov     x0, x2
+    ret
+
+rb_child_none:
+    mov     x0, 0
+    ret
+
+// rb_height_of(x0 = node) -> w0 = levels below it, itself included
+rb_height_of:
+    stp     fp, lr, [sp, -32]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
-    stp     x21, x22, [sp, 32]
-    stp     x23, x24, [sp, 48]
-    stp     x25, x26, [sp, 64]
-    stp     x27, x28, [sp, 80]
-    str     x4, [sp, 96]
-    str     x5, [sp, 104]
 
     mov     x19, x0
-    mov     w20, w1
-    mov     w21, w2
-    mov     w22, w3
+    bl      rb_is_nil
+    cbnz    w0, rb_height_none
 
-    ldr     x23, =rb_nil
-    ldr     x23, [x23]
+    mov     x0, x19
+    mov     w1, RB_LEFT
+    bl      rb_child
+    bl      rb_height_of
+    mov     w20, w0
 
-    cmp     x19, x23
-    b.eq    rb_draw_node_done
+    mov     x0, x19
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    bl      rb_height_of
 
-    lsr     w24, w22, 1
-    cmp     w24, 2
-    b.ge    rb_draw_spacing_ok
-    mov     w24, 2
-rb_draw_spacing_ok:
-
-    ldr     x0, [x19, RB_NODE_LEFT]
-    cmp     x0, x23
-    b.eq    rb_draw_skip_left
-
-    add     w1, w20, 2
-    sub     w2, w21, w24
-    mov     w3, w24
-    ldr     x4, [sp, 96]
-    ldr     x5, [sp, 104]
-    mov     x6, 0
-    mov     x7, 0
-    bl      rb_draw_node_recursive
-
-    add     w0, w20, 1
-    sub     w1, w21, 1
-    bl      ansi_move_cursor
-    ldr     x0, =.Ltree_branch_left
-    bl      printf
-
-rb_draw_skip_left:
-    ldr     x0, [x19, RB_NODE_RIGHT]
-    cmp     x0, x23
-    b.eq    rb_draw_skip_right
-
-    add     w1, w20, 2
-    add     w2, w21, w24
-    mov     w3, w24
-    ldr     x4, [sp, 96]
-    ldr     x5, [sp, 104]
-    mov     x6, 0
-    mov     x7, 0
-    bl      rb_draw_node_recursive
-
-    add     w0, w20, 1
-    add     w1, w21, 1
-    bl      ansi_move_cursor
-    ldr     x0, =.Ltree_branch_right
-    bl      printf
-
-rb_draw_skip_right:
-    mov     w0, w20
-    sub     w1, w21, 1
-    bl      ansi_move_cursor
-
-    ldr     x4, [sp, 96]
-    ldr     x5, [sp, 104]
-    cmp     x19, x4
-    b.eq    rb_draw_highlight_z
-    cmp     x19, x5
-    b.eq    rb_draw_highlight_parent
-
-    ldrb    w0, [x19, RB_NODE_COLOR]
-    cmp     w0, COLOR_RED
-    b.eq    rb_draw_red_node
-
-rb_draw_black_node:
-    ldr     x0, =color_black_node
-    bl      printf
-    b       rb_draw_print_value
-
-rb_draw_red_node:
-    ldr     x0, =color_red_node
-    bl      printf
-    b       rb_draw_print_value
-
-rb_draw_highlight_z:
-    ldr     x0, =color_z
-    bl      printf
-    b       rb_draw_print_value
-
-rb_draw_highlight_parent:
-    ldr     x0, =color_parent
-    bl      printf
-
-rb_draw_print_value:
-    ldr     x0, =.Lrb_node_fmt
-    ldr     w1, [x19, RB_NODE_DATA]
-    bl      printf
-
-    ldr     x0, =rb_color_reset
-    bl      printf
-
-    ldr     x5, [sp, 104]
-    ldr     x4, [sp, 96]
-    ldp     x27, x28, [sp, 80]
-    ldp     x25, x26, [sp, 64]
-    ldp     x23, x24, [sp, 48]
-    ldp     x21, x22, [sp, 32]
-    ldp     x19, x20, [sp, 16]
-    ldp     fp, lr, [sp], 112
-
-rb_draw_node_done:
-    ret
-
-// rb_display_tree_visual() - clear the screen and draw the whole tree
-    .global rb_display_tree_visual
-rb_display_tree_visual:
-    stp     fp, lr, [sp, -16]!
-    mov     fp, sp
-
-    bl      ansi_clear_screen
-
-    ldr     x0, =rb_node_count
-    ldr     w0, [x0]
-    cmp     w0, 0
-    b.le    rb_display_visual_empty
-
-    mov     w0, 2
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_title
-    mov     w1, 80
-    bl      print_centered
-
-    ldr     x0, =rb_root
-    ldr     x0, [x0]
-    mov     w1, 5
-    mov     w2, 40
-    mov     w3, 20
-    mov     x4, 0
-    mov     x5, 0
-    mov     x6, 0
-    mov     x7, 0
-    bl      rb_draw_node_recursive
-
-    b       rb_display_visual_done
-
-rb_display_visual_empty:
-    mov     w0, 10
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_msg_empty_tree
-    bl      printf
-    bl      print_newline
-
-rb_display_visual_done:
-    ldp     fp, lr, [sp], 16
-    ret
-
-// rb_insert_animated(x0 = &root, w1 = value) - animate the walk, then insert
-    .global rb_insert_animated
-rb_insert_animated:
-    stp     fp, lr, [sp, -80]!
-    mov     fp, sp
-    stp     x19, x20, [sp, 16]
-    stp     x21, x22, [sp, 32]
-    stp     x23, x24, [sp, 48]
-    str     x25, [sp, 64]
-
-    mov     x19, x0                      // x19 = &root
-    mov     w20, w1                      // w20 = value to insert
-
-    ldr     x25, =rb_visual_delay
-    ldr     w25, [x25]
-
-    ldr     x21, [x19]                   // x21 = current
-    ldr     x22, =rb_nil
-    ldr     x22, [x22]
-
-    cmp     x21, x22
-    b.eq    rb_insert_anim_empty
-    cbz     x21, rb_insert_anim_empty
-
-    // walk down, redrawing with each visited node highlighted
-rb_insert_anim_search_loop:
-    bl      ansi_clear_screen
-    mov     w0, 2
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_title
-    mov     w1, 80
-    bl      print_centered
-
-    mov     w0, 3
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_msg_comparing
-    ldr     w1, [x21, RB_NODE_DATA]
-    bl      printf
-
-    ldr     x0, =rb_root
-    ldr     x0, [x0]
-    mov     w1, 6
-    mov     w2, 40
-    mov     w3, 20
-    mov     x4, x21                      // highlight current
-    mov     x5, 0
-    bl      rb_draw_node_recursive
-
-    mov     x0, 0
-    bl      fflush
-    mov     w0, w25
-    bl      delay_ms
-
-    ldr     w0, [x21, RB_NODE_DATA]
     cmp     w20, w0
-    b.eq    rb_insert_anim_duplicate
-    b.lt    rb_insert_anim_go_left
+    csel    w0, w20, w0, gt
+    add     w0, w0, 1
+    b       rb_height_out
 
-rb_insert_anim_go_right:
-    ldr     x23, [x21, RB_NODE_RIGHT]
-    cmp     x23, x22
-    b.eq    rb_insert_anim_do_insert
-    cbz     x23, rb_insert_anim_do_insert
-    mov     x21, x23
-    b       rb_insert_anim_search_loop
+rb_height_none:
+    mov     w0, 0
 
-rb_insert_anim_go_left:
-    ldr     x23, [x21, RB_NODE_LEFT]
-    cmp     x23, x22
-    b.eq    rb_insert_anim_do_insert
-    cbz     x23, rb_insert_anim_do_insert
-    mov     x21, x23
-    b       rb_insert_anim_search_loop
-
-rb_insert_anim_empty:
-rb_insert_anim_duplicate:
-rb_insert_anim_do_insert:
-    // hand off to the real insert
-    mov     x0, x19
-    mov     w1, w20
-    bl      rb_insert
-    mov     w23, w1                      // keep the inserted/duplicate flag
-                                         // across the display calls
-
-    bl      rb_display_tree_visual
-
-    mov     w0, 22
-    mov     w1, 1
-    bl      ansi_move_cursor
-
-    cmp     w23, 0
-    b.eq    rb_insert_anim_dup_msg
-
-    ldr     x0, =rb_msg_inserted
-    mov     w1, w20
-    bl      printf
-    bl      print_newline
-    b       rb_insert_anim_done
-
-rb_insert_anim_dup_msg:
-    ldr     x0, =msg_duplicate
-    mov     w1, w20
-    bl      printf
-    bl      print_newline
-
-rb_insert_anim_done:
-    ldr     x25, [sp, 64]
-    ldp     x23, x24, [sp, 48]
-    ldp     x21, x22, [sp, 32]
+rb_height_out:
     ldp     x19, x20, [sp, 16]
-    ldp     fp, lr, [sp], 80
+    ldp     fp, lr, [sp], 32
     ret
 
-// rb_search_animated(x0 = root, w1 = target) -> x0 = node or 0
-    .global rb_search_animated
-rb_search_animated:
-    stp     fp, lr, [sp, -48]!
+// rb_size_of(x0 = node) -> w0 = how many real nodes hang off it
+// The stats line counts the tree rather than reading rb_node_count,
+// because the counter is only bumped once the repair has finished and the
+// repair is exactly when someone is reading the screen.
+rb_size_of:
+    stp     fp, lr, [sp, -32]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
-    stp     x21, x22, [sp, 32]
 
-    mov     x19, x0                      // x19 = root
-    mov     w20, w1                      // w20 = target
+    mov     x19, x0
+    bl      rb_is_nil
+    cbnz    w0, rb_size_none
 
-    ldr     x21, =rb_visual_delay
-    ldr     w21, [x21]
-
-    ldr     x22, =rb_nil
-    ldr     x22, [x22]
-
-    cmp     x19, x22
-    b.eq    rb_search_anim_not_found
-    cbz     x19, rb_search_anim_not_found
-
-rb_search_anim_loop:
-    bl      ansi_clear_screen
-    mov     w0, 2
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_title
-    mov     w1, 80
-    bl      print_centered
-
-    mov     w0, 3
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_searching
-    mov     w1, w20
-    bl      printf
-
-    ldr     x0, =rb_root
-    ldr     x0, [x0]
-    mov     w1, 6
-    mov     w2, 40
-    mov     w3, 20
-    mov     x4, x19
-    mov     x5, 0
-    bl      rb_draw_node_recursive
-
-    mov     x0, 0
-    bl      fflush
-    mov     w0, w21
-    bl      delay_ms
-
-    ldr     w2, [x19, RB_NODE_DATA]
-    cmp     w20, w2
-    b.eq    rb_search_anim_found
-    b.lt    rb_search_anim_go_left
-
-rb_search_anim_go_right:
-    ldr     x19, [x19, RB_NODE_RIGHT]
-    cmp     x19, x22
-    b.eq    rb_search_anim_not_found
-    cbnz    x19, rb_search_anim_loop
-    b       rb_search_anim_not_found
-
-rb_search_anim_go_left:
-    ldr     x19, [x19, RB_NODE_LEFT]
-    cmp     x19, x22
-    b.eq    rb_search_anim_not_found
-    cbnz    x19, rb_search_anim_loop
-
-rb_search_anim_not_found:
-    mov     x0, 0
-    b       rb_search_anim_done
-
-rb_search_anim_found:
     mov     x0, x19
+    mov     w1, RB_LEFT
+    bl      rb_child
+    bl      rb_size_of
+    mov     w20, w0
 
-rb_search_anim_done:
-    ldp     x21, x22, [sp, 32]
+    mov     x0, x19
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    bl      rb_size_of
+
+    add     w0, w0, w20
+    add     w0, w0, 1
+    b       rb_size_out
+
+rb_size_none:
+    mov     w0, 0
+
+rb_size_out:
     ldp     x19, x20, [sp, 16]
-    ldp     fp, lr, [sp], 48
+    ldp     fp, lr, [sp], 32
     ret
 
-// rb_inorder_animated(x0 = node) - inorder walk, redrawing at every visit
-    .global rb_inorder_animated
-rb_inorder_animated:
-    cbz     x0, rb_inorder_anim_done
+// rb_black_height(x0 = node) -> w0 = blacks on any path down from it, or
+// -1 when two paths disagree. This is the rule that bounds the height, so
+// the verify screen measures it rather than asserting it.
+rb_black_height:
+    stp     fp, lr, [sp, -32]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
 
+    mov     x19, x0
+    bl      rb_is_nil
+    cbnz    w0, rb_black_leaf
+
+    mov     x0, x19
+    mov     w1, RB_LEFT
+    bl      rb_child
+    bl      rb_black_height
+    mov     w20, w0
+    cmp     w20, 0
+    b.lt    rb_black_bad
+
+    mov     x0, x19
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    bl      rb_black_height
+    cmp     w0, 0
+    b.lt    rb_black_bad
+    cmp     w0, w20
+    b.ne    rb_black_bad
+
+    ldrb    w1, [x19, RB_COLOR]
+    cmp     w1, RB_BLACK
+    b.ne    rb_black_out
+    add     w0, w0, 1
+    b       rb_black_out
+
+rb_black_leaf:
+    mov     w0, 1                           // the nil leaf counts itself
+    b       rb_black_out
+
+rb_black_bad:
+    mov     w0, -1
+
+rb_black_out:
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 32
+    ret
+
+// rb_no_red_red(x0 = node) -> w0 = 1 when no red node has a red child
+rb_no_red_red:
+    stp     fp, lr, [sp, -32]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+
+    mov     x19, x0
+    bl      rb_is_nil
+    cbnz    w0, rb_red_ok
+
+    ldrb    w20, [x19, RB_COLOR]
+
+    mov     x0, x19
+    mov     w1, RB_LEFT
+    bl      rb_child
+    cbz     x0, rb_red_left_done
+    cmp     w20, RB_RED
+    b.ne    rb_red_left_walk
+    ldrb    w1, [x0, RB_COLOR]
+    cmp     w1, RB_RED
+    b.eq    rb_red_bad
+
+rb_red_left_walk:
+    bl      rb_no_red_red
+    cbz     w0, rb_red_bad
+
+rb_red_left_done:
+    mov     x0, x19
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    cbz     x0, rb_red_ok
+    cmp     w20, RB_RED
+    b.ne    rb_red_right_walk
+    ldrb    w1, [x0, RB_COLOR]
+    cmp     w1, RB_RED
+    b.eq    rb_red_bad
+
+rb_red_right_walk:
+    bl      rb_no_red_red
+    cbz     w0, rb_red_bad
+
+rb_red_ok:
+    mov     w0, 1
+    b       rb_red_out
+
+rb_red_bad:
+    mov     w0, 0
+
+rb_red_out:
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 32
+    ret
+
+// rb_depth_of(x0 = node, w1 = value) -> w0 = how far down the value sits
+rb_depth_of:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
     str     x21, [sp, 32]
 
     mov     x19, x0
+    mov     w20, w1
+    mov     w21, 0
 
-    ldr     x20, =rb_visual_delay
-    ldr     w20, [x20]
+rb_depth_step:
+    mov     x0, x19
+    bl      rb_is_nil
+    cbnz    w0, rb_depth_out
 
-    ldr     x21, =rb_nil
-    ldr     x21, [x21]
+    ldr     w0, [x19, RB_DATA]
+    cmp     w20, w0
+    b.eq    rb_depth_out
+    add     w21, w21, 1
+    b.lt    rb_depth_left
 
-    ldr     x0, [x19, RB_NODE_LEFT]
-    cmp     x0, x21
-    b.eq    rb_inorder_anim_skip_left
-    bl      rb_inorder_animated
+    mov     x0, x19
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    mov     x19, x0
+    b       rb_depth_step
 
-rb_inorder_anim_skip_left:
-    bl      ansi_clear_screen
+rb_depth_left:
+    mov     x0, x19
+    mov     w1, RB_LEFT
+    bl      rb_child
+    mov     x19, x0
+    b       rb_depth_step
 
-    mov     w0, 2
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_title
-    mov     w1, 80
-    bl      print_centered
-
-    mov     w0, 3
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =.Lrb_inorder_trav_msg
-    bl      printf
-
-    ldr     x0, =rb_root
-    ldr     x0, [x0]
-    mov     w1, 6
-    mov     w2, 40
-    mov     w3, 20
-    mov     x4, x19
-    mov     x5, 0
-    bl      rb_draw_node_recursive
-
-    mov     w0, 22
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_visiting
-    ldr     w1, [x19, RB_NODE_DATA]
-    bl      printf
-
-    mov     x0, 0
-    bl      fflush
-
-    mov     w0, w20
-    bl      delay_ms
-
-    ldr     x0, [x19, RB_NODE_RIGHT]
-    ldr     x21, =rb_nil
-    ldr     x21, [x21]
-    cmp     x0, x21
-    b.eq    rb_inorder_anim_skip_right
-    bl      rb_inorder_animated
-
-rb_inorder_anim_skip_right:
+rb_depth_out:
+    mov     w0, w21
     ldr     x21, [sp, 32]
     ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 48
-
-rb_inorder_anim_done:
     ret
 
-// rb_minimum(x0 = node) -> x0 = leftmost node of the subtree
-    .global rb_minimum
-rb_minimum:
+// rb_clear_seen(x0 = node) - drop the paint a previous walk left
+rb_clear_seen:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
     str     x19, [sp, 16]
 
     mov     x19, x0
+    bl      rb_is_nil
+    cbnz    w0, rb_clear_seen_done
 
-    ldr     x1, =rb_nil
-    ldr     x1, [x1]
-
-rb_min_loop:
-    ldr     x2, [x19, RB_NODE_LEFT]
-    cmp     x2, x1
-    b.eq    rb_min_done
-    cbz     x2, rb_min_done
-    mov     x19, x2
-    b       rb_min_loop
-
-rb_min_done:
+    str     xzr, [x19, RB_SEEN]
     mov     x0, x19
+    mov     w1, RB_LEFT
+    bl      rb_child
+    bl      rb_clear_seen
+    mov     x0, x19
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    bl      rb_clear_seen
+
+rb_clear_seen_done:
     ldr     x19, [sp, 16]
     ldp     fp, lr, [sp], 32
     ret
 
-// rb_transplant(x0 = u, x1 = v) - splice subtree v into u's place
-    .global rb_transplant
-rb_transplant:
+// --------------------------------------------------------------- drawing
+
+// rb_blank(w0 = row, w1 = column, w2 = run length)
+rb_blank:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
-    stp     x19, x20, [sp, 16]
+    str     x19, [sp, 16]
 
-    mov     x19, x0                      // x19 = u
-    mov     x20, x1                      // x20 = v
+    mov     w19, w2
+    bl      ui_at
+    ldr     x0, =rb_sp
+    mov     w1, w19
+    bl      ui_repeat
 
-    ldr     x2, [x19, RB_NODE_PARENT]
-    cbz     x2, rb_transplant_root
-
-    ldr     x3, [x2, RB_NODE_LEFT]
-    cmp     x19, x3
-    b.eq    rb_transplant_left_child
-
-rb_transplant_right_child:
-    str     x20, [x2, RB_NODE_RIGHT]
-    b       rb_transplant_set_parent
-
-rb_transplant_left_child:
-    str     x20, [x2, RB_NODE_LEFT]
-    b       rb_transplant_set_parent
-
-rb_transplant_root:
-    ldr     x2, =rb_root
-    str     x20, [x2]
-
-rb_transplant_set_parent:
-    // v takes u's parent even when v is the nil sentinel: the delete
-    // fixup climbs from x through this pointer.
-    ldr     x2, [x19, RB_NODE_PARENT]
-    str     x2, [x20, RB_NODE_PARENT]
-
-    ldp     x19, x20, [sp, 16]
+    ldr     x19, [sp, 16]
     ldp     fp, lr, [sp], 32
     ret
 
-// rb_delete_fixup(x0 = x) - rebalance after removing a black node
-    .global rb_delete_fixup
-rb_delete_fixup:
-    stp     fp, lr, [sp, -80]!
+// rb_flush() - push the drawing out before a delay
+rb_flush:
+    stp     fp, lr, [sp, -16]!
+    mov     fp, sp
+
+    mov     x0, 0
+    bl      fflush
+
+    ldp     fp, lr, [sp], 16
+    ret
+
+// rb_pause() - hold one beat of an animation
+rb_pause:
+    stp     fp, lr, [sp, -16]!
+    mov     fp, sp
+
+    bl      rb_flush
+    ldr     x0, =rb_delay
+    ldr     w0, [x0]
+    bl      delay_ms
+
+    ldp     fp, lr, [sp], 16
+    ret
+
+// rb_say(x0 = format, w1 = first value, w2 = second, w3 = third)
+rb_say:
+    stp     fp, lr, [sp, -48]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
     stp     x21, x22, [sp, 32]
-    stp     x23, x24, [sp, 48]
-    str     x25, [sp, 64]
 
-    mov     x19, x0                      // x19 = x (fixup node)
+    mov     x19, x0
+    mov     w20, w1
+    mov     w21, w2
+    mov     w22, w3
 
-    ldr     x25, =rb_nil
-    ldr     x25, [x25]
+    mov     w0, 19
+    mov     w1, 2
+    mov     w2, 78
+    bl      rb_blank
 
-rb_delete_fixup_loop:
-    ldr     x0, =rb_root
-    ldr     x0, [x0]
-    cmp     x19, x0
-    b.eq    rb_delete_fixup_done
-
+    mov     w0, 19
+    mov     w1, 4
+    bl      ui_at
+    mov     w0, RB_ROLE_TEXT
+    bl      th_fg
     mov     x0, x19
-    bl      rb_get_color
-    cmp     w0, COLOR_RED
-    b.eq    rb_delete_fixup_done
+    mov     w1, w20
+    mov     w2, w21
+    mov     w3, w22
+    bl      printf
+    bl      th_off
 
-    ldr     x20, [x19, RB_NODE_PARENT]
-    ldr     x21, [x20, RB_NODE_LEFT]
-    cmp     x19, x21
-    b.eq    rb_delete_fixup_left_child
-
-rb_delete_fixup_right_child:
-    ldr     x21, [x20, RB_NODE_LEFT]     // x21 = sibling
-
-    mov     x0, x21
-    bl      rb_get_color
-    cmp     w0, COLOR_RED
-    b.eq    rb_delete_fixup_case1_right
-
-    ldr     x22, [x21, RB_NODE_RIGHT]
-    mov     x0, x22
-    bl      rb_get_color
-    cmp     w0, COLOR_RED
-    b.eq    rb_delete_fixup_case4_right
-
-    ldr     x22, [x21, RB_NODE_LEFT]
-    mov     x0, x22
-    bl      rb_get_color
-    cmp     w0, COLOR_RED
-    b.eq    rb_delete_fixup_case3_right
-
-rb_delete_fixup_case2_right:
-    mov     x0, x21
-    mov     w1, COLOR_RED
-    bl      rb_set_color
-    mov     x19, x20
-    b       rb_delete_fixup_loop
-
-rb_delete_fixup_case3_right:
-    mov     x0, x22
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-    mov     x0, x21
-    mov     w1, COLOR_RED
-    bl      rb_set_color
-    mov     x0, x21
-    bl      rotate_right
-    ldr     x21, [x20, RB_NODE_LEFT]
-
-rb_delete_fixup_case4_right:
-    mov     x0, x20
-    bl      rb_get_color
-    mov     w1, w0
-    mov     x0, x21
-    bl      rb_set_color
-    mov     x0, x20
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-    ldr     x22, [x21, RB_NODE_RIGHT]
-    mov     x0, x22
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-    mov     x0, x20
-    bl      rotate_right
-    b       rb_delete_fixup_done
-
-rb_delete_fixup_case1_right:
-    mov     x0, x21
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-    mov     x0, x20
-    mov     w1, COLOR_RED
-    bl      rb_set_color
-    mov     x0, x20
-    bl      rotate_right
-    ldr     x21, [x20, RB_NODE_LEFT]
-    b       rb_delete_fixup_right_child
-
-rb_delete_fixup_left_child:
-    ldr     x21, [x20, RB_NODE_RIGHT]    // x21 = sibling
-
-    mov     x0, x21
-    bl      rb_get_color
-    cmp     w0, COLOR_RED
-    b.eq    rb_delete_fixup_case1_left
-
-    ldr     x22, [x21, RB_NODE_LEFT]
-    mov     x0, x22
-    bl      rb_get_color
-    cmp     w0, COLOR_RED
-    b.eq    rb_delete_fixup_case4_left
-
-    ldr     x22, [x21, RB_NODE_RIGHT]
-    mov     x0, x22
-    bl      rb_get_color
-    cmp     w0, COLOR_RED
-    b.eq    rb_delete_fixup_case3_left
-
-rb_delete_fixup_case2_left:
-    mov     x0, x21
-    mov     w1, COLOR_RED
-    bl      rb_set_color
-    mov     x19, x20
-    b       rb_delete_fixup_loop
-
-rb_delete_fixup_case3_left:
-    mov     x0, x22
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-    mov     x0, x21
-    mov     w1, COLOR_RED
-    bl      rb_set_color
-    mov     x0, x21
-    bl      rotate_left
-    ldr     x21, [x20, RB_NODE_RIGHT]
-
-rb_delete_fixup_case4_left:
-    mov     x0, x20
-    bl      rb_get_color
-    mov     w1, w0
-    mov     x0, x21
-    bl      rb_set_color
-    mov     x0, x20
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-    ldr     x22, [x21, RB_NODE_LEFT]
-    mov     x0, x22
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-    mov     x0, x20
-    bl      rotate_left
-    b       rb_delete_fixup_done
-
-rb_delete_fixup_case1_left:
-    mov     x0, x21
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-    mov     x0, x20
-    mov     w1, COLOR_RED
-    bl      rb_set_color
-    mov     x0, x20
-    bl      rotate_left
-    ldr     x21, [x20, RB_NODE_RIGHT]
-    b       rb_delete_fixup_left_child
-
-rb_delete_fixup_done:
-    mov     x0, x19
-    mov     w1, COLOR_BLACK
-    bl      rb_set_color
-
-    ldr     x25, [sp, 64]
-    ldp     x23, x24, [sp, 48]
     ldp     x21, x22, [sp, 32]
     ldp     x19, x20, [sp, 16]
-    ldp     fp, lr, [sp], 80
+    ldp     fp, lr, [sp], 48
     ret
 
-// rb_delete(x0 = &root, w1 = value) -> w0 = 1 if deleted
-    .global rb_delete
-rb_delete:
+// rb_role_of(x0 = node) -> w0 = the colour role this node wears now
+// At rest a node wears its own colour, red or black. A node the current
+// step is working on wears the state instead, which is why the legend
+// names both kinds.
+rb_role_of:
+    ldr     x1, =rb_hl_node
+    ldr     x2, =rb_hl_role
+    mov     w3, 0
+
+rb_role_scan:
+    cmp     w3, 4
+    b.ge    rb_role_own
+    ldr     x4, [x1, w3, sxtw 3]
+    cbz     x4, rb_role_next
+    cmp     x4, x0
+    b.eq    rb_role_hit
+
+rb_role_next:
+    add     w3, w3, 1
+    b       rb_role_scan
+
+rb_role_hit:
+    ldr     w0, [x2, w3, sxtw 2]
+    ret
+
+rb_role_own:
+    ldrb    w1, [x0, RB_COLOR]
+    cmp     w1, RB_RED
+    b.eq    rb_role_red
+    mov     w0, RB_ROLE_NODE
+    ret
+
+rb_role_red:
+    mov     w0, RB_ROLE_BAD
+    ret
+
+// rb_chip(w0 = row, w1 = left column, w2 = role, w3 = value)
+rb_chip:
+    stp     fp, lr, [sp, -48]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    str     x21, [sp, 32]
+
+    mov     w19, w0
+    mov     w20, w1
+    mov     w21, w2
+
+    ldr     x0, =rb_cell
+    mov     w1, w3
+    mov     w2, 2                           // the cell is two columns wide
+    bl      ui_num
+
+    mov     w0, w19
+    mov     w1, w20
+    mov     w2, w21
+    ldr     x3, =rb_cell
+    bl      ui_badge
+
+    ldr     x21, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 48
+    ret
+
+// rb_link(w0 = link row, w1 = parent centre, w2 = distance to a child,
+//         w3 = 1 when a left child exists, w4 = 1 when a right one does)
+// A parent with one child gets a corner rather than a tee, so no line
+// ever points at empty space.
+rb_link:
+    stp     fp, lr, [sp, -64]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+    str     x23, [sp, 48]
+
+    mov     w19, w0
+    mov     w20, w1
+    mov     w21, w2
+    mov     w22, w3
+    mov     w23, w4
+
+    cbz     w22, rb_link_right_only
+
+    mov     w0, w19
+    sub     w1, w20, w21
+    bl      ui_at
+    mov     w0, RB_ROLE_FAINT
+    bl      th_fg
+    ldr     x0, =rb_elbow_l
+    bl      printf
+    ldr     x0, =rb_dash
+    sub     w1, w21, 1
+    bl      ui_repeat
+
+    cbz     w23, rb_link_left_only
+
+    ldr     x0, =rb_tee
+    bl      printf
+    ldr     x0, =rb_dash
+    sub     w1, w21, 1
+    bl      ui_repeat
+    ldr     x0, =rb_elbow_r
+    bl      printf
+    b       rb_link_close
+
+rb_link_left_only:
+    ldr     x0, =rb_elbow_lo
+    bl      printf
+    b       rb_link_close
+
+rb_link_right_only:
+    cbz     w23, rb_link_done
+
+    mov     w0, w19
+    mov     w1, w20
+    bl      ui_at
+    mov     w0, RB_ROLE_FAINT
+    bl      th_fg
+    ldr     x0, =rb_elbow_ro
+    bl      printf
+    ldr     x0, =rb_dash
+    sub     w1, w21, 1
+    bl      ui_repeat
+    ldr     x0, =rb_elbow_r
+    bl      printf
+
+rb_link_close:
+    bl      th_off
+
+rb_link_done:
+    ldr     x23, [sp, 48]
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 64
+    ret
+
+// rb_draw(x0 = node, w1 = row, w2 = left column, w3 = distance to a
+//         child, w4 = level)
+// Children first, then the elbows, then this cell, so a cell is never
+// half covered by the line that reaches it.
+rb_draw:
     stp     fp, lr, [sp, -96]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
@@ -1306,108 +1546,90 @@ rb_delete:
     stp     x25, x26, [sp, 64]
     str     x27, [sp, 80]
 
-    mov     x19, x0                      // x19 = &root
-    mov     w20, w1                      // w20 = value to delete
+    mov     x19, x0
+    mov     w20, w1
+    mov     w21, w2
+    mov     w22, w3
+    mov     w23, w4
 
-    ldr     x0, [x19]
-    mov     w1, w20
-    bl      rb_search
-    mov     x21, x0                      // x21 = node to delete
-    cbz     x21, rb_delete_not_found
+    mov     x0, x19
+    bl      rb_is_nil
+    cbnz    w0, rb_draw_out
 
-    ldr     x25, =rb_nil
-    ldr     x25, [x25]
+    mov     x0, x19
+    mov     w1, RB_LEFT
+    bl      rb_child
+    mov     x24, x0
+    mov     x0, x19
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    mov     x25, x0
 
-    mov     x22, x21                     // x22 = y (node to splice out)
-    mov     x0, x21
-    bl      rb_get_color
-    mov     w23, w0                      // w23 = y's original color
+    cmp     w23, RB_LAST_LVL
+    b.ge    rb_draw_deeper
 
-    ldr     x24, [x21, RB_NODE_LEFT]
-    cmp     x24, x25
-    b.eq    rb_delete_no_left
+    lsr     w26, w22, 1
+    cmp     w26, 2
+    b.ge    rb_draw_left
+    mov     w26, 2
 
-    ldr     x26, [x21, RB_NODE_RIGHT]
-    cmp     x26, x25
-    b.eq    rb_delete_no_right
-
-rb_delete_two_children:
-    ldr     x0, [x21, RB_NODE_RIGHT]
-    bl      rb_minimum
-    mov     x22, x0
-
-    mov     x0, x22
-    bl      rb_get_color
-    mov     w23, w0
-
-    ldr     x24, [x22, RB_NODE_RIGHT]
-
-    ldr     x26, [x22, RB_NODE_PARENT]
-    cmp     x26, x21
-    b.eq    rb_delete_successor_is_child
-
-    mov     x0, x22
-    mov     x1, x24
-    bl      rb_transplant
-
-    ldr     x26, [x21, RB_NODE_RIGHT]
-    str     x26, [x22, RB_NODE_RIGHT]
-    str     x22, [x26, RB_NODE_PARENT]
-
-rb_delete_successor_is_child:
-    // x may be the nil sentinel; it still needs y as its parent for
-    // the fixup climb.
-    str     x22, [x24, RB_NODE_PARENT]
-
-    mov     x0, x21
-    mov     x1, x22
-    bl      rb_transplant
-
-    ldr     x26, [x21, RB_NODE_LEFT]
-    str     x26, [x22, RB_NODE_LEFT]
-    str     x22, [x26, RB_NODE_PARENT]
-
-    ldrb    w0, [x21, RB_NODE_COLOR]
-    strb    w0, [x22, RB_NODE_COLOR]
-
-    b       rb_delete_fixup_check
-
-rb_delete_no_left:
-    ldr     x24, [x21, RB_NODE_RIGHT]
-    mov     x0, x21
-    mov     x1, x24
-    bl      rb_transplant
-    b       rb_delete_fixup_check
-
-rb_delete_no_right:
-    // x24 already holds the left child; splice it up (x26 is nil here)
-    mov     x0, x21
-    mov     x1, x24
-    bl      rb_transplant
-
-rb_delete_fixup_check:
-    cmp     w23, COLOR_BLACK
-    b.ne    rb_delete_success
+rb_draw_left:
+    cbz     x24, rb_draw_right
 
     mov     x0, x24
-    bl      rb_delete_fixup
+    add     w1, w20, 2
+    sub     w2, w21, w22
+    mov     w3, w26
+    add     w4, w23, 1
+    bl      rb_draw
 
-rb_delete_success:
-    mov     x0, x21
-    bl      free
+rb_draw_right:
+    cbz     x25, rb_draw_links
 
-    ldr     x0, =rb_node_count
-    ldr     w1, [x0]
-    sub     w1, w1, 1
-    str     w1, [x0]
+    mov     x0, x25
+    add     w1, w20, 2
+    add     w2, w21, w22
+    mov     w3, w26
+    add     w4, w23, 1
+    bl      rb_draw
 
-    mov     w0, 1
-    b       rb_delete_done
+rb_draw_links:
+    add     w0, w20, 1
+    add     w1, w21, 2                      // the centre of a four-wide cell
+    mov     w2, w22
+    mov     w3, 0
+    cbz     x24, rb_draw_no_left
+    mov     w3, 1
+rb_draw_no_left:
+    mov     w4, 0
+    cbz     x25, rb_draw_no_right
+    mov     w4, 1
+rb_draw_no_right:
+    bl      rb_link
+    b       rb_draw_cell
 
-rb_delete_not_found:
-    mov     w0, 0
+rb_draw_deeper:
+    orr     x0, x24, x25
+    cbz     x0, rb_draw_cell
 
-rb_delete_done:
+    add     w0, w20, 1
+    add     w1, w21, 2
+    mov     w2, RB_ROLE_FAINT
+    ldr     x3, =rb_deeper
+    bl      ui_text
+
+rb_draw_cell:
+    mov     x0, x19
+    bl      rb_role_of
+    mov     w27, w0
+
+    ldr     w3, [x19, RB_DATA]
+    mov     w0, w20
+    mov     w1, w21
+    mov     w2, w27
+    bl      rb_chip
+
+rb_draw_out:
     ldr     x27, [sp, 80]
     ldp     x25, x26, [sp, 64]
     ldp     x23, x24, [sp, 48]
@@ -1416,415 +1638,409 @@ rb_delete_done:
     ldp     fp, lr, [sp], 96
     ret
 
-// rb_delete_animated(x0 = &root, w1 = value) - animate the walk, then delete
-    .global rb_delete_animated
-rb_delete_animated:
+// rb_render(x0 = node A, w1 = role A, x2 = node B, w3 = role B,
+//           x4 = node C, w5 = role C, x6 = node D, w7 = role D)
+// Four highlight slots, because the insert repair looks at four nodes at
+// once: the new one, its parent, its grandparent and its uncle.
+rb_render:
+    stp     fp, lr, [sp, -48]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+
+    ldr     x19, =rb_hl_node
+    str     x0, [x19]
+    str     x2, [x19, 8]
+    str     x4, [x19, 16]
+    str     x6, [x19, 24]
+    ldr     x19, =rb_hl_role
+    str     w1, [x19]
+    str     w3, [x19, 4]
+    str     w5, [x19, 8]
+    str     w7, [x19, 12]
+
+    mov     w19, 5
+rb_render_wipe:
+    cmp     w19, 14
+    b.gt    rb_render_tree
+    mov     w0, w19
+    mov     w1, 3
+    mov     w2, 76
+    bl      rb_blank
+    add     w19, w19, 1
+    b       rb_render_wipe
+
+rb_render_tree:
+    ldr     x0, =rb_root
+    ldr     x19, [x0]
+    mov     x0, x19
+    bl      rb_is_nil
+    cbnz    w0, rb_render_empty
+
+    mov     x0, x19
+    mov     w1, RB_TOP_ROW
+    mov     w2, RB_TOP_COL
+    mov     w3, RB_SPREAD
+    mov     w4, 0
+    bl      rb_draw
+
+    mov     w0, RB_TOP_ROW
+    mov     w1, RB_TOP_COL - 7
+    mov     w2, RB_ROLE_KEY
+    ldr     x3, =rb_lbl_root
+    bl      ui_text
+    b       rb_render_stats
+
+rb_render_empty:
+    mov     w0, 9
+    mov     w1, 35
+    mov     w2, RB_ROLE_FAINT
+    ldr     x3, =rb_lbl_none
+    bl      ui_text
+
+rb_render_stats:
+    mov     w0, 16
+    mov     w1, 56
+    mov     w2, 22
+    bl      rb_blank
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_height_of
+    mov     w20, w0
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_size_of
+    mov     w19, w0
+
+    mov     w0, 16
+    mov     w1, 56
+    bl      ui_at
+    mov     w0, RB_ROLE_DIM
+    bl      th_fg
+    mov     w1, w19
+    mov     w2, w20
+    ldr     x0, =rb_fmt_stat
+    bl      printf
+    bl      th_off
+
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 48
+    ret
+
+// rb_rest() - repaint with every node back in its own colour
+rb_rest:
+    stp     fp, lr, [sp, -16]!
+    mov     fp, sp
+
+    mov     x0, 0
+    mov     w1, 0
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    ldp     fp, lr, [sp], 16
+    ret
+
+// rb_note_case(x0 = the sentence for this case)
+// Called from inside the repair. The four nodes it draws are still in the
+// registers of rb_insert_fixup, and a call does not disturb them.
+rb_note_case:
+    stp     fp, lr, [sp, -48]!
+    mov     fp, sp
+    stp     x25, x26, [sp, 16]
+
+    mov     x25, x0
+    ldr     x26, =rb_narrate
+    ldr     w26, [x26]
+    cbz     w26, rb_note_case_done
+
+    mov     x0, x19
+    mov     w1, RB_ROLE_HOT
+    mov     x2, x20
+    mov     w3, RB_ROLE_WARN
+    mov     x4, x21
+    mov     w5, RB_ROLE_ACCENT
+    mov     x6, x23
+    mov     w7, RB_ROLE_KEY
+    bl      rb_render
+
+    mov     x0, x25
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+    ldr     x0, =rb_fix_steps
+    ldr     w1, [x0]
+    add     w1, w1, 1
+    str     w1, [x0]
+
+rb_note_case_done:
+    ldp     x25, x26, [sp, 16]
+    ldp     fp, lr, [sp], 48
+    ret
+
+// rb_note_settled() - the line that closes a repair, whether or not one
+// turned out to be needed
+rb_note_settled:
+    stp     fp, lr, [sp, -16]!
+    mov     fp, sp
+
+    ldr     x0, =rb_narrate
+    ldr     w0, [x0]
+    cbz     w0, rb_note_settled_done
+
+    bl      rb_rest
+    ldr     x0, =rb_fix_steps
+    ldr     w0, [x0]
+    cbz     w0, rb_note_settled_quiet
+
+    ldr     x0, =rb_msg_fixed
+    b       rb_note_settled_say
+
+rb_note_settled_quiet:
+    ldr     x0, =rb_msg_nofix
+
+rb_note_settled_say:
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+rb_note_settled_done:
+    ldp     fp, lr, [sp], 16
+    ret
+
+// rb_order_reset() - start a fresh visit order strip
+rb_order_reset:
+    stp     fp, lr, [sp, -16]!
+    mov     fp, sp
+
+    ldr     x0, =rb_order_len
+    str     wzr, [x0]
+    ldr     x0, =rb_order
+    strb    wzr, [x0]
+
+    mov     w0, 17
+    mov     w1, 3
+    mov     w2, 76
+    bl      rb_blank
+
+    mov     w0, 17
+    mov     w1, 4
+    mov     w2, RB_ROLE_DIM
+    ldr     x3, =rb_lbl_order
+    bl      ui_text
+
+    ldp     fp, lr, [sp], 16
+    ret
+
+// rb_order_add(w0 = value) - append one value and redraw the strip
+rb_order_add:
+    stp     fp, lr, [sp, -48]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    str     x21, [sp, 32]
+
+    mov     w19, w0
+
+    ldr     x20, =rb_order_len
+    ldr     w0, [x20]
+    cmp     w0, RB_ORDER_MAX
+    b.ge    rb_order_show
+
+    ldr     x1, =rb_order
+    sxtw    x0, w0
+    add     x21, x1, x0                     // where this value lands
+
+    mov     x0, x21
+    mov     w1, w19
+    mov     w2, 0                           // the strip spaces itself
+    bl      ui_num
+
+    sxtw    x2, w0
+    add     x1, x21, x2
+    mov     w2, ' '
+    strb    w2, [x1], 1
+    strb    wzr, [x1]
+    add     w0, w0, 1                       // the separator counts too
+
+    ldr     w1, [x20]
+    add     w1, w1, w0
+    str     w1, [x20]
+
+rb_order_show:
+    mov     w0, 17
+    mov     w1, 10
+    mov     w2, RB_ROLE_KEY
+    ldr     x3, =rb_order
+    bl      ui_text
+
+    ldr     x21, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 48
+    ret
+
+// --------------------------------------------------------------- screens
+
+// rb_legend() - two node colours, and the four parts the repair names
+rb_legend:
+    stp     fp, lr, [sp, -16]!
+    mov     fp, sp
+
+    mov     w0, 16
+    mov     w1, 4
+    mov     w2, RB_ROLE_BAD
+    ldr     x3, =rb_lg_red
+    bl      ui_badge
+
+    mov     w0, 16
+    mov     w1, 10
+    mov     w2, RB_ROLE_NODE
+    ldr     x3, =rb_lg_black
+    bl      ui_badge
+
+    mov     w0, 16
+    mov     w1, 18
+    mov     w2, RB_ROLE_HOT
+    ldr     x3, =rb_lg_new
+    bl      ui_badge
+
+    mov     w0, 16
+    mov     w1, 24
+    mov     w2, RB_ROLE_WARN
+    ldr     x3, =rb_lg_parent
+    bl      ui_badge
+
+    mov     w0, 16
+    mov     w1, 33
+    mov     w2, RB_ROLE_ACCENT
+    ldr     x3, =rb_lg_gp
+    bl      ui_badge
+
+    mov     w0, 16
+    mov     w1, 47
+    mov     w2, RB_ROLE_KEY
+    ldr     x3, =rb_lg_uncle
+    bl      ui_badge
+
+    ldp     fp, lr, [sp], 16
+    ret
+
+// rb_frame(x0 = screen title, x1 = footer hint, x2 = best, x3 = avg,
+//          x4 = worst, x5 = space)
+// Everything on an operation screen that does not move while it runs.
+rb_frame:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
     stp     x21, x22, [sp, 32]
     stp     x23, x24, [sp, 48]
-    str     x25, [sp, 64]
 
-    mov     x19, x0                      // x19 = &root
-    mov     w20, w1                      // w20 = value to delete
+    mov     x19, x0
+    mov     x20, x1
+    mov     x21, x2
+    mov     x22, x3
+    mov     x23, x4
+    mov     x24, x5
 
-    ldr     x25, =rb_visual_delay
-    ldr     w25, [x25]
-
-    // walk down, redrawing with each visited node highlighted
-    ldr     x21, [x19]                   // x21 = current
-    ldr     x22, =rb_nil
-    ldr     x22, [x22]
-
-    cmp     x21, x22
-    b.eq    rb_delete_anim_not_found
-    cbz     x21, rb_delete_anim_not_found
-
-rb_delete_anim_search_loop:
-    bl      ansi_clear_screen
-    mov     w0, 2
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_title
-    mov     w1, 80
-    bl      print_centered
-
-    mov     w0, 3
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_deleting
-    mov     w1, w20
-    bl      printf
-
-    ldr     x0, =rb_root
-    ldr     x0, [x0]
-    mov     w1, 6
-    mov     w2, 40
-    mov     w3, 20
-    mov     x4, x21                      // highlight current
-    mov     x5, 0
-    bl      rb_draw_node_recursive
-
-    mov     x0, 0
-    bl      fflush
-    mov     w0, w25
-    bl      delay_ms
-
-    ldr     w0, [x21, RB_NODE_DATA]
-    cmp     w20, w0
-    b.eq    rb_delete_anim_found
-    b.lt    rb_delete_anim_go_left
-
-rb_delete_anim_go_right:
-    ldr     x23, [x21, RB_NODE_RIGHT]
-    cmp     x23, x22
-    b.eq    rb_delete_anim_not_found
-    cbz     x23, rb_delete_anim_not_found
-    mov     x21, x23
-    b       rb_delete_anim_search_loop
-
-rb_delete_anim_go_left:
-    ldr     x23, [x21, RB_NODE_LEFT]
-    cmp     x23, x22
-    b.eq    rb_delete_anim_not_found
-    cbz     x23, rb_delete_anim_not_found
-    mov     x21, x23
-    b       rb_delete_anim_search_loop
-
-rb_delete_anim_found:
-    // hand off to the real delete
     mov     x0, x19
-    mov     w1, w20
-    bl      rb_delete
+    bl      ui_screen
 
-    bl      rb_display_tree_visual
+    mov     x0, x20
+    bl      ui_footer
 
-    mov     w0, 22
-    mov     w1, 1
-    bl      ansi_move_cursor
+    mov     w0, 4
+    mov     w1, 2
+    mov     w2, 78
+    mov     w3, 12
+    ldr     x4, =rb_pan_tree
+    bl      ui_panel
 
-    ldr     x0, =rb_msg_deleted
-    mov     w1, w20
-    bl      printf
-    bl      print_newline
-    b       rb_delete_anim_done
+    bl      rb_legend
 
-rb_delete_anim_not_found:
-    bl      rb_display_tree_visual
-    mov     w0, 22
-    mov     w1, 1
-    bl      ansi_move_cursor
+    mov     w0, 17
+    mov     w1, 4
+    mov     w2, RB_ROLE_DIM
+    ldr     x3, =rb_lbl_rule
+    bl      ui_text
 
-    ldr     x0, =rb_msg_not_found
-    mov     w1, w20
-    bl      printf
-    bl      print_newline
+    mov     w0, 20
+    mov     w1, 4
+    mov     x2, x21
+    mov     x3, x22
+    mov     x4, x23
+    mov     x5, x24
+    bl      ui_complexity
 
-rb_delete_anim_done:
-    ldr     x25, [sp, 64]
     ldp     x23, x24, [sp, 48]
     ldp     x21, x22, [sp, 32]
     ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 80
     ret
 
-// rb_delete_interactive() - prompt for a value and delete it
-    .global rb_delete_interactive
-rb_delete_interactive:
-    stp     fp, lr, [sp, -32]!
+// rb_ask(x0 = prompt) -> w0 = value, w1 = 1 when the value is usable
+// One reader for all three prompts. It refuses a closed stdin and a value
+// too wide for a cell, so the drawing can never be pushed out of shape.
+rb_ask:
+    stp     fp, lr, [sp, -48]!
     mov     fp, sp
-    str     x19, [sp, 16]
+    stp     x19, x20, [sp, 16]
 
-    bl      ansi_clear_screen
+    mov     x19, x0
 
-    ldr     x0, =rb_node_count
-    ldr     w0, [x0]
-    cmp     w0, 0
-    b.le    rb_delete_int_empty
-
-    ldr     x0, =rb_prompt_value
-    bl      printf
+    mov     w0, 18
+    mov     w1, 2
+    mov     w2, 78
+    bl      rb_blank
+    mov     w0, 18
+    mov     w1, 4
+    mov     x2, x19
+    bl      ui_prompt
+    bl      rb_flush
 
     bl      read_int
     mov     w19, w0
+    mov     w20, w1
 
-    ldr     x0, =rb_root
-    mov     w1, w19
-    bl      rb_delete_animated
+    cbz     w20, rb_ask_stop                // stdin closed: walk out quietly
 
-    b       rb_delete_int_done
+    cmp     w19, 0
+    b.lt    rb_ask_range
+    cmp     w19, 99
+    b.gt    rb_ask_range
 
-rb_delete_int_empty:
-    mov     w0, 22
+    mov     w0, w19
     mov     w1, 1
-    bl      ansi_move_cursor
+    b       rb_ask_done
 
-    ldr     x0, =rb_msg_empty_tree
-    bl      printf
-    bl      print_newline
+rb_ask_range:
+    ldr     x0, =rb_msg_range
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    mov     w0, 0
+    mov     w1, 0
+    b       rb_ask_done
 
-rb_delete_int_done:
-    ldr     x19, [sp, 16]
-    ldp     fp, lr, [sp], 32
+rb_ask_stop:
+    mov     w0, 0
+    mov     w1, 0
+
+rb_ask_done:
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 48
     ret
 
-// rb_insert_interactive() - prompt for a value and insert it
-    .global rb_insert_interactive
-rb_insert_interactive:
-    stp     fp, lr, [sp, -32]!
-    mov     fp, sp
-    str     x19, [sp, 16]
-
-    bl      ansi_clear_screen
-
-    ldr     x0, =rb_prompt_value
-    bl      printf
-
-    bl      read_int
-    mov     w19, w0
-
-    ldr     x0, =rb_root
-    mov     w1, w19
-    bl      rb_insert_animated
-
-    ldr     x19, [sp, 16]
-    ldp     fp, lr, [sp], 32
-    ret
-
-// rb_search_interactive() - prompt for a value and search for it
-    .global rb_search_interactive
-rb_search_interactive:
-    stp     fp, lr, [sp, -32]!
-    mov     fp, sp
-    str     x19, [sp, 16]
-
-    bl      ansi_clear_screen
-
-    ldr     x0, =rb_node_count
-    ldr     w0, [x0]
-    cmp     w0, 0
-    b.le    rb_search_int_empty
-
-    ldr     x0, =rb_prompt_value
-    bl      printf
-
-    bl      read_int
-    mov     w19, w0
-
-    ldr     x0, =rb_root
-    ldr     x0, [x0]
-    mov     w1, w19
-    bl      rb_search_animated
-
-    cmp     x0, 0
-    b.eq    rb_search_int_not_found
-
-    bl      rb_display_tree_visual
-
-    mov     w0, 22
-    mov     w1, 1
-    bl      ansi_move_cursor
-
-    ldr     x0, =rb_msg_found
-    mov     w1, w19
-    bl      printf
-    bl      print_newline
-
-    b       rb_search_int_done
-
-rb_search_int_empty:
-    mov     w0, 22
-    mov     w1, 1
-    bl      ansi_move_cursor
-
-    ldr     x0, =rb_msg_empty_tree
-    bl      printf
-    bl      print_newline
-    b       rb_search_int_done
-
-rb_search_int_not_found:
-    bl      rb_display_tree_visual
-    mov     w0, 22
-    mov     w1, 1
-    bl      ansi_move_cursor
-
-    ldr     x0, =rb_msg_not_found
-    mov     w1, w19
-    bl      printf
-    bl      print_newline
-
-rb_search_int_done:
-    ldr     x19, [sp, 16]
-    ldp     fp, lr, [sp], 32
-    ret
-
-// rb_inorder_interactive() - run the animated traversal
-rb_inorder_interactive:
-    stp     fp, lr, [sp, -16]!
-    mov     fp, sp
-
-    bl      ansi_clear_screen
-
-    ldr     x0, =rb_node_count
-    ldr     w0, [x0]
-    cmp     w0, 0
-    b.le    rb_inorder_int_empty
-
-    ldr     x0, =rb_root
-    ldr     x0, [x0]
-    bl      rb_inorder_animated
-
-    b       rb_inorder_int_done
-
-rb_inorder_int_empty:
-    mov     w0, 10
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_msg_empty_tree
-    bl      printf
-    bl      print_newline
-
-rb_inorder_int_done:
-    ldp     fp, lr, [sp], 16
-    ret
-
-// rb_init_sample() - replace the tree with a fixed eight-node sample
-rb_init_sample:
-    stp     fp, lr, [sp, -32]!
-    mov     fp, sp
-    str     x19, [sp, 16]
-
-    // drop the old tree first
-    ldr     x0, =rb_root
-    bl      rb_free_all
-
-    ldr     x19, =rb_root
-
-    mov     x0, x19
-    mov     w1, 50
-    bl      rb_insert
-
-    mov     x0, x19
-    mov     w1, 30
-    bl      rb_insert
-
-    mov     x0, x19
-    mov     w1, 70
-    bl      rb_insert
-
-    mov     x0, x19
-    mov     w1, 20
-    bl      rb_insert
-
-    mov     x0, x19
-    mov     w1, 40
-    bl      rb_insert
-
-    mov     x0, x19
-    mov     w1, 60
-    bl      rb_insert
-
-    mov     x0, x19
-    mov     w1, 80
-    bl      rb_insert
-
-    mov     x0, x19
-    mov     w1, 10
-    bl      rb_insert
-
-    bl      rb_display_tree_visual
-
-    mov     w0, 22
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =.Lrb_sample_complete
-    bl      printf
-    bl      print_newline
-
-    ldr     x19, [sp, 16]
-    ldp     fp, lr, [sp], 32
-    ret
-
-// rb_verify_interactive() - list the five red-black properties
-rb_verify_interactive:
-    stp     fp, lr, [sp, -16]!
-    mov     fp, sp
-
-    bl      ansi_clear_screen
-
-    ldr     x0, =rb_node_count
-    ldr     w0, [x0]
-    cmp     w0, 0
-    b.le    rb_verify_empty
-
-    bl      rb_display_tree_visual
-
-    // properties start at row 25; row 23 holds the press-enter prompt
-    mov     w0, 25
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_prop_header
-    bl      printf
-    bl      print_newline
-
-    mov     w0, 26
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_prop_1
-    bl      printf
-    bl      print_newline
-
-    mov     w0, 27
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_prop_2
-    bl      printf
-    bl      print_newline
-
-    mov     w0, 28
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_prop_3
-    bl      printf
-    bl      print_newline
-
-    mov     w0, 29
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_prop_4
-    bl      printf
-    bl      print_newline
-
-    mov     w0, 30
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_prop_5
-    bl      printf
-    bl      print_newline
-
-    mov     w0, 31
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =msg_prop_footer
-    bl      printf
-    bl      print_newline
-
-    b       rb_verify_done
-
-rb_verify_empty:
-    mov     w0, 10
-    mov     w1, 1
-    bl      ansi_move_cursor
-    ldr     x0, =rb_msg_empty_tree
-    bl      printf
-    bl      print_newline
-
-rb_verify_done:
-    ldp     fp, lr, [sp], 16
-    ret
-
-// rb_menu() - module menu loop; frees the tree on exit, keeps the sentinel
+// rb_menu() - operations menu. The sentinel outlives the module, the tree
+// does not.
     .global rb_menu
 rb_menu:
     stp     fp, lr, [sp, -16]!
@@ -1833,8 +2049,7 @@ rb_menu:
     bl      rb_init_nil
 
 rb_menu_loop:
-    bl      ansi_clear_screen
-    bl      rb_display_menu
+    bl      rb_menu_draw
 
     mov     w0, 0
     mov     w1, 7
@@ -1842,28 +2057,20 @@ rb_menu_loop:
 
     cmp     w0, 0
     b.eq    rb_menu_exit
-
     cmp     w0, 1
     b.eq    rb_menu_insert
-
     cmp     w0, 2
     b.eq    rb_menu_search
-
     cmp     w0, 3
     b.eq    rb_menu_delete
-
     cmp     w0, 4
     b.eq    rb_menu_inorder
-
     cmp     w0, 5
-    b.eq    rb_menu_init
-
+    b.eq    rb_menu_sample
     cmp     w0, 6
-    b.eq    rb_menu_display
-
+    b.eq    rb_menu_show
     cmp     w0, 7
     b.eq    rb_menu_verify
-
     b       rb_menu_loop
 
 rb_menu_insert:
@@ -1876,28 +2083,28 @@ rb_menu_search:
     bl      wait_for_enter
     b       rb_menu_loop
 
+rb_menu_delete:
+    bl      rb_delete_interactive
+    bl      wait_for_enter
+    b       rb_menu_loop
+
 rb_menu_inorder:
     bl      rb_inorder_interactive
     bl      wait_for_enter
     b       rb_menu_loop
 
-rb_menu_init:
-    bl      rb_init_sample
+rb_menu_sample:
+    bl      rb_sample_interactive
     bl      wait_for_enter
     b       rb_menu_loop
 
-rb_menu_display:
-    bl      rb_display_tree_visual
+rb_menu_show:
+    bl      rb_show
     bl      wait_for_enter
     b       rb_menu_loop
 
 rb_menu_verify:
     bl      rb_verify_interactive
-    bl      wait_for_enter
-    b       rb_menu_loop
-
-rb_menu_delete:
-    bl      rb_delete_interactive
     bl      wait_for_enter
     b       rb_menu_loop
 
@@ -1907,101 +2114,1012 @@ rb_menu_exit:
     ldp     fp, lr, [sp], 16
     ret
 
-// rb_display_menu() - draw the menu box and options
-    .global rb_display_menu
-rb_display_menu:
+// rb_menu_draw() - the operations screen
+rb_menu_draw:
+    stp     fp, lr, [sp, -32]!
+    mov     fp, sp
+    str     x19, [sp, 16]
+
+    ldr     x0, =rb_scr_menu
+    bl      ui_screen
+
+    ldr     x0, =rb_hint_menu
+    bl      ui_footer
+
+    mov     w0, 4
+    mov     w1, 9
+    mov     w2, 62
+    mov     w3, 13
+    ldr     x4, =rb_pan_ops
+    bl      ui_panel
+
+    mov     w0, 6
+    ldr     x1, =rb_key_1
+    ldr     x2, =rb_opt_1
+    bl      rb_menu_line
+
+    mov     w0, 7
+    ldr     x1, =rb_key_2
+    ldr     x2, =rb_opt_2
+    bl      rb_menu_line
+
+    mov     w0, 8
+    ldr     x1, =rb_key_3
+    ldr     x2, =rb_opt_3
+    bl      rb_menu_line
+
+    mov     w0, 9
+    ldr     x1, =rb_key_4
+    ldr     x2, =rb_opt_4
+    bl      rb_menu_line
+
+    mov     w0, 10
+    ldr     x1, =rb_key_5
+    ldr     x2, =rb_opt_5
+    bl      rb_menu_line
+
+    mov     w0, 11
+    ldr     x1, =rb_key_6
+    ldr     x2, =rb_opt_6
+    bl      rb_menu_line
+
+    mov     w0, 12
+    ldr     x1, =rb_key_7
+    ldr     x2, =rb_opt_7
+    bl      rb_menu_line
+
+    mov     w0, 13
+    ldr     x1, =rb_key_0
+    ldr     x2, =rb_opt_0
+    bl      rb_menu_line
+
+    // how much tree there is, so the menu is never a dead end
+    mov     w0, 15
+    mov     w1, 12
+    bl      ui_at
+    mov     w0, RB_ROLE_DIM
+    bl      th_fg
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_height_of
+    mov     w19, w0
+    ldr     x0, =rb_node_count
+    ldr     w1, [x0]
+    mov     w2, w19
+    ldr     x0, =rb_fmt_stat
+    bl      printf
+    bl      th_off
+
+    mov     w0, 18
+    mov     w1, 12
+    ldr     x2, =rb_ask_choice
+    bl      ui_prompt
+    bl      rb_flush
+
+    ldr     x19, [sp, 16]
+    ldp     fp, lr, [sp], 32
+    ret
+
+// rb_menu_line(w0 = row, x1 = key text, x2 = option text)
+rb_menu_line:
+    stp     fp, lr, [sp, -48]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    str     x21, [sp, 32]
+
+    mov     w19, w0
+    mov     x21, x1
+    mov     x20, x2
+
+    mov     w0, w19
+    mov     w1, 12
+    mov     w2, RB_ROLE_KEY
+    mov     x3, x21
+    bl      ui_badge
+
+    mov     w0, w19
+    mov     w1, 16
+    mov     w2, RB_ROLE_TEXT
+    mov     x3, x20
+    bl      ui_text
+
+    ldr     x21, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 48
+    ret
+
+// rb_insert_interactive() - the descent, then the repair, case by case
+rb_insert_interactive:
+    stp     fp, lr, [sp, -80]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+    stp     x23, x24, [sp, 48]
+
+    ldr     x0, =rb_scr_insert
+    ldr     x1, =rb_hint_run
+    ldr     x2, =rb_ologn
+    ldr     x3, =rb_ologn
+    ldr     x4, =rb_ologn
+    ldr     x5, =rb_o1
+    bl      rb_frame
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_clear_seen
+    bl      rb_rest
+
+    ldr     x0, =rb_ask_insert
+    bl      rb_ask
+    mov     w19, w0
+    mov     w20, w1
+    cbz     w20, rb_insert_int_done
+
+    ldr     x0, =rb_root
+    ldr     x21, [x0]
+    mov     w22, 0                          // comparisons made
+    mov     x0, x21
+    bl      rb_is_nil
+    cbnz    w0, rb_insert_int_place
+
+    ldr     x0, =rb_msg_start
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+rb_insert_int_walk:
+    mov     x0, x21
+    mov     w1, RB_ROLE_HOT
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    add     w22, w22, 1
+    ldr     w23, [x21, RB_DATA]
+    cmp     w19, w23
+    b.eq    rb_insert_int_dup
+    b.gt    rb_insert_int_right
+
+    ldr     x0, =rb_fmt_cmp_lt
+    mov     w1, w19
+    mov     w2, w23
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+    mov     x0, x21
+    mov     w1, RB_LEFT
+    bl      rb_child
+    mov     x24, x0
+    cbz     x24, rb_insert_int_arrived
+    mov     x21, x24
+    b       rb_insert_int_walk
+
+rb_insert_int_right:
+    ldr     x0, =rb_fmt_cmp_gt
+    mov     w1, w19
+    mov     w2, w23
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+    mov     x0, x21
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    mov     x24, x0
+    cbz     x24, rb_insert_int_arrived
+    mov     x21, x24
+    b       rb_insert_int_walk
+
+rb_insert_int_arrived:
+    ldr     x0, =rb_fmt_arrived
+    mov     w1, w19
+    ldr     w2, [x21, RB_DATA]
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+rb_insert_int_place:
+    ldr     x0, =rb_fix_steps
+    str     wzr, [x0]
+    ldr     x0, =rb_narrate
+    mov     w1, 1
+    str     w1, [x0]                        // the repair may speak now
+
+    ldr     x0, =rb_root
+    mov     w1, w19
+    bl      rb_insert
+    mov     w23, w1                         // a printf below would eat w1
+
+    ldr     x0, =rb_narrate
+    str     wzr, [x0]
+
+    cbz     w23, rb_insert_int_refused
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    mov     w1, w19
+    bl      rb_search
+    mov     x21, x0
+
+    mov     x0, x21
+    mov     w1, RB_ROLE_OK
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    cbnz    w22, rb_insert_int_report
+
+    ldr     x0, =rb_msg_root
+    mov     w1, w19
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    b       rb_insert_int_done
+
+rb_insert_int_report:
+    ldr     x0, =rb_fix_steps
+    ldr     w24, [x0]
+    ldr     x0, =rb_fmt_placed
+    mov     w1, w19
+    mov     w2, w22
+    mov     w3, w24
+    bl      rb_say
+    b       rb_insert_int_done
+
+rb_insert_int_dup:
+    bl      rb_rest
+    ldr     x0, =rb_fmt_dup
+    mov     w1, w19
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    b       rb_insert_int_done
+
+rb_insert_int_refused:
+    ldr     x0, =rb_msg_alloc
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+
+rb_insert_int_done:
+    bl      rb_flush
+    ldp     x23, x24, [sp, 48]
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 80
+    ret
+
+// rb_search_interactive() - the descent, with nothing to repair after it
+rb_search_interactive:
+    stp     fp, lr, [sp, -80]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+    stp     x23, x24, [sp, 48]
+
+    ldr     x0, =rb_scr_search
+    ldr     x1, =rb_hint_run
+    ldr     x2, =rb_o1
+    ldr     x3, =rb_ologn
+    ldr     x4, =rb_ologn
+    ldr     x5, =rb_o1
+    bl      rb_frame
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_clear_seen
+    bl      rb_rest
+
+    ldr     x0, =rb_node_count
+    ldr     w0, [x0]
+    cmp     w0, 0
+    b.le    rb_search_int_empty
+
+    ldr     x0, =rb_ask_search
+    bl      rb_ask
+    mov     w19, w0
+    mov     w20, w1
+    cbz     w20, rb_search_int_done
+
+    ldr     x0, =rb_root
+    ldr     x21, [x0]
+    mov     w22, 0
+
+rb_search_int_walk:
+    mov     x0, x21
+    bl      rb_is_nil
+    cbnz    w0, rb_search_int_missing
+
+    mov     x0, x21
+    mov     w1, RB_ROLE_HOT
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    add     w22, w22, 1
+    ldr     w23, [x21, RB_DATA]
+    cmp     w19, w23
+    b.eq    rb_search_int_hit
+    b.gt    rb_search_int_right
+
+    ldr     x0, =rb_fmt_cmp_lt
+    mov     w1, w19
+    mov     w2, w23
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+    mov     x0, x21
+    mov     w1, RB_LEFT
+    bl      rb_child
+    mov     x21, x0
+    b       rb_search_int_walk
+
+rb_search_int_right:
+    ldr     x0, =rb_fmt_cmp_gt
+    mov     w1, w19
+    mov     w2, w23
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+    mov     x0, x21
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    mov     x21, x0
+    b       rb_search_int_walk
+
+rb_search_int_hit:
+    mov     x0, x21
+    mov     w1, RB_ROLE_OK
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    mov     w1, w19
+    bl      rb_depth_of
+    mov     w24, w0
+
+    ldr     x0, =rb_fmt_found
+    mov     w1, w19
+    mov     w2, w22
+    mov     w3, w24
+    bl      rb_say
+    b       rb_search_int_done
+
+rb_search_int_missing:
+    bl      rb_rest
+    ldr     x0, =rb_fmt_missing
+    mov     w1, w19
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    b       rb_search_int_done
+
+rb_search_int_empty:
+    ldr     x0, =rb_msg_empty
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+
+rb_search_int_done:
+    bl      rb_flush
+    ldp     x23, x24, [sp, 48]
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 80
+    ret
+
+// rb_delete_interactive() - find the node, say what its colour costs, and
+// hand the work to the delete that knows how to pay it
+rb_delete_interactive:
+    stp     fp, lr, [sp, -80]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+    stp     x23, x24, [sp, 48]
+
+    ldr     x0, =rb_scr_delete
+    ldr     x1, =rb_hint_run
+    ldr     x2, =rb_ologn
+    ldr     x3, =rb_ologn
+    ldr     x4, =rb_ologn
+    ldr     x5, =rb_o1
+    bl      rb_frame
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_clear_seen
+    bl      rb_rest
+
+    ldr     x0, =rb_node_count
+    ldr     w0, [x0]
+    cmp     w0, 0
+    b.le    rb_delete_int_empty
+
+    ldr     x0, =rb_ask_delete
+    bl      rb_ask
+    mov     w19, w0
+    mov     w20, w1
+    cbz     w20, rb_delete_int_done
+
+    ldr     x0, =rb_root
+    ldr     x21, [x0]
+
+rb_delete_int_walk:
+    mov     x0, x21
+    bl      rb_is_nil
+    cbnz    w0, rb_delete_int_missing
+
+    mov     x0, x21
+    mov     w1, RB_ROLE_HOT
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    ldr     w23, [x21, RB_DATA]
+    cmp     w19, w23
+    b.eq    rb_delete_int_hit
+    b.gt    rb_delete_int_right
+
+    ldr     x0, =rb_fmt_cmp_lt
+    mov     w1, w19
+    mov     w2, w23
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+    mov     x0, x21
+    mov     w1, RB_LEFT
+    bl      rb_child
+    mov     x21, x0
+    b       rb_delete_int_walk
+
+rb_delete_int_right:
+    ldr     x0, =rb_fmt_cmp_gt
+    mov     w1, w19
+    mov     w2, w23
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+    mov     x0, x21
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    mov     x21, x0
+    b       rb_delete_int_walk
+
+rb_delete_int_hit:
+    mov     x0, x21
+    mov     w1, RB_ROLE_BAD
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    // with two real children the successor moves up wearing this colour,
+    // so it is the successor whose own colour decides the repair
+    mov     x0, x21
+    mov     w1, RB_LEFT
+    bl      rb_child
+    mov     x22, x0
+    mov     x0, x21
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    mov     x23, x0
+
+    cbz     x22, rb_delete_int_colour
+    cbz     x23, rb_delete_int_colour
+
+    ldr     x0, =rb_fmt_del_two
+    mov     w1, w19
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+    mov     x0, x23
+    bl      rb_minimum
+    mov     x21, x0
+
+rb_delete_int_colour:
+    ldrb    w24, [x21, RB_COLOR]
+    cmp     w24, RB_RED
+    b.eq    rb_delete_int_red
+
+    ldr     x0, =rb_fmt_del_black
+    ldr     w1, [x21, RB_DATA]
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+    b       rb_delete_int_apply
+
+rb_delete_int_red:
+    ldr     x0, =rb_fmt_del_red
+    ldr     w1, [x21, RB_DATA]
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+rb_delete_int_apply:
+    ldr     x0, =rb_root
+    mov     w1, w19
+    bl      rb_delete
+
+    bl      rb_rest
+    ldr     x0, =rb_fmt_deleted
+    mov     w1, w19
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    b       rb_delete_int_done
+
+rb_delete_int_missing:
+    bl      rb_rest
+    ldr     x0, =rb_fmt_missing
+    mov     w1, w19
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    b       rb_delete_int_done
+
+rb_delete_int_empty:
+    ldr     x0, =rb_msg_empty
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+
+rb_delete_int_done:
+    bl      rb_flush
+    ldp     x23, x24, [sp, 48]
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 80
+    ret
+
+// rb_visit(x0 = node) - paint it, name it, and add it to the strip
+rb_visit:
+    stp     fp, lr, [sp, -32]!
+    mov     fp, sp
+    str     x19, [sp, 16]
+
+    mov     x19, x0
+
+    mov     x0, x19
+    mov     w1, RB_ROLE_HOT
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    ldr     x0, =rb_fmt_visit
+    ldr     w1, [x19, RB_DATA]
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+
+    ldr     w0, [x19, RB_DATA]
+    bl      rb_order_add
+    bl      rb_pause
+
+    mov     w0, 1
+    str     w0, [x19, RB_SEEN]
+
+    ldr     x19, [sp, 16]
+    ldp     fp, lr, [sp], 32
+    ret
+
+// rb_inorder_walk(x0 = node) - left, node, right
+rb_inorder_walk:
+    stp     fp, lr, [sp, -32]!
+    mov     fp, sp
+    str     x19, [sp, 16]
+
+    mov     x19, x0
+    bl      rb_is_nil
+    cbnz    w0, rb_inorder_walk_done
+
+    mov     x0, x19
+    mov     w1, RB_LEFT
+    bl      rb_child
+    bl      rb_inorder_walk
+
+    mov     x0, x19
+    bl      rb_visit
+
+    mov     x0, x19
+    mov     w1, RB_RIGHT
+    bl      rb_child
+    bl      rb_inorder_walk
+
+rb_inorder_walk_done:
+    ldr     x19, [sp, 16]
+    ldp     fp, lr, [sp], 32
+    ret
+
+// rb_inorder_interactive() - sorted order, off a tree that stays short
+rb_inorder_interactive:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
 
-    mov     w0, 3
-    mov     w1, 15
-    mov     w2, 50
-    mov     w3, 19
-    mov     w4, 1
-    bl      draw_box
+    ldr     x0, =rb_scr_in
+    ldr     x1, =rb_hint_run
+    ldr     x2, =rb_on
+    ldr     x3, =rb_on
+    ldr     x4, =rb_on
+    ldr     x5, =rb_oh
+    bl      rb_frame
 
-    mov     w0, 4
-    mov     w1, 17
-    bl      ansi_move_cursor
-    ldr     x0, =rb_menu_title
-    mov     w1, 46
-    bl      print_centered
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_clear_seen
+    bl      rb_rest
+    bl      rb_order_reset
 
-    mov     w0, 5
-    mov     w1, 15
-    mov     w2, 50
-    mov     w3, 1
-    bl      draw_horizontal_border_top
+    ldr     x0, =rb_node_count
+    ldr     w0, [x0]
+    cmp     w0, 0
+    b.le    rb_inorder_int_empty
 
-    mov     w0, 7
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_rb_1
-    bl      printf
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_inorder_walk
 
-    mov     w0, 8
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_rb_2
-    bl      printf
+    bl      rb_rest
+    ldr     x0, =rb_fmt_done_in
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    b       rb_inorder_int_done
 
-    mov     w0, 9
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_rb_3
-    bl      printf
+rb_inorder_int_empty:
+    ldr     x0, =rb_msg_empty
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
 
+rb_inorder_int_done:
+    bl      rb_flush
+    ldp     fp, lr, [sp], 16
+    ret
+
+// rb_sample_interactive() - the eight values in order, so the rotations
+// that keep the tree short happen in view
+rb_sample_interactive:
+    stp     fp, lr, [sp, -16]!
+    mov     fp, sp
+
+    ldr     x0, =rb_scr_sample
+    ldr     x1, =rb_hint_run
+    ldr     x2, =rb_on
+    ldr     x3, =rb_on
+    ldr     x4, =rb_on
+    ldr     x5, =rb_o1
+    bl      rb_frame
+
+    ldr     x0, =rb_root
+    bl      rb_free_all
+    bl      rb_rest
+
+    mov     w0, 50
+    bl      rb_sample_step
+    mov     w0, 30
+    bl      rb_sample_step
+    mov     w0, 70
+    bl      rb_sample_step
+    mov     w0, 20
+    bl      rb_sample_step
+    mov     w0, 40
+    bl      rb_sample_step
+    mov     w0, 60
+    bl      rb_sample_step
+    mov     w0, 80
+    bl      rb_sample_step
     mov     w0, 10
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_rb_4
-    bl      printf
+    bl      rb_sample_step
 
-    mov     w0, 11
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_rb_5
-    bl      printf
-
-    mov     w0, 12
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_rb_6
-    bl      printf
-
-    mov     w0, 13
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_rb_7
-    bl      printf
-
-    mov     w0, 14
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_rb_0
-    bl      printf
-
-    mov     w0, 17
-    mov     w1, 15
-    mov     w2, 50
-    mov     w3, 1
-    bl      draw_horizontal_border_top
-
-    mov     w0, 18
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =rb_menu_prompt
-    bl      printf
+    bl      rb_rest
+    ldr     x0, =rb_fmt_sample
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_flush
 
     ldp     fp, lr, [sp], 16
     ret
 
-// format strings
-    .data
-.Lfmt_int:              .string "%d "
-.Lrb_node_fmt:             .string "%02d"
-.Lrb_inorder_label:        .string "Inorder: "
-.Lrb_inorder_trav_msg:     .string "Inorder Traversal"
-.Lrb_sample_complete:      .string "Sample tree complete!"
-.Ltree_branch_left:     .string "/"
-.Ltree_branch_right:    .string "\\"
+// rb_sample_step(w0 = value) - one insert, drawn
+rb_sample_step:
+    stp     fp, lr, [sp, -32]!
+    mov     fp, sp
+    str     x19, [sp, 16]
+
+    mov     w19, w0
+
+    ldr     x0, =rb_root
+    mov     w1, w19
+    bl      rb_insert
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    mov     w1, w19
+    bl      rb_search
+
+    mov     w1, RB_ROLE_HOT
+    mov     x2, 0
+    mov     w3, 0
+    mov     x4, 0
+    mov     w5, 0
+    mov     x6, 0
+    mov     w7, 0
+    bl      rb_render
+
+    ldr     x0, =rb_fmt_visit
+    mov     w1, w19
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+    bl      rb_pause
+
+    ldr     x19, [sp, 16]
+    ldp     fp, lr, [sp], 32
+    ret
+
+// rb_show() - the tree, nothing moving
+rb_show:
+    stp     fp, lr, [sp, -48]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    str     x21, [sp, 32]
+
+    ldr     x0, =rb_scr_show
+    ldr     x1, =rb_hint_run
+    ldr     x2, =rb_o1
+    ldr     x3, =rb_ologn
+    ldr     x4, =rb_ologn
+    ldr     x5, =rb_o1
+    bl      rb_frame
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_clear_seen
+    bl      rb_rest
+
+    ldr     x0, =rb_node_count
+    ldr     w19, [x0]
+    cmp     w19, 0
+    b.le    rb_show_empty
+
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_height_of
+    mov     w20, w0
+    mov     w21, w19                        // a plain tree can be n levels
+
+    ldr     x0, =rb_fmt_state
+    mov     w1, w19
+    mov     w2, w20
+    mov     w3, w21
+    bl      rb_say
+    b       rb_show_done
+
+rb_show_empty:
+    ldr     x0, =rb_msg_empty
+    mov     w1, 0
+    mov     w2, 0
+    mov     w3, 0
+    bl      rb_say
+
+rb_show_done:
+    bl      rb_flush
+    ldr     x21, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 48
+    ret
+
+// rb_rule_line(w0 = row, x1 = the rule, w2 = 1 when it holds)
+rb_rule_line:
+    stp     fp, lr, [sp, -48]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    str     x21, [sp, 32]
+
+    mov     w19, w0
+    mov     x20, x1
+    mov     w21, w2
+
+    mov     w0, w19
+    mov     w1, 14
+    mov     w2, RB_ROLE_TEXT
+    mov     x3, x20
+    bl      ui_text
+
+    cbz     w21, rb_rule_line_broken
+
+    mov     w0, w19
+    mov     w1, 5
+    mov     w2, RB_ROLE_OK
+    ldr     x3, =rb_lbl_yes
+    bl      ui_badge
+    b       rb_rule_line_done
+
+rb_rule_line_broken:
+    mov     w0, w19
+    mov     w1, 5
+    mov     w2, RB_ROLE_BAD
+    ldr     x3, =rb_lbl_no
+    bl      ui_badge
+
+rb_rule_line_done:
+    ldr     x21, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 48
+    ret
+
+// rb_verify_interactive() - the five rules, each measured against the
+// tree that is actually in memory rather than asserted about it
+rb_verify_interactive:
+    stp     fp, lr, [sp, -64]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+    stp     x23, x24, [sp, 48]
+
+    ldr     x0, =rb_scr_verify
+    bl      ui_screen
+    ldr     x0, =rb_hint_rules
+    bl      ui_footer
+
+    mov     w0, 4
+    mov     w1, 2
+    mov     w2, 78
+    mov     w3, 10
+    ldr     x4, =rb_pan_rules
+    bl      ui_panel
+
+    mov     w0, 20
+    mov     w1, 4
+    ldr     x2, =rb_on
+    ldr     x3, =rb_on
+    ldr     x4, =rb_on
+    ldr     x5, =rb_oh
+    bl      ui_complexity
+
+    ldr     x0, =rb_node_count
+    ldr     w19, [x0]
+    cmp     w19, 0
+    b.le    rb_verify_int_empty
+
+    // rule two: the root is black
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_get_color
+    cmp     w0, RB_BLACK
+    cset    w20, eq
+
+    // rule four: no red node has a red child
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_no_red_red
+    mov     w21, w0
+
+    // rule five: one black height, whichever way you walk down
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_black_height
+    mov     w22, w0
+    cmp     w22, 0
+    cset    w23, ge
+
+    mov     w0, 6
+    ldr     x1, =rb_rule_1
+    mov     w2, 1                           // a colour byte is one or the other
+    bl      rb_rule_line
+
+    mov     w0, 7
+    ldr     x1, =rb_rule_2
+    mov     w2, w20
+    bl      rb_rule_line
+
+    mov     w0, 8
+    ldr     x1, =rb_rule_3
+    mov     w2, 1                           // one sentinel, shared by everything
+    bl      rb_rule_line
+
+    mov     w0, 9
+    ldr     x1, =rb_rule_4
+    mov     w2, w21
+    bl      rb_rule_line
+
+    mov     w0, 10
+    ldr     x1, =rb_rule_5
+    mov     w2, w23
+    bl      rb_rule_line
+
+    // the measurements the checks were made from
+    ldr     x0, =rb_root
+    ldr     x0, [x0]
+    bl      rb_height_of
+    mov     w24, w0
+
+    mov     w0, 15
+    mov     w1, 4
+    bl      ui_at
+    mov     w0, RB_ROLE_DIM
+    bl      th_fg
+    ldr     x0, =rb_node_count
+    ldr     w1, [x0]
+    mov     w2, w24
+    mov     w3, w22
+    ldr     x0, =rb_fmt_facts
+    bl      printf
+    bl      th_off
+
+    and     w0, w20, w21
+    and     w0, w0, w23
+    cbz     w0, rb_verify_int_broken
+
+    mov     w0, 17
+    mov     w1, 4
+    mov     w2, RB_ROLE_DIM
+    ldr     x3, =rb_msg_all_ok
+    bl      ui_text
+    b       rb_verify_int_done
+
+rb_verify_int_broken:
+    mov     w0, 17
+    mov     w1, 4
+    mov     w2, RB_ROLE_BAD
+    ldr     x3, =rb_msg_broken
+    bl      ui_text
+    b       rb_verify_int_done
+
+rb_verify_int_empty:
+    mov     w0, 6
+    mov     w1, 4
+    mov     w2, RB_ROLE_FAINT
+    ldr     x3, =rb_msg_empty
+    bl      ui_text
+
+rb_verify_int_done:
+    bl      rb_flush
+    ldp     x23, x24, [sp, 48]
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 64
+    ret
