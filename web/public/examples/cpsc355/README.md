@@ -33,7 +33,9 @@ Two extra programs are served beyond the tutorial set:
   playground hands it the terminal pane for live keyboard play
 - `dsav.s` + `dsav/` -- the data structures and algorithms visualizer
   from https://github.com/Abdalla-Eldoumani/dsav, the multi-file
-  example: `dsav.s` holds `main`, the eleven files under `dsav/` load
-  into the files strip and link with it. Menu-driven; run hands it the
-  terminal pane (typed input echoes, animations pace themselves), and
-  the course way works too: `./program` from the term tab
+  example: `dsav.s` holds `main`, the seventeen files under `dsav/` load
+  into the files strip and link with it. Twelve modules over a shared
+  screen kernel (`theme.s` for colour, `ui.s` for the frame and panels).
+  Menu-driven; run hands it the terminal pane (typed input echoes,
+  animations pace themselves), and the course way works too:
+  `./program` from the term tab
