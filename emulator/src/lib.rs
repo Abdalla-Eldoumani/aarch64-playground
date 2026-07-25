@@ -72,6 +72,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     for libc in [
         "printf", "scanf", "puts", "putchar", "getchar", "strlen", "strcmp", "strcpy",
         "memset", "memcpy", "atof", "atoi", "exit", "rand", "srand", "time",
+        "malloc", "free", "usleep", "fflush",
     ] {
         let pat = format!("bl {libc}");
         if normalized.contains(&pat) {
@@ -679,6 +680,14 @@ impl Emulator {
     /// count or -1, so read-until-EOF loops can terminate.
     pub fn close_stdin(&mut self) {
         self.cpu.close_stdin();
+    }
+
+    /// Pause or resume the step-back snapshot ring. The terminal pane's
+    /// foreground drive pauses it for live sessions: the per-step clone
+    /// costs far more than the step, and stepping back into the middle
+    /// of a live session has no meaning. Cleared by load and reset.
+    pub fn set_snapshots_paused(&mut self, paused: bool) {
+        self.cpu.snapshots_paused = paused;
     }
 
     /// Whether the CPU is paused waiting for stdin.

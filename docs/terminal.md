@@ -11,7 +11,7 @@ fits the task.
 
 | Command | Effect |
 | --- | --- |
-| `./program [args]` | Re-assemble the current editor source with `args` and run to halt. |
+| `./program [args]` | Re-assemble the editor workspace (main.asm plus every file in the strip) with `args` and run it live in the pane. |
 | `./name [args]` | Run an executable built with `gcc` (see the toolchain below). |
 | `./program < file` | Either form, with the named VFS file fed to stdin. The file is the WHOLE input: stdin closes after it, so a read-until-EOF loop finishes instead of waiting. |
 | `./program > file` | Either form, with stdout captured into the named VFS file. |
@@ -21,6 +21,25 @@ stops without exiting (a fault, the step budget) prints
 `[no exit -- the program did not finish]` instead of a made-up code. A
 compiled executable named `program` takes precedence over the editor-source
 alias, matching a real shell's lookup.
+
+### Interactive runs
+
+A program run without a `>` capture owns the pane until it exits: output
+streams in as it is produced, and your keystrokes are its stdin. Input
+follows the terminal modes a real tty would apply:
+
+- Canonical (scanf-style) programs get cooked-mode line editing: typed
+  characters echo as you type, backspace edits the line, and the program
+  receives the whole line when you press enter.
+- A program that puts the terminal in raw mode (termios, like the snake
+  game) receives every byte as typed, with no echo -- it draws its own
+  screen.
+- Ctrl+C stops the program and returns the prompt.
+
+Terminal-first examples (snake, the data structures visualizer) take the
+pane over from the run button too: run switches to the term tab, clears
+the screen, and starts the session. Step-back is paused during a live
+session and comes back when it ends.
 
 ### Toolchain
 

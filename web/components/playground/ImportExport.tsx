@@ -13,18 +13,29 @@ export interface ImportExportProps {
    * the import landed.
    */
   onImport: (target: ImportTarget, body: string) => void;
+  /** Receives a multi-select import: every picked file with its name, so
+   *  the parent can spread a whole program across main and the files
+   *  strip in one gesture. */
+  onImportMany?: (files: { name: string; body: string }[]) => void;
   /** Where the next import will land. Computed by the parent each render. */
   target: ImportTarget;
   className?: string;
 }
 
 /**
- * Import and export buttons in the header. Import sends the picked file's
+ * Import and export buttons in the header. Importing one file sends its
  * body to the active target (main / an extra) so a student editing extras
- * isn't surprised when their import overwrites the wrong buffer. Export
- * offers `.asm` and `.s` download plus copy-to-clipboard.
+ * isn't surprised when their import overwrites the wrong buffer; picking
+ * several files at once hands the whole set to the parent as named files.
+ * Export offers `.asm` and `.s` download plus copy-to-clipboard.
  */
-export function ImportExport({ source, onImport, target, className = "" }: ImportExportProps) {
+export function ImportExport({
+  source,
+  onImport,
+  onImportMany,
+  target,
+  className = "",
+}: ImportExportProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
   const toast = useToast();
@@ -56,35 +67,48 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
 
   const onFile = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const sizeError = checkUploadSize(file.size, MAX_SOURCE_BYTES, "source file");
-      if (sizeError) {
-        toast.error(sizeError);
-        e.target.value = "";
-        return;
-      }
-      file.text().then((text) => {
-        // Validate the decoded source content (byte length) before applying;
-        // file.size is a fast pre-read guard, this bounds the actual text.
-        const contentError = validateSource(text);
-        if (contentError) {
-          toast.error(contentError);
-          // Intentional security observability: a rejected over-cap import is
-          // surfaced to the console alongside the toast, per the input-
-          // validation policy. This is the only sanctioned console use here.
-          console.warn(`rejected over-cap source import: ${contentError}`);
+      const picked = Array.from(e.target.files ?? []);
+      e.target.value = "";
+      if (picked.length === 0) return;
+      for (const file of picked) {
+        const sizeError = checkUploadSize(file.size, MAX_SOURCE_BYTES, "source file");
+        if (sizeError) {
+          toast.error(`${file.name}: ${sizeError}`);
           return;
         }
-        onImport(target, text);
-      }).catch(() => {
-        // A moved or unreadable file rejects file.text(); without this
-        // the rejection was silent and the student saw nothing at all.
-        toast.error("could not read the file -- try picking it again");
-      });
-      e.target.value = "";
+      }
+      Promise.all(
+        picked.map((file) => file.text().then((body) => ({ name: file.name, body }))),
+      )
+        .then((files) => {
+          for (const f of files) {
+            // Validate the decoded source content (byte length) before
+            // applying; file.size is a fast pre-read guard, this bounds
+            // the actual text.
+            const contentError = validateSource(f.body);
+            if (contentError) {
+              toast.error(`${f.name}: ${contentError}`);
+              // Intentional security observability: a rejected over-cap
+              // import is surfaced to the console alongside the toast, per
+              // the input-validation policy. This is the only sanctioned
+              // console use here.
+              console.warn(`rejected over-cap source import: ${contentError}`);
+              return;
+            }
+          }
+          if (files.length === 1 || !onImportMany) {
+            onImport(target, files[0].body);
+          } else {
+            onImportMany(files);
+          }
+        })
+        .catch(() => {
+          // A moved or unreadable file rejects file.text(); without this
+          // the rejection was silent and the student saw nothing at all.
+          toast.error("could not read the files -- try picking them again");
+        });
     },
-    [onImport, target, toast],
+    [onImport, onImportMany, target, toast],
   );
 
   return (
@@ -93,6 +117,7 @@ export function ImportExport({ source, onImport, target, className = "" }: Impor
         ref={fileRef}
         type="file"
         accept=".s,.asm,.txt"
+        multiple
         onChange={onFile}
         className="hidden"
       />

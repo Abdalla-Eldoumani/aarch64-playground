@@ -35,6 +35,9 @@ pub struct Snapshot {
     /// Terminal and virtual-clock state behind the interactive
     /// syscalls, restored for the same replay-stability reason.
     pub term: crate::cpu::TermState,
+    /// malloc/free allocator state, restored so a stepped-back program
+    /// re-allocates the same addresses.
+    pub heap: crate::hosted::heap::HeapState,
 }
 
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
@@ -119,6 +122,7 @@ mod tests {
             next_fd: 3,
             rand_state: 1,
             term: crate::cpu::TermState::default(),
+            heap: crate::hosted::heap::HeapState::default(),
         }
     }
 

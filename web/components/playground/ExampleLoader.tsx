@@ -81,7 +81,10 @@ const GROUPS: ExampleGroup[] = [
   },
   {
     label: "Miscellaneous",
-    items: [{ name: "snake", stem: "snake" }],
+    items: [
+      { name: "snake", stem: "snake" },
+      { name: "data structures visualizer", stem: "dsav" },
+    ],
   },
 ];
 

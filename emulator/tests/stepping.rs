@@ -238,3 +238,71 @@ fn line_map_covers_every_text_instruction() {
         "one line-map entry per emitted .text instruction",
     );
 }
+
+/// The host can pause the snapshot ring (the web does this for live
+/// terminal sessions): paused steps push no frames, so step_back has
+/// nothing to undo, and resuming re-arms it.
+#[test]
+fn paused_snapshots_skip_the_ring() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(COMPLEX_SRC, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+
+    cpu.snapshots_paused = true;
+    cpu.step().expect("step");
+    cpu.step().expect("step");
+    assert!(!cpu.can_step_back(), "paused steps must not record frames");
+
+    cpu.snapshots_paused = false;
+    cpu.step().expect("step");
+    assert!(cpu.can_step_back(), "resuming re-arms the ring");
+}
+
+/// An unrecorded stretch ENDS the history: frames from before it are
+/// dropped, so one step_back can never leap across the gap into a state
+/// many instructions old while the step counter falls by one.
+#[test]
+fn an_unrecorded_stretch_drops_the_earlier_history() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(COMPLEX_SRC, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+
+    // Two recorded steps, so the ring holds real frames.
+    cpu.step().expect("step");
+    cpu.step().expect("step");
+    assert!(cpu.can_step_back());
+
+    // A paused stretch must invalidate them rather than hide a hole.
+    cpu.snapshots_paused = true;
+    cpu.step().expect("step");
+    assert!(
+        !cpu.can_step_back(),
+        "frames recorded before an unrecorded stretch must not survive it"
+    );
+
+    // Raw mode (a terminal program) skips the ring for the same reason.
+    cpu.snapshots_paused = false;
+    cpu.step().expect("step");
+    assert!(cpu.can_step_back());
+    cpu.term.raw_mode = true;
+    cpu.step().expect("step");
+    assert!(
+        !cpu.can_step_back(),
+        "a raw-mode stretch must end the history too"
+    );
+}
+
+/// Loading a program clears the pause flag: step-back must never arrive
+/// silently dead in a freshly loaded program.
+#[test]
+fn loading_a_program_resumes_snapshotting() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(COMPLEX_SRC, &cpu.host).expect("assemble");
+
+    cpu.snapshots_paused = true;
+    cpu.load_linked_image(&image).expect("load");
+    assert!(!cpu.snapshots_paused, "load must clear the pause");
+
+    cpu.step().expect("step");
+    assert!(cpu.can_step_back(), "a loaded program records frames");
+}

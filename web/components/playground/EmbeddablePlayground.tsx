@@ -44,7 +44,16 @@ import {
   useSourceFiles,
   type SourceFile,
 } from "@/components/playground/MultiFileTabs";
+import {
+  MAIN_FILE,
+  combinedLineFor,
+  resolveLine,
+} from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
+
+// Persisted beside the files strip so a reloaded workspace remembers
+// that its program owns the terminal pane on run.
+const TERMINAL_PROGRAM_KEY = "aarch64-playground:terminal-program";
 
 // Full-only / heavy panels load on first render so a multi-embed page (and
 // the embed/checker chrome) never ships their code.
@@ -136,6 +145,7 @@ export type EmbeddablePlaygroundHandle = {
    *  applies source, args, cursor, and the stdin/vfs input seeds. */
   loadProgram(payload: HandoffPayload): void;
   getSource(): string;
+  getFiles(): SourceFile[];
   getArgs(): string;
   getCursor(): { line: number; column: number };
   /** The command Action[] built inside the component so a host-rendered
@@ -152,6 +162,9 @@ export type EmbeddablePlaygroundHandle = {
 export type EmbeddablePlaygroundProps = {
   chrome: EmbeddableChrome;
   startSource?: string;
+  /** Extra files a share-link boot carried. Defined (even empty) means
+   *  "replace the persisted files strip"; undefined leaves it alone. */
+  startFiles?: SourceFile[];
   startArgs?: string;
   startStdin?: string;
   startCursor?: { line: number; column: number };
@@ -218,6 +231,7 @@ type EmbeddableCoreProps = EmbeddablePlaygroundProps & {
 function EmbeddableCore({
   chrome,
   startSource,
+  startFiles,
   startArgs,
   startStdin,
   startCursor,
@@ -254,32 +268,88 @@ function EmbeddableCore({
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
-  // Jump-to-error: when an assemble or a line-carrying runtime fault
-  // lands, the editor reveals and focuses the offending line. Nonce so
-  // the same line re-fires when the student re-assembles unchanged.
-  const [errorFocus, setErrorFocus] = useState<{ line: number; nonce: number } | null>(null);
-  useEffect(() => {
-    const first = emu.assemblyErrors[0];
-    if (first && first.line > 0) {
-      setErrorFocus({ line: first.line, nonce: Date.now() });
-    }
-  }, [emu.assemblyErrors]);
-
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
   );
   const [extraFiles, setExtraFiles] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
+  // The loaded program is a terminal program (the visualizer example):
+  // run hands it the terminal pane up front, the way snake's raw-mode
+  // flag does mid-run. Persisted beside the files strip so a reloaded
+  // workspace keeps the takeover.
+  const [terminalProgram, setTerminalProgramState] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(TERMINAL_PROGRAM_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  // Read by the blocked-jump effect, which must not re-subscribe.
+  const terminalProgramRef = useRef(false);
+  const setTerminalProgram = useCallback((next: boolean) => {
+    terminalProgramRef.current = next;
+    setTerminalProgramState(next);
+    try {
+      window.localStorage.setItem(TERMINAL_PROGRAM_KEY, next ? "1" : "0");
+    } catch {
+      // storage full or blocked; the flag just won't survive a reload
+    }
+  }, []);
+  // Nonce asking the attach effect to start a terminal-pane run once the
+  // pane's io registration lands (the pane mounts lazily on tab switch).
+  useEffect(() => {
+    terminalProgramRef.current = terminalProgram;
+  }, [terminalProgram]);
+  const [termRunRequest, setTermRunRequest] = useState<number | null>(null);
+  // The terminal mounts lazily on first use and then stays mounted (see
+  // the tab panel below): a live session must survive tab switches.
+  const [termOpened, setTermOpened] = useState(false);
+  useEffect(() => {
+    if (activeTab === "term") setTermOpened(true);
+  }, [activeTab]);
+
+  // A share-link boot carries its own workspace: replace the persisted
+  // files strip once, before the first assemble can mix the two.
+  const startFilesApplied = useRef(false);
+  useEffect(() => {
+    if (startFiles === undefined || startFilesApplied.current) return;
+    startFilesApplied.current = true;
+    setExtraFiles(startFiles);
+  }, [startFiles, setExtraFiles]);
+
+  // Jump-to-error: when an assemble or a line-carrying runtime fault
+  // lands, the editor switches to the owning file, then reveals and
+  // focuses the offending line. Nonce so the same line re-fires when the
+  // student re-assembles unchanged. Combined-string lines resolve through
+  // the file map so an error inside an extra file lands in that tab, not
+  // past the end of main.asm.
+  const [errorFocus, setErrorFocus] = useState<{ line: number; nonce: number } | null>(null);
+  useEffect(() => {
+    const first = emu.assemblyErrors[0];
+    if (first && first.line > 0) {
+      const loc = resolveLine(first.line, sourceRef.current, extraFilesRef.current);
+      setActiveFile(loc.file);
+      setErrorFocus({ line: loc.line, nonce: Date.now() });
+    }
+  }, [emu.assemblyErrors]);
   const toast = useToast();
   const importTarget = getImportTarget(activeFile);
 
+  // Replacing the program text drops the terminal-program flag: it
+  // belongs to the program that set it, and a stale flag would send an
+  // unrelated program's run to the terminal pane.
   const loadSource = useCallback(
-    (next: string, _label?: string) => setSource(next),
-    [],
+    (next: string, _label?: string) => {
+      setSource(next);
+      setTerminalProgram(false);
+    },
+    [setTerminalProgram],
   );
 
   const handleImport = useCallback(
     (target: ImportTarget, body: string) => {
+      setTerminalProgram(false);
       switch (target.kind) {
         case "main":
           setSource(body);
@@ -295,7 +365,28 @@ function EmbeddableCore({
         }
       }
     },
-    [extraFiles, setExtraFiles, toast],
+    [extraFiles, setExtraFiles, toast, setTerminalProgram],
+  );
+
+  // Multi-select import: a file named main.asm / main.s replaces the main
+  // buffer; every other file becomes (or refreshes) a named tab, so a
+  // whole multi-file program lands in one gesture.
+  const handleImportMany = useCallback(
+    (files: { name: string; body: string }[]) => {
+      setTerminalProgram(false);
+      const mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
+      if (mainIdx >= 0) setSource(files[mainIdx].body);
+      const rest = files.filter((_, i) => i !== mainIdx);
+      const next = [...extraFiles];
+      for (const f of rest) {
+        const at = next.findIndex((x) => x.name === f.name);
+        if (at >= 0) next[at] = { name: f.name, body: f.body };
+        else next.push({ name: f.name, body: f.body });
+      }
+      setExtraFiles(next);
+      toast.show(`imported ${files.length} files`);
+    },
+    [extraFiles, setExtraFiles, toast, setTerminalProgram],
   );
 
   // Only the full playground persists to the shared auto-save buffer; embed
@@ -418,13 +509,18 @@ function EmbeddableCore({
       }
       persistWorkingSet();
       setSource(payload.source);
+      // A program handoff replaces the whole workspace: stale helper
+      // files from earlier work must not concatenate into the new
+      // program at its next assemble.
+      setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
+      setTerminalProgram(payload.terminal === true);
       setArgsText(payload.args ?? "");
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       setShareBanner(Boolean(payload.fromShare));
       lastRunSourceRef.current = null;
     },
-    [chrome, recent, persistWorkingSet],
+    [chrome, recent, persistWorkingSet, setExtraFiles, setTerminalProgram],
   );
 
   // Rehydrate the home directory once the hub is live: the persisted files
@@ -495,6 +591,13 @@ function EmbeddableCore({
     if (emu.blocked && !lastBlockedRef.current) {
       lastBlockedRef.current = true;
       if (emu.wantsTerminal) return;
+      // A foreground terminal session owns the program's input even
+      // without raw mode: a menu program run as `./program` reads its
+      // scanf lines from the term pane, so the console jump stands down.
+      // A terminal-flagged program keeps that ownership for its whole
+      // life, including the gap before its drive attaches -- the console
+      // must never steal a read it cannot answer.
+      if (foregroundActiveRef.current || terminalProgramRef.current) return;
       queueMicrotask(() => {
         setActiveTab("console");
         // Phones route panes through the pane switcher, not the tab state.
@@ -509,9 +612,32 @@ function EmbeddableCore({
   // pane mounts lazily on first tab activation, which happens AFTER a
   // raw-mode program's rising edge switches the tab -- the self-attach
   // effect must re-fire when the registration lands.
+  // Live only while this component is mounted: a foreground drive polls
+  // on a timer and must not outlive the surface it drives.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  // Mirrors termIO for the poll loop, which must notice a pane that went
+  // away without waiting for a re-render.
+  const termIORef = useRef<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
   const [termIO, setTermIO] =
     useState<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
   const foregroundActiveRef = useRef(false);
+  // Mirrored as state so the console can render "this program reads from
+  // the terminal" and disable its own stdin box while a session owns it.
+  const [foregroundLive, setForegroundLive] = useState(false);
+
+  // Hiding the pane blurs its textarea, so coming back to a live session
+  // needs the keyboard handed over again -- otherwise the student types
+  // into nothing while the console says "type in the terminal".
+  useEffect(() => {
+    if (activeTab !== "term" || !foregroundLive) return;
+    termIORef.current?.focus?.();
+  }, [activeTab, foregroundLive]);
 
   // A program that switches the terminal to raw mode is a terminal
   // program: hand it the terminal pane on the false->true edge, the same
@@ -533,10 +659,17 @@ function EmbeddableCore({
   // the pane, forward its keystrokes to stdin, resume input-starved
   // stops, and stand down on halt, error, cancel, or a user pause.
   const driveForeground = useCallback(
-    async (io: import("@/lib/terminal/dispatch").TerminalProgramIO): Promise<number | null> => {
+    async (
+      io: import("@/lib/terminal/dispatch").TerminalProgramIO,
+      opts?: { clearAtStart?: boolean },
+    ): Promise<number | null> => {
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
+      setForegroundLive(true);
       let cancelled = false;
+      // Set once the pane we are driving has registered itself; after that,
+      // losing the registration means the pane went away.
+      let sawPane = false;
       // Wipe the pane once, the moment the program claims the terminal
       // (already true on self-attach; flips mid-run for ./name), so the
       // takeover starts on a clean screen with no earlier scrollback.
@@ -547,10 +680,45 @@ function EmbeddableCore({
           io.clear?.();
         }
       };
-      if (emuRef.current.wantsTerminal) clearOnce();
+      if (opts?.clearAtStart || emuRef.current.wantsTerminal) clearOnce();
+      // Live sessions skip the step-back ring: the per-step clone costs
+      // more than the step, and stepping back mid-session has no meaning.
+      emuRef.current.setSnapshotsPaused(true);
       emuRef.current.setOutputTap((t) => io.write(t));
+      // Cooked-mode input works like a canonical tty: the line buffers
+      // locally with echo (so typed digits are visible) and backspace
+      // editing, and reaches the program as one line ending in \n on
+      // enter. Raw-mode programs (termios) get every byte untouched and
+      // draw their own screens.
+      let lineBuf = "";
       io.setForeground({
-        pushInput: (d) => emuRef.current.pushStdin(d),
+        pushInput: (d) => {
+          const e = emuRef.current;
+          if (e.wantsTerminal) {
+            e.pushStdin(d);
+            return;
+          }
+          for (let i = 0; i < d.length; i++) {
+            const ch = d[i];
+            if (ch === "\r" || ch === "\n") {
+              io.write("\r\n");
+              e.pushStdin(`${lineBuf}\n`);
+              lineBuf = "";
+            } else if (ch === "\x7f" || ch === "\b") {
+              if (lineBuf.length > 0) {
+                lineBuf = lineBuf.slice(0, -1);
+                io.write("\b \b");
+              }
+            } else if (ch === "\x1b") {
+              // Swallow the rest of an escape sequence (arrow keys):
+              // canonical reads have no use for it.
+              return;
+            } else if (ch >= " ") {
+              lineBuf += ch;
+              io.write(ch);
+            }
+          }
+        },
         cancel: () => {
           cancelled = true;
           emuRef.current.pause();
@@ -562,11 +730,32 @@ function EmbeddableCore({
           if (!e.isRunning && !e.isHalted) e.run();
         }
         let resumeArmed = false;
+        // The hub's isRunning/blocked arrive through React state, so the
+        // first polls after run() can still read the pre-run snapshot.
+        // Ending the session there printed "[program stopped]" over a
+        // program that was only just starting, and handed its blocked
+        // read to the console. Wait for real evidence it began.
+        let started = false;
+        const openedAt = Date.now();
         for (;;) {
           await new Promise<void>((r) => setTimeout(r, 32));
+          // Stand down if this component unmounted (a route change) or
+          // the pane we are driving went away (a mobile pane switch
+          // unmounts it). Without this the loop spins forever on a
+          // blocked program, holding the console's stdin disabled and
+          // the snapshot ring paused with no way back.
+          if (!mountedRef.current) break;
+          // A pane that unmounts deregisters by writing null, so "not this
+          // io" has to include null -- the earlier `!== null` clause meant
+          // the one case this guard exists for was the one it let through.
+          // It stays tolerant only until the pane first registers, since a
+          // drive can start a frame before that lands.
+          if (termIORef.current === io) sawPane = true;
+          else if (sawPane || termIORef.current !== null) break;
           const e = emuRef.current;
           if (e.wantsTerminal) clearOnce();
           if (cancelled || e.isHalted || e.error) break;
+          if (e.isRunning || e.blocked) started = true;
           if (e.isRunning) continue;
           if (e.blocked) {
             resumeArmed = true;
@@ -577,18 +766,65 @@ function EmbeddableCore({
             emuRef.current.run();
             continue;
           }
+          // Nothing observed yet: give the machine a moment to commit
+          // its first state before deciding the session is over.
+          if (!started && Date.now() - openedAt < 4000) continue;
           break;
         }
       } finally {
+        emuRef.current.setSnapshotsPaused(false);
         emuRef.current.setOutputTap(null);
         io.setForeground(null);
         foregroundActiveRef.current = false;
+        setForegroundLive(false);
       }
       const e = emuRef.current;
       return e.isHalted ? e.exitCode : null;
     },
     [],
   );
+
+  // Run for a terminal-flagged program: hand it the pane up front --
+  // switch the tab, then let the attach effect below start the drive
+  // once the pane's io registration lands (the pane mounts lazily on
+  // the tab switch, so the drive cannot start synchronously here).
+  const handleRun = useCallback(() => {
+    if (terminalProgram && chrome === "full") {
+      // The terminal takeover WIPES the pane, so only start one when
+      // there is really something to run. The Run button already knows
+      // this; the F5 shortcut and the palette reach here too, and
+      // without the guard they cleared a finished program's output and
+      // printed an exit line onto an empty screen.
+      if (!emu.programLoaded || emu.isHalted || emu.isRunning) return;
+      setActiveTab("term");
+      setPaneRequest({ pane: "term", nonce: Date.now() });
+      setTermRunRequest(Date.now());
+      return;
+    }
+    emu.run();
+  }, [terminalProgram, chrome, emu]);
+  const handleRunRef = useRef(handleRun);
+  useEffect(() => {
+    handleRunRef.current = handleRun;
+  }, [handleRun]);
+
+  // Attach a requested terminal-pane run: clear the pane (a previous
+  // program's screen must not linger) and drive the workspace live,
+  // with the pane printing the exit line when the session ends.
+  useEffect(() => {
+    if (termRunRequest == null || !termIO) return;
+    // Check busy BEFORE consuming the nonce: dropping the request while
+    // a session owns the pane silently swallowed the student's Run.
+    if (foregroundActiveRef.current) return;
+    setTermRunRequest(null);
+    const io = termIO;
+    void driveForeground(io, { clearAtStart: true }).then((exitCode) => {
+      io.sessionEnded?.(exitCode);
+    });
+    // foregroundLive is a dependency so that a request held back above
+    // gets another chance the moment the running session stands down.
+    // Without it the request was preserved and then never honoured.
+  }, [termRunRequest, termIO, driveForeground, foregroundLive]);
 
   // Self-attach: a raw-mode program started from the run button (not
   // `./name`) still deserves live terminal I/O. When the flag rises and
@@ -652,7 +888,7 @@ function EmbeddableCore({
             : "(no program; assemble first)",
         shortcut: "F5",
         run: () => {
-          if (!emu.blocked) emu.run();
+          if (!emu.blocked) handleRun();
         },
       },
       {
@@ -778,7 +1014,7 @@ function EmbeddableCore({
         },
       },
     ],
-    [emu, assembleWithHistory, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
+    [emu, assembleWithHistory, handleRun, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
   );
 
   // Latest-value refs so the imperative handle stays a stable object while
@@ -787,6 +1023,7 @@ function EmbeddableCore({
   // during render.
   const emuRef = useRef(emu);
   const sourceRef = useRef(source);
+  const extraFilesRef = useRef(extraFiles);
   const argsRef = useRef(argsText);
   const cursorRef = useRef(cursor);
   const onStateChangeRef = useRef(onStateChange);
@@ -796,13 +1033,14 @@ function EmbeddableCore({
   useEffect(() => {
     emuRef.current = emu;
     sourceRef.current = source;
+    extraFilesRef.current = extraFiles;
     argsRef.current = argsText;
     cursorRef.current = cursor;
     onStateChangeRef.current = onStateChange;
     assembleRef.current = assembleWithHistory;
     loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
-  }, [emu, source, argsText, cursor, onStateChange, assembleWithHistory, loadProgram, buildCommands]);
+  }, [emu, source, extraFiles, argsText, cursor, onStateChange, assembleWithHistory, loadProgram, buildCommands]);
 
   // Seed starter stdin once the hub is live so a program that reads has its
   // input queued before the first run.
@@ -951,7 +1189,7 @@ function EmbeddableCore({
       // re-blocks), so while stdin is awaited they no-op like the disabled
       // buttons; assemble and reset stay live as the two real exits.
       run: () => {
-        if (!emuRef.current.blocked) emuRef.current.run();
+        if (!emuRef.current.blocked) handleRunRef.current();
       },
       pause: () => emuRef.current.pause(),
       step: () => {
@@ -965,6 +1203,7 @@ function EmbeddableCore({
       loadSource: (next: string) => loadSource(next),
       loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
       getSource: () => sourceRef.current,
+      getFiles: () => extraFilesRef.current,
       getArgs: () => argsRef.current,
       getCursor: () => cursorRef.current,
       getCommands: () => buildCommandsRef.current(),
@@ -1012,12 +1251,66 @@ function EmbeddableCore({
   useEffect(() => {
     const handle = window.setTimeout(() => {
       void emuRef.current
-        .lint(source)
+        .lint(combineSources(source, extraFiles))
         .then(setLintWarnings)
         .catch(() => setLintWarnings([]));
     }, 400);
     return () => window.clearTimeout(handle);
-  }, [source]);
+  }, [source, extraFiles]);
+
+  // Per-file views of the combined-line diagnostics: the editor shows one
+  // buffer at a time, so markers, the current-line highlight, and gutter
+  // breakpoints each translate to the active file's local lines (and hide
+  // when they belong to another file).
+  const activeErrors = useMemo(
+    () =>
+      emu.assemblyErrors.flatMap((e) => {
+        if (e.line <= 0) return activeFile === MAIN_FILE ? [e] : [];
+        const loc = resolveLine(e.line, source, extraFiles);
+        return loc.file === activeFile ? [{ ...e, line: loc.line }] : [];
+      }),
+    [emu.assemblyErrors, source, extraFiles, activeFile],
+  );
+  const activeLint = useMemo(
+    () =>
+      lintWarnings.flatMap((w) => {
+        if (w.line <= 0) return activeFile === MAIN_FILE ? [w] : [];
+        const loc = resolveLine(w.line, source, extraFiles);
+        return loc.file === activeFile ? [{ ...w, line: loc.line }] : [];
+      }),
+    [lintWarnings, source, extraFiles, activeFile],
+  );
+  const activeCurrentLine = useMemo(() => {
+    if (emu.currentLine == null) return null;
+    const loc = resolveLine(emu.currentLine, source, extraFiles);
+    return loc.file === activeFile ? loc.line : null;
+  }, [emu.currentLine, source, extraFiles, activeFile]);
+  const activeBreakpoints = useMemo(() => {
+    const set = new Set<number>();
+    for (const line of emu.breakpoints) {
+      const loc = resolveLine(line, source, extraFiles);
+      if (loc.file === activeFile) set.add(loc.line);
+    }
+    return set;
+  }, [emu.breakpoints, source, extraFiles, activeFile]);
+  const toggleBreakpointInActive = useCallback(
+    (line: number) => {
+      emu.toggleBreakpoint(
+        combinedLineFor(activeFile, line, sourceRef.current, extraFilesRef.current),
+      );
+    },
+    [emu, activeFile],
+  );
+  // Controls shows the first error as plain text; name the owning file
+  // when it is not the buffer labelled main.asm.
+  const controlsError = useMemo(() => {
+    if (!emu.error) return emu.error;
+    const first = emu.assemblyErrors[0];
+    if (!first || first.line <= 0 || extraFiles.length === 0) return emu.error;
+    const loc = resolveLine(first.line, source, extraFiles);
+    if (loc.file === MAIN_FILE) return emu.error;
+    return `${loc.name} line ${loc.line}: ${emu.error}`;
+  }, [emu.error, emu.assemblyErrors, source, extraFiles]);
   // Reads go through emuRef / sourceRef, not the render's hub object:
   // the hub is a new object every snapshot, so a closure over it freezes
   // mid-command state -- runProgram's wait loop would poll an isRunning
@@ -1113,12 +1406,19 @@ function EmbeddableCore({
       },
       deleteVfs: async (path: string) => removeVfsFile(path),
       // The editor's program: the same run shape as a compiled executable,
-      // over the live buffer.
+      // over the live workspace (main plus any extra files, exactly what
+      // the assemble button builds).
       runProgram: async (
         args: string[],
         stdin?: string,
         io?: import("@/lib/terminal/dispatch").TerminalProgramIO,
-      ) => runText(sourceRef.current, args, stdin, io),
+      ) =>
+        runText(
+          combineSources(sourceRef.current, extraFilesRef.current),
+          args,
+          stdin,
+          io,
+        ),
       step: async () => {
         emuRef.current.step();
         const e = emuRef.current;
@@ -1186,7 +1486,7 @@ function EmbeddableCore({
       pcAddress: () => emuRef.current.pc,
       reset: async () => emuRef.current.reset(),
     };
-  }, [stageVfsFile, removeVfsFile, applySeeds]);
+  }, [stageVfsFile, removeVfsFile, applySeeds, driveForeground]);
 
   if (emu.loadError) {
     return (
@@ -1337,13 +1637,13 @@ function EmbeddableCore({
         <Editor
           value={editorValue}
           onChange={onEditorChange}
-          currentLine={isMain ? emu.currentLine : null}
-          breakpoints={emu.breakpoints}
-          onToggleBreakpoint={emu.toggleBreakpoint}
-          assemblyErrors={isMain ? emu.assemblyErrors : []}
-          lintWarnings={isMain ? lintWarnings : []}
+          currentLine={activeCurrentLine}
+          breakpoints={activeBreakpoints}
+          onToggleBreakpoint={toggleBreakpointInActive}
+          assemblyErrors={activeErrors}
+          lintWarnings={activeLint}
           onCursorChange={isMain ? setCursor : undefined}
-          focusRequest={isMain ? errorFocus : null}
+          focusRequest={errorFocus}
           onFormat={() => {
             if (!isMain) return;
             const next = formatAsm(source);
@@ -1419,6 +1719,7 @@ function EmbeddableCore({
       stdout={emu.stdout}
       stderr={emu.stderr}
       blocked={emu.blocked}
+      ownedByTerminal={foregroundLive || (terminalProgram && chrome === "full")}
       exitCode={emu.exitCode}
       vfsFiles={emu.vfsFiles}
       pushStdin={emu.pushStdin}
@@ -1451,7 +1752,12 @@ function EmbeddableCore({
       <TerminalPane
         buildContext={buildTerminalContext}
         onUploadRequest={() => terminalUploadRef.current?.click()}
-        onRegisterIO={setTermIO}
+        onRegisterIO={(io) => {
+          // Keep the ref in lockstep so a live drive sees a pane
+          // teardown immediately, not one render later.
+          termIORef.current = io;
+          setTermIO(io);
+        }}
       />
     </div>
   );
@@ -1531,7 +1837,16 @@ function EmbeddableCore({
         {activeTab === "console" && (
           <div className="h-full flex flex-col">{consoleBlock}</div>
         )}
-        {activeTab === "term" && <div className="h-full">{terminalBlock}</div>}
+        {/* The terminal stays MOUNTED once opened and hides with CSS.
+            Unmounting it disposed xterm and dropped the io registration,
+            so switching to another tab mid-session killed a running
+            program's screen and its input -- the student had to re-run
+            it. `hidden` keeps the DOM node (and the session) alive. */}
+        {termOpened && (
+          <div className={activeTab === "term" ? "h-full" : "hidden"}>
+            {terminalBlock}
+          </div>
+        )}
         {activeTab === "watches" && (
           <div className="h-full overflow-auto">{watchBlock}</div>
         )}
@@ -1563,7 +1878,12 @@ function EmbeddableCore({
         <div className="min-w-0 shrink-0">
           <ExampleLoader onLoad={loadProgram} />
         </div>
-        <ImportExport source={source} target={importTarget} onImport={handleImport} />
+        <ImportExport
+          source={source}
+          target={importTarget}
+          onImport={handleImport}
+          onImportMany={handleImportMany}
+        />
         <RecentPrograms
           entries={recent.entries}
           // A recent is a program delivery, not a text swap: the machine
@@ -1687,7 +2007,7 @@ function EmbeddableCore({
         onStep={emu.step}
         onStepBack={emu.stepBack}
         canStepBack={emu.canStepBack}
-        onRun={emu.run}
+        onRun={handleRun}
         onPause={emu.pause}
         onReset={emu.reset}
         isRunning={emu.isRunning}
@@ -1695,7 +2015,7 @@ function EmbeddableCore({
         isHalted={emu.isHalted}
         programLoaded={emu.programLoaded}
         blocked={emu.blocked}
-        error={emu.error}
+        error={controlsError}
         stepCount={emu.stepCount}
       />
 
@@ -1813,6 +2133,7 @@ export const EmbeddablePlayground = forwardRef<
       notifyError: (message: string) =>
         runOrQueue((handle) => handle.notifyError(message)),
       getSource: () => innerHandleRef.current?.getSource() ?? startSource ?? "",
+      getFiles: () => innerHandleRef.current?.getFiles() ?? [],
       getArgs: () => innerHandleRef.current?.getArgs() ?? startArgs ?? "",
       getCursor: () =>
         innerHandleRef.current?.getCursor() ?? { line: 1, column: 1 },

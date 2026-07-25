@@ -462,6 +462,7 @@ mod tests {
         next_fd: u32,
         rand_state: u64,
         term: crate::cpu::TermState,
+        heap: crate::hosted::heap::HeapState,
     }
 
     impl Host {
@@ -479,6 +480,7 @@ mod tests {
                 next_fd: 3,
                 rand_state: 1,
                 term: crate::cpu::TermState::default(),
+                heap: crate::hosted::heap::HeapState::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -494,6 +496,7 @@ mod tests {
                 next_fd: &mut self.next_fd,
                 rand_state: &mut self.rand_state,
                 term: &mut self.term,
+                heap: &mut self.heap,
             }
         }
     }

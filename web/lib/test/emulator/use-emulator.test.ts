@@ -294,6 +294,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     closeStdin() {
       return Promise.resolve(fire());
     },
+    setSnapshotsPaused() {
+      return Promise.resolve();
+    },
     clearAllBreakpoints() {
       return Promise.resolve();
     },

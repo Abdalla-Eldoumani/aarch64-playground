@@ -40,6 +40,28 @@ describe("share hash p2", () => {
     expect(okState(buildShareHash(state))).toEqual(state);
   });
 
+  it("round-trips the extra files of a multi-file workspace", () => {
+    const state: ShareState = {
+      source: ".global main\nmain:\n        bl helper\n        ret\n",
+      files: [
+        { name: "helpers.asm", body: ".global helper\nhelper:\n        ret\n" },
+        { name: "data.asm", body: ".data\nvals: .quad 1, 2, 3\n" },
+      ],
+    };
+    expect(okState(buildShareHash(state))).toEqual(state);
+  });
+
+  it("drops a malformed files array instead of failing the link", () => {
+    // Hand-built v2 hash (no checksum -- legacy links load without one)
+    // whose files entries are not {name, body} objects.
+    const json = JSON.stringify({
+      source: "NOP\n",
+      files: [{ name: "x.asm" }, "not a file"],
+    });
+    const hash = `#p2=${LZString.compressToEncodedURIComponent(json)}`;
+    expect(okState(hash)).toEqual({ source: "NOP\n" });
+  });
+
   it("decodes a legacy p= hash as source-only state", () => {
     const source = "MOV X0, #1\n";
     const legacy = `#p=${LZString.compressToEncodedURIComponent(source)}`;

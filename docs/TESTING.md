@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. As of the correctness pass that is 756 Rust tests, 1450 web tests, and 15 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. As of the multi-file work that is 783 Rust tests, 1482 web tests, and 16 corpus fixtures. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
 
 ## Rust
 
@@ -20,6 +20,16 @@ For fast iteration, narrow to the lib target:
 cargo test --manifest-path emulator/Cargo.toml --lib
 ```
 
+To run one integration suite (they live in `emulator/tests/`, one file per
+suite), name it with `--test`; to run one test, add any substring of its
+function name:
+
+```bash
+cargo test --manifest-path emulator/Cargo.toml --test heap_stubs
+cargo test --manifest-path emulator/Cargo.toml --test stepping paused_snapshots
+cargo test --manifest-path emulator/Cargo.toml malloc     # every test matching "malloc"
+```
+
 On Windows, if `cargo test` fails with `LNK1104: cannot open file build_script_build-*.exe`, antivirus is quarantining the debug build script; run with `--release`. See [`CONTRIBUTING.md`](CONTRIBUTING.md#gotchas). CI is unaffected.
 
 ## Web
@@ -29,6 +39,16 @@ From `web/`:
 ```bash
 npm test            # one-shot (vitest run)
 npm run test:watch  # interactive
+```
+
+To test one component or module instead of the whole suite, hand vitest the
+file (or several), or filter by test name with `-t`:
+
+```bash
+npx vitest run lib/test/playground/file-map.test.ts
+npx vitest run components/test/playground/ImportExport.test.tsx
+npx vitest run lib/test/playground/          # every test in one group
+npx vitest run -t "share hash"               # tests whose name matches
 ```
 
 Tests live under a `test/` tree beside the code they cover, mirroring the source groups (`web/lib/test/<group>/<feature>.test.ts`, `web/components/test/<group>/<Component>.test.tsx`); contract tests with no single subject file (seeded content, course style, authoring rules) sit in `web/lib/test/content/`. The runner wires [`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs `window.matchMedia` (jsdom lacks it). Use plain DOM assertions; `@testing-library/jest-dom` is not installed.

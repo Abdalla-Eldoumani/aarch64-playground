@@ -177,3 +177,26 @@ describe("ConsolePanel controls and state", () => {
     expect(screen.getByText(/vfs: a\.bin, b\.txt/)).toBeTruthy();
   });
 });
+
+describe("ConsolePanel when a terminal session owns the program", () => {
+  it("disables its stdin box and points at the terminal tab", () => {
+    const { pushStdin, input } = setup({ ownedByTerminal: true, blocked: true });
+    expect(input.disabled).toBe(true);
+    expect(input.placeholder).toMatch(/terminal tab/);
+    // Even a forced submit cannot smuggle input past the disabled box.
+    fireEvent.submit(input.closest("form")!);
+    expect(pushStdin).not.toHaveBeenCalled();
+  });
+
+  it("replaces the waiting-for-input badge with a running note", () => {
+    setup({ ownedByTerminal: true, blocked: true });
+    expect(screen.getByText("running in the terminal")).toBeTruthy();
+    expect(screen.queryByText("waiting for input")).toBeNull();
+  });
+
+  it("keeps the normal blocked badge when no session owns the program", () => {
+    setup({ blocked: true });
+    expect(screen.getByText("waiting for input")).toBeTruthy();
+    expect(screen.queryByText("running in the terminal")).toBeNull();
+  });
+});

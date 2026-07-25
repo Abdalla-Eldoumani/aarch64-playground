@@ -34,7 +34,7 @@
     {
         "type": "code",
         "language": "asm",
-        "source": ".data\n    importantNumber: .word 85"
+        "source": "    .data\n    importantNumber: .word 85"
     },
     {
         "type": "prose",
@@ -62,7 +62,7 @@
     },
     {
         "type": "editor",
-        "starter": ".data\n    // Format string for printing an integer\n    format1:   .string  \"Integer Variable Content: %d\\n\"\n\n    // Variable storing the number 85\n    importantNumber:      .word 85\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n    \n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // Passing the integer value to be printed to the next argument register.\n    ldr  x21, =importantNumber\n    ldr w1, [x21]\n    // Calling printf to print the integer value.\n    bl printf\n\n    // Program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
+        "starter": "    .data\n    // Format string for printing an integer\n    format1:   .string  \"Integer Variable Content: %d\\n\"\n\n    // Variable storing the number 85\n    importantNumber:      .word 85\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n    \n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // Passing the integer value to be printed to the next argument register.\n    ldr  x21, =importantNumber\n    ldr w1, [x21]\n    // Calling printf to print the integer value.\n    bl printf\n\n    // Program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
     },
     {
         "type": "callout",

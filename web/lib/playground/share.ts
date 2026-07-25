@@ -10,10 +10,18 @@ const PREFIX_V1 = "p=";
 
 export interface ShareState {
   source: string;
+  /** Extra source files (the files tab strip) so a multi-file program
+   *  survives the link. Old links without them decode as before; old
+   *  clients reading a new link ignore the key. */
+  files?: { name: string; body: string }[];
   args?: string;
   stdin?: string;
   cursor?: { line: number; column: number };
 }
+
+/** More files than this in a hash is a hand-crafted payload, not a
+ *  workspace; the whole-fragment byte caps bound the content itself. */
+const MAX_SHARE_FILES = 16;
 
 export interface ShareOptions {
   example?: string;
@@ -98,6 +106,22 @@ export function readShareHash(hash: string): ShareReadResult {
         return { kind: "corrupt" };
       }
       const out: ShareState = { source: o.source };
+      if (
+        Array.isArray(o.files) &&
+        o.files.length <= MAX_SHARE_FILES &&
+        o.files.every(
+          (f) =>
+            f != null &&
+            typeof f === "object" &&
+            typeof (f as { name?: unknown }).name === "string" &&
+            typeof (f as { body?: unknown }).body === "string",
+        )
+      ) {
+        out.files = (o.files as { name: string; body: string }[]).map((f) => ({
+          name: f.name,
+          body: f.body,
+        }));
+      }
       if (typeof o.args === "string") out.args = o.args;
       if (typeof o.stdin === "string") out.stdin = o.stdin;
       if (

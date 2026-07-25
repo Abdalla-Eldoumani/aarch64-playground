@@ -226,6 +226,15 @@ pub struct Cpu {
     /// mode, fd 0 O_NONBLOCK, the virtual clock). Snapshotted with the
     /// rest of the machine.
     pub term: TermState,
+    /// malloc/free allocator state, snapshotted with the rest of the
+    /// machine so step-back restores the heap exactly.
+    pub heap: crate::hosted::heap::HeapState,
+    /// Host-requested pause of the step-back snapshot ring. The web sets
+    /// it for live terminal sessions, where per-step clones cost far more
+    /// than the steps and stepping back mid-session has no meaning.
+    /// Transient runner state: not part of any snapshot, cleared on
+    /// load/reset.
+    pub snapshots_paused: bool,
     /// Set when the last dispatched instruction was a nanosleep; the
     /// run loop breaks so the runner can honor the pause, and the
     /// runner consumes it via `take_pending_sleep_ns`.
@@ -288,6 +297,8 @@ impl Cpu {
             next_fd: 3,
             rand_state: 1,
             term: TermState::default(),
+            heap: crate::hosted::heap::HeapState::default(),
+            snapshots_paused: false,
             pending_sleep_ns: None,
             refund_steps_total: 0,
             host: HostTable::new(),
@@ -318,6 +329,10 @@ impl Cpu {
         cpu.host.register("rand", crate::hosted::libc::rand);
         cpu.host.register("srand", crate::hosted::libc::srand);
         cpu.host.register("time", crate::hosted::libc::time);
+        cpu.host.register("malloc", crate::hosted::heap::malloc);
+        cpu.host.register("free", crate::hosted::heap::free);
+        cpu.host.register("usleep", crate::hosted::libc::usleep);
+        cpu.host.register("fflush", crate::hosted::libc::fflush);
         // Sentinel used when a hosted program's `main` returns. Loader
         // stashes this address in LR so `ret` from main halts cleanly
         // with x0 as the exit code.
@@ -361,6 +376,7 @@ impl Cpu {
         self.term = TermState::default();
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
+        self.snapshots_paused = false;
         self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
     }
 
@@ -393,6 +409,7 @@ impl Cpu {
         self.term = TermState::default();
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
+        self.snapshots_paused = false;
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
@@ -596,7 +613,17 @@ impl Cpu {
         // programs skip the ring entirely: a paced game executes millions
         // of steps, each clone costs far more than the step itself, and
         // stepping back into the middle of a live game has no meaning.
-        if !self.term.raw_mode {
+        // A host can also pause the ring explicitly (the web pauses it
+        // while a program is driven live in the terminal pane, where the
+        // same cost argument applies to cooked-mode menus).
+        if self.term.raw_mode || self.snapshots_paused {
+            // Not recording this step. Drop the frames recorded BEFORE
+            // this stretch too: keeping them lets one `step_back` leap
+            // over every unrecorded step into a state many instructions
+            // old while the step counter drops by one. An unrecorded
+            // stretch ends the history rather than hiding a hole in it.
+            self.snapshots.clear();
+        } else {
             self.snapshots.push(Snapshot {
                 regs: self.regs.clone(),
                 mem: self.mem.clone(),
@@ -610,6 +637,7 @@ impl Cpu {
                 next_fd: self.next_fd,
                 rand_state: self.rand_state,
                 term: self.term,
+                heap: self.heap.clone(),
             });
         }
 
@@ -833,6 +861,7 @@ impl Cpu {
             next_fd: &mut self.next_fd,
             rand_state: &mut self.rand_state,
             term: &mut self.term,
+            heap: &mut self.heap,
         };
         let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
         match outcome {
@@ -898,6 +927,7 @@ impl Cpu {
             next_fd: &mut self.next_fd,
             rand_state: &mut self.rand_state,
             term: &mut self.term,
+            heap: &mut self.heap,
         };
         let outcome = table
             .dispatch(pc, &mut ctx)
@@ -1063,6 +1093,8 @@ impl Cpu {
         self.next_fd = 3;
         self.rand_state = 1;
         self.term = TermState::default();
+        self.heap = crate::hosted::heap::HeapState::default();
+        self.snapshots_paused = false;
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
@@ -1106,6 +1138,7 @@ impl Cpu {
             next_fd: self.next_fd,
             rand_state: self.rand_state,
             term: self.term,
+            heap: self.heap.clone(),
         };
         self.snapshots.save_named(name, snap);
     }
@@ -1128,6 +1161,7 @@ impl Cpu {
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.term = snap.term;
+        self.heap = snap.heap;
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
@@ -1178,6 +1212,7 @@ impl Cpu {
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.term = snap.term;
+        self.heap = snap.heap;
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();

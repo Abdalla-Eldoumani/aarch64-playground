@@ -113,6 +113,10 @@ export class WorkerClient {
     return this.send<StateSnapshot>({ id: 0, kind: "closeStdin" });
   }
 
+  setSnapshotsPaused(paused: boolean): Promise<void> {
+    return this.send<void>({ id: 0, kind: "setSnapshotsPaused", paused });
+  }
+
   clearAllBreakpoints(): Promise<void> {
     return this.send<void>({ id: 0, kind: "clearAllBreakpoints" });
   }

@@ -73,13 +73,26 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // pin them to a section offset), and strip comments. Walking the
     // whole file first is what makes forward references work across
     // later substitution.
-    let mut defines: HashMap<String, String> = HashMap::new();
     let mut assignments: HashMap<String, String> = HashMap::new();
     let mut stripped: Vec<String> = Vec::new();
+    // Every define/undefine in source order: (line index, name, body;
+    // None body = undefine). Order is what makes sequential redefinition
+    // work below.
+    let mut define_events: Vec<(usize, String, Option<String>)> = Vec::new();
     for (idx, raw) in source.lines().enumerate() {
         let line_num = idx + 1;
         let without_comment = strip_comment(raw);
         let trimmed = without_comment.trim();
+        // undefine parses before the backtick gate: GNU m4 requires its
+        // argument quoted (`undefine(`name')`), so the quote is legal
+        // exactly here and nowhere else.
+        if let Some(names) = parse_undefine(trimmed) {
+            for name in names {
+                define_events.push((idx, name, None));
+            }
+            stripped.push(String::new());
+            continue;
+        }
         if let Some(kw) = detect_unsupported(trimmed) {
             return Err(EmuError::PreprocError {
                 line: line_num,
@@ -87,7 +100,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             });
         }
         if let Some((name, body)) = parse_define(trimmed) {
-            defines.insert(name, body);
+            define_events.push((idx, name, Some(body)));
             stripped.push(String::new());
             continue;
         }
@@ -116,14 +129,69 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         stripped.push(without_comment.to_string());
     }
 
+    // Classify the names. A name defined once and never undefined
+    // substitutes across the whole file, so forward references keep
+    // working (the playground's long-standing convenience). A name that
+    // is redefined or undefined follows GNU m4's sequential windows
+    // instead: per-function register aliases like `define(size, w19)` ...
+    // `undefine(`size')` ... `define(size, w21)` must take each body only
+    // over its own stretch of the file.
+    let mut define_count: HashMap<&str, usize> = HashMap::new();
+    let mut undefined_names: std::collections::HashSet<&str> =
+        std::collections::HashSet::new();
+    for (_, name, body) in &define_events {
+        if body.is_some() {
+            *define_count.entry(name.as_str()).or_insert(0) += 1;
+        } else {
+            undefined_names.insert(name.as_str());
+        }
+    }
+    // Last body per name: the whole-file map for static names, and what
+    // the UI's register-alias labels read.
+    let mut defines: HashMap<String, String> = HashMap::new();
+    for (_, name, body) in &define_events {
+        if let Some(b) = body {
+            defines.insert(name.clone(), b.clone());
+        }
+    }
+    let mut windowed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut current: HashMap<String, String> = HashMap::new();
+    for (name, count) in define_count {
+        if count == 1 && !undefined_names.contains(name) {
+            current.insert(name.to_string(), defines[name].clone());
+        } else {
+            windowed.insert(name.to_string());
+        }
+    }
+
     // Pass 2: substitute `define()` aliases only. Assignment aliases are
-    // left untouched so the parser sees `name = expr` verbatim.
+    // left untouched so the parser sees `name = expr` verbatim. `current`
+    // starts as the static map and picks windowed bodies up (and drops
+    // them) as the walk passes their define/undefine lines.
+    let mut events = define_events
+        .iter()
+        .filter(|(_, name, _)| windowed.contains(name))
+        .peekable();
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
     for (idx, line) in stripped.iter().enumerate() {
         let line_num = idx + 1;
-        let expanded = expand_recursively(line, &defines, line_num)?;
+        while let Some((event_idx, name, body)) = events.peek() {
+            if *event_idx > idx {
+                break;
+            }
+            match body {
+                Some(b) => {
+                    current.insert(name.clone(), b.clone());
+                }
+                None => {
+                    current.remove(name.as_str());
+                }
+            }
+            events.next();
+        }
+        let expanded = expand_recursively(line, &current, line_num)?;
         total = total.saturating_add(expanded.len());
         if total > MAX_EXPANDED_TOTAL_BYTES {
             return Err(EmuError::PreprocError {
@@ -430,6 +498,35 @@ fn parse_define(trimmed: &str) -> Option<(String, String)> {
         return None;
     }
     Some((name, body))
+}
+
+/// `undefine(`name')` (the GNU-required quoted form) or `undefine(name)`,
+/// with one or more comma-separated names. Returns None when the line is
+/// not an undefine call at all.
+fn parse_undefine(trimmed: &str) -> Option<Vec<String>> {
+    let rest = trimmed.strip_prefix("undefine")?;
+    let rest = rest.trim_start();
+    let inside_plus = rest.strip_prefix('(')?;
+    // No paren tracker here: the m4 close-quote apostrophe would read as
+    // an unterminated char literal to it. Undefine arguments are bare
+    // (possibly quoted) names, so the last ')' is the call's close.
+    let close = inside_plus.rfind(')')?;
+    if !inside_plus[close + 1..].trim().is_empty() {
+        return None;
+    }
+    let inside = &inside_plus[..close];
+    let mut names = Vec::new();
+    for part in inside.split(',') {
+        let part = part.trim();
+        let part = part.strip_prefix('`').unwrap_or(part);
+        let part = part.strip_suffix('\'').unwrap_or(part);
+        let part = part.trim();
+        if part.is_empty() || !is_valid_ident(part) {
+            return None;
+        }
+        names.push(part.to_string());
+    }
+    Some(names)
 }
 
 fn parse_assignment(trimmed: &str) -> Option<(String, String)> {
@@ -867,6 +964,53 @@ mod tests {
         let r = exp("define(fp, x29)\ndefine(frame, x29)\n");
         assert_eq!(r.defines.get("fp").map(String::as_str), Some("x29"));
         assert_eq!(r.defines.get("frame").map(String::as_str), Some("x29"));
+    }
+
+    #[test]
+    fn redefined_names_follow_sequential_windows() {
+        // Per-function register aliases, GNU style: the same name bound to
+        // different registers in different stretches of the file must
+        // substitute each body only over its own window.
+        let src = "define(size, w19)\n\
+                   mov size, 1\n\
+                   undefine(`size')\n\
+                   define(size, w21)\n\
+                   mov size, 2\n";
+        let r = exp(src);
+        let lines: Vec<&str> = r.text.lines().collect();
+        assert_eq!(lines[1], "mov w19, 1");
+        assert_eq!(lines[4], "mov w21, 2");
+    }
+
+    #[test]
+    fn undefined_names_stop_substituting() {
+        let src = "define(tmp, w9)\nmov tmp, 1\nundefine(`tmp')\nmov tmp, 2\n";
+        let r = exp(src);
+        let lines: Vec<&str> = r.text.lines().collect();
+        assert_eq!(lines[1], "mov w9, 1");
+        assert_eq!(lines[3], "mov tmp, 2", "past its undefine the name is literal");
+    }
+
+    #[test]
+    fn unquoted_undefine_is_accepted_too() {
+        let src = "define(tmp, w9)\nundefine(tmp)\nmov tmp, 2\n";
+        let r = exp(src);
+        assert!(r.text.contains("mov tmp, 2"));
+    }
+
+    #[test]
+    fn single_define_keeps_whole_file_forward_references() {
+        // The playground convenience stays: one define, used before its
+        // line, still substitutes everywhere.
+        let src = "mov total, 1\ndefine(total, w20)\n";
+        let r = exp(src);
+        assert!(r.text.starts_with("mov w20, 1"));
+    }
+
+    #[test]
+    fn backtick_outside_undefine_still_errors() {
+        let err = expand("define(`fp', x29)\n").unwrap_err();
+        assert!(err.to_string().contains("backtick"));
     }
 
     #[test]

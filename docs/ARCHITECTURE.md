@@ -140,12 +140,17 @@ only the exclusive-access paths still raise `UnalignedAccess`.
 
 `SVC #0` reads `x8` and dispatches into
 [`hosted/syscalls.rs`](../emulator/src/hosted/syscalls.rs): read, write,
-exit, openat, close, lseek. Other syscalls halt (bare-metal
-compatibility).
+exit, openat, close, lseek, plus the interactive set (ioctl termios,
+fcntl O_NONBLOCK, nanosleep, clock_gettime, getrandom). Other syscalls
+halt (bare-metal compatibility).
 
 BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc
 (printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy, memset,
-memcpy, exit, atof, atoi, rand, srand, time). Stubs read argument registers per AAPCS64, call into
+memcpy, exit, atof, atoi, rand, srand, time, malloc, free, usleep,
+fflush). malloc and free run over a fixed 1 MiB heap window at
+`0x0090_0000` with host-side allocator state, so a stray store cannot
+corrupt the free list; a wild or double free halts with a plain message.
+Stubs read argument registers per AAPCS64, call into
 Rust, write results to `x0`/`d0`, then return via `pc = lr`. `main`
 returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
 the exit code.

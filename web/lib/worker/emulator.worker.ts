@@ -265,6 +265,16 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
+      case "setSnapshotsPaused": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build keeps snapshotting.
+        const set = (emu as { set_snapshots_paused?: (p: boolean) => void })
+          .set_snapshots_paused;
+        if (typeof set === "function") set.call(emu, msg.paused);
+        post({ id: msg.id, kind: "ok", value: null });
+        return;
+      }
       case "takeStdout": {
         await ensureWasm();
         const emu = require_emulator();

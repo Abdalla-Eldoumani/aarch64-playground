@@ -134,6 +134,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       // which is exactly what a raw-mode takeover wants.
       termRef.current?.reset();
     },
+    focus: () => termRef.current?.focus(),
     sessionEnded: (exitCode: number | null) => {
       const t = termRef.current;
       if (!t) return;
@@ -354,6 +355,13 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     // Refit on container resize -- important when the parent panel
     // resizes (PanelGroup drag, mobile keyboard show/hide).
     const ro = new ResizeObserver(() => {
+      // A hidden pane (the tab strip keeps a live session mounted behind
+      // `display:none`) reports no layout box, and the fit addon would
+      // read the computed "100%" as 100px and resize the LIVE buffer to
+      // a few columns, reflowing the running program's screen. Only fit
+      // a pane that is actually on screen.
+      const el = containerRef.current;
+      if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
       try { fit.fit(); } catch { /* xterm may be torn down */ }
     });
     ro.observe(containerRef.current);

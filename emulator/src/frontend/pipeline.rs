@@ -538,6 +538,18 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                 .into(),
         });
     }
+    // A file with neither entry symbol used to run from the top of
+    // .text, which turns a helpers-only file into a confusing crash.
+    // Real ld refuses to link it; so do we.
+    if !symbols.contains_key("main") && !symbols.contains_key("_start") {
+        return Err(EmuError::LinkError {
+            line: 0,
+            message: "no entry point -- define `main:` (declared `.global main`) \
+                      or `_start:`. A file holding only helper functions runs as \
+                      part of a program whose other file has `main`"
+                .into(),
+        });
+    }
     let entry_point = symbols.get("main").copied().unwrap_or(CODE_BASE);
 
     Ok(LinkedImage {
@@ -579,6 +591,9 @@ fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
     for t in tokens {
         match &t.kind {
             TokenKind::Ident(s) => out.push_str(s),
+            // Dotted local labels (`ldr x0, =.Lmsg`) ride through like any
+            // other symbol; dropping them left an empty operand.
+            TokenKind::DirectiveIdent(s) => out.push_str(s),
             TokenKind::IntLit(v) => out.push_str(&format!("{v}")),
             TokenKind::CharLit(v) => out.push_str(&format!("{v}")),
             TokenKind::Comma => out.push(','),

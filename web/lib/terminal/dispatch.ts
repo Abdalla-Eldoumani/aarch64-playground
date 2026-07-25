@@ -78,6 +78,9 @@ export interface TerminalProgramIO {
    *  from the run button): the pane prints the exit line and a fresh
    *  prompt. `./name` runs skip it -- dispatch prints those lines. */
   sessionEnded?(exitCode: number | null): void;
+  /** Put the keyboard back on the pane (returning to the terminal tab
+   *  mid-session; hiding the pane blurs its textarea). */
+  focus?(): void;
 }
 
 export interface DispatchContext {

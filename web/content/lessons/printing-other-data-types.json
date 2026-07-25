@@ -51,7 +51,7 @@
     {
       "type": "code",
       "language": "asm",
-      "source": ".data\n    // Format string for printing an integer\n    format1:   .string  \"Integer: %d\\n\"\n\n    // Format string for printing a character\n    format2:   .string  \"Character: %c\\n\"" 
+      "source": "    .data\n    // Format string for printing an integer\n    format1:   .string  \"Integer: %d\\n\"\n\n    // Format string for printing a character\n    format2:   .string  \"Character: %c\\n\"" 
     },  
     {
       "type": "prose",
@@ -121,7 +121,7 @@
     {
       "type" : "editor",
       "language": "asm",
-      "starter": ".data\n    // Format string for printing an integer\n    format1:   .string  \"Integer: %d\\n\"\n    // Format string for printing a character\n    format2:   .string  \"Character: %c\\n\"\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    mov x1, 67\n    // calling printf to print the integer value.\n    bl printf\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    mov x1, 'L'\n    // calling printf to print the character value.\n    bl printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"   
+      "starter": "    .data\n    // Format string for printing an integer\n    format1:   .string  \"Integer: %d\\n\"\n    // Format string for printing a character\n    format2:   .string  \"Character: %c\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    mov x1, 67\n    // calling printf to print the integer value.\n    bl printf\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    mov x1, 'L'\n    // calling printf to print the character value.\n    bl printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"   
     }
 
   ]

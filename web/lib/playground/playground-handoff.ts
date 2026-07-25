@@ -1,6 +1,7 @@
 "use client";
 
 import { parseDeepLink, resolveExampleStem } from "@/lib/hooks/use-deep-link";
+import type { SourceFile } from "@/lib/playground/file-map";
 import { readShareHash } from "@/lib/playground/share";
 import {
   MAX_VFS_BYTES,
@@ -23,6 +24,13 @@ import {
  *  assemble because loading a program resets the whole machine. */
 export interface HandoffPayload {
   source: string;
+  /** Extra source files the program links with (the files tab strip);
+   *  a payload without them clears the strip, so a loaded program never
+   *  inherits another workspace's helpers. */
+  files?: SourceFile[];
+  /** The program is a terminal program: run hands it the terminal pane
+   *  up front (clear, focus, live keys) instead of the console. */
+  terminal?: boolean;
   /** Recents label for the buffer this payload replaces / this program. */
   label?: string;
   args?: string;
@@ -38,6 +46,9 @@ export interface HandoffPayload {
  *  a hard load (already applied) from a client-side navigation (missed). */
 export interface PlaygroundBoot {
   source: string;
+  /** Extra files a share link carried; undefined for every other boot so
+   *  the persisted workspace strip stays untouched. */
+  files?: SourceFile[];
   args: string;
   stdin?: string;
   cursor?: { line: number; column: number };
@@ -77,6 +88,7 @@ export function resolveBoot(
   if (shared.kind === "ok") {
     return {
       source: shared.state.source,
+      files: shared.state.files,
       args: shared.state.args ?? "",
       stdin: shared.state.stdin,
       cursor: shared.state.cursor,
@@ -136,6 +148,7 @@ export function resolveHandoff(
       kind: "share",
       payload: {
         source: shared.state.source,
+        files: shared.state.files,
         args: shared.state.args,
         stdin: shared.state.stdin,
         cursor: shared.state.cursor,
@@ -177,6 +190,37 @@ export const MAX_VFS_FIXTURE_NAME_CHARS = 128;
  * with the fixtures directory by a test, so a new fixture cannot land
  * without the loader delivering it.
  */
+/**
+ * Extra source files a multi-file example loads into the files strip,
+ * served from `<stem>/<name>` beside the main `<stem>.s`. Order is the
+ * tab order.
+ */
+/** Examples whose whole point is the terminal pane: run takes it over
+ *  (clear, focus, live keys) instead of routing scanf to the console. */
+export const EXAMPLE_TERMINAL: Record<string, true> = { dsav: true };
+
+export const EXAMPLE_FILES: Record<string, string[]> = {
+  dsav: [
+    "theme.s",
+    "ui.s",
+    "ansi.s",
+    "display.s",
+    "utils.s",
+    "array.s",
+    "stack.s",
+    "queue.s",
+    "list.s",
+    "bst.s",
+    "rbt.s",
+    "heap.s",
+    "hash.s",
+    "graph.s",
+    "sort.s",
+    "search.s",
+    "recursion.s",
+  ],
+};
+
 export const EXAMPLE_INPUTS: Record<
   string,
   { args?: true; stdin?: true; vfs?: true }
@@ -255,6 +299,26 @@ export async function fetchExample(stem: string): Promise<HandoffPayload> {
   if (sourceError) throw new Error(sourceError);
 
   const payload: HandoffPayload = { source, label: stem };
+  if (EXAMPLE_TERMINAL[stem]) payload.terminal = true;
+
+  const extraNames = EXAMPLE_FILES[stem];
+  if (extraNames) {
+    payload.files = await Promise.all(
+      extraNames.map(async (name) => {
+        const fileRes = await fetch(`${EXAMPLES_PREFIX}${stem}/${name}`);
+        if (!fileRes.ok) {
+          throw new Error(
+            `failed to load example file ${name}: ${fileRes.status} ${fileRes.statusText}`,
+          );
+        }
+        const body = await fileRes.text();
+        const bodyError = validateSource(body);
+        if (bodyError) throw new Error(`${name}: ${bodyError}`);
+        return { name, body };
+      }),
+    );
+  }
+
   const inputs = EXAMPLE_INPUTS[stem];
   if (!inputs) return payload;
 

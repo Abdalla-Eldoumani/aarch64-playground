@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { combineSources, type SourceFile } from "@/lib/playground/file-map";
 
-export interface SourceFile {
-  name: string;
-  body: string;
-}
+// Re-exported so the tab strip stays the one import site for the
+// multi-file workspace pieces; the model itself lives in lib.
+export { combineSources, type SourceFile };
 
 const STORE_KEY = "aarch64-playground:multi-files";
 
@@ -143,21 +143,4 @@ export function useSourceFiles(): [
   useEffect(() => persist(files), [files]);
   const save = useCallback((next: SourceFile[]) => setFiles(next), []);
   return [files, save];
-}
-
-/**
- * Concatenate main + extras with file-boundary comments AFTER main only.
- * main.asm must stay line-for-line identical to the editor buffer: a
- * header line above it shifted every line map entry, error line, and
- * breakpoint by one for the whole session, since the editor shows
- * main.asm while the assembler sees the combined string.
- */
-export function combineSources(main: string, extras: SourceFile[]): string {
-  if (extras.length === 0) return main;
-  const parts = [main];
-  for (const f of extras) {
-    parts.push(`// ---- ${f.name} ----`);
-    parts.push(f.body);
-  }
-  return parts.join("\n");
 }
