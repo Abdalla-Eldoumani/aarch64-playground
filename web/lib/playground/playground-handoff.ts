@@ -201,6 +201,8 @@ export const EXAMPLE_TERMINAL: Record<string, true> = { dsav: true };
 
 export const EXAMPLE_FILES: Record<string, string[]> = {
   dsav: [
+    "theme.s",
+    "ui.s",
     "ansi.s",
     "display.s",
     "utils.s",
@@ -210,8 +212,12 @@ export const EXAMPLE_FILES: Record<string, string[]> = {
     "list.s",
     "bst.s",
     "rbt.s",
+    "heap.s",
+    "hash.s",
+    "graph.s",
     "sort.s",
     "search.s",
+    "recursion.s",
   ],
 };
 
