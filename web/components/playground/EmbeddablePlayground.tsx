@@ -520,7 +520,7 @@ function EmbeddableCore({
       setShareBanner(Boolean(payload.fromShare));
       lastRunSourceRef.current = null;
     },
-    [chrome, recent, persistWorkingSet, setExtraFiles],
+    [chrome, recent, persistWorkingSet, setExtraFiles, setTerminalProgram],
   );
 
   // Rehydrate the home directory once the hub is live: the persisted files
@@ -1474,7 +1474,7 @@ function EmbeddableCore({
       pcAddress: () => emuRef.current.pc,
       reset: async () => emuRef.current.reset(),
     };
-  }, [stageVfsFile, removeVfsFile, applySeeds]);
+  }, [stageVfsFile, removeVfsFile, applySeeds, driveForeground]);
 
   if (emu.loadError) {
     return (
