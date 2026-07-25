@@ -2001,7 +2001,7 @@ rb_display_menu:
 .Lfmt_int:              .string "%d "
 .Lrb_node_fmt:             .string "%02d"
 .Lrb_inorder_label:        .string "Inorder: "
-.Lrb_inorder_trav_msg:     .string "Inorder Traversal (Animated)"
+.Lrb_inorder_trav_msg:     .string "Inorder Traversal"
 .Lrb_sample_complete:      .string "Sample tree complete!"
 .Ltree_branch_left:     .string "/"
 .Ltree_branch_right:    .string "\\"
