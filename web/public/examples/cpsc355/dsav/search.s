@@ -1240,13 +1240,14 @@ search_type_values:
     bl      ansi_hide_cursor
     cbz     w23, .Lsearch_type_short
 
-    cmp     w22, 0                          // a cell is three columns wide, so
-    b.ge    .Lsearch_type_cap               // the value has to stay inside it
-    mov     w22, 0
-.Lsearch_type_cap:
+    // A cell is three columns wide, so the value has to stay inside it.
+    // Refuse an answer that does not fit and ask for the same cell again:
+    // clamping it silently stored a different number than the one that was
+    // typed, and the search that followed then reported it missing.
+    cmp     w22, 0
+    b.lt    .Lsearch_type_loop
     cmp     w22, 999
-    b.le    .Lsearch_type_store
-    mov     w22, 999
+    b.gt    .Lsearch_type_loop
 
 .Lsearch_type_store:
     str     w22, [x21, w20, sxtw 2]
