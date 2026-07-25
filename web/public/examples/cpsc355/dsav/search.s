@@ -1186,8 +1186,12 @@ search_type_values:
     cbz     w1, .Lsearch_type_out
     mov     w19, w0
 
+    // The strip reveals only what has actually been typed. Committing the
+    // requested size up front left the PREVIOUS array's values on screen --
+    // greyed, but perfectly legible, and counted -- while the prompt was
+    // still asking for a[0].
     ldr     x0, =search_size
-    str     w19, [x0]
+    str     wzr, [x0]
     ldr     x21, =search_array
 
     bl      search_reset
@@ -1256,6 +1260,8 @@ search_type_values:
     bl      search_set_state
 
     add     w20, w20, 1
+    ldr     x0, =search_size                // reveal the cell now that it
+    str     w20, [x0]                       // holds something typed
     b       .Lsearch_type_loop
 
 .Lsearch_type_short:
