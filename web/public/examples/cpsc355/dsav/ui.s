@@ -125,6 +125,81 @@ ui_cols_done:
     ldp     fp, lr, [sp], 16
     ret
 
+// ui_num(x0 = dest, w1 = value, w2 = minimum width) -> w0 = characters
+// written, not counting the terminator.
+// The hosted runtime gives us printf but no sprintf, so a value that has to
+// end up in a buffer rather than on the screen -- a badge label, a growing
+// order strip -- is converted here. Right-aligned, padded with spaces to
+// the width, and always terminated.
+    .global ui_num
+ui_num:
+    stp     fp, lr, [sp, -96]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+    stp     x23, x24, [sp, 48]
+    str     x25, [sp, 80]
+
+    mov     x19, x0                         // where the text goes
+    mov     w20, w1                         // the value
+    mov     w21, w2                         // minimum width
+
+    mov     w24, 0                          // sign, 1 when negative
+    cmp     w20, 0
+    b.ge    ui_num_digits
+    mov     w24, 1
+    neg     w20, w20
+
+ui_num_digits:
+    add     x23, sp, 64                     // scratch, least significant first
+    mov     w22, 0
+    mov     w2, 10
+
+ui_num_split:
+    udiv    w3, w20, w2
+    msub    w4, w3, w2, w20                 // value % 10
+    add     w4, w4, '0'
+    strb    w4, [x23, w22, sxtw]
+    add     w22, w22, 1
+    mov     w20, w3
+    cbnz    w20, ui_num_split
+
+    add     w25, w22, w24                   // what the number itself needs
+    cmp     w25, w21
+    csel    w25, w25, w21, gt               // the wider of number and width
+
+    sub     w1, w21, w22
+    sub     w1, w1, w24                     // spaces to lay down first
+    cmp     w1, 0
+    b.le    ui_num_sign
+
+ui_num_pad:
+    mov     w2, ' '
+    strb    w2, [x19], 1
+    subs    w1, w1, 1
+    b.gt    ui_num_pad
+
+ui_num_sign:
+    cbz     w24, ui_num_emit
+    mov     w2, '-'
+    strb    w2, [x19], 1
+
+ui_num_emit:
+    sub     w22, w22, 1
+    ldrb    w2, [x23, w22, sxtw]
+    strb    w2, [x19], 1
+    cbnz    w22, ui_num_emit
+
+    strb    wzr, [x19]
+    mov     w0, w25
+
+    ldr     x25, [sp, 80]
+    ldp     x23, x24, [sp, 48]
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 96
+    ret
+
 // ui_rule(w0 = row) - a full-width rule joined into the frame
     .global ui_rule
 ui_rule:
