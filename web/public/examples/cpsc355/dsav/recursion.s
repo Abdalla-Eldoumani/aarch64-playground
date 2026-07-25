@@ -1011,9 +1011,11 @@ rec_prompt:
     mov     w1, w22
     bl      read_int_range
     mov     w19, w0
+    mov     w20, w1                         // 0 means end of input
     bl      ansi_hide_cursor
 
     mov     w0, w19
+    mov     w1, w20                         // the caller decides what to keep
     ldp     x21, x22, [sp, 32]
     ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 64
@@ -1149,6 +1151,7 @@ rec_menu_discs:
     mov     w2, 1
     mov     w3, rec_max
     bl      rec_prompt
+    cbz     w1, rec_menu_show               // end of input: keep the tower
     ldr     x1, =rec_discs
     str     w0, [x1]
     bl      rec_reset_pegs
@@ -1160,6 +1163,7 @@ rec_menu_speed:
     mov     w2, 60
     mov     w3, 1000
     bl      rec_prompt
+    cbz     w1, rec_menu_loop               // end of input: keep the step
     ldr     x1, =rec_speed
     str     w0, [x1]
     b       rec_menu_loop
