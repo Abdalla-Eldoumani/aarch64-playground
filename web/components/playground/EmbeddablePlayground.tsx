@@ -667,6 +667,9 @@ function EmbeddableCore({
       foregroundActiveRef.current = true;
       setForegroundLive(true);
       let cancelled = false;
+      // Set once the pane we are driving has registered itself; after that,
+      // losing the registration means the pane went away.
+      let sawPane = false;
       // Wipe the pane once, the moment the program claims the terminal
       // (already true on self-attach; flips mid-run for ./name), so the
       // takeover starts on a clean screen with no earlier scrollback.
@@ -742,7 +745,13 @@ function EmbeddableCore({
           // blocked program, holding the console's stdin disabled and
           // the snapshot ring paused with no way back.
           if (!mountedRef.current) break;
-          if (termIORef.current !== null && termIORef.current !== io) break;
+          // A pane that unmounts deregisters by writing null, so "not this
+          // io" has to include null -- the earlier `!== null` clause meant
+          // the one case this guard exists for was the one it let through.
+          // It stays tolerant only until the pane first registers, since a
+          // drive can start a frame before that lands.
+          if (termIORef.current === io) sawPane = true;
+          else if (sawPane || termIORef.current !== null) break;
           const e = emuRef.current;
           if (e.wantsTerminal) clearOnce();
           if (cancelled || e.isHalted || e.error) break;
@@ -812,7 +821,10 @@ function EmbeddableCore({
     void driveForeground(io, { clearAtStart: true }).then((exitCode) => {
       io.sessionEnded?.(exitCode);
     });
-  }, [termRunRequest, termIO, driveForeground]);
+    // foregroundLive is a dependency so that a request held back above
+    // gets another chance the moment the running session stands down.
+    // Without it the request was preserved and then never honoured.
+  }, [termRunRequest, termIO, driveForeground, foregroundLive]);
 
   // Self-attach: a raw-mode program started from the run button (not
   // `./name`) still deserves live terminal I/O. When the flag rises and
