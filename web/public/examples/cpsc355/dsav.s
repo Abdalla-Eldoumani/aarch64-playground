@@ -1,38 +1,76 @@
-// dsav - the data structures & algorithms visualizer, menu-driven:
-// array, stack, queue, linked list, binary search tree, red-black tree,
-// five sorts and two searches, all animated with ansi escape codes.
-//
-// The full project (assembly, c++, and rust versions) lives at
-//   https://github.com/Abdalla-Eldoumani/dsav
-//
-// how to run: the program spans every file in the strip above; assemble
-// links them into one image, and run takes over the term pane -- menus
-// read a number plus enter, and every animation paces itself. The
-// course way works too, from the term tab:  ./program
+// main.asm - the home screen and dispatch
+// dsav: terminal data structures and algorithms visualizer
 
 define(fp, x29)
 define(lr, x30)
 
+// The roles ui.asm draws with. Each file assembles on its own, so every
+// module that names a role repeats the block; theme.asm holds the colours
+// the numbers stand for.
+    UI_ROLE_TEXT   = 0
+    UI_ROLE_DIM    = 1
+    UI_ROLE_FAINT  = 2
+    UI_ROLE_ACCENT = 3
+    UI_ROLE_KEY    = 4
+
+    HOME_NUM_COL   = 4
+    HOME_NAME_COL  = 8
+    HOME_BLURB_COL = 30
+
     .data
     .balign 8
 
-app_title:      .string "DATA STRUCTURES & ALGORITHMS VISUALIZER"
-app_subtitle:   .string "ARMv8 Assembly Edition"
+home_title:     .string "home"
 
-menu_option_1:  .string "[1] Array Operations"
-menu_option_2:  .string "[2] Stack Operations"
-menu_option_3:  .string "[3] Queue Operations"
-menu_option_4:  .string "[4] Linked List Operations"
-menu_option_5:  .string "[5] Binary Search Tree"
-menu_option_6:  .string "[6] Red-Black Tree"
-menu_option_7:  .string "[7] Sorting Algorithms"
-menu_option_8:  .string "[8] Search Algorithms"
-menu_option_0:  .string "[0] Exit"
+group_struct:   .string "STRUCTURES"
+group_algo:     .string "ALGORITHMS"
 
-main_menu_prompt:    .string "Enter your choice (0-8): "
-invalid_choice: .string "\x1b[31mInvalid choice! Please select 0-8.\x1b[0m"
-goodbye_msg:    .string "\n\x1b[32mThank you for using DSAV! Goodbye.\x1b[0m\n"
-test_msg:       .string "\x1b[33m[This feature is not yet implemented]\x1b[0m\n"
+opt_array:      .string "array"
+opt_stack:      .string "stack"
+opt_queue:      .string "queue"
+opt_list:       .string "linked list"
+opt_bst:        .string "binary search tree"
+opt_rbt:        .string "red-black tree"
+opt_heap:       .string "heap"
+opt_hash:       .string "hash table"
+opt_graph:      .string "graph"
+opt_sort:       .string "sorting"
+opt_search:     .string "searching"
+opt_recursion:  .string "recursion"
+opt_exit:       .string "exit"
+
+// One line of context each, so the menu teaches before a key is pressed.
+sub_array:      .string "indexed cells, constant-time access"
+sub_stack:      .string "last in, first out"
+sub_queue:      .string "first in, first out"
+sub_list:       .string "nodes joined by pointers"
+sub_bst:        .string "ordered, log n while it stays balanced"
+sub_rbt:        .string "balances itself on every insert"
+sub_heap:       .string "the smallest value is always on top"
+sub_hash:       .string "key to bucket, constant time on average"
+sub_graph:      .string "vertices and edges, walked breadth and depth"
+sub_sort:       .string "eight algorithms over the same array"
+sub_search:     .string "four ways to find one value"
+sub_recursion:  .string "towers of hanoi, with the call stack shown"
+sub_exit:       .string "leave dsav"
+
+num_1:          .string "1"
+num_2:          .string "2"
+num_3:          .string "3"
+num_4:          .string "4"
+num_5:          .string "5"
+num_6:          .string "6"
+num_7:          .string "7"
+num_8:          .string "8"
+num_9:          .string "9"
+num_10:         .string "10"
+num_11:         .string "11"
+num_12:         .string "12"
+num_0:          .string "0"
+
+home_prompt:    .string "choose "
+home_hint:      .string "type a number and press enter"
+goodbye_msg:    .string "\x1b[38;5;157mthanks for using dsav.\x1b[0m\n"
 
     .text
     .balign 4
@@ -49,11 +87,8 @@ main:
 main_loop:
     bl      display_main_menu
 
-    ldr     x0, =main_menu_prompt
-    bl      printf
-
     mov     w0, 0                           // min choice
-    mov     w1, 8                           // max choice
+    mov     w1, 12                          // max choice
     bl      read_int_range                  // w0 = validated choice
 
     // dispatch
@@ -72,50 +107,68 @@ main_loop:
     cmp     w0, 6
     b.eq    handle_rbtree_menu
     cmp     w0, 7
-    b.eq    handle_sort_menu
+    b.eq    handle_heap_menu
     cmp     w0, 8
+    b.eq    handle_hash_menu
+    cmp     w0, 9
+    b.eq    handle_graph_menu
+    cmp     w0, 10
+    b.eq    handle_sort_menu
+    cmp     w0, 11
     b.eq    handle_search_menu
+    cmp     w0, 12
+    b.eq    handle_recursion_menu
 
     b       main_loop                       // unreachable: choice already validated
 
+// Every module runs its own loop and only returns when the student picks
+// back, so there is nothing left to read here: redraw home straight away.
 handle_array_menu:
     bl      array_menu
-    bl      wait_for_enter
     b       main_loop
 
 handle_stack_menu:
     bl      stack_menu
-    bl      wait_for_enter
     b       main_loop
 
 handle_queue_menu:
     bl      queue_menu
-    bl      wait_for_enter
     b       main_loop
 
 handle_linkedlist_menu:
     bl      linkedlist_menu
-    bl      wait_for_enter
     b       main_loop
 
 handle_bst_menu:
     bl      bst_menu
-    bl      wait_for_enter
     b       main_loop
 
 handle_rbtree_menu:
     bl      rb_menu
-    bl      wait_for_enter
+    b       main_loop
+
+handle_heap_menu:
+    bl      heap_menu
+    b       main_loop
+
+handle_hash_menu:
+    bl      hash_menu
+    b       main_loop
+
+handle_graph_menu:
+    bl      graph_menu
     b       main_loop
 
 handle_sort_menu:
     bl      sort_menu
-    bl      wait_for_enter
     b       main_loop
 
 handle_search_menu:
     bl      search_menu
-    bl      wait_for_enter
+    b       main_loop
+
+handle_recursion_menu:
+    bl      rec_menu
     b       main_loop
 
 main_exit:
@@ -129,110 +182,153 @@ main_exit:
     ldp     fp, lr, [sp], 16
     ret
 
-// display_main_menu() - clear the screen, draw the menu box and options
+// home_entry(w0 = row, x1 = number, x2 = name, x3 = blurb or 0)
+// One menu line: the key in its own colour, the name, then the quiet
+// blurb that says what the thing is before a keystroke is spent on it.
+home_entry:
+    stp     fp, lr, [sp, -64]!
+    mov     fp, sp
+    stp     x19, x20, [sp, 16]
+    stp     x21, x22, [sp, 32]
+
+    mov     w19, w0                         // row
+    mov     x20, x1                         // number
+    mov     x21, x2                         // name
+    mov     x22, x3                         // blurb
+
+    mov     w0, w19
+    mov     w1, HOME_NUM_COL
+    mov     w2, UI_ROLE_KEY
+    mov     x3, x20
+    bl      ui_text
+
+    mov     w0, w19
+    mov     w1, HOME_NAME_COL
+    mov     w2, UI_ROLE_TEXT
+    mov     x3, x21
+    bl      ui_text
+
+    cbz     x22, home_entry_done
+    mov     w0, w19
+    mov     w1, HOME_BLURB_COL
+    mov     w2, UI_ROLE_FAINT
+    mov     x3, x22
+    bl      ui_text
+
+home_entry_done:
+    ldp     x21, x22, [sp, 32]
+    ldp     x19, x20, [sp, 16]
+    ldp     fp, lr, [sp], 64
+    ret
+
+// display_main_menu() - draw the home screen and park the cursor on the
+// prompt, ready for read_int_range
     .global display_main_menu
 display_main_menu:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
 
-    bl      ansi_clear_screen
+    ldr     x0, =home_title
+    bl      ui_screen
+    bl      ui_tagline
 
-    // outer box
-    mov     w0, 3                           // row
-    mov     w1, 15                          // column
-    mov     w2, 54                          // width
-    mov     w3, 20                          // height
-    mov     w4, 1                           // style: double line
-    bl      draw_box
-
-    // title and subtitle, centered in the box
     mov     w0, 4
-    mov     w1, 17
-    bl      ansi_move_cursor
-    ldr     x0, =app_title
-    mov     w1, 50                          // field width
-    bl      print_centered
+    mov     w1, HOME_NUM_COL
+    mov     w2, UI_ROLE_ACCENT
+    ldr     x3, =group_struct
+    bl      ui_text
 
     mov     w0, 5
-    mov     w1, 17
-    bl      ansi_move_cursor
-    ldr     x0, =app_subtitle
-    mov     w1, 50
-    bl      print_centered
+    ldr     x1, =num_1
+    ldr     x2, =opt_array
+    ldr     x3, =sub_array
+    bl      home_entry
 
-    // separator under the title
-    mov     w0, 6                           // row
-    mov     w1, 15                          // column
-    mov     w2, 54                          // width
-    mov     w3, 1                           // style
-    bl      draw_horizontal_border_top
+    mov     w0, 6
+    ldr     x1, =num_2
+    ldr     x2, =opt_stack
+    ldr     x3, =sub_stack
+    bl      home_entry
 
-    // menu options, one per row
+    mov     w0, 7
+    ldr     x1, =num_3
+    ldr     x2, =opt_queue
+    ldr     x3, =sub_queue
+    bl      home_entry
+
+    mov     w0, 8
+    ldr     x1, =num_4
+    ldr     x2, =opt_list
+    ldr     x3, =sub_list
+    bl      home_entry
+
     mov     w0, 9
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_1
-    bl      printf
+    ldr     x1, =num_5
+    ldr     x2, =opt_bst
+    ldr     x3, =sub_bst
+    bl      home_entry
 
     mov     w0, 10
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_2
-    bl      printf
+    ldr     x1, =num_6
+    ldr     x2, =opt_rbt
+    ldr     x3, =sub_rbt
+    bl      home_entry
 
     mov     w0, 11
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_3
-    bl      printf
+    ldr     x1, =num_7
+    ldr     x2, =opt_heap
+    ldr     x3, =sub_heap
+    bl      home_entry
 
     mov     w0, 12
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_4
-    bl      printf
+    ldr     x1, =num_8
+    ldr     x2, =opt_hash
+    ldr     x3, =sub_hash
+    bl      home_entry
 
     mov     w0, 13
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_5
-    bl      printf
-
-    mov     w0, 14
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_6
-    bl      printf
+    ldr     x1, =num_9
+    ldr     x2, =opt_graph
+    ldr     x3, =sub_graph
+    bl      home_entry
 
     mov     w0, 15
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_7
-    bl      printf
+    mov     w1, HOME_NUM_COL
+    mov     w2, UI_ROLE_ACCENT
+    ldr     x3, =group_algo
+    bl      ui_text
 
     mov     w0, 16
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_8
-    bl      printf
+    ldr     x1, =num_10
+    ldr     x2, =opt_sort
+    ldr     x3, =sub_sort
+    bl      home_entry
 
     mov     w0, 17
-    mov     w1, 20
-    bl      ansi_move_cursor
-    ldr     x0, =menu_option_0
-    bl      printf
+    ldr     x1, =num_11
+    ldr     x2, =opt_search
+    ldr     x3, =sub_search
+    bl      home_entry
 
-    // separator above the prompt
-    mov     w0, 19                          // row
-    mov     w1, 15                          // column
-    mov     w2, 54                          // width
-    mov     w3, 1                           // style
-    bl      draw_horizontal_border_top
+    mov     w0, 18
+    ldr     x1, =num_12
+    ldr     x2, =opt_recursion
+    ldr     x3, =sub_recursion
+    bl      home_entry
 
-    // park the cursor where the prompt goes
-    mov     w0, 21
-    mov     w1, 18
-    bl      ansi_move_cursor
+    mov     w0, 19
+    ldr     x1, =num_0
+    ldr     x2, =opt_exit
+    ldr     x3, =sub_exit
+    bl      home_entry
+
+    ldr     x0, =home_hint
+    bl      ui_footer
+
+    mov     w0, 20
+    mov     w1, HOME_NUM_COL
+    ldr     x2, =home_prompt
+    bl      ui_prompt
 
     ldp     fp, lr, [sp], 16
     ret
