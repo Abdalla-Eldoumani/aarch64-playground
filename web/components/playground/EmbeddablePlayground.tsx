@@ -285,7 +285,10 @@ function EmbeddableCore({
       return false;
     }
   });
+  // Read by the blocked-jump effect, which must not re-subscribe.
+  const terminalProgramRef = useRef(false);
   const setTerminalProgram = useCallback((next: boolean) => {
+    terminalProgramRef.current = next;
     setTerminalProgramState(next);
     try {
       window.localStorage.setItem(TERMINAL_PROGRAM_KEY, next ? "1" : "0");
@@ -295,6 +298,9 @@ function EmbeddableCore({
   }, []);
   // Nonce asking the attach effect to start a terminal-pane run once the
   // pane's io registration lands (the pane mounts lazily on tab switch).
+  useEffect(() => {
+    terminalProgramRef.current = terminalProgram;
+  }, [terminalProgram]);
   const [termRunRequest, setTermRunRequest] = useState<number | null>(null);
   // The terminal mounts lazily on first use and then stays mounted (see
   // the tab panel below): a live session must survive tab switches.
@@ -588,7 +594,10 @@ function EmbeddableCore({
       // A foreground terminal session owns the program's input even
       // without raw mode: a menu program run as `./program` reads its
       // scanf lines from the term pane, so the console jump stands down.
-      if (foregroundActiveRef.current) return;
+      // A terminal-flagged program keeps that ownership for its whole
+      // life, including the gap before its drive attaches -- the console
+      // must never steal a read it cannot answer.
+      if (foregroundActiveRef.current || terminalProgramRef.current) return;
       queueMicrotask(() => {
         setActiveTab("console");
         // Phones route panes through the pane switcher, not the tab state.
@@ -718,6 +727,13 @@ function EmbeddableCore({
           if (!e.isRunning && !e.isHalted) e.run();
         }
         let resumeArmed = false;
+        // The hub's isRunning/blocked arrive through React state, so the
+        // first polls after run() can still read the pre-run snapshot.
+        // Ending the session there printed "[program stopped]" over a
+        // program that was only just starting, and handed its blocked
+        // read to the console. Wait for real evidence it began.
+        let started = false;
+        const openedAt = Date.now();
         for (;;) {
           await new Promise<void>((r) => setTimeout(r, 32));
           // Stand down if this component unmounted (a route change) or
@@ -730,6 +746,7 @@ function EmbeddableCore({
           const e = emuRef.current;
           if (e.wantsTerminal) clearOnce();
           if (cancelled || e.isHalted || e.error) break;
+          if (e.isRunning || e.blocked) started = true;
           if (e.isRunning) continue;
           if (e.blocked) {
             resumeArmed = true;
@@ -740,6 +757,9 @@ function EmbeddableCore({
             emuRef.current.run();
             continue;
           }
+          // Nothing observed yet: give the machine a moment to commit
+          // its first state before deciding the session is over.
+          if (!started && Date.now() - openedAt < 4000) continue;
           break;
         }
       } finally {
@@ -1687,7 +1707,7 @@ function EmbeddableCore({
       stdout={emu.stdout}
       stderr={emu.stderr}
       blocked={emu.blocked}
-      ownedByTerminal={foregroundLive}
+      ownedByTerminal={foregroundLive || (terminalProgram && chrome === "full")}
       exitCode={emu.exitCode}
       vfsFiles={emu.vfsFiles}
       pushStdin={emu.pushStdin}
