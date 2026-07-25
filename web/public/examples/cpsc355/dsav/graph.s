@@ -1184,7 +1184,7 @@ graph_prompt_out:
 graph_prompt_speed:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
-    str     x19, [sp, 16]
+    stp     x19, x20, [sp, 16]
 
     ldr     x0, =graph_title
     bl      ui_screen
@@ -1224,12 +1224,15 @@ graph_prompt_speed:
     mov     w1, 1000
     bl      read_int_range
     mov     w19, w0
+    mov     w20, w1                         // 0 means end of input
     bl      ansi_hide_cursor
 
-    ldr     x0, =graph_speed
+    cbz     w20, graph_speed_keep           // end of input is not an answer:
+    ldr     x0, =graph_speed                // keep the step we had
     str     w19, [x0]
+graph_speed_keep:
 
-    ldr     x19, [sp, 16]
+    ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 32
     ret
 
