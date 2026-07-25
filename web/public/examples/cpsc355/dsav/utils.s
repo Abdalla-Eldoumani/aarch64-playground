@@ -3,24 +3,30 @@
 define(fp, x29)
 define(lr, x30)
 
+// ui.asm draws by role; this file names only the one it uses. Each file
+// assembles on its own, so the constant is repeated rather than shared.
+    UI_ROLE_FAINT = 2
+
     .data
     .balign 8
 
 int_fmt:            .string "%d"
-press_enter_msg:    .string "\x1b[33mPress Enter to continue...\x1b[0m"
-// The complaint always lands on one fixed line, centered under the menu
-// box, and clears that line first -- so retries overwrite it in place
-// instead of stacking copies down the screen. Row 24 is below every
-// MENU box; the modules that draw deeper (the stack cells, a tall tree,
-// the red-black property list) reach it, but those screens never prompt.
-invalid_input_msg:  .string "\x1b[24;25H\x1b[2K\x1b[31mInvalid input! Please try again.\x1b[0m"
-clear_msg_row:      .string "\x1b[24;1H\x1b[2K"
+newline_str:        .string "\n"
+press_enter_msg:    .string "press enter to continue"
+// The complaint always lands on one fixed line inside the frame, below
+// the body and above the footer, and the line is wiped before it is
+// written -- so retries overwrite in place instead of stacking copies
+// down the screen. Row 23 is the kernel's message row (ui.asm owns the
+// layout); clearing spans only the inner columns so the frame's sides
+// survive.
+msg_row_home:       .string "[23;2H"
+msg_row_blank:      .string "                                                                              "
+invalid_input_msg:  .string "[23;25H[38;5;211mInvalid input! Please try again.[0m"
 input_prompt:       .string "> "
-save_input_pos:     .string "\x1b[s"        // remember where typing begins
+save_input_pos:     .string "[s"        // remember where typing begins
 // Back to the input spot, blanking the rejected entry with a bounded run
-// of spaces. Erase-to-end-of-line would take the menu box's right wall
-// with it.
-restore_input_pos:  .string "\x1b[u                \x1b[u"
+// of spaces. Erase-to-end-of-line would take the frame's right wall.
+restore_input_pos:  .string "[u                [u"
 
 input_buffer:       .skip 64                // scratch space for user input
 
@@ -106,6 +112,10 @@ read_int_complain:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
 
+    ldr     x0, =msg_row_home
+    bl      printf
+    ldr     x0, =msg_row_blank
+    bl      printf
     ldr     x0, =invalid_input_msg
     bl      printf
     ldr     x0, =restore_input_pos
@@ -120,7 +130,9 @@ read_int_clear_message:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
 
-    ldr     x0, =clear_msg_row
+    ldr     x0, =msg_row_home
+    bl      printf
+    ldr     x0, =msg_row_blank
     bl      printf
     ldr     x0, =restore_input_pos
     bl      printf
@@ -131,7 +143,7 @@ read_int_clear_message:
 // read_int_range(w0 = min, w1 = max) -> w0 = value in range
 // reprompts in place until a number in [min, max] is entered; the
 // complaint sits on the line under the prompt and stays put. End of
-// input answers `min`, which is the back/exit choice on every menu, so
+// input answers min, which is the back/exit choice on every menu, so
 // a closed stdin walks the program out instead of spinning on a prompt
 // nobody can answer.
     .global read_int_range
@@ -175,18 +187,25 @@ read_int_range_done:
     ldp     fp, lr, [sp], 48
     ret
 
-// wait_for_enter() - prompt on the bottom row, block until enter
+// wait_for_enter() - hold the finished screen until enter
+// Shares the message row with the input complaint, and starts inside the
+// frame: column 1 is the frame's left wall, and writing there tore a hole
+// through every screen that paused.
     .global wait_for_enter
 wait_for_enter:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
 
-    mov     w0, 23                          // bottom of screen
-    mov     w1, 1
-    bl      ansi_move_cursor
-
-    ldr     x0, =press_enter_msg
+    ldr     x0, =msg_row_home
     bl      printf
+    ldr     x0, =msg_row_blank
+    bl      printf
+
+    mov     w0, 23
+    mov     w1, 4
+    mov     w2, UI_ROLE_FAINT
+    ldr     x3, =press_enter_msg
+    bl      ui_text
 
     bl      clear_input_buffer              // drop any leftover line
     bl      getchar
@@ -241,15 +260,11 @@ print_newline:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
 
-    ldr     x0, =.Lnewline
+    ldr     x0, =newline_str
     bl      printf
 
     ldp     fp, lr, [sp], 16
     ret
-
-    .data
-.Lnewline: .string "\n"
-    .text
 
 // get_random(w0 = max) -> w0 = random value in [0, max)
     .global get_random
