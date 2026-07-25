@@ -485,8 +485,14 @@ sort_new_array:
     mov     w1, SORT_CAP
     bl      read_int_range
     mov     w19, w0
+    mov     w21, w1                         // 0 means end of input; the fill
+                                            // counter reuses w21 below
     bl      th_off
     bl      sort_bottom
+
+    // End of input is not a size. Taking the minimum here rebuilt the
+    // array as three values and reported it as though it were typed.
+    cbz     w21, sort_new_out
 
     ldr     x20, =sort_size
     str     w19, [x20]
@@ -515,6 +521,7 @@ sort_new_shown:
     bl      sort_say
     bl      sort_flush
 
+sort_new_out:
     ldr     x21, [sp, 32]
     ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 48
@@ -725,8 +732,10 @@ sort_ask_speed:
     mov     w0, 100
     mov     w1, 2500
     bl      read_int_range
-    ldr     x1, =sort_delay
+    cbz     w1, sort_ask_speed_keep         // end of input is not an answer:
+    ldr     x1, =sort_delay                 // keep the frame time we had
     str     w0, [x1]
+sort_ask_speed_keep:
     bl      th_off
     bl      sort_bottom
 
