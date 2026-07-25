@@ -152,8 +152,7 @@ sort_onk:           .string "O(n + k)"
 
 sort_fmt_cell:      .string "%4d"
 sort_fmt_counts:    .string "comparisons %-3d  moves %-3d"
-sort_pad:           .string "%*s"
-sort_nothing:       .string ""
+sort_space:         .string " "
 sort_block:         .string "\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88"
 sort_cell_gone:     .string "   \xc2\xb7"
 sort_rule_h:        .string "\xe2\x94\x80"
@@ -769,10 +768,9 @@ sort_blank:
 
     mov     w19, w2
     bl      ui_at
-    ldr     x0, =sort_pad
+    ldr     x0, =sort_space
     mov     w1, w19
-    ldr     x2, =sort_nothing
-    bl      printf
+    bl      ui_repeat
 
     ldr     x19, [sp, 16]
     ldp     fp, lr, [sp], 32
