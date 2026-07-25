@@ -140,16 +140,30 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
     let image = assemble_hosted(&source, &cpu.host)
         .unwrap_or_else(|e| panic!("assemble dsav: {e}"));
     cpu.load_linked_image(&image).expect("load dsav");
-    // array: user init 3 values, display, back; stack: push 5, pop,
-    // back; queue: enqueue 5, dequeue, back; list: insert 5, display,
-    // back; bst: insert 5, search hit, back; rbt: insert 5, search hit,
-    // back; then exit. One blank line per operation feeds wait_for_enter.
+    // One operation per module, then out. EVERY module is visited: a drive
+    // that stopped at the six original ones let a printf conversion the
+    // hosted runtime rejects (`%*s`) ship inside the sorting module, because
+    // nothing here ever reached it. One blank line per operation feeds
+    // wait_for_enter.
+    //
+    // array: user init 3 values, display, back; stack: push, pop, back;
+    // queue: enqueue, dequeue, back; list: insert, display, back; bst:
+    // insert, search hit, back; rbt: insert, search hit, back; heap: insert,
+    // show, back; hash: insert, show, back; graph: breadth first, back;
+    // sorting: new array then bubble, back; searching: linear on the seeded
+    // array, back; recursion: solve, back; then exit.
     let drive = "1\n2\n3\n10\n20\n30\n\n3\n\n0\n\n\
                  2\n1\n5\n\n2\n\n0\n\n\
                  3\n1\n5\n\n2\n\n0\n\n\
                  4\n1\n5\n\n5\n\n0\n\n\
                  5\n1\n5\n\n3\n5\n\n0\n\n\
                  6\n1\n5\n\n2\n5\n\n0\n\n\
+                 7\n1\n5\n\n5\n\n0\n\n\
+                 8\n1\n42\n\n4\n\n0\n\n\
+                 9\n0\n\
+                 10\n0\n\
+                 11\n0\n\
+                 12\n0\n\
                  0\n";
     cpu.push_stdin(drive.as_bytes());
     cpu.close_stdin();
@@ -178,4 +192,103 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
         "the exit path prints the goodbye line"
     );
     assert!(sleeps > 0, "the animations pace themselves through usleep");
+}
+
+/// Every printf conversion the shipped examples use must be one the hosted
+/// runtime implements. Driving the menus cannot prove this on its own: a
+/// conversion sitting in a branch the scripted session never reaches still
+/// aborts the program for the student who does reach it, which is exactly
+/// how `%*s` shipped inside the sorting module. Reading the format strings
+/// costs nothing and covers every branch at once.
+#[test]
+fn shipped_examples_only_use_conversions_the_runtime_implements() {
+    // What hosted/printf.rs accepts: flags, a digit width, a .precision, the
+    // length modifiers, and one of these conversions. A `*` width is
+    // explicitly rejected there, so it must never appear here.
+    const CONVERSIONS: &str = "diouxXeEfgGcspn%";
+    let mut offenders: Vec<String> = Vec::new();
+
+    let mut names: Vec<String> = vec!["dsav.s".to_string()];
+    let mut extras: Vec<String> = std::fs::read_dir(examples_root().join("dsav"))
+        .expect("the dsav helper directory is served from web/public")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".s"))
+        .map(|n| format!("dsav/{n}"))
+        .collect();
+    extras.sort();
+    names.append(&mut extras);
+    assert!(names.len() >= 18, "expected the whole visualizer, got {names:?}");
+
+    for rel in &names {
+        let text = read(rel);
+        for (n, line) in text.lines().enumerate() {
+            // Only a string literal can be a format. A `%` in a comment
+            // ("rand() % max") or in a `msub` is not one, and flagging it
+            // would make this gate cry wolf.
+            let Some(open) = line.find('"') else { continue };
+            let trimmed = line.trim_start();
+            if !(trimmed.starts_with(".string")
+                || trimmed.starts_with(".asciz")
+                || trimmed.starts_with(".ascii")
+                || line[..open].contains(".string")
+                || line[..open].contains(".asciz")
+                || line[..open].contains(".ascii"))
+            {
+                continue;
+            }
+            let Some(close) = line.rfind('"') else { continue };
+            if close <= open {
+                continue;
+            }
+            let lit = &line[open + 1..close];
+            let bytes = lit.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                if bytes[i] != b'%' {
+                    i += 1;
+                    continue;
+                }
+                // Walk the spec the way hosted/printf.rs does, then look at
+                // whatever it stopped on.
+                let mut j = i + 1;
+                while j < bytes.len() && b"-+ #0".contains(&bytes[j]) {
+                    j += 1;
+                }
+                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    j += 1;
+                }
+                if j < bytes.len() && bytes[j] == b'.' {
+                    j += 1;
+                    while j < bytes.len() && bytes[j].is_ascii_digit() {
+                        j += 1;
+                    }
+                }
+                while j < bytes.len() && b"hlLzjt".contains(&bytes[j]) {
+                    j += 1;
+                }
+                if j >= bytes.len() {
+                    break;
+                }
+                if !CONVERSIONS.contains(bytes[j] as char) {
+                    offenders.push(format!(
+                        "{}:{}: `%{}` -- {}",
+                        rel,
+                        n + 1,
+                        bytes[j] as char,
+                        line.trim()
+                    ));
+                }
+                // Step PAST the conversion, so the second `%` of an escaped
+                // `%%` is consumed here instead of starting a fresh spec.
+                i = j + 1;
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "shipped examples use printf conversions the hosted runtime rejects:\n{}",
+        offenders.join("\n")
+    );
 }
