@@ -856,7 +856,10 @@ bst_render_empty:
 bst_render_stats:
     mov     w0, 16
     mov     w1, 55
-    mov     w2, 23
+    // 18 columns of literal plus two counts. Values run 0..99, so a full
+    // tree is 100 nodes and an ascending run makes it 100 deep: both
+    // counts reach three digits and the line reaches column 78.
+    mov     w2, 24
     bl      bst_blank
 
     ldr     x0, =bst_root
@@ -1059,16 +1062,18 @@ bst_ask:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
     stp     x19, x20, [sp, 16]
+    str     x21, [sp, 32]
 
-    mov     x19, x0
-
+    mov     x21, x0                         // kept, so a refused value can
+                                            // be asked for again
+bst_ask_prompt:
     mov     w0, 18
     mov     w1, 2
     mov     w2, 78
     bl      bst_blank
     mov     w0, 18
     mov     w1, 4
-    mov     x2, x19
+    mov     x2, x21
     bl      ui_prompt
     bl      bst_flush
 
@@ -1088,20 +1093,21 @@ bst_ask:
     b       bst_ask_done
 
 bst_ask_range:
+    // Say why and ask again. Answering 0 here would be indistinguishable
+    // from a closed stdin, and the operation was being abandoned silently.
     ldr     x0, =bst_msg_range
     mov     w1, 0
     mov     w2, 0
     mov     w3, 0
     bl      bst_say
-    mov     w0, 0
-    mov     w1, 0
-    b       bst_ask_done
+    b       bst_ask_prompt
 
 bst_ask_stop:
     mov     w0, 0
     mov     w1, 0
 
 bst_ask_done:
+    ldr     x21, [sp, 32]
     ldp     x19, x20, [sp, 16]
     ldp     fp, lr, [sp], 48
     ret
