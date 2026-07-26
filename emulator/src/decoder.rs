@@ -828,8 +828,47 @@ fn decode_dp_imm_group(instr: u32) -> Result<Instruction, EmuError> {
         0b100 => decode_logical_imm(instr),
         // bitfield (used for LSL/LSR/ASR immediate via aliases)
         0b110 => decode_bitfield(instr),
+        // extract (the encoding behind `ror Rd, Rn, #shift`)
+        0b111 => decode_extract(instr),
         _ => Err(EmuError::UnknownInstruction(instr)),
     }
+}
+
+/// Decode EXTR, which AArch64 uses for `ROR Rd, Rn, #shift`: the ROR
+/// alias is an EXTR whose two sources are the same register. Like the
+/// shift aliases in `decode_bitfield`, it lowers onto the executor's
+/// ORR-with-shifted-register path, since `ORR Rd, ZR, Rn, ROR #shift` is
+/// bit-for-bit the same operation. A general EXTR (two different sources)
+/// has no equivalent there and stays unknown; the assembler never emits
+/// one, and executing a wrong instruction would be worse than refusing.
+fn decode_extract(instr: u32) -> Result<Instruction, EmuError> {
+    let sf = bit(instr, 31) == 1;
+    let n = bit(instr, 22) == 1;
+    let rm = bits(instr, 20, 16) as u8;
+    let imms = bits(instr, 15, 10) as u8;
+    let rn = bits(instr, 9, 5) as u8;
+    let rd = bits(instr, 4, 0) as u8;
+
+    // op21 and o0 are fixed at zero, N tracks sf, and the 32-bit form's
+    // rotate has to fit inside the register.
+    if bits(instr, 30, 29) != 0 || bit(instr, 21) != 0 || sf != n || (!sf && imms >= 32) {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    if rm != rn {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+
+    Ok(Instruction::LogReg {
+        op: LogOp::Orr,
+        sf,
+        rd,
+        rn: 31,
+        rm: rn,
+        shift: ShiftType::ROR,
+        amount: imms,
+        set_flags: false,
+        invert: false,
+    })
 }
 
 fn decode_adr(instr: u32) -> Result<Instruction, EmuError> {
