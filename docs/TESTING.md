@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. As of the multi-file work that is 783 Rust tests, 1482 web tests, and 16 corpus fixtures. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. As of the multi-file work that is 823 Rust tests, 1546 web tests, and 15 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
 
 ## Rust
 
@@ -51,7 +51,7 @@ npx vitest run lib/test/playground/          # every test in one group
 npx vitest run -t "share hash"               # tests whose name matches
 ```
 
-Tests live under a `test/` tree beside the code they cover, mirroring the source groups (`web/lib/test/<group>/<feature>.test.ts`, `web/components/test/<group>/<Component>.test.tsx`); contract tests with no single subject file (seeded content, course style, authoring rules) sit in `web/lib/test/content/`. The runner wires [`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs `window.matchMedia` (jsdom lacks it). Use plain DOM assertions; `@testing-library/jest-dom` is not installed.
+Tests live under a `test/` tree beside the code they cover, mirroring the source groups (`web/lib/test/<group>/<feature>.test.ts`, `web/components/test/<group>/<Component>.test.tsx`); contract tests with no single subject file (seeded content, course style, authoring rules) sit in `web/lib/test/content/`. Route tests are the exception: they sit beside their route as `web/app/**/page.test.tsx`, because a route's subject is the page file itself. The runner wires [`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs `window.matchMedia` (jsdom lacks it). Use plain DOM assertions; `@testing-library/jest-dom` is not installed.
 
 ## End-to-end corpus
 
@@ -61,7 +61,7 @@ From the repo root:
 node scripts/verify-corpus.js
 ```
 
-Builds a node-target WASM bundle and runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout and post-run VFS state. Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
+Runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout and post-run VFS state. It loads a prebuilt node-target bundle rather than building one, so build that first from `emulator/`: `wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node` (or point `WASM_DIR` at an existing build). Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
 
 ## Type and lint
 
