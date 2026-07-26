@@ -4,6 +4,7 @@ import {
   buildShareHash,
   buildShareUrl,
   readShareHash,
+  shareHashSize,
   type ShareState,
 } from "@/lib/playground/share";
 import { MAX_SHARE_DECOMPRESSED_BYTES, MAX_SHARE_HASH_BYTES } from "@/lib/playground/upload-guard";
@@ -233,5 +234,39 @@ describe("share hash version and shape guards", () => {
     const hash = buildShareHash(state);
     expect(hash).toMatch(/^#p2=[A-Za-z0-9+\-$]*$/);
     expect(okState(hash)).toEqual(state);
+  });
+});
+
+describe("shareHashSize", () => {
+  it("reports a normal course program as comfortably inside the cap", () => {
+    const hash = buildShareHash({ source: "mov x0, 1\nret\n" });
+    const size = shareHashSize(hash);
+    expect(size.max).toBe(MAX_SHARE_HASH_BYTES);
+    expect(size.chars).toBeLessThan(size.max);
+  });
+
+  it("catches a workspace whose link the receiver would refuse", () => {
+    // A multi-file workspace on the scale of the course's data-structures
+    // program: buildShareHash has never had a guard, so the sender got a
+    // copyable URL that opens to "that share link is too large" and no way
+    // to tell before sending it.
+    const files = Array.from({ length: 12 }, (_, i) => ({
+      name: `part${i}.s`,
+      body: Array.from(
+        { length: 400 },
+        (_, n) => `        add x${n % 28}, x${(n + 1) % 28}, ${n}   // part ${i} line ${n}`,
+      ).join("\n"),
+    }));
+    const hash = buildShareHash({ source: "mov x0, 1\nret\n", files });
+    const size = shareHashSize(hash);
+    expect(size.chars).toBeGreaterThan(size.max);
+    // ...and the receiver agrees, which is the whole point of measuring.
+    expect(readShareHash(hash).kind).toBe("too-large");
+  });
+
+  it("measures the payload, not the prefix, for both link versions", () => {
+    const payload = LZString.compressToEncodedURIComponent("mov x0, 1");
+    expect(shareHashSize(`#p2=${payload}`).chars).toBe(payload.length);
+    expect(shareHashSize(`#p=${payload}`).chars).toBe(payload.length);
   });
 });
