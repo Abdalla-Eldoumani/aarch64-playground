@@ -27,8 +27,10 @@ msg_len = . - msg - 1
 
 Comments strip before substitution: `//` to end of line.
 
-`ifdef`, `ifelse`, `forloop`, `dnl`, and backtick quoting are rejected
-with a clear error rather than silently ignored.
+`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected with a clear error
+rather than silently ignored, and so is a backtick anywhere except
+``undefine(`NAME')``, whose m4 quotes are legal. Undefining a name ends that
+define's reach at that line, so an alias can be rebound per function.
 
 ### Where the playground's m4 differs from GNU m4 on the servers
 
@@ -148,7 +150,8 @@ Pre-registered libc stubs at addresses `0xFFFF_0000 + idx * 16`:
 
 ```
 printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy,
-memset, memcpy, atoi, rand, srand, time, exit, atof
+memset, memcpy, atoi, rand, srand, time, exit, atof, malloc, free, usleep,
+fflush
 ```
 
 Pre-registered syscalls (via `svc 0` with the syscall number in `x8`):
