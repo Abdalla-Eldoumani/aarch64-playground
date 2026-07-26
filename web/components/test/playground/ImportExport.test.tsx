@@ -13,8 +13,13 @@ vi.mock("@/components/ui/Toast", () => ({
   }),
 }));
 
-import { ImportExport } from "@/components/playground/ImportExport";
-import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playground/upload-guard";
+import { ImportExport, readWorkspaceBundle } from "@/components/playground/ImportExport";
+import {
+  MAX_SOURCE_BYTES,
+  MAX_WORKSPACE_FILES,
+  checkUploadSize,
+  validateSource,
+} from "@/lib/playground/upload-guard";
 import type { ImportTarget } from "@/lib/hooks/use-import-target";
 
 const TARGET: ImportTarget = { kind: "main" };
@@ -176,5 +181,169 @@ describe("ImportExport export path", () => {
     expect(createObjectURL).toHaveBeenCalledTimes(2);
     expect(createObjectURL.mock.calls[0][0]).toBeInstanceOf(Blob);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock");
+  });
+});
+
+describe("ImportExport workspace bundle", () => {
+  // The share link is the only other carrier for a multi-file program, and
+  // it dies well before a real one fits in a URL fragment; before this the
+  // export buttons all closed over the main buffer alone.
+  const FILES = [
+    { name: "util.s", body: "// util\n" },
+    { name: "sort.s", body: "// sort\n" },
+  ];
+
+  function setupWorkspace(source = "mov x0, 1\n") {
+    const onImport = vi.fn();
+    const onImportMany = vi.fn();
+    const { container } = render(
+      <ImportExport
+        source={source}
+        files={FILES}
+        onImport={onImport}
+        onImportMany={onImportMany}
+        target={TARGET}
+      />,
+    );
+    return {
+      onImport,
+      onImportMany,
+      fileInput: container.querySelector('input[type="file"]') as HTMLInputElement,
+    };
+  }
+
+  function captureDownload(): { blobs: Blob[]; names: string[] } {
+    const blobs: Blob[] = [];
+    const names: string[] = [];
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: (blob: Blob) => {
+        blobs.push(blob);
+        return "blob:mock";
+      },
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+    return { blobs, names };
+  }
+
+  it("downloads main.asm and every helper as one workspace.json", async () => {
+    const captured = captureDownload();
+    setupWorkspace("mov x0, 1\n");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "download the whole workspace as .json" }),
+    );
+
+    expect(captured.names).toEqual(["workspace.json"]);
+    const text = await captured.blobs[0].text();
+    expect(JSON.parse(text)).toEqual({
+      version: 1,
+      files: [
+        { name: "main.asm", body: "mov x0, 1\n" },
+        { name: "util.s", body: "// util\n" },
+        { name: "sort.s", body: "// sort\n" },
+      ],
+    });
+  });
+
+  it("reads a bundle back through the multi-file import path", async () => {
+    const { onImportMany, fileInput } = setupWorkspace();
+    const bundle = JSON.stringify({
+      version: 1,
+      files: [
+        { name: "main.asm", body: "mov x0, 2\n" },
+        { name: "queue.s", body: "// queue\n" },
+      ],
+    });
+    fireEvent.change(fileInput, {
+      target: { files: [new File([bundle], "workspace.json", { type: "application/json" })] },
+    });
+
+    await waitFor(() => expect(onImportMany).toHaveBeenCalledTimes(1));
+    expect(onImportMany).toHaveBeenCalledWith([
+      { name: "main.asm", body: "mov x0, 2\n" },
+      { name: "queue.s", body: "// queue\n" },
+    ]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("refuses a malformed bundle without touching the workspace", async () => {
+    const { onImport, onImportMany, fileInput } = setupWorkspace();
+    fireEvent.change(fileInput, {
+      target: {
+        files: [
+          new File([JSON.stringify({ version: 1, files: [{ name: 7 }] })], "bad.json"),
+        ],
+      },
+    });
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "that workspace bundle has a malformed file",
+      ),
+    );
+    expect(onImportMany).not.toHaveBeenCalled();
+    expect(onImport).not.toHaveBeenCalled();
+  });
+
+  it("refuses a bundle carrying more files than a workspace can hold", async () => {
+    const { onImportMany, fileInput } = setupWorkspace();
+    const files = Array.from({ length: MAX_WORKSPACE_FILES + 1 }, (_, i) => ({
+      name: `f${i}.s`,
+      body: "ret\n",
+    }));
+    fireEvent.change(fileInput, {
+      target: { files: [new File([JSON.stringify({ version: 1, files })], "huge.json")] },
+    });
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        `that workspace bundle has too many files (max ${MAX_WORKSPACE_FILES})`,
+      ),
+    );
+    expect(onImportMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses json that is not a bundle at all", async () => {
+    const { onImportMany, fileInput } = setupWorkspace();
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['{"hello":"world"}'], "notes.json")] },
+    });
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("that .json file is not a workspace bundle"),
+    );
+    expect(onImportMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("readWorkspaceBundle", () => {
+  it("trims names and keeps the declared order", () => {
+    const result = readWorkspaceBundle(
+      JSON.stringify({ version: 1, files: [{ name: " main.asm ", body: "ret\n" }] }),
+    );
+    expect(result).toEqual({ ok: true, files: [{ name: "main.asm", body: "ret\n" }] });
+  });
+
+  it("fails closed on a version it does not know", () => {
+    const result = readWorkspaceBundle(JSON.stringify({ version: 2, files: [] }));
+    expect(result).toEqual({
+      ok: false,
+      error: "that .json file is not a workspace bundle",
+    });
+  });
+
+  it("fails closed on text that is not json", () => {
+    expect(readWorkspaceBundle("mov x0, 1").ok).toBe(false);
   });
 });
