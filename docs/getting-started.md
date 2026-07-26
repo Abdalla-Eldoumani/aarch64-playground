@@ -119,7 +119,7 @@ for the full index of where each lives.
 - **Save states** (the saves tab) snapshot the CPU under a name. The run loop also records recent instructions, so **Step back** (`Shift+F10`) undoes the last one.
 - **Bookmarks** (same tab) persist across reloads: they store source, args, stdin, and step count, and restore by re-running to the saved step. Export and import as JSON to share a setup.
 - **Replay scrubber** appears once you have stepped at least twice; drag it to walk back through recent frames.
-- **Diagnostic bundle** (next to **share**) copies a markdown report of source, args, stdin, output, exit code, and register state, plus a `?bundle=` link that reopens the same state.
+- **Diagnostic bundle** (next to **share**) copies a markdown report of source, args, output, exit code, and register state, plus a `?bundle=` link that reopens the same state.
 - **Watch expressions** (the watches tab) evaluate a small grammar (`x0`, `*x0`, `[fp, score1_s]`, `arr[i]`) every time the CPU stops.
 - **Memory watches** (the memwatch tab) pin labelled address ranges.
 - **Base converter** (the convert tab) keeps hex, binary, decimal, and the signed and unsigned readings in sync at 8, 16, 32, or 64 bits; click a bit to flip it. Also on the reference page and in the command palette.
@@ -130,7 +130,7 @@ for the full index of where each lives.
 - **Three themes** cycle through dark, light, and high-contrast from the header.
 - **Per-panel zoom** with `Ctrl+Wheel` over a panel.
 - **Source formatter** (`Ctrl+Shift+F`) lowercases mnemonics, indents to 8 spaces, and aligns trailing comments to column 40.
-- **Embed mode** (`?embed=1`) strips the chrome to the editor and console for slide decks.
+- **Embed mode** (`?embed=1`) strips the chrome to the editor, registers, and console for slide decks.
 - **Offline**: the app is a PWA, so once loaded the shell, examples, and icons work offline.
 
 ## keyboard shortcuts
