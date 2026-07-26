@@ -113,6 +113,14 @@ export interface EmulatorState {
   /** Drop every breakpoint, gutter and CPU alike (program switch). */
   clearAllBreakpoints: () => void;
   /**
+   * Move every stored gutter line through `remap` (null drops it). The
+   * multi-file workspace keys breakpoints by COMBINED-string line, so an
+   * edit that changes any file's length re-numbers them all; the playground
+   * re-anchors them here rather than letting the next assemble arm an
+   * address belonging to a different instruction.
+   */
+  remapBreakpoints: (remap: (line: number) => number | null) => void;
+  /**
    * Returns the cached bytes for `[addr, addr + len)`. On a cache miss
    * the returned array is empty and an async fetch is queued; the next
    * render delivers the bytes via state. Memory panels render a
@@ -309,8 +317,14 @@ export function useEmulator(): EmulatorState {
     setIsHalted(snap.halted);
     haltedRef.current = snap.halted;
     setBlocked(snap.blocked);
-    wantsTerminalRef.current = snap.wantsTerminal;
-    setWantsTerminal(snap.wantsTerminal);
+    // A halted machine wants nothing: the emulator only ever SETS raw mode
+    // (a termios call) and never clears it on exit, so a finished arcade
+    // program left the flag up and kept stealing the terminal pane from the
+    // next program -- and the console's blocked jump stood down for a read
+    // no terminal session was there to answer.
+    const wantsTerm = snap.wantsTerminal && !snap.halted;
+    wantsTerminalRef.current = wantsTerm;
+    setWantsTerminal(wantsTerm);
     setExitCode(snap.exitCode);
     setCanStepBack(snap.canStepBack);
     setVfsFiles(snap.vfsFiles);
@@ -458,17 +472,22 @@ export function useEmulator(): EmulatorState {
       if (surfaceErrors) {
         setError(null);
         setAssemblyErrors([]);
+        // Console scrollback and the step counter belong to the EDITOR's
+        // debugging session. A terminal build (`gcc foo.s`, `./foo`) shares
+        // the one machine but must not erase what the student was reading;
+        // the terminal reports its own program's output as a delta instead.
+        setStepCount(0);
+        setStdout("");
+        setStderr("");
       }
-      setIsRunning(false);
-      runningRef.current = false;
-      setStepCount(0);
-      setStdout("");
-      setStderr("");
       // The backend wipes the machine on every assemble attempt, so the old
       // program is gone the moment one starts; the flag comes back only on
       // success. A failed assemble leaves the controls gated.
       markProgramLoaded(false);
-      resetReplayHistory();
+      // The replay ring is the editor's scrubber history and seeking only
+      // repaints React state (never the CPU), so a terminal build leaves it
+      // standing beside the counter it belongs to.
+      if (surfaceErrors) resetReplayHistory();
       // Drop any prior line map; a failed assemble or the bare-metal path
       // then falls back to the legacy line-count heuristic.
       lineMapRef.current = emptyLineMap();
@@ -493,7 +512,11 @@ export function useEmulator(): EmulatorState {
       // Return the promise chain so callers that must run only after the
       // backend has loaded the program (the embed/checker Run, which has no
       // separate Assemble control) can await assembly.
-      setIsAssembling(true);
+      // isAssembling drives the Assemble button's disabled "loading..."
+      // state, which is the EDITOR's control: a terminal build flashing it
+      // told the student their button was busy with work they never asked
+      // for.
+      if (surfaceErrors) setIsAssembling(true);
       return backend
         .assemble(source, args)
         .then(async ({ result }): Promise<AssembleOutcome> => {
@@ -570,6 +593,13 @@ export function useEmulator(): EmulatorState {
             result.instruction_count > 0
               ? await backend.getMemory(base, result.instruction_count * 4)
               : new Uint8Array(0);
+          // Both text lookups used to re-split the source (and re-run two
+          // regexes per line) once PER INSTRUCTION, so the decode cost grew
+          // with source x instructions: a dsav-sized workspace spent ~1s of
+          // blocked main thread here and a 1 MB one minutes. Strip the
+          // source once, then index it.
+          const strippedLines = stripSourceLines(source);
+          const instrTexts = indexedInstructionText(strippedLines);
           for (let i = 0; i < result.instruction_count; i++) {
             const addr = base + i * 4;
             const off = i * 4;
@@ -586,9 +616,12 @@ export function useEmulator(): EmulatorState {
             let text: string;
             if (mapped) {
               const line = pcToSourceLineFromMap(addr, map);
-              text = line == null ? getSourceLineText(i, source) : sourceLineText(source, line);
+              text =
+                line == null
+                  ? instrTexts[i] ?? ""
+                  : strippedLines[line - 1] ?? "";
             } else {
-              text = getSourceLineText(i, source);
+              text = instrTexts[i] ?? "";
             }
             instrs.push({ address: addr, hex, text });
           }
@@ -601,7 +634,9 @@ export function useEmulator(): EmulatorState {
           if (surfaceErrors) setError(message);
           return { success: false, error: message, errorLine: null };
         })
-        .finally(() => setIsAssembling(false));
+        .finally(() => {
+          if (surfaceErrors) setIsAssembling(false);
+        });
     },
     [resetReplayHistory, markProgramLoaded],
   );
@@ -966,6 +1001,30 @@ export function useEmulator(): EmulatorState {
     });
   }, [resolveBreakpointAddr]);
 
+  /** Re-number the gutter lines without touching the CPU: the armed
+   *  addresses still describe the program currently in memory, and the
+   *  assemble that follows an edit clears and re-arms them all anyway. */
+  const remapBreakpoints = useCallback((remap: (line: number) => number | null) => {
+    const moved = new Map<number, Set<number>>();
+    for (const [addr, lines] of bpLinesByAddrRef.current) {
+      const next = new Set<number>();
+      for (const line of lines) {
+        const to = remap(line);
+        if (to != null) next.add(to);
+      }
+      if (next.size > 0) moved.set(addr, next);
+    }
+    bpLinesByAddrRef.current = moved;
+    setBreakpoints((prev) => {
+      const next = new Set<number>();
+      for (const line of prev) {
+        const to = remap(line);
+        if (to != null) next.add(to);
+      }
+      return next;
+    });
+  }, []);
+
   /** Drop every breakpoint, gutter and CPU alike: a different program's
    *  dots and addresses must never survive into this one. */
   const clearAllBreakpoints = useCallback(() => {
@@ -1083,6 +1142,7 @@ export function useEmulator(): EmulatorState {
       reset,
       toggleBreakpoint,
       clearAllBreakpoints,
+      remapBreakpoints,
       getMemory,
       getMemoryMapped,
       pushStdin,
@@ -1114,7 +1174,8 @@ export function useEmulator(): EmulatorState {
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
-      deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, getMemory, getMemoryMapped,
+      deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
+      getMemory, getMemoryMapped,
       pushStdin, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, replayTick, dirtyAddrsTick, seekReplay,
@@ -1153,25 +1214,27 @@ function sourceLineToInstrIndex(
   return null;
 }
 
-function getSourceLineText(instrIndex: number, source: string): string {
-  const lines = source.split("\n");
-  let idx = 0;
-  for (const line of lines) {
-    const trimmed = line.replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
-    if (!trimmed || trimmed.endsWith(":")) continue;
-    if (idx === instrIndex) return trimmed;
-    idx++;
-  }
-  return "";
+/**
+ * Every source line with its comment stripped and trimmed, indexed by
+ * 0-based line. One pass over the source; the disassembly loop indexes it
+ * instead of re-splitting per instruction.
+ */
+export function stripSourceLines(source: string): string[] {
+  return source
+    .split("\n")
+    .map((line) => line.replace(/\/\/.*$/, "").replace(/;.*$/, "").trim());
 }
 
-// Text of a specific 1-based editor line, comments stripped and trimmed
-// to match the display shape of `getSourceLineText`. Used when the
-// authoritative line map provides the editor line for an instruction
-// address, so the disassembly text tracks the real instruction rather
-// than the index-counted source line.
-function sourceLineText(source: string, lineNo: number): string {
-  const raw = source.split("\n")[lineNo - 1];
-  if (raw == null) return "";
-  return raw.replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
+/**
+ * The instruction-index-ordered text: stripped lines with blanks and
+ * label-only lines removed, so `[i]` is the i-th emitted instruction. The
+ * bare-metal fallback (and the map's rare misses) index this.
+ */
+export function indexedInstructionText(strippedLines: string[]): string[] {
+  const out: string[] = [];
+  for (const line of strippedLines) {
+    if (!line || line.endsWith(":")) continue;
+    out.push(line);
+  }
+  return out;
 }
