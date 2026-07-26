@@ -726,13 +726,13 @@ rb_delete_fixup_right_child:
     cmp     w0, RB_RED
     b.eq    rb_delete_fixup_case1_right
 
-    ldr     x22, [x21, RB_RIGHT]
+    ldr     x22, [x21, RB_LEFT]     // far nephew: red means case 4
     mov     x0, x22
     bl      rb_get_color
     cmp     w0, RB_RED
     b.eq    rb_delete_fixup_case4_right
 
-    ldr     x22, [x21, RB_LEFT]
+    ldr     x22, [x21, RB_RIGHT]    // near nephew: red means case 3
     mov     x0, x22
     bl      rb_get_color
     cmp     w0, RB_RED
@@ -753,7 +753,7 @@ rb_delete_fixup_case3_right:
     mov     w1, RB_RED
     bl      rb_set_color
     mov     x0, x21
-    bl      rb_rotate_right
+    bl      rb_rotate_left
     ldr     x21, [x20, RB_LEFT]
 
 rb_delete_fixup_case4_right:
@@ -765,7 +765,7 @@ rb_delete_fixup_case4_right:
     mov     x0, x20
     mov     w1, RB_BLACK
     bl      rb_set_color
-    ldr     x22, [x21, RB_RIGHT]
+    ldr     x22, [x21, RB_LEFT]     // the far nephew pays for the rotation
     mov     x0, x22
     mov     w1, RB_BLACK
     bl      rb_set_color
@@ -793,13 +793,13 @@ rb_delete_fixup_left_child:
     cmp     w0, RB_RED
     b.eq    rb_delete_fixup_case1_left
 
-    ldr     x22, [x21, RB_LEFT]
+    ldr     x22, [x21, RB_RIGHT]    // far nephew: red means case 4
     mov     x0, x22
     bl      rb_get_color
     cmp     w0, RB_RED
     b.eq    rb_delete_fixup_case4_left
 
-    ldr     x22, [x21, RB_RIGHT]
+    ldr     x22, [x21, RB_LEFT]     // near nephew: red means case 3
     mov     x0, x22
     bl      rb_get_color
     cmp     w0, RB_RED
@@ -820,7 +820,7 @@ rb_delete_fixup_case3_left:
     mov     w1, RB_RED
     bl      rb_set_color
     mov     x0, x21
-    bl      rb_rotate_left
+    bl      rb_rotate_right
     ldr     x21, [x20, RB_RIGHT]
 
 rb_delete_fixup_case4_left:
@@ -832,7 +832,7 @@ rb_delete_fixup_case4_left:
     mov     x0, x20
     mov     w1, RB_BLACK
     bl      rb_set_color
-    ldr     x22, [x21, RB_LEFT]
+    ldr     x22, [x21, RB_RIGHT]    // the far nephew pays for the rotation
     mov     x0, x22
     mov     w1, RB_BLACK
     bl      rb_set_color
@@ -922,12 +922,16 @@ rb_delete_two_children:
     ldr     x26, [x21, RB_RIGHT]
     str     x26, [x22, RB_RIGHT]
     str     x22, [x26, RB_PARENT]
+    b       rb_delete_splice_y
 
 rb_delete_successor_is_child:
-    // x may be the nil sentinel; it still needs y as its parent for
-    // the fixup climb.
+    // Only when y sat directly under z. x may be the nil sentinel, and it
+    // still needs y as its parent for the fixup climb. On the other path
+    // the transplant above already gave x its real parent, and overwriting
+    // it here would point the climb at a node that is about to move.
     str     x22, [x24, RB_PARENT]
 
+rb_delete_splice_y:
     mov     x0, x21
     mov     x1, x22
     bl      rb_transplant
