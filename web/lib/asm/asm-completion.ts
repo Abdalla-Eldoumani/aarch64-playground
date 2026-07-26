@@ -69,12 +69,12 @@ function instructionSuggestions(): Suggestion[] {
   }));
 }
 
-// `[^)]*` is greedy with no trailing `\s*`, so the body scan is linear. The
-// old `([^)]+?)\s*\)` overlapped a lazy quantifier with `\s*` on whitespace,
-// which backtracks O(n^2) on a long unclosed `define(` -- and this runs on
-// the main thread on every keystroke. The body's trailing space is trimmed
-// below.
-const DEFINE_RE = /\bdefine\s*\(\s*([A-Za-z_][\w]*)\s*,\s*([^)]*)\)/g;
+// Nothing adjacent to the `([^)]*)` body may itself match whitespace, or the
+// two overlap and an unclosed `define(` backtracks O(n^2) over the run
+// between them -- and this runs on the main thread on every keystroke. A
+// `\s*` after the comma cost 3.5s on 64k spaces; `[^)]*` already absorbs
+// that whitespace and the body is trimmed below.
+const DEFINE_RE = /\bdefine\s*\(\s*([A-Za-z_][\w]*)\s*,([^)]*)\)/g;
 
 function aliasSuggestions(source: string): Suggestion[] {
   const out: Suggestion[] = [];
