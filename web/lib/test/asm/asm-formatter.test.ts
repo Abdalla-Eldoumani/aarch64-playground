@@ -76,6 +76,37 @@ describe("formatAsm", () => {
     expect(got).toBe(`// just a comment\n;; another\n`);
   });
 
+  it("gaps stacked labels sharing a line", () => {
+    expect(formatAsm("a: b: mov x0, x1\n")).toBe("a:    b: mov     x0, x1\n");
+    expect(formatAsm("a: b: c:\n")).toBe("a:    b:    c:\n");
+  });
+
+  it("peels a pasted stack of labels without recursing per label", () => {
+    // Re-entering formatAsm once per label recursed as deep as the stack
+    // was long: 20k labels threw RangeError after ~1.6s, out of a click
+    // handler where no error boundary catches it.
+    const started = performance.now();
+    const got = formatAsm("a:".repeat(20_000));
+    const elapsed = performance.now() - started;
+    expect(got.startsWith("a:    a:    a:")).toBe(true);
+    expect(got.endsWith("a:")).toBe(true);
+    expect(elapsed).toBeLessThan(1_000);
+  });
+
+  it("costs no more than linearly in the number of stacked labels", () => {
+    const timeFor = (labels: number) => {
+      const started = performance.now();
+      formatAsm("a:".repeat(labels));
+      return performance.now() - started;
+    };
+    timeFor(500); // warm up so the first sample is not the slowest
+    const small = timeFor(2_000);
+    const large = timeFor(8_000);
+    // Four times the labels, four times the work at most. The recursive
+    // version took sixteen: 28ms then 377ms.
+    expect(large).toBeLessThan(small * 4 + 50);
+  });
+
   it("keeps a register-shaped label at its defined case", () => {
     // `LR` is a branch target here, not the link register: lowercasing
     // the reference to `lr` would make the branch miss the label. Real

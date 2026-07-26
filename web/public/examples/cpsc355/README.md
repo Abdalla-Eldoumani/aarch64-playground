@@ -7,7 +7,7 @@ included so the playground's example loader can serve them over HTTP.
 These files exercise m4 macros (`define()`, `name = expr`), frame-pointer
 prologues, `ldr xN, =label` literal loads, extended-register addressing,
 the AAPCS64 varargs path through `printf`/`scanf`, and the Linux syscall
-surface for `write`/`read`/`exit`/`openat`/`close`/`lseek`.
+surface for `write`/`read`/`exit`/`openat`/`close`.
 
 - `basics.s` -- arithmetic operations
 - `globals.s` -- a global variable in `.data` (load and store)

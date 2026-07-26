@@ -427,6 +427,15 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
       }
     }
   } catch (e) {
+    if (isDeadInstance(e)) {
+      // The instance cannot be used again: a wasm trap skips
+      // wasm-bindgen's borrow-guard Drop, so the guard stays latched and
+      // every later call throws on it. Dropping both makes the next
+      // mutating message build a fresh machine instead of wedging the
+      // playground until the student reloads the page.
+      emulator = null;
+      wasmReady = null;
+    }
     post({
       id: msg.id,
       kind: "error",
@@ -434,6 +443,24 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
     });
   }
 });
+
+/// Whether an error means the wasm instance is unusable from here on.
+/// Assemble and runtime diagnostics arrive through the same catch and are
+/// entirely normal -- treating those as fatal would throw away the
+/// student's registers, console and VFS on a typo. Only the signatures
+/// that mean the guard is latched or the module trapped count.
+function isDeadInstance(e: unknown): boolean {
+  if (typeof WebAssembly !== "undefined" && e instanceof WebAssembly.RuntimeError) {
+    return true;
+  }
+  const message = e instanceof Error ? e.message : String(e);
+  return (
+    message.includes("recursive use of an object") ||
+    message.includes("already borrowed") ||
+    message.includes("null pointer passed to rust") ||
+    message.includes("unreachable executed")
+  );
+}
 
 function require_emulator(): Emulator {
   if (!emulator) {

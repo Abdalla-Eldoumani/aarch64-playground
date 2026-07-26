@@ -22,6 +22,12 @@ export const MAX_ARGS_CHARS = 1000;
 export const MAX_STDIN_BYTES = 100 * 1024;
 /** 1 MB cap on bookmark JSON imports. */
 export const MAX_BOOKMARK_JSON_BYTES = 1 * 1024 * 1024;
+/**
+ * Files a `.json` workspace bundle may carry (main.asm plus helpers). The
+ * largest course program shipped here splits across 18; 32 leaves room
+ * without letting a hand-written bundle open a hundred tabs.
+ */
+export const MAX_WORKSPACE_FILES = 32;
 /** Maximum decompressed size of a `?bundle=` deep link (1 MB). */
 export const MAX_BUNDLE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
 /** Maximum decompressed size of a `#p2=` share hash (1 MB). */

@@ -59,7 +59,7 @@
     "@xterm/xterm": "6.0.0",
     "cmdk": "1.1.1",
     "lz-string": "1.5.0",
-    "next": "16.2.10",
+    "next": "16.2.11",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-hot-toast": "2.6.0",
@@ -83,14 +83,14 @@
     "lighthouse": "13.4.0",
     "monaco-editor": "0.55.1",
     "playwright": "^1.59.1",
-    "postcss": "8.5.15",
+    "postcss": "8.5.23",
     "size-limit": "12.1.0",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
     "vitest": "4.1.9"
   },
   "overrides": {
-    "dompurify": "3.4.11",
-    "postcss": "8.5.15"
+    "dompurify": "3.4.12",
+    "postcss": "8.5.23"
   }
 }

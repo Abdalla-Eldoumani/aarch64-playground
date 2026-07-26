@@ -3,8 +3,12 @@
 // callbacks with trimmed names, and combineSources joins main and the
 // extras with file-boundary comments.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MultiFileTabs, combineSources } from "@/components/playground/MultiFileTabs";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import {
+  MultiFileTabs,
+  combineSources,
+  useSourceFiles,
+} from "@/components/playground/MultiFileTabs";
 
 afterEach(() => {
   cleanup();
@@ -111,5 +115,120 @@ describe("combineSources", () => {
     expect(combineSources("mov x0, 1", [{ name: "util.asm", body: "ret" }])).toBe(
       "mov x0, 1\n// ---- util.asm ----\nret",
     );
+  });
+});
+
+describe("MultiFileTabs restore offer", () => {
+  it("stays out of the way when nothing was replaced", () => {
+    render(
+      <MultiFileTabs
+        files={FILES}
+        activeIndex={-1}
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onRename={vi.fn()}
+        backupCount={0}
+        onRestoreBackup={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/restore/)).toBeNull();
+  });
+
+  it("offers the discarded files back and counts them", () => {
+    const onRestoreBackup = vi.fn();
+    render(
+      <MultiFileTabs
+        files={[]}
+        activeIndex={-1}
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onRename={vi.fn()}
+        backupCount={2}
+        onRestoreBackup={onRestoreBackup}
+      />,
+    );
+    const button = screen.getByText("restore 2 replaced files");
+    fireEvent.click(button);
+    expect(onRestoreBackup).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useSourceFiles", () => {
+  // Loading a program REPLACES the strip on purpose. Until the backup
+  // existed, a plain click on a recent program (no confirm) took every
+  // helper file with it and only the strip's own localStorage key was
+  // rewritten -- with `[]`.
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("keeps a wiped strip recoverable and appends it back on restore", () => {
+    const { result } = renderHook(() => useSourceFiles());
+    act(() => {
+      result.current[1]([
+        { name: "util.s", body: "// util" },
+        { name: "sort.s", body: "// sort" },
+      ]);
+    });
+    expect(result.current[2].count).toBe(0);
+
+    // A program handoff with no files of its own.
+    act(() => {
+      result.current[1]([]);
+    });
+    expect(result.current[0]).toEqual([]);
+    expect(result.current[2].count).toBe(2);
+
+    act(() => {
+      result.current[2].restore();
+    });
+    expect(result.current[0].map((f) => f.name)).toEqual(["util.s", "sort.s"]);
+    expect(result.current[2].count).toBe(0);
+  });
+
+  it("restores beside a program's own helpers rather than over them", () => {
+    const { result } = renderHook(() => useSourceFiles());
+    act(() => {
+      result.current[1]([{ name: "mine.s", body: "// mine" }]);
+    });
+    act(() => {
+      result.current[1]([{ name: "theirs.s", body: "// theirs" }]);
+    });
+    expect(result.current[2].count).toBe(1);
+    act(() => {
+      result.current[2].restore();
+    });
+    expect(result.current[0].map((f) => f.name)).toEqual(["theirs.s", "mine.s"]);
+  });
+
+  it("does not offer a restore for an edit or a rename", () => {
+    const { result } = renderHook(() => useSourceFiles());
+    act(() => {
+      result.current[1]([{ name: "util.s", body: "// util" }]);
+    });
+    act(() => {
+      result.current[1]([{ name: "util.s", body: "// util edited" }]);
+    });
+    expect(result.current[2].count).toBe(0);
+    act(() => {
+      result.current[1]([{ name: "helpers.s", body: "// util edited" }]);
+    });
+    expect(result.current[2].count).toBe(0);
+  });
+
+  it("brings the backup back after a reload", () => {
+    const first = renderHook(() => useSourceFiles());
+    act(() => {
+      first.result.current[1]([{ name: "util.s", body: "// util" }]);
+    });
+    act(() => {
+      first.result.current[1]([]);
+    });
+    first.unmount();
+
+    const second = renderHook(() => useSourceFiles());
+    expect(second.result.current[2].count).toBe(1);
   });
 });

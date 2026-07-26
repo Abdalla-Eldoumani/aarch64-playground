@@ -17,7 +17,11 @@ import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
 import { parseArgs } from "@/lib/playground/args";
 import { formatAsm } from "@/lib/asm/asm-formatter";
-import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
+import {
+  MAX_VFS_BYTES,
+  checkUploadSize,
+  validateStdin,
+} from "@/lib/playground/upload-guard";
 import { loadPersistedVfs, savePersistedVfs } from "@/lib/playground/vfs-persist";
 import {
   describeTarget,
@@ -47,7 +51,9 @@ import {
 import {
   MAIN_FILE,
   combinedLineFor,
+  countLines,
   resolveLine,
+  validateFileName,
 } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 
@@ -271,8 +277,18 @@ function EmbeddableCore({
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
   );
-  const [extraFiles, setExtraFiles] = useSourceFiles();
+  const [extraFiles, setExtraFiles, filesBackup] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
+  // The workspace as the machine last saw it. Every combined-string line the
+  // MACHINE produces -- the current-line marker, assembly errors, a runtime
+  // fault's line -- is numbered against this, not against whatever the
+  // student has typed since. Resolving those against the live buffers made
+  // the marker change FILES on an unrelated edit, and let an error land in
+  // the wrong tab while its own assemble was still in flight.
+  const [assembledLayout, setAssembledLayout] = useState<{
+    main: string;
+    extras: SourceFile[];
+  } | null>(null);
   // The loaded program is a terminal program (the visualizer example):
   // run hands it the terminal pane up front, the way snake's raw-mode
   // flag does mid-run. Persisted beside the files strip so a reloaded
@@ -325,10 +341,23 @@ function EmbeddableCore({
   // the file map so an error inside an extra file lands in that tab, not
   // past the end of main.asm.
   const [errorFocus, setErrorFocus] = useState<{ line: number; nonce: number } | null>(null);
+  // Read through a ref, not the layout state, so the jump keeps its single
+  // dependency on the errors themselves.
+  const assembledLayoutRef = useRef<{ main: string; extras: SourceFile[] } | null>(null);
+  const pinAssembledLayout = useCallback((main: string, extras: SourceFile[]) => {
+    const layout = { main, extras };
+    assembledLayoutRef.current = layout;
+    setAssembledLayout(layout);
+  }, []);
   useEffect(() => {
     const first = emu.assemblyErrors[0];
     if (first && first.line > 0) {
-      const loc = resolveLine(first.line, sourceRef.current, extraFilesRef.current);
+      const pinned = assembledLayoutRef.current;
+      const loc = resolveLine(
+        first.line,
+        pinned?.main ?? sourceRef.current,
+        pinned?.extras ?? extraFilesRef.current,
+      );
       setActiveFile(loc.file);
       setErrorFocus({ line: loc.line, nonce: Date.now() });
     }
@@ -413,8 +442,13 @@ function EmbeddableCore({
   // Input seeds for the current program. Assembling resets the whole
   // machine (stdin queue and VFS included), so the seeds re-apply after
   // every successful assemble; a new handoff replaces them.
+  // Full chrome drops stdin seeds the same way `loadProgram` does: a program
+  // that reads input should BLOCK at the read and pull the student to the
+  // console. Seeding here re-fed the boot's stdin after every assemble, so a
+  // hard-loaded share or bundle link answered its own scanf forever while the
+  // same link opened by in-app navigation did not.
   const seedsRef = useRef<{ stdin?: string; vfs?: Record<string, string> }>({
-    stdin: startStdin,
+    stdin: chrome === "full" ? undefined : startStdin,
   });
 
   const applySeeds = useCallback(() => {
@@ -553,9 +587,14 @@ function EmbeddableCore({
     }
     const combined =
       extraFiles.length > 0 ? combineSources(source, extraFiles) : source;
+    // Pin the workspace the machine is about to see BEFORE awaiting: every
+    // combined line it reports back is numbered against exactly these
+    // buffers, however much the student types while the assemble is in
+    // flight.
+    pinAssembledLayout(source, extraFiles);
     const ok = await emu.assemble(combined, parseArgs(argsText));
     if (ok) applySeeds();
-  }, [source, recent, emu, extraFiles, argsText, applySeeds]);
+  }, [source, recent, emu, extraFiles, argsText, applySeeds, pinAssembledLayout]);
 
   // The reduced embed/checker chrome has no separate Assemble control, so its
   // primary Run must assemble first; otherwise runUntilBreak executes over
@@ -694,6 +733,15 @@ function EmbeddableCore({
       io.setForeground({
         pushInput: (d) => {
           const e = emuRef.current;
+          // Keystrokes arrive one at a time, but a clipboard paste arrives
+          // whole and the pane forwards it verbatim. Bound it here, where
+          // both tty modes converge, so a pasted megabyte cannot land in
+          // the machine's stdin queue in one gesture.
+          const oversize = validateStdin(d);
+          if (oversize) {
+            io.write(`\r\n[${oversize}]\r\n`);
+            return;
+          }
           if (e.wantsTerminal) {
             e.pushStdin(d);
             return;
@@ -755,6 +803,12 @@ function EmbeddableCore({
           const e = emuRef.current;
           if (e.wantsTerminal) clearOnce();
           if (cancelled || e.isHalted || e.error) break;
+          // An assemble or a reset mid-session drops the loaded flag: the
+          // program this drive was running no longer exists, and the resume
+          // latch below would otherwise start whatever took its place --
+          // pressing Assemble while a session waited for input could set the
+          // freshly assembled program running on its own.
+          if (started && !e.programLoaded) break;
           if (e.isRunning || e.blocked) started = true;
           if (e.isRunning) continue;
           if (e.blocked) {
@@ -1046,11 +1100,12 @@ function EmbeddableCore({
   // input queued before the first run.
   const seededStdin = useRef(false);
   useEffect(() => {
+    if (chrome === "full") return;
     if (emu.isLoaded && startStdin && !seededStdin.current) {
       seededStdin.current = true;
       emu.pushStdin(startStdin);
     }
-  }, [emu, emu.isLoaded, startStdin]);
+  }, [chrome, emu, emu.isLoaded, startStdin]);
 
   // Autoplay (landing hero only): once the hub is loaded, assemble the start
   // program and step it a bounded number of times on a timer so the registers
@@ -1237,6 +1292,29 @@ function EmbeddableCore({
     [isMain, activeFile, extraFiles, setExtraFiles],
   );
 
+  // Machine-produced lines resolve against the ASSEMBLED workspace; only the
+  // gutter (which the student clicks in the buffer on screen) uses the live
+  // one. Before the first assemble there is nothing pinned, so both fall back
+  // to what is on screen.
+  const machineMain = assembledLayout?.main ?? source;
+  const machineExtras = assembledLayout?.extras ?? extraFiles;
+
+  // The decode strip reads the line under the pc out of the source it is
+  // handed, and `emu.currentLine` is a COMBINED-string line. Handing it
+  // main.asm alone indexed past the end for any pc inside a helper, so the
+  // gloss fell to its placeholder for the whole of a multi-file program --
+  // and helper `define` aliases never labelled a register.
+  // Keyed on the pin alone, so the concatenation happens once per assemble
+  // rather than on every keystroke of a large workspace. Nothing is pinned
+  // before the first assemble, and with no program there is no line to gloss.
+  const pinnedCombined = useMemo(() => {
+    if (!assembledLayout) return null;
+    return assembledLayout.extras.length > 0
+      ? combineSources(assembledLayout.main, assembledLayout.extras)
+      : assembledLayout.main;
+  }, [assembledLayout]);
+  const decodeSource = pinnedCombined ?? source;
+
   const frameSlots = useMemo(() => parseFrameSlots(source), [source]);
   const fpValue = useMemo(() => {
     const raw = emu.registers[29];
@@ -1266,10 +1344,10 @@ function EmbeddableCore({
     () =>
       emu.assemblyErrors.flatMap((e) => {
         if (e.line <= 0) return activeFile === MAIN_FILE ? [e] : [];
-        const loc = resolveLine(e.line, source, extraFiles);
+        const loc = resolveLine(e.line, machineMain, machineExtras);
         return loc.file === activeFile ? [{ ...e, line: loc.line }] : [];
       }),
-    [emu.assemblyErrors, source, extraFiles, activeFile],
+    [emu.assemblyErrors, machineMain, machineExtras, activeFile],
   );
   const activeLint = useMemo(
     () =>
@@ -1282,9 +1360,9 @@ function EmbeddableCore({
   );
   const activeCurrentLine = useMemo(() => {
     if (emu.currentLine == null) return null;
-    const loc = resolveLine(emu.currentLine, source, extraFiles);
+    const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
     return loc.file === activeFile ? loc.line : null;
-  }, [emu.currentLine, source, extraFiles, activeFile]);
+  }, [emu.currentLine, machineMain, machineExtras, activeFile]);
   const activeBreakpoints = useMemo(() => {
     const set = new Set<number>();
     for (const line of emu.breakpoints) {
@@ -1301,16 +1379,63 @@ function EmbeddableCore({
     },
     [emu, activeFile],
   );
+  // Breakpoints live in the hub as COMBINED-string lines, so inserting five
+  // lines in main.asm re-numbers every dot in every helper below it. Nothing
+  // re-anchored them: the dots slid into the wrong file on screen, and the
+  // next assemble re-keyed the stale numbers through a fresh line map onto
+  // instructions they never belonged to. Only the SHAPE of the workspace can
+  // move a line, so the re-anchor is keyed on line counts and typing inside a
+  // line costs nothing.
+  const layoutShape = useMemo(
+    () =>
+      `${countLines(source)}|${extraFiles.map((f) => countLines(f.body)).join(",")}`,
+    [source, extraFiles],
+  );
+  // Seeded with the workspace as it stands at mount (the strip rehydrates
+  // from storage), so the first pass has nothing to move.
+  const bpLayoutRef = useRef<{ main: string; extras: SourceFile[] }>({
+    main: source,
+    extras: extraFiles,
+  });
+  useEffect(() => {
+    const from = bpLayoutRef.current;
+    const main = sourceRef.current;
+    const extras = extraFilesRef.current;
+    bpLayoutRef.current = { main, extras };
+    const stored = emuRef.current.breakpoints;
+    if (stored.size === 0) return;
+    const moved = new Map<number, number | null>();
+    let changed = false;
+    for (const line of stored) {
+      const loc = resolveLine(line, from.main, from.extras);
+      // A closed tab takes its dots with it rather than donating them to
+      // whichever file inherited its line numbers.
+      const owner = loc.file === MAIN_FILE ? main : extras[loc.file]?.body;
+      const to =
+        owner == null
+          ? null
+          : combinedLineFor(
+              loc.file,
+              Math.min(loc.line, countLines(owner)),
+              main,
+              extras,
+            );
+      if (to !== line) changed = true;
+      moved.set(line, to);
+    }
+    if (!changed) return;
+    emuRef.current.remapBreakpoints((line) => moved.get(line) ?? null);
+  }, [layoutShape]);
   // Controls shows the first error as plain text; name the owning file
   // when it is not the buffer labelled main.asm.
   const controlsError = useMemo(() => {
     if (!emu.error) return emu.error;
     const first = emu.assemblyErrors[0];
-    if (!first || first.line <= 0 || extraFiles.length === 0) return emu.error;
-    const loc = resolveLine(first.line, source, extraFiles);
+    if (!first || first.line <= 0 || machineExtras.length === 0) return emu.error;
+    const loc = resolveLine(first.line, machineMain, machineExtras);
     if (loc.file === MAIN_FILE) return emu.error;
     return `${loc.name} line ${loc.line}: ${emu.error}`;
-  }, [emu.error, emu.assemblyErrors, source, extraFiles]);
+  }, [emu.error, emu.assemblyErrors, machineMain, machineExtras]);
   // Reads go through emuRef / sourceRef, not the render's hub object:
   // the hub is a new object every snapshot, so a closure over it freezes
   // mid-command state -- runProgram's wait loop would poll an isRunning
@@ -1338,6 +1463,14 @@ function EmbeddableCore({
       stdin?: string,
       io?: import("@/lib/terminal/dispatch").TerminalProgramIO,
     ) => {
+      // The tool assemble deliberately leaves the editor's console
+      // scrollback alone, so the hub's stdout/stderr still hold whatever the
+      // student was reading. Report this program's output as the DELTA over
+      // that, or the terminal would replay the editor's session back at them.
+      const priorOut = emuRef.current.stdout;
+      const priorErr = emuRef.current.stderr;
+      const since = (now: string, before: string) =>
+        now.startsWith(before) ? now.slice(before.length) : now;
       // Tool-channel assemble: the terminal's program must not paint the
       // editor's error markers, and the verdict comes back directly. The
       // assemble wiped the machine, home directory included, so put the
@@ -1354,8 +1487,8 @@ function EmbeddableCore({
             : verdict.error
           : "";
         return {
-          stdout: e.stdout,
-          stderr: [e.stderr, detail].filter(Boolean).join("\n"),
+          stdout: since(e.stdout, priorOut),
+          stderr: [since(e.stderr, priorErr), detail].filter(Boolean).join("\n"),
           exitCode: null,
         };
       }
@@ -1364,6 +1497,13 @@ function EmbeddableCore({
       // what lets a read-until-EOF loop finish, exactly like
       // `./prog < file` on the course shell.
       if (stdin !== undefined) {
+        // `./prog < bigfile` is one command that can hand the machine the
+        // whole 4 MiB VFS cap in a single push; the redirect gets the same
+        // bound as every other stdin ingress.
+        const oversize = validateStdin(stdin);
+        if (oversize) {
+          return { stdout: "", stderr: oversize, exitCode: null };
+        }
         emuRef.current.pushStdin(stdin);
         emuRef.current.closeStdin();
       }
@@ -1376,7 +1516,7 @@ function EmbeddableCore({
         return {
           // Already streamed through the tap; nothing left to print.
           stdout: "",
-          stderr: emuRef.current.stderr,
+          stderr: since(emuRef.current.stderr, priorErr),
           exitCode,
         };
       }
@@ -1384,8 +1524,8 @@ function EmbeddableCore({
       await waitForHalt();
       const e = emuRef.current;
       return {
-        stdout: e.stdout,
-        stderr: e.stderr,
+        stdout: since(e.stdout, priorOut),
+        stderr: since(e.stderr, priorErr),
         // null means "never exited" (blocked or timed out); the terminal
         // says so instead of inventing an exit 0.
         exitCode: e.exitCode,
@@ -1615,8 +1755,20 @@ function EmbeddableCore({
         files={extraFiles}
         activeIndex={activeFile}
         onSelect={setActiveFile}
+        backupCount={filesBackup.count}
+        onRestoreBackup={filesBackup.restore}
         onAdd={(name) => {
-          const next: SourceFile = { name, body: `// ${name}\n` };
+          // A second tab with the same name strands one of them: a re-import
+          // refreshes only the first. A tab called main.asm is worse -- it
+          // still concatenates, and `resolveLine` labels its diagnostics
+          // main.asm too, so the student hunts the error in the wrong buffer.
+          const reason = validateFileName(name, extraFiles);
+          if (reason) {
+            toast.error(reason);
+            return;
+          }
+          const clean = name.trim();
+          const next: SourceFile = { name: clean, body: `// ${clean}\n` };
           const idx = extraFiles.length;
           setExtraFiles([...extraFiles, next]);
           setActiveFile(idx);
@@ -1628,8 +1780,14 @@ function EmbeddableCore({
           else if (activeFile > idx) setActiveFile(activeFile - 1);
         }}
         onRename={(idx, name) => {
+          const reason = validateFileName(name, extraFiles, idx);
+          if (reason) {
+            toast.error(reason);
+            return;
+          }
+          const clean = name.trim();
           setExtraFiles(
-            extraFiles.map((f, i) => (i === idx ? { ...f, name } : f)),
+            extraFiles.map((f, i) => (i === idx ? { ...f, name: clean } : f)),
           );
         }}
       />
@@ -1678,7 +1836,7 @@ function EmbeddableCore({
           the beginner's lifeline: the plain-language gloss plus the live
           bit-field view of the word under the program counter. */}
       <DecodeStrip
-        source={source}
+        source={decodeSource}
         currentLine={emu.currentLine}
         encodingHex={
           emu.instructions.find((instr) => instr.address === emu.pc)?.hex ?? null
@@ -1880,6 +2038,7 @@ function EmbeddableCore({
         </div>
         <ImportExport
           source={source}
+          files={extraFiles}
           target={importTarget}
           onImport={handleImport}
           onImportMany={handleImportMany}

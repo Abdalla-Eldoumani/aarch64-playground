@@ -46,7 +46,7 @@ The CSP is `default-src 'self'` with scripts from self plus the Monaco CDN (`cdn
 
 ## Dependency audit
 
-`npm audit` is clean. The DOMPurify advisory that reaches in through monaco-editor is patched via an `overrides` entry in `web/package.json`. If the audit reports findings, bump the package or document the mitigation here.
+Run `npm audit` from `web/` before a release and either clear what it reports or record the mitigation here. Most findings land in the dev toolchain and never reach a visitor; check the production tree specifically with `npm audit --omit=dev`. The DOMPurify chain that reaches in through monaco-editor is held at a fixed version by an `overrides` entry in `web/package.json`, so an advisory published after that pin still shows up in the report -- re-check the pin rather than assuming the entry cleared it.
 
 ## Alternative: commit the WASM
 

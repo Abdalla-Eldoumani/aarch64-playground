@@ -303,9 +303,7 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
                     continue;
                 }
             }
-            let value = parse_int(text).ok_or_else(|| {
-                lex_err(line, &format!("invalid integer literal `{text}`"))
-            })?;
+            let value = parse_int(text).ok_or_else(|| lex_err(line, &integer_error(text)))?;
             tokens.push(Token {
                 kind: TokenKind::IntLit(value),
                 line,
@@ -439,11 +437,36 @@ fn parse_int(text: &str) -> Option<i64> {
     if let Some(rest) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
         return u64::from_str_radix(rest, 2).ok().map(|v| v as i64);
     }
-    // Leading-zero octal a la GAS. "0" alone is decimal zero.
-    if s.len() > 1 && s.starts_with('0') && s.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
+    // Leading-zero octal a la GAS. "0" alone is decimal zero. A digit
+    // outside 0-7 makes the whole literal invalid rather than decimal:
+    // GAS reads `018` as the octal `01` and then rejects the stray `8`,
+    // so falling through to decimal handed back 18 for a literal the real
+    // assembler never accepts -- and 017 already meant 15 here, so the
+    // radix silently changed between two adjacent-looking numbers.
+    if s.len() > 1 && s.starts_with('0') {
+        if !s.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
+            return None;
+        }
         return u64::from_str_radix(&s[1..], 8).ok().map(|v| v as i64);
     }
     s.parse::<i64>().ok()
+}
+
+/// Message for an integer literal the lexer cannot read. A leading zero
+/// means octal, so `018` is not decimal 18 -- naming the rule saves the
+/// student from reading it as a typo in the emulator.
+fn integer_error(text: &str) -> String {
+    let clean: String = text.chars().filter(|c| *c != '_').collect();
+    let radix_prefixed = ["0x", "0X", "0b", "0B"]
+        .iter()
+        .any(|p| clean.starts_with(p));
+    if clean.len() > 1 && clean.starts_with('0') && !radix_prefixed {
+        return format!(
+            "invalid integer literal `{text}`: a leading zero means octal, so only the \
+             digits 0-7 are allowed -- drop the zero for decimal, or write 0x for hex"
+        );
+    }
+    format!("invalid integer literal `{text}`")
 }
 
 fn parse_char_literal(s: &str, line: usize) -> Result<(u32, usize), EmuError> {
@@ -533,14 +556,24 @@ fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
         b'"' => Ok((b'"' as u32, 2)),
         b'\'' => Ok((b'\'' as u32, 2)),
         b'x' | b'X' => {
-            if bytes.len() < 4 {
-                return Err(lex_err(line, "incomplete \\xNN escape"));
+            // GAS consumes as many hex digits as follow the `x` and keeps
+            // the low byte: `"\xA"` is one newline and `"\x123"` is 0x23.
+            // The old fixed two-digit window rejected the first outright
+            // and split the second into 0x12 plus a literal '3'. Masking
+            // each round is the same as masking at the end, since the low
+            // byte of a base-16 accumulation only ever depends on itself.
+            let mut value: u32 = 0;
+            let mut consumed = 2;
+            while consumed < bytes.len() && bytes[consumed].is_ascii_hexdigit() {
+                let digit = match bytes[consumed] {
+                    d @ b'0'..=b'9' => u32::from(d - b'0'),
+                    d @ b'a'..=b'f' => u32::from(d - b'a') + 10,
+                    d => u32::from(d - b'A') + 10,
+                };
+                value = ((value << 4) | digit) & 0xFF;
+                consumed += 1;
             }
-            let hex = std::str::from_utf8(&bytes[2..4])
-                .map_err(|_| lex_err(line, "invalid \\xNN escape"))?;
-            let value = u32::from_str_radix(hex, 16)
-                .map_err(|_| lex_err(line, "invalid \\xNN escape"))?;
-            Ok((value, 4))
+            Ok((value, consumed))
         }
         other => Err(lex_err(
             line,
@@ -698,6 +731,48 @@ mod tests {
     fn string_literal_with_hex_escape() {
         let t = lex("\"\\x48i\"", 1).unwrap();
         assert_eq!(kinds(&t), vec![TokenKind::StringLit(b"Hi".to_vec())]);
+    }
+
+    #[test]
+    fn hex_escape_takes_every_digit_that_follows_like_gas() {
+        // GAS on `.ascii "\xA" / "\x123" / "\x41"` emits 0a 23 41: it
+        // consumes as many hex digits as follow and keeps the low byte.
+        // The old fixed two-digit window made `"\xA"` a hard error and
+        // split `"\x123"` into 0x12 plus a literal '3'.
+        assert_eq!(
+            kinds(&lex(r#""\xA""#, 1).unwrap()),
+            vec![TokenKind::StringLit(vec![0x0A])]
+        );
+        assert_eq!(
+            kinds(&lex(r#""\x123""#, 1).unwrap()),
+            vec![TokenKind::StringLit(vec![0x23])]
+        );
+        assert_eq!(
+            kinds(&lex(r#""\x1234""#, 1).unwrap()),
+            vec![TokenKind::StringLit(vec![0x34])]
+        );
+        // Digits stop at the first non-hex byte, so a following letter
+        // outside a-f stays a literal character.
+        assert_eq!(
+            kinds(&lex(r#""\x41z""#, 1).unwrap()),
+            vec![TokenKind::StringLit(b"Az".to_vec())]
+        );
+    }
+
+    #[test]
+    fn leading_zero_integers_stay_octal_or_fail() {
+        // `.word 017` is 15 on the course toolchain and `.word 018` is a
+        // hard error there ("junk at end of line"). Falling through to
+        // decimal gave 18 for the second, so two adjacent-looking literals
+        // silently used different radixes.
+        assert_eq!(kinds(&lex("017", 1).unwrap()), vec![TokenKind::IntLit(15)]);
+        let err = lex("018", 1).unwrap_err().to_string();
+        assert!(err.contains("octal"), "message was: {err}");
+        assert!(err.contains("018"), "message was: {err}");
+        // The radix prefixes and a lone zero are untouched.
+        assert_eq!(kinds(&lex("0", 1).unwrap()), vec![TokenKind::IntLit(0)]);
+        assert_eq!(kinds(&lex("0x18", 1).unwrap()), vec![TokenKind::IntLit(0x18)]);
+        assert_eq!(kinds(&lex("0b11", 1).unwrap()), vec![TokenKind::IntLit(3)]);
     }
 
     #[test]

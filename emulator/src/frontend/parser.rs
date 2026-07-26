@@ -23,7 +23,7 @@ use crate::errors::EmuError;
 /// `Program`.
 pub fn parse(source: &str) -> Result<Program, EmuError> {
     let expanded = expand(source)?;
-    let (text, req_aliases) = apply_req_aliases(&expanded.text);
+    let (text, req_aliases) = apply_req_aliases(&expanded.text)?;
     let mut prog = Program::new();
     prog.aliases = expanded.defines;
     prog.aliases.extend(req_aliases);
@@ -50,15 +50,22 @@ pub fn parse(source: &str) -> Result<Program, EmuError> {
 /// and never rewrites `.string` text. The alias target is taken as
 /// written; a target that is not a register surfaces as the normal
 /// unknown-register error at the first use site.
-fn apply_req_aliases(text: &str) -> (String, HashMap<String, String>) {
+///
+/// Expansion is bounded exactly the way m4's is. This pass runs on
+/// already-expanded text and used to have no ceiling at all, so a chain of
+/// aliases each naming the one before it materialized gigabytes before the
+/// assembler ever saw a line.
+fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), EmuError> {
     // Fast path: nothing to do for the overwhelmingly common case.
     if !text.contains(".req") {
-        return (text.to_string(), HashMap::new());
+        return Ok((text.to_string(), HashMap::new()));
     }
     let mut aliases: HashMap<String, String> = HashMap::new();
     let mut out = String::with_capacity(text.len());
     let mut first = true;
-    for line in text.lines() {
+    let mut total: usize = 0;
+    for (idx, line) in text.lines().enumerate() {
+        let line_num = idx + 1;
         if !first {
             out.push('\n');
         }
@@ -78,11 +85,38 @@ fn apply_req_aliases(text: &str) -> (String, HashMap<String, String>) {
         }
         if aliases.is_empty() {
             out.push_str(line);
+            total = total.saturating_add(line.len());
         } else {
-            out.push_str(&super::m4::substitute_once(line, &aliases));
+            // The ceiling never drops below the input, so a long line that
+            // holds no alias still passes through.
+            let limit = super::m4::MAX_EXPANDED_LINE_BYTES.max(line.len());
+            let expanded = super::m4::substitute_once(line, &aliases, limit).ok_or_else(|| {
+                EmuError::PreprocError {
+                    line: line_num,
+                    message: format!(
+                        "`.req` alias expansion grew this line past {} bytes; \
+                         an alias chain is expanding without settling",
+                        super::m4::MAX_EXPANDED_LINE_BYTES
+                    ),
+                }
+            })?;
+            total = total.saturating_add(expanded.len());
+            out.push_str(&expanded);
+        }
+        // Per-line is not enough on its own: a short alias body repeated
+        // across thousands of lines still sums into the gigabytes.
+        if total > super::m4::MAX_EXPANDED_TOTAL_BYTES {
+            return Err(EmuError::PreprocError {
+                line: line_num,
+                message: format!(
+                    "`.req` alias expansion grew the whole source past {} MiB -- \
+                     shrink the alias body or the number of references",
+                    super::m4::MAX_EXPANDED_TOTAL_BYTES / (1024 * 1024)
+                ),
+            });
         }
     }
-    (out, aliases)
+    Ok((out, aliases))
 }
 
 /// A `.req` alias name: identifier shaped, no dots (dotted names are GCC
@@ -118,11 +152,18 @@ fn parse_line(
     prog: &mut Program,
     current: &mut SectionKind,
 ) -> Result<(), EmuError> {
+    // Labels can stack on one line (`a: b: c: ret`). Peeling them by
+    // recursion cost a stack frame per label, and a long enough line
+    // overflowed the wasm stack -- an unrecoverable trap that skips
+    // wasm-bindgen's borrow-guard Drop and wedges every later call. Peel
+    // them in a loop, so the depth is a loop counter instead.
+    let mut line_tokens = line_tokens;
+    loop {
     if line_tokens.is_empty() {
         return Ok(());
     }
     let first = &line_tokens[0];
-    match &first.kind {
+    return match &first.kind {
         // GCC emits local labels that start with a dot (`.L2:`, `.Ltext0:`).
         // Treat any dotted-name token followed by `:` as a label; leave the
         // directive path for the real-directive case without a colon.
@@ -144,8 +185,8 @@ fn parse_line(
                     offset: 0,
                 },
             );
-            let rest = &line_tokens[2..];
-            parse_line(rest, prog, current)
+            line_tokens = &line_tokens[2..];
+            continue;
         }
         TokenKind::DirectiveIdent(name) => {
             parse_directive(name, &line_tokens[1..], prog, current, first.line)
@@ -156,7 +197,7 @@ fn parse_line(
                 .is_some_and(|t| matches!(t.kind, TokenKind::Colon)) =>
         {
             // Label definition, possibly followed by an instruction on the
-            // same line. Emit the label, then recurse on the remainder.
+            // same line. Emit the label, then go round with the remainder.
             let label = name.clone();
             let section = prog.section_or_insert(*current);
             section.items.push(Item::Label {
@@ -170,8 +211,8 @@ fn parse_line(
                     offset: 0,
                 },
             );
-            let rest = &line_tokens[2..];
-            parse_line(rest, prog, current)
+            line_tokens = &line_tokens[2..];
+            continue;
         }
         TokenKind::Ident(name)
             if line_tokens
@@ -220,6 +261,7 @@ fn parse_line(
                 crate::frontend::lexer::describe(other)
             ),
         )),
+    };
     }
 }
 
@@ -594,6 +636,36 @@ mod tests {
 
     fn parse_ok(src: &str) -> Program {
         parse(src).expect("parse should succeed")
+    }
+
+    #[test]
+    fn req_alias_expansion_is_bounded_per_line_and_in_total() {
+        // The alias pass runs on already-m4-expanded text and had no
+        // ceiling at all, so a long target repeated across a line (or
+        // across many lines) materialized gigabytes before the assembler
+        // ever saw a mnemonic.
+        let target = "a".repeat(1024);
+        let refs = "wide ".repeat(1000);
+        let err = parse(&format!("wide .req {target}\n{refs}\n"))
+            .expect_err("a 1 MB line must be refused")
+            .to_string();
+        assert!(err.contains(".req"), "message was: {err}");
+        assert!(err.contains("past"), "message was: {err}");
+
+        // Each line here stays under the per-line cap; only their sum is
+        // over the aggregate one.
+        let target = "a".repeat(128);
+        let line = "wide ".repeat(64);
+        let mut src = format!("wide .req {target}\n");
+        for _ in 0..2000 {
+            src.push_str(&line);
+            src.push('\n');
+        }
+        let err = parse(&src)
+            .expect_err("the aggregate must be refused too")
+            .to_string();
+        assert!(err.contains(".req"), "message was: {err}");
+        assert!(err.contains("MiB"), "message was: {err}");
     }
 
     fn section_bytes(prog: &Program, kind: SectionKind) -> Vec<u8> {

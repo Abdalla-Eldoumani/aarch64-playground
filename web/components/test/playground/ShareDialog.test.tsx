@@ -87,3 +87,56 @@ describe("ShareDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("ShareDialog over the fragment cap", () => {
+  // A real multi-file workspace does not fit in a URL fragment: the
+  // receiver's 12 KB wall rejects it. The dialog used to hand the sender a
+  // copyable link anyway, so the failure surfaced on the recipient's screen.
+  const BIG: ShareState = {
+    source: "mov x0, 1\nret\n",
+    files: Array.from({ length: 12 }, (_, i) => ({
+      name: `part${i}.s`,
+      body: Array.from(
+        { length: 400 },
+        (_, n) => `        add x${n % 28}, x${(n + 1) % 28}, ${n}   // part ${i} line ${n}`,
+      ).join("\n"),
+    })),
+  };
+
+  it("refuses to offer a link the receiver would reject", () => {
+    render(<ShareDialog open state={BIG} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText("shareable url")).toBeNull();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("too large to share as a link");
+    expect(alert.textContent).toContain(".json");
+    expect(screen.getByRole("button", { name: "copy link" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByRole("button", { name: "share" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    // Closing is still the way out.
+    expect(screen.getByRole("button", { name: "close" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+  });
+
+  it("leaves a workspace that does fit completely alone", () => {
+    render(
+      <ShareDialog
+        open
+        state={{ source: "mov x0, 1\nret\n", files: [{ name: "util.s", body: "ret\n" }] }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText("shareable url")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "copy link" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+  });
+});

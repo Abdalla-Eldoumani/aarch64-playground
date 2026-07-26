@@ -82,14 +82,27 @@ self.addEventListener("fetch", (event) => {
   if (isCacheFirst(url)) {
     event.respondWith(
       caches.match(req).then((cached) => {
-        if (cached) return cached;
-        return fetch(req).then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            event.waitUntil(caches.open(RUNTIME_CACHE).then((cache) => cache.put(req, copy)));
-          }
-          return res;
-        });
+        const network = fetch(req)
+          .then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              event.waitUntil(
+                caches.open(RUNTIME_CACHE).then((cache) => cache.put(req, copy)),
+              );
+            }
+            return res;
+          })
+          .catch(() => cached);
+        // /_next/static and /icons carry a build hash in the path, so a
+        // changed file is a changed URL and the cached copy can never be
+        // stale. /examples does NOT: editing a program in place leaves the
+        // path alone, and a pure cache-first answer served the old text
+        // until CACHE_VERSION happened to be bumped by hand. Serve the
+        // cached copy for speed, then refresh it in the background so the
+        // next load is current.
+        if (!cached) return network;
+        event.waitUntil(network.catch(() => undefined));
+        return cached;
       }),
     );
     return;

@@ -11,6 +11,17 @@ interface InstructionViewProps {
   running?: boolean;
 }
 
+/**
+ * Rows rendered at once. The table is a plain DOM table, so a large
+ * workspace (the linker's 1 MiB .text window allows 262,144 instructions)
+ * would ask the browser for a quarter-million rows on every assemble and
+ * again on every step. Beyond this many the view becomes a window that
+ * follows the program counter in fixed blocks -- fixed, so the rows only
+ * shift when execution crosses a boundary rather than scrolling under the
+ * reader on every step.
+ */
+export const INSTRUCTION_WINDOW = 512;
+
 export function InstructionView({
   instructions,
   pc,
@@ -24,11 +35,35 @@ export function InstructionView({
     );
   }
 
+  const windowed = instructions.length > INSTRUCTION_WINDOW;
+  let start = 0;
+  if (windowed) {
+    const pcIndex = instructions.findIndex((instr) => instr.address === pc);
+    // A pc outside the listing (a library address, or nothing run yet)
+    // parks the window at the top rather than jumping somewhere arbitrary.
+    const block = pcIndex < 0 ? 0 : Math.floor(pcIndex / INSTRUCTION_WINDOW);
+    start = block * INSTRUCTION_WINDOW;
+  }
+  const visible = windowed
+    ? instructions.slice(start, start + INSTRUCTION_WINDOW)
+    : instructions;
+
   return (
     <div className="p-3 text-xs">
       <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px] mb-2">
         disassembly
       </h2>
+      {windowed && (
+        <p
+          role="status"
+          className="mb-2 font-mono text-[10px] text-[var(--text-tertiary)]"
+        >
+          showing {(start + 1).toLocaleString()}-
+          {(start + visible.length).toLocaleString()} of{" "}
+          {instructions.length.toLocaleString()} instructions; the window
+          follows the program counter
+        </p>
+      )}
       <table className="w-full font-mono">
         <thead>
           <tr className="text-[var(--text-secondary)]">
@@ -39,7 +74,7 @@ export function InstructionView({
           </tr>
         </thead>
         <tbody>
-          {instructions.map((instr) => {
+          {visible.map((instr) => {
             const isCurrent = instr.address === pc;
             return (
               <tr

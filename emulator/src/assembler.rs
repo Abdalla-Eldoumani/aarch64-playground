@@ -171,10 +171,11 @@ fn encode_line(
         "MVN" => encode_mvn(&ops, line_num),
         "TST" => encode_tst(&ops, line_num),
 
-        // -- shifts (immediate forms via UBFM/SBFM) --
+        // -- shifts (immediate forms via UBFM/SBFM, rotate via EXTR) --
         "LSL" => encode_shift(&ops, 0, line_num),
         "LSR" => encode_shift(&ops, 1, line_num),
         "ASR" => encode_shift(&ops, 2, line_num),
+        "ROR" => encode_ror(&ops, line_num),
 
         // -- sign / zero extension (SBFM / UBFM extract-and-extend aliases) --
         "SXTB" => encode_extend(&ops, true, 7, line_num),
@@ -183,8 +184,9 @@ fn encode_line(
         "UXTB" => encode_extend(&ops, false, 7, line_num),
         "UXTH" => encode_extend(&ops, false, 15, line_num),
 
-        // -- bitfield extract / insert (UBFM / BFM aliases) --
-        "UBFX" => encode_ubfx(&ops, line_num),
+        // -- bitfield extract / insert (SBFM / UBFM / BFM aliases) --
+        "UBFX" => encode_bfx(&ops, false, line_num),
+        "SBFX" => encode_bfx(&ops, true, line_num),
         "BFI" => encode_bfi(&ops, line_num),
 
         // -- multiply / divide --
@@ -502,6 +504,15 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
                 }
             }
         }
+        // Last resort, and the one GAS reaches for: any constant that is a
+        // valid repeating bitmask pattern lowers to `ORR Rd, ZR, #imm`.
+        // Without it `mov x0, 0x5555555555555555` -- a mask a student
+        // writes by hand -- was refused even though one instruction covers
+        // it. MOVZ/MOVN stay ahead of it so the common small constants keep
+        // the encoding GAS picks for them.
+        if let Ok(word) = encode_log_imm_fields(31, rd, imm as u64, sf, 0b01, ln) {
+            return Ok(word);
+        }
         return asm_err(ln, "immediate out of range for MOV (needs MOVZ+MOVK)");
     }
 
@@ -610,6 +621,40 @@ fn parse_shift_modifier(
     Ok((shift_bits, amt as u8))
 }
 
+/// The eight extend keywords ADD/SUB's extended-register form accepts, in
+/// `option` field order.
+const EXTEND_KEYWORDS: [(&str, u32); 8] = [
+    ("UXTB", 0b000),
+    ("UXTH", 0b001),
+    ("UXTW", 0b010),
+    ("UXTX", 0b011),
+    ("SXTB", 0b100),
+    ("SXTH", 0b101),
+    ("SXTW", 0b110),
+    ("SXTX", 0b111),
+];
+
+/// Split a trailing extend modifier into its `option` field and the text
+/// of its optional shift amount: `sxtw #2`, `uxtb`, or the course spelling
+/// `SXTW 2`. `None` means the operand is not an extend keyword at all, so
+/// the caller falls back to the shift-modifier path. The index register's
+/// width is deliberately not checked here: GAS assembles `add x0, x1, x2,
+/// sxtw` to the same word as the `w2` spelling, so refusing it would
+/// reject source the course toolchain accepts.
+fn parse_extend_modifier(op: &str) -> Option<(u32, &str)> {
+    let t = op.trim();
+    let upper = t.to_ascii_uppercase();
+    for (keyword, option) in EXTEND_KEYWORDS {
+        let Some(rest) = upper.strip_prefix(keyword) else {
+            continue;
+        };
+        if rest.is_empty() || rest.starts_with([' ', '\t', '#']) {
+            return Some((option, &t[keyword.len()..]));
+        }
+    }
+    None
+}
+
 fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 3 && ops.len() != 4 {
         return asm_err(
@@ -622,29 +667,70 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
     let op3 = ops[2].trim();
     let sf_bit = if sf { 1u32 } else { 0 };
 
-    // The optional shifted-register modifier (only registers can carry it;
-    // resolved before the immediate branch so `add x0, x1, #1, lsl #12`
-    // gets a targeted message rather than an operand-count failure).
-    let (shift_bits, shift_amt) = if ops.len() == 4 {
-        if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-            return asm_err(
-                ln,
-                "a shift modifier only applies to the register form; write the shifted value directly",
-            );
-        }
+    // Does operand 3 name an immediate rather than a register? A leading
+    // `-` counts: GAS accepts `sub sp, sp, -16` and re-spells it as an add,
+    // and refusing it here reported "expected a register here".
+    let op3_is_imm = op3.starts_with('#')
+        || op3.starts_with('\'')
+        || op3.starts_with('-')
+        || op3.chars().next().is_some_and(|c| c.is_ascii_digit());
+
+    // `add x0, x1, w2, sxtw #2` is the EXTENDED register form, whose last
+    // operand is an extend keyword rather than a shift. It has to be
+    // recognized before parse_shift_modifier, which only speaks
+    // lsl/lsr/asr/ror and reported "expected a shift modifier" for the
+    // widening index every array subscript in the course uses.
+    let extend = if ops.len() == 4 && !op3_is_imm {
+        parse_extend_modifier(ops[3])
+    } else {
+        None
+    };
+
+    // The optional shifted-register modifier. Only the register form takes
+    // lsl/lsr/asr; the immediate form's own `lsl #12` is handled below,
+    // because that is how AArch64 reaches immediates above 4095.
+    let (shift_bits, shift_amt) = if ops.len() == 4 && !op3_is_imm && extend.is_none() {
         parse_shift_modifier(ops[3], if sf { 64 } else { 32 }, false, ln)?
     } else {
         (0, 0)
     };
 
     // immediate form
-    if op3.starts_with('#') || op3.starts_with('\'') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        let imm = parse_immediate(op3, ln)?;
-        if !(0..=4095).contains(&imm) {
-            return asm_err(ln, "immediate out of range (0-4095)");
+    if op3_is_imm {
+        let raw = parse_immediate(op3, ln)?;
+        let explicit_lsl12 = ops.len() == 4;
+        if explicit_lsl12 {
+            parse_lsl12(ops[3], ln)?;
         }
+        // A negative immediate is the opposite operation, which is what the
+        // course toolchain emits: `sub x0, x1, -16` assembles as an add.
+        // ADDS/SUBS stay exact -- the hardware computes x - (-n) as x + n,
+        // carry included.
+        let (op_bit, magnitude) = if raw < 0 {
+            (1 - op_bit, raw.unsigned_abs())
+        } else {
+            (op_bit, raw as u64)
+        };
+        // Bit 22 shifts the 12-bit field left by 12. GAS reaches for it
+        // silently on an exact multiple of 4096, so `sub sp, sp, 4096` -- a
+        // valid course prologue -- encodes instead of being refused.
+        let (imm12, shift12) = if explicit_lsl12 {
+            if magnitude > 4095 {
+                return asm_err(ln, "with lsl #12 the immediate must be 0-4095");
+            }
+            (magnitude, true)
+        } else if magnitude <= 4095 {
+            (magnitude, false)
+        } else if magnitude % 4096 == 0 && (magnitude >> 12) <= 4095 {
+            (magnitude >> 12, true)
+        } else {
+            return asm_err(
+                ln,
+                "immediate out of range: 0-4095, or a multiple of 4096 up to 16773120 (which encodes as lsl #12)",
+            );
+        };
         return Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
-            | (0b10001 << 24) | ((imm as u32) << 10)
+            | (0b10001 << 24) | ((shift12 as u32) << 22) | ((imm12 as u32) << 10)
             | ((rn as u32) << 5) | (rd as u32));
     }
 
@@ -670,6 +756,26 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
             "the flag-setting form cannot write sp; drop the s (add/sub) or use another destination",
         );
     }
+    // Extended-register form with an explicit keyword. This is the same
+    // encoding the sp path below emits, just with the extend and shift the
+    // student wrote instead of the implied UXTX/UXTW #0.
+    if let Some((option, amount_text)) = extend {
+        let amount_text = amount_text.trim();
+        let amount = if amount_text.is_empty() {
+            0
+        } else {
+            parse_immediate(amount_text, ln)?
+        };
+        if !(0..=4).contains(&amount) {
+            return asm_err(
+                ln,
+                &format!("an extended-register shift is 0 to 4, got {amount}"),
+            );
+        }
+        return Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
+            | (0b01011 << 24) | (1 << 21) | ((rm as u32) << 16)
+            | (option << 13) | ((amount as u32) << 10) | ((rn as u32) << 5) | (rd as u32));
+    }
     if rd_is_sp || rn_is_sp {
         if ops.len() == 4 {
             // The extended-register (SP-capable) encoding carries its own
@@ -690,6 +796,41 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
     Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
         | (0b01011 << 24) | (shift_bits << 22) | ((rm as u32) << 16)
         | ((shift_amt as u32) << 10) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Refuse `sp` anywhere in an instruction whose encoding has no room for
+/// it. `parse_register` collapses SP and XZR to index 31, so a stray `sp`
+/// in a logical, shift, multiply or divide silently computed with ZERO --
+/// a wrong answer with no diagnostic. The add/sub path already routes SP
+/// to the extended encoding; these forms have no such encoding, and GAS
+/// rejects them outright ("expected an integer or zero register").
+fn reject_sp_operands(ops: &[&str], ln: usize, mnemonic: &str) -> Result<(), EmuError> {
+    for (i, op) in ops.iter().enumerate() {
+        if is_sp_name(op) {
+            return asm_err(
+                ln,
+                &format!(
+                    "{mnemonic} cannot take sp (operand {}); copy it out first with `mov xN, sp`",
+                    i + 1
+                ),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Parse the `lsl #12` an add/sub immediate may carry. It is the only
+/// modifier that form accepts, and only at exactly 12.
+fn parse_lsl12(operand: &str, ln: usize) -> Result<(), EmuError> {
+    let t = operand.trim();
+    if t.len() < 3 || !t[..3].eq_ignore_ascii_case("lsl") {
+        return asm_err(ln, "an add/sub immediate takes only `lsl #12`");
+    }
+    let amt = parse_immediate(t[3..].trim().trim_start_matches('#').trim(), ln)?;
+    if amt != 12 {
+        return asm_err(ln, "an add/sub immediate shift must be exactly `lsl #12`");
+    }
+    Ok(())
 }
 
 /// Whether an operand as written names the stack pointer. Needed wherever
@@ -746,6 +887,7 @@ fn encode_log_reg(ops: &[&str], opc: u8, n: bool, ln: usize) -> Result<u32, EmuE
             "this logical op takes 3 operands, or 4 with a shift modifier (and x0, x1, x2, lsr #4)",
         );
     }
+    reject_sp_operands(ops, ln, "a logical op")?;
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
     let (rm, _) = parse_register(ops[2], ln)?;
@@ -778,13 +920,15 @@ fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     encode_log_reg(ops, 0b00, true, ln)
 }
 
-/// Encode `UBFX Rd, Rn, #lsb, #width` (unsigned bitfield extract), the
-/// course's pull-a-field-out instruction. Lowers onto UBFM with
-/// `immr = lsb`, `imms = lsb + width - 1`; the executor's existing
-/// `Bitfield::Ubfm` path does the extract-and-zero-extend.
-fn encode_ubfx(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+/// Encode `UBFX/SBFX Rd, Rn, #lsb, #width` (bitfield extract), the
+/// course's pull-a-field-out instructions. Both lower onto a bitfield move
+/// with `immr = lsb`, `imms = lsb + width - 1`; UBFX zero-extends the
+/// field (UBFM) and SBFX sign-extends it (SBFM). The executor's existing
+/// `Bitfield` path does the extract-and-extend for either.
+fn encode_bfx(ops: &[&str], signed: bool, ln: usize) -> Result<u32, EmuError> {
+    let name = if signed { "SBFX" } else { "UBFX" };
     if ops.len() != 4 {
-        return asm_err(ln, "UBFX requires 4 operands: Rd, Rn, #lsb, #width");
+        return asm_err(ln, &format!("{name} requires 4 operands: Rd, Rn, #lsb, #width"));
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
@@ -793,21 +937,61 @@ fn encode_ubfx(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     let reg_size: i64 = if sf { 64 } else { 32 };
 
     if width < 1 {
-        return asm_err(ln, "UBFX width must be at least 1");
+        return asm_err(ln, &format!("{name} width must be at least 1"));
     }
     if lsb < 0 || lsb >= reg_size {
-        return asm_err(ln, "UBFX lsb is out of range for the register width");
+        return asm_err(ln, &format!("{name} lsb is out of range for the register width"));
     }
     if lsb + width > reg_size {
-        return asm_err(ln, "UBFX field runs past the top of the register");
+        return asm_err(ln, &format!("{name} field runs past the top of the register"));
     }
 
     let immr = lsb as u32;
     let imms = (lsb + width - 1) as u32;
     let sf_bit = if sf { 1u32 } else { 0 };
-    let n_bit = sf_bit; // N matches sf for the valid UBFM encodings
-    Ok((sf_bit << 31) | (0b10 << 29) | (0b100110 << 23) | (n_bit << 22)
+    let n_bit = sf_bit; // N matches sf for the valid SBFM/UBFM encodings
+    let opc: u32 = if signed { 0b00 } else { 0b10 };
+    Ok((sf_bit << 31) | (opc << 29) | (0b100110 << 23) | (n_bit << 22)
         | (immr << 16) | (imms << 10) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Encode `ROR Rd, Rn, #shift` and `ROR Rd, Rn, Rm`. The immediate form is
+/// the EXTR alias GAS emits (an EXTR whose two sources are both Rn); the
+/// register form is RORV, which shares the dp2 variable-shift space with
+/// LSLV/LSRV/ASRV.
+fn encode_ror(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 3 {
+        return asm_err(ln, "ROR requires 3 operands: Rd, Rn, #shift or Rm");
+    }
+    reject_sp_operands(ops, ln, "ROR")?;
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, _) = parse_register(ops[1], ln)?;
+    let sf_bit = if sf { 1u32 } else { 0 };
+    let op3 = ops[2].trim();
+
+    if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        let reg_size: i64 = if sf { 64 } else { 32 };
+        let amount = parse_immediate(op3, ln)?;
+        if !(0..reg_size).contains(&amount) {
+            return asm_err(
+                ln,
+                &format!(
+                    "rotate amount {amount} is out of range for a {reg_size}-bit register \
+                     (valid: 0-{})",
+                    reg_size - 1
+                ),
+            );
+        }
+        // EXTR Rd, Rn, Rn, #amount. N tracks sf, as it does for every
+        // other extract/bitfield encoding.
+        return Ok((sf_bit << 31) | (0b00100111 << 23) | (sf_bit << 22)
+            | ((rn as u32) << 16) | ((amount as u32) << 10) | ((rn as u32) << 5) | (rd as u32));
+    }
+
+    // RORV: the dp2 variable-shift form, opcode 001011.
+    let (rm, _) = parse_register(op3, ln)?;
+    Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
+        | (0b001011 << 10) | ((rn as u32) << 5) | (rd as u32))
 }
 
 /// Encode `BFI Rd, Rn, #lsb, #width` (bitfield insert): drop the low
@@ -945,6 +1129,7 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
     if ops.len() != 3 {
         return asm_err(ln, "shift requires 3 operands");
     }
+    reject_sp_operands(ops, ln, "a shift")?;
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
     let op3 = ops[2].trim();
@@ -1032,6 +1217,7 @@ fn encode_mul_div(ops: &[&str], variant: u8, ln: usize) -> Result<u32, EmuError>
     if ops.len() != 3 {
         return asm_err(ln, "MUL/UDIV/SDIV requires 3 operands");
     }
+    reject_sp_operands(ops, ln, "MUL/UDIV/SDIV")?;
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
     let (rm, _) = parse_register(ops[2], ln)?;
@@ -1063,6 +1249,7 @@ fn encode_mul_accumulate(ops: &[&str], subtract: bool, ln: usize) -> Result<u32,
     if ops.len() != 4 {
         return asm_err(ln, "MADD/MSUB requires 4 operands");
     }
+    reject_sp_operands(ops, ln, "MADD/MSUB")?;
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
     let (rm, _) = parse_register(ops[2], ln)?;

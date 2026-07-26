@@ -10,8 +10,9 @@ exfiltrate beyond the browser.
 ## Threat model in two sentences
 
 1. An attacker cannot persist state. There is no server-side data store; the
-   only data kept is per-browser localStorage under the `aarch64-playground:*`
-   key prefix.
+   only data kept is per-browser: localStorage under the
+   `aarch64-playground:*` key prefix, plus the playground's virtual-filesystem
+   working set in the `aarch64-playground` IndexedDB database.
 2. An attacker can craft a URL or file the user opens. The playground must not
    crash, hang, or run unintended code in response to any deep-link payload or
    file upload.
@@ -85,8 +86,10 @@ tab. The walls live in the Rust core and hold however the program arrived
   pre-reserving its count, and `printf` clamps field width and precision
   (`MAX_FIELD_WIDTH`).
 - Virtual-filesystem walls sized against the step-back snapshot ring, which
-  clones the whole VFS every step (~129x amplification, the same budget math
-  as the page cap): one file cannot grow past `syscalls::MAX_VFS_FILE_BYTES`
+  copies the VFS whole on every recorded step (the ring stops recording once
+  that side state passes `cpu::MAX_SNAPSHOT_SIDE_BYTES`, so the amplification
+  is bounded rather than unbounded): one file cannot grow past
+  `syscalls::MAX_VFS_FILE_BYTES`
   (4 MiB) through `lseek` then `write`, the VFS as a whole is bounded by
   `MAX_VFS_TOTAL_BYTES` (4 MiB), and `openat` refuses to create more than
   `MAX_VFS_FILES` (16) files. Over-cap calls return -1, the same signal a

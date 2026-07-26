@@ -490,6 +490,137 @@ fn the_conformance_corpus_lints_clean() {
     }
 }
 
+/// `.` inside an `ldr xN, =expr` operand means the address of that LDR,
+/// and the literal pool is keyed by operand TEXT. Both halves were wrong:
+/// `.` resolved to zero, and two identical operands at different
+/// addresses shared one slot. GAS allocates a separate pool entry per
+/// site (`R_AARCH64_ABS64 .text+0xc` and `.text+0x14` for two
+/// `ldr xN, =. + 8` four instructions apart).
+#[test]
+fn dot_relative_ldr_eq_resolves_per_site() {
+    let src = ".text\n\
+               .global main\n\
+               main:\n\
+               ldr x0, =. + 8\n\
+               nop\n\
+               ldr x1, =. + 8\n\
+               mov x8, 93\n\
+               svc 0\n";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("dot-relative ldr= must assemble");
+    let first_ldr = image.text_base;
+    let second_ldr = image.text_base + 8;
+    cpu.load_linked_image(&image).expect("load failed");
+    let r = cpu.run_until_break(1000).expect("run failed");
+    assert!(r.halted);
+    assert_eq!(
+        cpu.regs.read_gpr(0, true),
+        first_ldr + 8,
+        "`.` is the address of the ldr that asked for the slot"
+    );
+    assert_eq!(
+        cpu.regs.read_gpr(1, true),
+        second_ldr + 8,
+        "the second site needs its own pool entry, not the first one's value"
+    );
+
+    // Operands with no `.` still deduplicate, so the pool does not grow a
+    // slot per use site across the board.
+    let shared = ".data\n\
+                  msg: .string \"hi\"\n\
+                  .text\n\
+                  .global main\n\
+                  main:\n\
+                  ldr x0, =msg\n\
+                  ldr x1, =msg\n\
+                  mov x8, 93\n\
+                  svc 0\n";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(shared, &cpu.host).expect("shared ldr= must assemble");
+    cpu.load_linked_image(&image).expect("load failed");
+    let r = cpu.run_until_break(1000).expect("run failed");
+    assert!(r.halted);
+    assert_eq!(cpu.regs.read_gpr(0, true), cpu.regs.read_gpr(1, true));
+}
+
+/// GAS treats `=` as `.set`, which is positional: each use takes the most
+/// recent definition above it. Two files concatenated into one workspace
+/// can each write `len = . - msg` against their own string, and the linker
+/// kept only the first value and handed it to both files' uses.
+///
+/// Oracle (`aarch64-linux-gnu-as` on the same source): the first `.word
+/// len` is 9 and the second is 3; a `.word len` placed above both
+/// definitions is 9, the first binding.
+#[test]
+fn a_redefined_equate_resolves_against_the_definition_above_each_use() {
+    let src = ".data\n\
+               early: .word len\n\
+               msg: .ascii \"abcdefghi\"\n\
+               len = . - msg\n\
+               first: .word len\n\
+               msg2: .ascii \"xyz\"\n\
+               len = . - msg2\n\
+               second: .word len\n\
+               .text\n\
+               .global main\n\
+               main:\n\
+               mov x8, 93\n\
+               svc 0\n";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("two equates of one name must link");
+    cpu.load_linked_image(&image).expect("load failed");
+
+    let word_at = |cpu: &Cpu, symbol: &str| -> u32 {
+        let addr = image.symbols[symbol];
+        u32::from_le_bytes(
+            cpu.mem
+                .read_bytes(addr, 4)
+                .expect("data word is mapped")
+                .try_into()
+                .unwrap(),
+        )
+    };
+    assert_eq!(word_at(&cpu, "first"), 9, "the first definition is 9 bytes");
+    assert_eq!(
+        word_at(&cpu, "second"),
+        3,
+        "the second use must take the second definition, not the first"
+    );
+    assert_eq!(
+        word_at(&cpu, "early"),
+        9,
+        "a use above every definition takes the first binding, as GAS does"
+    );
+}
+
+/// The lint quotes the macro body in its warning text, and read it from a
+/// map that collapses a redefined name onto its LAST body. A windowed
+/// alias therefore named a register the student never wrote at that line.
+#[test]
+fn macro_hygiene_quotes_the_body_bound_at_that_line() {
+    let src = "define(x0, w19)\n\
+               .string \"x0 here\"\n\
+               undefine(`x0')\n\
+               define(x0, w21)\n\
+               .string \"x0 there\"\n";
+    let warnings = lint(src);
+    let at = |line: usize| -> String {
+        warnings
+            .iter()
+            .filter(|w| w.line == line)
+            .map(|w| w.message.clone())
+            .collect::<Vec<_>>()
+            .join(" | ")
+    };
+    // Each define site warns about its own body, on its own line.
+    assert!(at(1).contains("w19"), "line 1 warnings: {}", at(1));
+    assert!(!at(1).contains("w21"), "line 1 warnings: {}", at(1));
+    assert!(at(4).contains("w21"), "line 4 warnings: {}", at(4));
+    // The literal-text warnings quote the body in effect where they fire.
+    assert!(at(2).contains("w19"), "line 2 warnings: {}", at(2));
+    assert!(at(5).contains("w21"), "line 5 warnings: {}", at(5));
+}
+
 #[test]
 fn data_before_text_still_assembles() {
     // The reject must key on the section an instruction lands in, not on
@@ -505,4 +636,90 @@ fn data_before_text_still_assembles() {
                ret\n";
     let cpu = Cpu::new();
     assert!(assemble_hosted(src, &cpu.host).is_ok());
+}
+/// Both of these used to overflow the wasm stack rather than return an
+/// error. A wasm stack overflow is unrecoverable: the trap skips
+/// wasm-bindgen's borrow-guard Drop, so every later call fails on a stuck
+/// borrow flag and the instance is dead until the tab reloads. Depth has
+/// to be refused, not survived.
+#[test]
+fn deeply_nested_addressing_brackets_are_refused_not_overflowed() {
+    // rewrite_operand and rewrite_operand_list call each other once per
+    // bracket level. Well past the guard, and far past anything real.
+    let depth = 5000;
+    let src = format!(
+        ".text\n.global main\nmain:\nldr x0, {}x1{}\nret\n",
+        "[".repeat(depth),
+        "]".repeat(depth)
+    );
+    let msg = assemble_err(&src);
+    assert!(
+        msg.contains("nests deeper"),
+        "expected a depth refusal, got: {msg}"
+    );
+}
+
+#[test]
+fn thousands_of_stacked_labels_on_one_line_assemble() {
+    // parse_line peels one `label:` per turn. It used to recurse, so a
+    // long enough line blew the stack; peeling in a loop makes the line
+    // ordinary work. This is valid assembly, so it must SUCCEED.
+    let labels: String = (0..20_000).map(|i| format!("l{i}: ")).collect();
+    let src = format!(".text\n.global main\nmain:\n{labels}ret\n");
+    let cpu = Cpu::new();
+    let image = assemble_hosted(&src, &cpu.host)
+        .unwrap_or_else(|e| panic!("stacked labels must assemble, got: {e}"));
+    // Every label resolves to the same address as the ret it precedes.
+    assert!(image.symbols.contains_key("l0"));
+    assert!(image.symbols.contains_key("l19999"));
+    assert_eq!(image.symbols["l0"], image.symbols["l19999"]);
+}
+
+/// The entry point comes from a LABEL, and `_start` counts. Three separate
+/// findings met in these few lines: an equate named `main` was taken as the
+/// entry point, `_start`-only programs fell back to the top of .text, and
+/// `.global main` alongside `_start:` was refused even though ld links it.
+#[test]
+fn the_entry_point_is_a_label_and_start_counts_as_one() {
+    let cpu = Cpu::new();
+
+    // An equate is not an entry point. This used to start execution at
+    // address 5 and halt on a memory fault with no explanation.
+    let equate = ".text\n\
+                  main = 5\n\
+                  helper:\n\
+                  mov x0, 0\n\
+                  ret\n";
+    let msg = assemble_err(equate);
+    assert!(
+        msg.contains("no entry point") || msg.contains("no `main:`"),
+        "an equate named main must not become the entry point, got: {msg}"
+    );
+
+    // `_start` alone links, and enters AT `_start` rather than at whatever
+    // helper sits first in .text.
+    let start_only = ".text\n\
+                      helper:\n\
+                      mov x0, 99\n\
+                      ret\n\
+                      _start:\n\
+                      mov x0, 0\n\
+                      ret\n";
+    let image = assemble_hosted(start_only, &cpu.host).expect("_start alone must link");
+    assert_eq!(
+        image.entry_point, image.symbols["_start"],
+        "execution must start at _start, not at the top of .text"
+    );
+    assert_ne!(image.entry_point, image.symbols["helper"]);
+
+    // `.global main` declared out of habit while entering at `_start` is
+    // what real ld accepts: an unreferenced undefined global is not an error.
+    let global_and_start = ".text\n\
+                            .global main\n\
+                            _start:\n\
+                            mov x0, 0\n\
+                            ret\n";
+    let image = assemble_hosted(global_and_start, &cpu.host)
+        .expect("`.global main` plus `_start:` must link, as ld does");
+    assert_eq!(image.entry_point, image.symbols["_start"]);
 }

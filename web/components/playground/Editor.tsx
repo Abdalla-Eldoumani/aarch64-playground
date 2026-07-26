@@ -664,6 +664,14 @@ function mapSuggestion(
 // the same constant so the running translateY math stays simple.
 const FALLBACK_PAD_Y = 12;
 const FALLBACK_LINE_H = 24;
+// The gutter draws a window around the scroll offset, not one button per
+// line. A share link is allowed a 1 MB buffer, and 1 MB of bare newlines is
+// a million lines: a million buttons committed in one synchronous render, on
+// a phone, with no click required. 240 rows is 5760px of gutter, more than
+// any viewport this fallback runs in (under 480px wide) can show at once,
+// and the overscan keeps a flick-scroll from outrunning the scroll handler.
+const FALLBACK_GUTTER_ROWS = 240;
+const FALLBACK_GUTTER_OVERSCAN = 20;
 
 function FallbackEditor({
   value,
@@ -684,6 +692,11 @@ function FallbackEditor({
   const pendingSelRef = useRef<{ start: number; end: number } | null>(null);
   const lineCount = Math.max(1, value.split("\n").length);
   const errorLines = new Set(assemblyErrors.map((e) => e.line));
+  const gutterFirst = Math.max(
+    0,
+    Math.floor(scrollTop / FALLBACK_LINE_H) - FALLBACK_GUTTER_OVERSCAN,
+  );
+  const gutterRows = Math.max(0, Math.min(FALLBACK_GUTTER_ROWS, lineCount - gutterFirst));
 
   useLayoutEffect(() => {
     const pending = pendingSelRef.current;
@@ -722,9 +735,13 @@ function FallbackEditor({
       >
         <div
           className="absolute left-0 right-0 will-change-transform"
-          style={{ transform: `translateY(${FALLBACK_PAD_Y - scrollTop}px)` }}
+          style={{
+            transform: `translateY(${
+              FALLBACK_PAD_Y - scrollTop + gutterFirst * FALLBACK_LINE_H
+            }px)`,
+          }}
         >
-          {Array.from({ length: lineCount }, (_, i) => i + 1).map((n) => {
+          {Array.from({ length: gutterRows }, (_, i) => gutterFirst + i + 1).map((n) => {
             const isBreak = breakpoints.has(n);
             const isError = errorLines.has(n);
             const isCurrent = currentLine === n;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { buildShareUrl, type ShareState } from "@/lib/playground/share";
+import { buildShareUrl, shareHashSize, type ShareState } from "@/lib/playground/share";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 
 export interface ShareDialogProps {
@@ -24,6 +24,12 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   // Build the URL during render; since we only read `state` and
   // `open`, this stays consistent without a setState-in-effect round.
   const url = open ? buildShareUrl(state) : "";
+  // Measure before offering: a fragment over the receiver's cap opens to a
+  // "too large" banner on the other end, so the sender must be told here
+  // rather than handing out a link that is already dead.
+  const hashAt = url.indexOf("#");
+  const size = shareHashSize(hashAt < 0 ? "" : url.slice(hashAt));
+  const oversize = size.chars > size.max;
 
   if (!open) return null;
 
@@ -65,17 +71,28 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
         <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
           share this program
         </h2>
-        <p className="text-[11px] text-[var(--text-secondary)] mb-2">
-          The source is compressed into the URL hash; nothing is sent to a server.
-        </p>
-        <textarea
-          readOnly
-          value={url}
-          rows={4}
-          className="w-full text-[11px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)]"
-          onFocus={(e) => e.currentTarget.select()}
-          aria-label="shareable url"
-        />
+        {oversize ? (
+          <p role="alert" className="text-[11px] text-[var(--danger)] mb-2">
+            this workspace is too large to share as a link (
+            {size.chars.toLocaleString()} characters compressed, limit{" "}
+            {size.max.toLocaleString()}). Export the files with the .json
+            button in the header and send those instead.
+          </p>
+        ) : (
+          <p className="text-[11px] text-[var(--text-secondary)] mb-2">
+            The source is compressed into the URL hash; nothing is sent to a server.
+          </p>
+        )}
+        {!oversize && (
+          <textarea
+            readOnly
+            value={url}
+            rows={4}
+            className="w-full text-[11px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)]"
+            onFocus={(e) => e.currentTarget.select()}
+            aria-label="shareable url"
+          />
+        )}
         <div className="flex items-center justify-end gap-2 mt-3">
           <button
             type="button"
@@ -87,14 +104,16 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           <button
             type="button"
             onClick={share}
-            className="text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            disabled={oversize}
+            className="text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             share
           </button>
           <button
             type="button"
             onClick={copy}
-            className={`text-xs rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+            disabled={oversize}
+            className={`text-xs rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
               copied
                 ? "text-[var(--success)]"
                 : "text-[var(--cyan)] hover:underline"

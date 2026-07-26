@@ -136,6 +136,10 @@ export default function Home() {
   // delivered here (they need a fetch), with their args, stdin, and VFS
   // fixtures riding along; a failed or oversize fetch keeps the booted
   // buffer.
+  // The delivery URL this pass already handled. `boot` is captured once, so
+  // without it a second pass over a NEW hash would ask resolveHandoff about
+  // a payload the FIRST one consumed and be told there is nothing to do.
+  const deliveredUrlRef = useRef<string | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const dl = parseDeepLink(window.location.search);
@@ -193,7 +197,44 @@ export default function Home() {
     } else if (handoff) {
       playgroundRef.current?.loadProgram(handoff.payload);
     }
-    return () => timers.forEach(clearTimeout);
+    deliveredUrlRef.current = window.location.search + window.location.hash;
+
+    // A URL that changes without remounting this page (the back button, or a
+    // second share link pasted into the address bar of an open tab) never
+    // re-ran the pass above, so nothing arrived. Re-deliver from the new URL,
+    // telling resolveHandoff that this one has consumed nothing yet.
+    const onUrlChange = () => {
+      const url = window.location.search + window.location.hash;
+      if (url === deliveredUrlRef.current) return;
+      deliveredUrlRef.current = url;
+      const next = resolveHandoff(
+        { fromShare: false, fromBundle: false },
+        window.location.search,
+        window.location.hash,
+      );
+      if (next?.kind === "share-error" || next?.kind === "bundle-error") {
+        toastSoon(
+          next.reason === "too-large"
+            ? "that link is too large to load"
+            : "that link is damaged (often a partial copy) -- ask for it again",
+        );
+      } else if (next?.kind === "example") {
+        void fetchExample(next.stem)
+          .then((payload) => playgroundRef.current?.loadProgram(payload))
+          .catch((e: unknown) => {
+            toastSoon(e instanceof Error ? e.message : "could not load that example");
+          });
+      } else if (next) {
+        playgroundRef.current?.loadProgram(next.payload);
+      }
+    };
+    window.addEventListener("hashchange", onUrlChange);
+    window.addEventListener("popstate", onUrlChange);
+    return () => {
+      timers.forEach(clearTimeout);
+      window.removeEventListener("hashchange", onUrlChange);
+      window.removeEventListener("popstate", onUrlChange);
+    };
   }, [setTheme, boot]);
 
   // Global shortcuts, single owner. Every execution key delegates to the

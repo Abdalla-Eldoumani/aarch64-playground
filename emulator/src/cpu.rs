@@ -10,10 +10,22 @@ use crate::registers::RegisterFile;
 use crate::snapshot::{Snapshot, SnapshotRing};
 
 /// Size of the step-back snapshot ring. Each frame captures the full
-/// RegisterFile plus cloned page buffers, so memory scales roughly with
-/// `capacity * pages_mapped * 4 KiB`. 128 frames holds a few MiB at
+/// RegisterFile plus a copy-on-write view of the mapped pages, so memory
+/// scales with the pages the program rewrites while the frame is alive,
+/// not with the whole address space. 128 frames holds a few MiB at
 /// realistic working-set sizes.
 const SNAPSHOT_CAPACITY: usize = 128;
+
+/// Budget for the state a snapshot frame copies WHOLE: the virtual
+/// filesystem, the queued stdin, and the open-file paths. Pages are
+/// shared copy-on-write and cost nothing to snapshot, but these are real
+/// copies taken on every step, so a program holding megabytes of them
+/// paid that price per instruction (100k steps with a 1 MiB virtual file
+/// took 51 s against 73 ms with none). Past the budget the ring stops
+/// recording -- the same trade raw-mode terminal programs already make.
+/// A course program's files and typed input are a few hundred bytes, so
+/// step-back stays available for the programs students step through.
+pub const MAX_SNAPSHOT_SIDE_BYTES: usize = 4096;
 
 /// Base address where assembled code is loaded.
 pub const CODE_BASE: u64 = 0x0040_0000;
@@ -155,6 +167,24 @@ pub const MAX_SLEEP_NS: u64 = 2_000_000_000;
 /// CPU, before the step wall halts it calmly.
 pub const MAX_REFUND_STEPS: u64 = 200_000_000;
 
+/// Lifetime cap on output bytes the sleep refund may credit back. The
+/// step refund has its own cap; the output refund had none, so the step
+/// cap alone let a paced program earn back 20 MB and quietly raised the
+/// 4 MiB output wall to 23 MiB. Capping it here states the real ceiling:
+/// a program may print MAX_OUTPUT_BYTES, plus this much more if it paced
+/// itself with real sleeps to earn it.
+pub const MAX_REFUND_OUTPUT_BYTES: usize = MAX_OUTPUT_BYTES;
+
+/// Bytes of guest memory one host stub may move per step it is charged
+/// for. `memset`, `memcpy` and `read` do a whole buffer's work inside a
+/// single instruction, so without a charge a loop of whole-buffer fills
+/// picks its own workload per step and the runaway wall never sees it
+/// (3608 steps moved 24.6 MB). 16 bytes is what a real `stp` writes, so
+/// bulk work costs about what the same loop written out in assembly
+/// would: a 4 KiB clear is 256 steps against a 10M budget, while the
+/// lifetime ceiling on bulk bytes lands at MAX_TOTAL_STEPS * 16.
+pub const BULK_BYTES_PER_STEP: u64 = 16;
+
 /// Result of a single step.
 #[derive(Debug, Clone)]
 pub struct StepResult {
@@ -242,6 +272,9 @@ pub struct Cpu {
     /// Steps refunded by sleeping so far, capped at MAX_REFUND_STEPS
     /// per loaded program.
     refund_steps_total: u64,
+    /// Output bytes refunded by sleeping so far, capped at
+    /// MAX_REFUND_OUTPUT_BYTES per loaded program.
+    refund_output_total: usize,
     /// Table of hosted libc / syscall stubs reachable by `bl` into the
     /// synthetic 0xFFFF_0000 range. Populated by `Cpu::new` with the
     /// default suite of stubs; the linker reads `host.lookup(name)` to
@@ -301,6 +334,7 @@ impl Cpu {
             snapshots_paused: false,
             pending_sleep_ns: None,
             refund_steps_total: 0,
+            refund_output_total: 0,
             host: HostTable::new(),
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
@@ -376,6 +410,7 @@ impl Cpu {
         self.term = TermState::default();
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
+        self.refund_output_total = 0;
         self.snapshots_paused = false;
         self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
     }
@@ -409,6 +444,7 @@ impl Cpu {
         self.term = TermState::default();
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
+        self.refund_output_total = 0;
         self.snapshots_paused = false;
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
@@ -521,6 +557,39 @@ impl Cpu {
         self.output_total > MAX_OUTPUT_BYTES
     }
 
+    /// Whether the state a snapshot frame copies WHOLE -- virtual files,
+    /// queued stdin, open-file paths -- has outgrown the ring's budget.
+    /// Guest pages are shared copy-on-write, so they cost nothing to
+    /// snapshot, but these are real copies on every step: 100k steps with
+    /// a 1 MiB virtual file took 51 s against 73 ms with none.
+    fn snapshot_side_bytes_exceeded(&self) -> bool {
+        let mut bytes = self.stdin.len();
+        for (path, data) in &self.vfs {
+            bytes += path.len() + data.len();
+            if bytes > MAX_SNAPSHOT_SIDE_BYTES {
+                return true;
+            }
+        }
+        bytes += self
+            .open_files
+            .values()
+            .map(|f| f.path.len())
+            .sum::<usize>();
+        bytes > MAX_SNAPSHOT_SIDE_BYTES
+    }
+
+    /// Charge the step budget for bulk guest memory a host stub or a
+    /// syscall just moved. One `bl memset` is one step but can write the
+    /// whole address space, so the runaway wall needs the work counted in
+    /// proportion to the bytes, not to the call. `before` is
+    /// `mem.bytes_written()` captured ahead of the dispatch.
+    fn charge_bulk_work(&mut self, before: u64) {
+        let moved = self.mem.bytes_written().saturating_sub(before);
+        self.steps_total = self
+            .steps_total
+            .saturating_add(moved / BULK_BYTES_PER_STEP);
+    }
+
     /// Build the calm output-ceiling halt, mirroring `memory_cap_halt`.
     fn output_cap_halt(&mut self) -> StepResult {
         self.halted = true;
@@ -580,6 +649,13 @@ impl Cpu {
             });
         }
 
+        // The pending pause belongs to the step that asked for it. Left
+        // set, it made every later step report `Sleeping` again and
+        // pre-empted the next `run_until_break` into executing nothing --
+        // a permanent stall for any driver that did not remember to call
+        // `take_pending_sleep_ns`.
+        self.pending_sleep_ns = None;
+
         // Runaway-loop wall: once the cumulative instruction budget is
         // spent, halt calmly instead of executing another instruction.
         // Checked here so single-stepping a loop is bounded the same way run
@@ -615,8 +691,10 @@ impl Cpu {
         // stepping back into the middle of a live game has no meaning.
         // A host can also pause the ring explicitly (the web pauses it
         // while a program is driven live in the terminal pane, where the
-        // same cost argument applies to cooked-mode menus).
-        if self.term.raw_mode || self.snapshots_paused {
+        // same cost argument applies to cooked-mode menus), and the ring
+        // stops on its own once the side state it copies whole outgrows
+        // `MAX_SNAPSHOT_SIDE_BYTES`.
+        if self.term.raw_mode || self.snapshots_paused || self.snapshot_side_bytes_exceeded() {
             // Not recording this step. Drop the frames recorded BEFORE
             // this stretch too: keeping them lets one `step_back` leap
             // over every unrecorded step into a state many instructions
@@ -654,7 +732,9 @@ impl Cpu {
             // cap) gets the same calm halt as a write in normal code, never
             // a raw fault. Any other stub failure halts calmly too.
             let produced = self.stdout.len() + self.stderr.len();
+            let moved = self.mem.bytes_written();
             let dispatched = self.dispatch_host_stub(pc);
+            self.charge_bulk_work(moved);
             if self.charge_output(produced) {
                 return Ok(self.output_cap_halt());
             }
@@ -731,7 +811,9 @@ impl Cpu {
                 // the same calm halt as a write in normal code, never a raw
                 // fault.
                 let produced = self.stdout.len() + self.stderr.len();
+                let moved = self.mem.bytes_written();
                 let dispatched = self.dispatch_syscall(syscall_num);
+                self.charge_bulk_work(moved);
                 if self.charge_output(produced) {
                     return Ok(self.output_cap_halt());
                 }
@@ -890,9 +972,10 @@ impl Cpu {
         self.refund_steps_total += step_refund;
         self.steps_total = self.steps_total.saturating_sub(step_refund);
         if step_refund > 0 {
-            self.output_total = self
-                .output_total
-                .saturating_sub((ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize);
+            let byte_refund = ((ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize)
+                .min(MAX_REFUND_OUTPUT_BYTES.saturating_sub(self.refund_output_total));
+            self.refund_output_total += byte_refund;
+            self.output_total = self.output_total.saturating_sub(byte_refund);
         }
         self.pending_sleep_ns = Some(ns);
     }
@@ -1001,7 +1084,7 @@ impl Cpu {
     pub fn run_until_break(&mut self, max_steps: u32) -> Result<RunResult, EmuError> {
         let mut steps: u32 = 0;
 
-        while steps < max_steps && !self.halted && !self.blocked && self.pending_sleep_ns.is_none() {
+        while steps < max_steps && !self.halted && !self.blocked {
             let pc = self.regs.read_pc();
 
             // check breakpoint before executing (but not on the very first step
@@ -1016,8 +1099,16 @@ impl Cpu {
                 });
             }
 
-            self.step()?;
+            let result = self.step()?;
             steps += 1;
+            // A nanosleep hands control back so a real-time runner can
+            // honor the pause (it reads the duration with
+            // `take_pending_sleep_ns`). Breaking on the OUTCOME rather
+            // than on the pending flag means a runner that ignores the
+            // pause still makes progress on the next call.
+            if matches!(result.outcome, StepOutcome::Sleeping(_)) {
+                break;
+            }
         }
 
         let pc = self.regs.read_pc();
@@ -1097,6 +1188,7 @@ impl Cpu {
         self.snapshots_paused = false;
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
+        self.refund_output_total = 0;
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
         // the libc + hosted-printf/scanf stubs, and the frontend linker
         // needs them to resolve `bl printf` / `bl scanf` after a reset
@@ -1165,6 +1257,12 @@ impl Cpu {
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
+        // The ring still holds frames recorded AFTER this save was taken,
+        // so every one of them lies in the restored machine's future:
+        // stepping back into one moved the program FORWARD past the
+        // restore point. A restore ends the history, the same way an
+        // unrecorded stretch does. Named saves survive `clear()`.
+        self.snapshots.clear();
         // The abort message describes a run the restored state never took;
         // left in place it would resurface on the next run's result. The
         // step budget stays deliberately (see MAX_TOTAL_STEPS): clearing it
@@ -1896,6 +1994,146 @@ mod tests {
         cpu.step_back();
         assert!(cpu.abort_message.is_none());
         assert_eq!(cpu.steps_total, spent - 1);
+    }
+
+    #[test]
+    fn restoring_a_save_drops_the_step_back_history() {
+        // The ring still held frames recorded after the save, so they sat
+        // in the restored machine's FUTURE: one step back off a restore
+        // landed two instructions past the restore point.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(0, 1, 0),
+            encode_movz(1, 2, 0),
+            encode_movz(2, 3, 0),
+            encode_movz(3, 4, 0),
+            encode_svc(0),
+        ]);
+        cpu.step().unwrap();
+        cpu.save_state("checkpoint");
+        let restore_pc = cpu.regs.read_pc();
+        cpu.step().unwrap();
+        cpu.step().unwrap();
+        cpu.step().unwrap();
+
+        assert!(cpu.load_state("checkpoint"));
+        assert_eq!(cpu.regs.read_pc(), restore_pc);
+        assert!(!cpu.can_step_back(), "a restore ends the recorded history");
+        cpu.step_back();
+        assert_eq!(
+            cpu.regs.read_pc(),
+            restore_pc,
+            "step_back must never move the machine forward"
+        );
+        assert_eq!(cpu.regs.read_gpr(3, true), 0, "no future write survives");
+    }
+
+    #[test]
+    fn an_ignored_sleep_never_stalls_the_machine() {
+        use crate::hosted::{HostContext, HostOutcome};
+        fn sleeper(_ctx: &mut HostContext<'_>) -> Result<HostOutcome, crate::errors::EmuError> {
+            Ok(HostOutcome::Sleep(1_000_000))
+        }
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        let stub = cpu.host.register("sleeper", sleeper);
+        cpu.regs.write_pc(stub);
+        cpu.regs.write_gpr(30, true, CODE_BASE);
+
+        let first = cpu.run_until_break(10).unwrap();
+        assert_eq!(first.steps_executed, 1, "the run hands back at the pause");
+        assert!(!first.halted);
+
+        // The runner never asks for the pause -- a native embedder, or any
+        // driver that forgets `take_pending_sleep_ns`. Both later calls
+        // used to execute zero steps forever.
+        let second = cpu.run_until_break(10).unwrap();
+        assert!(
+            second.steps_executed > 0,
+            "a forgotten pause must not wedge the run loop"
+        );
+        assert!(second.halted);
+        assert_eq!(cpu.regs.read_gpr(0, true), 7);
+    }
+
+    #[test]
+    fn only_the_sleeping_step_reports_sleeping() {
+        use crate::hosted::{HostContext, HostOutcome};
+        fn sleeper(_ctx: &mut HostContext<'_>) -> Result<HostOutcome, crate::errors::EmuError> {
+            Ok(HostOutcome::Sleep(1_000_000))
+        }
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        let stub = cpu.host.register("sleeper", sleeper);
+        cpu.regs.write_pc(stub);
+        cpu.regs.write_gpr(30, true, CODE_BASE);
+
+        let slept = cpu.step().unwrap();
+        assert_eq!(slept.outcome, StepOutcome::Sleeping(1_000_000));
+        // The pause is still readable right after the step that asked for
+        // it, and the next step clears it: it describes one instruction,
+        // not the rest of the program.
+        let next = cpu.step().unwrap();
+        assert_eq!(next.outcome, StepOutcome::Advance);
+        assert_eq!(cpu.take_pending_sleep_ns(), None);
+    }
+
+    #[test]
+    fn bulk_stub_work_is_charged_against_the_step_budget() {
+        use crate::hosted::{HostContext, HostOutcome};
+        // A whole-page fill inside ONE instruction, the shape of `memset`
+        // over an already-mapped buffer. Unpriced, a loop of these picks
+        // its own workload per step and the runaway wall never sees it.
+        fn fills_a_page(ctx: &mut HostContext<'_>) -> Result<HostOutcome, crate::errors::EmuError> {
+            for i in 0..4096u64 {
+                ctx.mem.write_u8(0x1000_0000 + i, 0xAB)?;
+            }
+            Ok(HostOutcome::Continue)
+        }
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 7, 0), encode_svc(0)]);
+        let stub = cpu.host.register("filler", fills_a_page);
+        cpu.regs.write_pc(stub);
+        cpu.regs.write_gpr(30, true, CODE_BASE);
+
+        cpu.step().unwrap();
+        assert_eq!(
+            cpu.steps_total,
+            1 + 4096 / BULK_BYTES_PER_STEP,
+            "the bytes moved must be charged on top of the step itself"
+        );
+
+        // An ordinary instruction still costs exactly one step.
+        let before = cpu.steps_total;
+        cpu.step().unwrap();
+        assert_eq!(cpu.steps_total, before + 1);
+    }
+
+    #[test]
+    fn the_sleep_output_refund_stops_at_its_lifetime_cap() {
+        // Refunded output had no cap of its own, so the step refund's cap
+        // was the only limit and the documented 4 MiB output wall was
+        // really 23 MiB. The lifetime cap states the true ceiling:
+        // MAX_OUTPUT_BYTES, plus at most MAX_REFUND_OUTPUT_BYTES earned
+        // back by real pauses.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_svc(0)]);
+        let start = MAX_OUTPUT_BYTES * 3;
+        cpu.output_total = start;
+        let per_sleep = (MAX_SLEEP_NS / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize;
+        for _ in 0..(MAX_REFUND_OUTPUT_BYTES / per_sleep + 20) {
+            cpu.apply_sleep(MAX_SLEEP_NS);
+        }
+        assert_eq!(
+            start - cpu.output_total,
+            MAX_REFUND_OUTPUT_BYTES,
+            "the output refund must stop at its lifetime cap"
+        );
+        // A fresh program starts the refund budget over.
+        cpu.load_program(&[encode_svc(0)]);
+        cpu.output_total = start;
+        cpu.apply_sleep(MAX_SLEEP_NS);
+        assert_eq!(start - cpu.output_total, per_sleep);
     }
 
     #[test]

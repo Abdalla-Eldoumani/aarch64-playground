@@ -66,8 +66,9 @@ average and the status bar shows it halted with exit code 0.
 
 ## step and set a breakpoint
 
-Reset (`Shift+F5`), then **Step** (`F10`) to advance one instruction at a
-time. Changed registers flash, the disassembly highlights the current PC,
+Assemble again (`F6`), then **Step** (`F10`) to advance one instruction at
+a time. (Reset clears the loaded program, so step stays disabled until the
+next assemble.) Changed registers flash, the disassembly highlights the current PC,
 and the stack updates as the prologue runs. Click a line number in the
 editor to set a breakpoint; **Run** stops there.
 
@@ -77,7 +78,7 @@ Every instruction in the reference works, plus more; see
 [`instruction-reference.md`](instruction-reference.md). A few things that
 come in handy:
 
-- Register aliases (`define(i_r, w19)`) show faded next to the register name.
+- Register aliases (`define(score1_r, w19)`) resolve in the decode strip's gloss, which annotates the operand as `score1_r=w19`. (The faded label beside each register name is the fixed ABI role -- `arg0`, `fp`, `lr` -- not your alias.)
 - Stack-frame slots (`score1_s = 16`) resolve to numeric offsets at assemble time, so `[fp, score1_s]` becomes `[x29, 16]`.
 - Literal loads (`ldr x0, =msg`) work without wiring: the linker adds `msg`'s address to the pool and patches the LDR.
 - Host calls (`bl printf`) route through a per-host trampoline the linker plants in `.text`.
@@ -118,7 +119,7 @@ for the full index of where each lives.
 - **Save states** (the saves tab) snapshot the CPU under a name. The run loop also records recent instructions, so **Step back** (`Shift+F10`) undoes the last one.
 - **Bookmarks** (same tab) persist across reloads: they store source, args, stdin, and step count, and restore by re-running to the saved step. Export and import as JSON to share a setup.
 - **Replay scrubber** appears once you have stepped at least twice; drag it to walk back through recent frames.
-- **Diagnostic bundle** (next to **share**) copies a markdown report of source, args, stdin, output, exit code, and register state, plus a `?bundle=` link that reopens the same state.
+- **Diagnostic bundle** (next to **share**) copies a markdown report of source, args, output, exit code, and register state, plus a `?bundle=` link that reopens the same state.
 - **Watch expressions** (the watches tab) evaluate a small grammar (`x0`, `*x0`, `[fp, score1_s]`, `arr[i]`) every time the CPU stops.
 - **Memory watches** (the memwatch tab) pin labelled address ranges.
 - **Base converter** (the convert tab) keeps hex, binary, decimal, and the signed and unsigned readings in sync at 8, 16, 32, or 64 bits; click a bit to flip it. Also on the reference page and in the command palette.
@@ -129,7 +130,7 @@ for the full index of where each lives.
 - **Three themes** cycle through dark, light, and high-contrast from the header.
 - **Per-panel zoom** with `Ctrl+Wheel` over a panel.
 - **Source formatter** (`Ctrl+Shift+F`) lowercases mnemonics, indents to 8 spaces, and aligns trailing comments to column 40.
-- **Embed mode** (`?embed=1`) strips the chrome to the editor and console for slide decks.
+- **Embed mode** (`?embed=1`) strips the chrome to the editor, registers, and console for slide decks.
 - **Offline**: the app is a PWA, so once loaded the shell, examples, and icons work offline.
 
 ## keyboard shortcuts

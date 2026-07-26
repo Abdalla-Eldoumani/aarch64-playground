@@ -62,6 +62,8 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   LSL: { summary: "Logical shift left (Rd = Rn << amount).", cExample: "Rd = Rn << amt;" },
   LSR: { summary: "Logical shift right (unsigned).", cExample: "Rd = (unsigned)Rn >> amt;" },
   ASR: { summary: "Arithmetic shift right (sign-extending).", cExample: "Rd = (int)Rn >> amt;" },
+  ROR: { summary: "Rotate right: bits leaving the bottom re-enter at the top.", cExample: "Rd = (Rn >> amt) | (Rn << (64 - amt));" },
+  SBFX: { summary: "Extract a bitfield and sign-extend it.", cExample: "Rd = (int64_t)(Rn << (63 - (lsb + width - 1))) >> (64 - width);" },
   UBFX: {
     summary: "Unsigned bitfield extract: Rd = (Rn >> lsb) & ((1 << width) - 1).",
     details: ["Pulls `width` bits starting at `lsb` down to bit 0 and zeros the rest. The pattern for unpacking flag fields."],

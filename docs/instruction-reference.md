@@ -8,13 +8,13 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 
 | Mnemonic | Form                             | Notes                                    |
 | -------- | -------------------------------- | ---------------------------------------- |
-| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift. |
+| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift; a repeating bit pattern that fits no shifted field (e.g. `#0x5555555555555555`) lowers to `ORR Xd, XZR, #imm` instead. |
 | `MOVZ`   | `MOVZ Xd, #imm, LSL #shift`      | Zero upper bits, shift is 0/16/32/48.    |
 | `MOVK`   | `MOVK Xd, #imm, LSL #shift`      | Keep other halfwords.                    |
 | `MOVN`   | `MOVN Xd, #imm, LSL #shift`      | Bitwise NOT, same shifts.                |
-| `ADD`    | `ADD Xd, Xn, Xm` / `..., #imm`   | No flags.                                |
+| `ADD`    | `ADD Xd, Xn, Xm` / `..., #imm` / `ADD Xd, Xn, Wm, SXTW #s` | No flags. The last form is the extended-register one: the index register is widened (`UXTB`/`UXTH`/`UXTW`/`UXTX`/`SXTB`/`SXTH`/`SXTW`/`SXTX`) and then shifted left by 0 to 4. It is the only register form that reaches `SP`. |
 | `ADDS`   | same                             | Sets NZCV.                               |
-| `SUB`    | `SUB Xd, Xn, Xm` / `..., #imm`   | No flags.                                |
+| `SUB`    | `SUB Xd, Xn, Xm` / `..., #imm` / `SUB Xd, Xn, Wm, SXTW #s` | No flags. Same extended-register form as `ADD`. |
 | `SUBS`   | same                             | Sets NZCV.                               |
 | `MUL`    | `MUL Xd, Xn, Xm`                 | Low 64 bits of product. Alias for `MADD Xd, Xn, Xm, XZR`. |
 | `MADD`   | `MADD Xd, Xn, Xm, Xa`            | Multiply-add: `Xd = Xa + Xn * Xm`.       |
@@ -31,7 +31,9 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `LSL`    | `LSL Xd, Xn, #imm` / `LSL Xd, Xn, Xm` | Logical shift left by an immediate (0 to width-1) or by a register, modulo the width. |
 | `LSR`    | `LSR Xd, Xn, #imm` / `LSR Xd, Xn, Xm` | Logical shift right, immediate or register amount. |
 | `ASR`    | `ASR Xd, Xn, #imm` / `ASR Xd, Xn, Xm` | Arithmetic shift right, immediate or register amount. |
+| `ROR`    | `ROR Xd, Xn, #imm` / `ROR Xd, Xn, Xm` | Rotate right, immediate or register amount. The immediate form is an alias for `EXTR Xd, Xn, Xn, #imm`; the register form is `RORV`. |
 | `UBFX`   | `UBFX Xd, Xn, #lsb, #width`      | Unsigned bitfield extract: pulls `width` bits starting at `lsb` down to bit 0, zeros the rest. Alias for `UBFM`. |
+| `SBFX`   | `SBFX Xd, Xn, #lsb, #width`      | Signed bitfield extract: the same field, sign-extended from its top bit instead of zeroed. Alias for `SBFM`. |
 | `BFI`    | `BFI Xd, Xn, #lsb, #width`       | Bitfield insert: drops the low `width` bits of `Xn` into `Xd` at `lsb`; every other `Xd` bit survives. Alias for `BFM`. |
 | `SXTB`   | `SXTB Xd, Wn` / `SXTB Wd, Wn`    | Sign-extend a byte. Alias for `SBFM`.    |
 | `SXTH`   | `SXTH Xd, Wn` / `SXTH Wd, Wn`    | Sign-extend a halfword.                  |
@@ -81,7 +83,7 @@ Addressing modes:
 - **register offset**: `[Xn, Xm]` (LSL by access size) or `[Xn, Wm, SXTW #k]`
 - **register offset with extend**: `[Xn, Wm, UXTW]`, `[Xn, Xm, LSL #3]`, `[Xn, Xm, SXTX]`, etc.
 
-Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned immediate-offset form `[Xn, #imm]` only. FP data moves (`LDR`/`STR` with a `Dt` or `St` target) accept the same immediate addressing as the integer forms: scaled offsets, negative and unaligned offsets via the unscaled encoding, and pre/post-index writeback. Register-offset addressing stays integer-only.
+Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take the unsigned immediate-offset form `[Xn, #imm]` and the register-offset forms, but no pre/post-index writeback. FP data moves (`LDR`/`STR` with a `Dt` or `St` target) accept the same immediate addressing as the integer forms: scaled offsets, negative and unaligned offsets via the unscaled encoding, and pre/post-index writeback. Register-offset addressing stays integer-only.
 
 ## PC-relative addressing
 
@@ -171,7 +173,7 @@ Every scalar instruction takes both course views of the register file: the S for
 | `define(NAME, BODY)`     | Token-boundary substitution. Use for register aliases. |
 | `NAME = EXPRESSION`      | Symbol assignment. `.` is the address at the line where the assignment appears. |
 
-`ifdef`, `ifelse`, `forloop`, `dnl`, and backtick quoting are rejected.
+`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected, and so is a backtick anywhere except ``undefine(`NAME')``, whose m4 quotes are legal. Undefining a name ends that define's reach at that line, so an alias can be rebound per function.
 
 ## GCC output compatibility
 
@@ -193,6 +195,9 @@ Pre-registered and available without setup:
 | `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
 | `rand` / `srand`               | The portable C LCG, `RAND_MAX` 32767. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
 | `time`                         | Returns a fixed timestamp (and stores it through `x0` when non-null), so `srand(time(0))` seeds the same run every time. Reproducibility over wall-clock realism, by design. |
+| `malloc` / `free`              | A fixed 1 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
+| `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
+| `fflush`                       | Accepted and ignored: output is never buffered here. |
 
 ## Syscalls (`svc 0` with `x8`)
 
@@ -205,6 +210,11 @@ Pre-registered and available without setup:
 | 64 | write       | `x0=fd`, `x1=buf`, `x2=count`            |
 | 93 | exit        | `x0=status`                              |
 | 94 | exit_group  | `x0=status` (what glibc's `exit()` issues; same effect as 93) |
+| 25 | fcntl       | `x0=fd`, `x1=cmd`, `x2=arg` (F_GETFL / F_SETFL with O_NONBLOCK on stdin) |
+| 29 | ioctl       | `x0=fd`, `x1=request`, `x2=argp` (TCGETS / TCSETS termios, the raw-mode handshake) |
+| 101 | nanosleep  | `x0=req`, `x1=rem` (pauses the run; the virtual clock advances) |
+| 113 | clock_gettime | `x0=clock_id`, `x1=timespec`            |
+| 278 | getrandom  | `x0=buf`, `x1=buflen`, `x2=flags` (deterministic, so replay matches) |
 
 ## NZCV flags
 

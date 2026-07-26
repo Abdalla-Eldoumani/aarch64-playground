@@ -43,7 +43,7 @@ pub fn lint(source: &str) -> Vec<LintWarning> {
         return Vec::new();
     };
     let mut warnings = Vec::new();
-    macro_hygiene(source, &expanded.defines, &mut warnings);
+    macro_hygiene(source, &expanded, &mut warnings);
     frame_balance(&expanded, &mut warnings);
     warnings.sort_by_key(|w| w.line);
     warnings
@@ -78,15 +78,17 @@ fn is_reserved_name(name: &str) -> bool {
     )
 }
 
-fn macro_hygiene(
-    source: &str,
-    defines: &HashMap<String, String>,
-    warnings: &mut Vec<LintWarning>,
-) {
-    if defines.is_empty() {
+fn macro_hygiene(source: &str, expanded: &m4::Expanded, warnings: &mut Vec<LintWarning>) {
+    if expanded.defines.is_empty() {
         return;
     }
-    for (name, body) in defines {
+    // One warning per define SITE, quoting that site's own body. Walking
+    // the collapsed `defines` map instead named the last body a redefined
+    // macro ever had, on whichever line a text scan happened to find
+    // first -- so a windowed alias was reported against the wrong
+    // register entirely.
+    for (line, name, body) in &expanded.define_events {
+        let Some(body) = body else { continue };
         // The course's own canonical aliases: `define(fp, x29)` and
         // `define(lr, x30)` restate what GAS already predefines, so they
         // change nothing anywhere. Never warn on those.
@@ -94,7 +96,7 @@ fn macro_hygiene(
             || (name == "lr" && body.trim().eq_ignore_ascii_case("x30"));
         if !canonical && is_reserved_name(name) {
             warnings.push(LintWarning {
-                line: define_line(source, name).unwrap_or(1),
+                line: *line,
                 message: format!(
                     "the macro name `{name}` is also a register or instruction \
                      name -- every later use of `{name}` becomes `{body}`; \
@@ -107,31 +109,14 @@ fn macro_hygiene(
     // the student wrote (expansion leaves them alone by design).
     for (idx, raw) in source.lines().enumerate() {
         let line = idx + 1;
-        scan_line_for_hygiene(raw, line, defines, warnings);
+        scan_line_for_hygiene(raw, line, expanded, warnings);
     }
-}
-
-/// Line number of `define(name, ...)` in the original source, for
-/// anchoring the reserved-name warning.
-fn define_line(source: &str, name: &str) -> Option<usize> {
-    for (idx, raw) in source.lines().enumerate() {
-        let t = raw.trim_start();
-        if let Some(rest) = t.strip_prefix("define") {
-            let rest = rest.trim_start();
-            if let Some(inner) = rest.strip_prefix('(') {
-                if inner.trim_start().starts_with(name) {
-                    return Some(idx + 1);
-                }
-            }
-        }
-    }
-    None
 }
 
 fn scan_line_for_hygiene(
     raw: &str,
     line: usize,
-    defines: &HashMap<String, String>,
+    expanded: &m4::Expanded,
     warnings: &mut Vec<LintWarning>,
 ) {
     // Ignore the define lines themselves and comment-only content.
@@ -165,7 +150,10 @@ fn scan_line_for_hygiene(
                 i += 1;
             }
             let ident = &code[start..i];
-            if let Some(body) = defines.get(ident) {
+            // The body in effect HERE, not the last one in the file: a
+            // per-function alias rebound further down must not put a
+            // register the student never wrote into this warning.
+            if let Some(body) = expanded.define_body_at(ident, line) {
                 if in_string || in_char {
                     warnings.push(LintWarning {
                         line,

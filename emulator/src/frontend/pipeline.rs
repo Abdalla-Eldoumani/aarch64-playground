@@ -56,6 +56,64 @@ pub struct LinkedImage {
     pub line_map: Vec<(u64, u32)>,
 }
 
+/// Literal-pool slot identity: the operand text, plus the address of the
+/// LDR when the expression names the current address (`ldr xN, =. + k`).
+/// Everything else deduplicates by text alone, the way GAS pools do.
+type PoolKey = (String, Option<u64>);
+
+/// Every value a `name = expr` equate takes, keyed by name, as
+/// `(1-based source line, value)` pairs in no particular order.
+///
+/// GAS treats `=` as `.set`, which is POSITIONAL: a use takes the most
+/// recent definition above it, and a use above every definition takes the
+/// first one (both verified against aarch64-linux-gnu-as). Two files
+/// concatenated into one workspace can each write `len = . - msg` against
+/// their own string, and the linker used to keep only the first value and
+/// hand it to both files' uses. Labels stay file-wide, as they are in GAS.
+type EquateDefs = HashMap<String, Vec<(usize, u64)>>;
+
+/// The value `name` holds at 1-based source `line`. Equates resolve
+/// positionally; labels, host stubs and trampolines come from the flat
+/// table, where they are visible from anywhere.
+fn symbol_at(
+    name: &str,
+    line: usize,
+    symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
+) -> Option<i64> {
+    let Some(defs) = equates.get(name) else {
+        return symbols.get(name).map(|v| *v as i64);
+    };
+    let mut best: Option<(usize, u64)> = None;
+    for (at, value) in defs {
+        if *at <= line && best.is_none_or(|(chosen, _)| *at >= chosen) {
+            best = Some((*at, *value));
+        }
+    }
+    match best {
+        Some((_, value)) => Some(value as i64),
+        // Above every definition: GAS resolves a forward reference to the
+        // first binding the symbol receives.
+        None => defs.iter().min_by_key(|(at, _)| *at).map(|(_, v)| *v as i64),
+    }
+}
+
+/// Record one resolved equate definition. The flat table keeps the FIRST
+/// value so that everything reading it as a plain map -- the membership
+/// test in `looks_like_expression`, `LinkedImage.symbols`, the legacy
+/// encoder's label lookup -- sees exactly what it saw before positional
+/// resolution existed.
+fn record_equate(
+    name: &str,
+    line: usize,
+    value: u64,
+    symbols: &mut HashMap<String, u64>,
+    equates: &mut EquateDefs,
+) {
+    symbols.entry(name.to_string()).or_insert(value);
+    equates.entry(name.to_string()).or_default().push((line, value));
+}
+
 pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, EmuError> {
     let prog = parse(source)?;
     link(&prog, host)
@@ -63,6 +121,7 @@ pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, Em
 
 fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     let mut symbols: HashMap<String, u64> = HashMap::new();
+    let mut equates: EquateDefs = HashMap::new();
 
     // Pass 1a: place labels at section base + running byte offset, and
     // collect `name = expr` assignments with the address where they
@@ -86,6 +145,11 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // sites. GAS rejects a redefined label; accepting it here made the
     // last definition win silently, so branches jumped to the wrong copy.
     let mut label_lines: HashMap<String, usize> = HashMap::new();
+    // Absolute address of each `.text` instruction, in emission order.
+    // Pass 1d needs it to size a per-site literal pool slot for
+    // `ldr xN, =. + k`, and taking it from this walk is what keeps the
+    // three passes' layouts from drifting apart.
+    let mut text_instr_pcs: Vec<u64> = Vec::new();
     for section in &prog.sections {
         let base = section.kind.default_base();
         let mut offset: u64 = 0;
@@ -137,16 +201,24 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                             ),
                         });
                     }
-                    if !symbols.contains_key(name) {
-                        if let Some(v) = try_evaluate_at(body, base + offset, &symbols, *original_line) {
-                            symbols.insert(name.clone(), v as u64);
-                            continue;
-                        }
+                    // Every definition is folded and recorded, not just the
+                    // first: a redefined name has one value per site and
+                    // each use takes the one above it. Folding here rather
+                    // than waiting for pass 1c is what lets `.skip
+                    // STACKSIZE * 4` size during this very walk.
+                    if let Some(v) =
+                        try_evaluate_at(body, base + offset, &symbols, &equates, *original_line)
+                    {
+                        record_equate(name, *original_line, v as u64, &mut symbols, &mut equates);
+                        continue;
                     }
                     assignments.push((name.clone(), body.clone(), base + offset, *original_line));
                 }
                 Item::Instruction { original_line, .. } => {
                     last_line = *original_line;
+                    if section.kind == SectionKind::Text {
+                        text_instr_pcs.push(base + offset);
+                    }
                     // Data emitted into .text above this point knocked every
                     // following instruction off its 4-byte boundary; report
                     // it here, where the line is known, instead of letting
@@ -172,7 +244,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     last_line = *original_line;
                     let value = evaluate(
                         tokens,
-                        &|name| symbols.get(name).map(|v| *v as i64),
+                        &|name| symbol_at(name, *original_line, &symbols, &equates),
                         (base + offset) as i64,
                         *original_line,
                     )?;
@@ -219,22 +291,22 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         let mut changed = false;
         let mut remaining: Vec<(String, String, u64, usize)> = Vec::new();
         for (name, body, here, line) in &assignments {
-            if symbols.contains_key(name) {
-                // A pending assignment whose name turned out to be a label
-                // (defined after it) must not vanish silently.
-                if let Some(first) = label_lines.get(name) {
-                    return Err(EmuError::AssemblyError {
-                        line: *line,
-                        message: format!(
-                            "`{name} = ...` collides with the label `{name}:` \
-                             on line {first} -- rename one of them"
-                        ),
-                    });
-                }
-                continue;
+            // A pending assignment whose name turned out to be a label
+            // (defined after it) must not vanish silently. Checked against
+            // `label_lines` rather than the folded-symbol table, because a
+            // name bound by an earlier equate is no longer a reason to
+            // skip this definition -- each one has its own value.
+            if let Some(first) = label_lines.get(name) {
+                return Err(EmuError::AssemblyError {
+                    line: *line,
+                    message: format!(
+                        "`{name} = ...` collides with the label `{name}:` \
+                         on line {first} -- rename one of them"
+                    ),
+                });
             }
-            if let Some(v) = try_evaluate_at(body, *here, &symbols, *line) {
-                symbols.insert(name.clone(), v as u64);
+            if let Some(v) = try_evaluate_at(body, *here, &symbols, &equates, *line) {
+                record_equate(name, *line, v as u64, &mut symbols, &mut equates);
                 changed = true;
             } else {
                 remaining.push((name.clone(), body.clone(), *here, *line));
@@ -255,7 +327,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         let tokens = lex(body, *line)?;
         evaluate(
             &tokens,
-            &|name| symbols.get(name).map(|v| *v as i64),
+            &|name| symbol_at(name, *line, &symbols, &equates),
             *here as i64,
             *line,
         )?;
@@ -263,22 +335,51 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         // assignment against the same symbol table.
     }
 
+    // Pin each equate's flat-table value to its FIRST definition by SOURCE
+    // line. The flat table is what every non-positional reader gets
+    // (`LinkedImage.symbols`, the legacy encoder's label lookup), and the
+    // passes above fill it in walk order -- which is section order, not
+    // source order -- so a redefined name could otherwise land there with
+    // whichever definition the linker happened to reach first.
+    for (name, defs) in &equates {
+        if let Some((_, value)) = defs.iter().min_by_key(|(line, _)| *line) {
+            symbols.insert(name.clone(), *value);
+        }
+    }
+
     // Pass 1d: scan .text instructions for `ldr xN, =expr` to size the
     // literal pool, and for `bl <hostname>` calls that need a trampoline
     // because direct BL cannot reach the 0xFFFF_0000 host-stub range.
-    let mut pool_slots: HashMap<String, u64> = HashMap::new();
+    // Keyed by operand text plus, for a `.`-relative expression, the
+    // address of the LDR itself. `ldr x0, =. + 8` is a different constant
+    // at every site, so sharing one slot by text handed the second site
+    // the first one's value -- and `.` used to resolve to 0 outright.
+    let mut pool_slots: HashMap<PoolKey, u64> = HashMap::new();
     let mut pool_values: Vec<u64> = Vec::new();
     let mut host_trampolines: Vec<String> = Vec::new();
     let mut host_trampoline_set: HashMap<String, ()> = HashMap::new();
+    let mut text_pcs = text_instr_pcs.iter();
     for section in &prog.sections {
         if section.kind != SectionKind::Text {
             continue;
         }
         for item in &section.items {
             if let Item::Instruction { tokens, original_line } = item {
-                if let Some(target_text) = extract_ldr_eq_operand(tokens) {
-                    if let std::collections::hash_map::Entry::Vacant(slot) = pool_slots.entry(target_text) {
-                        let value = resolve_ldr_eq_target(slot.key(), &symbols, *original_line)?;
+                let pc = *text_pcs
+                    .next()
+                    .expect("pass 1a records one pc per .text instruction");
+                if let Some((target_text, dot_relative)) = extract_ldr_eq_operand(tokens) {
+                    let here = if dot_relative { Some(pc) } else { None };
+                    if let std::collections::hash_map::Entry::Vacant(slot) =
+                        pool_slots.entry((target_text, here))
+                    {
+                        let value = resolve_ldr_eq_target(
+                            &slot.key().0,
+                            &symbols,
+                            &equates,
+                            here.unwrap_or(0),
+                            *original_line,
+                        )?;
                         slot.insert(pool_values.len() as u64 * 8);
                         pool_values.push(value);
                     }
@@ -341,7 +442,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         // if one isn't already there under the host name.
         let host_addr = *symbols.get(name).expect("host target in symbols");
         pool_slots
-            .entry(name.clone())
+            .entry((name.clone(), None))
             .or_insert_with(|| {
                 let slot = pool_values.len() as u64 * 8;
                 pool_values.push(host_addr);
@@ -390,7 +491,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         let here = base + offset + (i * width) as u64;
                         let value = evaluate(
                             group,
-                            &|name| symbols.get(name).map(|v| *v as i64),
+                            &|name| symbol_at(name, *original_line, &symbols, &equates),
                             here as i64,
                             *original_line,
                         )?;
@@ -419,16 +520,17 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         });
                     }
                     let pc = base + offset;
-                    let word = if let Some(target_text) = extract_ldr_eq_operand(tokens) {
+                    let word = if let Some((target_text, dot_relative)) =
+                        extract_ldr_eq_operand(tokens)
+                    {
                         let (rt, sf) = parse_ldr_eq_rt(tokens, *original_line)?;
-                        let slot = *pool_slots.get(&target_text).ok_or_else(|| {
-                            EmuError::LinkError {
+                        let here = if dot_relative { Some(pc) } else { None };
+                        let slot = *pool_slots.get(&(target_text.clone(), here)).ok_or_else(
+                            || EmuError::LinkError {
                                 line: *original_line,
-                                message: format!(
-                                    "no literal pool slot for `{target_text}`"
-                                ),
-                            }
-                        })?;
+                                message: format!("no literal pool slot for `{target_text}`"),
+                            },
+                        )?;
                         let slot_addr = pool_base + slot;
                         let byte_offset = slot_addr as i64 - pc as i64;
                         encode_ldr_literal(sf, rt, byte_offset)?
@@ -474,7 +576,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                             // correctly.
                             format!("bl {name}")
                         } else {
-                            lower_operands(&stripped, pc, &symbols, *original_line)?
+                            lower_operands(&stripped, pc, &symbols, &equates, *original_line)?
                         };
                         assembler::encode_line_absolute(
                             &line_text,
@@ -501,7 +603,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // instructions per trampoline = 8 bytes.
     for (idx, name) in host_trampolines.iter().enumerate() {
         let addr = tramp_base + (idx as u64) * 8;
-        let slot = pool_slots[name];
+        let slot = pool_slots[&(name.clone(), None)];
         let slot_addr = pool_base + slot;
         let byte_offset = slot_addr as i64 - addr as i64;
         let ldr_word = encode_ldr_literal(true, 16, byte_offset)?;
@@ -528,9 +630,17 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                 .into(),
         });
     }
+    // An entry point has to be a LABEL. `main = 5` also lands in `symbols`,
+    // and taking it started execution at address 5 with no diagnostic.
+    let main_is_label = label_lines.contains_key("main");
+    let start_is_label = label_lines.contains_key("_start");
+
     // `.global main` with no `main:` silently fell back to CODE_BASE;
-    // real ld reports the undefined reference.
-    if prog.globals.contains("main") && !symbols.contains_key("main") {
+    // real ld reports the undefined reference. It is only an error when
+    // nothing else can be the entry point, though: ld links a program that
+    // declares the global out of habit and enters at `_start`, because an
+    // unreferenced undefined global is not an error.
+    if prog.globals.contains("main") && !main_is_label && !start_is_label {
         return Err(EmuError::LinkError {
             line: 0,
             message: "no `main:` label found -- `.global main` was declared \
@@ -541,7 +651,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // A file with neither entry symbol used to run from the top of
     // .text, which turns a helpers-only file into a confusing crash.
     // Real ld refuses to link it; so do we.
-    if !symbols.contains_key("main") && !symbols.contains_key("_start") {
+    if !main_is_label && !start_is_label {
         return Err(EmuError::LinkError {
             line: 0,
             message: "no entry point -- define `main:` (declared `.global main`) \
@@ -550,7 +660,14 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                 .into(),
         });
     }
-    let entry_point = symbols.get("main").copied().unwrap_or(CODE_BASE);
+    // `_start`-only programs used to fall back to CODE_BASE, which runs
+    // whatever helper happens to sit at the top of .text instead of the
+    // program the student wrote.
+    let entry_point = if main_is_label {
+        symbols["main"]
+    } else {
+        symbols["_start"]
+    };
 
     Ok(LinkedImage {
         writes,
@@ -563,9 +680,13 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     })
 }
 
-/// Return the textual key for an `ldr xN, =<expr>` pseudo, or None if the
-/// instruction is something else.
-fn extract_ldr_eq_operand(tokens: &[crate::frontend::lexer::Token]) -> Option<String> {
+/// Return the textual key for an `ldr xN, =<expr>` pseudo plus whether the
+/// expression names the current address, or None if the instruction is
+/// something else. `.` makes the constant depend on where the LDR sits, so
+/// the caller has to key its pool slot per site rather than by text.
+fn extract_ldr_eq_operand(
+    tokens: &[crate::frontend::lexer::Token],
+) -> Option<(String, bool)> {
     if tokens.len() < 4 {
         return None;
     }
@@ -583,9 +704,17 @@ fn extract_ldr_eq_operand(tokens: &[crate::frontend::lexer::Token]) -> Option<St
         return None;
     }
     // The operand text is everything after the '='; stringify tokens.
-    Some(stringify_tokens(&after[1..]))
+    let operand = &after[1..];
+    let dot_relative = operand.iter().any(|t| matches!(t.kind, TokenKind::Dot));
+    Some((stringify_tokens(operand), dot_relative))
 }
 
+/// Render a token slice back to source text. Every `TokenKind` gets an
+/// arm on purpose: the old catch-all silently dropped whole tokens, so
+/// `ldr x0, =.Lmsg` (a DirectiveIdent) produced an empty operand and two
+/// different operands could collapse onto the same literal-pool key. The
+/// match stays exhaustive so a new token kind is a compile error here
+/// instead of a silent hole.
 fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
     let mut out = String::new();
     for t in tokens {
@@ -595,7 +724,24 @@ fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
             // other symbol; dropping them left an empty operand.
             TokenKind::DirectiveIdent(s) => out.push_str(s),
             TokenKind::IntLit(v) => out.push_str(&format!("{v}")),
+            TokenKind::FloatLit(v) => out.push_str(&format!("{v}")),
             TokenKind::CharLit(v) => out.push_str(&format!("{v}")),
+            // Re-quote the bytes so the result lexes back to this same
+            // literal. Non-printables use the OCTAL escape, which is
+            // capped at three digits: `\x` runs greedily, so a `\x01`
+            // followed by a printable hex digit would merge into one byte.
+            TokenKind::StringLit(bytes) => {
+                out.push('"');
+                for &b in bytes {
+                    match b {
+                        b'"' => out.push_str("\\\""),
+                        b'\\' => out.push_str("\\\\"),
+                        0x20..=0x7E => out.push(b as char),
+                        _ => out.push_str(&format!("\\{b:03o}")),
+                    }
+                }
+                out.push('"');
+            }
             TokenKind::Comma => out.push(','),
             TokenKind::Plus => out.push('+'),
             TokenKind::Minus => out.push('-'),
@@ -611,9 +757,14 @@ fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
             TokenKind::RShift => out.push_str(">>"),
             TokenKind::LParen => out.push('('),
             TokenKind::RParen => out.push(')'),
+            TokenKind::LBracket => out.push('['),
+            TokenKind::RBracket => out.push(']'),
+            TokenKind::LBrace => out.push('{'),
+            TokenKind::RBrace => out.push('}'),
+            TokenKind::Colon => out.push(':'),
+            TokenKind::Equals => out.push('='),
             TokenKind::Dot => out.push('.'),
             TokenKind::Hash => out.push('#'),
-            _ => {}
         }
         out.push(' ');
     }
@@ -648,15 +799,19 @@ fn parse_ldr_eq_rt(
 fn resolve_ldr_eq_target(
     text: &str,
     symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
+    here: u64,
     line: usize,
 ) -> Result<u64, EmuError> {
     // Lex the operand fragment, evaluate as an expression with the full
-    // symbol table. `. here` is meaningless in a pool entry so we pass 0.
+    // symbol table. `here` is the address of the LDR that asked for this
+    // slot, which is what GAS resolves `.` to inside an `=expr` operand.
+    // Passing 0 unconditionally made `ldr x0, =. + 8` load 8.
     let tokens = lex(text, line)?;
     let value = evaluate(
         &tokens,
-        &|name| symbols.get(name).map(|v| *v as i64),
-        0,
+        &|name| symbol_at(name, line, symbols, equates),
+        here as i64,
         line,
     )?;
     Ok(value as u64)
@@ -670,17 +825,28 @@ fn try_evaluate_at(
     body: &str,
     here: u64,
     symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
     line: usize,
 ) -> Option<i64> {
     let tokens = lex(body, line).ok()?;
     evaluate(
         &tokens,
-        &|name| symbols.get(name).map(|v| *v as i64),
+        &|name| symbol_at(name, line, symbols, equates),
         here as i64,
         line,
     )
     .ok()
 }
+
+/// How deep `[`...`]` nesting may go before an operand is refused.
+/// `rewrite_operand` and `rewrite_operand_list` call each other once per
+/// bracket level, so `[[[[...]]]]` recurses without bound. A wasm stack
+/// overflow is unrecoverable -- the trap skips wasm-bindgen's borrow-guard
+/// Drop and every later call fails on the stuck borrow flag -- so depth is
+/// counted and refused long before the stack is at risk. This mirrors
+/// `expr::MAX_EXPR_DEPTH`, which guards the same hazard on the expression
+/// side. Real addressing modes nest one level.
+const MAX_OPERAND_DEPTH: usize = 32;
 
 /// Walk the operand tail of an instruction line, evaluate any expression
 /// that resolves to a constant, and rewrite it as a plain numeric literal
@@ -692,6 +858,7 @@ fn lower_operands(
     line: &str,
     pc: u64,
     symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
     ln: usize,
 ) -> Result<String, EmuError> {
     let trimmed = line.trim();
@@ -713,7 +880,7 @@ fn lower_operands(
     {
         return Ok(format!("{mnemonic} {tail}"));
     }
-    let rewritten = rewrite_operand_list(tail, pc, symbols, ln)?;
+    let rewritten = rewrite_operand_list(tail, pc, symbols, equates, ln, 0)?;
     Ok(format!("{mnemonic} {rewritten}"))
 }
 
@@ -729,12 +896,14 @@ fn rewrite_operand_list(
     s: &str,
     pc: u64,
     symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
     ln: usize,
+    depth: usize,
 ) -> Result<String, EmuError> {
     let mut out: Vec<String> = Vec::new();
     let segments = split_top_level_commas(s);
     for seg in segments {
-        out.push(rewrite_operand(seg.trim(), pc, symbols, ln)?);
+        out.push(rewrite_operand(seg.trim(), pc, symbols, equates, ln, depth)?);
     }
     Ok(out.join(", "))
 }
@@ -763,8 +932,16 @@ fn rewrite_operand(
     s: &str,
     pc: u64,
     symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
     ln: usize,
+    depth: usize,
 ) -> Result<String, EmuError> {
+    if depth > MAX_OPERAND_DEPTH {
+        return Err(EmuError::AssemblyError {
+            line: ln,
+            message: format!("addressing operand nests deeper than {MAX_OPERAND_DEPTH} brackets"),
+        });
+    }
     let trimmed = s.trim();
     if trimmed.is_empty() {
         return Ok(String::new());
@@ -796,7 +973,7 @@ fn rewrite_operand(
         })?;
         let inside = &trimmed[1..close];
         let trailer = &trimmed[close..];
-        let rewritten_inside = rewrite_operand_list(inside, pc, symbols, ln)?;
+        let rewritten_inside = rewrite_operand_list(inside, pc, symbols, equates, ln, depth + 1)?;
         return Ok(format!("[{rewritten_inside}{trailer}"));
     }
     // Strip a leading `#` while evaluating; the legacy encoder accepts
@@ -805,7 +982,7 @@ fn rewrite_operand(
     if !looks_like_expression(body, symbols) {
         return Ok(trimmed.to_string());
     }
-    match try_evaluate_operand(body, pc, symbols, ln)? {
+    match try_evaluate_operand(body, pc, symbols, equates, ln)? {
         Some(value) => Ok(format!("{value}")),
         None => Ok(trimmed.to_string()),
     }
@@ -896,6 +1073,7 @@ fn try_evaluate_operand(
     body: &str,
     pc: u64,
     symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
     ln: usize,
 ) -> Result<Option<i64>, EmuError> {
     // A shift modifier's keyword-plus-amount shape (`lsl #(1 + 1)`) is an
@@ -917,7 +1095,7 @@ fn try_evaluate_operand(
     }
     match evaluate(
         &tokens,
-        &|name| symbols.get(name).map(|v| *v as i64),
+        &|name| symbol_at(name, ln, symbols, equates),
         pc as i64,
         ln,
     ) {
@@ -1042,8 +1220,45 @@ mod tests {
     use super::{
         redirect_bl_to_trampoline_tokens, stringify_tokens, strip_leading_labels,
     };
-    use crate::frontend::lexer::lex;
+    use crate::frontend::lexer::{lex, TokenKind};
     use std::collections::HashMap;
+
+    #[test]
+    fn stringify_carries_every_token_kind() {
+        // The old catch-all dropped FloatLit, StringLit, brackets, braces,
+        // `:` and `=` without a word, so two different operands could
+        // collapse onto one literal-pool key. Round-tripping through the
+        // lexer proves nothing is lost.
+        let source = r#"foo .Lbar 42 3.5 'A' "hi\n" , + - * / % & | ^ ~ ! << >> ( ) [ ] { } : = . #"#;
+        let tokens = lex(source, 1).unwrap();
+        let rendered = stringify_tokens(&tokens);
+        let relexed = lex(&rendered, 1).unwrap();
+        // A char literal deliberately renders as its numeric value, which
+        // is what the expression evaluator on the other side wants; every
+        // other kind has to come back exactly as it went in.
+        let expected: Vec<TokenKind> = tokens
+            .iter()
+            .map(|t| match &t.kind {
+                TokenKind::CharLit(v) => TokenKind::IntLit(i64::from(*v)),
+                other => other.clone(),
+            })
+            .collect();
+        assert_eq!(
+            relexed.iter().map(|t| t.kind.clone()).collect::<Vec<_>>(),
+            expected,
+            "rendered as: {rendered}"
+        );
+    }
+
+    #[test]
+    fn stringified_strings_survive_the_greedy_hex_escape() {
+        // `\x` runs until the first non-hex byte, so escaping a
+        // non-printable as `\x01` next to a printable '4' would re-lex as
+        // one 0x14. The octal escape is capped at three digits.
+        let tokens = lex("\"\\001 4\"", 1).unwrap();
+        let relexed = lex(&stringify_tokens(&tokens), 1).unwrap();
+        assert_eq!(relexed[0].kind, TokenKind::StringLit(vec![1, b' ', b'4']));
+    }
 
     #[test]
     fn strips_single_label() {

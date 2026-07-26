@@ -353,3 +353,152 @@ main:   mov     x0, 0
     );
     assert!(text.contains("line 2"), "error should blame line 2, got: {text}");
 }
+
+/// add/sub immediates, byte-matched against GNU as. The encoder used to
+/// refuse all four of these: anything over 4095, the explicit `lsl #12`,
+/// and a negative (which GAS re-spells as the opposite operation). The
+/// reference words come from `aarch64-linux-gnu-as` on the same source.
+#[test]
+fn add_sub_immediates_encode_exactly_as_gas_does() {
+    use aarch64_emulator::assembler::assemble;
+
+    let cases: [(&str, u32); 5] = [
+        // sub sp, sp, #0x1, lsl #12 -- the prologue that could not assemble
+        ("sub sp, sp, 4096", 0xd140_07ff),
+        ("add x0, x1, #1, lsl #12", 0x9140_0420),
+        // GAS turns a negative into the opposite operation
+        ("sub sp, sp, -16", 0x9100_43ff),
+        ("add x4, x5, -16", 0xd100_40a4),
+        // the largest unshifted immediate still encodes unshifted
+        ("sub x2, x3, 4095", 0xd13f_fc62),
+    ];
+
+    for (src, expected) in cases {
+        let got = assemble(src).unwrap_or_else(|e| panic!("{src}: {e}"));
+        assert_eq!(
+            got[0], expected,
+            "{src}: got {:#010x}, GAS emits {expected:#010x}",
+            got[0]
+        );
+    }
+}
+
+/// Forms the course toolchain assembles that this encoder used to refuse
+/// outright. Every expected word is what `aarch64-linux-gnu-as` emits for
+/// the same source line.
+#[test]
+fn the_forms_gas_accepts_encode_to_the_words_gas_emits() {
+    use aarch64_emulator::assembler::assemble;
+
+    let cases = [
+        // A bitmask constant is one ORR-immediate on the real assembler;
+        // this used to be "immediate out of range for MOV".
+        ("mov x0, 0x5555555555555555", 0xB200_F3E0u32),
+        ("mov x0, 0x00ff00ff00ff00ff", 0xB200_9FE0),
+        // ROR by an immediate is the EXTR alias; by a register it is RORV.
+        ("ror x0, x1, 3", 0x93C1_0C20),
+        ("ror w0, w1, 3", 0x1381_0C20),
+        ("ror x0, x1, x2", 0x9AC2_2C20),
+        // SBFX existed only as UBFX before, so signed extracts were an
+        // "unknown mnemonic".
+        ("sbfx x0, x1, 2, 4", 0x9342_1420),
+        ("sbfx w0, w1, 2, 4", 0x1302_1420),
+        // The extended-register form: the widening index behind every
+        // array subscript. The shift-modifier parser rejected it.
+        ("add x0, x1, w2, sxtw 2", 0x8B22_C820),
+        ("add x0, x1, x2, uxtx 1", 0x8B22_6420),
+        ("add w0, w1, w2, uxtb 1", 0x0B22_0420),
+        ("add sp, x1, w2, uxtw 2", 0x8B22_483F),
+        ("add x0, x1, w2, sxtw", 0x8B22_C020),
+        ("sub x0, x1, w2, uxth 3", 0xCB22_2C20),
+        ("adds x0, x1, w2, sxtb 4", 0xAB22_9020),
+        // The extend reaches the CMP alias, which routes through the same
+        // encoder with XZR as the destination.
+        ("cmp x0, w1, sxtw 2", 0xEB21_C81F),
+        // The plain shifted-register form must not have moved.
+        ("add x0, x1, x2, lsl 2", 0x8B02_0820),
+        ("ror x0, x1, 0", 0x93C1_0020),
+    ];
+    for (src, expected) in cases {
+        let got = assemble(src).unwrap_or_else(|e| panic!("{src}: {e}"));
+        assert_eq!(
+            got[0], expected,
+            "{src}: got {:#010x}, GAS emits {expected:#010x}",
+            got[0]
+        );
+    }
+
+    // The small constants keep the encoding GAS picks for them, so adding
+    // the bitmask fallback did not steal MOVZ/MOVN's cases.
+    assert_eq!(assemble("mov x0, 0xffff0000").unwrap()[0], 0xD2BF_FFE0);
+}
+
+/// The words above have to decode back and execute, not just encode.
+#[test]
+fn ror_and_sbfx_and_extended_add_run_to_the_right_values() {
+    let src = r#"
+.text
+.global main
+main:
+    mov     x1, 0x1234
+    ror     x2, x1, 4
+    mov     w3, 0x80
+    sbfx    w4, w3, 4, 4
+    mov     x5, 4
+    mov     w6, -2
+    add     x7, x5, w6, sxtw 1
+    mov     x8, 93
+    svc     0
+"#;
+    let cpu = run(src);
+    // 0x1234 rotated right by 4 wraps the low nibble to the top.
+    assert_eq!(cpu.regs.read_gpr(2, true), 0x4000_0000_0000_0123);
+    // Bits [7:4] of 0x80 are 0b1000, sign-extended to -8.
+    assert_eq!(cpu.regs.read_gpr(4, false) as u32 as i32, -8);
+    // 4 + sign_extend(-2) * 2.
+    assert_eq!(cpu.regs.read_gpr(7, true) as i64, 0);
+}
+
+#[test]
+fn an_immediate_that_needs_more_than_a_shift_is_refused_with_the_rule() {
+    use aarch64_emulator::assembler::assemble;
+    // 4097 is neither <= 4095 nor a multiple of 4096.
+    let err = assemble("add x0, x1, 4097").unwrap_err().to_string();
+    assert!(
+        err.contains("multiple of 4096"),
+        "the message should name the rule, got: {err}"
+    );
+}
+
+/// `parse_register` collapses sp and xzr to index 31, so these forms used
+/// to assemble and compute with ZERO instead of the stack pointer -- a
+/// silent wrong answer from a plausible typo. GAS refuses every one of
+/// them ("expected an integer or zero register"), and so must we.
+#[test]
+fn sp_is_refused_where_the_encoding_has_no_room_for_it() {
+    use aarch64_emulator::assembler::assemble;
+
+    for src in [
+        "and x0, sp, x1",
+        "orr x0, x1, sp",
+        "and sp, x0, x1",
+        "mul x0, sp, x1",
+        "mul x0, x1, sp",
+        "udiv x0, sp, x1",
+        "lsl x0, sp, x1",
+        "madd x0, sp, x1, x2",
+    ] {
+        let err = match assemble(src) {
+            Ok(words) => panic!("{src} must be refused, encoded {:#010x}", words[0]),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            err.contains("sp"),
+            "{src}: the message should name sp, got: {err}"
+        );
+    }
+
+    // The add/sub path DOES have an sp encoding and must keep working.
+    assert!(assemble("add x0, sp, x1").is_ok());
+    assert!(assemble("sub sp, sp, 16").is_ok());
+}
