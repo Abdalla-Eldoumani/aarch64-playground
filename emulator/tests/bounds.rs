@@ -10,8 +10,10 @@
 //! program arrived (typed, decoded from a share link, or uploaded).
 
 use aarch64_emulator::cpu::{
-    step_ceiling_message, Cpu, MAX_TOTAL_STEPS, MEMORY_CAP_MESSAGE,
+    step_ceiling_message, Cpu, MAX_SNAPSHOT_SIDE_BYTES, MAX_TOTAL_STEPS, MEMORY_CAP_MESSAGE,
 };
+use aarch64_emulator::frontend::pipeline::assemble_hosted;
+use aarch64_emulator::hosted::syscalls::MAX_OPEN_FILES;
 use aarch64_emulator::memory::MAX_MAPPED_PAGES;
 
 // Hand-encoded instructions, matching the convention in the cpu / hosted
@@ -105,6 +107,170 @@ fn memory_bomb_aborts_calmly_within_the_page_cap() {
     );
 }
 
+/// Assemble hosted source and load it, the way the playground does.
+fn load(src: &str) -> Cpu {
+    let mut cpu = Cpu::new();
+    let image =
+        assemble_hosted(src, &cpu.host).unwrap_or_else(|e| panic!("assembly failed: {e}"));
+    cpu.load_linked_image(&image).expect("load failed");
+    cpu
+}
+
+/// Twelve fills of a 64 KiB buffer through the `memset` stub. The buffer
+/// is mapped after the first pass, so the page cap never sees this work.
+const BUFFER_FILL_LOOP: &str = r#"
+        .bss
+buf:    .skip 65536
+        .text
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        stp     x19, x20, [sp, -16]!
+        mov     w19, 12
+fill:
+        ldr     x0, =buf
+        mov     x1, 0
+        movz    x2, 0x1, lsl 16
+        bl      memset
+        subs    w19, w19, 1
+        b.ne    fill
+        mov     w0, 0
+        ldp     x19, x20, [sp], 16
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_buffer_filling_loop_keeps_the_dirty_log_bounded() {
+    // The dirty log recorded one entry per byte and every snapshot frame
+    // copied the whole log, so this loop cost 0.4 s and 12 MB of pure
+    // bookkeeping at twelve iterations, and died on a 417 MB allocation at
+    // eight hundred. Sequential writes now coalesce into one range.
+    let mut cpu = load(BUFFER_FILL_LOOP);
+    let r = cpu.run_until_break(1_000_000).expect("run");
+    assert!(r.halted, "the fill loop finishes on its own");
+    assert!(r.error.is_none(), "no wall is tripped, got {:?}", r.error);
+    let dirty = cpu.mem.take_dirty();
+    assert!(
+        dirty.len() < 64,
+        "a 786 KB fill must not record 786k ranges, got {}",
+        dirty.len()
+    );
+}
+
+#[test]
+fn a_large_virtual_filesystem_stops_the_snapshot_ring() {
+    // Guest pages are shared copy-on-write, so a frame costs almost
+    // nothing to take -- but the virtual files, the queued stdin and the
+    // open-file paths are copied whole, once per step. 100k steps with a
+    // 1 MiB virtual file took 51 s against 73 ms with none. Past the side
+    // budget the ring stops recording, the same trade a raw-mode program
+    // makes, and the run goes back to full speed.
+    let src = r#"
+        .text
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let mut small = load(src);
+    assert!(small.upload_vfs_file("notes.txt".into(), vec![7u8; 64]));
+    small.step().expect("step");
+    assert!(
+        small.can_step_back(),
+        "a course-sized file must keep step-back working"
+    );
+
+    let mut big = load(src);
+    assert!(big.upload_vfs_file("data.bin".into(), vec![7u8; MAX_SNAPSHOT_SIDE_BYTES + 1]));
+    big.step().expect("step");
+    assert!(
+        !big.can_step_back(),
+        "past the side budget the ring must stop recording"
+    );
+    let r = big.run_until_break(1_000_000).expect("run");
+    assert!(r.halted, "the program still runs to its end");
+    assert!(r.error.is_none(), "no wall is tripped, got {:?}", r.error);
+}
+
+#[test]
+fn an_open_loop_cannot_grow_the_descriptor_table() {
+    // Re-opening one existing file left an fd entry per call, each holding
+    // its own copy of the path -- 200 opens of a 60 KiB path held 11 MiB,
+    // cloned again into every snapshot frame. Past the wall openat answers
+    // -1 (EMFILE) and the program keeps running.
+    let src = r#"
+        .data
+path:   .string "log.txt"
+fmt:    .string "%d\n"
+        .text
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        stp     x19, x20, [sp, -16]!
+        mov     w19, 40
+open_loop:
+        mov     x0, 0
+        ldr     x1, =path
+        mov     x2, 64
+        mov     x3, 0
+        mov     x8, 56
+        svc     0
+        mov     w20, w0
+        subs    w19, w19, 1
+        b.ne    open_loop
+        ldr     x0, =fmt
+        mov     w1, w20
+        bl      printf
+        mov     w0, 0
+        ldp     x19, x20, [sp], 16
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let mut cpu = load(src);
+    let r = cpu.run_until_break(1_000_000).expect("run");
+    assert!(r.halted, "an open loop must not hang");
+    assert_eq!(
+        cpu.open_files.len(),
+        MAX_OPEN_FILES,
+        "the descriptor table must stop at the wall"
+    );
+    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    assert_eq!(stdout, "-1\n", "a refused open reports EMFILE, not a halt");
+}
+
+// The bulk-work wall end to end spends the real ~10M-step ceiling on
+// `memset` bytes (~160 MB of guest writes), which is minutes in a debug
+// build -- the same trade as the runaway-loop proof above, so it is kept
+// on demand: `cargo test --test bounds -- --ignored`. The fast proof that
+// bulk bytes are charged at all lives in the cpu unit tests
+// (`bulk_stub_work_is_charged_against_the_step_budget`).
+#[test]
+#[ignore = "spends the real ~10M-step ceiling on bulk bytes; run with --ignored"]
+fn a_bulk_fill_loop_halts_calmly_at_the_step_ceiling() {
+    // A `memset` over an ALREADY-MAPPED buffer never touches the page cap,
+    // so before the bytes were charged this loop chose its own workload
+    // per step and ran unbounded: 3608 steps moved 24.6 MB.
+    let src = BUFFER_FILL_LOOP.replace("mov     w19, 12", "movz    w19, 0xFFFF");
+    let mut cpu = load(&src);
+    let error = loop {
+        let r = cpu.run_until_break(1_000_000).expect("run");
+        if r.halted {
+            break r.error;
+        }
+    };
+    assert_eq!(
+        error,
+        Some(step_ceiling_message()),
+        "bulk stub work must reach the step wall and halt calmly"
+    );
+}
+
 #[test]
 fn normal_program_runs_to_halt_unaffected() {
     let mut cpu = Cpu::new();
@@ -131,3 +297,5 @@ fn normal_program_runs_to_halt_unaffected() {
     );
     assert_eq!(cpu.regs.read_gpr(0, true), 0, "the loop ran to completion");
 }
+
+
