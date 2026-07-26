@@ -652,6 +652,20 @@ neg     w9, w9              // w9 = -32
 asr     w10, w9, 2          // w10 = -8: the sign bit rides along`,
   },
   {
+    mnemonic: "ror",
+    category: "Data processing",
+    syntax: "ror xd, xn, #imm",
+    example: `mov     x9, 0xf
+ror     x10, x9, 4          // the low nibble wraps to the top`,
+  },
+  {
+    mnemonic: "sbfx",
+    category: "Data processing",
+    syntax: "sbfx xd, xn, #lsb, #width",
+    example: `mov     w9, 0xf0
+sbfx    w10, w9, 4, 4       // w10 = -1: the field's top bit is the sign`,
+  },
+  {
     mnemonic: "sxtb",
     category: "Data processing",
     syntax: "sxtb xd, wn / sxtb wd, wn",
