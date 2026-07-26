@@ -7,7 +7,9 @@ import {
   MAIN_FILE,
   combineSources,
   combinedLineFor,
+  countLines,
   resolveLine,
+  validateFileName,
 } from "@/lib/playground/file-map";
 
 const MAIN = "line a\nline b\nline c";
@@ -99,5 +101,50 @@ describe("combinedLineFor", () => {
 
   it("maps main lines to themselves", () => {
     expect(combinedLineFor(MAIN_FILE, 3, MAIN, EXTRAS)).toBe(3);
+  });
+});
+
+describe("countLines", () => {
+  it("counts an empty buffer as one line and a trailing newline as two", () => {
+    expect(countLines("")).toBe(1);
+    expect(countLines("a")).toBe(1);
+    expect(countLines("a\n")).toBe(2);
+    expect(countLines("a\nb\nc")).toBe(3);
+  });
+});
+
+describe("validateFileName", () => {
+  const files = [
+    { name: "util.s", body: "" },
+    { name: "sort.s", body: "" },
+  ];
+
+  it("accepts a fresh name", () => {
+    expect(validateFileName("queue.s", files)).toBeNull();
+  });
+
+  it("refuses an empty name", () => {
+    expect(validateFileName("   ", files)).toBe("file name cannot be empty");
+  });
+
+  it("refuses a tab that impersonates the editor's own buffer", () => {
+    // The decoy still concatenates, and resolveLine labels everything inside
+    // it main.asm, so its errors point the student at the wrong buffer.
+    expect(validateFileName("main.asm", files)).toBe(
+      "main.asm is the editor's own buffer -- pick another name",
+    );
+    expect(validateFileName("MAIN.S", files)).toBe(
+      "main.asm is the editor's own buffer -- pick another name",
+    );
+  });
+
+  it("refuses a duplicate, but lets a file keep its own name on rename", () => {
+    expect(validateFileName("sort.s", files)).toBe("a file named sort.s is already open");
+    expect(validateFileName("sort.s", files, 1)).toBeNull();
+    expect(validateFileName("util.s", files, 1)).toBe("a file named util.s is already open");
+  });
+
+  it("compares names exactly, since the course servers are case-sensitive", () => {
+    expect(validateFileName("Sort.s", files)).toBeNull();
   });
 });
