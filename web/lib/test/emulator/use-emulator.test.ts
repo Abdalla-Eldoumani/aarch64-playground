@@ -27,6 +27,8 @@ import {
   CONSOLE_TRIM_MARKER,
   MAX_CONSOLE_CHARS,
   appendBounded,
+  indexedInstructionText,
+  stripSourceLines,
   useEmulator,
 } from "@/lib/emulator/use-emulator";
 
@@ -1237,5 +1239,159 @@ describe("useEmulator replay + bookmarks", () => {
     });
 
     expect(fake.calls.step).toBe(1);
+  });
+});
+
+describe("useEmulator source-line helpers", () => {
+  // These two exist so the disassembly decode reads the source ONCE per
+  // assemble. The pair they replaced re-split the buffer and re-ran two
+  // regexes for every instruction, so an 88 KB workspace spent ~930ms of
+  // blocked main thread building the listing and a 200 KB one 5.5s.
+  const SOURCE = [
+    "        .text",
+    "main:                 // entry",
+    "        mov x0, 1",
+    "",
+    "        ret           ; done",
+  ].join("\n");
+
+  it("strips comments and indentation once per line, indexed by editor line", () => {
+    expect(stripSourceLines(SOURCE)).toEqual([
+      ".text",
+      "main:",
+      "mov x0, 1",
+      "",
+      "ret",
+    ]);
+  });
+
+  it("indexes instruction text past blanks and label-only lines", () => {
+    // .text is index 0, `mov x0, 1` index 1, `ret` index 2: the label and
+    // the blank line emit nothing.
+    expect(indexedInstructionText(stripSourceLines(SOURCE))).toEqual([
+      ".text",
+      "mov x0, 1",
+      "ret",
+    ]);
+  });
+});
+
+describe("useEmulator breakpoint re-anchoring", () => {
+  it("re-numbers stored gutter lines and drops the ones the mapper releases", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+      result.current.toggleBreakpoint(PROLOGUE_LINE + 1);
+    });
+    expect(result.current.breakpoints).toEqual(new Set([9, 10]));
+
+    // The multi-file workspace re-numbers combined lines whenever a file
+    // changes length; the playground hands the shift through here.
+    act(() => {
+      result.current.remapBreakpoints((line) => (line === 10 ? null : line + 5));
+    });
+    expect(result.current.breakpoints).toEqual(new Set([14]));
+  });
+
+  it("leaves the armed CPU addresses alone (the next assemble re-keys them)", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+    });
+    expect(fake.calls.setBreakpoint).toEqual([CODE_BASE]);
+
+    act(() => {
+      result.current.remapBreakpoints((line) => line + 5);
+    });
+    // The program in memory is still the one that was assembled, so its
+    // breakpoint stays armed at the same address; only the gutter moved.
+    expect(result.current.breakpoints).toEqual(new Set([PROLOGUE_LINE + 5]));
+    expect(fake.calls.setBreakpoint).toEqual([CODE_BASE]);
+    expect(fake.calls.clearBreakpoint).toEqual([]);
+  });
+});
+
+describe("useEmulator terminal builds", () => {
+  it("keeps the editor's console, step counter and replay ring across assembleForTool", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      fake.fire({ stdoutDelta: "sum = 12\n", stderrDelta: "warn\n" });
+    });
+    act(() => {
+      result.current.step();
+    });
+    await waitFor(() => expect(result.current.stepCount).toBe(1));
+    await waitFor(() => expect(result.current.replayFrames.length).toBe(1));
+    expect(result.current.stdout).toBe("sum = 12\n");
+
+    // `gcc foo.s` / `./foo` share the one machine, but the editor's session
+    // is not theirs to erase.
+    await act(async () => {
+      await result.current.assembleForTool("mov x0, 1\nret");
+    });
+    expect(result.current.stdout).toBe("sum = 12\n");
+    expect(result.current.stderr).toBe("warn\n");
+    expect(result.current.stepCount).toBe(1);
+    expect(result.current.replayFrames.length).toBe(1);
+  });
+
+  it("never flashes the editor's assemble button for a terminal build", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+
+    let editorAssemble: Promise<boolean> | null = null;
+    act(() => {
+      editorAssemble = result.current.assemble(HOSTED_SOURCE);
+    });
+    // The editor's own assemble does own the button (the first one also
+    // downloads the wasm, so the disabled "loading..." state is the point).
+    expect(result.current.isAssembling).toBe(true);
+    await act(async () => {
+      await editorAssemble;
+    });
+    expect(result.current.isAssembling).toBe(false);
+
+    let toolAssemble: Promise<unknown> | null = null;
+    act(() => {
+      toolAssemble = result.current.assembleForTool("mov x0, 1\nret");
+    });
+    expect(result.current.isAssembling).toBe(false);
+    await act(async () => {
+      await toolAssemble;
+    });
+  });
+});
+
+describe("useEmulator terminal ownership", () => {
+  it("drops wantsTerminal the moment the raw-mode program halts", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+
+    act(() => {
+      fake.fire({ wantsTerminal: true });
+    });
+    expect(result.current.wantsTerminal).toBe(true);
+
+    // The emulator only ever SETS raw mode; nothing clears it on exit, so a
+    // finished program kept claiming the pane until the next assemble.
+    act(() => {
+      fake.fire({ wantsTerminal: true, halted: true, exitCode: 0 });
+    });
+    expect(result.current.wantsTerminal).toBe(false);
   });
 });
