@@ -47,12 +47,43 @@ export function combineSources(main: string, extras: SourceFile[]): string {
   return parts.join("\n");
 }
 
-function lineCount(text: string): number {
+/** 1-based line count of a buffer (an empty buffer is one line). Exported
+ *  because the combined-line translation depends only on line COUNTS, so a
+ *  caller can tell a layout-changing edit from a same-shape one. */
+export function countLines(text: string): number {
   let n = 1;
   for (let i = 0; i < text.length; i++) {
     if (text.charCodeAt(i) === 10) n++;
   }
   return n;
+}
+
+const lineCount = countLines;
+
+/** Names the implicit main buffer already answers to. A helper tab wearing
+ *  one of them is a decoy: it still concatenates, and every diagnostic
+ *  inside it is labelled main.asm by `resolveLine`. */
+const MAIN_NAMES = /^main\.(asm|s)$/i;
+
+/**
+ * Whether `name` may be used for the helper file at `exceptIndex` (omit for
+ * a new tab). Returns a student-facing reason, or null when the name is
+ * fine. Duplicate names are compared exactly: the course servers are
+ * case-sensitive, so `Q.s` and `q.s` are genuinely two files.
+ */
+export function validateFileName(
+  name: string,
+  files: SourceFile[],
+  exceptIndex?: number,
+): string | null {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return "file name cannot be empty";
+  if (MAIN_NAMES.test(trimmed)) {
+    return "main.asm is the editor's own buffer -- pick another name";
+  }
+  const clash = files.some((f, i) => i !== exceptIndex && f.name === trimmed);
+  if (clash) return `a file named ${trimmed} is already open`;
+  return null;
 }
 
 /**
