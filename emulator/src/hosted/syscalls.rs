@@ -78,6 +78,14 @@ pub const MAX_VFS_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 /// previously inserted unbounded; course programs open one or two.
 pub const MAX_VFS_FILES: usize = 16;
 
+/// Upper bound on how many descriptors may be open at once. The file
+/// count caps the VFS, not the fd table: re-opening one existing file in
+/// a loop still grew `open_files` without limit, and each entry carries
+/// its own copy of the path (200 re-opens of a 60 KiB path held 11 MiB,
+/// cloned again into every snapshot frame). Linux answers EMFILE past
+/// its own limit; course programs open one or two files at a time.
+pub const MAX_OPEN_FILES: usize = 16;
+
 /// Linux `O_*` flag bits we care about. Matches the AArch64 Linux ABI.
 const O_WRONLY: u32 = 0o1;
 const O_RDWR: u32 = 0o2;
@@ -121,19 +129,19 @@ pub fn sys_ioctl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     match request {
         TCGETS => {
             for off in 0..TERMIOS_BYTES {
-                ctx.mem.write_u8(argp + off, 0)?;
+                ctx.mem.write_u8(argp.wrapping_add(off), 0)?;
             }
             // c_iflag ICRNL|IXON, c_oflag OPOST|ONLCR, c_cflag CS8,
             // c_lflag cooked: enough structure that the usual
             // save/modify/restore dance behaves like a real terminal.
             write_u32(ctx, argp, 0o2400)?;
-            write_u32(ctx, argp + 4, 0o5)?;
-            write_u32(ctx, argp + 8, 0o277)?;
-            write_u32(ctx, argp + 12, COOKED_LFLAG)?;
+            write_u32(ctx, argp.wrapping_add(4), 0o5)?;
+            write_u32(ctx, argp.wrapping_add(8), 0o277)?;
+            write_u32(ctx, argp.wrapping_add(12), COOKED_LFLAG)?;
             ctx.regs.write_gpr(0, true, 0);
         }
         TCSETS | TCSETSW | TCSETSF => {
-            let lflag = read_u32(ctx, argp + 12)?;
+            let lflag = read_u32(ctx, argp.wrapping_add(12))?;
             ctx.term.raw_mode = (lflag & ICANON) == 0 || (lflag & ECHO) == 0;
             ctx.regs.write_gpr(0, true, 0);
         }
@@ -209,7 +217,7 @@ pub fn sys_getrandom(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError>
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
         let byte = (*ctx.rand_state >> 33) as u8;
-        ctx.mem.write_u8(buf + i, byte)?;
+        ctx.mem.write_u8(buf.wrapping_add(i), byte)?;
     }
     ctx.regs.write_gpr(0, true, len);
     Ok(HostOutcome::Continue)
@@ -235,7 +243,7 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     // it, so a huge count cannot trigger a host allocation abort.
     let mut bytes: Vec<u8> = Vec::new();
     for i in 0..count {
-        bytes.push(ctx.mem.read_u8(buf + i)?);
+        bytes.push(ctx.mem.read_u8(buf.wrapping_add(i))?);
     }
     match fd {
         1 => ctx.stdout.extend_from_slice(&bytes),
@@ -313,7 +321,7 @@ pub fn sys_read(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         }
         let n = (count as usize).min(ctx.stdin.len());
         for i in 0..n {
-            ctx.mem.write_u8(buf + i as u64, ctx.stdin[i])?;
+            ctx.mem.write_u8(buf.wrapping_add(i as u64), ctx.stdin[i])?;
         }
         ctx.stdin.drain(..n);
         ctx.regs.write_gpr(0, true, n as u64);
@@ -331,7 +339,7 @@ pub fn sys_read(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let available = data.len().saturating_sub(offset);
     let n = (count as usize).min(available);
     for i in 0..n {
-        ctx.mem.write_u8(buf + i as u64, data[offset + i])?;
+        ctx.mem.write_u8(buf.wrapping_add(i as u64), data[offset + i])?;
     }
     file.offset += n as u64;
     ctx.regs.write_gpr(0, true, n as u64);
@@ -359,6 +367,13 @@ pub fn sys_openat(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     if path.is_empty() {
         // Linux returns -1/ENOENT for an empty path. The usual cause here
         // is a filename buffer that was reserved (.skip) but never filled.
+        ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        return Ok(HostOutcome::Continue);
+    }
+
+    // Descriptor wall: refuse before creating anything, so an open loop
+    // that never closes cannot grow the fd table (or the VFS behind it).
+    if ctx.open_files.len() >= MAX_OPEN_FILES {
         ctx.regs.write_gpr(0, true, (-1i64) as u64);
         return Ok(HostOutcome::Continue);
     }
