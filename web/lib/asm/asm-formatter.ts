@@ -47,14 +47,22 @@ function splitOffComment(line: string): { code: string; comment: string | null }
   return { code: line, comment: null };
 }
 
-function classifyCode(code: string):
+type CodeShape =
   | { kind: "blank" }
   | { kind: "directive"; text: string }
   | { kind: "label-only"; label: string }
-  | { kind: "label-rest"; label: string; rest: string }
+  | { kind: "label-rest"; labels: string[]; rest: string }
   | { kind: "define"; text: string }
   | { kind: "assignment"; text: string }
-  | { kind: "instruction"; mnemonic: string; operands: string } {
+  | { kind: "instruction"; mnemonic: string; operands: string };
+
+// Sticky so a run of labels stacked on one line (`a: b: mov x0, x1`) peels
+// in a single pass. Re-classifying the remainder per label was quadratic in
+// the label count and recursed once per label, so a pasted line of 20k
+// labels overflowed the stack instead of formatting.
+const LABEL_PREFIX_RE = /([A-Za-z_.$][\w.$]*)\s*:\s*/y;
+
+function classifyCode(code: string): CodeShape {
   const trimmed = code.trim();
   if (trimmed.length === 0) return { kind: "blank" };
   if (trimmed.startsWith(".")) return { kind: "directive", text: trimmed };
@@ -63,13 +71,24 @@ function classifyCode(code: string):
   if (/^[A-Za-z_][\w]*\s*=\s*[^=]/.test(trimmed) && !/:\s*$/.test(trimmed)) {
     return { kind: "assignment", text: trimmed };
   }
-  // Label: `name:` possibly followed by an instruction or directive on the same line.
-  const labelMatch = trimmed.match(/^([A-Za-z_.$][\w.$]*)\s*:\s*(.*)$/);
-  if (labelMatch) {
-    const label = labelMatch[1];
-    const rest = labelMatch[2].trim();
-    if (rest.length === 0) return { kind: "label-only", label };
-    return { kind: "label-rest", label, rest };
+  // Label: `name:` possibly followed by an instruction or directive on the
+  // same line. The `.` stop mirrors the directive test above, which the
+  // per-label re-classification used to apply to every remainder.
+  const labels: string[] = [];
+  let consumed = 0;
+  LABEL_PREFIX_RE.lastIndex = 0;
+  while (trimmed[consumed] !== ".") {
+    const hit = LABEL_PREFIX_RE.exec(trimmed);
+    if (hit === null) break;
+    labels.push(hit[1]);
+    consumed = LABEL_PREFIX_RE.lastIndex;
+  }
+  if (labels.length > 0) {
+    const rest = trimmed.slice(consumed);
+    if (rest.length === 0 && labels.length === 1) {
+      return { kind: "label-only", label: labels[0] };
+    }
+    return { kind: "label-rest", labels, rest };
   }
   // Instruction: first whitespace-separated token is the mnemonic.
   const space = trimmed.search(/\s/);
@@ -127,51 +146,58 @@ function attachComment(code: string, comment: string | null): string {
   return `${code}${gap}${trimmedComment}`;
 }
 
+// Labels stay flush left; the code after them keeps a single space from the
+// innermost label so `main: ret` still reads as one line, and anything else
+// (a directive, a further label) gets the wider gap. Applied innermost-out,
+// so only the innermost candidate can still carry the instruction indent.
+function formatLabelStack(labels: string[], rest: string, defined: Set<string>): string {
+  const tail = rest.length > 0 ? formatShape(classifyCode(rest), defined) : "";
+  const innermost = labels.length - 1;
+  const head = tail.startsWith(INSTRUCTION_INDENT)
+    ? `${labels[innermost]}:${tail.slice(INSTRUCTION_INDENT.length - 1)}`
+    : tail.length > 0
+      ? `${labels[innermost]}:    ${tail}`
+      : `${labels[innermost]}:`;
+  // Joined rather than accumulated: re-testing a growing string for the
+  // indent prefix flattens it every pass, which is quadratic again.
+  const parts = labels.slice(0, innermost).map((label) => `${label}:    `);
+  parts.push(head);
+  return parts.join("");
+}
+
+function formatShape(cls: CodeShape, defined: Set<string>): string {
+  switch (cls.kind) {
+    case "blank":
+      return "";
+    case "directive":
+    case "define":
+    case "assignment":
+      return cls.text;
+    case "label-only":
+      return `${cls.label}:`;
+    case "label-rest":
+      return formatLabelStack(cls.labels, cls.rest, defined);
+    case "instruction":
+      return formatInstruction(cls.mnemonic, cls.operands, defined);
+  }
+}
+
 export function formatAsm(source: string, defined?: Set<string>): string {
   const symbols = defined ?? collectDefinedSymbols(source);
-  const lines = source.split("\n");
   const out: string[] = [];
-  for (const raw of lines) {
+  for (const raw of source.split("\n")) {
     if (raw.trim().length === 0) {
       out.push("");
       continue;
     }
     const { code, comment } = splitOffComment(raw);
     const cls = classifyCode(code);
-    let formattedCode: string;
-    switch (cls.kind) {
-      case "blank":
-        // Pure comment line -- leave the original whitespace + comment.
-        out.push(comment ?? "");
-        continue;
-      case "directive":
-        formattedCode = cls.text;
-        break;
-      case "define":
-        formattedCode = cls.text;
-        break;
-      case "assignment":
-        formattedCode = cls.text;
-        break;
-      case "label-only":
-        formattedCode = `${cls.label}:`;
-        break;
-      case "label-rest": {
-        // Re-format the rest using the same classifier.
-        const restFormatted = formatAsm(cls.rest, symbols).trimEnd();
-        if (restFormatted.startsWith(INSTRUCTION_INDENT)) {
-          formattedCode = `${cls.label}:${restFormatted.slice(INSTRUCTION_INDENT.length - 1)}`;
-        } else {
-          // Directive after label: keep label flush, then a tab gap.
-          formattedCode = `${cls.label}:    ${restFormatted}`;
-        }
-        break;
-      }
-      case "instruction":
-        formattedCode = formatInstruction(cls.mnemonic, cls.operands, symbols);
-        break;
+    if (cls.kind === "blank") {
+      // Pure comment line -- leave the original whitespace + comment.
+      out.push(comment ?? "");
+      continue;
     }
-    out.push(attachComment(formattedCode, comment));
+    out.push(attachComment(formatShape(cls, symbols), comment));
   }
   return out.join("\n");
 }
