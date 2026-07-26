@@ -120,7 +120,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 if !suppress {
                     let ptr = walker.next_int(ctx);
                     for (i, b) in ctx.stdin[start..in_pos].iter().enumerate() {
-                        ctx.mem.write_u8(ptr + i as u64, *b)?;
+                        ctx.mem.write_u8(ptr.wrapping_add(i as u64), *b)?;
                     }
                     matched += 1;
                 }
@@ -240,10 +240,10 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 if !suppress {
                     let ptr = walker.next_int(ctx);
                     for (i, b) in ctx.stdin[start..in_pos].iter().enumerate() {
-                        ctx.mem.write_u8(ptr + i as u64, *b)?;
+                        ctx.mem.write_u8(ptr.wrapping_add(i as u64), *b)?;
                     }
                     ctx.mem
-                        .write_u8(ptr + (in_pos - start) as u64, 0)?;
+                        .write_u8(ptr.wrapping_add((in_pos - start) as u64), 0)?;
                     matched += 1;
                 }
             }
@@ -865,6 +865,31 @@ mod tests {
         }
         assert_eq!(out, b"hello");
         assert_eq!(h.mem.read_u8(0x0060_0000 + 5).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_destination_at_the_top_of_memory_stays_defined() {
+        // A `%s` or `%c` destination is whatever address the program put
+        // in the argument register. Walking it with `ptr + i` panicked the
+        // instance in a debug build once the token crossed u64::MAX; the
+        // walk wraps by contract now.
+        let mut h = Host::new();
+        h.place_fmt("%s");
+        h.regs.write_gpr(1, true, u64::MAX - 1);
+        h.stdin.extend_from_slice(b"abc ");
+        scanf(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 1);
+        assert_eq!(h.mem.read_u8(u64::MAX).unwrap(), b'b');
+        assert_eq!(h.mem.read_u8(0).unwrap(), b'c');
+        assert_eq!(h.mem.read_u8(1).unwrap(), 0);
+
+        let mut h = Host::new();
+        h.place_fmt("%3c");
+        h.regs.write_gpr(1, true, u64::MAX);
+        h.stdin.extend_from_slice(b"xyz");
+        scanf(&mut h.ctx()).unwrap();
+        assert_eq!(h.mem.read_u8(u64::MAX).unwrap(), b'x');
+        assert_eq!(h.mem.read_u8(1).unwrap(), b'z');
     }
 
     #[test]
