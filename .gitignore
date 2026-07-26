@@ -1,6 +1,10 @@
 # Rust
 emulator/target/
-emulator/Cargo.lock
+# Cargo.lock IS tracked. The wasm this crate builds runs in every visitor's
+# browser, so the dependency set has to be the same one that was reviewed:
+# untracked, Vercel and CI resolved caret ranges fresh on every build and
+# ran whatever build scripts and proc macros that pulled in. The npm side
+# is pinned by package-lock.json; this was the one unpinned surface.
 
 # Node
 node_modules/
