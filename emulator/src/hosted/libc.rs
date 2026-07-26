@@ -66,9 +66,9 @@ pub fn strcpy(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let src = ctx.regs.read_gpr(1, true);
     let bytes = read_c_string(ctx.mem, src, "strcpy")?;
     for (i, b) in bytes.iter().enumerate() {
-        ctx.mem.write_u8(dst + i as u64, *b)?;
+        ctx.mem.write_u8(dst.wrapping_add(i as u64), *b)?;
     }
-    ctx.mem.write_u8(dst + bytes.len() as u64, 0)?;
+    ctx.mem.write_u8(dst.wrapping_add(bytes.len() as u64), 0)?;
     ctx.regs.write_gpr(0, true, dst);
     Ok(HostOutcome::Continue)
 }
@@ -77,8 +77,11 @@ pub fn memset(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let dst = ctx.regs.read_gpr(0, true);
     let value = ctx.regs.read_gpr(1, true) as u8;
     let n = ctx.regs.read_gpr(2, true);
+    // The guest picks both the pointer and the length, so the walk wraps
+    // instead of overflowing: a pointer near the top of the address space
+    // must fault calmly, not panic the instance.
     for i in 0..n {
-        ctx.mem.write_u8(dst + i, value)?;
+        ctx.mem.write_u8(dst.wrapping_add(i), value)?;
     }
     ctx.regs.write_gpr(0, true, dst);
     Ok(HostOutcome::Continue)
@@ -90,8 +93,8 @@ pub fn memcpy(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let n = ctx.regs.read_gpr(2, true);
     // Copy byte-by-byte; the corpus never passes overlapping ranges to memcpy.
     for i in 0..n {
-        let b = ctx.mem.read_u8(src + i)?;
-        ctx.mem.write_u8(dst + i, b)?;
+        let b = ctx.mem.read_u8(src.wrapping_add(i))?;
+        ctx.mem.write_u8(dst.wrapping_add(i), b)?;
     }
     ctx.regs.write_gpr(0, true, dst);
     Ok(HostOutcome::Continue)
@@ -423,6 +426,38 @@ mod tests {
         for i in 0..8 {
             assert_eq!(h.mem.read_u8(0x0060_0100 + i).unwrap(), (i + 1) as u8);
         }
+    }
+
+    #[test]
+    fn a_buffer_walk_off_the_top_of_memory_stays_defined() {
+        // The guest picks the pointer AND the length, so a buffer that
+        // runs off the end of the address space is reachable from ordinary
+        // source. `dst + i` panicked the whole instance in a debug build
+        // and wrapped silently in release; the walk wraps by contract now,
+        // and the memory layer treats the wrapped address like any other.
+        let mut h = Host::new();
+        let top = u64::MAX - 3;
+        h.regs.write_gpr(0, true, top);
+        h.regs.write_gpr(1, true, 0xAB);
+        h.regs.write_gpr(2, true, 8);
+        memset(&mut h.ctx()).unwrap();
+        assert_eq!(h.mem.read_u8(u64::MAX).unwrap(), 0xAB);
+        assert_eq!(h.mem.read_u8(0).unwrap(), 0xAB);
+
+        // memcpy walks two guest pointers; strcpy walks one plus a length
+        // the string itself decides.
+        h.regs.write_gpr(0, true, 0x0060_0000);
+        h.regs.write_gpr(1, true, top);
+        h.regs.write_gpr(2, true, 8);
+        memcpy(&mut h.ctx()).unwrap();
+        assert_eq!(h.mem.read_u8(0x0060_0003).unwrap(), 0xAB);
+
+        h.place_string(0x0050_0000, b"abc");
+        h.regs.write_gpr(0, true, u64::MAX - 1);
+        h.regs.write_gpr(1, true, 0x0050_0000);
+        strcpy(&mut h.ctx()).unwrap();
+        assert_eq!(h.mem.read_u8(u64::MAX).unwrap(), b'b');
+        assert_eq!(h.mem.read_u8(1).unwrap(), 0);
     }
 
     #[test]
