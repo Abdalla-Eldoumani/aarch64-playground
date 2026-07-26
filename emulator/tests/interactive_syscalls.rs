@@ -329,18 +329,51 @@ main:
         ret
 "#;
     let mut cpu = load(src);
-    let mut saw_sleeping = false;
+    let mut sleeping_steps = 0;
+    // A single-step driver never asks for the pause. The machine has to
+    // keep going anyway: the pause describes the step that asked for it,
+    // and the next step clears it.
     for _ in 0..64 {
         let s = cpu.step().expect("step");
         if matches!(s.outcome, StepOutcome::Sleeping(1_000_000)) {
-            saw_sleeping = true;
+            sleeping_steps += 1;
         }
         if s.halted {
             break;
         }
-        // A single-step driver ignores the pause; consume it so the
-        // next run loop is not pre-empted by a stale pending sleep.
-        let _ = cpu.take_pending_sleep_ns();
     }
-    assert!(saw_sleeping, "the nanosleep step must report Sleeping(ns)");
+    assert_eq!(
+        sleeping_steps, 1,
+        "exactly the nanosleep step reports Sleeping(ns)"
+    );
+    assert!(cpu.is_halted(), "the program still runs to its exit");
+}
+
+#[test]
+fn a_runner_that_never_asks_for_the_pause_still_finishes() {
+    // The pause used to survive until someone called
+    // `take_pending_sleep_ns`, and `run_until_break` refused to execute
+    // while it was set: a driver that forgot got zero steps forever.
+    let src = r#"
+        .text
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     w0, 1000
+        bl      usleep
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let mut cpu = load(src);
+    let paused = cpu.run_until_break(1_000_000).expect("run");
+    assert!(!paused.halted, "the run hands back at the pause");
+    let resumed = cpu.run_until_break(1_000_000).expect("run");
+    assert!(
+        resumed.steps_executed > 0,
+        "an unread pause must not stall the run loop"
+    );
+    assert!(resumed.halted);
+    assert_eq!(cpu.exit_code, Some(0));
 }
