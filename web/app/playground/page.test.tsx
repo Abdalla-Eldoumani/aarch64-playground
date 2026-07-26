@@ -184,3 +184,55 @@ describe("page boot and handoff", () => {
     expect(String(toastError().mock.calls[0][0])).toContain("damaged");
   });
 });
+
+describe("page delivery on a URL change without a remount", () => {
+  // `boot` is captured once at mount, so a URL that changes underneath this
+  // page (the back button, or a second share link pasted into the address
+  // bar of an open tab) used to deliver nothing at all.
+  it("delivers a share hash that arrives after mount", async () => {
+    render(<Home />);
+    expect(handle.loadProgram).not.toHaveBeenCalled();
+
+    window.history.replaceState(
+      {},
+      "",
+      `/playground${buildShareHash({ source: "mov x4, 9", args: "z" })}`,
+    );
+    act(() => {
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    await waitFor(() => expect(handle.loadProgram).toHaveBeenCalledTimes(1));
+    expect(handle.loadProgram.mock.calls[0][0]).toMatchObject({
+      source: "mov x4, 9",
+      args: "z",
+      fromShare: true,
+    });
+  });
+
+  it("does not re-deliver the URL the boot already consumed", async () => {
+    const hash = buildShareHash({ source: "mov x9, 1" });
+    window.history.replaceState({}, "", `/playground${hash}`);
+    render(<Home />);
+    expect(handle.loadProgram).not.toHaveBeenCalled();
+
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(handle.loadProgram).not.toHaveBeenCalled();
+  });
+
+  it("reports a damaged link that arrives after mount", async () => {
+    render(<Home />);
+    window.history.replaceState({}, "", "/playground#p2=z");
+    act(() => {
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    await waitFor(() => expect(toastError()).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    expect(String(toastError().mock.calls[0][0])).toContain("damaged");
+    expect(handle.loadProgram).not.toHaveBeenCalled();
+  });
+});
