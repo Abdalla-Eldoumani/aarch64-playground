@@ -114,6 +114,31 @@ struct FormatSpec {
     width: usize,
     precision: Option<usize>,
     long: bool,
+    /// Count of `h` length modifiers: 1 is `short`, 2 or more is `char`.
+    short: u8,
+}
+
+/// Read an integer argument at the width its length modifier names,
+/// sign-extended. C promotes every short/char vararg to int, so the
+/// register always holds 32 useful bits; `%hd` and `%hhd` then print the
+/// value the C program would see after the truncation back down.
+fn narrow_signed(raw: u64, spec: &FormatSpec) -> i64 {
+    match spec.short {
+        0 if spec.long => raw as i64,
+        0 => raw as u32 as i32 as i64,
+        1 => raw as u16 as i16 as i64,
+        _ => raw as u8 as i8 as i64,
+    }
+}
+
+/// Same, for the unsigned conversions (`%u %x %X %o`).
+fn narrow_unsigned(raw: u64, spec: &FormatSpec) -> u64 {
+    match spec.short {
+        0 if spec.long => raw,
+        0 => raw as u32 as u64,
+        1 => raw as u16 as u64,
+        _ => raw as u8 as u64,
+    }
 }
 
 fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
@@ -157,7 +182,17 @@ fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
     // int and consumes w-register bits only -- glibc on the course
     // machine prints 85 for a `.word`, not the neighbor's bytes.
     while *i < chars.len() && matches!(chars[*i], 'l' | 'h' | 'z' | 'j' | 't') {
-        spec.long = chars[*i] == 'l';
+        match chars[*i] {
+            'l' => {
+                spec.long = true;
+                spec.short = 0;
+            }
+            'h' => {
+                spec.long = false;
+                spec.short = spec.short.saturating_add(1);
+            }
+            _ => {}
+        }
         *i += 1;
     }
     spec
@@ -188,7 +223,7 @@ fn format_conversion(
         'd' | 'i' => {
             let raw = walker.next_int(ctx);
             // Plain %d is C's int: only w-register bits, sign-extended.
-            let value = if spec.long { raw as i64 } else { raw as u32 as i32 as i64 };
+            let value = narrow_signed(raw, spec);
             let mut body = if value < 0 {
                 format!("-{}", (value as i128).unsigned_abs())
             } else if spec.plus {
@@ -203,14 +238,14 @@ fn format_conversion(
         }
         'u' => {
             let raw = walker.next_int(ctx);
-            let value = if spec.long { raw } else { raw as u32 as u64 };
+            let value = narrow_unsigned(raw, spec);
             let mut body = format!("{value}");
             apply_precision_int(&mut body, spec);
             pad_and_emit(&body, spec, out);
         }
         'x' => {
             let raw = walker.next_int(ctx);
-            let value = if spec.long { raw } else { raw as u32 as u64 };
+            let value = narrow_unsigned(raw, spec);
             let mut body = format!("{value:x}");
             if spec.alt && value != 0 {
                 body = format!("0x{body}");
@@ -220,7 +255,7 @@ fn format_conversion(
         }
         'X' => {
             let raw = walker.next_int(ctx);
-            let value = if spec.long { raw } else { raw as u32 as u64 };
+            let value = narrow_unsigned(raw, spec);
             let mut body = format!("{value:X}");
             if spec.alt && value != 0 {
                 body = format!("0X{body}");
@@ -230,7 +265,7 @@ fn format_conversion(
         }
         'o' => {
             let raw = walker.next_int(ctx);
-            let value = if spec.long { raw } else { raw as u32 as u64 };
+            let value = narrow_unsigned(raw, spec);
             let mut body = format!("{value:o}");
             if spec.alt && !body.starts_with('0') {
                 body = format!("0{body}");
@@ -463,6 +498,39 @@ mod tests {
             regs.write_gpr(1, true, u64::MAX);
         });
         assert_eq!(s, "ffffffff");
+    }
+
+    #[test]
+    fn h_and_hh_truncate_the_way_glibc_does() {
+        // 65541 is 0x10005: as a short it is 5, as a signed char it is 5,
+        // as an int it stays 65541. The modifier loop used to record only
+        // `l`, so all three printed 65541 on a machine where aarch64 glibc
+        // prints "5 5 65541".
+        let (s, _) = call("%hd %hhd %d", |regs, _| {
+            regs.write_gpr(1, true, 65541);
+            regs.write_gpr(2, true, 65541);
+            regs.write_gpr(3, true, 65541);
+        });
+        assert_eq!(s, "5 5 65541");
+        // Truncation happens before the sign is read: 0xFF80 is -128 as a
+        // short, and 0x80 is -128 as a signed char.
+        let (s, _) = call("%hd %hhd", |regs, _| {
+            regs.write_gpr(1, true, 0xFF80);
+            regs.write_gpr(2, true, 0x80);
+        });
+        assert_eq!(s, "-128 -128");
+        // The unsigned conversions truncate without sign extension.
+        let (s, _) = call("%hu %hhu %hx", |regs, _| {
+            regs.write_gpr(1, true, 0x1_FF80);
+            regs.write_gpr(2, true, 0x1_FF80);
+            regs.write_gpr(3, true, 0xDEAD_BEEF);
+        });
+        assert_eq!(s, "65408 128 beef");
+        // A later `l` still wins, as it does in the C library.
+        let (s, _) = call("%hld", |regs, _| {
+            regs.write_gpr(1, true, 0x0000_0007_0000_0055);
+        });
+        assert_eq!(s, "30064771157");
     }
 
     #[test]
