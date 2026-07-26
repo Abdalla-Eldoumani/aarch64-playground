@@ -65,6 +65,25 @@ export function buildShareHash(state: ShareState): string {
 }
 
 /**
+ * The compressed payload length of a built hash, against the cap
+ * `readShareHash` enforces on the way back in. The sender's browser is the
+ * only place this can be caught: a link built over the cap copies, pastes,
+ * and opens to "that share link is too large", with the sender none the
+ * wiser. A real multi-file workspace clears 12 KB easily -- the 12-file
+ * data-structures example compresses to ~86,000 characters -- so the
+ * dialog checks before it offers the link.
+ */
+export function shareHashSize(hash: string): { chars: number; max: number } {
+  const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
+  const payload = trimmed.startsWith(PREFIX_V2)
+    ? trimmed.slice(PREFIX_V2.length)
+    : trimmed.startsWith(PREFIX_V1)
+      ? trimmed.slice(PREFIX_V1.length)
+      : trimmed;
+  return { chars: payload.length, max: MAX_SHARE_HASH_BYTES };
+}
+
+/**
  * lz-string does not fail closed: a fragment whose 2-bit header bits
  * decode to the unhandled case leaves the decoder's state undefined and
  * it throws mid-stream instead of returning null. readShareHash runs
