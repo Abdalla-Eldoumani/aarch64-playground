@@ -32,13 +32,13 @@ const MAX_RECURSION: usize = 32;
 /// which the round guard alone cannot stop (a doubling chain settles within
 /// 32 rounds while the text explodes). Fails loudly instead of exhausting
 /// the wasm heap.
-const MAX_EXPANDED_LINE_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_EXPANDED_LINE_BYTES: usize = 64 * 1024;
 
 /// Cap on the TOTAL expanded output. The per-line cap bounds one line, but a
 /// ~60 KiB macro body referenced across thousands of lines could still sum to
 /// gigabytes and trap the instance. 8 MiB is far above any real course
 /// program (source itself is capped at 1 MiB upstream).
-const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
 
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
@@ -59,6 +59,39 @@ pub struct Expanded {
     /// symbol browser; the parser re-discovers these from the expanded
     /// text so it can pin each one to the right section/offset.
     pub assignments: HashMap<String, String>,
+    /// Every `define()`/`undefine()` in source order: `(1-based line, name,
+    /// body)` with `None` for an undefine. `defines` collapses a name that
+    /// is redefined onto its LAST body, which is the wrong answer for
+    /// anything that reports a binding against a source line -- a warning
+    /// about `define(size, w19)` quoted `w21` because a later stretch of
+    /// the file rebound the name. Readers that care about a line walk
+    /// these instead, through `define_body_at`.
+    pub define_events: Vec<(usize, String, Option<String>)>,
+    /// Names whose bindings are windowed (redefined or undefined) rather
+    /// than file-wide. For every other name `defines` is exact everywhere.
+    pub windowed: std::collections::HashSet<String>,
+}
+
+impl Expanded {
+    /// The `define()` body in effect for `name` at 1-based source `line`,
+    /// mirroring expansion's own rule: a name defined once and never
+    /// undefined binds across the whole file (so forward references work),
+    /// while a redefined or undefined name binds only over its own window.
+    pub fn define_body_at(&self, name: &str, line: usize) -> Option<&str> {
+        if !self.windowed.contains(name) {
+            return self.defines.get(name).map(String::as_str);
+        }
+        let mut body: Option<&str> = None;
+        for (at, event_name, event_body) in &self.define_events {
+            if *at > line {
+                break;
+            }
+            if event_name == name {
+                body = event_body.as_deref();
+            }
+        }
+        body
+    }
 }
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
@@ -113,7 +146,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
                 line: line_num,
                 message: format!(
                     "malformed m4 define: {} -- write `define(NAME, body)`",
-                    diagnose_define(trimmed)
+                    diagnose_define(trimmed, raw.trim())
                 ),
             });
         }
@@ -213,6 +246,11 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         line_map,
         defines,
         assignments,
+        define_events: define_events
+            .into_iter()
+            .map(|(idx, name, body)| (idx + 1, name, body))
+            .collect(),
+        windowed,
     })
 }
 
@@ -223,24 +261,15 @@ fn expand_recursively(
 ) -> Result<String, EmuError> {
     let mut current = line.to_string();
     for _ in 0..MAX_RECURSION {
-        let next = substitute_once(&current, defines);
+        let next = substitute_bounded(&current, defines, line_num)?;
         if next == current {
             return Ok(current);
-        }
-        if next.len() > MAX_EXPANDED_LINE_BYTES {
-            return Err(EmuError::PreprocError {
-                line: line_num,
-                message: format!(
-                    "m4 expansion grew this line past {MAX_EXPANDED_LINE_BYTES} bytes; \
-                     a define() chain is expanding without settling"
-                ),
-            });
         }
         current = next;
     }
     // One more pass: if it still changes after MAX_RECURSION rounds, the
     // substitution has a cycle and will never settle.
-    let next = substitute_once(&current, defines);
+    let next = substitute_bounded(&current, defines, line_num)?;
     if next != current {
         return Err(EmuError::PreprocError {
             line: line_num,
@@ -250,9 +279,33 @@ fn expand_recursively(
     Ok(current)
 }
 
-/// One token-boundary substitution pass over a line. String and char
-/// literals are copied verbatim. Shared with the parser's `.req` alias
-/// pass, which substitutes register aliases the same way defines expand.
+/// One expansion round with the per-line byte cap applied DURING the
+/// substitution. Materializing the whole result and measuring it
+/// afterwards let a chain that multiplies its input every round allocate
+/// the full expansion first: a body that reaches 10^11 bytes needs ~100 GB
+/// before the cap can fire, which on wasm32 is an allocation abort, not an
+/// error message. The ceiling never drops below the input, so a line that
+/// is already long but does not grow still passes.
+fn substitute_bounded(
+    line: &str,
+    defines: &HashMap<String, String>,
+    line_num: usize,
+) -> Result<String, EmuError> {
+    let limit = MAX_EXPANDED_LINE_BYTES.max(line.len());
+    substitute_once(line, defines, limit).ok_or_else(|| EmuError::PreprocError {
+        line: line_num,
+        message: format!(
+            "m4 expansion grew this line past {MAX_EXPANDED_LINE_BYTES} bytes; \
+             a define() chain is expanding without settling"
+        ),
+    })
+}
+
+/// One token-boundary substitution pass over a line, refusing to build
+/// more than `limit` bytes. `None` means the cap was reached; the caller
+/// owns the message. String and char literals are copied verbatim. Shared
+/// with the parser's `.req` alias pass, which substitutes register aliases
+/// the same way defines expand.
 ///
 /// Everything outside an identifier is copied as a byte-exact slice of the
 /// input, never widened through `as char`: widening a byte >= 0x80 (a
@@ -261,11 +314,18 @@ fn expand_recursively(
 /// reach its fixed point. Slice boundaries here always sit on ASCII bytes
 /// (quotes, identifier edges) or the end of the line, so the slicing is
 /// UTF-8 safe even while the scan itself walks raw bytes.
-pub(crate) fn substitute_once(line: &str, defines: &HashMap<String, String>) -> String {
+pub(crate) fn substitute_once(
+    line: &str,
+    defines: &HashMap<String, String>,
+    limit: usize,
+) -> Option<String> {
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
     while i < bytes.len() {
+        if out.len() > limit {
+            return None;
+        }
         let b = bytes[i];
         if b == b'"' || b == b'\'' {
             // Copy a string or char literal verbatim, including the
@@ -312,7 +372,7 @@ pub(crate) fn substitute_once(line: &str, defines: &HashMap<String, String>) -> 
         }
         out.push_str(&line[start..i]);
     }
-    out
+    Some(out)
 }
 
 /// Blank C-style `/* ... */` block comments across the whole source,
@@ -454,7 +514,10 @@ fn is_attempted_define(trimmed: &str) -> bool {
 
 /// Name what is wrong with an attempted define. Only called after
 /// `parse_define` returned None, so some branch below always fires.
-fn diagnose_define(trimmed: &str) -> String {
+/// `trimmed` is the comment-stripped line the parse actually saw; `raw`
+/// is the line as written, needed to tell a truncating comment apart from
+/// a genuinely unbalanced paren.
+fn diagnose_define(trimmed: &str, raw: &str) -> String {
     let rest = trimmed
         .strip_prefix("define")
         .map(str::trim_start)
@@ -463,6 +526,16 @@ fn diagnose_define(trimmed: &str) -> String {
         return "expected `(` after define".to_string();
     };
     let Some((inside, after)) = split_outer_parens(inside_plus) else {
+        // Comments are stripped before defines are parsed, so a `;` or
+        // `//` INSIDE the body cuts the line off ahead of its real closing
+        // paren. Reporting a missing `)` there names a character that is
+        // sitting right there in the editor.
+        if let Some(marker) = comment_inside_define_body(raw) {
+            return format!(
+                "the `{marker}` comment inside the body ends the line before the \
+                 closing `)` -- move the comment after the `)`"
+            );
+        }
         return "the closing `)` is missing".to_string();
     };
     if !after.trim().is_empty() {
@@ -479,6 +552,25 @@ fn diagnose_define(trimmed: &str) -> String {
         "`{name}` is not a valid macro name (letters, digits and _ only, \
          not starting with a digit)"
     )
+}
+
+/// Which line-comment marker sits INSIDE a `define(...)` body, if that is
+/// what broke the parse. `None` when the raw line is malformed for some
+/// other reason, so the caller falls back to the structural diagnosis.
+fn comment_inside_define_body(raw: &str) -> Option<&'static str> {
+    let raw = raw.trim();
+    // The line as written IS a well-formed define; only the comment strip
+    // made it look otherwise.
+    parse_define(raw)?;
+    let kept = strip_comment(raw).len();
+    if kept == raw.len() {
+        return None;
+    }
+    if raw[kept..].starts_with("//") {
+        Some("//")
+    } else {
+        Some(";")
+    }
 }
 
 fn parse_define(trimmed: &str) -> Option<(String, String)> {
@@ -723,6 +815,90 @@ mod tests {
         }
         let err = expand(&src).unwrap_err();
         assert!(err.to_string().contains("MiB"), "was: {err}");
+    }
+
+    #[test]
+    fn the_line_cap_fires_before_the_expansion_is_materialized() {
+        // The cap used to be a length test on the finished string, so the
+        // full expansion had to be built first. One round can multiply its
+        // input by the body length: this line is 200_000 bytes of a
+        // 4 KiB body, roughly 800 MB, and the 10^11-byte cases students
+        // reach by accident would need ~100 GB -- an allocation abort on
+        // wasm32, not an error message.
+        let body = "z".repeat(4096);
+        let refs = "big ".repeat(200_000);
+        let src = format!("define(big, {body})\n{refs}\n");
+        let started = std::time::Instant::now();
+        let err = expand(&src).unwrap_err();
+        assert!(err.to_string().contains("expansion"), "was: {err}");
+        // Bailing during the walk touches ~64 KiB; building the whole
+        // string first cannot come close to this bound.
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "the cap has to fire before the allocation, took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn substitute_once_refuses_to_build_past_its_limit() {
+        // The contract the guard above rests on, pinned directly: the
+        // limit bounds what gets BUILT, so the caller never pays for the
+        // expansion it is about to reject.
+        let mut defines = HashMap::new();
+        defines.insert("big".to_string(), "z".repeat(1024));
+        let line = "big ".repeat(1000);
+        assert!(substitute_once(&line, &defines, 4096).is_none());
+        // Under the limit it still expands normally.
+        assert_eq!(
+            substitute_once("big", &defines, 4096),
+            Some("z".repeat(1024))
+        );
+    }
+
+    #[test]
+    fn a_comment_inside_a_define_body_is_named_as_the_cause() {
+        // Comments are stripped before defines are parsed, so `;` inside
+        // the parens cut the line off and the error claimed the closing
+        // `)` was missing while it sat right there in the editor.
+        for (src, marker) in [
+            ("define(NL, 10 ; newline)\n", ";"),
+            ("define(NL, 10 // newline)\n", "//"),
+        ] {
+            let err = expand(src).unwrap_err().to_string();
+            assert!(
+                err.contains(&format!("`{marker}` comment inside the body")),
+                "message was: {err}"
+            );
+            assert!(
+                !err.contains("closing `)` is missing"),
+                "message was: {err}"
+            );
+        }
+        // A genuinely unbalanced define still gets the structural message.
+        let err = expand("define(NL, 10\n").unwrap_err().to_string();
+        assert!(err.contains("closing `)` is missing"), "message was: {err}");
+    }
+
+    #[test]
+    fn define_events_keep_each_windowed_binding() {
+        // `defines` collapses a redefined name onto its LAST body, which
+        // is the wrong answer for anything that reports against a line.
+        let src = "define(size, w19)\n\
+                   mov size, 1\n\
+                   undefine(`size')\n\
+                   define(size, w21)\n\
+                   mov size, 2\n";
+        let r = exp(src);
+        assert_eq!(r.defines.get("size").map(String::as_str), Some("w21"));
+        assert!(r.windowed.contains("size"));
+        assert_eq!(r.define_body_at("size", 2), Some("w19"));
+        assert_eq!(r.define_body_at("size", 3), None, "past its undefine");
+        assert_eq!(r.define_body_at("size", 5), Some("w21"));
+        // A name defined once still binds across the whole file, so a use
+        // above its define line keeps resolving.
+        let r = exp("mov total, 1\ndefine(total, w20)\n");
+        assert_eq!(r.define_body_at("total", 1), Some("w20"));
     }
 
     fn exp(src: &str) -> Expanded {
