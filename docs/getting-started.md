@@ -66,8 +66,9 @@ average and the status bar shows it halted with exit code 0.
 
 ## step and set a breakpoint
 
-Reset (`Shift+F5`), then **Step** (`F10`) to advance one instruction at a
-time. Changed registers flash, the disassembly highlights the current PC,
+Assemble again (`F6`), then **Step** (`F10`) to advance one instruction at
+a time. (Reset clears the loaded program, so step stays disabled until the
+next assemble.) Changed registers flash, the disassembly highlights the current PC,
 and the stack updates as the prologue runs. Click a line number in the
 editor to set a breakpoint; **Run** stops there.
 
@@ -77,7 +78,7 @@ Every instruction in the reference works, plus more; see
 [`instruction-reference.md`](instruction-reference.md). A few things that
 come in handy:
 
-- Register aliases (`define(i_r, w19)`) show faded next to the register name.
+- Register aliases (`define(score1_r, w19)`) resolve in the decode strip's gloss, which annotates the operand as `score1_r=w19`. (The faded label beside each register name is the fixed ABI role -- `arg0`, `fp`, `lr` -- not your alias.)
 - Stack-frame slots (`score1_s = 16`) resolve to numeric offsets at assemble time, so `[fp, score1_s]` becomes `[x29, 16]`.
 - Literal loads (`ldr x0, =msg`) work without wiring: the linker adds `msg`'s address to the pool and patches the LDR.
 - Host calls (`bl printf`) route through a per-host trampoline the linker plants in `.text`.
