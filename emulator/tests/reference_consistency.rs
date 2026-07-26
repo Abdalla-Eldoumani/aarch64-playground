@@ -40,10 +40,10 @@ const SUPPORTED: &[&str] = &[
     "ADD", "ADDS", "SUB", "SUBS", "MUL", "MADD", "MSUB", "UDIV", "SDIV", "NEG",
     // logical
     "AND", "ANDS", "ORR", "EOR", "MVN", "BIC",
-    // shifts (immediate form)
-    "LSL", "LSR", "ASR",
+    // shifts (immediate form) and rotate
+    "LSL", "LSR", "ASR", "ROR",
     // sign / zero extension and bitfield extract / insert
-    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UBFX", "BFI",
+    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UBFX", "SBFX", "BFI",
     // compare and test
     "CMP", "CMN", "TST",
     // conditional select
