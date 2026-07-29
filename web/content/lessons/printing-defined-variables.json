@@ -67,7 +67,7 @@
     {
         "type": "callout",
         "variant":"note",
-        "markdown": "You can print variables of any data type using the process shown above. An important consideration is ensuring that you use the correct format specifier and the appropriate registers when retrieving values from variables defined in the `.data` section.\n\nWhen calling printf, you must pass arguments whose data types match their corresponding format specifiers. Passing an argument whose type does not match the expected format specifier may result in unintended or incorrect output."
+        "markdown": "You can print variables of any data type using the process shown above. An important consideration is ensuring that you use the correct format specifier and the **appropriate registers** when retrieving values from variables defined in the `.data` section.\n\nWhen calling `printf`, you must pass arguments whose data types match their corresponding format specifiers. Passing an argument whose type does not match the expected format specifier may result in unintended or incorrect output."
 
     }
 

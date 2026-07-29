@@ -240,9 +240,14 @@ const FLAG_WORDS: Record<keyof Flags, string> = {
 export function FlagEffect({
   mnemonic,
   className = "",
+  condHref,
 }: {
   mnemonic: FlagMnemonic;
   className?: string;
+  /** When set, a footer link jumps to the b.cond entry that explains what
+   *  each of the branch chips actually asks; the href is the mount's to
+   *  choose so the panel stays independent of any one page's anchors. */
+  condHref?: string;
 }): JSX.Element {
   const config = CONFIG[mnemonic];
   const isFloat = config.op === "fcmp";
@@ -468,6 +473,16 @@ export function FlagEffect({
             ))}
           </div>
         </>
+      )}
+
+      {condHref && (
+        <a
+          href={condHref}
+          className="inline-flex min-h-[44px] items-center gap-1 self-start font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]"
+        >
+          what each of these conditions really asks — see b.cond{" "}
+          <span aria-hidden="true">{"→"}</span>
+        </a>
       )}
     </section>
   );

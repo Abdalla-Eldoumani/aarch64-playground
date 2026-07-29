@@ -80,7 +80,7 @@
     {
       "type": "callout",
       "variant": "note",
-      "markdown": "The format string is always loaded into the first argument register (`x0`) before calling `printf`, regardless of the data type being printed. This is because `printf` expects the format string to be passed as its first argument.\n\n The corresponding values are then passed to the subsequent argument registers (`x1`, `x2`, etc.). If the format string contains multiple format specifiers, the corresponding values must be passed in the order they appear in the format string."
+      "markdown": "The format string is always loaded into the first argument register (`x0`) before calling `printf`, regardless of the data type being printed. This is because `printf` expects the format string to be passed as its first argument.\n\n The corresponding values are then passed to the subsequent argument registers (`x1`, `x2`, etc.). If the format string contains multiple format specifiers, the corresponding values must be passed in the order they appear in the format string.\n\nHowever, not all data types are passed through the general-purpose `x` or `w` registers. Some data types, such as floating-point values, use dedicated floating-point instead. For example, printing a `float` or `double` value requires passing the value through the appropriate `s` or `d` register. Make sure that values are stored and passed using the correct register type that matches the corresponding format specifier, as using the wrong register can cause unintended behaviour."
 
     },
     {

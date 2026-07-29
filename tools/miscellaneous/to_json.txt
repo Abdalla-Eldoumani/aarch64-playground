@@ -1,3 +1,3 @@
-You can print variables of any data type using the process shown above. An important consideration is ensuring that you use the correct format specifier and the appropriate registers when retrieving values from variables defined in the `.data` section.
+The assembly order does not have to match the order of the original if-else statement. In this example, the else block is placed first because b.gt only jumps when the condition is true. If the condition is false, execution naturally continues to the next instruction, which is the else block. After completing the else block, an unconditional branch (b end) is used to skip over the if block and prevent both blocks from executing.
 
-When calling printf, you must pass arguments whose data types match their corresponding format specifiers. Passing an argument whose type does not match the expected format specifier may result in unintended or incorrect output.
+The b.gt instruction checks whether the first value being compared is greater than the second value. In this case, it checks the condition flags updated by cmp x19, x20 to determine whether the value in x19 is greater than the value in x20.

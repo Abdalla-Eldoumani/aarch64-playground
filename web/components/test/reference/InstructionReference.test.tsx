@@ -70,6 +70,13 @@ const FIXTURE: ReferenceInstruction[] = [
     example: "ldr x0, [x1]",
     gotchas: ["ldr gotcha note"],
   },
+  {
+    mnemonic: "b.cond",
+    category: "Branches",
+    syntax: "b.eq label / b.ne label / ...",
+    summary: "b.cond summary prose",
+    example: "cmp w0, #0\nb.eq done",
+  },
 ];
 
 beforeEach(() => {
@@ -203,6 +210,24 @@ describe("InstructionReference", () => {
     expect(screen.getByLabelText("cmp flag effect")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "ldr" }));
     expect(screen.queryByLabelText("cmp flag effect")).toBeNull();
+  });
+
+  it("links the flag panel over to the b.cond entry", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "cmp" }));
+    const link = screen.getByRole("link", { name: /see b\.cond/ });
+    expect(link.getAttribute("href")).toBe("#b-cond");
+    // the anchor's target exists: the index item carries the fragment id.
+    expect(screen.getByRole("button", { name: "b.cond" }).id).toBe("b-cond");
+  });
+
+  it("mounts the condition-code explorer only on b.cond", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    expect(screen.queryByLabelText("b.cond condition codes")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "b.cond" }));
+    expect(screen.getByLabelText("b.cond condition codes")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ldr" }));
+    expect(screen.queryByLabelText("b.cond condition codes")).toBeNull();
   });
 
   it("captions the worked encoding with its concrete instruction", () => {

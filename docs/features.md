@@ -20,7 +20,7 @@ reference).
 | "Open in playground" hand-off (shared pill; asm code blocks only) | `web/components/ui/OpenInPlayground.tsx` (used by `web/components/learn/LessonArticle.tsx` and `web/components/practice/ExerciseView.tsx`) |
 | Exercise checker (no stored solution) | `web/lib/content/exercise-checker.ts` |
 | Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/ReferenceView.tsx`, `InstructionReference.tsx`, `InstructionView.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/content/reference-data.ts` |
-| Reference interactivity (NZCV panel, worked encodings, frame walk, alignment probe, runnable pitfalls) | `web/components/diagrams/FlagEffect.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `StackAlignment.tsx`, `web/components/reference/PitfallsCatalog.tsx` |
+| Reference interactivity (NZCV panel, condition-code explorer, worked encodings, frame walk, alignment probe, runnable pitfalls) | `web/components/diagrams/FlagEffect.tsx`, `CondCodeExplorer.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `StackAlignment.tsx`, `web/components/reference/PitfallsCatalog.tsx` |
 | Register-file teaching diagrams (x/w and d/s views) | `web/components/diagrams/RegisterFileDiagram.tsx`, `FpRegisterFileDiagram.tsx` |
 | AAPCS64 register-file rail (with the fp convention) | `web/components/diagrams/AapcsRail.tsx` |
 | Link preview card (og/twitter image) | `web/lib/content/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
