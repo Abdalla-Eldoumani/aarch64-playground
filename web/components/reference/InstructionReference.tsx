@@ -16,7 +16,11 @@
  * playgroundSource payload the deep link carries, so reading and running are
  * one surface (the embed is dynamically imported and mounts only on demand,
  * keeping the route light). Flag-setting entries additionally render the
- * FlagEffect panel. Data arrives as a prop and the type is the only import
+ * FlagEffect panel with a fragment link over to b.cond, and the b.cond entry
+ * renders the CondCodeExplorer that unpacks each condition code; the link is
+ * a plain `#b-cond` anchor because a hashchange already clears the pick and
+ * hands selection back to the fragment store below.
+ * Data arrives as a prop and the type is the only import
  * from the data module, so this stays decoupled from the emulator. Selecting
  * an instruction reflects a stable per-mnemonic id into the URL fragment so a
  * detail is permalinkable; the fragment is read through useSyncExternalStore
@@ -42,6 +46,7 @@ import { CodeBlock } from "@/components/ui/CodeBlock";
 import { BitFieldDiagram } from "@/components/diagrams/BitFieldDiagram";
 import { Button } from "@/components/ui/Button";
 import { FlagEffect, FLAG_SETTERS, type FlagMnemonic } from "@/components/diagrams/FlagEffect";
+import { CondCodeExplorer } from "@/components/diagrams/CondCodeExplorer";
 import { buildShareHash } from "@/lib/playground/share";
 import { playgroundSource } from "@/lib/playground/playground-source";
 
@@ -449,8 +454,11 @@ export function InstructionReference({
               <FlagEffect
                 key={current.mnemonic}
                 mnemonic={current.mnemonic as FlagMnemonic}
+                condHref={`#${hashId("b.cond")}`}
               />
             )}
+
+            {current.mnemonic === "b.cond" && <CondCodeExplorer />}
 
             <a
               href={`#${hashId(current.mnemonic)}`}
