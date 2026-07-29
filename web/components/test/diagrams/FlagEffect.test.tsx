@@ -159,4 +159,13 @@ describe("FlagEffect", () => {
     render(<FlagEffect mnemonic="subs" />);
     expect(screen.getByText(/result is written/)).toBeTruthy();
   });
+
+  it("renders the b.cond jump link only when the mount passes an anchor", () => {
+    render(<FlagEffect mnemonic="cmp" />);
+    expect(screen.queryByRole("link")).toBeNull();
+    cleanup();
+    render(<FlagEffect mnemonic="cmp" condHref="#b-cond" />);
+    const link = screen.getByRole("link", { name: /see b\.cond/ });
+    expect(link.getAttribute("href")).toBe("#b-cond");
+  });
 });
