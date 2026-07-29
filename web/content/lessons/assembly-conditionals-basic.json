@@ -1,0 +1,83 @@
+{
+  "title": "Conditionals in ARMv8 AArch 64 Assembly",
+  "slug": "assembly-conditionals-basics",
+  "order": 7,
+  "summary": "A template visual to visualize all the available components.",
+  "tags": [
+    "conditionals",
+    "if statements"
+  ],
+  "body": [
+    {
+        "type": "callout",
+        "variant": "note",
+        "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
+
+    },
+    {
+        "type": "prose",
+        "markdown": "Every program, from simple scripts to complex operating systems, must make decisions. Whether determining if a user entered the correct password, checking whether a value exceeds a limit, or choosing between different execution paths, conditional logic is a fundamental part of programming. In high-level languages, these decisions are hidden behind convenient constructs such as `if` and `else` statements, allowing programmers to control program behaviour with minimal effort. However, implementing the same decision-making process in ARMv8 AArch64 Assembly is not as simple."
+
+    },
+    {
+        "type": "prose",
+        "markdown": "In high-level programming languages, such as C, conditional logic can be implemented using built-in language constructs (if constructs). For example:"
+    },
+    {
+        "type": "code",
+        "language": "c",
+        "source": "#include <stdio.h>\n\nint main() {\n\n    int a = 6;\n    int b = 7;\n\n    if (a > b) {\n        printf(\"XX\");\n    } else {\n        printf(\"XY\");\n    }\n\n    return 0;\n}"
+    },
+    {
+        "type": "prose",
+        "markdown": "The code above basically compares the values stored in the variables `a` and `b`. `\"XX\"` will be printed if the value of `a` is greater than `b`, otherwise `\"XY\"` is printed."
+
+    },
+    {
+        "type": "prose",
+        "markdown": "At the Assembly level, the processor does not understand high-level abstractions such as `if` and `else`. Instead, conditional behaviour is created by directly controlling the flow of execution through comparisons, condition code, and branch instructions. This lesson explores how ARMv8 AArch64 Assembly implements conditional logic and reveals the low-level mechanisms that allow programs to make decisions."
+    },
+    {
+        "type": "prose",
+        "markdown": "## The Big Picture"
+    },
+    {
+        "type": "prose",
+        "markdown": "Conditional constructs in Assembly can be achieved by comparing values and changing the program's execution flow based on the resulting condition flags. The process can be summarised as follows:\n\n1. Compare two values using the `cmp` instruction.\n2. Use a branch instruction (`b.cond`) to jump to a specific label when the condition is satisfied."
+    },
+    {
+        "type": "callout",
+        "variant":"note",
+        "markdown": "`b.cond` is not an actual Assembly instruction. The `cond` part represents a placeholder for a condition code. Replacing `cond` with a specific condition code creates the actual branch instruction, such as `b.eq`, `b.ne`, or `b.gt`. See the [Reference](/reference) page for a detailed list of condition codes."
+    },
+    {
+        "type": "prose",
+        "markdown": "## More about `cmp` and `b.cond`\n\nThe `cmp` instruction is the compare instruction. It compares the contents of two registers, or the contents of a register with an immediate value, and serves as the foundation for conditional logic in Assembly.\n\nComparing two values is essentially a way of checking whether a particular condition is met. However, the `cmp` instruction only performs the comparison, it does not take any action based on the result.\n\nInstead, the comparison updates the condition flags in the background. These flags record information about the result of the comparison.\n\nInstructions that use a condition code, such as `b.cond`, examine these condition flags. If the specified condition code (`cond`) is met, `b.cond` branches to the specified label. Otherwise, execution continues with the instruction immediately following `b.cond`."
+    },
+    {
+        "type": "prose",
+        "markdown": " ## Implementing Condtionals in Assembly\n\n The above C code can be translated into assembly as follows: "
+    },
+    {
+        "type": "code",
+        "language" :"asm",
+        "source": "    // Pseudo-ops and directives \n    ..\nnmain:\n    // Program prologue\n    ..\n    mov x19, 6              // int a = 6;\n    mov x20, 7              // int b = 7;\n\n    cmp x19, x20            // Compare a and b: if (a > b)\n    b.gt greaterThan        // Jump to `greaterThan` if the condition code is met\n\n    // else block\n    // If the condition code is not met, execution continues with the instruction\n    // immediately following the conditional branch.\n\n    ldr x0, =fmt2           // Load the address of the \"XY\" string\n    bl printf               // Call printf\n    b end                   // Branch to the label `end`\n\n    // Branching to the label `end` is necessary here.\n    // Otherwise, execution would continue into the code under the `greaterThan`\n    // label and execute the if block after completing the else block.\n\ngreaterThan:                // `greaterThan` is a label\n    ldr x0, =fmt1           // Load the address of the \"XX\" string\n    bl printf               // Call printf\n\n    // Branching to the label `end` is not necessary here because execution\n    // naturally continues to the instruction immediately following this block,\n    // which is the `end` label.\n\nend:                        // `end` is a label\n\n    // Code block after the if-else construct\n    ..\n    // Program epilogue\n"
+    },
+    {
+        "type": "prose",
+        "markdown": "The assembly order does not have to match the order of the original `if-else` statement. In this example, the `else` block is placed first because `b.gt` only jumps when the condition is `true`. If the condition is `false`, execution naturally continues to the next instruction, which is the `else` block. After completing the `else` block, an unconditional branch (`b end`) to the label `end` is used to skip over the `if` block and prevent both blocks from executing.\n\nThe `b.gt` instruction checks whether the first value being compared is greater than the second value. In this case, it checks the condition flags updated by `cmp x19, x20` to determine whether the value in `x19` is greater than the value in `x20`."
+    },
+    {
+        "type": "prose",
+        "markdown": "## The Complete Assembly Implementation\n\n The code below demonstrates the complete process of implementing conditionals in Assembly, including the pseudo-ops, function prologue, and function epilogue."
+    },
+    {
+        "type": "editor",
+        "language": "asm",
+        "starter": "\n.data\n    fmt1:   .string \"XX\"\n    fmt2:   .string \"XY\"\n\n.text\n.balign 4\n.global main\n\n\nmain:\n    // This is the program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    \n    mov x19, 6              // int a = 6;\n    mov x20, 7              // int b = 7;\n\n    cmp x19, x20            // Compare a and b: if (a > b)\n    b.gt greaterThan        // Jump to `greaterThan` if the condition code is met\n\n    // else block\n    // If the condition code is not met, execution continues with the instruction\n    // immediately following the conditional branch.\n\n    ldr x0, =fmt2           // Load the address of the \"XY\" string\n    bl printf               // Call printf\n    b end                   // Branch to the label `end`\n\n    // Branching to the label `end` is necessary here.\n    // Otherwise, execution would continue into the code under the `greaterThan`\n    // label and execute the if block after completing the else block.\n\ngreaterThan:                // `greaterThan` is a label\n    ldr x0, =fmt1           // Load the address of the \"XX\" string\n    bl printf               // Call printf\n\n    // Branching to the label `end` is not necessary here because execution\n    // naturally continues to the instruction immediately following this block,\n    // which is the `end` label.\n\nend:                        // `end` is a label\n\n    // Code block after the if-else construct\n    \n\n    // This is the program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
+    }
+
+
+
+  ]
+}
