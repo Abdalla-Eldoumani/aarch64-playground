@@ -1,3 +1,1 @@
-You can print variables of any data type using the process shown above. An important consideration is ensuring that you use the correct format specifier and the appropriate registers when retrieving values from variables defined in the `.data` section.
-
-When calling printf, you must pass arguments whose data types match their corresponding format specifiers. Passing an argument whose type does not match the expected format specifier may result in unintended or incorrect output.
+However, not all data types are passed through the general-purpose x or w registers. Some data types, such as floating-point values, use dedicated floating-point and SIMD registers instead. For example, printing a float or double value requires passing the value through the appropriate s or d register. Make sure that values are stored and passed using the correct register type that matches the corresponding format specifier, as using the wrong register can cause printf unintended behaviours.
