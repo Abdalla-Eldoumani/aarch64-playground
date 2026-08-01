@@ -1,7 +1,10 @@
 //! Example-picker regression: the authored programs served by the web
 //! example loader -- the "Data and memory" and "Stack and locals" stage
-//! fillers against their fixtures, plus the real-time snake game
-//! through a timed scripted session.
+//! fillers against their fixtures, plus the interactive extras through
+//! scripted sessions: the real-time snake game and the pocket calculator
+//! keyed one press per pacing boundary, and the cooked-mode menu programs
+//! (the two-sum visualizer, the temperature instrument, the multi-file
+//! data structures visualizer) driven from one stdin push.
 //!
 //! These are the same `.s` files the web example loader serves over HTTP,
 //! read straight from `web/public/examples/cpsc355/` (not a copy) so the
@@ -119,6 +122,190 @@ fn snake_arcade_plays_a_timed_session_and_exits_cleanly() {
     assert!(!cpu.term.raw_mode, "exit must restore the terminal");
 }
 
+/// The pocket calculator, driven the way the snake game is: it polls the
+/// keyboard every frame in raw mode, so a pre-pushed fixture never
+/// survives its own drain. One key at each pacing boundary instead. The
+/// script proves the two entry modes (expression entry honours
+/// precedence, immediate entry applies a unary to the display), the
+/// error state, and that C clears it.
+#[test]
+fn calc_device_plays_a_timed_session_and_exits_cleanly() {
+    let source = read("calc.s");
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(&source, &cpu.host)
+        .unwrap_or_else(|e| panic!("assemble calc.s: {e}"));
+    cpu.load_linked_image(&image).expect("load calc.s");
+    assert!(!cpu.term.raw_mode, "nothing has run yet, so the terminal is still cooked");
+
+    // tab moves between immediate and expression entry, `v` is the sqrt
+    // key, `C` clears the entry, `q` gives the terminal back. The empty
+    // tokens are the gaps a person leaves between presses.
+    let script = [
+        "", "", "\t", "", "2", "+", "3", "*", "4", "=", "",
+        "\t", "", "9", "v", "",
+        "5", "/", "0", "=", "",
+        "C", "",
+        "q",
+    ];
+    let mut tokens = script.iter();
+    let mut boundaries = 0u64;
+    let mut halted = false;
+    let mut raw_rose = false;
+    let mut stdout = String::new();
+    // Where the C press lands in the stream, so the frames painted after
+    // it can be read apart from the ones that carried the error.
+    let mut cleared_at: Option<usize> = None;
+    for _ in 0..6000 {
+        let r = cpu.run_until_break(1_000_000).expect("run calc.s");
+        stdout.push_str(&String::from_utf8_lossy(&cpu.take_stdout()));
+        if r.halted {
+            halted = true;
+            break;
+        }
+        let _ = cpu.take_pending_sleep_ns();
+        raw_rose |= cpu.term.raw_mode;
+        boundaries += 1;
+        if boundaries.is_multiple_of(2) {
+            if let Some(tok) = tokens.next() {
+                if *tok == "C" {
+                    cleared_at = Some(stdout.len());
+                }
+                cpu.push_stdin(tok.as_bytes());
+            }
+        }
+        assert!(!cpu.blocked, "the device polls its keys, it must never block on stdin");
+    }
+    assert!(halted, "the scripted session must reach a clean exit");
+    assert_eq!(cpu.exit_code, Some(0));
+    // The raw-mode flag is what hands the web build its terminal pane.
+    assert!(raw_rose, "the device must take the terminal over to draw itself");
+    assert!(
+        stdout.contains("2+3*4 = 14"),
+        "expression entry evaluates with precedence, not left to right"
+    );
+    assert!(
+        stdout.contains("sqrt(9) = 3"),
+        "immediate entry applies the unary to whatever the display holds"
+    );
+    let cleared_at = cleared_at.expect("the script presses C");
+    assert!(
+        stdout[..cleared_at].contains("div by zero"),
+        "5 / 0 = must put the display in its error state"
+    );
+    assert!(
+        !stdout[cleared_at..].contains("div by zero"),
+        "C must clear the error state, not leave it painted"
+    );
+    // The device put the terminal in raw mode to draw and restored it on
+    // the way out; a clean exit leaves the flag lowered.
+    assert!(!cpu.term.raw_mode, "exit must restore the terminal");
+}
+
+/// The two-sum visualizer, cooked mode and menu-driven, so the whole
+/// session is one scripted stdin push. The drive runs a preset through
+/// both algorithms, then types an array in by hand -- with one value the
+/// cells have no room for, so the rejection path is walked too -- and
+/// runs the hash set over it.
+#[test]
+fn two_sum_visualizer_runs_a_preset_and_a_hand_typed_array() {
+    let source = read("two-sum.s");
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(&source, &cpu.host)
+        .unwrap_or_else(|e| panic!("assemble two-sum.s: {e}"));
+    cpu.load_linked_image(&image).expect("load two-sum.s");
+    // enter past the splash; [4] speed 100 ms; [1] preset [1] classic;
+    // [7] both algorithms back to back; [2] manual entry of six values,
+    // the first attempt out of range; [3] target 10; [6] the hash set.
+    // Then [0] out.
+    //
+    // The blank lines are the "press enter to continue" waits. The first
+    // wait after a typed answer eats the newline that answer left behind
+    // and needs one blank line; a wait that starts with an empty buffer
+    // needs two, which is why the pair after the back-to-back run is
+    // three lines and not two.
+    let drive = "\n\
+                 4\n100\n\n\
+                 1\n1\n\n\
+                 7\n\n\n\n\
+                 2\n6\n1000\n3\n3\n4\n7\n1\n8\n\n\
+                 3\n10\n\n\
+                 6\n\n\
+                 0\n";
+    cpu.push_stdin(drive.as_bytes());
+    cpu.close_stdin();
+    let mut sleeps = 0u32;
+    loop {
+        let r = cpu.run_until_break(10_000_000).expect("run two-sum.s");
+        if r.halted {
+            break;
+        }
+        if cpu.take_pending_sleep_ns().is_some() {
+            sleeps += 1;
+            continue;
+        }
+        assert!(!cpu.is_blocked(), "two-sum ran out of scripted input");
+    }
+    assert_eq!(cpu.exit_code, Some(0));
+    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    assert!(stdout.contains("TWO-SUM, TRACED"), "the title bar carries the app mark");
+    assert!(stdout.contains("PRESETS"), "the preset picker opened");
+    assert!(stdout.contains("BRUTE FORCE     check every pair (i, j) with i < j"));
+    assert!(stdout.contains("HASH SET        for each i, look up target - arr[i]"));
+    assert!(
+        stdout.contains("result: arr[0] (2) + arr[1] (7) = 9.  comparisons: 1."),
+        "brute force answers the classic preset on its first pair"
+    );
+    assert!(
+        stdout.contains("1000 is out of range.  enter a value from -99 to 999."),
+        "a value wider than a cell is refused by name, and the prompt comes back"
+    );
+    assert!(
+        stdout.contains("result: arr[0] (3) + arr[3] (7) = 10.  probes: 7"),
+        "the hash set answers the hand-typed array, keeping the first of the two 3s"
+    );
+    assert!(stdout.contains("bye."), "the exit path prints the goodbye line");
+    assert!(sleeps > 0, "the animation paces itself through usleep");
+}
+
+/// The temperature instrument in its interactive mode (no argv, so the
+/// argc branch takes it there). Cooked mode, one reading per line: a good
+/// one, junk, something below absolute zero, then the quit word.
+#[test]
+fn temp_convert_answers_readings_and_refuses_impossible_ones() {
+    let source = read("temp-convert.s");
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(&source, &cpu.host)
+        .unwrap_or_else(|e| panic!("assemble temp-convert.s: {e}"));
+    cpu.load_linked_image(&image).expect("load temp-convert.s");
+    cpu.push_stdin(b"36.6C\nhello\n-300C\nq\n");
+    cpu.close_stdin();
+    loop {
+        let r = cpu.run_until_break(10_000_000).expect("run temp-convert.s");
+        if r.halted {
+            break;
+        }
+        if cpu.take_pending_sleep_ns().is_some() {
+            continue;
+        }
+        assert!(!cpu.is_blocked(), "temp-convert ran out of scripted input");
+    }
+    assert_eq!(cpu.exit_code, Some(0));
+    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    assert!(
+        stdout.contains("      36.60 C  =     97.88 F  =    309.75 K"),
+        "a good reading comes back on all three scales"
+    );
+    assert!(
+        stdout.contains("  need a number and a unit: 36.6C, 98.6F, 310K."),
+        "junk gets one line naming the shape that was expected"
+    );
+    assert!(
+        stdout.contains("  -300.00 C is below absolute zero (-273.15 C)."),
+        "the floor is quoted back in the unit that was typed"
+    );
+    assert!(stdout.contains("bye."), "the quit word ends the loop cleanly");
+}
+
 /// The multi-file visualizer, combined exactly the way the web's files
 /// strip does it (main first, each extra behind a `// ---- name ----`
 /// boundary, in the loader manifest's order). Drives one operation per
@@ -208,7 +395,10 @@ fn shipped_examples_only_use_conversions_the_runtime_implements() {
     const CONVERSIONS: &str = "diouxXeEfgGcspn%";
     let mut offenders: Vec<String> = Vec::new();
 
-    let mut names: Vec<String> = vec!["dsav.s".to_string()];
+    let mut names: Vec<String> = ["calc.s", "dsav.s", "temp-convert.s", "two-sum.s"]
+        .iter()
+        .map(|n| (*n).to_string())
+        .collect();
     let mut extras: Vec<String> = std::fs::read_dir(examples_root().join("dsav"))
         .expect("the dsav helper directory is served from web/public")
         .filter_map(|e| e.ok())
@@ -218,22 +408,27 @@ fn shipped_examples_only_use_conversions_the_runtime_implements() {
         .collect();
     extras.sort();
     names.append(&mut extras);
-    assert!(names.len() >= 18, "expected the whole visualizer, got {names:?}");
+    assert!(
+        names.len() >= 21,
+        "expected the whole visualizer plus the three single-file programs, got {names:?}"
+    );
 
     for rel in &names {
         let text = read(rel);
         for (n, line) in text.lines().enumerate() {
-            // Only a string literal can be a format. A `%` in a comment
-            // ("rand() % max") or in a `msub` is not one, and flagging it
-            // would make this gate cry wolf.
+            // Only a NUL-terminated string literal can be a format: the
+            // hosted printf takes a pointer and reads to the terminator.
+            // A `%` in a comment ("rand() % max"), in a `msub`, or inside
+            // a bare `.ascii` byte run is not one -- calc paints its key
+            // grid out of one such run, five columns per cap, written by
+            // length and never handed to a formatter -- and flagging any
+            // of them would make this gate cry wolf.
             let Some(open) = line.find('"') else { continue };
             let trimmed = line.trim_start();
             if !(trimmed.starts_with(".string")
                 || trimmed.starts_with(".asciz")
-                || trimmed.starts_with(".ascii")
                 || line[..open].contains(".string")
-                || line[..open].contains(".asciz")
-                || line[..open].contains(".ascii"))
+                || line[..open].contains(".asciz"))
             {
                 continue;
             }
