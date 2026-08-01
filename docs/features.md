@@ -122,6 +122,7 @@ reference).
 | Tutorial runner with `expect` checks | `web/components/playground/TutorialRunner.tsx`, `web/lib/content/tutorials.ts` |
 | Example loader (stage-grouped) | `web/components/playground/ExampleLoader.tsx` |
 | Terminal-first examples (snake, the data structures visualizer) | `EXAMPLE_TERMINAL` in `web/lib/playground/playground-handoff.ts`, the terminal takeover in `web/components/playground/EmbeddablePlayground.tsx` |
+| Run-mode control (console or terminal, per interactive example) | `EXAMPLE_INTERACTIVE` in `web/lib/playground/playground-handoff.ts`, `web/components/playground/RunModeControl.tsx`, `?run=` in `web/lib/hooks/use-deep-link.ts` |
 | Recent programs | `web/components/playground/RecentPrograms.tsx`, `web/lib/playground/auto-save.ts` |
 
 ## PWA & offline
