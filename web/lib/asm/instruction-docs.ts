@@ -178,6 +178,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "fabs d0, d1",
     cExample: "Dd = fabs(Dn);",
   },
+  FSQRT: {
+    summary: "Fd = sqrt(Fn) (S or D form).",
+    details: ["A negative operand gives NaN; the instruction never faults."],
+    example: "fsqrt d1, d0",
+    cExample: "Dd = sqrt(Dn);",
+  },
   FCMP: {
     summary: "Set NZCV from Fn vs Fm (S or D form).",
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
