@@ -235,6 +235,70 @@ describe("Controls", () => {
     expect(h.onStep).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps run live with nothing loaded when run assembles first", () => {
+    // Terminal mode: the run press IS the launch, so the button cannot be
+    // the one path that still demands a separate assemble press.
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={true}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={false}
+        runAssemblesFirst={true}
+        error={null}
+      />,
+    );
+    const run = screen.getByRole("button", { name: /^run/ });
+    expect(run.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(run);
+    expect(h.onRun).toHaveBeenCalledTimes(1);
+    // Step and back are untouched: they still have nothing to execute.
+    for (const name of [/^step/, /^back/]) {
+      expect(screen.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
+    }
+  });
+
+  it("still disables run while that assemble is in flight", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={true}
+        isRunning={false}
+        isAssembling={true}
+        isHalted={false}
+        programLoaded={false}
+        runAssemblesFirst={true}
+        error={null}
+      />,
+    );
+    const run = screen.getByRole("button", { name: /^run/ });
+    expect(run.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(run);
+    expect(h.onRun).not.toHaveBeenCalled();
+  });
+
+  it("still disables run while blocked, however run starts", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={true}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={false}
+        runAssemblesFirst={true}
+        blocked={true}
+        error={null}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /^run/ }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("does not bind keyboard shortcuts (the page is the single owner)", () => {
     const h = allHandlers();
     render(
