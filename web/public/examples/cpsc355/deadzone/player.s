@@ -17,6 +17,8 @@ PLAYER_STRUCT_SIZE = 24                         // Total struct size (padded)
 PLAYER_DEFAULT_HP = 100                         // Starting health
 PLAYER_DEFAULT_SPEED = 1                        // Starting speed
 PLAYER_CHAR = '@'                               // Player character
+PLAYER_IFRAMES_TOTAL = TARGET_FPS               // A second of invincibility
+HURT_FLASH_FRAMES = 3                           // Red frames on the way in
 
 // Play area bounds
 PLAY_LEFT = 1                                   // Left boundary (after border)
@@ -109,6 +111,16 @@ player_get_health:
                 adrp    x0, player_data
                 add     x0, x0, :lo12:player_data
                 ldrb    w0, [x0, PLAYER_HEALTH]
+                ret
+
+// player_get_max_health - Get player maximum health
+// Returns: w0 = max health. The health gauge needs both ends of the range,
+// and max HP climbs ten a level.
+                .global player_get_max_health
+player_get_max_health:
+                adrp    x0, player_data
+                add     x0, x0, :lo12:player_data
+                ldrb    w0, [x0, PLAYER_MAX_HP]
                 ret
 
 // player_get_level - Get player level
@@ -224,8 +236,8 @@ player_damage:
                 adrp    x1, player_data
                 add     x1, x1, :lo12:player_data
 
-                // Set invincibility frames (30 = ~1 second)
-                mov     w2, 30
+                // Set invincibility frames
+                mov     w2, PLAYER_IFRAMES_TOTAL
                 strb    w2, [x1, PLAYER_IFRAMES]
 
                 mov     w0, 0                   // Return alive
@@ -349,19 +361,24 @@ player_draw:
                 // Move cursor to player position
                 bl      cursor_move
 
-                // Check invincibility for color (flash effect)
+                // A hit reads as one red frame, then the invincibility window
+                // strobes amber against the normal white.
                 ldrb    w0, [x19, PLAYER_IFRAMES]
                 cbz     w0, player_draw_normal
 
-                // Flashing: alternate between yellow and white
-                and     w0, w0, 1               // Check odd/even frame
-                cbz     w0, player_draw_normal
+                cmp     w0, PLAYER_IFRAMES_TOTAL - HURT_FLASH_FRAMES
+                b.le    player_draw_strobe
+                mov     w0, COLOR_BRIGHT_RED    // Just hit
+                b       player_draw_color
 
-                mov     w0, COLOR_WHITE         // Flash white
+player_draw_strobe:
+                and     w0, w0, 2               // Two frames on, two off
+                cbz     w0, player_draw_normal
+                mov     w0, COLOR_BRIGHT_YELLOW
                 b       player_draw_color
 
 player_draw_normal:
-                mov     w0, COLOR_BRIGHT_YELLOW // Normal color
+                mov     w0, COLOR_BRIGHT_WHITE  // Normal color
 
 player_draw_color:
                 bl      set_color
