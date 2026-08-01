@@ -66,6 +66,7 @@ of its fields touch React state, the editor, or the WASM emulator.
 | `#p2=<lz>` share hash | `lib/playground/share.ts::readShareHash` | non-string source, malformed cursor, > 1 MB inflated |
 | `?example=<id>` | regex `/^[\w.-]+$/` | path traversal, special chars |
 | `?theme=<name>` | enum check | unknown values |
+| `?run=<mode>` | enum check (`terminal` \| `console`) | unknown values; it selects a surface and carries no code, so the enum bounds the whole surface |
 | Bookmark JSON import | `lib/playground/named-saves.ts::isValidSave` | per-field type check, no-clobber on name collision |
 | `.s` / `.asm` / `.txt` upload | `lib/playground/upload-guard.ts` + `MAX_SOURCE_BYTES` | files > 1 MB |
 | VFS upload (console + terminal) | `lib/playground/upload-guard.ts` + `MAX_VFS_BYTES` | files > 4 MiB |
