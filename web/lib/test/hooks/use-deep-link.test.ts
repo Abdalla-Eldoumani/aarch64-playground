@@ -36,6 +36,7 @@ describe("parseDeepLink", () => {
     const r = parseDeepLink("");
     expect(r.example).toBeUndefined();
     expect(r.theme).toBeUndefined();
+    expect(r.run).toBeUndefined();
     expect(r.embed).toBe(false);
   });
 
@@ -46,6 +47,32 @@ describe("parseDeepLink", () => {
       theme: "light",
       embed: true,
     });
+  });
+
+  test("?run=terminal and ?run=console name the surface", () => {
+    expect(parseDeepLink("?example=snake&run=terminal").run).toBe("terminal");
+    expect(parseDeepLink("?example=dsav&run=console").run).toBe("console");
+  });
+
+  test("?run= is honoured on any stem, not just the interactive ones", () => {
+    // `run` says which surface the run uses; it is not a per-example
+    // privilege, and gating it here would need a table that can drift.
+    expect(parseDeepLink("?example=echo&run=terminal").run).toBe("terminal");
+  });
+
+  test("an unknown ?run= value is dropped, so the example default stands", () => {
+    expect(parseDeepLink("?example=snake&run=1").run).toBeUndefined();
+    expect(parseDeepLink("?example=snake&run=interactive").run).toBeUndefined();
+    expect(parseDeepLink("?example=snake&run=").run).toBeUndefined();
+    expect(parseDeepLink("?example=snake&run=TERMINAL").run).toBeUndefined();
+  });
+
+  test("?run= parses on its own; having no example is the page's business", () => {
+    // The parser reports what the URL said. Delivery ignores a run with no
+    // example, because there is no program for the mode to belong to.
+    const r = parseDeepLink("?run=terminal");
+    expect(r.run).toBe("terminal");
+    expect(r.example).toBeUndefined();
   });
 
   test("?bundle=<lz> decodes into the deep link's bundle field", async () => {
@@ -98,6 +125,16 @@ describe("buildDeepLinkQuery", () => {
 
   test("omits embed when false", () => {
     expect(buildDeepLinkQuery({ example: "array-scores", embed: false })).toBe("?example=array-scores");
+  });
+
+  test("carries run so a README can author a playing link", () => {
+    expect(buildDeepLinkQuery({ example: "snake", run: "terminal" })).toBe(
+      "?example=snake&run=terminal",
+    );
+  });
+
+  test("omits run when absent", () => {
+    expect(buildDeepLinkQuery({ example: "dsav" })).toBe("?example=dsav");
   });
 });
 
