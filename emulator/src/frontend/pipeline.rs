@@ -1204,15 +1204,9 @@ fn strip_leading_labels(line: &str) -> String {
         }
         s = s[end + 1..].trim_start();
     }
-    let s = match s.find("//") {
-        Some(p) => &s[..p],
-        None => s,
-    };
-    let s = match s.find(';') {
-        Some(p) => &s[..p],
-        None => s,
-    };
-    s.trim().to_string()
+    // Literal-aware: a `;` inside a character or string literal is
+    // content, and cutting there truncated `mov w1, ';'` mid-operand.
+    crate::frontend::m4::strip_comment(s).trim().to_string()
 }
 
 #[cfg(test)]
@@ -1222,6 +1216,15 @@ mod tests {
     };
     use crate::frontend::lexer::{lex, TokenKind};
     use std::collections::HashMap;
+
+    #[test]
+    fn strip_leading_labels_keeps_literal_semicolons() {
+        // The tail stripper once cut at the first `;` unconditionally,
+        // truncating a character-literal operand mid-quote.
+        assert_eq!(strip_leading_labels("mov w3, ';'"), "mov w3, ';'");
+        assert_eq!(strip_leading_labels("here: mov w3, ';' ; a comment"), "mov w3, ';'");
+        assert_eq!(strip_leading_labels(".string \"a;b\" // trailing"), ".string \"a;b\"");
+    }
 
     #[test]
     fn stringify_carries_every_token_kind() {
