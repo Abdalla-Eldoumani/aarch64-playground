@@ -176,12 +176,18 @@ function collectStems(dir) {
 function findSource(root, stem) {
   const entries = fs.readdirSync(root, { withFileTypes: true });
   for (const e of entries) {
-    // `fixtures` holds inputs, not programs. `dsav` holds a multi-file
-    // program's HELPER files: each one is a fragment with no entry point,
-    // and their stems (array, sort, stack, ...) are exactly the names a
-    // future fixture is likely to use. Resolving a fixture to a helper
-    // would run the wrong file and report a confusing failure.
-    if (e.isDirectory() && e.name !== "fixtures" && e.name !== "dsav") {
+    // `fixtures` holds inputs, not programs. `dsav` and `deadzone` hold a
+    // multi-file program's HELPER files: each one is a fragment with no
+    // entry point, and their stems (array, sort, stack, input, player, ...)
+    // are exactly the names a future fixture is likely to use. Resolving a
+    // fixture to a helper would run the wrong file and report a confusing
+    // failure.
+    if (
+      e.isDirectory() &&
+      e.name !== "fixtures" &&
+      e.name !== "dsav" &&
+      e.name !== "deadzone"
+    ) {
       const sub = path.join(root, e.name);
       const hit = findSource(sub, stem);
       if (hit) return hit;
