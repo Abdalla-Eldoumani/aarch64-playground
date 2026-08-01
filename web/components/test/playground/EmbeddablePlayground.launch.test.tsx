@@ -16,10 +16,15 @@ vi.mock("@/components/playground/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
 }));
 
-// The console's ownership badge is one of the five suppression points; the
-// props carry it, so capture them rather than rendering the whole panel.
+// The console's ownership badge is one of the five suppression points, and
+// the watermark says where a terminal session took its output over; the
+// props carry both, so capture them rather than rendering the whole panel.
 const consoleProps = vi.hoisted(() => ({
-  current: null as null | { ownedByTerminal: boolean },
+  current: null as null | {
+    ownedByTerminal: boolean;
+    terminalOwnedFrom: number | null;
+    stdout: string;
+  },
 }));
 vi.mock("@/components/panels/ConsolePanel", () => ({
   ConsolePanel: (props: NonNullable<typeof consoleProps.current>) => {
@@ -37,6 +42,7 @@ const terminalProps = vi.hoisted(() => ({
         io?: unknown,
       ) => Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
     };
+    onRegisterIO: (io: unknown) => void;
   },
 }));
 vi.mock("@/components/panels/TerminalPane", () => ({
@@ -158,10 +164,12 @@ function engage(container: HTMLElement) {
   });
 }
 
+function view(ref: React.RefObject<EmbeddablePlaygroundHandle | null>) {
+  return <EmbeddablePlayground ref={ref} chrome="full" startSource={SOURCE} />;
+}
+
 function mount(ref: React.RefObject<EmbeddablePlaygroundHandle | null>) {
-  const rendered = render(
-    <EmbeddablePlayground ref={ref} chrome="full" startSource={SOURCE} />,
-  );
+  const rendered = render(view(ref));
   engage(rendered.container);
   return rendered;
 }
@@ -174,6 +182,30 @@ function runModeGroup(): HTMLElement | null {
 // props exist only once the console tab is the selected one.
 function showConsole(): void {
   fireEvent.click(screen.getByRole("tab", { name: "console" }));
+}
+
+function makeIO() {
+  return {
+    write: vi.fn(),
+    setForeground: vi.fn(),
+    clear: vi.fn(),
+    focus: vi.fn(),
+    sessionEnded: vi.fn(),
+  };
+}
+
+// The real pane registers its io from an effect once xterm is allocated;
+// the mock hands it over on demand so a session can be driven.
+async function registerPaneIO(io: ReturnType<typeof makeIO>): Promise<void> {
+  fireEvent.click(screen.getByRole("tab", { name: "term" }));
+  await waitFor(() => expect(terminalProps.current).not.toBeNull());
+  act(() => {
+    terminalProps.current!.onRegisterIO(io);
+  });
+}
+
+function argsBox(): HTMLInputElement {
+  return screen.getByLabelText("command-line arguments") as HTMLInputElement;
 }
 
 beforeEach(() => {
@@ -689,5 +721,274 @@ describe("regression: a program with no explicit choice", () => {
     expect(consoleProps.current!.ownedByTerminal).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "run" }));
     expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the console's watermark for a terminal-owned run", () => {
+  // A live drive polls on a 32ms timer; hand it a halted machine and give it
+  // one tick so the session tears down inside the test that started it.
+  async function endSession(
+    ref: React.RefObject<EmbeddablePlaygroundHandle | null>,
+    rerender: (ui: React.ReactElement) => void,
+  ): Promise<void> {
+    useEmulatorMock.mockReturnValue(makeHub({ isHalted: true }));
+    rerender(view(ref));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+  }
+
+  // The frames a raw-mode program paints while the tab switches, the pane
+  // mounts, and its io registers -- all of it after the tty went raw and
+  // before any drive exists.
+  const FRAMES = "[2J[H frame one[2J[H frame two";
+
+  it("hides every frame a raw-mode program paints before the drive attaches", async () => {
+    useEmulatorMock.mockReturnValue(makeHub());
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { rerender } = mount(ref);
+    showConsole();
+
+    // The tty goes raw. Nothing has printed and no pane exists yet.
+    useEmulatorMock.mockReturnValue(makeHub({ wantsTerminal: true }));
+    await act(async () => {
+      rerender(view(ref));
+    });
+    showConsole();
+    expect(consoleProps.current!.terminalOwnedFrom).toBe(0);
+
+    // Frames land while the pane is still mounting.
+    useEmulatorMock.mockReturnValue(makeHub({ wantsTerminal: true, stdout: FRAMES }));
+    await act(async () => {
+      rerender(view(ref));
+    });
+    showConsole();
+    expect(consoleProps.current!.terminalOwnedFrom).toBe(0);
+
+    // The pane registers and the drive attaches: the earlier pin stands, so
+    // not one of those bytes is the console's to show. (The slicing itself
+    // is ConsolePanel's; its own tests cover what renders.)
+    await registerPaneIO(makeIO());
+    showConsole();
+    await waitFor(() => expect(consoleProps.current!.terminalOwnedFrom).toBe(0));
+    expect(consoleProps.current!.stdout).toBe(FRAMES);
+
+    await endSession(ref, rerender);
+  });
+
+  it("keeps a cooked line printed before the tty went raw, and hides the rest", async () => {
+    const printed = "menu ready\n";
+    useEmulatorMock.mockReturnValue(makeHub({ stdout: printed }));
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { rerender } = mount(ref);
+    showConsole();
+
+    // The program prints its menu in cooked mode, then flips to raw.
+    useEmulatorMock.mockReturnValue(makeHub({ stdout: printed, wantsTerminal: true }));
+    await act(async () => {
+      rerender(view(ref));
+    });
+    showConsole();
+    expect(consoleProps.current!.terminalOwnedFrom).toBe(11);
+
+    // Frames paint over the following renders and the drive attaches after
+    // them; the watermark stays where the cooked output ended.
+    useEmulatorMock.mockReturnValue(
+      makeHub({ stdout: printed + FRAMES, wantsTerminal: true }),
+    );
+    await act(async () => {
+      rerender(view(ref));
+    });
+    await registerPaneIO(makeIO());
+    showConsole();
+    await waitFor(() => expect(consoleProps.current!.terminalOwnedFrom).toBe(11));
+
+    await endSession(ref, rerender);
+  });
+
+  it("pins zero when the run started in the terminal", async () => {
+    const soup = "[2J[H drawn frame";
+    useEmulatorMock.mockReturnValue(makeHub());
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { rerender } = mount(ref);
+    act(() => {
+      ref.current!.loadProgram({
+        source: SOURCE,
+        stem: "dsav",
+        launch: "terminal",
+        label: "dsav",
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    await registerPaneIO(makeIO());
+
+    showConsole();
+    await waitFor(() => expect(consoleProps.current!.terminalOwnedFrom).toBe(0));
+
+    // The bytes still reach this panel; hiding them is the panel's job, and
+    // the watermark is what tells it there is nothing here to show.
+    useEmulatorMock.mockReturnValue(makeHub({ stdout: soup }));
+    rerender(view(ref));
+    expect(consoleProps.current!.stdout).toBe(soup);
+    expect(consoleProps.current!.terminalOwnedFrom).toBe(0);
+
+    await endSession(ref, rerender);
+  });
+
+  it("leaves a classic console run with no watermark at all", () => {
+    const hub: Hub = makeHub({ stdout: "sum = 10\n" });
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    act(() => {
+      ref.current!.loadProgram({ source: SOURCE, stem: "basics", label: "arithmetic" });
+    });
+    showConsole();
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    expect(hub.run).toHaveBeenCalledTimes(1);
+    expect(consoleProps.current!.terminalOwnedFrom).toBeNull();
+  });
+
+  it("drops the watermark on reset, so the next console run renders whole", async () => {
+    useEmulatorMock.mockReturnValue(makeHub());
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { rerender } = mount(ref);
+    act(() => {
+      ref.current!.loadProgram({
+        source: SOURCE,
+        stem: "dsav",
+        launch: "terminal",
+        label: "dsav",
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    await registerPaneIO(makeIO());
+    showConsole();
+    await waitFor(() => expect(consoleProps.current!.terminalOwnedFrom).toBe(0));
+
+    await endSession(ref, rerender);
+    fireEvent.click(screen.getByRole("button", { name: "reset" }));
+    expect(consoleProps.current!.terminalOwnedFrom).toBeNull();
+  });
+});
+
+describe("the args box a mode-args example runs with", () => {
+  function loadCalc(ref: React.RefObject<EmbeddablePlaygroundHandle | null>) {
+    act(() => {
+      ref.current!.loadProgram({ source: SOURCE, stem: "calc", label: "calculator" });
+    });
+  }
+
+  it("seeds the console token at load in console mode", () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    loadCalc(ref);
+    expect(argsBox().value).toBe("./calc console");
+  });
+
+  it("seeds an empty box at load in terminal mode", () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    act(() => {
+      ref.current!.loadProgram({
+        source: SOURCE,
+        stem: "two-sum",
+        launch: "terminal",
+        label: "two sum",
+      });
+    });
+    expect(argsBox().value).toBe("");
+  });
+
+  it("overrides the fixture args a mode-args example also declares", () => {
+    // temp-convert carries a .args fixture AND takes the console token; the
+    // mode owns the box, so the token wins at load.
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    act(() => {
+      ref.current!.loadProgram({
+        source: SOURCE,
+        stem: "temp-convert",
+        args: "./temp-convert 32 F",
+        label: "temperature",
+      });
+    });
+    expect(argsBox().value).toBe("./temp-convert console");
+  });
+
+  it("follows the run-mode control both ways while the box stays clean", () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    loadCalc(ref);
+    fireEvent.click(screen.getByLabelText("run in the terminal"));
+    expect(argsBox().value).toBe("");
+    fireEvent.click(screen.getByLabelText("run in the console"));
+    expect(argsBox().value).toBe("./calc console");
+  });
+
+  it("leaves a box the student typed in alone, in either direction", () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    loadCalc(ref);
+    fireEvent.change(argsBox(), { target: { value: "./calc scientific" } });
+
+    fireEvent.click(screen.getByLabelText("run in the terminal"));
+    expect(argsBox().value).toBe("./calc scientific");
+    fireEvent.click(screen.getByLabelText("run in the console"));
+    expect(argsBox().value).toBe("./calc scientific");
+  });
+
+  it("still follows the mode from the payload's own seeded value", () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    act(() => {
+      ref.current!.loadProgram({
+        source: SOURCE,
+        stem: "temp-convert",
+        args: "./temp-convert 32 F",
+        label: "temperature",
+      });
+    });
+    // Typing the fixture form back is not the student inventing arguments:
+    // it is one of the values the app itself seeds.
+    fireEvent.change(argsBox(), { target: { value: "./temp-convert 32 F" } });
+    fireEvent.click(screen.getByLabelText("run in the terminal"));
+    expect(argsBox().value).toBe("");
+  });
+
+  it("leaves an example outside the table on its own fixture args", () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    act(() => {
+      ref.current!.loadProgram({
+        source: SOURCE,
+        stem: "command-line-args",
+        args: "hello world",
+        label: "argv",
+      });
+    });
+    expect(argsBox().value).toBe("hello world");
+    expect(runModeGroup()).toBeNull();
+  });
+
+  it("assembles with whatever the box holds, exactly as before", async () => {
+    const hub: Hub = makeHub();
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    loadCalc(ref);
+
+    // The button, the shortcut, and the palette all land on the handle's
+    // assemble, which is the one funnel the args text reaches the hub by.
+    await act(async () => {
+      ref.current!.assemble();
+    });
+    expect(hub.assemble).toHaveBeenCalledWith(SOURCE, ["./calc", "console"]);
+
+    fireEvent.change(argsBox(), { target: { value: "./calc scientific" } });
+    await act(async () => {
+      ref.current!.assemble();
+    });
+    expect(hub.assemble).toHaveBeenLastCalledWith(SOURCE, ["./calc", "scientific"]);
   });
 });
