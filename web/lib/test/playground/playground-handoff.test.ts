@@ -4,10 +4,12 @@ import path from "node:path";
 import {
   EXAMPLE_INPUTS,
   EXAMPLE_INTERACTIVE,
+  EXAMPLE_MODE_ARGS,
   EXAMPLE_TERMINAL,
   MAX_VFS_FIXTURE_FILES,
   decodeLaunch,
   fetchExample,
+  modeArgsFor,
   parseVfsFixture,
   resolveBoot,
   resolveHandoff,
@@ -369,6 +371,47 @@ describe("launch tables", () => {
       expect(EXAMPLE_TERMINAL[stem]).toBeUndefined();
       expect(EXAMPLE_INTERACTIVE[stem]).toBeUndefined();
     }
+  });
+});
+
+describe("the per-mode args table", () => {
+  it("names the three stems that take the console token", () => {
+    expect(Object.keys(EXAMPLE_MODE_ARGS).sort()).toEqual([
+      "calc",
+      "temp-convert",
+      "two-sum",
+    ]);
+  });
+
+  it("is a subset of the stems the run-mode control is offered for", () => {
+    // The mode owns the args box for these; a stem with no visible control
+    // could never flip the box back.
+    for (const stem of Object.keys(EXAMPLE_MODE_ARGS)) {
+      expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
+    }
+  });
+
+  it("carries only `true` values and path-safe stems", () => {
+    for (const [stem, value] of Object.entries(EXAMPLE_MODE_ARGS)) {
+      expect(value).toBe(true);
+      expect(stem).toMatch(/^[\w.-]+$/);
+    }
+  });
+
+  it("hands the console face the token and the terminal face nothing", () => {
+    expect(modeArgsFor("calc", "console")).toBe("./calc console");
+    expect(modeArgsFor("calc", "terminal")).toBe("");
+    expect(modeArgsFor("temp-convert", "console")).toBe("./temp-convert console");
+    expect(modeArgsFor("two-sum", "console")).toBe("./two-sum console");
+  });
+
+  it("has no opinion about a stem outside the table", () => {
+    // command-line-args seeds from its own fixture and must keep doing so.
+    expect(modeArgsFor("command-line-args", "console")).toBeNull();
+    expect(modeArgsFor("command-line-args", "terminal")).toBeNull();
+    expect(modeArgsFor("dsav", "console")).toBeNull();
+    expect(modeArgsFor(null, "console")).toBeNull();
+    expect(modeArgsFor(undefined, "terminal")).toBeNull();
   });
 });
 
