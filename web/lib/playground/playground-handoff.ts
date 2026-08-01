@@ -241,6 +241,38 @@ export const EXAMPLE_INTERACTIVE: Record<string, true> = {
   deadzone: true,
 };
 
+/** Examples that present a different face per launch mode: run them in the
+ *  console and they take one extra argument, the word `console`, and print
+ *  plain line-at-a-time output the console's plain-text scrollback can
+ *  actually render; run them in the terminal and they take no arguments and
+ *  draw their full-screen ANSI face. The token is always the same word --
+ *  this table only marks who takes it.
+ *
+ *  The rule the playground applies from it: for a stem listed here the mode
+ *  OWNS the args box, at load and on every run-mode flip. That overrides the
+ *  fixture args EXAMPLE_INPUTS seeds (temp-convert is in both tables), and it
+ *  stops at the student -- a box edited to anything other than the two seeded
+ *  forms or the payload's own value is theirs and is left alone. */
+export const EXAMPLE_MODE_ARGS: Record<string, true> = {
+  calc: true,
+  "temp-convert": true,
+  "two-sum": true,
+};
+
+/**
+ * The args a mode-args example runs with under `mode`: the console face
+ * takes the token after the program name, the terminal face takes nothing.
+ * Null for a stem the table does not list, meaning "the mode has no opinion
+ * here; whatever seeded the box stands".
+ */
+export function modeArgsFor(
+  stem: string | null | undefined,
+  mode: LaunchMode,
+): string | null {
+  if (!stem || EXAMPLE_MODE_ARGS[stem] !== true) return null;
+  return mode === "console" ? `./${stem} console` : "";
+}
+
 export const EXAMPLE_FILES: Record<string, string[]> = {
   dsav: [
     "theme.s",
