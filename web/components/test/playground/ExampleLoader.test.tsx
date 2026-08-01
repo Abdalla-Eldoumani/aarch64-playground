@@ -106,7 +106,11 @@ describe("ExampleLoader", () => {
     expect(fetchMock).toHaveBeenCalledWith("/examples/cpsc355/basics.s");
     expect(onLoad).toHaveBeenCalledWith({
       source: "// basics source\n",
+      // The loader replaces the fetch's stem-shaped label with the human
+      // name; the stem itself rides along so the launch tables can be
+      // consulted after the load.
       label: "arithmetic",
+      stem: "basics",
     });
   });
 
@@ -130,6 +134,7 @@ describe("ExampleLoader", () => {
     expect(onLoad).toHaveBeenCalledWith({
       source: "// read file\n",
       label: "read file",
+      stem: "read-file",
       vfs: { "input.txt": "Hi\n" },
     });
   });
