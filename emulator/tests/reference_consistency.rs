@@ -57,7 +57,8 @@ const SUPPORTED: &[&str] = &[
     "B", "BL", "BR", "BLR", "RET", "B.cond", "Bcond",
     "CBZ", "CBNZ", "TBZ", "TBNZ",
     // floating point (single and double precision)
-    "FMOV", "FADD", "FSUB", "FMUL", "FDIV", "FNEG", "FABS", "FCMP", "FCVT", "SCVTF", "FCVTZS",
+    "FMOV", "FADD", "FSUB", "FMUL", "FDIV", "FNEG", "FABS", "FSQRT", "FCMP", "FCVT", "SCVTF",
+    "FCVTZS",
     // system
     "NOP", "SVC",
 ];
