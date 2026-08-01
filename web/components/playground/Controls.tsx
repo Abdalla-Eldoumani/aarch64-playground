@@ -20,6 +20,11 @@ interface ControlsProps {
    *  failed one. Run, step, and back have nothing to execute without a
    *  program, so they render disabled instead of silently no-oping. */
   programLoaded: boolean;
+  /** Run has something to do even with nothing assembled: it assembles the
+   *  workspace first and starts the session itself. Only run is affected --
+   *  step and back still need a loaded program -- and an assemble already
+   *  in flight still disables it, so one press cannot start two. */
+  runAssemblesFirst?: boolean;
   /** True while the program sits at a blocked read waiting for stdin. Run,
    *  step, and back cannot make progress past the read (the machine just
    *  re-blocks), so they disable; assemble and reset stay live because both
@@ -41,6 +46,7 @@ export function Controls({
   isAssembling = false,
   isHalted,
   programLoaded,
+  runAssemblesFirst = false,
   blocked = false,
   error,
   stepCount,
@@ -78,7 +84,11 @@ export function Controls({
         aria-label={isRunning ? "pause" : "run"}
         aria-keyshortcuts="F5"
         title="F5"
-        disabled={!programLoaded || (isHalted && !isRunning) || (blocked && !isRunning)}
+        disabled={
+          (!programLoaded && (!runAssemblesFirst || isAssembling)) ||
+          (isHalted && !isRunning) ||
+          (blocked && !isRunning)
+        }
       >
         <span>{isRunning ? "pause" : "run"}</span>
         <Shortcut keys="F5" />
