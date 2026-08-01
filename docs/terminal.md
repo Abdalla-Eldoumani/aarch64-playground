@@ -43,6 +43,11 @@ menu-driven ones are declared terminal-first up front; the raw-mode ones
 claim the pane the moment they switch the terminal over. Step-back is
 paused during a live session and comes back when it ends.
 
+Three of them (calc, temp-convert, two-sum) carry a second, plain-text
+face: `./program console` here answers a line at a time with no colour or
+cursor moves, and picking console on the run-mode control seeds that same
+argument for you.
+
 ### Toolchain
 
 The course workflow from the lab machines, replayed against the VFS:
