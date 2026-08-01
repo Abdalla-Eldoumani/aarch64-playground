@@ -378,6 +378,198 @@ fb_fill_row_loop:
 fb_fill_row_done:
                 ret
 
+// fb_fill_row_pattern - Fill one screen row from an eight-glyph pattern
+// Parameters: w0 = row, x1 = eight glyphs, byte 0 landing in column 0,
+//             w2 = colour
+// SCREEN_WIDTH is a multiple of eight, so the pattern tiles the row exactly
+// and a textured row costs the same ten stores a flat fill does.
+                .global fb_fill_row_pattern
+fb_fill_row_pattern:
+                cmp     w0, SCREEN_HEIGHT
+                b.ge    fb_fill_pattern_done
+                cmp     w0, 0
+                b.lt    fb_fill_pattern_done
+
+                mov     w3, SCREEN_WIDTH
+                mul     w3, w0, w3
+
+                adrp    x6, fill_pattern
+                add     x6, x6, :lo12:fill_pattern
+                strb    w2, [x6, 0]
+                strb    w2, [x6, 1]
+                strb    w2, [x6, 2]
+                strb    w2, [x6, 3]
+                strb    w2, [x6, 4]
+                strb    w2, [x6, 5]
+                strb    w2, [x6, 6]
+                strb    w2, [x6, 7]
+                ldr     x8, [x6]                // Eight copies of the colour
+
+                adrp    x4, fb_char
+                add     x4, x4, :lo12:fb_char
+                add     x4, x4, x3, uxtw
+                adrp    x5, fb_attr
+                add     x5, x5, :lo12:fb_attr
+                add     x5, x5, x3, uxtw
+
+                mov     w9, SCREEN_WIDTH / 8
+fb_fill_pattern_loop:
+                str     x1, [x4], 8
+                str     x8, [x5], 8
+                subs    w9, w9, 1
+                b.ne    fb_fill_pattern_loop
+
+fb_fill_pattern_done:
+                ret
+
+// fb_panel - A filled, framed box staged into the frame buffer
+// Parameters: w0 = x, w1 = y, w2 = width, w3 = height, w4 = frame colour
+// The interior is blanked, so a box put over the play field hides what is
+// under it instead of letting the field show through the gaps. Cells outside
+// the screen are dropped, the way write_char drops them.
+PANEL_GLYPH = '#'                               // Frame of every overlay box
+
+                .global fb_panel
+fb_panel:
+                stp     fp, lr, [sp, -80]!
+                mov     fp, sp
+                stp     x19, x20, [sp, 16]
+                stp     x21, x22, [sp, 32]
+                stp     x23, x24, [sp, 48]
+                stp     x25, x26, [sp, 64]
+
+                mov     w19, w0                 // Left column
+                mov     w20, w1                 // Top row
+                mov     w21, w2                 // Width
+                mov     w22, w3                 // Height
+                mov     w23, w4                 // Frame colour
+
+                adrp    x24, fb_char
+                add     x24, x24, :lo12:fb_char
+                adrp    x25, fb_attr
+                add     x25, x25, :lo12:fb_attr
+
+                mov     w26, 0                  // Row within the box
+fb_panel_row:
+                cmp     w26, w22
+                b.ge    fb_panel_done
+
+                add     w0, w20, w26            // Screen row
+                cmp     w0, 0
+                b.lt    fb_panel_next_row
+                cmp     w0, SCREEN_HEIGHT
+                b.ge    fb_panel_done
+
+                mov     w1, SCREEN_WIDTH
+                madd    w1, w0, w1, w19         // Cell index of the left edge
+
+                mov     w2, 0                   // Column within the box
+fb_panel_col:
+                cmp     w2, w21
+                b.ge    fb_panel_next_row
+
+                add     w3, w19, w2             // Screen column
+                cmp     w3, 0
+                b.lt    fb_panel_next_col
+                cmp     w3, SCREEN_WIDTH
+                b.ge    fb_panel_next_row
+
+                // Edges carry the frame glyph, everything inside is blanked
+                mov     w4, PANEL_GLYPH
+                mov     w5, w23
+                cbz     w26, fb_panel_put
+                sub     w6, w22, 1
+                cmp     w26, w6
+                b.eq    fb_panel_put
+                cbz     w2, fb_panel_put
+                sub     w6, w21, 1
+                cmp     w2, w6
+                b.eq    fb_panel_put
+                mov     w4, ' '
+                mov     w5, COLOR_RESET
+
+fb_panel_put:
+                add     w7, w1, w2
+                strb    w4, [x24, w7, uxtw]
+                strb    w5, [x25, w7, uxtw]
+
+fb_panel_next_col:
+                add     w2, w2, 1
+                b       fb_panel_col
+
+fb_panel_next_row:
+                add     w26, w26, 1
+                b       fb_panel_row
+
+fb_panel_done:
+                ldp     x25, x26, [sp, 64]
+                ldp     x23, x24, [sp, 48]
+                ldp     x21, x22, [sp, 32]
+                ldp     x19, x20, [sp, 16]
+                ldp     fp, lr, [sp], 80
+                ret
+
+// fb_meter - A bracketed bar of filled and empty segments
+// Parameters: w0 = x, w1 = y, w2 = segments, w3 = segments filled,
+//             w4 = colour of the filled part
+// One idiom for every gauge on screen: health, the two ability charges.
+METER_FULL = '#'                                // A charged segment
+METER_EMPTY = '-'                               // A spent one
+
+                .global fb_meter
+fb_meter:
+                stp     fp, lr, [sp, -64]!
+                mov     fp, sp
+                stp     x19, x20, [sp, 16]
+                stp     x21, x22, [sp, 32]
+                str     x23, [sp, 48]
+
+                mov     w21, w2                 // Segments
+                mov     w22, w3                 // Filled
+                mov     w23, w4                 // Filled colour
+                bl      cursor_move
+
+                cmp     w22, 0
+                csel    w22, wzr, w22, lt
+                cmp     w22, w21
+                csel    w22, w21, w22, gt
+
+                mov     w0, COLOR_BRIGHT_BLACK
+                bl      set_color
+                mov     w0, '['
+                bl      write_char
+
+                mov     w0, w23
+                bl      set_color
+                mov     w19, w22
+fb_meter_full_loop:
+                cbz     w19, fb_meter_empty
+                mov     w0, METER_FULL
+                bl      write_char
+                sub     w19, w19, 1
+                b       fb_meter_full_loop
+
+fb_meter_empty:
+                mov     w0, COLOR_BRIGHT_BLACK
+                bl      set_color
+                sub     w20, w21, w22
+fb_meter_empty_loop:
+                cbz     w20, fb_meter_close
+                mov     w0, METER_EMPTY
+                bl      write_char
+                sub     w20, w20, 1
+                b       fb_meter_empty_loop
+
+fb_meter_close:
+                mov     w0, ']'
+                bl      write_char
+
+                ldr     x23, [sp, 48]
+                ldp     x21, x22, [sp, 32]
+                ldp     x19, x20, [sp, 16]
+                ldp     fp, lr, [sp], 64
+                ret
+
 // cursor_home - Stage the next glyph at the top-left corner
                 .global cursor_home
 cursor_home:
@@ -615,6 +807,8 @@ flush_buf_write_done:
 // its eight-cell group differs, then emits each changed run as one cursor
 // address, one colour change and the glyphs. One write syscall per frame in
 // the normal case, a handful on a full repaint.
+// The output never depends on how wide the terminal is: a run only skips its
+// cursor address while it stays inside one row.
                 .global screen_flush
 screen_flush:
                 stp     fp, lr, [sp, -112]!
@@ -722,6 +916,23 @@ flush_cell_glyph:
                 strb    w4, [x22, w7, uxtw]
                 add     w9, w26, w7
                 add     w28, w9, 1              // Cursor advanced one cell
+
+                // Carrying that position across a row boundary would assume
+                // the terminal wrapped at column SCREEN_WIDTH. Only an
+                // exactly-80-column terminal does: a wider pane leaves the
+                // cursor on the same line and the rest of the run prints
+                // shifted right, which scatters the frame. Every new row
+                // starts with an address of its own.
+                // Groups are eight cells and SCREEN_WIDTH is a multiple of
+                // eight, so a row can only end on the last cell of a group.
+                // Seven cells in eight get away with the compare.
+                cmp     w7, 7
+                b.ne    flush_cell_next
+                mov     w10, SCREEN_WIDTH
+                udiv    w11, w28, w10
+                msub    w11, w11, w10, w28
+                cbnz    w11, flush_cell_next
+                mov     w28, -1                 // Position no longer known
 
 flush_cell_next:
                 add     w7, w7, 1
