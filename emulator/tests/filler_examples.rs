@@ -7,6 +7,13 @@
 //! visualizer, the temperature instrument, the multi-file data structures
 //! visualizer) driven from one stdin push.
 //!
+//! The calculator, the instrument and the two-sum visualizer each carry a
+//! second face: `console` in argv[1] answers in plain text instead of
+//! drawing. Each has its own case here, and each of those asserts the
+//! output holds no escape byte at all -- that is the whole promise of the
+//! plain face, and a single stray `\x1b` breaks it for the student who
+//! picked console over the terminal pane.
+//!
 //! These are the same `.s` files the web example loader serves over HTTP,
 //! read straight from `web/public/examples/cpsc355/` (not a copy) so the
 //! served asset and the asserted behavior cannot drift. Each program is
@@ -60,6 +67,57 @@ fn run_example(src_rel: &str, stdin: Option<&str>) -> (String, Option<i64>) {
     let stdout = String::from_utf8_lossy(&cpu.take_stdout())
         .replace("\r\n", "\n");
     (stdout, cpu.exit_code())
+}
+
+/// Drive a cooked-mode program from one scripted stdin push: load it with
+/// `args` as its argv, run to halt, and step over the pauses a paced
+/// program takes. Returns stdout, the exit code, and how many times the
+/// program slept -- the sleep count is what proves an animation paced
+/// itself rather than dumping every frame at once.
+///
+/// The source is passed in rather than read here because the multi-file
+/// programs arrive already concatenated, the way the web's files strip
+/// joins them.
+fn run_cooked_session(
+    label: &str,
+    source: &str,
+    args: &[&str],
+    drive: &str,
+) -> (String, Option<i64>, u32) {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host)
+        .unwrap_or_else(|e| panic!("assemble {label}: {e}"));
+    cpu.load_linked_image_with_args(&image, args)
+        .unwrap_or_else(|e| panic!("load {label}: {e}"));
+    cpu.push_stdin(drive.as_bytes());
+    cpu.close_stdin();
+    let mut sleeps = 0u32;
+    loop {
+        let r = cpu
+            .run_until_break(10_000_000)
+            .unwrap_or_else(|e| panic!("run {label}: {e}"));
+        if r.halted {
+            break;
+        }
+        if cpu.take_pending_sleep_ns().is_some() {
+            sleeps += 1;
+            continue;
+        }
+        assert!(!cpu.is_blocked(), "{label} ran out of scripted input");
+    }
+    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).replace("\r\n", "\n");
+    (stdout, cpu.exit_code(), sleeps)
+}
+
+/// The console face's whole promise: plain text. One escape byte in the
+/// stream and the student who chose the console instead of the terminal
+/// pane reads control codes, so the count is asserted rather than eyeballed.
+fn assert_plain_text(label: &str, stdout: &str) {
+    let escapes = stdout.bytes().filter(|b| *b == 0x1b).count();
+    assert_eq!(
+        escapes, 0,
+        "{label} wrote {escapes} escape bytes; the console face must write none"
+    );
 }
 
 #[test]
@@ -202,99 +260,148 @@ fn calc_device_plays_a_timed_session_and_exits_cleanly() {
     assert!(!cpu.term.raw_mode, "exit must restore the terminal");
 }
 
-/// The two-sum visualizer, cooked mode and menu-driven, so the whole
-/// session is one scripted stdin push. The drive runs a preset through
-/// both algorithms, then types an array in by hand -- with one value the
-/// cells have no room for, so the rejection path is walked too -- and
-/// runs the hash set over it.
+/// The same calculator with `console` in its argv: no key grid, no raw
+/// mode, one answer per typed line. The script walks precedence, a unary,
+/// the trig mode word, the error state, and the quit word.
 #[test]
-fn two_sum_visualizer_runs_a_preset_and_a_hand_typed_array() {
-    let source = read("two-sum.s");
-    let mut cpu = Cpu::new();
-    let image = assemble_hosted(&source, &cpu.host)
-        .unwrap_or_else(|e| panic!("assemble two-sum.s: {e}"));
-    cpu.load_linked_image(&image).expect("load two-sum.s");
-    // enter past the splash; [4] speed 100 ms; [1] preset [1] classic;
-    // [7] both algorithms back to back; [2] manual entry of six values,
-    // the first attempt out of range; [3] target 10; [6] the hash set.
-    // Then [0] out.
-    //
-    // The blank lines are the "press enter to continue" waits. The first
-    // wait after a typed answer eats the newline that answer left behind
-    // and needs one blank line; a wait that starts with an empty buffer
-    // needs two, which is why the pair after the back-to-back run is
-    // three lines and not two.
-    let drive = "\n\
-                 4\n100\n\n\
-                 1\n1\n\n\
-                 7\n\n\n\n\
-                 2\n6\n1000\n3\n3\n4\n7\n1\n8\n\n\
-                 3\n10\n\n\
-                 6\n\n\
-                 0\n";
-    cpu.push_stdin(drive.as_bytes());
-    cpu.close_stdin();
-    let mut sleeps = 0u32;
-    loop {
-        let r = cpu.run_until_break(10_000_000).expect("run two-sum.s");
-        if r.halted {
-            break;
-        }
-        if cpu.take_pending_sleep_ns().is_some() {
-            sleeps += 1;
-            continue;
-        }
-        assert!(!cpu.is_blocked(), "two-sum ran out of scripted input");
-    }
-    assert_eq!(cpu.exit_code, Some(0));
-    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
-    assert!(stdout.contains("TWO-SUM, TRACED"), "the title bar carries the app mark");
-    assert!(stdout.contains("PRESETS"), "the preset picker opened");
-    assert!(stdout.contains("BRUTE FORCE     check every pair (i, j) with i < j"));
-    assert!(stdout.contains("HASH SET        for each i, look up target - arr[i]"));
+fn calc_console_face_answers_typed_lines_in_plain_text() {
+    let (stdout, exit, _) = run_cooked_session(
+        "calc.s console",
+        &read("calc.s"),
+        &["./calc", "console"],
+        "2+3*4\nsqrt(9)\ndeg\nsin(30)\n5/0\nq\n",
+    );
+    assert_eq!(exit, Some(0));
+    assert!(stdout.contains("calc> "), "the plain face prompts per line");
+    assert!(stdout.contains("= 14"), "precedence holds on the console path too");
+    assert!(stdout.contains("= 3"), "sqrt(9) answers");
+    assert!(stdout.contains("DEG"), "the mode word echoes the mode it switched to");
+    assert!(stdout.contains("= 0.5"), "sin(30) in degrees");
+    assert!(stdout.contains("div by zero"), "5/0 names the error instead of printing a number");
+    assert!(stdout.contains("bye"), "the quit word ends the session");
+    assert_plain_text("calc.s console", &stdout);
+}
+
+/// The two-sum visualizer, cooked mode and menu-driven, so the whole
+/// session is one scripted stdin push. The drive walks the screens a first
+/// run touches: enter past the welcome splash, [4] speed down to 100 ms,
+/// [1] preset [1] classic, [5] brute force frame by frame, then [0] out.
+///
+/// The blank lines are the "press enter to continue" waits that follow a
+/// saved answer and a finished run.
+///
+/// Every asserted string is a run the program writes without a colour
+/// escape in the middle of it. The screens are painted cell by cell with
+/// cursor moves and role colours, so a line that reads as one row on
+/// screen is often several writes in the stream; picking the contiguous
+/// runs is what keeps this a behavior check and not a paint-order check.
+#[test]
+fn two_sum_visualizer_walks_the_menus_and_traces_a_preset() {
+    let (stdout, exit, sleeps) = run_cooked_session(
+        "two-sum.s",
+        &read("two-sum.s"),
+        &[],
+        "\n\
+         4\n100\n\n\
+         1\n1\n\n\
+         5\n\n\
+         0\n",
+    );
+    assert_eq!(exit, Some(0));
+    assert!(stdout.contains("TWO-SUM"), "the title bar carries the app mark");
+    assert!(stdout.contains("TWO-SUM, TRACED"), "the welcome screen draws its box");
+    assert!(stdout.contains("press enter to begin"), "the splash waits for a key");
+    assert!(
+        stdout.contains("two-sum, traced in ARMv8 assembly"),
+        "the home screen carries the tagline beside the app mark"
+    );
+    assert!(
+        stdout.contains("six arrays and targets worth watching"),
+        "the home menu spells each entry out, dsav style"
+    );
+    assert!(
+        stdout.contains("animation delay in ms (100 to 3000):"),
+        "[4] opens the speed screen with its bounds named"
+    );
+    assert!(
+        stdout.contains("PRESETS") && stdout.contains("arr=[2,7,11,15]"),
+        "[1] opens the preset picker with the classic array on it"
+    );
+    assert!(
+        stdout.contains("check every pair (i, j) with i < j"),
+        "the brute force screen names what it is about to do"
+    );
+    assert!(
+        stdout.contains("i=0  j=1   arr[0]+arr[1] = 2 + 7 = 9   target = 9"),
+        "the narration panel reports the comparison it is on"
+    );
     assert!(
         stdout.contains("result: arr[0] (2) + arr[1] (7) = 9.  comparisons: 1."),
         "brute force answers the classic preset on its first pair"
     );
-    assert!(
-        stdout.contains("1000 is out of range.  enter a value from -99 to 999."),
-        "a value wider than a cell is refused by name, and the prompt comes back"
-    );
-    assert!(
-        stdout.contains("result: arr[0] (3) + arr[3] (7) = 10.  probes: 7"),
-        "the hash set answers the hand-typed array, keeping the first of the two 3s"
-    );
-    assert!(stdout.contains("bye."), "the exit path prints the goodbye line");
+    assert!(stdout.contains("thanks for watching."), "the exit path prints the goodbye line");
     assert!(sleeps > 0, "the animation paces itself through usleep");
+}
+
+/// The same program with `console` in its argv: no canvas, no colour, just
+/// the two solvers over one typed array. The drive is the classic input.
+#[test]
+fn two_sum_console_face_solves_a_typed_array_in_plain_text() {
+    // The 1000 is out of range: the same hardened reader as the
+    // visualizer's should name the bounds and re-ask before accepting 7.
+    let (stdout, exit, _) = run_cooked_session(
+        "two-sum.s console",
+        &read("two-sum.s"),
+        &["./two-sum", "console"],
+        "4\n2\n1000\n7\n11\n15\n9\n",
+    );
+    assert_eq!(exit, Some(0));
+    assert!(
+        stdout.contains("1000 is out of range"),
+        "an out-of-range element is refused with its value named"
+    );
+    assert!(
+        stdout.contains("brute force:  arr[0] (2) + arr[1] (7) = 9   comparisons: 1"),
+        "the brute force line is labelled and carries its comparison count"
+    );
+    assert!(
+        stdout.contains("hash set:     arr[0] (2) + arr[1] (7) = 9   probes: 3"),
+        "the hash set line lands under it with its probe count"
+    );
+    assert_plain_text("two-sum.s console", &stdout);
 }
 
 /// The temperature instrument in its interactive mode (no argv, so the
 /// argc branch takes it there). Cooked mode, one reading per line: a good
 /// one, junk, something below absolute zero, then the quit word.
+///
+/// The prompt is a labelled rule with a `> ` caret under it, and the
+/// instrument under that is a bulb `(*)` on three scales filled to where
+/// the reading landed -- the fill is what changes per reading, so it is
+/// asserted as a run rather than as a whole row (the row carries colour
+/// escapes between its segments).
 #[test]
 fn temp_convert_answers_readings_and_refuses_impossible_ones() {
-    let source = read("temp-convert.s");
-    let mut cpu = Cpu::new();
-    let image = assemble_hosted(&source, &cpu.host)
-        .unwrap_or_else(|e| panic!("assemble temp-convert.s: {e}"));
-    cpu.load_linked_image(&image).expect("load temp-convert.s");
-    cpu.push_stdin(b"36.6C\nhello\n-300C\nq\n");
-    cpu.close_stdin();
-    loop {
-        let r = cpu.run_until_break(10_000_000).expect("run temp-convert.s");
-        if r.halted {
-            break;
-        }
-        if cpu.take_pending_sleep_ns().is_some() {
-            continue;
-        }
-        assert!(!cpu.is_blocked(), "temp-convert ran out of scripted input");
-    }
-    assert_eq!(cpu.exit_code, Some(0));
-    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    let drive = "36.6C\nhello\n-300C\nq\n";
+    let (stdout, exit, _) =
+        run_cooked_session("temp-convert.s", &read("temp-convert.s"), &[], drive);
+    assert_eq!(exit, Some(0));
+    assert!(
+        stdout.contains("  reading -------------------------------------------------"),
+        "each reading is asked for under its own labelled rule"
+    );
+    assert!(stdout.contains("  > "), "the caret marks where the answer goes");
     assert!(
         stdout.contains("      36.60 C  =     97.88 F  =    309.75 K"),
         "a good reading comes back on all three scales"
+    );
+    assert!(
+        stdout.contains("(*)+=========================+===+"),
+        "the instrument draws its bulb and fills to the reading"
+    );
+    assert!(
+        stdout.contains("  right about human body temperature."),
+        "the band under the scales names where the reading landed"
     );
     assert!(
         stdout.contains("  need a number and a unit: 36.6C, 98.6F, 310K."),
@@ -305,6 +412,40 @@ fn temp_convert_answers_readings_and_refuses_impossible_ones() {
         "the floor is quoted back in the unit that was typed"
     );
     assert!(stdout.contains("bye."), "the quit word ends the loop cleanly");
+}
+
+/// The same instrument with `console` in its argv: the same reading loop
+/// with the palette slots emptied, so the layout survives and the escapes
+/// do not. Same script as the interactive case, so the two faces are read
+/// against the same milestones.
+#[test]
+fn temp_convert_console_face_draws_the_same_readings_in_plain_text() {
+    let drive = "36.6C\nhello\n-300C\nq\n";
+    let (stdout, exit, _) = run_cooked_session(
+        "temp-convert.s console",
+        &read("temp-convert.s"),
+        &["./temp-convert", "console"],
+        drive,
+    );
+    assert_eq!(exit, Some(0));
+    assert!(
+        stdout.contains("  reading -------------------------------------------------"),
+        "the labelled rule survives with the colour gone"
+    );
+    assert!(
+        stdout.contains("      36.60 C  =     97.88 F  =    309.75 K"),
+        "the trio of scales answers the same way"
+    );
+    assert!(
+        stdout.contains(" C -273.15 (*)+=========================+===+-----+  100.00"),
+        "with no escapes in the way the whole scale row is one run"
+    );
+    assert!(
+        stdout.contains("  -300.00 C is below absolute zero (-273.15 C)."),
+        "the refusal keeps its wording on the plain face"
+    );
+    assert!(stdout.contains("bye."), "the quit word ends the loop cleanly");
+    assert_plain_text("temp-convert.s console", &stdout);
 }
 
 /// The multi-file visualizer, combined exactly the way the web's files
@@ -324,10 +465,6 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
         source.push_str(&format!("\n// ---- {name} ----\n"));
         source.push_str(&read(&format!("dsav/{name}")));
     }
-    let mut cpu = Cpu::new();
-    let image = assemble_hosted(&source, &cpu.host)
-        .unwrap_or_else(|e| panic!("assemble dsav: {e}"));
-    cpu.load_linked_image(&image).expect("load dsav");
     // One operation per module, then out. EVERY module is visited: a drive
     // that stopped at the six original ones let a printf conversion the
     // hosted runtime rejects (`%*s`) ship inside the sorting module, because
@@ -353,22 +490,8 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
                  11\n0\n\
                  12\n0\n\
                  0\n";
-    cpu.push_stdin(drive.as_bytes());
-    cpu.close_stdin();
-    let mut sleeps = 0u32;
-    loop {
-        let r = cpu.run_until_break(10_000_000).expect("run dsav");
-        if r.halted {
-            break;
-        }
-        if cpu.take_pending_sleep_ns().is_some() {
-            sleeps += 1;
-            continue;
-        }
-        assert!(!cpu.is_blocked(), "dsav ran out of scripted input");
-    }
-    assert_eq!(cpu.exit_code, Some(0));
-    let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    let (stdout, exit, sleeps) = run_cooked_session("dsav", &source, &[], drive);
+    assert_eq!(exit, Some(0));
     // the home screen: the app mark and this screen's name on the title
     // bar, the two group headings, and the tagline the kernel sets beside
     // them
@@ -464,10 +587,17 @@ fn deadzone_survivor_links_across_its_files_and_plays_a_timed_session() {
     // The raw-mode flag is what hands the web build its terminal pane.
     assert!(wants_terminal, "the game must take the terminal over to draw itself");
     assert!(stdout.contains("DEADZONE"), "the title screen carries the game's name");
-    assert!(stdout.contains("START"), "the first key gets past the title to the menu");
+    assert!(stdout.contains("START GAME"), "the first key gets past the title to the menu");
+    // The status bar is drawn field by field with a colour per field, so
+    // the labels are what survive as contiguous runs; the numbers beside
+    // them arrive after their own escape.
     assert!(
-        stdout.contains("Wave:1 HP:100"),
+        stdout.contains("HEALTH") && stdout.contains("WAVE ") && stdout.contains("KILLS "),
         "the second key starts a run, so the field's status bar draws"
+    );
+    assert!(
+        stdout.contains("W A V E  "),
+        "a run opens on the wave splash over the field"
     );
     assert!(
         stdout.contains("PAUSED"),
