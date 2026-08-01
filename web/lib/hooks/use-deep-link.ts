@@ -1,11 +1,16 @@
 "use client";
 
 import { decodeBundle, type DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
+import type { LaunchMode } from "@/lib/playground/playground-handoff";
 import type { Theme } from "@/lib/hooks/use-theme";
 
 export interface DeepLink {
   example?: string;
   theme?: Theme;
+  /** Which surface `?example=`'s program runs in, overriding that
+   *  example's own default for this load only. Absent means the default,
+   *  so every `?example=` link ever shared keeps its exact meaning. */
+  run?: LaunchMode;
   embed: boolean;
   /** Decoded `?bundle=<lz>` payload, when present and well-formed. */
   bundle?: DiagnosticBundle;
@@ -31,6 +36,12 @@ export function parseDeepLink(search: string): DeepLink {
   if (theme === "dark" || theme === "light" || theme === "high-contrast") {
     result.theme = theme;
   }
+
+  // Same drop-unknown discipline as theme: `?run=1`, `?run=interactive`,
+  // and `?run=` are dropped rather than defaulted, so a typo falls back
+  // to the example's own default instead of guessing at a surface.
+  const run = params.get("run");
+  if (run === "terminal" || run === "console") result.run = run;
 
   result.embed = params.get("embed") === "1";
 
@@ -81,6 +92,7 @@ export function resolveExampleStem(stem: string): string {
 export function buildDeepLinkQuery(link: Omit<DeepLink, "embed"> & { embed?: boolean }): string {
   const params = new URLSearchParams();
   if (link.example) params.set("example", link.example);
+  if (link.run) params.set("run", link.run);
   if (link.theme) params.set("theme", link.theme);
   if (link.embed) params.set("embed", "1");
   const s = params.toString();
