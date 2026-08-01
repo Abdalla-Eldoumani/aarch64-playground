@@ -16,6 +16,7 @@ import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playg
 import {
   EXAMPLE_INTERACTIVE,
   decodeLaunch,
+  modeArgsFor,
   type HandoffPayload,
   type LaunchMode,
 } from "@/lib/playground/playground-handoff";
@@ -325,6 +326,27 @@ function EmbeddableCore({
   // answer to the question; a hand-written buffer has none, so it stays
   // null and the header band is the one every other program sees.
   const [loadedStem, setLoadedStem] = useState<string | null>(null);
+  // The args the loaded payload carried. With the mode's two seeded forms
+  // it is the third value that still counts as a clean args box, so a
+  // fixture-seeded program keeps following the mode until the student types
+  // something of their own.
+  const payloadArgsRef = useRef("");
+  // The run-mode control moves the args box too, for the examples that wear
+  // a different face per surface. It stops at the student: a box edited to
+  // anything the app did not put there is theirs, in either mode.
+  const handleLaunchModeChange = useCallback(
+    (next: LaunchMode) => {
+      setLaunchMode(next);
+      const seeded = modeArgsFor(loadedStem, next);
+      if (seeded == null) return;
+      const clean =
+        argsText === "" ||
+        argsText === modeArgsFor(loadedStem, "console") ||
+        argsText === payloadArgsRef.current;
+      if (clean) setArgsText(seeded);
+    },
+    [argsText, loadedStem, setLaunchMode],
+  );
   // A text-only swap or an import replaces the program without a payload:
   // the mode and the stem both belonged to the program that set them, and
   // a stale mode would send an unrelated program's run to the pane.
@@ -568,10 +590,19 @@ function EmbeddableCore({
       // program at its next assemble.
       setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
-      setLaunchMode(payload.launch === "terminal" ? "terminal" : "console");
+      const launch = payload.launch === "terminal" ? "terminal" : "console";
+      setLaunchMode(launch);
       setLoadedStem(payload.stem ?? null);
-      setArgsText(payload.args ?? "");
+      // A mode-args example wears a different face per surface, so the mode
+      // owns its args box: the console face takes the token, the terminal
+      // face takes none. That overrides the fixture args the payload
+      // carries (temp-convert declares both), and the payload's own value
+      // is remembered as one of the forms a still-clean box may hold.
+      payloadArgsRef.current = payload.args ?? "";
+      setArgsText(modeArgsFor(payload.stem, launch) ?? payloadArgsRef.current);
       setCursor(payload.cursor ?? { line: 1, column: 1 });
+      // A new program starts on a fresh console; no session owns it yet.
+      setTerminalOwnedFrom(null);
       setShareBanner(Boolean(payload.fromShare));
       lastRunSourceRef.current = null;
     },
@@ -604,6 +635,9 @@ function EmbeddableCore({
   // verdict so a composite action can stop at a failed assemble; the
   // button and palette callers ignore it.
   const assembleWithHistory = useCallback(async (): Promise<boolean> => {
+    // The assemble resets the machine and empties the console, so a
+    // previous session's watermark points at bytes that are gone.
+    setTerminalOwnedFrom(null);
     const trimmed = source.trim();
     if (trimmed.length > 0) {
       recent.push(nameForRecents(source), source);
@@ -711,6 +745,24 @@ function EmbeddableCore({
   // Mirrored as state so the console can render "this program reads from
   // the terminal" and disable its own stdin box while a session owns it.
   const [foregroundLive, setForegroundLive] = useState(false);
+  // Where in the console's stdout a terminal-owned session began. The
+  // session's output goes to the pane, which is a real terminal; the
+  // console is plain text and would render a full-screen program's escape
+  // sequences as literal garbage. Null means no session has taken this
+  // program over, which is every classic console run.
+  const [terminalOwnedFrom, setTerminalOwnedFrom] = useState<number | null>(null);
+
+  // Reset and clear both empty the console, so the watermark they leave
+  // behind describes bytes that no longer exist: it goes with them, and the
+  // next classic run renders exactly as it always has.
+  const resetMachine = useCallback(() => {
+    setTerminalOwnedFrom(null);
+    emuRef.current.reset();
+  }, []);
+  const clearConsoleAll = useCallback(() => {
+    setTerminalOwnedFrom(null);
+    emuRef.current.clearConsole();
+  }, []);
 
   // Hiding the pane blurs its textarea, so coming back to a live session
   // needs the keyboard handed over again -- otherwise the student types
@@ -727,6 +779,13 @@ function EmbeddableCore({
   useEffect(() => {
     if (emu.wantsTerminal && !lastWantsTermRef.current) {
       lastWantsTermRef.current = true;
+      // For a raw-mode program this edge IS the session start: the tab
+      // switch, the lazy pane mount, and the io registration all take
+      // renders, and the program paints full frames through every one of
+      // them. Pinning the console's watermark here rather than at the
+      // drive's attach is what keeps those frames out of a plain-text
+      // scrollback. Earliest pin wins, so the attach leaves it alone.
+      setTerminalOwnedFrom((prev) => prev ?? emu.stdout.length);
       queueMicrotask(() => {
         setActiveTab("term");
         setPaneRequest({ pane: "term", nonce: Date.now() });
@@ -734,7 +793,7 @@ function EmbeddableCore({
     } else if (!emu.wantsTerminal) {
       lastWantsTermRef.current = false;
     }
-  }, [emu.wantsTerminal]);
+  }, [emu.wantsTerminal, emu.stdout]);
 
   // The one foreground drive both entry paths share: stream output to
   // the pane, forward its keystrokes to stdin, resume input-starved
@@ -747,6 +806,13 @@ function EmbeddableCore({
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
       setForegroundLive(true);
+      // Everything from here goes to the pane through the output tap below.
+      // Pin where the console's scrollback stops so it can show what
+      // printed BEFORE the takeover and one note in place of the rest.
+      // A raw-mode program pinned this at its rising edge, several frames
+      // ago; the earliest pin of a session wins, so this only fires for a
+      // session that starts here (terminal mode's run, `./name`).
+      setTerminalOwnedFrom((prev) => prev ?? emuRef.current.stdout.length);
       let cancelled = false;
       // Set once the pane we are driving has registered itself; after that,
       // losing the registration means the pane went away.
@@ -1037,7 +1103,7 @@ function EmbeddableCore({
         label: "Reset",
         description: "clear state, keep breakpoints",
         shortcut: "Shift+F5",
-        run: () => emu.reset(),
+        run: () => resetMachine(),
       },
       {
         id: "share",
@@ -1148,7 +1214,7 @@ function EmbeddableCore({
         },
       },
     ],
-    [emu, assembleWithHistory, handleRun, launchable, launchInteractive, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
+    [emu, assembleWithHistory, handleRun, launchable, launchInteractive, resetMachine, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
   );
 
   // Latest-value refs so the imperative handle stays a stable object while
@@ -1333,7 +1399,7 @@ function EmbeddableCore({
       stepBack: () => {
         if (!emuRef.current.blocked) emuRef.current.stepBack();
       },
-      reset: () => emuRef.current.reset(),
+      reset: () => resetMachine(),
       notifyError: (message: string) => toast.error(message),
       loadSource: (next: string) => loadSource(next),
       loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
@@ -1345,7 +1411,7 @@ function EmbeddableCore({
     }),
     // `toast` is referentially stable (useToast memoizes it); notifyError
     // reads it, so it belongs in the dependency list.
-    [loadSource, toast],
+    [loadSource, resetMachine, toast],
   );
 
   // Register the handle only once the hub is loaded, so a queued host action
@@ -1958,12 +2024,13 @@ function EmbeddableCore({
       stderr={emu.stderr}
       blocked={emu.blocked}
       ownedByTerminal={foregroundLive || (launchMode === "terminal" && chrome === "full")}
+      terminalOwnedFrom={terminalOwnedFrom}
       exitCode={emu.exitCode}
       vfsFiles={emu.vfsFiles}
       pushStdin={emu.pushStdin}
       closeStdin={emu.closeStdin}
       uploadVfsFile={stageVfsFile}
-      clearConsole={emu.clearConsole}
+      clearConsole={clearConsoleAll}
     />
   );
   const terminalBlock = (
@@ -2136,7 +2203,7 @@ function EmbeddableCore({
         {showRunMode && (
           <RunModeControl
             mode={launchMode}
-            onChange={setLaunchMode}
+            onChange={handleLaunchModeChange}
             // A live session owns the pane; flipping the mode under it
             // would move the console's ownership badge mid-run.
             disabled={foregroundLive}
@@ -2257,7 +2324,7 @@ function EmbeddableCore({
         canStepBack={emu.canStepBack}
         onRun={handleRun}
         onPause={emu.pause}
-        onReset={emu.reset}
+        onReset={resetMachine}
         isRunning={emu.isRunning}
         isAssembling={emu.isAssembling}
         isHalted={emu.isHalted}
