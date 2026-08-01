@@ -9,7 +9,7 @@
 //
 // how to play: pick a mode with w/s or the arrow keys, enter to
 // start, steer with wasd or the arrows, space pauses, q quits.
-// Four modes, power-ups, combo streaks, three lives, and per-mode
+// Six modes, power-ups, combo streaks, three lives, and per-mode
 // high scores saved to file.txt in the virtual filesystem. ctrl+c
 // in the terminal stops the program at any point.
 
