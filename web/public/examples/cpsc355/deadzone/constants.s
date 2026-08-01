@@ -10,6 +10,20 @@ SCREEN_WIDTH = 80                               // Terminal width in columns
 SCREEN_HEIGHT = 24                              // Terminal height in rows
 SCREEN_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT      // Total screen characters
 
+// Play screen rows
+// A marquee on row 0, the arena between the two rules, then the four-row
+// status bar along the bottom. The field has to stop at ROW_FIELD_LAST for
+// the bar to fit, and player.asm bounds the player inside those rows.
+ROW_MARQUEE = 0                                 // Game name, dark band
+ROW_TOP_BORDER = 1                              // Top rule of the arena
+ROW_FIELD_FIRST = 2                             // First playable row
+ROW_FIELD_LAST = 17                             // Last playable row
+ROW_BOTTOM_BORDER = 18                          // Bottom rule of the arena
+ROW_BAR_TOP = 20                                // Status bar upper rule
+ROW_BAR_STATS = 21                              // Health, wave, kills, level
+ROW_BAR_ABILITIES = 22                          // The two ability charges
+ROW_BAR_BOTTOM = 23                             // Status bar lower rule
+
 // File descriptors
 STDIN = 0                                       // Standard input
 STDOUT = 1                                      // Standard output
@@ -114,6 +128,14 @@ COLOR_BRIGHT_BLUE = 94                          // Bright blue
 COLOR_BRIGHT_MAGENTA = 95                       // Bright magenta
 COLOR_BRIGHT_CYAN = 96                          // Bright cyan
 COLOR_BRIGHT_WHITE = 97                         // Bright white
+
+// Roles the colours play on screen. Everything structural is dim grey so the
+// enemies, the player and the gauges are the only bright things in the frame.
+CHROME_COLOR = COLOR_BRIGHT_BLACK               // Walls, rules, meter tracks
+FLOOR_COLOR = COLOR_BRIGHT_BLACK                // Rubble on the deck
+LABEL_COLOR = COLOR_RED                         // Status bar field names
+VALUE_COLOR = COLOR_BRIGHT_WHITE                // Status bar numbers
+WALL_GLYPH = '#'                                // Arena wall and rule
 
 // Background colors (add 10 to foreground)
 BG_BLACK = 40                                   // Black background
