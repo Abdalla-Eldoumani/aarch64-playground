@@ -42,16 +42,18 @@ Six extra programs are served beyond the tutorial set:
 - `calc.s` -- a pocket scientific calculator drawn as a handheld device,
   from https://github.com/Abdalla-Eldoumani/calc; type straight at it or
   walk the key grid with the arrows, and tab switches between chained
-  entry and whole expressions (`2+3*4 = 14`)
+  entry and whole expressions (`2+3*4 = 14`); with `console` in the args
+  line it is a plain prompt that answers one typed expression per line
 - `temp-convert.s` -- the temperature instrument, from
   https://github.com/Abdalla-Eldoumani/temp-convert; with the args box
   empty it takes readings one at a time and marks each on the C/F/K
-  scales, and `./temp-convert 32 F` in the args box prints that one
-  conversion and exits
+  scales, `./temp-convert console` draws the same readings with no colour
+  in them, and `./temp-convert 32 F` prints that one conversion and exits
 - `two-sum.s` -- the two-sum visualizer, from
   https://github.com/Abdalla-Eldoumani/twosum-arm; menu-driven, it
   animates brute force and the hash set over the same array so the two
-  comparison counts land side by side
+  comparison counts land side by side; with `console` in the args line it
+  answers one typed array in plain text
 - `deadzone.s` + `deadzone/` -- the terminal survivor from
   https://github.com/Abdalla-Eldoumani/deadzone, the second multi-file
   example: `deadzone.s` holds `main`, the eleven files under `deadzone/`
