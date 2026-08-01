@@ -65,8 +65,14 @@ upgrade_desc_move_speed:  .string "Move faster"
 upgrade_desc_multi_shot:  .string "Fire extra bullet"
 
 // Level up UI strings
-msg_levelup_title:  .string "=== LEVEL UP! ==="
-msg_levelup_choose: .string "Choose an upgrade (1, 2, or 3):"
+msg_levelup_title:  .string "LEVEL UP"
+msg_levelup_choose: .string "Take one: press 1, 2 or 3"
+
+// The choice panel, centred on the play field
+LEVELUP_PANEL_X = 18
+LEVELUP_PANEL_Y = 6
+LEVELUP_PANEL_W = 44
+LEVELUP_PANEL_H = 10
 msg_choice_1:       .string "[1] "
 msg_choice_2:       .string "[2] "
 msg_choice_3:       .string "[3] "
@@ -347,12 +353,18 @@ upgrades_draw_menu:
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
 
-                // Clear screen area for menu (center box)
-                // Draw at rows 8-16, centered
+                // A framed box in the middle of the field, so the choice is
+                // never read against whatever the field is doing behind it
+                mov     w0, LEVELUP_PANEL_X
+                mov     w1, LEVELUP_PANEL_Y
+                mov     w2, LEVELUP_PANEL_W
+                mov     w3, LEVELUP_PANEL_H
+                mov     w4, LABEL_COLOR
+                bl      fb_panel
 
                 // Draw title
-                mov     w0, 30                  // X position (centered)
-                mov     w1, 8                   // Y position
+                mov     w0, 36                  // X position (centered)
+                mov     w1, LEVELUP_PANEL_Y + 1
                 bl      cursor_move
 
                 mov     w0, COLOR_BRIGHT_YELLOW
@@ -363,11 +375,11 @@ upgrades_draw_menu:
                 bl      write_str
 
                 // Draw instruction
-                mov     w0, 24
-                mov     w1, 10
+                mov     w0, 25
+                mov     w1, LEVELUP_PANEL_Y + 3
                 bl      cursor_move
 
-                mov     w0, COLOR_WHITE
+                mov     w0, CHROME_COLOR
                 bl      set_color
 
                 adrp    x0, msg_levelup_choose
@@ -379,11 +391,11 @@ upgrades_draw_menu:
                 add     x19, x19, :lo12:offered_upgrades
 
                 // Draw choice 1
-                mov     w0, 20
-                mov     w1, 12
+                mov     w0, LEVELUP_PANEL_X + 4
+                mov     w1, LEVELUP_PANEL_Y + 5
                 bl      cursor_move
 
-                mov     w0, COLOR_BRIGHT_CYAN
+                mov     w0, COLOR_BRIGHT_RED
                 bl      set_color
 
                 adrp    x0, msg_choice_1
@@ -391,6 +403,8 @@ upgrades_draw_menu:
                 bl      write_str
 
                 ldr     w20, [x19, 0]           // Upgrade type 0
+                mov     w0, VALUE_COLOR
+                bl      set_color
                 mov     w0, w20
                 bl      upgrades_get_name
                 bl      write_str
@@ -400,11 +414,11 @@ upgrades_draw_menu:
                 bl      upgrades_draw_level_indicator
 
                 // Draw choice 2
-                mov     w0, 20
-                mov     w1, 13
+                mov     w0, LEVELUP_PANEL_X + 4
+                mov     w1, LEVELUP_PANEL_Y + 6
                 bl      cursor_move
 
-                mov     w0, COLOR_BRIGHT_CYAN
+                mov     w0, COLOR_BRIGHT_RED
                 bl      set_color
 
                 adrp    x0, msg_choice_2
@@ -412,6 +426,8 @@ upgrades_draw_menu:
                 bl      write_str
 
                 ldr     w20, [x19, 4]           // Upgrade type 1
+                mov     w0, VALUE_COLOR
+                bl      set_color
                 mov     w0, w20
                 bl      upgrades_get_name
                 bl      write_str
@@ -420,11 +436,11 @@ upgrades_draw_menu:
                 bl      upgrades_draw_level_indicator
 
                 // Draw choice 3
-                mov     w0, 20
-                mov     w1, 14
+                mov     w0, LEVELUP_PANEL_X + 4
+                mov     w1, LEVELUP_PANEL_Y + 7
                 bl      cursor_move
 
-                mov     w0, COLOR_BRIGHT_CYAN
+                mov     w0, COLOR_BRIGHT_RED
                 bl      set_color
 
                 adrp    x0, msg_choice_3
@@ -432,6 +448,8 @@ upgrades_draw_menu:
                 bl      write_str
 
                 ldr     w20, [x19, 8]           // Upgrade type 2
+                mov     w0, VALUE_COLOR
+                bl      set_color
                 mov     w0, w20
                 bl      upgrades_get_name
                 bl      write_str
@@ -455,7 +473,7 @@ upgrades_draw_level_indicator:
 
                 mov     w19, w0                 // Save upgrade type
 
-                mov     w0, COLOR_YELLOW
+                mov     w0, CHROME_COLOR
                 bl      set_color
 
                 adrp    x0, msg_level_indicator
