@@ -1,51 +1,57 @@
-// temp-convert - the temperature instrument, one reading at a time
+// temp-convert - a thermometer for the terminal
+// https://github.com/Abdalla-Eldoumani/temp-convert
 //
-// The full project (build files, history) lives at
-//   https://github.com/Abdalla-Eldoumani/temp-convert
-//
-// how to run: press assemble, then run. With the args box empty it
-// draws the instrument and reads readings until you stop it. Put
-//   ./temp-convert 32 F
-// in the args box -- the box carries the whole argv, program name
-// first -- and it prints that one conversion and exits instead. The
-// term tab does the same thing with  ./program 32 F
-//
-// how to use: type a number with its unit stuck to it (36.6C, 98.6F,
-// 310K; case does not matter) and the three scales come back with
-// your reading marked on them. Anything else gets one line naming
-// what was expected, and a reading below absolute zero is refused
-// with the floor quoted in the unit you typed. Type q to quit.
-
-// temp-convert - a temperature instrument for the terminal
-//
-// Two modes, picked by the argument count so the same binary serves a
-// shell pipeline and a student poking at it:
-//
-//   ./temp-convert            draws the scale and reads readings until q
-//   ./temp-convert 32 F       prints one conversion and exits
+//   ./temp-convert            the instrument in colour, reads until q
+//   ./temp-convert console    the same loop with no escape bytes at all
+//   ./temp-convert 32 F       one conversion, then exit
 //
 // A reading is a number with a unit stuck to it: 36.6C, 98.6f, 310K.
-// Case does not matter. The instrument is one downward pass of text with
-// no cursor tricks, so the previous reading stays on screen as history.
-//
-// build:  m4 temp-convert.asm > temp-convert.s
-//         gcc temp-convert.s -o temp-convert
+// Each one draws the three scales, a thermometer filled to where the
+// reading landed, and a line naming the band. build: make (m4 + gcc).
 
 define(fp, x29)
 define(lr, x30)
 
-define(token_r, x19)            // parse_reading: the token, kept over atof
+define(token_r, x19)            // parse_reading, is_quit: the token
 define(bar_r, x20)              // build_bar: the bar buffer
 define(anchor_r, x21)           // build_bar: which tick is being placed
 define(row_r, x22)              // draw_face: which unit's scale row
+define(band_r, x23)             // draw_face: where the reading landed
+define(col_r, x24)              // draw_face: that spot as a bar column
+define(tint_r, x25)             // draw_face: the colour that band fills in
 
-// The bar is 38 columns wide and starts 13 columns in, which puts the
-// widest row (" C   -273.15 " + bar + "  100.00") at 59 columns. Past 60
-// the rows wrap in a narrow terminal pane and the scales stop lining up.
-BAR_WIDTH = 38
-BAR_LAST = 37
-BAR_LEAD = 13
+// A scale row is " C -273.15 " + "(*)" + 37 columns of bar + " 100.00",
+// which is 59 wide. Past 60 the rows wrap in a narrow pane and the three
+// scales stop lining up, so the lead, the bulb, the bar and the
+// hand-spaced label row in face_m are one layout: move one and the
+// pointer leaves its tick. With this width the ticks land on columns
+// 0, 26, 30 and 36, which is what face_m is spaced to.
+BAR_WIDTH = 37
+BAR_LAST = 36
+BAR_LEAD = 11
+BULB_WIDTH = 3
+MARK_LEAD = BAR_LEAD + BULB_WIDTH
 ANCHORS = 4
+
+// Colour is one indirection: every escape a row prints comes out of
+// pal_m, and console mode fills pal_m with the empty string instead. So
+// the plain face is the coloured face with nothing in the slots, not a
+// second set of strings that can drift.
+P_CYAN = 0
+P_GREY = 8
+P_AMBER = 16
+P_RED = 24
+P_OFF = 32
+PALETTE = 5
+
+// The six bands a reading can land in, coldest first. One chain names
+// them, and both the note line and the fill colour read off the answer.
+BAND_ICE = 0
+BAND_FROST = 1
+BAND_COOL = 2
+BAND_BODY = 3
+BAND_WARM = 4
+BAND_STEAM = 5
 
 // A reading arrives through "%15s", so 16 bytes hold it plus its NUL.
 // The one-shot splice needs one of those bytes for the unit letter.
@@ -55,7 +61,8 @@ TOK_LAST = 14
 UNIT_BAD = 3
 
 tok_s = 16
-alloc = -(16 + TOK_SIZE) & -16
+argv_s = 32
+alloc = -(16 + TOK_SIZE + 8) & -16
 dealloc = -alloc
 
         .data
@@ -88,48 +95,83 @@ anchor_m:       .double -273.15
                 .double 37.0
                 .double 100.0
 
-// A reading inside one of these windows is named outright rather than
-// called "somewhere between", which is the answer a person wants when
-// they type 32F or 98.6F.
+// The band edges. A reading inside one of these windows is named
+// outright rather than called "somewhere between", which is the answer a
+// person wants when they type 32F or 98.6F.
 frost_lo_m:     .double -0.5
 frost_hi_m:     .double 0.5
 body_lo_m:      .double 36.5
 body_hi_m:      .double 37.5
 
 units_m:        .string "CFK"
+console_m:      .string "console"
+q_m:            .string "q"
+quit_m:         .string "quit"
 
-// Palette: cyan is the program talking to you, dim grey is the fixed
-// instrument face, amber is where your reading landed, red is a refusal.
-// Nothing is carried by colour alone, so the face still reads when the
-// escapes are stripped.
-title_m:        .string "\x1b[36mtemp-convert\x1b[0m\n"
-help_m:         .string "\x1b[90m  a reading is a number and a unit: 36.6C, 98.6F, 310K.\n  type q to quit.\x1b[0m\n"
-prompt_m:       .string "\n\x1b[36mreading> \x1b[0m"
-bye_m:          .string "\x1b[90mbye.\x1b[0m\n"
+// Cyan is the program talking, dim grey is the fixed instrument, amber
+// is where the reading landed, red is a refusal. The empty string is
+// what console mode puts in every slot.
+esc_cyan_m:     .string "\x1b[36m"
+esc_grey_m:     .string "\x1b[90m"
+esc_amber_m:    .string "\x1b[33m"
+esc_red_m:      .string "\x1b[31m"
+esc_off_m:      .string "\x1b[0m"
+empty_m:        .string ""
+
+        .balign 8
+colour_m:       .dword esc_cyan_m, esc_grey_m, esc_amber_m, esc_red_m
+                .dword esc_off_m
+
+// The column fill is the one thing that shifts: cold reads cyan, the
+// ordinary middle keeps the face's own grey, body heat is amber and
+// anything hotter is red. The pointer and the note stay amber, so the
+// reading is always findable whatever band it is in.
+band_pal_m:     .byte P_CYAN, P_CYAN, P_GREY, P_AMBER, P_RED, P_RED
+
+        .balign 8
+note_m:         .dword note_ice_m, note_frost_m, note_cool_m
+                .dword note_body_m, note_warm_m, note_steam_m
+
+note_ice_m:     .string "  below the freezing point of water."
+note_frost_m:   .string "  right at the freezing point of water."
+note_cool_m:    .string "  between freezing and body heat."
+note_body_m:    .string "  right about human body temperature."
+note_warm_m:    .string "  between body heat and the boiling point."
+note_steam_m:   .string "  at or above the boiling point of water."
+
+title_m:        .string "temp-convert"
+help_m:         .string "  a reading is a number and a unit: 36.6C, 98.6F, 310K.\n  type q to quit."
+bye_m:          .string "bye."
 nl_m:           .string "\n"
+
+// The prompt is drawn as a field: a labelled rule, then a caret on its
+// own line with nothing after it, so the pane's cursor sits exactly
+// where the typing goes. Nothing is redrawn or moved, which is what
+// keeps every reading on screen as history.
+rule_m:         .string "-------------------------------------------------"
+fmt_field_m:    .string "\n%s  reading %s%s\n"
+fmt_caret_m:    .string "%s  > %s"
+
+// One format for every line that is coloured end to end.
+fmt_line_m:     .string "%s%s%s\n"
 
 fmt_tok_m:      .string "%15s"
 fmt_trio_m:     .string "  %9.2f C  = %9.2f F  = %9.2f K\n"
 
 // The label row is hand-spaced to the tick columns build_bar computes
-// (0, 27, 31, 37); the leading run matches BAR_LEAD.
-face_m:         .string "\x1b[90m             abs zero                   ice body  boil\x1b[0m\n"
-fmt_mark_m:     .string "\x1b[33m%sv\x1b[0m\n"
-fmt_row_m:      .string "\x1b[90m %c %9.2f %s %7.2f\x1b[0m\n"
+// (0, 26, 30, 36); the leading run is MARK_LEAD, past the bulb.
+face_m:         .string "              abs zero                  ice body  boil"
+fmt_mark_m:     .string "%s%sv%s\n"
+fmt_row_m:      .string "%s %c %7.2f %s%s%s%s %7.2f%s\n"
 
-note_ice_m:     .string "\x1b[33m  below the freezing point of water.\x1b[0m\n"
-note_frost_m:   .string "\x1b[33m  right at the freezing point of water.\x1b[0m\n"
-note_cool_m:    .string "\x1b[33m  between freezing and body heat.\x1b[0m\n"
-note_body_m:    .string "\x1b[33m  right about human body temperature.\x1b[0m\n"
-note_warm_m:    .string "\x1b[33m  between body heat and the boiling point.\x1b[0m\n"
-note_steam_m:   .string "\x1b[33m  at or above the boiling point of water.\x1b[0m\n"
-
-// Each mode names the shape it actually takes, so the advice is usable
+// Each face names the shape it actually takes, so the advice is usable
 // where it is read.
-msg_bad_m:      .string "\x1b[31m  need a number and a unit: 36.6C, 98.6F, 310K.\x1b[0m\n"
-msg_shot_bad_m: .string "\x1b[31m  need a number then a unit: 32 F, 36.6 C, 310 K.\x1b[0m\n"
-msg_floor_m:    .string "\x1b[31m  %.2f %c is below absolute zero (%.2f %c).\x1b[0m\n"
-msg_usage_m:    .string "usage: %s <value> <C|F|K>   (no arguments: interactive)\n"
+msg_bad_m:      .string "  need a number and a unit: 36.6C, 98.6F, 310K."
+msg_shot_bad_m: .string "  need a number then a unit: 32 F, 36.6 C, 310 K."
+msg_floor_m:    .string "%s  %.2f %c is below absolute zero (%.2f %c).%s\n"
+msg_usage_m:    .string "usage: %s [console | <value> <C|F|K>]\n"
+
+bulb_m:         .string "(*)"
 
         .bss
         .balign 8
@@ -140,9 +182,12 @@ cel_m:          .skip 8
 fah_m:          .skip 8
 kel_m:          .skip 8
 
+pal_m:          .skip 40        // the five colour slots, in P_ order
+
 // Whole rows are staged here and printed one call each, rather than a
 // call per character.
-bar_m:          .skip 48
+bar_m:          .skip 48        // the ruler, laid out once
+fill_m:         .skip 48        // bulb plus the filled part of the ruler
 pad_m:          .skip 64
 
         .text
@@ -157,21 +202,50 @@ main:
         // instrument has to answer for both 0 and 1 or the empty case
         // dereferences a null argv.
         cmp     w0, 1
-        b.le    interactive
+        b.le    terminal_face
+
+        // Past here argv is real, and the palette call below would lose
+        // it, so it goes on the frame first.
+        str     x1, [fp, argv_s]
         cmp     w0, 3
         b.eq    oneshot
+        cmp     w0, 2
+        b.ne    usage
 
-        // Arguments were given but not two of them. argv[0] is safe to
-        // read here: the null-argv case already branched away.
-        ldr     x0, =msg_usage_m
+        // The only single argument this program takes is the word that
+        // asks for the face without any escapes in it.
+        ldr     x0, [x1, 8]
+        ldr     x1, =console_m
+        bl      same_word
+        cbz     w0, usage
+
+console_face:
+        mov     w0, 1
+        bl      set_palette
+        b       read_start
+
+terminal_face:
+        mov     w0, 0
+        bl      set_palette
+        b       read_start
+
+usage:
+        ldr     x1, [fp, argv_s]
         ldr     x1, [x1]
+        ldr     x0, =msg_usage_m
         bl      printf
         mov     w0, 1
         b       main_done
 
 // ---------------------------------------------------------------- one shot
 
+// Escape-free because it pipes, but drawn all the same: the trio line
+// and then the same instrument the interactive faces get.
 oneshot:
+        mov     w0, 1
+        bl      set_palette
+
+        ldr     x1, [fp, argv_s]
         ldr     x10, [x1, 16]           // argv[2], the unit
         ldrb    w11, [x10]
         cbz     w11, shot_bad           // an empty argument is not a unit
@@ -179,7 +253,7 @@ oneshot:
         cbnz    w11, shot_bad           // and a unit is exactly one letter
 
         // Splice the two arguments into the token the interactive parser
-        // already understands, so both modes accept the same forms.
+        // already understands, so every face accepts the same forms.
         ldr     x9, [x1, 8]             // argv[1], the number
         add     x12, fp, tok_s
         mov     w13, 0
@@ -203,13 +277,15 @@ shot_splice:
         bl      check_floor
         cbz     w0, shot_floor
         bl      derive
-        bl      print_trio
+        bl      build_bar
+        bl      draw_face
         mov     w0, 0
         b       main_done
 
 shot_bad:
-        ldr     x0, =msg_shot_bad_m
-        bl      printf
+        mov     w0, P_RED
+        ldr     x1, =msg_shot_bad_m
+        bl      say
         mov     w0, 1
         b       main_done
 
@@ -218,18 +294,21 @@ shot_floor:
         mov     w0, 1
         b       main_done
 
-// ------------------------------------------------------------- interactive
+// ------------------------------------------------------- the reading loop
 
-interactive:
-        ldr     x0, =title_m
-        bl      printf
-        ldr     x0, =help_m
-        bl      printf
+// Both interactive faces are this loop. The only difference between them
+// is what set_palette left in the slots.
+read_start:
+        mov     w0, P_CYAN
+        ldr     x1, =title_m
+        bl      say
+        mov     w0, P_GREY
+        ldr     x1, =help_m
+        bl      say
         bl      build_bar
 
 read_loop:
-        ldr     x0, =prompt_m
-        bl      printf
+        bl      say_field
         ldr     x0, =fmt_tok_m
         add     x1, fp, tok_s
         bl      scanf
@@ -250,8 +329,9 @@ read_loop:
         b       read_loop
 
 read_bad:
-        ldr     x0, =msg_bad_m
-        bl      printf
+        mov     w0, P_RED
+        ldr     x1, =msg_bad_m
+        bl      say
         b       read_loop
 
 read_floor:
@@ -259,17 +339,84 @@ read_floor:
         b       read_loop
 
 read_eof:
-        // The prompt is still hanging without its newline.
+        // The caret is still hanging without its newline.
         ldr     x0, =nl_m
         bl      printf
 
 read_quit:
-        ldr     x0, =bye_m
-        bl      printf
+        mov     w0, P_GREY
+        ldr     x1, =bye_m
+        bl      say
         mov     w0, 0
 
 main_done:
         ldp     fp, lr, [sp], dealloc
+        ret
+
+// ------------------------------------------------------------------ colour
+
+// set_palette(w0 = 1 for a face with no escapes in it) : point the five
+// slots at the escapes, or all five at the empty string. Every colour a
+// row prints is one load from here, so this is the whole of the gate.
+set_palette:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =pal_m
+        ldr     x10, =colour_m
+        ldr     x11, =empty_m
+        mov     w12, 0
+pal_next:
+        cmp     w12, PALETTE
+        b.ge    pal_done
+        ldr     x13, [x10, w12, sxtw 3]
+        cbz     w0, pal_put
+        mov     x13, x11
+pal_put:
+        str     x13, [x9, w12, sxtw 3]
+        add     w12, w12, 1
+        b       pal_next
+pal_done:
+        ldp     fp, lr, [sp], 16
+        ret
+
+// say(w0 = palette slot, x1 = text) : one line in one colour, which is
+// one plain line when the slots are empty.
+say:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x2, x1
+        ldr     x9, =pal_m
+        ldr     x1, [x9, w0, sxtw]
+        ldr     x3, [x9, P_OFF]
+        ldr     x0, =fmt_line_m
+        bl      printf
+
+        ldp     fp, lr, [sp], 16
+        ret
+
+// say_field() : the input field, a labelled rule and a caret on the line
+// below it. The caret ends the write, so the cursor the pane already
+// blinks lands where the reading gets typed.
+say_field:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =pal_m
+        ldr     x1, [x9, P_GREY]
+        ldr     x3, [x9, P_OFF]
+        ldr     x2, =rule_m
+        ldr     x0, =fmt_field_m
+        bl      printf
+
+        ldr     x9, =pal_m
+        ldr     x1, [x9, P_CYAN]
+        ldr     x2, [x9, P_OFF]
+        ldr     x0, =fmt_caret_m
+        bl      printf
+
+        ldp     fp, lr, [sp], 16
         ret
 
 // ------------------------------------------------------------------ parsing
@@ -377,36 +524,50 @@ parse_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// is_quit(x0 = token) -> w0 = 1 when the token is q or quit, any case
-is_quit:
+// same_word(x0 = token, x1 = word) -> w0 = 1 when they are the same word,
+// either case. The word's own bytes are already lowercase, so folding it
+// costs nothing and keeps one comparison for both sides.
+same_word:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        ldrb    w9, [x0]
-        orr     w9, w9, 32
-        cmp     w9, 'q'
-        b.ne    quit_no
-        ldrb    w9, [x0, 1]
-        cbz     w9, quit_yes
-        orr     w9, w9, 32
-        cmp     w9, 'u'
-        b.ne    quit_no
-        ldrb    w9, [x0, 2]
-        orr     w9, w9, 32
-        cmp     w9, 'i'
-        b.ne    quit_no
-        ldrb    w9, [x0, 3]
-        orr     w9, w9, 32
-        cmp     w9, 't'
-        b.ne    quit_no
-        ldrb    w9, [x0, 4]
-        cbnz    w9, quit_no
-quit_yes:
+        mov     w9, 0
+word_next:
+        ldrb    w10, [x0, w9, sxtw]
+        ldrb    w11, [x1, w9, sxtw]
+        cbz     w11, word_end
+        cbz     w10, word_no            // fold first and a NUL would match
+        orr     w10, w10, 32
+        orr     w11, w11, 32
+        cmp     w10, w11
+        b.ne    word_no
+        add     w9, w9, 1
+        b       word_next
+word_end:
+        cbnz    w10, word_no            // the token carried on past the word
         mov     w0, 1
-        b       quit_done
-quit_no:
+        b       word_done
+word_no:
         mov     w0, 0
+word_done:
+        ldp     fp, lr, [sp], 16
+        ret
+
+// is_quit(x0 = token) -> w0 = 1 when the token is q or quit, either case
+is_quit:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        str     token_r, [sp, -16]!
+        mov     token_r, x0
+
+        ldr     x1, =q_m
+        bl      same_word
+        cbnz    w0, quit_done
+        mov     x0, token_r
+        ldr     x1, =quit_m
+        bl      same_word
 quit_done:
+        ldr     token_r, [sp], 16
         ldp     fp, lr, [sp], 16
         ret
 
@@ -490,6 +651,72 @@ derive_have_c:
         ldp     fp, lr, [sp], 16
         ret
 
+// band_of() -> w0 = which band cel_m landed in, coldest first
+band_of:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =cel_m
+        ldr     d0, [x9]
+
+        ldr     x9, =frost_lo_m
+        ldr     d1, [x9]
+        fcmp    d0, d1
+        b.lt    band_ice
+
+        ldr     x9, =frost_hi_m
+        ldr     d1, [x9]
+        fcmp    d0, d1
+        b.le    band_frost
+
+        ldr     x9, =body_lo_m
+        ldr     d1, [x9]
+        fcmp    d0, d1
+        b.lt    band_cool
+
+        ldr     x9, =body_hi_m
+        ldr     d1, [x9]
+        fcmp    d0, d1
+        b.le    band_body
+
+        ldr     x9, =boiling_m
+        ldr     d1, [x9]
+        fcmp    d0, d1
+        b.lt    band_warm
+
+        mov     w0, BAND_STEAM
+        b       band_done
+band_ice:
+        mov     w0, BAND_ICE
+        b       band_done
+band_frost:
+        mov     w0, BAND_FROST
+        b       band_done
+band_cool:
+        mov     w0, BAND_COOL
+        b       band_done
+band_body:
+        mov     w0, BAND_BODY
+        b       band_done
+band_warm:
+        mov     w0, BAND_WARM
+band_done:
+        ldp     fp, lr, [sp], 16
+        ret
+
+// band_tint(w0 = band) -> x0 = the colour that band's column fills in
+band_tint:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =band_pal_m
+        ldrb    w10, [x9, w0, sxtw]
+        ldr     x9, =pal_m
+        ldr     x0, [x9, w10, sxtw]
+
+        ldp     fp, lr, [sp], 16
+        ret
+
 // ------------------------------------------------------------- instrument
 
 // bar_column(d0 = celsius) -> w0 = column 0 .. BAR_LAST
@@ -562,14 +789,53 @@ bar_done:
         ldp     fp, lr, [sp], 16
         ret
 
+// build_fill(w0 = column) : the bulb and the mercury behind it, up to
+// and including the reading's column. Filled columns print '=' against
+// the '-' of the empty rest, so the level still reads once the escapes
+// are gone. Ticks survive the fill, since they are what it is measured
+// against.
+build_fill:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =fill_m
+        ldr     x10, =bulb_m
+        mov     w11, 0
+fill_bulb:
+        ldrb    w12, [x10, w11, sxtw]
+        cbz     w12, fill_column
+        strb    w12, [x9, w11, sxtw]
+        add     w11, w11, 1
+        b       fill_bulb
+fill_column:
+        ldr     x10, =bar_m
+        mov     w13, 0
+fill_next:
+        cmp     w13, w0
+        b.gt    fill_done
+        ldrb    w12, [x10, w13, sxtw]
+        cmp     w12, '+'
+        b.eq    fill_put
+        mov     w12, '='
+fill_put:
+        strb    w12, [x9, w11, sxtw]
+        add     w11, w11, 1
+        add     w13, w13, 1
+        b       fill_next
+fill_done:
+        strb    wzr, [x9, w11, sxtw]
+
+        ldp     fp, lr, [sp], 16
+        ret
+
 // build_pad(w0 = column) : the run of blanks that puts the pointer under
-// its column once the row's fixed left margin is counted in.
+// its column once the row's fixed left margin and the bulb are counted.
 build_pad:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
         ldr     x9, =pad_m
-        add     w1, w0, BAR_LEAD
+        add     w1, w0, MARK_LEAD
         mov     w2, 0
 pad_fill:
         cmp     w2, w1
@@ -584,7 +850,7 @@ pad_filled:
         ldp     fp, lr, [sp], 16
         ret
 
-// print_trio() : the answer line, shared by both modes and deliberately
+// print_trio() : the answer line, shared by every face and deliberately
 // free of escapes so a shell can pipe it somewhere.
 print_trio:
         stp     fp, lr, [sp, -16]!
@@ -606,100 +872,89 @@ print_trio:
 draw_face:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
-        str     row_r, [sp, -16]!
+        stp     row_r, band_r, [sp, -16]!
+        stp     col_r, tint_r, [sp, -16]!
 
         bl      print_trio
 
-        ldr     x0, =face_m
-        bl      printf
+        mov     w0, P_GREY
+        ldr     x1, =face_m
+        bl      say
+
+        bl      band_of
+        mov     band_r, x0
+        bl      band_tint
+        mov     tint_r, x0
 
         ldr     x9, =cel_m
         ldr     d0, [x9]
         bl      bar_column
+        mov     col_r, x0
         bl      build_pad
+        mov     x0, col_r
+        bl      build_fill
+
+        ldr     x9, =pal_m
+        ldr     x1, [x9, P_AMBER]
+        ldr     x3, [x9, P_OFF]
+        ldr     x2, =pad_m
         ldr     x0, =fmt_mark_m
-        ldr     x1, =pad_m
         bl      printf
 
-        // The three scales share one ruler because they are one axis
-        // read three ways; only the end labels differ.
+        // The three scales share one thermometer because they are one
+        // axis read three ways; only the end labels differ.
         mov     row_r, 0
 face_rows:
         cmp     row_r, 3
         b.ge    face_rows_done
-        ldr     x0, =fmt_row_m
-        ldr     x9, =units_m
-        ldrb    w1, [x9, row_r]
+
         lsl     x10, row_r, 3
         ldr     x9, =abszero_m
         add     x9, x9, x10
         ldr     d0, [x9]
-        ldr     x2, =bar_m
         ldr     x9, =boiling_m
         add     x9, x9, x10
         ldr     d1, [x9]
+
+        ldr     x9, =units_m
+        ldrb    w2, [x9, row_r]
+
+        // The empty rest of the row is the ruler itself, read from just
+        // past where the fill stopped.
+        ldr     x9, =bar_m
+        add     x6, x9, col_r
+        add     x6, x6, 1
+
+        ldr     x9, =pal_m
+        ldr     x1, [x9, P_GREY]
+        ldr     x5, [x9, P_GREY]
+        ldr     x7, [x9, P_OFF]
+        mov     x3, tint_r
+        ldr     x4, =fill_m
+        ldr     x0, =fmt_row_m
         bl      printf
+
         add     row_r, row_r, 1
         b       face_rows
 face_rows_done:
 
+        mov     x0, band_r
         bl      say_note
 
-        ldr     row_r, [sp], 16
+        ldp     col_r, tint_r, [sp], 16
+        ldp     row_r, band_r, [sp], 16
         ldp     fp, lr, [sp], 16
         ret
 
-// say_note() : one line naming the band the reading landed in.
+// say_note(w0 = band) : one line naming the band the reading landed in.
 say_note:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        ldr     x9, =cel_m
-        ldr     d0, [x9]
-
-        ldr     x9, =frost_lo_m
-        ldr     d1, [x9]
-        fcmp    d0, d1
-        b.lt    note_ice
-
-        ldr     x9, =frost_hi_m
-        ldr     d1, [x9]
-        fcmp    d0, d1
-        b.le    note_frost
-
-        ldr     x9, =body_lo_m
-        ldr     d1, [x9]
-        fcmp    d0, d1
-        b.lt    note_cool
-
-        ldr     x9, =body_hi_m
-        ldr     d1, [x9]
-        fcmp    d0, d1
-        b.le    note_body
-
-        ldr     x9, =boiling_m
-        ldr     d1, [x9]
-        fcmp    d0, d1
-        b.lt    note_warm
-
-        ldr     x0, =note_steam_m
-        b       note_say
-note_ice:
-        ldr     x0, =note_ice_m
-        b       note_say
-note_frost:
-        ldr     x0, =note_frost_m
-        b       note_say
-note_cool:
-        ldr     x0, =note_cool_m
-        b       note_say
-note_body:
-        ldr     x0, =note_body_m
-        b       note_say
-note_warm:
-        ldr     x0, =note_warm_m
-note_say:
-        bl      printf
+        ldr     x9, =note_m
+        ldr     x1, [x9, w0, sxtw 3]
+        mov     w0, P_AMBER
+        bl      say
 
         ldp     fp, lr, [sp], 16
         ret
@@ -714,12 +969,15 @@ say_floor:
         ldr     x9, =unit_m
         ldr     x10, [x9]
         ldr     x9, =units_m
-        ldrb    w1, [x9, x10]
-        mov     w2, w1
+        ldrb    w2, [x9, x10]
+        mov     w3, w2
         ldr     x9, =abszero_m
         lsl     x11, x10, 3
         add     x9, x9, x11
         ldr     d1, [x9]
+        ldr     x9, =pal_m
+        ldr     x1, [x9, P_RED]
+        ldr     x4, [x9, P_OFF]
         ldr     x0, =msg_floor_m
         bl      printf
 
