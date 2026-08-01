@@ -261,6 +261,24 @@ export const EXAMPLE_FILES: Record<string, string[]> = {
     "search.s",
     "recursion.s",
   ],
+  // The repo builds this one with m4 include(), and the paste order is
+  // load-bearing: an equate only resolves for the modules below it, so
+  // constants comes first and the rest follow the includes. main's own
+  // uses reach back through the assembler's positional first-definition
+  // fallback, but a helper's do not.
+  deadzone: [
+    "constants.s",
+    "terminal.s",
+    "input.s",
+    "player.s",
+    "enemies.s",
+    "projectiles.s",
+    "upgrades.s",
+    "file-io.s",
+    "effects.s",
+    "boss.s",
+    "abilities.s",
+  ],
 };
 
 export const EXAMPLE_INPUTS: Record<
