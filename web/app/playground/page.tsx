@@ -8,6 +8,8 @@ import {
   fetchExample,
   resolveBoot,
   resolveHandoff,
+  type HandoffPayload,
+  type LaunchMode,
   type PlaygroundBoot,
 } from "@/lib/playground/playground-handoff";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
@@ -64,6 +66,17 @@ function subscribeEmbedParam(): () => void {
 function readEmbedParam(): boolean {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("embed") === "1";
+}
+
+/**
+ * Apply a `?run=` override to an example payload. Absent leaves the
+ * example's own default in place, which is the regression contract for
+ * every `?example=` link ever shared. The override rides only the example
+ * branch: a share or bundle payload is not an example delivery, and a
+ * `?run=` with no `?example=` has no program to own.
+ */
+function withRun(payload: HandoffPayload, run: LaunchMode | undefined): HandoffPayload {
+  return run ? { ...payload, launch: run } : payload;
 }
 
 // Resolve the starter buffer once on mount. Precedence: a diagnostic
@@ -190,7 +203,7 @@ export default function Home() {
       // example name", "failed to load example: 404"); swallowing them
       // shipped the wrong buffer to a whole class off one typo'd link.
       void fetchExample(handoff.stem)
-        .then((payload) => playgroundRef.current?.loadProgram(payload))
+        .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, dl.run)))
         .catch((e: unknown) => {
           toastSoon(e instanceof Error ? e.message : "could not load that example");
         });
@@ -219,8 +232,11 @@ export default function Home() {
             : "that link is damaged (often a partial copy) -- ask for it again",
         );
       } else if (next?.kind === "example") {
+        // The run override rides the URL, so this pass re-reads it from
+        // the URL it is delivering, not from the mount-time parse.
+        const run = parseDeepLink(window.location.search).run;
         void fetchExample(next.stem)
-          .then((payload) => playgroundRef.current?.loadProgram(payload))
+          .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, run)))
           .catch((e: unknown) => {
             toastSoon(e instanceof Error ? e.message : "could not load that example");
           });
