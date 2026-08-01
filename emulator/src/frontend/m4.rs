@@ -456,7 +456,10 @@ fn strip_block_comments(source: &str) -> Result<String, EmuError> {
         .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
 }
 
-fn strip_comment(line: &str) -> &str {
+/// Shared by the legacy assembler's preprocess and the pipeline's
+/// `strip_leading_labels`: a `;` or `//` inside a string or character
+/// literal is content, not a comment opener.
+pub(crate) fn strip_comment(line: &str) -> &str {
     let bytes = line.as_bytes();
     let mut in_string = false;
     let mut in_char = false;
