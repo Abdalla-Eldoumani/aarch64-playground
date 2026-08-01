@@ -13,7 +13,12 @@ import dynamic from "next/dynamic";
 import { useEmulator } from "@/lib/emulator/use-emulator";
 import { useBreakpoint, isAtLeast } from "@/lib/hooks/use-breakpoint";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
-import type { HandoffPayload } from "@/lib/playground/playground-handoff";
+import {
+  EXAMPLE_INTERACTIVE,
+  decodeLaunch,
+  type HandoffPayload,
+  type LaunchMode,
+} from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
 import { parseArgs } from "@/lib/playground/args";
 import { formatAsm } from "@/lib/asm/asm-formatter";
@@ -36,6 +41,7 @@ import { Controls } from "@/components/playground/Controls";
 import { DecodeStrip } from "@/components/panels/DecodeStrip";
 import { FirstRunState } from "@/components/playground/FirstRunState";
 import { ExampleLoader } from "@/components/playground/ExampleLoader";
+import { RunModeControl } from "@/components/playground/RunModeControl";
 import { RecentPrograms } from "@/components/playground/RecentPrograms";
 import { ResizableLayout } from "@/components/playground/ResizableLayout";
 import { MobileLayout } from "@/components/playground/MobileLayout";
@@ -57,9 +63,11 @@ import {
 } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 
-// Persisted beside the files strip so a reloaded workspace remembers
-// that its program owns the terminal pane on run.
-const TERMINAL_PROGRAM_KEY = "aarch64-playground:terminal-program";
+// Persisted beside the files strip so a reloaded workspace remembers which
+// surface owns the pane at run press. The key name predates the mode having
+// two spellings: it still holds the "1" / "0" a returning student's browser
+// wrote, which decodeLaunch reads unchanged.
+const LAUNCH_MODE_KEY = "aarch64-playground:terminal-program";
 
 // Full-only / heavy panels load on first render so a multi-embed page (and
 // the embed/checker chrome) never ships their code.
@@ -289,34 +297,46 @@ function EmbeddableCore({
     main: string;
     extras: SourceFile[];
   } | null>(null);
-  // The loaded program is a terminal program (the visualizer example):
-  // run hands it the terminal pane up front, the way snake's raw-mode
-  // flag does mid-run. Persisted beside the files strip so a reloaded
+  // Who owns the pane when this program's run is pressed: a live terminal
+  // session (the visualizer example, or the student's own choice) or the
+  // classic console flow. Persisted beside the files strip so a reloaded
   // workspace keeps the takeover.
-  const [terminalProgram, setTerminalProgramState] = useState(() => {
-    if (typeof window === "undefined") return false;
+  const [launchMode, setLaunchModeState] = useState<LaunchMode>(() => {
+    if (typeof window === "undefined") return "console";
     try {
-      return window.localStorage.getItem(TERMINAL_PROGRAM_KEY) === "1";
+      return decodeLaunch(window.localStorage.getItem(LAUNCH_MODE_KEY));
     } catch {
-      return false;
+      return "console";
     }
   });
   // Read by the blocked-jump effect, which must not re-subscribe.
-  const terminalProgramRef = useRef(false);
-  const setTerminalProgram = useCallback((next: boolean) => {
-    terminalProgramRef.current = next;
-    setTerminalProgramState(next);
+  const launchModeRef = useRef<LaunchMode>("console");
+  const setLaunchMode = useCallback((next: LaunchMode) => {
+    launchModeRef.current = next;
+    setLaunchModeState(next);
     try {
-      window.localStorage.setItem(TERMINAL_PROGRAM_KEY, next ? "1" : "0");
+      window.localStorage.setItem(LAUNCH_MODE_KEY, next);
     } catch {
-      // storage full or blocked; the flag just won't survive a reload
+      // storage full or blocked; the mode just won't survive a reload
     }
   }, []);
+  // The example this workspace came from, when it came from one. The
+  // run-mode control is offered for exactly the stems that have a real
+  // answer to the question; a hand-written buffer has none, so it stays
+  // null and the header band is the one every other program sees.
+  const [loadedStem, setLoadedStem] = useState<string | null>(null);
+  // A text-only swap or an import replaces the program without a payload:
+  // the mode and the stem both belonged to the program that set them, and
+  // a stale mode would send an unrelated program's run to the pane.
+  const resetLaunch = useCallback(() => {
+    setLaunchMode("console");
+    setLoadedStem(null);
+  }, [setLaunchMode]);
+  useEffect(() => {
+    launchModeRef.current = launchMode;
+  }, [launchMode]);
   // Nonce asking the attach effect to start a terminal-pane run once the
   // pane's io registration lands (the pane mounts lazily on tab switch).
-  useEffect(() => {
-    terminalProgramRef.current = terminalProgram;
-  }, [terminalProgram]);
   const [termRunRequest, setTermRunRequest] = useState<number | null>(null);
   // The terminal mounts lazily on first use and then stays mounted (see
   // the tab panel below): a live session must survive tab switches.
@@ -365,20 +385,20 @@ function EmbeddableCore({
   const toast = useToast();
   const importTarget = getImportTarget(activeFile);
 
-  // Replacing the program text drops the terminal-program flag: it
-  // belongs to the program that set it, and a stale flag would send an
-  // unrelated program's run to the terminal pane.
+  // Replacing the program text drops the launch mode: it belongs to the
+  // program that set it, and a stale mode would send an unrelated
+  // program's run to the terminal pane.
   const loadSource = useCallback(
     (next: string, _label?: string) => {
       setSource(next);
-      setTerminalProgram(false);
+      resetLaunch();
     },
-    [setTerminalProgram],
+    [resetLaunch],
   );
 
   const handleImport = useCallback(
     (target: ImportTarget, body: string) => {
-      setTerminalProgram(false);
+      resetLaunch();
       switch (target.kind) {
         case "main":
           setSource(body);
@@ -394,7 +414,7 @@ function EmbeddableCore({
         }
       }
     },
-    [extraFiles, setExtraFiles, toast, setTerminalProgram],
+    [extraFiles, setExtraFiles, toast, resetLaunch],
   );
 
   // Multi-select import: a file named main.asm / main.s replaces the main
@@ -402,7 +422,7 @@ function EmbeddableCore({
   // whole multi-file program lands in one gesture.
   const handleImportMany = useCallback(
     (files: { name: string; body: string }[]) => {
-      setTerminalProgram(false);
+      resetLaunch();
       const mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
       if (mainIdx >= 0) setSource(files[mainIdx].body);
       const rest = files.filter((_, i) => i !== mainIdx);
@@ -415,7 +435,7 @@ function EmbeddableCore({
       setExtraFiles(next);
       toast.show(`imported ${files.length} files`);
     },
-    [extraFiles, setExtraFiles, toast, setTerminalProgram],
+    [extraFiles, setExtraFiles, toast, resetLaunch],
   );
 
   // Only the full playground persists to the shared auto-save buffer; embed
@@ -548,13 +568,14 @@ function EmbeddableCore({
       // program at its next assemble.
       setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
-      setTerminalProgram(payload.terminal === true);
+      setLaunchMode(payload.launch === "terminal" ? "terminal" : "console");
+      setLoadedStem(payload.stem ?? null);
       setArgsText(payload.args ?? "");
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       setShareBanner(Boolean(payload.fromShare));
       lastRunSourceRef.current = null;
     },
-    [chrome, recent, persistWorkingSet, setExtraFiles, setTerminalProgram],
+    [chrome, recent, persistWorkingSet, setExtraFiles, setLaunchMode],
   );
 
   // Rehydrate the home directory once the hub is live: the persisted files
@@ -579,8 +600,10 @@ function EmbeddableCore({
   // assembles, and concatenate any extra files so `bl func` resolves across
   // files (the linker operates on one string). On success, re-apply the
   // program's input seeds: the assemble reset the machine, and the seeded
-  // stdin and VFS files must be in place before the run.
-  const assembleWithHistory = useCallback(async () => {
+  // stdin and VFS files must be in place before the run. Returns the
+  // verdict so a composite action can stop at a failed assemble; the
+  // button and palette callers ignore it.
+  const assembleWithHistory = useCallback(async (): Promise<boolean> => {
     const trimmed = source.trim();
     if (trimmed.length > 0) {
       recent.push(nameForRecents(source), source);
@@ -594,7 +617,26 @@ function EmbeddableCore({
     pinAssembledLayout(source, extraFiles);
     const ok = await emu.assemble(combined, parseArgs(argsText));
     if (ok) applySeeds();
+    return ok;
   }, [source, recent, emu, extraFiles, argsText, applySeeds, pinAssembledLayout]);
+
+  // The one-action interactive launch: assemble, then hand the pane over.
+  // Reached from the palette's launch action and from a run press in
+  // terminal mode with nothing assembled -- the state that used to be a
+  // silent no-op. It bypasses handleRun's finished-screen guard on
+  // purpose: that guard protects a completed program's output, and this
+  // just replaced the program with a freshly assembled one. The order
+  // matters -- the assemble must land before the nonce, or the drive's
+  // programLoaded standdown tears the session down at once.
+  const launchInteractive = useCallback(async () => {
+    const ok = await assembleWithHistory();
+    // The failure already renders in Controls' error box, and the pane is
+    // left alone: a failed assemble must not wipe the terminal.
+    if (!ok) return;
+    setActiveTab("term");
+    setPaneRequest({ pane: "term", nonce: Date.now() });
+    setTermRunRequest(Date.now());
+  }, [assembleWithHistory]);
 
   // The reduced embed/checker chrome has no separate Assemble control, so its
   // primary Run must assemble first; otherwise runUntilBreak executes over
@@ -633,10 +675,10 @@ function EmbeddableCore({
       // A foreground terminal session owns the program's input even
       // without raw mode: a menu program run as `./program` reads its
       // scanf lines from the term pane, so the console jump stands down.
-      // A terminal-flagged program keeps that ownership for its whole
+      // A terminal-mode program keeps that ownership for its whole
       // life, including the gap before its drive attaches -- the console
       // must never steal a read it cannot answer.
-      if (foregroundActiveRef.current || terminalProgramRef.current) return;
+      if (foregroundActiveRef.current || launchModeRef.current === "terminal") return;
       queueMicrotask(() => {
         setActiveTab("console");
         // Phones route panes through the pane switcher, not the tab state.
@@ -838,25 +880,33 @@ function EmbeddableCore({
     [],
   );
 
-  // Run for a terminal-flagged program: hand it the pane up front --
-  // switch the tab, then let the attach effect below start the drive
-  // once the pane's io registration lands (the pane mounts lazily on
-  // the tab switch, so the drive cannot start synchronously here).
+  // Run in terminal mode: hand the program the pane up front -- switch
+  // the tab, then let the attach effect below start the drive once the
+  // pane's io registration lands (the pane mounts lazily on the tab
+  // switch, so the drive cannot start synchronously here).
   const handleRun = useCallback(() => {
-    if (terminalProgram && chrome === "full") {
-      // The terminal takeover WIPES the pane, so only start one when
-      // there is really something to run. The Run button already knows
-      // this; the F5 shortcut and the palette reach here too, and
-      // without the guard they cleared a finished program's output and
-      // printed an exit line onto an empty screen.
-      if (!emu.programLoaded || emu.isHalted || emu.isRunning) return;
+    if (launchMode === "terminal" && chrome === "full") {
+      // Cold load: nothing is assembled, so there is no screen to protect
+      // and nothing to hand over yet. This was a silent no-op; in terminal
+      // mode it becomes the one-action launch the mode promises. The run
+      // button is disabled here, so this is the F5 / palette / handle path.
+      if (!emu.programLoaded) {
+        void launchInteractive();
+        return;
+      }
+      // The terminal takeover WIPES the pane, so a finished or already
+      // running program is left alone: without this, F5 and the palette
+      // cleared a finished program's output and printed an exit line onto
+      // an empty screen. An assembled program hands over without
+      // re-assembling -- the same run press it has always been.
+      if (emu.isHalted || emu.isRunning) return;
       setActiveTab("term");
       setPaneRequest({ pane: "term", nonce: Date.now() });
       setTermRunRequest(Date.now());
       return;
     }
     emu.run();
-  }, [terminalProgram, chrome, emu]);
+  }, [launchMode, chrome, emu, launchInteractive]);
   const handleRunRef = useRef(handleRun);
   useEffect(() => {
     handleRunRef.current = handleRun;
@@ -892,6 +942,14 @@ function EmbeddableCore({
       io.sessionEnded?.(exitCode);
     });
   }, [emu.wantsTerminal, termIO, driveForeground]);
+
+  // The run-mode control is offered for the examples where both surfaces
+  // are a real answer; every other program keeps today's header band.
+  const showRunMode =
+    chrome === "full" && loadedStem !== null && EXAMPLE_INTERACTIVE[loadedStem] === true;
+  // Whether the composite launch has somewhere to land: only the terminal
+  // mode owns the pane at run press, and only full chrome has a pane.
+  const launchable = chrome === "full" && launchMode === "terminal";
 
   // The command Action[] is built here (where source / modes / hub live) and
   // surfaced through the handle so a host-rendered palette reuses it.
@@ -935,14 +993,36 @@ function EmbeddableCore({
       {
         id: "run",
         label: "Run",
+        // The list is rebuilt every time the palette opens, so the
+        // description can name the surface this program's run lands in
+        // rather than describing only the console flow. In terminal mode
+        // with nothing assembled, run IS the launch, so it says so
+        // instead of sending the student to the assemble button.
         description: emu.blocked
           ? "(waiting for stdin; feed the console first)"
-          : emu.programLoaded
-            ? "run until halt or breakpoint"
-            : "(no program; assemble first)",
+          : launchable
+            ? emu.programLoaded
+              ? "hand the terminal pane to this program"
+              : "assemble, then hand the terminal pane over"
+            : emu.programLoaded
+              ? "run until halt or breakpoint"
+              : "(no program; assemble first)",
         shortcut: "F5",
         run: () => {
           if (!emu.blocked) handleRun();
+        },
+      },
+      {
+        id: "launch-terminal",
+        label: "Start in the terminal",
+        // Always present, with the description carrying the reason it
+        // would do nothing -- a row that only sometimes exists is
+        // unfindable by the student who saw it once.
+        description: launchable
+          ? "assemble and run with the terminal pane"
+          : "(this program runs in the console)",
+        run: () => {
+          if (launchable) void launchInteractive();
         },
       },
       {
@@ -1068,7 +1148,7 @@ function EmbeddableCore({
         },
       },
     ],
-    [emu, assembleWithHistory, handleRun, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
+    [emu, assembleWithHistory, handleRun, launchable, launchInteractive, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
   );
 
   // Latest-value refs so the imperative handle stays a stable object while
@@ -1877,7 +1957,7 @@ function EmbeddableCore({
       stdout={emu.stdout}
       stderr={emu.stderr}
       blocked={emu.blocked}
-      ownedByTerminal={foregroundLive || (terminalProgram && chrome === "full")}
+      ownedByTerminal={foregroundLive || (launchMode === "terminal" && chrome === "full")}
       exitCode={emu.exitCode}
       vfsFiles={emu.vfsFiles}
       pushStdin={emu.pushStdin}
@@ -2053,6 +2133,15 @@ function EmbeddableCore({
           onClear={recent.clear}
         />
         <ArgsInput source={source} value={argsText} onChange={setArgsText} />
+        {showRunMode && (
+          <RunModeControl
+            mode={launchMode}
+            onChange={setLaunchMode}
+            // A live session owns the pane; flipping the mode under it
+            // would move the console's ownership badge mid-run.
+            disabled={foregroundLive}
+          />
+        )}
         <Toolbar
           className="ml-auto"
           onShare={() => onOpenShareDialog?.()}
@@ -2173,6 +2262,10 @@ function EmbeddableCore({
         isAssembling={emu.isAssembling}
         isHalted={emu.isHalted}
         programLoaded={emu.programLoaded}
+        // Terminal mode's run press on a cold load assembles and starts the
+        // session, so the button must be reachable by mouse -- otherwise
+        // the one-action launch exists only for the keyboard.
+        runAssemblesFirst={launchable}
         blocked={emu.blocked}
         error={controlsError}
         stepCount={emu.stepCount}
