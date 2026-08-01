@@ -617,19 +617,20 @@ draw_loop:
                 b       draw_zombie_color       // Default
 
 draw_zombie_color:
-                mov     w0, COLOR_GREEN
+                // The tiers run up the heat scale: dull red, hot red, molten
+                mov     w0, COLOR_RED
                 bl      set_color
                 mov     w0, ZOMBIE_CHAR
                 b       draw_enemy_char
 
 draw_runner_color:
-                mov     w0, COLOR_CYAN
+                mov     w0, COLOR_BRIGHT_RED
                 bl      set_color
                 mov     w0, RUNNER_CHAR
                 b       draw_enemy_char
 
 draw_tank_color:
-                mov     w0, COLOR_RED
+                mov     w0, COLOR_BRIGHT_YELLOW
                 bl      set_color
                 mov     w0, TANK_CHAR
 
