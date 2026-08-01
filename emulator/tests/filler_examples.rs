@@ -1,10 +1,11 @@
 //! Example-picker regression: the authored programs served by the web
 //! example loader -- the "Data and memory" and "Stack and locals" stage
 //! fillers against their fixtures, plus the interactive extras through
-//! scripted sessions: the real-time snake game and the pocket calculator
-//! keyed one press per pacing boundary, and the cooked-mode menu programs
-//! (the two-sum visualizer, the temperature instrument, the multi-file
-//! data structures visualizer) driven from one stdin push.
+//! scripted sessions: the real-time programs (the snake game, the pocket
+//! calculator, the multi-file deadzone survivor) keyed one press per
+//! pacing boundary, and the cooked-mode menu programs (the two-sum
+//! visualizer, the temperature instrument, the multi-file data structures
+//! visualizer) driven from one stdin push.
 //!
 //! These are the same `.s` files the web example loader serves over HTTP,
 //! read straight from `web/public/examples/cpsc355/` (not a copy) so the
@@ -381,6 +382,111 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
     assert!(sleeps > 0, "the animations pace themselves through usleep");
 }
 
+/// The multi-file survivor game, combined exactly the way the files strip
+/// joins it (main first, each helper behind a `// ---- name ----` boundary,
+/// in the loader manifest's order -- constants first, because a module's
+/// equates only resolve below their definition). Raw mode and real time
+/// like the snake game, so a pre-pushed fixture never survives the
+/// per-frame drain: the presses are scheduled against the frame clock
+/// instead. The drive sits through the title animation, starts a run from
+/// the menu, moves, pauses, resumes, and quits.
+#[test]
+fn deadzone_survivor_links_across_its_files_and_plays_a_timed_session() {
+    const EXTRAS: [&str; 11] = [
+        "constants.s", "terminal.s", "input.s", "player.s", "enemies.s",
+        "projectiles.s", "upgrades.s", "file-io.s", "effects.s", "boss.s",
+        "abilities.s",
+    ];
+    let mut source = read("deadzone.s");
+    for name in EXTRAS {
+        source.push_str(&format!("\n// ---- {name} ----\n"));
+        source.push_str(&read(&format!("deadzone/{name}")));
+    }
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(&source, &cpu.host)
+        .unwrap_or_else(|e| panic!("assemble deadzone: {e}"));
+    cpu.load_linked_image(&image).expect("load deadzone");
+    assert!(!cpu.term.raw_mode, "nothing has run yet, so the terminal is still cooked");
+
+    // (frame, key): the title animation holds for 120 frames before it
+    // takes a key, so the presses are scheduled on the frame clock rather
+    // than counted out as padding tokens. The first enter leaves the
+    // title, the second starts the run from the menu.
+    let script: [(u64, &str); 10] = [
+        (125, "\n"),
+        (130, "\n"),
+        (140, "d"),
+        (145, "s"),
+        (150, "d"),
+        (155, "s"),
+        (165, "p"),
+        (180, "p"),
+        (190, "d"),
+        (200, "q"),
+    ];
+    // The frame the game is moving again by: the resume press is ten
+    // frames behind it and the field has been repainted since, so
+    // everything printed from here on is the field, not the overlay.
+    const MOVING_AGAIN_BY: u64 = 190;
+    let mut pending = script.iter();
+    let mut next = pending.next();
+    let mut boundaries = 0u64;
+    let mut halted = false;
+    let mut wants_terminal = false;
+    let mut stdout = String::new();
+    // Where the resumed field starts in the stream, so the frames painted
+    // after it can be read apart from the ones that carried the overlay.
+    let mut resumed_at: Option<usize> = None;
+    for _ in 0..4000 {
+        let r = cpu.run_until_break(1_000_000).expect("run deadzone");
+        stdout.push_str(&String::from_utf8_lossy(&cpu.take_stdout()));
+        if r.halted {
+            halted = true;
+            break;
+        }
+        let _ = cpu.take_pending_sleep_ns();
+        wants_terminal |= cpu.term.raw_mode;
+        boundaries += 1;
+        if boundaries == MOVING_AGAIN_BY {
+            resumed_at = Some(stdout.len());
+        }
+        while let Some((at, key)) = next {
+            if *at > boundaries {
+                break;
+            }
+            cpu.push_stdin(key.as_bytes());
+            next = pending.next();
+        }
+        assert!(!cpu.blocked, "the game polls its keys, it must never block on stdin");
+    }
+    assert!(halted, "the scripted session must reach a clean exit");
+    assert_eq!(cpu.exit_code, Some(0));
+    // The raw-mode flag is what hands the web build its terminal pane.
+    assert!(wants_terminal, "the game must take the terminal over to draw itself");
+    assert!(stdout.contains("DEADZONE"), "the title screen carries the game's name");
+    assert!(stdout.contains("START"), "the first key gets past the title to the menu");
+    assert!(
+        stdout.contains("Wave:1 HP:100"),
+        "the second key starts a run, so the field's status bar draws"
+    );
+    assert!(
+        stdout.contains("PAUSED"),
+        "p over a live game paints the pause overlay"
+    );
+    let resumed_at = resumed_at.expect("the scripted session outlives the pause");
+    assert!(
+        !stdout[resumed_at..].contains("PAUSED"),
+        "the second p resumes: the overlay stops being painted"
+    );
+    assert!(
+        stdout.contains("Terminal restored. Goodbye!"),
+        "q leaves through the cleanup path, not out from under the terminal"
+    );
+    // The game put the terminal in raw mode to draw and restored it on the
+    // way out; a clean exit leaves the flag lowered.
+    assert!(!cpu.term.raw_mode, "exit must restore the terminal");
+}
+
 /// Every printf conversion the shipped examples use must be one the hosted
 /// runtime implements. Driving the menus cannot prove this on its own: a
 /// conversion sitting in a branch the scripted session never reaches still
@@ -395,22 +501,24 @@ fn shipped_examples_only_use_conversions_the_runtime_implements() {
     const CONVERSIONS: &str = "diouxXeEfgGcspn%";
     let mut offenders: Vec<String> = Vec::new();
 
-    let mut names: Vec<String> = ["calc.s", "dsav.s", "temp-convert.s", "two-sum.s"]
+    let mut names: Vec<String> = ["calc.s", "deadzone.s", "dsav.s", "temp-convert.s", "two-sum.s"]
         .iter()
         .map(|n| (*n).to_string())
         .collect();
-    let mut extras: Vec<String> = std::fs::read_dir(examples_root().join("dsav"))
-        .expect("the dsav helper directory is served from web/public")
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".s"))
-        .map(|n| format!("dsav/{n}"))
-        .collect();
-    extras.sort();
-    names.append(&mut extras);
+    for dir in ["deadzone", "dsav"] {
+        let mut extras: Vec<String> = std::fs::read_dir(examples_root().join(dir))
+            .unwrap_or_else(|e| panic!("the {dir} helper directory is served from web/public: {e}"))
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".s"))
+            .map(|n| format!("{dir}/{n}"))
+            .collect();
+        extras.sort();
+        names.append(&mut extras);
+    }
     assert!(
-        names.len() >= 21,
-        "expected the whole visualizer plus the three single-file programs, got {names:?}"
+        names.len() >= 33,
+        "expected both multi-file programs plus the three single-file ones, got {names:?}"
     );
 
     for rel in &names {
