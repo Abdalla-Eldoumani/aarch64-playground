@@ -102,14 +102,8 @@ fn preprocess(source: &str) -> Vec<(usize, String)> {
         .lines()
         .enumerate()
         .map(|(i, line)| {
-            // strip comments
-            let without_comment = if let Some(pos) = line.find("//") {
-                &line[..pos]
-            } else if let Some(pos) = line.find(';') {
-                &line[..pos]
-            } else {
-                line
-            };
+            // strip comments; literal-aware, so `mov w1, ';'` survives
+            let without_comment = crate::frontend::m4::strip_comment(line);
             (i + 1, without_comment.trim().to_string())
         })
         .collect()
@@ -2903,6 +2897,18 @@ svc 0").unwrap();
         let code = assemble("MOV W0, '\\x41'").unwrap();
         let reference = assemble("MOV W0, #65").unwrap();
         assert_eq!(code, reference);
+    }
+
+    #[test]
+    fn char_literal_semicolon_is_not_a_comment() {
+        // The comment stripper once cut the line at the `;`, leaving a
+        // dangling quote and an invalid-immediate error.
+        let code = assemble("MOV W1, ';'").unwrap();
+        let reference = assemble("MOV W1, #59").unwrap();
+        assert_eq!(code, reference);
+        // A real trailing comment still strips.
+        let commented = assemble("MOV W1, #59 ; the separator").unwrap();
+        assert_eq!(commented, reference);
     }
 
     // -- sign-extending loads --
