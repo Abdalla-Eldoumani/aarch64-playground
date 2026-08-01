@@ -154,15 +154,33 @@ memset, memcpy, atoi, rand, srand, time, exit, atof, malloc, free, usleep,
 fflush
 ```
 
+The libm subset, in the floating-point convention (argument in `d0`, second
+argument in `d1` for `pow` and `fmod`, result in `d0`):
+
+```
+sqrt, pow, sin, cos, tan, log, log10, exp, floor, fabs, fmod
+```
+
 Pre-registered syscalls (via `svc 0` with the syscall number in `x8`):
 
 ```
 63  read         (x0=fd, x1=buf, x2=count)
 64  write        (x0=fd, x1=buf, x2=count)
 93  exit         (x0=status)
+94  exit_group   (x0=status)
 56  openat       (x0=AT_FDCWD=-100, x1=path, x2=flags, x3=mode)
 57  close        (x0=fd)
 62  lseek        (x0=fd, x1=offset, x2=whence)
+```
+
+Plus the interactive set a terminal program reaches for:
+
+```
+29  ioctl          (TCGETS / TCSETS termios -- the raw-mode handshake)
+25  fcntl          (F_GETFL / F_SETFL, O_NONBLOCK on stdin)
+101 nanosleep      (pauses the run; the virtual clock advances)
+113 clock_gettime  (the virtual clock, so replay stays deterministic)
+278 getrandom      (deterministic, drawn from the snapshotted seed)
 ```
 
 `bl printf` and friends cannot reach `0xFFFF_XXXX` from `.text` in a
