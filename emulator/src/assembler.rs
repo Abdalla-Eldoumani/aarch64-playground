@@ -216,6 +216,7 @@ fn encode_line(
         "FMOV" => encode_fmov(&ops, line_num),
         "FNEG" => encode_fp_unary(&ops, 0b000010, "fneg", line_num),
         "FABS" => encode_fp_unary(&ops, 0b000001, "fabs", line_num),
+        "FSQRT" => encode_fp_unary(&ops, 0b000011, "fsqrt", line_num),
         "FCMP" => encode_fcmp(&ops, line_num),
         "FCVT" => encode_fcvt(&ops, line_num),
         "SCVTF" => encode_scvtf(&ops, line_num),
@@ -1378,7 +1379,8 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     Ok(0x1E20_4000 | fp_ftype(width) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
-/// Encode an FP data-processing 1-source op (`FNEG` / `FABS` `Fd, Fn`).
+/// Encode an FP data-processing 1-source op (`FNEG` / `FABS` / `FSQRT`
+/// `Fd, Fn`).
 /// `opcode` fills bits 20:15 of the 1-source layout:
 /// 0_0_0_11110_ftype_1_opcode_10000_Rn_Rd.
 fn encode_fp_unary(ops: &[&str], opcode: u32, name: &str, ln: usize) -> Result<u32, EmuError> {
@@ -3012,6 +3014,43 @@ svc 0").unwrap();
             }
             other => panic!("expected FpUnary, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn assemble_fsqrt_round_trips_both_widths() {
+        for (src, single) in [("fsqrt d9, d8", false), ("fsqrt s9, s8", true)] {
+            let code = assemble(src).unwrap();
+            match crate::decoder::decode(code[0]).unwrap() {
+                crate::decoder::Instruction::FpUnary { op, fd, fn_, single: got } => {
+                    assert_eq!(op, crate::decoder::FpUnaryOp::Fsqrt);
+                    assert_eq!((fd, fn_), (9, 8));
+                    assert_eq!(got, single, "{src}: wrong width");
+                }
+                other => panic!("expected FpUnary, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn assemble_fsqrt_matches_the_word_gas_emits() {
+        // aarch64-linux-gnu-as: fsqrt d0, d1 / fsqrt s0, s1.
+        assert_eq!(assemble("fsqrt d0, d1").unwrap()[0], 0x1E61_C020);
+        assert_eq!(assemble("fsqrt s0, s1").unwrap()[0], 0x1E21_C020);
+    }
+
+    #[test]
+    fn assemble_fsqrt_distinct_from_the_other_fp_unaries() {
+        let fsqrt = assemble("FSQRT D0, D1").unwrap()[0];
+        let fneg = assemble("FNEG D0, D1").unwrap()[0];
+        let fabs = assemble("FABS D0, D1").unwrap()[0];
+        assert_ne!(fsqrt, fneg);
+        assert_ne!(fsqrt, fabs);
+    }
+
+    #[test]
+    fn assemble_fsqrt_rejects_mixed_widths() {
+        let err = assemble("fsqrt d0, s1").unwrap_err().to_string();
+        assert!(err.contains("fsqrt"), "the message should name fsqrt, got: {err}");
     }
 
     #[test]
