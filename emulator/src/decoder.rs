@@ -178,6 +178,7 @@ pub enum FpBinOp {
 pub enum FpUnaryOp {
     Fneg,
     Fabs,
+    Fsqrt,
 }
 
 /// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
@@ -748,7 +749,7 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     }
 
     // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.
-    // FMOV keeps its dedicated variant; FABS/FNEG share FpUnary. FCVT's
+    // FMOV keeps its dedicated variant; FABS/FNEG/FSQRT share FpUnary. FCVT's
     // opcode is 0001‖dest-type: the ftype names the SOURCE width, so only
     // the cross-width pairs are valid encodings.
     if bits(instr, 14, 10) == 0b10000 {
@@ -759,6 +760,9 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
             }
             0b000010 => {
                 return Ok(Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: rd, fn_: rn, single })
+            }
+            0b000011 => {
+                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: rd, fn_: rn, single })
             }
             // FCVT Sd, Dn: dest single, source double (narrow).
             0b000100 if !single => {
