@@ -1,20 +1,13 @@
-// deadzone - a terminal survivor: waves of enemies, upgrades, and a boss
+// deadzone - a terminal survivor in ARMv8 assembly: waves of enemies, an
+// upgrade to pick between them, a Titan at wave 10.  Full project at
+// https://github.com/Abdalla-Eldoumani/deadzone
 //
-// The full project (build files, releases, history) lives at
-//   https://github.com/Abdalla-Eldoumani/deadzone
+// how to run: press assemble, then run -- the game takes over the terminal
+// pane and grabs the keyboard.  Or from the term tab:  ./program
 //
-// how to run: press assemble, then run -- the game takes over the
-// terminal pane and grabs the keyboard. Or run it the course way
-// from the term tab:  ./program
-//
-// how to play: any key gets past the title, w/s or the arrows pick a
-// menu item, enter starts. Move with wasd or the arrows; the gun aims
-// itself at whatever is nearest. space drops a bomb that clears the
-// screen, f freezes every enemy for three seconds, 1/2/3 take an
-// upgrade when you level, p pauses, q or escape quits. On the game
-// over screen r restarts and m goes back to the menu. Survive the
-// waves; the Titan turns up at wave 10. High scores and achievements
-// persist in data/deadzone.sav between runs.
+// how to play: any key past the title, w/s picks a menu item, enter starts.
+// wasd moves and the gun aims itself; space bombs, f freezes, 1/2/3 take an
+// upgrade, p pauses, q quits, r restarts.  Scores persist in data/deadzone.sav.
 
 // game_state stays in w19 for the whole run. player_died deliberately leaves
 // it set on the way out of check_player_enemy_collision instead of restoring
@@ -24,13 +17,22 @@ define(game_state, w19)
 define(frame_count, w22)
 define(key_pressed, w23)
 
-// Play screen rows
-// The status bar sits on SCREEN_HEIGHT - 2 and the abilities HUD on
-// SCREEN_HEIGHT - 1, so the field has to stop at row 17.
-ROW_TOP_BORDER = 1                              // Top rule
-ROW_FIELD_FIRST = 2                             // First playable row
-ROW_FIELD_LAST = 17                             // Last playable row
-ROW_BOTTOM_BORDER = 18                          // Bottom rule
+// Health meter thresholds, in filled segments out of HP_METER_SEGMENTS
+HP_METER_SEGMENTS = 20                          // Width of the health bar
+HP_METER_HURT = 12                              // Amber at or below 60 percent
+HP_METER_CRITICAL = 6                           // Red at or below 30 percent
+
+// Where each field starts on the status bar's upper row
+MARQUEE_X = 2                                   // Game name on row 0
+BAR_HP_X = 2                                    // HEALTH
+BAR_HP_METER_X = 9                              // Its gauge, 22 cells wide
+BAR_HP_VALUE_X = 33                             // Its number
+BAR_WAVE_X = 39                                 // WAVE
+BAR_KILLS_X = 51                                // KILLS
+BAR_LEVEL_X = 64                                // LEVEL
+
+// A wave announcement holds the middle of the field for about a second
+WAVE_SPLASH_FRAMES = TARGET_FPS
 
                 .data
 
@@ -41,6 +43,18 @@ show_hs_screen: .word   0                       // 1 if showing high scores scre
 // Intro animation state
 intro_frame:    .word   0                       // Current animation frame
 intro_done:     .word   0                       // 1 if intro complete
+
+// Wave announcement. wave_shown starts at 0 so the first wave announces
+// itself the moment play begins, the way every later one does.
+wave_shown:     .word   0                       // Wave the splash last named
+wave_splash:    .word   0                       // Frames the splash has left
+
+// Rubble on the arena floor, one tile per eight columns, staggered every
+// other row so it reads as scatter instead of a grid.
+                .balign 8
+floor_even:     .byte   '.', ' ', ' ', ' ', ' ', ' ', ' ', ' '
+                .balign 8
+floor_odd:      .byte   ' ', ' ', ' ', ' ', '.', ' ', ' ', ' '
 
 // Frame timing
                 .balign 8
@@ -57,25 +71,32 @@ sleep_rem:      .dword  0                       // Remaining sec
                 .text
 
 // Display strings
-msg_title:      .string "=== DEADZONE: Terminal Survivor ==="
+msg_title:      .string "DEADZONE"
 msg_exit:       .string "\nExiting DEADZONE...\n"
 msg_goodbye:    .string "Terminal restored. Goodbye!\n"
 msg_term_fail:  .string "ERROR: Terminal init failed (no TTY?)\n"
 msg_term_ok:    .string ""
 msg_wave:       .string "Wave:"
-msg_hp:         .string "HP:"
 msg_level:      .string "Lv:"
-msg_enemies:    .string "Enemies:"
 msg_kills:      .string "Kills:"
 
+// Status bar field names
+msg_bar_hp:     .string "HEALTH"
+msg_bar_wave:   .string "WAVE"
+msg_bar_kills:  .string "KILLS"
+msg_bar_level:  .string "LEVEL"
+
+// Wave announcement, spaced out so it reads at a glance
+msg_splash_wave: .string "W A V E"
+
 // Game over screen strings
-msg_go_title:   .string "========== GAME OVER =========="
+msg_go_title:   .string "GAME OVER"
 msg_go_score:   .string "Final Score: "
 msg_go_wave:    .string "Wave Reached: "
 msg_go_kills:   .string "Enemies Killed: "
 msg_go_level:   .string "Level Reached: "
 msg_go_quit:    .string "Press Q to quit, R to restart, M for menu"
-msg_hs_title:   .string "=== HIGH SCORES ==="
+msg_hs_title:   .string "HIGH SCORES"
 msg_hs_empty:   .string "No high scores yet"
 msg_dot:        .string ". "
 msg_space:      .string "  "
@@ -189,6 +210,12 @@ game_loop:
                 // Handle input (only for playing states)
                 bl      handle_input            // Process key
 
+                // Quitting takes effect here rather than at the top of the
+                // next pass, or the loop paints one more frame of the play
+                // field over whatever screen the key was pressed on.
+                cmp     game_state, STATE_QUIT
+                b.eq    main_exit
+
                 // Check game over state
                 cmp     game_state, STATE_GAMEOVER
                 b.eq    game_loop_gameover
@@ -205,6 +232,7 @@ game_loop:
                 bl      update_game             // Update logic
                 bl      effects_update          // Update visual effects
                 bl      abilities_update        // Update ability cooldowns
+                bl      wave_splash_update      // Announce a wave that changed
                 bl      achievements_update     // Update achievement notifications
                 bl      achievements_check      // Check for new achievements
 
@@ -272,6 +300,7 @@ game_restart:
                 bl      boss_init
                 bl      abilities_init
                 bl      achievements_init
+                bl      wave_splash_init
                 bl      save_start_game
                 bl      screen_invalidate       // Whole screen changes here
                 mov     game_state, STATE_PLAYING
@@ -400,6 +429,7 @@ menu_start_game:
                 bl      boss_init
                 bl      abilities_init
                 bl      achievements_init
+                bl      wave_splash_init
                 bl      save_start_game
                 bl      screen_invalidate       // Whole screen changes here
                 mov     game_state, STATE_PLAYING
@@ -750,28 +780,10 @@ no_boss_collision:
 
 // draw_screen - Render the game screen
 draw_screen:
-                stp     fp, lr, [sp, -64]!
+                stp     fp, lr, [sp, -16]!
                 mov     fp, sp
-                stp     x19, x20, [sp, 16]
-                stp     x21, x22, [sp, 32]
-                stp     x24, x25, [sp, 48]
 
-                // Save frame info for status display
-                mov     w21, frame_count
-                mov     w22, key_pressed
-
-                // Stage from the top of the frame
-                bl      cursor_home
-
-                // Draw title bar
-                mov     w0, COLOR_BRIGHT_CYAN   // Title color
-                bl      set_color
-
-                adrp    x0, msg_title           // Title string
-                add     x0, x0, :lo12:msg_title
-                bl      write_str
-
-                // Borders, empty field and the two spacer rows
+                // Marquee, arena walls, rubble, and the empty status bar
                 bl      draw_frame_chrome
 
                 // Draw enemies first (so player appears on top)
@@ -786,87 +798,39 @@ draw_screen:
                 // Draw player
                 bl      player_draw
 
-                // Draw status line
-                mov     w0, 0                   // Column 0
-                mov     w1, SCREEN_HEIGHT
-                sub     w1, w1, 2               // Second to last row
-                bl      cursor_move
+                // Numbers and gauges go on last, over the blanked bar
+                bl      draw_status_bar
 
-                mov     w0, COLOR_WHITE         // Status color
-                bl      set_color
+                // The wave announcement sits over everything else
+                bl      draw_wave_splash
 
-                // Wave info
-                adrp    x0, msg_wave
-                add     x0, x0, :lo12:msg_wave
-                bl      write_str
-                bl      enemies_get_wave
-                bl      write_num
+                bl      reset_color
 
-                mov     w0, ' '
-                bl      write_char
-
-                // Health info
-                adrp    x0, msg_hp
-                add     x0, x0, :lo12:msg_hp
-                bl      write_str
-                bl      player_get_health
-                bl      write_num
-
-                mov     w0, ' '
-                bl      write_char
-
-                // Level/XP info
-                adrp    x0, msg_level
-                add     x0, x0, :lo12:msg_level
-                bl      write_str
-                bl      player_get_level
-                bl      write_num
-
-                mov     w0, ' '
-                bl      write_char
-
-                // Enemies count
-                adrp    x0, msg_enemies
-                add     x0, x0, :lo12:msg_enemies
-                bl      write_str
-                bl      enemies_get_count
-                bl      write_num
-
-                mov     w0, ' '
-                bl      write_char
-
-                // Kills
-                adrp    x0, msg_kills
-                add     x0, x0, :lo12:msg_kills
-                bl      write_str
-                bl      player_get_kills
-                bl      write_num
-
-                // Draw ability cooldown status
-                bl      abilities_draw_hud
-
-draw_status_done:
-                // Clear rest of line
-                mov     w0, ' '
-                bl      write_char
-                bl      write_char
-                bl      write_char
-
-                bl      reset_color             // Reset colors
-
-                ldp     x24, x25, [sp, 48]
-                ldp     x21, x22, [sp, 32]
-                ldp     x19, x20, [sp, 16]
-                ldp     fp, lr, [sp], 64
+                ldp     fp, lr, [sp], 16
                 ret
 
-// draw_frame_chrome - Borders, the empty play field and the spacer rows
+// draw_frame_chrome - Marquee, arena walls and floor, and the status band
 // Whole-row fills: the field costs a few hundred steps instead of the twelve
 // hundred single-character writes the sequential version needed.
 draw_frame_chrome:
                 stp     fp, lr, [sp, -32]!
                 mov     fp, sp
                 str     x19, [sp, 16]
+
+                // Marquee: a dark band with the game's name on the left
+                mov     w0, ROW_MARQUEE
+                mov     w1, ' '
+                mov     w2, CHROME_COLOR
+                bl      fb_fill_row
+
+                mov     w0, MARQUEE_X
+                mov     w1, ROW_MARQUEE
+                bl      cursor_move
+                mov     w0, COLOR_BRIGHT_RED
+                bl      set_color
+                adrp    x0, msg_title
+                add     x0, x0, :lo12:msg_title
+                bl      write_str
 
                 mov     w0, ROW_TOP_BORDER
                 bl      draw_border_row
@@ -876,25 +840,34 @@ draw_chrome_field:
                 cmp     w19, ROW_FIELD_LAST
                 b.gt    draw_chrome_bottom
 
-                // Blank interior, then a wall at each end
-                mov     w0, w19
-                mov     w1, ' '
-                mov     w2, COLOR_BLACK
-                bl      fb_fill_row
+                // Rubble on the deck, staggered every other row
+                adrp    x1, floor_even
+                add     x1, x1, :lo12:floor_even
+                tst     w19, 1
+                b.eq    draw_chrome_floor
+                adrp    x1, floor_odd
+                add     x1, x1, :lo12:floor_odd
 
-                mov     w0, COLOR_GREEN
+draw_chrome_floor:
+                ldr     x1, [x1]
+                mov     w0, w19
+                mov     w2, FLOOR_COLOR
+                bl      fb_fill_row_pattern
+
+                // A wall at each end of the row
+                mov     w0, CHROME_COLOR
                 bl      set_color
 
                 mov     w0, 0
                 mov     w1, w19
                 bl      cursor_move
-                mov     w0, '|'
+                mov     w0, WALL_GLYPH
                 bl      write_char
 
                 mov     w0, SCREEN_WIDTH - 1
                 mov     w1, w19
                 bl      cursor_move
-                mov     w0, '|'
+                mov     w0, WALL_GLYPH
                 bl      write_char
 
                 add     w19, w19, 1
@@ -904,50 +877,247 @@ draw_chrome_bottom:
                 mov     w0, ROW_BOTTOM_BORDER
                 bl      draw_border_row
 
-                // Two spacer rows keep stale menu text off the screen
-                mov     w0, SCREEN_HEIGHT - 4
+                // Gap between the arena and the bar
+                mov     w0, ROW_BOTTOM_BORDER + 1
                 mov     w1, ' '
-                mov     w2, COLOR_BLACK
+                mov     w2, COLOR_RESET
                 bl      fb_fill_row
 
-                mov     w0, SCREEN_HEIGHT - 3
+                // The status band: a rule, two blank rows to write into,
+                // and a rule to close it
+                mov     w0, ROW_BAR_TOP
+                bl      draw_border_row
+
+                mov     w0, ROW_BAR_STATS
                 mov     w1, ' '
-                mov     w2, COLOR_BLACK
+                mov     w2, COLOR_RESET
                 bl      fb_fill_row
+
+                mov     w0, ROW_BAR_ABILITIES
+                mov     w1, ' '
+                mov     w2, COLOR_RESET
+                bl      fb_fill_row
+
+                mov     w0, ROW_BAR_BOTTOM
+                bl      draw_border_row
 
                 ldr     x19, [sp, 16]
                 ldp     fp, lr, [sp], 32
                 ret
 
-// draw_border_row - One horizontal border with a corner at each end
+// draw_border_row - One horizontal rule across the whole screen
 // Parameters: w0 = row
 draw_border_row:
-                stp     fp, lr, [sp, -32]!
+                stp     fp, lr, [sp, -16]!
                 mov     fp, sp
-                str     x19, [sp, 16]
 
-                mov     w19, w0
-                mov     w1, '-'
-                mov     w2, COLOR_GREEN
+                mov     w1, WALL_GLYPH
+                mov     w2, CHROME_COLOR
                 bl      fb_fill_row
 
-                mov     w0, COLOR_GREEN
+                ldp     fp, lr, [sp], 16
+                ret
+
+// draw_status_bar - The bottom band: health gauge and the three counters
+// Row ROW_BAR_ABILITIES belongs to abilities.asm, which draws the two
+// charge gauges in the same idiom.
+draw_status_bar:
+                stp     fp, lr, [sp, -32]!
+                mov     fp, sp
+                stp     x19, x20, [sp, 16]
+
+                // HEALTH, then a twenty-segment gauge and the number
+                mov     w0, BAR_HP_X
+                mov     w1, ROW_BAR_STATS
+                bl      cursor_move
+                mov     w0, LABEL_COLOR
                 bl      set_color
+                adrp    x0, msg_bar_hp
+                add     x0, x0, :lo12:msg_bar_hp
+                bl      write_str
 
-                mov     w0, 0
-                mov     w1, w19
+                bl      player_get_health
+                mov     w19, w0
+                bl      player_get_max_health
+                mov     w20, w0
+                cmp     w20, 0
+                csinc   w20, w20, wzr, gt       // Never divide by zero
+
+                mov     w0, HP_METER_SEGMENTS
+                mul     w0, w19, w0
+                udiv    w20, w0, w20            // Segments filled
+
+                // Green while it holds, amber as it goes, red at the end
+                mov     w0, COLOR_BRIGHT_GREEN
+                cmp     w20, HP_METER_HURT
+                b.gt    draw_hp_meter
+                mov     w0, COLOR_BRIGHT_YELLOW
+                cmp     w20, HP_METER_CRITICAL
+                b.gt    draw_hp_meter
+                mov     w0, COLOR_BRIGHT_RED
+
+draw_hp_meter:
+                mov     w4, w0
+                mov     w3, w20
+                mov     w2, HP_METER_SEGMENTS
+                mov     w0, BAR_HP_METER_X
+                mov     w1, ROW_BAR_STATS
+                bl      fb_meter
+
+                mov     w0, BAR_HP_VALUE_X
+                mov     w1, ROW_BAR_STATS
                 bl      cursor_move
-                mov     w0, '+'
-                bl      write_char
+                mov     w0, VALUE_COLOR
+                bl      set_color
+                mov     w0, w19
+                bl      write_num
 
-                mov     w0, SCREEN_WIDTH - 1
-                mov     w1, w19
+                // WAVE, KILLS and LEVEL as plain bold counters
+                mov     w0, BAR_WAVE_X
+                mov     w1, ROW_BAR_STATS
                 bl      cursor_move
-                mov     w0, '+'
-                bl      write_char
+                bl      enemies_get_wave
+                mov     w19, w0
+                adrp    x0, msg_bar_wave
+                add     x0, x0, :lo12:msg_bar_wave
+                mov     w1, w19
+                bl      draw_bar_counter
 
-                ldr     x19, [sp, 16]
+                mov     w0, BAR_KILLS_X
+                mov     w1, ROW_BAR_STATS
+                bl      cursor_move
+                bl      player_get_kills
+                mov     w19, w0
+                adrp    x0, msg_bar_kills
+                add     x0, x0, :lo12:msg_bar_kills
+                mov     w1, w19
+                bl      draw_bar_counter
+
+                mov     w0, BAR_LEVEL_X
+                mov     w1, ROW_BAR_STATS
+                bl      cursor_move
+                bl      player_get_level
+                mov     w19, w0
+                adrp    x0, msg_bar_level
+                add     x0, x0, :lo12:msg_bar_level
+                mov     w1, w19
+                bl      draw_bar_counter
+
+                // The two ability charges share the row below
+                bl      abilities_draw_hud
+
+                ldp     x19, x20, [sp, 16]
                 ldp     fp, lr, [sp], 32
+                ret
+
+// draw_bar_counter - A status bar field: dim name, space, bright number
+// Parameters: x0 = name, w1 = value. Stages at the current position.
+draw_bar_counter:
+                stp     fp, lr, [sp, -32]!
+                mov     fp, sp
+                stp     x19, x20, [sp, 16]
+
+                mov     x20, x0                 // Field name
+                mov     w19, w1                 // Its value
+
+                mov     w0, LABEL_COLOR
+                bl      set_color
+                mov     x0, x20
+                bl      write_str
+
+                mov     w0, ' '
+                bl      write_char
+                mov     w0, VALUE_COLOR
+                bl      set_color
+                mov     w0, w19
+                bl      write_num
+
+                ldp     x19, x20, [sp, 16]
+                ldp     fp, lr, [sp], 32
+                ret
+
+// wave_splash_init - Arm the announcement so a new run names its first wave
+wave_splash_init:
+                adrp    x0, wave_shown
+                add     x0, x0, :lo12:wave_shown
+                str     wzr, [x0]               // No wave named yet
+                adrp    x0, wave_splash
+                add     x0, x0, :lo12:wave_splash
+                str     wzr, [x0]
+                ret
+
+// wave_splash_update - Notice a new wave and start its announcement
+// Only the live game calls this, so a splash that is up when the game pauses
+// stays up until play resumes.
+wave_splash_update:
+                stp     fp, lr, [sp, -16]!
+                mov     fp, sp
+
+                bl      enemies_get_wave
+                adrp    x1, wave_shown
+                add     x1, x1, :lo12:wave_shown
+                ldr     w2, [x1]
+                cmp     w0, w2
+                b.eq    wave_splash_countdown
+
+                str     w0, [x1]
+                adrp    x1, wave_splash
+                add     x1, x1, :lo12:wave_splash
+                mov     w2, WAVE_SPLASH_FRAMES
+                str     w2, [x1]
+                b       wave_splash_update_done
+
+wave_splash_countdown:
+                adrp    x1, wave_splash
+                add     x1, x1, :lo12:wave_splash
+                ldr     w2, [x1]
+                cbz     w2, wave_splash_update_done
+                sub     w2, w2, 1
+                str     w2, [x1]
+
+wave_splash_update_done:
+                ldp     fp, lr, [sp], 16
+                ret
+
+// draw_wave_splash - Announce the wave across the middle of the field
+// The panel blanks what it covers, and the next frame stages the floor back,
+// so nothing has to be invalidated when it goes away.
+draw_wave_splash:
+                stp     fp, lr, [sp, -16]!
+                mov     fp, sp
+
+                adrp    x0, wave_splash
+                add     x0, x0, :lo12:wave_splash
+                ldr     w0, [x0]
+                cbz     w0, draw_wave_splash_done
+
+                mov     w0, 30                  // Box across the middle rows
+                mov     w1, 8
+                mov     w2, 20
+                mov     w3, 5
+                mov     w4, COLOR_BRIGHT_RED
+                bl      fb_panel
+
+                mov     w0, 34
+                mov     w1, 10
+                bl      cursor_move
+                mov     w0, COLOR_BRIGHT_RED
+                bl      set_color
+                adrp    x0, msg_splash_wave
+                add     x0, x0, :lo12:msg_splash_wave
+                bl      write_str
+
+                mov     w0, ' '
+                bl      write_char
+                mov     w0, ' '
+                bl      write_char
+                mov     w0, VALUE_COLOR
+                bl      set_color
+                bl      enemies_get_wave
+                bl      write_num
+
+draw_wave_splash_done:
+                ldp     fp, lr, [sp], 16
                 ret
 
 // frame_delay - Sleep to maintain target frame rate
@@ -976,7 +1146,14 @@ draw_pause_overlay:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Banner, centred on the play field
+                // A framed box so the field underneath stops showing through
+                mov     w0, 27
+                mov     w1, 8
+                mov     w2, 26
+                mov     w3, 6
+                mov     w4, CHROME_COLOR
+                bl      fb_panel
+
                 mov     w0, SCREEN_WIDTH / 2 - 3
                 mov     w1, 9
                 bl      cursor_move
@@ -993,7 +1170,7 @@ draw_pause_overlay:
                 mov     w1, 11
                 bl      cursor_move
 
-                mov     w0, COLOR_CYAN
+                mov     w0, CHROME_COLOR
                 bl      set_color
 
                 adrp    x0, msg_pause_hint
@@ -1007,7 +1184,7 @@ draw_pause_overlay:
 
 // draw_gameover_screen - Draw the game over screen with stats
 draw_gameover_screen:
-                stp     fp, lr, [sp, -48]!
+                stp     fp, lr, [sp, -64]!
                 mov     fp, sp
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
@@ -1016,8 +1193,17 @@ draw_gameover_screen:
                 bl      screen_clear
                 bl      cursor_home
 
-                // Draw title
-                mov     w0, 24                  // X position
+                // A red band across the top, then the run's numbers under it
+                mov     w0, 2
+                mov     w1, WALL_GLYPH
+                mov     w2, COLOR_RED
+                bl      fb_fill_row
+                mov     w0, 4
+                mov     w1, WALL_GLYPH
+                mov     w2, COLOR_RED
+                bl      fb_fill_row
+
+                mov     w0, 35                  // X position
                 mov     w1, 3                   // Y position
                 bl      cursor_move
 
@@ -1033,7 +1219,7 @@ draw_gameover_screen:
                 mov     w1, 6
                 bl      cursor_move
 
-                mov     w0, COLOR_WHITE
+                mov     w0, LABEL_COLOR
                 bl      set_color
 
                 adrp    x0, msg_go_score
@@ -1054,7 +1240,7 @@ draw_gameover_screen:
                 mov     w1, 7
                 bl      cursor_move
 
-                mov     w0, COLOR_WHITE
+                mov     w0, LABEL_COLOR
                 bl      set_color
 
                 adrp    x0, msg_go_wave
@@ -1072,7 +1258,7 @@ draw_gameover_screen:
                 mov     w1, 8
                 bl      cursor_move
 
-                mov     w0, COLOR_WHITE
+                mov     w0, LABEL_COLOR
                 bl      set_color
 
                 adrp    x0, msg_go_kills
@@ -1090,7 +1276,7 @@ draw_gameover_screen:
                 mov     w1, 9
                 bl      cursor_move
 
-                mov     w0, COLOR_WHITE
+                mov     w0, LABEL_COLOR
                 bl      set_color
 
                 adrp    x0, msg_go_level
@@ -1104,7 +1290,7 @@ draw_gameover_screen:
                 bl      write_num
 
                 // Draw high scores title
-                mov     w0, 26
+                mov     w0, 34
                 mov     w1, 12
                 bl      cursor_move
 
@@ -1136,9 +1322,9 @@ draw_hs_loop:
                 // Save values to stack before any function calls
                 ldr     w21, [x22, HS_SCORE]    // w21 = score
                 ldrh    w19, [x22, HS_WAVE]     // w19 = wave (temp)
-                str     w19, [sp, 40]           // Save wave to stack
+                str     w19, [sp, 48]           // Save wave to stack
                 ldr     w19, [x22, HS_KILLS]    // w19 = kills (temp)
-                str     w19, [sp, 44]           // Save kills to stack
+                str     w19, [sp, 52]           // Save kills to stack
 
                 // Position cursor
                 mov     w0, 22
@@ -1175,7 +1361,7 @@ draw_hs_loop:
                 add     x0, x0, :lo12:msg_wave
                 bl      write_str
 
-                ldr     w0, [sp, 40]            // Restore wave from stack
+                ldr     w0, [sp, 48]            // Restore wave from stack
                 bl      write_num
 
                 adrp    x0, msg_space
@@ -1190,7 +1376,7 @@ draw_hs_loop:
                 add     x0, x0, :lo12:msg_kills
                 bl      write_str
 
-                ldr     w0, [sp, 44]            // Restore kills from stack
+                ldr     w0, [sp, 52]            // Restore kills from stack
                 bl      write_num
 
 draw_hs_next:
@@ -1203,7 +1389,7 @@ draw_hs_done:
                 mov     w1, 21
                 bl      cursor_move
 
-                mov     w0, COLOR_WHITE
+                mov     w0, CHROME_COLOR
                 bl      set_color
 
                 adrp    x0, msg_go_quit
@@ -1214,7 +1400,7 @@ draw_hs_done:
 
                 ldp     x21, x22, [sp, 32]
                 ldp     x19, x20, [sp, 16]
-                ldp     fp, lr, [sp], 48
+                ldp     fp, lr, [sp], 64
                 ret
 
 // draw_intro_screen - Draw animated intro/title screen
@@ -1226,7 +1412,6 @@ draw_intro_screen:
 
                 // Clear screen
                 bl      screen_clear
-                bl      cursor_hide
 
                 // Get intro frame
                 adrp    x19, intro_frame
@@ -1310,7 +1495,7 @@ draw_intro_screen:
                 mov     w0, 25
                 mov     w1, 16
                 bl      cursor_move
-                mov     w0, COLOR_WHITE
+                mov     w0, CHROME_COLOR
                 bl      set_color
                 adrp    x0, msg_intro_anykey
                 add     x0, x0, :lo12:msg_intro_anykey
@@ -1318,7 +1503,6 @@ draw_intro_screen:
 
 intro_no_subtitle:
                 bl      reset_color
-                bl      cursor_show
 
                 ldr     x21, [sp, 32]
                 ldp     x19, x20, [sp, 16]
@@ -1333,7 +1517,7 @@ intro_set_color:
                 cmp     w0, 16
                 b.lt    intro_color_yellow
                 cmp     w0, 24
-                b.lt    intro_color_white
+                b.lt    intro_color_dim
                 mov     w0, COLOR_BRIGHT_RED
                 b       intro_do_color
 
@@ -1343,8 +1527,8 @@ intro_color_red:
 intro_color_yellow:
                 mov     w0, COLOR_BRIGHT_YELLOW
                 b       intro_do_color
-intro_color_white:
-                mov     w0, COLOR_BRIGHT_WHITE
+intro_color_dim:
+                mov     w0, COLOR_RED
 
 intro_do_color:
                 b       set_color
@@ -1408,6 +1592,12 @@ draw_menu:
                 bl      screen_clear
                 bl      cursor_home
 
+                // Rules top and bottom, the same idiom as the arena
+                mov     w0, ROW_TOP_BORDER
+                bl      draw_border_row
+                mov     w0, ROW_BAR_BOTTOM - 1
+                bl      draw_border_row
+
                 // Draw title "DEADZONE"
                 mov     w0, 36                  // Center position
                 mov     w1, 4
@@ -1425,7 +1615,7 @@ draw_menu:
                 mov     w1, 5
                 bl      cursor_move
 
-                mov     w0, COLOR_BRIGHT_YELLOW
+                mov     w0, LABEL_COLOR
                 bl      set_color
 
                 adrp    x0, msg_menu_sub
@@ -1437,7 +1627,7 @@ draw_menu:
                 mov     w1, 6
                 bl      cursor_move
 
-                mov     w0, COLOR_WHITE
+                mov     w0, CHROME_COLOR
                 bl      set_color
 
                 adrp    x0, msg_menu_ver
@@ -1458,15 +1648,17 @@ draw_menu:
                 cmp     w19, 0
                 b.ne    menu_start_not_selected
 
-                mov     w0, COLOR_BRIGHT_GREEN
+                mov     w0, COLOR_BRIGHT_RED
                 bl      set_color
                 adrp    x0, msg_menu_arrow
                 add     x0, x0, :lo12:msg_menu_arrow
                 bl      write_str
+                mov     w0, VALUE_COLOR
+                bl      set_color
                 b       menu_draw_start
 
 menu_start_not_selected:
-                mov     w0, COLOR_WHITE
+                mov     w0, CHROME_COLOR
                 bl      set_color
                 adrp    x0, msg_space
                 add     x0, x0, :lo12:msg_space
@@ -1485,15 +1677,17 @@ menu_draw_start:
                 cmp     w19, 1
                 b.ne    menu_scores_not_selected
 
-                mov     w0, COLOR_BRIGHT_GREEN
+                mov     w0, COLOR_BRIGHT_RED
                 bl      set_color
                 adrp    x0, msg_menu_arrow
                 add     x0, x0, :lo12:msg_menu_arrow
                 bl      write_str
+                mov     w0, VALUE_COLOR
+                bl      set_color
                 b       menu_draw_scores
 
 menu_scores_not_selected:
-                mov     w0, COLOR_WHITE
+                mov     w0, CHROME_COLOR
                 bl      set_color
                 adrp    x0, msg_space
                 add     x0, x0, :lo12:msg_space
@@ -1512,15 +1706,17 @@ menu_draw_scores:
                 cmp     w19, 2
                 b.ne    menu_quit_not_selected
 
-                mov     w0, COLOR_BRIGHT_GREEN
+                mov     w0, COLOR_BRIGHT_RED
                 bl      set_color
                 adrp    x0, msg_menu_arrow
                 add     x0, x0, :lo12:msg_menu_arrow
                 bl      write_str
+                mov     w0, VALUE_COLOR
+                bl      set_color
                 b       menu_draw_quit
 
 menu_quit_not_selected:
-                mov     w0, COLOR_WHITE
+                mov     w0, CHROME_COLOR
                 bl      set_color
                 adrp    x0, msg_space
                 add     x0, x0, :lo12:msg_space
@@ -1536,7 +1732,7 @@ menu_draw_quit:
                 mov     w1, 20
                 bl      cursor_move
 
-                mov     w0, COLOR_CYAN
+                mov     w0, CHROME_COLOR
                 bl      set_color
 
                 adrp    x0, msg_menu_nav
@@ -1551,7 +1747,7 @@ menu_draw_quit:
 
 // draw_highscores_screen - Draw the high scores screen from menu
 draw_highscores_screen:
-                stp     fp, lr, [sp, -48]!
+                stp     fp, lr, [sp, -64]!
                 mov     fp, sp
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
@@ -1561,7 +1757,7 @@ draw_highscores_screen:
                 bl      cursor_home
 
                 // Draw title
-                mov     w0, 30
+                mov     w0, 34
                 mov     w1, 3
                 bl      cursor_move
 
@@ -1593,7 +1789,7 @@ draw_menu_hs_loop:
                 // Store score and wave on stack for safety
                 ldr     w21, [x22, HS_SCORE]    // w21 = score
                 ldrh    w19, [x22, HS_WAVE]     // w19 = wave (temp save)
-                str     w19, [sp, 44]           // Save wave to stack
+                str     w19, [sp, 48]           // Save wave to stack
 
                 // Position cursor
                 mov     w0, 20
@@ -1630,7 +1826,7 @@ draw_menu_hs_loop:
                 add     x0, x0, :lo12:msg_wave
                 bl      write_str
 
-                ldr     w0, [sp, 44]            // Restore wave from stack
+                ldr     w0, [sp, 48]            // Restore wave from stack
                 bl      write_num
 
                 adrp    x0, msg_space
@@ -1693,7 +1889,7 @@ draw_hs_back_msg:
                 mov     w1, 20
                 bl      cursor_move
 
-                mov     w0, COLOR_CYAN
+                mov     w0, CHROME_COLOR
                 bl      set_color
 
                 adrp    x0, msg_menu_back
@@ -1704,7 +1900,7 @@ draw_hs_back_msg:
 
                 ldp     x21, x22, [sp, 32]
                 ldp     x19, x20, [sp, 16]
-                ldp     fp, lr, [sp], 48
+                ldp     fp, lr, [sp], 64
                 ret
 
 // play_bell - Play terminal bell sound
