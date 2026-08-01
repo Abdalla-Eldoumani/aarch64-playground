@@ -439,18 +439,20 @@ effects_cursor_move:
                 add     w19, w19, w2
                 add     w20, w20, w3
 
-                // Clamp to screen bounds
-                cmp     w19, 0
-                csel    w19, wzr, w19, lt
-                mov     w0, SCREEN_WIDTH
-                sub     w0, w0, 1
+                // Clamp inside the arena, not just inside the screen: a shake
+                // large enough to push a particle out of the field would
+                // otherwise scatter it across the marquee or the status bar.
+                mov     w0, PLAY_LEFT
+                cmp     w19, w0
+                csel    w19, w0, w19, lt
+                mov     w0, PLAY_RIGHT
                 cmp     w19, w0
                 csel    w19, w0, w19, gt
 
-                cmp     w20, 0
-                csel    w20, wzr, w20, lt
-                mov     w0, SCREEN_HEIGHT
-                sub     w0, w0, 1
+                mov     w0, PLAY_TOP
+                cmp     w20, w0
+                csel    w20, w0, w20, lt
+                mov     w0, PLAY_BOTTOM
                 cmp     w20, w0
                 csel    w20, w0, w20, gt
 
