@@ -1,18 +1,13 @@
-// calc -- a pocket scientific calculator drawn in the terminal
+// calc -- a pocket scientific calculator: a terminal device, or a line
+// calculator on plain stdio. https://github.com/Abdalla-Eldoumani/calc
 //
-// The full project (build files, docs, history) lives at
-//   https://github.com/Abdalla-Eldoumani/calc
+// run: make, then ./calculator for the device or ./calculator console for
+// the line calculator. In the playground: assemble, then run, with the
+// arguments line carrying the same thing.
 //
-// how to run: make && ./calculator. Or press assemble, then run, and
-// the device takes over the terminal pane.
-//
-// how to use: type digits and operators straight at it and the matching
-// key lights up. The arrow keys walk a highlight around the grid and
-// enter presses whatever it is sitting on -- it starts on =, so enter
-// works as equals until you move it. tab switches between immediate
-// entry (a pocket calculator that chains) and expression entry
-// (2+3*4 = 14, parentheses and all). d flips DEG/RAD, C clears the
-// entry, A clears the whole calculation, q gives the terminal back.
+// device: type digits and operators; arrows walk the highlight and enter
+// presses it, tab switches entry mode, d flips DEG/RAD, C and A clear.
+// console: type an expression; deg and rad switch mode. q quits either.
 
 define(fp, x29)
 define(lr, x30)
@@ -75,6 +70,12 @@ KEY_WIDTH = 5
 // the start of a comment and truncate the line around it.
 CHAR_SEMI = 0x3b
 
+// The bytes at the edges of a typed line, named so the console reader
+// says what it means.
+CHAR_TAB = 9
+CHAR_LF = 10
+CHAR_CR = 13
+
 // Entry limits. A typed number stops at 20 characters and a typed
 // expression at 40: past that the display cannot show what you typed,
 // so the grid simply stops accepting.
@@ -84,6 +85,11 @@ LINE_MAX = 120
 TAPE_SLOT = 96
 TAPE_MAX = 94
 SEG_MAX = 40
+
+// The console prompt has no display to fit, so its line is longer. Past
+// the cap the rest is read and dropped: truncating an expression would
+// answer a different question than the one that was typed.
+CMD_MAX = 120
 
 // Repaint flags. Nothing is redrawn unless the state behind it moved,
 // which is what keeps the device from flickering.
@@ -154,6 +160,29 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
+        // The argument picks the front end. No argument is the device;
+        // "console" keeps the program on plain stdio.
+        cmp     w0, 2
+        b.lt    main_device
+        ldr     x0, [x1, 8]
+        ldr     x1, =txt_console
+        bl      str_equal
+        cbnz    w0, main_console
+
+        ldr     x0, =usage_txt
+        mov     x1, usage_txt_len
+        bl      console_write
+        mov     w0, 1
+        ldp     fp, lr, [sp], 16
+        ret
+
+main_console:
+        bl      console_repl
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+main_device:
         bl      save_terminal_settings
         bl      set_raw_mode
         bl      set_nonblocking_input
@@ -180,6 +209,287 @@ main_quit:
 
         mov     w0, 0
         ldp     fp, lr, [sp], 16
+        ret
+
+// ------------------------------------------------------------------ //
+// console mode -- the line calculator                                  //
+//                                                                      //
+// The same expression engine EXPR mode runs, driven from cooked stdio.  //
+// Nothing on this path touches termios or fcntl and nothing on it       //
+// writes an escape byte: a plain-text console shows an escape as        //
+// literal garbage, and a redirected stdin has to read the same.         //
+// ------------------------------------------------------------------ //
+
+console_repl:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        stp     x20, x21, [sp, -16]!
+
+        ldr     x0, =banner_txt
+        mov     x1, banner_txt_len
+        bl      console_write
+
+console_repl_loop:
+        ldr     x0, =prompt_txt
+        mov     x1, prompt_txt_len
+        bl      console_write
+
+        bl      read_line
+        cbz     w0, console_repl_eof
+        cmp     w0, 2
+        b.eq    console_repl_long
+
+        bl      trim_line
+        mov     x20, x0
+
+        // A blank line is not a mistake, so it gets no answer and no
+        // complaint.
+        ldrb    w9, [x20]
+        cbz     w9, console_repl_loop
+
+        mov     x0, x20
+        ldr     x1, =txt_q
+        bl      str_equal
+        cbnz    w0, console_repl_bye
+        mov     x0, x20
+        ldr     x1, =txt_quit
+        bl      str_equal
+        cbnz    w0, console_repl_bye
+        mov     x0, x20
+        ldr     x1, =txt_deg
+        bl      str_equal
+        cbnz    w0, console_repl_deg
+        mov     x0, x20
+        ldr     x1, =txt_rad
+        bl      str_equal
+        cbnz    w0, console_repl_rad
+
+        mov     x0, x20
+        bl      console_eval
+        b       console_repl_loop
+
+console_repl_long:
+        ldr     x0, =long_txt
+        mov     x1, long_txt_len
+        bl      console_write
+        b       console_repl_loop
+
+console_repl_deg:
+        ldr     x9, =deg_mode
+        mov     w10, 1
+        str     w10, [x9]
+        ldr     x0, =deg_word
+        mov     x1, deg_word_len
+        bl      console_write
+        b       console_repl_loop
+
+console_repl_rad:
+        ldr     x9, =deg_mode
+        str     wzr, [x9]
+        ldr     x0, =rad_word
+        mov     x1, rad_word_len
+        bl      console_write
+        b       console_repl_loop
+
+console_repl_eof:
+        // End of input rather than a typed q: close the line the prompt
+        // opened, since nothing echoed one.
+        ldr     x0, =nl_txt
+        mov     x1, nl_txt_len
+        bl      console_write
+
+console_repl_bye:
+        ldr     x0, =bye_txt
+        mov     x1, bye_txt_len
+        bl      console_write
+
+        ldp     x20, x21, [sp], 16
+        ldp     fp, lr, [sp], 16
+        ret
+
+// read_line: one line of cooked stdin into cmd_buf, one getchar at a
+// time. Answers 0 at end of input, 1 for a line, 2 for a line that ran
+// past the cap.
+read_line:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        stp     x20, x21, [sp, -16]!
+
+        mov     w20, 0
+        mov     w21, 0
+
+read_line_loop:
+        bl      getchar
+        cmp     w0, 0
+        b.lt    read_line_eof
+        cmp     w0, CHAR_LF
+        b.eq    read_line_end
+        // A carriage return belongs to the line ending, not to the line,
+        // so a file written on another platform still reads.
+        cmp     w0, CHAR_CR
+        b.eq    read_line_loop
+        cmp     w20, CMD_MAX
+        b.ge    read_line_over
+        ldr     x9, =cmd_buf
+        strb    w0, [x9, x20]
+        add     w20, w20, 1
+        b       read_line_loop
+
+read_line_over:
+        mov     w21, 1
+        b       read_line_loop
+
+read_line_eof:
+        cbnz    w20, read_line_end
+        cbnz    w21, read_line_end
+        mov     w0, 0
+        b       read_line_done
+
+read_line_end:
+        ldr     x9, =cmd_buf
+        strb    wzr, [x9, x20]
+        ldr     x9, =cmd_len
+        str     w20, [x9]
+        mov     w0, 1
+        cbz     w21, read_line_done
+        mov     w0, 2
+
+read_line_done:
+        ldp     x20, x21, [sp], 16
+        ldp     fp, lr, [sp], 16
+        ret
+
+// trim_line: hand back the line with the blanks either side of it gone,
+// so a command word is recognised however it was spaced.
+trim_line:
+        ldr     x0, =cmd_buf
+        ldr     x9, =cmd_len
+        ldr     w9, [x9]
+        add     x2, x0, x9
+
+trim_line_tail:
+        cmp     x2, x0
+        b.eq    trim_line_cut
+        sub     x3, x2, 1
+        ldrb    w4, [x3]
+        cmp     w4, ' '
+        b.eq    trim_line_tail_step
+        cmp     w4, CHAR_TAB
+        b.ne    trim_line_cut
+trim_line_tail_step:
+        mov     x2, x3
+        b       trim_line_tail
+
+trim_line_cut:
+        strb    wzr, [x2]
+
+trim_line_head:
+        ldrb    w4, [x0]
+        cmp     w4, ' '
+        b.eq    trim_line_head_step
+        cmp     w4, CHAR_TAB
+        b.ne    trim_line_done
+trim_line_head_step:
+        add     x0, x0, 1
+        b       trim_line_head
+
+trim_line_done:
+        ret
+
+// console_eval: read the whole of the line at x0 as an expression and
+// print either the reading or the word for what went wrong.
+console_eval:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        stp     x19, x20, [sp, -16]!
+
+        ldr     x9, =parse_err
+        str     wzr, [x9]
+        ldr     x9, =parse_depth
+        str     wzr, [x9]
+        mov     cursor_r, x0
+
+        bl      parse_expr
+
+        // Anything left over is text the parser could not read, which is
+        // what catches a trailing operator and a stray word.
+        bl      skip_spaces
+        ldrb    w9, [cursor_r]
+        cbz     w9, console_eval_check
+        ldr     x9, =parse_err
+        mov     w10, ERR_SYNTAX
+        str     w10, [x9]
+
+console_eval_check:
+        ldr     x9, =parse_err
+        ldr     w20, [x9]
+        cbnz    w20, console_eval_err
+        bl      check_result
+        mov     w20, w0
+        cbnz    w20, console_eval_err
+
+        ldr     x0, =console_out
+        ldr     x1, =ans_txt
+        mov     x2, ans_txt_len
+        bl      emit_bytes
+
+        // The reading renders straight onto the staged line. format_double
+        // answers a length rather than a cursor, so the end is worked out
+        // from the fixed base instead of parked in a register.
+        bl      format_double
+        ldr     x9, =console_out
+        add     x9, x9, ans_txt_len
+        add     x0, x9, x0
+        b       console_eval_line
+
+console_eval_err:
+        ldr     x9, =err_tab
+        add     x9, x9, x20, lsl 3
+        ldr     x1, [x9]
+        ldr     x0, =console_out
+        bl      emit_str
+
+console_eval_line:
+        mov     w9, CHAR_LF
+        strb    w9, [x0], 1
+        ldr     x9, =console_out
+        sub     x1, x0, x9
+        mov     x0, x9
+        bl      console_write
+
+        ldp     x19, x20, [sp], 16
+        ldp     fp, lr, [sp], 16
+        ret
+
+// console_write: x1 bytes at x0, straight to stdout.
+console_write:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x2, x1
+        mov     x1, x0
+        mov     x0, STDOUT_FILENO
+        mov     x8, SYS_WRITE
+        svc     0
+
+        ldp     fp, lr, [sp], 16
+        ret
+
+// str_equal: 1 when the null-terminated strings in x0 and x1 match.
+str_equal:
+        ldrb    w2, [x0]
+        ldrb    w3, [x1]
+        cmp     w2, w3
+        b.ne    str_equal_no
+        cbz     w2, str_equal_yes
+        add     x0, x0, 1
+        add     x1, x1, 1
+        b       str_equal
+str_equal_yes:
+        mov     w0, 1
+        ret
+str_equal_no:
+        mov     w0, 0
         ret
 
 // ------------------------------------------------------------------ //
@@ -3660,6 +3970,7 @@ dirty_flags:    .word 0
 esc_state:      .word 0
 seg_start:      .word 0
 pct_direct:     .word 0
+cmd_len:        .word 0
 
 tape_lens:      .word 0
                 .word 0
@@ -3882,6 +4193,35 @@ tape_empty_len = . - tape_empty
 brand_txt: .ascii "calc"
 brand_txt_len = . - brand_txt
 
+// Console-mode text. Every byte of it is printable: this is the one path
+// that has to survive a plain-text console and a redirected stdout.
+txt_console: .string "console"
+txt_q:       .string "q"
+txt_quit:    .string "quit"
+txt_deg:     .string "deg"
+txt_rad:     .string "rad"
+
+usage_txt: .ascii "usage: calculator [console]\n"
+usage_txt_len = . - usage_txt
+banner_txt:
+        .ascii "calc -- scientific calculator\n"
+        .ascii "type an expression, deg or rad for the trig mode, q to quit\n"
+banner_txt_len = . - banner_txt
+prompt_txt: .ascii "calc> "
+prompt_txt_len = . - prompt_txt
+ans_txt: .ascii "= "
+ans_txt_len = . - ans_txt
+deg_word: .ascii "DEG\n"
+deg_word_len = . - deg_word
+rad_word: .ascii "RAD\n"
+rad_word_len = . - rad_word
+long_txt: .ascii "too long\n"
+long_txt_len = . - long_txt
+bye_txt: .ascii "bye\n"
+bye_txt_len = . - bye_txt
+nl_txt: .ascii "\n"
+nl_txt_len = . - nl_txt
+
 // Lamp labels
 lamp_deg:  .string "DEG"
 lamp_rad:  .string "RAD"
@@ -3976,4 +4316,6 @@ tape_scratch:   .skip 200
 key_dirty:      .skip 40
 key_in:         .skip 24
 fmt_digits:     .skip 16
+cmd_buf:        .skip 136
+console_out:    .skip 64
 frame_out:      .skip 8192
