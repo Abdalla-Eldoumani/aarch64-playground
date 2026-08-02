@@ -58,7 +58,7 @@ const REGISTERS: Suggestion[] = [
 const LIBC: Suggestion[] = [
   "printf", "scanf", "puts", "putchar", "getchar",
   "strlen", "strcmp", "strcpy", "memset", "memcpy",
-  "exit", "atof",
+  "exit", "atof", "fopen", "fprintf", "fclose",
 ].map((name) => ({ label: name, kind: "libc", detail: "host stub" }));
 
 function instructionSuggestions(): Suggestion[] {
