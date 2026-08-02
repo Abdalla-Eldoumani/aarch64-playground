@@ -82,7 +82,7 @@ export function explainError(message: string): ErrorExplanation | null {
       what: "A load or store used sp as its base -- or a libc call ran -- while sp was off the 16-byte boundary.",
       why: "Linux turns on the AArch64 stack-alignment check (SA0): every sp-based access faults with a bus error when sp is not a multiple of 16, and AAPCS64 requires the boundary at every bl. The playground stops exactly where the course servers do.",
       fix: "Round the frame to a 16 multiple: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`. The line that broke the boundary is the sp adjustment above the fault.",
-      styleSection: "stack frames",
+      styleSection: "general",
     };
   }
   if (lower.includes("not part of any program section")) {
