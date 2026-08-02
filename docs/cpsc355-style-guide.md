@@ -151,7 +151,7 @@ Pre-registered libc stubs at addresses `0xFFFF_0000 + idx * 16`:
 ```
 printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy,
 memset, memcpy, atoi, rand, srand, time, exit, atof, malloc, free, usleep,
-fflush
+fflush, fopen, fprintf, fclose
 ```
 
 The libm subset, in the floating-point convention (argument in `d0`, second
