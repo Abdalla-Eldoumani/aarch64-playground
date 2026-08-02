@@ -149,6 +149,74 @@ main:
     assert_eq!(out, "8\n");
 }
 
+// Linux never starts a process with argc = 0: argv[0] is the program
+// path. Assignment solutions gate on `cmp argc, 3` and print usage --
+// dereferencing argv[0] -- when the count is wrong; with no arguments
+// the emulator used to hand them argc = 0 and argv = NULL, so the
+// usage path faulted at address 0 instead of printing.
+#[test]
+fn usage_gate_reads_argv0_with_no_arguments() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+use_fmt:        .string "usage: %s a b\n"
+sum_fmt:        .string "%ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        cmp     w0, 3
+        b.ne    usage
+
+        mov     x19, x1
+        ldr     x0, [x19, 8]
+        bl      atoi
+        mov     w20, w0
+        ldr     x0, [x19, 16]
+        bl      atoi
+        add     w1, w20, w0
+        sxtw    x1, w1
+        ldr     x0, =sum_fmt
+        bl      printf
+        b       done
+
+usage:
+        ldr     x0, =use_fmt
+        ldr     x1, [x1, 0]
+        bl      printf
+
+done:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    // No arguments: argc = 1, the usage path prints argv[0].
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    let r = cpu.run_until_break(2_000_000).expect("run");
+    assert!(r.halted);
+    assert_eq!(
+        String::from_utf8_lossy(&cpu.take_stdout()),
+        "usage: ./program a b\n"
+    );
+
+    // Two arguments: argc = 3, the compute path runs.
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image_with_args(&image, &["19", "23"])
+        .expect("load");
+    let r = cpu.run_until_break(2_000_000).expect("run");
+    assert!(r.halted);
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "42\n");
+}
+
 // GAS accepts `ldr <reg>, <label>` -- LDR (literal), a load FROM the
 // label's address -- and course code writes it alongside `ldr =label`.
 // The value must be read at run time: this program stores to the label
