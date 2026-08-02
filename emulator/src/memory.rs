@@ -34,8 +34,11 @@ const MAX_DIRTY_RANGES: usize = 4096;
 /// Sparse page-based memory.
 ///
 /// Pages are 4 KiB, allocated on first write (auto-map). Reads to unmapped
-/// addresses fault. All multi-byte accesses are little-endian and require
-/// natural alignment.
+/// addresses fault. All multi-byte accesses are little-endian; unaligned
+/// accesses fall back to byte-at-a-time and succeed, modeling Linux
+/// userspace normal memory (SCTLR.A = 0). The stack-pointer alignment
+/// rule (SA0) is the executor's job, not this module's: it checks SP
+/// itself, never the effective address.
 ///
 /// Each write also records an `(addr, len)` range in `dirty` so callers
 /// (the snapshot layer) can surface a per-step list of changed addresses
