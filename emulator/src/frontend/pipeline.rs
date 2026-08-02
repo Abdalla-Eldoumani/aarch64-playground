@@ -145,6 +145,13 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // sites. GAS rejects a redefined label; accepting it here made the
     // last definition win silently, so branches jumped to the wrong copy.
     let mut label_lines: HashMap<String, usize> = HashMap::new();
+    // Each label's offset within its own section. GAS resolves a defined
+    // label used as an instruction immediate (`ldr x19, [fp, a_local]`,
+    // `add x1, fp, a_local`, `cmp x0, a_local`) to this section-relative
+    // value at assembly time, with no relocation -- verified against
+    // aarch64 GAS on the course servers. The absolute address in `symbols`
+    // stays the answer everywhere else (branches, `ldr =`, adr, .quad).
+    let mut label_offsets: HashMap<String, u64> = HashMap::new();
     // Absolute address of each `.text` instruction, in emission order.
     // Pass 1d needs it to size a per-site literal pool slot for
     // `ldr xN, =. + k`, and taking it from this walk is what keeps the
@@ -179,6 +186,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                     label_lines.insert(name.clone(), *original_line);
                     symbols.insert(name.clone(), base + offset);
+                    label_offsets.insert(name.clone(), offset);
                 }
                 Item::Bytes(b) => offset += b.len() as u64,
                 Item::Reserve(n) => offset = offset.saturating_add(*n),
@@ -576,7 +584,14 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                             // correctly.
                             format!("bl {name}")
                         } else {
-                            lower_operands(&stripped, pc, &symbols, &equates, *original_line)?
+                            lower_operands(
+                                &stripped,
+                                pc,
+                                &symbols,
+                                &equates,
+                                &label_offsets,
+                                *original_line,
+                            )?
                         };
                         assembler::encode_line_absolute(
                             &line_text,
@@ -859,6 +874,7 @@ fn lower_operands(
     pc: u64,
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
+    label_offsets: &HashMap<String, u64>,
     ln: usize,
 ) -> Result<String, EmuError> {
     let trimmed = line.trim();
@@ -880,7 +896,7 @@ fn lower_operands(
     {
         return Ok(format!("{mnemonic} {tail}"));
     }
-    let rewritten = rewrite_operand_list(tail, pc, symbols, equates, ln, 0)?;
+    let rewritten = rewrite_operand_list(tail, pc, symbols, equates, label_offsets, ln, 0)?;
     Ok(format!("{mnemonic} {rewritten}"))
 }
 
@@ -897,13 +913,14 @@ fn rewrite_operand_list(
     pc: u64,
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
+    label_offsets: &HashMap<String, u64>,
     ln: usize,
     depth: usize,
 ) -> Result<String, EmuError> {
     let mut out: Vec<String> = Vec::new();
     let segments = split_top_level_commas(s);
     for seg in segments {
-        out.push(rewrite_operand(seg.trim(), pc, symbols, equates, ln, depth)?);
+        out.push(rewrite_operand(seg.trim(), pc, symbols, equates, label_offsets, ln, depth)?);
     }
     Ok(out.join(", "))
 }
@@ -933,6 +950,7 @@ fn rewrite_operand(
     pc: u64,
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
+    label_offsets: &HashMap<String, u64>,
     ln: usize,
     depth: usize,
 ) -> Result<String, EmuError> {
@@ -973,7 +991,8 @@ fn rewrite_operand(
         })?;
         let inside = &trimmed[1..close];
         let trailer = &trimmed[close..];
-        let rewritten_inside = rewrite_operand_list(inside, pc, symbols, equates, ln, depth + 1)?;
+        let rewritten_inside =
+            rewrite_operand_list(inside, pc, symbols, equates, label_offsets, ln, depth + 1)?;
         return Ok(format!("[{rewritten_inside}{trailer}"));
     }
     // Strip a leading `#` while evaluating; the legacy encoder accepts
@@ -982,7 +1001,7 @@ fn rewrite_operand(
     if !looks_like_expression(body, symbols) {
         return Ok(trimmed.to_string());
     }
-    match try_evaluate_operand(body, pc, symbols, equates, ln)? {
+    match try_evaluate_operand(body, pc, symbols, equates, label_offsets, ln)? {
         Some(value) => Ok(format!("{value}")),
         None => Ok(trimmed.to_string()),
     }
@@ -1074,6 +1093,7 @@ fn try_evaluate_operand(
     pc: u64,
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
+    label_offsets: &HashMap<String, u64>,
     ln: usize,
 ) -> Result<Option<i64>, EmuError> {
     // A shift modifier's keyword-plus-amount shape (`lsl #(1 + 1)`) is an
@@ -1093,9 +1113,17 @@ fn try_evaluate_operand(
     {
         return Ok(None);
     }
+    // A defined label names its section-relative offset here, the way GAS
+    // resolves a label inside an instruction's immediate field (no
+    // relocation exists for those bits, so GAS folds the symbol's raw
+    // section offset -- verified against the course servers). Equates and
+    // everything else keep their absolute values from `symbol_at`.
     match evaluate(
         &tokens,
-        &|name| symbol_at(name, ln, symbols, equates),
+        &|name| match label_offsets.get(name) {
+            Some(off) => Some(*off as i64),
+            None => symbol_at(name, ln, symbols, equates),
+        },
         pc as i64,
         ln,
     ) {
