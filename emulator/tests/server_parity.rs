@@ -149,6 +149,167 @@ main:
     assert_eq!(out, "8\n");
 }
 
+/// Run a source expecting a calm halt with an abort message; hand the
+/// message back for the caller's assertions.
+fn run_expect_halt_message(source: &str) -> (Cpu, String) {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    cpu.close_stdin();
+    let result = cpu.run_until_break(2_000_000).expect("run never panics");
+    assert!(result.halted, "expected a calm halt");
+    let message = cpu.abort_message.clone().unwrap_or_default();
+    (cpu, message)
+}
+
+// The first page is never mapped on Linux, so a store through a zeroed
+// base register is SIGSEGV on the servers. The emulator auto-maps pages
+// on write, which let the week-10 find-max shape -- an m4 alias
+// (`define(i_r, w19)`) that reuses the register the array base was just
+// loaded into -- run to a wrong answer instead of stopping where real
+// hardware stops.
+#[test]
+fn store_through_a_zeroed_base_register_halts_like_the_servers() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+        .data
+fmt:            .string "a[%d] = %d\n"
+
+        .bss
+arr:            .skip 40
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x19, =arr
+        mov     i_r, 0
+fill:
+        cmp     i_r, 10
+        b.ge    done
+        add     w9, i_r, 1
+        str     w9, [x19, i_r, SXTW 2]
+        add     i_r, i_r, 1
+        b       fill
+
+done:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (mut cpu, message) = run_expect_halt_message(source);
+    assert!(
+        message.contains("segmentation") && message.contains("m4 alias"),
+        "message names the servers' behavior and the likely cause: {message}"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&cpu.take_stdout()),
+        "",
+        "nothing prints before the fault, as on real hardware"
+    );
+}
+
+// Linux sets SCTLR_EL1.SA0: any load or store through a misaligned SP
+// is a bus error on the servers (verified there -- exit 135). The check
+// is on SP itself, pre-writeback, so `stp ..., [sp, -8]!` from an
+// aligned SP passes and the NEXT sp-based access faults.
+#[test]
+fn misaligned_sp_access_halts_like_the_servers() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     sp, sp, 8
+        str     x19, [sp]
+        add     sp, sp, 8
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, message) = run_expect_halt_message(source);
+    assert!(
+        message.contains("multiple of 16") && message.contains("bus error"),
+        "message names the rule and the servers' behavior: {message}"
+    );
+}
+
+// The same rule at the AAPCS64 call boundary: a `bl printf` with SP off
+// the 16-byte boundary dies inside glibc on the servers; the stub
+// boundary is where the emulator reproduces it.
+#[test]
+fn misaligned_sp_at_a_libc_call_halts_with_the_call_wording() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "n = %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     sp, sp, 8
+        ldr     x0, =fmt
+        mov     w1, 7
+        bl      printf
+        add     sp, sp, 8
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (mut cpu, message) = run_expect_halt_message(source);
+    assert!(
+        message.contains("at this call"),
+        "the call-boundary wording points at the bl: {message}"
+    );
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "");
+}
+
+// An offset from an ALIGNED sp is legal whatever the offset's own
+// alignment: SA0 checks the stack pointer, not the effective address.
+#[test]
+fn aligned_sp_with_odd_offsets_still_runs() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        mov     w9, 42
+        str     w9, [sp, 20]
+        ldr     w1, [sp, 20]
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "42\n");
+}
+
 // rand() must reproduce glibc's TYPE_3 sequence exactly: shell-sort
 // style assignments print unseeded draws and students diff the
 // playground against the servers' sample runs. The pinned values are
