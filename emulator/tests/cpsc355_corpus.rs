@@ -25,6 +25,7 @@ use aarch64_emulator::frontend::pipeline::assemble_hosted;
 const REQUIRED: &[&str] = &[
     "Week 3/exercise.s",
     "Week 8/example1_scores.asm",
+    "Week 8/example2_cumulative.asm",
     "Week 9/example1_student_record.asm",
     "Week 10/ex4_find_max.asm",
     "Week 11/ex2_static_counter.asm",
