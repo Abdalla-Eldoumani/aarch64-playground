@@ -296,9 +296,11 @@ impl Emulator {
 
     /// Same as `assemble_and_load` but additionally writes argc/argv at
     /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
-    /// sees the supplied arguments. Bare-metal sources (no hosted
-    /// features) ignore args -- argc/argv only have meaning for hosted
-    /// programs that read them through w0/x1.
+    /// sees the supplied arguments. `args` is argv[1..] -- the loader
+    /// owns argv[0] (`./program`), so no caller prepends a program
+    /// name. Bare-metal sources (no hosted features) ignore args --
+    /// argc/argv only have meaning for hosted programs that read them
+    /// through w0/x1.
     pub fn assemble_and_load_with_args(
         &mut self,
         source: &str,

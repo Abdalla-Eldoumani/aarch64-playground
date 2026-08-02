@@ -441,8 +441,9 @@ impl Cpu {
 
     /// Load a hosted image and additionally write argc/argv at
     /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
-    /// sees the supplied arguments. Empty slice gives identical behavior
-    /// to `load_linked_image` (`w0 = 0, x1 = 0` on entry).
+    /// sees the supplied arguments. `args` is argv[1..]; the loader
+    /// prepends `argv::DEFAULT_ARGV0`, so an empty slice still means
+    /// argc = 1 with argv[0] set, the Linux invariant.
     pub fn load_linked_image_with_args(
         &mut self,
         image: &crate::frontend::pipeline::LinkedImage,
