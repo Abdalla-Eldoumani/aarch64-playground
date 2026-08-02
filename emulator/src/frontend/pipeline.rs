@@ -584,9 +584,15 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                             // correctly.
                             format!("bl {name}")
                         } else {
+                            // `.` inside an instruction immediate folds
+                            // section-relative, exactly like a label: GAS
+                            // gives `add x1, x1, . - main` the distance 8,
+                            // not an absolute address. Instructions only
+                            // exist in .text, so the section offset is
+                            // pc - CODE_BASE.
                             lower_operands(
                                 &stripped,
-                                pc,
+                                pc - crate::cpu::CODE_BASE,
                                 &symbols,
                                 &equates,
                                 &label_offsets,
