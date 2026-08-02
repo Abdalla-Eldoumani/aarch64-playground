@@ -468,7 +468,7 @@ mod tests {
         let mut vfs: HashMap<String, Vec<u8>> = HashMap::new();
         let mut open_files: HashMap<u32, OpenFile> = HashMap::new();
         let mut next_fd = 3u32;
-        let mut rand_state = 1u64;
+        let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
         let mut ctx = HostContext {

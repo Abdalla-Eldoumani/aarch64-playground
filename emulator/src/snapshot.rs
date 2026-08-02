@@ -31,7 +31,7 @@ pub struct Snapshot {
     pub next_fd: u32,
     /// PRNG state behind the rand/srand stubs. Restored with the rest of
     /// the machine so step-back and replay reproduce the same draws.
-    pub rand_state: u64,
+    pub rand_state: crate::hosted::libc::RandState,
     /// Terminal and virtual-clock state behind the interactive
     /// syscalls, restored for the same replay-stability reason.
     pub term: crate::cpu::TermState,
@@ -120,7 +120,7 @@ mod tests {
             vfs: HashMap::new(),
             open_files: HashMap::new(),
             next_fd: 3,
-            rand_state: 1,
+            rand_state: crate::hosted::libc::RandState::default(),
             term: crate::cpu::TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
         }

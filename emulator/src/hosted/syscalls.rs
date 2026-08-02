@@ -211,12 +211,15 @@ pub fn sys_getrandom(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError>
     let buf = ctx.regs.read_gpr(0, true);
     let len = ctx.regs.read_gpr(1, true).min(MAX_GETRANDOM_BYTES);
     for i in 0..len {
-        // Same LCG as the libc rand stub, taking the useful high bits.
-        *ctx.rand_state = ctx
+        // A 64-bit LCG over the entropy word, taking the useful high
+        // bits. Deliberately a separate stream from the libc rand stub:
+        // reseeding rand must not move a raw-mode game's draws.
+        ctx.rand_state.entropy = ctx
             .rand_state
+            .entropy
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let byte = (*ctx.rand_state >> 33) as u8;
+        let byte = (ctx.rand_state.entropy >> 33) as u8;
         ctx.mem.write_u8(buf.wrapping_add(i), byte)?;
     }
     ctx.regs.write_gpr(0, true, len);
@@ -500,7 +503,7 @@ mod tests {
         vfs: HashMap<String, Vec<u8>>,
         open_files: HashMap<u32, OpenFile>,
         next_fd: u32,
-        rand_state: u64,
+        rand_state: crate::hosted::libc::RandState,
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
     }
@@ -518,7 +521,7 @@ mod tests {
                 vfs: HashMap::new(),
                 open_files: HashMap::new(),
                 next_fd: 3,
-                rand_state: 1,
+                rand_state: crate::hosted::libc::RandState::default(),
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
             }

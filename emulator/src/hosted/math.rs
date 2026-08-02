@@ -94,7 +94,7 @@ mod tests {
         let mut vfs = HashMap::new();
         let mut open_files = HashMap::new();
         let mut next_fd = 3u32;
-        let mut rand_state = 1u64;
+        let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
         regs.write_fpr_f64(0, x);

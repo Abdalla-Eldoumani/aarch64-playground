@@ -251,7 +251,7 @@ pub struct Cpu {
     pub next_fd: u32,
     /// State for the rand/srand host stubs. Starts at 1 (C's unseeded
     /// default) and rides in every snapshot so step-back replays draws.
-    pub rand_state: u64,
+    pub rand_state: crate::hosted::libc::RandState,
     /// Terminal and timing state for the interactive syscalls (raw
     /// mode, fd 0 O_NONBLOCK, the virtual clock). Snapshotted with the
     /// rest of the machine.
@@ -328,7 +328,7 @@ impl Cpu {
             vfs: HashMap::new(),
             open_files: HashMap::new(),
             next_fd: 3,
-            rand_state: 1,
+            rand_state: crate::hosted::libc::RandState::default(),
             term: TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
             snapshots_paused: false,
@@ -1201,7 +1201,7 @@ impl Cpu {
         self.vfs.clear();
         self.open_files.clear();
         self.next_fd = 3;
-        self.rand_state = 1;
+        self.rand_state = crate::hosted::libc::RandState::default();
         self.term = TermState::default();
         self.heap = crate::hosted::heap::HeapState::default();
         self.snapshots_paused = false;
