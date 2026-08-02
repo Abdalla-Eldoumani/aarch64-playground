@@ -142,9 +142,67 @@ describe("page boot and handoff", () => {
       expect(handle.loadProgram).toHaveBeenCalledWith({
         source: "// echo source\n",
         label: "echo",
+        stem: "echo",
         stdin: "hello\n",
       }),
     );
+  });
+
+  it("applies ?run= to the example payload, and only to an example", async () => {
+    window.history.replaceState({}, "", "/playground?example=echo&run=terminal");
+    const routes: Record<string, string> = {
+      "/examples/cpsc355/echo.s": "// echo source\n",
+      "/examples/cpsc355/fixtures/echo.stdin": "hello\n",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        ok: url in routes,
+        status: url in routes ? 200 : 404,
+        statusText: "",
+        text: async () => routes[url] ?? "",
+      })),
+    );
+    render(<Home />);
+    await waitFor(() =>
+      expect(handle.loadProgram).toHaveBeenCalledWith({
+        source: "// echo source\n",
+        label: "echo",
+        stem: "echo",
+        stdin: "hello\n",
+        launch: "terminal",
+      }),
+    );
+  });
+
+  it("leaves the example's own default in place when ?run= is unknown", async () => {
+    window.history.replaceState({}, "", "/playground?example=echo&run=interactive");
+    const routes: Record<string, string> = {
+      "/examples/cpsc355/echo.s": "// echo source\n",
+      "/examples/cpsc355/fixtures/echo.stdin": "hello\n",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        ok: url in routes,
+        status: url in routes ? 200 : 404,
+        statusText: "",
+        text: async () => routes[url] ?? "",
+      })),
+    );
+    render(<Home />);
+    await waitFor(() => expect(handle.loadProgram).toHaveBeenCalled());
+    const payload = (handle.loadProgram as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0][0] as { launch?: string };
+    expect(payload.launch).toBeUndefined();
+  });
+
+  it("ignores ?run= with no ?example=: there is no program to own", async () => {
+    window.history.replaceState({}, "", "/playground?run=terminal");
+    render(<Home />);
+    // No delivery at all: the autosaved buffer is not a program handoff.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(handle.loadProgram).not.toHaveBeenCalled();
   });
 
   it("keeps the booted buffer when the example fetch fails", async () => {

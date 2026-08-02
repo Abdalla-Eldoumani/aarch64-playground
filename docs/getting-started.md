@@ -124,6 +124,7 @@ for the full index of where each lives.
 - **Memory watches** (the memwatch tab) pin labelled address ranges.
 - **Base converter** (the convert tab) keeps hex, binary, decimal, and the signed and unsigned readings in sync at 8, 16, 32, or 64 bits; click a bit to flip it. Also on the reference page and in the command palette.
 - **Multi-file assembly** (the **+** by the file tab) registers extra source files, concatenated before assembly.
+- **Run-mode control** (the header's `console | terminal` switch, shown for the Miscellaneous programs) picks which surface owns the run: console keeps the classic debugger flow, terminal makes run assemble and hand the pane over in one action. `?run=terminal|console` on an `?example=` link overrides that example's default for the load.
 - **Terminal** (the term tab) is an xterm.js shell with the course toolchain (`m4 f.asm > f.s`, `gcc f.s -o prog`, `./prog [args]`), redirections, basic VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
 - **Decode strip** above the registers shows the instruction under the pc as its actual encoding fields, with the destination field lit amber; it re-latches on every step.
 - **Floating-point registers**: the register panel switches between `x0`–`x30` and `d0`–`d31`, with decimal and raw-bits readings for the d view. A value written through an `s` register reads as the float it is (suffixed `f`), and an fp-only step flips the panel to the d file automatically.

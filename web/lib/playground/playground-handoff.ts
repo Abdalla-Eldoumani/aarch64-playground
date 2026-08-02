@@ -19,6 +19,25 @@ import {
  * component stays thin and the decisions are table-testable.
  */
 
+/**
+ * Which surface owns the pane at run press: a live terminal session
+ * ("terminal") or the classic console flow ("console"). It is NOT a
+ * statement about whether the program may ever own the pane -- a raw-mode
+ * program still takes the terminal mid-run under either value, and
+ * `./name` still runs anything in the pane.
+ */
+export type LaunchMode = "terminal" | "console";
+
+/**
+ * Decode a launch value that came from outside the type system: the
+ * persisted key (which held `"1"` / `"0"` before the mode had two names)
+ * or any other stored string. Only the two known "terminal" spellings
+ * resolve to terminal; everything else, absent included, is console.
+ */
+export function decodeLaunch(value: string | null | undefined): LaunchMode {
+  return value === "terminal" || value === "1" ? "terminal" : "console";
+}
+
 /** A complete program handoff: what lands in the editor plus the inputs
  *  the program runs with. `vfs` and `stdin` are re-seeded after every
  *  assemble because loading a program resets the whole machine. */
@@ -28,9 +47,14 @@ export interface HandoffPayload {
    *  a payload without them clears the strip, so a loaded program never
    *  inherits another workspace's helpers. */
   files?: SourceFile[];
-  /** The program is a terminal program: run hands it the terminal pane
-   *  up front (clear, focus, live keys) instead of the console. */
-  terminal?: boolean;
+  /** Who owns the pane when this program's run is pressed. Absent means
+   *  console -- the same thing an absent flag meant before the field had
+   *  two names. */
+  launch?: LaunchMode;
+  /** The example stem this payload came from, when it came from one. The
+   *  label is the human name (and callers overwrite it), so the stem is
+   *  what the run-mode control tests its offer table against. */
+  stem?: string;
   /** Recents label for the buffer this payload replaces / this program. */
   label?: string;
   args?: string;
@@ -195,9 +219,59 @@ export const MAX_VFS_FIXTURE_NAME_CHARS = 128;
  * served from `<stem>/<name>` beside the main `<stem>.s`. Order is the
  * tab order.
  */
-/** Examples whose whole point is the terminal pane: run takes it over
- *  (clear, focus, live keys) instead of routing scanf to the console. */
-export const EXAMPLE_TERMINAL: Record<string, true> = { dsav: true };
+/** Examples whose DEFAULT owner at run press is the terminal pane: run
+ *  takes it over (clear, focus, live keys) instead of routing scanf to
+ *  the console. Both entries draw a full-screen ANSI frame, which the
+ *  console's plain-text scrollback renders as escape-sequence garbage. */
+export const EXAMPLE_TERMINAL: Record<string, true> = {
+  dsav: true,
+  "two-sum": true,
+};
+
+/** Examples the run-mode control is offered for: the ones where both
+ *  surfaces are a real answer. It gates a SURFACE, never behavior -- a
+ *  program outside it runs exactly as it does today, and a stem listed
+ *  here before its source lands simply never reaches the loader. */
+export const EXAMPLE_INTERACTIVE: Record<string, true> = {
+  snake: true,
+  dsav: true,
+  calc: true,
+  "temp-convert": true,
+  "two-sum": true,
+  deadzone: true,
+};
+
+/** Examples that present a different face per launch mode: run them in the
+ *  console and they take one extra argument, the word `console`, and print
+ *  plain line-at-a-time output the console's plain-text scrollback can
+ *  actually render; run them in the terminal and they take no arguments and
+ *  draw their full-screen ANSI face. The token is always the same word --
+ *  this table only marks who takes it.
+ *
+ *  The rule the playground applies from it: for a stem listed here the mode
+ *  OWNS the args box, at load and on every run-mode flip. That overrides the
+ *  fixture args EXAMPLE_INPUTS seeds (temp-convert is in both tables), and it
+ *  stops at the student -- a box edited to anything other than the two seeded
+ *  forms or the payload's own value is theirs and is left alone. */
+export const EXAMPLE_MODE_ARGS: Record<string, true> = {
+  calc: true,
+  "temp-convert": true,
+  "two-sum": true,
+};
+
+/**
+ * The args a mode-args example runs with under `mode`: the console face
+ * takes the token after the program name, the terminal face takes nothing.
+ * Null for a stem the table does not list, meaning "the mode has no opinion
+ * here; whatever seeded the box stands".
+ */
+export function modeArgsFor(
+  stem: string | null | undefined,
+  mode: LaunchMode,
+): string | null {
+  if (!stem || EXAMPLE_MODE_ARGS[stem] !== true) return null;
+  return mode === "console" ? `./${stem} console` : "";
+}
 
 export const EXAMPLE_FILES: Record<string, string[]> = {
   dsav: [
@@ -219,6 +293,24 @@ export const EXAMPLE_FILES: Record<string, string[]> = {
     "search.s",
     "recursion.s",
   ],
+  // The repo builds this one with m4 include(), and the paste order is
+  // load-bearing: an equate only resolves for the modules below it, so
+  // constants comes first and the rest follow the includes. main's own
+  // uses reach back through the assembler's positional first-definition
+  // fallback, but a helper's do not.
+  deadzone: [
+    "constants.s",
+    "terminal.s",
+    "input.s",
+    "player.s",
+    "enemies.s",
+    "projectiles.s",
+    "upgrades.s",
+    "file-io.s",
+    "effects.s",
+    "boss.s",
+    "abilities.s",
+  ],
 };
 
 export const EXAMPLE_INPUTS: Record<
@@ -233,6 +325,7 @@ export const EXAMPLE_INPUTS: Record<
   locals: { stdin: true },
   "read-file": { vfs: true },
   "student-record": { stdin: true },
+  "temp-convert": { args: true },
   "triangle-area": { stdin: true },
 };
 
@@ -298,8 +391,8 @@ export async function fetchExample(stem: string): Promise<HandoffPayload> {
   const sourceError = validateSource(source);
   if (sourceError) throw new Error(sourceError);
 
-  const payload: HandoffPayload = { source, label: stem };
-  if (EXAMPLE_TERMINAL[stem]) payload.terminal = true;
+  const payload: HandoffPayload = { source, label: stem, stem };
+  if (EXAMPLE_TERMINAL[stem]) payload.launch = "terminal";
 
   const extraNames = EXAMPLE_FILES[stem];
   if (extraNames) {

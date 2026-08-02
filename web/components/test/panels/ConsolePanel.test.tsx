@@ -200,3 +200,45 @@ describe("ConsolePanel when a terminal session owns the program", () => {
     expect(screen.queryByText("running in the terminal")).toBeNull();
   });
 });
+
+describe("ConsolePanel output a terminal session produced", () => {
+  const NOTE = "this run happened in the terminal tab";
+
+  it("renders nothing but the note when the session owned the whole run", () => {
+    setup({ stdout: "[2J[H drawn frame", terminalOwnedFrom: 0 });
+    expect(screen.getByText(NOTE)).toBeTruthy();
+    expect(screen.queryByText(/drawn frame/)).toBeNull();
+    // The idle hint would be a second, contradictory explanation.
+    expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
+  });
+
+  it("keeps what printed before the takeover and drops the rest", () => {
+    setup({
+      stdout: "menu ready\n[2J[H drawn frame",
+      terminalOwnedFrom: 11,
+    });
+    expect(screen.getByText(/menu ready/)).toBeTruthy();
+    expect(screen.queryByText(/drawn frame/)).toBeNull();
+    expect(screen.getByText(NOTE)).toBeTruthy();
+  });
+
+  it("still shows the exit code the run ended with", () => {
+    setup({ stdout: "[2J frame", terminalOwnedFrom: 0, exitCode: 0 });
+    expect(screen.getByText("exit 0")).toBeTruthy();
+  });
+
+  it("leaves stderr whole -- the pane never showed it", () => {
+    setup({
+      stdout: "[2J frame",
+      stderr: "warning: no such file\n",
+      terminalOwnedFrom: 0,
+    });
+    expect(screen.getByText(/warning: no such file/)).toBeTruthy();
+  });
+
+  it("renders a classic run byte for byte with no watermark", () => {
+    setup({ stdout: "sum = 10\n", stderr: "" });
+    expect(screen.getByText(/sum = 10/)).toBeTruthy();
+    expect(screen.queryByText(NOTE)).toBeNull();
+  });
+});

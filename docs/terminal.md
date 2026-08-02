@@ -32,14 +32,21 @@ follows the terminal modes a real tty would apply:
   characters echo as you type, backspace edits the line, and the program
   receives the whole line when you press enter.
 - A program that puts the terminal in raw mode (termios, like the snake
-  game) receives every byte as typed, with no echo -- it draws its own
-  screen.
+  game, the calculator, or deadzone) receives every byte as typed, with
+  no echo -- it draws its own screen.
 - Ctrl+C stops the program and returns the prompt.
 
-Terminal-first examples (snake, the data structures visualizer) take the
-pane over from the run button too: run switches to the term tab, clears
-the screen, and starts the session. Step-back is paused during a live
-session and comes back when it ends.
+Terminal-first examples (snake, the data structures visualizer, calc,
+two-sum, deadzone) take the pane over from the run button too: run
+switches to the term tab, clears the screen, and starts the session. The
+menu-driven ones are declared terminal-first up front; the raw-mode ones
+claim the pane the moment they switch the terminal over. Step-back is
+paused during a live session and comes back when it ends.
+
+Calc, temp-convert, and two-sum each carry a second, plain-text face:
+`./program console` here answers a line at a time with no colour or
+cursor moves, and picking console on the run-mode control seeds that same
+argument for you.
 
 ### Toolchain
 

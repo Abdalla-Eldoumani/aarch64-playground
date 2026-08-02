@@ -84,6 +84,10 @@ const GROUPS: ExampleGroup[] = [
     items: [
       { name: "snake", stem: "snake" },
       { name: "data structures visualizer", stem: "dsav" },
+      { name: "calc (short for calculator)", stem: "calc" },
+      { name: "temp-convert", stem: "temp-convert" },
+      { name: "two-sum", stem: "two-sum" },
+      { name: "deadzone", stem: "deadzone" },
     ],
   },
 ];

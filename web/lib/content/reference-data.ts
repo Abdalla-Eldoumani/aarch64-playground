@@ -1082,6 +1082,17 @@ fcvtzs  x9, d17             // x9 = 3`,
     ],
   },
   {
+    mnemonic: "fsqrt",
+    category: "Floating point",
+    syntax: "fsqrt dd, dn / fsqrt sd, sn",
+    example: `fmov    d16, 9.0
+fsqrt   d17, d16            // d17 = 3.0
+fcvtzs  x9, d17             // x9 = 3`,
+    gotchas: [
+      "a negative operand gives NaN instead of an error, and NaN compares unordered: `fcmp` against it sets c and v, so a `b.lt` after it never takes. check the sign before taking the root.",
+    ],
+  },
+  {
     mnemonic: "fcmp",
     category: "Floating point",
     syntax: "fcmp dn, dm / fcmp sn, sm",

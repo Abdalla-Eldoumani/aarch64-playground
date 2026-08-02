@@ -367,6 +367,19 @@ impl Cpu {
         cpu.host.register("free", crate::hosted::heap::free);
         cpu.host.register("usleep", crate::hosted::libc::usleep);
         cpu.host.register("fflush", crate::hosted::libc::fflush);
+        // The libm subset: double in d0 (and d1 for the two-argument
+        // forms), double out in d0.
+        cpu.host.register("sqrt", crate::hosted::math::sqrt);
+        cpu.host.register("pow", crate::hosted::math::pow);
+        cpu.host.register("sin", crate::hosted::math::sin);
+        cpu.host.register("cos", crate::hosted::math::cos);
+        cpu.host.register("tan", crate::hosted::math::tan);
+        cpu.host.register("log", crate::hosted::math::log);
+        cpu.host.register("log10", crate::hosted::math::log10);
+        cpu.host.register("exp", crate::hosted::math::exp);
+        cpu.host.register("floor", crate::hosted::math::floor);
+        cpu.host.register("fabs", crate::hosted::math::fabs);
+        cpu.host.register("fmod", crate::hosted::math::fmod);
         // Sentinel used when a hosted program's `main` returns. Loader
         // stashes this address in LR so `ret` from main halts cleanly
         // with x0 as the exit code.

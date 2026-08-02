@@ -12,6 +12,14 @@ interface ConsolePanelProps {
    *  keystrokes in the terminal, so this console's stdin box would send
    *  into a session it cannot see. Disabled, with a pointer to the tab. */
   ownedByTerminal?: boolean;
+  /** Where in `stdout` a terminal-owned session began, or null when no
+   *  session has taken this program over. The session's own bytes were
+   *  written to the pane, which is a real terminal; this scrollback is
+   *  plain text, so a full-screen program's escape sequences land here as
+   *  literal garbage. Everything up to the watermark printed before the
+   *  takeover and stays; the rest is one note pointing at the tab it
+   *  happened in. */
+  terminalOwnedFrom?: number | null;
   exitCode: number | null;
   vfsFiles: string[];
   pushStdin: (s: string) => void;
@@ -29,6 +37,7 @@ interface ConsolePanelProps {
  */
 export function ConsolePanel({
   ownedByTerminal = false,
+  terminalOwnedFrom = null,
   stdout,
   stderr,
   blocked,
@@ -89,6 +98,12 @@ export function ConsolePanel({
     pushStdin(stdinValue + "\n");
     setStdinValue("");
   };
+
+  // Output from before a terminal session took over; the session's own
+  // bytes belong to the pane. stderr is never routed there, so it renders
+  // whole -- this scrollback is the only surface that ever shows it.
+  const shownStdout =
+    terminalOwnedFrom == null ? stdout : stdout.slice(0, terminalOwnedFrom);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -156,9 +171,14 @@ export function ConsolePanel({
         onScroll={handleScroll}
         className="flex-1 min-h-0 overflow-auto px-2 py-1 font-mono whitespace-pre-wrap"
       >
-        {stdout && <span>{stdout}</span>}
+        {shownStdout && <span>{shownStdout}</span>}
+        {terminalOwnedFrom != null && (
+          <p className="font-sans text-[11px] text-[var(--text-secondary)]">
+            this run happened in the terminal tab
+          </p>
+        )}
         {stderr && <span className="text-[var(--danger)]">{stderr}</span>}
-        {!stdout && !stderr && (
+        {!shownStdout && !stderr && terminalOwnedFrom == null && (
           <div className="space-y-1">
             <p className="font-serif text-[13px] text-[var(--text-primary)]">
               Output prints here as your program runs.

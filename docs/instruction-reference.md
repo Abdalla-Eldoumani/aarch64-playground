@@ -130,6 +130,7 @@ Every scalar instruction takes both course views of the register file: the S for
 | `FDIV`   | `FDIV Dd, Dn, Dm` / `FDIV Sd, Sn, Sm` |                                     |
 | `FNEG`   | `FNEG Dd, Dn` / `FNEG Sd, Sn`     | Flip the sign: `Fd = -Fn`.              |
 | `FABS`   | `FABS Dd, Dn` / `FABS Sd, Sn`     | Absolute value: clears the sign bit.    |
+| `FSQRT`  | `FSQRT Dd, Dn` / `FSQRT Sd, Sn`   | Square root. A negative operand gives NaN, not a fault. |
 | `FCMP`   | `FCMP Dn, Dm` / `FCMP Sn, Sm`     | Updates NZCV. Unordered sets C and V.   |
 | `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). |
 | `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Dd, Wn` / `SCVTF Sd, Wn` | Signed integer to float.  |
@@ -198,6 +199,17 @@ Pre-registered and available without setup:
 | `malloc` / `free`              | A fixed 1 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
 | `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
 | `fflush`                       | Accepted and ignored: output is never buffered here. |
+| `sqrt`                         | Argument in `d0`, result in `d0`. Of a negative it is NaN -- the IEEE answer, not an error. |
+| `pow`                          | Base in `d0`, exponent in `d1`, result in `d0`. `pow(0, 0)` is 1, per C. |
+| `sin`                          | Radians in `d0`, result in `d0`.          |
+| `cos`                          | Radians in `d0`, result in `d0`.          |
+| `tan`                          | Radians in `d0`, result in `d0`.          |
+| `log`                          | Argument in `d0`, result in `d0`. The natural log; of zero it is `-inf`, of a negative NaN. |
+| `log10`                        | Argument in `d0`, result in `d0`. Base ten, same domain edges as `log`. |
+| `exp`                          | Argument in `d0`, result in `d0`. `e` raised to the argument. |
+| `floor`                        | Argument in `d0`, result in `d0`. Rounds toward negative infinity. |
+| `fabs`                         | Argument in `d0`, result in `d0`. Absolute value. |
+| `fmod`                         | Dividend in `d0`, divisor in `d1`, result in `d0`. The remainder keeps the sign of the dividend. |
 
 ## Syscalls (`svc 0` with `x8`)
 

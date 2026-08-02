@@ -236,6 +236,8 @@ pub fn execute(
                 let result = match op {
                     FpUnaryOp::Fneg => -v,
                     FpUnaryOp::Fabs => v.abs(),
+                    // IEEE: a negative operand yields NaN, never a trap.
+                    FpUnaryOp::Fsqrt => v.sqrt(),
                 };
                 regs.write_fpr_f32(*fd, result);
             } else {
@@ -243,6 +245,7 @@ pub fn execute(
                 let result = match op {
                     FpUnaryOp::Fneg => -v,
                     FpUnaryOp::Fabs => v.abs(),
+                    FpUnaryOp::Fsqrt => v.sqrt(),
                 };
                 regs.write_fpr_f64(*fd, result);
             }
@@ -1207,6 +1210,41 @@ mod tests {
         let again = Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: 0, fn_: 0, single: false };
         execute(&again, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_fpr_f64(0), 0.75);
+    }
+
+    #[test]
+    fn fsqrt_takes_the_root_of_a_positive_value() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 9.0);
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: false };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 3.0);
+        // Zero has a root, and it is zero.
+        regs.write_fpr_f64(1, 0.0);
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_f64(0), 0.0);
+    }
+
+    #[test]
+    fn fsqrt_of_a_negative_is_nan() {
+        // IEEE says the root of a negative is NaN; nothing traps.
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, -4.0);
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: false };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert!(regs.read_fpr_f64(0).is_nan());
+    }
+
+    #[test]
+    fn fsqrt_single_computes_in_f32() {
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f32(1, 2.0);
+        let instr = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: true };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        // The f32 root of 2 rounds in single precision, so the double view of
+        // the register is the f32 value widened, not the f64 root of 2.
+        assert_eq!(regs.read_fpr_f32(0), 2.0f32.sqrt());
+        assert_eq!(regs.read_fpr_bits(0), 2.0f32.sqrt().to_bits() as u64);
     }
 
     // -- memory --

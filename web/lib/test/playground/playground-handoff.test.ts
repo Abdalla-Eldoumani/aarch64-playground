@@ -3,8 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   EXAMPLE_INPUTS,
+  EXAMPLE_INTERACTIVE,
+  EXAMPLE_MODE_ARGS,
+  EXAMPLE_TERMINAL,
   MAX_VFS_FIXTURE_FILES,
+  decodeLaunch,
   fetchExample,
+  modeArgsFor,
   parseVfsFixture,
   resolveBoot,
   resolveHandoff,
@@ -175,8 +180,32 @@ describe("fetchExample", () => {
   it("fetches only the source for an example with no declared inputs", async () => {
     const calls = stubFetch({ "/examples/cpsc355/basics.s": "mov x0, 1\n" });
     const payload = await fetchExample("basics");
-    expect(payload).toEqual({ source: "mov x0, 1\n", label: "basics" });
+    expect(payload).toEqual({ source: "mov x0, 1\n", label: "basics", stem: "basics" });
     expect(calls).toEqual(["/examples/cpsc355/basics.s"]);
+  });
+
+  it("leaves launch absent for a console example, so a payload never says terminal by accident", async () => {
+    stubFetch({ "/examples/cpsc355/basics.s": "mov x0, 1\n" });
+    const payload = await fetchExample("basics");
+    expect(payload.launch).toBeUndefined();
+  });
+
+  it("marks a default-terminal example's payload launch: terminal", async () => {
+    stubFetch({
+      "/examples/cpsc355/two-sum.s": "src",
+    });
+    const payload = await fetchExample("two-sum");
+    expect(payload.launch).toBe("terminal");
+    expect(payload.stem).toBe("two-sum");
+  });
+
+  it("carries the stem separately from the label the loader overwrites", async () => {
+    stubFetch({ "/examples/cpsc355/snake.s": "src" });
+    const payload = await fetchExample("snake");
+    // The example loader spreads this payload and replaces `label` with the
+    // human name; `stem` is what survives to answer the offer table.
+    const delivered = { ...payload, label: "snake (playable)" };
+    expect(delivered.stem).toBe("snake");
   });
 
   it("delivers args, trimmed, for an args example", async () => {
@@ -297,5 +326,113 @@ describe("EXAMPLE_INPUTS manifest", () => {
       const boot = { fromShare: false, fromBundle: false, bundleError: "corrupt" as const };
       expect(resolveHandoff(boot, "?bundle=not-a-payload", "")).toBeNull();
     });
+  });
+});
+
+describe("launch tables", () => {
+  it("names exactly the two default-terminal examples", () => {
+    // Both draw a full-screen ANSI frame that the console's plain-text
+    // scrollback would render as escape-sequence garbage. Everything else
+    // defaults to console, which is what all 18 examples do today.
+    expect(Object.keys(EXAMPLE_TERMINAL).sort()).toEqual(["dsav", "two-sum"]);
+  });
+
+  it("names the six stems the run-mode control is offered for", () => {
+    expect(Object.keys(EXAMPLE_INTERACTIVE).sort()).toEqual([
+      "calc",
+      "deadzone",
+      "dsav",
+      "snake",
+      "temp-convert",
+      "two-sum",
+    ]);
+  });
+
+  it("offers the control for every example that defaults to the terminal", () => {
+    // The default-owner table is a subset of the offer set: an example
+    // whose default is terminal with no way to see or change it would be
+    // the one-way door the design rules out.
+    for (const stem of Object.keys(EXAMPLE_TERMINAL)) {
+      expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
+    }
+  });
+
+  it("carries only `true` values and path-safe stems in both tables", () => {
+    for (const table of [EXAMPLE_TERMINAL, EXAMPLE_INTERACTIVE]) {
+      for (const [stem, value] of Object.entries(table)) {
+        expect(value).toBe(true);
+        expect(stem).toMatch(/^[\w.-]+$/);
+      }
+    }
+  });
+
+  it("leaves every other example out of both tables", () => {
+    for (const stem of ["basics", "echo", "locals", "read-file", "circle-area"]) {
+      expect(EXAMPLE_TERMINAL[stem]).toBeUndefined();
+      expect(EXAMPLE_INTERACTIVE[stem]).toBeUndefined();
+    }
+  });
+});
+
+describe("the per-mode args table", () => {
+  it("names the three stems that take the console token", () => {
+    expect(Object.keys(EXAMPLE_MODE_ARGS).sort()).toEqual([
+      "calc",
+      "temp-convert",
+      "two-sum",
+    ]);
+  });
+
+  it("is a subset of the stems the run-mode control is offered for", () => {
+    // The mode owns the args box for these; a stem with no visible control
+    // could never flip the box back.
+    for (const stem of Object.keys(EXAMPLE_MODE_ARGS)) {
+      expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
+    }
+  });
+
+  it("carries only `true` values and path-safe stems", () => {
+    for (const [stem, value] of Object.entries(EXAMPLE_MODE_ARGS)) {
+      expect(value).toBe(true);
+      expect(stem).toMatch(/^[\w.-]+$/);
+    }
+  });
+
+  it("hands the console face the token and the terminal face nothing", () => {
+    expect(modeArgsFor("calc", "console")).toBe("./calc console");
+    expect(modeArgsFor("calc", "terminal")).toBe("");
+    expect(modeArgsFor("temp-convert", "console")).toBe("./temp-convert console");
+    expect(modeArgsFor("two-sum", "console")).toBe("./two-sum console");
+  });
+
+  it("has no opinion about a stem outside the table", () => {
+    // command-line-args seeds from its own fixture and must keep doing so.
+    expect(modeArgsFor("command-line-args", "console")).toBeNull();
+    expect(modeArgsFor("command-line-args", "terminal")).toBeNull();
+    expect(modeArgsFor("dsav", "console")).toBeNull();
+    expect(modeArgsFor(null, "console")).toBeNull();
+    expect(modeArgsFor(undefined, "terminal")).toBeNull();
+  });
+});
+
+describe("decodeLaunch", () => {
+  it("reads the mode names back", () => {
+    expect(decodeLaunch("terminal")).toBe("terminal");
+    expect(decodeLaunch("console")).toBe("console");
+  });
+
+  it("reads the old boolean key a returning student's browser already holds", () => {
+    // The key predates the two-value mode: "1" meant the takeover.
+    expect(decodeLaunch("1")).toBe("terminal");
+    expect(decodeLaunch("0")).toBe("console");
+  });
+
+  it("treats absent and anything unrecognized as console", () => {
+    expect(decodeLaunch(null)).toBe("console");
+    expect(decodeLaunch(undefined)).toBe("console");
+    expect(decodeLaunch("")).toBe("console");
+    expect(decodeLaunch("TERMINAL")).toBe("console");
+    expect(decodeLaunch("true")).toBe("console");
+    expect(decodeLaunch("interactive")).toBe("console");
   });
 });

@@ -32,8 +32,8 @@ describe("landing data", () => {
   });
 
   it("HERO_PROGRAM is an original, printing, lowercase cpsc 355-style snippet", () => {
-    // Structural authenticity (the full visual/step check is the orchestrator's
-    // on the deployed hero): in-repo convention markers must be present.
+    // Structural authenticity (the full visual/step check happens in a live
+    // browser on the deployed hero): in-repo convention markers must be present.
     expect(HERO_PROGRAM).toContain("define(");
     expect(HERO_PROGRAM).toContain("main:");
     expect(HERO_PROGRAM).toContain(".global");

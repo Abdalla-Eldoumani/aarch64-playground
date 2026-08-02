@@ -14,6 +14,7 @@ use crate::errors::EmuError;
 
 pub mod heap;
 pub mod libc;
+pub mod math;
 pub mod printf;
 pub mod scanf;
 pub mod syscalls;

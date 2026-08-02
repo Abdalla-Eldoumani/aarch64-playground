@@ -334,6 +334,38 @@ main:
 }
 
 #[test]
+fn fsqrt_takes_roots_in_both_widths_end_to_end() {
+    // The three cases a student meets: an exact root, zero, and a negative
+    // operand, which IEEE answers with NaN rather than a trap. The S form
+    // rounds in single precision like the rest of the FP set.
+    let src = r#"
+        .text
+        .global main
+main:
+        fmov    d16, 9.0
+        fsqrt   d17, d16            // 3.0
+        fsub    d18, d16, d16       // 0.0
+        fsqrt   d19, d18            // 0.0
+        fmov    d20, 4.0
+        fneg    d20, d20            // -4.0
+        fsqrt   d21, d20            // NaN: no root of a negative
+        fmov    s0, 2.0
+        fmul    s1, s0, s0          // 4.0
+        fsqrt   s2, s1              // 2.0
+        mov     x8, 93
+        mov     x0, 0
+        svc     0
+"#;
+    let cpu = run(src);
+    assert_eq!(cpu.regs.read_fpr_f64(17), 3.0);
+    assert_eq!(cpu.regs.read_fpr_f64(19), 0.0, "the root of zero is zero");
+    assert!(cpu.regs.read_fpr_f64(21).is_nan(), "the root of a negative is NaN");
+    assert_eq!(cpu.regs.read_fpr_f32(2), 2.0);
+    // The S write zeroed the upper half, so the register holds f32 bits only.
+    assert_eq!(cpu.regs.read_fpr_bits(2), (2.0f32).to_bits() as u64);
+}
+
+#[test]
 fn unterminated_string_reports_itself_at_the_opening_line() {
     // A string missing its closing quote must say exactly that, at the
     // line where the quote opened -- never swallow following lines and
