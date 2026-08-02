@@ -195,11 +195,13 @@ fn pointer_table_program_prints_usage_without_arguments() {
 #[test]
 fn seeded_draws_print_the_fixed_sequence() {
     // time() is a fixed stamp, so srand(time(0)) pins the whole run.
-    // These three values are the contract of the rand stub's LCG.
+    // These three values are glibc's TYPE_3 sequence for that seed,
+    // verified against the course toolchain (srand(355000000), then
+    // rand() % 49 + 1 three times).
     let mut cpu = run(LUCKY_DRAWS);
     assert_eq!(
         stdout_of(&mut cpu),
-        "pick 1: 16\npick 2: 27\npick 3: 36\n"
+        "pick 1: 23\npick 2: 28\npick 3: 32\n"
     );
     assert_eq!(cpu.exit_code(), Some(0));
 }
