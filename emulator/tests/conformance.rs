@@ -174,7 +174,7 @@ fn req_aliases_name_registers_through_a_loop() {
 
 #[test]
 fn pointer_table_selects_weekday_from_argv() {
-    let mut cpu = run_with_args(WEEKDAY_NAME, &["weekday-name", "4"]);
+    let mut cpu = run_with_args(WEEKDAY_NAME, &["4"]);
     assert_eq!(stdout_of(&mut cpu), "day 4 is Thursday\n");
     assert_eq!(cpu.exit_code(), Some(0));
     // The .dword slots really hold the string addresses, in table order.
@@ -187,7 +187,7 @@ fn pointer_table_selects_weekday_from_argv() {
 
 #[test]
 fn pointer_table_program_prints_usage_without_arguments() {
-    let mut cpu = run_with_args(WEEKDAY_NAME, &["weekday-name"]);
+    let mut cpu = run_with_args(WEEKDAY_NAME, &[]);
     assert_eq!(stdout_of(&mut cpu), "usage: weekday-name n\n");
     assert_eq!(cpu.exit_code(), Some(0));
 }
