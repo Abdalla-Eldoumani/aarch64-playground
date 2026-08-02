@@ -463,10 +463,13 @@ fn stack_effect(text: &str, symbols: &HashMap<String, i64>) -> Option<StackEffec
         }
         return None;
     }
-    // Explicit adjustment: `sub sp, sp, N` / `add sp, sp, N`.
+    // Explicit adjustment: `sub sp, sp, N` / `add sp, sp, N`. A frame
+    // that is not a multiple of 16 faults at the next SP-based access on
+    // Linux (SA0), so the advisory fires here, at assemble time, before
+    // the runtime wall does.
     if let Some(rest) = compact.strip_prefix("sub sp, sp,") {
         let n = fold_offset(rest, symbols)?;
-        return Some(StackEffect::Push { bytes: n, line_offset_misaligned: false });
+        return Some(StackEffect::Push { bytes: n, line_offset_misaligned: n % 16 != 0 });
     }
     if let Some(rest) = compact.strip_prefix("add sp, sp,") {
         let n = fold_offset(rest, symbols)?;
