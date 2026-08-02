@@ -149,6 +149,66 @@ main:
     assert_eq!(out, "8\n");
 }
 
+// rand() must reproduce glibc's TYPE_3 sequence exactly: shell-sort
+// style assignments print unseeded draws and students diff the
+// playground against the servers' sample runs. The pinned values are
+// glibc's, captured from the course toolchain (`& 0x1FF` of the first
+// draws gives the 359 454 105 115 81... the assignment-3 shape prints).
+#[test]
+fn unseeded_and_seeded_rand_match_glibc() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+        .data
+fmt:            .string "%d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     i_r, 0
+loop1:
+        cmp     i_r, 5
+        b.ge    reseed
+        bl      rand
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+        add     i_r, i_r, 1
+        b       loop1
+
+reseed:
+        mov     w0, 42
+        bl      srand
+        mov     i_r, 0
+loop2:
+        cmp     i_r, 3
+        b.ge    done
+        bl      rand
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+        add     i_r, i_r, 1
+        b       loop2
+
+done:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(
+        out,
+        "1804289383\n846930886\n1681692777\n1714636915\n1957747793\n\
+         71876166\n708592740\n1483128881\n"
+    );
+}
+
 // Linux never starts a process with argc = 0: argv[0] is the program
 // path. Assignment solutions gate on `cmp argc, 3` and print usage --
 // dereferencing argv[0] -- when the count is wrong; with no arguments
