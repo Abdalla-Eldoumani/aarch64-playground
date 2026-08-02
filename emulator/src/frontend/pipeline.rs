@@ -222,7 +222,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                     assignments.push((name.clone(), body.clone(), base + offset, *original_line));
                 }
-                Item::Instruction { original_line, .. } => {
+                Item::Instruction { tokens, original_line } => {
                     last_line = *original_line;
                     if section.kind == SectionKind::Text {
                         text_instr_pcs.push(base + offset);
@@ -242,7 +242,14 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                             ),
                         });
                     }
-                    offset += 4;
+                    // The `ldr reg, label` literal load lowers to two
+                    // words (pass 2); every walk must agree on the size
+                    // or the layouts drift apart.
+                    offset += if extract_ldr_label_load(tokens).is_some() {
+                        8
+                    } else {
+                        4
+                    };
                 }
                 Item::DataExprs { exprs, width, original_line } => {
                     last_line = *original_line;
@@ -393,6 +400,25 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                     continue;
                 }
+                if let Some((_, label_text)) = extract_ldr_label_load(tokens) {
+                    // The label's address goes into the pool like an
+                    // `ldr xN, =label` constant would; the two forms
+                    // share a slot when both appear.
+                    if let std::collections::hash_map::Entry::Vacant(slot) =
+                        pool_slots.entry((label_text, None))
+                    {
+                        let value = resolve_ldr_eq_target(
+                            &slot.key().0,
+                            &symbols,
+                            &equates,
+                            0,
+                            *original_line,
+                        )?;
+                        slot.insert(pool_values.len() as u64 * 8);
+                        pool_values.push(value);
+                    }
+                    continue;
+                }
                 if let Some(target) = extract_bl_target(tokens) {
                     if let Some(addr) = symbols.get(&target) {
                         if is_host_address(*addr)
@@ -528,6 +554,49 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         });
                     }
                     let pc = base + offset;
+                    if let Some((reg, label_text)) = extract_ldr_label_load(tokens) {
+                        // GAS encodes `ldr reg, label` as one LDR
+                        // (literal), and the servers' linker resolves it
+                        // because ld packs the sections a few KB apart.
+                        // Here .data and .bss sit 2-3 MiB from .text --
+                        // past imm19's 1 MiB reach -- so the linker
+                        // lowers it to two words: the label's address
+                        // arrives from the literal pool (a real LDR
+                        // (literal), always in reach), then an ordinary
+                        // load through it. The X view of the destination
+                        // doubles as the address register; the s/d forms
+                        // borrow x16, the same scratch the libc
+                        // trampolines already claim.
+                        let addr_reg: u8 = match parse_ldr_dest(&reg) {
+                            Some(LdrDest::Gpr { idx }) => idx,
+                            Some(LdrDest::Fp) => 16,
+                            None => unreachable!("recognizer only claims parseable dests"),
+                        };
+                        let slot = *pool_slots
+                            .get(&(label_text.clone(), None))
+                            .ok_or_else(|| EmuError::LinkError {
+                                line: *original_line,
+                                message: format!(
+                                    "no literal pool slot for `{label_text}`"
+                                ),
+                            })?;
+                        let slot_addr = pool_base + slot;
+                        let word1 =
+                            encode_ldr_literal(true, addr_reg, slot_addr as i64 - pc as i64)?;
+                        let word2 = assembler::encode_line_absolute(
+                            &format!("ldr {reg}, [x{addr_reg}]"),
+                            pc + 4,
+                            &symbols,
+                            *original_line,
+                        )?;
+                        writes.push((pc, word1.to_le_bytes().to_vec()));
+                        writes.push((pc + 4, word2.to_le_bytes().to_vec()));
+                        line_map.push((pc, *original_line as u32));
+                        line_map.push((pc + 4, *original_line as u32));
+                        offset += 8;
+                        instruction_count += 2;
+                        continue;
+                    }
                     let word = if let Some((target_text, dot_relative)) =
                         extract_ldr_eq_operand(tokens)
                     {
@@ -728,6 +797,76 @@ fn extract_ldr_eq_operand(
     let operand = &after[1..];
     let dot_relative = operand.iter().any(|t| matches!(t.kind, TokenKind::Dot));
     Some((stringify_tokens(operand), dot_relative))
+}
+
+/// Recognize the GAS `ldr <reg>, <label-expr>` literal-load form (no
+/// brackets, no `=`, no `#`): load the value AT the label's address.
+/// Returns the destination register text and the operand's textual key.
+/// Bare-register tails (`ldr x0, x1`), addressing modes, `=expr` pool
+/// loads, and `#imm` all keep their existing paths and their existing
+/// errors; so does any destination the lowering cannot emit.
+fn extract_ldr_label_load(
+    tokens: &[crate::frontend::lexer::Token],
+) -> Option<(String, String)> {
+    if tokens.len() < 4 {
+        return None;
+    }
+    let TokenKind::Ident(mn) = &tokens[0].kind else {
+        return None;
+    };
+    if !mn.eq_ignore_ascii_case("ldr") {
+        return None;
+    }
+    let TokenKind::Ident(reg) = &tokens[1].kind else {
+        return None;
+    };
+    if !matches!(tokens[2].kind, TokenKind::Comma) {
+        return None;
+    }
+    let tail = &tokens[3..];
+    let first = tail.first()?;
+    if !matches!(
+        first.kind,
+        TokenKind::Ident(_) | TokenKind::DirectiveIdent(_)
+    ) {
+        return None;
+    }
+    if tail.iter().any(|t| {
+        matches!(
+            t.kind,
+            TokenKind::LBracket | TokenKind::Equals | TokenKind::Hash
+        )
+    }) {
+        return None;
+    }
+    if let TokenKind::Ident(first_name) = &first.kind {
+        if is_register_or_shift_keyword(first_name) {
+            return None;
+        }
+    }
+    parse_ldr_dest(reg)?;
+    Some((reg.clone(), stringify_tokens(tail)))
+}
+
+/// The destination of an `ldr reg, label` load, by register class.
+enum LdrDest {
+    Gpr { idx: u8 },
+    Fp,
+}
+
+/// Parse the destination register of an `ldr reg, label` load. X/W use
+/// their own X view as the address holder; S/D borrow x16. Anything
+/// else (q0, xzr, sp) returns None so the caller leaves the line to the
+/// legacy encoder and its diagnostics.
+fn parse_ldr_dest(reg: &str) -> Option<LdrDest> {
+    let mut chars = reg.chars();
+    let class = chars.next()?.to_ascii_lowercase();
+    let idx: u8 = reg[1..].parse().ok()?;
+    match class {
+        'x' | 'w' if idx <= 30 => Some(LdrDest::Gpr { idx }),
+        'd' | 's' if idx <= 31 => Some(LdrDest::Fp),
+        _ => None,
+    }
 }
 
 /// Render a token slice back to source text. Every `TokenKind` gets an
