@@ -746,6 +746,21 @@ impl Cpu {
         // similar), dispatch to Rust instead of fetching an instruction,
         // then return to the caller via LR.
         if self.host.contains_address(pc) {
+            // AAPCS64's public-interface rule, enforced where glibc would
+            // fault: SP must be 16-aligned at every call into the runtime.
+            // On the servers a misaligned frame dies inside printf's first
+            // stack access; the stubs here are Rust and mostly skip guest
+            // stack reads, so the boundary check is what reproduces the
+            // bus error. `__main_return` is the loader's return sentinel,
+            // not a call -- faulting there would blame the wrong line on
+            // an unbalanced epilogue, which has its own diagnosis.
+            let sp = self.regs.read_sp();
+            if sp % 16 != 0 && self.host.lookup("__main_return") != Some(pc) {
+                return Ok(self.runtime_error_halt(EmuError::SpAlignmentFault {
+                    sp,
+                    at_call: true,
+                }));
+            }
             // A page-cap write fault inside a hosted libc routine (e.g. a
             // buffer-filling scanf when the program has already neared the
             // cap) gets the same calm halt as a write in normal code, never
