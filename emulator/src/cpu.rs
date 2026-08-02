@@ -251,7 +251,7 @@ pub struct Cpu {
     pub next_fd: u32,
     /// State for the rand/srand host stubs. Starts at 1 (C's unseeded
     /// default) and rides in every snapshot so step-back replays draws.
-    pub rand_state: u64,
+    pub rand_state: crate::hosted::libc::RandState,
     /// Terminal and timing state for the interactive syscalls (raw
     /// mode, fd 0 O_NONBLOCK, the virtual clock). Snapshotted with the
     /// rest of the machine.
@@ -328,7 +328,7 @@ impl Cpu {
             vfs: HashMap::new(),
             open_files: HashMap::new(),
             next_fd: 3,
-            rand_state: 1,
+            rand_state: crate::hosted::libc::RandState::default(),
             term: TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
             snapshots_paused: false,
@@ -367,6 +367,11 @@ impl Cpu {
         cpu.host.register("free", crate::hosted::heap::free);
         cpu.host.register("usleep", crate::hosted::libc::usleep);
         cpu.host.register("fflush", crate::hosted::libc::fflush);
+        // FILE*-level stdio over the VFS; the handle scheme lives in
+        // hosted/stdio.rs.
+        cpu.host.register("fopen", crate::hosted::stdio::fopen);
+        cpu.host.register("fprintf", crate::hosted::stdio::fprintf);
+        cpu.host.register("fclose", crate::hosted::stdio::fclose);
         // The libm subset: double in d0 (and d1 for the two-argument
         // forms), double out in d0.
         cpu.host.register("sqrt", crate::hosted::math::sqrt);
@@ -441,8 +446,9 @@ impl Cpu {
 
     /// Load a hosted image and additionally write argc/argv at
     /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
-    /// sees the supplied arguments. Empty slice gives identical behavior
-    /// to `load_linked_image` (`w0 = 0, x1 = 0` on entry).
+    /// sees the supplied arguments. `args` is argv[1..]; the loader
+    /// prepends `argv::DEFAULT_ARGV0`, so an empty slice still means
+    /// argc = 1 with argv[0] set, the Linux invariant.
     pub fn load_linked_image_with_args(
         &mut self,
         image: &crate::frontend::pipeline::LinkedImage,
@@ -740,6 +746,21 @@ impl Cpu {
         // similar), dispatch to Rust instead of fetching an instruction,
         // then return to the caller via LR.
         if self.host.contains_address(pc) {
+            // AAPCS64's public-interface rule, enforced where glibc would
+            // fault: SP must be 16-aligned at every call into the runtime.
+            // On the servers a misaligned frame dies inside printf's first
+            // stack access; the stubs here are Rust and mostly skip guest
+            // stack reads, so the boundary check is what reproduces the
+            // bus error. `__main_return` is the loader's return sentinel,
+            // not a call -- faulting there would blame the wrong line on
+            // an unbalanced epilogue, which has its own diagnosis.
+            let sp = self.regs.read_sp();
+            if sp % 16 != 0 && self.host.lookup("__main_return") != Some(pc) {
+                return Ok(self.runtime_error_halt(EmuError::SpAlignmentFault {
+                    sp,
+                    at_call: true,
+                }));
+            }
             // A page-cap write fault inside a hosted libc routine (e.g. a
             // buffer-filling scanf when the program has already neared the
             // cap) gets the same calm halt as a write in normal code, never
@@ -1195,7 +1216,7 @@ impl Cpu {
         self.vfs.clear();
         self.open_files.clear();
         self.next_fd = 3;
-        self.rand_state = 1;
+        self.rand_state = crate::hosted::libc::RandState::default();
         self.term = TermState::default();
         self.heap = crate::hosted::heap::HeapState::default();
         self.snapshots_paused = false;

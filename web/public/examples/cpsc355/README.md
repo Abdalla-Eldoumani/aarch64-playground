@@ -47,8 +47,8 @@ Six extra programs are served beyond the tutorial set:
 - `temp-convert.s` -- the temperature instrument, from
   https://github.com/Abdalla-Eldoumani/temp-convert; with the args box
   empty it takes readings one at a time and marks each on the C/F/K
-  scales, `./temp-convert console` draws the same readings with no colour
-  in them, and `./temp-convert 32 F` prints that one conversion and exits
+  scales, `console` in the args line draws the same readings with no
+  colour in them, and `32 F` prints that one conversion and exits
 - `two-sum.s` -- the two-sum visualizer, from
   https://github.com/Abdalla-Eldoumani/twosum-arm; menu-driven, it
   animates brute force and the hash set over the same array so the two

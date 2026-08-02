@@ -145,7 +145,7 @@ Every scalar instruction takes both course views of the register file: the S for
 | `.global` / `.globl` | Mark a symbol as externally visible.           |
 | `.balign N`   | Pad to an N-byte boundary (byte count).               |
 | `.align N`    | Pad to 2^N bytes (power-of-two form).                 |
-| `.skip N` / `.zero N` | Reserve N zero-initialized bytes. `N` may be a constant expression over equates defined above it (`.skip STACKSIZE * 4`). |
+| `.skip N` / `.zero N` / `.space N` | Reserve N zero-initialized bytes. `N` may be a constant expression over equates defined above it (`.skip STACKSIZE * 4`). `.skip` and `.space` take an optional fill byte (`.space 4, 7`), ignored in `.bss` as GAS does; `.zero` takes the size alone. |
 | `.byte`       | One byte.                                             |
 | `.hword` / `.short` | Two bytes little-endian.                        |
 | `.word`       | Four bytes little-endian.                             |
@@ -163,6 +163,7 @@ Every scalar instruction takes both course views of the register file: the S for
 | --------------------- | ----------------------------------- |
 | `ldr Xt, =<symbol>`   | `LDR (literal)` with a pool slot.   |
 | `ldr Xt, =<constant>` | Same, or a MOVZ/MOVK chain for small constants. |
+| `ldr Rt, <label>`     | `LDR (literal)`: loads the value at the label's address. Rt may be X, W, S, or D. Lowered through the literal pool as two words because the data sections sit past imm19's reach here; the S/D forms borrow x16, the same scratch the libc trampolines claim. |
 | `tst Rn, #imm`        | `ANDS WZR/XZR, Rn, #imm` (bitmask immediate encoding). |
 | `cmp Rn, #imm`        | `SUBS WZR/XZR, Rn, #imm`.           |
 | `mov Rd, #imm`        | MOVZ/MOVK/MOVN sequence depending on immediate shape. |
@@ -194,11 +195,14 @@ Pre-registered and available without setup:
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
 | `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
-| `rand` / `srand`               | The portable C LCG, `RAND_MAX` 32767. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
+| `rand` / `srand`               | glibc's TYPE_3 additive generator, `RAND_MAX` 2147483647: the sequence is identical to the course servers', so unseeded draws diff cleanly against sample runs. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
 | `time`                         | Returns a fixed timestamp (and stores it through `x0` when non-null), so `srand(time(0))` seeds the same run every time. Reproducibility over wall-clock realism, by design. |
 | `malloc` / `free`              | A fixed 1 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
 | `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
 | `fflush`                       | Accepted and ignored: output is never buffered here. |
+| `fopen`                        | Opens a virtual-filesystem file by C mode string (`r`, `w`, `a`, with `+`); returns an opaque FILE* handle, NULL on a missing `r` file or a refused wall. The handle is not a real pointer -- dereferencing it faults. |
+| `fprintf`                      | The printf engine writing to a FILE* (x0 = stream, x1 = format, varargs from x2). Bytes land in the virtual file under the same caps as the write syscall; the file appears in the console's files view. A stream that never came from fopen is a calm halt naming the fix. |
+| `fclose`                       | Drops the stream's descriptor; returns 0, or EOF for a handle that is not open (a second fclose answers EOF, as glibc does). Nothing is buffered, so there is nothing to flush. |
 | `sqrt`                         | Argument in `d0`, result in `d0`. Of a negative it is NaN -- the IEEE answer, not an error. |
 | `pow`                          | Base in `d0`, exponent in `d1`, result in `d0`. `pow(0, 0)` is 1, per C. |
 | `sin`                          | Radians in `d0`, result in `d0`.          |

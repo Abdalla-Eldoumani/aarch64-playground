@@ -1,0 +1,554 @@
+//! Server-parity regression suite. Every behavior here was verified
+//! against the real course toolchain -- GAS + glibc + GNU m4 on the
+//! U of C ARM servers (and cross-checked under qemu-user with the same
+//! toolchain) -- before it was implemented. Each test pins one behavior
+//! a syntactically valid course program depends on, so a regression
+//! shows up as a program that works on the servers but not here.
+
+use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::frontend::pipeline::assemble_hosted;
+
+/// Assemble, load, feed stdin, run to a halt, and hand back the CPU and
+/// everything the program printed.
+fn run_with_stdin(source: &str, stdin: &str) -> (Cpu, String) {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    cpu.push_stdin(stdin.as_bytes());
+    cpu.close_stdin();
+    let result = cpu.run_until_break(2_000_000).expect("run");
+    assert!(result.halted, "program did not halt");
+    let out = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
+    (cpu, out)
+}
+
+// GAS resolves a locally-defined label used inside an instruction's
+// immediate field to the label's offset WITHIN ITS OWN SECTION, at
+// assembly time, with no relocation: `.bss` symbol at section offset 24
+// encodes as `#0x18` in both `add` and `ldr` (verified with objdump on
+// the servers' GAS 2.46). Assignment solutions lean on this when they
+// write `add x1, fp, a_local` / `ldr x19, [fp, a_local]` around scanf:
+// both sides fold to the same small frame offset, so the program is
+// self-consistent and runs.
+#[test]
+fn bss_label_as_immediate_resolves_to_section_offset() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+in_fmt:         .string "%ld"
+out_fmt:        .string "%ld\n"
+
+        .bss
+scratch:        .skip 16
+slot:           .skip 8
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+
+        ldr     x0, =in_fmt
+        add     x1, fp, slot
+        bl      scanf
+        ldr     x19, [fp, slot]
+
+        add     x19, x19, 1
+        ldr     x0, =out_fmt
+        mov     x1, x19
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+    // `slot` sits at .bss offset 16, so scanf writes [fp, 16] and the
+    // load reads it back: input 41 prints 42. Under the old absolute
+    // resolution the ldr refused to assemble ("offset out of range").
+    let (_, out) = run_with_stdin(source, "41\n");
+    assert_eq!(out, "42\n");
+}
+
+// The same rule reaches `.data` labels and plain arithmetic contexts:
+// `cmp` against a label compares against its section offset, and
+// `label + constant` folds before encoding (GAS emits `#0xb` for a
+// symbol at offset 3 plus 8).
+#[test]
+fn data_label_immediates_fold_in_cmp_and_arithmetic() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld\n"
+
+        .bss
+pad:            .skip 24
+mark:           .skip 8
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x19, 24
+        cmp     x19, mark
+        b.ne    wrong
+        mov     x20, mark + 8
+        b       print
+wrong:
+        mov     x20, 0
+print:
+        ldr     x0, =fmt
+        mov     x1, x20
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    // mark = .bss offset 24: the cmp takes the equal branch and
+    // mark + 8 folds to 32.
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "32\n");
+}
+
+// `.` inside an instruction immediate is section-relative too, so
+// `. - label` measures the plain byte distance. Mixing an absolute `.`
+// with section-relative labels folded `. - main` to a 4 MiB-ish number
+// and refused to encode.
+#[test]
+fn dot_in_immediates_stays_section_relative() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x1, . - main
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    // The mov sits 8 bytes past main.
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "8\n");
+}
+
+/// Run a source expecting a calm halt with an abort message; hand the
+/// message back for the caller's assertions.
+fn run_expect_halt_message(source: &str) -> (Cpu, String) {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    cpu.close_stdin();
+    let result = cpu.run_until_break(2_000_000).expect("run never panics");
+    assert!(result.halted, "expected a calm halt");
+    let message = cpu.abort_message.clone().unwrap_or_default();
+    (cpu, message)
+}
+
+// The first page is never mapped on Linux, so a store through a zeroed
+// base register is SIGSEGV on the servers. The emulator auto-maps pages
+// on write, which let the week-10 find-max shape -- an m4 alias
+// (`define(i_r, w19)`) that reuses the register the array base was just
+// loaded into -- run to a wrong answer instead of stopping where real
+// hardware stops.
+#[test]
+fn store_through_a_zeroed_base_register_halts_like_the_servers() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+        .data
+fmt:            .string "a[%d] = %d\n"
+
+        .bss
+arr:            .skip 40
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x19, =arr
+        mov     i_r, 0
+fill:
+        cmp     i_r, 10
+        b.ge    done
+        add     w9, i_r, 1
+        str     w9, [x19, i_r, SXTW 2]
+        add     i_r, i_r, 1
+        b       fill
+
+done:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (mut cpu, message) = run_expect_halt_message(source);
+    assert!(
+        message.contains("segmentation") && message.contains("m4 alias"),
+        "message names the servers' behavior and the likely cause: {message}"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&cpu.take_stdout()),
+        "",
+        "nothing prints before the fault, as on real hardware"
+    );
+}
+
+// Linux sets SCTLR_EL1.SA0: any load or store through a misaligned SP
+// is a bus error on the servers (verified there -- exit 135). The check
+// is on SP itself, pre-writeback, so `stp ..., [sp, -8]!` from an
+// aligned SP passes and the NEXT sp-based access faults.
+#[test]
+fn misaligned_sp_access_halts_like_the_servers() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     sp, sp, 8
+        str     x19, [sp]
+        add     sp, sp, 8
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, message) = run_expect_halt_message(source);
+    assert!(
+        message.contains("multiple of 16") && message.contains("bus error"),
+        "message names the rule and the servers' behavior: {message}"
+    );
+}
+
+// The same rule at the AAPCS64 call boundary: a `bl printf` with SP off
+// the 16-byte boundary dies inside glibc on the servers; the stub
+// boundary is where the emulator reproduces it.
+#[test]
+fn misaligned_sp_at_a_libc_call_halts_with_the_call_wording() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "n = %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     sp, sp, 8
+        ldr     x0, =fmt
+        mov     w1, 7
+        bl      printf
+        add     sp, sp, 8
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (mut cpu, message) = run_expect_halt_message(source);
+    assert!(
+        message.contains("at this call"),
+        "the call-boundary wording points at the bl: {message}"
+    );
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "");
+}
+
+// An offset from an ALIGNED sp is legal whatever the offset's own
+// alignment: SA0 checks the stack pointer, not the effective address.
+#[test]
+fn aligned_sp_with_odd_offsets_still_runs() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        mov     w9, 42
+        str     w9, [sp, 20]
+        ldr     w1, [sp, 20]
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "42\n");
+}
+
+// rand() must reproduce glibc's TYPE_3 sequence exactly: shell-sort
+// style assignments print unseeded draws and students diff the
+// playground against the servers' sample runs. The pinned values are
+// glibc's, captured from the course toolchain (`& 0x1FF` of the first
+// draws gives the 359 454 105 115 81... the assignment-3 shape prints).
+#[test]
+fn unseeded_and_seeded_rand_match_glibc() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+        .data
+fmt:            .string "%d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     i_r, 0
+loop1:
+        cmp     i_r, 5
+        b.ge    reseed
+        bl      rand
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+        add     i_r, i_r, 1
+        b       loop1
+
+reseed:
+        mov     w0, 42
+        bl      srand
+        mov     i_r, 0
+loop2:
+        cmp     i_r, 3
+        b.ge    done
+        bl      rand
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+        add     i_r, i_r, 1
+        b       loop2
+
+done:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(
+        out,
+        "1804289383\n846930886\n1681692777\n1714636915\n1957747793\n\
+         71876166\n708592740\n1483128881\n"
+    );
+}
+
+// Linux never starts a process with argc = 0: argv[0] is the program
+// path. Assignment solutions gate on `cmp argc, 3` and print usage --
+// dereferencing argv[0] -- when the count is wrong; with no arguments
+// the emulator used to hand them argc = 0 and argv = NULL, so the
+// usage path faulted at address 0 instead of printing.
+#[test]
+fn usage_gate_reads_argv0_with_no_arguments() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+use_fmt:        .string "usage: %s a b\n"
+sum_fmt:        .string "%ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        cmp     w0, 3
+        b.ne    usage
+
+        mov     x19, x1
+        ldr     x0, [x19, 8]
+        bl      atoi
+        mov     w20, w0
+        ldr     x0, [x19, 16]
+        bl      atoi
+        add     w1, w20, w0
+        sxtw    x1, w1
+        ldr     x0, =sum_fmt
+        bl      printf
+        b       done
+
+usage:
+        ldr     x0, =use_fmt
+        ldr     x1, [x1, 0]
+        bl      printf
+
+done:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    // No arguments: argc = 1, the usage path prints argv[0].
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    let r = cpu.run_until_break(2_000_000).expect("run");
+    assert!(r.halted);
+    assert_eq!(
+        String::from_utf8_lossy(&cpu.take_stdout()),
+        "usage: ./program a b\n"
+    );
+
+    // Two arguments: argc = 3, the compute path runs.
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image_with_args(&image, &["19", "23"])
+        .expect("load");
+    let r = cpu.run_until_break(2_000_000).expect("run");
+    assert!(r.halted);
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "42\n");
+}
+
+// GAS accepts `ldr <reg>, <label>` -- LDR (literal), a load FROM the
+// label's address -- and course code writes it alongside `ldr =label`.
+// The value must be read at run time: this program stores to the label
+// first and loads it back through the literal form.
+#[test]
+fn ldr_label_literal_load_reads_memory_at_run_time() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld\n"
+n_var:          .quad 0
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =n_var
+        mov     x10, 7
+        str     x10, [x9]
+
+        ldr     x19, n_var
+        ldr     x0, =fmt
+        mov     x1, x19
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "7\n");
+}
+
+// The same form reaches W and the fp registers (`ldr d0, label`), and a
+// label in `.bss` -- 3 MiB from .text, far past a real LDR (literal)'s
+// imm19 -- still loads.
+#[test]
+fn ldr_label_literal_load_covers_w_d_and_bss() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%d %.1f\n"
+d_var:          .double 2.5
+
+        .bss
+w_var:          .skip 4
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =w_var
+        mov     w10, 42
+        str     w10, [x9]
+
+        ldr     w1, w_var
+        ldr     d0, d_var
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "42 2.5\n");
+}
+
+// `.space` is the GAS spelling course solutions use alongside `.skip`;
+// both reserve N bytes, and a second operand fills them (low byte) in a
+// data section. In `.bss` GAS ignores a fill and zero-fills.
+#[test]
+fn space_directive_reserves_and_fills() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+filled:         .space 4, 7
+fmt:            .string "%d %d\n"
+
+        .bss
+gap:            .space 8
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =filled
+        ldrb    w1, [x9]
+        ldrb    w2, [x9, 3]
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "7 7\n");
+}

@@ -187,24 +187,27 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             defines.insert(name.clone(), b.clone());
         }
     }
+    // `windowed` still marks the redefined/undefined names for the lint
+    // and UI layers, which report per-line bindings through
+    // `define_body_at`; substitution itself is sequential for every name.
     let mut windowed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut current: HashMap<String, String> = HashMap::new();
     for (name, count) in define_count {
-        if count == 1 && !undefined_names.contains(name) {
-            current.insert(name.to_string(), defines[name].clone());
-        } else {
+        if count != 1 || undefined_names.contains(name) {
             windowed.insert(name.to_string());
         }
     }
+    let mut current: HashMap<String, String> = HashMap::new();
 
     // Pass 2: substitute `define()` aliases only. Assignment aliases are
-    // left untouched so the parser sees `name = expr` verbatim. `current`
-    // starts as the static map and picks windowed bodies up (and drops
-    // them) as the walk passes their define/undefine lines.
-    let mut events = define_events
-        .iter()
-        .filter(|(_, name, _)| windowed.contains(name))
-        .peekable();
+    // left untouched so the parser sees `name = expr` verbatim. GNU m4 is
+    // strictly sequential -- a define binds only the text below it, and a
+    // forward reference stays unexpanded (and then fails to assemble,
+    // exactly as it does on the course servers) -- so `current` starts
+    // empty and picks every binding up (and drops it on undefine) as the
+    // walk passes its line. The whole-file map used to serve forward
+    // references here; no real program used them, and honoring them made
+    // code work in the playground that the servers reject.
+    let mut events = define_events.iter().peekable();
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
@@ -292,7 +295,7 @@ fn substitute_bounded(
     line_num: usize,
 ) -> Result<String, EmuError> {
     let limit = MAX_EXPANDED_LINE_BYTES.max(line.len());
-    substitute_once(line, defines, limit).ok_or_else(|| EmuError::PreprocError {
+    substitute_once_gnu(line, defines, limit).ok_or_else(|| EmuError::PreprocError {
         line: line_num,
         message: format!(
             "m4 expansion grew this line past {MAX_EXPANDED_LINE_BYTES} bytes; \
@@ -303,21 +306,45 @@ fn substitute_bounded(
 
 /// One token-boundary substitution pass over a line, refusing to build
 /// more than `limit` bytes. `None` means the cap was reached; the caller
-/// owns the message. String and char literals are copied verbatim. Shared
-/// with the parser's `.req` alias pass, which substitutes register aliases
-/// the same way defines expand.
-///
+/// owns the message. String and char literals are copied verbatim -- this
+/// is the parser's `.req` alias pass, and GAS never rewrites literals
+/// (docs/instruction-reference.md pins that). The m4 expander calls
+/// `substitute_once_gnu` instead, which follows GNU m4's text-level rules.
+pub(crate) fn substitute_once(
+    line: &str,
+    defines: &HashMap<String, String>,
+    limit: usize,
+) -> Option<String> {
+    substitute_pass(line, defines, limit, true)
+}
+
+/// GNU m4's view of a line: double quotes, single quotes, and backslashes
+/// are plain punctuation (m4's own quotes are backtick/quote), so macro
+/// names expand INSIDE string and char literals -- `define(seconds, x22)`
+/// rewrites `.string "%d seconds"` into `"%d x22"`, and the `n` in a
+/// `"\n"` below `define(n, w19)` becomes `"\w19"`. A `#` starts an m4
+/// comment: the rest of the line is copied verbatim, unexpanded. All
+/// three behaviors verified against GNU m4 on the course toolchain.
+pub(crate) fn substitute_once_gnu(
+    line: &str,
+    defines: &HashMap<String, String>,
+    limit: usize,
+) -> Option<String> {
+    substitute_pass(line, defines, limit, false)
+}
+
 /// Everything outside an identifier is copied as a byte-exact slice of the
 /// input, never widened through `as char`: widening a byte >= 0x80 (a
 /// latin-1 promotion) re-encodes it as two UTF-8 bytes, so a single pasted
 /// NBSP or accented letter doubled every round and expansion could never
 /// reach its fixed point. Slice boundaries here always sit on ASCII bytes
-/// (quotes, identifier edges) or the end of the line, so the slicing is
-/// UTF-8 safe even while the scan itself walks raw bytes.
-pub(crate) fn substitute_once(
+/// (quotes, identifier edges, `#`) or the end of the line, so the slicing
+/// is UTF-8 safe even while the scan itself walks raw bytes.
+fn substitute_pass(
     line: &str,
     defines: &HashMap<String, String>,
     limit: usize,
+    respect_literals: bool,
 ) -> Option<String> {
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
@@ -327,7 +354,14 @@ pub(crate) fn substitute_once(
             return None;
         }
         let b = bytes[i];
-        if b == b'"' || b == b'\'' {
+        if !respect_literals && b == b'#' {
+            // GNU m4 comment: everything from `#` to the end of the line
+            // passes through unexpanded, which is why the course style
+            // writes bare immediates (`mov x0, 5`, never `#alloc`).
+            out.push_str(&line[i..]);
+            break;
+        }
+        if respect_literals && (b == b'"' || b == b'\'') {
             // Copy a string or char literal verbatim, including the
             // delimiters and any backslash-escaped bytes.
             let quote = b;
@@ -360,12 +394,12 @@ pub(crate) fn substitute_once(
             }
             continue;
         }
-        // Copy the run up to the next literal or identifier verbatim.
+        // Copy the run up to the next boundary verbatim.
         let start = i;
         i += 1;
         while i < bytes.len() {
             let c = bytes[i];
-            if c == b'"' || c == b'\'' || is_id_start_byte(c) {
+            if c == b'"' || c == b'\'' || c == b'#' || is_id_start_byte(c) {
                 break;
             }
             i += 1;
@@ -934,9 +968,13 @@ mod tests {
     }
 
     #[test]
-    fn forward_reference_expands_when_alias_defined_later() {
-        let r = exp("mov x0, fp\ndefine(fp, x29)\n");
-        assert_eq!(r.text, "mov x0, x29\n");
+    fn forward_reference_stays_unexpanded_like_gnu_m4() {
+        // GNU m4 binds sequentially: a use above the define keeps the
+        // bare name (and then fails to assemble, exactly as it does on
+        // the course servers). The whole-file convenience made programs
+        // work here that the servers reject.
+        let r = exp("mov x0, fp\ndefine(fp, x29)\nmov x1, fp\n");
+        assert_eq!(r.text, "mov x0, fp\n\nmov x1, x29");
     }
 
     #[test]
@@ -980,15 +1018,38 @@ mod tests {
     }
 
     #[test]
-    fn does_not_substitute_inside_char_literal() {
+    fn substitutes_inside_char_literal_like_gnu_m4() {
+        // m4's own quotes are backtick/quote; a GAS char literal's `'` is
+        // plain punctuation to it, so the name inside expands (verified
+        // against GNU m4 on the course toolchain).
         let r = exp("define(A, X)\nmov w0, 'A'\n");
-        assert_eq!(r.text, "\nmov w0, 'A'");
+        assert_eq!(r.text, "\nmov w0, 'X'");
     }
 
     #[test]
-    fn does_not_substitute_inside_string_literal() {
+    fn substitutes_inside_string_literal_like_gnu_m4() {
+        // Double quotes mean nothing to m4 either: the server rewrites
+        // the format string, so the playground must print the same bytes.
         let r = exp("define(name, WOOD)\n.string \"name is fire\"\n");
-        assert_eq!(r.text, "\n.string \"name is fire\"");
+        assert_eq!(r.text, "\n.string \"WOOD is fire\"");
+    }
+
+    #[test]
+    fn string_above_the_define_keeps_its_text() {
+        // Sequential binding is what keeps the week-8 shape intact: the
+        // `\n` in a string ABOVE define(n, w19) stays, while the same
+        // escape below it is rewritten -- m4 knows nothing of GAS
+        // escapes, so the `n` in `\n` is an ordinary identifier.
+        let r = exp(".string \"b\\n\"\ndefine(n, w19)\n.string \"c\\n\"\n");
+        assert_eq!(r.text, ".string \"b\\n\"\n\n.string \"c\\w19\"");
+    }
+
+    #[test]
+    fn hash_starts_an_m4_comment_that_passes_through_verbatim() {
+        // GNU m4 copies `#` to end of line unexpanded -- the reason the
+        // course style writes bare immediates, never `#alloc`.
+        let r = exp("define(alloc, 16)\nsub sp, sp, alloc\nsub sp, sp, #alloc\n");
+        assert_eq!(r.text, "\nsub sp, sp, 16\nsub sp, sp, #alloc");
     }
 
     #[test]
@@ -1016,8 +1077,11 @@ mod tests {
 
     #[test]
     fn define_substitutes_on_a_line_with_non_ascii_string_text() {
+        // The guard against the latin-1 widening bug now walks the
+        // SUBSTITUTING path through a literal: the accented bytes must
+        // round-trip while the name beside them expands.
         let r = exp("define(fp, x29)\nmov x0, fp\n.string \"r\u{e9}sum\u{e9} fp\"\n");
-        assert_eq!(r.text, "\nmov x0, x29\n.string \"r\u{e9}sum\u{e9} fp\"");
+        assert_eq!(r.text, "\nmov x0, x29\n.string \"r\u{e9}sum\u{e9} x29\"");
     }
 
     #[test]
@@ -1178,12 +1242,12 @@ mod tests {
     }
 
     #[test]
-    fn single_define_keeps_whole_file_forward_references() {
-        // The playground convenience stays: one define, used before its
-        // line, still substitutes everywhere.
+    fn single_define_binds_sequentially_too() {
+        // No whole-file exception for once-defined names: GNU m4 leaves
+        // the use above the define alone.
         let src = "mov total, 1\ndefine(total, w20)\n";
         let r = exp(src);
-        assert!(r.text.starts_with("mov w20, 1"));
+        assert!(r.text.starts_with("mov total, 1"));
     }
 
     #[test]
@@ -1240,11 +1304,12 @@ mod tests {
     }
 
     #[test]
-    fn chained_defines_resolve_across_a_forward_reference() {
-        // A -> B is defined before use, B -> x5 only after; pass 1 walks
-        // the whole file first so the chain still lands on x5.
-        let r = exp("define(A, B)\nmov x0, A\ndefine(B, x5)\n");
-        assert_eq!(r.text, "\nmov x0, x5\n");
+    fn chained_defines_stop_at_the_binding_in_effect() {
+        // A -> B is bound at the use, B -> x5 only below it: GNU m4
+        // expands A to B and stops, because B has no binding yet at that
+        // line. The chain completes only when both defines sit above.
+        let r = exp("define(A, B)\nmov x0, A\ndefine(B, x5)\nmov x1, A\n");
+        assert_eq!(r.text, "\nmov x0, B\n\nmov x1, x5");
     }
 
     #[test]

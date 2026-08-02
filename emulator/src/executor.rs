@@ -170,6 +170,7 @@ pub fn execute(
         Instruction::FpLdSt { load, ft, rn, offset, size, mode } => {
             // Base register 31 means SP here, exactly as in the integer
             // load/store path: FP spills sit on the stack.
+            check_sp_alignment(*rn, regs)?;
             let base = regs.read_gpr_or_sp(*rn, true);
             let (addr, writeback) = match mode {
                 IndexMode::PreIndex => {
@@ -184,6 +185,14 @@ pub fn execute(
                     ((base as i64).wrapping_add(*offset) as u64, None)
                 }
             };
+            check_guest_address(
+                addr,
+                if *load {
+                    crate::errors::MemAccess::Read
+                } else {
+                    crate::errors::MemAccess::Write
+                },
+            )?;
             if *load {
                 match size {
                     MemSize::X => {
@@ -523,11 +532,43 @@ fn exec_log_reg(
     Ok(ExecResult::Advance)
 }
 
+/// The first page is never mapped on Linux; a guest access there is a
+/// null or garbage base register, not memory the program owns. Memory
+/// auto-maps on write, so without this a store through a zeroed base
+/// silently succeeds and the program runs to a wrong answer that the
+/// course servers kill with SIGSEGV.
+const NULL_PAGE_LIMIT: u64 = 4096;
+
+fn check_guest_address(addr: u64, access: crate::errors::MemAccess) -> Result<(), EmuError> {
+    if addr < NULL_PAGE_LIMIT {
+        return Err(EmuError::NullPointerAccess { address: addr, access });
+    }
+    Ok(())
+}
+
+/// AArch64 checks SP itself, never the effective address: SCTLR_EL1.SA0
+/// is set on Linux, so any load or store using SP as the base faults
+/// when SP is off the 16-byte boundary -- `ldr w0, [sp, 4]` from an
+/// aligned SP is legal, `ldr w0, [sp]` from an SP off by 8 is not.
+/// Runs before the offset math and any writeback, like the ARM
+/// pseudocode's CheckSPAlignment(). `rn >= 31` mirrors the
+/// `read_gpr_or_sp` convention.
+fn check_sp_alignment(rn: u8, regs: &RegisterFile) -> Result<(), EmuError> {
+    if rn >= 31 {
+        let sp = regs.read_sp();
+        if sp % 16 != 0 {
+            return Err(EmuError::SpAlignmentFault { sp, at_call: false });
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
 fn exec_ldst(
     op: LdStOp, rt: u8, rn: u8, offset: &LdStOffset, size: MemSize,
     mode: IndexMode, regs: &mut RegisterFile, mem: &mut Memory,
 ) -> Result<ExecResult, EmuError> {
+    check_sp_alignment(rn, regs)?;
     let base = regs.read_gpr_or_sp(rn, true);
 
     let offset_val = match offset {
@@ -565,6 +606,7 @@ fn exec_ldst(
 
     match op {
         LdStOp::Ldr => {
+            check_guest_address(address, crate::errors::MemAccess::Read)?;
             let value = match size {
                 MemSize::B => mem.read_u8(address)? as u64,
                 MemSize::H => mem.read_u16(address)? as u64,
@@ -574,6 +616,7 @@ fn exec_ldst(
             regs.write_gpr(rt, true, value);
         }
         LdStOp::Str => {
+            check_guest_address(address, crate::errors::MemAccess::Write)?;
             let value = regs.read_gpr(rt, true);
             match size {
                 MemSize::B => mem.write_u8(address, value as u8)?,
@@ -597,6 +640,7 @@ fn exec_ldst_pair(
     imm7: i16, mode: IndexMode,
     regs: &mut RegisterFile, mem: &mut Memory,
 ) -> Result<ExecResult, EmuError> {
+    check_sp_alignment(rn, regs)?;
     let base = regs.read_gpr_or_sp(rn, true);
 
     let (address, writeback) = match mode {
@@ -615,6 +659,12 @@ fn exec_ldst_pair(
     };
 
     let pair_size: u64 = if sf { 8 } else { 4 };
+    let access = match op {
+        LdStPairOp::Ldp => crate::errors::MemAccess::Read,
+        LdStPairOp::Stp => crate::errors::MemAccess::Write,
+    };
+    check_guest_address(address, access)?;
+    check_guest_address(address.wrapping_add(pair_size), access)?;
 
     match op {
         LdStPairOp::Ldp => {
@@ -856,6 +906,7 @@ fn exec_ldrs(
     mem: &mut Memory,
 ) -> Result<ExecResult, EmuError> {
     // Compute the effective address using the same offset math as exec_ldst.
+    check_sp_alignment(rn, regs)?;
     let base = regs.read_gpr_or_sp(rn, true);
     let offset_val = match offset {
         LdStOffset::Immediate(imm) => *imm,
@@ -888,6 +939,7 @@ fn exec_ldrs(
             (addr, None)
         }
     };
+    check_guest_address(address, crate::errors::MemAccess::Read)?;
     let value_64 = match size {
         MemSize::B => (mem.read_u8(address)? as i8) as i64,
         MemSize::H => (mem.read_u16(address)? as i16) as i64,

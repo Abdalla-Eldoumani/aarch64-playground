@@ -145,6 +145,13 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // sites. GAS rejects a redefined label; accepting it here made the
     // last definition win silently, so branches jumped to the wrong copy.
     let mut label_lines: HashMap<String, usize> = HashMap::new();
+    // Each label's offset within its own section. GAS resolves a defined
+    // label used as an instruction immediate (`ldr x19, [fp, a_local]`,
+    // `add x1, fp, a_local`, `cmp x0, a_local`) to this section-relative
+    // value at assembly time, with no relocation -- verified against
+    // aarch64 GAS on the course servers. The absolute address in `symbols`
+    // stays the answer everywhere else (branches, `ldr =`, adr, .quad).
+    let mut label_offsets: HashMap<String, u64> = HashMap::new();
     // Absolute address of each `.text` instruction, in emission order.
     // Pass 1d needs it to size a per-site literal pool slot for
     // `ldr xN, =. + k`, and taking it from this walk is what keeps the
@@ -179,6 +186,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                     label_lines.insert(name.clone(), *original_line);
                     symbols.insert(name.clone(), base + offset);
+                    label_offsets.insert(name.clone(), offset);
                 }
                 Item::Bytes(b) => offset += b.len() as u64,
                 Item::Reserve(n) => offset = offset.saturating_add(*n),
@@ -214,7 +222,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                     assignments.push((name.clone(), body.clone(), base + offset, *original_line));
                 }
-                Item::Instruction { original_line, .. } => {
+                Item::Instruction { tokens, original_line } => {
                     last_line = *original_line;
                     if section.kind == SectionKind::Text {
                         text_instr_pcs.push(base + offset);
@@ -234,7 +242,14 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                             ),
                         });
                     }
-                    offset += 4;
+                    // The `ldr reg, label` literal load lowers to two
+                    // words (pass 2); every walk must agree on the size
+                    // or the layouts drift apart.
+                    offset += if extract_ldr_label_load(tokens).is_some() {
+                        8
+                    } else {
+                        4
+                    };
                 }
                 Item::DataExprs { exprs, width, original_line } => {
                     last_line = *original_line;
@@ -385,6 +400,25 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     }
                     continue;
                 }
+                if let Some((_, label_text)) = extract_ldr_label_load(tokens) {
+                    // The label's address goes into the pool like an
+                    // `ldr xN, =label` constant would; the two forms
+                    // share a slot when both appear.
+                    if let std::collections::hash_map::Entry::Vacant(slot) =
+                        pool_slots.entry((label_text, None))
+                    {
+                        let value = resolve_ldr_eq_target(
+                            &slot.key().0,
+                            &symbols,
+                            &equates,
+                            0,
+                            *original_line,
+                        )?;
+                        slot.insert(pool_values.len() as u64 * 8);
+                        pool_values.push(value);
+                    }
+                    continue;
+                }
                 if let Some(target) = extract_bl_target(tokens) {
                     if let Some(addr) = symbols.get(&target) {
                         if is_host_address(*addr)
@@ -520,6 +554,49 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         });
                     }
                     let pc = base + offset;
+                    if let Some((reg, label_text)) = extract_ldr_label_load(tokens) {
+                        // GAS encodes `ldr reg, label` as one LDR
+                        // (literal), and the servers' linker resolves it
+                        // because ld packs the sections a few KB apart.
+                        // Here .data and .bss sit 2-3 MiB from .text --
+                        // past imm19's 1 MiB reach -- so the linker
+                        // lowers it to two words: the label's address
+                        // arrives from the literal pool (a real LDR
+                        // (literal), always in reach), then an ordinary
+                        // load through it. The X view of the destination
+                        // doubles as the address register; the s/d forms
+                        // borrow x16, the same scratch the libc
+                        // trampolines already claim.
+                        let addr_reg: u8 = match parse_ldr_dest(&reg) {
+                            Some(LdrDest::Gpr { idx }) => idx,
+                            Some(LdrDest::Fp) => 16,
+                            None => unreachable!("recognizer only claims parseable dests"),
+                        };
+                        let slot = *pool_slots
+                            .get(&(label_text.clone(), None))
+                            .ok_or_else(|| EmuError::LinkError {
+                                line: *original_line,
+                                message: format!(
+                                    "no literal pool slot for `{label_text}`"
+                                ),
+                            })?;
+                        let slot_addr = pool_base + slot;
+                        let word1 =
+                            encode_ldr_literal(true, addr_reg, slot_addr as i64 - pc as i64)?;
+                        let word2 = assembler::encode_line_absolute(
+                            &format!("ldr {reg}, [x{addr_reg}]"),
+                            pc + 4,
+                            &symbols,
+                            *original_line,
+                        )?;
+                        writes.push((pc, word1.to_le_bytes().to_vec()));
+                        writes.push((pc + 4, word2.to_le_bytes().to_vec()));
+                        line_map.push((pc, *original_line as u32));
+                        line_map.push((pc + 4, *original_line as u32));
+                        offset += 8;
+                        instruction_count += 2;
+                        continue;
+                    }
                     let word = if let Some((target_text, dot_relative)) =
                         extract_ldr_eq_operand(tokens)
                     {
@@ -576,7 +653,20 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                             // correctly.
                             format!("bl {name}")
                         } else {
-                            lower_operands(&stripped, pc, &symbols, &equates, *original_line)?
+                            // `.` inside an instruction immediate folds
+                            // section-relative, exactly like a label: GAS
+                            // gives `add x1, x1, . - main` the distance 8,
+                            // not an absolute address. Instructions only
+                            // exist in .text, so the section offset is
+                            // pc - CODE_BASE.
+                            lower_operands(
+                                &stripped,
+                                pc - crate::cpu::CODE_BASE,
+                                &symbols,
+                                &equates,
+                                &label_offsets,
+                                *original_line,
+                            )?
                         };
                         assembler::encode_line_absolute(
                             &line_text,
@@ -707,6 +797,76 @@ fn extract_ldr_eq_operand(
     let operand = &after[1..];
     let dot_relative = operand.iter().any(|t| matches!(t.kind, TokenKind::Dot));
     Some((stringify_tokens(operand), dot_relative))
+}
+
+/// Recognize the GAS `ldr <reg>, <label-expr>` literal-load form (no
+/// brackets, no `=`, no `#`): load the value AT the label's address.
+/// Returns the destination register text and the operand's textual key.
+/// Bare-register tails (`ldr x0, x1`), addressing modes, `=expr` pool
+/// loads, and `#imm` all keep their existing paths and their existing
+/// errors; so does any destination the lowering cannot emit.
+fn extract_ldr_label_load(
+    tokens: &[crate::frontend::lexer::Token],
+) -> Option<(String, String)> {
+    if tokens.len() < 4 {
+        return None;
+    }
+    let TokenKind::Ident(mn) = &tokens[0].kind else {
+        return None;
+    };
+    if !mn.eq_ignore_ascii_case("ldr") {
+        return None;
+    }
+    let TokenKind::Ident(reg) = &tokens[1].kind else {
+        return None;
+    };
+    if !matches!(tokens[2].kind, TokenKind::Comma) {
+        return None;
+    }
+    let tail = &tokens[3..];
+    let first = tail.first()?;
+    if !matches!(
+        first.kind,
+        TokenKind::Ident(_) | TokenKind::DirectiveIdent(_)
+    ) {
+        return None;
+    }
+    if tail.iter().any(|t| {
+        matches!(
+            t.kind,
+            TokenKind::LBracket | TokenKind::Equals | TokenKind::Hash
+        )
+    }) {
+        return None;
+    }
+    if let TokenKind::Ident(first_name) = &first.kind {
+        if is_register_or_shift_keyword(first_name) {
+            return None;
+        }
+    }
+    parse_ldr_dest(reg)?;
+    Some((reg.clone(), stringify_tokens(tail)))
+}
+
+/// The destination of an `ldr reg, label` load, by register class.
+enum LdrDest {
+    Gpr { idx: u8 },
+    Fp,
+}
+
+/// Parse the destination register of an `ldr reg, label` load. X/W use
+/// their own X view as the address holder; S/D borrow x16. Anything
+/// else (q0, xzr, sp) returns None so the caller leaves the line to the
+/// legacy encoder and its diagnostics.
+fn parse_ldr_dest(reg: &str) -> Option<LdrDest> {
+    let mut chars = reg.chars();
+    let class = chars.next()?.to_ascii_lowercase();
+    let idx: u8 = reg[1..].parse().ok()?;
+    match class {
+        'x' | 'w' if idx <= 30 => Some(LdrDest::Gpr { idx }),
+        'd' | 's' if idx <= 31 => Some(LdrDest::Fp),
+        _ => None,
+    }
 }
 
 /// Render a token slice back to source text. Every `TokenKind` gets an
@@ -859,6 +1019,7 @@ fn lower_operands(
     pc: u64,
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
+    label_offsets: &HashMap<String, u64>,
     ln: usize,
 ) -> Result<String, EmuError> {
     let trimmed = line.trim();
@@ -880,7 +1041,7 @@ fn lower_operands(
     {
         return Ok(format!("{mnemonic} {tail}"));
     }
-    let rewritten = rewrite_operand_list(tail, pc, symbols, equates, ln, 0)?;
+    let rewritten = rewrite_operand_list(tail, pc, symbols, equates, label_offsets, ln, 0)?;
     Ok(format!("{mnemonic} {rewritten}"))
 }
 
@@ -897,13 +1058,14 @@ fn rewrite_operand_list(
     pc: u64,
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
+    label_offsets: &HashMap<String, u64>,
     ln: usize,
     depth: usize,
 ) -> Result<String, EmuError> {
     let mut out: Vec<String> = Vec::new();
     let segments = split_top_level_commas(s);
     for seg in segments {
-        out.push(rewrite_operand(seg.trim(), pc, symbols, equates, ln, depth)?);
+        out.push(rewrite_operand(seg.trim(), pc, symbols, equates, label_offsets, ln, depth)?);
     }
     Ok(out.join(", "))
 }
@@ -933,6 +1095,7 @@ fn rewrite_operand(
     pc: u64,
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
+    label_offsets: &HashMap<String, u64>,
     ln: usize,
     depth: usize,
 ) -> Result<String, EmuError> {
@@ -973,7 +1136,8 @@ fn rewrite_operand(
         })?;
         let inside = &trimmed[1..close];
         let trailer = &trimmed[close..];
-        let rewritten_inside = rewrite_operand_list(inside, pc, symbols, equates, ln, depth + 1)?;
+        let rewritten_inside =
+            rewrite_operand_list(inside, pc, symbols, equates, label_offsets, ln, depth + 1)?;
         return Ok(format!("[{rewritten_inside}{trailer}"));
     }
     // Strip a leading `#` while evaluating; the legacy encoder accepts
@@ -982,7 +1146,7 @@ fn rewrite_operand(
     if !looks_like_expression(body, symbols) {
         return Ok(trimmed.to_string());
     }
-    match try_evaluate_operand(body, pc, symbols, equates, ln)? {
+    match try_evaluate_operand(body, pc, symbols, equates, label_offsets, ln)? {
         Some(value) => Ok(format!("{value}")),
         None => Ok(trimmed.to_string()),
     }
@@ -1074,6 +1238,7 @@ fn try_evaluate_operand(
     pc: u64,
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
+    label_offsets: &HashMap<String, u64>,
     ln: usize,
 ) -> Result<Option<i64>, EmuError> {
     // A shift modifier's keyword-plus-amount shape (`lsl #(1 + 1)`) is an
@@ -1093,9 +1258,17 @@ fn try_evaluate_operand(
     {
         return Ok(None);
     }
+    // A defined label names its section-relative offset here, the way GAS
+    // resolves a label inside an instruction's immediate field (no
+    // relocation exists for those bits, so GAS folds the symbol's raw
+    // section offset -- verified against the course servers). Equates and
+    // everything else keep their absolute values from `symbol_at`.
     match evaluate(
         &tokens,
-        &|name| symbol_at(name, ln, symbols, equates),
+        &|name| match label_offsets.get(name) {
+            Some(off) => Some(*off as i64),
+            None => symbol_at(name, ln, symbols, equates),
+        },
         pc as i64,
         ln,
     ) {

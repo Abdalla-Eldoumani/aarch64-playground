@@ -261,16 +261,27 @@ export const EXAMPLE_MODE_ARGS: Record<string, true> = {
 
 /**
  * The args a mode-args example runs with under `mode`: the console face
- * takes the token after the program name, the terminal face takes nothing.
- * Null for a stem the table does not list, meaning "the mode has no opinion
- * here; whatever seeded the box stands".
+ * takes the single `console` token, the terminal face takes nothing.
+ * The emulator owns argv[0] (it prepends `./program` on every load), so
+ * the box holds argv[1..] only. Null for a stem the table does not list,
+ * meaning "the mode has no opinion here; whatever seeded the box stands".
  */
 export function modeArgsFor(
   stem: string | null | undefined,
   mode: LaunchMode,
 ): string | null {
   if (!stem || EXAMPLE_MODE_ARGS[stem] !== true) return null;
-  return mode === "console" ? `./${stem} console` : "";
+  return mode === "console" ? "console" : "";
+}
+
+/**
+ * The console-face seed the box held before the emulator owned argv[0].
+ * A returning student's persisted args can still carry it; the playground
+ * migrates that exact string to the current seed and touches nothing else.
+ */
+export function legacyModeArgsFor(stem: string | null | undefined): string | null {
+  if (!stem || EXAMPLE_MODE_ARGS[stem] !== true) return null;
+  return `./${stem} console`;
 }
 
 export const EXAMPLE_FILES: Record<string, string[]> = {

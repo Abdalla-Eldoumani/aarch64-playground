@@ -9,7 +9,7 @@
 //       * /_next/static, /examples, /icons -> cache first.
 //       * else                    -> network first, fall back to cache.
 
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const RUNTIME_CACHE = `cpsc355-runtime-${CACHE_VERSION}`;
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 

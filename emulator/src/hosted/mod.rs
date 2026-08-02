@@ -17,6 +17,7 @@ pub mod libc;
 pub mod math;
 pub mod printf;
 pub mod scanf;
+pub mod stdio;
 pub mod syscalls;
 
 /// A host-function entry point. Takes a `HostContext` exposing stdout /
@@ -69,7 +70,7 @@ pub struct HostContext<'a> {
     pub next_fd: &'a mut u32,
     /// State for the rand/srand stubs. Lives on the `Cpu` (and in every
     /// snapshot) so draws are deterministic and replay-stable.
-    pub rand_state: &'a mut u64,
+    pub rand_state: &'a mut crate::hosted::libc::RandState,
     /// Terminal and timing state for the interactive syscalls (raw
     /// mode, fd 0 O_NONBLOCK, the virtual clock). Lives on the `Cpu`
     /// and in every snapshot, like `rand_state`.
@@ -208,7 +209,7 @@ mod tests {
         vfs: &'a mut HashMap<String, Vec<u8>>,
         open_files: &'a mut HashMap<u32, crate::cpu::OpenFile>,
         next_fd: &'a mut u32,
-        rand_state: &'a mut u64,
+        rand_state: &'a mut crate::hosted::libc::RandState,
         term: &'a mut crate::cpu::TermState,
         heap: &'a mut crate::hosted::heap::HeapState,
     ) -> HostContext<'a> {
@@ -268,7 +269,7 @@ mod tests {
         let mut vfs = HashMap::new();
         let mut open = HashMap::new();
         let mut next = 3u32;
-        let mut rand_state = 1u64;
+        let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
         let mut ctx = fresh_ctx(
@@ -291,7 +292,7 @@ mod tests {
         let mut vfs = HashMap::new();
         let mut open = HashMap::new();
         let mut next = 3u32;
-        let mut rand_state = 1u64;
+        let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
         let mut ctx = fresh_ctx(

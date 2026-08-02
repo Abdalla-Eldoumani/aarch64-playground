@@ -77,13 +77,19 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "naming conventions",
     };
   }
-  if (lower.startsWith("unaligned access")) {
-    const m = message.match(/(\d+)-byte alignment/i);
-    const need = m ? m[1] : "the natural";
+  if (lower.includes("not a multiple of 16")) {
     return {
-      what: `An ldr/str variant required ${need}-byte alignment but the address was not a multiple of that width.`,
-      why: "AArch64 word loads need 4-byte alignment, doubleword 8-byte. Stack frames keep sp at a 16-byte boundary; a manual `sub sp, sp, 4` for a single int breaks that contract.",
-      fix: "Align stack adjustments with the `alloc = -(16 + N) & -16` idiom from the course. For unaligned data in .data, use the byte-size load (LDRB / LDRH / LDR Wn) that matches the slot width.",
+      what: "A load or store used sp as its base -- or a libc call ran -- while sp was off the 16-byte boundary.",
+      why: "Linux turns on the AArch64 stack-alignment check (SA0): every sp-based access faults with a bus error when sp is not a multiple of 16, and AAPCS64 requires the boundary at every bl. The playground stops exactly where the course servers do.",
+      fix: "Round the frame to a 16 multiple: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`. The line that broke the boundary is the sp adjustment above the fault.",
+      styleSection: "general",
+    };
+  }
+  if (lower.includes("not part of any program section")) {
+    return {
+      what: "A load or store landed in the first page of the address space, which no program owns.",
+      why: "The base register held a small number instead of an address -- the servers kill this with a segmentation fault. A `mov` where `ldr xN, =label` was meant, or an m4 register alias that reuses a register a pointer already lives in, are the usual causes.",
+      fix: "Check how the base register was loaded: addresses come from `ldr xN, =label`. If an m4 define names the same register a pointer occupies (`define(i_r, w19)` after `ldr x19, =arr`), rename the alias to a free register.",
       styleSection: "addressing modes",
     };
   }

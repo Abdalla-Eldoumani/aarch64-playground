@@ -16,12 +16,29 @@ use crate::hosted::{HostContext, HostOutcome, VarargWalker};
 
 pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
-    let fmt_bytes = read_c_string(ctx.mem, fmt_ptr, "printf's format string")?;
+    // x0 is the format string (fixed param), so vararg ints start at x1.
+    let out = format_into(ctx, fmt_ptr, 1, "printf's format string")?;
+    ctx.stdout.extend_from_slice(&out);
+    ctx.regs.write_gpr(0, true, out.len() as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// The printf engine with the destination left to the caller: read the
+/// format at `fmt_ptr`, walk the varargs starting at GP register
+/// `first_gp` (1 for printf -- x0 is the format; 2 for fprintf -- x0 is
+/// the stream and x1 the format), and hand back the formatted bytes.
+/// `what` names the format string in fault messages.
+pub(crate) fn format_into(
+    ctx: &mut HostContext<'_>,
+    fmt_ptr: u64,
+    first_gp: u8,
+    what: &str,
+) -> Result<Vec<u8>, EmuError> {
+    let fmt_bytes = read_c_string(ctx.mem, fmt_ptr, what)?;
     let fmt = String::from_utf8_lossy(&fmt_bytes).into_owned();
 
-    // x0 is the format string (fixed param), so vararg ints start at x1.
     // d0..d7 are all available for vararg doubles.
-    let mut walker = VarargWalker { gp_idx: 1, fp_idx: 0, stack_off: 0 };
+    let mut walker = VarargWalker { gp_idx: first_gp, fp_idx: 0, stack_off: 0 };
     let mut out: Vec<u8> = Vec::new();
 
     let chars: Vec<char> = fmt.chars().collect();
@@ -58,9 +75,7 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         }
     }
 
-    ctx.stdout.extend_from_slice(&out);
-    ctx.regs.write_gpr(0, true, out.len() as u64);
-    Ok(HostOutcome::Continue)
+    Ok(out)
 }
 
 /// Read a null-terminated byte sequence from guest memory. `what` names the
@@ -453,7 +468,7 @@ mod tests {
         let mut vfs: HashMap<String, Vec<u8>> = HashMap::new();
         let mut open_files: HashMap<u32, OpenFile> = HashMap::new();
         let mut next_fd = 3u32;
-        let mut rand_state = 1u64;
+        let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
         let mut ctx = HostContext {

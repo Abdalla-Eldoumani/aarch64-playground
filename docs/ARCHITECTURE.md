@@ -150,7 +150,7 @@ halt (bare-metal compatibility).
 BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc
 (printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy, memset,
 memcpy, exit, atof, atoi, rand, srand, time, malloc, free, usleep,
-fflush) plus the libm subset (sqrt, pow, sin, cos, tan, log, log10, exp,
+fflush, fopen, fprintf, fclose) plus the libm subset (sqrt, pow, sin, cos, tan, log, log10, exp,
 floor, fabs, fmod), which takes its arguments in `d0` (and `d1` for pow
 and fmod) and returns in `d0`. malloc and free run over a fixed 1 MiB
 heap window at `0x0090_0000` with host-side allocator state, so a stray

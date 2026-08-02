@@ -282,8 +282,9 @@ main:
 describe("argv layout", () => {
   it("assemble_and_load_with_args puts argc in w0 and readable argv strings behind x1", () => {
     withEmulator((emu) => {
+      // The wasm surface takes argv[1..]; the loader prepends ./program
+      // itself, so argc comes back one higher than the array's length.
       const result = emu.assemble_and_load_with_args(MINIMAL_MAIN, [
-        "./program",
         "alpha",
         "beta",
       ]) as RawAssemble;

@@ -442,12 +442,12 @@ fn hosted_pipeline_bl_with_tab_whitespace_trampolines() {
 }
 
 #[test]
-fn hosted_pipeline_empty_args_zeroes_argc_and_argv() {
-    // Parity check: `load_linked_image(image)` is now defined as
-    // `load_linked_image_with_args(image, &[])`, and the empty-args
-    // branch of `setup_argv` zeroes w0/x1. A program loaded without args
-    // must observe `argc = 0` and `argv = NULL` on entry, identical to
-    // the pre-argv legacy behavior.
+fn hosted_pipeline_empty_args_still_has_argv0() {
+    // Linux never starts a process with argc = 0: argv[0] is the program
+    // path. A program loaded without args must observe argc = 1 and a
+    // readable argv[0], exactly as it does on the course servers --
+    // usage-gate programs (`cmp w0, 2; b.lt error`) that dereference
+    // argv[0] on the error path used to fault at address 0 here.
     use aarch64_emulator::frontend::pipeline::assemble_hosted;
     let src = r#"
 .text
@@ -460,8 +460,12 @@ main:
     let mut cpu = Cpu::new();
     let image = assemble_hosted(src, &cpu.host).expect("pipeline should succeed");
     cpu.load_linked_image(&image).unwrap();
-    assert_eq!(cpu.regs.read_gpr(0, true), 0, "argc should be 0 with no args");
-    assert_eq!(cpu.regs.read_gpr(1, true), 0, "argv should be NULL with no args");
+    assert_eq!(cpu.regs.read_gpr(0, true), 1, "argc is 1 with no args");
+    let argv = cpu.regs.read_gpr(1, true);
+    assert_ne!(argv, 0, "argv points at the table");
+    let argv0 = cpu.mem.read_u64(argv).unwrap();
+    let bytes = cpu.mem.read_bytes(argv0, 10).unwrap();
+    assert_eq!(bytes, b"./program\0");
 }
 
 #[test]

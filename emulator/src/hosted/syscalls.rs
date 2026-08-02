@@ -211,12 +211,15 @@ pub fn sys_getrandom(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError>
     let buf = ctx.regs.read_gpr(0, true);
     let len = ctx.regs.read_gpr(1, true).min(MAX_GETRANDOM_BYTES);
     for i in 0..len {
-        // Same LCG as the libc rand stub, taking the useful high bits.
-        *ctx.rand_state = ctx
+        // A 64-bit LCG over the entropy word, taking the useful high
+        // bits. Deliberately a separate stream from the libc rand stub:
+        // reseeding rand must not move a raw-mode game's draws.
+        ctx.rand_state.entropy = ctx
             .rand_state
+            .entropy
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let byte = (*ctx.rand_state >> 33) as u8;
+        let byte = (ctx.rand_state.entropy >> 33) as u8;
         ctx.mem.write_u8(buf.wrapping_add(i), byte)?;
     }
     ctx.regs.write_gpr(0, true, len);
@@ -245,29 +248,36 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     for i in 0..count {
         bytes.push(ctx.mem.read_u8(buf.wrapping_add(i))?);
     }
+    let n = write_to_fd(ctx, fd, &bytes);
+    ctx.regs.write_gpr(0, true, n as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// The fd half of write(2), shared with fprintf: bytes to fd 1/2 land on
+/// stdout/stderr; other fds write into the VFS at the current offset,
+/// under the per-file and whole-VFS caps. Returns bytes written, or -1
+/// where Linux answers EBADF or where a cap refuses the growth.
+pub(crate) fn write_to_fd(ctx: &mut HostContext<'_>, fd: u64, bytes: &[u8]) -> i64 {
     match fd {
-        1 => ctx.stdout.extend_from_slice(&bytes),
-        2 => ctx.stderr.extend_from_slice(&bytes),
+        1 => ctx.stdout.extend_from_slice(bytes),
+        2 => ctx.stderr.extend_from_slice(bytes),
         _ => {
             // Unknown fd: Linux returns -1/EBADF and the program keeps
             // running, letting the student's own openat error check fire.
             // (The low-32-bit truncation matches the kernel, which reads
             // an int fd, so a stored -1 looks up as 4294967295 and misses.)
             let Some(file) = ctx.open_files.get_mut(&(fd as u32)) else {
-                ctx.regs.write_gpr(0, true, (-1i64) as u64);
-                return Ok(HostOutcome::Continue);
+                return -1;
             };
             if !file.writable {
-                ctx.regs.write_gpr(0, true, (-1i64) as u64);
-                return Ok(HostOutcome::Continue);
+                return -1;
             }
             let path = file.path.clone();
             let offset = file.offset as usize;
             // Reject a write that would grow the file past the cap rather than
             // resizing the backing Vec to a guest-chosen (possibly huge) size.
             if offset.saturating_add(bytes.len()) > MAX_VFS_FILE_BYTES {
-                ctx.regs.write_gpr(0, true, (-1i64) as u64);
-                return Ok(HostOutcome::Continue);
+                return -1;
             }
             // The whole-VFS bound: growth in this file counts against the
             // total, so several files cannot multiply the per-file cap.
@@ -275,8 +285,7 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             let growth = offset.saturating_add(bytes.len()).saturating_sub(current_len);
             let total: usize = ctx.vfs.values().map(Vec::len).sum();
             if total.saturating_add(growth) > MAX_VFS_TOTAL_BYTES {
-                ctx.regs.write_gpr(0, true, (-1i64) as u64);
-                return Ok(HostOutcome::Continue);
+                return -1;
             }
             let data = ctx
                 .vfs
@@ -285,7 +294,7 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             if offset + bytes.len() > data.len() {
                 data.resize(offset + bytes.len(), 0);
             }
-            data[offset..offset + bytes.len()].copy_from_slice(&bytes);
+            data[offset..offset + bytes.len()].copy_from_slice(bytes);
             let file = ctx
                 .open_files
                 .get_mut(&(fd as u32))
@@ -293,8 +302,7 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             file.offset += bytes.len() as u64;
         }
     }
-    ctx.regs.write_gpr(0, true, count);
-    Ok(HostOutcome::Continue)
+    bytes.len() as i64
 }
 
 /// read(fd, buf, count) -> bytes read.
@@ -364,54 +372,74 @@ pub fn sys_openat(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let bytes = read_c_string(ctx.mem, path_ptr, "the openat path")?;
     let path = String::from_utf8_lossy(&bytes).into_owned();
 
+    let writable = (flags & O_WRONLY) != 0 || (flags & O_RDWR) != 0;
+    let create = (flags & O_CREAT) != 0;
+    let truncate = (flags & O_TRUNC) != 0;
+
+    match open_vfs(ctx, &path, writable, create, truncate, false) {
+        Some(fd) => ctx.regs.write_gpr(0, true, fd as u64),
+        None => ctx.regs.write_gpr(0, true, (-1i64) as u64),
+    }
+    Ok(HostOutcome::Continue)
+}
+
+/// The wall-checked open half of openat, shared with fopen: every cap
+/// (open descriptors, VFS file count, missing-without-create) refuses
+/// with None before anything is created, so an open loop cannot grow
+/// the fd table or the VFS. `append` starts the offset at the current
+/// end of file instead of 0.
+pub(crate) fn open_vfs(
+    ctx: &mut HostContext<'_>,
+    path: &str,
+    writable: bool,
+    create: bool,
+    truncate: bool,
+    append: bool,
+) -> Option<u32> {
     if path.is_empty() {
         // Linux returns -1/ENOENT for an empty path. The usual cause here
         // is a filename buffer that was reserved (.skip) but never filled.
-        ctx.regs.write_gpr(0, true, (-1i64) as u64);
-        return Ok(HostOutcome::Continue);
+        return None;
     }
 
     // Descriptor wall: refuse before creating anything, so an open loop
     // that never closes cannot grow the fd table (or the VFS behind it).
     if ctx.open_files.len() >= MAX_OPEN_FILES {
-        ctx.regs.write_gpr(0, true, (-1i64) as u64);
-        return Ok(HostOutcome::Continue);
+        return None;
     }
 
-    let writable = (flags & O_WRONLY) != 0 || (flags & O_RDWR) != 0;
-    let create = (flags & O_CREAT) != 0;
-    let truncate = (flags & O_TRUNC) != 0;
-
-    if !ctx.vfs.contains_key(&path) {
+    if !ctx.vfs.contains_key(path) {
         if !create {
-            ctx.regs.write_gpr(0, true, (-1i64) as u64);
-            return Ok(HostOutcome::Continue);
+            return None;
         }
         // File-count wall: a create loop could otherwise insert entries
         // without bound, each eligible for its own per-file growth.
         if ctx.vfs.len() >= MAX_VFS_FILES {
-            ctx.regs.write_gpr(0, true, (-1i64) as u64);
-            return Ok(HostOutcome::Continue);
+            return None;
         }
-        ctx.vfs.insert(path.clone(), Vec::new());
+        ctx.vfs.insert(path.to_string(), Vec::new());
     } else if truncate {
-        if let Some(data) = ctx.vfs.get_mut(&path) {
+        if let Some(data) = ctx.vfs.get_mut(path) {
             data.clear();
         }
     }
 
+    let offset = if append {
+        ctx.vfs.get(path).map_or(0, |d| d.len() as u64)
+    } else {
+        0
+    };
     let fd = *ctx.next_fd;
     *ctx.next_fd += 1;
     ctx.open_files.insert(
         fd,
         OpenFile {
-            path,
-            offset: 0,
+            path: path.to_string(),
+            offset,
             writable,
         },
     );
-    ctx.regs.write_gpr(0, true, fd as u64);
-    Ok(HostOutcome::Continue)
+    Some(fd)
 }
 
 /// close(fd) -> 0 on success, -1 on unknown fd.
@@ -475,7 +503,7 @@ mod tests {
         vfs: HashMap<String, Vec<u8>>,
         open_files: HashMap<u32, OpenFile>,
         next_fd: u32,
-        rand_state: u64,
+        rand_state: crate::hosted::libc::RandState,
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
     }
@@ -493,7 +521,7 @@ mod tests {
                 vfs: HashMap::new(),
                 open_files: HashMap::new(),
                 next_fd: 3,
-                rand_state: 1,
+                rand_state: crate::hosted::libc::RandState::default(),
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
             }

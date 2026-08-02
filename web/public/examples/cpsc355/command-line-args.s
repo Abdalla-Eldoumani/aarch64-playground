@@ -1,7 +1,7 @@
 // Example 4: Command-Line Arguments
 // Print all arguments passed on the command line.
-// Usage: ./myecho hello world
-// Output: ./myecho
+// Usage: hello world in the args box (argv[0] arrives as ./program)
+// Output: ./program
 //         hello
 //         world
 

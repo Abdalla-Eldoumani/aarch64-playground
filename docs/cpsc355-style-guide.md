@@ -32,23 +32,29 @@ rather than silently ignored, and so is a backtick anywhere except
 ``undefine(`NAME')``, whose m4 quotes are legal. Undefining a name ends that
 define's reach at that line, so an alias can be rebound per function.
 
-### Where the playground's m4 differs from GNU m4 on the servers
+### Where GNU m4's text-level rules bite
 
 Real GNU m4 (the `m4 prog.asm | gcc` pipeline on the university Linux
 machines) knows nothing about assembly syntax, which produces three
-behaviors the playground deliberately does not copy. The pre-assembly
-lint warns whenever a program would hit one:
+behaviors the playground's m4 reproduces exactly -- a program prints
+the same bytes here as on the servers. The pre-assembly lint warns
+whenever a program hits one, because the rewrite is almost never what
+the author meant:
 
-- GNU m4 substitutes a macro name **anywhere** it appears as a whole
-  word, including inside `"..."` strings and `'.'` character literals.
+- m4 substitutes a macro name **anywhere** it appears as a whole word,
+  including inside `"..."` strings and `'.'` character literals.
   `define(register, w19)` turns `.string "register count:"` into
-  `.string "w19 count:"` on the server. The playground leaves string and
-  character literals alone; rename the macro (`register_r`) so both
-  behave the same.
-- GNU m4 treats `#` as a comment start: nothing after `#` on a line is
-  expanded. `mov x0, #SIZE` with `define(SIZE, 40)` never expands on the
-  server and the assembler rejects it. Use an equate (`SIZE = 40`),
-  which the assembler itself resolves, for any value used after `#`.
+  `.string "w19 count:"` -- on the server and here alike. Escapes are
+  not special either: `define(n, w19)` rewrites a later `"\n"` into
+  `"\w19"`. Rename the macro (`register_r`).
+- m4 binds **sequentially**: a name used above its `define(...)` line
+  stays unexpanded and the assembler rejects it, here and on the
+  servers. Define aliases before their first use.
+- m4 treats `#` as a comment start: nothing after `#` on a line is
+  expanded, here or on the server. `mov x0, #SIZE` with
+  `define(SIZE, 40)` never expands and the assembler rejects it. Use an
+  equate (`SIZE = 40`), which the assembler itself resolves, for any
+  value used after `#`.
 - A defined name immediately followed by `(` is an m4 macro **call**
   on the server, and the parenthesized text is consumed as arguments.
   Put a space before the `(` or rename the macro.
@@ -151,7 +157,7 @@ Pre-registered libc stubs at addresses `0xFFFF_0000 + idx * 16`:
 ```
 printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy,
 memset, memcpy, atoi, rand, srand, time, exit, atof, malloc, free, usleep,
-fflush
+fflush, fopen, fprintf, fclose
 ```
 
 The libm subset, in the floating-point convention (argument in `d0`, second

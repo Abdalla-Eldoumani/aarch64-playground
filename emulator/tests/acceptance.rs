@@ -912,7 +912,7 @@ main:
     let mut cpu = Cpu::new();
     let image = aarch64_emulator::frontend::pipeline::assemble_hosted(src, &cpu.host)
         .unwrap_or_else(|e| panic!("assembly failed: {e}"));
-    cpu.load_linked_image_with_args(&image, &["prog", "19", "-7"])
+    cpu.load_linked_image_with_args(&image, &["19", "-7"])
         .expect("load failed");
     let r = cpu.run_until_break(1_000_000).expect("run failed");
     assert!(r.halted, "program did not halt");

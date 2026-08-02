@@ -87,10 +87,12 @@ come in handy:
 ## pass arguments
 
 Type into the **args** input above the Assemble bar (for example
-`hello world`). The loader writes the strings into the argv pool at
-`0x0080_0000` and sets `w0 = argc`, `x1 = argv` on entry, so
-`int main(int argc, char **argv)` programs work unchanged. Args persist
-per program, so switching sources and coming back keeps them.
+`hello world`). The box holds argv[1..]: the loader supplies
+`./program` as argv[0] -- as Linux always does -- writes the strings
+into the argv pool at `0x0080_0000`, and sets `w0 = argc`, `x1 = argv`
+on entry, so `int main(int argc, char **argv)` programs work unchanged
+(with no args at all, argc is 1, never 0). Args persist per program, so
+switching sources and coming back keeps them.
 
 ## share
 

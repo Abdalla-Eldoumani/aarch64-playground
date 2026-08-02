@@ -93,8 +93,12 @@ tab. The walls live in the Rust core and hold however the program arrived
   `syscalls::MAX_VFS_FILE_BYTES`
   (4 MiB) through `lseek` then `write`, the VFS as a whole is bounded by
   `MAX_VFS_TOTAL_BYTES` (4 MiB), and `openat` refuses to create more than
-  `MAX_VFS_FILES` (16) files. Over-cap calls return -1, the same signal a
-  full disk gives on Linux.
+  `MAX_VFS_FILES` (16) files (fopen routes through the same caps). Over-cap
+  calls return -1, the same signal a full disk gives on Linux.
+- Fault parity with the course servers: a load or store into the first page
+  (a null or garbage base register) and any sp-based access or libc call
+  with sp off the 16-byte boundary stop with a plain-language halt, the
+  same programs Linux kills with SIGSEGV or a bus error.
 
 Every limit is a calm halt or a refused call carrying a plain-language result,
 never a panic or a silent stop. Proven by `emulator/tests/bounds.rs` and the

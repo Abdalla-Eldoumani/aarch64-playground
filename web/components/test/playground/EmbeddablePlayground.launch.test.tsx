@@ -883,7 +883,19 @@ describe("the args box a mode-args example runs with", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     loadCalc(ref);
-    expect(argsBox().value).toBe("./calc console");
+    expect(argsBox().value).toBe("console");
+  });
+
+  it("migrates the legacy program-name seed to the bare token", () => {
+    // The console face used to seed `./calc console`; the emulator owns
+    // argv[0] now, so a persisted box holding that exact string would
+    // hand calc an extra argument. It migrates in place; anything else
+    // the student typed stays theirs.
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    loadCalc(ref);
+    fireEvent.change(argsBox(), { target: { value: "./calc console" } });
+    expect(argsBox().value).toBe("console");
   });
 
   it("seeds an empty box at load in terminal mode", () => {
@@ -909,11 +921,11 @@ describe("the args box a mode-args example runs with", () => {
       ref.current!.loadProgram({
         source: SOURCE,
         stem: "temp-convert",
-        args: "./temp-convert 32 F",
+        args: "32 F",
         label: "temperature",
       });
     });
-    expect(argsBox().value).toBe("./temp-convert console");
+    expect(argsBox().value).toBe("console");
   });
 
   it("follows the run-mode control both ways while the box stays clean", () => {
@@ -923,7 +935,7 @@ describe("the args box a mode-args example runs with", () => {
     fireEvent.click(screen.getByLabelText("run in the terminal"));
     expect(argsBox().value).toBe("");
     fireEvent.click(screen.getByLabelText("run in the console"));
-    expect(argsBox().value).toBe("./calc console");
+    expect(argsBox().value).toBe("console");
   });
 
   it("leaves a box the student typed in alone, in either direction", () => {
@@ -945,13 +957,13 @@ describe("the args box a mode-args example runs with", () => {
       ref.current!.loadProgram({
         source: SOURCE,
         stem: "temp-convert",
-        args: "./temp-convert 32 F",
+        args: "32 F",
         label: "temperature",
       });
     });
     // Typing the fixture form back is not the student inventing arguments:
     // it is one of the values the app itself seeds.
-    fireEvent.change(argsBox(), { target: { value: "./temp-convert 32 F" } });
+    fireEvent.change(argsBox(), { target: { value: "32 F" } });
     fireEvent.click(screen.getByLabelText("run in the terminal"));
     expect(argsBox().value).toBe("");
   });
@@ -983,7 +995,7 @@ describe("the args box a mode-args example runs with", () => {
     await act(async () => {
       ref.current!.assemble();
     });
-    expect(hub.assemble).toHaveBeenCalledWith(SOURCE, ["./calc", "console"]);
+    expect(hub.assemble).toHaveBeenCalledWith(SOURCE, ["console"]);
 
     fireEvent.change(argsBox(), { target: { value: "./calc scientific" } });
     await act(async () => {

@@ -501,7 +501,7 @@ mod tests {
         vfs: HashMap<String, Vec<u8>>,
         open_files: HashMap<u32, OpenFile>,
         next_fd: u32,
-        rand_state: u64,
+        rand_state: crate::hosted::libc::RandState,
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
     }
@@ -520,7 +520,7 @@ mod tests {
                 vfs: HashMap::new(),
                 open_files: HashMap::new(),
                 next_fd: 3,
-                rand_state: 1,
+                rand_state: crate::hosted::libc::RandState::default(),
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
             }

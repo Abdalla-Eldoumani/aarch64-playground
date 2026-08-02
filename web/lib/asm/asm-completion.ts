@@ -44,7 +44,7 @@ const DIRECTIVES: Suggestion[] = [
   ".string", ".asciz", ".ascii",
   ".byte", ".hword", ".short", ".word", ".quad",
   ".double", ".float",
-  ".skip", ".zero", ".balign", ".align",
+  ".skip", ".zero", ".space", ".balign", ".align",
   ".type", ".size",
 ].map((name) => ({ label: name, kind: "directive", detail: "directive" }));
 
@@ -58,7 +58,7 @@ const REGISTERS: Suggestion[] = [
 const LIBC: Suggestion[] = [
   "printf", "scanf", "puts", "putchar", "getchar",
   "strlen", "strcmp", "strcpy", "memset", "memcpy",
-  "exit", "atof",
+  "exit", "atof", "fopen", "fprintf", "fclose",
 ].map((name) => ({ label: name, kind: "libc", detail: "host stub" }));
 
 function instructionSuggestions(): Suggestion[] {
