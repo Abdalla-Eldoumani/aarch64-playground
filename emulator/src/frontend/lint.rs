@@ -7,15 +7,14 @@
 //!     shapes behind silent stack corruption -- the single most common
 //!     first-week failure. Leaf functions that never touch sp are
 //!     naturally exempt (they produce no stack deltas).
-//!   * m4 macro hygiene: divergences between this playground's m4 subset
-//!     and real GNU m4 on the course servers, so a program that behaves
-//!     here also behaves there. GNU m4 substitutes whole-name tokens
-//!     ANYWHERE -- inside `"` strings and `'` char literals included --
-//!     treats `NAME(` as a macro call that consumes the parenthesized
-//!     text, and treats `#` as a comment-start after which nothing
-//!     expands. The playground deliberately keeps the safer
-//!     no-substitution-in-literals behavior, so each of those spots gets
-//!     a loud warning instead of a silent server-side rewrite.
+//!   * m4 macro hygiene: the places GNU m4's text-level rules bite.
+//!     m4 substitutes whole-name tokens ANYWHERE -- inside `"` strings
+//!     and `'` char literals included -- treats `NAME(` as a macro call
+//!     that consumes the parenthesized text, and treats `#` as a
+//!     comment-start after which nothing expands. The playground's m4
+//!     follows the same rules (verified against the course toolchain),
+//!     so each of those spots gets a loud warning naming what the
+//!     rewrite does, because it is almost never what the author meant.
 //!
 //! Everything here is heuristic and fails open: an offset that cannot be
 //! folded to a constant, a function with several `ret`s, or any write to
@@ -134,7 +133,16 @@ fn scan_line_for_hygiene(
         let b = bytes[i];
         match b {
             b'\\' if (in_string || in_char) && i + 1 < bytes.len() => {
-                i += 2;
+                // Skip only escaped delimiters and backslashes, which
+                // would break the quote tracking. An escaped LETTER
+                // stays in the scan: m4 knows nothing of GAS escapes,
+                // so the `n` in `"\n"` is an ordinary identifier to it
+                // and must be eligible for the warning below.
+                if matches!(bytes[i + 1], b'"' | b'\'' | b'\\') {
+                    i += 2;
+                    continue;
+                }
+                i += 1;
                 continue;
             }
             b'"' if !in_char => in_string = !in_string,
@@ -159,9 +167,10 @@ fn scan_line_for_hygiene(
                         line,
                         message: format!(
                             "`{ident}` is defined as a macro ({body}) and also \
-                             appears in this {} -- on the university servers m4 \
-                             WILL replace it and the program will print `{body}` \
-                             instead; rename the macro (for example `{ident}_r`)",
+                             appears in this {} -- m4 replaces it here exactly \
+                             as the university servers do, so the program \
+                             prints `{body}` instead; rename the macro (for \
+                             example `{ident}_r`)",
                             if in_string { "string" } else { "character literal" }
                         ),
                     });
@@ -169,11 +178,11 @@ fn scan_line_for_hygiene(
                     warnings.push(LintWarning {
                         line,
                         message: format!(
-                            "on the university servers m4 treats `#` as a comment \
-                             start, so `{ident}` will NOT expand here and the \
-                             assembler will reject the line -- use an equate \
-                             (`{ident} = {body}`) instead of a define, or drop \
-                             the `#`"
+                            "m4 treats `#` as a comment start, here and on the \
+                             university servers, so `{ident}` will NOT expand \
+                             and the assembler will reject the line -- use an \
+                             equate (`{ident} = {body}`) instead of a define, \
+                             or drop the `#`"
                         ),
                     });
                 } else if i < bytes.len() && bytes[i] == b'(' {
