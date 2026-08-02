@@ -9,6 +9,7 @@ import {
   MAX_VFS_FIXTURE_FILES,
   decodeLaunch,
   fetchExample,
+  legacyModeArgsFor,
   modeArgsFor,
   parseVfsFixture,
   resolveBoot,
@@ -211,10 +212,10 @@ describe("fetchExample", () => {
   it("delivers args, trimmed, for an args example", async () => {
     stubFetch({
       "/examples/cpsc355/command-line-args.s": "src",
-      "/examples/cpsc355/fixtures/command-line-args.args": "./myecho hello world\n",
+      "/examples/cpsc355/fixtures/command-line-args.args": "hello world\n",
     });
     const payload = await fetchExample("command-line-args");
-    expect(payload.args).toBe("./myecho hello world");
+    expect(payload.args).toBe("hello world");
   });
 
   it("delivers stdin for a stdin example", async () => {
@@ -399,10 +400,14 @@ describe("the per-mode args table", () => {
   });
 
   it("hands the console face the token and the terminal face nothing", () => {
-    expect(modeArgsFor("calc", "console")).toBe("./calc console");
+    expect(modeArgsFor("calc", "console")).toBe("console");
     expect(modeArgsFor("calc", "terminal")).toBe("");
-    expect(modeArgsFor("temp-convert", "console")).toBe("./temp-convert console");
-    expect(modeArgsFor("two-sum", "console")).toBe("./two-sum console");
+    expect(modeArgsFor("temp-convert", "console")).toBe("console");
+    expect(modeArgsFor("two-sum", "console")).toBe("console");
+    // The pre-argv0 seed, kept only so the playground can migrate a
+    // returning student's persisted box.
+    expect(legacyModeArgsFor("calc")).toBe("./calc console");
+    expect(legacyModeArgsFor("command-line-args")).toBeNull();
   });
 
   it("has no opinion about a stem outside the table", () => {
