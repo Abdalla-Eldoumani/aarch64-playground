@@ -45,7 +45,7 @@ export const PITFALLS: Pitfall[] = [
         ldp     fp, lr, [sp], 16
         ret`,
     watch:
-      "the fault prints sp & 15 = 8: every call from there runs on a broken boundary. the emulator forgives it; gas and linux fault inside printf. the fix prints 0.",
+      "the fault stops at the bl: sp is 8 off the boundary there, and linux faults a call like that inside printf -- the playground stops at the call with the same diagnosis, so nothing prints. the fix prints 0.",
     fault: `// the fault: an 8-byte push leaves sp off the 16-byte boundary
 define(fp, x29)
 define(lr, x30)
@@ -336,7 +336,7 @@ done:
         bl      printf
         add     sp, sp, 32`,
     watch:
-      "the fault takes 24 bytes and prints sp & 15 = 8 at the call. the fix sizes the frame with the alloc formula and prints 0.",
+      "the fault takes 24 bytes and stops at the first store through sp: an off-boundary sp is a bus error on linux, here included, before anything prints. the fix sizes the frame with the alloc formula and prints 0.",
     fault: `// the fault: 24 bytes of locals taken without rounding to 16
 define(fp, x29)
 define(lr, x30)
@@ -492,7 +492,7 @@ announce:                               // unchanged: x9 is its scratch
         bl      printf
         add     sp, sp, 16`,
     watch:
-      "the fault prints sp & 15 = 8: the local reads back fine, yet the call leaves on a broken boundary. this emulator forgives that bl; linux faults inside printf. the fix rounds 8 up to 16 and prints 0.",
+      "the fault stops at the very first store through sp: 8 off the boundary is a bus error on linux, so the local never even gets written and the call is never reached. the fix rounds 8 up to 16 and prints n = 7, sp & 15 = 0.",
     fault: `// the fault: 8 bytes for one local leaves sp off the boundary at the call
 define(fp, x29)
 define(lr, x30)
