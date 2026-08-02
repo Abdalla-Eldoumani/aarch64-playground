@@ -59,6 +59,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
         || lower.contains(".float")
         || lower.contains(".skip")
         || lower.contains(".zero")
+        || lower.contains(".space")
         || lower.contains(".balign")
         || lower.contains(".align")
         || lower.contains("define(")
@@ -72,7 +73,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     for libc in [
         "printf", "scanf", "puts", "putchar", "getchar", "strlen", "strcmp", "strcpy",
         "memset", "memcpy", "atof", "atoi", "exit", "rand", "srand", "time",
-        "malloc", "free", "usleep", "fflush",
+        "malloc", "free", "usleep", "fflush", "fopen", "fprintf", "fclose",
     ] {
         let pat = format!("bl {libc}");
         if normalized.contains(&pat) {
