@@ -367,6 +367,11 @@ impl Cpu {
         cpu.host.register("free", crate::hosted::heap::free);
         cpu.host.register("usleep", crate::hosted::libc::usleep);
         cpu.host.register("fflush", crate::hosted::libc::fflush);
+        // FILE*-level stdio over the VFS; the handle scheme lives in
+        // hosted/stdio.rs.
+        cpu.host.register("fopen", crate::hosted::stdio::fopen);
+        cpu.host.register("fprintf", crate::hosted::stdio::fprintf);
+        cpu.host.register("fclose", crate::hosted::stdio::fclose);
         // The libm subset: double in d0 (and d1 for the two-argument
         // forms), double out in d0.
         cpu.host.register("sqrt", crate::hosted::math::sqrt);
