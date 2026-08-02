@@ -163,6 +163,7 @@ Every scalar instruction takes both course views of the register file: the S for
 | --------------------- | ----------------------------------- |
 | `ldr Xt, =<symbol>`   | `LDR (literal)` with a pool slot.   |
 | `ldr Xt, =<constant>` | Same, or a MOVZ/MOVK chain for small constants. |
+| `ldr Rt, <label>`     | `LDR (literal)`: loads the value at the label's address. Rt may be X, W, S, or D. Lowered through the literal pool as two words because the data sections sit past imm19's reach here; the S/D forms borrow x16, the same scratch the libc trampolines claim. |
 | `tst Rn, #imm`        | `ANDS WZR/XZR, Rn, #imm` (bitmask immediate encoding). |
 | `cmp Rn, #imm`        | `SUBS WZR/XZR, Rn, #imm`.           |
 | `mov Rd, #imm`        | MOVZ/MOVK/MOVN sequence depending on immediate shape. |
