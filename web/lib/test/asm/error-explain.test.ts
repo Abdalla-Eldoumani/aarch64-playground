@@ -43,10 +43,20 @@ describe("explainError", () => {
     expect(e!.styleSection).toBe("naming conventions");
   });
 
-  it("recognizes unaligned access and quotes the alignment requirement", () => {
-    const e = explainError("unaligned access at 0x0000000060000003 (requires 4-byte alignment)");
+  it("explains the sp-alignment fault via the frame rounding idiom", () => {
+    const e = explainError(
+      "stopped -- sp is 0x7ffffff8, which is not a multiple of 16. On Linux every load or store through sp faults when sp is off the 16-byte boundary (a bus error on the servers); the line that broke it is above this one. Round the frame up: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`",
+    );
     expect(e).not.toBeNull();
-    expect(e!.what).toContain("4-byte alignment");
+    expect(e!.fix).toContain("alloc = -(16 + locals) & -16");
+  });
+
+  it("explains a null-page access via the base register", () => {
+    const e = explainError(
+      "stopped -- tried to write to address 0x0, which is not part of any program section (the servers kill this with a segmentation fault). A base register is holding a small number instead of an address: check for a `mov` where you meant `ldr xN, =label`, or an m4 alias that reuses a register a pointer is already living in (`define(i_r, w19)` after `ldr x19, =arr` overwrites the pointer)",
+    );
+    expect(e).not.toBeNull();
+    expect(e!.fix).toContain("ldr xN, =label");
   });
 
   it("explains a stack overflow via the recursion base case first", () => {
