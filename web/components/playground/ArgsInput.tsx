@@ -87,7 +87,7 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
         type="text"
         value={value}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="argv..."
+        placeholder="12 25"
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
