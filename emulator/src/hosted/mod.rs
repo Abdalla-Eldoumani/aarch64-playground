@@ -17,6 +17,7 @@ pub mod libc;
 pub mod math;
 pub mod printf;
 pub mod scanf;
+pub mod stdio;
 pub mod syscalls;
 
 /// A host-function entry point. Takes a `HostContext` exposing stdout /
