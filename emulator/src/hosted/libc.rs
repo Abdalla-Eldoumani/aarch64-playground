@@ -126,8 +126,75 @@ pub fn fflush(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
-/// C `RAND_MAX`: rand() draws land in `0..=32767`.
-pub const RAND_MAX: i64 = 32767;
+/// C `RAND_MAX` as glibc defines it: rand() draws land in
+/// `0..=2147483647`, exactly the range course programs see on the
+/// servers.
+pub const RAND_MAX: i64 = 2_147_483_647;
+
+/// glibc's rand(): the TYPE_3 additive-feedback generator, not an LCG.
+/// State is a 31-word circular buffer with taps 3 words apart:
+/// `r[i] = r[i-31] + r[i-3] (mod 2^32)`, output `r[i] >> 1`. Seeding
+/// runs a 16807 Park-Miller LCG (Schrage's method) to fill the buffer,
+/// then discards 310 outputs. Reproducing it exactly is the point:
+/// an unseeded course program prints the same numbers here as on the
+/// servers, so students can diff against sample runs.
+///
+/// `entropy` is the separate 64-bit word the getrandom syscall draws
+/// from -- kept apart so reseeding rand never shifts a raw-mode game's
+/// food placement, and vice versa. The whole struct is `Copy` and rides
+/// in every snapshot, so step-back replays draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RandState {
+    r: [u32; 31],
+    f: usize,
+    rp: usize,
+    pub entropy: u64,
+}
+
+impl RandState {
+    /// glibc srand: a zero seed behaves as srand(1).
+    pub fn seed(seed: u32) -> Self {
+        let seed = if seed == 0 { 1 } else { seed };
+        let mut r = [0u32; 31];
+        r[0] = seed;
+        let mut word = seed as i32;
+        for slot in r.iter_mut().skip(1) {
+            // Schrage's method for 16807 * word mod 2^31-1 without
+            // overflowing i32; Rust's / and % truncate toward zero like
+            // C, so a seed at or above 2^31 follows glibc bit for bit.
+            let hi = (word as i64) / 127_773;
+            let lo = (word as i64) % 127_773;
+            let mut x = 16_807 * lo - 2_836 * hi;
+            if x < 0 {
+                x += 2_147_483_647;
+            }
+            word = x as i32;
+            *slot = word as u32;
+        }
+        let mut state = RandState { r, f: 3, rp: 0, entropy: 1 };
+        for _ in 0..310 {
+            state.next_u32();
+        }
+        state
+    }
+
+    /// One draw: the additive recurrence, output shifted down a bit so
+    /// the low bit's short cycle never reaches the caller.
+    pub fn next_u32(&mut self) -> u32 {
+        let v = self.r[self.f].wrapping_add(self.r[self.rp]);
+        self.r[self.f] = v;
+        self.f = (self.f + 1) % 31;
+        self.rp = (self.rp + 1) % 31;
+        v >> 1
+    }
+}
+
+impl Default for RandState {
+    /// C's unseeded rand behaves as srand(1).
+    fn default() -> Self {
+        Self::seed(1)
+    }
+}
 
 /// The timestamp `time` reports. A browser emulator has no reason to
 /// leak wall-clock time, and a fixed value makes the classic
@@ -137,21 +204,17 @@ pub const RAND_MAX: i64 = 32767;
 pub const FIXED_TIME: u64 = 355_000_000;
 
 pub fn rand(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
-    // The portable C LCG (the ISO sample implementation): advance the
-    // state, expose bits 16.. so the low-bit patterns of the multiplier
-    // never reach the caller.
-    *ctx.rand_state = ctx
-        .rand_state
-        .wrapping_mul(1_103_515_245)
-        .wrapping_add(12_345);
-    let value = ((*ctx.rand_state / 65_536) % 32_768) as i64;
-    ctx.regs.write_gpr(0, true, value as u64);
+    let value = ctx.rand_state.next_u32() as u64;
+    ctx.regs.write_gpr(0, true, value);
     Ok(HostOutcome::Continue)
 }
 
 pub fn srand(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
-    // C takes an unsigned int seed in w0.
-    *ctx.rand_state = ctx.regs.read_gpr(0, false);
+    // C takes an unsigned int seed in w0. The getrandom entropy word
+    // survives the reseed on purpose -- the two streams are unrelated.
+    let entropy = ctx.rand_state.entropy;
+    *ctx.rand_state = RandState::seed(ctx.regs.read_gpr(0, false) as u32);
+    ctx.rand_state.entropy = entropy;
     Ok(HostOutcome::Continue)
 }
 
@@ -267,7 +330,7 @@ mod tests {
         vfs: HashMap<String, Vec<u8>>,
         open_files: HashMap<u32, OpenFile>,
         next_fd: u32,
-        rand_state: u64,
+        rand_state: RandState,
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
     }
@@ -286,7 +349,7 @@ mod tests {
                 vfs: HashMap::new(),
                 open_files: HashMap::new(),
                 next_fd: 3,
-                rand_state: 1,
+                rand_state: RandState::default(),
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
             }
