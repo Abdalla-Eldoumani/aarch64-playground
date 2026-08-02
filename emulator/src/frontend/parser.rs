@@ -335,15 +335,22 @@ fn parse_directive(
             Ok(())
         }
         ".skip" | ".zero" | ".space" => {
-            // GAS treats all three as one directive: reserve `size` bytes,
-            // filled with the low byte of an optional second operand. A
-            // nonzero fill only means something in a data section; in .bss
-            // GAS ignores it and zero-fills.
+            // GAS: `.skip size[, fill]` and `.space size[, fill]` reserve
+            // `size` bytes holding the low byte of `fill` (default 0);
+            // `.zero size` takes the size alone. A nonzero fill only means
+            // something in a data section; in .bss GAS ignores it and
+            // zero-fills.
             let groups = split_comma_groups(rest);
             if groups.len() > 2 || groups.iter().any(|g| g.is_empty()) {
                 return Err(err(
                     line,
                     "expected `.space size` or `.space size, fill`",
+                ));
+            }
+            if name == ".zero" && groups.len() == 2 {
+                return Err(err(
+                    line,
+                    "`.zero` takes a size only -- use `.space size, fill` to fill with a byte",
                 ));
             }
             let count = groups[0];
@@ -356,7 +363,14 @@ fn parse_directive(
             let symbolic = count
                 .iter()
                 .any(|t| matches!(t.kind, TokenKind::Ident(_) | TokenKind::Dot));
-            if symbolic && fill == 0 {
+            if symbolic {
+                if fill != 0 {
+                    return Err(err(
+                        line,
+                        "a symbolic size cannot take a nonzero fill -- \
+                         write the size as a plain constant",
+                    ));
+                }
                 prog.section_or_insert(*current).items.push(Item::ReserveExpr {
                     tokens: count.to_vec(),
                     original_line: line,
@@ -368,6 +382,17 @@ fn parse_directive(
                 return Err(err(line, ".skip needs a non-negative byte count"));
             }
             if fill != 0 && !matches!(*current, SectionKind::Bss) {
+                // Refuse before materializing: the filled bytes are
+                // allocated here, ahead of the linker's 1 MiB window
+                // check, and on wasm32 a giant Vec is an allocation
+                // abort rather than an error message.
+                if n as u64 > 1024 * 1024 {
+                    return Err(err(
+                        line,
+                        "the fill would outgrow the section's 1 MiB window -- \
+                         shrink the size",
+                    ));
+                }
                 prog.section_or_insert(*current)
                     .items
                     .push(Item::Bytes(vec![fill; n as usize]));
@@ -817,6 +842,56 @@ mod tests {
             .items
             .iter()
             .any(|i| matches!(i, Item::Reserve(16))));
+    }
+
+    #[test]
+    fn space_matches_skip() {
+        let p = parse_ok(".bss\nbuf: .space 8\n");
+        let bss = p.section(SectionKind::Bss).unwrap();
+        assert!(bss.items.iter().any(|i| matches!(i, Item::Reserve(8))));
+    }
+
+    #[test]
+    fn space_with_fill_emits_bytes() {
+        let p = parse_ok(".data\ntbl: .space 4, 7\n");
+        let data = p.section(SectionKind::Data).unwrap();
+        let bytes = data
+            .items
+            .iter()
+            .find_map(|i| if let Item::Bytes(b) = i { Some(b.clone()) } else { None });
+        assert_eq!(bytes, Some(vec![7, 7, 7, 7]));
+    }
+
+    #[test]
+    fn space_fill_in_bss_still_zeroes() {
+        // GAS ignores a fill in .bss and zero-fills the reservation.
+        let p = parse_ok(".bss\nbuf: .space 4, 7\n");
+        let bss = p.section(SectionKind::Bss).unwrap();
+        assert!(bss.items.iter().any(|i| matches!(i, Item::Reserve(4))));
+    }
+
+    #[test]
+    fn zero_rejects_a_fill_operand() {
+        let e = parse(".data\n.zero 8, 1\n").unwrap_err();
+        assert!(e.to_string().contains(".zero"), "got: {e}");
+    }
+
+    #[test]
+    fn space_rejects_a_third_operand() {
+        let e = parse(".data\n.space 8, 1, 2\n").unwrap_err();
+        assert!(e.to_string().contains(".space size"), "got: {e}");
+    }
+
+    #[test]
+    fn space_fill_refuses_a_window_sized_allocation() {
+        let e = parse(".data\n.space 1048577, 1\n").unwrap_err();
+        assert!(e.to_string().contains("1 MiB"), "got: {e}");
+    }
+
+    #[test]
+    fn space_symbolic_size_with_fill_names_the_fix() {
+        let e = parse("SZ = 8\n.data\n.space SZ, 1\n").unwrap_err();
+        assert!(e.to_string().contains("plain constant"), "got: {e}");
     }
 
     #[test]
