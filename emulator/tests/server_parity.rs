@@ -149,6 +149,84 @@ main:
     assert_eq!(out, "8\n");
 }
 
+// GAS accepts `ldr <reg>, <label>` -- LDR (literal), a load FROM the
+// label's address -- and course code writes it alongside `ldr =label`.
+// The value must be read at run time: this program stores to the label
+// first and loads it back through the literal form.
+#[test]
+fn ldr_label_literal_load_reads_memory_at_run_time() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld\n"
+n_var:          .quad 0
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =n_var
+        mov     x10, 7
+        str     x10, [x9]
+
+        ldr     x19, n_var
+        ldr     x0, =fmt
+        mov     x1, x19
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "7\n");
+}
+
+// The same form reaches W and the fp registers (`ldr d0, label`), and a
+// label in `.bss` -- 3 MiB from .text, far past a real LDR (literal)'s
+// imm19 -- still loads.
+#[test]
+fn ldr_label_literal_load_covers_w_d_and_bss() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%d %.1f\n"
+d_var:          .double 2.5
+
+        .bss
+w_var:          .skip 4
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =w_var
+        mov     w10, 42
+        str     w10, [x9]
+
+        ldr     w1, w_var
+        ldr     d0, d_var
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "42 2.5\n");
+}
+
 // `.space` is the GAS spelling course solutions use alongside `.skip`;
 // both reserve N bytes, and a second operand fills them (low byte) in a
 // data section. In `.bss` GAS ignores a fill and zero-fills.
