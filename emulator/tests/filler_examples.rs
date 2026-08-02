@@ -268,7 +268,7 @@ fn calc_console_face_answers_typed_lines_in_plain_text() {
     let (stdout, exit, _) = run_cooked_session(
         "calc.s console",
         &read("calc.s"),
-        &["./calc", "console"],
+        &["console"],
         "2+3*4\nsqrt(9)\ndeg\nsin(30)\n5/0\nq\n",
     );
     assert_eq!(exit, Some(0));
@@ -352,7 +352,7 @@ fn two_sum_console_face_solves_a_typed_array_in_plain_text() {
     let (stdout, exit, _) = run_cooked_session(
         "two-sum.s console",
         &read("two-sum.s"),
-        &["./two-sum", "console"],
+        &["console"],
         "4\n2\n1000\n7\n11\n15\n9\n",
     );
     assert_eq!(exit, Some(0));
@@ -424,7 +424,7 @@ fn temp_convert_console_face_draws_the_same_readings_in_plain_text() {
     let (stdout, exit, _) = run_cooked_session(
         "temp-convert.s console",
         &read("temp-convert.s"),
-        &["./temp-convert", "console"],
+        &["console"],
         drive,
     );
     assert_eq!(exit, Some(0));
