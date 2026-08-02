@@ -118,6 +118,37 @@ print:
     assert_eq!(out, "32\n");
 }
 
+// `.` inside an instruction immediate is section-relative too, so
+// `. - label` measures the plain byte distance. Mixing an absolute `.`
+// with section-relative labels folded `. - main` to a 4 MiB-ish number
+// and refused to encode.
+#[test]
+fn dot_in_immediates_stays_section_relative() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x1, . - main
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    // The mov sits 8 bytes past main.
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "8\n");
+}
+
 // `.space` is the GAS spelling course solutions use alongside `.skip`;
 // both reserve N bytes, and a second operand fills them (low byte) in a
 // data section. In `.bss` GAS ignores a fill and zero-fills.
