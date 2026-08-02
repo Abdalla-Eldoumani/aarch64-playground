@@ -195,7 +195,7 @@ Pre-registered and available without setup:
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
 | `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
-| `rand` / `srand`               | The portable C LCG, `RAND_MAX` 32767. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
+| `rand` / `srand`               | glibc's TYPE_3 additive generator, `RAND_MAX` 2147483647: the sequence is identical to the course servers', so unseeded draws diff cleanly against sample runs. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
 | `time`                         | Returns a fixed timestamp (and stores it through `x0` when non-null), so `srand(time(0))` seeds the same run every time. Reproducibility over wall-clock realism, by design. |
 | `malloc` / `free`              | A fixed 1 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
 | `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
