@@ -54,10 +54,15 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     }
   });
 
-  it("16-byte stack alignment: the fault prints the misalignment, the fix prints 0", () => {
+  it("16-byte stack alignment: the fault stops at the call, the fix prints 0", () => {
     const pitfall = demo("16-byte stack alignment");
+    // The push itself is legal (SA0 checks sp before writeback); the bl
+    // with sp off the boundary is where linux dies inside printf, and
+    // the playground stops there with the call-boundary wording.
     const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toContain("sp & 15 = 8");
+    expect(fault.stdout).toBe("");
+    expect(fault.halted).toBe(true);
+    expect(fault.error).toContain("at this call");
     const fix = runProgram(pitfall.fix, 100_000);
     expect(fix.stdout).toContain("sp & 15 = 0");
     expect(fix.halted).toBe(true);
@@ -103,10 +108,12 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     expect(fix.exitCode).toBe(0);
   });
 
-  it("local allocation: the fault misaligns at the call, the alloc formula holds", () => {
+  it("local allocation: the fault stops at the first sp store, the alloc formula holds", () => {
     const pitfall = demo("non-16-byte local allocation");
     const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toContain("sp & 15 = 8");
+    expect(fault.stdout).toBe("");
+    expect(fault.halted).toBe(true);
+    expect(fault.error).toContain("multiple of 16");
     const fix = runProgram(pitfall.fix, 100_000);
     expect(fix.stdout).toContain("sp & 15 = 0");
     expect(fix.exitCode).toBe(0);
@@ -123,12 +130,15 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     expect(fix.exitCode).toBe(0);
   });
 
-  it("misaligned call: the fault prints sp & 15 = 8 at the bl, the fix prints 0", () => {
+  it("misaligned call: the fault stops at the sp store, the fix prints the line", () => {
     const pitfall = demo("misaligned stack at a call");
-    // This emulator does not fault a bl on a misaligned sp (real hardware
-    // does, inside printf); the printed low bits are the pinned evidence.
+    // SA0 faults every sp-based access while sp is off the boundary, so
+    // the store to the local -- not the later bl -- is where linux (and
+    // now the playground) stops this program.
     const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toBe("n = 7, sp & 15 = 8\n");
+    expect(fault.stdout).toBe("");
+    expect(fault.halted).toBe(true);
+    expect(fault.error).toContain("multiple of 16");
     const fix = runProgram(pitfall.fix, 100_000);
     expect(fix.stdout).toBe("n = 7, sp & 15 = 0\n");
     expect(fix.halted).toBe(true);
