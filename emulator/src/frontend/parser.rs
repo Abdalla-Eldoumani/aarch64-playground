@@ -334,26 +334,48 @@ fn parse_directive(
                 .push(Item::AlignToBytes(bytes));
             Ok(())
         }
-        ".skip" | ".zero" => {
+        ".skip" | ".zero" | ".space" => {
+            // GAS treats all three as one directive: reserve `size` bytes,
+            // filled with the low byte of an optional second operand. A
+            // nonzero fill only means something in a data section; in .bss
+            // GAS ignores it and zero-fills.
+            let groups = split_comma_groups(rest);
+            if groups.len() > 2 || groups.iter().any(|g| g.is_empty()) {
+                return Err(err(
+                    line,
+                    "expected `.space size` or `.space size, fill`",
+                ));
+            }
+            let count = groups[0];
+            let fill = match groups.get(1) {
+                Some(g) => (eval_const(g, line)? & 0xFF) as u8,
+                None => 0,
+            };
             // A count naming an equate (`.skip STACKSIZE * 4`) resolves
             // in the linker's layout walk; constants resolve right here.
-            let symbolic = rest
+            let symbolic = count
                 .iter()
                 .any(|t| matches!(t.kind, TokenKind::Ident(_) | TokenKind::Dot));
-            if symbolic {
+            if symbolic && fill == 0 {
                 prog.section_or_insert(*current).items.push(Item::ReserveExpr {
-                    tokens: rest.to_vec(),
+                    tokens: count.to_vec(),
                     original_line: line,
                 });
                 return Ok(());
             }
-            let n = eval_const(rest, line)?;
+            let n = eval_const(count, line)?;
             if n < 0 {
                 return Err(err(line, ".skip needs a non-negative byte count"));
             }
-            prog.section_or_insert(*current)
-                .items
-                .push(Item::Reserve(n as u64));
+            if fill != 0 && !matches!(*current, SectionKind::Bss) {
+                prog.section_or_insert(*current)
+                    .items
+                    .push(Item::Bytes(vec![fill; n as usize]));
+            } else {
+                prog.section_or_insert(*current)
+                    .items
+                    .push(Item::Reserve(n as u64));
+            }
             Ok(())
         }
         ".string" | ".asciz" => {
