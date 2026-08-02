@@ -16,6 +16,7 @@ import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playg
 import {
   EXAMPLE_INTERACTIVE,
   decodeLaunch,
+  legacyModeArgsFor,
   modeArgsFor,
   type HandoffPayload,
   type LaunchMode,
@@ -347,6 +348,15 @@ function EmbeddableCore({
     },
     [argsText, loadedStem, setLaunchMode],
   );
+  // The console face used to seed `./<stem> console`; the emulator now
+  // owns argv[0], so that stored box would hand the program an extra
+  // argument and land it on its usage path. Migrate that exact string --
+  // whichever ingress restored it -- and leave every other box alone.
+  useEffect(() => {
+    if (argsText !== "" && argsText === legacyModeArgsFor(loadedStem)) {
+      setArgsText(modeArgsFor(loadedStem, "console") ?? "");
+    }
+  }, [argsText, loadedStem]);
   // A text-only swap or an import replaces the program without a payload:
   // the mode and the stem both belonged to the program that set them, and
   // a stale mode would send an unrelated program's run to the pane.
@@ -1621,6 +1631,9 @@ function EmbeddableCore({
       // editor's error markers, and the verdict comes back directly. The
       // assemble wiped the machine, home directory included, so put the
       // working set back whatever the outcome.
+      // args[0] is the `./name` the terminal displays; the emulator owns
+      // argv[0] and re-adds it, so only argv[1..] goes through. Passing
+      // the whole array would double the program name.
       const verdict = await emuRef.current.assembleForTool(text, args.slice(1));
       applySeeds();
       if (!verdict.success) {
