@@ -10,11 +10,11 @@
  * dimmed, then the taken / falls-through verdict. Picking a code and typing
  * operands is the user acting (cyan); the computed flags and the verdict are
  * the machine acting (amber). The flag math is computeIntFlags from
- * FlagEffect -- the same NZCV rules the executor applies -- and operands are
- * fixed at the 32-bit w registers; the width story lives in the FlagEffect
- * panel on the flag-setting entries. Token-only, keyboard accessible (native
- * buttons and inputs), reduced-motion safe (discrete state swaps, no
- * animation).
+ * lib/emulator/flag-math -- the same NZCV rules the executor applies -- and
+ * operands are fixed at the 32-bit w registers; the width story lives in the
+ * FlagEffect panel on the flag-setting entries. Token-only, keyboard
+ * accessible (native buttons and inputs), reduced-motion safe (discrete state
+ * swaps, no animation).
  */
 
 import { useId, useState, type JSX } from "react";
@@ -23,7 +23,7 @@ import {
   computeIntFlags,
   parseIntOperand,
   type Flags,
-} from "@/components/diagrams/FlagEffect";
+} from "@/lib/emulator/flag-math";
 
 type CondGroup = "either sign" | "signed" | "unsigned";
 
