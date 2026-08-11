@@ -384,6 +384,48 @@ body {
   padding-top: var(--safe-top);
 }
 
+/* =============================================================================
+   SKIP LINK
+   The first focusable element in the document (root layout), pointing at the
+   single <main id="main"> every route renders. Clipped to a screen-reader-only
+   box until focus, then a fixed mono chip in the top-left: fixed rather than
+   in flow because the nav's backdrop-blur and the debugger's header band would
+   both paint over an in-flow control. z-index sits above the highest overlay
+   in the app (z-[80]) so the chip is never covered while it has focus.
+============================================================================= */
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.skip-link:focus {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  height: auto;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  border-radius: var(--radius-control);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-mono), "JetBrains Mono", "Fira Code", "Consolas", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  box-shadow: var(--ring);
+}
+
 /* Resize-handle styling for react-resizable-panels. The `data-` attributes
    come from the library; we widen the hit target on coarse pointers so
    phone drags don't miss the handle. On hover/drag a centered cyan grip bar
