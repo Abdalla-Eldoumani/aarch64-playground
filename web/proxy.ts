@@ -6,9 +6,14 @@ import { NextResponse, type NextRequest } from "next/server";
  * deploy-time guarantee; this proxy is the framework-level one.
  *
  * Keep in lockstep with vercel.json -- both should reject anything we
- * promise in docs/security.md.
+ * promise in docs/security.md. proxy.test.ts asserts the two sets match,
+ * so a drift fails the suite instead of shipping. The old-host redirect
+ * lives only in vercel.json: the platform resolves redirects before this
+ * proxy runs, and localhost never wears the old host.
+ *
+ * Exported for that parity test alone; nothing else may import it.
  */
-const SECURITY_HEADERS: Record<string, string> = {
+export const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -24,11 +29,11 @@ const SECURITY_HEADERS: Record<string, string> = {
     // development. vercel.json carries the production policy without it.
     "script-src 'self' " +
     (process.env.NODE_ENV === "development" ? "'unsafe-eval' " : "") +
-    "'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://va.vercel-scripts.com; " +
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+    "'wasm-unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com; " +
+    "style-src 'self' 'unsafe-inline'; " +
     "font-src 'self' data:; " +
     "img-src 'self' data: blob:; " +
-    "connect-src 'self' https://cdn.jsdelivr.net https://vitals.vercel-insights.com https://va.vercel-scripts.com; " +
+    "connect-src 'self' https://vitals.vercel-insights.com https://va.vercel-scripts.com; " +
     "worker-src 'self' blob:; " +
     "child-src 'self' blob:; " +
     "frame-ancestors 'none'; " +
