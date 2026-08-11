@@ -2287,7 +2287,11 @@ function EmbeddableCore({
         </div>
       )}
 
-      <main role="main" aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
+      {/* A labeled section, not a main: this component is composed inside the
+          landing hero, lessons, exercises, and the reference, all of which
+          already sit inside their page's main. The /playground route supplies
+          the one main around it. */}
+      <section aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
         {showResizable ? (
           <ResizableLayout
             breakpoint={bp}
@@ -2328,7 +2332,7 @@ function EmbeddableCore({
             paneRequest={paneRequest ?? undefined}
           />
         )}
-      </main>
+      </section>
 
       <Controls
         onAssemble={assembleWithHistory}
