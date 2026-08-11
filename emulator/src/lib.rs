@@ -13,7 +13,6 @@ pub mod snapshot;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
 use serde::Serialize;
 
 #[allow(unused_imports)]
@@ -90,6 +89,99 @@ pub fn detect_hosted_mode(source: &str) -> bool {
 #[wasm_bindgen(js_name = detectHostedMode)]
 pub fn detect_hosted_mode_js(source: &str) -> bool {
     detect_hosted_mode(source)
+}
+
+/// One band of the emulator's address space as the memory panel labels it.
+/// `start` is inclusive and `end` exclusive; both are u32 per the boundary
+/// convention `flatten_line_map` documents.
+#[derive(Serialize)]
+pub struct MemoryRegionJs {
+    pub name: &'static str,
+    pub start: u32,
+    pub end: u32,
+}
+
+/// The address bands a cpsc 355 program can touch, in address order. They
+/// describe the STATIC layout, not live frontiers: the heap row spans the
+/// whole malloc window rather than the current bump pointer, and the stub
+/// row the whole table capacity, because a panel labelling an address wants
+/// the band it belongs to regardless of what the program has reached. Built
+/// outside the wasm boundary so a native test pins every row to the
+/// constant it comes from -- the panel's labels and jump targets are only
+/// trustworthy while they agree with the loader.
+pub fn memory_map() -> Vec<MemoryRegionJs> {
+    let section = |name, base: u64| MemoryRegionJs {
+        name,
+        start: base as u32,
+        end: (base + cpu::SECTION_WINDOW) as u32,
+    };
+    vec![
+        section(".text", cpu::CODE_BASE),
+        section(".rodata", cpu::RODATA_BASE),
+        section(".data", cpu::DATA_BASE),
+        section(".bss", cpu::BSS_BASE),
+        MemoryRegionJs {
+            name: "argv",
+            start: argv::ARGV_BASE as u32,
+            end: (argv::ARGV_BASE + argv::ARGV_MAX_BYTES as u64) as u32,
+        },
+        MemoryRegionJs {
+            name: "heap",
+            start: hosted::heap::HEAP_BASE as u32,
+            end: hosted::heap::HEAP_LIMIT as u32,
+        },
+        MemoryRegionJs {
+            name: "stack",
+            start: cpu::STACK_FLOOR as u32,
+            end: cpu::STACK_BASE as u32,
+        },
+        MemoryRegionJs {
+            name: "host stubs",
+            start: cpu::HOST_STUB_BASE as u32,
+            end: (cpu::HOST_STUB_BASE + cpu::HOST_STUB_COUNT * cpu::HOST_STUB_STRIDE) as u32,
+        },
+    ]
+}
+
+/// Wasm-bindgen wrapper, mirroring `detectHostedMode`: the map is fixed for
+/// the life of the module, so the caller reads it once at init and keeps it
+/// rather than maintaining a parallel copy of the layout in TypeScript.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = memoryMap)]
+pub fn memory_map_js() -> JsValue {
+    serde_wasm_bindgen::to_value(&memory_map()).unwrap()
+}
+
+/// The external call a paused pc sits inside: which libc function, and the
+/// call site it was reached from. A hosted call takes three steps (two
+/// trampoline words, then the synthetic stub address), none of which is a
+/// line the student wrote, so the stepping UI reads this to name the call
+/// and hold the marker on the `bl`.
+pub struct HostCallContext {
+    pub name: String,
+    pub call_site_pc: u64,
+    /// Editor line of the call site, when the line map resolves it.
+    pub call_site_line: Option<u32>,
+}
+
+/// Resolve the external-call context for the cpu's current pc, or `None`
+/// when the pc is an instruction the program itself holds. `line_map` is
+/// the flat `[addr, line, ...]` map the wasm wrapper carries.
+///
+/// The call site is LR-4, the same recovery `error_line_for` uses for a
+/// fault raised inside a stub: LR holds the address the `bl` will return
+/// to, and the instruction before it is the `bl`. It has to be dynamic --
+/// one trampoline serves every call site of a function, so nothing static
+/// can say which `printf` line the pc belongs to.
+pub fn host_call_context(cpu: &Cpu, line_map: &[u32]) -> Option<HostCallContext> {
+    let name = cpu.host_call_name(cpu.regs.read_pc())?.to_string();
+    let call_site_pc = cpu.regs.read_gpr(30, true).wrapping_sub(4);
+    let target = call_site_pc as u32;
+    let call_site_line = line_map
+        .chunks_exact(2)
+        .find(|pair| pair[0] == target)
+        .map(|pair| pair[1]);
+    Some(HostCallContext { name, call_site_pc, call_site_line })
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -190,6 +282,14 @@ struct RegistersJs {
     sp: String,
     pc: String,
     nzcv: u8,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct HostCallJs {
+    name: String,
+    call_site_pc: u32,
+    call_site_line: Option<u32>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -652,6 +752,26 @@ impl Emulator {
         self.line_map.clone()
     }
 
+    /// The external call the pc currently sits inside as
+    /// `{ name, call_site_pc, call_site_line }`, or JS `null` when the pc is
+    /// an instruction the program holds. Answers for each of the three steps
+    /// a hosted call takes and for a `scanf` parked waiting on input, always
+    /// naming the call site the `bl` came from, so the stepping UI can say
+    /// "printf runs inside the runtime" instead of showing a synthetic
+    /// address with no source line. Reads state only.
+    #[wasm_bindgen(js_name = hostCallContext)]
+    pub fn host_call_context(&self) -> JsValue {
+        match host_call_context(&self.cpu, &self.line_map) {
+            Some(ctx) => serde_wasm_bindgen::to_value(&HostCallJs {
+                name: ctx.name,
+                call_site_pc: ctx.call_site_pc as u32,
+                call_site_line: ctx.call_site_line,
+            })
+            .unwrap(),
+            None => JsValue::NULL,
+        }
+    }
+
     // -- hosted runtime (phase B) --
 
     /// Drain accumulated stdout as a UTF-8 string.
@@ -763,6 +883,99 @@ impl Emulator {
     /// Clear stdout/stderr scrollback without resetting CPU state.
     pub fn clear_console(&mut self) {
         self.cpu.clear_console();
+    }
+}
+
+#[cfg(test)]
+mod memory_map_tests {
+    use super::{memory_map, MemoryRegionJs};
+    use crate::argv::{ARGV_BASE, ARGV_MAX_BYTES};
+    use crate::cpu::{
+        BSS_BASE, CODE_BASE, DATA_BASE, HOST_STUB_BASE, HOST_STUB_COUNT, HOST_STUB_STRIDE,
+        RODATA_BASE, SECTION_WINDOW, STACK_BASE, STACK_FLOOR,
+    };
+    use crate::hosted::heap::{HEAP_BASE, HEAP_LIMIT};
+
+    fn row<'a>(rows: &'a [MemoryRegionJs], name: &str) -> &'a MemoryRegionJs {
+        rows.iter()
+            .find(|region| region.name == name)
+            .unwrap_or_else(|| panic!("the map has a `{name}` row"))
+    }
+
+    #[test]
+    fn section_rows_span_their_window_from_the_loader_bases() {
+        let rows = memory_map();
+        for (name, base) in [
+            (".text", CODE_BASE),
+            (".rodata", RODATA_BASE),
+            (".data", DATA_BASE),
+            (".bss", BSS_BASE),
+        ] {
+            let region = row(&rows, name);
+            assert_eq!(region.start, base as u32, "{name} starts at its loader base");
+            assert_eq!(
+                region.end,
+                (base + SECTION_WINDOW) as u32,
+                "{name} ends one section window later",
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_rows_span_their_owning_constants() {
+        let rows = memory_map();
+
+        let argv = row(&rows, "argv");
+        assert_eq!(argv.start, ARGV_BASE as u32);
+        assert_eq!(argv.end, (ARGV_BASE + ARGV_MAX_BYTES as u64) as u32);
+
+        // The heap row is the whole malloc window, not the live frontier.
+        let heap = row(&rows, "heap");
+        assert_eq!(heap.start, HEAP_BASE as u32);
+        assert_eq!(heap.end, HEAP_LIMIT as u32);
+
+        // The stack grows down from the base toward the floor, so the row
+        // reads low-to-high like every other.
+        let stack = row(&rows, "stack");
+        assert_eq!(stack.start, STACK_FLOOR as u32);
+        assert_eq!(stack.end, STACK_BASE as u32);
+
+        // The stub row is the table's capacity, not the registered count:
+        // registering another stub must not move the band.
+        let stubs = row(&rows, "host stubs");
+        assert_eq!(stubs.start, HOST_STUB_BASE as u32);
+        assert_eq!(
+            stubs.end,
+            (HOST_STUB_BASE + HOST_STUB_COUNT * HOST_STUB_STRIDE) as u32,
+        );
+    }
+
+    #[test]
+    fn rows_are_in_address_order_and_never_overlap() {
+        let rows = memory_map();
+        let names: Vec<&str> = rows.iter().map(|region| region.name).collect();
+        assert_eq!(
+            names,
+            vec![".text", ".rodata", ".data", ".bss", "argv", "heap", "stack", "host stubs"],
+            "the map is emitted in address order",
+        );
+        for pair in rows.windows(2) {
+            assert!(
+                pair[0].end <= pair[1].start,
+                "`{}` (ends {:#x}) must not reach into `{}` (starts {:#x})",
+                pair[0].name,
+                pair[0].end,
+                pair[1].name,
+                pair[1].start,
+            );
+        }
+        for region in &rows {
+            assert!(
+                region.start < region.end,
+                "`{}` spans at least one byte",
+                region.name,
+            );
+        }
     }
 }
 
