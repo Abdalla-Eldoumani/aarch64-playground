@@ -74,4 +74,25 @@ describe("InstructionView", () => {
     expect(bodyRowCount()).toBe(INSTRUCTION_WINDOW);
     expect(screen.getByText("nop 0")).toBeTruthy();
   });
+
+  it("marks and follows the anchor when the pc is off the listing", () => {
+    const total = INSTRUCTION_WINDOW * 4 + 10;
+    // Inside a libc call the pc is a trampoline word the listing does not
+    // hold, so the marker and the window follow the call site instead of
+    // parking at the top for all three steps.
+    render(
+      <InstructionView
+        instructions={listing(total)}
+        pc={0xffff0000}
+        anchorPc={CODE_BASE + 1500 * 4}
+      />,
+    );
+    const marked = Array.from(document.querySelectorAll("tbody tr")).filter((r) =>
+      r.textContent?.startsWith("▶"),
+    );
+    expect(marked).toHaveLength(1);
+    expect(marked[0].textContent).toContain("nop 1500");
+    expect(screen.getByRole("status").textContent).toContain("1,025-1,536");
+    expect(screen.queryByText("nop 0")).toBeNull();
+  });
 });
