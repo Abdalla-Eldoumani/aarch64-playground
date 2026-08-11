@@ -74,7 +74,7 @@
 
   --text-primary:   #14161A;
   --text-secondary: #565E68;
-  --text-tertiary:  #6A727C;
+  --text-tertiary:  #626A73; /* 4.5:1 on every light surface incl. --bg-elevated hover */
 
   --amber:          #A86A0F;
   --amber-dim:      #E7CD96;
