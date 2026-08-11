@@ -7,7 +7,7 @@ const THEMES = ["dark", "light", "high-contrast"] as const;
 const STP = "stp x29, x30, [sp, -16]!";
 const SUB24 = "sub sp, sp, 24";
 const SUB32 = "sub sp, sp, 32";
-const MISALIGNED_NOTE = "misaligned — a bl from here faults on real hardware";
+const MISALIGNED_NOTE = "misaligned -- a bl from here faults on real hardware";
 
 afterEach(() => {
   cleanup();
