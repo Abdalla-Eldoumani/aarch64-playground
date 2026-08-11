@@ -49,6 +49,14 @@
       "limit": "750 KB"
     },
     {
+      "name": "lazy terminal pane (xterm)",
+      "path": [
+        ".next/static/chunks/terminal.*.js",
+        ".next/static/chunks/xterm.*.js"
+      ],
+      "limit": "80 KB"
+    },
+    {
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
       "limit": "200 KB"
