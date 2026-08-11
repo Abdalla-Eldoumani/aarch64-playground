@@ -165,6 +165,18 @@ impl HostTable {
             && (address - HOST_STUB_BASE).is_multiple_of(HOST_STUB_STRIDE)
     }
 
+    /// Name of the stub at `address`, or `None` when no entry lives there.
+    /// The stepping UI needs the reverse of `lookup`: a pc parked on a
+    /// synthetic address has to be reported as "inside printf" rather than
+    /// as an instruction the student wrote.
+    pub fn name_for_address(&self, address: u64) -> Option<&str> {
+        if !self.contains_address(address) {
+            return None;
+        }
+        let idx = ((address - HOST_STUB_BASE) / HOST_STUB_STRIDE) as usize;
+        self.entries.get(idx).map(|(name, _)| name.as_str())
+    }
+
     /// Dispatch to the stub at `address`. Returns `None` when the address
     /// is outside the table (so the caller can fall through to normal
     /// instruction fetch) or misaligned.
