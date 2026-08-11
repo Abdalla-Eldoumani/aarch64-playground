@@ -17,7 +17,7 @@ import {
 
 describe("canonical urls", () => {
   it("pins the deployed and repository origins", () => {
-    expect(SITE_URL).toBe("https://aarch64-playground.vercel.app");
+    expect(SITE_URL).toBe("https://aarch64-playground.com");
     expect(REPO_URL).toBe("https://github.com/Abdalla-Eldoumani/aarch64-playground");
   });
 
