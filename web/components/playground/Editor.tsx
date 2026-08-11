@@ -10,14 +10,48 @@ import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
 import { useToast } from "@/components/ui/Toast";
 import { validateSource } from "@/lib/playground/upload-guard";
 
-// Pin the monaco build the loader fetches. The loader ships a default CDN
-// version that moves with its own releases (a transitive dep), so without
-// this a lockfile refresh could silently swap the editor build the site
-// runs; the devDependency pin keeps the compile-time types on the same
-// version. Keep the two in step when bumping.
-loader.config({
-  paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs" },
-});
+// The editor runtime is vendored from the monaco-editor dependency instead
+// of fetched from the loader's default CDN: the installed PWA has to keep
+// working offline, and a campus network that filters public CDNs would
+// otherwise leave a student with an empty editor pane. One dependency pin
+// now decides both the runtime build and the compile-time types.
+//
+// Two details of the arrangement carry their own reasons:
+//   - `edcore.main` is monaco's editor-only entry: every widget the
+//     playground uses (suggest, hover, find) and none of the bundled
+//     language services. This editor registers arm64 itself and never asks
+//     for another language, so those services -- and the extra workers
+//     they need -- would be megabytes of dead weight.
+//   - the import is dynamic because monaco is a browser-only module and
+//     this component is rendered on the server too, and because the editor
+//     belongs in its own async chunk: the landing page composes this same
+//     component, and a reader who never types should not download an
+//     editor.
+let monacoLoad: Promise<void> | null = null;
+
+function loadMonaco(): Promise<void> {
+  monacoLoad ??= (async () => {
+    // Monaco reads this global lazily, when it first needs a worker. The
+    // base editor worker is the only one to wire up (no language services),
+    // and it is bundled from the package for the same offline reason.
+    self.MonacoEnvironment = {
+      getWorker: () =>
+        new Worker(
+          new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url),
+          // The worker name is also the bundler's chunk name, which is what
+          // lets the bundle budget in package.json glob the editor's assets
+          // by name instead of by a hashed webpack id that moves with any
+          // change to the module graph.
+          { name: "monaco-worker" },
+        ),
+    };
+    const monaco = await import(
+      /* webpackChunkName: "monaco" */ "monaco-editor/esm/vs/editor/edcore.main.js"
+    );
+    loader.config({ monaco });
+  })();
+  return monacoLoad;
+}
 
 let arm64Registered = false;
 
@@ -339,6 +373,27 @@ export function Editor({
     onFormatRef.current = onFormat;
   }, [onFormat]);
   const toast = useToast();
+  // The vendored build has to be named to the loader BEFORE
+  // @monaco-editor/react asks for it -- an unnamed instance is exactly what
+  // sends the loader off to its CDN default -- and child effects run first,
+  // so the editor itself mounts once the chunk is in. A phone-fallback
+  // mount never requests the chunk at all.
+  const [monacoReady, setMonacoReady] = useState(false);
+  useEffect(() => {
+    if (fallback) return;
+    let live = true;
+    void loadMonaco().then(
+      () => {
+        if (live) setMonacoReady(true);
+      },
+      () => {
+        if (live) toast.error("the editor failed to load -- reload the page to try again");
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [fallback, toast]);
 
   // Guard the source ingress (typing, paste, and drop all flow here). A
   // change that would push the buffer over MAX_SOURCE_BYTES is rejected and
@@ -581,36 +636,45 @@ export function Editor({
           .monaco-editor .glyph-margin { width: 32px !important; }
         }
       `}</style>
-      <MonacoEditor
-        height="100%"
-        language="arm64"
-        theme="arm64-dark"
-        value={value}
-        onChange={(v) => handleChange(v ?? "")}
-        onMount={handleMount}
-        options={{
-          // 16px font on mobile kills iOS's focus-zoom behavior; keep
-          // 14 on desktop where the ems cost is worth it.
-          fontSize: isCoarsePointer() ? 16 : 14,
-          fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
-          minimap: { enabled: false },
-          glyphMargin: true,
-          lineNumbersMinChars: 3,
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 4,
-          wordWrap: isCoarsePointer() ? "on" : "off",
-          // The block caret is the site's brand cursor, here in the one place
-          // it is a real cursor. It blinks hard on/off; when the reader asks
-          // for reduced motion it holds solid instead, same fallback as the
-          // CSS cursor elsewhere.
-          cursorStyle: "block",
-          cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
-          accessibilitySupport: "auto",
-          accessibilityHelpUrl: "/docs/accessibility",
-          readOnly,
-        }}
-      />
+      {monacoReady ? (
+        <MonacoEditor
+          height="100%"
+          language="arm64"
+          theme="arm64-dark"
+          value={value}
+          onChange={(v) => handleChange(v ?? "")}
+          onMount={handleMount}
+          options={{
+            // 16px font on mobile kills iOS's focus-zoom behavior; keep
+            // 14 on desktop where the ems cost is worth it.
+            fontSize: isCoarsePointer() ? 16 : 14,
+            fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+            minimap: { enabled: false },
+            glyphMargin: true,
+            lineNumbersMinChars: 3,
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 4,
+            wordWrap: isCoarsePointer() ? "on" : "off",
+            // The block caret is the site's brand cursor, here in the one place
+            // it is a real cursor. It blinks hard on/off; when the reader asks
+            // for reduced motion it holds solid instead, same fallback as the
+            // CSS cursor elsewhere.
+            cursorStyle: "block",
+            cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
+            accessibilitySupport: "auto",
+            accessibilityHelpUrl: "/docs/accessibility",
+            readOnly,
+          }}
+        />
+      ) : (
+        <div
+          className="flex h-full items-center justify-center font-mono text-[12px] text-[var(--text-tertiary)]"
+          role="status"
+        >
+          loading editor...
+        </div>
+      )}
     </div>
   );
 }
