@@ -12,7 +12,7 @@
  * Exits 0 on success, 1 on any header mismatch or fetch failure.
  */
 
-const SITE = process.argv[2] || process.env.SITE || "https://aarch64-playground.vercel.app";
+const SITE = process.argv[2] || process.env.SITE || "https://aarch64-playground.com";
 
 const REQUIRED = {
   "x-content-type-options": (v) => v === "nosniff",
