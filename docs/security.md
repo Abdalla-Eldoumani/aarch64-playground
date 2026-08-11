@@ -27,7 +27,7 @@ dev), kept in lockstep.
 
 | Header | Value | Why |
 | --- | --- | --- |
-| `Content-Security-Policy` | `default-src 'self'`, full policy in source | Restricts every resource type to `'self'` plus a small allowlist; `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`. Third-party origins: `cdn.jsdelivr.net` (Monaco), `va.vercel-scripts.com` (Analytics + Speed Insights script), `vitals.vercel-insights.com` (its beacon) |
+| `Content-Security-Policy` | `default-src 'self'`, full policy in source | Restricts every resource type to `'self'` plus a small allowlist; `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`. Third-party origins: `va.vercel-scripts.com` (Analytics + Speed Insights script) and `vitals.vercel-insights.com` (its beacon) only |
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | Forces HTTPS (two-year max-age, subdomains, preload) |
 | `X-Content-Type-Options` | `nosniff` | Prevents MIME-sniff-driven script execution |
 | `X-Frame-Options` | `DENY` | Blocks framing (clickjacking) |
@@ -113,12 +113,13 @@ hosted-runtime unit tests.
   markdown is written to the clipboard, never injected into the DOM.
 - No dynamic JS evaluation. The watch-expression evaluator parses by hand into
   a small AST and reads register and memory state through typed accessors.
-- No third-party script CDN at runtime except the Monaco editor loader on
-  `cdn.jsdelivr.net`. This is the one third-party script-trust boundary; it is
-  constrained to that host in the CSP and protected in transit by HTTPS and
-  HSTS. Self-hosting Monaco would remove it and is the natural next hardening
-  step. Google Fonts are self-hosted via `next/font/google`, so no font CDN
-  connection happens at runtime.
+- No third-party script CDN at runtime. The Monaco editor is vendored from the
+  `monaco-editor` package and served same-origin (it previously loaded from
+  `cdn.jsdelivr.net`, which was the one third-party script-trust boundary; the
+  CSP no longer allows that host anywhere). Google Fonts are self-hosted via
+  `next/font/google`, so no font CDN connection happens at runtime either. The
+  parity between `vercel.json` and `web/proxy.ts` is pinned by
+  `web/proxy.test.ts`.
 - No SharedArrayBuffer, so we need no COEP and the strict cross-origin
   isolation it requires. The worker copies bytes through `postMessage`.
 - Vercel Analytics and Speed Insights are anonymized, set no cookies, and run
