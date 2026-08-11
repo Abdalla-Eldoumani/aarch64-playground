@@ -2,12 +2,42 @@ import { describe, expect, it } from "vitest";
 import sitemap from "./sitemap";
 import robots from "./robots";
 import { SITE_URL } from "@/lib/content/site";
+import { loadAllLessons } from "@/lib/content/lessons";
+import { loadAllExercises } from "@/lib/content/exercises";
 
 describe("sitemap", () => {
   const entries = sitemap();
+  // The expected slug sets come from the same loaders the pages use, so adding
+  // a lesson or exercise cannot leave the sitemap behind: the count below is
+  // the only number to update, and it fails loudly when it drifts.
+  const lessonSlugs = loadAllLessons().map((lesson) => lesson.slug);
+  const exerciseSlugs = loadAllExercises().map((exercise) => exercise.slug);
 
-  it("lists exactly the five public routes", () => {
-    expect(entries).toHaveLength(5);
+  it("lists the five fixed routes plus every lesson and exercise", () => {
+    expect(entries).toHaveLength(13);
+    expect(entries).toHaveLength(5 + lessonSlugs.length + exerciseSlugs.length);
+  });
+
+  it("carries one entry per lesson at content priority", () => {
+    for (const slug of lessonSlugs) {
+      const entry = entries.find(
+        (candidate) => candidate.url === new URL(`/learn/${slug}`, SITE_URL).toString(),
+      );
+      expect(entry).toBeDefined();
+      expect(entry?.priority).toBe(0.6);
+      expect(entry?.changeFrequency).toBe("monthly");
+    }
+  });
+
+  it("carries one entry per exercise at content priority", () => {
+    for (const slug of exerciseSlugs) {
+      const entry = entries.find(
+        (candidate) => candidate.url === new URL(`/practice/${slug}`, SITE_URL).toString(),
+      );
+      expect(entry).toBeDefined();
+      expect(entry?.priority).toBe(0.6);
+      expect(entry?.changeFrequency).toBe("monthly");
+    }
   });
 
   it("emits absolute URLs anchored to the single site origin", () => {
