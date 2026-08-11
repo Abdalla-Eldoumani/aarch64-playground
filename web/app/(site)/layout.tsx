@@ -23,7 +23,12 @@ export default async function SiteLayout({
     <div className="paper relative flex flex-col min-h-dvh">
       <CropMarks />
       <SiteNav variant="full" stars={stars} />
-      <main className="flex-1">{children}</main>
+      {/* The root layout's skip link targets this id; tabIndex -1 makes the
+          landmark itself focusable so the jump moves the caret, not just the
+          scroll position. */}
+      <main id="main" tabIndex={-1} className="flex-1">
+        {children}
+      </main>
       <SiteFooter />
     </div>
   );
