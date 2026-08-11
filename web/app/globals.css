@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* =============================================================================
-   aarch64 playground: design tokens v2 — "look inside the machine"
+   aarch64 playground: design tokens v2 -- "look inside the machine"
    One system, two densities. Amber = the machine acting. Cyan = you acting.
    One semantic token drives each state across all three themes. The 32-bit
    instruction word is the brand: field boxes, bit rulers, blueprint paper.
@@ -143,7 +143,7 @@
    (editorial leads + margin notes). next/font binds --font-sans/--font-mono/
    --font-serif on <html> to the self-hosted hashed families (layout.tsx); the
    --type-* shorthands reference those vars so they resolve to the self-hosted
-   fonts. The family vars are intentionally NOT redeclared here — doing so
+   fonts. The family vars are intentionally NOT redeclared here -- doing so
    would shadow next/font.
 ============================================================================= */
 :root {
