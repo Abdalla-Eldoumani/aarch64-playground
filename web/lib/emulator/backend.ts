@@ -1,6 +1,11 @@
 "use client";
 
-import { loadEmulator, type EmulatorInstance } from "@/lib/emulator/emulator";
+import {
+  loadEmulator,
+  loadMemoryMap,
+  type EmulatorInstance,
+} from "@/lib/emulator/emulator";
+import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import {
   emptyStateSnapshot,
   type AssembleResultPayload,
@@ -58,6 +63,9 @@ export interface EmulatorBackend {
   /** Flat `[addr, line, addr, line, ...]` editor-line map from the most
    *  recent assemble; empty for the bare-metal path. */
   lineMap(): Promise<number[]>;
+  /** The emulator's address bands, read once from the wasm module; empty
+   *  on a build that predates the export. */
+  memoryMap(): Promise<MemoryRegion[]>;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void;
 }
@@ -70,6 +78,7 @@ export interface EmulatorBackend {
  */
 class MainThreadBackend implements EmulatorBackend {
   private emu: EmulatorInstance | null = null;
+  private regions: MemoryRegion[] | null = null;
   private frame = 0;
   // Bumped by every machine-replacing operation; a run loop that wakes
   // into a different epoch stands down (see runUntilBreak).
@@ -305,6 +314,12 @@ class MainThreadBackend implements EmulatorBackend {
     return this.requireEmu().getLineMap();
   }
 
+  async memoryMap(): Promise<MemoryRegion[]> {
+    // Read once and kept: the bands are fixed for the life of the module.
+    if (!this.regions) this.regions = await loadMemoryMap();
+    return this.regions;
+  }
+
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => {
@@ -342,6 +357,7 @@ class MainThreadBackend implements EmulatorBackend {
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       wantsTerminal: this.emu.wantsTerminal(),
+      externalCall: this.emu.hostCallContext(),
       dirtyAddrs: this.emu.takeDirtyAddrs(),
     };
   }
