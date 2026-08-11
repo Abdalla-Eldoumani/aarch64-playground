@@ -6,6 +6,14 @@
   "outputDirectory": "web/.next",
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "aarch64-playground.vercel.app" }],
+      "destination": "https://aarch64-playground.com/$1",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/_next/static/(.*)",
