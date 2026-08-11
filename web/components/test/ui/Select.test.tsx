@@ -108,6 +108,23 @@ describe("Select", () => {
     expect(selected?.textContent).toBe("bravo row");
   });
 
+  it("lets triggerLabel override the collapsed text without touching the listbox", () => {
+    const onSelect = renderSelect(vi.fn(), { value: "bravo", triggerLabel: "in .data" });
+    // The trigger reports live state instead of the past choice...
+    expect(trigger().textContent).toContain("in .data");
+    expect(trigger().textContent).not.toContain("bravo row");
+    // ...and the accessible name and the open list are exactly as before.
+    expect(trigger().getAttribute("aria-label")).toBe("test select");
+    fireEvent.click(trigger());
+    expect(screen.getAllByRole("option").length).toBe(3);
+    const selected = screen
+      .getAllByRole("option")
+      .find((option) => option.getAttribute("aria-selected") === "true");
+    expect(selected?.textContent).toBe("bravo row");
+    fireEvent.pointerDown(screen.getByText("charlie row"));
+    expect(onSelect).toHaveBeenCalledWith("charlie");
+  });
+
   it("does nothing when disabled", () => {
     renderSelect(vi.fn(), { disabled: true });
     expect(trigger().disabled).toBe(true);
