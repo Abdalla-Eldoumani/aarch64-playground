@@ -16,6 +16,12 @@ export interface SourceFile {
 /** `file` value meaning the implicit main.asm buffer. */
 export const MAIN_FILE = -1;
 
+/** A workspace as one coordinate space: the main buffer plus its helpers. */
+export interface Workspace {
+  main: string;
+  extras: SourceFile[];
+}
+
 /** A combined-line location resolved back to its owning file. */
 export interface FileLocation {
   /** MAIN_FILE for main.asm, otherwise the index into the extras list. */
@@ -140,4 +146,109 @@ export function combinedLineFor(
     base += 1 + lineCount(extras[i].body);
   }
   return base + 1 + line;
+}
+
+// ---------------------------------------------------------------------------
+// Per-file views. The editor shows one buffer at a time while every
+// diagnostic the machine reports is numbered against the combined string, so
+// each of these answers "what does THIS buffer show" for one kind of marker.
+// ---------------------------------------------------------------------------
+
+/**
+ * The diagnostics that belong to `activeFile`, re-numbered to its local
+ * lines. A diagnostic with no position (line 0 or less) belongs to the
+ * main buffer's view and keeps its own line untouched.
+ */
+export function diagnosticsForFile<T extends { line: number }>(
+  items: readonly T[],
+  main: string,
+  extras: SourceFile[],
+  activeFile: number,
+): T[] {
+  const out: T[] = [];
+  for (const item of items) {
+    if (item.line <= 0) {
+      if (activeFile === MAIN_FILE) out.push(item);
+      continue;
+    }
+    const loc = resolveLine(item.line, main, extras);
+    if (loc.file === activeFile) out.push({ ...item, line: loc.line });
+  }
+  return out;
+}
+
+/** The stored breakpoints that fall in `activeFile`, as its local lines. */
+export function breakpointsForFile(
+  stored: Iterable<number>,
+  main: string,
+  extras: SourceFile[],
+  activeFile: number,
+): Set<number> {
+  const set = new Set<number>();
+  for (const line of stored) {
+    const loc = resolveLine(line, main, extras);
+    if (loc.file === activeFile) set.add(loc.line);
+  }
+  return set;
+}
+
+/**
+ * A cheap identity for the workspace's line geometry. Only the SHAPE can
+ * move a stored line, so a caller watching this string re-anchors on an
+ * inserted line and pays nothing for typing inside one.
+ */
+export function workspaceShape(main: string, extras: SourceFile[]): string {
+  return `${lineCount(main)}|${extras.map((f) => lineCount(f.body)).join(",")}`;
+}
+
+/**
+ * Where every stored breakpoint moves when the workspace changes shape,
+ * or null when none of them move (nothing to re-anchor). A line whose
+ * owning file is gone maps to null: a closed tab takes its dots with it
+ * rather than donating them to whichever file inherited its numbers.
+ */
+export function planBreakpointRemap(
+  stored: ReadonlySet<number>,
+  from: Workspace,
+  to: Workspace,
+): Map<number, number | null> | null {
+  if (stored.size === 0) return null;
+  const moved = new Map<number, number | null>();
+  let changed = false;
+  for (const line of stored) {
+    const loc = resolveLine(line, from.main, from.extras);
+    const owner = loc.file === MAIN_FILE ? to.main : to.extras[loc.file]?.body;
+    const target =
+      owner == null
+        ? null
+        : combinedLineFor(
+            loc.file,
+            Math.min(loc.line, lineCount(owner)),
+            to.main,
+            to.extras,
+          );
+    if (target !== line) changed = true;
+    moved.set(line, target);
+  }
+  return changed ? moved : null;
+}
+
+/**
+ * A machine error prefixed with the file it happened in, for the single
+ * plain-text line Controls shows. Only a helper file earns the prefix:
+ * main.asm is the buffer the student is already looking at.
+ */
+export function errorWithFileName(
+  error: string | null,
+  firstErrorLine: number | undefined,
+  main: string,
+  extras: SourceFile[],
+): string | null {
+  if (!error) return error;
+  if (firstErrorLine == null || firstErrorLine <= 0 || extras.length === 0) {
+    return error;
+  }
+  const loc = resolveLine(firstErrorLine, main, extras);
+  if (loc.file === MAIN_FILE) return error;
+  return `${loc.name} line ${loc.line}: ${error}`;
 }
