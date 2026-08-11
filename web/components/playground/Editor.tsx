@@ -243,7 +243,7 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       const doc = lookupDoc(extended) ?? lookupDoc(word.word);
       if (!doc) return null;
       const lines: string[] = [
-        `**${word.word.toUpperCase()}** — ${doc.summary}`,
+        `**${word.word.toUpperCase()}** -- ${doc.summary}`,
       ];
       if (doc.details) {
         lines.push("", ...doc.details);
