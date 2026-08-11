@@ -34,6 +34,7 @@ function fakeEmu() {
     listStates: () => [],
     takeDirtyAddrs: () => [],
     wantsTerminal: () => false,
+    hostCallContext: () => null,
   };
 }
 

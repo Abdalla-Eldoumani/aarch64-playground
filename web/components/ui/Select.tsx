@@ -16,6 +16,13 @@ export interface SelectGroup {
 export interface SelectProps {
   /** Trigger text when no `value` is selected (action selects stay here). */
   placeholder: string;
+  /**
+   * Overrides the collapsed trigger's text. For action selects whose trigger
+   * should report live state rather than a past choice (the memory panel's
+   * jump list names the region the window is in). The accessible name stays
+   * `ariaLabel` and the open listbox is unaffected.
+   */
+  triggerLabel?: string;
   /** Controlled selected value; empty/undefined renders the placeholder. */
   value?: string;
   groups: SelectGroup[];
@@ -37,6 +44,7 @@ export interface SelectProps {
  */
 export function Select({
   placeholder,
+  triggerLabel,
   value,
   groups,
   onSelect,
@@ -185,7 +193,9 @@ export function Select({
         onKeyDown={handleKeyDown}
         className={`inline-flex w-full max-w-[14rem] items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] font-mono text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:outline-none focus-visible:[box-shadow:var(--ring)] disabled:pointer-events-none disabled:opacity-50 ${sizing}`}
       >
-        <span className="truncate">{selected ? selected.label : placeholder}</span>
+        <span className="truncate">
+          {triggerLabel ?? (selected ? selected.label : placeholder)}
+        </span>
         {/* Two 1px strokes forming a caret. */}
         <span
           aria-hidden="true"

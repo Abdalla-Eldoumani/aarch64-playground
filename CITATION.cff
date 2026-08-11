@@ -7,7 +7,7 @@ authors:
     given-names: "Abdalla"
 license: AGPL-3.0-only
 repository-code: "https://github.com/Abdalla-Eldoumani/aarch64-playground"
-url: "https://aarch64-playground.vercel.app"
+url: "https://aarch64-playground.com"
 keywords:
   - "AArch64"
   - "ARMv8"

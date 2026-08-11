@@ -12,7 +12,7 @@ The rest of this page walks through the playground, then points at the other sec
 
 ## open the playground
 
-Go to <https://aarch64-playground.vercel.app/playground> (or click
+Go to <https://aarch64-playground.com/playground> (or click
 "Open the playground" on the landing page). Locally, run `npm run dev` in
 `web/` and open <http://localhost:3000/playground>.
 

@@ -142,7 +142,7 @@ export function RegisterFileDiagram({
         <span className="font-mono text-[var(--text-primary)]">w</span>
         {" view: the same register's low 32 bits, used whenever the value is an int or narrower. Writing the "}
         <span className="font-mono text-[var(--text-primary)]">w</span>
-        {" form zeroes the top half, and the role above applies to both views — "}
+        {" form zeroes the top half, and the role above applies to both views -- "}
         <span className="font-mono text-[var(--text-primary)]">w19</span>
         {" is as callee-saved as "}
         <span className="font-mono text-[var(--text-primary)]">x19</span>

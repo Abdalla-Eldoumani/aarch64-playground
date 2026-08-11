@@ -41,9 +41,20 @@
       "limit": "400 KB"
     },
     {
-      "name": "lazy monaco bundle",
-      "path": ".next/static/chunks/e868780c.*.js",
-      "limit": "100 KB"
+      "name": "lazy monaco editor (vendored chunk + its worker)",
+      "path": [
+        ".next/static/chunks/monaco.*.js",
+        ".next/static/chunks/monaco-worker.*.js"
+      ],
+      "limit": "750 KB"
+    },
+    {
+      "name": "lazy terminal pane (xterm)",
+      "path": [
+        ".next/static/chunks/terminal.*.js",
+        ".next/static/chunks/xterm.*.js"
+      ],
+      "limit": "80 KB"
     },
     {
       "name": "wasm emulator (lazy on first assemble)",
@@ -59,6 +70,7 @@
     "@xterm/xterm": "6.0.0",
     "cmdk": "1.1.1",
     "lz-string": "1.5.0",
+    "monaco-editor": "0.55.1",
     "next": "16.2.11",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -81,7 +93,6 @@
     "eslint-config-next": "16.2.10",
     "jsdom": "29.1.1",
     "lighthouse": "13.4.0",
-    "monaco-editor": "0.55.1",
     "playwright": "^1.59.1",
     "postcss": "8.5.23",
     "size-limit": "12.1.0",

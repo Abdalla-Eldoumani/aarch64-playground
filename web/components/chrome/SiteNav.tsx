@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { REPO_URL, NAV_ROUTES, isActiveRoute } from "@/lib/content/site";
+import { formatStarCount } from "@/lib/content/github";
 import { Wordmark } from "@/components/ui/Wordmark";
 import { GitHubIcon } from "@/components/chrome/SiteIcons";
 import { ThemeControl } from "@/components/chrome/ThemeControl";
@@ -18,10 +19,21 @@ import { MobileNavDrawer } from "@/components/chrome/MobileNavDrawer";
  * variant only toggles the label, the CTA, and the height. Under md the routes and
  * the GitHub link fold into the shared drawer, leaving the wordmark, a compact
  * theme control, and the drawer trigger.
+ *
+ * `stars` is optional because only the server-rendered mounts can supply it; the
+ * playground's client-mounted slim bar passes nothing and keeps the icon-only
+ * link, which is also what a failed lookup renders.
  */
-export function SiteNav({ variant }: { variant: "full" | "slim" }) {
+export function SiteNav({
+  variant,
+  stars = null,
+}: {
+  variant: "full" | "slim";
+  stars?: number | null;
+}) {
   const pathname = usePathname();
   const full = variant === "full";
+  const starCount = stars === null ? null : formatStarCount(stars);
 
   return (
     <nav
@@ -63,14 +75,33 @@ export function SiteNav({ variant }: { variant: "full" | "slim" }) {
         </ul>
 
         <div className="flex items-center gap-1">
+          {/* The count rides inside the same anchor so there is one 44px target
+              that widens instead of a second control beside it. Tertiary text,
+              not amber or cyan: a star count is neither the machine acting nor
+              the reader acting. The numeral is aria-hidden because the label
+              already reads it, spelled out and pluralized. */}
           <a
             href={REPO_URL}
             target="_blank"
             rel="noreferrer noopener"
-            aria-label="source on github"
-            className="hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)] md:inline-flex"
+            aria-label={
+              stars === null
+                ? "source on github"
+                : `source on github, ${stars} ${stars === 1 ? "star" : "stars"}`
+            }
+            className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)] md:inline-flex${
+              starCount === null ? "" : " gap-1.5 px-2"
+            }`}
           >
             <GitHubIcon className="h-4 w-4" />
+            {starCount === null ? null : (
+              <span
+                aria-hidden="true"
+                className="font-mono text-[11px] tabular-nums text-[var(--text-tertiary)]"
+              >
+                {starCount}
+              </span>
+            )}
           </a>
 
           <ThemeControl size="compact" />
@@ -84,7 +115,7 @@ export function SiteNav({ variant }: { variant: "full" | "slim" }) {
             </Link>
           ) : null}
 
-          <MobileNavDrawer />
+          <MobileNavDrawer stars={stars} />
         </div>
       </div>
     </nav>

@@ -20,6 +20,7 @@ web/tsconfig.tsbuildinfo
 
 # WASM build output
 web/lib/wasm/
+web/lib/wasm-node/
 
 # Secrets
 .env

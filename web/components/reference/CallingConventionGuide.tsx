@@ -43,9 +43,9 @@ const integerMarkdown = [
 ].join("\n");
 
 const fpMarkdown = [
-  "Floating-point values ride their own register file of 32 registers, and like the integer file each register has two views the course uses: `s0` is the low 32 bits (a C `float`) and `d0` is the low 64 bits (a C `double`) of the same register — `s0` and `d0` overlap. The registers are wider still underneath, but the extra width belongs to SIMD, which this course never touches; think in `s` and `d` only. `fcvt d0, s0` widens a float to a double exactly, and `fcvt s0, d0` narrows with rounding — the step a program takes before handing a float to `printf`, which always receives doubles.",
+  "Floating-point values ride their own register file of 32 registers, and like the integer file each register has two views the course uses: `s0` is the low 32 bits (a C `float`) and `d0` is the low 64 bits (a C `double`) of the same register -- `s0` and `d0` overlap. The registers are wider still underneath, but the extra width belongs to SIMD, which this course never touches; think in `s` and `d` only. `fcvt d0, s0` widens a float to a double exactly, and `fcvt s0, d0` narrows with rounding -- the step a program takes before handing a float to `printf`, which always receives doubles.",
   "",
-  "The calling convention mirrors the integer split. `d0` through `d7` (or `s0`-`s7` for floats) carry the first eight floating-point arguments and return the result, a separate bank from `x0`-`x7`, so `printf(\"%d %f\", ...)` puts the int in `w1` and the double in `d0` without collision. `d8` through `d15` are callee-saved — a routine that writes one must restore it, which is why the course parks long-lived floats there. `d16` through `d31` are caller-saved temporaries, so treat them as gone once a call returns. There is no floating-point frame pointer: `x29` and `x30` still hold the frame record, whatever type the function computes with.",
+  "The calling convention mirrors the integer split. `d0` through `d7` (or `s0`-`s7` for floats) carry the first eight floating-point arguments and return the result, a separate bank from `x0`-`x7`, so `printf(\"%d %f\", ...)` puts the int in `w1` and the double in `d0` without collision. `d8` through `d15` are callee-saved -- a routine that writes one must restore it, which is why the course parks long-lived floats there. `d16` through `d31` are caller-saved temporaries, so treat them as gone once a call returns. There is no floating-point frame pointer: `x29` and `x30` still hold the frame record, whatever type the function computes with.",
 ].join("\n");
 
 const frameMarkdown = [
@@ -74,13 +74,13 @@ export function CallingConventionGuide({
         <LessonMarkdown markdown={leadMarkdown} />
       </div>
 
-      <Kicker number="01" title="registers by role — integer" className="mt-4" />
+      <Kicker number="01" title="registers by role -- integer" className="mt-4" />
       <LessonMarkdown markdown={integerMarkdown} />
       <RegisterFileDiagram />
 
       <Kicker
         number="02"
-        title="registers by role — floating point"
+        title="registers by role -- floating point"
         className="mt-4"
       />
       <LessonMarkdown markdown={fpMarkdown} />

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import type { EmulatorBackend } from "@/lib/emulator/backend";
+import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type {
   AssembleResultPayload,
   RunResultPayload,
@@ -113,9 +114,21 @@ function snap(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
   };
 }
 
+// A trampoline word: a real in-call pc, deliberately absent from the line
+// map, because the two words a hosted call runs through are not instructions
+// the student wrote.
+const TRAMPOLINE_PC = CODE_BASE + 0x40;
+
+// Two bands with a gap between them, in the shape the wasm export delivers.
+const REGIONS: MemoryRegion[] = [
+  { name: ".data", start: 0x00600000, end: 0x00700000 },
+  { name: "stack", start: 0x7ff00000, end: 0x80000000 },
+];
+
 interface BackendConfig {
   instructionCount: number;
   lineMapFlat: number[];
+  memoryRegions: MemoryRegion[];
   assembleSuccess: boolean;
   assembleError?: string;
   assembleErrorLine?: number;
@@ -166,6 +179,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = {
     instructionCount: 5,
     lineMapFlat: FLAT_LINE_MAP,
+    memoryRegions: REGIONS,
     assembleSuccess: true,
     assembleThrows: false,
     stepResult: { pc: CODE_BASE, halted: false, error: null, outcome: "advance", exitCode: null },
@@ -229,6 +243,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     },
     lineMap() {
       return Promise.resolve(cfg.lineMapFlat);
+    },
+    memoryMap() {
+      return Promise.resolve(cfg.memoryRegions);
     },
     getMemory(addr, len) {
       calls.getMemory.push([addr, len]);
@@ -1374,6 +1391,106 @@ describe("useEmulator terminal builds", () => {
     await act(async () => {
       await toolAssemble;
     });
+  });
+});
+
+describe("useEmulator memory map", () => {
+  it("exposes the address bands the backend read at load", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    expect(result.current.memoryRegions).toEqual([
+      { name: ".data", start: 0x00600000, end: 0x00700000 },
+      { name: "stack", start: 0x7ff00000, end: 0x80000000 },
+    ]);
+  });
+
+  it("reports an empty map on a wasm build without the export", async () => {
+    const fake = makeBackend({ memoryRegions: [] });
+    const { result } = await mountLoaded(fake);
+    expect(result.current.isLoaded).toBe(true);
+    expect(result.current.memoryRegions).toEqual([]);
+  });
+});
+
+describe("useEmulator external calls", () => {
+  it("anchors the marker on the call site while paused inside a libc call", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+
+    // pc is the first trampoline word; the call came from the third mapped
+    // instruction, editor line 11.
+    act(() => {
+      fake.fire({
+        pc: toHex(TRAMPOLINE_PC),
+        externalCall: { name: "printf", callSitePc: CODE_BASE + 8, callSiteLine: 11 },
+      });
+    });
+
+    expect(result.current.pc).toBe(TRAMPOLINE_PC);
+    expect(result.current.currentLine).toBe(11);
+    expect(result.current.externalCall).toEqual({
+      name: "printf",
+      callSitePc: CODE_BASE + 8,
+      callSiteLine: 11,
+    });
+  });
+
+  it("leaves the marker off when the call site has no line", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+
+    act(() => {
+      fake.fire({
+        pc: toHex(TRAMPOLINE_PC),
+        externalCall: { name: "printf", callSitePc: 0x500000, callSiteLine: null },
+      });
+    });
+
+    expect(result.current.currentLine).toBeNull();
+    expect(result.current.externalCall?.name).toBe("printf");
+  });
+
+  it("ignores an external call while the program is running", async () => {
+    const fake = makeBackend({ runDeferred: true });
+    const { result } = await mountAssembled(fake);
+
+    act(() => {
+      result.current.run();
+    });
+    expect(result.current.isRunning).toBe(true);
+
+    // A run passes through a call on every printf: the marker must stay on
+    // the pc the run reports rather than snapping back to the call site.
+    act(() => {
+      fake.fire({
+        pc: toHex(CODE_BASE + 8),
+        externalCall: { name: "printf", callSitePc: CODE_BASE, callSiteLine: 9 },
+      });
+    });
+    expect(result.current.externalCall).toBeNull();
+    expect(result.current.currentLine).toBe(11);
+
+    await act(async () => {
+      fake.triggerRun();
+    });
+  });
+
+  it("reports no call when the snapshot omits the field (older wasm)", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+
+    act(() => {
+      fake.fire({ pc: toHex(CODE_BASE + 8) });
+    });
+    expect(result.current.externalCall).toBeNull();
+    expect(result.current.currentLine).toBe(11);
+
+    // An unmapped pc with no context is still just an unmapped pc.
+    act(() => {
+      fake.fire({ pc: toHex(TRAMPOLINE_PC) });
+    });
+    expect(result.current.externalCall).toBeNull();
+    expect(result.current.currentLine).toBeNull();
   });
 });
 

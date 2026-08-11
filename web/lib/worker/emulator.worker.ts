@@ -8,10 +8,12 @@
  * the run loop blocking the UI thread.
  */
 
-import init, { Emulator } from "@/lib/wasm/aarch64_emulator";
+import init, { Emulator, memoryMap } from "@/lib/wasm/aarch64_emulator";
+import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
 import {
   emptyStateSnapshot,
   type AssembleResultPayload,
+  type ExternalCall,
   type Heartbeat,
   type Request,
   type Response,
@@ -21,6 +23,7 @@ import {
 } from "@/lib/worker/protocol";
 
 let emulator: Emulator | null = null;
+let regions: MemoryRegion[] | null = null;
 let frame = 0;
 let pauseRequested = false;
 // Bumped by every operation that replaces the machine (reset, assemble,
@@ -417,6 +420,11 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: Array.from(emu.get_line_map()) });
         return;
       }
+      case "memoryMap": {
+        await ensureWasm();
+        post({ id: msg.id, kind: "ok", value: readMemoryMap() });
+        return;
+      }
       default: {
         const _exhaustive: never = msg;
         post({
@@ -473,6 +481,19 @@ function bumpFrame(): void {
   frame++;
 }
 
+/**
+ * The emulator's address bands, read once from the module-level export and
+ * kept: the layout is fixed for the life of the module. Feature-detected
+ * like every optional surface -- an older local wasm build has no map, and
+ * the memory panel then falls back to its own section list.
+ */
+function readMemoryMap(): MemoryRegion[] {
+  if (regions) return regions;
+  const probe = memoryMap as (() => unknown) | undefined;
+  regions = typeof probe === "function" ? normalizeMemoryMap(probe()) : [];
+  return regions;
+}
+
 function snapshot(): StateSnapshot {
   if (!emulator) {
     // WASM is instantiated lazily on the first mutating message, so `init`
@@ -500,6 +521,10 @@ function snapshot(): StateSnapshot {
   // Optional terminal-mode surface, feature-detected the same way.
   const emulatorTerm = emulator as unknown as { wants_terminal?: () => boolean };
   const wantsTerminal = emulatorTerm.wants_terminal?.() ?? false;
+  // The external call the pc sits inside, read on every snapshot (the
+  // wasm side only reads state). Optional export: an older cached WASM
+  // reports null and the stepping surfaces stay exactly as they were.
+  const externalCall = readExternalCall(emulator);
   // Drain stdout/stderr so React can append the delta as new bytes
   // arrive (versus polling the full buffer each frame).
   const stdoutDelta = emulator.take_stdout();
@@ -523,9 +548,29 @@ function snapshot(): StateSnapshot {
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
     wantsTerminal,
+    externalCall,
     // Drain the dirty addresses. They accumulate between snapshot
     // calls, so failing to drain would make them grow unbounded.
     dirtyAddrs: Array.from(emulator.take_dirty_addrs()).map(Number),
+  };
+}
+
+/**
+ * The current pc's external-call context, normalized from the wasm side's
+ * snake_case payload (the StepResult convention) to the protocol's camelCase.
+ */
+function readExternalCall(emu: Emulator): ExternalCall | null {
+  const probe = (emu as unknown as { hostCallContext?: () => unknown }).hostCallContext;
+  if (typeof probe !== "function") return null;
+  const raw = probe.call(emu) as
+    | { name: string; call_site_pc: bigint | number; call_site_line?: number | null }
+    | null
+    | undefined;
+  if (!raw) return null;
+  return {
+    name: raw.name,
+    callSitePc: Number(raw.call_site_pc),
+    callSiteLine: raw.call_site_line ?? null,
   };
 }
 

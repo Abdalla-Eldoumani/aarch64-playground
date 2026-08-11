@@ -27,7 +27,7 @@ const ROWS: RailRow[] = [
   { range: "x9 – x15", note: "caller-saved temps", tint: "neutral" },
   { range: "x16 – x18", note: "platform · avoid", tint: "muted" },
   { range: "x19 – x28", note: "callee-saved", tint: "amber" },
-  { range: "x29 · x30", note: "fp · lr — the frame record", tint: "amber-strong" },
+  { range: "x29 · x30", note: "fp · lr -- the frame record", tint: "amber-strong" },
   { range: "d0 – d7", note: "float args · results", tint: "cyan" },
   { range: "d8 – d15", note: "callee-saved", tint: "amber" },
   { range: "d16 – d31", note: "caller-saved float temps", tint: "neutral" },

@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use crate::assembler;
-use crate::cpu::CODE_BASE;
+use crate::cpu::{CODE_BASE, SECTION_WINDOW};
 use crate::errors::EmuError;
 use crate::frontend::expr::evaluate;
 use crate::frontend::lexer::{lex, TokenKind};
@@ -54,6 +54,14 @@ pub struct LinkedImage {
     /// lines and drifts on complex programs). Trampolines and the
     /// literal pool get no entries.
     pub line_map: Vec<(u64, u32)>,
+    /// Address of the first host-call trampoline, and the stub each 8-byte
+    /// slot jumps to in emission order (slot `i` lives at
+    /// `trampoline_base + i * 8`). One trampoline serves every call site of
+    /// the same function, so these two only say WHICH libc function a pc
+    /// inside the range belongs to; LR says which call site it came from.
+    /// Zero and empty for a program that calls nothing hosted.
+    pub trampoline_base: u64,
+    pub trampoline_names: Vec<String>,
 }
 
 /// Literal-pool slot identity: the operand text, plus the address of the
@@ -131,12 +139,11 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // equate during this very walk; the rest wait for pass 1c's rounds.
     // Reserve sizes resolved here are kept for pass 2, which must walk
     // the identical layout.
-    // Section bases sit 1 MiB apart (SectionKind::default_base), so any
-    // section that outgrows this window silently runs into the next one's
-    // addresses: two labels on one address, stores clobbering unrelated
-    // variables. Checked during this walk, where the offending line is
-    // still known.
-    const SECTION_WINDOW: u64 = 1024 * 1024;
+    // Section bases sit one `cpu::SECTION_WINDOW` apart
+    // (SectionKind::default_base), so any section that outgrows the window
+    // silently runs into the next one's addresses: two labels on one
+    // address, stores clobbering unrelated variables. Checked during this
+    // walk, where the offending line is still known.
 
     let mut text_len: u64 = 0;
     let mut assignments: Vec<(String, String, u64, usize)> = Vec::new();
@@ -767,6 +774,11 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         text_end: CODE_BASE + text_len,
         symbols,
         line_map,
+        // `tramp_base` is a real address even with nothing to put there;
+        // report 0 so a caller can tell "no host calls" from "trampolines
+        // start here" without consulting the name list.
+        trampoline_base: if host_trampolines.is_empty() { 0 } else { tramp_base },
+        trampoline_names: host_trampolines,
     })
 }
 

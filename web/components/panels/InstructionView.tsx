@@ -9,6 +9,13 @@ interface InstructionViewProps {
    *  amber PC marker. Default off; the page wires `running={emu.isRunning}`
    *  during the composition pass. */
   running?: boolean;
+  /**
+   * Row to mark and follow instead of the pc. Set to the call site while the
+   * pc is inside a hosted libc call: the pc is then a trampoline word or a
+   * synthetic stub, so the listing had nothing to mark and the window parked
+   * at the top for all three steps. The `bl` row stays marked instead.
+   */
+  anchorPc?: number | null;
 }
 
 /**
@@ -26,7 +33,10 @@ export function InstructionView({
   instructions,
   pc,
   running = false,
+  anchorPc = null,
 }: InstructionViewProps) {
+  // One address drives both the marker and the window.
+  const marker = anchorPc ?? pc;
   if (instructions.length === 0) {
     return (
       <div className="p-3 text-xs text-[var(--text-secondary)]">
@@ -38,7 +48,7 @@ export function InstructionView({
   const windowed = instructions.length > INSTRUCTION_WINDOW;
   let start = 0;
   if (windowed) {
-    const pcIndex = instructions.findIndex((instr) => instr.address === pc);
+    const pcIndex = instructions.findIndex((instr) => instr.address === marker);
     // A pc outside the listing (a library address, or nothing run yet)
     // parks the window at the top rather than jumping somewhere arbitrary.
     const block = pcIndex < 0 ? 0 : Math.floor(pcIndex / INSTRUCTION_WINDOW);
@@ -75,7 +85,7 @@ export function InstructionView({
         </thead>
         <tbody>
           {visible.map((instr) => {
-            const isCurrent = instr.address === pc;
+            const isCurrent = instr.address === marker;
             return (
               <tr
                 key={instr.address}

@@ -6,7 +6,7 @@ assemble it, and watch it run with real stdout, stdin, registers, stack, and
 memory in the browser tab. The emulator is a hand-written Rust interpreter
 compiled to WebAssembly, so there is no server, no QEMU, and no install.
 
-Live at <https://aarch64-playground.vercel.app>.
+Live at <https://aarch64-playground.com>.
 
 ## Features
 

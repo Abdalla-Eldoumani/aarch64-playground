@@ -13,14 +13,18 @@ reference).
 | Hero, feature catalog, routes | `web/components/landing/Hero.tsx`, `FeatureCatalog.tsx`, `web/components/diagrams/RoutesRegisterFile.tsx` |
 | Landing data (features, routes, hero program) | `web/lib/content/landing-content.ts` |
 | Routes, nav, footer | `web/lib/content/site.ts`, `web/components/chrome/SiteNav.tsx`, `SiteFooter.tsx` |
+| Star count beside the nav's github link (server-read, hourly; hidden on a failed lookup or a zero count) | `web/lib/content/github.ts`, `web/components/chrome/SiteNav.tsx`, `MobileNavDrawer.tsx` |
+| Skip-to-content link (first focusable; every route renders one `<main id="main">`) | `web/app/layout.tsx`, `.skip-link` in `web/app/globals.css` |
+| 404 and fault pages (route error boundary, root boundary, copyable report) | `web/app/not-found.tsx`, `web/components/chrome/NotFound.tsx`, `web/app/error.tsx`, `web/app/global-error.tsx` |
 | Shared embeddable emulator | `web/components/playground/EmbeddablePlayground.tsx` |
 | Lessons (`/learn`) | `web/app/(site)/learn/`, `web/components/learn/LessonIndex.tsx`, `LessonArticle.tsx`, `LessonMarkdown.tsx`, `web/lib/content/lessons.ts` |
 | Exercises (`/practice`) | `web/app/(site)/practice/`, `web/components/practice/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/content/exercises.ts` |
 | Read-only code listing with one-click copy | `web/components/ui/CodeBlock.tsx` |
 | "Open in playground" hand-off (shared pill; asm code blocks only) | `web/components/ui/OpenInPlayground.tsx` (used by `web/components/learn/LessonArticle.tsx` and `web/components/practice/ExerciseView.tsx`) |
 | Exercise checker (no stored solution) | `web/lib/content/exercise-checker.ts` |
-| Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/ReferenceView.tsx`, `InstructionReference.tsx`, `InstructionView.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/content/reference-data.ts` |
+| Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/ReferenceView.tsx`, `InstructionReference.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/content/reference-data.ts` |
 | Reference interactivity (NZCV panel, condition-code explorer, worked encodings, frame walk, alignment probe, runnable pitfalls) | `web/components/diagrams/FlagEffect.tsx`, `CondCodeExplorer.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `StackAlignment.tsx`, `web/components/reference/PitfallsCatalog.tsx` |
+| NZCV math behind the flag panels (flag-setters, `fcmp`, operand parsing) | `web/lib/emulator/flag-math.ts` |
 | Register-file teaching diagrams (x/w and d/s views) | `web/components/diagrams/RegisterFileDiagram.tsx`, `FpRegisterFileDiagram.tsx` |
 | AAPCS64 register-file rail (with the fp convention) | `web/components/diagrams/AapcsRail.tsx` |
 | Link preview card (og/twitter image) | `web/lib/content/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
@@ -31,6 +35,7 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | Monaco editor with three themes | `web/components/playground/Editor.tsx` |
+| Vendored editor runtime (editor-only entry + its worker, same-origin, lazy chunk) | `web/components/playground/Editor.tsx::loadMonaco`, the `monaco-editor` dependency in `web/package.json`, `web/types/monaco-edcore.d.ts` |
 | Mobile fallback editor (textarea) | `web/components/playground/Editor.tsx::FallbackEditor` |
 | Source formatter (`Ctrl+Shift+F`) | `web/lib/asm/asm-formatter.ts` |
 | Context-aware completion provider | `web/lib/asm/asm-completion.ts` |
@@ -49,6 +54,7 @@ reference).
 | Named save states (session-scoped) | `web/lib/emulator/use-emulator.ts`, `web/components/panels/SavesPanel.tsx` |
 | Persistent bookmarks (across reloads) | `web/lib/playground/named-saves.ts`, `web/lib/hooks/use-named-saves.ts` |
 | Diagnostic bundle (clipboard + URL) | `web/components/playground/DiagnosticBundle.tsx`, `web/lib/playground/diagnostic-bundle.ts` |
+| External calls while stepping (the call named, the call-site line held, the disassembly anchored on the `bl`) | `emulator/src/lib.rs::host_call_context`, `web/lib/emulator/use-emulator.ts::externalCall`, `web/components/panels/DecodeStrip.tsx`, `web/components/playground/Editor.tsx`, `web/components/panels/InstructionView.tsx` |
 
 ## Panels & state
 
@@ -57,6 +63,7 @@ reference).
 | Register panel with ABI aliases | `web/components/panels/RegisterPanel.tsx`, `RegisterRow.tsx` |
 | Floating-point register view (`d0`–`d31`, dec/hex, s-written values read as floats) | `web/components/panels/RegisterPanel.tsx`, `DRegisterRow.tsx` |
 | Memory panel (sparse, paged) | `web/components/panels/MemoryPanel.tsx` |
+| Address-band labels + jump list (from the emulator's own map) | the wasm `memoryMap` export in `emulator/src/lib.rs`, `web/lib/emulator/memory-map.ts`, `web/components/panels/MemoryPanel.tsx` |
 | Stack panel + frame-pointer chase | `web/components/panels/StackPanel.tsx`, `web/lib/emulator/frame-labels.ts` |
 | Watch expressions (`x0`, `*x0`, `[fp, name]`, `arr[i]`) | `web/components/panels/WatchPanel.tsx`, `web/lib/emulator/watch-expr.ts` |
 | Memory address watches | `web/components/panels/MemoryWatches.tsx` |
@@ -66,6 +73,7 @@ reference).
 | Register auto-follow (fp write flips to the d file) | `web/components/panels/RegisterPanel.tsx` |
 | Base converter (convert tab) | `web/components/panels/BaseConverter.tsx`, `web/lib/asm/base-convert.ts` |
 | Live decode strip (bit fields under the pc) | `web/components/panels/DecodeStrip.tsx`, `web/lib/emulator/decode-fields.ts`, `web/lib/asm/explain-line.ts` |
+| Disassembly table (pc marker, windowed past 512 rows) | `web/components/panels/InstructionView.tsx` |
 
 ## Layout & responsive
 
@@ -112,6 +120,7 @@ reference).
 | Combined-line <-> owning-file mapping (errors, marker, breakpoints, jump-to-error) | `web/lib/playground/file-map.ts`, wired in `web/components/playground/EmbeddablePlayground.tsx` |
 | Share links carrying the whole workspace | `web/lib/playground/share.ts` |
 | Multi-select import (main + helpers in one pick) | `web/components/playground/ImportExport.tsx` |
+| Workspace `.json` bundle (the whole strip, read field by field on import) | `web/lib/playground/workspace-bundle.ts`, `web/components/playground/ImportExport.tsx` |
 | Multi-file example payloads (`EXAMPLE_FILES`) | `web/lib/playground/playground-handoff.ts` |
 | No-entry-point link gate (`main` or `_start` required) | `emulator/src/frontend/pipeline.rs` |
 

@@ -17,6 +17,8 @@ export default defineConfig({
       "app/**/*.test.ts",
       "app/**/*.test.tsx",
       "components/**/*.test.tsx",
+      // Root-adjacent subjects (proxy.ts) keep their test beside them.
+      "*.test.ts",
     ],
     // WASM bindings and monaco are browser-only; tests never import them.
     exclude: ["node_modules/**", "lib/wasm/**", "lib/wasm-node/**"],

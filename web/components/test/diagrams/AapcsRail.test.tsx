@@ -18,7 +18,7 @@ const ROWS: Array<[string, string]> = [
   ["x9 – x15", "caller-saved temps"],
   ["x16 – x18", "platform · avoid"],
   ["x19 – x28", "callee-saved"],
-  ["x29 · x30", "fp · lr — the frame record"],
+  ["x29 · x30", "fp · lr -- the frame record"],
   ["d0 – d7", "float args · results"],
   ["d8 – d15", "callee-saved"],
   ["d16 – d31", "caller-saved float temps"],

@@ -305,21 +305,27 @@ export default function Home() {
     <>
       <div className="flex flex-col h-dvh">
         {!isEmbed && <SiteNav variant="slim" />}
-        <EmbeddablePlayground
-          ref={playgroundRef}
-          chrome={chrome}
-          startSource={boot.source}
-          startFiles={boot.fromShare ? boot.files ?? [] : undefined}
-          startArgs={boot.args}
-          startStdin={boot.stdin}
-          startCursor={boot.cursor}
-          fromShare={boot.fromShare}
-          onStateChange={onStateChange}
-          onOpenCommandPalette={openCommandPalette}
-          onOpenShortcutsHelp={openShortcutsHelp}
-          onOpenShareDialog={openShareDialog}
-          onToggleTheme={toggleTheme}
-        />
+        {/* This route's single main landmark and the root skip link's target.
+            The emulator component itself is a labeled section, so every page
+            that composes it (hero, lessons, exercises, reference) keeps one
+            main -- its own -- and this route still has one of its own. */}
+        <main id="main" tabIndex={-1} className="flex-1 min-h-0 flex flex-col">
+          <EmbeddablePlayground
+            ref={playgroundRef}
+            chrome={chrome}
+            startSource={boot.source}
+            startFiles={boot.fromShare ? boot.files ?? [] : undefined}
+            startArgs={boot.args}
+            startStdin={boot.stdin}
+            startCursor={boot.cursor}
+            fromShare={boot.fromShare}
+            onStateChange={onStateChange}
+            onOpenCommandPalette={openCommandPalette}
+            onOpenShortcutsHelp={openShortcutsHelp}
+            onOpenShareDialog={openShareDialog}
+            onToggleTheme={toggleTheme}
+          />
+        </main>
       </div>
 
       <CommandPalette

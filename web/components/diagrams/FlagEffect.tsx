@@ -6,7 +6,7 @@
  * the arithmetic the machine performs, the four flags it leaves behind, and
  * which conditional branches those flags would take -- signed and unsigned
  * side by side, because reading `b.lt` where `b.lo` was needed is the classic
- * slip. The math here is pure display logic implementing the same NZCV rules
+ * slip. The flag math comes from lib/emulator/flag-math -- the same NZCV rules
  * the emulator's executor applies; no emulator round trip. Inputs and the
  * width toggle are the user acting (cyan); the computed flags and taken
  * branches are the machine acting (amber). Token-only, keyboard accessible
@@ -16,6 +16,14 @@
 
 import { useId, useMemo, useState, type JSX } from "react";
 import { Input } from "@/components/ui/Input";
+import {
+  computeFcmpFlags,
+  computeIntFlags,
+  parseFloatOperand,
+  parseIntOperand,
+  type Flags,
+  type IntOp,
+} from "@/lib/emulator/flag-math";
 
 export type FlagMnemonic =
   | "cmp"
@@ -36,86 +44,6 @@ export const FLAG_SETTERS: ReadonlySet<string> = new Set<string>([
   "ands",
   "fcmp",
 ]);
-
-export interface Flags {
-  n: boolean;
-  z: boolean;
-  c: boolean;
-  v: boolean;
-}
-
-type IntOp = "sub" | "add" | "and";
-
-/**
- * NZCV for the integer flag-setters at a register width, the same rules the
- * executor applies: N = sign bit of the result, Z = zero, C = no-borrow for
- * subtraction / carry-out for addition / cleared by the logical ops, V =
- * signed overflow (operand signs agree for add, differ for sub, and the
- * result sign disagrees with the first operand).
- */
-export function computeIntFlags(
-  op: IntOp,
-  aIn: bigint,
-  bIn: bigint,
-  bits: 32 | 64,
-): { result: bigint; flags: Flags } {
-  const width = BigInt(bits);
-  const mask = (1n << width) - 1n;
-  const signBit = 1n << (width - 1n);
-  const a = aIn & mask;
-  const b = bIn & mask;
-  let result: bigint;
-  let c = false;
-  let v = false;
-  const signOf = (value: bigint) => (value & signBit) !== 0n;
-  if (op === "sub") {
-    result = (a - b) & mask;
-    c = a >= b;
-    v = signOf(a) !== signOf(b) && signOf(result) !== signOf(a);
-  } else if (op === "add") {
-    const wide = a + b;
-    result = wide & mask;
-    c = wide > mask;
-    v = signOf(a) === signOf(b) && signOf(result) !== signOf(a);
-  } else {
-    result = a & b;
-  }
-  return {
-    result,
-    flags: { n: signOf(result), z: result === 0n, c, v },
-  };
-}
-
-/**
- * NZCV for `fcmp`: less-than sets N, equal sets Z and C, greater-than sets C,
- * and an unordered compare (either side NaN) sets C and V.
- */
-export function computeFcmpFlags(a: number, b: number): Flags {
-  if (Number.isNaN(a) || Number.isNaN(b)) {
-    return { n: false, z: false, c: true, v: true };
-  }
-  if (a < b) return { n: true, z: false, c: false, v: false };
-  if (a === b) return { n: false, z: true, c: true, v: false };
-  return { n: false, z: false, c: true, v: false };
-}
-
-/** Decimal or 0x hex, optionally negative; null when it is neither. */
-export function parseIntOperand(text: string): bigint | null {
-  const t = text.trim().toLowerCase();
-  if (!/^-?(0x[0-9a-f]+|\d+)$/.test(t)) return null;
-  // BigInt() rejects a signed hex literal ("-0x10"), so peel the sign first.
-  const negative = t.startsWith("-");
-  const magnitude = BigInt(negative ? t.slice(1) : t);
-  return negative ? -magnitude : magnitude;
-}
-
-/** A plain float, or `nan` to see the unordered compare; null otherwise. */
-export function parseFloatOperand(text: string): number | null {
-  const t = text.trim().toLowerCase();
-  if (t === "nan") return Number.NaN;
-  if (!/^-?(\d+\.?\d*|\.\d+)(e-?\d+)?$/.test(t)) return null;
-  return Number(t);
-}
 
 interface Branch {
   code: string;
@@ -395,7 +323,7 @@ export function FlagEffect({
                   {regA} reads as{" "}
                   {signedReading(parsed.a & ((1n << BigInt(bits)) - 1n), bits).toString()}{" "}
                   signed · {(parsed.a & ((1n << BigInt(bits)) - 1n)).toString()}{" "}
-                  unsigned — same bits, two readings
+                  unsigned -- same bits, two readings
                 </p>
                 <p className="text-[var(--text-tertiary)]">
                   {config.discards
@@ -406,7 +334,7 @@ export function FlagEffect({
             ) : (
               <p>
                 {unordered
-                  ? "unordered: one side is nan, so c and v are set — branches that read v misfire here."
+                  ? "unordered: one side is nan, so c and v are set -- branches that read v misfire here."
                   : parsed.kind === "float"
                     ? outcome.flags.z
                       ? `${regA} equals ${regB}`
@@ -480,7 +408,7 @@ export function FlagEffect({
           href={condHref}
           className="inline-flex min-h-[44px] items-center gap-1 self-start font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]"
         >
-          what each of these conditions really asks — see b.cond{" "}
+          what each of these conditions really asks -- see b.cond{" "}
           <span aria-hidden="true">{"→"}</span>
         </a>
       )}

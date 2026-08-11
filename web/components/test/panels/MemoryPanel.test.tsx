@@ -1,10 +1,24 @@
 // pins the memory panel contract: a hex-dump window read through
 // getMemory from a typed base address, 16 rows of 16 byte cells plus
-// an ascii gutter, jump targets rewriting the base, and dirty ranges
-// tinted so the last write stays visible.
+// an ascii gutter, jump targets rewriting the base, dirty ranges
+// tinted so the last write stays visible, and the jump trigger naming the
+// region the window is in (derived from the emulator's exported map).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryPanel } from "@/components/panels/MemoryPanel";
+import type { MemoryRegion } from "@/lib/emulator/memory-map";
+
+// The bands as the wasm export delivers them, transcribed from the loader
+// constants by hand (four 1 MiB sections from 0x00400000, the 1 MiB stack
+// band under the 0x80000000 base).
+const REGIONS: MemoryRegion[] = [
+  { name: ".text", start: 0x00400000, end: 0x00500000 },
+  { name: ".rodata", start: 0x00500000, end: 0x00600000 },
+  { name: ".data", start: 0x00600000, end: 0x00700000 },
+  { name: ".bss", start: 0x00700000, end: 0x00800000 },
+  { name: "heap", start: 0x00900000, end: 0x00a00000 },
+  { name: "stack", start: 0x7ff00000, end: 0x80000000 },
+];
 
 afterEach(() => {
   cleanup();
@@ -25,8 +39,22 @@ function renderPanel(dirtyAddrs?: Array<[number, number]>) {
   return { getMemory, ...utils };
 }
 
+function renderMapped(sp?: string) {
+  const getMemory = seededMemory();
+  render(<MemoryPanel getMemory={getMemory} regions={REGIONS} sp={sp ?? null} />);
+  return getMemory;
+}
+
 function addrInput(): HTMLInputElement {
   return screen.getByLabelText("memory base address") as HTMLInputElement;
+}
+
+function jumpTrigger(): HTMLButtonElement {
+  return screen.getByRole("combobox", { name: "jump to section" }) as HTMLButtonElement;
+}
+
+function openJump(): void {
+  fireEvent.click(jumpTrigger());
 }
 
 describe("MemoryPanel", () => {
@@ -102,5 +130,73 @@ describe("MemoryPanel", () => {
     expect(screen.getByText("04").className).toContain("bg-[var(--amber-dim)]");
     expect(screen.getByText("05").className).toContain("bg-[var(--amber-dim)]");
     expect(screen.getByText("06").className).not.toContain("bg-[var(--amber-dim)]");
+  });
+});
+
+describe("MemoryPanel region label", () => {
+  it("names the region the window opens in", () => {
+    renderMapped();
+    expect(jumpTrigger().textContent).toContain("in .text");
+  });
+
+  it("follows a jump to another section", () => {
+    renderMapped();
+    openJump();
+    fireEvent.pointerDown(screen.getByText(".bss"));
+    expect(addrInput().value).toBe("0x00700000");
+    expect(jumpTrigger().textContent).toContain("in .bss");
+  });
+
+  it("updates live for a typed address inside a section", () => {
+    renderMapped();
+    // Mid-.bss, not a band edge: the label follows the address, not the jump.
+    fireEvent.change(addrInput(), { target: { value: "0x00712340" } });
+    expect(jumpTrigger().textContent).toContain("in .bss");
+  });
+
+  it("says unmapped between bands", () => {
+    renderMapped();
+    // The gap between the heap's end and the stack floor.
+    fireEvent.change(addrInput(), { target: { value: "0x00a00000" } });
+    expect(jumpTrigger().textContent).toContain("unmapped");
+  });
+
+  it("keeps naming the last good window when an address is rejected", () => {
+    renderMapped();
+    fireEvent.change(addrInput(), { target: { value: "0x00600000" } });
+    expect(jumpTrigger().textContent).toContain("in .data");
+    fireEvent.change(addrInput(), { target: { value: "0x0060O000" } });
+    // The window held at 0x00600000, so the label still describes it.
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(jumpTrigger().textContent).toContain("in .data");
+  });
+
+  it("lands the stack jump on the row holding a live sp", () => {
+    renderMapped("0x000000007fffff08");
+    openJump();
+    fireEvent.pointerDown(screen.getByText("stack"));
+    // 0x7fffff08 aligned down to the 16-byte row.
+    expect(addrInput().value).toBe("0x7fffff00");
+    expect(jumpTrigger().textContent).toContain("in stack");
+  });
+
+  it("keeps the fixed stack landing when sp is outside the band", () => {
+    // A reset machine parks sp at the stack base, which is the band's
+    // exclusive end: there is no live frame to land on.
+    renderMapped("0x0000000080000000");
+    openJump();
+    fireEvent.pointerDown(screen.getByText("stack"));
+    expect(addrInput().value).toBe("0x7fffff00");
+  });
+
+  it("falls back to the literal jump list and no label without the map", () => {
+    renderPanel();
+    // Old wasm build: nothing to name, so the trigger keeps its prompt and
+    // the list is the panel's own.
+    expect(jumpTrigger().textContent).toContain("jump...");
+    openJump();
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual([".text", ".rodata", ".data", ".bss", "stack"]);
   });
 });

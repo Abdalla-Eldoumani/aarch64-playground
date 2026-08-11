@@ -1,5 +1,6 @@
 "use client";
 
+import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type {
   AssembleResultPayload,
   Request,
@@ -209,6 +210,10 @@ export class WorkerClient {
 
   lineMap(): Promise<number[]> {
     return this.send<number[]>({ id: 0, kind: "lineMap" });
+  }
+
+  memoryMap(): Promise<MemoryRegion[]> {
+    return this.send<MemoryRegion[]>({ id: 0, kind: "memoryMap" });
   }
 
   terminate(): void {

@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* =============================================================================
-   aarch64 playground: design tokens v2 — "look inside the machine"
+   aarch64 playground: design tokens v2 -- "look inside the machine"
    One system, two densities. Amber = the machine acting. Cyan = you acting.
    One semantic token drives each state across all three themes. The 32-bit
    instruction word is the brand: field boxes, bit rulers, blueprint paper.
@@ -22,7 +22,7 @@
 
   --text-primary:   #EDEEF1;
   --text-secondary: #A5ACB6;
-  --text-tertiary:  #6F7681;
+  --text-tertiary:  #79808B; /* 4.5:1 on the base, band, and raised surfaces */
 
   --amber:          #FFB224;  /* execution: pc, current line, run, decode-strip Rd */
   --amber-dim:      #7A5510;
@@ -74,7 +74,7 @@
 
   --text-primary:   #14161A;
   --text-secondary: #565E68;
-  --text-tertiary:  #6A727C;
+  --text-tertiary:  #626A73; /* 4.5:1 on every light surface incl. --bg-elevated hover */
 
   --amber:          #A86A0F;
   --amber-dim:      #E7CD96;
@@ -143,7 +143,7 @@
    (editorial leads + margin notes). next/font binds --font-sans/--font-mono/
    --font-serif on <html> to the self-hosted hashed families (layout.tsx); the
    --type-* shorthands reference those vars so they resolve to the self-hosted
-   fonts. The family vars are intentionally NOT redeclared here — doing so
+   fonts. The family vars are intentionally NOT redeclared here -- doing so
    would shadow next/font.
 ============================================================================= */
 :root {
@@ -382,6 +382,48 @@ body {
    visible viewport on notched devices. */
 .safe-area-top {
   padding-top: var(--safe-top);
+}
+
+/* =============================================================================
+   SKIP LINK
+   The first focusable element in the document (root layout), pointing at the
+   single <main id="main"> every route renders. Clipped to a screen-reader-only
+   box until focus, then a fixed mono chip in the top-left: fixed rather than
+   in flow because the nav's backdrop-blur and the debugger's header band would
+   both paint over an in-flow control. z-index sits above the highest overlay
+   in the app (z-[80]) so the chip is never covered while it has focus.
+============================================================================= */
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.skip-link:focus {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  height: auto;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  border-radius: var(--radius-control);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-mono), "JetBrains Mono", "Fira Code", "Consolas", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  box-shadow: var(--ring);
 }
 
 /* Resize-handle styling for react-resizable-panels. The `data-` attributes

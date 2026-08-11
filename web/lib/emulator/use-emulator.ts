@@ -11,9 +11,10 @@ import {
   pcToSourceLineFromMap,
   type LineMap,
 } from "@/lib/emulator/line-map";
+import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { ReplayRing, type ReplayFrame } from "@/lib/emulator/replay";
 import { parseArgs } from "@/lib/playground/args";
-import type { StateSnapshot } from "@/lib/worker/protocol";
+import type { ExternalCall, StateSnapshot } from "@/lib/worker/protocol";
 
 export interface AssemblyError {
   line: number;
@@ -77,8 +78,24 @@ export interface EmulatorState {
   assemblyErrors: AssemblyError[];
   breakpoints: Set<number>;
   currentLine: number | null;
+  /**
+   * The external call the paused pc sits inside, or null when the pc is one
+   * of the program's own instructions. Non-null means `currentLine` is the
+   * call SITE, not the executing address -- the three steps a hosted call
+   * takes land on a trampoline and a synthetic stub, neither of which is a
+   * line the student wrote. Always null while the program is running (a
+   * full run passes through dozens of calls a second) and on wasm builds
+   * that predate the export.
+   */
+  externalCall: ExternalCall | null;
   instructions: DecodedInstruction[];
   codeBase: number;
+  /**
+   * The emulator's address bands, read once at load. Empty on a wasm build
+   * that predates the export, which is the memory panel's cue to fall back
+   * to its own section list.
+   */
+  memoryRegions: MemoryRegion[];
   stdout: string;
   stderr: string;
   blocked: boolean;
@@ -271,8 +288,10 @@ export function useEmulator(): EmulatorState {
   const [assemblyErrors, setAssemblyErrors] = useState<AssemblyError[]>([]);
   const [breakpoints, setBreakpoints] = useState<Set<number>>(new Set());
   const [currentLine, setCurrentLine] = useState<number | null>(null);
+  const [externalCall, setExternalCall] = useState<ExternalCall | null>(null);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
+  const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
   const [blocked, setBlocked] = useState(false);
@@ -345,10 +364,22 @@ export function useEmulator(): EmulatorState {
     // No program, no marker: snapshots that arrive while the machine is
     // empty (boot heartbeats, reset, a failed assemble) must not resurrect
     // a stale line through the previous program's map.
+    // An external call is a PAUSED-state affordance. A run passes through
+    // one on every printf, so honoring it mid-run would strobe the card and
+    // drag the marker back to the call site on every heartbeat; the pc the
+    // run reports is the truth there.
+    const call = (!runningRef.current && snap.externalCall) || null;
+    setExternalCall(call);
     const map = lineMapRef.current;
     if (!programLoadedRef.current) {
       setCurrentLine(null);
       currentLineRef.current = null;
+    } else if (call) {
+      // Inside a libc call the pc is a trampoline word or a synthetic stub;
+      // the line the student is on is the `bl` that got there (null when the
+      // map cannot name it, which reads as "no line" exactly as before).
+      setCurrentLine(call.callSiteLine);
+      currentLineRef.current = call.callSiteLine;
     } else if (!isEmptyLineMap(map)) {
       const newLine = pcToSourceLineFromMap(pcNum, map);
       setCurrentLine(newLine);
@@ -443,6 +474,13 @@ export function useEmulator(): EmulatorState {
         const base = await backend.codeBase();
         if (cancelled) return;
         setCodeBase(base);
+        // The address bands ride the same one-time round trip as codeBase:
+        // fixed for the life of the module, so nothing re-reads them. The
+        // table only labels a panel, so a failure degrades to the panel's
+        // own section list instead of failing the whole boot.
+        const regions = await backend.memoryMap().catch(() => []);
+        if (cancelled) return;
+        setMemoryRegions(regions);
         setIsLoaded(true);
       })
       .catch((err: unknown) => {
@@ -1117,8 +1155,10 @@ export function useEmulator(): EmulatorState {
       assemblyErrors,
       breakpoints,
       currentLine,
+      externalCall,
       instructions,
       codeBase,
+      memoryRegions,
       stdout,
       stderr,
       blocked,
@@ -1170,7 +1210,8 @@ export function useEmulator(): EmulatorState {
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
-      currentLine, instructions, codeBase, stdout, stderr, blocked,
+      currentLine, externalCall, instructions, codeBase, memoryRegions,
+      stdout, stderr, blocked,
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,

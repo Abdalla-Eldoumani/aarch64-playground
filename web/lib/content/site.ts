@@ -2,7 +2,7 @@
 // footer, the sitemap, and the robots entry all read from here, so the route list
 // and the deployed/repository URLs never drift apart across those surfaces.
 
-export const SITE_URL = "https://aarch64-playground.vercel.app";
+export const SITE_URL = "https://aarch64-playground.com";
 export const REPO_URL = "https://github.com/Abdalla-Eldoumani/aarch64-playground";
 
 // The cover messengers unfurl. Open Graph and Twitter cards do not deep-merge

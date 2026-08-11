@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
 import { useEmulator } from "@/lib/emulator/use-emulator";
 import { useBreakpoint, isAtLeast } from "@/lib/hooks/use-breakpoint";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
@@ -24,18 +23,17 @@ import {
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
 import { parseArgs } from "@/lib/playground/args";
 import { formatAsm } from "@/lib/asm/asm-formatter";
-import {
-  MAX_VFS_BYTES,
-  checkUploadSize,
-  validateStdin,
-} from "@/lib/playground/upload-guard";
-import { loadPersistedVfs, savePersistedVfs } from "@/lib/playground/vfs-persist";
+import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
+import { useWorkingSet } from "@/lib/playground/use-working-set";
+import { useTerminalDrive } from "@/lib/playground/use-terminal-drive";
+import { createTerminalContext } from "@/lib/playground/terminal-context";
 import {
   describeTarget,
   getImportTarget,
   type ImportTarget,
 } from "@/lib/hooks/use-import-target";
 import type { Action } from "@/lib/playground/commands";
+import { buildPaletteCommands } from "@/lib/playground/palette-commands";
 import { Editor } from "@/components/playground/Editor";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
@@ -53,15 +51,33 @@ import { ArgsInput } from "@/components/playground/ArgsInput";
 import {
   MultiFileTabs,
   combineSources,
-  useSourceFiles,
   type SourceFile,
 } from "@/components/playground/MultiFileTabs";
+import { useSourceFiles } from "@/lib/hooks/use-source-files";
+// Full-only / heavy panels load on first render so a multi-embed page (and
+// the embed/checker chrome) never ships their code.
 import {
-  MAIN_FILE,
+  BaseConverter,
+  InstructionView,
+  MemoryPanel,
+  MemoryWatches,
+  ReplayScrubber,
+  SavesPanel,
+  StackPanel,
+  TerminalPane,
+  TutorialRunner,
+  WatchPanel,
+} from "@/components/playground/lazy-panels";
+import {
+  breakpointsForFile,
   combinedLineFor,
-  countLines,
+  diagnosticsForFile,
+  errorWithFileName,
+  planBreakpointRemap,
   resolveLine,
   validateFileName,
+  workspaceShape,
+  type Workspace,
 } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 
@@ -70,49 +86,6 @@ import { useToast } from "@/components/ui/Toast";
 // two spellings: it still holds the "1" / "0" a returning student's browser
 // wrote, which decodeLaunch reads unchanged.
 const LAUNCH_MODE_KEY = "aarch64-playground:terminal-program";
-
-// Full-only / heavy panels load on first render so a multi-embed page (and
-// the embed/checker chrome) never ships their code.
-const InstructionView = dynamic(
-  () => import("@/components/reference/InstructionView").then((m) => m.InstructionView),
-  { ssr: false },
-);
-const MemoryPanel = dynamic(
-  () => import("@/components/panels/MemoryPanel").then((m) => m.MemoryPanel),
-  { ssr: false },
-);
-const StackPanel = dynamic(
-  () => import("@/components/panels/StackPanel").then((m) => m.StackPanel),
-  { ssr: false },
-);
-const WatchPanel = dynamic(
-  () => import("@/components/panels/WatchPanel").then((m) => m.WatchPanel),
-  { ssr: false },
-);
-const MemoryWatches = dynamic(
-  () => import("@/components/panels/MemoryWatches").then((m) => m.MemoryWatches),
-  { ssr: false },
-);
-const BaseConverter = dynamic(
-  () => import("@/components/panels/BaseConverter").then((m) => m.BaseConverter),
-  { ssr: false },
-);
-const ReplayScrubber = dynamic(
-  () => import("@/components/playground/ReplayScrubber").then((m) => m.ReplayScrubber),
-  { ssr: false },
-);
-const SavesPanel = dynamic(
-  () => import("@/components/panels/SavesPanel").then((m) => m.SavesPanel),
-  { ssr: false },
-);
-const TerminalPane = dynamic(
-  () => import("@/components/panels/TerminalPane").then((m) => m.TerminalPane),
-  { ssr: false, loading: () => null },
-);
-const TutorialRunner = dynamic(
-  () => import("@/components/playground/TutorialRunner").then((m) => m.TutorialRunner),
-  { ssr: false },
-);
 
 /**
  * The single shared emulator surface. The full playground, the landing
@@ -215,6 +188,17 @@ function joinClasses(...parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ");
 }
 
+/** The right-hand tab strip's panes, in the order the strip renders them. */
+type RightTab =
+  | "memory"
+  | "stack"
+  | "console"
+  | "term"
+  | "watches"
+  | "convert"
+  | "memwatch"
+  | "saves";
+
 // One naming rule for every recents entry: the program's first comment
 // line, or a timestamped snippet label when it has none.
 function nameForRecents(source: string): string {
@@ -267,6 +251,12 @@ function EmbeddableCore({
   registerHandle,
 }: EmbeddableCoreProps) {
   const emu = useEmulator();
+  // The hub as a latest-value ref (synced in the effect further down, with
+  // the other such refs). Declared here because callbacks and hooks all the
+  // way through the body read the machine through it: the hub is a NEW object
+  // after every snapshot, so a closure over the render's object freezes
+  // mid-command state.
+  const emuRef = useRef(emu);
   const bp = useBreakpoint();
   const [source, setSource] = useState(startSource ?? "");
   // Advisory pre-assembly lint: frame-balance and m4-hygiene warnings,
@@ -275,12 +265,16 @@ function EmbeddableCore({
   const [lintWarnings, setLintWarnings] = useState<
     Array<{ line: number; message: string }>
   >([]);
-  const [activeTab, setActiveTab] = useState<
-    "memory" | "stack" | "console" | "term" | "watches" | "convert" | "memwatch" | "saves"
-  >("memory");
+  const [activeTab, setActiveTab] = useState<RightTab>("memory");
   // Mirrors the palette's converter action into the phone layout, where the
   // desktop tab state has nothing to show.
   const [paneRequest, setPaneRequest] = useState<{ pane: string; nonce: number } | null>(null);
+  // Bringing a pane forward takes both: the desktop tab state, and the nonce
+  // the phone layout's pane switcher watches.
+  const requestPane = useCallback((pane: RightTab) => {
+    setActiveTab(pane);
+    setPaneRequest({ pane, nonce: Date.now() });
+  }, []);
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
@@ -367,9 +361,6 @@ function EmbeddableCore({
   useEffect(() => {
     launchModeRef.current = launchMode;
   }, [launchMode]);
-  // Nonce asking the attach effect to start a terminal-pane run once the
-  // pane's io registration lands (the pane mounts lazily on tab switch).
-  const [termRunRequest, setTermRunRequest] = useState<number | null>(null);
   // The terminal mounts lazily on first use and then stays mounted (see
   // the tab panel below): a live session must survive tab switches.
   const [termOpened, setTermOpened] = useState(false);
@@ -491,65 +482,36 @@ function EmbeddableCore({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Input seeds for the current program. Assembling resets the whole
-  // machine (stdin queue and VFS included), so the seeds re-apply after
-  // every successful assemble; a new handoff replaces them.
-  // Full chrome drops stdin seeds the same way `loadProgram` does: a program
-  // that reads input should BLOCK at the read and pull the student to the
-  // console. Seeding here re-fed the boot's stdin after every assemble, so a
-  // hard-loaded share or bundle link answered its own scanf forever while the
-  // same link opened by in-app navigation did not.
-  const seedsRef = useRef<{ stdin?: string; vfs?: Record<string, string> }>({
-    stdin: chrome === "full" ? undefined : startStdin,
+  // Input seeds and the working file set: what the machine needs on it that
+  // is not the program text, and the record assemble's reset restores from.
+  const { applySeeds, stageVfsFile, removeVfsFile, seedFromPayload } = useWorkingSet({
+    isHome: chrome === "full",
+    startStdin,
+    machine: emuRef,
+    machineLoaded: emu.isLoaded,
   });
 
-  const applySeeds = useCallback(() => {
-    const seeds = seedsRef.current;
-    if (seeds.stdin) emuRef.current.pushStdin(seeds.stdin);
-    if (seeds.vfs) {
-      const enc = new TextEncoder();
-      for (const [name, body] of Object.entries(seeds.vfs)) {
-        emuRef.current.uploadVfsFile(name, enc.encode(body));
-      }
-    }
-  }, []);
-
-  // The working file set is the seeds' vfs map: everything the student put
-  // there on purpose (uploads, terminal redirect outputs, a program's loaded
-  // fixtures). Routing every user write through these helpers keeps the map
-  // authoritative, which buys two behaviors at once: assemble's machine
-  // reset re-seeds the files instead of losing them, and the full
-  // playground mirrors the map into IndexedDB so it survives reloads and
-  // route changes. Embed and checker chromes stay session-only sandboxes.
-  const persistWorkingSet = useCallback(() => {
-    if (chrome !== "full") return;
-    void savePersistedVfs(seedsRef.current.vfs ?? {});
-  }, [chrome]);
-
-  const stageVfsFile = useCallback(
-    (name: string, data: Uint8Array | string) => {
-      const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
-      const body = typeof data === "string" ? data : new TextDecoder().decode(data);
-      seedsRef.current.vfs = { ...(seedsRef.current.vfs ?? {}), [name]: body };
-      emuRef.current.uploadVfsFile(name, bytes);
-      persistWorkingSet();
-    },
-    [persistWorkingSet],
-  );
-
-  const removeVfsFile = useCallback(
-    async (path: string) => {
-      if (seedsRef.current.vfs && path in seedsRef.current.vfs) {
-        const next = { ...seedsRef.current.vfs };
-        delete next[path];
-        seedsRef.current.vfs = next;
-      }
-      const removed = await emuRef.current.deleteVfsFile(path);
-      persistWorkingSet();
-      return removed;
-    },
-    [persistWorkingSet],
-  );
+  // The terminal pane's foreground sessions: the shared drive, the console
+  // watermark a session leaves behind, and the two rising edges (a blocked
+  // read, a raw-mode program) that decide which pane comes forward.
+  const {
+    terminalOwnedFrom,
+    foregroundLive,
+    dropTerminalWatermark,
+    resetMachine,
+    clearConsoleAll,
+    requestTerminalRun,
+    registerTermIO,
+    driveForeground,
+  } = useTerminalDrive({
+    machine: emuRef,
+    wantsTerminal: emu.wantsTerminal,
+    blocked: emu.blocked,
+    stdout: emu.stdout,
+    launchModeRef,
+    terminalTabActive: activeTab === "term",
+    requestPane,
+  });
 
   const loadProgram = useCallback(
     (payload: HandoffPayload) => {
@@ -567,33 +529,13 @@ function EmbeddableCore({
       // unreachable by any click and only a reload recovered).
       emuRef.current.clearAllBreakpoints();
       emuRef.current.reset();
-      // Interactive input is the point in the full playground: a program
-      // that reads stdin should block at its scanf and pull the student to
-      // the console, so example stdin fixtures do not pre-seed there. The
-      // embed and checker chromes keep authored seeds (lesson figures and
-      // exercise checks must run exactly as written), and VFS fixtures
-      // always seed -- the file examples need their inputs on disk.
-      // Full chrome treats the VFS as the student's home directory: a new
-      // program's fixtures land beside (and on name collisions, over) the
-      // files already there, never wiping them. Embed and checker keep the
-      // strict replace: a lesson figure must see exactly its own fixtures.
-      const workingVfs =
-        chrome === "full"
-          ? { ...(seedsRef.current.vfs ?? {}), ...(payload.vfs ?? {}) }
-          : payload.vfs;
-      seedsRef.current = {
-        stdin: chrome === "full" ? undefined : payload.stdin,
-        vfs: workingVfs,
-      };
-      // Seed the VFS now so the console's file list shows the program's
-      // fixtures immediately; assemble re-seeds after its machine reset.
-      if (workingVfs) {
-        const enc = new TextEncoder();
-        for (const [name, body] of Object.entries(workingVfs)) {
-          emuRef.current.uploadVfsFile(name, enc.encode(body));
-        }
-      }
-      persistWorkingSet();
+      // The payload's stdin and fixtures become this program's seeds. Which
+      // of them actually reach the machine is the working set's call: the
+      // full playground drops stdin seeds (a reading program should block and
+      // pull the student to the console) and merges fixtures into the home
+      // directory, while embed and checker keep authored seeds and replace
+      // the VFS strictly.
+      seedFromPayload(payload);
       setSource(payload.source);
       // A program handoff replaces the whole workspace: stale helper
       // files from earlier work must not concatenate into the new
@@ -612,30 +554,12 @@ function EmbeddableCore({
       setArgsText(modeArgsFor(payload.stem, launch) ?? payloadArgsRef.current);
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       // A new program starts on a fresh console; no session owns it yet.
-      setTerminalOwnedFrom(null);
+      dropTerminalWatermark();
       setShareBanner(Boolean(payload.fromShare));
       lastRunSourceRef.current = null;
     },
-    [chrome, recent, persistWorkingSet, setExtraFiles, setLaunchMode],
+    [chrome, recent, seedFromPayload, setExtraFiles, setLaunchMode, dropTerminalWatermark],
   );
-
-  // Rehydrate the home directory once the hub is live: the persisted files
-  // sit underneath anything a boot handoff (share link, bundle, example)
-  // already staged, so a link's fixtures win their name collisions. Runs
-  // once per mount; embed and checker chromes never touch the store.
-  const hydratedVfsRef = useRef(false);
-  useEffect(() => {
-    if (chrome !== "full" || hydratedVfsRef.current || !emu.isLoaded) return;
-    hydratedVfsRef.current = true;
-    void loadPersistedVfs().then((files) => {
-      if (!files || Object.keys(files).length === 0) return;
-      seedsRef.current.vfs = { ...files, ...(seedsRef.current.vfs ?? {}) };
-      const enc = new TextEncoder();
-      for (const [name, body] of Object.entries(seedsRef.current.vfs)) {
-        emuRef.current.uploadVfsFile(name, enc.encode(body));
-      }
-    });
-  }, [chrome, emu.isLoaded]);
 
   // Push the current buffer onto the recent list whenever the user
   // assembles, and concatenate any extra files so `bl func` resolves across
@@ -647,7 +571,7 @@ function EmbeddableCore({
   const assembleWithHistory = useCallback(async (): Promise<boolean> => {
     // The assemble resets the machine and empties the console, so a
     // previous session's watermark points at bytes that are gone.
-    setTerminalOwnedFrom(null);
+    dropTerminalWatermark();
     const trimmed = source.trim();
     if (trimmed.length > 0) {
       recent.push(nameForRecents(source), source);
@@ -662,7 +586,16 @@ function EmbeddableCore({
     const ok = await emu.assemble(combined, parseArgs(argsText));
     if (ok) applySeeds();
     return ok;
-  }, [source, recent, emu, extraFiles, argsText, applySeeds, pinAssembledLayout]);
+  }, [
+    source,
+    recent,
+    emu,
+    extraFiles,
+    argsText,
+    applySeeds,
+    pinAssembledLayout,
+    dropTerminalWatermark,
+  ]);
 
   // The one-action interactive launch: assemble, then hand the pane over.
   // Reached from the palette's launch action and from a run press in
@@ -677,10 +610,9 @@ function EmbeddableCore({
     // The failure already renders in Controls' error box, and the pane is
     // left alone: a failed assemble must not wipe the terminal.
     if (!ok) return;
-    setActiveTab("term");
-    setPaneRequest({ pane: "term", nonce: Date.now() });
-    setTermRunRequest(Date.now());
-  }, [assembleWithHistory]);
+    requestPane("term");
+    requestTerminalRun();
+  }, [assembleWithHistory, requestPane, requestTerminalRun]);
 
   // The reduced embed/checker chrome has no separate Assemble control, so its
   // primary Run must assemble first; otherwise runUntilBreak executes over
@@ -707,255 +639,6 @@ function EmbeddableCore({
     emu.run();
   }, [emu, source, argsText, applySeeds]);
 
-  // Auto-switch to the console on the false->true edge of `blocked` so the
-  // student sees the scanf prompt. queueMicrotask defers the flip out of the
-  // synchronous render phase. Terminal programs (raw mode) keep their
-  // input in the terminal pane, so the console jump stands down for them.
-  const lastBlockedRef = useRef(false);
-  useEffect(() => {
-    if (emu.blocked && !lastBlockedRef.current) {
-      lastBlockedRef.current = true;
-      if (emu.wantsTerminal) return;
-      // A foreground terminal session owns the program's input even
-      // without raw mode: a menu program run as `./program` reads its
-      // scanf lines from the term pane, so the console jump stands down.
-      // A terminal-mode program keeps that ownership for its whole
-      // life, including the gap before its drive attaches -- the console
-      // must never steal a read it cannot answer.
-      if (foregroundActiveRef.current || launchModeRef.current === "terminal") return;
-      queueMicrotask(() => {
-        setActiveTab("console");
-        // Phones route panes through the pane switcher, not the tab state.
-        setPaneRequest({ pane: "console", nonce: Date.now() });
-      });
-    } else if (!emu.blocked) {
-      lastBlockedRef.current = false;
-    }
-  }, [emu.blocked, emu.wantsTerminal]);
-
-  // The terminal pane's interactive I/O surface. State, not a ref: the
-  // pane mounts lazily on first tab activation, which happens AFTER a
-  // raw-mode program's rising edge switches the tab -- the self-attach
-  // effect must re-fire when the registration lands.
-  // Live only while this component is mounted: a foreground drive polls
-  // on a timer and must not outlive the surface it drives.
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-  // Mirrors termIO for the poll loop, which must notice a pane that went
-  // away without waiting for a re-render.
-  const termIORef = useRef<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
-  const [termIO, setTermIO] =
-    useState<import("@/lib/terminal/dispatch").TerminalProgramIO | null>(null);
-  const foregroundActiveRef = useRef(false);
-  // Mirrored as state so the console can render "this program reads from
-  // the terminal" and disable its own stdin box while a session owns it.
-  const [foregroundLive, setForegroundLive] = useState(false);
-  // Where in the console's stdout a terminal-owned session began. The
-  // session's output goes to the pane, which is a real terminal; the
-  // console is plain text and would render a full-screen program's escape
-  // sequences as literal garbage. Null means no session has taken this
-  // program over, which is every classic console run.
-  const [terminalOwnedFrom, setTerminalOwnedFrom] = useState<number | null>(null);
-
-  // Reset and clear both empty the console, so the watermark they leave
-  // behind describes bytes that no longer exist: it goes with them, and the
-  // next classic run renders exactly as it always has.
-  const resetMachine = useCallback(() => {
-    setTerminalOwnedFrom(null);
-    emuRef.current.reset();
-  }, []);
-  const clearConsoleAll = useCallback(() => {
-    setTerminalOwnedFrom(null);
-    emuRef.current.clearConsole();
-  }, []);
-
-  // Hiding the pane blurs its textarea, so coming back to a live session
-  // needs the keyboard handed over again -- otherwise the student types
-  // into nothing while the console says "type in the terminal".
-  useEffect(() => {
-    if (activeTab !== "term" || !foregroundLive) return;
-    termIORef.current?.focus?.();
-  }, [activeTab, foregroundLive]);
-
-  // A program that switches the terminal to raw mode is a terminal
-  // program: hand it the terminal pane on the false->true edge, the same
-  // way blocked hands scanf programs the console.
-  const lastWantsTermRef = useRef(false);
-  useEffect(() => {
-    if (emu.wantsTerminal && !lastWantsTermRef.current) {
-      lastWantsTermRef.current = true;
-      // For a raw-mode program this edge IS the session start: the tab
-      // switch, the lazy pane mount, and the io registration all take
-      // renders, and the program paints full frames through every one of
-      // them. Pinning the console's watermark here rather than at the
-      // drive's attach is what keeps those frames out of a plain-text
-      // scrollback. Earliest pin wins, so the attach leaves it alone.
-      setTerminalOwnedFrom((prev) => prev ?? emu.stdout.length);
-      queueMicrotask(() => {
-        setActiveTab("term");
-        setPaneRequest({ pane: "term", nonce: Date.now() });
-      });
-    } else if (!emu.wantsTerminal) {
-      lastWantsTermRef.current = false;
-    }
-  }, [emu.wantsTerminal, emu.stdout]);
-
-  // The one foreground drive both entry paths share: stream output to
-  // the pane, forward its keystrokes to stdin, resume input-starved
-  // stops, and stand down on halt, error, cancel, or a user pause.
-  const driveForeground = useCallback(
-    async (
-      io: import("@/lib/terminal/dispatch").TerminalProgramIO,
-      opts?: { clearAtStart?: boolean },
-    ): Promise<number | null> => {
-      if (foregroundActiveRef.current) return null;
-      foregroundActiveRef.current = true;
-      setForegroundLive(true);
-      // Everything from here goes to the pane through the output tap below.
-      // Pin where the console's scrollback stops so it can show what
-      // printed BEFORE the takeover and one note in place of the rest.
-      // A raw-mode program pinned this at its rising edge, several frames
-      // ago; the earliest pin of a session wins, so this only fires for a
-      // session that starts here (terminal mode's run, `./name`).
-      setTerminalOwnedFrom((prev) => prev ?? emuRef.current.stdout.length);
-      let cancelled = false;
-      // Set once the pane we are driving has registered itself; after that,
-      // losing the registration means the pane went away.
-      let sawPane = false;
-      // Wipe the pane once, the moment the program claims the terminal
-      // (already true on self-attach; flips mid-run for ./name), so the
-      // takeover starts on a clean screen with no earlier scrollback.
-      let cleared = false;
-      const clearOnce = () => {
-        if (!cleared) {
-          cleared = true;
-          io.clear?.();
-        }
-      };
-      if (opts?.clearAtStart || emuRef.current.wantsTerminal) clearOnce();
-      // Live sessions skip the step-back ring: the per-step clone costs
-      // more than the step, and stepping back mid-session has no meaning.
-      emuRef.current.setSnapshotsPaused(true);
-      emuRef.current.setOutputTap((t) => io.write(t));
-      // Cooked-mode input works like a canonical tty: the line buffers
-      // locally with echo (so typed digits are visible) and backspace
-      // editing, and reaches the program as one line ending in \n on
-      // enter. Raw-mode programs (termios) get every byte untouched and
-      // draw their own screens.
-      let lineBuf = "";
-      io.setForeground({
-        pushInput: (d) => {
-          const e = emuRef.current;
-          // Keystrokes arrive one at a time, but a clipboard paste arrives
-          // whole and the pane forwards it verbatim. Bound it here, where
-          // both tty modes converge, so a pasted megabyte cannot land in
-          // the machine's stdin queue in one gesture.
-          const oversize = validateStdin(d);
-          if (oversize) {
-            io.write(`\r\n[${oversize}]\r\n`);
-            return;
-          }
-          if (e.wantsTerminal) {
-            e.pushStdin(d);
-            return;
-          }
-          for (let i = 0; i < d.length; i++) {
-            const ch = d[i];
-            if (ch === "\r" || ch === "\n") {
-              io.write("\r\n");
-              e.pushStdin(`${lineBuf}\n`);
-              lineBuf = "";
-            } else if (ch === "\x7f" || ch === "\b") {
-              if (lineBuf.length > 0) {
-                lineBuf = lineBuf.slice(0, -1);
-                io.write("\b \b");
-              }
-            } else if (ch === "\x1b") {
-              // Swallow the rest of an escape sequence (arrow keys):
-              // canonical reads have no use for it.
-              return;
-            } else if (ch >= " ") {
-              lineBuf += ch;
-              io.write(ch);
-            }
-          }
-        },
-        cancel: () => {
-          cancelled = true;
-          emuRef.current.pause();
-        },
-      });
-      try {
-        {
-          const e = emuRef.current;
-          if (!e.isRunning && !e.isHalted) e.run();
-        }
-        let resumeArmed = false;
-        // The hub's isRunning/blocked arrive through React state, so the
-        // first polls after run() can still read the pre-run snapshot.
-        // Ending the session there printed "[program stopped]" over a
-        // program that was only just starting, and handed its blocked
-        // read to the console. Wait for real evidence it began.
-        let started = false;
-        const openedAt = Date.now();
-        for (;;) {
-          await new Promise<void>((r) => setTimeout(r, 32));
-          // Stand down if this component unmounted (a route change) or
-          // the pane we are driving went away (a mobile pane switch
-          // unmounts it). Without this the loop spins forever on a
-          // blocked program, holding the console's stdin disabled and
-          // the snapshot ring paused with no way back.
-          if (!mountedRef.current) break;
-          // A pane that unmounts deregisters by writing null, so "not this
-          // io" has to include null -- the earlier `!== null` clause meant
-          // the one case this guard exists for was the one it let through.
-          // It stays tolerant only until the pane first registers, since a
-          // drive can start a frame before that lands.
-          if (termIORef.current === io) sawPane = true;
-          else if (sawPane || termIORef.current !== null) break;
-          const e = emuRef.current;
-          if (e.wantsTerminal) clearOnce();
-          if (cancelled || e.isHalted || e.error) break;
-          // An assemble or a reset mid-session drops the loaded flag: the
-          // program this drive was running no longer exists, and the resume
-          // latch below would otherwise start whatever took its place --
-          // pressing Assemble while a session waited for input could set the
-          // freshly assembled program running on its own.
-          if (started && !e.programLoaded) break;
-          if (e.isRunning || e.blocked) started = true;
-          if (e.isRunning) continue;
-          if (e.blocked) {
-            resumeArmed = true;
-            continue;
-          }
-          if (resumeArmed) {
-            resumeArmed = false;
-            emuRef.current.run();
-            continue;
-          }
-          // Nothing observed yet: give the machine a moment to commit
-          // its first state before deciding the session is over.
-          if (!started && Date.now() - openedAt < 4000) continue;
-          break;
-        }
-      } finally {
-        emuRef.current.setSnapshotsPaused(false);
-        emuRef.current.setOutputTap(null);
-        io.setForeground(null);
-        foregroundActiveRef.current = false;
-        setForegroundLive(false);
-      }
-      const e = emuRef.current;
-      return e.isHalted ? e.exitCode : null;
-    },
-    [],
-  );
-
   // Run in terminal mode: hand the program the pane up front -- switch
   // the tab, then let the attach effect below start the drive once the
   // pane's io registration lands (the pane mounts lazily on the tab
@@ -976,48 +659,16 @@ function EmbeddableCore({
       // an empty screen. An assembled program hands over without
       // re-assembling -- the same run press it has always been.
       if (emu.isHalted || emu.isRunning) return;
-      setActiveTab("term");
-      setPaneRequest({ pane: "term", nonce: Date.now() });
-      setTermRunRequest(Date.now());
+      requestPane("term");
+      requestTerminalRun();
       return;
     }
     emu.run();
-  }, [launchMode, chrome, emu, launchInteractive]);
+  }, [launchMode, chrome, emu, launchInteractive, requestPane, requestTerminalRun]);
   const handleRunRef = useRef(handleRun);
   useEffect(() => {
     handleRunRef.current = handleRun;
   }, [handleRun]);
-
-  // Attach a requested terminal-pane run: clear the pane (a previous
-  // program's screen must not linger) and drive the workspace live,
-  // with the pane printing the exit line when the session ends.
-  useEffect(() => {
-    if (termRunRequest == null || !termIO) return;
-    // Check busy BEFORE consuming the nonce: dropping the request while
-    // a session owns the pane silently swallowed the student's Run.
-    if (foregroundActiveRef.current) return;
-    setTermRunRequest(null);
-    const io = termIO;
-    void driveForeground(io, { clearAtStart: true }).then((exitCode) => {
-      io.sessionEnded?.(exitCode);
-    });
-    // foregroundLive is a dependency so that a request held back above
-    // gets another chance the moment the running session stands down.
-    // Without it the request was preserved and then never honoured.
-  }, [termRunRequest, termIO, driveForeground, foregroundLive]);
-
-  // Self-attach: a raw-mode program started from the run button (not
-  // `./name`) still deserves live terminal I/O. When the flag rises and
-  // no session owns the pane, the pane takes the program over and
-  // prints the exit line itself when the session ends.
-  useEffect(() => {
-    if (!emu.wantsTerminal) return;
-    if (!termIO || foregroundActiveRef.current) return;
-    const io = termIO;
-    void driveForeground(io).then((exitCode) => {
-      io.sessionEnded?.(exitCode);
-    });
-  }, [emu.wantsTerminal, termIO, driveForeground]);
 
   // The run-mode control is offered for the examples where both surfaces
   // are a real answer; every other program keeps today's header band.
@@ -1027,203 +678,38 @@ function EmbeddableCore({
   // mode owns the pane at run press, and only full chrome has a pane.
   const launchable = chrome === "full" && launchMode === "terminal";
 
-  // The command Action[] is built here (where source / modes / hub live) and
-  // surfaced through the handle so a host-rendered palette reuses it.
+  // The command Action[] is built from the state that lives here (source,
+  // launch mode, hub) and surfaced through the handle so a host-rendered
+  // palette reuses it. The table itself is a pure function of these deps.
   const buildCommands = useCallback(
-    (): Action[] => [
-      {
-        id: "assemble",
-        label: "Assemble",
-        description: "parse source and load into memory",
-        shortcut: "F6",
-        run: () => assembleWithHistory(),
-      },
-      {
-        id: "step",
-        label: "Step",
-        // The hint mirrors step-back's: the hub ignores step/run without a
-        // loaded program, so the palette says why instead of no-oping mutely.
-        description: emu.blocked
-          ? "(waiting for stdin; feed the console first)"
-          : emu.programLoaded
-            ? "execute one instruction"
-            : "(no program; assemble first)",
-        shortcut: "F10",
-        run: () => {
-          if (!emu.blocked) emu.step();
-        },
-      },
-      {
-        id: "step-back",
-        label: "Step back",
-        description: emu.blocked
-          ? "(waiting for stdin; feed the console first)"
-          : emu.canStepBack
-            ? "undo the last instruction from the snapshot ring"
-            : "(no snapshots; run a step first)",
-        shortcut: "Shift+F10",
-        run: () => {
-          if (!emu.blocked) emu.stepBack();
-        },
-      },
-      {
-        id: "run",
-        label: "Run",
-        // The list is rebuilt every time the palette opens, so the
-        // description can name the surface this program's run lands in
-        // rather than describing only the console flow. In terminal mode
-        // with nothing assembled, run IS the launch, so it says so
-        // instead of sending the student to the assemble button.
-        description: emu.blocked
-          ? "(waiting for stdin; feed the console first)"
-          : launchable
-            ? emu.programLoaded
-              ? "hand the terminal pane to this program"
-              : "assemble, then hand the terminal pane over"
-            : emu.programLoaded
-              ? "run until halt or breakpoint"
-              : "(no program; assemble first)",
-        shortcut: "F5",
-        run: () => {
-          if (!emu.blocked) handleRun();
-        },
-      },
-      {
-        id: "launch-terminal",
-        label: "Start in the terminal",
-        // Always present, with the description carrying the reason it
-        // would do nothing -- a row that only sometimes exists is
-        // unfindable by the student who saw it once.
-        description: launchable
-          ? "assemble and run with the terminal pane"
-          : "(this program runs in the console)",
-        run: () => {
-          if (launchable) void launchInteractive();
-        },
-      },
-      {
-        id: "pause",
-        label: "Pause",
-        description: "stop the run loop",
-        shortcut: "F5",
-        run: () => emu.pause(),
-      },
-      {
-        id: "reset",
-        label: "Reset",
-        description: "clear state, keep breakpoints",
-        shortcut: "Shift+F5",
-        run: () => resetMachine(),
-      },
-      {
-        id: "share",
-        label: "Share link",
-        description: "copy a compressed URL",
-        run: () => onOpenShareDialog?.(),
-      },
-      {
-        id: "tutorial",
-        label: "Start guided tour",
-        description: "walk through a concept one step at a time",
-        run: () => setTutorialOpen(true),
-      },
-      {
-        id: "base-converter",
-        label: "Base converter",
-        description: "hex, binary, decimal, and two's complement side by side",
-        run: () => {
-          setActiveTab("convert");
-          setPaneRequest((prev) => ({ pane: "convert", nonce: (prev?.nonce ?? 0) + 1 }));
-        },
-      },
-      {
-        id: "toggle-theme",
-        label: "Toggle theme",
-        description: "switch between dark and light palettes",
-        run: () => onToggleTheme?.(),
-      },
-      {
-        id: "format-source",
-        label: "Format source",
-        description: "lowercase mnemonics and align operand columns",
-        shortcut: "Ctrl+Shift+F",
-        run: () => {
+    (): Action[] =>
+      buildPaletteCommands({
+        blocked: emu.blocked,
+        programLoaded: emu.programLoaded,
+        canStepBack: emu.canStepBack,
+        launchable,
+        source,
+        assemble: () => void assembleWithHistory(),
+        step: () => emu.step(),
+        stepBack: () => emu.stepBack(),
+        run: () => handleRun(),
+        pause: () => emu.pause(),
+        reset: () => resetMachine(),
+        launchInteractive: () => void launchInteractive(),
+        formatSource: () => {
           const next = formatAsm(source);
           if (next !== source) setSource(next);
           toast.show("source formatted");
         },
-      },
-      {
-        id: "help",
-        label: "Keyboard shortcuts",
-        description: "open the shortcuts help modal",
-        shortcut: "?",
-        run: () => onOpenShortcutsHelp?.(),
-      },
-      {
-        id: "import-file",
-        label: "Import file",
-        description: "open the file picker and load assembly into the active buffer",
-        run: () => {
-          const el = document.querySelector<HTMLInputElement>(
-            'input[type="file"][accept=".s,.asm,.txt"]',
-          );
-          el?.click();
+        openShare: () => onOpenShareDialog?.(),
+        openShortcuts: () => onOpenShortcutsHelp?.(),
+        openTour: () => setTutorialOpen(true),
+        openConverter: () => {
+          setActiveTab("convert");
+          setPaneRequest((prev) => ({ pane: "convert", nonce: (prev?.nonce ?? 0) + 1 }));
         },
-      },
-      {
-        id: "download-asm",
-        label: "Download as .asm",
-        description: "save the current buffer to your computer",
-        run: () => {
-          const blob = new Blob([source], { type: "text/plain;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "program.asm";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
-        },
-      },
-      {
-        id: "download-s",
-        label: "Download as .s",
-        description: "save the current buffer with the .s extension",
-        run: () => {
-          const blob = new Blob([source], { type: "text/plain;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "program.s";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
-        },
-      },
-      {
-        id: "copy-source",
-        label: "Copy source to clipboard",
-        description: "copy the current buffer for pasting elsewhere",
-        run: () => {
-          void navigator.clipboard?.writeText(source);
-        },
-      },
-      {
-        id: "open-source",
-        label: "View source on GitHub",
-        description: "open the playground repo in a new tab",
-        run: () => {
-          window.open(
-            "https://github.com/Abdalla-Eldoumani/aarch64-playground",
-            "_blank",
-            "noopener,noreferrer",
-          );
-        },
-      },
-    ],
+        toggleTheme: () => onToggleTheme?.(),
+      }),
     [emu, assembleWithHistory, handleRun, launchable, launchInteractive, resetMachine, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
   );
 
@@ -1231,7 +717,6 @@ function EmbeddableCore({
   // still reading live editor / hub state when the host calls a method. The
   // refs are synced in an effect; the react-hooks rules forbid writing a ref
   // during render.
-  const emuRef = useRef(emu);
   const sourceRef = useRef(source);
   const extraFilesRef = useRef(extraFiles);
   const argsRef = useRef(argsText);
@@ -1497,21 +982,11 @@ function EmbeddableCore({
   // breakpoints each translate to the active file's local lines (and hide
   // when they belong to another file).
   const activeErrors = useMemo(
-    () =>
-      emu.assemblyErrors.flatMap((e) => {
-        if (e.line <= 0) return activeFile === MAIN_FILE ? [e] : [];
-        const loc = resolveLine(e.line, machineMain, machineExtras);
-        return loc.file === activeFile ? [{ ...e, line: loc.line }] : [];
-      }),
+    () => diagnosticsForFile(emu.assemblyErrors, machineMain, machineExtras, activeFile),
     [emu.assemblyErrors, machineMain, machineExtras, activeFile],
   );
   const activeLint = useMemo(
-    () =>
-      lintWarnings.flatMap((w) => {
-        if (w.line <= 0) return activeFile === MAIN_FILE ? [w] : [];
-        const loc = resolveLine(w.line, source, extraFiles);
-        return loc.file === activeFile ? [{ ...w, line: loc.line }] : [];
-      }),
+    () => diagnosticsForFile(lintWarnings, source, extraFiles, activeFile),
     [lintWarnings, source, extraFiles, activeFile],
   );
   const activeCurrentLine = useMemo(() => {
@@ -1519,14 +994,10 @@ function EmbeddableCore({
     const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
     return loc.file === activeFile ? loc.line : null;
   }, [emu.currentLine, machineMain, machineExtras, activeFile]);
-  const activeBreakpoints = useMemo(() => {
-    const set = new Set<number>();
-    for (const line of emu.breakpoints) {
-      const loc = resolveLine(line, source, extraFiles);
-      if (loc.file === activeFile) set.add(loc.line);
-    }
-    return set;
-  }, [emu.breakpoints, source, extraFiles, activeFile]);
+  const activeBreakpoints = useMemo(
+    () => breakpointsForFile(emu.breakpoints, source, extraFiles, activeFile),
+    [emu.breakpoints, source, extraFiles, activeFile],
+  );
   const toggleBreakpointInActive = useCallback(
     (line: number) => {
       emu.toggleBreakpoint(
@@ -1542,250 +1013,54 @@ function EmbeddableCore({
   // instructions they never belonged to. Only the SHAPE of the workspace can
   // move a line, so the re-anchor is keyed on line counts and typing inside a
   // line costs nothing.
-  const layoutShape = useMemo(
-    () =>
-      `${countLines(source)}|${extraFiles.map((f) => countLines(f.body)).join(",")}`,
-    [source, extraFiles],
-  );
+  const layoutShape = useMemo(() => workspaceShape(source, extraFiles), [
+    source,
+    extraFiles,
+  ]);
   // Seeded with the workspace as it stands at mount (the strip rehydrates
   // from storage), so the first pass has nothing to move.
-  const bpLayoutRef = useRef<{ main: string; extras: SourceFile[] }>({
-    main: source,
-    extras: extraFiles,
-  });
+  const bpLayoutRef = useRef<Workspace>({ main: source, extras: extraFiles });
   useEffect(() => {
     const from = bpLayoutRef.current;
-    const main = sourceRef.current;
-    const extras = extraFilesRef.current;
-    bpLayoutRef.current = { main, extras };
-    const stored = emuRef.current.breakpoints;
-    if (stored.size === 0) return;
-    const moved = new Map<number, number | null>();
-    let changed = false;
-    for (const line of stored) {
-      const loc = resolveLine(line, from.main, from.extras);
-      // A closed tab takes its dots with it rather than donating them to
-      // whichever file inherited its line numbers.
-      const owner = loc.file === MAIN_FILE ? main : extras[loc.file]?.body;
-      const to =
-        owner == null
-          ? null
-          : combinedLineFor(
-              loc.file,
-              Math.min(loc.line, countLines(owner)),
-              main,
-              extras,
-            );
-      if (to !== line) changed = true;
-      moved.set(line, to);
-    }
-    if (!changed) return;
+    const to: Workspace = { main: sourceRef.current, extras: extraFilesRef.current };
+    bpLayoutRef.current = to;
+    const moved = planBreakpointRemap(emuRef.current.breakpoints, from, to);
+    if (!moved) return;
     emuRef.current.remapBreakpoints((line) => moved.get(line) ?? null);
   }, [layoutShape]);
   // Controls shows the first error as plain text; name the owning file
   // when it is not the buffer labelled main.asm.
-  const controlsError = useMemo(() => {
-    if (!emu.error) return emu.error;
-    const first = emu.assemblyErrors[0];
-    if (!first || first.line <= 0 || machineExtras.length === 0) return emu.error;
-    const loc = resolveLine(first.line, machineMain, machineExtras);
-    if (loc.file === MAIN_FILE) return emu.error;
-    return `${loc.name} line ${loc.line}: ${emu.error}`;
-  }, [emu.error, emu.assemblyErrors, machineMain, machineExtras]);
-  // Reads go through emuRef / sourceRef, not the render's hub object:
-  // the hub is a new object every snapshot, so a closure over it freezes
-  // mid-command state -- runProgram's wait loop would poll an isRunning
-  // that can never change and report the pre-run stdout and exit code.
-  // The refs also keep this callback's identity stable, so the terminal
-  // pane never re-initializes underneath an open session.
+  const controlsError = useMemo(
+    () =>
+      errorWithFileName(
+        emu.error,
+        emu.assemblyErrors[0]?.line,
+        machineMain,
+        machineExtras,
+      ),
+    [emu.error, emu.assemblyErrors, machineMain, machineExtras],
+  );
   // `gcc -o name` registers compiled source here; `./name` runs it. A ref,
   // so the registry survives every per-snapshot context rebuild.
   const terminalExecutablesRef = useRef<Map<string, string>>(new Map());
 
-  const buildTerminalContext = useCallback(() => {
-    const dec = new TextDecoder();
-    // One wait loop for every terminal-run shape: sleep BEFORE checking so
-    // React has committed run()'s isRunning=true into the ref (see the
-    // comment on the original runProgram).
-    const waitForHalt = async () => {
-      const startedAt = Date.now();
-      do {
-        await new Promise<void>((r) => setTimeout(r, 16));
-      } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
-    };
-    const runText = async (
-      text: string,
-      args: string[],
-      stdin?: string,
-      io?: import("@/lib/terminal/dispatch").TerminalProgramIO,
-    ) => {
-      // The tool assemble deliberately leaves the editor's console
-      // scrollback alone, so the hub's stdout/stderr still hold whatever the
-      // student was reading. Report this program's output as the DELTA over
-      // that, or the terminal would replay the editor's session back at them.
-      const priorOut = emuRef.current.stdout;
-      const priorErr = emuRef.current.stderr;
-      const since = (now: string, before: string) =>
-        now.startsWith(before) ? now.slice(before.length) : now;
-      // Tool-channel assemble: the terminal's program must not paint the
-      // editor's error markers, and the verdict comes back directly. The
-      // assemble wiped the machine, home directory included, so put the
-      // working set back whatever the outcome.
-      // args[0] is the `./name` the terminal displays; the emulator owns
-      // argv[0] and re-adds it, so only argv[1..] goes through. Passing
-      // the whole array would double the program name.
-      const verdict = await emuRef.current.assembleForTool(text, args.slice(1));
-      applySeeds();
-      if (!verdict.success) {
-        // The verdict is the only carrier of the assemble error here;
-        // dropping it left the student with a bare "[no exit]" line.
-        const e = emuRef.current;
-        const detail = verdict.error
-          ? verdict.errorLine != null
-            ? `line ${verdict.errorLine}: ${verdict.error}`
-            : verdict.error
-          : "";
-        return {
-          stdout: since(e.stdout, priorOut),
-          stderr: [since(e.stderr, priorErr), detail].filter(Boolean).join("\n"),
-          exitCode: null,
-        };
-      }
-      // Any `< file` stdin goes on top of the reseeded working set. A
-      // redirect IS the whole input, so close stdin behind it: that is
-      // what lets a read-until-EOF loop finish, exactly like
-      // `./prog < file` on the course shell.
-      if (stdin !== undefined) {
-        // `./prog < bigfile` is one command that can hand the machine the
-        // whole 4 MiB VFS cap in a single push; the redirect gets the same
-        // bound as every other stdin ingress.
-        const oversize = validateStdin(stdin);
-        if (oversize) {
-          return { stdout: "", stderr: oversize, exitCode: null };
-        }
-        emuRef.current.pushStdin(stdin);
-        emuRef.current.closeStdin();
-      }
-      if (io) {
-        // Interactive run: output streams into the pane as it is
-        // produced, keystrokes reach stdin while the program lives, and
-        // there is no wall-clock cap -- the machine's own step/output
-        // walls bound a runaway, and the player owns the exit.
-        const exitCode = await driveForeground(io);
-        return {
-          // Already streamed through the tap; nothing left to print.
-          stdout: "",
-          stderr: since(emuRef.current.stderr, priorErr),
-          exitCode,
-        };
-      }
-      emuRef.current.run();
-      await waitForHalt();
-      const e = emuRef.current;
-      return {
-        stdout: since(e.stdout, priorOut),
-        stderr: since(e.stderr, priorErr),
-        // null means "never exited" (blocked or timed out); the terminal
-        // says so instead of inventing an exit 0.
-        exitCode: e.exitCode,
-      };
-    };
-    return {
-      vfs: new Map<string, string>(),
-      listVfs: () => emuRef.current.vfsFiles.slice().sort(),
-      readVfs: async (path: string) => {
-        const bytes = await emuRef.current.readVfsFile(path);
-        if (bytes.length === 0 && !emuRef.current.vfsFiles.includes(path)) {
-          return undefined; // distinguish missing from empty
-        }
-        return dec.decode(bytes);
-      },
-      writeVfs: (path: string, body: string) => {
-        stageVfsFile(path, body);
-      },
-      deleteVfs: async (path: string) => removeVfsFile(path),
-      // The editor's program: the same run shape as a compiled executable,
-      // over the live workspace (main plus any extra files, exactly what
-      // the assemble button builds).
-      runProgram: async (
-        args: string[],
-        stdin?: string,
-        io?: import("@/lib/terminal/dispatch").TerminalProgramIO,
-      ) =>
-        runText(
+  // The context hands the shell refs, never the render's hub object, and the
+  // deps are all stable, so this callback's identity holds and the terminal
+  // pane never re-initializes underneath an open session.
+  const buildTerminalContext = useCallback(
+    () =>
+      createTerminalContext({
+        machine: emuRef,
+        combinedSource: () =>
           combineSources(sourceRef.current, extraFilesRef.current),
-          args,
-          stdin,
-          io,
-        ),
-      step: async () => {
-        emuRef.current.step();
-        const e = emuRef.current;
-        return { halted: e.isHalted, line: e.currentLine };
-      },
-      runUntilBreak: async () => {
-        emuRef.current.run();
-        const startedAt = Date.now();
-        // Same sleep-before-check shape as runProgram: the pre-run
-        // isRunning is still false on the first read, and gdb's continue
-        // must not resolve while the program is live.
-        do {
-          await new Promise<void>((r) => setTimeout(r, 16));
-        } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
-        return { halted: emuRef.current.isHalted, hit_breakpoint: false };
-      },
-      setBreakpoint: async (addr: number) => emuRef.current.setBreakpointAddress(addr),
-      clearBreakpoint: async (addr: number) => emuRef.current.clearBreakpointAddress(addr),
-      resolveLabel: async (name: string) => emuRef.current.resolveLabel(name),
-      m4Expand: async (text: string) => emuRef.current.m4Expand(text),
-      assembleSource: async (text: string) => {
-        const verdict = await emuRef.current.assembleForTool(text, []);
-        // The gcc assemble wiped the home directory with the rest of the
-        // machine; reseed it either way so `ls` right after a build (or
-        // a failed one) still shows the student's files.
-        applySeeds();
-        if (verdict.success) return { success: true, errors: [] };
-        const errors = verdict.error
-          ? [
-              verdict.errorLine != null
-                ? `line ${verdict.errorLine}: ${verdict.error}`
-                : verdict.error,
-            ]
-          : [];
-        return { success: false, errors };
-      },
-      runSource: runText,
-      executables: terminalExecutablesRef.current,
-      readRegister: (name: string) => {
-        const e = emuRef.current;
-        const lower = name.toLowerCase();
-        if (lower === "sp") return BigInt(e.sp);
-        if (lower === "pc") return BigInt(e.pc);
-        const m = lower.match(/^([xw])(\d+)$/);
-        if (!m) return null;
-        const idx = Number(m[2]);
-        if (idx < 0 || idx > 30) return null;
-        const raw = e.registers[idx];
-        if (!raw) return null;
-        // A `wN` name reads the low 32 bits, not the full 64-bit x register.
-        const val = BigInt(raw);
-        return m[1] === "w" ? val & 0xffff_ffffn : val;
-      },
-      readRegisters: () => {
-        const e = emuRef.current;
-        const out: Record<string, bigint> = {};
-        e.registers.forEach((v, i) => {
-          out[`x${i}`] = BigInt(v);
-        });
-        out.sp = BigInt(e.sp);
-        out.pc = BigInt(e.pc);
-        return out;
-      },
-      readMemory: async (addr: number, len: number) => emuRef.current.getMemory(addr, len),
-      pcAddress: () => emuRef.current.pc,
-      reset: async () => emuRef.current.reset(),
-    };
-  }, [stageVfsFile, removeVfsFile, applySeeds, driveForeground]);
+        applySeeds,
+        stageVfsFile,
+        removeVfsFile,
+        driveForeground,
+        executables: terminalExecutablesRef.current,
+      }),
+    [stageVfsFile, removeVfsFile, applySeeds, driveForeground],
+  );
 
   if (emu.loadError) {
     return (
@@ -1823,6 +1098,7 @@ function EmbeddableCore({
               value={source}
               onChange={readOnly ? () => {} : setSource}
               currentLine={emu.currentLine}
+              currentLineInCall={emu.externalCall != null}
               breakpoints={emu.breakpoints}
               onToggleBreakpoint={emu.toggleBreakpoint}
               assemblyErrors={emu.assemblyErrors}
@@ -1955,6 +1231,7 @@ function EmbeddableCore({
           value={editorValue}
           onChange={onEditorChange}
           currentLine={activeCurrentLine}
+          currentLineInCall={emu.externalCall != null}
           breakpoints={activeBreakpoints}
           onToggleBreakpoint={toggleBreakpointInActive}
           assemblyErrors={activeErrors}
@@ -1984,6 +1261,9 @@ function EmbeddableCore({
           instructions={emu.instructions}
           pc={emu.pc}
           running={emu.isRunning}
+          // Inside a libc call the pc is a trampoline word, which the
+          // listing does not hold; mark and follow the `bl` instead.
+          anchorPc={emu.externalCall?.callSitePc ?? null}
         />
       )}
     </div>
@@ -2000,6 +1280,15 @@ function EmbeddableCore({
         encodingHex={
           emu.instructions.find((instr) => instr.address === emu.pc)?.hex ?? null
         }
+        externalCall={
+          // A live terminal session steps through libc calls constantly and
+          // its input lands in the terminal pane, so the card's console
+          // wording would be wrong there; the strip reads as it always has.
+          emu.externalCall && !foregroundLive
+            ? { name: emu.externalCall.name, waiting: emu.blocked }
+            : null
+        }
+        sessionStarted={emu.programLoaded}
       />
       <ReplayScrubber
         frames={emu.replayFrames}
@@ -2021,7 +1310,12 @@ function EmbeddableCore({
   );
 
   const memoryBlock = (
-    <MemoryPanel getMemory={emu.getMemory} dirtyAddrs={emu.dirtyAddrs} />
+    <MemoryPanel
+      getMemory={emu.getMemory}
+      dirtyAddrs={emu.dirtyAddrs}
+      regions={emu.memoryRegions}
+      sp={emu.sp}
+    />
   );
   const stackBlock = (
     <StackPanel
@@ -2070,12 +1364,7 @@ function EmbeddableCore({
       <TerminalPane
         buildContext={buildTerminalContext}
         onUploadRequest={() => terminalUploadRef.current?.click()}
-        onRegisterIO={(io) => {
-          // Keep the ref in lockstep so a live drive sees a pane
-          // teardown immediately, not one render later.
-          termIORef.current = io;
-          setTermIO(io);
-        }}
+        onRegisterIO={registerTermIO}
       />
     </div>
   );
@@ -2287,7 +1576,11 @@ function EmbeddableCore({
         </div>
       )}
 
-      <main role="main" aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
+      {/* A labeled section, not a main: this component is composed inside the
+          landing hero, lessons, exercises, and the reference, all of which
+          already sit inside their page's main. The /playground route supplies
+          the one main around it. */}
+      <section aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
         {showResizable ? (
           <ResizableLayout
             breakpoint={bp}
@@ -2328,7 +1621,7 @@ function EmbeddableCore({
             paneRequest={paneRequest ?? undefined}
           />
         )}
-      </main>
+      </section>
 
       <Controls
         onAssemble={assembleWithHistory}

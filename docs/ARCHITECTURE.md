@@ -29,10 +29,12 @@ components/learn/       lesson surfaces        components/practice/  exercises
 components/reference/   reference surfaces
 components/playground/  emulator surface shell (editor, controls, dialogs)
 components/panels/      right-tab machine views
-lib/emulator/           state hub, backends, replay, decode fields
+lib/emulator/           state hub, backends, replay, decode fields,
+                        address bands, flag math
 lib/asm/                completion, formatting, hover docs, error explaining
 lib/content/            lessons, exercises, reference + pitfall data, schemas
-lib/playground/         program delivery, persistence, sharing, upload guards
+lib/playground/         program delivery, persistence, sharing,
+                        workspace bundles, upload guards
 lib/hooks/              generic React hooks
 lib/terminal/           xterm shell engine     lib/worker/           worker boundary
 lib/wasm/, lib/wasm-node/  generated wasm-pack output (gitignored)
@@ -139,6 +141,14 @@ invariant on wasm32 that traps in `__rdl_dealloc`. Keep page buffers
 Unaligned LDR/STR succeed (matching Linux userspace with `SCTLR.A = 0`),
 so no access path raises `UnalignedAccess`.
 
+The layout itself is published: the module-level `memoryMap` export in
+[`lib.rs`](../emulator/src/lib.rs) returns the address bands in order (the
+four section windows, argv, heap, stack, host stubs) as half-open
+`[start, end)` rows built from the same constants the loader uses. The
+memory panel reads it once at load, so its jump list and its "in .data"
+label cannot drift from the bases; a native test pins every row to its
+constant.
+
 ## Hosted runtime
 
 `SVC #0` reads `x8` and dispatches into
@@ -160,6 +170,14 @@ Stubs read argument registers per AAPCS64, call into
 Rust, write results to `x0`/`d0`, then return via `pc = lr`. `main`
 returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
 the exit code.
+
+A hosted call costs three steps on addresses the program does not hold: the
+two words of the trampoline, then the synthetic stub. The `hostCallContext`
+export reports which call a paused pc sits inside and recovers the call site
+from LR-4 for all three, so the stepping UI can name the call and hold its
+marker on the `bl`. The recovery has to be dynamic -- one trampoline serves
+every call site of the same function, so nothing static can say which
+`printf` line a pc belongs to.
 
 ## Execution bounds
 
@@ -203,6 +221,11 @@ backend emits a `StateSnapshot` (defined in `worker/protocol.ts`):
   surface, which the UI feature-detects
 - `stdoutDelta`/`stderrDelta`, `exitCode`, `blocked`, `halted`,
   `canStepBack`
+- `externalCall`: the hosted call a paused pc sits inside
+  (`{ name, callSitePc, callSiteLine }`), or null on the program's own
+  instructions; absent on wasm that predates the export. The hook drops it
+  while a run is driving and reports the call site as the current line while
+  it is set
 - `dirtyAddrs`, a flat `[addr, len, ...]` list driving the memory diff
   tint; `vfsFiles` and `savedStates`
 - `frame`: a monotonic counter the React side uses to invalidate caches
@@ -280,6 +303,11 @@ contexts (except localhost), and browsers without
    strip; the CPU is marked halted.
 3. WASM load failure: caught in `use-emulator.ts` and shown in place of
    the loading screen.
+4. A React render that throws: [`web/app/error.tsx`](../web/app/error.tsx)
+   for a route, `global-error.tsx` when the root layout itself fails. Both
+   wear the 404's fault-card register, offer a retry, and copy a small
+   markdown report (message, digest, route, autosaved source) built with
+   `bundleToMarkdown`. Neither holds emulator state.
 
 Rust panics route through `console_error_panic_hook` so the message is
 readable in the browser console.
@@ -288,8 +316,9 @@ readable in the browser console.
 
 - Rust: per-module `#[cfg(test)]` unit tests plus integration suites in
   [`emulator/tests/`](../emulator/tests/) (conformance, acceptance, the
-  resource-bound walls, stepping/line-map, hosted end-to-end, the
-  CPSC 355 corpus, and the reference drift guard).
+  resource-bound walls, stepping/line-map, external-call context, hosted
+  end-to-end, the CPSC 355 corpus, server parity, and the reference drift
+  guard).
 - Web: a vitest suite across the lib helpers, the hooks, the worker
   protocol, and the input validators.
 - WASM end-to-end: [`scripts/verify-corpus.js`](../scripts/verify-corpus.js)

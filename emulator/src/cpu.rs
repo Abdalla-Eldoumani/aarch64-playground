@@ -39,6 +39,11 @@ pub const DATA_BASE: u64 = 0x0060_0000;
 /// Uninitialized data section base (zero-filled).
 pub const BSS_BASE: u64 = 0x0070_0000;
 
+/// Address space each section owns. The bases above sit exactly one window
+/// apart, so the linker bounds every section to it: a data block or `.skip`
+/// that outgrew its window would land on the next section's addresses.
+pub const SECTION_WINDOW: u64 = 1024 * 1024;
+
 /// Initial stack pointer (grows downward).
 pub const STACK_BASE: u64 = 0x8000_0000;
 
@@ -307,6 +312,13 @@ pub struct Cpu {
     /// zero-filled page decoded as `unknown instruction: 0x00000000` and
     /// the teaching layer guessed at causes that never happened.
     text_end: Option<u64>,
+    /// The loaded image's host-call trampolines: base address plus the stub
+    /// each 8-byte slot jumps to (see `LinkedImage`). A pc in this range is
+    /// executing the two words that route a `bl printf` to the runtime, not
+    /// a line of the student's program, and `host_call_name` says so.
+    /// Zero and empty for a program with no hosted calls.
+    pub trampoline_base: u64,
+    pub trampoline_names: Vec<String>,
 }
 
 impl Cpu {
@@ -342,6 +354,8 @@ impl Cpu {
             output_total: 0,
             abort_message: None,
             text_end: None,
+            trampoline_base: 0,
+            trampoline_names: Vec::new(),
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -431,6 +445,10 @@ impl Cpu {
         self.refund_output_total = 0;
         self.snapshots_paused = false;
         self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
+        // The bare-metal path has no host calls; drop any trampolines a
+        // previously loaded hosted image left behind.
+        self.trampoline_base = 0;
+        self.trampoline_names.clear();
     }
 
     /// Load a `LinkedImage` from `frontend::pipeline`. Writes each (addr,
@@ -482,7 +500,37 @@ impl Cpu {
         // resolve names without going through the frontend again.
         self.symbols = image.symbols.clone();
         self.text_end = Some(image.text_end);
+        self.trampoline_base = image.trampoline_base;
+        self.trampoline_names = image.trampoline_names.clone();
         Ok(())
+    }
+
+    /// Name of the host function the pc is currently inside, or `None` when
+    /// the pc is an instruction the student wrote. Two ranges answer: the
+    /// synthetic stub address (the runtime is executing printf itself) and
+    /// the image's trampoline slots (the `LDR X16; BR X16` pair a `bl`
+    /// arrives at). Both words of a slot report the same name, so all three
+    /// steps a hosted call takes are legible as one external call.
+    pub fn host_call_name(&self, pc: u64) -> Option<&str> {
+        if let Some(name) = self.host.name_for_address(pc) {
+            // `__main_return` is the loader's return sentinel, not a call the
+            // program made -- the same exemption the SP-alignment check
+            // makes. Naming it would report an external call for the one step
+            // between main's `ret` and the halt.
+            if name == "__main_return" {
+                return None;
+            }
+            return Some(name);
+        }
+        let span = (self.trampoline_names.len() as u64) * 8;
+        if pc >= self.trampoline_base
+            && pc < self.trampoline_base + span
+            && pc.is_multiple_of(4)
+        {
+            let slot = ((pc - self.trampoline_base) / 8) as usize;
+            return self.trampoline_names.get(slot).map(String::as_str);
+        }
+        None
     }
 
     /// Resolve a label name to its absolute address using the symbol

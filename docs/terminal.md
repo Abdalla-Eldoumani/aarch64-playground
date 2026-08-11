@@ -41,7 +41,10 @@ two-sum, deadzone) take the pane over from the run button too: run
 switches to the term tab, clears the screen, and starts the session. The
 menu-driven ones are declared terminal-first up front; the raw-mode ones
 claim the pane the moment they switch the terminal over. Step-back is
-paused during a live session and comes back when it ends.
+paused during a live session and comes back when it ends, and the decode
+strip keeps its usual bit-field view: the external-call card belongs to
+paused stepping, and it points at the console, which is not where a live
+session's keystrokes go.
 
 Calc, temp-convert, and two-sum each carry a second, plain-text face:
 `./program console` here answers a line at a time with no colour or
