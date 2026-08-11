@@ -50,4 +50,16 @@ describe("MobileNavDrawer", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
+
+  it("appends the formatted star count to the source row when one is passed", () => {
+    render(<MobileNavDrawer stars={1204} />);
+    fireEvent.click(screen.getByRole("button", { name: "open navigation" }));
+
+    const dialog = screen.getByRole("dialog");
+    const github = within(dialog).getByRole("link", {
+      name: "source on github, 1204 stars",
+    });
+    // One anchor: the row text and the count share it.
+    expect(github.textContent).toBe("source on github1.2k");
+  });
 });
