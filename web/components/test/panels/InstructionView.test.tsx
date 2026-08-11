@@ -7,7 +7,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import {
   INSTRUCTION_WINDOW,
   InstructionView,
-} from "@/components/reference/InstructionView";
+} from "@/components/panels/InstructionView";
 import type { DecodedInstruction } from "@/lib/emulator/use-emulator";
 
 const CODE_BASE = 0x400000;

@@ -53,9 +53,9 @@ import { ArgsInput } from "@/components/playground/ArgsInput";
 import {
   MultiFileTabs,
   combineSources,
-  useSourceFiles,
   type SourceFile,
 } from "@/components/playground/MultiFileTabs";
+import { useSourceFiles } from "@/lib/hooks/use-source-files";
 import {
   MAIN_FILE,
   combinedLineFor,
@@ -74,7 +74,7 @@ const LAUNCH_MODE_KEY = "aarch64-playground:terminal-program";
 // Full-only / heavy panels load on first render so a multi-embed page (and
 // the embed/checker chrome) never ships their code.
 const InstructionView = dynamic(
-  () => import("@/components/reference/InstructionView").then((m) => m.InstructionView),
+  () => import("@/components/panels/InstructionView").then((m) => m.InstructionView),
   { ssr: false },
 );
 const MemoryPanel = dynamic(
@@ -106,7 +106,13 @@ const SavesPanel = dynamic(
   { ssr: false },
 );
 const TerminalPane = dynamic(
-  () => import("@/components/panels/TerminalPane").then((m) => m.TerminalPane),
+  // Named so the bundle budget in package.json can glob xterm's chunk by
+  // name; a hashed webpack id moves with any change to the module graph,
+  // and the budget that used to point at one silently measured nothing.
+  () =>
+    import(/* webpackChunkName: "terminal" */ "@/components/panels/TerminalPane").then(
+      (m) => m.TerminalPane,
+    ),
   { ssr: false, loading: () => null },
 );
 const TutorialRunner = dynamic(
