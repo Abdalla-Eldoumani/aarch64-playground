@@ -22,7 +22,7 @@
 
   --text-primary:   #EDEEF1;
   --text-secondary: #A5ACB6;
-  --text-tertiary:  #6F7681;
+  --text-tertiary:  #79808B; /* 4.5:1 on the base, band, and raised surfaces */
 
   --amber:          #FFB224;  /* execution: pc, current line, run, decode-strip Rd */
   --amber-dim:      #7A5510;

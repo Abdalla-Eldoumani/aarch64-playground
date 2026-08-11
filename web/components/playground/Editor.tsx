@@ -134,7 +134,7 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       "editor.background": "#0B0C10",
       "editor.lineHighlightBackground": "#14171DAA",
       "editorGutter.background": "#0B0C10",
-      "editorLineNumber.foreground": "#6F7681",
+      "editorLineNumber.foreground": "#79808B",
       "editorCursor.foreground": "#FFB224",
       "editorCursor.background": "#0B0C10",
     },
