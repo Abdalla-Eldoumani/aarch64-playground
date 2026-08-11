@@ -1,3 +1,6 @@
+import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
+import type { ExternalCall } from "@/lib/worker/protocol";
+
 export interface AssembleResult {
   success: boolean;
   error: string | null;
@@ -183,6 +186,22 @@ export class EmulatorInstance {
     return inner.wants_terminal?.() ?? false;
   }
 
+  /** The external call the current pc sits inside, or null when the pc is
+   *  one of the program's own instructions -- and null on wasm builds that
+   *  predate the export, which hides the feature. The wasm side answers in
+   *  snake_case (the StepResult convention), normalized here. */
+  hostCallContext(): ExternalCall | null {
+    const probe = (this.inner as { hostCallContext?: () => unknown }).hostCallContext;
+    if (typeof probe !== "function") return null;
+    const raw = probe.call(this.inner) as RawHostCallContext | null | undefined;
+    if (!raw) return null;
+    return {
+      name: raw.name,
+      callSitePc: Number(raw.call_site_pc),
+      callSiteLine: raw.call_site_line ?? null,
+    };
+  }
+
   runUntilBreak(maxSteps: number): RunResult {
     const raw = this.inner.run_until_break(maxSteps) as RawRunResult;
     return {
@@ -297,7 +316,13 @@ export class EmulatorInstance {
   }
 }
 
-// raw types from wasm-bindgen (BigInt fields)
+// raw types from wasm-bindgen (BigInt fields, snake_case keys)
+interface RawHostCallContext {
+  name: string;
+  call_site_pc: bigint | number;
+  call_site_line?: number | null;
+}
+
 interface RawStepResult {
   pc: bigint | number;
   halted: boolean;
@@ -342,6 +367,9 @@ interface WasmEmulatorInstance {
   get_changed_fp_registers?(): Uint8Array;
   /** Optional: standalone m4 pass, present once the crate ships it. */
   m4_expand?(source: string): unknown;
+  /** Optional: external-call context for the current pc (js_name is
+   *  camelCase on this one; its payload keys are not). */
+  hostCallContext?(): unknown;
   set_breakpoint(address: number): void;
   clear_breakpoint(address: number): void;
   is_halted(): boolean;
@@ -396,4 +424,18 @@ export async function loadEmulator(): Promise<EmulatorInstance> {
 export async function detectHostedMode(source: string): Promise<boolean> {
   const wasm = await ensureWasmModule();
   return wasm.detectHostedMode(source);
+}
+
+/**
+ * The emulator's address bands, read from the module-level `memoryMap`
+ * export (mirroring `detectHostedMode`: fixed for the life of the module,
+ * so the caller reads it once and keeps it). Returns [] on a wasm build
+ * that predates the export, which is the memory panel's cue to fall back to
+ * its own section list instead of labelling addresses it cannot verify.
+ */
+export async function loadMemoryMap(): Promise<MemoryRegion[]> {
+  const wasm = await ensureWasmModule();
+  const probe = (wasm as { memoryMap?: () => unknown }).memoryMap;
+  if (typeof probe !== "function") return [];
+  return normalizeMemoryMap(probe());
 }
