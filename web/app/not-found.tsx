@@ -3,6 +3,7 @@ import { NotFound } from "@/components/chrome/NotFound";
 import { SiteNav } from "@/components/chrome/SiteNav";
 import { SiteFooter } from "@/components/chrome/SiteFooter";
 import { SHARE_CARD_IMAGE } from "@/lib/content/site";
+import { fetchStarCount } from "@/lib/content/github";
 
 export const metadata: Metadata = {
   title: "404",
@@ -26,10 +27,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default function NotFoundPage() {
+export default async function NotFoundPage() {
+  // Same hourly-revalidated lookup the content layout does; the 404 wears the
+  // same nav, so it carries the same count.
+  const stars = await fetchStarCount();
+
   return (
     <div className="flex flex-col min-h-dvh">
-      <SiteNav variant="full" />
+      <SiteNav variant="full" stars={stars} />
       <NotFound />
       <SiteFooter />
     </div>
