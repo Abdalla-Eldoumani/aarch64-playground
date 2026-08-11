@@ -1823,6 +1823,7 @@ function EmbeddableCore({
               value={source}
               onChange={readOnly ? () => {} : setSource}
               currentLine={emu.currentLine}
+              currentLineInCall={emu.externalCall != null}
               breakpoints={emu.breakpoints}
               onToggleBreakpoint={emu.toggleBreakpoint}
               assemblyErrors={emu.assemblyErrors}
@@ -1955,6 +1956,7 @@ function EmbeddableCore({
           value={editorValue}
           onChange={onEditorChange}
           currentLine={activeCurrentLine}
+          currentLineInCall={emu.externalCall != null}
           breakpoints={activeBreakpoints}
           onToggleBreakpoint={toggleBreakpointInActive}
           assemblyErrors={activeErrors}
@@ -1984,6 +1986,9 @@ function EmbeddableCore({
           instructions={emu.instructions}
           pc={emu.pc}
           running={emu.isRunning}
+          // Inside a libc call the pc is a trampoline word, which the
+          // listing does not hold; mark and follow the `bl` instead.
+          anchorPc={emu.externalCall?.callSitePc ?? null}
         />
       )}
     </div>
@@ -2000,6 +2005,15 @@ function EmbeddableCore({
         encodingHex={
           emu.instructions.find((instr) => instr.address === emu.pc)?.hex ?? null
         }
+        externalCall={
+          // A live terminal session steps through libc calls constantly and
+          // its input lands in the terminal pane, so the card's console
+          // wording would be wrong there; the strip reads as it always has.
+          emu.externalCall && !foregroundLive
+            ? { name: emu.externalCall.name, waiting: emu.blocked }
+            : null
+        }
+        sessionStarted={emu.programLoaded}
       />
       <ReplayScrubber
         frames={emu.replayFrames}
@@ -2021,7 +2035,12 @@ function EmbeddableCore({
   );
 
   const memoryBlock = (
-    <MemoryPanel getMemory={emu.getMemory} dirtyAddrs={emu.dirtyAddrs} />
+    <MemoryPanel
+      getMemory={emu.getMemory}
+      dirtyAddrs={emu.dirtyAddrs}
+      regions={emu.memoryRegions}
+      sp={emu.sp}
+    />
   );
   const stackBlock = (
     <StackPanel
