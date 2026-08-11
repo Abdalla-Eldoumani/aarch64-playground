@@ -26,7 +26,10 @@ const REQUIRED = {
     /'wasm-unsafe-eval'/.test(v) &&
     /frame-ancestors 'none'/.test(v) &&
     /object-src 'none'/.test(v) &&
-    /style-src[^;]*cdn\.jsdelivr\.net/.test(v),
+    // Monaco is vendored, so no third-party script origin may reappear, and
+    // the dev-only eval allowance must never reach production.
+    !v.includes("cdn.jsdelivr.net") &&
+    !/'unsafe-eval'/.test(v),
 };
 
 async function main() {
