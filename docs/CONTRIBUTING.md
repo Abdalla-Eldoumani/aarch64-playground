@@ -27,7 +27,7 @@ Open <http://localhost:3000>. If "loading emulator..." persists, check the brows
 - `emulator/`: Rust crate, no browser deps in the core. Compiles to WASM via wasm-pack.
 - `web/`: Next.js 16 + React 19 app. Imports the WASM module the crate produces.
 - `docs/`: this directory. Design rationale lives here and in `ARCHITECTURE.md`; skim the relevant doc before changing an unfamiliar area.
-- `scripts/`: build and audit helpers (`vercel-build.sh`, `verify-corpus.js`, `check-headers.js`, `audit-deps.js`, `verify-examples.js`, `firefox-smoke.mjs`, `wasm-watch.mjs`).
+- `scripts/`: build and audit helpers (`vercel-build.sh`, `verify-corpus.js`, `check-headers.js`, `audit-deps.js`, `firefox-smoke.mjs`, `wasm-watch.mjs`).
 - `tools/`: course helper utilities that are not part of the app or its build (nothing here ships, runs in CI, or is imported by `web/` or `emulator/`).
 
 ### Inside `web/`
