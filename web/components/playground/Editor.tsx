@@ -271,6 +271,13 @@ interface EditorProps {
   value: string;
   onChange: (value: string) => void;
   currentLine: number | null;
+  /**
+   * True while the pc is inside a hosted libc call, where `currentLine` is
+   * the call SITE rather than the executing instruction. The current-line
+   * decoration takes a quieter variant (dashed rule, lighter fill) so three
+   * steps spent inside printf do not read as three steps on the `bl`.
+   */
+  currentLineInCall?: boolean;
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
@@ -332,6 +339,7 @@ export function Editor({
   value,
   onChange,
   currentLine,
+  currentLineInCall = false,
   breakpoints,
   onToggleBreakpoint,
   assemblyErrors,
@@ -430,14 +438,18 @@ export function Editor({
 
     const decorations: Parameters<typeof editor.deltaDecorations>[1] = [];
 
-    // current line highlight
+    // current line highlight -- the in-call variant is its own class, not a
+    // second one layered on top: both set `background` with !important, so
+    // which one won would depend on the order of the rules in the block.
     if (currentLine != null) {
       decorations.push({
         range: new monaco.Range(currentLine, 1, currentLine, 1),
         options: {
           isWholeLine: true,
-          className: "current-line-highlight",
-          glyphMarginClassName: "current-line-glyph",
+          className: currentLineInCall ? "current-line-in-call" : "current-line-highlight",
+          glyphMarginClassName: currentLineInCall
+            ? "current-line-glyph-in-call"
+            : "current-line-glyph",
         },
       });
     }
@@ -486,7 +498,7 @@ export function Editor({
       decorationsRef.current,
       decorations
     );
-  }, [currentLine, breakpoints, assemblyErrors]);
+  }, [currentLine, currentLineInCall, breakpoints, assemblyErrors]);
 
   // Jump-to-error: reveal, place the cursor, and focus so the student
   // lands on the offending line instead of hunting for it.
@@ -574,7 +586,7 @@ export function Editor({
   // re-apply decorations when the editor or any of its inputs change
   useEffect(() => {
     updateDecorations();
-  }, [currentLine, breakpoints, assemblyErrors, updateDecorations]);
+  }, [currentLine, currentLineInCall, breakpoints, assemblyErrors, updateDecorations]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -611,6 +623,7 @@ export function Editor({
       value={value}
       onChange={handleChange}
       currentLine={currentLine}
+      currentLineInCall={currentLineInCall}
       breakpoints={breakpoints}
       onToggleBreakpoint={onToggleBreakpoint}
       assemblyErrors={assemblyErrors}
@@ -628,7 +641,13 @@ export function Editor({
     >
       <style>{`
         .current-line-highlight { background: color-mix(in srgb, var(--amber) 14%, transparent) !important; box-shadow: inset 2px 0 0 0 var(--amber); }
+        /* Inside a libc call: same amber at a lower alpha, and the solid left
+           rule becomes a dashed one. Drawn as a background layer rather than
+           a border so the code does not shift 2px sideways for three steps.
+           Nothing here animates, so reduced motion needs no variant. */
+        .current-line-in-call { background: repeating-linear-gradient(to bottom, var(--amber) 0 4px, transparent 4px 8px) left / 2px 100% no-repeat, color-mix(in srgb, var(--amber) 6%, transparent) !important; }
         .current-line-glyph { background: var(--amber); border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
+        .current-line-glyph-in-call { border: 1px solid var(--amber); border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .breakpoint-glyph { background: var(--danger); border-radius: 50%; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
         .error-line-highlight { background: color-mix(in srgb, var(--danger) 15%, transparent) !important; }
         .error-glyph { background: var(--danger); border-radius: 2px; margin-left: 4px; width: 8px !important; height: 8px !important; margin-top: 6px; }
@@ -683,6 +702,7 @@ interface FallbackEditorProps {
   value: string;
   onChange: (value: string) => void;
   currentLine: number | null;
+  currentLineInCall?: boolean;
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
@@ -741,6 +761,7 @@ function FallbackEditor({
   value,
   onChange,
   currentLine,
+  currentLineInCall = false,
   breakpoints,
   onToggleBreakpoint,
   assemblyErrors,
@@ -814,7 +835,11 @@ function FallbackEditor({
               : isBreak
               ? "text-[var(--danger)]"
               : isCurrent
-              ? "text-[var(--amber)] font-bold"
+              ? // Inside a libc call the marker is on the call site, not on
+                // the executing instruction: same amber, without the weight.
+                currentLineInCall
+                ? "text-[var(--amber)] opacity-70"
+                : "text-[var(--amber)] font-bold"
               : "text-[var(--text-secondary)]";
             return (
               <button
