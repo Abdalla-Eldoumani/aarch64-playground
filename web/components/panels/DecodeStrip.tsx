@@ -34,7 +34,7 @@ export interface DecodeStripProps {
  * under the program counter as its actual 32-bit encoding, sliced into
  * labeled field boxes, with the plain-language gloss underneath. The
  * destination field (the register the machine is about to write) reads
- * amber — the machine acting — and the whole field row re-latches on every
+ * amber -- the machine acting -- and the whole field row re-latches on every
  * step (`anim-decode-latch`, static under reduced motion). Field layouts
  * come from lib/decode-fields, which is pinned to the real assembler by its
  * tests; unrecognized words render as one unsplit box so the strip never
