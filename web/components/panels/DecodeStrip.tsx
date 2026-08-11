@@ -13,6 +13,20 @@ export interface DecodeStripProps {
   encodingHex?: string | null;
   /** Compact drops the field row's per-cell meanings (the hero embed header). */
   compact?: boolean;
+  /**
+   * Set while the pc sits inside a hosted libc call: the strip drops the
+   * field row and the gloss (the word under the pc is a trampoline or a
+   * synthetic stub, neither of which is anything the student wrote) and
+   * explains where execution is instead. `waiting` is the blocked variant --
+   * the call is parked on a read.
+   */
+  externalCall?: { name: string; waiting: boolean } | null;
+  /**
+   * Whether a program is in the machine. The cold prompt belongs to the
+   * empty state only: mid-session, an address the gloss cannot describe gets
+   * nothing rather than "step the program", which reads as a broken step.
+   */
+  sessionStarted?: boolean;
 }
 
 /**
@@ -24,13 +38,17 @@ export interface DecodeStripProps {
  * step (`anim-decode-latch`, static under reduced motion). Field layouts
  * come from lib/decode-fields, which is pinned to the real assembler by its
  * tests; unrecognized words render as one unsplit box so the strip never
- * invents structure.
+ * invents structure. Inside a hosted libc call the encoding under the pc is
+ * not the student's code at all, so the strip swaps both for a card naming
+ * the call.
  */
 export function DecodeStrip({
   source,
   currentLine,
   encodingHex = null,
   compact = false,
+  externalCall = null,
+  sessionStarted = false,
 }: DecodeStripProps) {
   const aliases = useMemo(() => extractAliases(source), [source]);
 
@@ -63,7 +81,32 @@ export function DecodeStrip({
         ) : null}
       </div>
 
-      {decoded ? (
+      {externalCall ? (
+        // The machine is inside the runtime: name the call, say who is
+        // running it, and say what happens next. Amber accents because this
+        // is the machine acting, kept to the name and the rule so a dense
+        // panel does not turn into a warning box.
+        <div
+          key={`${externalCall.name}-${externalCall.waiting}`}
+          className="anim-decode-latch flex flex-col gap-1 rounded-[var(--radius-control)] border border-[var(--amber)] px-2 py-1.5"
+          style={{ backgroundColor: "color-mix(in srgb, var(--amber) 8%, transparent)" }}
+        >
+          <span className="font-mono text-[13px] font-medium text-[var(--amber)]">
+            {externalCall.name}
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--amber)]">
+            external call -- handled by the runtime
+          </span>
+          <span className="font-mono text-[12px] leading-[1.6] text-[var(--text-secondary)] break-words">
+            {externalCall.waiting
+              ? // The name already leads the card, so the wait line carries
+                // only the one fact the student needs: where the input goes.
+                "waiting for input in the console"
+              : `${externalCall.name} runs inside the interpreter, not in your program; ` +
+                "it finishes and returns on a later step"}
+          </span>
+        </div>
+      ) : decoded ? (
         // Keyed by the encoding so each step re-latches the field row.
         <div
           key={`${encodingHex}-${currentLine}`}
@@ -130,7 +173,7 @@ export function DecodeStrip({
         </div>
       ) : null}
 
-      {gloss ? (
+      {externalCall ? null : gloss ? (
         // Keyed by the line so each step replays the register-write flash on
         // the gloss: the strip is machine state, and it pulses with the same
         // --changed tint as a written register. Under prefers-reduced-motion
@@ -141,7 +184,7 @@ export function DecodeStrip({
         >
           {gloss}
         </span>
-      ) : (
+      ) : sessionStarted ? null : (
         <span className="font-mono text-[13px] leading-[1.6] text-[var(--text-tertiary)]">
           step the program to see the current instruction
         </span>

@@ -57,3 +57,87 @@ describe("DecodeStrip", () => {
     expect(screen.queryByRole("img")).toBeNull();
   });
 });
+
+describe("DecodeStrip external-call card", () => {
+  // The three steps a `bl printf` costs land on a trampoline and a synthetic
+  // stub, so the strip has no encoding and no line of the student's to gloss.
+  const CALL_SOURCE = "main:\n    ldr x0, =msg\n    bl printf\n";
+
+  it("names the call and says who runs it", () => {
+    render(
+      <DecodeStrip
+        source={CALL_SOURCE}
+        currentLine={3}
+        externalCall={{ name: "printf", waiting: false }}
+        sessionStarted
+      />,
+    );
+    const text = screen.getByLabelText("current instruction").textContent ?? "";
+    expect(text).toContain("printf");
+    expect(text).toContain("external call -- handled by the runtime");
+    expect(text).toContain(
+      "printf runs inside the interpreter, not in your program; it finishes and returns on a later step",
+    );
+  });
+
+  it("says what it is waiting for in the blocked variant", () => {
+    render(
+      <DecodeStrip
+        source={CALL_SOURCE}
+        currentLine={3}
+        externalCall={{ name: "scanf", waiting: true }}
+        sessionStarted
+      />,
+    );
+    const text = screen.getByLabelText("current instruction").textContent ?? "";
+    expect(text).toContain("scanf");
+    expect(text).toContain("waiting for input in the console");
+    expect(text).not.toContain("returns on a later step");
+  });
+
+  it("replaces the field row and the gloss while the call is on", () => {
+    const { rerender } = render(
+      <DecodeStrip
+        source={CALL_SOURCE}
+        currentLine={3}
+        encodingHex="0xd2800553"
+        externalCall={{ name: "printf", waiting: false }}
+        sessionStarted
+      />,
+    );
+    // No bit-field row: the word under the pc is not the student's code.
+    expect(screen.queryByRole("img")).toBeNull();
+    const during = screen.getByLabelText("current instruction").textContent ?? "";
+    expect(during.toLowerCase()).not.toContain("branch with link");
+
+    // The call returns: the strip goes back to decoding the line.
+    rerender(
+      <DecodeStrip
+        source={CALL_SOURCE}
+        currentLine={3}
+        encodingHex="0xd2800553"
+        externalCall={null}
+        sessionStarted
+      />,
+    );
+    expect(screen.getByRole("img", { name: /instruction encoding/ })).toBeTruthy();
+    const after = screen.getByLabelText("current instruction").textContent ?? "";
+    expect(after).not.toContain("external call");
+  });
+
+  it("keeps the cold prompt for the empty machine only", () => {
+    const { rerender } = render(
+      <DecodeStrip source={CALL_SOURCE} currentLine={null} sessionStarted={false} />,
+    );
+    expect(
+      (screen.getByLabelText("current instruction").textContent ?? "").toLowerCase(),
+    ).toContain("step the program");
+
+    // Mid-session with nothing to gloss (an address the map cannot name and
+    // no call context): silence, not an instruction to step.
+    rerender(<DecodeStrip source={CALL_SOURCE} currentLine={null} sessionStarted />);
+    expect(
+      (screen.getByLabelText("current instruction").textContent ?? "").toLowerCase(),
+    ).not.toContain("step the program");
+  });
+});
