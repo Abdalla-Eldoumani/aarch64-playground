@@ -395,7 +395,7 @@ export function FlagEffect({
                   {regA} reads as{" "}
                   {signedReading(parsed.a & ((1n << BigInt(bits)) - 1n), bits).toString()}{" "}
                   signed · {(parsed.a & ((1n << BigInt(bits)) - 1n)).toString()}{" "}
-                  unsigned — same bits, two readings
+                  unsigned -- same bits, two readings
                 </p>
                 <p className="text-[var(--text-tertiary)]">
                   {config.discards
@@ -406,7 +406,7 @@ export function FlagEffect({
             ) : (
               <p>
                 {unordered
-                  ? "unordered: one side is nan, so c and v are set — branches that read v misfire here."
+                  ? "unordered: one side is nan, so c and v are set -- branches that read v misfire here."
                   : parsed.kind === "float"
                     ? outcome.flags.z
                       ? `${regA} equals ${regB}`
@@ -480,7 +480,7 @@ export function FlagEffect({
           href={condHref}
           className="inline-flex min-h-[44px] items-center gap-1 self-start font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]"
         >
-          what each of these conditions really asks — see b.cond{" "}
+          what each of these conditions really asks -- see b.cond{" "}
           <span aria-hidden="true">{"→"}</span>
         </a>
       )}
