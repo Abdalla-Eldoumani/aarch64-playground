@@ -215,6 +215,18 @@ Pre-registered and available without setup:
 | `fabs`                         | Argument in `d0`, result in `d0`. Absolute value. |
 | `fmod`                         | Dividend in `d0`, divisor in `d1`, result in `d0`. The remainder keeps the sign of the dividend. |
 
+Stepping through one of these costs three steps, and the debugger says
+where you are for all three. A `bl printf` lands first on the two words of
+the trampoline the linker plants (`ldr x16, =<stub>; br x16`), then on the
+stub address itself; none of the three is an instruction you wrote. Through
+all three the decode strip drops its bit-field row for a card naming the
+call -- `printf`, `external call -- handled by the runtime` -- the editor
+holds the marker on your `bl` line in a quieter dashed amber rather than
+following the pc somewhere unwritten, and the disassembly stays on the `bl`
+row. A `scanf` that runs out of input parks on the stub, and the card says
+it is waiting for input in the console; type a line there and the call
+finishes on the next step.
+
 ## Syscalls (`svc 0` with `x8`)
 
 | x8 | Name        | Args                                     |
