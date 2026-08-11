@@ -37,13 +37,48 @@ const fontMono = JetBrains_Mono({
 const DESCRIPTION =
   "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";
 
+// Structured data, code-authored literals only: no user input reaches either
+// object, so JSON.stringify into a ld+json script is the whole story. The
+// WebSite entry names the site; the SoftwareApplication entry says what it is
+// (a free, browser-run educational tool) for the search surfaces that show it.
+const WEBSITE_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "cpsc 355 playground",
+  url: SITE_URL,
+  description: DESCRIPTION,
+};
+
+const APPLICATION_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "cpsc 355 playground",
+  url: SITE_URL,
+  description: DESCRIPTION,
+  applicationCategory: "EducationalApplication",
+  operatingSystem: "Web",
+  offers: {
+    "@type": "Offer",
+    price: 0,
+    priceCurrency: "CAD",
+  },
+  audience: {
+    "@type": "EducationalAudience",
+    educationalRole: "student",
+  },
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default: "cpsc 355 playground",
-    template: "%s — cpsc 355 playground",
+    template: "%s -- cpsc 355 playground",
   },
   description: DESCRIPTION,
+  // Relative canonical: resolved against metadataBase, so the one origin above
+  // is the only place the production host is written. Every addressable route
+  // restates its own; the 404 deliberately has none.
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "cpsc 355 playground",
@@ -66,7 +101,13 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0B0C10",
+  // One entry per OS preference, matching the --bg-base of the theme the
+  // pre-paint script picks: an OS-light visitor gets a light browser chrome
+  // around a light first paint instead of a dark band above it.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FCFCFD" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0C10" },
+  ],
 };
 
 export default function RootLayout({
@@ -84,20 +125,38 @@ export default function RootLayout({
       <head>
         {/* Set data-theme from the saved preference BEFORE first paint, so a
             light or high-contrast user does not see a flash of the default
-            dark theme every load. Static, code-authored script (no user
-            input); the CSP permits inline scripts. Kept in lockstep with the
+            dark theme every load. With nothing saved the OS preference
+            decides: an OS-light first visitor used to get a dark first paint
+            that only healed after hydration. Nothing is persisted here -- the
+            choice is still the student's to make; use-theme writes on mount.
+            Static, code-authored script (no user input); the CSP permits
+            inline scripts. Kept in lockstep with the
             "aarch64-playground:theme" key in lib/hooks/use-theme. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              'try{var t=localStorage.getItem("aarch64-playground:theme");if(t==="light"||t==="dark"||t==="high-contrast")document.documentElement.setAttribute("data-theme",t);}catch(e){}',
+              'try{var d=document.documentElement,t=localStorage.getItem("aarch64-playground:theme");if(t==="light"||t==="dark"||t==="high-contrast")d.setAttribute("data-theme",t);else if(window.matchMedia("(prefers-color-scheme: light)").matches)d.setAttribute("data-theme","light");}catch(e){}',
           }}
         />
       </head>
       <body className="flex flex-col min-h-dvh font-mono">
+        {/* First focusable element in the document: a keyboard visitor reaches
+            the page's own content in one tab instead of walking the nav on
+            every route. Every route renders exactly one <main id="main">. */}
+        <a href="#main" className="skip-link">
+          skip to content
+        </a>
         <RegisterSW />
         <OfflineBadge />
         <ToastHost>{children}</ToastHost>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(APPLICATION_JSON_LD) }}
+        />
         <Analytics />
         <SpeedInsights />
       </body>

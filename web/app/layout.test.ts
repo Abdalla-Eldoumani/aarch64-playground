@@ -31,6 +31,17 @@ describe("share card metadata", () => {
     expect((base as URL).origin).toBe(SITE_URL);
   });
 
+  it("advertises the site root as its own canonical, relative to that origin", () => {
+    expect(metadata.alternates?.canonical).toBe("/");
+  });
+
+  it("composes route titles with a double hyphen, never an em dash", () => {
+    const title = metadata.title;
+    const template =
+      title && typeof title === "object" && "template" in title ? title.template : null;
+    expect(template).toBe("%s -- cpsc 355 playground");
+  });
+
   it("carries a complete open graph card", () => {
     const og = metadata.openGraph;
     expect(og?.title).toBe("cpsc 355 playground");
