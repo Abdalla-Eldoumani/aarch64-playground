@@ -66,7 +66,18 @@ obvious place and a newcomer can navigate by directory name alone:
   prevailing convention for non-component files in web projects.
 - Directories are short lowercase nouns. Tests live under a `test/` tree
   beside the code they cover, in the same group as their subject, so the
-  source directories stay browsable.
+  source directories stay browsable. Two placements are sanctioned
+  exceptions, both because the subject itself lives outside the grouped
+  tree:
+  - App Router files (pages, layouts, error boundaries, the sitemap) keep
+    their tests colocated as `web/app/**/*.test.ts(x)`, because the router
+    fixes where the subject file sits and there is no group to mirror it
+    into.
+  - `web/proxy.test.ts` sits beside `web/proxy.ts` at the web root, because
+    the proxy is a root-level framework hook and its test also reads
+    `../vercel.json` to hold the two header sets in lockstep; the vitest
+    `include` in `web/vitest.config.ts` carries a `*.test.ts` entry so the
+    runner still finds it.
 
 ## Day-to-day
 
