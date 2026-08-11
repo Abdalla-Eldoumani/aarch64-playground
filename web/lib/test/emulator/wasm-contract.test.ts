@@ -12,7 +12,9 @@ import { describe, expect, it } from "vitest";
 // running the code path under test.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
-const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");
+const { Emulator, memoryMap } = nodeRequire(
+  wasmNodePath,
+) as typeof import("@/lib/wasm-node/aarch64_emulator");
 
 type EmulatorInstance = InstanceType<typeof Emulator>;
 
@@ -464,6 +466,176 @@ describe("VFS roundtrip through the machine", () => {
       expect(emu.is_halted()).toBe(true);
       expect(emu.get_exit_code()).toBe(1n);
       expect(emu.take_stdout()).toBe("");
+    });
+  });
+});
+
+describe("the exported memory map", () => {
+  // The bands the memory panel labels from, transcribed by hand from the
+  // loader constants: four 1 MiB sections from CODE_BASE, one page of argv,
+  // a 1 MiB heap window, the 1 MiB stack band under STACK_BASE, and 256
+  // 16-byte host-stub slots at the top of the space.
+  it("hands over eight bands in address order at the loader's constants", () => {
+    expect(memoryMap()).toEqual([
+      { name: ".text", start: 0x00400000, end: 0x00500000 },
+      { name: ".rodata", start: 0x00500000, end: 0x00600000 },
+      { name: ".data", start: 0x00600000, end: 0x00700000 },
+      { name: ".bss", start: 0x00700000, end: 0x00800000 },
+      { name: "argv", start: 0x00800000, end: 0x00801000 },
+      { name: "heap", start: 0x00900000, end: 0x00a00000 },
+      { name: "stack", start: 0x7ff00000, end: 0x80000000 },
+      { name: "host stubs", start: 0xffff0000, end: 0xffff1000 },
+    ]);
+  });
+});
+
+describe("external-call context", () => {
+  // Two printf sites, on editor lines 16 and 18 (count the lines: two
+  // defines, a blank, the four .rodata lines, a blank, .text, .global, the
+  // main label, then the body). Both route through the one shared
+  // __tramp_printf, so a static answer could only ever name one of them.
+  const TWO_PRINTF = `define(fp, x29)
+define(lr, x30)
+
+        .rodata
+first_m:
+        .string "first\\n"
+second_m:
+        .string "second\\n"
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =first_m
+        bl      printf
+        ldr     x0, =second_m
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+  // A scanf with nothing on stdin parks on the stub address itself; `bl
+  // scanf` is editor line 19 (the .bss block adds three lines over the
+  // program above, and there are two address loads before the call).
+  const BLOCKING_SCANF = `define(fp, x29)
+define(lr, x30)
+
+        .rodata
+fmt_m:
+        .string "%d"
+
+        .bss
+value_m:
+        .skip   4
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =fmt_m
+        ldr     x1, =value_m
+        bl      scanf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+  interface RawCallContext {
+    name: string;
+    call_site_pc: number;
+    call_site_line?: number | null;
+  }
+
+  function context(emu: EmulatorInstance): RawCallContext | null {
+    return (emu.hostCallContext() as RawCallContext | null | undefined) ?? null;
+  }
+
+  /** Editor line the assemble's line map gives an address, or null. */
+  function lineOf(emu: EmulatorInstance, addr: number): number | null {
+    const flat = Array.from(emu.get_line_map());
+    for (let i = 0; i + 1 < flat.length; i += 2) {
+      if (flat[i] === addr) return flat[i + 1];
+    }
+    return null;
+  }
+
+  it("names each printf's own call site at all three in-call steps", () => {
+    withEmulator((emu) => {
+      assemble(emu, TWO_PRINTF);
+      // assemble_and_load resets the machine, so the pc is main's first
+      // instruction: a line the student wrote, not a call.
+      expect(context(emu)).toBeNull();
+
+      const seen: Array<{ pc: number; name: string; site: number | null; line: number | null }> =
+        [];
+      for (let i = 0; i < 500; i++) {
+        const ctx = context(emu);
+        if (ctx) {
+          seen.push({
+            pc: Number(emu.get_pc()),
+            name: ctx.name,
+            site: ctx.call_site_pc,
+            line: ctx.call_site_line ?? null,
+          });
+        }
+        if (emu.is_halted()) break;
+        const step = emu.step() as { error?: string | null };
+        expect(step.error ?? null).toBeNull();
+      }
+
+      expect(emu.take_stdout()).toBe("first\nsecond\n");
+      // Three in-call pcs per call -- two trampoline words, then the stub --
+      // and each resolves to the line its own `bl` sits on.
+      expect(seen.map((o) => `${o.name}:${o.line}`)).toEqual([
+        "printf:16",
+        "printf:16",
+        "printf:16",
+        "printf:18",
+        "printf:18",
+        "printf:18",
+      ]);
+      expect(seen[1].pc - seen[0].pc).toBe(4);
+      expect(seen[4].pc).toBe(seen[1].pc);
+      // The third pc of each call is a synthetic stub address, inside the
+      // band the exported map calls "host stubs".
+      const stubs = (memoryMap() as Array<{ name: string; start: number; end: number }>).find(
+        (r) => r.name === "host stubs",
+      )!;
+      for (const index of [2, 5]) {
+        expect(seen[index].pc >= stubs.start && seen[index].pc < stubs.end).toBe(true);
+      }
+      // The reported call site is the `bl` instruction itself.
+      expect(lineOf(emu, seen[0].site!)).toBe(16);
+      expect(lineOf(emu, seen[3].site!)).toBe(18);
+    });
+  });
+
+  it("names the call a blocked scanf is parked in", () => {
+    withEmulator((emu) => {
+      assemble(emu, BLOCKING_SCANF);
+      for (let i = 0; i < 200 && !emu.is_blocked(); i++) emu.step();
+      expect(emu.is_blocked()).toBe(true);
+
+      const ctx = context(emu);
+      expect(ctx?.name).toBe("scanf");
+      expect(ctx?.call_site_line).toBe(19);
+      expect(lineOf(emu, ctx!.call_site_pc)).toBe(19);
+    });
+  });
+
+  it("answers null for a program that calls nothing hosted", () => {
+    withEmulator((emu) => {
+      assemble(emu, MINIMAL_MAIN);
+      for (let i = 0; i < 50; i++) {
+        expect(context(emu)).toBeNull();
+        if (emu.is_halted()) break;
+        emu.step();
+      }
+      expect(emu.is_halted()).toBe(true);
     });
   });
 });
