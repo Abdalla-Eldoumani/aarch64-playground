@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { parseAddress } from "@/lib/emulator/parse-address";
+import { regionFor, type MemoryRegion } from "@/lib/emulator/memory-map";
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { Select } from "@/components/ui/Select";
@@ -14,6 +15,13 @@ interface MemoryPanelProps {
    *  changed since the previous frame; the range is replaced on the next write,
    *  so only the latest write stays tinted. */
   dirtyAddrs?: Array<[number, number]>;
+  /** The emulator's address bands (hub `memoryRegions`). Drives the jump
+   *  list and the trigger's region label; empty on a wasm build that
+   *  predates the export, which falls back to FALLBACK_JUMP_TARGETS. */
+  regions?: MemoryRegion[];
+  /** Live stack pointer as the hub reports it ("0x…"), or null. The stack
+   *  jump lands on the row holding it rather than a fixed address. */
+  sp?: string | null;
 }
 
 function isDirty(byteAddr: number, ranges: Array<[number, number]>): boolean {
@@ -25,7 +33,19 @@ function isDirty(byteAddr: number, ranges: Array<[number, number]>): boolean {
 
 const DEFAULT_ROWS = 16;
 
-const JUMP_TARGETS: Array<{ label: string; addr: string }> = [
+/** Section bands the jump list offers, in the order it offers them. The
+ *  heap, argv and host-stub bands stay out of the list on purpose: they are
+ *  worth LABELLING when the window lands there, not worth a row a student
+ *  scrolls past on the way to `.data`. */
+const JUMP_SECTIONS = [".text", ".rodata", ".data", ".bss"];
+
+/** Where "stack" lands with no live sp to follow: the bottom of the last
+ *  page below the stack base, which is what the panel has always offered. */
+const STACK_LANDING = 0x7fffff00;
+
+/** The list before the exported map exists (an older local wasm build).
+ *  Same labels and addresses the panel shipped with. */
+const FALLBACK_JUMP_TARGETS: Array<{ label: string; addr: string }> = [
   { label: ".text", addr: "0x00400000" },
   { label: ".rodata", addr: "0x00500000" },
   { label: ".data", addr: "0x00600000" },
@@ -33,7 +53,39 @@ const JUMP_TARGETS: Array<{ label: string; addr: string }> = [
   { label: "stack", addr: "0x7fffff00" },
 ];
 
-export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
+/**
+ * The jump list, derived from the emulator's own map so the offers cannot
+ * drift from the loader. "stack" follows the live sp (aligned down to the
+ * 16-byte row) whenever sp is inside the stack band -- which is also the
+ * "a program is loaded" test, since a reset machine parks sp at the band's
+ * exclusive end and a broken prologue leaves it at zero.
+ */
+function jumpTargets(
+  regions: MemoryRegion[],
+  sp: number | null,
+): Array<{ label: string; addr: string }> {
+  if (regions.length === 0) return FALLBACK_JUMP_TARGETS;
+  const targets: Array<{ label: string; addr: string }> = [];
+  for (const name of JUMP_SECTIONS) {
+    const region = regions.find((r) => r.name === name);
+    if (region) targets.push({ label: name, addr: formatAddr(region.start) });
+  }
+  const stack = regions.find((r) => r.name === "stack");
+  if (stack) {
+    const live = sp != null && sp >= stack.start && sp < stack.end;
+    // Modulo, not a bitwise mask: the stack band sits at the top of the
+    // 32-bit space and `& ~0xf` would sign-flip an address past 0x7fffffff.
+    targets.push({ label: "stack", addr: formatAddr(live ? sp - (sp % 16) : STACK_LANDING) });
+  }
+  return targets;
+}
+
+export function MemoryPanel({
+  getMemory,
+  dirtyAddrs = [],
+  regions = [],
+  sp = null,
+}: MemoryPanelProps) {
   const [baseAddr, setBaseAddr] = useState("0x00400000");
   // The last address that parsed. A mistyped character keeps the window
   // here instead of silently truncating to a low address whose zeros read
@@ -51,6 +103,17 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
   const addr = parsed ?? lastGoodAddr;
   const totalBytes = rows * bytesPerRow;
   const data = getMemory(addr, totalBytes);
+
+  const spValue = sp == null ? null : parseAddress(sp);
+  const targets = useMemo(() => jumpTargets(regions, spValue), [regions, spValue]);
+  // What the trigger reads: the band the window is actually in, updated live
+  // as the student types. A bad address holds the last good window, so the
+  // label keeps naming that window's region -- it describes what is on
+  // screen, and the alert below already reports the rejection. Without the
+  // map there is nothing to name, so the trigger keeps its "jump..." text.
+  const region = regions.length > 0 ? regionFor(addr, regions) : null;
+  const triggerLabel =
+    regions.length === 0 ? undefined : region ? `in ${region.name}` : "unmapped";
 
   const handleAddrChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,9 +150,10 @@ export function MemoryPanel({ getMemory, dirtyAddrs = [] }: MemoryPanelProps) {
         <Select
           size="xs"
           placeholder="jump..."
+          triggerLabel={triggerLabel}
           ariaLabel="jump to section"
           groups={[
-            { options: JUMP_TARGETS.map((j) => ({ value: j.addr, label: j.label })) },
+            { options: targets.map((j) => ({ value: j.addr, label: j.label })) },
           ]}
           onSelect={(addrValue) => {
             setBaseAddr(addrValue);
