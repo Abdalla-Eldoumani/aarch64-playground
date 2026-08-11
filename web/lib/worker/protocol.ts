@@ -44,7 +44,8 @@ export type RequestKind =
   | "lint"
   | "clearConsole"
   | "codeBase"
-  | "lineMap";
+  | "lineMap"
+  | "memoryMap";
 
 export interface BaseRequest<K extends RequestKind> {
   id: number;
@@ -83,7 +84,8 @@ export type Request =
   | (BaseRequest<"lint"> & { source: string })
   | BaseRequest<"clearConsole">
   | BaseRequest<"codeBase">
-  | BaseRequest<"lineMap">;
+  | BaseRequest<"lineMap">
+  | BaseRequest<"memoryMap">;
 
 export interface OkResponse<T> {
   id: number;
@@ -165,6 +167,23 @@ export interface RunResultPayload {
 }
 
 /**
+ * The external call a paused program counter sits inside. A hosted call
+ * (`bl printf`) costs three steps on addresses the student never wrote --
+ * two trampoline words and the synthetic stub -- so the wasm side names the
+ * callee and recovers the call site from LR-4 for all three. Null whenever
+ * the pc is an instruction the program itself holds, and absent on wasm
+ * builds that predate the export.
+ */
+export interface ExternalCall {
+  /** The libc function being called ("printf", "scanf", ...). */
+  name: string;
+  /** Address of the `bl` that made the call. */
+  callSitePc: number;
+  /** Editor line of the call site, or null when the map cannot name one. */
+  callSiteLine: number | null;
+}
+
+/**
  * Snapshot of all state the UI needs after an operation. Sent in the
  * `ok` response of every state-mutating call (assemble/step/run/reset/
  * stepBack/loadState) and as the `snapshot` field of heartbeats.
@@ -198,6 +217,12 @@ export interface StateSnapshot {
    * builds that predate the flag.
    */
   wantsTerminal: boolean;
+  /**
+   * The external call the pc sits inside, or null when it is one of the
+   * program's own instructions. Undefined on wasm builds that predate
+   * `hostCallContext`, which is how the UI hides the feature.
+   */
+  externalCall?: ExternalCall | null;
   /// `(addr, len)` pairs of memory ranges written since the previous
   /// snapshot. Drives memory-cell diff highlighting in the replay
   /// scrubber. Flat array of `[addr, len, addr, len, ...]`.
@@ -232,6 +257,7 @@ export function emptyStateSnapshot(frame = 0): StateSnapshot {
     vfsFiles: [],
     savedStates: [],
     wantsTerminal: false,
+    externalCall: null,
     dirtyAddrs: [],
   };
 }
