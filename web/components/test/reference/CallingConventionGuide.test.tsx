@@ -21,8 +21,8 @@ describe("CallingConventionGuide", () => {
     const { container } = render(<CallingConventionGuide />);
     const text = container.textContent ?? "";
     const headings = [
-      "01 · registers by role — integer",
-      "02 · registers by role — floating point",
+      "01 · registers by role -- integer",
+      "02 · registers by role -- floating point",
       "03 · the frame record",
       "04 · 16-byte stack alignment",
     ];
