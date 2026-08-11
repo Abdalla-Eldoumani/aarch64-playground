@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. As of the extras lineup that is 852 Rust tests, 1641 web tests, and 16 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. At the time of writing that is 886 Rust tests, 1751 web tests, and 16 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
 
 ## Rust
 
@@ -51,7 +51,7 @@ npx vitest run lib/test/playground/          # every test in one group
 npx vitest run -t "share hash"               # tests whose name matches
 ```
 
-Tests live under a `test/` tree beside the code they cover, mirroring the source groups (`web/lib/test/<group>/<feature>.test.ts`, `web/components/test/<group>/<Component>.test.tsx`); contract tests with no single subject file (seeded content, course style, authoring rules) sit in `web/lib/test/content/`. Route tests are the exception: they sit beside their route as `web/app/**/page.test.tsx`, because a route's subject is the page file itself. The runner wires [`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs `window.matchMedia` (jsdom lacks it). Use plain DOM assertions; `@testing-library/jest-dom` is not installed.
+Tests live under a `test/` tree beside the code they cover, mirroring the source groups (`web/lib/test/<group>/<feature>.test.ts`, `web/components/test/<group>/<Component>.test.tsx`); contract tests with no single subject file (seeded content, course style, authoring rules) sit in `web/lib/test/content/`. Two placements sit outside that tree, both because the subject does: App Router tests live beside their route file as `web/app/**/*.test.ts(x)`, and `web/proxy.test.ts` lives beside `web/proxy.ts` at the web root (the vitest `include` carries a `*.test.ts` entry for it). [`CONTRIBUTING.md`](CONTRIBUTING.md#naming-conventions) has the reasoning. The runner wires [`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs `window.matchMedia` (jsdom lacks it). Use plain DOM assertions; `@testing-library/jest-dom` is not installed.
 
 ## End-to-end corpus
 
@@ -94,7 +94,7 @@ From `web/`:
 npm run smoke:firefox
 ```
 
-Drives Firefox through the live app to confirm CSP boots Monaco, the editor renders, and the service worker registers. This caught a `cdn.jsdelivr.net` style-src omission Chromium allowed silently.
+Drives Firefox through the live app to confirm CSP boots Monaco, the editor renders, and the service worker registers. Back when the editor loaded from a CDN this caught a `style-src` omission Chromium allowed silently; the editor is served same-origin now, and the smoke run still guards the boot.
 
 ## What CI runs
 
