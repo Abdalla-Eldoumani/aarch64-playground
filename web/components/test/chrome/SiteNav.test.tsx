@@ -53,4 +53,24 @@ describe("SiteNav", () => {
     const github = screen.getByRole("link", { name: "source on github" });
     expect(github.getAttribute("rel")).toBe("noreferrer noopener");
   });
+
+  it("shows the star count in the source link when one is passed", () => {
+    render(<SiteNav variant="full" stars={214} />);
+
+    // The count is spelled into the accessible name; the numeral itself is
+    // aria-hidden, so the link is still one target with one label.
+    const github = screen.getByRole("link", {
+      name: "source on github, 214 stars",
+    });
+    expect(github.getAttribute("rel")).toBe("noreferrer noopener");
+    expect(screen.getByText("214")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "source on github" })).toBeNull();
+  });
+
+  it("says star, not stars, at a count of one", () => {
+    render(<SiteNav variant="full" stars={1} />);
+    expect(
+      screen.getByRole("link", { name: "source on github, 1 star" }),
+    ).toBeTruthy();
+  });
 });
