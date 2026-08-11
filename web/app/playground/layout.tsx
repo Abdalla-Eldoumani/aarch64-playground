@@ -7,19 +7,20 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: "playground",
   description: DESCRIPTION,
+  alternates: { canonical: "/playground" },
   // Open Graph and Twitter are not deep-merged across segments, so this route
   // restates the full composed title and its own url instead of inheriting.
   openGraph: {
     type: "website",
     siteName: "cpsc 355 playground",
-    title: "playground — cpsc 355 playground",
+    title: "playground -- cpsc 355 playground",
     description: DESCRIPTION,
     url: "/playground",
     images: [SHARE_CARD_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "playground — cpsc 355 playground",
+    title: "playground -- cpsc 355 playground",
     description: DESCRIPTION,
     images: [SHARE_CARD_IMAGE],
   },
