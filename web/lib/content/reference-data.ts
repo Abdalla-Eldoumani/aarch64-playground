@@ -1,4 +1,3 @@
-import type { BitField } from "@/components/diagrams/BitFieldDiagram";
 import { lookupDoc } from "@/lib/asm/instruction-docs";
 
 /**
@@ -14,6 +13,25 @@ import { lookupDoc } from "@/lib/asm/instruction-docs";
  * follows the real AArch64 form and its bit widths sum to 32. Instructions
  * without an authored encoding omit the field and render without a diagram.
  */
+
+/**
+ * One field of an authored encoding. The shape lives with the data that
+ * authors it rather than with BitFieldDiagram, which only draws it.
+ */
+export interface BitField {
+  /** Width of the field in bits; the box width is proportional to this. */
+  bits: number;
+  /** Short field name shown in the box, e.g. "opcode", "Rn", "Rd". */
+  label: string;
+  /** Optional explicit accent color (a CSS color or a token reference like
+   *  `var(--cyan)`). Falls back to a token-driven neutral cap when omitted. */
+  color?: string;
+  /** Worked-example bits for this field ("10011"); length must equal `bits`.
+   *  When every field carries one, the diagram turns interactive. */
+  value?: string;
+  /** What the worked bits decode to, e.g. "x19" or "16 / 8 = 2". */
+  meaning?: string;
+}
 
 export type ReferenceCategory =
   | "Data processing"

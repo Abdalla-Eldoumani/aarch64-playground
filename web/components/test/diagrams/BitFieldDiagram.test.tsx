@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { BitFieldDiagram, type BitField } from "@/components/diagrams/BitFieldDiagram";
+import { BitFieldDiagram } from "@/components/diagrams/BitFieldDiagram";
+import type { BitField } from "@/lib/content/reference-data";
 
 const THEMES = ["dark", "light", "high-contrast"] as const;
 
