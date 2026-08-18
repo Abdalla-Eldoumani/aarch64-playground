@@ -1,6 +1,6 @@
 {
   "title": "Pre-test Loops in Assembly",
-  "slug": "pre-test-loop-in-assembly",
+  "slug": "pretest-loop",
   "order": 8,
   "summary": "A lesson that covers the implementation of a pre-test loop in Assembly language, including its structure and usage.",
   "tags": [
