@@ -59,6 +59,12 @@
         "type": "prose",
         "markdown": "The logic presented above closely resembles the branching mechanism used in Assembly and provides the basic control flow needed to implement a pre-test loop. The process of implementing a pre-test loop can therefore be summarised as follows:\n\n1. Initialise the loop variable.\n\n2. State and check the loop condition.\n\n3. Execute the loop body if the condition is satisfied.\n\n4. Branch back to the condition check.\n\n5. Exit the loop when the condition is no longer satisfied."
     },
+    { 
+        "type": "callout",
+        "variant": "note",
+        "markdown": "It can be observed that the logic more closely resembles a `while` loop. There is no direct one-to-one equivalent of a `for` loop or a `while` loop in Assembly. Instead, Assembly implementations reproduce the control flow and behaviour of these high-level loop constructs. Therefore, when implementing a `for` loop in Assembly, it can be helpful to first express it in the form of a `while` loop. This provides a clearer representation of the loop's control flow and makes it easier to translate into Assembly instructions."
+
+    },
     {
         "type": "prose",
         "markdown": "## The Assembly Implementation\n\n The above C code and pseudocode can be implemented in Assembly as follows:"
