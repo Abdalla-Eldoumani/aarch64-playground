@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Addressing & Records - Advanced",
+  "slug": "quiz-advance-frame-stack",
+  "order": 8,
+  "topic": "advanced",
+  "difficulty": "challenge",
+  "variant": "quiz",
+  "prompt": "Challenge yourself with complex addressing modes and strict stack lifecycle rules.",
+  "questions": [
+    {
+      "question": "What does the addressing mode `[x29, w21, SXTW]` accomplish?",
+      "options": [
+        "It scales the offset in w21 by 4 and adds it to x29.",
+        "It zero-extends the 32-bit offset in w21, adds it to x29, and accesses memory.",
+        "It sign-extends the 32-bit offset in w21, adds it to the 64-bit base register x29, and accesses memory.",
+        "It pre-indexes x29 by the value in w21."
+      ],
+      "correctAnswer": 2,
+      "explanation": "This is base plus a 32-bit register offset. The 'SXTW' indicates the sign-extended form, adding the sign-extended offset in Wm (w21) to the base (x29).",
+      "hint": "SXTW stands for Sign eXtend Word."
+    },
+    {
+      "question": "When variables are allocated dynamically within a block of code (like an if-statement) by decrementing the SP, how are they typically accessed?",
+      "options": [
+        "Using SP plus a positive offset.",
+        "Using FP plus a positive offset.",
+        "Using FP plus a negative offset.",
+        "Using LR minus the block size."
+      ],
+      "correctAnswer": 2,
+      "explanation": "Variables local to blocks of code are read/written using FP plus a negative offset.",
+      "hint": "They are allocated dynamically below the frame record, so you must look 'down' from the FP."
+    },
+    {
+      "question": "If a memory allocation requires 32 bytes (including the frame record), what does the stack layout look like immediately after `stp x29, x30, [sp, -32]!` executes?",
+      "options": [
+        "SP and FP point to the bottom of the allocated space, containing local variables.",
+        "SP points to the top of the stack containing the 16-byte frame record, and 16 bytes of pad/variable space exist above it.",
+        "The frame record is placed at the top, and local variables overwrite the caller's stack frame.",
+        "The Link Register is overwritten."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The pre-increment allocates the space first, meaning SP points to the lowest address (top of the stack). The frame record (x29, x30) is stored there, leaving the extra 16 bytes allocated immediately above the frame record for stack variables.",
+      "hint": "The 'stp' instruction writes to the memory address newly held by SP."
+    },
+    {
+      "question": "Why does the `ldp x29, x30, [sp], 16` instruction use a post-indexed addressing mode rather than pre-indexed?",
+      "options": [
+        "To ensure the stack remains full and descending.",
+        "Because it needs to read the frame record from the current SP location first, before deallocating the 16 bytes by incrementing SP.",
+        "Because the FP is unstable during teardown.",
+        "To prevent alignment faults on the Link Register."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The stack frame is popped when the function returns using post-increment; it reads from the current address to restore x29 and x30, and then increments SP to deallocate.",
+      "hint": "You have to get your data out of the box before you throw the box away."
+    },
+    {
+      "question": "If you need to scale a 64-bit register offset by 8 bytes before adding it to the base register, what syntax is required?",
+      "options": [
+        "[base, Xm, MUL 8]",
+        "[base, Xm, LSL 3]",
+        "[base, Xm, LSL 8]",
+        "[base, Xm, UXTW]"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The 64-bit register offset can be scaled using 'LSL #imm'. To multiply by 8, you shift left by 3 (LSL 3), as 2^3 = 8.",
+      "hint": "Multiplication in addressing modes uses bitwise Logical Shift Left."
+    }
+  ]
+}
