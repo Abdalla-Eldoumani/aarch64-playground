@@ -1,1 +1,41 @@
-It can be observed that the logic more closely resembles a `while` loop. There is no direct one-to-one equivalent of a `for` loop or a `while` loop in Assembly. Instead, Assembly implementations reproduce the control flow and behaviour of these high-level loop constructs. Therefore, when implementing a `for` loop in Assembly, it can be helpful to first express it in the form of a `while` loop. This provides a clearer representation of the loop's control flow and makes it easier to translate into Assembly instructions.
+.data
+    string1: .string "Post-test loop implementation\n"
+    string2: .string "%d\n"
+    string3: .string "Loop finished\n"
+
+.text
+    .balign 4
+    .global main
+
+main:
+    // This is the program prologue
+    stp     x29, x30, [sp, -16]!
+    mov     x29, sp
+
+    // Printing the "Post-test loop implementation" String
+    ldr x0, =string1
+    bl printf
+
+    // Initialising the Loop variable (i)
+    mov x20, 1
+
+    // Going straight to the loop body (KEY DIFFERENCE)
+
+loopbody:
+    ldr x0, =string2        // loading the format string
+    mov x1, x20             // loading the i to argument register
+    bl printf
+    add x20, x20, 1         // Incrementing i by one
+                            // x20 = x20 + 1
+
+loopcond:
+    cmp x20, 5              // Comparing i with 5
+    b.le loopbody           // if i is less than or equal to 5, branch to loop body
+                            // otherwise code below is executed
+    ldr x0, =string3
+    bl printf
+
+    // This is the program epilogue
+    mov     x0, 0                   // End the program by returning 0.
+    ldp     x29, x30, [sp], 16
+    ret
