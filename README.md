@@ -41,7 +41,8 @@ Live at <https://aarch64-playground.com>.
 ## Quickstart
 
 Requires [Rust](https://rustup.rs/) with the `wasm32-unknown-unknown` target,
-[wasm-pack](https://wasm-bindgen.github.io/wasm-pack/installer/), and Node.js 20+.
+[wasm-pack](https://wasm-bindgen.github.io/wasm-pack/installer/), and Node.js
+20+ (CI runs on 24).
 
 ```bash
 # build the wasm module
@@ -65,9 +66,10 @@ TypeScript, and Tailwind CSS for the web app; deployed on Vercel.
 
 ## Docs
 
-See [`docs/`](docs/) for the architecture, a getting-started tour, the
-contributing and testing guides, deployment, the instruction reference, the
-assembly style guide, and the security posture.
+Start at [`docs/README.md`](docs/README.md): it routes by task to the
+architecture, the getting-started tour, the contributing and testing guides,
+deployment, the instruction reference, the assembly style guide, the
+content-authoring format, the terminal reference, and the security posture.
 
 ## License
 
