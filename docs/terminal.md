@@ -37,7 +37,8 @@ follows the terminal modes a real tty would apply:
 - Ctrl+C stops the program and returns the prompt.
 
 Terminal-first examples (snake, the data structures visualizer, calc,
-two-sum, deadzone) take the pane over from the run button too: run
+temp-convert, two-sum, deadzone) take the pane over from the run button
+too when their run-mode control is set to terminal: run
 switches to the term tab, clears the screen, and starts the session. The
 menu-driven ones are declared terminal-first up front; the raw-mode ones
 claim the pane the moment they switch the terminal over. Step-back is
