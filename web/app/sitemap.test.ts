@@ -14,7 +14,7 @@ describe("sitemap", () => {
   const exerciseSlugs = loadAllExercises().map((exercise) => exercise.slug);
 
   it("lists the five fixed routes plus every lesson and exercise", () => {
-    expect(entries).toHaveLength(13);
+    expect(entries).toHaveLength(20);
     expect(entries).toHaveLength(5 + lessonSlugs.length + exerciseSlugs.length);
   });
 

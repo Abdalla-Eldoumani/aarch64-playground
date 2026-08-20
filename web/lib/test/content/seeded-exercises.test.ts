@@ -43,9 +43,12 @@ describe("seeded exercises validate", () => {
       const parsed: unknown = JSON.parse(fs.readFileSync(path.join(DIR, file), "utf8"));
       const result = validateExercise(parsed);
       if (!result.ok) throw new Error(`${file} failed validation: ${result.error}`);
-      if (result.exercise.variant === "write") writes += 1;
-      if (result.exercise.variant === "identify-bug") bugs += 1;
-      structural += result.exercise.acceptance.structural?.length ?? 0;
+      const { exercise } = result;
+      if (exercise.variant === "write") writes += 1;
+      if (exercise.variant === "identify-bug") bugs += 1;
+      if (exercise.variant === "write" || exercise.variant === "identify-bug") {
+        structural += exercise.acceptance.structural?.length ?? 0;
+      }
     }
     expect(writes).toBeGreaterThanOrEqual(1);
     expect(bugs).toBeGreaterThanOrEqual(1);
@@ -60,9 +63,20 @@ describe("seeded exercises validate", () => {
     }
   });
 
-  it("carry no reference-solution or answer key", () => {
+  // The no-answer-key rule holds for the emulator-backed variants: a coding
+  // exercise is graded by running the student's program, never by comparing
+  // against a stored solution, so its JSON must not carry one. The interactive
+  // variants (quiz, prediction, blanks) are the deliberate exception -- they
+  // grade entirely client-side against author-declared answers the schema
+  // validates, so their files carry those answers by design.
+  it("coding exercises carry no reference-solution or answer key", () => {
     const solutionKey = /"solution"|"answer"/i;
     for (const file of files) {
+      const parsed: unknown = JSON.parse(fs.readFileSync(path.join(DIR, file), "utf8"));
+      const result = validateExercise(parsed);
+      if (!result.ok) throw new Error(`${file} failed validation: ${result.error}`);
+      const { variant } = result.exercise;
+      if (variant !== "write" && variant !== "identify-bug") continue;
       const raw = fs.readFileSync(path.join(DIR, file), "utf8");
       expect(solutionKey.test(raw), `${file} carries a solution/answer key`).toBe(false);
     }
@@ -229,6 +243,7 @@ describe("the checker passes a correct solution and fails an incorrect one end t
     const exercise = loadExercise("sum-to-n");
     expect(exercise).toBeDefined();
     if (!exercise) return;
+    if (exercise.variant !== "write") throw new Error("expected the write variant");
 
     const correct = checkExercise(exercise.acceptance, runToSnapshot(sumCorrect), sumCorrect);
     expect(correct.pass).toBe(true);
@@ -248,6 +263,7 @@ describe("the checker passes a correct solution and fails an incorrect one end t
     const exercise = loadExercise("fix-the-loop-bound");
     expect(exercise).toBeDefined();
     if (!exercise) return;
+    if (exercise.variant !== "identify-bug") throw new Error("expected the identify-bug variant");
 
     const fixed = checkExercise(exercise.acceptance, runToSnapshot(factFixed), factFixed);
     expect(fixed.pass).toBe(true);

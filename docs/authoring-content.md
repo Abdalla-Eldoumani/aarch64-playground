@@ -121,9 +121,11 @@ main:
 
 ## exercises
 
-A prompt, starter source, and acceptance criteria as data.
+An exercise is either a coding sheet (a prompt, starter source, and
+acceptance criteria checked by running the reader's program) or an
+interactive question set graded in the page.
 
-Fields:
+Fields every variant carries:
 
 - `title`: the heading, a non-empty string.
 - `slug`: url-safe kebab-case, matching the file name.
@@ -131,11 +133,15 @@ Fields:
 - `topic`: optional string for the index filter.
 - `difficulty`: optional, one of `intro`, `core`, or `challenge`.
 - `prompt`: the task description, Markdown.
+- `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
+  or `blanks`.
+
+The coding variants (`write`, and `identify-bug`, where the starter is a
+broken program the reader fixes) add:
+
 - `starter`: the source loaded into the editor; may be empty.
 - `args`: optional command-line arguments for the run.
 - `stdin`: optional input piped to the run.
-- `variant`: `write` (the default) or `identify-bug`, where the starter is a
-  broken program the reader fixes.
 - `acceptance`: the criteria below.
 
 `acceptance.results` is a non-empty list of checks against the run:
@@ -157,7 +163,31 @@ useful for requiring an approach or ruling out a shortcut:
 
 The checker runs the program and compares its output against these checks. It
 never compares against a stored solution, so any correct approach passes and
-the file carries no answer key.
+a coding exercise's file carries no answer key.
+
+### interactive variants
+
+The interactive variants skip the editor and grade entirely in the page, so
+their files declare the expected answers (that is by design and only applies
+to these variants; coding exercises still never store one). Each carries one
+question list in place of `starter`/`acceptance`:
+
+- `quiz`: `questions`, each
+  `{ "question": "...", "options": ["...", "..."], "correctAnswer": 1,
+  "explanation": "...", "hint": "..." }`. `options` needs at least two
+  entries and `correctAnswer` is an index into it.
+- `prediction`: `predictions`, each
+  `{ "code": "...", "question": "...", "answer": "...", "explanation": "...",
+  "hint": "..." }`. The reader's input is compared to `answer` trimmed and
+  case-insensitively.
+- `blanks`: `blanks`, each
+  `{ "prompt": "...", "code": "ldr x0, ___", "blanks": ["=label"],
+  "explanation": "...", "hint": "..." }`. `code` carries exactly one `___`
+  marker where the input field lands, and `blanks` lists every accepted
+  answer.
+
+`hint` is optional everywhere and is the only feedback a wrong attempt sees;
+the explanation renders only after a correct one.
 
 ### a worked exercise
 

@@ -26,6 +26,9 @@ export type StructuralAssertion =
   | { kind: "uses-instruction"; mnemonic: string }
   | { kind: "forbids-literal"; value: number | string };
 
+export type ExerciseVariant = "write" | "identify-bug" | "quiz" | "prediction" | "blanks";
+export type ExerciseDifficulty = "intro" | "core" | "challenge";
+
 /** The acceptance criteria: required result checks plus optional structure. */
 export interface Acceptance {
   /** At least one; the primary pass/fail criteria. */
@@ -34,11 +37,40 @@ export interface Acceptance {
   structural?: StructuralAssertion[];
 }
 
-export type ExerciseVariant = "write" | "identify-bug";
-export type ExerciseDifficulty = "intro" | "core" | "challenge";
+/** A standard multiple-choice question with a single correct answer index. */
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  explanation: string;
+  /** Optional nudges to guide the user before an attempt. */
+  hint?: string;
+}
 
-/** A prompt, starter source, and acceptance criteria as data. */
-export interface Exercise {
+/** A mental tracing exercise requiring the user to predict the output or state of a snippet. */
+export interface PredictionQuestion {
+  code: string;
+  question: string;
+  answer: string;
+  explanation: string;
+  hint?: string;
+}
+
+/** A syntax-focused exercise where the user fills in missing parts of a code block. */
+export interface BlanksQuestion {
+  prompt: string;
+  code: string;
+  blanks: string[];
+  explanation: string;
+  hint?: string;
+}
+
+/**
+ * Core fields shared by EVERY exercise variant. These properties govern
+ * how the exercise is indexed, routed, and initially rendered before
+ * variant-specific UI logic takes over.
+ */
+export interface BaseExercise {
   title: string;
   /** URL-safe kebab-case, unique: the permalink and the solved key. */
   slug: string;
@@ -50,16 +82,56 @@ export interface Exercise {
   difficulty?: ExerciseDifficulty;
   /** Markdown, rendered through the sanitizing pipeline. */
   prompt: string;
+}
+
+/**
+ * The original, WASM-backed coding variant. Strictly requires a starter code
+ * block and acceptance criteria to evaluate the student's program against
+ * the live AArch64 emulator.
+ */
+export interface WriteExercise extends BaseExercise {
+  variant: "write" | "identify-bug";
   /** Starting source loaded into the embedded editor (may be empty). */
   starter: string;
+  acceptance: Acceptance;
   /** Optional command-line arguments passed to the run. */
   args?: string;
   /** Optional stdin passed to the run. */
   stdin?: string;
-  /** Defaults to "write" when the author omits it. */
-  variant: ExerciseVariant;
-  acceptance: Acceptance;
 }
+
+/**
+ * A strictly client-side interactive variant. Bypasses the emulator entirely
+ * in favor of an isolated multiple-choice block.
+ */
+export interface QuizExercise extends BaseExercise {
+  variant: "quiz";
+  questions: QuizQuestion[];
+}
+
+/**
+ * A mental tracing variant. Requires the student to predict the output or
+ * internal state of a provided code snippet without executing it.
+ */
+export interface PredictionExercise extends BaseExercise {
+  variant: "prediction";
+  predictions: PredictionQuestion[];
+}
+
+/**
+ * A syntax-focused variant where students must provide the exact missing
+ * tokens to complete a partial code block.
+ */
+export interface BlanksExercise extends BaseExercise {
+  variant: "blanks";
+  blanks: BlanksQuestion[];
+}
+
+/**
+ * The discriminated union: TypeScript narrows this to a specific layout
+ * and strict requirement set based on the `variant` discriminator.
+ */
+export type Exercise = WriteExercise | QuizExercise | PredictionExercise | BlanksExercise;
 
 /** Discriminated validation result: a typed exercise or a clear error. */
 export type ExerciseResult = { ok: true; exercise: Exercise } | { ok: false; error: string };
@@ -198,12 +270,148 @@ function validateStructuralAssertion(
   }
 }
 
+/** A non-empty trimmed string, the shape every question text field must have. */
+function isFilledString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Validate one quiz question, tagging every message with the entry index
+ * (e.g. questions[1]). Returns a question built only from validated fields.
+ */
+function validateQuizQuestion(
+  raw: unknown,
+  index: number,
+): { ok: true; question: QuizQuestion } | { ok: false; error: string } {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: `questions[${index}]: expected a question object` };
+  }
+  const q = raw as Record<string, unknown>;
+  if (!isFilledString(q.question)) {
+    return { ok: false, error: `questions[${index}]: question must be a non-empty string` };
+  }
+  if (!Array.isArray(q.options) || q.options.length < 2 || !q.options.every(isFilledString)) {
+    return {
+      ok: false,
+      error: `questions[${index}]: options must be at least two non-empty strings`,
+    };
+  }
+  const answer = q.correctAnswer;
+  if (typeof answer !== "number" || !Number.isInteger(answer) || answer < 0 || answer >= q.options.length) {
+    return {
+      ok: false,
+      error: `questions[${index}]: correctAnswer must be an index into options`,
+    };
+  }
+  if (!isFilledString(q.explanation)) {
+    return { ok: false, error: `questions[${index}]: explanation must be a non-empty string` };
+  }
+  const question: QuizQuestion = {
+    question: q.question,
+    options: q.options,
+    correctAnswer: answer,
+    explanation: q.explanation,
+  };
+  if (q.hint !== undefined) {
+    if (typeof q.hint !== "string") {
+      return { ok: false, error: `questions[${index}]: hint must be a string when present` };
+    }
+    question.hint = q.hint;
+  }
+  return { ok: true, question };
+}
+
+/**
+ * Validate one prediction question, tagging every message with the entry
+ * index (e.g. predictions[0]).
+ */
+function validatePredictionQuestion(
+  raw: unknown,
+  index: number,
+): { ok: true; question: PredictionQuestion } | { ok: false; error: string } {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: `predictions[${index}]: expected a question object` };
+  }
+  const q = raw as Record<string, unknown>;
+  if (!isFilledString(q.code)) {
+    return { ok: false, error: `predictions[${index}]: code must be a non-empty string` };
+  }
+  if (!isFilledString(q.question)) {
+    return { ok: false, error: `predictions[${index}]: question must be a non-empty string` };
+  }
+  if (!isFilledString(q.answer)) {
+    return { ok: false, error: `predictions[${index}]: answer must be a non-empty string` };
+  }
+  if (!isFilledString(q.explanation)) {
+    return { ok: false, error: `predictions[${index}]: explanation must be a non-empty string` };
+  }
+  const question: PredictionQuestion = {
+    code: q.code,
+    question: q.question,
+    answer: q.answer,
+    explanation: q.explanation,
+  };
+  if (q.hint !== undefined) {
+    if (typeof q.hint !== "string") {
+      return { ok: false, error: `predictions[${index}]: hint must be a string when present` };
+    }
+    question.hint = q.hint;
+  }
+  return { ok: true, question };
+}
+
+/**
+ * Validate one blanks question, tagging every message with the entry index
+ * (e.g. blanks[2]). The code must carry exactly one `___` marker: the
+ * renderer splits on the marker to embed its input field, so zero markers
+ * leaves nowhere to answer and a second one silently drops source text.
+ */
+function validateBlanksQuestion(
+  raw: unknown,
+  index: number,
+): { ok: true; question: BlanksQuestion } | { ok: false; error: string } {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: `blanks[${index}]: expected a question object` };
+  }
+  const q = raw as Record<string, unknown>;
+  if (!isFilledString(q.prompt)) {
+    return { ok: false, error: `blanks[${index}]: prompt must be a non-empty string` };
+  }
+  if (typeof q.code !== "string" || q.code.split("___").length !== 2) {
+    return {
+      ok: false,
+      error: `blanks[${index}]: code must be a string with exactly one ___ marker`,
+    };
+  }
+  if (!Array.isArray(q.blanks) || q.blanks.length === 0 || !q.blanks.every(isFilledString)) {
+    return {
+      ok: false,
+      error: `blanks[${index}]: blanks must be at least one non-empty accepted string`,
+    };
+  }
+  if (!isFilledString(q.explanation)) {
+    return { ok: false, error: `blanks[${index}]: explanation must be a non-empty string` };
+  }
+  const question: BlanksQuestion = {
+    prompt: q.prompt,
+    code: q.code,
+    blanks: q.blanks,
+    explanation: q.explanation,
+  };
+  if (q.hint !== undefined) {
+    if (typeof q.hint !== "string") {
+      return { ok: false, error: `blanks[${index}]: hint must be a string when present` };
+    }
+    question.hint = q.hint;
+  }
+  return { ok: true, question };
+}
+
 /**
  * Validate an untrusted value against the exercise schema. Returns
  * `{ ok: true, exercise }` with an exercise built only from the known,
  * validated fields (unknown keys are dropped), or `{ ok: false, error }`
- * on the first failure with a message naming the offending field or
- * assertion index. Never throws.
+ * on the first failure with a message naming the offending field.
  */
 export function validateExercise(data: unknown): ExerciseResult {
   if (data == null || typeof data !== "object" || Array.isArray(data)) {
@@ -226,6 +434,11 @@ export function validateExercise(data: unknown): ExerciseResult {
     return { ok: false, error: "order: expected a number or string" };
   }
 
+  const prompt = o.prompt;
+  if (typeof prompt !== "string" || prompt.trim().length === 0) {
+    return { ok: false, error: "prompt: expected a non-empty string" };
+  }
+
   let topic: string | undefined;
   if (o.topic !== undefined) {
     if (typeof o.topic !== "string") {
@@ -243,82 +456,125 @@ export function validateExercise(data: unknown): ExerciseResult {
     difficulty = d;
   }
 
-  const prompt = o.prompt;
-  if (typeof prompt !== "string" || prompt.trim().length === 0) {
-    return { ok: false, error: "prompt: expected a non-empty string" };
-  }
-
-  const starter = o.starter;
-  if (typeof starter !== "string") {
-    return { ok: false, error: "starter: expected a string" };
-  }
-
-  let args: string | undefined;
-  if (o.args !== undefined) {
-    if (typeof o.args !== "string") {
-      return { ok: false, error: "args: expected a string when present" };
-    }
-    args = o.args;
-  }
-
-  let stdin: string | undefined;
-  if (o.stdin !== undefined) {
-    if (typeof o.stdin !== "string") {
-      return { ok: false, error: "stdin: expected a string when present" };
-    }
-    stdin = o.stdin;
-  }
-
   let variant: ExerciseVariant = "write";
   if (o.variant !== undefined) {
     const v = o.variant;
-    if (v !== "write" && v !== "identify-bug") {
-      return { ok: false, error: "variant: expected one of write|identify-bug" };
+    if (
+      v !== "write" &&
+      v !== "identify-bug" &&
+      v !== "quiz" &&
+      v !== "prediction" &&
+      v !== "blanks"
+    ) {
+      return {
+        ok: false,
+        error: "variant: expected one of write|identify-bug|quiz|prediction|blanks",
+      };
     }
     variant = v;
   }
 
-  const rawAcceptance = o.acceptance;
-  if (rawAcceptance == null || typeof rawAcceptance !== "object" || Array.isArray(rawAcceptance)) {
-    return { ok: false, error: "acceptance: expected an object" };
-  }
-  const acc = rawAcceptance as Record<string, unknown>;
+  const base: BaseExercise = { title, slug, order, prompt };
+  if (topic !== undefined) base.topic = topic;
+  if (difficulty !== undefined) base.difficulty = difficulty;
 
-  if (!Array.isArray(acc.results)) {
-    return { ok: false, error: "acceptance.results: expected an array" };
-  }
-  if (acc.results.length === 0) {
-    return { ok: false, error: "acceptance.results: expected at least one assertion" };
-  }
-  const results: ResultAssertion[] = [];
-  for (let i = 0; i < acc.results.length; i++) {
-    const result = validateResultAssertion(acc.results[i], i);
-    if (!result.ok) return result;
-    results.push(result.assertion);
-  }
+  // The variant decides which fields are required from here: coding variants
+  // carry a starter and acceptance for the emulator-backed checker, the
+  // interactive variants carry their own validated question lists instead.
+  switch (variant) {
+    case "write":
+    case "identify-bug": {
+      const starter = o.starter;
+      if (typeof starter !== "string") {
+        return { ok: false, error: "starter: expected a string for coding exercises" };
+      }
 
-  let structural: StructuralAssertion[] | undefined;
-  if (acc.structural !== undefined) {
-    if (!Array.isArray(acc.structural)) {
-      return { ok: false, error: "acceptance.structural: expected an array when present" };
+      const rawAcceptance = o.acceptance;
+      if (rawAcceptance == null || typeof rawAcceptance !== "object" || Array.isArray(rawAcceptance)) {
+        return { ok: false, error: "acceptance: expected an object for coding exercises" };
+      }
+      const acc = rawAcceptance as Record<string, unknown>;
+
+      if (!Array.isArray(acc.results) || acc.results.length === 0) {
+        return { ok: false, error: "acceptance.results: expected an array with at least one assertion" };
+      }
+
+      const results: ResultAssertion[] = [];
+      for (let i = 0; i < acc.results.length; i++) {
+        const result = validateResultAssertion(acc.results[i], i);
+        if (!result.ok) return result;
+        results.push(result.assertion);
+      }
+
+      const acceptance: Acceptance = { results };
+
+      if (acc.structural !== undefined) {
+        if (!Array.isArray(acc.structural)) {
+          return { ok: false, error: "acceptance.structural: expected an array when present" };
+        }
+        const structural: StructuralAssertion[] = [];
+        for (let i = 0; i < acc.structural.length; i++) {
+          const result = validateStructuralAssertion(acc.structural[i], i);
+          if (!result.ok) return result;
+          structural.push(result.assertion);
+        }
+        acceptance.structural = structural;
+      }
+
+      const exercise: WriteExercise = { ...base, variant, starter, acceptance };
+
+      if (o.args !== undefined) {
+        if (typeof o.args !== "string") return { ok: false, error: "args: expected a string when present" };
+        exercise.args = o.args;
+      }
+      if (o.stdin !== undefined) {
+        if (typeof o.stdin !== "string") return { ok: false, error: "stdin: expected a string when present" };
+        exercise.stdin = o.stdin;
+      }
+
+      return { ok: true, exercise };
     }
-    const list: StructuralAssertion[] = [];
-    for (let i = 0; i < acc.structural.length; i++) {
-      const result = validateStructuralAssertion(acc.structural[i], i);
-      if (!result.ok) return result;
-      list.push(result.assertion);
+
+    case "quiz": {
+      if (!Array.isArray(o.questions) || o.questions.length === 0) {
+        return { ok: false, error: "questions: expected at least one question for the quiz variant" };
+      }
+      const questions: QuizQuestion[] = [];
+      for (let i = 0; i < o.questions.length; i++) {
+        const result = validateQuizQuestion(o.questions[i], i);
+        if (!result.ok) return result;
+        questions.push(result.question);
+      }
+      return { ok: true, exercise: { ...base, variant, questions } };
     }
-    structural = list;
+
+    case "prediction": {
+      if (!Array.isArray(o.predictions) || o.predictions.length === 0) {
+        return {
+          ok: false,
+          error: "predictions: expected at least one question for the prediction variant",
+        };
+      }
+      const predictions: PredictionQuestion[] = [];
+      for (let i = 0; i < o.predictions.length; i++) {
+        const result = validatePredictionQuestion(o.predictions[i], i);
+        if (!result.ok) return result;
+        predictions.push(result.question);
+      }
+      return { ok: true, exercise: { ...base, variant, predictions } };
+    }
+
+    case "blanks": {
+      if (!Array.isArray(o.blanks) || o.blanks.length === 0) {
+        return { ok: false, error: "blanks: expected at least one question for the blanks variant" };
+      }
+      const blanks: BlanksQuestion[] = [];
+      for (let i = 0; i < o.blanks.length; i++) {
+        const result = validateBlanksQuestion(o.blanks[i], i);
+        if (!result.ok) return result;
+        blanks.push(result.question);
+      }
+      return { ok: true, exercise: { ...base, variant, blanks } };
+    }
   }
-
-  const acceptance: Acceptance = { results };
-  if (structural !== undefined) acceptance.structural = structural;
-
-  const exercise: Exercise = { title, slug, order, prompt, starter, variant, acceptance };
-  if (topic !== undefined) exercise.topic = topic;
-  if (difficulty !== undefined) exercise.difficulty = difficulty;
-  if (args !== undefined) exercise.args = args;
-  if (stdin !== undefined) exercise.stdin = stdin;
-
-  return { ok: true, exercise };
 }

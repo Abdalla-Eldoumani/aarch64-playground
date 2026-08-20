@@ -1,0 +1,78 @@
+{
+  "title": "Post-test Loops in Assembly",
+  "slug": "post-test-loop",
+  "order": 9,
+  "summary": "A lesson that covers the implementation of a post-test loop in Assembly language, including its structure and usage.",
+  "tags": [
+    "post-conditional loop",
+    "post-test loop"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
+    },
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Before starting this lesson, you should have a basic understanding of the following prerequisite lessons:\n\n- [Printing Hello World in ARMv8 AArch64 Assembly](/learn/printing-strings-hello-world)\n\n- [Printing Variables in ARMv8 AArch64 Assembly](/learn/printing-defined-variables)\n\n- [Conditionals in ARMv8 AArch64 Assembly](/learn/assembly-conditionals-basics)\n\n- [Pre-test Loop in ARMv8 AArch64 Assembly](/learn/pretest-loop)"
+    },
+    {
+        "type": "prose",
+        "markdown": "What if you wanted a loop to execute at least once before deciding whether it should continue? Unlike a pre-test loop, where the condition is checked before the loop body executes, a post-test loop executes the loop body first and checks the condition afterward. This means that even if the condition is initially false, the loop body will still execute once. This lesson covers the implementation of post-test loop in Assembly."
+    },
+    {
+        "type": "prose",
+        "markdown" : "## The Definition\n\nA `post-test` loop is a type of loop in which the loop condition is evaluated after each iteration, including the first. In other words, the loop body is executed before the condition is evaluated to determine whether the loop should continue. Consequently, a `post-test` loop executes at least once, as the loop body is never skipped during the initial iteration, even if the condition is initially `false`. \n\nThe implementation of this type of loop in high-level programming languages such as C is commonly achieved using a `do-while` loop, in which the loop condition is evaluated after each iteration of the loop body. The following code demonstrates an example of a `post-test` loop implemented in C."
+    },
+    {
+        "type": "code",
+        "language": "c",
+        "source": "#include <stdio.h>\n\nint main() {\n    // do-while loop implementation\n    // Printing the numbers 1 to 5\n    printf(\"Post-test loop implementation\\n\");\n    int i = 1;\n    do {\n        printf(\"%d\\n\", i);\n        i++;\n    } while (i <= 5);\n\n    printf(\"Loop finished\\n\");\n\n    return 0;\n}"
+    },
+    {
+        "type": "prose",
+        "markdown": "The above loop in C produces the output of printing the numbers 1 to 5 using the `do-while` loop, which is a common implementation of a post-test loop."
+    },
+    {
+        "type": "callout",
+        "variant": "note",
+        "markdown": "The term `post-conditional` loop refers to a `post-test` loop. These terminologies are generally used interchangeably because both refer to a loop where the condition is evaluated after the loop body executes."
+    },
+    {
+        "type" : "prose",
+        "markdown": "## The Logic Behind It\nBased on the observations from the loops above, the underlying logic can be simplified as follows:"
+    },
+    {
+        "type": "code",
+        "language": "c",
+        "source": "// Pseudocode\n\nPRINT \"Post-test loop implementation\\n\"\nDECLARE i AS INTEGER\ni = 1\nPRINT i\ni = i + 1\nIF i <= 5 THEN\n    JUMP BACK TO PRINT i\n\nPRINT \"Loop Finished\""
+    },
+    {
+        "type": "prose",
+        "markdown": "Correlating this logic with the `pre-test` loop logic, the key difference lies in when the condition is checked. In a `post-test` loop, the loop body is executed first, after which the condition is checked. This is exactly the behaviour we want to replicate in Assembly.\n\nRecalling the Assembly implementation of a `pre-test` loop, the flow of execution branches to the loop condition before the loop body is executed. In a `post-test` loop, however, the flow of execution goes directly to the loop body, ensuring that it executes at least once before the loop condition is checked. Therefore, to implement a `post-test` loop in Assembly, the initial branching to the loop condition used in a `pre-test` loop can simply be removed, allowing execution to proceed directly to the loop body."
+    },
+    {
+        "type": "prose",
+        "markdown": "## The Assembly Implementation\nThe above C code and pseudocode can be implemented in Assembly as follows:"
+    },
+    {
+        "type": "code",
+        "language": "asm",
+        "source": "// Pseudo-ops and directives\n...\n// string1 = \"Post-test loop implementation\\n\"\n// string2 = \"%d\\n\"\n// string3 = \"Loop finished\\n\"\n\nmain:\n    // Program prologue\n    ...\n    // Printing the \"Post-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n\n    // Going straight down to the loop body\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // loading the i to argument register\n    bl printf\n    add x20, x20, 1         // Incrementing i by one\n                            // x20 = x20 + 1\n\nloopcond:\n    cmp x20, 5              // Comparing i with 5\n    b.le loopbody           // if i is less than or equal to 5, branch to loop body\n                            // otherwise code below is executed\n    ldr x0, =string3\n    bl printf\n\n    // program epilogue."
+    },
+    {
+        "type": "prose",
+        "markdown": "The implementation of the `post-test` loop is very similar to the `pre-test` loop implementation discussed previously while still achieving the same behaviour as the C code. The same instructions are used to initialise the loop variable, execute the loop body, increment the variable, and evaluate the loop condition. The key difference lies in the initial flow of execution. Unlike the `pre-test` loop, execution does not branch to the loop condition before entering the loop. Instead, execution proceeds directly to the loop body, ensuring that it is executed at least once. After the first iteration, the loop condition is evaluated and the program branches back to the loop body if the condition is satisfied."
+    },
+    {
+        "type": "prose",
+        "markdown": "## Putting it All Together\nThe following code demonstrates the complete process of implementing a `post-test` loop in Assembly, including the pseudo-ops, program prologue, and epilogue."
+    },
+    {
+        "type": "editor",
+        "starter": ".data\n    string1: .string \"Post-test loop implementation\\n\"\n    string2: .string \"%d\\n\"\n    string3: .string \"Loop finished\\n\"\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // This is the program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Printing the \"Post-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n\n    // Going straight to the loop body (KEY DIFFERENCE)\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // loading the i to argument register\n    bl printf\n    add x20, x20, 1         // Incrementing i by one\n                            // x20 = x20 + 1\n\nloopcond:\n    cmp x20, 5              // Comparing i with 5\n    b.le loopbody           // if i is less than or equal to 5, branch to loop body\n                            // otherwise code below is executed\n    ldr x0, =string3\n    bl printf\n\n    // This is the program epilogue\n    mov     x0, 0                   // End the program by returning 0.\n    ldp     x29, x30, [sp], 16\n    ret"    
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "title": "Practice: Mental Memory Tracing",
+  "slug": "predict-frame-stack",
+  "order": 10,
+  "topic": "tracing",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Act as the CPU. Trace the memory addresses and register states through these AArch64 snippets.",
+  "predictions": [
+    {
+      "code": "mov x20, 0x1000\nldr x21, [x20, 16]!",
+      "question": "What is the exact hex address stored inside register x20 AFTER this code executes?",
+      "answer": "0x1010",
+      "explanation": "Because this is pre-indexed addressing (!), the base register x20 is updated to 0x1000 + 16 (which is 0x10 + 0x1000 in hex) = 0x1010.",
+      "hint": "16 in decimal is 0x10 in hex."
+    },
+    {
+      "code": "mov x28, 0x2000\nstr w20, [x28], 8",
+      "question": "What exact hex memory address does the 'str' instruction write to?",
+      "answer": "0x2000",
+      "explanation": "Because this is post-indexed addressing, the address in the base register (0x2000) is used for the store BEFORE it is updated.",
+      "hint": "Does post-indexed update the address before or after it uses it?"
+    },
+    {
+      "code": "mov x28, 0x2000\nstr w20, [x28], 8",
+      "question": "What is the exact hex address stored inside register x28 AFTER this code executes?",
+      "answer": "0x2008",
+      "explanation": "After using the base address for the store, base (x28) is updated by adding the immediate offset (8) to it, resulting in 0x2008.",
+      "hint": "Add the post-index offset to the original base."
+    },
+    {
+      "code": "mov x21, 5\nldr x22, [x29, x21, LSL 3]",
+      "question": "What exact decimal offset is ultimately added to x29 to calculate the memory address?",
+      "answer": "40",
+      "explanation": "The value in x21 (5) is scaled using LSL 3, which multiplies it by 8. 5 * 8 = 40.",
+      "hint": "Multiply 5 by 2^3."
+    },
+    {
+      "code": "add sp, sp, -28 & -16",
+      "question": "What exact decimal integer is ultimately added to the Stack Pointer by the assembler?",
+      "answer": "-32",
+      "explanation": "The bitwise AND forces the negative number to align to a 16-byte boundary. -28 AND -16 rounds down to the nearest multiple of 16, which is -32.",
+      "hint": "What is the nearest multiple of -16 that is less than or equal to -28?"
+    },
+    {
+      "code": "fp .req x29\nc_s = -4\nadd sp, sp, -4 & -16\nmov w21, 10\nstr w21, [fp, c_s]",
+      "question": "Is the variable 'c' stored above (higher address) or below (lower address) the frame record in memory?",
+      "answer": "below",
+      "explanation": "Local block variables are allocated by decrementing SP, and are read/written using FP plus a negative offset, placing them lower in memory than the frame record.",
+      "hint": "Look at the sign of 'c_s'. Does a negative offset move toward higher or lower memory?"
+    },
+    {
+      "code": "main: stp x29, x30, [sp, -(16 + 12) & -16]!",
+      "question": "How many total decimal bytes are allocated on the stack by this instruction?",
+      "answer": "32",
+      "explanation": "-(16 + 12) is -28. -28 & -16 aligns to -32. Therefore, 32 bytes are allocated.",
+      "hint": "Solve the math: -(28) & -16."
+    },
+    {
+      "code": "main: stp x29, x30, [sp, -32]!",
+      "question": "How many 'pad bytes' (unused bytes) exist in this specific stack frame if only three 4-byte integers are stored as local variables?",
+      "answer": "4",
+      "explanation": "32 bytes allocated - 16 bytes (frame record) - 12 bytes (three 4-byte integers) = 4 pad bytes.",
+      "hint": "Subtract the frame record and the data sizes from the total allocation."
+    },
+    {
+      "code": "ldrsb w20, [x29]\n// Address holds the byte 0xFF",
+      "question": "If the byte 0xFF (-1 in 8-bit signed) is loaded, what is the exact hex value of w20 after execution?",
+      "answer": "0xFFFFFFFF",
+      "explanation": "The 'ldrsb' instruction loads 1 byte and sign-extends the high-order bits into Wt. Since the sign bit (MSB) of 0xFF is 1, all upper 24 bits are set to 1.",
+      "hint": "Sign extension fills the remaining 32-bit register with the sign bit."
+    },
+    {
+      "code": "ldrb w20, [x29]\n// Address holds the byte 0xFF",
+      "question": "If the byte 0xFF is loaded using ldrb, what is the exact hex value of w20 after execution?",
+      "answer": "0x000000FF",
+      "explanation": "The 'ldrb' instruction loads 1 byte and zero-extends the high-order bits into Wt, leaving the upper 24 bits as 0.",
+      "hint": "Zero extension explicitly fills the remaining register space with zeroes."
+    }
+  ]
+}
