@@ -5,7 +5,7 @@ A short tour for a first-time reader. The site has five places:
 - `/` the landing page, with a live mini-playground.
 - `/playground` the full emulator and visual debugger.
 - `/learn` step-by-step lessons that pair a short reading with a runnable editor.
-- `/practice` exercises checked by running your program, not by matching a stored solution.
+- `/practice` coding exercises checked by running your program, plus quizzes, fill-in-the-blank drills, and prediction sets graded on the page.
 - `/reference` the supported instructions, the calling-convention guide, and a pitfalls catalog.
 
 The rest of this page walks through the playground, then points at the other sections.
@@ -29,7 +29,7 @@ course-week labels. Choose **scores (scanf + avg)** under "Records and
 arrays": it reads three scores from stdin, stores them on the stack,
 averages them, and prints the result.
 
-The source starts like this:
+An abridged look at the source:
 
 ```
 define(fp, x29)
@@ -56,8 +56,10 @@ It is a course-style tutorial file, accepted as-is.
 Hit **Assemble** (`F6`). The m4 expander runs, the frontend parses each
 section, the linker places labels and a literal pool, and the bytes load
 into memory at `0x0040_0000` (`.text`), `0x0060_0000` (`.data`), and so on.
-Run, step, and step back stay disabled until a program assembles, and
-disable again after a reset or a failed assemble.
+Step and step back stay disabled until a program assembles, and disable
+again after a reset or a failed assemble. Run follows the same rule except
+for the examples that launch in the terminal, where pressing Run assembles
+first and hands the pane over in one action.
 
 Hit **Run** (`F5`). At the first `bl scanf` the console area pauses for
 input: switch to the console tab, type a number, and press Enter. The run
@@ -104,8 +106,10 @@ editor; nothing is sent to a server.
 
 - **Learn** (`/learn`): lessons that embed the same editor, so you read a
   short section then run the code beside it.
-- **Practice** (`/practice`): exercises graded by running your program
-  against expected behavior. The checker never reads or stores a solution.
+- **Practice** (`/practice`): coding exercises graded by running your
+  program against expected behavior, where the checker never reads or
+  stores a solution, alongside quizzes, fill-in-the-blank drills, and
+  mental-trace prediction sets graded right on the page.
 - **Reference** (`/reference`): the supported instruction set, with a
   worked encoding diagram per instruction and an interactive NZCV panel
   on the flag-setters; a calling-convention guide with a step-through

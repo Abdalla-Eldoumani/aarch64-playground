@@ -1,20 +1,18 @@
-//! Integration test: the cpsc 355 tutorial corpus must parse cleanly.
+//! Integration test: the cpsc 355 tutorial corpus assembles and runs.
 //!
-//! Execution correctness is a phase B concern once libc stubs and syscall
-//! dispatch land. For now we assert each file goes from source text to a
-//! `Program` value without error. Instructions pass through as raw token
-//! slices -- the linker that turns them into encoded words is still being
-//! built -- so this test is really "the parser and m4 expander accept
-//! this file".
+//! Two gates: every listed file parses to a `Program`, and every file
+//! present links through the hosted pipeline and runs to a halt (or a
+//! clean pause on stdin for the interactive ones).
 //!
-//! The corpus lives at `docs/cpsc355-reference/Tutorials/` and is gitignored
-//! (it's course material, not for public redistribution). When the corpus
-//! is not present on disk (CI, a clean clone), each file is reported as
-//! skipped and the test still passes. Run this locally after dropping the
-//! tutorials into `docs/cpsc355-reference/` to see it check every file.
+//! The corpus lives at `cpsc355-kb/tutorials/` and is gitignored (it's
+//! course material, not for public redistribution). When the corpus is
+//! not present on disk (CI, a clean clone), each file is reported as
+//! skipped and the test still passes. Run this locally with the course
+//! knowledge base in place to see it check every file.
 //!
-//! Add new tutorial files to `REQUIRED` below as phase A gains the
-//! features they need.
+//! `REQUIRED` lists the tutorial programs that stand alone: the two
+//! `sepcomp-asm-main-calls-c-*` files are left out on purpose, since
+//! their `main` lives in a C file the emulator does not compile.
 
 use std::path::{Path, PathBuf};
 
@@ -23,26 +21,26 @@ use aarch64_emulator::frontend::parser::parse;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
 const REQUIRED: &[&str] = &[
-    "Week 3/exercise.s",
-    "Week 8/example1_scores.asm",
-    "Week 8/example2_cumulative.asm",
-    "Week 9/example1_student_record.asm",
-    "Week 10/ex4_find_max.asm",
-    "Week 11/ex2_static_counter.asm",
-    "Week 11/ex4_argv.asm",
-    "week12/fp_ex2_circle.asm",
-    "week12/ex5_is_prime.asm",
-    "week13/io_ex1_hello.asm",
-    "week13/io_ex2_echo.asm",
-    "week13/io_ex3_write_file.asm",
-    "week13/io_ex4_read_file.asm",
-    "week13/io_ex5_copy_file.asm",
+    "w26/wk03-arm-setup-assembly-basics/tutorial-w26-wk03-code-arithmetic-operations-demo.asm",
+    "w26/wk08-load-store-stack/tutorial-w26-wk08-code-stack-scores-array.asm",
+    "w26/wk08-load-store-stack/tutorial-w26-wk08-code-stack-cumulative-sum.asm",
+    "w26/wk09-structs-and-arrays/tutorial-w26-wk09-code-struct-student-record.asm",
+    "w26/wk10-2d-arrays-and-subroutines/tutorial-w26-wk10-code-subroutine-find-max.asm",
+    "w26/wk11-external-data/tutorial-w26-wk11-code-static-counter.asm",
+    "w26/wk11-external-data/tutorial-w26-wk11-code-command-line-args.asm",
+    "w26/wk12-sepcomp-and-floating-point/tutorial-w26-wk12-code-fp-circle-area.asm",
+    "w26/wk12-sepcomp-and-floating-point/tutorial-w26-wk12-code-sepcomp-asm-is-prime.asm",
+    "w26/wk13-syscall-io-and-encoding/tutorial-w26-wk13-code-syscall-hello-write.asm",
+    "w26/wk13-syscall-io-and-encoding/tutorial-w26-wk13-code-syscall-echo-stdin.asm",
+    "w26/wk13-syscall-io-and-encoding/tutorial-w26-wk13-code-syscall-write-file.asm",
+    "w26/wk13-syscall-io-and-encoding/tutorial-w26-wk13-code-syscall-read-file.asm",
+    "w26/wk13-syscall-io-and-encoding/tutorial-w26-wk13-code-syscall-copy-file.asm",
 ];
 
 fn corpus_root() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.pop(); // emulator/ -> repo root
-    p.push("docs/cpsc355-reference/Tutorials");
+    p.push("cpsc355-kb/tutorials");
     p
 }
 
@@ -51,7 +49,7 @@ fn tutorial_corpus_parses() {
     let root = corpus_root();
     if !root.exists() {
         eprintln!(
-            "cpsc355-reference not found at {}; skipping (expected in CI)",
+            "cpsc355-kb not found at {}; skipping (expected in CI)",
             root.display()
         );
         return;
@@ -93,7 +91,7 @@ fn tutorial_corpus_pipeline_status() {
     // a step budget). This is the gauge of B12 progress.
     let root = corpus_root();
     if !root.exists() {
-        eprintln!("cpsc355-reference not found; skipping");
+        eprintln!("cpsc355-kb not found; skipping");
         return;
     }
     let mut link_ok = 0;

@@ -67,6 +67,7 @@ of its fields touch React state, the editor, or the WASM emulator.
 | `?example=<id>` | regex `/^[\w.-]+$/` | path traversal, special chars |
 | `?theme=<name>` | enum check | unknown values |
 | `?run=<mode>` | enum check (`terminal` \| `console`) | unknown values; it selects a surface and carries no code, so the enum bounds the whole surface |
+| `?embed=1` | strict `=== "1"` check | every other value; a boolean flag that carries no code |
 | Bookmark JSON import | `lib/playground/named-saves.ts::isValidSave` | per-field type check, no-clobber on name collision |
 | `.s` / `.asm` / `.txt` upload | `lib/playground/upload-guard.ts` + `MAX_SOURCE_BYTES` | files > 1 MB |
 | VFS upload (console + terminal) | `lib/playground/upload-guard.ts` + `MAX_VFS_BYTES` | files > 4 MiB |
@@ -142,11 +143,12 @@ hosted-runtime unit tests.
 
 ## Dependency posture
 
-Direct dependencies are pinned to exact versions, save for the `playwright` dev
-tool (`^1.59.1`). `npm audit` against `web/`
-reports zero vulnerabilities, and two transitive packages are held to patched
-lines through `overrides` in `package.json` (`postcss` and `dompurify`) to keep
-known XSS fixes in place.
+Direct dependencies in `web/package.json` are pinned to exact versions, save
+for the `playwright` dev tool (`^1.59.1`). A clean `npm audit` in `web/` is the
+standing expectation, checked by `node scripts/audit-deps.js` before each
+release. `dompurify` (transitive, via monaco-editor) is held to a patched line
+through `overrides`, and `postcss` is pinned both directly and through
+`overrides`, to keep known XSS fixes in place.
 
 Run `node scripts/audit-deps.js` from the repo root any time; it exits non-zero
 on any moderate-or-higher advisory, stricter than CI needs but quieter than

@@ -20,9 +20,11 @@ Live at <https://aarch64-playground.com>.
   subset; a hex/binary/decimal/two's-complement converter; share links; and
   dark, light, and high-contrast themes.
 - **Learn** (`/learn`): short lessons with runnable inline editors.
-- **Practice** (`/practice`): exercises checked by running your program
-  against expected behavior (registers, exit code, stdout), never against a
-  stored answer, so any correct approach passes.
+- **Practice** (`/practice`): coding exercises checked by running your
+  program against expected behavior (registers, exit code, stdout), never
+  against a stored answer, so any correct approach passes; plus quizzes,
+  fill-in-the-blank drills, and mental-trace prediction sets graded right
+  on the page.
 - **Reference** (`/reference`): a searchable instruction reference with
   worked encodings and interactive flag panels, a calling-convention guide
   with a step-through frame walk, and a pitfalls catalog with runnable
@@ -39,7 +41,8 @@ Live at <https://aarch64-playground.com>.
 ## Quickstart
 
 Requires [Rust](https://rustup.rs/) with the `wasm32-unknown-unknown` target,
-[wasm-pack](https://wasm-bindgen.github.io/wasm-pack/installer/), and Node.js 20+.
+[wasm-pack](https://wasm-bindgen.github.io/wasm-pack/installer/), and Node.js
+20+ (CI runs on 24).
 
 ```bash
 # build the wasm module
@@ -63,9 +66,10 @@ TypeScript, and Tailwind CSS for the web app; deployed on Vercel.
 
 ## Docs
 
-See [`docs/`](docs/) for the architecture, a getting-started tour, the
-contributing and testing guides, deployment, the instruction reference, the
-assembly style guide, and the security posture.
+Start at [`docs/README.md`](docs/README.md): it routes by task to the
+architecture, the getting-started tour, the contributing and testing guides,
+deployment, the instruction reference, the assembly style guide, the
+content-authoring format, the terminal reference, and the security posture.
 
 ## License
 

@@ -50,6 +50,7 @@ executor.rs   per-instruction semantics + NZCV math
 fpu.rs        float compare flags (NZCV for fcmp)
 snapshot.rs   step-back ring + named save states
 cpu.rs        step / run loop, host stubs, syscalls, VFS, FDs, bounds
+argv.rs       argv table + string pool at ARGV_BASE; prepends ./program
 assembler.rs  legacy one-pass encoder (bare-metal source)
 frontend/     m4 -> lex -> parse -> sections -> link
 hosted/       libc stubs + Linux syscalls

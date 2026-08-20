@@ -6,7 +6,7 @@ You need:
 
 - **Rust** (stable, installed via rustup) with the `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`. Use rustup, not a standalone package; wasm-pack requires it.
 - **wasm-pack**: `cargo install wasm-pack`, or the installer at <https://wasm-bindgen.github.io/wasm-pack/installer/>.
-- **Node.js** 20+.
+- **Node.js** 20+ (CI runs on 24).
 - Optional: `cargo install cargo-watch` enables the WASM auto-rebuild half of `npm run dev:all` (without it, `dev:all` still runs the web dev server).
 
 First build:
@@ -150,10 +150,10 @@ If the feature accepts external input (URL params, uploads, paste), add a valida
 - **`next-env.d.ts` drift**: `next dev` and `next build` write slightly different import lines. If CI complains, normalize to the production path (`./.next/types/routes.d.ts`).
 - **Multiple Rust installs on Windows**: a standalone MSVC `rustc` ahead of rustup on `PATH` lacks the wasm32 target, so `wasm-pack build` fails with `can't find crate for 'std'` even though `rustup target list --installed` shows wasm32. Uninstall the standalone toolchain, or build with `RUSTC=$(rustup which rustc) wasm-pack build --target web --out-dir ../web/lib/wasm`.
 - **AV quarantine on Windows**: some consumer antivirus (seen with AVG 2025) quarantines the `build_script_build-*.exe` cargo emits for `serde_core` in the debug profile, surfacing as `LNK1104: cannot open file ... build_script_build-*.exe`. `cargo test --release --lib` produces unflagged hashes and is the workaround. CI is unaffected.
-- **`next lint` is gone in Next 16**: lint runs through ESLint flat config. `web/eslint.config.mjs` re-exports `eslint-config-next`'s flat array plus ignores for `lib/wasm/` and `lib/wasm-node/` (wasm-pack-generated). `npm run lint` runs `eslint .`.
+- **`next lint` is gone in Next 16**: lint runs through ESLint flat config. `web/eslint.config.mjs` re-exports `eslint-config-next`'s flat array plus ignores for `lib/wasm/`, `lib/wasm-node/` (wasm-pack-generated), and `coverage/`. `npm run lint` runs `eslint .`.
 - **Light theme is CSS-var driven**: overrides live under `[data-theme="light"]` in `globals.css`; read `var(--bg-primary)` and friends. Don't hardcode hex.
 - **vitest setup**: `web/vitest.setup.ts` stubs `window.matchMedia` (jsdom lacks it). Stub other jsdom gaps there, not at the call site.
-- **Worker-first backend**: the emulator runs in a Web Worker by default. `EmulatorBackend` in `web/lib/emulator/backend.ts` has `WorkerClient` and `MainThreadBackend` implementations so React doesn't care which is active. Force the main thread via `localStorage.aarch64-playground:backend = "main"`.
+- **Worker-first backend**: the emulator runs in a Web Worker by default. The `EmulatorBackend` interface in `web/lib/emulator/backend.ts` is implemented by `MainThreadBackend` there and by `WorkerClient` in `web/lib/worker/client.ts`; `pickBackend()` chooses, so React doesn't care which is active. Force the main thread via `localStorage.aarch64-playground:backend = "main"`.
 - **Service worker skips non-localhost dev**: `register-sw.ts` registers only when `window.isSecureContext` is true or the host is localhost/127.0.0.1. Testing offline over a LAN IP gets no service worker.
 - **Toast queue is module-level**: `react-hot-toast` keeps its queue between renders. Tests that mount `<ToastHost>` should match the most-recent toast, not assume a clean slate.
 
