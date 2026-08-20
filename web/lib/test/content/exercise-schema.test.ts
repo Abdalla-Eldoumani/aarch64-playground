@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { validateExercise } from "@/lib/content/exercise-schema";
+import { validateExercise, type WriteExercise } from "@/lib/content/exercise-schema";
 
 /** A complete, valid exercise exercising every optional field and assertion kind. */
 function validExercise() {
@@ -36,12 +36,21 @@ function rejectError(data: unknown): string {
   return result.error;
 }
 
+/** Validate and return the exercise, asserting it narrowed to a coding variant. */
+function acceptWrite(data: unknown): WriteExercise {
+  const result = validateExercise(data);
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error(result.error);
+  const { exercise } = result;
+  if (exercise.variant !== "write" && exercise.variant !== "identify-bug") {
+    throw new Error(`expected a coding variant, got ${exercise.variant}`);
+  }
+  return exercise;
+}
+
 describe("validateExercise (valid)", () => {
   test("accepts a full exercise and echoes the validated fields", () => {
-    const result = validateExercise(validExercise());
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error(result.error);
-    const { exercise } = result;
+    const exercise = acceptWrite(validExercise());
     expect(exercise.title).toBe("Sum Two Numbers");
     expect(exercise.slug).toBe("sum-two-numbers");
     expect(exercise.order).toBe(1);
@@ -231,10 +240,8 @@ describe("validateExercise (assertion field guards)", () => {
   });
 
   test("accepts an empty starter string", () => {
-    const result = validateExercise({ ...validExercise(), starter: "" });
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error(result.error);
-    expect(result.exercise.starter).toBe("");
+    const exercise = acceptWrite({ ...validExercise(), starter: "" });
+    expect(exercise.starter).toBe("");
   });
 
   test("rejects an acceptance that is not an object", () => {
@@ -310,13 +317,11 @@ describe("validateExercise (assertion field guards)", () => {
   });
 
   test("accepts a stdout equals-only assertion", () => {
-    const result = validateExercise({
+    const exercise = acceptWrite({
       ...validExercise(),
       acceptance: { results: [{ kind: "stdout", equals: "120\n" }] },
     });
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error(result.error);
-    expect(result.exercise.acceptance.results).toEqual([{ kind: "stdout", equals: "120\n" }]);
+    expect(exercise.acceptance.results).toEqual([{ kind: "stdout", equals: "120\n" }]);
   });
 
   test("names an unknown result kind in the error", () => {
@@ -326,5 +331,118 @@ describe("validateExercise (assertion field guards)", () => {
         acceptance: { results: [{ kind: "memory", equals: 0 }] },
       }),
     ).toMatch(/unknown assertion kind "memory"/);
+  });
+});
+
+/** A complete, valid interactive exercise for each variant. */
+function validQuiz() {
+  return {
+    title: "Registers Quiz",
+    slug: "registers-quiz",
+    order: 3,
+    prompt: "Answer the questions.",
+    variant: "quiz",
+    questions: [
+      {
+        question: "Which register is the frame pointer?",
+        options: ["x0", "x29"],
+        correctAnswer: 1,
+        explanation: "x29 anchors the frame record.",
+        hint: "It pairs with the link register.",
+      },
+    ],
+  };
+}
+
+function validPrediction() {
+  return {
+    title: "Trace the Store",
+    slug: "trace-the-store",
+    order: 4,
+    prompt: "Trace by hand.",
+    variant: "prediction",
+    predictions: [
+      {
+        code: "mov x20, 0x1000\nldr x21, [x20, 16]!",
+        question: "What is in x20 afterward?",
+        answer: "0x1010",
+        explanation: "Pre-indexing updates the base register.",
+      },
+    ],
+  };
+}
+
+function validBlanks() {
+  return {
+    title: "Complete the Load",
+    slug: "complete-the-load",
+    order: 5,
+    prompt: "Fill in the blank.",
+    variant: "blanks",
+    blanks: [
+      {
+        prompt: "Load one byte, zero-extended.",
+        code: "___ w20, [x29, 16]",
+        blanks: ["ldrb"],
+        explanation: "ldrb zero-extends the high-order bits.",
+      },
+    ],
+  };
+}
+
+describe("validateExercise (interactive variants)", () => {
+  test("accepts a quiz and echoes only the validated question fields", () => {
+    const result = validateExercise({
+      ...validQuiz(),
+      questions: [{ ...validQuiz().questions[0], injected: "<script>" }],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    if (result.exercise.variant !== "quiz") throw new Error("expected the quiz variant");
+    expect(result.exercise.questions).toHaveLength(1);
+    expect(result.exercise.questions[0]).not.toHaveProperty("injected");
+    expect(result.exercise.questions[0].correctAnswer).toBe(1);
+  });
+
+  test("rejects a quiz with no questions, one option, or an out-of-range answer", () => {
+    expect(rejectError({ ...validQuiz(), questions: [] })).toMatch(/questions/);
+    expect(
+      rejectError({
+        ...validQuiz(),
+        questions: [{ ...validQuiz().questions[0], options: ["only one"] }],
+      }),
+    ).toMatch(/questions\[0\]: options/);
+    expect(
+      rejectError({
+        ...validQuiz(),
+        questions: [{ ...validQuiz().questions[0], correctAnswer: 2 }],
+      }),
+    ).toMatch(/questions\[0\]: correctAnswer/);
+  });
+
+  test("a quiz does not require starter or acceptance", () => {
+    expect(validateExercise(validQuiz()).ok).toBe(true);
+  });
+
+  test("accepts a prediction and rejects one missing its answer", () => {
+    expect(validateExercise(validPrediction()).ok).toBe(true);
+    const { answer: _drop, ...withoutAnswer } = validPrediction().predictions[0];
+    expect(rejectError({ ...validPrediction(), predictions: [withoutAnswer] })).toMatch(
+      /predictions\[0\]: answer/,
+    );
+  });
+
+  test("accepts a blanks question and pins exactly one ___ marker in its code", () => {
+    expect(validateExercise(validBlanks()).ok).toBe(true);
+    const noMarker = { ...validBlanks().blanks[0], code: "ldrb w20, [x29, 16]" };
+    expect(rejectError({ ...validBlanks(), blanks: [noMarker] })).toMatch(/blanks\[0\]: code/);
+    const twoMarkers = { ...validBlanks().blanks[0], code: "___ w20, [x29, ___]" };
+    expect(rejectError({ ...validBlanks(), blanks: [twoMarkers] })).toMatch(/blanks\[0\]: code/);
+  });
+
+  test("rejects a blanks question with no accepted answers", () => {
+    expect(
+      rejectError({ ...validBlanks(), blanks: [{ ...validBlanks().blanks[0], blanks: [] }] }),
+    ).toMatch(/blanks\[0\]: blanks/);
   });
 });
