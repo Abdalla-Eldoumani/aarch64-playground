@@ -20,9 +20,11 @@ Live at <https://aarch64-playground.com>.
   subset; a hex/binary/decimal/two's-complement converter; share links; and
   dark, light, and high-contrast themes.
 - **Learn** (`/learn`): short lessons with runnable inline editors.
-- **Practice** (`/practice`): exercises checked by running your program
-  against expected behavior (registers, exit code, stdout), never against a
-  stored answer, so any correct approach passes.
+- **Practice** (`/practice`): coding exercises checked by running your
+  program against expected behavior (registers, exit code, stdout), never
+  against a stored answer, so any correct approach passes; plus quizzes,
+  fill-in-the-blank drills, and mental-trace prediction sets graded right
+  on the page.
 - **Reference** (`/reference`): a searchable instruction reference with
   worked encodings and interactive flag panels, a calling-convention guide
   with a step-through frame walk, and a pitfalls catalog with runnable
