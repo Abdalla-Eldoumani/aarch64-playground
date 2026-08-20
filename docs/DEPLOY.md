@@ -57,14 +57,14 @@ Run `npm audit` from `web/` before a release and either clear what it reports or
 
 ## Alternative: commit the WASM
 
-To avoid running Rust on Vercel, un-ignore `web/lib/wasm/` (remove the line from `.gitignore`), commit the built artifacts, and simplify `vercel.json`:
+To avoid running Rust on Vercel, un-ignore `web/lib/wasm/` (remove the line from `.gitignore`), commit the built artifacts, and simplify `vercel.json` so the build step skips the Rust toolchain while keeping the same paths:
 
 ```json
 {
   "framework": "nextjs",
-  "rootDirectory": "web",
-  "installCommand": "npm ci",
-  "buildCommand": "next build --webpack"
+  "outputDirectory": "web/.next",
+  "installCommand": "npm install --no-audit --no-fund --ignore-scripts && cd web && npm ci",
+  "buildCommand": "cd web && npx next build --webpack"
 }
 ```
 
