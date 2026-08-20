@@ -33,14 +33,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local reference material. The cpsc 355 tutorial corpus lives under
-# docs/cpsc355-reference/ and is course material, not for the public repo --
-# the assembler consumes it from here during development only.
-docs/cpsc355-reference/
-
-# Local study and design reference
-course-material/
-design-reference/
+# Local course material, not for the public repo. Consulted during
+# development only; nothing from it ships.
+cpsc355-kb/
 
 # Editors
 .vscode/
