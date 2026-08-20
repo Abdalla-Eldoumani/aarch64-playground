@@ -24,9 +24,9 @@
 import { useId, useRef, useState, type JSX, type ReactNode } from "react";
 import { buildShareHash } from "@/lib/playground/share";
 import type {
-  Exercise,
   ResultAssertion,
   StructuralAssertion,
+  WriteExercise,
 } from "@/lib/content/exercise-schema";
 import { checkExercise, type CheckResult } from "@/lib/content/exercise-checker";
 import { markSolved } from "@/lib/playground/solved-state";
@@ -128,7 +128,8 @@ export function ExerciseView({
   exercise,
   sheetNumber = "5.x",
 }: {
-  exercise: Exercise;
+  /** The emulator-backed coding variants only; interactive variants render through InteractiveExerciseView. */
+  exercise: WriteExercise;
   /** Datasheet coordinate, e.g. "5.2"; the [slug] page derives it from the sorted order. */
   sheetNumber?: string;
 }): JSX.Element {
