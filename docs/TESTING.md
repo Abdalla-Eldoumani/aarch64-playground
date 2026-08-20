@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. At the time of writing that is 886 Rust tests, 1751 web tests, and 16 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. At the time of writing that is 886 Rust tests, 1776 web tests, and 16 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
 
 ## Rust
 
@@ -72,7 +72,7 @@ npm run typecheck  # tsc --noEmit
 npm run lint       # eslint .
 ```
 
-The eslint flat config ignores `lib/wasm/` and `lib/wasm-node/`, both wasm-pack-generated.
+The eslint flat config ignores `lib/wasm/` and `lib/wasm-node/` (both wasm-pack-generated) and `coverage/` (v8 coverage output).
 
 ## Size and performance
 
@@ -101,10 +101,10 @@ Drives Firefox through the live app to confirm CSP boots Monaco, the editor rend
 `.github/workflows/check.yml` has three jobs:
 
 - **rust**: `cargo test` plus the web and nodejs wasm-pack builds.
-- **web**: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run size`.
+- **web**: `npm run lint`, `npm run typecheck`, `npm test -- --coverage`, `npm run build`, `npm run size`.
 - **corpus**: `node scripts/verify-corpus.js`.
 
-Each maps to a local command above, so a clean local run should pass CI.
+Each maps to a local command above, with one difference: CI's `--coverage` flag also enforces the coverage floors in `web/vitest.config.ts`, so a suite that passes locally can still fail CI if coverage drops below them.
 
 ## Pre-PR checklist
 
