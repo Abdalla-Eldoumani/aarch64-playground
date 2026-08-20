@@ -8,11 +8,11 @@ vi.mock("@/lib/playground/solved-state", () => ({
 }));
 
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
-import type { Exercise } from "@/lib/content/exercise-schema";
+import type { Exercise, WriteExercise } from "@/lib/content/exercise-schema";
 
 afterEach(() => cleanup());
 
-function makeExercise(over: Partial<Exercise>): Exercise {
+function makeExercise(over: Partial<WriteExercise>): Exercise {
   return {
     title: "Sample",
     slug: "sample",
