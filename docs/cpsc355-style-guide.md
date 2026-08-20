@@ -35,8 +35,8 @@ define's reach at that line, so an alias can be rebound per function.
 ### Where GNU m4's text-level rules bite
 
 Real GNU m4 (the `m4 prog.asm | gcc` pipeline on the university Linux
-machines) knows nothing about assembly syntax, which produces three
-behaviors the playground's m4 reproduces exactly -- a program prints
+machines) knows nothing about assembly syntax, which produces four
+behaviors the playground's m4 reproduces exactly, and a program prints
 the same bytes here as on the servers. The pre-assembly lint warns
 whenever a program hits one, because the rewrite is almost never what
 the author meant:
@@ -68,7 +68,7 @@ the author meant:
 .balign 4 / .align 4                     // byte count vs 2^N
 .skip 40 / .zero 40                      // reserve zero bytes
 .string "x" / .asciz "x" / .ascii "x"    // null-terminated or not
-.byte 0x42 / .hword / .short / .word / .quad
+.byte 0x42 / .hword / .short / .word / .quad / .dword
 .double 0r3.14159265358979               // ieee 754 double bytes
 .float 0r1.5
 .type / .size                            // silently accepted
@@ -202,8 +202,9 @@ code.
 
 `cpu.upload_vfs_file(path, bytes)` registers a file that `openat(path)`
 finds. `write(fd, ...)` on a VFS fd grows the file; `read(fd, ...)` advances
-the offset. The console panel's file-upload dropzone calls this directly, so
-file tutorials run against files the student just dropped in.
+the offset. The console panel's file-upload dropzone stages a file into the
+working set, which reaches this on the next seed apply, so file tutorials
+run against files the student just dropped in.
 
 ## naming conventions
 
