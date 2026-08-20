@@ -42,12 +42,12 @@
     },
     {
         "type" : "prose",
-        "markdown": "## The Behind Logic\nBased on the observations from the loops above, the underlying logic can be simplified as follows:"
+        "markdown": "## The Logic Behind It\nBased on the observations from the loops above, the underlying logic can be simplified as follows:"
     },
     {
         "type": "code",
         "language": "c",
-        "source": "// Pseudocode\n\nPRINT \"Post-test loop implementation\\n\"\nDECLARE i AS INTEGER\ni = 1\nPRINT i\ni = i + 1\nIF i <= 5 THEN\n    JUMP BACK TO Line 6\n\nPRINT \"Loop Finished\""
+        "source": "// Pseudocode\n\nPRINT \"Post-test loop implementation\\n\"\nDECLARE i AS INTEGER\ni = 1\nPRINT i\ni = i + 1\nIF i <= 5 THEN\n    JUMP BACK TO PRINT i\n\nPRINT \"Loop Finished\""
     },
     {
         "type": "prose",
@@ -68,15 +68,11 @@
     },
     {
         "type": "prose",
-        "markdown": "## Putting it All Together\nThe following code demonstrates the complete process of implementing a `post-test` loop in Assembly, including the psuedo-ops, program prologue, and epilogue."
+        "markdown": "## Putting it All Together\nThe following code demonstrates the complete process of implementing a `post-test` loop in Assembly, including the pseudo-ops, program prologue, and epilogue."
     },
     {
         "type": "editor",
-        "language": "asm",
         "starter": ".data\n    string1: .string \"Post-test loop implementation\\n\"\n    string2: .string \"%d\\n\"\n    string3: .string \"Loop finished\\n\"\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // This is the program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Printing the \"Post-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n\n    // Going straight to the loop body (KEY DIFFERENCE)\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // loading the i to argument register\n    bl printf\n    add x20, x20, 1         // Incrementing i by one\n                            // x20 = x20 + 1\n\nloopcond:\n    cmp x20, 5              // Comparing i with 5\n    b.le loopbody           // if i is less than or equal to 5, branch to loop body\n                            // otherwise code below is executed\n    ldr x0, =string3\n    bl printf\n\n    // This is the program epilogue\n    mov     x0, 0                   // End the program by returning 0.\n    ldp     x29, x30, [sp], 16\n    ret"    
     }
-
-
-
   ]
 }
