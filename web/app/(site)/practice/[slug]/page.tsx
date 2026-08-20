@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { loadAllExercises, loadExercise } from "@/lib/content/exercises";
 import { ExerciseView } from "@/components/practice/ExerciseView";
+import { InteractiveExerciseView } from "@/components/practice/InteractiveExerciseView";
 import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/content/site";
 
 // Fully static: the build enumerates every valid exercise slug and, with
@@ -103,7 +104,13 @@ export default async function ExercisePage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: toJsonLd(breadcrumbJsonLd) }}
       />
-      <ExerciseView exercise={exercise} sheetNumber={sheetNumber} />
+      {exercise.variant === "quiz" ||
+      exercise.variant === "prediction" ||
+      exercise.variant === "blanks" ? (
+        <InteractiveExerciseView exercise={exercise} sheetNumber={sheetNumber} />
+      ) : (
+        <ExerciseView exercise={exercise} sheetNumber={sheetNumber} />
+      )}
     </>
   );
 }
