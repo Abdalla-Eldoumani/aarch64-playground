@@ -121,7 +121,14 @@ export interface EmulatorState {
   /** Whether the range is mapped: true/false once known, null while
    *  the async verdict is in flight (render a pending placeholder). */
   getMemoryMapped: (addr: number, len: number) => boolean | null;
-  pushStdin: (s: string) => void;
+  /**
+   * Queue stdin. `interactive` marks a line the student typed at a prompt:
+   * the machine echoes it into stdout as a read consumes it, so the console
+   * transcript reads "Enter score 1: 10" the way the terminal pane does.
+   * Redirects (seeds, `< file`, the terminal's own keystrokes) leave it off
+   * -- a redirect prints nothing, and the pane echoes for itself.
+   */
+  pushStdin: (s: string, interactive?: boolean) => void;
   /** Pause/resume the step-back snapshot ring (terminal sessions). */
   setSnapshotsPaused: (paused: boolean) => void;
   /** Signal end-of-input (ctrl-d): getchar sees EOF, scanf finishes. */
