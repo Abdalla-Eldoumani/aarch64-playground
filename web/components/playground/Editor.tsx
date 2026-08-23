@@ -8,7 +8,7 @@ import { explainError } from "@/lib/asm/error-explain";
 import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
 import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
 import { useToast } from "@/components/ui/Toast";
-import { validateSource } from "@/lib/playground/upload-guard";
+import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playground/upload-guard";
 
 // The editor runtime is vendored from the monaco-editor dependency instead
 // of fetched from the loader's default CDN: the installed PWA has to keep
@@ -600,6 +600,14 @@ export function Editor({
         toast.error(
           "only .s, .asm, and .txt files can be dropped here -- rename the file or paste its contents",
         );
+        return;
+      }
+      // Check the declared size before reading: the import picker does the
+      // same, and reading first would materialize an arbitrarily large file
+      // as a string just to reject it.
+      const sizeError = checkUploadSize(file.size, MAX_SOURCE_BYTES, "source file");
+      if (sizeError) {
+        toast.error(sizeError);
         return;
       }
       file
