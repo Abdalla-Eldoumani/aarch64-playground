@@ -115,6 +115,8 @@ Next dev picks up `web/lib/wasm/` automatically; a hard-refresh (Ctrl+Shift+R) s
 
 Open an issue first if the change is larger than a single file or touches the assembler/decoder layout. For a first contribution, run a tiny PR (a typo fix) end to end to exercise your build, the template, branch protection, CI, and code-owner review before a real change depends on it.
 
+By opening a pull request you agree that your contribution is licensed under AGPL-3.0, the same license as the rest of the project.
+
 ## Adding a new instruction
 
 1. **Decoder**: in [`emulator/src/decoder.rs`](../emulator/src/decoder.rs), add a branch that recognizes the bit pattern and returns the `Instruction` variant. Test-drive it with a hand-encoded word.
