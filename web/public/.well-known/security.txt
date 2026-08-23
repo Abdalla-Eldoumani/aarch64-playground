@@ -1,0 +1,4 @@
+Contact: https://github.com/Abdalla-Eldoumani/aarch64-playground/security/advisories/new
+Expires: 2027-08-22T00:00:00.000Z
+Canonical: https://aarch64-playground.com/.well-known/security.txt
+Preferred-Languages: en
