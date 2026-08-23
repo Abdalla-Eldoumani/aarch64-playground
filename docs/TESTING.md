@@ -98,13 +98,25 @@ Drives Firefox through the live app to confirm CSP boots Monaco, the editor rend
 
 ## What CI runs
 
-`.github/workflows/check.yml` has three jobs:
+`.github/workflows/check.yml` fans out so nothing waits on anything it
+does not need:
 
-- **rust**: `cargo test` plus the web and nodejs wasm-pack builds.
-- **web**: `npm run lint`, `npm run typecheck`, `npm test -- --coverage`, `npm run build`, `npm run size`.
+- **wasm**: the web and nodejs wasm-pack builds, uploaded as an artifact
+  every other job below downloads.
+- **rust**: `cargo test`, in parallel with everything.
 - **corpus**: `node scripts/verify-corpus.js`.
+- **web-static**: the dependency audit, `npm run lint`, `npm run typecheck`.
+- **web-build**: `npm run build` and `npm run size`.
+- **web-test**: `npm test -- --coverage` split into three shards
+  (`--shard=n/3`), every test file running exactly once across them.
+- **coverage**: merges the shards' blob reports and enforces the coverage
+  floors in `web/vitest.config.ts` on the whole-suite numbers, so a suite
+  that passes locally can still fail CI if coverage drops below them.
 
-Each maps to a local command above, with one difference: CI's `--coverage` flag also enforces the coverage floors in `web/vitest.config.ts`, so a suite that passes locally can still fail CI if coverage drops below them.
+Each job maps to a local command above. The shards set `VITEST_SHARD` so
+the floors are judged once on the merged report rather than against a
+shard's partial slice; a plain local `npm test -- --coverage` still
+enforces them directly.
 
 ## Pre-PR checklist
 
