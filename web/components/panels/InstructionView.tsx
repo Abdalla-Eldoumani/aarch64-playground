@@ -1,5 +1,6 @@
 "use client";
 
+import { formatWord32 } from "@/lib/emulator/format-hex";
 import type { DecodedInstruction } from "@/lib/emulator/use-emulator";
 
 interface InstructionViewProps {
@@ -109,7 +110,7 @@ export function InstructionView({
                   {isCurrent ? "\u25B6" : ""}
                 </td>
                 <td className="text-[var(--text-secondary)]">
-                  0x{instr.address.toString(16).padStart(8, "0")}
+                  {formatWord32(instr.address)}
                 </td>
                 <td className="pl-3 text-[var(--text-secondary)]">
                   {instr.hex}
