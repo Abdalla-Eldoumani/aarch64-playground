@@ -96,6 +96,7 @@ export function useEmulator(): EmulatorState {
     appendStderr,
     syncSeen,
     clearScrollback,
+    preserveScrollback,
     clearConsole,
     setOutputTap,
   } = useConsoleOutput(backendRef);
@@ -295,6 +296,11 @@ export function useEmulator(): EmulatorState {
         // the terminal reports its own program's output as a delta instead.
         setStepCount(0);
         clearScrollback();
+      } else {
+        // The build still resets the machine's display counters to zero,
+        // and a zeroed counter would unprint that reading. Reclassifying
+        // the scrollback as history parks it out of the counters' reach.
+        preserveScrollback();
       }
       // The backend wipes the machine on every assemble attempt, so the old
       // program is gone the moment one starts; the flag comes back only on
@@ -402,6 +408,7 @@ export function useEmulator(): EmulatorState {
     },
     [
       clearScrollback,
+      preserveScrollback,
       latestSnapRef,
       markCurrentLine,
       rekeyAfterAssemble,
