@@ -36,7 +36,9 @@ export interface EmulatorBackend {
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }>;
   pause(): Promise<void>;
   reset(): Promise<StateSnapshot>;
-  pushStdin(text: string): Promise<StateSnapshot>;
+  /** Queue stdin. `interactive` is a line typed at a prompt: the machine
+   *  echoes it into stdout as a read consumes it. A redirect leaves it off. */
+  pushStdin(text: string, interactive?: boolean): Promise<StateSnapshot>;
   /** Signal end-of-input (ctrl-d / a fully-queued redirect). */
   closeStdin(): Promise<StateSnapshot>;
   /** Pause/resume the step-back snapshot ring (live terminal sessions:
@@ -185,8 +187,8 @@ class MainThreadBackend implements EmulatorBackend {
     return this.notifyAndReturn(this.snapshot());
   }
 
-  async pushStdin(text: string): Promise<StateSnapshot> {
-    this.requireEmu().pushStdin(text);
+  async pushStdin(text: string, interactive = false): Promise<StateSnapshot> {
+    this.requireEmu().pushStdin(text, interactive);
     this.frame++;
     return this.notifyAndReturn(this.snapshot());
   }
@@ -304,6 +306,10 @@ class MainThreadBackend implements EmulatorBackend {
       return emptyStateSnapshot(this.frame);
     }
     const regs = this.emu.getAllRegisters();
+    // Feature-detected display counters: null on an older wasm build, and
+    // the key then stays off the snapshot so the hub skips the unprint.
+    const stdoutSeen = this.emu.stdoutSeen();
+    const stderrSeen = this.emu.stderrSeen();
     return {
       frame: this.frame,
       registers: regs.gpr,
@@ -319,6 +325,8 @@ class MainThreadBackend implements EmulatorBackend {
       canStepBack: this.emu.canStepBack(),
       stdoutDelta: this.emu.takeStdout(),
       stderrDelta: this.emu.takeStderr(),
+      ...(stdoutSeen != null ? { stdoutSeen } : {}),
+      ...(stderrSeen != null ? { stderrSeen } : {}),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       wantsTerminal: this.emu.wantsTerminal(),
