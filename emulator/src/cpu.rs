@@ -803,7 +803,7 @@ impl Cpu {
             // not a call -- faulting there would blame the wrong line on
             // an unbalanced epilogue, which has its own diagnosis.
             let sp = self.regs.read_sp();
-            if sp % 16 != 0 && self.host.lookup("__main_return") != Some(pc) {
+            if !sp.is_multiple_of(16) && self.host.lookup("__main_return") != Some(pc) {
                 return Ok(self.runtime_error_halt(EmuError::SpAlignmentFault {
                     sp,
                     at_call: true,
