@@ -117,6 +117,6 @@ describe("embed console rendering", () => {
     const input = screen.getByLabelText("Standard input");
     fireEvent.change(input, { target: { value: "42" } });
     fireEvent.submit(input.closest("form") as HTMLFormElement);
-    expect(hub.pushStdin).toHaveBeenCalledWith("42\n");
+    expect(hub.pushStdin).toHaveBeenCalledWith("42\n", true);
   });
 });
