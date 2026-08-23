@@ -46,6 +46,10 @@ fi
 echo "--- building emulator (wasm-pack release)"
 cd "$repo_root/emulator"
 wasm-pack build --target web --out-dir "$repo_root/web/lib/wasm"
+# The node-target build never ships, but next build type-checks the test
+# files, and six of them type-import this module; without it the deploy
+# fails the TypeScript step (Next 16.3 made the check cover tests).
+wasm-pack build --target nodejs --out-dir "$repo_root/web/lib/wasm-node"
 
 echo "--- building next app"
 cd "$repo_root/web"
