@@ -181,7 +181,17 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
       case "pushStdin": {
         await ensureWasm();
         const emu = require_emulator();
-        emu.push_stdin(msg.text);
+        // A line the student typed at a prompt is echoed by the machine at
+        // consume time, so the transcript reads like a cooked-mode terminal.
+        // A redirect never echoes, and neither does an older wasm build --
+        // it falls back to the silent queue instead of crashing the worker.
+        const interactive = (emu as { push_stdin_interactive?: (s: string) => void })
+          .push_stdin_interactive;
+        if (msg.interactive && typeof interactive === "function") {
+          interactive.call(emu, msg.text);
+        } else {
+          emu.push_stdin(msg.text);
+        }
         bumpFrame();
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
@@ -469,6 +479,15 @@ function snapshot(): StateSnapshot {
   // arrive (versus polling the full buffer each frame).
   const stdoutDelta = emulator.take_stdout();
   const stderrDelta = emulator.take_stderr();
+  // Optional display counters, feature-detected like every other surface:
+  // absent on an older cached WASM, and the web then keeps its scrollback
+  // append-only exactly as before.
+  const emulatorSeen = emulator as unknown as {
+    stdout_seen?: () => number;
+    stderr_seen?: () => number;
+  };
+  const stdoutSeen = emulatorSeen.stdout_seen?.();
+  const stderrSeen = emulatorSeen.stderr_seen?.();
   const exit = emulator.get_exit_code();
   return {
     frame,
@@ -485,6 +504,8 @@ function snapshot(): StateSnapshot {
     canStepBack: emulator.can_step_back(),
     stdoutDelta,
     stderrDelta,
+    ...(stdoutSeen != null ? { stdoutSeen } : {}),
+    ...(stderrSeen != null ? { stderrSeen } : {}),
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
     wantsTerminal,
