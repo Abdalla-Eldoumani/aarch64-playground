@@ -206,7 +206,7 @@ const STEM_PATTERN = /^[\w.-]+$/;
 /** Most VFS files any one example may seed. */
 export const MAX_VFS_FIXTURE_FILES = 16;
 /** Longest VFS file name an example fixture may declare. */
-export const MAX_VFS_FIXTURE_NAME_CHARS = 128;
+const MAX_VFS_FIXTURE_NAME_CHARS = 128;
 
 /**
  * Which examples carry input fixtures (`<stem>.args`, `<stem>.stdin`,
