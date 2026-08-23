@@ -24,6 +24,7 @@ PR flow.
 | Write a lesson or exercise | [authoring-content.md](authoring-content.md) |
 | Add or look up an instruction | [instruction-reference.md](instruction-reference.md), then [cpsc355-style-guide.md](cpsc355-style-guide.md) |
 | Use the terminal pane | [terminal.md](terminal.md) |
+| See what changed between versions | [Releases](https://github.com/Abdalla-Eldoumani/aarch64-playground/releases) |
 
 ## Two kinds of doc
 
