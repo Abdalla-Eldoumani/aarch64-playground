@@ -5,7 +5,7 @@
  * degrades to "nothing solved" rather than throwing. Every function is
  * SSR-safe (guards `typeof window`) and never throws, even when
  * localStorage is absent or throwing (private mode, sandboxed iframe,
- * quota), reusing auto-save.ts's window-guarded safe-storage helpers.
+ * quota), through the shared safe-storage helpers.
  *
  * The index reads this set and re-renders when it changes; the exercise
  * view writes to it when a check passes. A same-tab CustomEvent plus the
@@ -14,7 +14,7 @@
  * updates the tab that did the writing).
  */
 
-import { safeGetItem, safeSetItem } from "@/lib/playground/auto-save";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const SOLVED_KEY = "aarch64-playground:practice:solved";
 /** Same-tab change signal; the native "storage" event covers other tabs only. */
