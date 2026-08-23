@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::decoder;
 use crate::errors::{EmuError, MemAccess};
@@ -210,6 +210,32 @@ pub struct OpenFile {
     pub writable: bool,
 }
 
+/// One push worth of queued stdin, in arrival order. `Cpu::stdin` holds
+/// the bytes reads actually pull from; this record says how long the run
+/// was, whether a student typed it at a prompt, and whether its
+/// cooked-tty echo has gone out yet.
+///
+/// A real terminal in cooked mode prints what you type, which is why the
+/// terminal pane's transcript reads "Enter score 1: 10" while the console
+/// panel -- where the bytes arrive through an input box rather than a
+/// keyboard -- used to read "Enter score 1: " with the answer nowhere in
+/// sight. The echo is the emulator's job because only the emulator knows
+/// WHEN a read consumed the line.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StdinSegment {
+    /// The run's bytes, kept whole so the echo prints the line the
+    /// student submitted rather than whatever is left of it.
+    pub bytes: Vec<u8>,
+    /// How many of `bytes` reads have already taken.
+    pub consumed: usize,
+    /// The run arrived through `push_stdin_interactive` -- typed at a
+    /// prompt, so a cooked tty would have echoed it.
+    pub interactive: bool,
+    /// The echo has already been written to stdout. Snapshotted, so
+    /// stepping back before the read restores the un-echoed state.
+    pub echoed: bool,
+}
+
 /// Result of a run (multiple steps).
 #[derive(Debug, Clone)]
 pub struct RunResult {
@@ -238,6 +264,11 @@ pub struct Cpu {
     pub stderr: Vec<u8>,
     /// Bytes pushed by the frontend; scanf/read(0) drain them.
     pub stdin: Vec<u8>,
+    /// Run-length record of the pushes that filled `stdin`, oldest first,
+    /// carrying the cooked-tty echo state. Only a prefix of `stdin` need
+    /// be described: bytes past the last segment (a test poking the field
+    /// directly) count as plain, never-echoed input.
+    pub stdin_segments: VecDeque<StdinSegment>,
     /// True once the caller signalled end-of-input; getchar/read/scanf
     /// answer EOF instead of blocking when stdin is empty.
     pub stdin_closed: bool,
@@ -301,6 +332,13 @@ pub struct Cpu {
     /// Cumulative stdout+stderr bytes since the last load/reset. Drives the
     /// `MAX_OUTPUT_BYTES` wall; survives the UI draining the buffers.
     output_total: usize,
+    /// Bytes ever appended to `stdout` / `stderr`, echo included. DISPLAY
+    /// state, not budget: a snapshot carries them and step-back restores
+    /// them, so the web can drop exactly the characters a rolled-back step
+    /// printed. `output_total` above is the wall and is never restored --
+    /// undoing a step must not refund the flood budget.
+    stdout_seen: u64,
+    stderr_seen: u64,
     /// Set when a bound (step ceiling or memory cap) aborts the run. The
     /// run/step result carries it through `error` while `halted` stays true,
     /// so the UI shows a calm message instead of a silent stop or a raw
@@ -334,6 +372,7 @@ impl Cpu {
             stdout: Vec::new(),
             stderr: Vec::new(),
             stdin: Vec::new(),
+            stdin_segments: VecDeque::new(),
             stdin_closed: false,
             blocked: false,
             exit_code: None,
@@ -352,6 +391,8 @@ impl Cpu {
             symbols: HashMap::new(),
             steps_total: 0,
             output_total: 0,
+            stdout_seen: 0,
+            stderr_seen: 0,
             abort_message: None,
             text_end: None,
             trampoline_base: 0,
@@ -616,12 +657,54 @@ impl Cpu {
 
     /// Add whatever a host stub or syscall just printed to the cumulative
     /// output counter; true means the `MAX_OUTPUT_BYTES` wall is breached.
-    /// `before` is `stdout.len() + stderr.len()` captured before the call,
-    /// so UI drains between steps never reset the accounting.
-    fn charge_output(&mut self, before: usize) -> bool {
-        let now = self.stdout.len() + self.stderr.len();
-        self.output_total += now.saturating_sub(before);
+    /// The arguments are `stdout.len()` and `stderr.len()` captured before
+    /// the call, so UI drains between steps never reset the accounting.
+    /// The two display counters ride along here because this is the one
+    /// place bytes reach the drainable buffers -- input echo included,
+    /// since the echo is appended before this runs.
+    fn charge_output(&mut self, out_before: usize, err_before: usize) -> bool {
+        let out_new = self.stdout.len().saturating_sub(out_before);
+        let err_new = self.stderr.len().saturating_sub(err_before);
+        self.stdout_seen = self.stdout_seen.saturating_add(out_new as u64);
+        self.stderr_seen = self.stderr_seen.saturating_add(err_new as u64);
+        self.output_total += out_new + err_new;
         self.output_total > MAX_OUTPUT_BYTES
+    }
+
+    /// Echo the cooked-tty lines a read just consumed. `before` is
+    /// `stdin.len()` captured ahead of the dispatch, so the difference is
+    /// exactly what the read took.
+    ///
+    /// The rule is whole-segment-at-first-touch: the moment a read takes
+    /// the FIRST byte of an interactive run, the run's whole text goes to
+    /// stdout. A submitted line then lands as one typed line ("Enter score
+    /// 1: 10\n"), and the trailing "\n" a later scanf skips does not print
+    /// itself a second time. Raw mode echoes nothing -- a termios program
+    /// paints its own screen and would fight the echo for the cursor.
+    fn echo_consumed_stdin(&mut self, before: usize) {
+        let mut left = before.saturating_sub(self.stdin.len());
+        while left > 0 {
+            let Some(segment) = self.stdin_segments.front_mut() else {
+                // Bytes nobody recorded a push for: plain input, no echo.
+                return;
+            };
+            let available = segment.bytes.len().saturating_sub(segment.consumed);
+            if available == 0 {
+                self.stdin_segments.pop_front();
+                continue;
+            }
+            let first_touch = segment.consumed == 0;
+            if first_touch && segment.interactive && !segment.echoed && !self.term.raw_mode {
+                segment.echoed = true;
+                self.stdout.extend_from_slice(&segment.bytes);
+            }
+            let taken = available.min(left);
+            segment.consumed += taken;
+            left -= taken;
+            if segment.consumed == segment.bytes.len() {
+                self.stdin_segments.pop_front();
+            }
+        }
     }
 
     /// Whether the state a snapshot frame copies WHOLE -- virtual files,
@@ -748,6 +831,7 @@ impl Cpu {
                 blocked: self.blocked,
                 exit_code: self.exit_code,
                 stdin: self.stdin.clone(),
+                stdin_segments: self.stdin_segments.clone(),
                 stdin_closed: self.stdin_closed,
                 vfs: self.vfs.clone(),
                 open_files: self.open_files.clone(),
@@ -755,6 +839,8 @@ impl Cpu {
                 rand_state: self.rand_state,
                 term: self.term,
                 heap: self.heap.clone(),
+                stdout_seen: self.stdout_seen,
+                stderr_seen: self.stderr_seen,
             });
         }
     }
@@ -866,11 +952,16 @@ impl Cpu {
             // buffer-filling scanf when the program has already neared the
             // cap) gets the same calm halt as a write in normal code, never
             // a raw fault. Any other stub failure halts calmly too.
-            let produced = self.stdout.len() + self.stderr.len();
+            let out_before = self.stdout.len();
+            let err_before = self.stderr.len();
             let moved = self.mem.bytes_written();
+            let queued = self.stdin.len();
             let dispatched = self.dispatch_host_stub(pc);
+            // Echo before the charge so echoed bytes count against the
+            // output wall and the display counters like any other output.
+            self.echo_consumed_stdin(queued);
             self.charge_bulk_work(moved);
-            if self.charge_output(produced) {
+            if self.charge_output(out_before, err_before) {
                 return Ok(self.output_cap_halt());
             }
             return match dispatched {
@@ -945,11 +1036,14 @@ impl Cpu {
                 // a buffer when the program has already neared the cap) gets
                 // the same calm halt as a write in normal code, never a raw
                 // fault.
-                let produced = self.stdout.len() + self.stderr.len();
+                let out_before = self.stdout.len();
+                let err_before = self.stderr.len();
                 let moved = self.mem.bytes_written();
+                let queued = self.stdin.len();
                 let dispatched = self.dispatch_syscall(syscall_num);
+                self.echo_consumed_stdin(queued);
                 self.charge_bulk_work(moved);
-                if self.charge_output(produced) {
+                if self.charge_output(out_before, err_before) {
                     return Ok(self.output_cap_halt());
                 }
                 match dispatched {
@@ -979,9 +1073,33 @@ impl Cpu {
     }
 
     /// Push bytes onto the stdin buffer. Clears the `blocked` flag so a
-    /// paused scanf/read can resume on the next step.
+    /// paused scanf/read can resume on the next step. Nothing echoes:
+    /// this is the redirect-a-file path (a fixture, a scripted terminal
+    /// drive, the exercise checker), and a redirect prints nothing.
     pub fn push_stdin(&mut self, bytes: &[u8]) {
+        self.queue_stdin(bytes, false);
+    }
+
+    /// Push bytes a student typed at a prompt. Same queue, but the run is
+    /// marked interactive: the first read that touches it echoes the whole
+    /// line to stdout, the way a cooked-mode terminal echoes a keystroke.
+    pub fn push_stdin_interactive(&mut self, bytes: &[u8]) {
+        self.queue_stdin(bytes, true);
+    }
+
+    /// Shared tail of the two push entry points. An empty push records no
+    /// segment -- it queues nothing, and a segment per empty push would
+    /// grow the list (and every snapshot frame) without bound.
+    fn queue_stdin(&mut self, bytes: &[u8], interactive: bool) {
         self.stdin.extend_from_slice(bytes);
+        if !bytes.is_empty() {
+            self.stdin_segments.push_back(StdinSegment {
+                bytes: bytes.to_vec(),
+                consumed: 0,
+                interactive,
+                echoed: false,
+            });
+        }
         self.blocked = false;
     }
 
@@ -1001,6 +1119,19 @@ impl Cpu {
     /// Drain accumulated stderr as a byte vector, clearing the buffer.
     pub fn take_stderr(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.stderr)
+    }
+
+    /// Bytes ever appended to stdout, echoed input included. Restored by
+    /// step-back and by a named load, so a host that tracks how much of
+    /// each stream it has displayed can unprint what a rolled-back step
+    /// wrote. Never a budget: the output wall keeps its own total.
+    pub fn stdout_seen(&self) -> u64 {
+        self.stdout_seen
+    }
+
+    /// Bytes ever appended to stderr. See `stdout_seen`.
+    pub fn stderr_seen(&self) -> u64 {
+        self.stderr_seen
     }
 
     /// Current exit code, if `exit` ran.
@@ -1285,7 +1416,10 @@ impl Cpu {
         self.abort_message = None;
         self.stdout.clear();
         self.stderr.clear();
+        self.stdout_seen = 0;
+        self.stderr_seen = 0;
         self.stdin.clear();
+        self.stdin_segments.clear();
         self.stdin_closed = false;
         self.blocked = false;
         self.exit_code = None;
@@ -1334,6 +1468,7 @@ impl Cpu {
             blocked: self.blocked,
             exit_code: self.exit_code,
             stdin: self.stdin.clone(),
+            stdin_segments: self.stdin_segments.clone(),
             stdin_closed: self.stdin_closed,
             vfs: self.vfs.clone(),
             open_files: self.open_files.clone(),
@@ -1341,6 +1476,8 @@ impl Cpu {
             rand_state: self.rand_state,
             term: self.term,
             heap: self.heap.clone(),
+            stdout_seen: self.stdout_seen,
+            stderr_seen: self.stderr_seen,
         };
         self.snapshots.save_named(name, snap);
     }
@@ -1357,6 +1494,7 @@ impl Cpu {
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
         self.stdin = snap.stdin;
+        self.stdin_segments = snap.stdin_segments;
         self.stdin_closed = snap.stdin_closed;
         self.vfs = snap.vfs;
         self.open_files = snap.open_files;
@@ -1364,6 +1502,11 @@ impl Cpu {
         self.rand_state = snap.rand_state;
         self.term = snap.term;
         self.heap = snap.heap;
+        // Display counters follow the machine; the output-flood budget
+        // deliberately does not, for the same reason the step budget
+        // survives a restore.
+        self.stdout_seen = snap.stdout_seen;
+        self.stderr_seen = snap.stderr_seen;
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
@@ -1414,6 +1557,7 @@ impl Cpu {
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
         self.stdin = snap.stdin;
+        self.stdin_segments = snap.stdin_segments;
         self.stdin_closed = snap.stdin_closed;
         self.vfs = snap.vfs;
         self.open_files = snap.open_files;
@@ -1421,6 +1565,11 @@ impl Cpu {
         self.rand_state = snap.rand_state;
         self.term = snap.term;
         self.heap = snap.heap;
+        // What the frame printed is now un-printed as far as the display
+        // is concerned, so a host can trim its transcript back. The
+        // output-flood budget below is untouched on purpose.
+        self.stdout_seen = snap.stdout_seen;
+        self.stderr_seen = snap.stderr_seen;
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
@@ -1768,6 +1917,65 @@ mod tests {
         let r = cpu.step().unwrap(); // the svc that crosses the wall
         assert!(r.halted);
         assert_eq!(r.error, Some(output_ceiling_message()));
+    }
+
+    #[test]
+    fn step_back_restores_the_display_counters_but_never_the_output_budget() {
+        // Two counters over the same bytes, on purpose. The display pair
+        // rolls back so a host can unprint an undone step; the flood
+        // budget does not, or a step/step-back loop would print forever.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[
+            encode_movz(8, 64, 0),   // x8 = write
+            encode_movz(0, 1, 0),    // x0 = stdout
+            encode_movz(1, 0x60, 1), // x1 = DATA_BASE (0x0060_0000)
+            encode_movz(2, 16, 0),   // x2 = 16 bytes
+            encode_svc(0),
+        ]);
+        for i in 0..16 {
+            cpu.mem.write_u8(0x0060_0000 + i, b'x').unwrap();
+        }
+        for _ in 0..5 {
+            cpu.step().unwrap();
+        }
+        assert_eq!(cpu.stdout_seen(), 16);
+        assert_eq!(cpu.output_total, 16);
+
+        cpu.step_back(); // undo the svc that wrote
+        assert_eq!(cpu.stdout_seen(), 0, "the display counter follows the frame");
+        assert_eq!(cpu.output_total, 16, "the wall keeps counting the original");
+        assert_eq!(cpu.stdout.len(), 16, "the buffer is not rolled back");
+    }
+
+    #[test]
+    fn an_interactive_push_echoes_where_a_plain_push_stays_silent() {
+        // The queue is the same either way; only the echo differs. Hand
+        // the read syscall one typed line and one redirected line and
+        // watch which one reaches stdout.
+        let read_program = [
+            encode_movz(8, 63, 0),   // x8 = read
+            encode_movz(0, 0, 0),    // x0 = stdin
+            encode_movz(1, 0x60, 1), // x1 = DATA_BASE
+            encode_movz(2, 4, 0),    // x2 = 4 bytes
+            encode_svc(0),
+        ];
+
+        let mut typed = Cpu::new();
+        typed.load_program(&read_program);
+        typed.push_stdin_interactive(b"ab\n");
+        for _ in 0..5 {
+            typed.step().unwrap();
+        }
+        assert_eq!(typed.stdout, b"ab\n");
+        assert!(typed.stdin.is_empty(), "the read drained the line");
+
+        let mut redirected = Cpu::new();
+        redirected.load_program(&read_program);
+        redirected.push_stdin(b"ab\n");
+        for _ in 0..5 {
+            redirected.step().unwrap();
+        }
+        assert!(redirected.stdout.is_empty());
     }
 
     #[test]

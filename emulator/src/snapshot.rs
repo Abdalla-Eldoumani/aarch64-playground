@@ -2,9 +2,13 @@
 //!
 //! Each `Snapshot` captures the CPU state that's needed to undo one
 //! instruction: registers, memory (all mapped pages), the halt/exit
-//! flags, the VFS/open-files tables, and the stdin buffer. Stdout and
-//! stderr are intentionally NOT rolled back -- clearing output that the
-//! student already saw is more confusing than keeping it.
+//! flags, the VFS/open-files tables, and the stdin queue with its
+//! cooked-tty echo state. The stdout and stderr BUFFERS are intentionally
+//! NOT rolled back -- clearing output that the student already saw is more
+//! confusing than keeping it -- but the display COUNTERS beside them are,
+//! so a host that tracks how much of each stream it has shown can unprint
+//! exactly what a rolled-back step wrote. The output-flood budget is a
+//! third thing again and is never restored.
 //!
 //! The ring stores at most `capacity` snapshots. Pushing past capacity
 //! drops the oldest frame (so step-back always reaches the newest `N`
@@ -12,7 +16,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::cpu::OpenFile;
+use crate::cpu::{OpenFile, StdinSegment};
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
 
@@ -25,6 +29,10 @@ pub struct Snapshot {
     pub blocked: bool,
     pub exit_code: Option<i64>,
     pub stdin: Vec<u8>,
+    /// The stdin queue's per-push echo state, restored with the bytes so
+    /// stepping back before a read un-echoes the line and re-running
+    /// echoes it exactly once again.
+    pub stdin_segments: VecDeque<StdinSegment>,
     pub stdin_closed: bool,
     pub vfs: HashMap<String, Vec<u8>>,
     pub open_files: HashMap<u32, OpenFile>,
@@ -38,6 +46,11 @@ pub struct Snapshot {
     /// malloc/free allocator state, restored so a stepped-back program
     /// re-allocates the same addresses.
     pub heap: crate::hosted::heap::HeapState,
+    /// Display counters: bytes appended to stdout / stderr up to this
+    /// frame. The buffers themselves stay where they are (see the module
+    /// note); these let the host trim its own transcript instead.
+    pub stdout_seen: u64,
+    pub stderr_seen: u64,
 }
 
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
@@ -116,6 +129,7 @@ mod tests {
             blocked: false,
             exit_code: None,
             stdin: Vec::new(),
+            stdin_segments: VecDeque::new(),
             stdin_closed: false,
             vfs: HashMap::new(),
             open_files: HashMap::new(),
@@ -123,6 +137,8 @@ mod tests {
             rand_state: crate::hosted::libc::RandState::default(),
             term: crate::cpu::TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
+            stdout_seen: 0,
+            stderr_seen: 0,
         }
     }
 
