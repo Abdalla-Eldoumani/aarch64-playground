@@ -5,7 +5,7 @@ import type { EmulatorBackend } from "@/lib/emulator/backend";
 import type { AssemblyError } from "@/lib/emulator/emulator-state";
 
 export interface BackendPassthroughs {
-  pushStdin: (s: string) => void;
+  pushStdin: (s: string, interactive?: boolean) => void;
   closeStdin: () => void;
   setSnapshotsPaused: (paused: boolean) => void;
   lint: (source: string) => Promise<AssemblyError[]>;
@@ -32,11 +32,15 @@ export interface BackendPassthroughs {
 export function useBackendPassthroughs(
   backendRef: RefObject<EmulatorBackend | null>,
 ): BackendPassthroughs {
+  // `interactive` is the console box's typed line, which the machine echoes
+  // as a read consumes it. Every other caller is a redirect (seeds, a `<`
+  // file, the terminal pane, which already echoes what it drew) and leaves
+  // it off.
   const pushStdin = useCallback(
-    (s: string) => {
+    (s: string, interactive?: boolean) => {
       const backend = backendRef.current;
       if (!backend) return;
-      void backend.pushStdin(s);
+      void backend.pushStdin(s, interactive);
     },
     [backendRef],
   );
