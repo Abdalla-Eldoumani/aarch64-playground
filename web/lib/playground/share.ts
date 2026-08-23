@@ -2,6 +2,7 @@
 
 import LZString from "lz-string";
 import { buildDeepLinkQuery } from "@/lib/hooks/use-deep-link";
+import { validateFileName } from "@/lib/playground/file-map";
 import { MAX_SHARE_DECOMPRESSED_BYTES, MAX_SHARE_HASH_BYTES } from "@/lib/playground/upload-guard";
 import type { Theme } from "@/lib/hooks/use-theme";
 
@@ -136,10 +137,20 @@ export function readShareHash(hash: string): ShareReadResult {
             typeof (f as { body?: unknown }).body === "string",
         )
       ) {
-        out.files = (o.files as { name: string; body: string }[]).map((f) => ({
+        const files = (o.files as { name: string; body: string }[]).map((f) => ({
           name: f.name,
           body: f.body,
         }));
+        // A hostile NAME is not a mangle, so the whole link is refused
+        // rather than loaded minus its helpers: a newline in one writes its
+        // own assembly lines into the `// ---- name ----` marker
+        // combineSources builds, and the linker reads them as program text.
+        // A wrong-SHAPED files array stays tolerated above -- that is an old
+        // or partial serialization, and nothing hostile survives it.
+        if (files.some((f, i) => validateFileName(f.name, files, i) !== null)) {
+          return { kind: "corrupt" };
+        }
+        out.files = files;
       }
       if (typeof o.args === "string") out.args = o.args;
       if (typeof o.stdin === "string") out.stdin = o.stdin;
