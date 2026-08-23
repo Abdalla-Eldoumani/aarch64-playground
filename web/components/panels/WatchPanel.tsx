@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { evaluateWatch, type EvalContext } from "@/lib/emulator/watch-expr";
 import type { StackSlot } from "@/lib/emulator/frame-labels";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:watches";
 
 function loadInitial(): string[] {
-  if (typeof window === "undefined") return [];
+  const raw = safeGetItem(STORE_KEY);
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.every((s) => typeof s === "string")) {
       return parsed as string[];
@@ -22,12 +22,7 @@ function loadInitial(): string[] {
 }
 
 function persist(entries: string[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(entries));
-  } catch {
-    // ignore
-  }
+  safeSetItem(STORE_KEY, JSON.stringify(entries));
 }
 
 export interface WatchPanelProps {
