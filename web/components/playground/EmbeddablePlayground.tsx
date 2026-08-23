@@ -997,6 +997,7 @@ function EmbeddableCore({
             exitCode={emu.exitCode}
             vfsFiles={emu.vfsFiles}
             pushStdin={emu.pushStdin}
+            echoStdin={chrome !== "checker"}
             closeStdin={emu.closeStdin}
             uploadVfsFile={stageVfsFile}
             clearConsole={emu.clearConsole}
