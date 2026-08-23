@@ -6,6 +6,7 @@ import {
   type EmulatorInstance,
 } from "@/lib/emulator/emulator";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
+import { runChunked } from "@/lib/emulator/run-loop";
 import {
   emptyStateSnapshot,
   type AssembleResultPayload,
@@ -145,64 +146,27 @@ class MainThreadBackend implements EmulatorBackend {
     maxSteps: number,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
     const emu = this.requireEmu();
-    const epoch = this.runEpoch;
     this.pauseRequested = false;
-    // Run in chunks so we can yield to the UI thread between batches
-    // and emit snapshots that look like worker heartbeats.
-    const HEARTBEAT_STEPS = 10_000;
-    let totalSteps = 0;
-    let lastResult: RunResultPayload = {
-      pc: 0,
-      halted: false,
-      steps_executed: 0,
-      hit_breakpoint: false,
-      error: null,
-    };
-    while (totalSteps < maxSteps) {
-      const remaining = Math.min(HEARTBEAT_STEPS, maxSteps - totalSteps);
-      const raw = emu.runUntilBreak(remaining);
-      lastResult = raw;
-      totalSteps += raw.steps_executed;
-      this.frame++;
-      this.notify(this.snapshot());
-      if (raw.error || raw.halted || raw.hit_breakpoint) break;
-      // A nanosleep pause belongs to the driver, mirroring the worker.
-      if (raw.sleep_ms != null) break;
-      if (emu.isBlocked()) break;
-      // Anti-wedge guard, mirroring the worker: a chunk that executed
-      // zero steps while the machine claims to be neither halted,
-      // blocked, nor at a breakpoint can only repeat forever.
-      if (raw.steps_executed === 0) {
-        lastResult = {
-          ...raw,
-          error:
-            "the emulator made no progress and was stopped; this is a playground bug -- use 'copy diagnostic bundle' to report it",
-        };
-        break;
-      }
-      // Yield to the UI thread between chunks so panels paint. It is
-      // also where a reset/assemble can land; a stale run stands down.
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      if (this.pauseRequested) break;
-      if (epoch !== this.runEpoch) {
-        lastResult = { ...lastResult, cancelled: true };
-        break;
-      }
-    }
-    lastResult = {
-      ...lastResult,
-      steps_executed: totalSteps,
-      // Mirror the worker: a budget-only stop must say so, or an
-      // infinite loop reads as a clean finish.
-      step_limit_reached:
-        totalSteps >= maxSteps &&
-        !lastResult.halted &&
-        !lastResult.hit_breakpoint &&
-        !lastResult.error &&
-        lastResult.sleep_ms == null &&
-        !emu.isBlocked(),
-    };
-    return { runResult: lastResult, snapshot: this.snapshot() };
+    const runResult = await runChunked(
+      {
+        // The typed wrapper already coerced the wasm record.
+        runChunk: (steps) => emu.runUntilBreak(steps),
+        isBlocked: () => emu.isBlocked(),
+        isPauseRequested: () => this.pauseRequested,
+        currentEpoch: () => this.runEpoch,
+        onChunk: () => {
+          this.frame++;
+        },
+        // In process, a heartbeat is a direct listener call rather than a
+        // postMessage, so it rides every chunk instead of a pace.
+        onHeartbeat: () => this.notify(this.snapshot()),
+      },
+      maxSteps,
+    );
+    // Through notifyAndReturn like every other operation here: the hub
+    // reads run state from snapshot events, and on the worker path the
+    // client already fans the response snapshot out the same way.
+    return this.notifyAndReturn({ runResult, snapshot: this.snapshot() });
   }
 
   async pause(): Promise<void> {
