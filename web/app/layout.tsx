@@ -79,6 +79,9 @@ export const metadata: Metadata = {
   // is the only place the production host is written. Every addressable route
   // restates its own; the 404 deliberately has none.
   alternates: { canonical: "/" },
+  // Search Console URL-prefix verification; the domain property is verified
+  // via DNS separately, so this tag is a second anchor, not the primary.
+  verification: { google: "RJmIR859S00gRMvoEXI-3lhiav4ygzIp6oUW6lP54j4" },
   openGraph: {
     type: "website",
     siteName: "cpsc 355 playground",
