@@ -58,66 +58,7 @@ import {
   EmbeddablePlayground,
   type EmbeddablePlaygroundHandle,
 } from "@/components/playground/EmbeddablePlayground";
-
-function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    isLoaded: true,
-    loadError: null as string | null,
-    registers: Array(31).fill("0x0000000000000000") as string[],
-    sp: "0x0000000080000000",
-    pc: 0x400000,
-    nzcv: 0,
-    changedRegs: new Set<number>(),
-    isRunning: false,
-    isHalted: false,
-    programLoaded: false,
-    error: null as string | null,
-    assemblyErrors: [],
-    breakpoints: new Set<number>(),
-    currentLine: null,
-    instructions: [],
-    codeBase: 0x400000,
-    stdout: "",
-    stderr: "",
-    blocked: false,
-    exitCode: null as number | null,
-    hostedMode: false,
-    vfsFiles: [] as string[],
-    canStepBack: false,
-    stepCount: 0,
-    savedStates: [] as string[],
-    dirtyAddrs: [] as Array<[number, number]>,
-    replayFrames: [],
-    assemble: vi.fn().mockResolvedValue(true),
-    assembleForTool: vi
-      .fn()
-      .mockResolvedValue({ success: true, error: null, errorLine: null }),
-    step: vi.fn(),
-    stepBack: vi.fn(),
-    run: vi.fn(),
-    pause: vi.fn(),
-    reset: vi.fn(),
-    toggleBreakpoint: vi.fn(),
-    clearAllBreakpoints: vi.fn(),
-    remapBreakpoints: vi.fn(),
-    lint: vi.fn(async () => []),
-    getMemory: vi.fn(() => new Uint8Array()),
-    pushStdin: vi.fn(),
-    uploadVfsFile: vi.fn(),
-    readVfsFile: vi.fn(),
-    deleteVfsFile: vi.fn().mockResolvedValue(true),
-    resolveLabel: vi.fn(),
-    setBreakpointAddress: vi.fn(),
-    clearBreakpointAddress: vi.fn(),
-    restoreBookmark: vi.fn(),
-    clearConsole: vi.fn(),
-    saveState: vi.fn(),
-    loadState: vi.fn(),
-    deleteState: vi.fn(),
-    seekReplay: vi.fn(),
-    ...overrides,
-  };
-}
+import { makeHub } from "@/components/test/playground/helpers/emulator-hub";
 
 type Hub = ReturnType<typeof makeHub>;
 
@@ -180,7 +121,7 @@ describe("the persistent working set (full chrome)", () => {
       expect(uploads(hub)).toContainEqual(["notes.txt", "keep me\n"]),
     );
     // Assemble resets the machine; the working set must come back.
-    hub.uploadVfsFile.mockClear();
+    vi.mocked(hub.uploadVfsFile).mockClear();
     await act(async () => {
       ref.current!.assemble();
     });
@@ -280,7 +221,7 @@ describe("the terminal toolchain and the working set", () => {
       expect(uploads(hub)).toContainEqual(["notes.txt", "keep me\n"]),
     );
     const terminal = await openTerminal();
-    hub.uploadVfsFile.mockClear();
+    vi.mocked(hub.uploadVfsFile).mockClear();
     await act(async () => {
       await terminal.buildContext().assembleSource("mov x0, 0\nsvc 0\n");
     });
@@ -332,7 +273,7 @@ describe("the terminal toolchain and the working set", () => {
       expect(uploads(hub)).toContainEqual(["input.txt", "1 2 3\n"]),
     );
     const terminal = await openTerminal();
-    hub.uploadVfsFile.mockClear();
+    vi.mocked(hub.uploadVfsFile).mockClear();
     await act(async () => {
       await terminal.buildContext().runSource("mov x0, 0\nsvc 0\n", ["prog"]);
     });
