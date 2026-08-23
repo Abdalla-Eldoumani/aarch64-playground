@@ -4,18 +4,19 @@
 //! `docs/instruction-reference.md` is the canonical public list of every
 //! mnemonic the playground assembles. This test parses that document's
 //! instruction tables and compares the documented mnemonics against
-//! `SUPPORTED`, a hand-kept transcription of the mnemonics the assembler's
-//! `encode_line` accepts (`emulator/src/assembler.rs`). If the two diverge
-//! -- a decoder/assembler change adds or drops a mnemonic without a matching
-//! doc edit, or the reference lists something the assembler rejects -- the
-//! test fails and prints the symmetric difference so the reconciliation is
+//! `assembler::SUPPORTED_MNEMONICS`. If the two diverge -- a
+//! decoder/assembler change adds or drops a mnemonic without a matching doc
+//! edit, or the reference lists something the assembler rejects -- the test
+//! fails and prints the symmetric difference so the reconciliation is
 //! obvious.
 //!
-//! IMPORTANT: `SUPPORTED` is hand-maintained. The test cannot read the
-//! assembler's `match` arms at runtime, so this list is the pinned source of
-//! truth it checks the document against. When you add or remove a mnemonic
-//! in `assembler.rs` (a new `encode_line` arm) or `decoder.rs`, update this
-//! list AND `docs/instruction-reference.md` in the same change.
+//! The supported list is no longer transcribed here. It is the assembler's
+//! own const, declared directly above the `encode_line` dispatch it
+//! describes, and an assembler unit test probes every entry through that
+//! dispatch. So the document and the dispatch cannot drift silently: a new
+//! arm that never reaches the const fails nothing here, but a const entry
+//! with no arm fails in `assembler.rs` and a const entry with no table row
+//! fails here.
 //!
 //! Scope: this guards the canonical reference (`docs/instruction-reference.md`,
 //! which feeds the `/reference` pages). The Monaco hover-card list
@@ -25,43 +26,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-/// Every mnemonic the assembler's `encode_line` accepts
-/// (`emulator/src/assembler.rs`), transcribed by hand. The conditional-branch
-/// family is represented by the two placeholders `B.cond` and `Bcond` -- the
-/// same way the reference documents it -- because the assembler accepts a
-/// fixed, closed set of conditions for each (`EQ`, `NE`, `HS`/`CS`, `LO`/`CC`,
-/// `MI`, `PL`, `VS`, `VC`, `HI`, `LS`, `GE`, `LT`, `GT`, `LE`; see the
-/// `B.<cc>` / `B<cc>` arms). `canon` folds every concrete condition variant
-/// onto these placeholders so the comparison is symmetric.
-const SUPPORTED: &[&str] = &[
-    // moves
-    "MOV", "MOVZ", "MOVK", "MOVN",
-    // arithmetic
-    "ADD", "ADDS", "SUB", "SUBS", "MUL", "MADD", "MSUB", "UDIV", "SDIV", "NEG",
-    // logical
-    "AND", "ANDS", "ORR", "EOR", "MVN", "BIC",
-    // shifts (immediate form) and rotate
-    "LSL", "LSR", "ASR", "ROR",
-    // sign / zero extension and bitfield extract / insert
-    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UBFX", "SBFX", "BFI",
-    // compare and test
-    "CMP", "CMN", "TST",
-    // conditional select
-    "CSEL", "CSINC", "CSET",
-    // memory
-    "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH",
-    "LDRSB", "LDRSH", "LDRSW", "LDP", "STP",
-    // pc-relative address formation
-    "ADR", "ADRP",
-    // branches
-    "B", "BL", "BR", "BLR", "RET", "B.cond", "Bcond",
-    "CBZ", "CBNZ", "TBZ", "TBNZ",
-    // floating point (single and double precision)
-    "FMOV", "FADD", "FSUB", "FMUL", "FDIV", "FNEG", "FABS", "FSQRT", "FCMP", "FCVT", "SCVTF",
-    "FCVTZS",
-    // system
-    "NOP", "SVC",
-];
+use aarch64_emulator::assembler::SUPPORTED_MNEMONICS;
 
 /// Resolve `docs/instruction-reference.md` relative to the crate. Mirrors the
 /// `CARGO_MANIFEST_DIR` + `..` pattern the corpus test uses, but the
@@ -168,7 +133,7 @@ fn documented_set_matches_supported_set() {
         path.display()
     );
 
-    let supported: BTreeSet<String> = SUPPORTED.iter().map(|m| canon(m)).collect();
+    let supported: BTreeSet<String> = SUPPORTED_MNEMONICS.iter().map(|m| canon(m)).collect();
 
     let documented_only: Vec<&String> = documented.difference(&supported).collect();
     let supported_only: Vec<&String> = supported.difference(&documented).collect();
