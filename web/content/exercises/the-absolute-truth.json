@@ -1,0 +1,33 @@
+{
+  "title": "the absolute truth",
+  "slug": "the-absolute-truth",
+  "order": 13,
+  "topic": "branching",
+  "difficulty": "intro",
+  "prompt": "The value register starts at `-42`, and the program should print its magnitude: `42`.\n\nCompare the register against zero, skip the sign flip when it is already positive, and flip it otherwise. `neg` produces the negation of a register in one instruction.\n\nWorth noticing once your solution passes: the same code must not damage a value that starts out positive. Change the starting value to `42` and run again to convince yourself.\n\n## what is checked\n\n- the magnitude is printed on its own line\n- the program exits cleanly\n- the sign flip uses `neg`",
+  "starter": "// print the absolute value of a signed register\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(value_r, x19)\n\n        .data\nfmt:    .string \"magnitude = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     value_r, -42                // starts out negative\n\n        // TODO: if value_r is negative, flip its sign so the\n        // printf below prints the magnitude\n\n        ldr     x0, =fmt\n        mov     x1, value_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "magnitude = 42\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "neg"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "cmp"
+      }
+    ]
+  }
+}
