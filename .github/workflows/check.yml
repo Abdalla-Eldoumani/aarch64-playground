@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The weekly run is what notices rot with no PR open: a new dependency
+  # advisory (the audit gate below), a toolchain fetch breaking, a registry
+  # moving. Same cadence as the bounds workflow.
+  schedule:
+    - cron: "0 6 * * 1"
 
 # Cancel in-progress runs of this workflow on the same ref so a fast
 # follow-up push doesn't pile up duplicate jobs.
@@ -121,6 +126,13 @@ jobs:
       - name: build
         working-directory: web
         run: npm run build
+
+      # size-limit sums whatever its globs match, and an empty match sums to
+      # zero and passes -- a renamed chunk would un-measure itself silently.
+      # Assert the named lazy chunks exist before trusting the budgets.
+      - name: assert budget globs match real chunks
+        working-directory: web
+        run: node -e "const fs=require('fs');const files=fs.readdirSync('.next/static/chunks');const need=[/^monaco\..*\.js$/,/^monaco-worker\..*\.js$/,/^terminal\..*\.js$/];const missing=need.filter(re=>!files.some(f=>re.test(f)));if(missing.length){console.error('budget glob matched nothing:',missing.map(String).join(' '));process.exit(1)}"
 
       - name: size-limit
         working-directory: web
