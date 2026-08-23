@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SourceFile } from "@/lib/playground/file-map";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:multi-files";
 // Helper files the last write displaced. Loading a program REPLACES the
@@ -12,10 +13,9 @@ const STORE_KEY = "aarch64-playground:multi-files";
 const BACKUP_KEY = "aarch64-playground:multi-files-backup";
 
 function readStore(key: string): SourceFile[] {
-  if (typeof window === "undefined") return [];
+  const raw = safeGetItem(key);
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (
       Array.isArray(parsed) &&
@@ -40,12 +40,7 @@ function loadBackup(): SourceFile[] {
 }
 
 function writeStore(key: string, files: SourceFile[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(files));
-  } catch {
-    // ignore
-  }
+  safeSetItem(key, JSON.stringify(files));
 }
 
 /**
