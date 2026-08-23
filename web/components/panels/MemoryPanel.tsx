@@ -170,7 +170,7 @@ export function MemoryPanel({
         />
       </div>
       {parsed == null && (
-        <div role="alert" className="text-[var(--error)] text-[10px] mb-2">
+        <div role="alert" className="text-[var(--danger)] text-[10px] mb-2">
           address must be hex (0x...) or decimal -- showing 0x
           {lastGoodAddr.toString(16).padStart(8, "0")}
         </div>
