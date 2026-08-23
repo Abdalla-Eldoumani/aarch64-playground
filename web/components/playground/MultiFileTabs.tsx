@@ -61,19 +61,20 @@ export function MultiFileTabs({
   }
 
   return (
-    // No `aria-controls` on the tabs: the panel a tab selects is the editor,
-    // which this strip does not own, and pointing at an element that does not
-    // exist is worse than leaving the relationship implicit.
+    // A labelled group, not a `tablist`: the strip's children include the
+    // label, remove buttons, the new-file form, and the restore offer, and a
+    // tablist may hold only tabs (axe aria-required-children). The active
+    // file is stated with `aria-current`, which carries the same not-by-
+    // color-alone fact without the tab contract.
     <div
-      role="tablist"
+      role="group"
       aria-label="source files"
       className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px]"
     >
       <span className="text-[var(--text-secondary)] mr-1">files:</span>
       <button
         type="button"
-        role="tab"
-        aria-selected={activeIndex === -1}
+        aria-current={activeIndex === -1 ? "true" : undefined}
         tabIndex={activeIndex === -1 ? 0 : -1}
         ref={(node) => {
           tabRefs.current[-1] = node;
@@ -97,8 +98,7 @@ export function MultiFileTabs({
         >
           <button
             type="button"
-            role="tab"
-            aria-selected={activeIndex === i}
+            aria-current={activeIndex === i ? "true" : undefined}
             tabIndex={activeIndex === i ? 0 : -1}
             ref={(node) => {
               tabRefs.current[i] = node;

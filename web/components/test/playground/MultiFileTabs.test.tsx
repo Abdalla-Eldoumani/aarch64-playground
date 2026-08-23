@@ -39,7 +39,10 @@ function renderTabs(activeIndex = -1) {
 describe("MultiFileTabs", () => {
   it("always leads with main.asm and lists every extra file", () => {
     renderTabs();
-    const names = screen.getAllByRole("tab").map((b) => b.textContent);
+    const strip = screen.getByRole("group", { name: "source files" });
+    const names = [...strip.querySelectorAll("button[aria-current], button[tabindex]")]
+      .filter((b) => b.textContent !== "x")
+      .map((b) => b.textContent);
     expect(names[0]).toBe("main.asm");
     expect(screen.getByText("lib.asm")).toBeTruthy();
     expect(screen.getByText("util.asm")).toBeTruthy();
@@ -111,24 +114,35 @@ describe("MultiFileTabs", () => {
 });
 
 describe("MultiFileTabs keyboard and roles", () => {
-  it("is a tablist whose selected tab is the only tab stop", () => {
+  // The strip is a labelled group, not a tablist: its children include the
+  // label, remove buttons, and the new-file form, which a tablist may not
+  // hold. The active file is stated with aria-current instead.
+  it("is a labelled group whose current file is the only tab stop", () => {
     renderTabs(1);
-    expect(screen.getByRole("tablist", { name: "source files" })).toBeTruthy();
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual([
-      "false",
-      "false",
+    expect(screen.getByRole("group", { name: "source files" })).toBeTruthy();
+    const fileButtons = [
+      screen.getByText("main.asm"),
+      screen.getByText("lib.asm"),
+      screen.getByText("util.asm"),
+    ];
+    expect(fileButtons.map((t) => t.getAttribute("aria-current"))).toEqual([
+      null,
+      null,
       "true",
     ]);
     // Roving tabindex: one Tab press reaches the strip, arrows do the rest.
-    expect(tabs.map((t) => t.getAttribute("tabindex"))).toEqual(["-1", "-1", "0"]);
+    expect(fileButtons.map((t) => t.getAttribute("tabindex"))).toEqual([
+      "-1",
+      "-1",
+      "0",
+    ]);
   });
 
-  it("marks main.asm selected when the active index is -1", () => {
+  it("marks main.asm current when the active index is -1", () => {
     renderTabs(-1);
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
-    expect(tabs[0].getAttribute("tabindex")).toBe("0");
+    const main = screen.getByText("main.asm");
+    expect(main.getAttribute("aria-current")).toBe("true");
+    expect(main.getAttribute("tabindex")).toBe("0");
   });
 
   it("moves selection with the arrow keys, wrapping at both ends", () => {
