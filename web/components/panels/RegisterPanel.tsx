@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { useZoom } from "@/lib/hooks/use-zoom";
+import { formatWord64 } from "@/lib/emulator/format-hex";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { RegisterRow } from "@/components/panels/RegisterRow";
 import { DRegisterRow } from "@/components/panels/DRegisterRow";
@@ -52,19 +54,13 @@ const ABI_ALIAS: Record<number, string> = {
 function usePersistedFlag(key: string): [boolean, (next: boolean) => void] {
   const [value, setValue] = useState(false);
   useEffect(() => {
-    try {
-      setValue(window.localStorage.getItem(key) === "1");
-    } catch {
-      /* storage unavailable: session-only state */
-    }
+    // Storage unavailable reads as null, which is the same false the state
+    // already holds: session-only state, no separate branch needed.
+    setValue(safeGetItem(key) === "1");
   }, [key]);
   const set = useCallback((next: boolean) => {
     setValue(next);
-    try {
-      window.localStorage.setItem(key, next ? "1" : "0");
-    } catch {
-      /* storage unavailable */
-    }
+    safeSetItem(key, next ? "1" : "0");
   }, [key]);
   return [value, set];
 }
@@ -78,7 +74,10 @@ export function RegisterPanel({
   pc,
   nzcv,
 }: RegisterPanelProps) {
-  const pcHex = "0x" + pc.toString(16).padStart(8, "0");
+  // 16 nibbles like every other row: PC renders through the same RegisterRow
+  // as x0-x30 and SP, whose values are already 64-bit wide, so the column is
+  // sized for it and the short form only made one row disagree.
+  const pcHex = formatWord64(pc);
 
   // The d-view exists only when the loaded WASM exposes FP registers.
   const hasFp = fpRegisters.length === 32;
