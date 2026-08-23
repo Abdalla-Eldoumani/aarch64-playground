@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  EXAMPLE_FILES,
   EXAMPLE_INPUTS,
   EXAMPLE_INTERACTIVE,
   EXAMPLE_MODE_ARGS,
@@ -15,6 +16,7 @@ import {
   resolveBoot,
   resolveHandoff,
 } from "@/lib/playground/playground-handoff";
+import { validateFileName } from "@/lib/playground/file-map";
 import { buildShareHash } from "@/lib/playground/share";
 import { encodeBundle } from "@/lib/playground/diagnostic-bundle";
 import {
@@ -272,6 +274,32 @@ describe("fetchExample", () => {
     const calls = stubFetch({});
     await expect(fetchExample("../secrets")).rejects.toThrow(/invalid/);
     expect(calls).toEqual([]);
+  });
+
+  it("rejects a helper file name outside the file-name shape before fetching it", async () => {
+    // The name is pasted into the fetch path and then into combineSources'
+    // `// ---- name ----` marker, so it is checked like any other untrusted
+    // name -- and checked before a request goes out.
+    const calls = stubFetch({ "/examples/cpsc355/basics.s": "mov x0, 1\n" });
+    EXAMPLE_FILES.basics = ["helper.s\n.global evil"];
+    try {
+      await expect(fetchExample("basics")).rejects.toThrow(/letters, digits/);
+    } finally {
+      delete EXAMPLE_FILES.basics;
+    }
+    expect(calls).toEqual(["/examples/cpsc355/basics.s"]);
+  });
+});
+
+describe("EXAMPLE_FILES manifest", () => {
+  it("declares only names the file-name rule accepts", () => {
+    for (const [stem, names] of Object.entries(EXAMPLE_FILES)) {
+      const seen: { name: string; body: string }[] = [];
+      for (const name of names) {
+        expect(`${stem}: ${validateFileName(name, seen)}`).toBe(`${stem}: null`);
+        seen.push({ name, body: "" });
+      }
+    }
   });
 });
 
