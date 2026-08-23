@@ -114,3 +114,11 @@ Mirrors the PR template's "How to verify":
 2. From `web/`, `npm run lint && npm run typecheck && npm test` all pass.
 3. `node scripts/verify-corpus.js` passes if the change touches the assembler, executor, or examples.
 4. You exercised the change in `npm run dev` (or `npm run dev:all`) if it is UI-visible.
+
+## Start of each term
+
+The course-parity tests run only against a local copy of the current
+tutorials, so nothing automated notices when a new offering changes them.
+Once per term: refresh the local tutorial set, run
+`cargo test --manifest-path emulator/Cargo.toml --test cpsc355_corpus -- --ignored`,
+and fix or file whatever no longer assembles or runs.
