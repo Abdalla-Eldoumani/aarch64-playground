@@ -160,6 +160,8 @@ interface BackendCalls {
   setBreakpoint: number[];
   clearBreakpoint: number[];
   pushStdin: string[];
+  /** The echo flag beside each pushStdin, in the same order. */
+  pushStdinInteractive: Array<boolean | undefined>;
   saveState: string[];
   loadState: string[];
   deleteState: string[];
@@ -212,6 +214,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     setBreakpoint: [],
     clearBreakpoint: [],
     pushStdin: [],
+    pushStdinInteractive: [],
     saveState: [],
     loadState: [],
     deleteState: [],
@@ -306,8 +309,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       calls.reset++;
       return Promise.resolve(fire());
     },
-    pushStdin(text) {
+    pushStdin(text, interactive) {
       calls.pushStdin.push(text);
+      calls.pushStdinInteractive.push(interactive);
       return Promise.resolve(fire());
     },
     closeStdin() {
@@ -488,6 +492,55 @@ describe("useEmulator load + snapshot application", () => {
     act(() => {
       fake.fire({ stderrDelta: "e2" });
     });
+    expect(result.current.stderr).toBe("e1e2");
+  });
+
+  it("unprints stdout down to a snapshot whose display counter moved back", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      fake.fire({ stdoutDelta: "Enter n: ", stdoutSeen: 9 });
+    });
+    act(() => {
+      fake.fire({ stdoutDelta: "21\ntwice 42\n", stdoutSeen: 21 });
+    });
+    expect(result.current.stdout).toBe("Enter n: 21\ntwice 42\n");
+    // Step back over the read: the machine reports the frame's counter, so
+    // the answer and its echo come off the transcript and a re-run reprints
+    // them exactly once.
+    act(() => {
+      fake.fire({ stdoutSeen: 9 });
+    });
+    expect(result.current.stdout).toBe("Enter n: ");
+  });
+
+  it("unprints stderr the same way", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      fake.fire({ stderrDelta: "warn\n", stderrSeen: 5 });
+    });
+    act(() => {
+      fake.fire({ stderrSeen: 0 });
+    });
+    expect(result.current.stderr).toBe("");
+  });
+
+  it("leaves the transcript append-only when the snapshot carries no counters", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    // An older wasm build sends neither counter, so nothing may unprint:
+    // this is the pre-counter behavior, byte for byte.
+    act(() => {
+      fake.fire({ stdoutDelta: "foo", stderrDelta: "e1" });
+    });
+    act(() => {
+      fake.fire({ stdoutDelta: "bar", stderrDelta: "e2" });
+    });
+    act(() => {
+      fake.fire();
+    });
+    expect(result.current.stdout).toBe("foobar");
     expect(result.current.stderr).toBe("e1e2");
   });
 
@@ -1042,6 +1095,18 @@ describe("useEmulator backend passthroughs", () => {
       result.current.pushStdin("input line");
     });
     expect(fake.calls.pushStdin).toEqual(["input line"]);
+  });
+
+  it("pushStdin carries the echo flag only when the caller asks for it", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      // A seed, then a line typed at the console's prompt.
+      result.current.pushStdin("seeded\n");
+      result.current.pushStdin("typed\n", true);
+    });
+    expect(fake.calls.pushStdin).toEqual(["seeded\n", "typed\n"]);
+    expect(fake.calls.pushStdinInteractive).toEqual([undefined, true]);
   });
 
   it("save/load/delete state forward the name and ignore an empty save name", async () => {
