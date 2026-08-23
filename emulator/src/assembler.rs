@@ -125,6 +125,64 @@ pub fn encode_line_absolute(
     encode_line(line, pc, labels, line_num)
 }
 
+/// Every mnemonic `encode_line`'s dispatch accepts, spelled the way the arms
+/// spell it (the uppercase form the dispatch matches on, both halves of each
+/// `B.<cc>` / `B<cc>` alias pair). It lives beside the match so the two are
+/// read and edited together: the reference drift guard
+/// (`tests/reference_consistency.rs`) checks the public instruction reference
+/// against this list, and `supported_mnemonics_all_reach_an_arm` proves every
+/// entry still lands on an arm instead of the unknown-mnemonic fallthrough.
+/// Adding an arm without adding it here leaves a mnemonic no document has to
+/// mention; listing one with no arm fails the unit test.
+pub const SUPPORTED_MNEMONICS: &[&str] = &[
+    // moves
+    "MOV", "MOVZ", "MOVK", "MOVN",
+    // arithmetic immediate / register
+    "ADD", "ADDS", "SUB", "SUBS",
+    // compare (aliases)
+    "CMP", "CMN",
+    // logical
+    "AND", "ANDS", "ORR", "EOR", "BIC", "MVN", "TST",
+    // shifts and rotate
+    "LSL", "LSR", "ASR", "ROR",
+    // sign / zero extension
+    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH",
+    // bitfield extract / insert
+    "UBFX", "SBFX", "BFI",
+    // multiply / divide
+    "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG",
+    // memory
+    "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
+    // floating-point
+    "FADD", "FSUB", "FMUL", "FDIV", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP",
+    "FCVT", "SCVTF", "FCVTZS", "LDP", "STP",
+    // pc-relative address formation
+    "ADR", "ADRP",
+    // branches
+    "B", "BL", "BR", "BLR", "RET",
+    // conditional branches (both spellings of each condition)
+    "B.EQ", "BEQ",
+    "B.NE", "BNE",
+    "B.HS", "B.CS", "BHS", "BCS",
+    "B.LO", "B.CC", "BLO", "BCC",
+    "B.MI", "BMI",
+    "B.PL", "BPL",
+    "B.VS", "BVS",
+    "B.VC", "BVC",
+    "B.HI", "BHI",
+    "B.LS", "BLS",
+    "B.GE", "BGE",
+    "B.LT", "BLT",
+    "B.GT", "BGT",
+    "B.LE", "BLE",
+    // compare/test and branch
+    "CBZ", "CBNZ", "TBZ", "TBNZ",
+    // conditional select
+    "CSEL", "CSINC", "CSET",
+    // system
+    "NOP", "SVC",
+];
+
 fn encode_line(
     line: &str,
     pc: u64,
@@ -3456,6 +3514,43 @@ svc 0").unwrap();
                 assert_eq!(line, 2);
             }
             other => panic!("expected PreprocError at line 2, got {other:?}"),
+        }
+    }
+
+    // -- the supported-mnemonic list --
+
+    #[test]
+    fn supported_mnemonics_all_reach_an_arm() {
+        // Probe the dispatch at the layer it lives on: hand `encode_line` the
+        // bare mnemonic with no operands at all. What comes back does not
+        // matter -- an operand-count complaint, or an encoding for the forms
+        // that take no operands -- because only the fallthrough produces
+        // "unknown mnemonic". So this fails on exactly one thing: an entry
+        // here that the match no longer has an arm for.
+        let labels: HashMap<String, u64> = HashMap::new();
+        for mnemonic in SUPPORTED_MNEMONICS {
+            let message = match encode_line(mnemonic, 0, &labels, 1) {
+                Ok(_) => continue,
+                Err(EmuError::AssemblyError { message, .. }) => message,
+                Err(other) => {
+                    panic!("`{mnemonic}` failed with a non-assembly error: {other:?}")
+                }
+            };
+            assert!(
+                !message.starts_with("unknown mnemonic"),
+                "`{mnemonic}` is listed in SUPPORTED_MNEMONICS but falls through \
+                 the dispatch: {message}",
+            );
+        }
+    }
+
+    #[test]
+    fn supported_mnemonics_has_no_duplicates() {
+        // A duplicate would let a real arm hide behind a repeated name and
+        // still keep the count looking right.
+        let mut seen = std::collections::HashSet::new();
+        for mnemonic in SUPPORTED_MNEMONICS {
+            assert!(seen.insert(*mnemonic), "`{mnemonic}` is listed twice");
         }
     }
 }
