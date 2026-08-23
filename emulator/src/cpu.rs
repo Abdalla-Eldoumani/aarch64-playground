@@ -689,6 +689,114 @@ impl Cpu {
         }
     }
 
+    /// The two walls a step meets before it executes anything: the
+    /// cumulative instruction budget and the stack floor. `Some` is the
+    /// calm halt `step` hands back; `None` means the cycle may proceed.
+    fn check_runaway_walls(&mut self) -> Option<StepResult> {
+        // Runaway-loop wall: once the cumulative instruction budget is
+        // spent, halt calmly instead of executing another instruction.
+        // Checked here so single-stepping a loop is bounded the same way run
+        // mode is; surfaced through `error` while `halted` stays true.
+        if self.steps_total >= MAX_TOTAL_STEPS {
+            self.halted = true;
+            let msg = step_ceiling_message();
+            self.abort_message = Some(msg.clone());
+            return Some(StepResult {
+                pc: self.regs.read_pc(),
+                halted: true,
+                error: Some(msg),
+                outcome: StepOutcome::Halted,
+            });
+        }
+
+        // Stack wall: sp far below the base is runaway recursion (or a
+        // frame pointer that was never set up). Without this check the
+        // store path silently mapped page after page downward until the
+        // memory cap fired blaming "too much memory" -- the wrong cause.
+        if self.regs.read_sp() < STACK_FLOOR {
+            return Some(self.runtime_error_halt(EmuError::StackOverflow));
+        }
+
+        None
+    }
+
+    /// Snapshot CPU state before we touch anything so `step_back` can
+    /// restore the exact pre-step state. Stdout/stderr are intentionally
+    /// excluded from the snapshot (rolling back already-seen output is
+    /// more confusing than leaving it in place). Raw-mode terminal
+    /// programs skip the ring entirely: a paced game executes millions
+    /// of steps, each clone costs far more than the step itself, and
+    /// stepping back into the middle of a live game has no meaning.
+    /// A host can also pause the ring explicitly (the web pauses it
+    /// while a program is driven live in the terminal pane, where the
+    /// same cost argument applies to cooked-mode menus), and the ring
+    /// stops on its own once the side state it copies whole outgrows
+    /// `MAX_SNAPSHOT_SIDE_BYTES`.
+    fn capture_step_snapshot(&mut self) {
+        if self.term.raw_mode || self.snapshots_paused || self.snapshot_side_bytes_exceeded() {
+            // Not recording this step. Drop the frames recorded BEFORE
+            // this stretch too: keeping them lets one `step_back` leap
+            // over every unrecorded step into a state many instructions
+            // old while the step counter drops by one. An unrecorded
+            // stretch ends the history rather than hiding a hole in it.
+            self.snapshots.clear();
+        } else {
+            self.snapshots.push(Snapshot {
+                regs: self.regs.clone(),
+                mem: self.mem.clone(),
+                halted: self.halted,
+                blocked: self.blocked,
+                exit_code: self.exit_code,
+                stdin: self.stdin.clone(),
+                stdin_closed: self.stdin_closed,
+                vfs: self.vfs.clone(),
+                open_files: self.open_files.clone(),
+                next_fd: self.next_fd,
+                rand_state: self.rand_state,
+                term: self.term,
+                heap: self.heap.clone(),
+            });
+        }
+    }
+
+    /// Detect which registers changed, against the integer and FP files as
+    /// they stood before the instruction ran. The UI flashes both sets.
+    fn record_changed_registers(&mut self, gpr_before: &[u64; 32], fpr_before: &[u64; 32]) {
+        let current = self.regs.snapshot();
+        self.changed_regs.clear();
+        for i in 0..32 {
+            if gpr_before[i] != current[i] {
+                self.changed_regs.push(i as u8);
+            }
+        }
+        let fpr_current = self.regs.snapshot_fpr();
+        self.changed_fprs.clear();
+        for i in 0..32 {
+            if fpr_before[i] != fpr_current[i] {
+                self.changed_fprs.push(i as u8);
+            }
+        }
+    }
+
+    /// How the cycle ended, in the order the states shadow one another:
+    /// a paused read outranks an exit status, which outranks a plain halt,
+    /// which outranks a pending sleep. Sets `halted` for the exit case, so
+    /// the flag and the outcome agree in the result the caller builds.
+    fn classify_outcome(&mut self) -> StepOutcome {
+        if self.blocked {
+            StepOutcome::WaitingForInput
+        } else if let Some(code) = self.exit_code {
+            self.halted = true;
+            StepOutcome::Exited(code)
+        } else if self.halted {
+            StepOutcome::Halted
+        } else if let Some(ns) = self.pending_sleep_ns {
+            StepOutcome::Sleeping(ns)
+        } else {
+            StepOutcome::Advance
+        }
+    }
+
     /// Execute one instruction at the current PC.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
         if self.halted {
@@ -723,68 +831,13 @@ impl Cpu {
         // `take_pending_sleep_ns`.
         self.pending_sleep_ns = None;
 
-        // Runaway-loop wall: once the cumulative instruction budget is
-        // spent, halt calmly instead of executing another instruction.
-        // Checked here so single-stepping a loop is bounded the same way run
-        // mode is; surfaced through `error` while `halted` stays true.
-        if self.steps_total >= MAX_TOTAL_STEPS {
-            self.halted = true;
-            let msg = step_ceiling_message();
-            self.abort_message = Some(msg.clone());
-            return Ok(StepResult {
-                pc: self.regs.read_pc(),
-                halted: true,
-                error: Some(msg),
-                outcome: StepOutcome::Halted,
-            });
-        }
-
-        // Stack wall: sp far below the base is runaway recursion (or a
-        // frame pointer that was never set up). Without this check the
-        // store path silently mapped page after page downward until the
-        // memory cap fired blaming "too much memory" -- the wrong cause.
-        if self.regs.read_sp() < STACK_FLOOR {
-            return Ok(self.runtime_error_halt(EmuError::StackOverflow));
+        if let Some(halt) = self.check_runaway_walls() {
+            return Ok(halt);
         }
 
         let pc = self.regs.read_pc();
 
-        // Snapshot CPU state before we touch anything so `step_back` can
-        // restore the exact pre-step state. Stdout/stderr are intentionally
-        // excluded from the snapshot (rolling back already-seen output is
-        // more confusing than leaving it in place). Raw-mode terminal
-        // programs skip the ring entirely: a paced game executes millions
-        // of steps, each clone costs far more than the step itself, and
-        // stepping back into the middle of a live game has no meaning.
-        // A host can also pause the ring explicitly (the web pauses it
-        // while a program is driven live in the terminal pane, where the
-        // same cost argument applies to cooked-mode menus), and the ring
-        // stops on its own once the side state it copies whole outgrows
-        // `MAX_SNAPSHOT_SIDE_BYTES`.
-        if self.term.raw_mode || self.snapshots_paused || self.snapshot_side_bytes_exceeded() {
-            // Not recording this step. Drop the frames recorded BEFORE
-            // this stretch too: keeping them lets one `step_back` leap
-            // over every unrecorded step into a state many instructions
-            // old while the step counter drops by one. An unrecorded
-            // stretch ends the history rather than hiding a hole in it.
-            self.snapshots.clear();
-        } else {
-            self.snapshots.push(Snapshot {
-                regs: self.regs.clone(),
-                mem: self.mem.clone(),
-                halted: self.halted,
-                blocked: self.blocked,
-                exit_code: self.exit_code,
-                stdin: self.stdin.clone(),
-                stdin_closed: self.stdin_closed,
-                vfs: self.vfs.clone(),
-                open_files: self.open_files.clone(),
-                next_fd: self.next_fd,
-                rand_state: self.rand_state,
-                term: self.term,
-                heap: self.heap.clone(),
-            });
-        }
+        self.capture_step_snapshot();
 
         // Count this executed step against the cumulative ceiling. Done
         // before the host-stub dispatch so synthetic libc calls count too.
@@ -913,34 +966,9 @@ impl Cpu {
             }
         }
 
-        // detect which registers changed
-        let current = self.regs.snapshot();
-        self.changed_regs.clear();
-        for i in 0..32 {
-            if snapshot[i] != current[i] {
-                self.changed_regs.push(i as u8);
-            }
-        }
-        let fpr_current = self.regs.snapshot_fpr();
-        self.changed_fprs.clear();
-        for i in 0..32 {
-            if fpr_snapshot[i] != fpr_current[i] {
-                self.changed_fprs.push(i as u8);
-            }
-        }
+        self.record_changed_registers(&snapshot, &fpr_snapshot);
 
-        let outcome = if self.blocked {
-            StepOutcome::WaitingForInput
-        } else if let Some(code) = self.exit_code {
-            self.halted = true;
-            StepOutcome::Exited(code)
-        } else if self.halted {
-            StepOutcome::Halted
-        } else if let Some(ns) = self.pending_sleep_ns {
-            StepOutcome::Sleeping(ns)
-        } else {
-            StepOutcome::Advance
-        };
+        let outcome = self.classify_outcome();
 
         Ok(StepResult {
             pc: self.regs.read_pc(),
