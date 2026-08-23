@@ -113,7 +113,7 @@
     "lighthouse": "13.4.1",
     "playwright": "^1.59.1",
     "postcss": "8.5.23",
-    "size-limit": "12.1.0",
+    "size-limit": "13.0.3",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
     "vitest": "4.1.9"
