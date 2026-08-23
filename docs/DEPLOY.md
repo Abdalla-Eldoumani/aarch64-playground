@@ -53,7 +53,16 @@ The CSP is `default-src 'self'` with scripts from self plus Vercel analytics (th
 
 ## Dependency audit
 
-Run `npm audit` from `web/` before a release and either clear what it reports or record the mitigation here. Most findings land in the dev toolchain and never reach a visitor; check the production tree specifically with `npm audit --omit=dev`. The DOMPurify chain that reaches in through monaco-editor is held at a fixed version by an `overrides` entry in `web/package.json`, so an advisory published after that pin still shows up in the report -- re-check the pin rather than assuming the entry cleared it.
+Run `npm audit` from `web/` before a release and either clear what it reports or record the mitigation here. Most findings land in the dev toolchain and never reach a visitor; check the production tree specifically with `npm audit --omit=dev` (CI runs the same gate on every PR via `node scripts/audit-deps.js --omit=dev`). The DOMPurify chain that reaches in through monaco-editor is held at a fixed version by an `overrides` entry in `web/package.json`, so an advisory published after that pin still shows up in the report -- re-check the pin rather than assuming the entry cleared it.
+
+## Releasing
+
+A release is its own PR. It bumps every version surface together so none can
+drift: `web/package.json`, the root `package.json`, `emulator/Cargo.toml`
+(with `Cargo.lock` refreshed in the same commit), and `CITATION.cff`
+(`version` and `date-released`). Tag the merged commit `v<version>` and
+publish the GitHub release; the docs index links there for the change
+history.
 
 ## Alternative: commit the WASM
 
