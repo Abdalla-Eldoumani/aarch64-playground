@@ -74,7 +74,7 @@ export function SiteFooter() {
 
       {/* The closing doc-rule line: the sheet's colophon in the datasheet
           voice, over a hairline like the document rule that opened it,
-          segments spread across the measure. */}
+          segments reading as one grouped line. */}
       <div className="mx-auto mt-8 flex w-full max-w-5xl flex-wrap gap-x-6 gap-y-1 border-t border-[var(--border)] pt-3 font-mono text-[10px] uppercase leading-[1.6] tracking-[0.08em] text-[var(--text-tertiary)]">
         <span>Open source · free to use and study</span>
         <span>{CREDIBILITY.privacyNote}</span>
