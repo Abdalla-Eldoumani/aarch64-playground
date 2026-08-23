@@ -59,6 +59,15 @@ describe("ConsolePanel stdin validation", () => {
     expect(input.value).toBe("");
   });
 
+  it("submits without the echo flag when the host opts out", () => {
+    // The checker chrome grades the live stdout on its unchanged-source
+    // fast path; an echoed byte there would fail a correct program.
+    const { pushStdin, input } = setup({ echoStdin: false });
+    fireEvent.change(input, { target: { value: "42" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(pushStdin).toHaveBeenCalledWith("42\n", false);
+  });
+
   it("ctrl-d on an empty line signals end of input", () => {
     const { closeStdin, pushStdin, input } = setup();
     fireEvent.keyDown(input, { key: "d", ctrlKey: true });
