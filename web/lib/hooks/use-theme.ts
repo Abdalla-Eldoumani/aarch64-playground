@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 export type Theme = "dark" | "light" | "high-contrast";
 
@@ -22,13 +23,10 @@ let current: Theme | null = null;
 // `current` so useSyncExternalStore always gets a stable snapshot.
 function read(): Theme {
   if (current) return current;
+  // The window guard stays: matchMedia below needs it, not just the read.
   if (typeof window === "undefined") return "dark";
-  try {
-    const saved = window.localStorage.getItem(KEY);
-    if (isTheme(saved)) return (current = saved);
-  } catch {
-    // ignore
-  }
+  const saved = safeGetItem(KEY);
+  if (isTheme(saved)) return (current = saved);
   current = window.matchMedia?.("(prefers-color-scheme: light)").matches
     ? "light"
     : "dark";
@@ -39,11 +37,7 @@ function read(): Theme {
 // consumer so all theme controls re-render against the one shared value.
 function write(next: Theme): void {
   current = next;
-  try {
-    window.localStorage.setItem(KEY, next);
-  } catch {
-    // ignore
-  }
+  safeSetItem(KEY, next);
   if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-theme", next);
   }
@@ -80,11 +74,7 @@ export function useTheme(): [Theme, () => void, (next: Theme) => void] {
     if (typeof document === "undefined") return;
     const resolved = read();
     document.documentElement.setAttribute("data-theme", resolved);
-    try {
-      window.localStorage.setItem(KEY, resolved);
-    } catch {
-      // ignore
-    }
+    safeSetItem(KEY, resolved);
   }, []);
 
   const cycle = useCallback(() => {
