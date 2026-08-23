@@ -19,7 +19,7 @@ export const FEATURES: Feature[] = [
   {
     title: "Hand-written interpreter",
     description:
-      "A hand-written Rust interpreter, compiled to WebAssembly, executes AArch64 in the browser tab.",
+      "Readable Rust compiled to WebAssembly runs the whole machine in the tab: no server, no QEMU, no install.",
     glyph: "wasm",
   },
   {
@@ -31,37 +31,37 @@ export const FEATURES: Feature[] = [
   {
     title: "Step and step back",
     description:
-      "Step one instruction at a time, or rewind through the snapshot ring.",
+      "Walk forward one instruction at a time, or rewind to see exactly where a value went wrong.",
     glyph: "pc",
   },
   {
     title: "Hosted runtime",
     description:
-      "A hosted runtime backs the C standard library and Linux syscalls for real input and output.",
+      "printf, scanf, malloc, and Linux syscalls answer the way the course servers do, so tutorial programs run unmodified.",
     glyph: "io",
   },
   {
     title: "Course toolchain",
     description:
-      "m4 macros, GAS sections, and the literal pool assemble like the course toolchain.",
+      "define aliases, sections, and =label literal loads resolve the way GNU m4 and GAS handle them on the course servers.",
     glyph: "m4",
   },
   {
     title: "Command-line arguments",
     description:
-      "Pass command-line arguments to a program through argc and argv.",
+      "Type arguments in the args box and the program receives a real argc and argv, argv[0] included.",
     glyph: "argv",
   },
   {
     title: "Embeddable surface",
     description:
-      "The same surface embeds into lessons and exercises, not only the full playground.",
+      "Lessons and exercises embed the same live machine, so the examples in the reading are runnable, not screenshots.",
     glyph: "</>",
   },
   {
     title: "Bounded sandbox",
     description:
-      "Step and memory ceilings keep every program inside a bounded sandbox.",
+      "A runaway loop or memory bomb halts calmly with a plain explanation instead of freezing the tab.",
     glyph: "[]",
   },
   {
@@ -73,7 +73,7 @@ export const FEATURES: Feature[] = [
   {
     title: "Installable and offline",
     description:
-      "Installable as a progressive web app and usable offline after the first load.",
+      "Install it as an app; after the first load the whole debugger works with no connection.",
     glyph: "pwa",
   },
 ];
