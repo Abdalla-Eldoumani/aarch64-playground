@@ -2,6 +2,10 @@
 name = "aarch64-emulator"
 version = "2.3.0"
 edition = "2021"
+# The toolchain the crate is actually built and tested with (CI and the
+# deploy pin the same version); an older rustc gets this message instead of
+# a bare missing-method error.
+rust-version = "1.96"
 description = "ARMv8 instruction emulator for the browser"
 license = "AGPL-3.0-only"
 
