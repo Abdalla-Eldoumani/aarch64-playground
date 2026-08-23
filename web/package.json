@@ -2,6 +2,9 @@
   "name": "aarch64-playground-web",
   "version": "2.3.0",
   "private": true,
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "next dev --webpack",
     "wasm:watch": "node ../scripts/wasm-watch.mjs",
