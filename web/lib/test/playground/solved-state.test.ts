@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getSolvedSlugs, isSolved, markSolved, subscribeSolved } from "@/lib/playground/solved-state";
+import {
+  buildProgressBundle,
+  getSolvedSlugs,
+  importProgressBundle,
+  isSolved,
+  markSolved,
+  subscribeSolved,
+} from "@/lib/playground/solved-state";
 
 const SOLVED_KEY = "aarch64-playground:practice:solved";
 
@@ -67,5 +74,137 @@ describe("solved-state", () => {
     });
     expect(() => markSolved("resilient")).not.toThrow();
     spy.mockRestore();
+  });
+});
+
+describe("progress bundle export", () => {
+  it("carries the current solved set at version 1", () => {
+    markSolved("loops");
+    markSolved("stack-frames");
+    expect(buildProgressBundle()).toEqual({ version: 1, solved: ["loops", "stack-frames"] });
+  });
+
+  it("exports an empty bundle when nothing is solved", () => {
+    expect(buildProgressBundle()).toEqual({ version: 1, solved: [] });
+  });
+});
+
+describe("progress bundle import", () => {
+  it("round-trips an exported bundle into an empty browser", () => {
+    markSolved("loops");
+    markSolved("stack-frames");
+    const bundle = buildProgressBundle();
+    window.localStorage.clear();
+
+    const result = importProgressBundle(bundle);
+
+    expect(result).toEqual({ ok: true, added: 2, total: 2 });
+    expect(getSolvedSlugs()).toEqual(["loops", "stack-frames"]);
+  });
+
+  it("unions into the stored set instead of replacing it", () => {
+    markSolved("here-already");
+    const result = importProgressBundle({ version: 1, solved: ["from-the-file"] });
+    expect(result).toEqual({ ok: true, added: 1, total: 2 });
+    expect(getSolvedSlugs()).toEqual(["here-already", "from-the-file"]);
+  });
+
+  it("counts nothing added when every entry is already solved", () => {
+    markSolved("loops");
+    const result = importProgressBundle({ version: 1, solved: ["loops"] });
+    expect(result).toEqual({ ok: true, added: 0, total: 1 });
+    expect(getSolvedSlugs()).toEqual(["loops"]);
+  });
+
+  it("deduplicates repeated entries within one bundle", () => {
+    const result = importProgressBundle({ version: 1, solved: ["loops", "loops", "  loops  "] });
+    expect(result).toEqual({ ok: true, added: 1, total: 1 });
+    expect(getSolvedSlugs()).toEqual(["loops"]);
+  });
+
+  it("keeps a slug this build has never heard of", () => {
+    // A bundle written by a newer catalog has to survive the round trip.
+    importProgressBundle({ version: 1, solved: ["an-exercise-from-the-future"] });
+    expect(getSolvedSlugs()).toEqual(["an-exercise-from-the-future"]);
+  });
+
+  it("notifies subscribers so an open index updates live", () => {
+    let calls = 0;
+    const unsubscribe = subscribeSolved(() => {
+      calls += 1;
+    });
+    importProgressBundle({ version: 1, solved: ["loops"] });
+    expect(calls).toBe(1);
+    // Nothing new to store means nothing to announce.
+    importProgressBundle({ version: 1, solved: ["loops"] });
+    expect(calls).toBe(1);
+    unsubscribe();
+  });
+
+  // Every hostile shape fails closed: a reason for the student, and the
+  // stored set left exactly as it was.
+  const rejected: { name: string; raw: unknown; error: string }[] = [
+    {
+      name: "a version this build does not know",
+      raw: { version: 2, solved: ["loops"] },
+      error: "that progress file has an unrecognized version",
+    },
+    {
+      name: "a missing version",
+      raw: { solved: ["loops"] },
+      error: "that progress file has an unrecognized version",
+    },
+    {
+      name: "a solved field that is not an array",
+      raw: { version: 1, solved: { loops: true } },
+      error: "that progress file has no list of solved exercises",
+    },
+    {
+      name: "numbers in the array",
+      raw: { version: 1, solved: ["loops", 7] },
+      error: "that progress file has an entry that is not a name",
+    },
+    {
+      name: "an empty entry",
+      raw: { version: 1, solved: ["   "] },
+      error: "that progress file has an empty entry",
+    },
+    {
+      name: "an entry past the length cap",
+      raw: { version: 1, solved: ["x".repeat(65)] },
+      error: "that progress file has an entry longer than 64 characters",
+    },
+    {
+      name: "more entries than the cap allows",
+      raw: { version: 1, solved: Array.from({ length: 257 }, (_, i) => `e${i}`) },
+      error: "that progress file lists too many exercises (max 256)",
+    },
+    {
+      name: "a junk string",
+      raw: "not a bundle at all",
+      error: "that file is not a progress export",
+    },
+    { name: "null", raw: null, error: "that file is not a progress export" },
+    {
+      name: "a bare array",
+      raw: ["loops"],
+      error: "that file is not a progress export",
+    },
+  ];
+
+  it.each(rejected)("refuses $name and writes nothing", ({ raw, error }) => {
+    markSolved("untouched");
+    const before = window.localStorage.getItem(SOLVED_KEY);
+
+    expect(importProgressBundle(raw)).toEqual({ ok: false, error });
+
+    expect(window.localStorage.getItem(SOLVED_KEY)).toBe(before);
+    expect(getSolvedSlugs()).toEqual(["untouched"]);
+  });
+
+  it("accepts a bundle sitting exactly on the entry cap", () => {
+    const solved = Array.from({ length: 256 }, (_, i) => `e${i}`);
+    const result = importProgressBundle({ version: 1, solved });
+    expect(result).toEqual({ ok: true, added: 256, total: 256 });
   });
 });
