@@ -21,7 +21,9 @@ import {
   type LaunchMode,
 } from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
+import { formatByte, formatWord64 } from "@/lib/emulator/format-hex";
 import { parseArgs } from "@/lib/playground/args";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 import { formatAsm } from "@/lib/asm/asm-formatter";
 import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 import { useWorkingSet } from "@/lib/playground/use-working-set";
@@ -298,24 +300,16 @@ function EmbeddableCore({
   // session (the visualizer example, or the student's own choice) or the
   // classic console flow. Persisted beside the files strip so a reloaded
   // workspace keeps the takeover.
-  const [launchMode, setLaunchModeState] = useState<LaunchMode>(() => {
-    if (typeof window === "undefined") return "console";
-    try {
-      return decodeLaunch(window.localStorage.getItem(LAUNCH_MODE_KEY));
-    } catch {
-      return "console";
-    }
-  });
+  const [launchMode, setLaunchModeState] = useState<LaunchMode>(() =>
+    decodeLaunch(safeGetItem(LAUNCH_MODE_KEY)),
+  );
   // Read by the blocked-jump effect, which must not re-subscribe.
   const launchModeRef = useRef<LaunchMode>("console");
   const setLaunchMode = useCallback((next: LaunchMode) => {
     launchModeRef.current = next;
     setLaunchModeState(next);
-    try {
-      window.localStorage.setItem(LAUNCH_MODE_KEY, next);
-    } catch {
-      // storage full or blocked; the mode just won't survive a reload
-    }
+    // storage full or blocked: the mode just won't survive a reload
+    safeSetItem(LAUNCH_MODE_KEY, next);
   }, []);
   // The example this workspace came from, when it came from one. The
   // run-mode control is offered for exactly the stems that have a real
@@ -1555,15 +1549,13 @@ function EmbeddableCore({
             exitCode: emu.exitCode,
             registers: emu.registers,
             sp: emu.sp,
-            pc: `0x${emu.pc.toString(16).padStart(16, "0")}`,
+            pc: formatWord64(emu.pc),
             stackBytes: (() => {
               const spNum = Number(BigInt(emu.sp));
               if (!Number.isFinite(spNum)) return undefined;
               const top = emu.getMemory(spNum, 64);
               if (!top.length) return undefined;
-              return Array.from(top)
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join(" ");
+              return Array.from(top).map(formatByte).join(" ");
             })(),
             error: emu.error,
           })}
