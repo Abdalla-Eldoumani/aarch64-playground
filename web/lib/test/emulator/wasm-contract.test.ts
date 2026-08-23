@@ -271,6 +271,134 @@ describe("blocked stdin", () => {
   });
 });
 
+// The same read behind a prompt, so the echo has something to sit after.
+// "Enter n: " prints, scanf parks, and the answer arrives from the console
+// box rather than from a redirect.
+const PROMPTED_DOUBLE = `define(fp, x29)
+define(lr, x30)
+
+val_s = 16
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+prompt: .string "Enter n: "
+fmt_in: .string "%d"
+fmt_out: .string "twice %d\\n"
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+
+        ldr     x0, =prompt
+        bl      printf
+
+        ldr     x0, =fmt_in
+        add     x1, fp, val_s
+        bl      scanf
+
+        ldr     w1, [fp, val_s]
+        add     w1, w1, w1
+        ldr     x0, =fmt_out
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+`;
+
+// "hi\n" is three bytes, which is the whole of what this program prints.
+const PRINT_HI = `        .text
+msg:    .string "hi\\n"
+
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        ldr     x0, =msg
+        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+`;
+
+describe("interactive stdin", () => {
+  it("push_stdin_interactive echoes the consumed line into stdout; push_stdin stays silent", () => {
+    withEmulator((emu) => {
+      assemble(emu, PROMPTED_DOUBLE);
+      emu.run_until_break(100_000);
+      expect(emu.is_blocked()).toBe(true);
+
+      emu.push_stdin_interactive("21\n");
+      emu.run_until_break(100_000);
+      expect(emu.is_halted()).toBe(true);
+      // The echo is real machine stdout and lands where a cooked tty would
+      // have put it: the whole typed line, after the prompt, before the
+      // program's own answer.
+      expect(emu.take_stdout()).toBe("Enter n: 21\ntwice 42\n");
+    });
+
+    withEmulator((emu) => {
+      assemble(emu, PROMPTED_DOUBLE);
+      emu.run_until_break(100_000);
+      emu.push_stdin("21\n");
+      emu.run_until_break(100_000);
+      expect(emu.is_halted()).toBe(true);
+      // A redirect prints nothing of its own.
+      expect(emu.take_stdout()).toBe("Enter n: twice 42\n");
+    });
+  });
+});
+
+describe("display counters", () => {
+  it("stdout_seen counts every printed byte and step_back rolls it back", () => {
+    withEmulator((emu) => {
+      assemble(emu, PRINT_HI);
+      expect(emu.stdout_seen()).toBe(0);
+      expect(emu.stderr_seen()).toBe(0);
+      // `bl printf` costs three steps on addresses the student never wrote
+      // (two trampoline words and the synthetic stub), so step until the
+      // print lands rather than pinning that count here.
+      let steps = 0;
+      while (emu.stdout_seen() === 0 && steps < 32) {
+        emu.step();
+        steps++;
+      }
+      expect(emu.stdout_seen()).toBe(3);
+      expect(emu.can_step_back()).toBe(true);
+
+      emu.step_back();
+      // The frame before the print never saw those bytes, so the counter
+      // is the frame's, not a high-water mark: this is what lets the web
+      // unprint the line the undone step wrote.
+      expect(emu.stdout_seen()).toBe(0);
+    });
+  });
+
+  it("the counter survives a drain and counts the echo, and a named restore rolls it back", () => {
+    withEmulator((emu) => {
+      assemble(emu, PROMPTED_DOUBLE);
+      emu.run_until_break(100_000);
+      // "Enter n: " is nine bytes; draining the buffer does not un-see them.
+      expect(emu.stdout_seen()).toBe(9);
+      expect(emu.take_stdout()).toBe("Enter n: ");
+      expect(emu.stdout_seen()).toBe(9);
+
+      emu.save_state("at the prompt");
+      emu.push_stdin_interactive("21\n");
+      emu.run_until_break(100_000);
+      // Nine printed, plus the three-byte echo of "21\n", plus "twice 42\n".
+      expect(emu.stdout_seen()).toBe(9 + 3 + 9);
+
+      expect(emu.load_state("at the prompt")).toBe(true);
+      expect(emu.stdout_seen()).toBe(9);
+    });
+  });
+});
+
 const MINIMAL_MAIN = `        .text
         .global main
 main:
