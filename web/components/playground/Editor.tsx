@@ -682,7 +682,6 @@ export function Editor({
             cursorStyle: "block",
             cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
             accessibilitySupport: "auto",
-            accessibilityHelpUrl: "/docs/accessibility",
             readOnly,
           }}
         />
