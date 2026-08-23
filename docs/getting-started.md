@@ -63,8 +63,11 @@ first and hands the pane over in one action.
 
 Hit **Run** (`F5`). At the first `bl scanf` the console area pauses for
 input: switch to the console tab, type a number, and press Enter. The run
-resumes and consumes it. After three numbers the program prints the
-average and the status bar shows it halted with exit code 0.
+resumes and consumes it. What you typed appears in the transcript beside
+the prompt that asked for it, the way a terminal shows it, and stepping
+back rewinds the transcript along with the machine. After three numbers
+the program prints the average and the status bar shows it halted with
+exit code 0.
 
 ## step and set a breakpoint
 
