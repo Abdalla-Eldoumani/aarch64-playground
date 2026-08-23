@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
 import { detectHostedMode } from "@/lib/emulator/emulator";
+import { formatWord32 } from "@/lib/emulator/format-hex";
 import {
   emptyLineMap,
   isEmptyLineMap,
@@ -646,7 +647,7 @@ export function useEmulator(): EmulatorState {
               ((codeBytes[off + 1] ?? 0) << 8) |
               ((codeBytes[off + 2] ?? 0) << 16) |
               ((codeBytes[off + 3] ?? 0) << 24);
-            const hex = "0x" + (word >>> 0).toString(16).padStart(8, "0");
+            const hex = formatWord32(word);
             // The map gives the editor line for this instruction's
             // address; render that line's text. Fall back to the
             // index-based source text when the map is empty (bare-metal)
