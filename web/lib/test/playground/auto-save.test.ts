@@ -85,6 +85,46 @@ describe("useRecentPrograms", () => {
     expect(result.current.entries[9].name).toBe("name5");
   });
 
+  it("drops stored entries of the wrong shape instead of handing them to the UI", () => {
+    // Another tab, an older build, or a hand-edited localStorage can hold
+    // anything; a missing body used to load an empty program.
+    window.localStorage.setItem(
+      RECENT_KEY,
+      JSON.stringify([
+        { id: "a", name: "keeper", body: "mov x0, 1", savedAt: 1 },
+        { id: "b", name: "no body", savedAt: 2 },
+        { id: 3, name: "numeric id", body: "ret", savedAt: 4 },
+        { id: "d", name: "string clock", body: "ret", savedAt: "yesterday" },
+        { id: "e", body: "ret", savedAt: 5 },
+        "not an object",
+        null,
+        42,
+      ]),
+    );
+    const { result } = renderHook(() => useRecentPrograms());
+    expect(result.current.entries).toHaveLength(1);
+    expect(result.current.entries[0].name).toBe("keeper");
+  });
+
+  it("re-applies the ring cap to a stored array that outgrew it", () => {
+    const stored = Array.from({ length: 25 }, (_, i) => ({
+      id: `id${i}`,
+      name: `name${i}`,
+      body: `body${i}`,
+      savedAt: i,
+    }));
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(stored));
+    const { result } = renderHook(() => useRecentPrograms());
+    expect(result.current.entries).toHaveLength(10);
+    expect(result.current.entries[0].name).toBe("name0");
+  });
+
+  it("ignores a stored value that is not an array at all", () => {
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify({ id: "x" }));
+    const { result } = renderHook(() => useRecentPrograms());
+    expect(result.current.entries).toEqual([]);
+  });
+
   it("clear empties the ring and persists the empty state", () => {
     const { result } = renderHook(() => useRecentPrograms());
     act(() => result.current.push("one", "one"));
