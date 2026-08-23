@@ -15,6 +15,9 @@ First build:
 cd emulator
 wasm-pack build --target web --out-dir ../web/lib/wasm
 
+# the node-target build that `npm test` and scripts/verify-corpus.js load
+wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node
+
 cd ../web
 npm install
 npm run dev
