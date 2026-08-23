@@ -35,12 +35,17 @@ export default defineConfig({
       ],
       // A floor so coverage cannot silently regress. Set a few points below
       // current so an ordinary change does not trip it; raise as coverage grows.
-      thresholds: {
-        statements: 70,
-        branches: 63,
-        functions: 60,
-        lines: 70,
-      },
+      // CI runs the suite in shards, and a shard only sees its slice of the
+      // coverage, so shards set VITEST_SHARD to defer the floor to the one
+      // merged report (`vitest run --merge-reports --coverage`).
+      thresholds: process.env.VITEST_SHARD
+        ? undefined
+        : {
+            statements: 70,
+            branches: 63,
+            functions: 60,
+            lines: 70,
+          },
     },
   },
 });
