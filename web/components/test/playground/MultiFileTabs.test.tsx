@@ -39,7 +39,7 @@ function renderTabs(activeIndex = -1) {
 describe("MultiFileTabs", () => {
   it("always leads with main.asm and lists every extra file", () => {
     renderTabs();
-    const names = screen.getAllByRole("button").map((b) => b.textContent);
+    const names = screen.getAllByRole("tab").map((b) => b.textContent);
     expect(names[0]).toBe("main.asm");
     expect(screen.getByText("lib.asm")).toBeTruthy();
     expect(screen.getByText("util.asm")).toBeTruthy();
@@ -100,6 +100,57 @@ describe("MultiFileTabs", () => {
     prompt.mockReturnValue("   ");
     fireEvent.doubleClick(screen.getByText("lib.asm"));
     expect(h.onRename).not.toHaveBeenCalled();
+  });
+
+  it("renames from the keyboard on F2, so the strip is not double-click only", () => {
+    const h = renderTabs(0);
+    vi.spyOn(window, "prompt").mockReturnValue("renamed.asm");
+    fireEvent.keyDown(screen.getByText("lib.asm"), { key: "F2" });
+    expect(h.onRename).toHaveBeenCalledWith(0, "renamed.asm");
+  });
+});
+
+describe("MultiFileTabs keyboard and roles", () => {
+  it("is a tablist whose selected tab is the only tab stop", () => {
+    renderTabs(1);
+    expect(screen.getByRole("tablist", { name: "source files" })).toBeTruthy();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual([
+      "false",
+      "false",
+      "true",
+    ]);
+    // Roving tabindex: one Tab press reaches the strip, arrows do the rest.
+    expect(tabs.map((t) => t.getAttribute("tabindex"))).toEqual(["-1", "-1", "0"]);
+  });
+
+  it("marks main.asm selected when the active index is -1", () => {
+    renderTabs(-1);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    expect(tabs[0].getAttribute("tabindex")).toBe("0");
+  });
+
+  it("moves selection with the arrow keys, wrapping at both ends", () => {
+    const h = renderTabs(-1);
+    fireEvent.keyDown(screen.getByText("main.asm"), { key: "ArrowRight" });
+    expect(h.onSelect).toHaveBeenCalledWith(0);
+    // main.asm sits at the head of the order, so ArrowLeft wraps to the last
+    // helper rather than dead-ending on the first tab.
+    fireEvent.keyDown(screen.getByText("main.asm"), { key: "ArrowLeft" });
+    expect(h.onSelect).toHaveBeenCalledWith(1);
+  });
+
+  it("leaves the new-file input's own arrow keys alone", () => {
+    const h = renderTabs(-1);
+    fireEvent.keyDown(screen.getByLabelText("new file name"), { key: "ArrowRight" });
+    expect(h.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("names the new-file input for anyone who cannot see its placeholder", () => {
+    renderTabs();
+    const input = screen.getByLabelText("new file name") as HTMLInputElement;
+    expect(input.placeholder).toBe("new.asm");
   });
 });
 

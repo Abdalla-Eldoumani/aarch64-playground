@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { combineSources, type SourceFile } from "@/lib/playground/file-map";
 
 // Re-exported so the tab strip stays the one import site for the
@@ -38,13 +38,48 @@ export function MultiFileTabs({
   onRestoreBackup,
 }: MultiFileTabsProps) {
   const [pending, setPending] = useState("");
+  const tabRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+
+  function promptRename(idx: number, current: string) {
+    const next = window.prompt("rename file", current);
+    if (next && next.trim()) onRename(idx, next.trim());
+  }
+
+  // Arrow keys are bound to the tabs themselves rather than the strip: the
+  // strip also holds the new-file input, whose own caret movement must not
+  // be hijacked.
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    const order = [-1, ...files.map((_, i) => i)];
+    const at = order.indexOf(index);
+    if (at < 0) return;
+    const delta = event.key === "ArrowRight" ? 1 : -1;
+    const next = order[(at + delta + order.length) % order.length];
+    onSelect(next);
+    tabRefs.current[next]?.focus();
+  }
 
   return (
-    <div className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px]">
+    // No `aria-controls` on the tabs: the panel a tab selects is the editor,
+    // which this strip does not own, and pointing at an element that does not
+    // exist is worse than leaving the relationship implicit.
+    <div
+      role="tablist"
+      aria-label="source files"
+      className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px]"
+    >
       <span className="text-[var(--text-secondary)] mr-1">files:</span>
       <button
         type="button"
+        role="tab"
+        aria-selected={activeIndex === -1}
+        tabIndex={activeIndex === -1 ? 0 : -1}
+        ref={(node) => {
+          tabRefs.current[-1] = node;
+        }}
         onClick={() => onSelect(-1)}
+        onKeyDown={(e) => onTabKeyDown(e, -1)}
         className={`px-2 py-0.5 rounded ${
           activeIndex === -1
             ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
@@ -62,10 +97,23 @@ export function MultiFileTabs({
         >
           <button
             type="button"
+            role="tab"
+            aria-selected={activeIndex === i}
+            tabIndex={activeIndex === i ? 0 : -1}
+            ref={(node) => {
+              tabRefs.current[i] = node;
+            }}
             onClick={() => onSelect(i)}
-            onDoubleClick={() => {
-              const next = window.prompt("rename file", f.name);
-              if (next && next.trim()) onRename(i, next.trim());
+            onDoubleClick={() => promptRename(i, f.name)}
+            // F2 is the rename key; Enter and Space stay activation, or a
+            // keyboard student could not select a tab at all.
+            onKeyDown={(e) => {
+              if (e.key === "F2") {
+                e.preventDefault();
+                promptRename(i, f.name);
+                return;
+              }
+              onTabKeyDown(e, i);
             }}
             className="px-2 py-0.5"
           >
@@ -96,6 +144,7 @@ export function MultiFileTabs({
           value={pending}
           onChange={(e) => setPending(e.target.value)}
           placeholder="new.asm"
+          aria-label="new file name"
           className="w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
         />
         <button
