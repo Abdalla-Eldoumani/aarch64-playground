@@ -90,7 +90,9 @@ import {
   EmbeddablePlayground,
   type EmbeddablePlaygroundHandle,
 } from "@/components/playground/EmbeddablePlayground";
-import { MAX_STDIN_BYTES, validateStdin } from "@/lib/playground/upload-guard";
+import { makeHub as baseHub } from "@/components/test/playground/helpers/emulator-hub";
+import type { EmulatorState } from "@/lib/emulator/use-emulator";
+import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 
 const FILES_KEY = "aarch64-playground:multi-files";
 
@@ -102,74 +104,12 @@ const UTIL = Array.from({ length: 10 }, (_, i) => `        add x1, x1, ${i}`).jo
 const UTIL_LINE_3 = "        add x1, x1, 2";
 const UTIL_COMBINED_LINE = 14;
 
-function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    isLoaded: true,
-    loadError: null as string | null,
-    registers: Array(31).fill("0x0000000000000000") as string[],
-    sp: "0x0000000080000000",
-    pc: 0x400000,
-    nzcv: 0,
-    changedRegs: new Set<number>(),
-    isRunning: false,
-    isAssembling: false,
-    isHalted: false,
-    programLoaded: true,
-    error: null as string | null,
-    assemblyErrors: [] as Array<{ line: number; message: string }>,
-    breakpoints: new Set<number>(),
-    currentLine: null as number | null,
-    instructions: [] as Array<{ address: number; hex: string; text: string }>,
-    codeBase: 0x400000,
-    stdout: "",
-    stderr: "",
-    blocked: false,
-    wantsTerminal: false,
-    exitCode: null as number | null,
-    hostedMode: false,
-    vfsFiles: [] as string[],
-    canStepBack: false,
-    stepCount: 0,
-    savedStates: [] as string[],
-    dirtyAddrs: [] as Array<[number, number]>,
-    replayFrames: [],
-    assemble: vi.fn().mockResolvedValue(true),
-    assembleForTool: vi
-      .fn()
-      .mockResolvedValue({ success: true, error: null, errorLine: null }),
-    step: vi.fn(),
-    stepBack: vi.fn(),
-    run: vi.fn(),
-    pause: vi.fn(),
-    reset: vi.fn(),
-    toggleBreakpoint: vi.fn(),
-    clearAllBreakpoints: vi.fn(),
-    remapBreakpoints: vi.fn(),
-    lint: vi.fn(async () => []),
-    getMemory: vi.fn(() => new Uint8Array()),
-    getMemoryMapped: vi.fn(() => true),
-    pushStdin: vi.fn(),
-    closeStdin: vi.fn(),
-    setOutputTap: vi.fn(),
-    setSnapshotsPaused: vi.fn(),
-    uploadVfsFile: vi.fn(),
-    readVfsFile: vi.fn(),
-    deleteVfsFile: vi.fn(),
-    resolveLabel: vi.fn(),
-    m4Expand: vi.fn(),
-    setBreakpointAddress: vi.fn(),
-    clearBreakpointAddress: vi.fn(),
-    restoreBookmark: vi.fn(),
-    clearConsole: vi.fn(),
-    saveState: vi.fn(),
-    loadState: vi.fn(),
-    deleteState: vi.fn(),
-    seekReplay: vi.fn(),
-    ...overrides,
-  };
+/** Every test here starts from a workspace that already assembled. */
+function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
+  return baseHub({ programLoaded: true, ...overrides });
 }
 
-type Hub = ReturnType<typeof makeHub>;
+type Hub = EmulatorState;
 
 function seedFiles(): void {
   window.localStorage.setItem(
@@ -294,7 +234,7 @@ describe("multi-file line translation", () => {
     });
 
     await waitFor(() => expect(hub.remapBreakpoints).toHaveBeenCalledTimes(1));
-    const remap = hub.remapBreakpoints.mock.calls[0][0] as (n: number) => number | null;
+    const remap = vi.mocked(hub.remapBreakpoints).mock.calls[0][0];
     // main.asm is 15 lines now, so util.s line 3 is combined line 19.
     expect(remap(UTIL_COMBINED_LINE)).toBe(19);
   });
@@ -311,7 +251,7 @@ describe("multi-file line translation", () => {
     fireEvent.click(screen.getByLabelText("remove util.s"));
 
     await waitFor(() => expect(hub.remapBreakpoints).toHaveBeenCalled());
-    const remap = hub.remapBreakpoints.mock.calls[0][0] as (n: number) => number | null;
+    const remap = vi.mocked(hub.remapBreakpoints).mock.calls[0][0];
     expect(remap(UTIL_COMBINED_LINE)).toBeNull();
   });
 });
@@ -432,8 +372,10 @@ describe("terminal stdin and output bounds", () => {
       result = await terminal.buildContext().runSource("mov x0, 1\nret\n", ["./prog"], huge);
     });
     // `./prog < bigfile` is one command that could hand the machine the whole
-    // 4 MiB VFS cap in a single push.
-    expect(result!.stderr).toBe(validateStdin(huge));
+    // 4 MiB VFS cap in a single push. The message is the literal the student
+    // reads: asserting it against validateStdin(huge) would have passed just
+    // as happily on a guard that returned null and pushed the megabyte.
+    expect(result!.stderr).toBe("stdin too large (max 100 KB)");
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
 
