@@ -247,8 +247,9 @@ body {
 }
 
 /* Motion. Each animation is opt-in via a class so existing layout is
-   untouched; `prefers-reduced-motion` strips them so screen-reader and
-   vestibular-sensitive users see static UI. */
+   untouched; `prefers-reduced-motion` strips every one except the block
+   caret (see its own comment below: native carets blink under reduced
+   motion too), so vestibular-sensitive users see static UI. */
 @keyframes step-pop {
   0%   { transform: scale(1); }
   35%  { transform: scale(1.15); }
