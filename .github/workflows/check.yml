@@ -26,9 +26,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Third-party actions are pinned to full commit SHAs so a moved tag
+      # cannot swap the code CI runs; the comment names the human-readable ref.
+      # The toolchain itself is pinned to the same version the deploy build
+      # uses (scripts/vercel-build.sh), so CI tests the compiler that ships.
       - name: install rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch, 2026-08
         with:
+          toolchain: "1.96.0"
           targets: wasm32-unknown-unknown
 
       # Cache the cargo registry + git index + target dir so reruns don't
@@ -49,9 +54,9 @@ jobs:
       # jetli/wasm-pack-action (that one rate-limits without a token on
       # newer GitHub runners).
       - name: install wasm-pack
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
-          tool: wasm-pack
+          tool: wasm-pack@0.14.0
 
       - name: cargo test
         run: cargo test --manifest-path emulator/Cargo.toml
@@ -94,6 +99,12 @@ jobs:
       - name: install
         working-directory: web
         run: npm ci --no-audit --no-fund
+
+      # The production dependency gate: fails on any moderate-or-higher
+      # advisory against a shipped dep. Dev-only tooling is watched by
+      # Dependabot instead so its advisories don't block unrelated PRs.
+      - name: dependency audit
+        run: node scripts/audit-deps.js --omit=dev
 
       - name: lint
         working-directory: web
