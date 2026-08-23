@@ -36,8 +36,11 @@ export RUSTUP_TOOLCHAIN="$rust_toolchain"
 rustup target add wasm32-unknown-unknown
 
 echo "--- installing wasm-pack ${wasm_pack_version}"
-if ! command -v wasm-pack >/dev/null 2>&1; then
-  cargo install --locked --version "$wasm_pack_version" wasm-pack
+# A warm builder may carry some other wasm-pack; the pin holds only if the
+# version is checked, not just the command's presence.
+if ! command -v wasm-pack >/dev/null 2>&1 \
+  || ! wasm-pack --version | grep -q "wasm-pack $wasm_pack_version"; then
+  cargo install --locked --force --version "$wasm_pack_version" wasm-pack
 fi
 
 echo "--- building emulator (wasm-pack release)"
