@@ -1412,7 +1412,12 @@ describe("useEmulator terminal builds", () => {
       await result.current.assemble(HOSTED_SOURCE);
     });
     act(() => {
-      fake.fire({ stdoutDelta: "sum = 12\n", stderrDelta: "warn\n" });
+      fake.fire({
+        stdoutDelta: "sum = 12\n",
+        stderrDelta: "warn\n",
+        stdoutSeen: 9,
+        stderrSeen: 5,
+      });
     });
     act(() => {
       result.current.step();
@@ -1425,6 +1430,12 @@ describe("useEmulator terminal builds", () => {
     // is not theirs to erase.
     await act(async () => {
       await result.current.assembleForTool("mov x0, 1\nret");
+    });
+    // The build reset the machine, so its next snapshot restarts the
+    // display counters at zero -- which must re-anchor over the editor's
+    // scrollback, never unprint it.
+    act(() => {
+      fake.fire({ stdoutSeen: 0, stderrSeen: 0 });
     });
     expect(result.current.stdout).toBe("sum = 12\n");
     expect(result.current.stderr).toBe("warn\n");
