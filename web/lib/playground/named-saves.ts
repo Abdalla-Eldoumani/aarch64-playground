@@ -11,6 +11,9 @@
  * they survive page reloads, can be exported / imported, and don't
  * grow as large as raw register + memory dumps.
  */
+
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+
 export interface NamedSave {
   name: string;
   source: string;
@@ -30,10 +33,9 @@ const STORAGE_KEY = "aarch64-playground:named-saves";
 export const SAVES_CHANGED_EVENT = "aarch64-playground:named-saves-changed";
 
 function readAll(): NamedSave[] {
-  if (typeof window === "undefined") return [];
+  const raw = safeGetItem(STORAGE_KEY);
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(isValidSave);
@@ -43,16 +45,12 @@ function readAll(): NamedSave[] {
 }
 
 function writeAll(saves: NamedSave[]): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
-    window.dispatchEvent(new CustomEvent(SAVES_CHANGED_EVENT));
-    return true;
-  } catch {
-    // Quota / private mode: report it. Swallowing the failure let an
-    // overwrite render the STALE record as if the update landed.
-    return false;
-  }
+  // Quota / private mode: report it. Swallowing the failure let an
+  // overwrite render the STALE record as if the update landed -- and a
+  // write that never happened must not announce a change either.
+  if (!safeSetItem(STORAGE_KEY, JSON.stringify(saves))) return false;
+  window.dispatchEvent(new CustomEvent(SAVES_CHANGED_EVENT));
+  return true;
 }
 
 function isValidSave(v: unknown): v is NamedSave {

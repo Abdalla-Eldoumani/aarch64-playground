@@ -5,6 +5,8 @@
  *  Sources are kept in `/examples/cpsc355/` so a tutorial loads the same
  *  file the student gets from the example loader -- no parallel copies. */
 
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+
 export interface ExpectedRegister {
   /** Register name -- "w0".."w30", "x0".."x30", "sp", "pc". */
   reg: string;
@@ -318,10 +320,9 @@ export interface TutorialProgress {
 }
 
 export function loadProgress(): TutorialProgress {
-  if (typeof window === "undefined") return {};
+  const raw = safeGetItem(STORE_KEY);
+  if (!raw) return {};
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
-    if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") return parsed as TutorialProgress;
   } catch {
@@ -331,10 +332,5 @@ export function loadProgress(): TutorialProgress {
 }
 
 export function saveProgress(progress: TutorialProgress): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(progress));
-  } catch {
-    // ignore
-  }
+  safeSetItem(STORE_KEY, JSON.stringify(progress));
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const MIN = 0.6;
 const MAX = 1.8;
@@ -13,15 +14,10 @@ const STEP = 0.1;
  * the supplied key so each panel remembers its own zoom.
  */
 function loadInitialScale(storageKey: string): number {
-  if (typeof window === "undefined") return 1;
-  try {
-    const raw = window.localStorage.getItem(`aarch64-playground:zoom:${storageKey}`);
-    if (raw) {
-      const parsed = parseFloat(raw);
-      if (!Number.isNaN(parsed) && parsed >= MIN && parsed <= MAX) return parsed;
-    }
-  } catch {
-    // ignore
+  const raw = safeGetItem(`aarch64-playground:zoom:${storageKey}`);
+  if (raw) {
+    const parsed = parseFloat(raw);
+    if (!Number.isNaN(parsed) && parsed >= MIN && parsed <= MAX) return parsed;
   }
   return 1;
 }
@@ -33,16 +29,7 @@ export function useZoom(storageKey: string) {
     (next: number) => {
       const clamped = Math.min(MAX, Math.max(MIN, Math.round(next * 100) / 100));
       setScale(clamped);
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(
-            `aarch64-playground:zoom:${storageKey}`,
-            String(clamped),
-          );
-        } catch {
-          // ignore
-        }
-      }
+      safeSetItem(`aarch64-playground:zoom:${storageKey}`, String(clamped));
     },
     [storageKey],
   );

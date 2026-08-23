@@ -38,6 +38,9 @@ describe("fetchStarCount", () => {
       {
         headers: { Accept: "application/vnd.github+json" },
         next: { revalidate: 3600 },
+        // The timeout keeps a hanging GitHub from stalling a prerender; the
+        // instance itself is fresh per call, so pin the shape, not identity.
+        signal: expect.any(AbortSignal),
       },
     );
   });

@@ -45,15 +45,14 @@ fn corpus_root() -> PathBuf {
 }
 
 #[test]
+#[ignore = "requires the local cpsc355-kb corpus; run with --ignored"]
 fn tutorial_corpus_parses() {
     let root = corpus_root();
-    if !root.exists() {
-        eprintln!(
-            "cpsc355-kb not found at {}; skipping (expected in CI)",
-            root.display()
-        );
-        return;
-    }
+    assert!(
+        root.exists(),
+        "cpsc355-kb corpus not found at {}; this test only runs on a machine that has it",
+        root.display()
+    );
     let mut failures: Vec<(String, String)> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
     let mut parsed: Vec<String> = Vec::new();
@@ -84,16 +83,18 @@ fn tutorial_corpus_parses() {
 }
 
 #[test]
+#[ignore = "requires the local cpsc355-kb corpus; run with --ignored"]
 fn tutorial_corpus_pipeline_status() {
     // Runs each tutorial file through the full hosted pipeline and
     // reports how far it gets: link success (pipeline can assemble +
     // load it) and run success (the program halts without error within
-    // a step budget). This is the gauge of B12 progress.
+    // a step budget).
     let root = corpus_root();
-    if !root.exists() {
-        eprintln!("cpsc355-kb not found; skipping");
-        return;
-    }
+    assert!(
+        root.exists(),
+        "cpsc355-kb corpus not found at {}; this test only runs on a machine that has it",
+        root.display()
+    );
     let mut link_ok = 0;
     let mut link_fail = 0;
     let mut run_ok = 0;

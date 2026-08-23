@@ -8,13 +8,12 @@ import { loadAllExercises } from "@/lib/content/exercises";
 describe("sitemap", () => {
   const entries = sitemap();
   // The expected slug sets come from the same loaders the pages use, so adding
-  // a lesson or exercise cannot leave the sitemap behind: the count below is
-  // the only number to update, and it fails loudly when it drifts.
+  // a lesson or exercise cannot leave the sitemap behind; the derived count
+  // fails loudly if the fixed-route set drifts.
   const lessonSlugs = loadAllLessons().map((lesson) => lesson.slug);
   const exerciseSlugs = loadAllExercises().map((exercise) => exercise.slug);
 
   it("lists the five fixed routes plus every lesson and exercise", () => {
-    expect(entries).toHaveLength(20);
     expect(entries).toHaveLength(5 + lessonSlugs.length + exerciseSlugs.length);
   });
 

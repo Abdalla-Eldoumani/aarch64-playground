@@ -1,7 +1,8 @@
 "use client";
 
 import { Command } from "cmdk";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import type { Action } from "@/lib/playground/commands";
 
 export interface CommandPaletteProps {
@@ -15,24 +16,11 @@ export interface CommandPaletteProps {
  * built-in fuzzy ranking, and runs the chosen action on Enter.
  */
 export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Focus the search input whenever the palette opens so the student
-  // can just start typing.
-  useEffect(() => {
-    if (open) {
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // The trap also owns the open-focus: cmdk's search input is the card's
+  // first focusable (its list items are `role="option"` divs, not tab
+  // stops), so the caret lands there and the student can just start typing.
+  useFocusTrap(open, cardRef, onClose);
 
   if (!open) return null;
 
@@ -45,12 +33,12 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
       onClick={onClose}
     >
       <div
+        ref={cardRef}
         className="w-full max-w-lg rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl overflow-hidden anim-modal-rise"
         onClick={(e) => e.stopPropagation()}
       >
         <Command label="command palette" className="flex flex-col">
           <Command.Input
-            ref={inputRef}
             placeholder="type a command..."
             className="w-full bg-transparent px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] border-b border-[var(--border)] focus:outline-none"
           />

@@ -10,6 +10,8 @@
 
 import init, { Emulator, memoryMap } from "@/lib/wasm/aarch64_emulator";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
+import { runChunked } from "@/lib/emulator/run-loop";
+import { isDeadInstance } from "@/lib/worker/dead-instance";
 import {
   emptyStateSnapshot,
   type AssembleResultPayload,
@@ -17,10 +19,14 @@ import {
   type Heartbeat,
   type Request,
   type Response,
-  type RunResultPayload,
   type StateSnapshot,
   type StepResultPayload,
 } from "@/lib/worker/protocol";
+
+// Every heartbeat is a postMessage, so they are paced: one per chunk would
+// flood the very thread the pacing exists to keep responsive. Only the
+// snapshot fan-out rides this pace; pause and epoch are read every chunk.
+const HEARTBEAT_INTERVAL_MS = 50;
 
 let emulator: Emulator | null = null;
 let regions: MemoryRegion[] | null = null;
@@ -125,84 +131,36 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
       case "runUntilBreak": {
         await ensureWasm();
         const emu = require_emulator();
-        // Drive the run loop in chunks of ~10k steps and yield to the
-        // event queue between chunks so heartbeats actually fire and
-        // pause requests are picked up.
         pauseRequested = false;
-        const epoch = runEpoch;
-        const HEARTBEAT_STEPS = 10_000;
-        let totalSteps = 0;
-        let lastResult: RunResultPayload = {
-          pc: 0,
-          halted: false,
-          steps_executed: 0,
-          hit_breakpoint: false,
-          error: null,
-        };
-        let lastHeartbeat = performance.now();
-        while (totalSteps < msg.maxSteps) {
-          if (pauseRequested) break;
-          const remaining = Math.min(HEARTBEAT_STEPS, msg.maxSteps - totalSteps);
-          const raw = emu.run_until_break(remaining) as Record<string, unknown>;
-          const stepsThis = Number(raw.steps_executed as number);
-          totalSteps += stepsThis;
-          lastResult = {
-            pc: Number(raw.pc as bigint | number),
-            halted: Boolean(raw.halted),
-            steps_executed: stepsThis,
-            hit_breakpoint: Boolean(raw.hit_breakpoint),
-            error: (raw.error as string | undefined) ?? null,
-            error_line: (raw.error_line as number | undefined) ?? null,
-            sleep_ms: (raw.sleep_ms as number | undefined) ?? null,
-          };
-          bumpFrame();
-          if (lastResult.error || lastResult.halted || lastResult.hit_breakpoint) break;
-          // A nanosleep pause belongs to the driver: hand the result up so
-          // it can wait the requested time in real time, then run again.
-          if (lastResult.sleep_ms != null) break;
-          if (emu.is_blocked()) break;
-          // Anti-wedge guard: a chunk that executed zero steps while the
-          // machine claims to be neither halted, blocked, nor stopped at a
-          // breakpoint can only repeat forever. Stop and say so rather
-          // than re-issuing chunks at full speed against a stuck CPU.
-          if (stepsThis === 0) {
-            lastResult.error =
-              "the emulator made no progress and was stopped; this is a playground bug -- use 'copy diagnostic bundle' to report it";
-            break;
-          }
-          // Yield + heartbeat at most every ~50ms so panels stay
-          // responsive without flooding postMessage.
-          const now = performance.now();
-          if (now - lastHeartbeat >= 50) {
-            postHeartbeat();
-            lastHeartbeat = now;
-            await new Promise<void>((resolve) => setTimeout(resolve, 0));
-            // The yield is where a reset/assemble can land; a stale run
-            // must stop driving the replaced machine.
-            if (epoch !== runEpoch) {
-              lastResult = { ...lastResult, cancelled: true };
-              break;
-            }
-          }
-        }
-        // Fold totalSteps into the result so the caller can update its
-        // step counter accurately even though we ran in chunks.
-        lastResult.steps_executed = totalSteps;
-        // A fall-out of the while condition with nothing else to report
-        // means the budget alone stopped the run; say so, or an infinite
-        // loop reads as a clean finish.
-        lastResult.step_limit_reached =
-          totalSteps >= msg.maxSteps &&
-          !pauseRequested &&
-          !lastResult.halted &&
-          !lastResult.hit_breakpoint &&
-          !lastResult.error &&
-          lastResult.sleep_ms == null &&
-          !emu.is_blocked();
+        const runResult = await runChunked(
+          {
+            runChunk: (steps) => {
+              // wasm-bindgen hands back a plain record with bigint fields;
+              // the protocol carries numbers.
+              const raw = emu.run_until_break(steps) as Record<string, unknown>;
+              return {
+                pc: Number(raw.pc as bigint | number),
+                halted: Boolean(raw.halted),
+                steps_executed: Number(raw.steps_executed as number),
+                hit_breakpoint: Boolean(raw.hit_breakpoint),
+                error: (raw.error as string | undefined) ?? null,
+                error_line: (raw.error_line as number | undefined) ?? null,
+                sleep_ms: (raw.sleep_ms as number | undefined) ?? null,
+              };
+            },
+            isBlocked: () => emu.is_blocked(),
+            isPauseRequested: () => pauseRequested,
+            currentEpoch: () => runEpoch,
+            onChunk: bumpFrame,
+            onHeartbeat: postHeartbeat,
+          },
+          msg.maxSteps,
+          { heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS },
+        );
         post({
           id: msg.id,
           kind: "ok",
-          value: { runResult: lastResult, snapshot: snapshot() },
+          value: { runResult, snapshot: snapshot() },
         });
         return;
       }
@@ -223,7 +181,17 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
       case "pushStdin": {
         await ensureWasm();
         const emu = require_emulator();
-        emu.push_stdin(msg.text);
+        // A line the student typed at a prompt is echoed by the machine at
+        // consume time, so the transcript reads like a cooked-mode terminal.
+        // A redirect never echoes, and neither does an older wasm build --
+        // it falls back to the silent queue instead of crashing the worker.
+        const interactive = (emu as { push_stdin_interactive?: (s: string) => void })
+          .push_stdin_interactive;
+        if (msg.interactive && typeof interactive === "function") {
+          interactive.call(emu, msg.text);
+        } else {
+          emu.push_stdin(msg.text);
+        }
         bumpFrame();
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
@@ -452,24 +420,6 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
   }
 });
 
-/// Whether an error means the wasm instance is unusable from here on.
-/// Assemble and runtime diagnostics arrive through the same catch and are
-/// entirely normal -- treating those as fatal would throw away the
-/// student's registers, console and VFS on a typo. Only the signatures
-/// that mean the guard is latched or the module trapped count.
-function isDeadInstance(e: unknown): boolean {
-  if (typeof WebAssembly !== "undefined" && e instanceof WebAssembly.RuntimeError) {
-    return true;
-  }
-  const message = e instanceof Error ? e.message : String(e);
-  return (
-    message.includes("recursive use of an object") ||
-    message.includes("already borrowed") ||
-    message.includes("null pointer passed to rust") ||
-    message.includes("unreachable executed")
-  );
-}
-
 function require_emulator(): Emulator {
   if (!emulator) {
     throw new Error("emulator not initialized; send `init` first");
@@ -529,6 +479,15 @@ function snapshot(): StateSnapshot {
   // arrive (versus polling the full buffer each frame).
   const stdoutDelta = emulator.take_stdout();
   const stderrDelta = emulator.take_stderr();
+  // Optional display counters, feature-detected like every other surface:
+  // absent on an older cached WASM, and the web then keeps its scrollback
+  // append-only exactly as before.
+  const emulatorSeen = emulator as unknown as {
+    stdout_seen?: () => number;
+    stderr_seen?: () => number;
+  };
+  const stdoutSeen = emulatorSeen.stdout_seen?.();
+  const stderrSeen = emulatorSeen.stderr_seen?.();
   const exit = emulator.get_exit_code();
   return {
     frame,
@@ -545,6 +504,8 @@ function snapshot(): StateSnapshot {
     canStepBack: emulator.can_step_back(),
     stdoutDelta,
     stderrDelta,
+    ...(stdoutSeen != null ? { stdoutSeen } : {}),
+    ...(stderrSeen != null ? { stderrSeen } : {}),
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
     wantsTerminal,

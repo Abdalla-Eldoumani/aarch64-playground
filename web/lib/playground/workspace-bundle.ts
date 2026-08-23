@@ -7,7 +7,7 @@
  */
 
 import { MAX_WORKSPACE_FILES, validateSource } from "@/lib/playground/upload-guard";
-import type { SourceFile } from "@/lib/playground/file-map";
+import { fileNameShapeError, type SourceFile } from "@/lib/playground/file-map";
 
 /** Shape of a `.json` workspace bundle: the whole files strip, main first. */
 export interface WorkspaceBundle {
@@ -50,9 +50,17 @@ export function readWorkspaceBundle(
       return { ok: false, error: "that workspace bundle has a malformed file" };
     }
     const { name, body } = entry as { name?: unknown; body?: unknown };
-    if (typeof name !== "string" || name.trim().length === 0 || typeof body !== "string") {
+    if (typeof name !== "string" || typeof body !== "string") {
       return { ok: false, error: "that workspace bundle has a malformed file" };
     }
+    // The name rides into the files strip and into combineSources' boundary
+    // comment, so it is checked as strictly as the body. Only the SHAPE
+    // rule applies here: a bundle carries the whole workspace, main.asm
+    // included, which validateFileName refuses by design.
+    // The reason stands alone: echoing the rejected name back into a toast
+    // would put the very bytes we refused on the screen.
+    const nameError = fileNameShapeError(name);
+    if (nameError) return { ok: false, error: nameError };
     const bodyError = validateSource(body);
     if (bodyError) return { ok: false, error: `${name}: ${bodyError}` };
     files.push({ name: name.trim(), body });

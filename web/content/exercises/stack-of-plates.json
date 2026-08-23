@@ -1,0 +1,33 @@
+{
+  "title": "stack of plates",
+  "slug": "stack-of-plates",
+  "order": 25,
+  "topic": "memory",
+  "difficulty": "core",
+  "prompt": "Four plates go into the frame, and they come back out top-first: store `21`, `34`, `55`, `89` into the four named stack slots, then load and print them in reverse order.\n\nThe starter's frame is already sized with the course's alignment formula, and each slot has a named offset. Your job is the `str`s going in and the `ldr`s coming out; the printing order is what makes it a stack.\n\n## what is checked\n\n- four lines: `89`, `55`, `34`, `21`\n- the program exits cleanly\n- the values make a round trip through memory (`str` and `ldr` both present)",
+  "starter": "// store four plates in the frame, then take them back top-first\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(plate_r, x19)\n\np1_s = 16                                   // bottom plate's offset\np2_s = 24\np3_s = 32\np4_s = 40                                   // top plate's offset\nalloc = -(16 + 32) & -16\ndealloc = -alloc\n\n        .data\nfmt:    .string \"%lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        // TODO: store 21, 34, 55, and 89 into the four frame slots\n        // (str to [fp, p1_s] through [fp, p4_s]), then load them back\n        // in the opposite order and print each one, so the last plate\n        // stored is the first plate printed.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+  "args": "",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "89\n55\n34\n21\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "str"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "ldr"
+      }
+    ]
+  }
+}

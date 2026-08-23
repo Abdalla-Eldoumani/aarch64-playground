@@ -22,7 +22,7 @@
 
   --text-primary:   #EDEEF1;
   --text-secondary: #A5ACB6;
-  --text-tertiary:  #79808B; /* 4.5:1 on the base, band, and raised surfaces */
+  --text-tertiary:  #858D99; /* 4.5:1 on every dark surface, --bg-elevated included */
 
   --amber:          #FFB224;  /* execution: pc, current line, run, decode-strip Rd */
   --amber-dim:      #7A5510;
@@ -76,14 +76,18 @@
   --text-secondary: #565E68;
   --text-tertiary:  #626A73; /* 4.5:1 on every light surface incl. --bg-elevated hover */
 
-  --amber:          #A86A0F;
+  /* The three state hues sit darker than their dark-theme cousins on
+     purpose: as text they must clear 4.5:1 on every light surface AND on
+     their own 10-15% tint bands (the quiz chips, callouts, and the
+     current-instruction row are the worst cases). */
+  --amber:          #81520C;
   --amber-dim:      #E7CD96;
   --cyan:           #0E7490;
   --cyan-dim:       #9AD3DF;
   --on-cyan:        #FFFFFF;
 
-  --success:        #1F8A3B;
-  --warning:        #B26A00;
+  --success:        #186A2D;
+  --warning:        #8D5400;
   --danger:         #C2362F;
   --changed:        #8A5700;
 
@@ -243,8 +247,9 @@ body {
 }
 
 /* Motion. Each animation is opt-in via a class so existing layout is
-   untouched; `prefers-reduced-motion` strips them so screen-reader and
-   vestibular-sensitive users see static UI. */
+   untouched; `prefers-reduced-motion` strips every one except the block
+   caret (see its own comment below: native carets blink under reduced
+   motion too), so vestibular-sensitive users see static UI. */
 @keyframes step-pop {
   0%   { transform: scale(1); }
   35%  { transform: scale(1.15); }
@@ -581,4 +586,14 @@ body {
    at AAA against the near-black track. */
 [data-theme="high-contrast"] ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
+}
+
+/* Forced colors (Windows High Contrast). The focus ring everywhere else is
+   a box-shadow, which forced-colors mode strips, so focus would be
+   invisible; a real outline in the system Highlight color survives. */
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
 }

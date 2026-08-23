@@ -242,16 +242,25 @@ bytes arrive.
 ## Worker layer
 
 The WASM module runs in a Web Worker by default so tight run loops do not
-freeze the UI. The boundary is three files in
+freeze the UI. The boundary is four files in
 [`web/lib/worker/`](../web/lib/worker/): `protocol.ts` (message types),
 `emulator.worker.ts` (worker entry, instantiates the emulator and
-forwards messages), and `client.ts` (`WorkerClient`, which implements
-`EmulatorBackend` over the message channel).
+forwards messages), `client.ts` (`WorkerClient`, which implements
+`EmulatorBackend` over the message channel), and `dead-instance.ts` (the
+classifier deciding whether a thrown error left the wasm instance
+unusable).
 
 `pickBackend()` in [`web/lib/emulator/backend.ts`](../web/lib/emulator/backend.ts) returns a
 `WorkerClient` when `Worker` exists, otherwise a `MainThreadBackend`
 wrapping the emulator directly. Force the main thread with
 `localStorage["aarch64-playground:backend"] = "main"`.
+
+Both hosts drive the same chunked run loop,
+[`web/lib/emulator/run-loop.ts`](../web/lib/emulator/run-loop.ts): it runs
+the program in 10,000-step chunks, yields after each one, and reads the
+pause flag and the machine generation right after every yield. Each host
+supplies only what is genuinely its own -- how a chunk's wasm record is
+coerced, where a mid-run snapshot goes, and how often one is emitted.
 
 ## Security gates
 

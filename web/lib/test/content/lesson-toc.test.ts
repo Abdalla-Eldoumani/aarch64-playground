@@ -78,10 +78,13 @@ describe("extractToc", () => {
     expect(toc.some((e) => e.text === "nope")).toBe(false);
   });
 
-  test("every id equals slugify(text)", () => {
-    for (const entry of toc) {
-      expect(entry.id).toBe(slugify(entry.text));
-    }
+  test("anchors each heading at the id its text spells out", () => {
+    expect(toc.map((e) => e.id)).toEqual([
+      "first-section",
+      "sub-a",
+      "the-mov-instruction",
+      "details",
+    ]);
   });
 
   test("a formatted heading slugifies to the stripped, kebab id", () => {
@@ -102,7 +105,6 @@ describe("extractToc with links, images, and fenced code", () => {
     expect(toc).toHaveLength(1);
     expect(toc[0].text).toBe("see the docs");
     expect(toc[0].id).toBe("see-the-docs");
-    expect(toc[0].id).toBe(slugify("see the docs"));
   });
 
   test("keeps an image heading's alt text and drops the url", () => {

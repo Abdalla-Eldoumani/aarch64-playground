@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 // Holder for the value `spawnEmulatorWorker` returns. The hoisted mock reads
 // it lazily so each test decides whether a worker is "available".
-const h = vi.hoisted(() => ({ worker: null as unknown }));
+const h = vi.hoisted(() => ({
+  worker: null as unknown,
+  // What the fake wrapper reports for the display counters. Null is the
+  // older-wasm answer the wrapper gives when the export is missing.
+  seen: { stdout: 12 as number | null, stderr: 3 as number | null },
+}));
 
 vi.mock("@/lib/worker/client", () => ({
   spawnEmulatorWorker: () => h.worker,
@@ -30,6 +35,8 @@ function fakeEmu() {
     canStepBack: () => false,
     takeStdout: () => "",
     takeStderr: () => "",
+    stdoutSeen: () => h.seen.stdout,
+    stderrSeen: () => h.seen.stderr,
     listVfsFiles: () => [],
     listStates: () => [],
     takeDirtyAddrs: () => [],
@@ -61,6 +68,7 @@ afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
   h.worker = null;
+  h.seen = { stdout: 12, stderr: 3 };
 });
 
 describe("pickBackend", () => {
@@ -129,5 +137,26 @@ describe("MainThreadBackend pause parity", () => {
     // never-halting machine it runs its full budget.
     const { runResult } = await backend.runUntilBreak(30_000);
     expect(runResult.steps_executed).toBe(30_000);
+  });
+});
+
+describe("MainThreadBackend display counters", () => {
+  test("the snapshot carries the machine's counters when the wrapper reports them", async () => {
+    setPref("main");
+    const backend = pickBackend()!;
+    const snap = await backend.init();
+    expect(snap.stdoutSeen).toBe(12);
+    expect(snap.stderrSeen).toBe(3);
+  });
+
+  test("an older wasm build leaves both keys off the snapshot entirely", async () => {
+    h.seen = { stdout: null, stderr: null };
+    setPref("main");
+    const backend = pickBackend()!;
+    const snap = await backend.init();
+    // Absent, not zero: a zero would read as "the machine has printed
+    // nothing" and unprint the whole transcript on the next snapshot.
+    expect("stdoutSeen" in snap).toBe(false);
+    expect("stderrSeen" in snap).toBe(false);
   });
 });

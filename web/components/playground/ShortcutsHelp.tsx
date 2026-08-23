@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { CREDIBILITY } from "@/lib/content/site";
 
 export interface Shortcut {
   keys: string;
@@ -55,6 +56,11 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
             </div>
           ))}
         </dl>
+        {/* The playground renders no footer, so this modal carries the
+            course-context disclaimer the other routes state there. */}
+        <p className="mt-3 border-t border-[var(--border)] pt-2 text-[10px] leading-relaxed text-[var(--text-tertiary)]">
+          {CREDIBILITY.disclaimer}
+        </p>
         <div className="mt-4 text-right">
           <button
             type="button"

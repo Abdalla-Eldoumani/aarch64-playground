@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { parseAddress } from "@/lib/emulator/parse-address";
+import { formatByte, formatWord32 } from "@/lib/emulator/format-hex";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:memory-watches";
 
@@ -12,10 +14,9 @@ export interface MemoryWatch {
 }
 
 function load(): MemoryWatch[] {
-  if (typeof window === "undefined") return [];
+  const raw = safeGetItem(STORE_KEY);
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (
       Array.isArray(parsed) &&
@@ -36,20 +37,13 @@ function load(): MemoryWatch[] {
 }
 
 function persist(entries: MemoryWatch[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(entries));
-  } catch {
-    // ignore
-  }
+  safeSetItem(STORE_KEY, JSON.stringify(entries));
 }
 
 /** Strict address parse: `0x...` is hex, bare digits are decimal, anything
  *  else is rejected so a typo never silently reads the wrong bytes. */
 function hexRow(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join(" ");
+  return Array.from(bytes).map(formatByte).join(" ");
 }
 
 function asciiRow(bytes: Uint8Array): string {
@@ -87,6 +81,9 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
     }
     setAddError(null);
     const entry: MemoryWatch = {
+      // A fallback NAME, not the padded address readout beside it: the short
+      // form echoes what the student typed, and padding it would print the
+      // same string twice on one row.
       label: label.trim() || `0x${parsed.toString(16)}`,
       addr: parsed,
       length,
@@ -167,7 +164,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
                 <div className="flex items-center justify-between">
                   <span className="text-[var(--text-primary)]">{w.label}</span>
                   <span className="text-[var(--text-secondary)] text-[10px]">
-                    0x{w.addr.toString(16).padStart(8, "0")} +{w.length}
+                    {formatWord32(w.addr)} +{w.length}
                   </span>
                   <button
                     type="button"

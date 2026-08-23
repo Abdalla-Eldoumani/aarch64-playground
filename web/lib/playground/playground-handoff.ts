@@ -1,7 +1,7 @@
 "use client";
 
 import { parseDeepLink, resolveExampleStem } from "@/lib/hooks/use-deep-link";
-import type { SourceFile } from "@/lib/playground/file-map";
+import { validateFileName, type SourceFile } from "@/lib/playground/file-map";
 import { readShareHash } from "@/lib/playground/share";
 import {
   MAX_VFS_BYTES,
@@ -206,7 +206,7 @@ const STEM_PATTERN = /^[\w.-]+$/;
 /** Most VFS files any one example may seed. */
 export const MAX_VFS_FIXTURE_FILES = 16;
 /** Longest VFS file name an example fixture may declare. */
-export const MAX_VFS_FIXTURE_NAME_CHARS = 128;
+const MAX_VFS_FIXTURE_NAME_CHARS = 128;
 
 /**
  * Which examples carry input fixtures (`<stem>.args`, `<stem>.stdin`,
@@ -407,6 +407,15 @@ export async function fetchExample(stem: string): Promise<HandoffPayload> {
 
   const extraNames = EXAMPLE_FILES[stem];
   if (extraNames) {
+    // Names checked before a single fetch goes out: each one is pasted into
+    // a URL path and then into combineSources' `// ---- name ----` marker,
+    // so a name outside the file-name shape is undeliverable, not repaired.
+    const seen: SourceFile[] = [];
+    for (const name of extraNames) {
+      const nameError = validateFileName(name, seen);
+      if (nameError) throw new Error(`example file: ${nameError}`);
+      seen.push({ name, body: "" });
+    }
     payload.files = await Promise.all(
       extraNames.map(async (name) => {
         const fileRes = await fetch(`${EXAMPLES_PREFIX}${stem}/${name}`);

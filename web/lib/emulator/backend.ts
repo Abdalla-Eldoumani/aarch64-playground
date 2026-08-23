@@ -6,6 +6,7 @@ import {
   type EmulatorInstance,
 } from "@/lib/emulator/emulator";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
+import { runChunked } from "@/lib/emulator/run-loop";
 import {
   emptyStateSnapshot,
   type AssembleResultPayload,
@@ -14,6 +15,7 @@ import {
   type StepResultPayload,
 } from "@/lib/worker/protocol";
 import { spawnEmulatorWorker } from "@/lib/worker/client";
+import { safeGetItem } from "@/lib/playground/safe-storage";
 
 /**
  * Async surface every emulator backend exposes. WorkerBackend serves
@@ -34,7 +36,9 @@ export interface EmulatorBackend {
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }>;
   pause(): Promise<void>;
   reset(): Promise<StateSnapshot>;
-  pushStdin(text: string): Promise<StateSnapshot>;
+  /** Queue stdin. `interactive` is a line typed at a prompt: the machine
+   *  echoes it into stdout as a read consumes it. A redirect leaves it off. */
+  pushStdin(text: string, interactive?: boolean): Promise<StateSnapshot>;
   /** Signal end-of-input (ctrl-d / a fully-queued redirect). */
   closeStdin(): Promise<StateSnapshot>;
   /** Pause/resume the step-back snapshot ring (live terminal sessions:
@@ -145,64 +149,27 @@ class MainThreadBackend implements EmulatorBackend {
     maxSteps: number,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
     const emu = this.requireEmu();
-    const epoch = this.runEpoch;
     this.pauseRequested = false;
-    // Run in chunks so we can yield to the UI thread between batches
-    // and emit snapshots that look like worker heartbeats.
-    const HEARTBEAT_STEPS = 10_000;
-    let totalSteps = 0;
-    let lastResult: RunResultPayload = {
-      pc: 0,
-      halted: false,
-      steps_executed: 0,
-      hit_breakpoint: false,
-      error: null,
-    };
-    while (totalSteps < maxSteps) {
-      const remaining = Math.min(HEARTBEAT_STEPS, maxSteps - totalSteps);
-      const raw = emu.runUntilBreak(remaining);
-      lastResult = raw;
-      totalSteps += raw.steps_executed;
-      this.frame++;
-      this.notify(this.snapshot());
-      if (raw.error || raw.halted || raw.hit_breakpoint) break;
-      // A nanosleep pause belongs to the driver, mirroring the worker.
-      if (raw.sleep_ms != null) break;
-      if (emu.isBlocked()) break;
-      // Anti-wedge guard, mirroring the worker: a chunk that executed
-      // zero steps while the machine claims to be neither halted,
-      // blocked, nor at a breakpoint can only repeat forever.
-      if (raw.steps_executed === 0) {
-        lastResult = {
-          ...raw,
-          error:
-            "the emulator made no progress and was stopped; this is a playground bug -- use 'copy diagnostic bundle' to report it",
-        };
-        break;
-      }
-      // Yield to the UI thread between chunks so panels paint. It is
-      // also where a reset/assemble can land; a stale run stands down.
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      if (this.pauseRequested) break;
-      if (epoch !== this.runEpoch) {
-        lastResult = { ...lastResult, cancelled: true };
-        break;
-      }
-    }
-    lastResult = {
-      ...lastResult,
-      steps_executed: totalSteps,
-      // Mirror the worker: a budget-only stop must say so, or an
-      // infinite loop reads as a clean finish.
-      step_limit_reached:
-        totalSteps >= maxSteps &&
-        !lastResult.halted &&
-        !lastResult.hit_breakpoint &&
-        !lastResult.error &&
-        lastResult.sleep_ms == null &&
-        !emu.isBlocked(),
-    };
-    return { runResult: lastResult, snapshot: this.snapshot() };
+    const runResult = await runChunked(
+      {
+        // The typed wrapper already coerced the wasm record.
+        runChunk: (steps) => emu.runUntilBreak(steps),
+        isBlocked: () => emu.isBlocked(),
+        isPauseRequested: () => this.pauseRequested,
+        currentEpoch: () => this.runEpoch,
+        onChunk: () => {
+          this.frame++;
+        },
+        // In process, a heartbeat is a direct listener call rather than a
+        // postMessage, so it rides every chunk instead of a pace.
+        onHeartbeat: () => this.notify(this.snapshot()),
+      },
+      maxSteps,
+    );
+    // Through notifyAndReturn like every other operation here: the hub
+    // reads run state from snapshot events, and on the worker path the
+    // client already fans the response snapshot out the same way.
+    return this.notifyAndReturn({ runResult, snapshot: this.snapshot() });
   }
 
   async pause(): Promise<void> {
@@ -220,8 +187,8 @@ class MainThreadBackend implements EmulatorBackend {
     return this.notifyAndReturn(this.snapshot());
   }
 
-  async pushStdin(text: string): Promise<StateSnapshot> {
-    this.requireEmu().pushStdin(text);
+  async pushStdin(text: string, interactive = false): Promise<StateSnapshot> {
+    this.requireEmu().pushStdin(text, interactive);
     this.frame++;
     return this.notifyAndReturn(this.snapshot());
   }
@@ -339,6 +306,10 @@ class MainThreadBackend implements EmulatorBackend {
       return emptyStateSnapshot(this.frame);
     }
     const regs = this.emu.getAllRegisters();
+    // Feature-detected display counters: null on an older wasm build, and
+    // the key then stays off the snapshot so the hub skips the unprint.
+    const stdoutSeen = this.emu.stdoutSeen();
+    const stderrSeen = this.emu.stderrSeen();
     return {
       frame: this.frame,
       registers: regs.gpr,
@@ -354,6 +325,8 @@ class MainThreadBackend implements EmulatorBackend {
       canStepBack: this.emu.canStepBack(),
       stdoutDelta: this.emu.takeStdout(),
       stderrDelta: this.emu.takeStderr(),
+      ...(stdoutSeen != null ? { stdoutSeen } : {}),
+      ...(stderrSeen != null ? { stderrSeen } : {}),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       wantsTerminal: this.emu.wantsTerminal(),
@@ -393,16 +366,7 @@ function looksLikeSnapshot(v: unknown): boolean {
  * - any other value (or absent) -> worker if available, else main-thread.
  */
 export function pickBackend(): EmulatorBackend {
-  const force =
-    typeof window !== "undefined"
-      ? (() => {
-          try {
-            return window.localStorage.getItem("aarch64-playground:backend");
-          } catch {
-            return null;
-          }
-        })()
-      : null;
+  const force = safeGetItem("aarch64-playground:backend");
   if (force === "main") {
     return new MainThreadBackend();
   }

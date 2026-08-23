@@ -14,6 +14,7 @@ import {
   signBit,
   truncate,
 } from "@/lib/asm/base-convert";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:base-converter";
 
@@ -21,10 +22,9 @@ const STORE_KEY = "aarch64-playground:base-converter";
 // watches do: the student converts mid-step, checks memory, and comes back.
 function loadInitial(): { width: Width; bits: bigint } {
   const fallback = { width: 32 as Width, bits: 0n };
-  if (typeof window === "undefined") return fallback;
+  const raw = safeGetItem(STORE_KEY);
+  if (!raw) return fallback;
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
-    if (!raw) return fallback;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return fallback;
     const width = WIDTHS.find((w) => w === (parsed as { width?: unknown }).width);
@@ -75,14 +75,8 @@ export function BaseConverter({ className = "" }: { className?: string }) {
   const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        STORE_KEY,
-        JSON.stringify({ width, hex: formatHex(bits, width) }),
-      );
-    } catch {
-      // storage full or blocked; the widget still works, it just won't persist
-    }
+    // storage full or blocked: the widget still works, it just won't persist
+    safeSetItem(STORE_KEY, JSON.stringify({ width, hex: formatHex(bits, width) }));
   }, [bits, width]);
 
   const onFieldChange = useCallback(

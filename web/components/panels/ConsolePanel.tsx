@@ -22,7 +22,13 @@ interface ConsolePanelProps {
   terminalOwnedFrom?: number | null;
   exitCode: number | null;
   vfsFiles: string[];
-  pushStdin: (s: string) => void;
+  /** Queue stdin. The second argument marks a line typed at a prompt, which
+   *  the machine echoes into the transcript as a read consumes it. */
+  pushStdin: (s: string, interactive?: boolean) => void;
+  /** Whether a typed line is echoed into the transcript. The checker
+   *  chrome turns this off: its fast path grades the live stdout, and an
+   *  echoed byte there would fail a correct program's `equals` check. */
+  echoStdin?: boolean;
   /** Signal end-of-input (wired to ctrl-d in the stdin box). */
   closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
@@ -44,6 +50,7 @@ export function ConsolePanel({
   exitCode,
   vfsFiles,
   pushStdin,
+  echoStdin = true,
   closeStdin,
   uploadVfsFile,
   clearConsole,
@@ -94,8 +101,11 @@ export function ConsolePanel({
       console.warn(`rejected over-cap stdin: ${error}`);
       return;
     }
-    // Always terminate with a newline so scanf / read block releases.
-    pushStdin(stdinValue + "\n");
+    // Always terminate with a newline so scanf / read block releases. Typed
+    // at a prompt, so the machine echoes it back into the transcript: the
+    // console then reads "Enter score 1: 10", like the terminal pane and
+    // like a real cooked-mode tty. The checker chrome opts out.
+    pushStdin(stdinValue + "\n", echoStdin);
     setStdinValue("");
   };
 

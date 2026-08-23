@@ -25,6 +25,10 @@ export async function fetchStarCount(): Promise<number | null> {
       // An hour: this is chrome, not data, and the unauthenticated rate limit is
       // per requesting ip, so visitors must not each spend a request.
       next: { revalidate: 3600 },
+      // A hanging GitHub must never stall a prerender: this fetch runs inside
+      // the build of every content route, and the catch below already renders
+      // the icon-only fallback on a timeout.
+      signal: AbortSignal.timeout(3000),
     });
     if (!response.ok) return null;
 

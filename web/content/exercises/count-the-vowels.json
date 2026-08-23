@@ -1,0 +1,33 @@
+{
+  "title": "count the vowels",
+  "slug": "count-the-vowels",
+  "order": 26,
+  "topic": "strings",
+  "difficulty": "core",
+  "prompt": "A sentence lives in `.data` (a famous one: it uses every letter of the alphabet). Count its vowels.\n\nStrings are just bytes ending in a zero. Load one byte at a time with `ldrb`, stop at the terminator, and bump the count for every `a`, `e`, `i`, `o`, or `u`. Character literals like `'a'` work directly in `cmp`, and the post-indexed form `ldrb wX, [ptr], 1` loads and advances the pointer in one instruction.\n\n## what is checked\n\n- the vowel count is printed on its own line\n- the program exits cleanly\n- the walk is byte by byte (`ldrb` present, count not written in)",
+  "starter": "// count the vowels in a sentence\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(ptr_r, x19)\ndefine(count_r, x20)\ndefine(ch_r, w21)\n\n        .data\nsentence:   .string \"the quick brown fox jumps over the lazy dog\"\nfmt:        .string \"vowels = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     ptr_r, =sentence            // walk this byte by byte\n        mov     count_r, 0\n\n        // TODO: load one byte at a time with ldrb, stopping at the\n        // string's terminating zero. Count every a, e, i, o, and u.\n        // Compare against character literals like 'a' directly.\n\n        ldr     x0, =fmt\n        mov     x1, count_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "vowels = 11\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "ldrb"
+      },
+      {
+        "kind": "forbids-literal",
+        "value": 11
+      }
+    ]
+  }
+}

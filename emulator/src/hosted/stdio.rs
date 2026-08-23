@@ -40,7 +40,7 @@ fn fd_of(ctx: &HostContext<'_>, handle: u64) -> Option<u32> {
         return None;
     }
     let rel = handle - FILE_HANDLE_BASE;
-    if rel % FILE_HANDLE_STRIDE != 0 {
+    if !rel.is_multiple_of(FILE_HANDLE_STRIDE) {
         return None;
     }
     let fd = u32::try_from(rel / FILE_HANDLE_STRIDE).ok()?;

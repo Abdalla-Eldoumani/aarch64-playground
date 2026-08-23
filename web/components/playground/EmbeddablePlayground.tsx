@@ -10,20 +10,17 @@ import {
   useState,
 } from "react";
 import { useEmulator } from "@/lib/emulator/use-emulator";
-import { useBreakpoint, isAtLeast } from "@/lib/hooks/use-breakpoint";
+import { useBreakpoint } from "@/lib/hooks/use-breakpoint";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
-import {
-  EXAMPLE_INTERACTIVE,
-  decodeLaunch,
-  legacyModeArgsFor,
-  modeArgsFor,
-  type HandoffPayload,
-  type LaunchMode,
-} from "@/lib/playground/playground-handoff";
+import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
+import { formatByte, formatWord64 } from "@/lib/emulator/format-hex";
+import type { DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
 import { parseArgs } from "@/lib/playground/args";
 import { formatAsm } from "@/lib/asm/asm-formatter";
 import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
+import { useAutoplay } from "@/lib/playground/use-autoplay";
+import { useLaunchMode } from "@/lib/playground/use-launch-mode";
 import { useWorkingSet } from "@/lib/playground/use-working-set";
 import { useTerminalDrive } from "@/lib/playground/use-terminal-drive";
 import { createTerminalContext } from "@/lib/playground/terminal-context";
@@ -40,14 +37,14 @@ import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { Controls } from "@/components/playground/Controls";
 import { DecodeStrip } from "@/components/panels/DecodeStrip";
 import { FirstRunState } from "@/components/playground/FirstRunState";
-import { ExampleLoader } from "@/components/playground/ExampleLoader";
-import { RunModeControl } from "@/components/playground/RunModeControl";
-import { RecentPrograms } from "@/components/playground/RecentPrograms";
-import { ResizableLayout } from "@/components/playground/ResizableLayout";
-import { MobileLayout } from "@/components/playground/MobileLayout";
-import { ImportExport } from "@/components/playground/ImportExport";
-import { Toolbar } from "@/components/playground/Toolbar";
-import { ArgsInput } from "@/components/playground/ArgsInput";
+import { EmbedLayout } from "@/components/playground/EmbedLayout";
+import { FullLayout } from "@/components/playground/FullLayout";
+import { PlaygroundHeaderBand } from "@/components/playground/PlaygroundHeaderBand";
+import {
+  RightTabs,
+  type DebugPanes,
+  type RightTab,
+} from "@/components/playground/RightTabs";
 import {
   MultiFileTabs,
   combineSources,
@@ -80,12 +77,7 @@ import {
   type Workspace,
 } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
-
-// Persisted beside the files strip so a reloaded workspace remembers which
-// surface owns the pane at run press. The key name predates the mode having
-// two spellings: it still holds the "1" / "0" a returning student's browser
-// wrote, which decodeLaunch reads unchanged.
-const LAUNCH_MODE_KEY = "aarch64-playground:terminal-program";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 /**
  * The single shared emulator surface. The full playground, the landing
@@ -188,17 +180,6 @@ function joinClasses(...parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ");
 }
 
-/** The right-hand tab strip's panes, in the order the strip renders them. */
-type RightTab =
-  | "memory"
-  | "stack"
-  | "console"
-  | "term"
-  | "watches"
-  | "convert"
-  | "memwatch"
-  | "saves";
-
 // One naming rule for every recents entry: the program's first comment
 // line, or a timestamped snippet label when it has none.
 function nameForRecents(source: string): string {
@@ -210,12 +191,6 @@ function nameForRecents(source: string): string {
     ? firstComment.replace(/^(?:\/\/|;)\s*/, "").slice(0, 48)
     : `snippet ${new Date().toLocaleTimeString()}`;
 }
-
-// Autoplay cadence for the landing hero: a short step interval so the register
-// flash and the pc marker read clearly, and a hard ceiling so the walk stays
-// bounded regardless of the host-supplied step count.
-const AUTOPLAY_STEP_MS = 450;
-const AUTOPLAY_MAX_STEPS = 10;
 
 // ---------------------------------------------------------------------------
 // Inner core: mounted only after the lazy trigger fires, so the hub (and the
@@ -295,79 +270,16 @@ function EmbeddableCore({
   } | null>(null);
   // Who owns the pane when this program's run is pressed: a live terminal
   // session (the visualizer example, or the student's own choice) or the
-  // classic console flow. Persisted beside the files strip so a reloaded
-  // workspace keeps the takeover.
-  const [launchMode, setLaunchModeState] = useState<LaunchMode>(() => {
-    if (typeof window === "undefined") return "console";
-    try {
-      return decodeLaunch(window.localStorage.getItem(LAUNCH_MODE_KEY));
-    } catch {
-      return "console";
-    }
-  });
-  // Read by the blocked-jump effect, which must not re-subscribe.
-  const launchModeRef = useRef<LaunchMode>("console");
-  const setLaunchMode = useCallback((next: LaunchMode) => {
-    launchModeRef.current = next;
-    setLaunchModeState(next);
-    try {
-      window.localStorage.setItem(LAUNCH_MODE_KEY, next);
-    } catch {
-      // storage full or blocked; the mode just won't survive a reload
-    }
-  }, []);
-  // The example this workspace came from, when it came from one. The
-  // run-mode control is offered for exactly the stems that have a real
-  // answer to the question; a hand-written buffer has none, so it stays
-  // null and the header band is the one every other program sees.
-  const [loadedStem, setLoadedStem] = useState<string | null>(null);
-  // The args the loaded payload carried. With the mode's two seeded forms
-  // it is the third value that still counts as a clean args box, so a
-  // fixture-seeded program keeps following the mode until the student types
-  // something of their own.
-  const payloadArgsRef = useRef("");
-  // The run-mode control moves the args box too, for the examples that wear
-  // a different face per surface. It stops at the student: a box edited to
-  // anything the app did not put there is theirs, in either mode.
-  const handleLaunchModeChange = useCallback(
-    (next: LaunchMode) => {
-      setLaunchMode(next);
-      const seeded = modeArgsFor(loadedStem, next);
-      if (seeded == null) return;
-      const clean =
-        argsText === "" ||
-        argsText === modeArgsFor(loadedStem, "console") ||
-        argsText === payloadArgsRef.current;
-      if (clean) setArgsText(seeded);
-    },
-    [argsText, loadedStem, setLaunchMode],
-  );
-  // The console face used to seed `./<stem> console`; the emulator now
-  // owns argv[0], so that stored box would hand the program an extra
-  // argument and land it on its usage path. Migrate that exact string --
-  // whichever ingress restored it -- and leave every other box alone.
-  useEffect(() => {
-    if (argsText !== "" && argsText === legacyModeArgsFor(loadedStem)) {
-      setArgsText(modeArgsFor(loadedStem, "console") ?? "");
-    }
-  }, [argsText, loadedStem]);
-  // A text-only swap or an import replaces the program without a payload:
-  // the mode and the stem both belonged to the program that set them, and
-  // a stale mode would send an unrelated program's run to the pane.
-  const resetLaunch = useCallback(() => {
-    setLaunchMode("console");
-    setLoadedStem(null);
-  }, [setLaunchMode]);
-  useEffect(() => {
-    launchModeRef.current = launchMode;
-  }, [launchMode]);
-  // The terminal mounts lazily on first use and then stays mounted (see
-  // the tab panel below): a live session must survive tab switches.
-  const [termOpened, setTermOpened] = useState(false);
-  useEffect(() => {
-    if (activeTab === "term") setTermOpened(true);
-  }, [activeTab]);
-
+  // classic console flow. The hook owns the persistence, the example stem
+  // the mode belongs to, and the args box the two-faced examples move.
+  const {
+    mode: launchMode,
+    modeRef: launchModeRef,
+    offersControl: offersRunMode,
+    changeMode: handleLaunchModeChange,
+    adoptLaunch,
+    reset: resetLaunch,
+  } = useLaunchMode({ args: argsText, setArgs: setArgsText });
   // A share-link boot carries its own workspace: replace the persisted
   // files strip once, before the first assemble can mix the two.
   const startFilesApplied = useRef(false);
@@ -542,23 +454,19 @@ function EmbeddableCore({
       // program at its next assemble.
       setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
-      const launch = payload.launch === "terminal" ? "terminal" : "console";
-      setLaunchMode(launch);
-      setLoadedStem(payload.stem ?? null);
-      // A mode-args example wears a different face per surface, so the mode
-      // owns its args box: the console face takes the token, the terminal
-      // face takes none. That overrides the fixture args the payload
-      // carries (temp-convert declares both), and the payload's own value
-      // is remembered as one of the forms a still-clean box may hold.
-      payloadArgsRef.current = payload.args ?? "";
-      setArgsText(modeArgsFor(payload.stem, launch) ?? payloadArgsRef.current);
+      const launchOwner = payload.launch === "terminal" ? "terminal" : "console";
+      // Adopting the launch settles the args box too: a two-faced example's
+      // mode owns it, and only otherwise does the payload's own value stand.
+      setArgsText(
+        adoptLaunch(payload.stem ?? null, launchOwner, payload.args ?? ""),
+      );
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       // A new program starts on a fresh console; no session owns it yet.
       dropTerminalWatermark();
       setShareBanner(Boolean(payload.fromShare));
       lastRunSourceRef.current = null;
     },
-    [chrome, recent, seedFromPayload, setExtraFiles, setLaunchMode, dropTerminalWatermark],
+    [chrome, recent, seedFromPayload, setExtraFiles, adoptLaunch, dropTerminalWatermark],
   );
 
   // Push the current buffer onto the recent list whenever the user
@@ -672,8 +580,7 @@ function EmbeddableCore({
 
   // The run-mode control is offered for the examples where both surfaces
   // are a real answer; every other program keeps today's header band.
-  const showRunMode =
-    chrome === "full" && loadedStem !== null && EXAMPLE_INTERACTIVE[loadedStem] === true;
+  const showRunMode = chrome === "full" && offersRunMode;
   // Whether the composite launch has somewhere to land: only the terminal
   // mode owns the pane at run press, and only full chrome has a pane.
   const launchable = chrome === "full" && launchMode === "terminal";
@@ -748,57 +655,17 @@ function EmbeddableCore({
     }
   }, [chrome, emu, emu.isLoaded, startStdin]);
 
-  // Autoplay (landing hero only): once the hub is loaded, assemble the start
-  // program and step it a bounded number of times on a timer so the registers
-  // flash and the pc marker advances with no user action. Keyed STRICTLY on
-  // [emu.isLoaded, autoplay]: useEmulator returns a NEW object after every step
-  // (its memo deps include the changing registers/pc), so listing `emu` here
-  // would re-run this effect after the first step, the cleanup would clear the
-  // timer, and the once-per-engage guard would then block any restart -- the
-  // hero would step once and freeze. The hub is read through emuRef (synced
-  // every render above) so the timer survives the per-step re-renders.
-  const hasAutoplayedRef = useRef(false);
-  useEffect(() => {
-    if (!autoplay || !emu.isLoaded || hasAutoplayedRef.current) return;
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
-      return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    hasAutoplayedRef.current = true;
-
-    const steps = Math.max(0, Math.min(autoplaySteps, AUTOPLAY_MAX_STEPS));
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let cancelled = false;
-
-    const walk = async () => {
-      // Assemble directly (not assembleWithHistory) so the hero never pollutes
-      // the recent-programs list, and await it so the steps land on a loaded
-      // program. Read the hub through emuRef so a register re-render cannot
-      // strand the timer on a stale hub. Seeds re-apply after the successful
-      // assemble, the same as every other assemble path.
-      const ok = await emuRef.current.assemble(source, parseArgs(argsText));
-      if (ok) applySeeds();
-      if (cancelled || !ok || steps === 0) return;
-      let stepped = 0;
-      timer = setInterval(() => {
-        emuRef.current.step();
-        stepped += 1;
-        if (stepped >= steps && timer) {
-          clearInterval(timer);
-          timer = null;
-        }
-      }, AUTOPLAY_STEP_MS);
-    };
-    void walk();
-
-    return () => {
-      cancelled = true;
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emu.isLoaded, autoplay]);
+  // Autoplay: the landing hero's hands-off walk. The hub reaches it as
+  // emuRef, never as a render value -- the reason is in the hook.
+  useAutoplay({
+    enabled: Boolean(autoplay),
+    steps: autoplaySteps,
+    machineLoaded: emu.isLoaded,
+    machine: emuRef,
+    source,
+    args: argsText,
+    applySeeds,
+  });
 
   // Mirror exactly the ten outcome fields to the host whenever any of them
   // changes. Keyed only on those fields so unrelated hub churn (breakpoints,
@@ -1084,102 +951,59 @@ function EmbeddableCore({
     );
   }
 
-  // embed / checker: the shared core plus a minimal control set. Full-only
-  // panels (and their code) never load here. The editor / registers / console
-  // arrangement comes from the container-driven embed-grid areas in
-  // globals.css, so each host's own width (a prose measure, a wide hero)
-  // picks the layout rather than the viewport.
+  // embed / checker: the shared core plus a minimal control set. The panels
+  // are built here, from the hub, and handed over as nodes; full-only panels
+  // (and their code) never load on these surfaces at all.
   if (chrome !== "full") {
     return (
-      <div className="embed-layout flex flex-col flex-1 min-h-0">
-        <div className="flex-1 min-h-0 embed-grid">
-          <div className="embed-area-editor min-h-0 min-w-0 flex flex-col">
-            <Editor
-              value={source}
-              onChange={readOnly ? () => {} : setSource}
-              currentLine={emu.currentLine}
-              currentLineInCall={emu.externalCall != null}
-              breakpoints={emu.breakpoints}
-              onToggleBreakpoint={emu.toggleBreakpoint}
-              assemblyErrors={emu.assemblyErrors}
-              lintWarnings={lintWarnings}
-              onCursorChange={setCursor}
-              focusRequest={errorFocus}
-              readOnly={readOnly}
-            />
-          </div>
-          <div className="embed-area-registers min-h-0 min-w-0 overflow-auto">
-            <RegisterPanel
-              registers={emu.registers}
-              changedRegs={emu.changedRegs}
-              sp={emu.sp}
-              pc={emu.pc}
-              nzcv={emu.nzcv}
-            />
-          </div>
-          <div className="embed-area-console min-h-0 min-w-0 overflow-hidden flex flex-col">
-            <ConsolePanel
-              stdout={emu.stdout}
-              stderr={emu.stderr}
-              blocked={emu.blocked}
-              exitCode={emu.exitCode}
-              vfsFiles={emu.vfsFiles}
-              pushStdin={emu.pushStdin}
-              closeStdin={emu.closeStdin}
-              uploadVfsFile={stageVfsFile}
-              clearConsole={emu.clearConsole}
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)]">
-          {showRun && (
-            // Run stays available on a halted machine: runEmbed re-assembles
-            // and restarts, so a finished (or edited) program runs again
-            // without a reset. Only an in-flight run disables it.
-            <button
-              type="button"
-              onClick={() => void runEmbed()}
-              disabled={emu.isRunning}
-              aria-label="run"
-              className="min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-            >
-              run
-            </button>
-          )}
-          {showReset && (
-            <button
-              type="button"
-              onClick={emu.reset}
-              aria-label="reset"
-              className="min-h-[44px] px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-            >
-              reset
-            </button>
-          )}
-          {chrome === "checker" && showCheck && (
-            <button
-              type="button"
-              onClick={() => void checkEmbed()}
-              aria-label="check"
-              className="min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-            >
-              check
-            </button>
-          )}
-          {/* A fault must be visible here too: full chrome surfaces
-              emu.error through Controls, and without this line an embedded
-              run that faults just stops silently. */}
-          {emu.error && (
-            <p
-              role="alert"
-              title={emu.error}
-              className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--danger)]"
-            >
-              {emu.error}
-            </p>
-          )}
-        </div>
-      </div>
+      <EmbedLayout
+        showRun={showRun}
+        showReset={showReset}
+        showCheck={chrome === "checker" && showCheck}
+        isRunning={emu.isRunning}
+        error={emu.error}
+        onRun={() => void runEmbed()}
+        onReset={emu.reset}
+        onCheck={() => void checkEmbed()}
+        editor={
+          <Editor
+            value={source}
+            onChange={readOnly ? () => {} : setSource}
+            currentLine={emu.currentLine}
+            currentLineInCall={emu.externalCall != null}
+            breakpoints={emu.breakpoints}
+            onToggleBreakpoint={emu.toggleBreakpoint}
+            assemblyErrors={emu.assemblyErrors}
+            lintWarnings={lintWarnings}
+            onCursorChange={setCursor}
+            focusRequest={errorFocus}
+            readOnly={readOnly}
+          />
+        }
+        registers={
+          <RegisterPanel
+            registers={emu.registers}
+            changedRegs={emu.changedRegs}
+            sp={emu.sp}
+            pc={emu.pc}
+            nzcv={emu.nzcv}
+          />
+        }
+        console={
+          <ConsolePanel
+            stdout={emu.stdout}
+            stderr={emu.stderr}
+            blocked={emu.blocked}
+            exitCode={emu.exitCode}
+            vfsFiles={emu.vfsFiles}
+            pushStdin={emu.pushStdin}
+            echoStdin={chrome !== "checker"}
+            closeStdin={emu.closeStdin}
+            uploadVfsFile={stageVfsFile}
+            clearConsole={emu.clearConsole}
+          />
+        }
+      />
     );
   }
 
@@ -1257,308 +1081,245 @@ function EmbeddableCore({
         // assembled" line with a brief what-this-is / what-to-press lead.
         <FirstRunState onAssemble={assembleWithHistory} />
       ) : (
-        <InstructionView
-          instructions={emu.instructions}
-          pc={emu.pc}
-          running={emu.isRunning}
-          // Inside a libc call the pc is a trampoline word, which the
-          // listing does not hold; mark and follow the `bl` instead.
-          anchorPc={emu.externalCall?.callSitePc ?? null}
-        />
+        <ErrorBoundary label="disassembly">
+          <InstructionView
+            instructions={emu.instructions}
+            pc={emu.pc}
+            running={emu.isRunning}
+            // Inside a libc call the pc is a trampoline word, which the
+            // listing does not hold; mark and follow the `bl` instead.
+            anchorPc={emu.externalCall?.callSitePc ?? null}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );
 
   const regsBlock = (
-    <div className="h-full flex flex-col">
-      {/* The prominent, always-on decode strip heads the registers column --
-          the beginner's lifeline: the plain-language gloss plus the live
-          bit-field view of the word under the program counter. */}
-      <DecodeStrip
-        source={decodeSource}
-        currentLine={emu.currentLine}
-        encodingHex={
-          emu.instructions.find((instr) => instr.address === emu.pc)?.hex ?? null
-        }
-        externalCall={
-          // A live terminal session steps through libc calls constantly and
-          // its input lands in the terminal pane, so the card's console
-          // wording would be wrong there; the strip reads as it always has.
-          emu.externalCall && !foregroundLive
-            ? { name: emu.externalCall.name, waiting: emu.blocked }
-            : null
-        }
-        sessionStarted={emu.programLoaded}
-      />
-      <ReplayScrubber
-        frames={emu.replayFrames}
-        currentStep={emu.stepCount}
-        onSeek={emu.seekReplay}
-      />
-      <div className="flex-1 min-h-0 overflow-auto">
-        <RegisterPanel
-          registers={emu.registers}
-          changedRegs={emu.changedRegs}
-          fpRegisters={emu.fpRegisters}
-          changedFpRegs={emu.changedFpRegs}
-          sp={emu.sp}
-          pc={emu.pc}
-          nzcv={emu.nzcv}
+    <ErrorBoundary label="registers">
+      <div className="h-full flex flex-col">
+        {/* The prominent, always-on decode strip heads the registers column --
+            the beginner's lifeline: the plain-language gloss plus the live
+            bit-field view of the word under the program counter. */}
+        <DecodeStrip
+          source={decodeSource}
+          currentLine={emu.currentLine}
+          encodingHex={
+            emu.instructions.find((instr) => instr.address === emu.pc)?.hex ?? null
+          }
+          externalCall={
+            // A live terminal session steps through libc calls constantly and
+            // its input lands in the terminal pane, so the card's console
+            // wording would be wrong there; the strip reads as it always has.
+            emu.externalCall && !foregroundLive
+              ? { name: emu.externalCall.name, waiting: emu.blocked }
+              : null
+          }
+          sessionStarted={emu.programLoaded}
         />
+        <ReplayScrubber
+          frames={emu.replayFrames}
+          currentStep={emu.stepCount}
+          onSeek={emu.seekReplay}
+        />
+        <div className="flex-1 min-h-0 overflow-auto">
+          <RegisterPanel
+            registers={emu.registers}
+            changedRegs={emu.changedRegs}
+            fpRegisters={emu.fpRegisters}
+            changedFpRegs={emu.changedFpRegs}
+            sp={emu.sp}
+            pc={emu.pc}
+            nzcv={emu.nzcv}
+          />
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 
+  // Every panel block wraps in its own ErrorBoundary: the blocks mount in
+  // three different layouts, so wrapping at the definition covers them all,
+  // and a tab switch remounts a failed one fresh. The editor stays unwrapped
+  // on purpose; with the buffer surface itself broken, the route-level fault
+  // page is the honest state.
   const memoryBlock = (
-    <MemoryPanel
-      getMemory={emu.getMemory}
-      dirtyAddrs={emu.dirtyAddrs}
-      regions={emu.memoryRegions}
-      sp={emu.sp}
-    />
+    <ErrorBoundary label="memory">
+      <MemoryPanel
+        getMemory={emu.getMemory}
+        dirtyAddrs={emu.dirtyAddrs}
+        regions={emu.memoryRegions}
+        sp={emu.sp}
+      />
+    </ErrorBoundary>
   );
   const stackBlock = (
-    <StackPanel
-      sp={emu.sp}
-      getMemory={emu.getMemory}
-      fp={fpValue}
-      frameSlots={frameSlots}
-    />
+    <ErrorBoundary label="stack">
+      <StackPanel
+        sp={emu.sp}
+        getMemory={emu.getMemory}
+        fp={fpValue}
+        frameSlots={frameSlots}
+      />
+    </ErrorBoundary>
   );
   const consoleBlock = (
-    <ConsolePanel
-      stdout={emu.stdout}
-      stderr={emu.stderr}
-      blocked={emu.blocked}
-      ownedByTerminal={foregroundLive || (launchMode === "terminal" && chrome === "full")}
-      terminalOwnedFrom={terminalOwnedFrom}
-      exitCode={emu.exitCode}
-      vfsFiles={emu.vfsFiles}
-      pushStdin={emu.pushStdin}
-      closeStdin={emu.closeStdin}
-      uploadVfsFile={stageVfsFile}
-      clearConsole={clearConsoleAll}
-    />
+    <ErrorBoundary label="console">
+      <ConsolePanel
+        stdout={emu.stdout}
+        stderr={emu.stderr}
+        blocked={emu.blocked}
+        ownedByTerminal={foregroundLive || (launchMode === "terminal" && chrome === "full")}
+        terminalOwnedFrom={terminalOwnedFrom}
+        exitCode={emu.exitCode}
+        vfsFiles={emu.vfsFiles}
+        pushStdin={emu.pushStdin}
+        closeStdin={emu.closeStdin}
+        uploadVfsFile={stageVfsFile}
+        clearConsole={clearConsoleAll}
+      />
+    </ErrorBoundary>
   );
   const terminalBlock = (
-    <div className="h-full relative">
-      <input
-        ref={terminalUploadRef}
-        type="file"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (!f) return;
-          const sizeError = checkUploadSize(f.size, MAX_VFS_BYTES, "file");
-          if (sizeError) {
-            toast.error(sizeError);
+    <ErrorBoundary label="terminal">
+      <div className="h-full relative">
+        <input
+          ref={terminalUploadRef}
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            const sizeError = checkUploadSize(f.size, MAX_VFS_BYTES, "file");
+            if (sizeError) {
+              toast.error(sizeError);
+              e.target.value = "";
+              return;
+            }
+            f.arrayBuffer().then((buf) => {
+              stageVfsFile(f.name, new Uint8Array(buf));
+            });
             e.target.value = "";
-            return;
-          }
-          f.arrayBuffer().then((buf) => {
-            stageVfsFile(f.name, new Uint8Array(buf));
-          });
-          e.target.value = "";
-        }}
-      />
-      <TerminalPane
-        buildContext={buildTerminalContext}
-        onUploadRequest={() => terminalUploadRef.current?.click()}
-        onRegisterIO={registerTermIO}
-      />
-    </div>
+          }}
+        />
+        <TerminalPane
+          buildContext={buildTerminalContext}
+          onUploadRequest={() => terminalUploadRef.current?.click()}
+          onRegisterIO={registerTermIO}
+        />
+      </div>
+    </ErrorBoundary>
   );
   const watchBlock = (
-    <WatchPanel
-      registers={emu.registers}
-      sp={emu.sp}
-      pc={emu.pc}
-      frameSlots={frameSlots}
-      getMemory={emu.getMemory}
-      getMemoryMapped={emu.getMemoryMapped}
-    />
+    <ErrorBoundary label="watches">
+      <WatchPanel
+        registers={emu.registers}
+        sp={emu.sp}
+        pc={emu.pc}
+        frameSlots={frameSlots}
+        getMemory={emu.getMemory}
+        getMemoryMapped={emu.getMemoryMapped}
+      />
+    </ErrorBoundary>
   );
-  const memWatchBlock = <MemoryWatches getMemory={emu.getMemory} />;
-  const converterBlock = <BaseConverter />;
+  const memWatchBlock = (
+    <ErrorBoundary label="memory watch">
+      <MemoryWatches getMemory={emu.getMemory} />
+    </ErrorBoundary>
+  );
+  const converterBlock = (
+    <ErrorBoundary label="converter">
+      <BaseConverter />
+    </ErrorBoundary>
+  );
   const savesBlock = (
-    <SavesPanel
-      savedStates={emu.savedStates}
-      onSaveState={emu.saveState}
-      onLoadState={emu.loadState}
-      onDeleteState={emu.deleteState}
-      source={source}
-      args={argsText}
-      stepCount={emu.stepCount}
-      onLoadProgram={loadProgram}
-      onRestoreBookmark={emu.restoreBookmark}
-    />
+    <ErrorBoundary label="saves">
+      <SavesPanel
+        savedStates={emu.savedStates}
+        onSaveState={emu.saveState}
+        onLoadState={emu.loadState}
+        onDeleteState={emu.deleteState}
+        source={source}
+        args={argsText}
+        stepCount={emu.stepCount}
+        onLoadProgram={loadProgram}
+        onRestoreBookmark={emu.restoreBookmark}
+      />
+    </ErrorBoundary>
   );
+
+  // The eight machine views as one bundle: the tab strip and the phone
+  // layout each render the same set, so neither has to name them one by one.
+  const panes: DebugPanes = {
+    memory: memoryBlock,
+    stack: stackBlock,
+    console: consoleBlock,
+    terminal: terminalBlock,
+    watches: watchBlock,
+    converter: converterBlock,
+    memwatch: memWatchBlock,
+    saves: savesBlock,
+  };
 
   const rightTabs = (
-    <div className="h-full flex flex-col">
-      <div
-        className="flex flex-wrap border-b border-[var(--border)] bg-[var(--bg-sunken)] overflow-x-auto"
-        role="tablist"
-        aria-label="debug view"
-      >
-        {(["memory", "stack", "console", "term", "watches", "convert", "memwatch", "saves"] as const).map((tab) => {
-          const selected = activeTab === tab;
-          const showDot = tab === "console" && emu.blocked && !selected;
-          return (
-            <button
-              key={tab}
-              id={`right-tab-${tab}`}
-              role="tab"
-              aria-selected={selected}
-              aria-controls={`right-panel-${tab}`}
-              className={`relative min-h-[2.25rem] px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
-                selected
-                  ? "text-[var(--cyan)] border-b border-[var(--cyan)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              }`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab}
-              {showDot && (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-      <div
-        className="flex-1 min-h-0 overflow-hidden"
-        role="tabpanel"
-        id={`right-panel-${activeTab}`}
-        aria-labelledby={`right-tab-${activeTab}`}
-      >
-        {activeTab === "memory" && (
-          <div className="h-full overflow-auto">{memoryBlock}</div>
-        )}
-        {activeTab === "stack" && (
-          <div className="h-full overflow-auto">{stackBlock}</div>
-        )}
-        {activeTab === "console" && (
-          <div className="h-full flex flex-col">{consoleBlock}</div>
-        )}
-        {/* The terminal stays MOUNTED once opened and hides with CSS.
-            Unmounting it disposed xterm and dropped the io registration,
-            so switching to another tab mid-session killed a running
-            program's screen and its input -- the student had to re-run
-            it. `hidden` keeps the DOM node (and the session) alive. */}
-        {termOpened && (
-          <div className={activeTab === "term" ? "h-full" : "hidden"}>
-            {terminalBlock}
-          </div>
-        )}
-        {activeTab === "watches" && (
-          <div className="h-full overflow-auto">{watchBlock}</div>
-        )}
-        {activeTab === "convert" && (
-          <div className="h-full overflow-auto">{converterBlock}</div>
-        )}
-        {activeTab === "memwatch" && (
-          <div className="h-full overflow-auto">{memWatchBlock}</div>
-        )}
-        {activeTab === "saves" && (
-          <div className="h-full overflow-auto">{savesBlock}</div>
-        )}
-      </div>
-    </div>
+    <RightTabs
+      activeTab={activeTab}
+      onSelectTab={setActiveTab}
+      consoleBlocked={emu.blocked}
+      panes={panes}
+    />
   );
 
-  const showResizable = isAtLeast(bp, "lg");
-  const showTablet = !showResizable && isAtLeast(bp, "md");
+  // The bug-report snapshot, built on click rather than per render: it reads
+  // the top of the stack out of the machine, which the toolbar must not have
+  // to hold.
+  const buildDiagnostic = (): DiagnosticBundle => ({
+    source,
+    args: argsText || undefined,
+    stdin: undefined,
+    stdout: emu.stdout || undefined,
+    stderr: emu.stderr || undefined,
+    exitCode: emu.exitCode,
+    registers: emu.registers,
+    sp: emu.sp,
+    pc: formatWord64(emu.pc),
+    stackBytes: (() => {
+      const spNum = Number(BigInt(emu.sp));
+      if (!Number.isFinite(spNum)) return undefined;
+      const top = emu.getMemory(spNum, 64);
+      if (!top.length) return undefined;
+      return Array.from(top).map(formatByte).join(" ");
+    })(),
+    error: emu.error,
+  });
 
   return (
     <>
-      {/* header-band: under sm this row stops wrapping and scrolls within
-          itself, so the editor stays near the top of a phone screen instead
-          of sitting under seven rows of chrome. */}
-      <div className="header-band safe-area-top flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
-        <span className="hidden sm:inline font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
-          aarch64-pg
-        </span>
-        <div className="min-w-0 shrink-0">
-          <ExampleLoader onLoad={loadProgram} />
-        </div>
-        <ImportExport
-          source={source}
-          files={extraFiles}
-          target={importTarget}
-          onImport={handleImport}
-          onImportMany={handleImportMany}
-        />
-        <RecentPrograms
-          entries={recent.entries}
-          // A recent is a program delivery, not a text swap: the machine
-          // resets and the seeds clear, so the previous program's
-          // registers, console, stdin, and VFS cannot show under the
-          // recalled source. The displaced buffer lands in recents.
-          onLoad={(body) => loadProgram({ source: body })}
-          onClear={recent.clear}
-        />
-        <ArgsInput source={source} value={argsText} onChange={setArgsText} />
-        {showRunMode && (
-          <RunModeControl
-            mode={launchMode}
-            onChange={handleLaunchModeChange}
-            // A live session owns the pane; flipping the mode under it
-            // would move the console's ownership badge mid-run.
-            disabled={foregroundLive}
-          />
-        )}
-        <Toolbar
-          className="ml-auto"
-          onShare={() => onOpenShareDialog?.()}
-          onTour={() => setTutorialOpen(true)}
-          onToggleTheme={() => onToggleTheme?.()}
-          buildDiagnostic={() => ({
-            source,
-            args: argsText || undefined,
-            stdin: undefined,
-            stdout: emu.stdout || undefined,
-            stderr: emu.stderr || undefined,
-            exitCode: emu.exitCode,
-            registers: emu.registers,
-            sp: emu.sp,
-            pc: `0x${emu.pc.toString(16).padStart(16, "0")}`,
-            stackBytes: (() => {
-              const spNum = Number(BigInt(emu.sp));
-              if (!Number.isFinite(spNum)) return undefined;
-              const top = emu.getMemory(spNum, 64);
-              if (!top.length) return undefined;
-              return Array.from(top)
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join(" ");
-            })(),
-            error: emu.error,
-          })}
-          onOpenCommandPalette={() => onOpenCommandPalette?.()}
-          sourceLink={
-            <a
-              href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-sans text-[var(--text-secondary)] hover:text-[var(--cyan)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-              aria-label="View source on GitHub"
-            >
-              source
-            </a>
-          }
-        />
-        <button
-          type="button"
-          onClick={() => onOpenShortcutsHelp?.()}
-          className="shrink-0 inline-flex items-center min-h-[36px] text-xs text-[var(--text-secondary)] hover:text-[var(--cyan)] rounded px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-          aria-label="keyboard shortcuts"
-        >
-          ?
-        </button>
-      </div>
+      <PlaygroundHeaderBand
+        onLoadProgram={loadProgram}
+        source={source}
+        files={extraFiles}
+        importTarget={importTarget}
+        onImport={handleImport}
+        onImportMany={handleImportMany}
+        recent={recent}
+        args={argsText}
+        onArgsChange={setArgsText}
+        runMode={
+          showRunMode
+            ? {
+                mode: launchMode,
+                onChange: handleLaunchModeChange,
+                disabled: foregroundLive,
+              }
+            : null
+        }
+        onShare={() => onOpenShareDialog?.()}
+        onTour={() => setTutorialOpen(true)}
+        onToggleTheme={() => onToggleTheme?.()}
+        buildDiagnostic={buildDiagnostic}
+        onOpenCommandPalette={() => onOpenCommandPalette?.()}
+        onOpenShortcuts={() => onOpenShortcutsHelp?.()}
+      />
 
       {shareBanner && (
         <div
@@ -1576,52 +1337,16 @@ function EmbeddableCore({
         </div>
       )}
 
-      {/* A labeled section, not a main: this component is composed inside the
-          landing hero, lessons, exercises, and the reference, all of which
-          already sit inside their page's main. The /playground route supplies
-          the one main around it. */}
-      <section aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
-        {showResizable ? (
-          <ResizableLayout
-            breakpoint={bp}
-            editor={editorBlock}
-            disassembly={disasmBlock}
-            registers={regsBlock}
-            rightTabs={rightTabs}
-          />
-        ) : showTablet ? (
-          <div className="flex flex-row h-full">
-            <div className="flex flex-col w-1/2 border-r border-[var(--border)] min-h-0">
-              <div className="flex-1 min-h-0 flex flex-col">{editorBlock}</div>
-              <div className="h-40 border-t border-[var(--border)] overflow-auto">
-                {disasmBlock}
-              </div>
-            </div>
-            <div className="flex flex-col w-1/2 min-h-0">
-              <div className="flex-1 min-h-0 overflow-auto border-b border-[var(--border)]">
-                {regsBlock}
-              </div>
-              <div className="flex-1 min-h-0 overflow-hidden">{rightTabs}</div>
-            </div>
-          </div>
-        ) : (
-          <MobileLayout
-            editor={editorBlock}
-            disassembly={disasmBlock}
-            registers={regsBlock}
-            memory={memoryBlock}
-            stack={stackBlock}
-            console={consoleBlock}
-            terminal={terminalBlock}
-            watches={watchBlock}
-            converter={converterBlock}
-            memwatch={memWatchBlock}
-            saves={savesBlock}
-            consoleBlocked={emu.blocked}
-            paneRequest={paneRequest ?? undefined}
-          />
-        )}
-      </section>
+      <FullLayout
+        breakpoint={bp}
+        editor={editorBlock}
+        disassembly={disasmBlock}
+        registers={regsBlock}
+        rightTabs={rightTabs}
+        panes={panes}
+        consoleBlocked={emu.blocked}
+        paneRequest={paneRequest ?? undefined}
+      />
 
       <Controls
         onAssemble={assembleWithHistory}

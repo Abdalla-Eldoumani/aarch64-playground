@@ -8,6 +8,7 @@ import {
   combineSources,
   combinedLineFor,
   countLines,
+  fileNameShapeError,
   resolveLine,
   validateFileName,
 } from "@/lib/playground/file-map";
@@ -146,5 +147,51 @@ describe("validateFileName", () => {
 
   it("compares names exactly, since the course servers are case-sensitive", () => {
     expect(validateFileName("Sort.s", files)).toBeNull();
+  });
+
+  it("refuses a name that would write its own line into the combined source", () => {
+    // combineSources puts the name inside a `// ---- name ----` marker, so
+    // everything after a newline in it is assembled as program text.
+    expect(validateFileName("helpers.s\n.global main\nmain:", files)).toBe(
+      "file names may use letters, digits, dot, dash, and underscore only",
+    );
+    expect(validateFileName("helpers.s\r\n ret", files)).not.toBeNull();
+  });
+
+  it("refuses path separators, traversal, and anything not a plain name", () => {
+    const hostile = [
+      "sub/dir.s",
+      "sub\\dir.s",
+      "../secrets.s",
+      "..",
+      ".hidden.s",
+      "-dash-first.s",
+      "two words.s",
+      "bell\u0007.s",
+      "résumé.s",
+      "<script>.s",
+    ];
+    for (const name of hostile) {
+      expect(validateFileName(name, files)).toBe(
+        "file names may use letters, digits, dot, dash, and underscore only",
+      );
+    }
+  });
+
+  it("bounds the length at 64 characters", () => {
+    expect(validateFileName(`${"a".repeat(62)}.s`, files)).toBeNull();
+    expect(validateFileName("a".repeat(65), files)).toBe(
+      "file name is too long (max 64 characters)",
+    );
+  });
+});
+
+describe("fileNameShapeError", () => {
+  it("applies the shape rule without the main.asm rule", () => {
+    // The `.json` workspace bundle carries the whole strip, main.asm first,
+    // so the boundary that reads one needs the shape rule on its own.
+    expect(fileNameShapeError("main.asm")).toBeNull();
+    expect(fileNameShapeError("main.asm\nret")).not.toBeNull();
+    expect(fileNameShapeError("  ")).toBe("file name cannot be empty");
   });
 });

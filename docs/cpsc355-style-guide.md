@@ -36,8 +36,9 @@ define's reach at that line, so an alias can be rebound per function.
 
 Real GNU m4 (the `m4 prog.asm | gcc` pipeline on the university Linux
 machines) knows nothing about assembly syntax, which produces four
-behaviors the playground's m4 reproduces exactly, and a program prints
-the same bytes here as on the servers. The pre-assembly lint warns
+behaviors the playground's m4 reproduces exactly. A program built from
+the instructions and directives the reference documents prints the same
+bytes here as on the servers. The pre-assembly lint warns
 whenever a program hits one, because the rewrite is almost never what
 the author meant:
 

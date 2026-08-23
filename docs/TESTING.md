@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. At the time of writing that is 886 Rust tests, 1776 web tests, and 16 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. At the time of writing that is 900 Rust tests, 1998 web tests, and 16 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
 
 ## Rust
 
@@ -98,13 +98,25 @@ Drives Firefox through the live app to confirm CSP boots Monaco, the editor rend
 
 ## What CI runs
 
-`.github/workflows/check.yml` has three jobs:
+`.github/workflows/check.yml` fans out so nothing waits on anything it
+does not need:
 
-- **rust**: `cargo test` plus the web and nodejs wasm-pack builds.
-- **web**: `npm run lint`, `npm run typecheck`, `npm test -- --coverage`, `npm run build`, `npm run size`.
+- **wasm**: the web and nodejs wasm-pack builds, uploaded as an artifact
+  every other job below downloads.
+- **rust**: `cargo test`, in parallel with everything.
 - **corpus**: `node scripts/verify-corpus.js`.
+- **web-static**: the dependency audit, `npm run lint`, `npm run typecheck`.
+- **web-build**: `npm run build` and `npm run size`.
+- **web-test**: `npm test -- --coverage` split into three shards
+  (`--shard=n/3`), every test file running exactly once across them.
+- **coverage**: merges the shards' blob reports and enforces the coverage
+  floors in `web/vitest.config.ts` on the whole-suite numbers, so a suite
+  that passes locally can still fail CI if coverage drops below them.
 
-Each maps to a local command above, with one difference: CI's `--coverage` flag also enforces the coverage floors in `web/vitest.config.ts`, so a suite that passes locally can still fail CI if coverage drops below them.
+Each job maps to a local command above. The shards set `VITEST_SHARD` so
+the floors are judged once on the merged report rather than against a
+shard's partial slice; a plain local `npm test -- --coverage` still
+enforces them directly.
 
 ## Pre-PR checklist
 
@@ -114,3 +126,11 @@ Mirrors the PR template's "How to verify":
 2. From `web/`, `npm run lint && npm run typecheck && npm test` all pass.
 3. `node scripts/verify-corpus.js` passes if the change touches the assembler, executor, or examples.
 4. You exercised the change in `npm run dev` (or `npm run dev:all`) if it is UI-visible.
+
+## Start of each term
+
+The course-parity tests run only against a local copy of the current
+tutorials, so nothing automated notices when a new offering changes them.
+Once per term: refresh the local tutorial set, run
+`cargo test --manifest-path emulator/Cargo.toml --test cpsc355_corpus -- --ignored`,
+and fix or file whatever no longer assembles or runs.

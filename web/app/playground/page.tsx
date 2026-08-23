@@ -272,7 +272,8 @@ export default function Home() {
       } else if (
         e.key === "?" &&
         !(e.target instanceof HTMLInputElement) &&
-        !(e.target instanceof HTMLTextAreaElement)
+        !(e.target instanceof HTMLTextAreaElement) &&
+        !(e.target instanceof HTMLElement && e.target.isContentEditable)
       ) {
         e.preventDefault();
         setHelpOpen((v) => !v);

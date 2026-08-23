@@ -63,6 +63,38 @@ describe("share hash p2", () => {
     expect(okState(hash)).toEqual({ source: "NOP\n" });
   });
 
+  it("refuses a link whose file name would write its own assembly line", () => {
+    // combineSources puts the name inside a `// ---- name ----` marker, so
+    // everything past a newline in it reaches the linker as program text.
+    // A name like this is hand-crafted, not a paste mangle, so the whole
+    // payload is refused rather than loaded minus its helpers.
+    const hostile = LZString.compressToEncodedURIComponent(
+      JSON.stringify({
+        source: "ret\n",
+        files: [{ name: "helper.s\n.global evil\nevil:", body: "ret\n" }],
+      }),
+    );
+    expect(kindOf(`#p2=${hostile}`)).toBe("corrupt");
+  });
+
+  it("refuses a link carrying a traversing, oversized, or duplicated name", () => {
+    const payload = (files: { name: string; body: string }[]) =>
+      `#p2=${LZString.compressToEncodedURIComponent(
+        JSON.stringify({ source: "ret\n", files }),
+      )}`;
+    expect(kindOf(payload([{ name: "../secrets.s", body: "" }]))).toBe("corrupt");
+    expect(kindOf(payload([{ name: "a".repeat(65), body: "" }]))).toBe("corrupt");
+    expect(kindOf(payload([{ name: "main.asm", body: "" }]))).toBe("corrupt");
+    expect(
+      kindOf(
+        payload([
+          { name: "dup.s", body: "" },
+          { name: "dup.s", body: "" },
+        ]),
+      ),
+    ).toBe("corrupt");
+  });
+
   it("decodes a legacy p= hash as source-only state", () => {
     const source = "MOV X0, #1\n";
     const legacy = `#p=${LZString.compressToEncodedURIComponent(source)}`;

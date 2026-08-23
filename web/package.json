@@ -1,7 +1,10 @@
 {
   "name": "aarch64-playground-web",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "private": true,
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "next dev --webpack",
     "wasm:watch": "node ../scripts/wasm-watch.mjs",
@@ -41,6 +44,21 @@
       "limit": "400 KB"
     },
     {
+      "name": "learn route entry js (index + lesson page chunks)",
+      "path": ".next/static/chunks/app/\\(site\\)/learn/**/page-*.js",
+      "limit": "4 KB"
+    },
+    {
+      "name": "practice route entry js (index + exercise page chunks)",
+      "path": ".next/static/chunks/app/\\(site\\)/practice/**/page-*.js",
+      "limit": "16 KB"
+    },
+    {
+      "name": "reference route entry js (page chunk)",
+      "path": ".next/static/chunks/app/\\(site\\)/reference/**/page-*.js",
+      "limit": "19 KB"
+    },
+    {
       "name": "lazy monaco editor (vendored chunk + its worker)",
       "path": [
         ".next/static/chunks/monaco.*.js",
@@ -71,7 +89,7 @@
     "cmdk": "1.1.1",
     "lz-string": "1.5.0",
     "monaco-editor": "0.55.1",
-    "next": "16.2.11",
+    "next": "16.3.2",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-hot-toast": "2.6.0",
@@ -88,11 +106,11 @@
     "@types/react-dom": "19.2.3",
     "@vitest/coverage-v8": "4.1.9",
     "autoprefixer": "10.5.2",
-    "concurrently": "9.2.3",
+    "concurrently": "9.2.4",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.3.2",
     "jsdom": "29.1.1",
-    "lighthouse": "13.4.0",
+    "lighthouse": "13.4.1",
     "playwright": "^1.59.1",
     "postcss": "8.5.23",
     "size-limit": "12.1.0",
@@ -101,7 +119,7 @@
     "vitest": "4.1.9"
   },
   "overrides": {
-    "dompurify": "3.4.12",
+    "dompurify": "3.4.14",
     "postcss": "8.5.23"
   }
 }

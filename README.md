@@ -71,6 +71,17 @@ architecture, the getting-started tour, the contributing and testing guides,
 deployment, the instruction reference, the assembly style guide, the
 content-authoring format, the terminal reference, and the security posture.
 
+## Privacy
+
+The site keeps no accounts and asks for no personal data. Vercel Web
+Analytics and Speed Insights measure traffic as aggregate page views only;
+they set no cookies and record nothing that identifies you. The programs you
+write, the files you upload, and the arguments you type stay in your browser.
+The only copies live in that browser's localStorage and IndexedDB, and
+clearing site data deletes all of it.
+
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE) for the full text.
+
+Copyright (C) 2026 Abdalla Eldoumani.

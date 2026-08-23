@@ -8,7 +8,7 @@ import { explainError } from "@/lib/asm/error-explain";
 import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
 import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
 import { useToast } from "@/components/ui/Toast";
-import { validateSource } from "@/lib/playground/upload-guard";
+import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playground/upload-guard";
 
 // The editor runtime is vendored from the monaco-editor dependency instead
 // of fetched from the loader's default CDN: the installed PWA has to keep
@@ -54,6 +54,34 @@ function loadMonaco(): Promise<void> {
 }
 
 let arm64Registered = false;
+
+// Monaco reads `fontFamily` as a literal CSS font list and never resolves a
+// custom property through it, so this one option cannot just name
+// --font-mono the way every other surface does. Hardcoding the stack instead
+// dropped the half of it that matters most: next/font emits the webfont as
+// "JetBrains Mono" AND a metric-matched local stand-in, "JetBrains Mono
+// Fallback" (size-adjust + ascent-override tuned to the real face), and
+// publishes both as --font-mono on <html> (app/layout.tsx). Monaco measures
+// one glyph's advance at creation and lays the whole grid on it, so an editor
+// created during the swap window measured Consolas and kept the wrong column
+// width. Resolving the variable puts the metric-matched face in front of the
+// generic ones, and keeps the page's stack the only place it is written.
+const MONO_FALLBACKS = "'JetBrains Mono', 'Fira Code', Consolas, monospace";
+let monoFontFamily: string | null = null;
+
+function resolveMonoFontFamily(): string {
+  if (monoFontFamily) return monoFontFamily;
+  if (typeof document === "undefined") return MONO_FALLBACKS;
+  const resolved = getComputedStyle(document.documentElement)
+    .getPropertyValue("--font-mono")
+    .trim();
+  // An empty read means the font stylesheet has not landed yet; answer with
+  // the fallbacks and leave the cache unset so a later mount can still catch
+  // the real family instead of pinning the miss for the whole session.
+  if (!resolved) return MONO_FALLBACKS;
+  monoFontFamily = `${resolved}, ${MONO_FALLBACKS}`;
+  return monoFontFamily;
+}
 
 /** Set Monaco's global theme from the document's data-theme. Called per
  *  mount (the MonacoEditor `theme` prop re-asserts arm64-dark on every
@@ -602,6 +630,14 @@ export function Editor({
         );
         return;
       }
+      // Check the declared size before reading: the import picker does the
+      // same, and reading first would materialize an arbitrarily large file
+      // as a string just to reject it.
+      const sizeError = checkUploadSize(file.size, MAX_SOURCE_BYTES, "source file");
+      if (sizeError) {
+        toast.error(sizeError);
+        return;
+      }
       file
         .text()
         .then((text) => handleChange(text))
@@ -667,7 +703,7 @@ export function Editor({
             // 16px font on mobile kills iOS's focus-zoom behavior; keep
             // 14 on desktop where the ems cost is worth it.
             fontSize: isCoarsePointer() ? 16 : 14,
-            fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+            fontFamily: resolveMonoFontFamily(),
             minimap: { enabled: false },
             glyphMargin: true,
             lineNumbersMinChars: 3,
@@ -682,7 +718,6 @@ export function Editor({
             cursorStyle: "block",
             cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
             accessibilitySupport: "auto",
-            accessibilityHelpUrl: "/docs/accessibility",
             readOnly,
           }}
         />

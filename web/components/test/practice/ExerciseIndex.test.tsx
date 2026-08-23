@@ -1,16 +1,51 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-// Control the solved set: only "solved-one" is solved, and subscribe is a no-op.
-vi.mock("@/lib/playground/solved-state", () => ({
-  getSolvedSlugs: () => ["solved-one"],
-  subscribeSolved: () => () => {},
+// Control the solved set the ROWS read: only "solved-one" is solved, and
+// subscribe is a no-op. The bundle helpers stay real, so the export payload
+// and the import merge are pinned against the actual store (localStorage).
+vi.mock("@/lib/playground/solved-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/playground/solved-state")>();
+  return {
+    ...actual,
+    getSolvedSlugs: () => ["solved-one"],
+    subscribeSolved: () => () => {},
+  };
+});
+
+const { toastError, toastSuccess, toastInfo } = vi.hoisted(() => ({
+  toastError: vi.fn(),
+  toastSuccess: vi.fn(),
+  toastInfo: vi.fn(),
+}));
+vi.mock("@/components/ui/Toast", () => ({
+  useToast: () => ({
+    error: toastError,
+    success: toastSuccess,
+    info: toastInfo,
+    show: vi.fn(),
+  }),
 }));
 
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
 import type { Exercise, WriteExercise } from "@/lib/content/exercise-schema";
+import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 
-afterEach(() => cleanup());
+const SOLVED_KEY = "aarch64-playground:practice:solved";
+
+beforeEach(() => {
+  toastError.mockClear();
+  toastSuccess.mockClear();
+  toastInfo.mockClear();
+});
+
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+  vi.restoreAllMocks();
+  delete (URL as { createObjectURL?: unknown }).createObjectURL;
+  delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+});
 
 function makeExercise(over: Partial<WriteExercise>): Exercise {
   return {
@@ -116,5 +151,155 @@ describe("ExerciseIndex", () => {
     const unsolvedCard = container.querySelector('a[href="/practice/unsolved-two"]') as HTMLElement;
     expect(within(solvedCard).queryByText("solved")).not.toBeNull();
     expect(within(unsolvedCard).queryByText("solved")).toBeNull();
+  });
+});
+
+// The solved set lives only in this browser's localStorage; the progress row
+// is its only carrier off the device and back.
+describe("ExerciseIndex progress row", () => {
+  function captureDownload(): { blobs: Blob[]; names: string[] } {
+    const blobs: Blob[] = [];
+    const names: string[] = [];
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: (blob: Blob) => {
+        blobs.push(blob);
+        return "blob:mock";
+      },
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+    return { blobs, names };
+  }
+
+  it("renders the export and import controls below the list", () => {
+    render(<ExerciseIndex exercises={exercises} />);
+    expect(screen.getByText("progress:")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "export solved progress" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "import solved progress" })).toBeTruthy();
+  });
+
+  it("downloads the current solved set as one progress file", async () => {
+    window.localStorage.setItem(SOLVED_KEY, JSON.stringify(["solved-one", "another"]));
+    const captured = captureDownload();
+    render(<ExerciseIndex exercises={exercises} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "export solved progress" }));
+
+    expect(captured.names).toEqual(["aarch64-playground-progress.json"]);
+    const text = await captured.blobs[0].text();
+    expect(JSON.parse(text)).toEqual({ version: 1, solved: ["solved-one", "another"] });
+  });
+
+  it("opens the file picker when import is clicked", () => {
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const click = vi.spyOn(fileInput, "click").mockImplementation(() => {});
+    fireEvent.click(screen.getByRole("button", { name: "import solved progress" }));
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges an imported file into the stored set and reports the count", async () => {
+    window.localStorage.setItem(SOLVED_KEY, JSON.stringify(["solved-one"]));
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const bundle = JSON.stringify({ version: 1, solved: ["solved-one", "unsolved-two"] });
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File([bundle], "progress.json", { type: "application/json" })],
+      },
+    });
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("imported 1 solved exercise"),
+    );
+    expect(JSON.parse(window.localStorage.getItem(SOLVED_KEY) as string)).toEqual([
+      "solved-one",
+      "unsolved-two",
+    ]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("says nothing new when the file adds no exercises", async () => {
+    window.localStorage.setItem(SOLVED_KEY, JSON.stringify(["solved-one"]));
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [
+          new File([JSON.stringify({ version: 1, solved: ["solved-one"] })], "progress.json"),
+        ],
+      },
+    });
+
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith("nothing new to import"));
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("refuses a malformed file with the reason and leaves the set alone", async () => {
+    window.localStorage.setItem(SOLVED_KEY, JSON.stringify(["solved-one"]));
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File([JSON.stringify({ version: 9, solved: [] })], "progress.json")],
+      },
+    });
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "that progress file has an unrecognized version",
+      ),
+    );
+    expect(window.localStorage.getItem(SOLVED_KEY)).toBe(JSON.stringify(["solved-one"]));
+  });
+
+  it("refuses a file that is not json at all", async () => {
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["not json"], "progress.json")] },
+    });
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("that file is not valid json"));
+  });
+
+  it("rejects an over-cap file on size, before reading it", () => {
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const oversized = new File(["{}"], "huge.json");
+    Object.defineProperty(oversized, "size", {
+      value: MAX_BOOKMARK_JSON_BYTES + 1,
+      configurable: true,
+    });
+    const read = vi.spyOn(oversized, "text");
+
+    fireEvent.change(fileInput, { target: { files: [oversized] } });
+
+    expect(toastError).toHaveBeenCalledWith(
+      checkUploadSize(MAX_BOOKMARK_JSON_BYTES + 1, MAX_BOOKMARK_JSON_BYTES, "progress file"),
+    );
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("ignores a change event with no file picked", () => {
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [] } });
+    expect(toastError).not.toHaveBeenCalled();
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 });

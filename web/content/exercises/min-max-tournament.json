@@ -1,0 +1,29 @@
+{
+  "title": "min-max tournament",
+  "slug": "min-max-tournament",
+  "order": 24,
+  "topic": "arrays",
+  "difficulty": "core",
+  "prompt": "Eight entries, one pass, two records: find the smallest and the largest element of the array, and print both.\n\nSeed both records with element zero (the starter already has), then walk the rest once. Each element gets two comparisons: does it beat the minimum, does it beat the maximum. Resist the urge to loop twice.\n\n## what is checked\n\n- `min` and `max` each printed on their own line\n- the program exits cleanly\n- comparisons decide the records",
+  "starter": "// find both the smallest and the largest element in one pass\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(base_r, x22)\ndefine(i_r, w19)\ndefine(n_r, w20)\ndefine(min_r, w21)\ndefine(max_r, w24)\ndefine(elem_r, w23)\n\n        .data\nentries:    .word 58, 3, 77, 12, 41, 90, 6, 25\nn_entries:  .word 8\n\nfmt_min:    .string \"min = %d\\n\"\nfmt_max:    .string \"max = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     base_r, =entries\n        ldr     x9, =n_entries\n        ldr     n_r, [x9]\n        ldr     min_r, [base_r]             // both start at element zero\n        ldr     max_r, [base_r]\n        mov     i_r, 1\n\n        // TODO: walk the remaining elements once. Compare each against\n        // min_r and max_r and update whichever record it beats. One\n        // loop, two comparisons per element.\n\n        ldr     x0, =fmt_min\n        mov     w1, min_r\n        bl      printf\n        ldr     x0, =fmt_max\n        mov     w1, max_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "min = 3\nmax = 90\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "cmp"
+      }
+    ]
+  }
+}

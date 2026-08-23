@@ -15,6 +15,9 @@ First build:
 cd emulator
 wasm-pack build --target web --out-dir ../web/lib/wasm
 
+# the node-target build that `npm test` and scripts/verify-corpus.js load
+wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node
+
 cd ../web
 npm install
 npm run dev
@@ -111,6 +114,8 @@ Next dev picks up `web/lib/wasm/` automatically; a hard-refresh (Ctrl+Shift+R) s
 3. Open a PR with the template and fill the "How to verify" checklist honestly. [`TESTING.md`](TESTING.md) is the canonical command list.
 
 Open an issue first if the change is larger than a single file or touches the assembler/decoder layout. For a first contribution, run a tiny PR (a typo fix) end to end to exercise your build, the template, branch protection, CI, and code-owner review before a real change depends on it.
+
+By opening a pull request you agree that your contribution is licensed under AGPL-3.0, the same license as the rest of the project.
 
 ## Adding a new instruction
 

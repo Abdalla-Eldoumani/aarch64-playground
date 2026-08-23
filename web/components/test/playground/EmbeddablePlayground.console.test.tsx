@@ -25,65 +25,7 @@ const useEmulatorMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/emulator/use-emulator", () => ({ useEmulator: useEmulatorMock }));
 
 import { EmbeddablePlayground } from "@/components/playground/EmbeddablePlayground";
-
-function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    isLoaded: true,
-    loadError: null as string | null,
-    registers: Array(31).fill("0x0000000000000000") as string[],
-    sp: "0x0000000080000000",
-    pc: 0x400000,
-    nzcv: 0,
-    changedRegs: new Set<number>(),
-    isRunning: false,
-    isHalted: false,
-    error: null as string | null,
-    assemblyErrors: [],
-    breakpoints: new Set<number>(),
-    currentLine: null,
-    instructions: [],
-    codeBase: 0x400000,
-    stdout: "",
-    stderr: "",
-    blocked: false,
-    exitCode: null as number | null,
-    hostedMode: false,
-    vfsFiles: [] as string[],
-    canStepBack: false,
-    stepCount: 0,
-    savedStates: [] as string[],
-    dirtyAddrs: [] as Array<[number, number]>,
-    replayFrames: [],
-    assemble: vi.fn(),
-    assembleForTool: vi
-      .fn()
-      .mockResolvedValue({ success: true, error: null, errorLine: null }),
-    step: vi.fn(),
-    stepBack: vi.fn(),
-    run: vi.fn(),
-    pause: vi.fn(),
-    reset: vi.fn(),
-    toggleBreakpoint: vi.fn(),
-    clearAllBreakpoints: vi.fn(),
-    remapBreakpoints: vi.fn(),
-    lint: vi.fn(async () => []),
-    getMemory: vi.fn(() => new Uint8Array()),
-    pushStdin: vi.fn(),
-    uploadVfsFile: vi.fn(),
-    readVfsFile: vi.fn(),
-    deleteVfsFile: vi.fn(),
-    resolveLabel: vi.fn(),
-    setBreakpointAddress: vi.fn(),
-    clearBreakpointAddress: vi.fn(),
-    restoreBookmark: vi.fn(),
-    clearConsole: vi.fn(),
-    saveState: vi.fn(),
-    loadState: vi.fn(),
-    deleteState: vi.fn(),
-    seekReplay: vi.fn(),
-    ...overrides,
-  };
-}
+import { makeHub } from "@/components/test/playground/helpers/emulator-hub";
 
 function engage(container: HTMLElement) {
   act(() => {
@@ -175,6 +117,6 @@ describe("embed console rendering", () => {
     const input = screen.getByLabelText("Standard input");
     fireEvent.change(input, { target: { value: "42" } });
     fireEvent.submit(input.closest("form") as HTMLFormElement);
-    expect(hub.pushStdin).toHaveBeenCalledWith("42\n");
+    expect(hub.pushStdin).toHaveBeenCalledWith("42\n", true);
   });
 });

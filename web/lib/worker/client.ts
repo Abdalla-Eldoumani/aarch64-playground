@@ -106,8 +106,8 @@ export class WorkerClient {
     return this.send<StateSnapshot>({ id: 0, kind: "reset" });
   }
 
-  pushStdin(text: string): Promise<StateSnapshot> {
-    return this.send<StateSnapshot>({ id: 0, kind: "pushStdin", text });
+  pushStdin(text: string, interactive = false): Promise<StateSnapshot> {
+    return this.send<StateSnapshot>({ id: 0, kind: "pushStdin", text, interactive });
   }
 
   closeStdin(): Promise<StateSnapshot> {

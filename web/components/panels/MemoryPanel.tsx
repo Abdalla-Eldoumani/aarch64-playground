@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { parseAddress } from "@/lib/emulator/parse-address";
+import { formatByte, formatWord32 } from "@/lib/emulator/format-hex";
 import { regionFor, type MemoryRegion } from "@/lib/emulator/memory-map";
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { ZoomControl } from "@/components/ui/ZoomControl";
@@ -68,14 +69,17 @@ function jumpTargets(
   const targets: Array<{ label: string; addr: string }> = [];
   for (const name of JUMP_SECTIONS) {
     const region = regions.find((r) => r.name === name);
-    if (region) targets.push({ label: name, addr: formatAddr(region.start) });
+    if (region) targets.push({ label: name, addr: formatWord32(region.start) });
   }
   const stack = regions.find((r) => r.name === "stack");
   if (stack) {
     const live = sp != null && sp >= stack.start && sp < stack.end;
     // Modulo, not a bitwise mask: the stack band sits at the top of the
     // 32-bit space and `& ~0xf` would sign-flip an address past 0x7fffffff.
-    targets.push({ label: "stack", addr: formatAddr(live ? sp - (sp % 16) : STACK_LANDING) });
+    targets.push({
+      label: "stack",
+      addr: formatWord32(live ? sp - (sp % 16) : STACK_LANDING),
+    });
   }
   return targets;
 }
@@ -170,9 +174,9 @@ export function MemoryPanel({
         />
       </div>
       {parsed == null && (
-        <div role="alert" className="text-[var(--error)] text-[10px] mb-2">
-          address must be hex (0x...) or decimal -- showing 0x
-          {lastGoodAddr.toString(16).padStart(8, "0")}
+        <div role="alert" className="text-[var(--danger)] text-[10px] mb-2">
+          address must be hex (0x...) or decimal -- showing{" "}
+          {formatWord32(lastGoodAddr)}
         </div>
       )}
 
@@ -198,7 +202,7 @@ export function MemoryPanel({
             return (
               <tr key={row} className="hover:bg-[var(--bg-elevated)]">
                 <td className="text-[var(--text-secondary)] pr-2 sm:pr-4">
-                  {formatAddr(rowAddr)}
+                  {formatWord32(rowAddr)}
                 </td>
                 {Array.from(rowBytes).map((byte, i) => {
                   const dirty = isDirty(rowAddr + i, dirtyAddrs);
@@ -213,7 +217,7 @@ export function MemoryPanel({
                           : "text-[var(--text-secondary)]"
                       }`}
                     >
-                      {byte.toString(16).padStart(2, "0")}
+                      {formatByte(byte)}
                     </td>
                   );
                 })}
@@ -236,10 +240,6 @@ export function MemoryPanel({
       </table>
     </div>
   );
-}
-
-function formatAddr(addr: number): string {
-  return "0x" + addr.toString(16).padStart(8, "0");
 }
 
 function asciiString(bytes: Uint8Array): string {

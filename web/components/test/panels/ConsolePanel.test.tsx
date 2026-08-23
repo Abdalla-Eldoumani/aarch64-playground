@@ -49,12 +49,23 @@ function setup(overrides: Partial<ComponentProps<typeof ConsolePanel>> = {}) {
 }
 
 describe("ConsolePanel stdin validation", () => {
-  it("forwards an in-bounds stdin line with a trailing newline", () => {
+  it("forwards an in-bounds stdin line with a trailing newline, marked interactive", () => {
     const { pushStdin, input } = setup();
     fireEvent.change(input, { target: { value: "42" } });
     fireEvent.submit(input.closest("form")!);
-    expect(pushStdin).toHaveBeenCalledWith("42\n");
+    // Typed at a prompt, so the machine echoes it into the transcript --
+    // a redirect would go through the same call without the flag.
+    expect(pushStdin).toHaveBeenCalledWith("42\n", true);
     expect(input.value).toBe("");
+  });
+
+  it("submits without the echo flag when the host opts out", () => {
+    // The checker chrome grades the live stdout on its unchanged-source
+    // fast path; an echoed byte there would fail a correct program.
+    const { pushStdin, input } = setup({ echoStdin: false });
+    fireEvent.change(input, { target: { value: "42" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(pushStdin).toHaveBeenCalledWith("42\n", false);
   });
 
   it("ctrl-d on an empty line signals end of input", () => {

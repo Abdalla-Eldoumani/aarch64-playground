@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The weekly run is what notices rot with no PR open: a new dependency
+  # advisory (the audit gate below), a toolchain fetch breaking, a registry
+  # moving. Same cadence as the bounds workflow.
+  schedule:
+    - cron: "0 6 * * 1"
 
 # Cancel in-progress runs of this workflow on the same ref so a fast
 # follow-up push doesn't pile up duplicate jobs.
@@ -18,21 +23,39 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  NEXT_TELEMETRY_DISABLED: 1
+  # One source for the node major so the node_modules cache keys below can
+  # never serve modules installed under a different node, and one for the
+  # rust toolchain so a bump rolls the cargo caches instead of leaving them
+  # permanently restoring another compiler's artifacts.
+  NODE_VERSION: "24"
+  RUST_TOOLCHAIN: "1.96.0"
 
+# The graph is shaped around one fact: every web job needs the wasm
+# bundles, so the job that produces them does nothing else and finishes in
+# under a minute, and everything downstream fans out in parallel behind it.
+# cargo test runs beside it rather than in front of it.
 jobs:
-  rust:
-    name: cargo + wasm-pack
+  wasm:
+    name: wasm-pack bundles
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
+      # Third-party actions are pinned to full commit SHAs so a moved tag
+      # cannot swap the code CI runs; the comment names the human-readable ref.
+      # The toolchain itself is pinned to the same version the deploy build
+      # uses (scripts/vercel-build.sh), so CI tests the compiler that ships.
       - name: install rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch, 2026-08
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-unknown-unknown
 
-      # Cache the cargo registry + git index + target dir so reruns don't
-      # spend a full minute re-downloading + recompiling every dep.
+      # This job and cargo test keep separate target caches on purpose: they
+      # compile for different targets, and a shared key meant whichever job
+      # saved first left the other recompiling its half on every run.
       - name: cache cargo
         uses: actions/cache@v6
         with:
@@ -40,25 +63,23 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             emulator/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('emulator/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-wasm-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('emulator/Cargo.toml', 'emulator/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-wasm-${{ env.RUST_TOOLCHAIN }}-
 
       # taiki-e/install-action grabs prebuilt binaries via binstall when
       # available, which is faster and more reliable than the older
       # jetli/wasm-pack-action (that one rate-limits without a token on
       # newer GitHub runners).
       - name: install wasm-pack
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
-          tool: wasm-pack
-
-      - name: cargo test
-        run: cargo test --manifest-path emulator/Cargo.toml
+          tool: wasm-pack@0.14.0
 
       - name: wasm-pack web build
         run: wasm-pack build emulator --release --target web --out-dir ../web/lib/wasm
 
+      # The two targets share the cargo build; this one only re-runs bindgen.
       - name: wasm-pack node build
         run: wasm-pack build emulator --release --target nodejs --out-dir ../web/lib/wasm-node
 
@@ -71,60 +92,45 @@ jobs:
             web/lib/wasm-node/
           retention-days: 1
           if-no-files-found: error
+          overwrite: true
 
-  web:
-    name: web (lint + tsc + vitest + size-limit)
-    needs: rust
+  rust:
+    name: cargo test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - name: install rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch, 2026-08
         with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      - name: download wasm artifacts
-        uses: actions/download-artifact@v8
+      - name: cache cargo
+        uses: actions/cache@v6
         with:
-          name: wasm-bundles
-          path: web/lib
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            emulator/target
+          key: ${{ runner.os }}-cargo-test-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('emulator/Cargo.toml', 'emulator/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-${{ env.RUST_TOOLCHAIN }}-
 
-      - name: install
-        working-directory: web
-        run: npm ci --no-audit --no-fund
-
-      - name: lint
-        working-directory: web
-        run: npm run lint
-
-      - name: typecheck
-        working-directory: web
-        run: npm run typecheck
-
-      - name: vitest
-        working-directory: web
-        run: npm test -- --coverage
-
-      - name: build
-        working-directory: web
-        run: npm run build
-
-      - name: size-limit
-        working-directory: web
-        run: npm run size
+      - name: cargo test
+        run: cargo test --manifest-path emulator/Cargo.toml
 
   corpus:
     name: verify-corpus
-    needs: rust
+    needs: wasm
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: download wasm artifacts
         uses: actions/download-artifact@v8
@@ -134,3 +140,213 @@ jobs:
 
       - name: verify-corpus
         run: node scripts/verify-corpus.js
+
+  web-static:
+    name: lint + typecheck + audit
+    needs: wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # tsc needs the generated .d.ts from both wasm bundles to type-check.
+      - name: download wasm artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: wasm-bundles
+          path: web/lib
+
+      # node_modules is a pure function of the lockfile on one runner image,
+      # so a hit skips npm ci entirely; a miss falls through to it. The key
+      # hashes package.json too: npm ci is also the manifest/lockfile sync
+      # gate, so an edit to either file must force a real install.
+      - name: cache node_modules
+        id: nm
+        uses: actions/cache@v6
+        with:
+          path: web/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-nm-${{ hashFiles('web/package-lock.json', 'web/package.json') }}
+
+      - name: install
+        if: steps.nm.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      # The production dependency gate: fails on any moderate-or-higher
+      # advisory against a shipped dep. Dev-only tooling is watched by
+      # Dependabot instead so its advisories don't block unrelated PRs.
+      - name: dependency audit
+        run: node scripts/audit-deps.js --omit=dev
+
+      - name: lint
+        working-directory: web
+        run: npm run lint
+
+      - name: typecheck
+        working-directory: web
+        run: npm run typecheck
+
+  web-build:
+    name: next build + size-limit
+    needs: wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: download wasm artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: wasm-bundles
+          path: web/lib
+
+      - name: cache node_modules
+        id: nm
+        uses: actions/cache@v6
+        with:
+          path: web/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-nm-${{ hashFiles('web/package-lock.json', 'web/package.json') }}
+
+      - name: install
+        if: steps.nm.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      # The webpack cache is content-addressed internally, so restoring a
+      # stale entry is safe and still cuts the build roughly in half; the
+      # per-sha key just keeps the newest one winning.
+      - name: cache next build
+        uses: actions/cache@v6
+        with:
+          path: web/.next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('web/package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('web/package-lock.json') }}-
+            ${{ runner.os }}-next-
+
+      - name: build
+        working-directory: web
+        run: npm run build
+
+      # size-limit sums whatever its globs match, and an empty match sums to
+      # zero and passes -- a renamed chunk would un-measure itself silently.
+      # Assert the named lazy chunks exist before trusting the budgets.
+      - name: assert budget globs match real chunks
+        working-directory: web
+        run: node -e "const fs=require('fs');const files=fs.readdirSync('.next/static/chunks');const need=[/^monaco\..*\.js$/,/^monaco-worker\..*\.js$/,/^terminal\..*\.js$/];const missing=need.filter(re=>!files.some(f=>re.test(f)));if(missing.length){console.error('budget glob matched nothing:',missing.map(String).join(' '));process.exit(1)}"
+
+      - name: size-limit
+        working-directory: web
+        run: npm run size
+
+  # The suite is partitioned across three runners with vitest --shard; every
+  # file runs exactly once across the union. A shard cannot judge the global
+  # coverage floor from its slice, so VITEST_SHARD defers the thresholds to
+  # the coverage job, which merges the blob reports and enforces them once.
+  web-test:
+    name: vitest shard ${{ matrix.shard }}
+    needs: wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: download wasm artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: wasm-bundles
+          path: web/lib
+
+      - name: cache node_modules
+        id: nm
+        uses: actions/cache@v6
+        with:
+          path: web/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-nm-${{ hashFiles('web/package-lock.json', 'web/package.json') }}
+
+      - name: install
+        if: steps.nm.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      # The default reporter rides along so a failing test is readable right
+      # in this job's log; the blob is only the merge job's input.
+      - name: vitest
+        working-directory: web
+        env:
+          VITEST_SHARD: "1"
+        run: npm test -- --coverage --reporter=blob --reporter=default --shard=${{ matrix.shard }}/3
+
+      # .vitest-reports is a dot-directory, which upload-artifact skips
+      # unless told otherwise -- without the flag this uploads nothing.
+      - name: upload blob report
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: web/.vitest-reports/
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+  coverage:
+    name: merge shards + coverage floors
+    needs: web-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: cache node_modules
+        id: nm
+        uses: actions/cache@v6
+        with:
+          path: web/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-nm-${{ hashFiles('web/package-lock.json', 'web/package.json') }}
+
+      - name: install
+        if: steps.nm.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: download blob reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: blob-report-*
+          merge-multiple: true
+          path: web/.vitest-reports
+
+      # Only reached when every shard passed (a failing shard fails its own
+      # job and skips this one); merges the blobs into the one whole-suite
+      # coverage report the floors judge.
+      - name: merge reports and enforce coverage floors
+        working-directory: web
+        run: npm test -- --merge-reports --coverage

@@ -1,0 +1,37 @@
+{
+  "title": "call yourself",
+  "slug": "call-yourself",
+  "order": 29,
+  "topic": "functions",
+  "difficulty": "challenge",
+  "prompt": "Write `fact`, a subroutine that computes a factorial by calling itself, and use it to print `10!`.\n\nRecursion is where the calling convention stops being theory. Each call to `fact` needs its own frame (`lr` must survive the recursive `bl`), and `n` has to outlive the recursive call, which means a callee-saved register that you save on entry and restore on exit. Base case first: when `n` is 1 or less, the answer is 1. Otherwise it is `n * fact(n - 1)`.\n\n## what is checked\n\n- `10!` printed on its own line\n- the program exits cleanly\n- a real call chain does it: a frame is built (`stp`) and the recursion happens (`bl`), with no precomputed answer",
+  "starter": "// compute a factorial with a recursive subroutine\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\n\n        .data\nfmt:    .string \"10! = %lld\\n\"\n\n        .text\n\n// fact(x0 = n) -> x0 = n!\n        .balign 4\n        .global fact\nfact:\n        // TODO: the base case returns 1 when n is 1 or less.\n        // Otherwise save what must survive (this function calls\n        // itself, so lr needs a frame, and n needs to live in a\n        // callee-saved register that you save and restore), recurse on\n        // n - 1, and multiply the result by n on the way back up.\n        mov     x0, 1                       // replace this placeholder\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     x0, 10                      // the argument\n        bl      fact\n\n        mov     x1, x0\n        ldr     x0, =fmt\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "10! = 3628800\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "bl"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "stp"
+      },
+      {
+        "kind": "forbids-literal",
+        "value": 3628800
+      }
+    ]
+  }
+}

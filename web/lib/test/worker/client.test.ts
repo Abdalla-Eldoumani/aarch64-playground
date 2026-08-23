@@ -319,7 +319,16 @@ describe("WorkerClient protocol round-trips", () => {
 
   test("pushStdin posts text and resolves a snapshot", async () => {
     const { posted, fire, promise } = call((c) => c.pushStdin("hi"));
-    expect(posted[0]).toMatchObject({ kind: "pushStdin", text: "hi" });
+    // A redirect: no echo, so the worker takes the silent queue.
+    expect(posted[0]).toMatchObject({ kind: "pushStdin", text: "hi", interactive: false });
+    const value = makeSnapshot();
+    fire({ id: posted[0].id, kind: "ok", value });
+    await expect(promise).resolves.toBe(value);
+  });
+
+  test("pushStdin carries the echo flag for a line typed at a prompt", async () => {
+    const { posted, fire, promise } = call((c) => c.pushStdin("42\n", true));
+    expect(posted[0]).toMatchObject({ kind: "pushStdin", text: "42\n", interactive: true });
     const value = makeSnapshot();
     fire({ id: posted[0].id, kind: "ok", value });
     await expect(promise).resolves.toBe(value);
