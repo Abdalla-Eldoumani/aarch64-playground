@@ -1,7 +1,8 @@
 // pins the command palette: opens as a modal with the search focused,
 // lists every registered action with its shortcut, filters by query
 // through cmdk with a no-matches empty state, runs the picked action
-// then closes, and Escape closes without running anything.
+// then closes, and Escape closes without running anything. Focus is
+// trapped while it is open and returns to whatever had it on close.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CommandPalette } from "@/components/playground/CommandPalette";
@@ -108,9 +109,44 @@ describe("CommandPalette", () => {
 
   it("closes on Escape without running anything", () => {
     const { actions, onClose } = renderPalette();
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(actions[0].run).not.toHaveBeenCalled();
     expect(actions[1].run).not.toHaveBeenCalled();
+  });
+
+  it("keeps Tab inside the dialog instead of letting it reach the page behind", () => {
+    renderPalette();
+    // cmdk's rows are role="option" divs, so the search box is the card's
+    // only tab stop: Tab off it wraps back to the box, and the default is
+    // prevented so the browser cannot move focus out of the modal.
+    const moved = fireEvent.keyDown(document, { key: "Tab" });
+    expect(moved).toBe(false);
+    expect(document.activeElement).toBe(input());
+  });
+
+  it("returns focus to whatever opened it", async () => {
+    const actions = makeActions();
+    const onClose = vi.fn();
+    function Harness({ open }: { open: boolean }) {
+      return (
+        <>
+          <button type="button">open palette</button>
+          <CommandPalette open={open} onClose={onClose} actions={actions} />
+        </>
+      );
+    }
+    const { rerender } = render(<Harness open={false} />);
+    // jsdom's click does not move focus, so focus the trigger explicitly:
+    // the trap captures whatever is active at open, and <body> would make
+    // the assertion below pass for the wrong reason.
+    const trigger = screen.getByRole("button", { name: "open palette" });
+    trigger.focus();
+
+    rerender(<Harness open />);
+    await waitFor(() => expect(document.activeElement).toBe(input()));
+
+    rerender(<Harness open={false} />);
+    expect(document.activeElement).toBe(trigger);
   });
 });
