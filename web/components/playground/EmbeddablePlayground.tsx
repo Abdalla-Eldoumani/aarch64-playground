@@ -80,6 +80,7 @@ import {
   type Workspace,
 } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 // Persisted beside the files strip so a reloaded workspace remembers which
 // surface owns the pane at run press. The key name predates the mode having
@@ -1257,141 +1258,170 @@ function EmbeddableCore({
         // assembled" line with a brief what-this-is / what-to-press lead.
         <FirstRunState onAssemble={assembleWithHistory} />
       ) : (
-        <InstructionView
-          instructions={emu.instructions}
-          pc={emu.pc}
-          running={emu.isRunning}
-          // Inside a libc call the pc is a trampoline word, which the
-          // listing does not hold; mark and follow the `bl` instead.
-          anchorPc={emu.externalCall?.callSitePc ?? null}
-        />
+        <ErrorBoundary label="disassembly">
+          <InstructionView
+            instructions={emu.instructions}
+            pc={emu.pc}
+            running={emu.isRunning}
+            // Inside a libc call the pc is a trampoline word, which the
+            // listing does not hold; mark and follow the `bl` instead.
+            anchorPc={emu.externalCall?.callSitePc ?? null}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );
 
   const regsBlock = (
-    <div className="h-full flex flex-col">
-      {/* The prominent, always-on decode strip heads the registers column --
-          the beginner's lifeline: the plain-language gloss plus the live
-          bit-field view of the word under the program counter. */}
-      <DecodeStrip
-        source={decodeSource}
-        currentLine={emu.currentLine}
-        encodingHex={
-          emu.instructions.find((instr) => instr.address === emu.pc)?.hex ?? null
-        }
-        externalCall={
-          // A live terminal session steps through libc calls constantly and
-          // its input lands in the terminal pane, so the card's console
-          // wording would be wrong there; the strip reads as it always has.
-          emu.externalCall && !foregroundLive
-            ? { name: emu.externalCall.name, waiting: emu.blocked }
-            : null
-        }
-        sessionStarted={emu.programLoaded}
-      />
-      <ReplayScrubber
-        frames={emu.replayFrames}
-        currentStep={emu.stepCount}
-        onSeek={emu.seekReplay}
-      />
-      <div className="flex-1 min-h-0 overflow-auto">
-        <RegisterPanel
-          registers={emu.registers}
-          changedRegs={emu.changedRegs}
-          fpRegisters={emu.fpRegisters}
-          changedFpRegs={emu.changedFpRegs}
-          sp={emu.sp}
-          pc={emu.pc}
-          nzcv={emu.nzcv}
+    <ErrorBoundary label="registers">
+      <div className="h-full flex flex-col">
+        {/* The prominent, always-on decode strip heads the registers column --
+            the beginner's lifeline: the plain-language gloss plus the live
+            bit-field view of the word under the program counter. */}
+        <DecodeStrip
+          source={decodeSource}
+          currentLine={emu.currentLine}
+          encodingHex={
+            emu.instructions.find((instr) => instr.address === emu.pc)?.hex ?? null
+          }
+          externalCall={
+            // A live terminal session steps through libc calls constantly and
+            // its input lands in the terminal pane, so the card's console
+            // wording would be wrong there; the strip reads as it always has.
+            emu.externalCall && !foregroundLive
+              ? { name: emu.externalCall.name, waiting: emu.blocked }
+              : null
+          }
+          sessionStarted={emu.programLoaded}
         />
+        <ReplayScrubber
+          frames={emu.replayFrames}
+          currentStep={emu.stepCount}
+          onSeek={emu.seekReplay}
+        />
+        <div className="flex-1 min-h-0 overflow-auto">
+          <RegisterPanel
+            registers={emu.registers}
+            changedRegs={emu.changedRegs}
+            fpRegisters={emu.fpRegisters}
+            changedFpRegs={emu.changedFpRegs}
+            sp={emu.sp}
+            pc={emu.pc}
+            nzcv={emu.nzcv}
+          />
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 
+  // Every panel block wraps in its own ErrorBoundary: the blocks mount in
+  // three different layouts, so wrapping at the definition covers them all,
+  // and a tab switch remounts a failed one fresh. The editor stays unwrapped
+  // on purpose; with the buffer surface itself broken, the route-level fault
+  // page is the honest state.
   const memoryBlock = (
-    <MemoryPanel
-      getMemory={emu.getMemory}
-      dirtyAddrs={emu.dirtyAddrs}
-      regions={emu.memoryRegions}
-      sp={emu.sp}
-    />
+    <ErrorBoundary label="memory">
+      <MemoryPanel
+        getMemory={emu.getMemory}
+        dirtyAddrs={emu.dirtyAddrs}
+        regions={emu.memoryRegions}
+        sp={emu.sp}
+      />
+    </ErrorBoundary>
   );
   const stackBlock = (
-    <StackPanel
-      sp={emu.sp}
-      getMemory={emu.getMemory}
-      fp={fpValue}
-      frameSlots={frameSlots}
-    />
+    <ErrorBoundary label="stack">
+      <StackPanel
+        sp={emu.sp}
+        getMemory={emu.getMemory}
+        fp={fpValue}
+        frameSlots={frameSlots}
+      />
+    </ErrorBoundary>
   );
   const consoleBlock = (
-    <ConsolePanel
-      stdout={emu.stdout}
-      stderr={emu.stderr}
-      blocked={emu.blocked}
-      ownedByTerminal={foregroundLive || (launchMode === "terminal" && chrome === "full")}
-      terminalOwnedFrom={terminalOwnedFrom}
-      exitCode={emu.exitCode}
-      vfsFiles={emu.vfsFiles}
-      pushStdin={emu.pushStdin}
-      closeStdin={emu.closeStdin}
-      uploadVfsFile={stageVfsFile}
-      clearConsole={clearConsoleAll}
-    />
+    <ErrorBoundary label="console">
+      <ConsolePanel
+        stdout={emu.stdout}
+        stderr={emu.stderr}
+        blocked={emu.blocked}
+        ownedByTerminal={foregroundLive || (launchMode === "terminal" && chrome === "full")}
+        terminalOwnedFrom={terminalOwnedFrom}
+        exitCode={emu.exitCode}
+        vfsFiles={emu.vfsFiles}
+        pushStdin={emu.pushStdin}
+        closeStdin={emu.closeStdin}
+        uploadVfsFile={stageVfsFile}
+        clearConsole={clearConsoleAll}
+      />
+    </ErrorBoundary>
   );
   const terminalBlock = (
-    <div className="h-full relative">
-      <input
-        ref={terminalUploadRef}
-        type="file"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (!f) return;
-          const sizeError = checkUploadSize(f.size, MAX_VFS_BYTES, "file");
-          if (sizeError) {
-            toast.error(sizeError);
+    <ErrorBoundary label="terminal">
+      <div className="h-full relative">
+        <input
+          ref={terminalUploadRef}
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            const sizeError = checkUploadSize(f.size, MAX_VFS_BYTES, "file");
+            if (sizeError) {
+              toast.error(sizeError);
+              e.target.value = "";
+              return;
+            }
+            f.arrayBuffer().then((buf) => {
+              stageVfsFile(f.name, new Uint8Array(buf));
+            });
             e.target.value = "";
-            return;
-          }
-          f.arrayBuffer().then((buf) => {
-            stageVfsFile(f.name, new Uint8Array(buf));
-          });
-          e.target.value = "";
-        }}
-      />
-      <TerminalPane
-        buildContext={buildTerminalContext}
-        onUploadRequest={() => terminalUploadRef.current?.click()}
-        onRegisterIO={registerTermIO}
-      />
-    </div>
+          }}
+        />
+        <TerminalPane
+          buildContext={buildTerminalContext}
+          onUploadRequest={() => terminalUploadRef.current?.click()}
+          onRegisterIO={registerTermIO}
+        />
+      </div>
+    </ErrorBoundary>
   );
   const watchBlock = (
-    <WatchPanel
-      registers={emu.registers}
-      sp={emu.sp}
-      pc={emu.pc}
-      frameSlots={frameSlots}
-      getMemory={emu.getMemory}
-      getMemoryMapped={emu.getMemoryMapped}
-    />
+    <ErrorBoundary label="watches">
+      <WatchPanel
+        registers={emu.registers}
+        sp={emu.sp}
+        pc={emu.pc}
+        frameSlots={frameSlots}
+        getMemory={emu.getMemory}
+        getMemoryMapped={emu.getMemoryMapped}
+      />
+    </ErrorBoundary>
   );
-  const memWatchBlock = <MemoryWatches getMemory={emu.getMemory} />;
-  const converterBlock = <BaseConverter />;
+  const memWatchBlock = (
+    <ErrorBoundary label="memory watch">
+      <MemoryWatches getMemory={emu.getMemory} />
+    </ErrorBoundary>
+  );
+  const converterBlock = (
+    <ErrorBoundary label="converter">
+      <BaseConverter />
+    </ErrorBoundary>
+  );
   const savesBlock = (
-    <SavesPanel
-      savedStates={emu.savedStates}
-      onSaveState={emu.saveState}
-      onLoadState={emu.loadState}
-      onDeleteState={emu.deleteState}
-      source={source}
-      args={argsText}
-      stepCount={emu.stepCount}
-      onLoadProgram={loadProgram}
-      onRestoreBookmark={emu.restoreBookmark}
-    />
+    <ErrorBoundary label="saves">
+      <SavesPanel
+        savedStates={emu.savedStates}
+        onSaveState={emu.saveState}
+        onLoadState={emu.loadState}
+        onDeleteState={emu.deleteState}
+        source={source}
+        args={argsText}
+        stepCount={emu.stepCount}
+        onLoadProgram={loadProgram}
+        onRestoreBookmark={emu.restoreBookmark}
+      />
+    </ErrorBoundary>
   );
 
   const rightTabs = (
