@@ -69,68 +69,10 @@ import {
   type EmbeddablePlaygroundHandle,
   type EmbeddableState,
 } from "@/components/playground/EmbeddablePlayground";
+import { makeHub } from "@/components/test/playground/helpers/emulator-hub";
+import type { EmulatorState } from "@/lib/emulator/use-emulator";
 
-type Hub = ReturnType<typeof makeHub>;
-
-function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    isLoaded: true,
-    loadError: null as string | null,
-    registers: Array(31).fill("0x0000000000000000") as string[],
-    sp: "0x0000000080000000",
-    pc: 0x400000,
-    nzcv: 0,
-    changedRegs: new Set<number>(),
-    isRunning: false,
-    isHalted: false,
-    programLoaded: false,
-    error: null as string | null,
-    assemblyErrors: [],
-    breakpoints: new Set<number>(),
-    currentLine: null,
-    instructions: [],
-    codeBase: 0x400000,
-    stdout: "",
-    stderr: "",
-    blocked: false,
-    exitCode: null as number | null,
-    hostedMode: false,
-    vfsFiles: [] as string[],
-    canStepBack: false,
-    stepCount: 0,
-    savedStates: [] as string[],
-    dirtyAddrs: [] as Array<[number, number]>,
-    replayFrames: [],
-    assemble: vi.fn(),
-    assembleForTool: vi
-      .fn()
-      .mockResolvedValue({ success: true, error: null, errorLine: null }),
-    step: vi.fn(),
-    stepBack: vi.fn(),
-    run: vi.fn(),
-    pause: vi.fn(),
-    reset: vi.fn(),
-    toggleBreakpoint: vi.fn(),
-    clearAllBreakpoints: vi.fn(),
-    remapBreakpoints: vi.fn(),
-    lint: vi.fn(async () => []),
-    getMemory: vi.fn(() => new Uint8Array()),
-    pushStdin: vi.fn(),
-    uploadVfsFile: vi.fn(),
-    readVfsFile: vi.fn(),
-    deleteVfsFile: vi.fn(),
-    resolveLabel: vi.fn(),
-    setBreakpointAddress: vi.fn(),
-    clearBreakpointAddress: vi.fn(),
-    restoreBookmark: vi.fn(),
-    clearConsole: vi.fn(),
-    saveState: vi.fn(),
-    loadState: vi.fn(),
-    deleteState: vi.fn(),
-    seekReplay: vi.fn(),
-    ...overrides,
-  };
-}
+type Hub = EmulatorState;
 
 function engage(container: HTMLElement) {
   act(() => {
@@ -264,8 +206,8 @@ describe("EmbeddablePlayground", () => {
     // the checker never evaluates a stale run (or zeroed pre-run state).
     expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
     expect(hub.run).toHaveBeenCalledTimes(1);
-    expect(hub.assemble.mock.invocationCallOrder[0]).toBeLessThan(
-      hub.run.mock.invocationCallOrder[0],
+    expect(vi.mocked(hub.assemble).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(hub.run).mock.invocationCallOrder[0],
     );
     expect((onCheck.mock.calls[0][0] as EmbeddableState).exitCode).toBe(7);
   });
@@ -343,8 +285,8 @@ describe("EmbeddablePlayground", () => {
     expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
     // assemble must precede run so runUntilBreak sees a loaded program, not
     // empty memory (the visible Run is the embed's only execution trigger).
-    expect(hub.assemble.mock.invocationCallOrder[0]).toBeLessThan(
-      hub.run.mock.invocationCallOrder[0],
+    expect(vi.mocked(hub.assemble).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(hub.run).mock.invocationCallOrder[0],
     );
   });
 
