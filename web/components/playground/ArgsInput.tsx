@@ -3,6 +3,11 @@
 import { useEffect } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { hashString } from "@/lib/playground/auto-save";
+import {
+  safeGetItem,
+  safeRemoveItem,
+  safeSetItem,
+} from "@/lib/playground/safe-storage";
 import { validateArgs } from "@/lib/playground/upload-guard";
 
 export interface ArgsInputProps {
@@ -16,25 +21,14 @@ export interface ArgsInputProps {
 const STORE_KEY_PREFIX = "aarch64-playground:args:";
 
 function loadFor(source: string): string {
-  if (typeof window === "undefined") return "";
-  try {
-    return window.localStorage.getItem(STORE_KEY_PREFIX + hashString(source)) ?? "";
-  } catch {
-    return "";
-  }
+  return safeGetItem(STORE_KEY_PREFIX + hashString(source)) ?? "";
 }
 
+/** An emptied args box drops its key rather than storing "". */
 function saveFor(source: string, value: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (value) {
-      window.localStorage.setItem(STORE_KEY_PREFIX + hashString(source), value);
-    } else {
-      window.localStorage.removeItem(STORE_KEY_PREFIX + hashString(source));
-    }
-  } catch {
-    // localStorage can be disabled / quota-exceeded; skip silently.
-  }
+  const key = STORE_KEY_PREFIX + hashString(source);
+  if (value) safeSetItem(key, value);
+  else safeRemoveItem(key);
 }
 
 /**
