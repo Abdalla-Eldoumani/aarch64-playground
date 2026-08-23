@@ -1,3 +1,4 @@
+import { formatWord32, formatWord64 } from "@/lib/emulator/format-hex";
 import { parseArgsDetailed } from "@/lib/playground/args";
 
 /**
@@ -166,11 +167,6 @@ const GDB_HELP_LINES = [
   "  gdb x/Ni $pc                      disassemble N words at the current PC",
   "  gdb bt                            print a one-frame backtrace (current PC)",
 ];
-
-function hex16(n: bigint): string {
-  const sign = n < 0n ? -n : n;
-  return "0x" + sign.toString(16).padStart(16, "0");
-}
 
 export async function dispatchCommand(
   line: string,
@@ -375,7 +371,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     const addr = await ctx.resolveLabel(label);
     if (addr == null) return { status: "err", lines: [`gdb: unknown label '${label}'`] };
     await ctx.setBreakpoint(addr);
-    return { status: "ok", lines: [`breakpoint set at ${hex16(BigInt(addr))} (${label})`] };
+    return { status: "ok", lines: [`breakpoint set at ${formatWord64(addr)} (${label})`] };
   }
   if (sub === "p") {
     const operand = args[1];
@@ -383,11 +379,13 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     const name = operand.slice(1).toLowerCase();
     const v = ctx.readRegister(name);
     if (v == null) return { status: "err", lines: [`gdb: unknown register ${operand}`] };
-    return { status: "ok", lines: [`$${name} = ${hex16(v)}`] };
+    return { status: "ok", lines: [`$${name} = ${formatWord64(v)}`] };
   }
   if (sub === "info" && args[1] === "registers") {
     const regs = ctx.readRegisters();
-    const lines = Object.entries(regs).map(([name, v]) => `${name.padEnd(4)} ${hex16(v)}`);
+    const lines = Object.entries(regs).map(
+      ([name, v]) => `${name.padEnd(4)} ${formatWord64(v)}`,
+    );
     return { status: "ok", lines };
   }
   if (sub === "x" || sub.startsWith("x/")) {
@@ -395,7 +393,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   }
   if (sub === "bt") {
     const pc = ctx.pcAddress();
-    return { status: "ok", lines: [`#0  ${hex16(BigInt(pc))} in <current>`] };
+    return { status: "ok", lines: [`#0  ${formatWord64(pc)} in <current>`] };
   }
   return { status: "err", lines: [`gdb: unknown subcommand '${sub}'`] };
 }
@@ -429,8 +427,8 @@ async function runGdbExamine(args: string[], ctx: DispatchContext): Promise<Disp
       ((bytes[off + 1] ?? 0) << 8) |
       ((bytes[off + 2] ?? 0) << 16) |
       ((bytes[off + 3] ?? 0) << 24);
-    const hex = "0x" + (word >>> 0).toString(16).padStart(8, "0");
-    lines.push(`${hex16(BigInt(base + off))}  ${hex}`);
+    const hex = formatWord32(word);
+    lines.push(`${formatWord64(base + off)}  ${hex}`);
   }
   return { status: "ok", lines };
 }
