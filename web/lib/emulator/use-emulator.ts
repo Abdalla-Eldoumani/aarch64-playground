@@ -2,254 +2,50 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
+import { buildDisassembly, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
-import { formatWord32 } from "@/lib/emulator/format-hex";
+import type {
+  AssembleOutcome,
+  AssemblyError,
+  EmulatorState,
+} from "@/lib/emulator/emulator-state";
 import {
   emptyLineMap,
   isEmptyLineMap,
-  lineToAddrFromMap,
   parseLineMap,
   pcToSourceLineFromMap,
   type LineMap,
 } from "@/lib/emulator/line-map";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
-import { ReplayRing, type ReplayFrame } from "@/lib/emulator/replay";
+import { hasAssemblableContent, pcToSourceLine } from "@/lib/emulator/source-lines";
+import { useBackendPassthroughs } from "@/lib/emulator/use-backend-passthroughs";
+import { useBreakpoints } from "@/lib/emulator/use-breakpoints";
+import { useConsoleOutput } from "@/lib/emulator/use-console-output";
+import { useCpuView } from "@/lib/emulator/use-cpu-view";
+import { useMemoryCache } from "@/lib/emulator/use-memory-cache";
 import { parseArgs } from "@/lib/playground/args";
 import type { ExternalCall, StateSnapshot } from "@/lib/worker/protocol";
 
-export interface AssemblyError {
-  line: number;
-  message: string;
-}
-
-/** Retained console scrollback. The panel renders the whole string as one
- *  text node, so an unbounded buffer turns a print-happy runaway into
- *  seconds of layout jank per heartbeat; 256 KB is thousands of lines. */
-export const MAX_CONSOLE_CHARS = 256 * 1024;
-/** Visible marker so trimmed output is never mistaken for all of it. */
-export const CONSOLE_TRIM_MARKER = "[...earlier output trimmed...]\n";
-
-/** Append a delta to console scrollback, keeping only the newest
- *  MAX_CONSOLE_CHARS and saying so when older output is dropped. */
-export function appendBounded(prev: string, delta: string): string {
-  const next = prev + delta;
-  if (next.length <= MAX_CONSOLE_CHARS) return next;
-  return CONSOLE_TRIM_MARKER + next.slice(next.length - MAX_CONSOLE_CHARS);
-}
-
-/** The direct verdict of one assemble attempt, returned to tool callers
- *  (the terminal's gcc) so they never read error state that has not
- *  flushed through React yet. */
-export interface AssembleOutcome {
-  success: boolean;
-  error: string | null;
-  errorLine: number | null;
-}
-
-export interface DecodedInstruction {
-  address: number;
-  hex: string;
-  text: string;
-}
-
-export interface EmulatorState {
-  isLoaded: boolean;
-  loadError: string | null;
-  registers: string[];
-  /** d0-d31 as raw IEEE-754 bit patterns ("0x…"); [] until the loaded WASM
-   *  ships the FP surface, which is the UI's cue to hide the d-view. */
-  fpRegisters: string[];
-  sp: string;
-  pc: number;
-  nzcv: number;
-  changedRegs: Set<number>;
-  changedFpRegs: Set<number>;
-  isRunning: boolean;
-  /** True while an assemble is in flight. The FIRST assemble also fetches
-   *  and compiles the wasm inside the worker, which can take visible time
-   *  on a cold load -- without this flag that first click looks like a
-   *  hang. */
-  isAssembling: boolean;
-  isHalted: boolean;
-  /** True only while a successfully assembled (or state-restored) program
-   *  is in the machine. `run`, `step`, and `stepBack` are inert without
-   *  one; reset and a failed assemble drop the flag. */
-  programLoaded: boolean;
-  error: string | null;
-  assemblyErrors: AssemblyError[];
-  breakpoints: Set<number>;
-  currentLine: number | null;
-  /**
-   * The external call the paused pc sits inside, or null when the pc is one
-   * of the program's own instructions. Non-null means `currentLine` is the
-   * call SITE, not the executing address -- the three steps a hosted call
-   * takes land on a trampoline and a synthetic stub, neither of which is a
-   * line the student wrote. Always null while the program is running (a
-   * full run passes through dozens of calls a second) and on wasm builds
-   * that predate the export.
-   */
-  externalCall: ExternalCall | null;
-  instructions: DecodedInstruction[];
-  codeBase: number;
-  /**
-   * The emulator's address bands, read once at load. Empty on a wasm build
-   * that predates the export, which is the memory panel's cue to fall back
-   * to its own section list.
-   */
-  memoryRegions: MemoryRegion[];
-  stdout: string;
-  stderr: string;
-  blocked: boolean;
-  /** True once the running program put the terminal in raw mode; the
-   *  terminal pane takes over I/O and the console stays quiet. */
-  wantsTerminal: boolean;
-  /** Route program stdout away from the console (into the terminal
-   *  pane) while a tap is set; pass null to restore console routing. */
-  setOutputTap: (tap: ((text: string) => void) | null) => void;
-  exitCode: number | null;
-  hostedMode: boolean;
-  vfsFiles: string[];
-  /** Resolves true on a successful assemble, false on any failure, so
-   *  callers can chain work (input seeding, run) on a loaded program. */
-  assemble: (source: string, args?: string[]) => Promise<boolean>;
-  /** Assemble for the terminal toolchain: same machine bookkeeping, but
-   *  the precise verdict comes back directly and the editor's error
-   *  markers stay untouched. */
-  assembleForTool: (source: string, args?: string[]) => Promise<AssembleOutcome>;
-  step: () => void;
-  stepBack: () => void;
-  canStepBack: boolean;
-  stepCount: number;
-  savedStates: string[];
-  saveState: (name: string) => void;
-  loadState: (name: string) => void;
-  deleteState: (name: string) => void;
-  run: () => void;
-  pause: () => void;
-  reset: () => void;
-  toggleBreakpoint: (line: number) => void;
-  /** Drop every breakpoint, gutter and CPU alike (program switch). */
-  clearAllBreakpoints: () => void;
-  /**
-   * Move every stored gutter line through `remap` (null drops it). The
-   * multi-file workspace keys breakpoints by COMBINED-string line, so an
-   * edit that changes any file's length re-numbers them all; the playground
-   * re-anchors them here rather than letting the next assemble arm an
-   * address belonging to a different instruction.
-   */
-  remapBreakpoints: (remap: (line: number) => number | null) => void;
-  /**
-   * Returns the cached bytes for `[addr, addr + len)`. On a cache miss
-   * the returned array is empty and an async fetch is queued; the next
-   * render delivers the bytes via state. Memory panels render a
-   * "loading" placeholder while empty.
-   */
-  getMemory: (addr: number, len: number) => Uint8Array;
-  /** Whether the range is mapped: true/false once known, null while
-   *  the async verdict is in flight (render a pending placeholder). */
-  getMemoryMapped: (addr: number, len: number) => boolean | null;
-  pushStdin: (s: string) => void;
-  /** Pause/resume the step-back snapshot ring (terminal sessions). */
-  setSnapshotsPaused: (paused: boolean) => void;
-  /** Signal end-of-input (ctrl-d): getchar sees EOF, scanf finishes. */
-  closeStdin: () => void;
-  uploadVfsFile: (path: string, data: Uint8Array) => void;
-  readVfsFile: (path: string) => Promise<Uint8Array>;
-  deleteVfsFile: (path: string) => Promise<boolean>;
-  resolveLabel: (name: string) => Promise<number | null>;
-  /** Pre-assembly structural lint: advisory warnings with a line and a
-   *  one-line remedy. Empty on a wasm build that predates the export. */
-  lint: (source: string) => Promise<AssemblyError[]>;
-  /** Standalone m4 pass for the terminal; null when the WASM predates it. */
-  m4Expand: (source: string) => Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
-  /** Address-based breakpoint setter, used by `gdb b <label>` once the
-   *  label resolves. The line-based `toggleBreakpoint` stays the
-   *  primary path for the gutter UI. */
-  setBreakpointAddress: (addr: number) => Promise<void>;
-  clearBreakpointAddress: (addr: number) => Promise<void>;
-  /**
-   * Restore a named bookmark: assemble the saved source with the saved
-   * args, push the saved stdin (if any), then step the live CPU forward
-   * to `stepCount` (clamped to the run ceiling). Resolves a verdict --
-   * `success` false means the saved source no longer assembles, and
-   * `stepped` is how far the machine actually got (a halt, fault, or
-   * input wait stops the walk early) so the caller reports the truth.
-   */
-  restoreBookmark: (params: {
-    source: string;
-    args?: string;
-    stdin?: string;
-    stepCount: number;
-  }) => Promise<{ success: boolean; stepped: number }>;
-  clearConsole: () => void;
-  /**
-   * Most-recent snapshot's `(addr, len)` memory writes. Drives the
-   * replay scrubber's memory-diff highlighting and any future
-   * "show me what changed last step" UI.
-   */
-  dirtyAddrs: Array<[number, number]>;
-  /**
-   * Last N captured frames for the replay scrubber. Populated after
-   * every step and run stop. Capacity 128.
-   */
-  replayFrames: ReplayFrame[];
-  /**
-   * Apply a captured frame's registers/PC/currentLine to React state
-   * for visual scrubbing. Does not touch the underlying CPU; the next
-   * forward `step` resumes from the live PC.
-   */
-  seekReplay: (frameIndex: number) => void;
-}
-
-function memCacheKey(addr: number, len: number): string {
-  return `${addr}:${len}`;
-}
+// The hub is the import site every consumer already uses, so the contract
+// and the helpers it owns stay reachable from here.
+export type { AssembleOutcome, AssemblyError, DecodedInstruction, EmulatorState };
+export { indexedInstructionText, stripSourceLines } from "@/lib/emulator/source-lines";
+export {
+  appendBounded,
+  CONSOLE_TRIM_MARKER,
+  MAX_CONSOLE_CHARS,
+} from "@/lib/emulator/use-console-output";
 
 export function useEmulator(): EmulatorState {
   const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
   const sourceRef = useRef("");
   const frameRef = useRef(0);
-  // Per-frame memory cache. Cleared when the worker bumps `frame`, so
-  // panels never read stale bytes. Stores Uint8Arrays keyed by addr+len.
-  const memCacheRef = useRef<Map<string, Uint8Array>>(new Map());
-  const memPendingRef = useRef<Set<string>>(new Set());
-  // Parallel mapped-ness cache for the watch panel's fault display;
-  // same per-frame lifetime as the byte cache.
-  const mappedCacheRef = useRef<Map<string, boolean>>(new Map());
-  const mappedPendingRef = useRef<Set<string>>(new Set());
-  const currentLineRef = useRef<number | null>(null);
   // Authoritative linker address -> editor-line map for the current
   // assembly. Empty until the first successful hosted assemble; an empty
   // map signals the legacy source-text line-count fallback (bare-metal,
   // where instruction index and non-label source line are already 1:1).
   const lineMapRef = useRef<LineMap>(emptyLineMap());
-  // Which gutter LINES share each armed CPU address. Labels, blanks, and
-  // comments forward-resolve to the next instruction, so several dots can
-  // legitimately share one address; the CPU breakpoint is cleared only
-  // when the LAST of them goes.
-  const bpLinesByAddrRef = useRef<Map<number, Set<number>>>(new Map());
-  // Replay ring + the latest snapshot snapshot-cache so step/run callbacks
-  // can read regs/pc/nzcv without piping them through React state and
-  // racing the snapshot listener.
-  const replayRingRef = useRef<ReplayRing>(new ReplayRing(128));
-  const latestSnapRef = useRef<{
-    registers: string[];
-    sp: string;
-    fpRegisters: string[];
-    pc: number;
-    nzcv: number;
-    changedRegs: number[];
-    changedFpRegs: number[];
-  }>({
-    registers: [],
-    sp: "0x0000000080000000",
-    fpRegisters: [],
-    pc: 0,
-    nzcv: 0,
-    changedRegs: [],
-    changedFpRegs: [],
-  });
   // Most-recent snapshot's `(addr, len)` writes. Drives memory-cell
   // diff highlighting in the replay scrubber and MemoryPanel. Cleared
   // whenever a snapshot reports no writes (assemble, reset, or a
@@ -270,15 +66,6 @@ export function useEmulator(): EmulatorState {
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [registers, setRegisters] = useState<string[]>(
-    () => Array(31).fill("0x0000000000000000"),
-  );
-  const [sp, setSp] = useState("0x0000000080000000");
-  const [pc, setPc] = useState(0x400000);
-  const [nzcv, setNzcv] = useState(0);
-  const [changedRegs, setChangedRegs] = useState<Set<number>>(new Set());
-  const [fpRegisters, setFpRegisters] = useState<string[]>([]);
-  const [changedFpRegs, setChangedFpRegs] = useState<Set<number>>(new Set());
   const [isRunning, setIsRunning] = useState(false);
   const [isAssembling, setIsAssembling] = useState(false);
   const [isHalted, setIsHalted] = useState(false);
@@ -287,53 +74,78 @@ export function useEmulator(): EmulatorState {
   const [stepCount, setStepCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [assemblyErrors, setAssemblyErrors] = useState<AssemblyError[]>([]);
-  const [breakpoints, setBreakpoints] = useState<Set<number>>(new Set());
-  const [currentLine, setCurrentLine] = useState<number | null>(null);
   const [externalCall, setExternalCall] = useState<ExternalCall | null>(null);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
   const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
-  const [stdout, setStdout] = useState("");
-  const [stderr, setStderr] = useState("");
   const [blocked, setBlocked] = useState(false);
   const [wantsTerminal, setWantsTerminal] = useState(false);
   const wantsTerminalRef = useRef(false);
-  const outputTapRef = useRef<((text: string) => void) | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [hostedMode, setHostedMode] = useState(false);
   const [vfsFiles, setVfsFiles] = useState<string[]>([]);
   const [savedStates, setSavedStates] = useState<string[]>([]);
-  // Tick increments whenever cache state changes so panels re-render.
-  const [memTick, setMemTick] = useState(0);
-  const [replayTick, setReplayTick] = useState(0);
   const [dirtyAddrsTick, setDirtyAddrsTick] = useState(0);
+
+  const { getMemory, getMemoryMapped, invalidate: invalidateMemory } =
+    useMemoryCache(backendRef);
+  const {
+    stdout,
+    stderr,
+    appendStdout,
+    appendStderr,
+    clearScrollback,
+    clearConsole,
+    setOutputTap,
+  } = useConsoleOutput(backendRef);
+  const {
+    pushStdin,
+    closeStdin,
+    setSnapshotsPaused,
+    lint,
+    uploadVfsFile,
+    readVfsFile,
+    deleteVfsFile,
+    resolveLabel,
+    m4Expand,
+    saveState,
+    deleteState,
+  } = useBackendPassthroughs(backendRef);
+  const {
+    registers,
+    sp,
+    pc,
+    nzcv,
+    changedRegs,
+    fpRegisters,
+    changedFpRegs,
+    currentLine,
+    replayTick,
+    applyRegisters,
+    latestSnapRef,
+    markCurrentLine,
+    pushReplayFrame,
+    readReplayFrames,
+    resetReplayHistory,
+    seekReplay,
+    setCurrentLine,
+  } = useCpuView();
+  const {
+    breakpoints,
+    toggleBreakpoint,
+    remapBreakpoints,
+    clearAllBreakpoints,
+    setBreakpointAddress,
+    clearBreakpointAddress,
+    rekeyAfterAssemble,
+  } = useBreakpoints({ backendRef, lineMapRef, sourceRef, codeBase });
 
   const applySnapshot = useCallback((snap: StateSnapshot) => {
     if (snap.frame > frameRef.current) {
       frameRef.current = snap.frame;
-      memCacheRef.current.clear();
-      memPendingRef.current.clear();
-      mappedCacheRef.current.clear();
-      mappedPendingRef.current.clear();
-      setMemTick((t) => t + 1);
+      invalidateMemory();
     }
-    setRegisters(snap.registers);
-    setSp(snap.sp);
-    const pcNum = Number(BigInt(snap.pc));
-    setPc(pcNum);
-    setNzcv(snap.nzcv);
-    setChangedRegs(new Set(snap.changedRegs));
-    setFpRegisters(snap.fpRegisters);
-    setChangedFpRegs(new Set(snap.changedFpRegs));
-    latestSnapRef.current = {
-      registers: snap.registers,
-      sp: snap.sp,
-      fpRegisters: snap.fpRegisters,
-      pc: pcNum,
-      nzcv: snap.nzcv,
-      changedRegs: snap.changedRegs,
-      changedFpRegs: snap.changedFpRegs,
-    };
+    const pcNum = applyRegisters(snap);
     setIsHalted(snap.halted);
     haltedRef.current = snap.halted;
     setBlocked(snap.blocked);
@@ -349,14 +161,8 @@ export function useEmulator(): EmulatorState {
     setCanStepBack(snap.canStepBack);
     setVfsFiles(snap.vfsFiles);
     setSavedStates(snap.savedStates);
-    if (snap.stdoutDelta) {
-      // While the terminal pane holds the tap, program output belongs to
-      // xterm; mirroring it into the console doubled every frame.
-      const tap = outputTapRef.current;
-      if (tap) tap(snap.stdoutDelta);
-      else setStdout((prev) => appendBounded(prev, snap.stdoutDelta));
-    }
-    if (snap.stderrDelta) setStderr((prev) => appendBounded(prev, snap.stderrDelta));
+    if (snap.stdoutDelta) appendStdout(snap.stdoutDelta);
+    if (snap.stderrDelta) appendStderr(snap.stderrDelta);
     // Drive the current-line marker off the linker's authoritative
     // address->editor-line map: look the snapshot pc up directly instead
     // of counting non-label source lines (which double-counts data/macro
@@ -373,24 +179,18 @@ export function useEmulator(): EmulatorState {
     setExternalCall(call);
     const map = lineMapRef.current;
     if (!programLoadedRef.current) {
-      setCurrentLine(null);
-      currentLineRef.current = null;
+      markCurrentLine(null);
     } else if (call) {
       // Inside a libc call the pc is a trampoline word or a synthetic stub;
       // the line the student is on is the `bl` that got there (null when the
       // map cannot name it, which reads as "no line" exactly as before).
-      setCurrentLine(call.callSiteLine);
-      currentLineRef.current = call.callSiteLine;
+      markCurrentLine(call.callSiteLine);
     } else if (!isEmptyLineMap(map)) {
-      const newLine = pcToSourceLineFromMap(pcNum, map);
-      setCurrentLine(newLine);
-      currentLineRef.current = newLine;
+      markCurrentLine(pcToSourceLineFromMap(pcNum, map));
     } else {
       const instrIndex = (pcNum - codeBase) / 4;
       if (instrIndex >= 0) {
-        const newLine = pcToSourceLine(instrIndex, sourceRef.current);
-        setCurrentLine(newLine);
-        currentLineRef.current = newLine;
+        markCurrentLine(pcToSourceLine(instrIndex, sourceRef.current));
       }
     }
     // dirtyAddrs are surfaced through a separate ref so the memory
@@ -412,51 +212,20 @@ export function useEmulator(): EmulatorState {
       dirtyAddrsRef.current = [];
       setDirtyAddrsTick((t) => t + 1);
     }
-  }, [codeBase]);
-
-  // Push a replay frame using the latest snapshot data + the
-  // current line. Called by step / runUntilBreak after the snapshot
-  // listener has updated currentLineRef + latestSnapRef.
-  const pushReplayFrame = useCallback((newStepCount: number) => {
-    const ln = currentLineRef.current;
-    const snap = latestSnapRef.current;
-    replayRingRef.current.push({
-      stepCount: newStepCount,
-      registers: snap.registers,
-      sp: snap.sp,
-      fpRegisters: snap.fpRegisters,
-      pc: snap.pc,
-      nzcv: snap.nzcv,
-      changedRegs: snap.changedRegs,
-      changedFpRegs: snap.changedFpRegs,
-      currentLine: ln,
-    });
-    setReplayTick((t) => t + 1);
-  }, []);
+  }, [
+    appendStderr,
+    appendStdout,
+    applyRegisters,
+    codeBase,
+    invalidateMemory,
+    markCurrentLine,
+  ]);
 
   // Ref and state move together so the guards (refs) and the controls
   // (state) can never disagree about whether a program exists.
   const markProgramLoaded = useCallback((loaded: boolean) => {
     programLoadedRef.current = loaded;
     setProgramLoaded(loaded);
-  }, []);
-
-  const resetReplayHistory = useCallback(() => {
-    replayRingRef.current.clear();
-    setReplayTick((t) => t + 1);
-  }, []);
-
-  const seekReplay = useCallback((frameIndex: number) => {
-    const frame = replayRingRef.current.at(frameIndex);
-    if (!frame) return;
-    setRegisters(frame.registers);
-    setSp(frame.sp);
-    setFpRegisters(frame.fpRegisters);
-    setPc(frame.pc);
-    setNzcv(frame.nzcv);
-    setChangedRegs(new Set(frame.changedRegs));
-    setChangedFpRegs(new Set(frame.changedFpRegs));
-    setCurrentLine(frame.currentLine);
   }, []);
 
   // Load backend on mount.
@@ -516,8 +285,7 @@ export function useEmulator(): EmulatorState {
         // the one machine but must not erase what the student was reading;
         // the terminal reports its own program's output as a delta instead.
         setStepCount(0);
-        setStdout("");
-        setStderr("");
+        clearScrollback();
       }
       // The backend wipes the machine on every assemble attempt, so the old
       // program is gone the moment one starts; the flag comes back only on
@@ -532,13 +300,7 @@ export function useEmulator(): EmulatorState {
       lineMapRef.current = emptyLineMap();
       detectHostedMode(source).then(setHostedMode).catch(() => {});
 
-      const hasContent = source
-        .split("\n")
-        .some((line) => {
-          const trimmed = line.replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
-          return trimmed.length > 0 && !trimmed.endsWith(":");
-        });
-      if (!hasContent) {
+      if (!hasAssemblableContent(source)) {
         if (surfaceErrors) setError("no instructions to assemble");
         setInstructions([]);
         return Promise.resolve({
@@ -588,31 +350,9 @@ export function useEmulator(): EmulatorState {
           const map = parseLineMap(flatMap);
           lineMapRef.current = map;
           const mapped = !isEmptyLineMap(map);
-          // Re-key the gutter breakpoints through the FRESH map: the CPU
-          // deliberately keeps its address set across assemble, but those
-          // addresses belong to the previous assembly of possibly
-          // different source. Clear them all and re-arm the lines that
-          // still resolve; lines that no longer map lose their dot.
-          await backend.clearAllBreakpoints();
-          bpLinesByAddrRef.current = new Map();
-          setBreakpoints((prev) => {
-            const survivors = new Set<number>();
-            for (const line of prev) {
-              const addr = mapped
-                ? lineToAddrFromMap(line, map)
-                : (() => {
-                    const idx = sourceLineToInstrIndex(line, source);
-                    return idx === null ? null : base + idx * 4;
-                  })();
-              if (addr === null) continue;
-              survivors.add(line);
-              const lines = bpLinesByAddrRef.current.get(addr) ?? new Set<number>();
-              if (lines.size === 0) void backend.setBreakpoint(addr);
-              lines.add(line);
-              bpLinesByAddrRef.current.set(addr, lines);
-            }
-            return survivors;
-          });
+          // The gutter dots are re-keyed through the FRESH map; lines that
+          // no longer resolve lose their dot.
+          await rekeyAfterAssemble({ base, source, map });
           // The post-assemble snapshot was applied while the loaded flag was
           // still down (and before this map existed), so it left no marker.
           // Recompute the entry marker from the live PC now: through the map
@@ -622,9 +362,7 @@ export function useEmulator(): EmulatorState {
           const entryLine = mapped
             ? pcToSourceLineFromMap(entryPc, map)
             : pcToSourceLine((entryPc - base) / 4, source);
-          setCurrentLine(entryLine);
-          currentLineRef.current = entryLine;
-          const instrs: DecodedInstruction[] = [];
+          markCurrentLine(entryLine);
           // One bulk read for the whole code region: the per-instruction
           // loop used to make instruction_count sequential worker
           // round-trips on every assemble.
@@ -632,39 +370,15 @@ export function useEmulator(): EmulatorState {
             result.instruction_count > 0
               ? await backend.getMemory(base, result.instruction_count * 4)
               : new Uint8Array(0);
-          // Both text lookups used to re-split the source (and re-run two
-          // regexes per line) once PER INSTRUCTION, so the decode cost grew
-          // with source x instructions: a dsav-sized workspace spent ~1s of
-          // blocked main thread here and a 1 MB one minutes. Strip the
-          // source once, then index it.
-          const strippedLines = stripSourceLines(source);
-          const instrTexts = indexedInstructionText(strippedLines);
-          for (let i = 0; i < result.instruction_count; i++) {
-            const addr = base + i * 4;
-            const off = i * 4;
-            const word =
-              (codeBytes[off] ?? 0) |
-              ((codeBytes[off + 1] ?? 0) << 8) |
-              ((codeBytes[off + 2] ?? 0) << 16) |
-              ((codeBytes[off + 3] ?? 0) << 24);
-            const hex = formatWord32(word);
-            // The map gives the editor line for this instruction's
-            // address; render that line's text. Fall back to the
-            // index-based source text when the map is empty (bare-metal)
-            // or the address is unexpectedly absent.
-            let text: string;
-            if (mapped) {
-              const line = pcToSourceLineFromMap(addr, map);
-              text =
-                line == null
-                  ? instrTexts[i] ?? ""
-                  : strippedLines[line - 1] ?? "";
-            } else {
-              text = instrTexts[i] ?? "";
-            }
-            instrs.push({ address: addr, hex, text });
-          }
-          setInstructions(instrs);
+          setInstructions(
+            buildDisassembly({
+              base,
+              count: result.instruction_count,
+              codeBytes,
+              source,
+              map,
+            }),
+          );
           markProgramLoaded(true);
           return { success: true, error: null, errorLine: null };
         })
@@ -677,7 +391,14 @@ export function useEmulator(): EmulatorState {
           if (surfaceErrors) setIsAssembling(false);
         });
     },
-    [resetReplayHistory, markProgramLoaded],
+    [
+      clearScrollback,
+      latestSnapRef,
+      markCurrentLine,
+      rekeyAfterAssemble,
+      resetReplayHistory,
+      markProgramLoaded,
+    ],
   );
 
   const assemble = useCallback(
@@ -747,12 +468,6 @@ export function useEmulator(): EmulatorState {
       });
   }, []);
 
-  const saveState = useCallback((name: string) => {
-    const backend = backendRef.current;
-    if (!backend || !name) return;
-    void backend.saveState(name);
-  }, []);
-
   const loadState = useCallback((name: string) => {
     const backend = backendRef.current;
     if (!backend) return;
@@ -766,12 +481,6 @@ export function useEmulator(): EmulatorState {
       }
     });
   }, [markProgramLoaded]);
-
-  const deleteState = useCallback((name: string) => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    void backend.deleteState(name);
-  }, []);
 
   const run = useCallback(() => {
     const backend = backendRef.current;
@@ -850,104 +559,15 @@ export function useEmulator(): EmulatorState {
     setError(null);
     setAssemblyErrors([]);
     setInstructions([]);
+    // The marker's state clears, but the ref keeps describing the live CPU
+    // until the next assemble re-derives both.
     setCurrentLine(null);
-    setStdout("");
-    setStderr("");
+    clearScrollback();
     setStepCount(0);
     markProgramLoaded(false);
     resetReplayHistory();
     void backend.reset();
-  }, [resetReplayHistory, markProgramLoaded]);
-
-  const pushStdin = useCallback((s: string) => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    void backend.pushStdin(s);
-  }, []);
-
-  const setOutputTap = useCallback(
-    (tap: ((text: string) => void) | null) => {
-      outputTapRef.current = tap;
-    },
-    [],
-  );
-
-  const closeStdin = useCallback(() => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    void backend.closeStdin();
-  }, []);
-
-  // Live terminal sessions pause the step-back ring: the per-step clone
-  // costs more than the step, and stepping back mid-session has no
-  // meaning. The drive resumes it when it stands down.
-  const setSnapshotsPaused = useCallback((paused: boolean) => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    void backend.setSnapshotsPaused(paused);
-  }, []);
-
-  const lint = useCallback(async (source: string): Promise<AssemblyError[]> => {
-    const backend = backendRef.current;
-    if (!backend) return [];
-    try {
-      return await backend.lint(source);
-    } catch {
-      // Advisory only: a lint failure must never surface as a problem.
-      return [];
-    }
-  }, []);
-
-  const uploadVfsFile = useCallback((path: string, data: Uint8Array) => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    void backend.uploadVfsFile(path, data);
-  }, []);
-
-  const clearConsole = useCallback(() => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    setStdout("");
-    setStderr("");
-    void backend.clearConsole();
-  }, []);
-
-  const readVfsFile = useCallback(async (path: string) => {
-    const backend = backendRef.current;
-    if (!backend) return new Uint8Array();
-    return backend.readVfsFile(path);
-  }, []);
-
-  const deleteVfsFile = useCallback(async (path: string) => {
-    const backend = backendRef.current;
-    if (!backend) return false;
-    const result = await backend.deleteVfsFile(path);
-    return result.removed;
-  }, []);
-
-  const resolveLabel = useCallback(async (name: string) => {
-    const backend = backendRef.current;
-    if (!backend) return null;
-    return backend.resolveLabel(name);
-  }, []);
-
-  const m4Expand = useCallback(async (source: string) => {
-    const backend = backendRef.current;
-    if (!backend) return null;
-    return backend.m4Expand(source);
-  }, []);
-
-  const setBreakpointAddress = useCallback(async (addr: number) => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    await backend.setBreakpoint(addr);
-  }, []);
-
-  const clearBreakpointAddress = useCallback(async (addr: number) => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    await backend.clearBreakpoint(addr);
-  }, []);
+  }, [clearScrollback, setCurrentLine, resetReplayHistory, markProgramLoaded]);
 
   const restoreBookmark = useCallback(
     async (params: {
@@ -995,144 +615,6 @@ export function useEmulator(): EmulatorState {
       return { success: true, stepped };
     },
     [assembleWith, pushReplayFrame, resetReplayHistory],
-  );
-
-  // Resolve an editor line to an instruction address via the
-  // authoritative reverse map: a breakpoint on a label, blank, or
-  // comment line lands on the next real instruction. Fall back to index
-  // counting only when the map is empty (bare-metal, already 1:1).
-  const resolveBreakpointAddr = useCallback((line: number): number | null => {
-    const map = lineMapRef.current;
-    if (!isEmptyLineMap(map)) {
-      return lineToAddrFromMap(line, map);
-    }
-    const instrIndex = sourceLineToInstrIndex(line, sourceRef.current);
-    return instrIndex === null ? null : codeBase + instrIndex * 4;
-  }, [codeBase]);
-
-  const toggleBreakpoint = useCallback((line: number) => {
-    const backend = backendRef.current;
-    if (!backend) return;
-    const addr = resolveBreakpointAddr(line);
-    if (addr === null) return;
-    const byAddr = bpLinesByAddrRef.current;
-    setBreakpoints((prev) => {
-      const next = new Set(prev);
-      const lines = byAddr.get(addr) ?? new Set<number>();
-      if (next.has(line)) {
-        next.delete(line);
-        lines.delete(line);
-        // Removing one of several dots sharing this instruction used to
-        // silently disarm the CPU breakpoint under the dots that stayed.
-        if (lines.size === 0) {
-          byAddr.delete(addr);
-          void backend.clearBreakpoint(addr);
-        } else {
-          byAddr.set(addr, lines);
-        }
-      } else {
-        next.add(line);
-        if (lines.size === 0) void backend.setBreakpoint(addr);
-        lines.add(line);
-        byAddr.set(addr, lines);
-      }
-      return next;
-    });
-  }, [resolveBreakpointAddr]);
-
-  /** Re-number the gutter lines without touching the CPU: the armed
-   *  addresses still describe the program currently in memory, and the
-   *  assemble that follows an edit clears and re-arms them all anyway. */
-  const remapBreakpoints = useCallback((remap: (line: number) => number | null) => {
-    const moved = new Map<number, Set<number>>();
-    for (const [addr, lines] of bpLinesByAddrRef.current) {
-      const next = new Set<number>();
-      for (const line of lines) {
-        const to = remap(line);
-        if (to != null) next.add(to);
-      }
-      if (next.size > 0) moved.set(addr, next);
-    }
-    bpLinesByAddrRef.current = moved;
-    setBreakpoints((prev) => {
-      const next = new Set<number>();
-      for (const line of prev) {
-        const to = remap(line);
-        if (to != null) next.add(to);
-      }
-      return next;
-    });
-  }, []);
-
-  /** Drop every breakpoint, gutter and CPU alike: a different program's
-   *  dots and addresses must never survive into this one. */
-  const clearAllBreakpoints = useCallback(() => {
-    bpLinesByAddrRef.current = new Map();
-    setBreakpoints(new Set());
-    const backend = backendRef.current;
-    if (backend) void backend.clearAllBreakpoints();
-  }, []);
-
-  // Synchronous read from the per-frame cache. On a miss we kick off
-  // an async fetch; the next snapshot/heartbeat will trigger a re-
-  // render with the bytes available.
-  const getMemory = useCallback(
-    (addr: number, len: number): Uint8Array => {
-      const backend = backendRef.current;
-      if (!backend) return new Uint8Array(len);
-      const key = memCacheKey(addr, len);
-      const cached = memCacheRef.current.get(key);
-      if (cached) return cached;
-      if (!memPendingRef.current.has(key)) {
-        memPendingRef.current.add(key);
-        backend
-          .getMemory(addr, len)
-          .then((bytes) => {
-            memCacheRef.current.set(key, bytes);
-            memPendingRef.current.delete(key);
-            setMemTick((t) => t + 1);
-          })
-          .catch(() => {
-            memPendingRef.current.delete(key);
-          });
-      }
-      return new Uint8Array(len);
-    },
-    // memTick included so React knows this callback closure should
-    // re-fire on cache invalidation; not strictly required since the
-    // cache lives in refs but keeps the dependency set honest.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [memTick],
-  );
-
-  // Same sync-read-over-async-cache shape as getMemory: null means the
-  // verdict has not arrived yet; the watch panel renders a pending
-  // placeholder instead of a fake 0.
-  const getMemoryMapped = useCallback(
-    (addr: number, len: number): boolean | null => {
-      const backend = backendRef.current;
-      if (!backend) return null;
-      const key = memCacheKey(addr, len);
-      const cached = mappedCacheRef.current.get(key);
-      if (cached !== undefined) return cached;
-      if (!mappedPendingRef.current.has(key)) {
-        mappedPendingRef.current.add(key);
-        backend
-          .isRangeMapped(addr, len)
-          .then((mapped) => {
-            mappedCacheRef.current.set(key, mapped);
-            mappedPendingRef.current.delete(key);
-            setMemTick((t) => t + 1);
-          })
-          .catch(() => {
-            mappedPendingRef.current.delete(key);
-          });
-      }
-      return null;
-    },
-    // Same honest-dependency note as getMemory.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [memTick],
   );
 
   // Memoized return so consumers' useCallback/useMemo dependents don't
@@ -1200,7 +682,7 @@ export function useEmulator(): EmulatorState {
       restoreBookmark,
       clearConsole,
       dirtyAddrs: dirtyAddrsRef.current,
-      replayFrames: replayRingRef.current.range(),
+      replayFrames: readReplayFrames(),
       seekReplay,
     }),
     // replayTick is intentionally a dep so consumers re-render when the
@@ -1223,60 +705,4 @@ export function useEmulator(): EmulatorState {
       clearConsole, replayTick, dirtyAddrsTick, seekReplay,
     ],
   );
-}
-
-// ---------------------------------------------------------------------------
-// helpers: map between source lines and instruction indices
-// ---------------------------------------------------------------------------
-
-function pcToSourceLine(instrIndex: number, source: string): number | null {
-  const lines = source.split("\n");
-  let idx = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
-    if (!trimmed || trimmed.endsWith(":")) continue;
-    if (idx === instrIndex) return i + 1;
-    idx++;
-  }
-  return null;
-}
-
-function sourceLineToInstrIndex(
-  line: number,
-  source: string,
-): number | null {
-  const lines = source.split("\n");
-  let idx = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].replace(/\/\/.*$/, "").replace(/;.*$/, "").trim();
-    if (!trimmed || trimmed.endsWith(":")) continue;
-    if (i + 1 === line) return idx;
-    idx++;
-  }
-  return null;
-}
-
-/**
- * Every source line with its comment stripped and trimmed, indexed by
- * 0-based line. One pass over the source; the disassembly loop indexes it
- * instead of re-splitting per instruction.
- */
-export function stripSourceLines(source: string): string[] {
-  return source
-    .split("\n")
-    .map((line) => line.replace(/\/\/.*$/, "").replace(/;.*$/, "").trim());
-}
-
-/**
- * The instruction-index-ordered text: stripped lines with blanks and
- * label-only lines removed, so `[i]` is the i-th emitted instruction. The
- * bare-metal fallback (and the map's rare misses) index this.
- */
-export function indexedInstructionText(strippedLines: string[]): string[] {
-  const out: string[] = [];
-  for (const line of strippedLines) {
-    if (!line || line.endsWith(":")) continue;
-    out.push(line);
-  }
-  return out;
 }
