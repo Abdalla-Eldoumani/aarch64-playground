@@ -785,9 +785,34 @@ impl Emulator {
     }
 
     /// Push bytes onto the stdin buffer. Clears the blocked flag so a
-    /// paused read/scanf resumes on the next step.
+    /// paused read/scanf resumes on the next step. Nothing is echoed --
+    /// this is the redirect path (fixtures, scripted terminal drives, the
+    /// exercise checker), and a redirect prints nothing.
     pub fn push_stdin(&mut self, s: &str) {
         self.cpu.push_stdin(s.as_bytes());
+    }
+
+    /// Push a line the student typed at a prompt. Same queue as
+    /// `push_stdin`, but the first read that touches the line echoes it to
+    /// stdout, so the console transcript reads "Enter score 1: 10" like a
+    /// cooked-mode terminal, instead of hiding the answer. A program in
+    /// raw mode echoes nothing: it owns its own screen.
+    pub fn push_stdin_interactive(&mut self, s: &str) {
+        self.cpu.push_stdin_interactive(s.as_bytes());
+    }
+
+    /// Bytes ever written to stdout, echoed input included. Step-back and
+    /// a named restore roll this back to the frame's value, so the host
+    /// can unprint what an undone step wrote. Returned as an f64 rather
+    /// than a u64 to stay a JS number instead of a BigInt; the output wall
+    /// caps the total near 8 MiB, far under 2^53.
+    pub fn stdout_seen(&self) -> f64 {
+        self.cpu.stdout_seen() as f64
+    }
+
+    /// Bytes ever written to stderr. See `stdout_seen`.
+    pub fn stderr_seen(&self) -> f64 {
+        self.cpu.stderr_seen() as f64
     }
 
     /// Remove every breakpoint. The UI calls this when a different
