@@ -29,9 +29,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render() {
     if (this.state.failed) {
       return (
+        // "Reload the page" is the one recovery that holds for every wrapped
+        // panel: the terminal stays mounted across tab switches, so a tab
+        // round trip cannot remount its boundary.
         <div role="alert" className="p-3 font-mono text-xs text-[var(--text-secondary)]">
-          the {this.props.label} view hit an error -- reopen this tab or reload
-          the page to restore it; the rest of the playground keeps working
+          the {this.props.label} view hit an error -- reload the page to
+          restore it; the rest of the playground keeps working
         </div>
       );
     }
