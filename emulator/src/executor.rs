@@ -556,7 +556,7 @@ fn check_guest_address(addr: u64, access: crate::errors::MemAccess) -> Result<()
 fn check_sp_alignment(rn: u8, regs: &RegisterFile) -> Result<(), EmuError> {
     if rn >= 31 {
         let sp = regs.read_sp();
-        if sp % 16 != 0 {
+        if !sp.is_multiple_of(16) {
             return Err(EmuError::SpAlignmentFault { sp, at_call: false });
         }
     }
