@@ -15,6 +15,7 @@ import {
   type StepResultPayload,
 } from "@/lib/worker/protocol";
 import { spawnEmulatorWorker } from "@/lib/worker/client";
+import { safeGetItem } from "@/lib/playground/safe-storage";
 
 /**
  * Async surface every emulator backend exposes. WorkerBackend serves
@@ -357,16 +358,7 @@ function looksLikeSnapshot(v: unknown): boolean {
  * - any other value (or absent) -> worker if available, else main-thread.
  */
 export function pickBackend(): EmulatorBackend {
-  const force =
-    typeof window !== "undefined"
-      ? (() => {
-          try {
-            return window.localStorage.getItem("aarch64-playground:backend");
-          } catch {
-            return null;
-          }
-        })()
-      : null;
+  const force = safeGetItem("aarch64-playground:backend");
   if (force === "main") {
     return new MainThreadBackend();
   }
