@@ -16,9 +16,9 @@ The first deploy is slower because rustup downloads the toolchain. Later deploys
 
 [`scripts/vercel-build.sh`](../scripts/vercel-build.sh) is the `buildCommand`. It:
 
-1. Installs rustup (minimal profile, stable toolchain) if `rustup` isn't on `PATH`, then sources `~/.cargo/env` when present.
-2. Adds the `wasm32-unknown-unknown` target.
-3. Runs `cargo install --locked wasm-pack` if wasm-pack is missing.
+1. Installs rustup (minimal profile) if `rustup` isn't on `PATH`, then sources `~/.cargo/env` when present. The Rust toolchain is pinned to the version named at the top of the script, not floating `stable`: production wasm is built by the same compiler the release was verified with. Bump the pin only with a full local rebuild and test pass on the new version.
+2. Installs the pinned toolchain, scopes it to the build via `RUSTUP_TOOLCHAIN`, and adds the `wasm32-unknown-unknown` target.
+3. Runs `cargo install --locked --version <pin> wasm-pack` unless that exact version is already present; a warm builder carrying some other wasm-pack is replaced.
 4. From `emulator/`, runs `wasm-pack build --target web --out-dir ../web/lib/wasm`.
 5. From `web/`, runs `npm run build` (`next build --webpack`).
 
