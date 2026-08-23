@@ -225,18 +225,21 @@ export function RegisterPanel({
           {FLAG_NAMES.map((name, i) => {
             const bitPos = 3 - i;
             const set = (nzcv >> bitPos) & 1;
+            // A set flag is machine state, so it reads in execution amber;
+            // an unset flag recedes to the tertiary text token.
+            const tone = set
+              ? "text-[var(--amber)] font-bold"
+              : "text-[var(--text-tertiary)]";
             return (
-              <span
-                key={name}
-                // A set flag is machine state, so it reads in execution amber;
-                // an unset flag recedes to the tertiary text token.
-                className={`px-1 ${
-                  set
-                    ? "text-[var(--amber)] font-bold"
-                    : "text-[var(--text-tertiary)]"
-                }`}
-              >
-                {name}
+              <span key={name} className="px-1 whitespace-nowrap">
+                <span className={tone}>{name}</span>
+                {/* Colour alone cannot carry set/clear: the bit value rides
+                    beside the letter for anyone who cannot see the amber,
+                    and the state reaches a screen reader as words. */}
+                <span aria-hidden="true" className={tone}>
+                  {set ? "=1" : "=0"}
+                </span>
+                <span className="sr-only">{set ? " set" : " clear"}</span>
               </span>
             );
           })}
