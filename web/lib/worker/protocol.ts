@@ -60,7 +60,7 @@ export type Request =
   | (BaseRequest<"runUntilBreak"> & { maxSteps: number })
   | BaseRequest<"pause">
   | BaseRequest<"reset">
-  | (BaseRequest<"pushStdin"> & { text: string })
+  | (BaseRequest<"pushStdin"> & { text: string; interactive?: boolean })
   | BaseRequest<"closeStdin">
   | (BaseRequest<"setSnapshotsPaused"> & { paused: boolean })
   | BaseRequest<"takeStdout">
@@ -208,6 +208,16 @@ export interface StateSnapshot {
   canStepBack: boolean;
   stdoutDelta: string;
   stderrDelta: string;
+  /**
+   * Bytes the machine has ever written to stdout, echoed input included --
+   * an absolute coordinate the console scrollback aligns itself to. Step
+   * back and a named restore roll it back to the frame's value, which is
+   * how the web unprints what an undone step wrote. Undefined on wasm
+   * builds that predate the counters, which hides the whole mechanism.
+   */
+  stdoutSeen?: number;
+  /** The same counter for stderr (see `stdoutSeen`). */
+  stderrSeen?: number;
   vfsFiles: string[];
   savedStates: string[];
   /**
