@@ -128,41 +128,119 @@ pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, Em
 }
 
 fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
+    let mut layout = collect_and_place(prog)?;
+
+    // Pass 1b: host-stub addresses so `bl printf` (via a literal-pool
+    // trampoline) and any direct-label lookups can find them.
+    for name in host.names() {
+        if let Some(addr) = host.lookup(name) {
+            layout.symbols.entry(name.to_string()).or_insert(addr);
+        }
+    }
+
+    resolve_equates(&mut layout)?;
+    let pool = size_literal_pool(prog, &mut layout)?;
+    let emission = emit_image(prog, &layout, &pool)?;
+    let entry_point = resolve_entry_point(prog, &layout)?;
+
+    Ok(LinkedImage {
+        writes: emission.writes,
+        entry_point,
+        instruction_count: emission.instruction_count,
+        text_base: CODE_BASE,
+        text_end: CODE_BASE + layout.text_len,
+        symbols: layout.symbols,
+        line_map: emission.line_map,
+        // `tramp_base` is a real address even with nothing to put there;
+        // report 0 so a caller can tell "no host calls" from "trampolines
+        // start here" without consulting the name list.
+        trampoline_base: if pool.trampolines.is_empty() { 0 } else { pool.tramp_base },
+        trampoline_names: pool.trampolines,
+    })
+}
+
+/// Where everything landed, worked out before a single byte is emitted.
+/// The layout passes fill it in and pass 2 walks the identical layout from
+/// it, so the two can never disagree about a size or an address.
+struct Layout {
+    /// Flat name -> absolute address for labels, host stubs, trampoline
+    /// labels, and each equate's first value.
+    symbols: HashMap<String, u64>,
+    /// Every value each `name = expr` equate takes, for the positional
+    /// resolution `symbol_at` does.
+    equates: EquateDefs,
+    /// First-definition lines, for duplicate-label errors that name both
+    /// sites. GAS rejects a redefined label; accepting it here made the
+    /// last definition win silently, so branches jumped to the wrong copy.
+    label_lines: HashMap<String, usize>,
+    /// Each label's offset within its own section. GAS resolves a defined
+    /// label used as an instruction immediate (`ldr x19, [fp, a_local]`,
+    /// `add x1, fp, a_local`, `cmp x0, a_local`) to this section-relative
+    /// value at assembly time, with no relocation -- verified against
+    /// aarch64 GAS on the course servers. The absolute address in `symbols`
+    /// stays the answer everywhere else (branches, `ldr =`, adr, .quad).
+    label_offsets: HashMap<String, u64>,
+    /// `.skip <expr>` byte counts, resolved during the placement walk and
+    /// reused by pass 2 rather than evaluated a second time.
+    reserve_sizes: HashMap<(SectionKind, usize), u64>,
+    /// Absolute address of each `.text` instruction, in emission order.
+    /// Pass 1d needs it to size a per-site literal pool slot for
+    /// `ldr xN, =. + k`, and taking it from the placement walk is what
+    /// keeps the three passes' layouts from drifting apart.
+    text_instr_pcs: Vec<u64>,
+    /// Byte length of `.text`, which fixes where the trampolines, the
+    /// literal pool and the image's fall-through boundary sit.
+    text_len: u64,
+    /// `name = expr` assignments still waiting on a symbol, as
+    /// (name, body, the address the line sits at, 1-based source line).
+    assignments: Vec<(String, String, u64, usize)>,
+}
+
+/// The literal pool and the libc trampolines, sized and placed. A slot is
+/// a byte offset from `base`; `tramp_addr` names the trampoline each
+/// hosted `bl` is redirected through.
+struct Pool {
+    slots: HashMap<PoolKey, u64>,
+    values: Vec<u64>,
+    /// Host functions that need a trampoline, in emission order:
+    /// trampoline `i` sits at `tramp_base + i * 8`.
+    trampolines: Vec<String>,
+    tramp_addr: HashMap<String, u64>,
+    tramp_base: u64,
+    base: u64,
+}
+
+/// What pass 2 produced: the byte writes in emission order, the
+/// authoritative address -> editor-line map, and the number of
+/// instruction words that landed.
+struct Emission {
+    writes: Vec<(u64, Vec<u8>)>,
+    line_map: Vec<(u64, u32)>,
+    instruction_count: usize,
+}
+
+/// Pass 1a: place labels at section base + running byte offset, and
+/// collect `name = expr` assignments with the address where they
+/// appear so the linker can evaluate `. - msg - 1` and similar bodies
+/// in the right place. Assignments that resolve against the symbols
+/// seen so far fold immediately -- `.skip STACKSIZE * 4` needs its
+/// equate during this very walk; the rest wait for pass 1c's rounds.
+/// Reserve sizes resolved here are kept for pass 2, which must walk
+/// the identical layout.
+///
+/// Section bases sit one `cpu::SECTION_WINDOW` apart
+/// (SectionKind::default_base), so any section that outgrows the window
+/// silently runs into the next one's addresses: two labels on one
+/// address, stores clobbering unrelated variables. Checked during this
+/// walk, where the offending line is still known.
+fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
     let mut symbols: HashMap<String, u64> = HashMap::new();
     let mut equates: EquateDefs = HashMap::new();
-
-    // Pass 1a: place labels at section base + running byte offset, and
-    // collect `name = expr` assignments with the address where they
-    // appear so the linker can evaluate `. - msg - 1` and similar bodies
-    // in the right place. Assignments that resolve against the symbols
-    // seen so far fold immediately -- `.skip STACKSIZE * 4` needs its
-    // equate during this very walk; the rest wait for pass 1c's rounds.
-    // Reserve sizes resolved here are kept for pass 2, which must walk
-    // the identical layout.
-    // Section bases sit one `cpu::SECTION_WINDOW` apart
-    // (SectionKind::default_base), so any section that outgrows the window
-    // silently runs into the next one's addresses: two labels on one
-    // address, stores clobbering unrelated variables. Checked during this
-    // walk, where the offending line is still known.
-
     let mut text_len: u64 = 0;
     let mut assignments: Vec<(String, String, u64, usize)> = Vec::new();
     let mut reserve_sizes: HashMap<(SectionKind, usize), u64> = HashMap::new();
-    // First-definition lines, for duplicate-label errors that name both
-    // sites. GAS rejects a redefined label; accepting it here made the
-    // last definition win silently, so branches jumped to the wrong copy.
     let mut label_lines: HashMap<String, usize> = HashMap::new();
-    // Each label's offset within its own section. GAS resolves a defined
-    // label used as an instruction immediate (`ldr x19, [fp, a_local]`,
-    // `add x1, fp, a_local`, `cmp x0, a_local`) to this section-relative
-    // value at assembly time, with no relocation -- verified against
-    // aarch64 GAS on the course servers. The absolute address in `symbols`
-    // stays the answer everywhere else (branches, `ldr =`, adr, .quad).
     let mut label_offsets: HashMap<String, u64> = HashMap::new();
-    // Absolute address of each `.text` instruction, in emission order.
-    // Pass 1d needs it to size a per-site literal pool slot for
-    // `ldr xN, =. + k`, and taking it from this walk is what keeps the
-    // three passes' layouts from drifting apart.
     let mut text_instr_pcs: Vec<u64> = Vec::new();
     for section in &prog.sections {
         let base = section.kind.default_base();
@@ -298,27 +376,32 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         }
     }
 
-    // Pass 1b: host-stub addresses so `bl printf` (via a literal-pool
-    // trampoline) and any direct-label lookups can find them.
-    for name in host.names() {
-        if let Some(addr) = host.lookup(name) {
-            symbols.entry(name.to_string()).or_insert(addr);
-        }
-    }
+    Ok(Layout {
+        symbols,
+        equates,
+        label_lines,
+        label_offsets,
+        reserve_sizes,
+        text_instr_pcs,
+        text_len,
+        assignments,
+    })
+}
 
-    // Pass 1c: evaluate each `name = expr` assignment using its recorded
-    // `.` address. Do multiple rounds since later assignments can depend
-    // on earlier ones or on labels defined later in the same section.
+/// Pass 1c: evaluate each `name = expr` assignment using its recorded
+/// `.` address. Do multiple rounds since later assignments can depend
+/// on earlier ones or on labels defined later in the same section.
+fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
     for _ in 0..16 {
         let mut changed = false;
         let mut remaining: Vec<(String, String, u64, usize)> = Vec::new();
-        for (name, body, here, line) in &assignments {
+        for (name, body, here, line) in &layout.assignments {
             // A pending assignment whose name turned out to be a label
             // (defined after it) must not vanish silently. Checked against
             // `label_lines` rather than the folded-symbol table, because a
             // name bound by an earlier equate is no longer a reason to
             // skip this definition -- each one has its own value.
-            if let Some(first) = label_lines.get(name) {
+            if let Some(first) = layout.label_lines.get(name) {
                 return Err(EmuError::AssemblyError {
                     line: *line,
                     message: format!(
@@ -327,14 +410,22 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     ),
                 });
             }
-            if let Some(v) = try_evaluate_at(body, *here, &symbols, &equates, *line) {
-                record_equate(name, *line, v as u64, &mut symbols, &mut equates);
+            if let Some(v) =
+                try_evaluate_at(body, *here, &layout.symbols, &layout.equates, *line)
+            {
+                record_equate(
+                    name,
+                    *line,
+                    v as u64,
+                    &mut layout.symbols,
+                    &mut layout.equates,
+                );
                 changed = true;
             } else {
                 remaining.push((name.clone(), body.clone(), *here, *line));
             }
         }
-        assignments = remaining;
+        layout.assignments = remaining;
         if !changed {
             break;
         }
@@ -345,11 +436,11 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // `.ok()` so its own error (which names the cause at the assignment's
     // line) surfaces; silently dropping it used to blame the innocent USE
     // site with "invalid immediate".
-    if let Some((_, body, here, line)) = assignments.first() {
+    if let Some((_, body, here, line)) = layout.assignments.first() {
         let tokens = lex(body, *line)?;
         evaluate(
             &tokens,
-            &|name| symbol_at(name, *line, &symbols, &equates),
+            &|name| symbol_at(name, *line, &layout.symbols, &layout.equates),
             *here as i64,
             *line,
         )?;
@@ -363,24 +454,28 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // passes above fill it in walk order -- which is section order, not
     // source order -- so a redefined name could otherwise land there with
     // whichever definition the linker happened to reach first.
-    for (name, defs) in &equates {
+    for (name, defs) in &layout.equates {
         if let Some((_, value)) = defs.iter().min_by_key(|(line, _)| *line) {
-            symbols.insert(name.clone(), *value);
+            layout.symbols.insert(name.clone(), *value);
         }
     }
 
-    // Pass 1d: scan .text instructions for `ldr xN, =expr` to size the
-    // literal pool, and for `bl <hostname>` calls that need a trampoline
-    // because direct BL cannot reach the 0xFFFF_0000 host-stub range.
-    // Keyed by operand text plus, for a `.`-relative expression, the
-    // address of the LDR itself. `ldr x0, =. + 8` is a different constant
-    // at every site, so sharing one slot by text handed the second site
-    // the first one's value -- and `.` used to resolve to 0 outright.
+    Ok(())
+}
+
+/// Pass 1d: scan .text instructions for `ldr xN, =expr` to size the
+/// literal pool, and for `bl <hostname>` calls that need a trampoline
+/// because direct BL cannot reach the 0xFFFF_0000 host-stub range.
+/// Keyed by operand text plus, for a `.`-relative expression, the
+/// address of the LDR itself. `ldr x0, =. + 8` is a different constant
+/// at every site, so sharing one slot by text handed the second site
+/// the first one's value -- and `.` used to resolve to 0 outright.
+fn size_literal_pool(prog: &Program, layout: &mut Layout) -> Result<Pool, EmuError> {
     let mut pool_slots: HashMap<PoolKey, u64> = HashMap::new();
     let mut pool_values: Vec<u64> = Vec::new();
     let mut host_trampolines: Vec<String> = Vec::new();
     let mut host_trampoline_set: HashMap<String, ()> = HashMap::new();
-    let mut text_pcs = text_instr_pcs.iter();
+    let mut text_pcs = layout.text_instr_pcs.iter();
     for section in &prog.sections {
         if section.kind != SectionKind::Text {
             continue;
@@ -397,8 +492,8 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     {
                         let value = resolve_ldr_eq_target(
                             &slot.key().0,
-                            &symbols,
-                            &equates,
+                            &layout.symbols,
+                            &layout.equates,
                             here.unwrap_or(0),
                             *original_line,
                         )?;
@@ -416,8 +511,8 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     {
                         let value = resolve_ldr_eq_target(
                             &slot.key().0,
-                            &symbols,
-                            &equates,
+                            &layout.symbols,
+                            &layout.equates,
                             0,
                             *original_line,
                         )?;
@@ -427,7 +522,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                     continue;
                 }
                 if let Some(target) = extract_bl_target(tokens) {
-                    if let Some(addr) = symbols.get(&target) {
+                    if let Some(addr) = layout.symbols.get(&target) {
                         if is_host_address(*addr)
                             && !host_trampoline_set.contains_key(&target)
                         {
@@ -449,7 +544,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // fall-through can be told apart from a `bl printf` arriving at a
     // trampoline. With plain 8-alignment an 8-aligned .text fell straight
     // into the first trampoline and silently called that libc function.
-    let tramp_base = CODE_BASE + ((text_len + 8) & !7);
+    let tramp_base = CODE_BASE + ((layout.text_len + 8) & !7);
     let tramp_bytes = (host_trampolines.len() as u64) * 8;
     let pool_base = tramp_base + tramp_bytes;
 
@@ -478,10 +573,10 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     for (idx, name) in host_trampolines.iter().enumerate() {
         let addr = tramp_base + (idx as u64) * 8;
         tramp_addr.insert(name.clone(), addr);
-        symbols.insert(format!("__tramp_{name}"), addr);
+        layout.symbols.insert(format!("__tramp_{name}"), addr);
         // Reserve a literal pool slot holding the real host-stub address,
         // if one isn't already there under the host name.
-        let host_addr = *symbols.get(name).expect("host target in symbols");
+        let host_addr = *layout.symbols.get(name).expect("host target in symbols");
         pool_slots
             .entry((name.clone(), None))
             .or_insert_with(|| {
@@ -491,7 +586,31 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
             });
     }
 
-    // Pass 2: emit bytes for every section, then the literal pool.
+    Ok(Pool {
+        slots: pool_slots,
+        values: pool_values,
+        trampolines: host_trampolines,
+        tramp_addr,
+        tramp_base,
+        base: pool_base,
+    })
+}
+
+/// Pass 2: emit bytes for every section, then the literal pool.
+fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, EmuError> {
+    // Name the pieces this pass reads, so the emission below says
+    // `symbols` and `pool_base` the way the passes that produced them do.
+    let Layout { symbols, equates, label_offsets, reserve_sizes, .. } = layout;
+    let Pool {
+        slots: pool_slots,
+        values: pool_values,
+        trampolines: host_trampolines,
+        tramp_addr,
+        ..
+    } = pool;
+    let tramp_base = pool.tramp_base;
+    let pool_base = pool.base;
+
     let mut writes: Vec<(u64, Vec<u8>)> = Vec::new();
     let mut line_map: Vec<(u64, u32)> = Vec::new();
     let mut instruction_count: usize = 0;
@@ -532,7 +651,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         let here = base + offset + (i * width) as u64;
                         let value = evaluate(
                             group,
-                            &|name| symbol_at(name, *original_line, &symbols, &equates),
+                            &|name| symbol_at(name, *original_line, symbols, equates),
                             here as i64,
                             *original_line,
                         )?;
@@ -593,7 +712,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         let word2 = assembler::encode_line_absolute(
                             &format!("ldr {reg}, [x{addr_reg}]"),
                             pc + 4,
-                            &symbols,
+                            symbols,
                             *original_line,
                         )?;
                         writes.push((pc, word1.to_le_bytes().to_vec()));
@@ -626,7 +745,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                         // any trailing token noise that the old raw-
                         // string path could not.
                         let mut tokens_owned = tokens.clone();
-                        redirect_bl_to_trampoline_tokens(&mut tokens_owned, &tramp_addr);
+                        redirect_bl_to_trampoline_tokens(&mut tokens_owned, tramp_addr);
                         let raw = expanded_lines
                             .get(original_line - 1)
                             .copied()
@@ -669,16 +788,16 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                             lower_operands(
                                 &stripped,
                                 pc - crate::cpu::CODE_BASE,
-                                &symbols,
-                                &equates,
-                                &label_offsets,
+                                symbols,
+                                equates,
+                                label_offsets,
                                 *original_line,
                             )?
                         };
                         assembler::encode_line_absolute(
                             &line_text,
                             pc,
-                            &symbols,
+                            symbols,
                             *original_line,
                         )?
                     };
@@ -727,10 +846,22 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
                 .into(),
         });
     }
+
+    Ok(Emission {
+        writes,
+        line_map,
+        instruction_count,
+    })
+}
+
+/// The address execution starts at, which real ld takes from `main` (or
+/// `_start` for a program that declares neither a `main` label nor a
+/// `.global main`).
+fn resolve_entry_point(prog: &Program, layout: &Layout) -> Result<u64, EmuError> {
     // An entry point has to be a LABEL. `main = 5` also lands in `symbols`,
     // and taking it started execution at address 5 with no diagnostic.
-    let main_is_label = label_lines.contains_key("main");
-    let start_is_label = label_lines.contains_key("_start");
+    let main_is_label = layout.label_lines.contains_key("main");
+    let start_is_label = layout.label_lines.contains_key("_start");
 
     // `.global main` with no `main:` silently fell back to CODE_BASE;
     // real ld reports the undefined reference. It is only an error when
@@ -760,25 +891,10 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
     // `_start`-only programs used to fall back to CODE_BASE, which runs
     // whatever helper happens to sit at the top of .text instead of the
     // program the student wrote.
-    let entry_point = if main_is_label {
-        symbols["main"]
+    Ok(if main_is_label {
+        layout.symbols["main"]
     } else {
-        symbols["_start"]
-    };
-
-    Ok(LinkedImage {
-        writes,
-        entry_point,
-        instruction_count,
-        text_base: CODE_BASE,
-        text_end: CODE_BASE + text_len,
-        symbols,
-        line_map,
-        // `tramp_base` is a real address even with nothing to put there;
-        // report 0 so a caller can tell "no host calls" from "trampolines
-        // start here" without consulting the name list.
-        trampoline_base: if host_trampolines.is_empty() { 0 } else { tramp_base },
-        trampoline_names: host_trampolines,
+        layout.symbols["_start"]
     })
 }
 
