@@ -17,13 +17,32 @@
  * the server snapshot is empty, so the server and first client render agree and
  * the solved badges appear after hydration without a mismatch, then update live
  * when a check passes here or in another tab.
+ *
+ * A quiet progress row below the list exports that set as a small json file and
+ * imports one back, since localStorage is the only place it lives.
  */
 
-import { useId, useMemo, useState, useSyncExternalStore, type JSX } from "react";
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ChangeEvent,
+  type JSX,
+} from "react";
 import Link from "next/link";
 import type { Exercise } from "@/lib/content/exercise-schema";
-import { getSolvedSlugs, subscribeSolved } from "@/lib/playground/solved-state";
+import {
+  buildProgressBundle,
+  getSolvedSlugs,
+  importProgressBundle,
+  subscribeSolved,
+} from "@/lib/playground/solved-state";
 import { compareByOrder } from "@/lib/content/content-order";
+import { useToast } from "@/components/ui/Toast";
+import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 
 // useSyncExternalStore needs getSnapshot to return a stable reference until the
 // value actually changes; getSolvedSlugs() reads localStorage and returns a
@@ -78,6 +97,100 @@ function EmptyCard({ message }: { message: string }): JSX.Element {
   return (
     <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-5 py-6">
       <p className="text-[var(--text-tertiary)] [font:var(--type-body)]">{message}</p>
+    </div>
+  );
+}
+
+const PROGRESS_LINK_CLASS =
+  "inline-flex min-h-[24px] items-center rounded-[var(--radius-control)] px-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
+
+/**
+ * Export / import for the solved set. The ticks live only in this browser's
+ * localStorage, which Safari evicts after seven days without a visit, so
+ * this small file is the only way progress leaves the device or comes back.
+ * Importing merges, never replaces.
+ */
+function ProgressRow(): JSX.Element {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
+
+  const exportProgress = useCallback(() => {
+    const blob = new Blob([JSON.stringify(buildProgressBundle(), null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "aarch64-playground-progress.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const onFile = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      // Cleared before any early return, so picking the same file twice in
+      // a row still fires a change event.
+      event.target.value = "";
+      if (!file) return;
+      // Sized off file.size, before the read: the cap is here to keep a
+      // hostile file from being pulled into the tab at all.
+      const sizeError = checkUploadSize(file.size, MAX_BOOKMARK_JSON_BYTES, "progress file");
+      if (sizeError) {
+        toast.error(sizeError);
+        return;
+      }
+      file
+        .text()
+        .then((raw) => {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(raw);
+          } catch {
+            toast.error("that file is not valid json");
+            return;
+          }
+          const result = importProgressBundle(parsed);
+          if (!result.ok) {
+            toast.error(result.error);
+            return;
+          }
+          if (result.added === 0) {
+            toast.info("nothing new to import");
+            return;
+          }
+          const noun = result.added === 1 ? "exercise" : "exercises";
+          toast.success(`imported ${result.added} solved ${noun}`);
+        })
+        .catch(() => {
+          toast.error("could not read that file -- try picking it again");
+        });
+    },
+    [toast],
+  );
+
+  return (
+    <div className="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
+      <span>progress:</span>
+      <button
+        type="button"
+        onClick={exportProgress}
+        className={PROGRESS_LINK_CLASS}
+        aria-label="export solved progress"
+      >
+        export
+      </button>
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        className={PROGRESS_LINK_CLASS}
+        aria-label="import solved progress"
+      >
+        import
+      </button>
+      <input ref={fileRef} type="file" accept=".json" onChange={onFile} className="hidden" />
     </div>
   );
 }
@@ -256,6 +369,8 @@ export function ExerciseIndex({
           })}
         </ul>
       )}
+
+      <ProgressRow />
     </div>
   );
 }
