@@ -73,6 +73,8 @@ import {
   EmbeddablePlayground,
   type EmbeddablePlaygroundHandle,
 } from "@/components/playground/EmbeddablePlayground";
+import { makeHub as baseHub } from "@/components/test/playground/helpers/emulator-hub";
+import type { EmulatorState } from "@/lib/emulator/use-emulator";
 
 // The key predates the mode having two spellings; the widened decode has to
 // keep reading what a returning student's browser already wrote.
@@ -80,74 +82,12 @@ const LAUNCH_KEY = "aarch64-playground:terminal-program";
 
 const SOURCE = "        mov x0, 1\n";
 
-function makeHub(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    isLoaded: true,
-    loadError: null as string | null,
-    registers: Array(31).fill("0x0000000000000000") as string[],
-    sp: "0x0000000080000000",
-    pc: 0x400000,
-    nzcv: 0,
-    changedRegs: new Set<number>(),
-    isRunning: false,
-    isAssembling: false,
-    isHalted: false,
-    programLoaded: true,
-    error: null as string | null,
-    assemblyErrors: [] as Array<{ line: number; message: string }>,
-    breakpoints: new Set<number>(),
-    currentLine: null as number | null,
-    instructions: [] as Array<{ address: number; hex: string; text: string }>,
-    codeBase: 0x400000,
-    stdout: "",
-    stderr: "",
-    blocked: false,
-    wantsTerminal: false,
-    exitCode: null as number | null,
-    hostedMode: false,
-    vfsFiles: [] as string[],
-    canStepBack: false,
-    stepCount: 0,
-    savedStates: [] as string[],
-    dirtyAddrs: [] as Array<[number, number]>,
-    replayFrames: [],
-    assemble: vi.fn().mockResolvedValue(true),
-    assembleForTool: vi
-      .fn()
-      .mockResolvedValue({ success: true, error: null, errorLine: null }),
-    step: vi.fn(),
-    stepBack: vi.fn(),
-    run: vi.fn(),
-    pause: vi.fn(),
-    reset: vi.fn(),
-    toggleBreakpoint: vi.fn(),
-    clearAllBreakpoints: vi.fn(),
-    remapBreakpoints: vi.fn(),
-    lint: vi.fn(async () => []),
-    getMemory: vi.fn(() => new Uint8Array()),
-    getMemoryMapped: vi.fn(() => true),
-    pushStdin: vi.fn(),
-    closeStdin: vi.fn(),
-    setOutputTap: vi.fn(),
-    setSnapshotsPaused: vi.fn(),
-    uploadVfsFile: vi.fn(),
-    readVfsFile: vi.fn(),
-    deleteVfsFile: vi.fn(),
-    resolveLabel: vi.fn(),
-    m4Expand: vi.fn(),
-    setBreakpointAddress: vi.fn(),
-    clearBreakpointAddress: vi.fn(),
-    restoreBookmark: vi.fn(),
-    clearConsole: vi.fn(),
-    saveState: vi.fn(),
-    loadState: vi.fn(),
-    deleteState: vi.fn(),
-    seekReplay: vi.fn(),
-    ...overrides,
-  };
+/** Every test here starts from a program that already assembled. */
+function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
+  return baseHub({ programLoaded: true, ...overrides });
 }
 
-type Hub = ReturnType<typeof makeHub>;
+type Hub = EmulatorState;
 
 function setWidth(px: number): void {
   Object.defineProperty(window, "innerWidth", {
