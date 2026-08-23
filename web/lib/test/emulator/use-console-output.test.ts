@@ -226,3 +226,67 @@ describe("useConsoleOutput byte position", () => {
     expect(result.current.stderr).toBe("");
   });
 });
+
+describe("useConsoleOutput preserved history", () => {
+  // The tool-build case: `gcc foo.s` resets the machine's display counters
+  // underneath the editor's console, and the scrollback the student was
+  // reading must survive the reset-to-zero sync that follows.
+  it("keeps preserved scrollback through a counter restart at zero", () => {
+    const { result } = mount();
+    act(() => {
+      result.current.appendStdout("previous program\n");
+      result.current.syncSeen("stdout", 17);
+    });
+    act(() => {
+      result.current.preserveScrollback();
+      result.current.syncSeen("stdout", 0);
+    });
+    expect(result.current.stdout).toBe("previous program\n");
+  });
+
+  it("unprints only the new session's bytes, never into history", () => {
+    const { result } = mount();
+    act(() => {
+      result.current.appendStdout("old session\n");
+      result.current.syncSeen("stdout", 12);
+      result.current.preserveScrollback();
+      result.current.syncSeen("stdout", 0);
+    });
+    // A fresh session prints on top of the history, then steps back past
+    // its own start: the cut stops at the history boundary.
+    act(() => {
+      result.current.appendStdout("new: 42\n");
+      result.current.syncSeen("stdout", 8);
+    });
+    act(() => result.current.syncSeen("stdout", 5));
+    expect(result.current.stdout).toBe("old session\nnew: ");
+    act(() => result.current.syncSeen("stdout", 0));
+    expect(result.current.stdout).toBe("old session\n");
+  });
+
+  it("charges a truncation against history before moving the byte anchor", () => {
+    const { result } = mount();
+    const history = "h".repeat(MAX_CONSOLE_CHARS - 10);
+    act(() => {
+      result.current.appendStdout(history);
+      result.current.syncSeen("stdout", history.length);
+      result.current.preserveScrollback();
+      result.current.syncSeen("stdout", 0);
+    });
+    // The append pushes 30 machine bytes; 20 history chars fall off the
+    // head to make room. Dropped history is web text, so the machine
+    // coordinates still start at zero and a full unprint empties exactly
+    // the machine's bytes.
+    act(() => {
+      result.current.appendStdout("m".repeat(30));
+      result.current.syncSeen("stdout", 30);
+    });
+    expect(result.current.stdout).toBe(
+      CONSOLE_TRIM_MARKER + "h".repeat(MAX_CONSOLE_CHARS - 30) + "m".repeat(30),
+    );
+    act(() => result.current.syncSeen("stdout", 0));
+    expect(result.current.stdout).toBe(
+      CONSOLE_TRIM_MARKER + "h".repeat(MAX_CONSOLE_CHARS - 30),
+    );
+  });
+});
