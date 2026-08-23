@@ -94,6 +94,7 @@ export function useEmulator(): EmulatorState {
     stderr,
     appendStdout,
     appendStderr,
+    syncSeen,
     clearScrollback,
     clearConsole,
     setOutputTap,
@@ -163,6 +164,13 @@ export function useEmulator(): EmulatorState {
     setSavedStates(snap.savedStates);
     if (snap.stdoutDelta) appendStdout(snap.stdoutDelta);
     if (snap.stderrDelta) appendStderr(snap.stderrDelta);
+    // The machine's cumulative display counters are the scrollback's
+    // absolute coordinates. A step back or a restored save rolls them
+    // BACK, and the transcript unprints with them so a re-run reprints
+    // without duplicating itself. A wasm build that predates the counters
+    // sends neither, and the scrollback stays append-only as before.
+    if (snap.stdoutSeen != null) syncSeen("stdout", snap.stdoutSeen);
+    if (snap.stderrSeen != null) syncSeen("stderr", snap.stderrSeen);
     // Drive the current-line marker off the linker's authoritative
     // address->editor-line map: look the snapshot pc up directly instead
     // of counting non-label source lines (which double-counts data/macro
@@ -219,6 +227,7 @@ export function useEmulator(): EmulatorState {
     codeBase,
     invalidateMemory,
     markCurrentLine,
+    syncSeen,
   ]);
 
   // Ref and state move together so the guards (refs) and the controls
