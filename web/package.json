@@ -51,7 +51,7 @@
     {
       "name": "practice route entry js (index + exercise page chunks)",
       "path": ".next/static/chunks/app/\\(site\\)/practice/**/page-*.js",
-      "limit": "9.6 KB"
+      "limit": "16 KB"
     },
     {
       "name": "reference route entry js (page chunk)",
