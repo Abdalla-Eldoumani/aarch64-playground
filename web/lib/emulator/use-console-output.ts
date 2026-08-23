@@ -10,12 +10,59 @@ export const MAX_CONSOLE_CHARS = 256 * 1024;
 /** Visible marker so trimmed output is never mistaken for all of it. */
 export const CONSOLE_TRIM_MARKER = "[...earlier output trimmed...]\n";
 
+/** Which of the machine's two display streams a call is about. */
+export type ConsoleStream = "stdout" | "stderr";
+
+// One encoder/decoder pair for the module: the scrollback is measured in
+// machine BYTES (what the emulator counts) while React holds chars, and
+// allocating a codec per delta would cost one allocation per step.
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function byteLength(text: string): number {
+  return encoder.encode(text).length;
+}
+
+/** A bounded append plus the machine bytes the bound dropped off the head,
+ *  which is what the caller needs to keep its absolute offsets aligned. */
+export interface BoundedAppend {
+  text: string;
+  droppedBytes: number;
+}
+
+/** Append a delta to console scrollback, keeping only the newest
+ *  MAX_CONSOLE_CHARS and saying so when older output is dropped. The
+ *  marker is peeled off first and re-attached after: it stands for no
+ *  machine bytes at all, so a truncation must never cut into it. */
+export function appendBoundedTracked(prev: string, delta: string): BoundedAppend {
+  const marked = prev.startsWith(CONSOLE_TRIM_MARKER);
+  const body = marked ? prev.slice(CONSOLE_TRIM_MARKER.length) : prev;
+  const next = body + delta;
+  if (next.length <= MAX_CONSOLE_CHARS) {
+    return { text: marked ? CONSOLE_TRIM_MARKER + next : next, droppedBytes: 0 };
+  }
+  const cut = next.length - MAX_CONSOLE_CHARS;
+  return {
+    text: CONSOLE_TRIM_MARKER + next.slice(cut),
+    droppedBytes: byteLength(next.slice(0, cut)),
+  };
+}
+
 /** Append a delta to console scrollback, keeping only the newest
  *  MAX_CONSOLE_CHARS and saying so when older output is dropped. */
 export function appendBounded(prev: string, delta: string): string {
-  const next = prev + delta;
-  if (next.length <= MAX_CONSOLE_CHARS) return next;
-  return CONSOLE_TRIM_MARKER + next.slice(next.length - MAX_CONSOLE_CHARS);
+  return appendBoundedTracked(prev, delta).text;
+}
+
+/**
+ * Where the scrollback sits in the machine's stream, in absolute bytes.
+ * `seenBase` is the byte offset scrollback position 0 maps to (the trim
+ * marker excluded, since it is web text the machine never wrote), and
+ * `bytesHeld` is how many machine bytes the scrollback still represents.
+ */
+interface StreamPosition {
+  seenBase: number;
+  bytesHeld: number;
 }
 
 export interface ConsoleOutput {
@@ -23,6 +70,15 @@ export interface ConsoleOutput {
   stderr: string;
   appendStdout: (delta: string) => void;
   appendStderr: (delta: string) => void;
+  /**
+   * Align a stream's scrollback with the machine's cumulative display
+   * counter after a snapshot's deltas have been appended. A counter that
+   * ran ahead of the scrollback only re-anchors the offset (the terminal
+   * pane held the bytes, or a clear dropped them); a counter that moved
+   * BACK -- step back, a named restore -- unprints down to it, so a
+   * re-run reprints without duplicating what the undone step wrote.
+   */
+  syncSeen: (stream: ConsoleStream, seen: number) => void;
   /** Empty the scrollback without telling the machine: an editor assemble
    *  and a reset start the student's session over, but the emulator's own
    *  buffers are wiped by the operation that follows. */
@@ -44,29 +100,95 @@ export function useConsoleOutput(
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
   const outputTapRef = useRef<((text: string) => void) | null>(null);
+  // The scrollback is mirrored in refs so an append can move the byte
+  // position in the same pass: a functional setState updater runs twice
+  // under StrictMode, which would double-count every delta.
+  const textRef = useRef<Record<ConsoleStream, string>>({ stdout: "", stderr: "" });
+  const posRef = useRef<Record<ConsoleStream, StreamPosition>>({
+    stdout: { seenBase: 0, bytesHeld: 0 },
+    stderr: { seenBase: 0, bytesHeld: 0 },
+  });
 
-  const appendStdout = useCallback((delta: string) => {
-    const tap = outputTapRef.current;
-    if (tap) tap(delta);
-    else setStdout((prev) => appendBounded(prev, delta));
+  const write = useCallback((stream: ConsoleStream, text: string) => {
+    textRef.current[stream] = text;
+    if (stream === "stdout") setStdout(text);
+    else setStderr(text);
   }, []);
 
-  const appendStderr = useCallback((delta: string) => {
-    setStderr((prev) => appendBounded(prev, delta));
-  }, []);
+  const append = useCallback(
+    (stream: ConsoleStream, delta: string) => {
+      const pos = posRef.current[stream];
+      const { text, droppedBytes } = appendBoundedTracked(textRef.current[stream], delta);
+      pos.bytesHeld += byteLength(delta) - droppedBytes;
+      pos.seenBase += droppedBytes;
+      write(stream, text);
+    },
+    [write],
+  );
 
+  const appendStdout = useCallback(
+    (delta: string) => {
+      const tap = outputTapRef.current;
+      // The terminal pane owns these bytes; the machine still counted them,
+      // so the next syncSeen re-anchors the offset over them.
+      if (tap) tap(delta);
+      else append("stdout", delta);
+    },
+    [append],
+  );
+
+  const appendStderr = useCallback(
+    (delta: string) => {
+      append("stderr", delta);
+    },
+    [append],
+  );
+
+  const syncSeen = useCallback(
+    (stream: ConsoleStream, seen: number) => {
+      const pos = posRef.current[stream];
+      const held = pos.seenBase + pos.bytesHeld;
+      if (seen >= held) {
+        // Nothing to unprint. The machine is simply further along than this
+        // scrollback: bytes went to the terminal pane, a clear dropped them,
+        // or a restored frame's counter sits ahead of what the web holds.
+        pos.seenBase = seen - pos.bytesHeld;
+        return;
+      }
+      const target = Math.max(0, seen - pos.seenBase);
+      const text = textRef.current[stream];
+      const marked = text.startsWith(CONSOLE_TRIM_MARKER);
+      const body = marked ? text.slice(CONSOLE_TRIM_MARKER.length) : text;
+      // Cut in byte space, because that is the only space the machine's
+      // counter speaks. A cut that lands inside a multi-byte character
+      // decodes to a replacement char, which is the honest rendering of
+      // half a character and never throws.
+      const kept = decoder.decode(encoder.encode(body).slice(0, target));
+      pos.bytesHeld = target;
+      // Clamped at zero, the base moves with it: the scrollback holds
+      // nothing, so the next byte appended is the machine's next byte.
+      // Unclamped this leaves seenBase exactly where it was.
+      pos.seenBase = seen - target;
+      write(stream, marked ? CONSOLE_TRIM_MARKER + kept : kept);
+    },
+    [write],
+  );
+
+  // The scrollback goes, the machine's counters do not: the next syncSeen
+  // re-anchors seenBase over everything that is no longer shown.
   const clearScrollback = useCallback(() => {
-    setStdout("");
-    setStderr("");
-  }, []);
+    posRef.current.stdout.bytesHeld = 0;
+    posRef.current.stderr.bytesHeld = 0;
+    write("stdout", "");
+    write("stderr", "");
+  }, [write]);
 
   const clearConsole = useCallback(() => {
     const backend = backendRef.current;
     if (!backend) return;
-    setStdout("");
-    setStderr("");
+    clearScrollback();
     void backend.clearConsole();
-  }, [backendRef]);
+  }, [backendRef, clearScrollback]);
 
   const setOutputTap = useCallback((tap: ((text: string) => void) | null) => {
     outputTapRef.current = tap;
@@ -77,6 +199,7 @@ export function useConsoleOutput(
     stderr,
     appendStdout,
     appendStderr,
+    syncSeen,
     clearScrollback,
     clearConsole,
     setOutputTap,
