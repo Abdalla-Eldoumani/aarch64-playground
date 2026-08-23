@@ -1,0 +1,29 @@
+{
+  "title": "pick the bigger one",
+  "slug": "pick-the-bigger-one",
+  "order": 15,
+  "topic": "branching",
+  "difficulty": "intro",
+  "prompt": "Two contenders sit in registers. Print the larger one.\n\nA clean pattern: assume one of them is the winner, then compare and replace the assumption only when the other is bigger. That way there is exactly one branch to reason about.\n\n## what is checked\n\n- the larger value is printed on its own line\n- the program exits cleanly\n- a comparison decides it",
+  "starter": "// compare two values and print the larger one\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(winner_r, x21)\n\n        .data\nfmt:    .string \"bigger = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, 123                    // contender one\n        mov     b_r, 87                     // contender two\n        mov     winner_r, 0                 // replace this placeholder\n\n        // TODO: compare a_r and b_r and leave the larger value\n        // in winner_r\n\n        ldr     x0, =fmt\n        mov     x1, winner_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "bigger = 123\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "cmp"
+      }
+    ]
+  }
+}
