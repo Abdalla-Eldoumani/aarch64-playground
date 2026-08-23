@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const KEY_CURRENT = "aarch64-playground:auto-save:current";
 const KEY_RECENT = "aarch64-playground:auto-save:recent";
@@ -20,24 +21,6 @@ export function hashString(s: string): string {
     h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   }
   return (h >>> 0).toString(16);
-}
-
-export function safeGetItem(key: string): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-export function safeSetItem(key: string, value: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // storage quota / sandboxed iframe / private mode
-  }
 }
 
 /** Load the last-saved editor buffer, or `null` if there is none. */
