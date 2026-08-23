@@ -137,8 +137,28 @@ export class EmulatorInstance {
     if (typeof set === "function") set.call(this.inner, paused);
   }
 
-  pushStdin(s: string): void {
-    this.inner.push_stdin(s);
+  /** Queue stdin. `interactive` marks a line the student typed at a
+   *  prompt: the machine echoes it into stdout when a read consumes it, so
+   *  the transcript reads like a cooked-mode terminal. A redirect stays
+   *  silent, and so does a wasm build that predates the export. */
+  pushStdin(s: string, interactive = false): void {
+    const echoing = (this.inner as { push_stdin_interactive?: (s: string) => void })
+      .push_stdin_interactive;
+    if (interactive && typeof echoing === "function") echoing.call(this.inner, s);
+    else this.inner.push_stdin(s);
+  }
+
+  /** Bytes ever written to stdout, echoes included -- the absolute
+   *  coordinate the console scrollback aligns to. Null on a wasm build
+   *  that predates the counter, which is the caller's cue to leave the
+   *  scrollback append-only. */
+  stdoutSeen(): number | null {
+    return this.inner.stdout_seen?.() ?? null;
+  }
+
+  /** Bytes ever written to stderr (see `stdoutSeen`). */
+  stderrSeen(): number | null {
+    return this.inner.stderr_seen?.() ?? null;
   }
 
   isBlocked(): boolean {
@@ -377,6 +397,12 @@ interface WasmEmulatorInstance {
   take_stdout(): string;
   take_stderr(): string;
   push_stdin(s: string): void;
+  /** Optional: the echoing stdin queue, present once the crate ships it. */
+  push_stdin_interactive?(s: string): void;
+  /** Optional: cumulative display counters, present once the crate ships
+   *  them. Plain JS numbers, not BigInt. */
+  stdout_seen?(): number;
+  stderr_seen?(): number;
   is_blocked(): boolean;
   get_exit_code(): bigint | number | null | undefined;
   upload_vfs_file(path: string, data: Uint8Array): void;
