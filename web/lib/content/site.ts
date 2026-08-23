@@ -32,6 +32,9 @@ export const CREDIBILITY = {
     "Built for CPSC 355. Not officially affiliated with the University of Calgary.",
   // How the emulator is built (the footer's engine note).
   engineNote: "a hand-written Rust interpreter compiled to WebAssembly",
+  // The privacy stance, colophon-sized. The host's analytics are cookieless
+  // aggregate counts; everything a student writes stays in their browser.
+  privacyNote: "No accounts · cookieless visit counts only · programs stay in your browser",
 } as const;
 
 export interface NavRoute {
