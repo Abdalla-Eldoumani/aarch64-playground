@@ -73,4 +73,24 @@ describe("RegisterPanel", () => {
     expect(cls("V")).toContain("tertiary");
   });
 
+  it("states set and clear in text, so colour is not the only cue", () => {
+    render(
+      <RegisterPanel
+        registers={registers}
+        changedRegs={new Set()}
+        sp="0x0000fffffffff000"
+        pc={0x400000}
+        nzcv={0b1010}
+      />,
+    );
+    // The bit value rides visibly beside the letter and the word reaches a
+    // screen reader: bold amber alone says nothing to a reader who cannot
+    // separate it from the tertiary grey.
+    const flag = (name: string) =>
+      (screen.getByText(name).parentElement as HTMLElement).textContent;
+    expect(flag("N")).toBe("N=1 set");
+    expect(flag("C")).toBe("C=1 set");
+    expect(flag("Z")).toBe("Z=0 clear");
+    expect(flag("V")).toBe("V=0 clear");
+  });
 });
