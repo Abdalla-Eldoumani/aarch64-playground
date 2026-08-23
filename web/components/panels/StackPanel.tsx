@@ -3,6 +3,7 @@
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { labelForOffset, type StackSlot } from "@/lib/emulator/frame-labels";
+import { formatWord32, formatWord64 } from "@/lib/emulator/format-hex";
 
 interface StackPanelProps {
   sp: string;
@@ -44,11 +45,11 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
           stack
         </span>
         <span className="font-mono text-[var(--amber)]">
-          SP = 0x{spVal.toString(16).padStart(16, "0")}
+          SP = {formatWord64(spVal)}
         </span>
         {fpVal > 0 && (
           <span className="font-mono text-[var(--text-secondary)]">
-            FP = 0x{fpVal.toString(16).padStart(16, "0")}
+            FP = {formatWord64(fpVal)}
           </span>
         )}
         <ZoomControl
@@ -78,7 +79,7 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
             for (let i = 7; i >= 0; i--) {
               val = (val << BigInt(8)) | BigInt(slice[i] ?? 0);
             }
-            const hex = "0x" + val.toString(16).padStart(16, "0");
+            const hex = formatWord64(val);
             const isZero = val === BigInt(0);
 
             const fpOffset = fpInView && fpVal > 0 ? addr - fpVal : null;
@@ -98,8 +99,12 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
                 key={row}
                 className={`hover:bg-[var(--bg-elevated)] ${rowClass}`}
               >
+                {/* The address column stays 32-bit wide while SP/FP above it
+                    read 64: it is the narrow first column of a three-column
+                    table that has to survive 375px, and every stack address
+                    this emulator hands out fits 32 bits. */}
                 <td className="text-[var(--text-secondary)]">
-                  0x{addr.toString(16).padStart(8, "0")}
+                  {formatWord32(addr)}
                 </td>
                 <td
                   className={`pl-4 ${
