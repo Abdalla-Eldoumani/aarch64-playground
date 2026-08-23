@@ -1365,7 +1365,10 @@ describe("every emulator-graded exercise is solvable and does not ship already s
       if (HAND_CHECKED_SLUGS.includes(slug)) continue;
       graded.push(slug);
     }
-    expect(Object.keys(REFERENCE_SOLUTIONS).sort()).toEqual(graded.sort());
+    expect(
+      Object.keys(REFERENCE_SOLUTIONS).sort(),
+      "every emulator-graded exercise needs a REFERENCE_SOLUTIONS entry in this file (or a HAND_CHECKED_SLUGS entry beside its own pair); the diff names the slug",
+    ).toEqual(graded.sort());
   });
 
   it.each(Object.entries(REFERENCE_SOLUTIONS))(
