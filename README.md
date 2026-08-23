@@ -73,12 +73,12 @@ content-authoring format, the terminal reference, and the security posture.
 
 ## Privacy
 
-The site keeps no accounts and asks for no personal data. Traffic is measured
-with Vercel Web Analytics and Speed Insights, which report aggregate page
-views only, set no cookies, and record nothing that identifies you. The
-programs you write, the files you upload, and the arguments you type stay in
-your browser: the only copies live in that browser's localStorage and
-IndexedDB, and clearing site data deletes all of it.
+The site keeps no accounts and asks for no personal data. Vercel Web
+Analytics and Speed Insights measure traffic as aggregate page views only;
+they set no cookies and record nothing that identifies you. The programs you
+write, the files you upload, and the arguments you type stay in your browser.
+The only copies live in that browser's localStorage and IndexedDB, and
+clearing site data deletes all of it.
 
 ## License
 
