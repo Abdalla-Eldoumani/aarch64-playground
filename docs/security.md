@@ -4,10 +4,13 @@ This is a fully client-side application: every byte of the emulator runs in
 your tab. We still take a defensive stance because the playground accepts
 URL-borne input (share hashes, diagnostic-bundle deep links, query params) and
 file uploads (source files, VFS payloads, bookmark JSON), all untrusted. There
-is no server surface: no API routes, no backend, nothing to persist or
-exfiltrate beyond the browser.
+are no API routes and no server actions: nothing you type, upload, or run ever
+leaves the tab. The server's whole job is rendering the pages, and the one
+outbound call it makes during that render reads the repository's public star
+count from the GitHub REST API, cached for an hour and carrying no visitor
+data.
 
-## Threat model in two sentences
+## Threat model in two claims
 
 1. An attacker cannot persist state. There is no server-side data store; the
    only data kept is per-browser: localStorage under the
@@ -144,11 +147,19 @@ hosted-runtime unit tests.
 ## Dependency posture
 
 Direct dependencies in `web/package.json` are pinned to exact versions, save
-for the `playwright` dev tool (`^1.59.1`). A clean `npm audit` in `web/` is the
-standing expectation, checked by `node scripts/audit-deps.js` before each
-release. `dompurify` (transitive, via monaco-editor) is held to a patched line
-through `overrides`, and `postcss` is pinned both directly and through
-`overrides`, to keep known XSS fixes in place.
+for the `playwright` dev tool (`^1.59.1`). A clean audit of the shipped
+dependency set is enforced in CI (`node scripts/audit-deps.js --omit=dev`
+fails the build on any moderate-or-higher advisory), and the full audit runs
+before each release. `dompurify` (transitive, via monaco-editor) is held to a
+patched line through `overrides`, and `postcss` is pinned both directly and
+through `overrides`, to keep known XSS fixes in place.
+
+One accepted residue: monaco-editor also vendors a private DOMPurify copy
+inside its bundled source, which `overrides` cannot reach and which may trail
+the patched line. That copy sanitizes only monaco's own rendered widgets, and
+this app never feeds monaco untrusted HTML (everything goes through its typed
+APIs, above), so a hostile document cannot reach the vendored sanitizer.
+Re-checked on every monaco bump.
 
 Run `node scripts/audit-deps.js` from the repo root any time; it exits non-zero
 on any moderate-or-higher advisory, stricter than CI needs but quieter than
@@ -160,5 +171,7 @@ deploy or `vercel.json` change.
 
 Found something that looks wrong? Open an issue with the smallest reproducer
 you can. If it is a real exploit (anything that lets a URL execute code outside
-the WASM sandbox or read another origin's state), email instead of opening a
-public issue.
+the WASM sandbox or read another origin's state), report it privately through
+GitHub security advisories instead of a public issue:
+<https://github.com/Abdalla-Eldoumani/aarch64-playground/security/advisories/new>.
+The same contact is published at `/.well-known/security.txt` on the site.
