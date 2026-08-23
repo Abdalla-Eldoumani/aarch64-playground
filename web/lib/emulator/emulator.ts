@@ -1,3 +1,4 @@
+import { formatWord64 } from "@/lib/emulator/format-hex";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
@@ -224,13 +225,11 @@ export class EmulatorInstance {
   }
 
   getRegister(index: number): string {
-    const val = this.inner.get_register(index);
-    return "0x" + BigInt(val).toString(16).padStart(16, "0");
+    return formatWord64(this.inner.get_register(index));
   }
 
   getSp(): string {
-    const val = this.inner.get_sp();
-    return "0x" + BigInt(val).toString(16).padStart(16, "0");
+    return formatWord64(this.inner.get_sp());
   }
 
   getNzcv(): number {
