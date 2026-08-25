@@ -64,44 +64,42 @@
 
 /* ----- LIGHT · true light (ink on blueprint paper) ----- */
 [data-theme="light"] {
-  --bg-base:        #FCFCFD;
-  --bg-sunken:      #F4F5F7;
-  --bg-raised:      #FFFFFF;
-  --bg-panel:       #FFFFFF;
-  --bg-elevated:    #E9EBEF;
-  --border:         #E2E5EA;
-  --border-strong:  #C9CED6;
+ 
+  --bg-raised:      #F8F9FA;
+  --bg-panel:       #F8F9FA;
+  --bg-base:        #EBECED; 
+  --bg-sunken:      #E0E2E4; 
+  --bg-elevated:    #DCDDE0;
+  
+  --border:         #CED0D3;
+  --border-strong:  #B4B6B9;
 
-  --text-primary:   #14161A;
-  --text-secondary: #565E68;
-  --text-tertiary:  #626A73; /* 4.5:1 on every light surface incl. --bg-elevated hover */
+  --text-primary:   #1C2127;
+  --text-secondary: #4d545c;
+  --text-tertiary:  #373b41; 
 
-  /* The three state hues sit darker than their dark-theme cousins on
-     purpose: as text they must clear 4.5:1 on every light surface AND on
-     their own 10-15% tint bands (the quiz chips, callouts, and the
-     current-instruction row are the worst cases). */
-  --amber:          #81520C;
-  --amber-dim:      #E7CD96;
-  --cyan:           #0E7490;
-  --cyan-dim:       #9AD3DF;
+  --amber:          #B46504; 
+  --amber-dim:      #FCE4B2;
+  --cyan:           #007399;
+  --cyan-dim:       #B2E5F2;
   --on-cyan:        #FFFFFF;
 
-  --success:        #186A2D;
-  --warning:        #8D5400;
-  --danger:         #C2362F;
-  --changed:        #8A5700;
+  --success:        #1abb5d;
+  --warning:        #e69122;
+  --danger:         #D93832;
+  --changed:        #B46504;
 
   --focus:          var(--cyan);
 
-  --grid-line:      rgba(20, 22, 26, 0.04);
-  --crop:           #B9C0C9;
+  --grid-line:      rgba(28, 33, 39, 0.06);
+  --crop:           #A5ACB6;
 
-  --syntax-keyword:  #1D4ED8;
-  --syntax-register: #BE185D;
+  --syntax-keyword:  #005CC5;
+  --syntax-register: #D12474;
   --syntax-number:   #6D28D9;
   --syntax-string:   #6D28D9;
-  --syntax-comment:  #5A626B;
-  --syntax-label:    #047857;
+  --syntax-comment:  #6A737D;
+  --syntax-label:    #21b188;
 }
 
 /* ----- HIGH-CONTRAST · pure-black, white hairlines, WCAG AAA, texture off ----- */
