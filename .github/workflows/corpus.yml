@@ -1,0 +1,29 @@
+name: corpus
+
+# Regenerates the C corpus with a cross compiler and qemu-user and fails
+# on drift from the tracked files, so a toolchain change announces itself
+# instead of rotting silently. The per-PR gate never runs this: the
+# ordinary corpus test replays the tracked files with no toolchain at all.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regen:
+    name: regenerate and compare (cross gcc + qemu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: install the cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
+
+      - name: regenerate and compare
+        run: python3 emulator/tests/c-corpus/tools/sanitize.py regen
