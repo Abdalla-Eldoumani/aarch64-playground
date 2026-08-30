@@ -1570,6 +1570,14 @@ fn encode_scvtf(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return asm_err(ln, "scvtf requires 2 operands: scvtf fd, rn");
     }
     let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    // The source is either a general register (the usual course form) or
+    // an FP register already holding the integer bits (gcc emits
+    // `ldr s31, [...]` then `scvtf s30, s31`): the SIMD-scalar encoding.
+    if let Ok((fn_, wn)) = parse_fp_register(ops[1], ln) {
+        let width = require_same_fp_width("scvtf", &[wd, wn], ln)?;
+        let sz: u32 = if width == 'D' { 1 << 22 } else { 0 };
+        return Ok(0x5E21_D800 | sz | ((fn_ as u32) << 5) | (fd as u32));
+    }
     let (rn, sf) = parse_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
     // SCVTF Fd, Rn: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
@@ -2666,6 +2674,38 @@ mod tests {
         cpu.run_until_break(20).unwrap();
 
         assert_eq!(cpu.regs.read_gpr(2, true), 1);
+    }
+
+    #[test]
+    fn scvtf_converts_integer_bits_already_in_the_fp_register() {
+        use crate::cpu::Cpu;
+        use crate::decoder::{decode, Instruction};
+        let labels = HashMap::new();
+        let s_form = encode_line("scvtf s30, s31", 0, &labels, 1).unwrap();
+        assert_eq!(s_form, 0x5E21_DBFE);
+        assert!(matches!(
+            decode(s_form).unwrap(),
+            Instruction::FpScvtfFp { fd: 30, fn_: 31, single: true }
+        ));
+        let d_form = encode_line("scvtf d1, d2", 0, &labels, 1).unwrap();
+        assert!(matches!(
+            decode(d_form).unwrap(),
+            Instruction::FpScvtfFp { fd: 1, fn_: 2, single: false }
+        ));
+
+        // 7 as integer bits in s31 becomes 7.0f32 in s30.
+        let source = r#"
+            MOV W0, #7
+            FMOV S31, W0
+            SCVTF S30, S31
+            FMOV W1, S30
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(10).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, true), u64::from(7.0f32.to_bits()));
     }
 
     #[test]

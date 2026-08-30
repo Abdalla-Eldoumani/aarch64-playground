@@ -451,6 +451,14 @@ pub enum Instruction {
         rd: u8,
         rn: u8,
     },
+    /// SCVTF (scalar, from the FP register file): the integer bits are
+    /// already in Fn (gcc loads an int with `ldr s31, [...]` and converts
+    /// in place), interpreted at the register's own width.
+    FpScvtfFp {
+        fd: u8,
+        fn_: u8,
+        single: bool,
+    },
     /// FCMP Fn, Fm. Sets NZCV; Fd is unused in the encoding.
     FpCompare {
         fn_: u8,
@@ -726,6 +734,17 @@ pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
     // NOP is a specific encoding
     if instr == NOP_WORD {
         return Ok(Instruction::Nop);
+    }
+
+    // SCVTF (scalar, integer bits already in the FP register): the
+    // SIMD-scalar encoding class, which the group dispatch below would
+    // misroute to loads/stores (its op0 overlaps). Bit 22 picks S or D.
+    if (instr & 0xFFBF_FC00) == 0x5E21_D800 {
+        return Ok(Instruction::FpScvtfFp {
+            fd: bits(instr, 4, 0) as u8,
+            fn_: bits(instr, 9, 5) as u8,
+            single: bit(instr, 22) == 0,
+        });
     }
 
     // SVC: 1101_0100 000i_iiii iiii_iiii iii0_0001

@@ -141,7 +141,7 @@ Every scalar instruction takes both course views of the register file: the S for
 | `FCMP`   | `FCMP Dn, Dm` / `FCMP Sn, Sm`     | Updates NZCV. Unordered sets C and V.   |
 | `FCMPE`  | same                              | The signaling form; here it sets the same flags (the emulator raises no FP exceptions). |
 | `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). |
-| `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Dd, Wn` / `SCVTF Sd, Wn` | Signed integer to float.  |
+| `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Sd, Wn` / `SCVTF Sd, Sn` / `SCVTF Dd, Dn` | Signed integer to float. The FP-source forms convert integer bits already sitting in the register (how gcc converts an int it loaded with `ldr s31, [...]`). |
 | `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` / `FCVTZS Wd, Sn` | Truncate float to signed integer. |
 
 ## Directives

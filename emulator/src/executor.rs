@@ -243,6 +243,19 @@ pub fn execute(
             regs.write_fpr_bits(*fd, v);
             Ok(ExecResult::Advance)
         }
+        Instruction::FpScvtfFp { fd, fn_, single } => {
+            // The integer bits already sit in Fn; convert at the
+            // register's own width. S results are an f32 pattern in the
+            // low 32 bits with the upper half zeroed, like every S write.
+            let bits = regs.read_fpr_bits(*fn_);
+            let out = if *single {
+                u64::from(((bits as u32 as i32) as f32).to_bits())
+            } else {
+                ((bits as i64) as f64).to_bits()
+            };
+            regs.write_fpr_bits(*fd, out);
+            Ok(ExecResult::Advance)
+        }
         Instruction::FpMoveGeneral { to_fp, sf, single, rd, rn } => {
             // Raw bits either direction; the S forms move the low 32 bits
             // and (into the FP file) zero the upper half.
