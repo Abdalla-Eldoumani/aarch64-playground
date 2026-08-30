@@ -601,7 +601,7 @@ describe("VFS roundtrip through the machine", () => {
 describe("the exported memory map", () => {
   // The bands the memory panel labels from, transcribed by hand from the
   // loader constants: four 1 MiB sections from CODE_BASE, one page of argv,
-  // a 1 MiB heap window, the 1 MiB stack band under STACK_BASE, and 256
+  // a 16 MiB heap window, the 8 MiB stack band under STACK_BASE, and 256
   // 16-byte host-stub slots at the top of the space.
   it("hands over eight bands in address order at the loader's constants", () => {
     expect(memoryMap()).toEqual([
@@ -610,8 +610,8 @@ describe("the exported memory map", () => {
       { name: ".data", start: 0x00600000, end: 0x00700000 },
       { name: ".bss", start: 0x00700000, end: 0x00800000 },
       { name: "argv", start: 0x00800000, end: 0x00801000 },
-      { name: "heap", start: 0x00900000, end: 0x00a00000 },
-      { name: "stack", start: 0x7ff00000, end: 0x80000000 },
+      { name: "heap", start: 0x00900000, end: 0x01900000 },
+      { name: "stack", start: 0x7f800000, end: 0x80000000 },
       { name: "host stubs", start: 0xffff0000, end: 0xffff1000 },
     ]);
   });

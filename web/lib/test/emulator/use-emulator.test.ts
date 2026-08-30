@@ -122,7 +122,7 @@ const TRAMPOLINE_PC = CODE_BASE + 0x40;
 // Two bands with a gap between them, in the shape the wasm export delivers.
 const REGIONS: MemoryRegion[] = [
   { name: ".data", start: 0x00600000, end: 0x00700000 },
-  { name: "stack", start: 0x7ff00000, end: 0x80000000 },
+  { name: "stack", start: 0x7f800000, end: 0x80000000 },
 ];
 
 interface BackendConfig {
@@ -1476,7 +1476,7 @@ describe("useEmulator memory map", () => {
     const { result } = await mountLoaded(fake);
     expect(result.current.memoryRegions).toEqual([
       { name: ".data", start: 0x00600000, end: 0x00700000 },
-      { name: "stack", start: 0x7ff00000, end: 0x80000000 },
+      { name: "stack", start: 0x7f800000, end: 0x80000000 },
     ]);
   });
 
