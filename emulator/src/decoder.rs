@@ -674,10 +674,14 @@ pub fn encode_bitmask_imm(value: u64, sf: bool) -> Option<(bool, u8, u8)> {
 // top-level decoder
 // ---------------------------------------------------------------------------
 
+/// The NOP encoding, shared by the encoder arm, the decode fast path, and
+/// the linker's `.text` alignment padding.
+pub const NOP_WORD: u32 = 0xD503_201F;
+
 /// Decode a 32-bit ARM64 instruction word into a typed `Instruction`.
 pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
     // NOP is a specific encoding
-    if instr == 0xD503_201F {
+    if instr == NOP_WORD {
         return Ok(Instruction::Nop);
     }
 
