@@ -134,7 +134,7 @@ main:
         bl      free
 
         // two windows' worth cannot fit; malloc reports NULL
-        mov     x0, 0x200000
+        mov     x0, 0x2000000
         bl      malloc
         ldr     x1, =fmt
         cmp     x0, 0

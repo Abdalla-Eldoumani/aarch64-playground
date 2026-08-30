@@ -8,9 +8,11 @@ use crate::hosted::{HostContext, HostOutcome};
 
 /// The heap window sits above the argv page and far below the stack.
 pub const HEAP_BASE: u64 = 0x0090_0000;
-/// One window, same bound as a linker section: a runaway allocator hits
-/// NULL returns, not the page cap.
-pub const HEAP_LIMIT: u64 = HEAP_BASE + 1024 * 1024;
+/// One 16 MiB window: big enough for anything a course program allocates
+/// (a 1 MiB malloc succeeds the way it does on the servers), and bounded
+/// so a runaway allocator hits NULL returns, not the page cap. Pages back
+/// lazily, so an untouched allocation costs address space only.
+pub const HEAP_LIMIT: u64 = HEAP_BASE + 16 * 1024 * 1024;
 
 const ALIGN: u64 = 16;
 
@@ -166,5 +168,23 @@ mod tests {
         assert!(h.alloc(HEAP_LIMIT - HEAP_BASE).is_some());
         assert!(h.alloc(16).is_none());
         assert!(h.alloc(u64::MAX).is_none());
+    }
+
+    #[test]
+    fn a_one_mib_allocation_fits_the_window() {
+        // The server-parity case: `malloc(1 << 20)` succeeds on the course
+        // servers, so it succeeds here.
+        let mut h = HeapState::default();
+        assert!(h.alloc(1 << 20).is_some());
+    }
+
+    #[test]
+    fn malloc_zero_returns_a_distinct_non_null_block() {
+        // glibc's malloc(0) answers a real, freeable pointer; so does ours.
+        let mut h = HeapState::default();
+        let a = h.alloc(0).expect("malloc(0) is non-NULL");
+        let b = h.alloc(0).expect("second malloc(0) is non-NULL");
+        assert_ne!(a, b, "each zero-size block is distinct");
+        assert_ne!(a, 0);
     }
 }
