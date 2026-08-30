@@ -337,6 +337,11 @@ pub struct Cpu {
     /// the `MAX_TOTAL_STEPS` runaway-loop wall; persistent across repeated
     /// `run_until_break` calls so chunked running still reaches the ceiling.
     steps_total: u64,
+    /// The runaway-loop wall itself, `MAX_TOTAL_STEPS` unless a native
+    /// harness raises it (the C corpus has legitimate programs the browser
+    /// budget was never sized for). The wasm surface never touches this,
+    /// so the tab's ceiling stays exactly the const.
+    max_total_steps: u64,
     /// Cumulative stdout+stderr bytes since the last load/reset. Drives the
     /// `MAX_OUTPUT_BYTES` wall; survives the UI draining the buffers.
     output_total: usize,
@@ -399,6 +404,7 @@ impl Cpu {
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
             steps_total: 0,
+            max_total_steps: MAX_TOTAL_STEPS,
             output_total: 0,
             stdout_seen: 0,
             stderr_seen: 0,
@@ -825,7 +831,7 @@ impl Cpu {
         // spent, halt calmly instead of executing another instruction.
         // Checked here so single-stepping a loop is bounded the same way run
         // mode is; surfaced through `error` while `halted` stays true.
-        if self.steps_total >= MAX_TOTAL_STEPS {
+        if self.steps_total >= self.max_total_steps {
             self.halted = true;
             let msg = step_ceiling_message();
             self.abort_message = Some(msg.clone());
@@ -1422,6 +1428,14 @@ impl Cpu {
                 None
             },
         })
+    }
+
+    /// Raise (or lower) the runaway-loop wall for this machine. Native
+    /// harnesses only: the C corpus has legitimate programs that spend
+    /// more than the browser budget, and they deserve a bigger wall, not
+    /// a weaker one for everyone. The wasm surface never exposes this.
+    pub fn set_max_total_steps(&mut self, ceiling: u64) {
+        self.max_total_steps = ceiling;
     }
 
     /// Set a breakpoint at an address.
