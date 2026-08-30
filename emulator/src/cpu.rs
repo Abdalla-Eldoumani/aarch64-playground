@@ -47,10 +47,13 @@ pub const SECTION_WINDOW: u64 = 1024 * 1024;
 /// Initial stack pointer (grows downward).
 pub const STACK_BASE: u64 = 0x8000_0000;
 
-/// Lowest address sp may legally reach: 1 MiB of stack. Course programs
-/// use a few KiB; only unbounded recursion (or a garbage sp) gets here,
-/// and it deserves a stack-overflow message, not the memory-cap one.
-pub const STACK_FLOOR: u64 = STACK_BASE - 1024 * 1024;
+/// Lowest address sp may legally reach: 8 MiB of stack, matching
+/// `ulimit -s` on the course servers so a deep-but-legal recursion that
+/// runs there runs here. Only unbounded recursion (or a garbage sp) gets
+/// past it, and that deserves a stack-overflow message, not the
+/// memory-cap one -- which is why this floor stays well under
+/// `memory::MAX_MAPPED_PAGES` in page terms.
+pub const STACK_FLOOR: u64 = STACK_BASE - 8 * 1024 * 1024;
 
 /// Base address of the synthetic host-function stubs. `BL` targets inside
 /// this range are intercepted by the executor and dispatched to a Rust
