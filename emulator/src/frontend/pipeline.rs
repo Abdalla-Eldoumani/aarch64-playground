@@ -1392,9 +1392,14 @@ fn is_register_or_shift_keyword(s: &str) -> bool {
             }
         }
     }
+    // The bare-name registers come from the shared alias table; the tail is
+    // this recognizer's own -- shift and extend keywords are operands here,
+    // not registers.
+    if crate::registers::reg_alias(&lower).is_some() {
+        return true;
+    }
     matches!(
         lower.as_str(),
-        "sp" | "xzr" | "wzr" | "fp" | "lr" |
         "lsl" | "lsr" | "asr" | "ror" |
         "sxtw" | "sxtx" | "uxtw" | "uxtx" |
         "sxtb" | "sxth" | "uxtb" | "uxth"

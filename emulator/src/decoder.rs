@@ -47,6 +47,20 @@ pub enum MemSize {
 }
 
 impl MemSize {
+    /// The access width a load/store encoding's 2-bit `size` field names.
+    /// The assembler's offset-scaling and the decoder both come through
+    /// here, so `bytes` below is the only place the bytes-per-size mapping
+    /// is written down. Only the low two bits are read; there is no invalid
+    /// value to reject.
+    pub fn from_size_field(size: u8) -> Self {
+        match size & 0b11 {
+            0b00 => Self::B,
+            0b01 => Self::H,
+            0b10 => Self::W,
+            _ => Self::X,
+        }
+    }
+
     /// Number of bytes for this access width.
     pub fn bytes(self) -> u32 {
         match self {
@@ -87,6 +101,27 @@ pub enum ExtendType {
     /// Sign-extend a 64-bit value (no-op, kept for encoding symmetry).
     Sxtx,
 }
+
+/// The extend/shift keywords a load/store register-offset address accepts:
+/// the spelling, its 3-bit `option` field, and whether the index register
+/// must be an X (the ARM width rule -- UXTW/SXTW take a Wm, the rest take
+/// an Xm). `lsl` and `uxtx` share option 0b011 because they mean the same
+/// thing for a 64-bit index; `lsl` is listed first so a lookup by option
+/// spells it the way GAS disassembles it.
+///
+/// Deliberately separate from the assembler's `EXTEND_KEYWORDS`, which is
+/// the ADD/SUB extended-register table: that one carries all eight options
+/// (byte and halfword extends included) and skips the width check entirely,
+/// because GAS assembles `add x0, x1, x2, sxtw` to the same word as the
+/// `w2` spelling and refusing it would reject source the course toolchain
+/// accepts. The two sets are not the same set and must not be merged.
+pub const LDST_EXTENDS: &[(&str, u8, bool)] = &[
+    ("lsl", 0b011, true),
+    ("uxtw", 0b010, false),
+    ("sxtw", 0b110, false),
+    ("sxtx", 0b111, true),
+    ("uxtx", 0b011, true),
+];
 
 /// Extension applied to Rm in the extended-register ADD/SUB form (the
 /// 3-bit option field). UXTX doubles as LSL when the other operand is SP,
@@ -194,6 +229,28 @@ pub enum FpUnaryOp {
     Fabs,
     Fsqrt,
 }
+
+/// The FP two-source rows: mnemonic, the 4-bit opcode field, and the
+/// operation it decodes to. `encode_fp_binary` reads the opcode out of here
+/// and `decode_fp_group` reads the operation back, so the two directions of
+/// the same four numbers cannot drift apart.
+pub const FP_BINARY_OPS: &[(&str, u8, FpBinOp)] = &[
+    ("fadd", 0b0010, FpBinOp::Fadd),
+    ("fsub", 0b0011, FpBinOp::Fsub),
+    ("fmul", 0b0000, FpBinOp::Fmul),
+    ("fdiv", 0b0001, FpBinOp::Fdiv),
+];
+
+/// The FP one-source rows that share `FpUnary`: mnemonic, the 6-bit opcode
+/// field, and the operation. FMOV-register and FCVT live in the same opcode
+/// space but stay out of the table: FMOV has its own instruction variant
+/// and its own encoder, and FCVT's opcode carries the DESTINATION width, so
+/// it is entangled with ftype rather than being a plain row.
+pub const FP_UNARY_OPS: &[(&str, u8, FpUnaryOp)] = &[
+    ("fabs", 0b000001, FpUnaryOp::Fabs),
+    ("fneg", 0b000010, FpUnaryOp::Fneg),
+    ("fsqrt", 0b000011, FpUnaryOp::Fsqrt),
+];
 
 /// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
 /// zero-extends it; `Bfm` merges the field into the destination and keeps
@@ -804,14 +861,11 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     // FP data-processing 2-source: bits[15:10] = opcode | 10
     if bits(instr, 11, 10) == 0b10 {
         let opcode = bits(instr, 15, 12);
-        let op = match opcode {
-            0b0000 => FpBinOp::Fmul,
-            0b0001 => FpBinOp::Fdiv,
-            0b0010 => FpBinOp::Fadd,
-            0b0011 => FpBinOp::Fsub,
-            _ => return Err(EmuError::UnknownInstruction(instr)),
+        let Some((_, _, op)) = FP_BINARY_OPS.iter().find(|(_, code, _)| u32::from(*code) == opcode)
+        else {
+            return Err(EmuError::UnknownInstruction(instr));
         };
-        return Ok(Instruction::FpBinary { op, fd: rd, fn_: rn, fm: rm, single });
+        return Ok(Instruction::FpBinary { op: *op, fd: rd, fn_: rn, fm: rm, single });
     }
 
     // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.
@@ -819,17 +873,13 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     // opcode is 0001‖dest-type: the ftype names the SOURCE width, so only
     // the cross-width pairs are valid encodings.
     if bits(instr, 14, 10) == 0b10000 {
-        match bits(instr, 20, 15) {
+        let opcode = bits(instr, 20, 15);
+        if let Some((_, _, op)) = FP_UNARY_OPS.iter().find(|(_, code, _)| u32::from(*code) == opcode)
+        {
+            return Ok(Instruction::FpUnary { op: *op, fd: rd, fn_: rn, single });
+        }
+        match opcode {
             0b000000 => return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn, single }),
-            0b000001 => {
-                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: rd, fn_: rn, single })
-            }
-            0b000010 => {
-                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: rd, fn_: rn, single })
-            }
-            0b000011 => {
-                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: rd, fn_: rn, single })
-            }
             // FCVT Sd, Dn: dest single, source double (narrow).
             0b000100 if !single => {
                 return Ok(Instruction::FpCvt { fd: rd, fn_: rn, widen: false })
@@ -1313,14 +1363,7 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
-    let size_bits = bits(instr, 31, 30);
-    let size = match size_bits {
-        0b00 => MemSize::B,
-        0b01 => MemSize::H,
-        0b10 => MemSize::W,
-        0b11 => MemSize::X,
-        _ => unreachable!(),
-    };
+    let size = MemSize::from_size_field(bits(instr, 31, 30) as u8);
 
     let v = bit(instr, 26);
     if v == 1 {
@@ -1432,20 +1475,26 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
             let rm = bits(instr, 20, 16) as u8;
             let option = bits(instr, 15, 13);
             let s = bit(instr, 12) as u8;
-            let extend = match option {
-                0b010 => ExtendType::Uxtw,
-                0b011 => ExtendType::Lsl,
-                0b110 => ExtendType::Sxtw,
-                0b111 => ExtendType::Sxtx,
+            // The legal option fields are the ones the assembler can write,
+            // so the set comes from the shared table. 0b011 is spelled both
+            // `lsl` and `uxtx`; the table lists `lsl` first, so a 64-bit
+            // index decodes as Lsl the way GAS disassembles it.
+            let extend = match LDST_EXTENDS
+                .iter()
+                .find(|(_, opt, _)| u32::from(*opt) == option)
+                .map(|(keyword, _, _)| *keyword)
+            {
+                Some("uxtw") => ExtendType::Uxtw,
+                Some("lsl") => ExtendType::Lsl,
+                Some("sxtw") => ExtendType::Sxtw,
+                Some("sxtx") => ExtendType::Sxtx,
                 _ => return Err(EmuError::UnknownInstruction(instr)),
             };
+            // S=1 means "scale the index by the access size", so the shift
+            // is log2 of that width -- read off the shared byte count
+            // rather than re-spelled as a second size table.
             let shift_amount = if s == 1 {
-                match size {
-                    MemSize::B => 0,
-                    MemSize::H => 1,
-                    MemSize::W => 2,
-                    MemSize::X => 3,
-                }
+                size.bytes().trailing_zeros() as u8
             } else {
                 0
             };

@@ -44,6 +44,32 @@ pub const CONDITIONS: &[(&str, &[&str], u8)] = &[
     ("AL", &[], 0b1110),
 ];
 
+/// The register spellings that name an index without an `x`/`w` prefix and
+/// digits: the alias, the register number it resolves to, and whether it
+/// reads as the 64-bit view. GNU as predefines all five, so course
+/// prologues written with bare `fp`/`lr` assemble without a
+/// `define(fp, x29)` line. This is the one place the set is written down:
+/// the assembler's `parse_register` and `looks_like_register`, the hosted
+/// pipeline's `is_register_or_shift_keyword`, and the linter's
+/// `is_reserved_name` all read it. Spellings are uppercase; every consumer
+/// compares case-insensitively.
+pub const REG_ALIASES: &[(&str, u8, bool)] = &[
+    ("SP", 31, true),
+    ("XZR", 31, true),
+    ("WZR", 31, false),
+    ("FP", 29, true),
+    ("LR", 30, true),
+];
+
+/// Resolve a register alias spelling, case-insensitively. `None` means the
+/// text is not an alias -- the caller falls back to the `xN`/`wN` form.
+pub fn reg_alias(name: &str) -> Option<(u8, bool)> {
+    REG_ALIASES
+        .iter()
+        .find(|(alias, _, _)| alias.eq_ignore_ascii_case(name))
+        .map(|(_, num, sf)| (*num, *sf))
+}
+
 impl Condition {
     /// Decode a 4-bit condition field. The reserved 0b1111 folds onto AL,
     /// matching hardware: cond 1111 executes as always, it just has no
