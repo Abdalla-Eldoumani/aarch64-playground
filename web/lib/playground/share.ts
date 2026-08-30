@@ -137,8 +137,11 @@ export function readShareHash(hash: string): ShareReadResult {
             typeof (f as { body?: unknown }).body === "string",
         )
       ) {
+        // Store the TRIMMED name: validateFileName trims before its shape
+        // check, so an untrimmed store would validate "\nhelper.s" as
+        // helper.s and then hand the newline to the boundary comment.
         const files = (o.files as { name: string; body: string }[]).map((f) => ({
-          name: f.name,
+          name: f.name.trim(),
           body: f.body,
         }));
         // A hostile NAME is not a mangle, so the whole link is refused

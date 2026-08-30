@@ -77,6 +77,33 @@ describe("share hash p2", () => {
     expect(kindOf(`#p2=${hostile}`)).toBe("corrupt");
   });
 
+  it("stores a whitespace-padded name trimmed, never with the padding", () => {
+    // validateFileName trims before its shape check, so an untrimmed store
+    // once validated "\nret.s\n" as ret.s and handed the newlines to the
+    // `// ---- name ----` boundary comment as program text.
+    const padded = `#p2=${LZString.compressToEncodedURIComponent(
+      JSON.stringify({
+        source: "ret\n",
+        files: [{ name: "\nhelper.s\n", body: "ret\n" }],
+      }),
+    )}`;
+    const got = okState(padded);
+    expect(got.files).toEqual([{ name: "helper.s", body: "ret\n" }]);
+  });
+
+  it("refuses a pair of names that differ only in surrounding whitespace", () => {
+    const pair = `#p2=${LZString.compressToEncodedURIComponent(
+      JSON.stringify({
+        source: "ret\n",
+        files: [
+          { name: " dup.s", body: "" },
+          { name: "dup.s ", body: "" },
+        ],
+      }),
+    )}`;
+    expect(kindOf(pair)).toBe("corrupt");
+  });
+
   it("refuses a link carrying a traversing, oversized, or duplicated name", () => {
     const payload = (files: { name: string; body: string }[]) =>
       `#p2=${LZString.compressToEncodedURIComponent(
