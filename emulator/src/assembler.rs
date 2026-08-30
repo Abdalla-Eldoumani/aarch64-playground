@@ -1885,11 +1885,144 @@ fn looks_like_register(s: &str) -> bool {
     false
 }
 
-fn parse_reg_offset_tail(parts: &[&str], ln: usize) -> Result<AddressingMode, EmuError> {
-    // `parts` has been pre-split on commas; index 0 is the base, the
-    // rest describe the offset.
-    let (rn, _) = parse_register(parts[0], ln)?;
-    let (rm, rm_is_x) = parse_register(parts[1], ln)?;
+// ---------------------------------------------------------------------------
+// address operand tokens
+// ---------------------------------------------------------------------------
+
+/// What one token of an address operand is. The four structural kinds
+/// stand alone; a word is classified by what it opens with, which is all
+/// the shape match below needs to tell `[x0, x1]` from `[x0, #8]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TokKind {
+    LBracket,
+    RBracket,
+    Comma,
+    Bang,
+    /// A word that reads as a register name (`x0`, `w29`, `sp`).
+    Reg,
+    /// A word that opens like a number or a character literal.
+    Imm,
+    /// Any other word: an extend/shift keyword, a label, a typo.
+    Keyword,
+}
+
+/// One token, as a kind plus the byte span it covers. The span rather
+/// than the text on purpose: the shape match reads `kind`, and every
+/// leaf parse still runs on the original source slice, so
+/// `parse_register` and `parse_immediate` report exactly what the writer
+/// typed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Tok {
+    kind: TokKind,
+    start: usize,
+    end: usize,
+}
+
+/// One comma-separated piece of an operand, as byte offsets into the
+/// source. Both views are needed: the token shape decides the form, the
+/// raw text feeds the leaf parsers.
+#[derive(Debug, Clone, Copy)]
+struct Seg {
+    lo: usize,
+    hi: usize,
+}
+
+impl Seg {
+    fn text<'a>(&self, src: &'a str) -> &'a str {
+        &src[self.lo..self.hi]
+    }
+
+    /// The tokens lying inside this segment. Segment boundaries always
+    /// fall on token boundaries -- a comma edge or a bracket edge -- so
+    /// this never splits a token in half.
+    fn toks<'a>(&self, toks: &'a [Tok]) -> &'a [Tok] {
+        let lo = toks.partition_point(|t| t.start < self.lo);
+        let hi = toks.partition_point(|t| t.end <= self.hi).max(lo);
+        &toks[lo..hi]
+    }
+}
+
+fn structural_kind(c: char) -> Option<TokKind> {
+    match c {
+        '[' => Some(TokKind::LBracket),
+        ']' => Some(TokKind::RBracket),
+        ',' => Some(TokKind::Comma),
+        '!' => Some(TokKind::Bang),
+        _ => None,
+    }
+}
+
+/// Which kind of word this is. The register test is the loose
+/// `looks_like_register`, not `parse_register`: `x99` has to read as a
+/// register so it reaches `parse_register` for the real complaint
+/// instead of being silently taken for an offset.
+fn classify_word(word: &str) -> TokKind {
+    if looks_like_register(word) {
+        TokKind::Reg
+    } else if word.starts_with(|c: char| matches!(c, '#' | '-' | '\'') || c.is_ascii_digit()) {
+        TokKind::Imm
+    } else {
+        TokKind::Keyword
+    }
+}
+
+/// Split an address operand into tokens. Total by construction: nothing
+/// is rejected here, so tokenizing can never introduce a rejection the
+/// old string parser did not have. Whitespace separates words and is
+/// otherwise dropped; the segment slices keep it, because the leaf
+/// parsers trim for themselves.
+fn tokenize_address(s: &str) -> Vec<Tok> {
+    let mut toks: Vec<Tok> = Vec::new();
+    let mut chars = s.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if c.is_whitespace() {
+            continue;
+        }
+        if let Some(kind) = structural_kind(c) {
+            toks.push(Tok { kind, start: i, end: i + c.len_utf8() });
+            continue;
+        }
+        let mut end = i + c.len_utf8();
+        while let Some(&(j, next)) = chars.peek() {
+            if next.is_whitespace() || structural_kind(next).is_some() {
+                break;
+            }
+            end = j + next.len_utf8();
+            chars.next();
+        }
+        toks.push(Tok { kind: classify_word(&s[i..end]), start: i, end });
+    }
+    toks
+}
+
+/// The comma-separated segments of `src[lo..hi)`, at most `limit` of
+/// them. Mirrors `str::splitn`, which is what the old parser reached for:
+/// the last segment keeps any commas past the limit, and no segment is
+/// trimmed.
+fn comma_segments(toks: &[Tok], lo: usize, hi: usize, limit: usize) -> Vec<Seg> {
+    let mut segments: Vec<Seg> = Vec::new();
+    let mut start = lo;
+    for tok in toks {
+        if tok.kind != TokKind::Comma || tok.start < lo || tok.end > hi {
+            continue;
+        }
+        if segments.len() + 1 >= limit {
+            break;
+        }
+        segments.push(Seg { lo: start, hi: tok.start });
+        start = tok.end;
+    }
+    segments.push(Seg { lo: start, hi });
+    segments
+}
+
+/// `[Xn, (Wm|Xm) (, LSL|UXTW|SXTW|SXTX|UXTX #<amount>)?]`, reached once
+/// the shape match has seen an index register in the offset segment.
+fn parse_reg_offset(src: &str, parts: &[Seg], ln: usize) -> Result<AddressingMode, EmuError> {
+    // `parts` is the comma split of the bracket group; index 0 is the
+    // base, 1 the index register, 2 the optional extend/shift.
+    let (rn, _) = parse_register(parts[0].text(src), ln)?;
+    let (rm, rm_is_x) = parse_register(parts[1].text(src), ln)?;
     // No explicit extend / shift: default LSL for Xm, UXTW for Wm.
     if parts.len() == 2 {
         let option = if rm_is_x { 0b011 } else { 0b010 };
@@ -1900,7 +2033,12 @@ fn parse_reg_offset_tail(parts: &[&str], ln: usize) -> Result<AddressingMode, Em
             shift_amount: None,
         });
     }
-    let modifier = parts[2].trim();
+    // The keyword is taken off the raw text rather than off the first
+    // token: `split_extend_keyword` reads it as everything up to the
+    // first whitespace, punctuation included, so `lsl,` is one bad
+    // keyword and is reported as one. Slicing at the token boundary
+    // instead would rename that complaint.
+    let modifier = parts[2].text(src).trim();
     let (keyword, shift_str) = split_extend_keyword(modifier);
     let keyword_lower = keyword.to_ascii_lowercase();
     let Some((_, option, needs_x)) = LDST_EXTENDS
@@ -1942,19 +2080,37 @@ fn split_extend_keyword(s: &str) -> (&str, &str) {
     }
 }
 
+/// Parse a load/store address operand.
+///
+/// The operand is tokenized first and the form is chosen by matching on
+/// the token shape: where the brackets, the commas and the writeback `!`
+/// fall, and whether the offset segment names a register. The parser it
+/// replaced discriminated by string shape instead -- `ends_with('!')`,
+/// then `starts_with('[')`, then `find(']')` with a non-empty tail, then
+/// `looks_like_register` on a `splitn` piece -- an order that was
+/// load-bearing and written down nowhere. A form checked too late was
+/// not rejected there: it was re-read as a different form, because
+/// whatever the register test turned away went straight to
+/// `parse_immediate`. That produces a wrong ENCODING, not an error.
+///
+/// Every leaf parse still runs on the raw source slice of its segment,
+/// so the rejections read exactly as they did before.
 fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError> {
     let s = s.trim();
+    let toks = tokenize_address(s);
 
-    // [Xn, #imm]! -> pre-index
-    if s.ends_with('!') {
-        let inner = s.strip_suffix('!').unwrap().trim();
-        let inner = inner.strip_prefix('[')
-            .and_then(|s| s.strip_suffix(']'))
-            .ok_or_else(|| asm_error(ln, "expected [Xn, #imm]!"))?;
-        let parts: Vec<&str> = inner.splitn(2, ',').collect();
-        let (rn, _) = parse_register(parts[0], ln)?;
+    // `[Xn, #imm]!` -> pre-index. Checked first because a trailing `!`
+    // is the one thing that can follow the bracket group and still not
+    // be an offset.
+    if toks.last().is_some_and(|t| t.kind == TokKind::Bang) {
+        let n = toks.len();
+        if n < 3 || toks[0].kind != TokKind::LBracket || toks[n - 2].kind != TokKind::RBracket {
+            return asm_err(ln, "expected [Xn, #imm]!");
+        }
+        let parts = comma_segments(&toks, toks[0].end, toks[n - 2].start, 2);
+        let (rn, _) = parse_register(parts[0].text(s), ln)?;
         let offset = if parts.len() > 1 {
-            Some(parse_immediate(parts[1], ln)?)
+            Some(parse_immediate(parts[1].text(s), ln)?)
         } else {
             Some(0)
         };
@@ -1965,50 +2121,57 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
         });
     }
 
-    // check if it starts with [
-    if !s.starts_with('[') {
+    if !toks.first().is_some_and(|t| t.kind == TokKind::LBracket) {
         return asm_err(ln, "expected [ for addressing mode");
     }
+    let Some(close) = toks.iter().position(|t| t.kind == TokKind::RBracket) else {
+        return asm_err(ln, "invalid addressing mode");
+    };
+    let (inner_lo, inner_hi) = (toks[0].end, toks[close].start);
 
-    // [Xn], #imm -> post-index
-    if let Some(bracket_end) = s.find(']') {
-        let inside = &s[1..bracket_end];
-        let after = s[bracket_end + 1..].trim();
-
-        if !after.is_empty() {
-            // post-index
-            let (rn, _) = parse_register(inside.trim(), ln)?;
-            let offset_str = after.strip_prefix(',').unwrap_or(after).trim();
-            let offset = parse_immediate(offset_str, ln)?;
-            return Ok(AddressingMode::Immediate {
-                rn,
-                offset: Some(offset),
-                mode: IndexMode::PostIndex,
-            });
-        }
-
-        // [Xn] or [Xn, ...]
-        let parts: Vec<&str> = inside.splitn(3, ',').collect();
-        if parts.len() >= 2 && looks_like_register(parts[1]) {
-            return parse_reg_offset_tail(&parts, ln);
-        }
-        let (rn, _) = parse_register(parts[0], ln)?;
-        if parts.len() > 1 {
-            let offset = parse_immediate(parts[1], ln)?;
-            return Ok(AddressingMode::Immediate {
-                rn,
-                offset: Some(offset),
-                mode: IndexMode::Unsigned,
-            });
-        }
+    // `[Xn], #imm` -> post-index. Anything at all after the bracket
+    // group makes it one; the comma is optional.
+    if let Some(first_after) = toks.get(close + 1) {
+        let (rn, _) = parse_register(s[inner_lo..inner_hi].trim(), ln)?;
+        let from = if first_after.kind == TokKind::Comma {
+            first_after.end
+        } else {
+            toks[close].end
+        };
+        let offset = parse_immediate(s[from..].trim(), ln)?;
         return Ok(AddressingMode::Immediate {
             rn,
-            offset: None,
-            mode: IndexMode::Unsigned,
+            offset: Some(offset),
+            mode: IndexMode::PostIndex,
         });
     }
 
-    asm_err(ln, "invalid addressing mode")
+    // `[Xn]`, `[Xn, #imm]`, `[Xn, Xm, ...]`. The offset segment decides:
+    // one register token and nothing else is the register-offset form.
+    // Everything else -- a `#imm`, a bare number, a `d1`, an empty
+    // piece -- is the immediate form and reports through
+    // `parse_immediate`, which is where those complaints came from
+    // before and still do.
+    let parts = comma_segments(&toks, inner_lo, inner_hi, 3);
+    let offset_is_register = parts.len() >= 2
+        && matches!(parts[1].toks(&toks), [tok] if tok.kind == TokKind::Reg);
+    if offset_is_register {
+        return parse_reg_offset(s, &parts, ln);
+    }
+    let (rn, _) = parse_register(parts[0].text(s), ln)?;
+    if parts.len() > 1 {
+        let offset = parse_immediate(parts[1].text(s), ln)?;
+        return Ok(AddressingMode::Immediate {
+            rn,
+            offset: Some(offset),
+            mode: IndexMode::Unsigned,
+        });
+    }
+    Ok(AddressingMode::Immediate {
+        rn,
+        offset: None,
+        mode: IndexMode::Unsigned,
+    })
 }
 
 fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
@@ -4139,6 +4302,65 @@ svc 0").unwrap();
                 assemble(&bad).is_err(),
                 "`{bad}` must be refused: the width rule is the table's third column"
             );
+        }
+    }
+
+    // -- the address operand tokenizer --
+
+    /// Render a token stream as `kind:text` so a mismatch reads as the
+    /// spelling it came from rather than as a span arithmetic puzzle.
+    fn tokens_of(src: &str) -> Vec<String> {
+        tokenize_address(src)
+            .iter()
+            .map(|t| format!("{:?}:{}", t.kind, &src[t.start..t.end]))
+            .collect()
+    }
+
+    #[test]
+    fn tokenizer_classifies_the_operand_words() {
+        // The three word kinds are the whole grammar: a register name, a
+        // number-ish word, and anything else. Whitespace and casing move
+        // the spans, never the kinds -- which is why the shape match can
+        // be spelled once and cover every spelling.
+        for spelling in ["[x0, w2, sxtw #2]", "[x0,w2,sxtw #2]", "[ X0 , W2 , SXTW #2 ]"] {
+            assert_eq!(
+                tokens_of(spelling)
+                    .iter()
+                    .map(|t| t.split(':').next().unwrap().to_string())
+                    .collect::<Vec<_>>(),
+                vec![
+                    "LBracket", "Reg", "Comma", "Reg", "Comma", "Keyword", "Imm", "RBracket"
+                ],
+                "{spelling}"
+            );
+        }
+        assert_eq!(
+            tokens_of("[sp, #-8]!"),
+            vec!["LBracket:[", "Reg:sp", "Comma:,", "Imm:#-8", "RBracket:]", "Bang:!"]
+        );
+        // `d1` is not a general register, so it is a Keyword and lands on
+        // the immediate path -- exactly where `[x0, d1]`'s complaint
+        // comes from.
+        assert_eq!(tokens_of("d1"), vec!["Keyword:d1"]);
+        assert_eq!(tokens_of("x99"), vec!["Reg:x99"]);
+        assert_eq!(tokens_of("0x10"), vec!["Imm:0x10"]);
+        assert_eq!(tokens_of("'a'"), vec!["Imm:'a'"]);
+        assert_eq!(tokens_of(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn comma_segments_match_splitn() {
+        // The segments are what the leaf parsers used to receive from
+        // `splitn`, untrimmed and with the limit's overflow left on the
+        // last piece. Drift here is a silently different parse.
+        for (src, limit) in [("x0, x1, lsl #3, junk", 3), ("x0, #8", 2), ("x0", 3), ("", 2)] {
+            let toks = tokenize_address(src);
+            let got: Vec<&str> = comma_segments(&toks, 0, src.len(), limit)
+                .iter()
+                .map(|seg| seg.text(src))
+                .collect();
+            let want: Vec<&str> = src.splitn(limit, ',').collect();
+            assert_eq!(got, want, "`{src}` split {limit} ways");
         }
     }
 
