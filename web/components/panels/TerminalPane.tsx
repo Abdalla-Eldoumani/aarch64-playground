@@ -13,7 +13,7 @@ import {
 import { TerminalInputState, splitPasteLines } from "@/lib/terminal/input-state";
 
 // xterm takes literal hex only, so these restate token values from
-// app/globals.css per theme — the terminal sits on --bg-base, the caret is
+// app/globals.css per theme: the terminal sits on --bg-base, the caret is
 // the amber block cursor (the machine's color), and the ANSI ramp lands on
 // the v2 syntax and status hues. Keep in step with the tokens when one moves.
 const XTERM_THEMES: Record<string, ITheme> = {
