@@ -1,6 +1,6 @@
 /**
  * Document rule: the datasheet header strip at the top of every reading
- * surface. Mono, uppercase, tertiary ink over a hairline — the segments name
+ * surface. Mono, uppercase, tertiary ink over a hairline. The segments name
  * the product, the sheet, and its context, with the section segment in amber
  * (the machine pole carries the sheet number, as on a real datasheet).
  * On phones the strip collapses to the product code alone so it never wraps.
