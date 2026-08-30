@@ -38,7 +38,7 @@ const LABEL: Record<CalloutType, string> = {
 
 /**
  * The base callout the reference and lessons draw from. One component, four
- * types: note / warning / pitfall / prereq, each reading from its semantic token — a
+ * types: note / warning / pitfall / prereq, each reading from its semantic token; a
  * bordered field with a tinted header band carrying the mono status label,
  * the datasheet's warning-box grammar rather than a left-rule aside. Renders
  * caller-supplied React children only (no HTML-string injection).
