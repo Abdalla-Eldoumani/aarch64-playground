@@ -184,6 +184,19 @@ jobs:
       - name: dependency audit
         run: node scripts/audit-deps.js --omit=dev
 
+      # security.txt promises a contact until its Expires date; the weekly
+      # run fails a month before that date lapses instead of letting it
+      # expire silently.
+      - name: security.txt expiry
+        run: |
+          node -e '
+            const m = require("fs").readFileSync("web/public/.well-known/security.txt", "utf8").match(/^Expires:\s*(\S+)/m);
+            if (!m) { console.error("security.txt has no Expires line"); process.exit(1); }
+            const days = (new Date(m[1]) - Date.now()) / 86400000;
+            console.log(`security.txt expires in ${Math.floor(days)} days`);
+            if (days < 30) { console.error("Expires is under 30 days away; refresh the date"); process.exit(1); }
+          '
+
       - name: lint
         working-directory: web
         run: npm run lint
