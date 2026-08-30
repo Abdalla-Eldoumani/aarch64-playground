@@ -1,8 +1,9 @@
-## cpsc 355 tutorial examples
+## cpsc 355 examples
 
-Adapted from CPSC 355 course materials at the University of Calgary for
-classroom use. Each file is a copy of a lab/tutorial example and is
-included so the playground's example loader can serve them over HTTP.
+A mix of the CPSC 355 Winter 2026 tutorial examples from the University of
+Calgary and programs written fresh for this project by Abdalla Eldoumani,
+all in the course's house style. They are served here so the playground's
+example loader can fetch them over HTTP.
 
 These files exercise m4 macros (`define()`, `name = expr`), frame-pointer
 prologues, `ldr xN, =label` literal loads, extended-register addressing,
