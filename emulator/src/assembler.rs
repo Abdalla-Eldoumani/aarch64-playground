@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::errors::EmuError;
+use crate::registers::CONDITIONS;
 
 /// Assemble ARM64 source text into a vector of 32-bit instruction words.
 ///
@@ -175,6 +176,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "B.LT", "BLT",
     "B.GT", "BGT",
     "B.LE", "BLE",
+    "B.AL", "BAL",
     // compare/test and branch
     "CBZ", "CBNZ", "TBZ", "TBNZ",
     // conditional select
@@ -196,6 +198,13 @@ fn encode_line(
     } else {
         split_operands(operands)
     };
+
+    // Conditional branches take both spellings of every condition
+    // (`B.NE` and `BNE`); the set comes from the shared condition table
+    // rather than a hand-written arm per condition.
+    if let Some(cond) = bcond_condition(&mn) {
+        return encode_bcond(&ops, cond, pc, labels, line_num);
+    }
 
     match mn.as_str() {
         // -- moves --
@@ -286,22 +295,6 @@ fn encode_line(
         "BR" => encode_branch_reg(&ops, 0b0000, line_num),
         "BLR" => encode_branch_reg(&ops, 0b0001, line_num),
         "RET" => encode_ret(&ops, line_num),
-
-        // -- conditional branches --
-        "B.EQ" | "BEQ" => encode_bcond(&ops, 0b0000, pc, labels, line_num),
-        "B.NE" | "BNE" => encode_bcond(&ops, 0b0001, pc, labels, line_num),
-        "B.HS" | "B.CS" | "BHS" | "BCS" => encode_bcond(&ops, 0b0010, pc, labels, line_num),
-        "B.LO" | "B.CC" | "BLO" | "BCC" => encode_bcond(&ops, 0b0011, pc, labels, line_num),
-        "B.MI" | "BMI" => encode_bcond(&ops, 0b0100, pc, labels, line_num),
-        "B.PL" | "BPL" => encode_bcond(&ops, 0b0101, pc, labels, line_num),
-        "B.VS" | "BVS" => encode_bcond(&ops, 0b0110, pc, labels, line_num),
-        "B.VC" | "BVC" => encode_bcond(&ops, 0b0111, pc, labels, line_num),
-        "B.HI" | "BHI" => encode_bcond(&ops, 0b1000, pc, labels, line_num),
-        "B.LS" | "BLS" => encode_bcond(&ops, 0b1001, pc, labels, line_num),
-        "B.GE" | "BGE" => encode_bcond(&ops, 0b1010, pc, labels, line_num),
-        "B.LT" | "BLT" => encode_bcond(&ops, 0b1011, pc, labels, line_num),
-        "B.GT" | "BGT" => encode_bcond(&ops, 0b1100, pc, labels, line_num),
-        "B.LE" | "BLE" => encode_bcond(&ops, 0b1101, pc, labels, line_num),
 
         // -- compare/test and branch --
         "CBZ" => encode_compare_branch(&ops, false, pc, labels, line_num),
@@ -469,24 +462,28 @@ fn parse_char_body(body: &str, line_num: usize) -> Result<i64, EmuError> {
 }
 
 fn parse_condition(s: &str, line_num: usize) -> Result<u8, EmuError> {
-    match s.trim().to_uppercase().as_str() {
-        "EQ" => Ok(0b0000),
-        "NE" => Ok(0b0001),
-        "HS" | "CS" => Ok(0b0010),
-        "LO" | "CC" => Ok(0b0011),
-        "MI" => Ok(0b0100),
-        "PL" => Ok(0b0101),
-        "VS" => Ok(0b0110),
-        "VC" => Ok(0b0111),
-        "HI" => Ok(0b1000),
-        "LS" => Ok(0b1001),
-        "GE" => Ok(0b1010),
-        "LT" => Ok(0b1011),
-        "GT" => Ok(0b1100),
-        "LE" => Ok(0b1101),
-        "AL" => Ok(0b1110),
-        _ => asm_err(line_num, &format!("unknown condition: {s}")),
+    match condition_bits(&s.trim().to_uppercase()) {
+        Some(bits) => Ok(bits),
+        None => asm_err(line_num, &format!("unknown condition: {s}")),
     }
+}
+
+/// Look an uppercase condition spelling up in the shared table.
+fn condition_bits(name: &str) -> Option<u8> {
+    CONDITIONS.iter().find_map(|(primary, aliases, bits)| {
+        (*primary == name || aliases.contains(&name)).then_some(*bits)
+    })
+}
+
+/// The condition bits of a conditional-branch mnemonic (`B.<cc>` or `B<cc>`,
+/// uppercase), or None for anything else. The bare form matches only when
+/// the whole tail is a condition spelling, so `BL`, `BLR` and `BIC` never
+/// strip to one.
+fn bcond_condition(mn: &str) -> Option<u8> {
+    if let Some(tail) = mn.strip_prefix("B.") {
+        return condition_bits(tail);
+    }
+    condition_bits(mn.strip_prefix('B')?)
 }
 
 fn asm_err<T>(line_num: usize, msg: &str) -> Result<T, EmuError> {
@@ -3551,6 +3548,50 @@ svc 0").unwrap();
         let mut seen = std::collections::HashSet::new();
         for mnemonic in SUPPORTED_MNEMONICS {
             assert!(seen.insert(*mnemonic), "`{mnemonic}` is listed twice");
+        }
+    }
+
+    #[test]
+    fn supported_mnemonics_bcond_block_matches_the_condition_table() {
+        // The const cannot derive from the table at compile time, so this
+        // pins the two to each other: every spelling the table implies is
+        // listed, and nothing else in the const looks like a bcond.
+        let mut expected = std::collections::BTreeSet::new();
+        for (primary, aliases, _) in CONDITIONS {
+            expected.insert(format!("B.{primary}"));
+            expected.insert(format!("B{primary}"));
+            for alias in *aliases {
+                expected.insert(format!("B.{alias}"));
+                expected.insert(format!("B{alias}"));
+            }
+        }
+        let listed: std::collections::BTreeSet<String> = SUPPORTED_MNEMONICS
+            .iter()
+            .filter(|m| bcond_condition(m).is_some())
+            .map(|m| m.to_string())
+            .collect();
+        assert_eq!(
+            listed, expected,
+            "SUPPORTED_MNEMONICS' conditional-branch block disagrees with the condition table"
+        );
+    }
+
+    #[test]
+    fn bcond_lookup_never_claims_a_non_branch() {
+        for mn in ["B", "BL", "BLR", "BR", "BIC", "BFI", "BAD"] {
+            assert!(
+                bcond_condition(mn).is_none(),
+                "`{mn}` must not parse as a conditional branch"
+            );
+        }
+    }
+
+    #[test]
+    fn b_al_assembles_as_the_always_branch() {
+        let labels = HashMap::from([("target".to_string(), 8u64)]);
+        for spelling in ["b.al target", "bal target", "B.AL target"] {
+            let word = encode_line(spelling, 0, &labels, 1).unwrap();
+            assert_eq!(word, 0x5400_004E, "{spelling}");
         }
     }
 }
