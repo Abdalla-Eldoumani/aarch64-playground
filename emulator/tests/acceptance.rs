@@ -14,6 +14,7 @@
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
+use aarch64_emulator::registers::CONDITIONS;
 
 /// Assemble hosted source, load it, run to completion, and return the CPU
 /// so the test can inspect registers, memory, stdout, and the exit code.
@@ -578,15 +579,13 @@ helper:
 // 12. every conditional branch encodes and resolves correctly
 // ---------------------------------------------------------------------------
 
-/// Build a program that sets the flags from `cmp w1, w2`, takes `b.<cond>`
-/// to set w0 = 1, and falls through to w0 = 0 otherwise. Returns whether
-/// the branch was taken.
-fn bcond_taken(setup: &str, cond: &str) -> bool {
+/// Build a program that sets the flags from `cmp w1, w2`, takes the given
+/// conditional-branch mnemonic to set w0 = 1, and falls through to w0 = 0
+/// otherwise. Returns whether the branch was taken.
+fn bcond_taken(setup: &str, branch: &str) -> bool {
     let src = format!(
-        ".text\n.global main\nmain:\n{setup}\n    cmp w1, w2\n    b.{cond} taken\n    \
+        ".text\n.global main\nmain:\n{setup}\n    cmp w1, w2\n    {branch} taken\n    \
          mov w0, 0\n    b done\ntaken:\n    mov w0, 1\ndone:\n    mov x8, 93\n    svc 0\n",
-        setup = setup,
-        cond = cond,
     );
     let cpu = assemble_and_run(&src);
     cpu.exit_code() == Some(1)
@@ -594,23 +593,44 @@ fn bcond_taken(setup: &str, cond: &str) -> bool {
 
 #[test]
 fn every_conditional_branch() {
-    // Each condition is fed a cmp that makes it true, covering both
-    // signed (ge/lt/gt/le) and unsigned (hs/lo/hi/ls) orderings plus the
-    // flag-direct conditions (eq/ne/mi/pl/vs/vc).
-    assert!(bcond_taken("    mov w1, 5\n    mov w2, 5", "eq"), "eq");
-    assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "ne"), "ne");
-    assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "hs"), "hs");
-    assert!(bcond_taken("    mov w1, 3\n    mov w2, 5", "lo"), "lo");
-    assert!(bcond_taken("    mov w1, 3\n    mov w2, 5", "mi"), "mi");
-    assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "pl"), "pl");
-    assert!(bcond_taken("    mov w1, 0x80000000\n    mov w2, 1", "vs"), "vs");
-    assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "vc"), "vc");
-    assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "hi"), "hi");
-    assert!(bcond_taken("    mov w1, 3\n    mov w2, 5", "ls"), "ls");
-    assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "ge"), "ge");
-    assert!(bcond_taken("    mov w1, 3\n    mov w2, 5", "lt"), "lt");
-    assert!(bcond_taken("    mov w1, 5\n    mov w2, 3", "gt"), "gt");
-    assert!(bcond_taken("    mov w1, 3\n    mov w2, 5", "le"), "le");
+    // One row per condition in the shared table: a cmp that makes it true
+    // and one that makes it false, exercised under both the dotted and the
+    // dotless spelling of the primary and every alias. Signed (ge/lt/gt/le),
+    // unsigned (hs/lo/hi/ls), and flag-direct (eq/ne/mi/pl/vs/vc) orderings
+    // are all represented by the operand pairs.
+    let m53 = "    mov w1, 5\n    mov w2, 3";
+    let m35 = "    mov w1, 3\n    mov w2, 5";
+    let m55 = "    mov w1, 5\n    mov w2, 5";
+    let ovf = "    mov w1, 0x80000000\n    mov w2, 1";
+    for (primary, aliases, _) in CONDITIONS {
+        let (taken, fall) = match *primary {
+            "EQ" => (m55, Some(m53)),
+            "NE" => (m53, Some(m55)),
+            "HS" => (m53, Some(m35)),
+            "LO" => (m35, Some(m53)),
+            "MI" => (m35, Some(m53)),
+            "PL" => (m53, Some(m35)),
+            "VS" => (ovf, Some(m53)),
+            "VC" => (m53, Some(ovf)),
+            "HI" => (m53, Some(m55)),
+            "LS" => (m35, Some(m53)),
+            "GE" => (m53, Some(m35)),
+            "LT" => (m35, Some(m53)),
+            "GT" => (m53, Some(m55)),
+            "LE" => (m35, Some(m53)),
+            "AL" => (m53, None), // always taken; nothing makes it fall through
+            other => panic!("no operand row for condition {other}; add one here"),
+        };
+        for cc in std::iter::once(primary).chain(aliases.iter()) {
+            let cc = cc.to_ascii_lowercase();
+            for spelling in [format!("b.{cc}"), format!("b{cc}")] {
+                assert!(bcond_taken(taken, &spelling), "{spelling} taken");
+                if let Some(fall) = fall {
+                    assert!(!bcond_taken(fall, &spelling), "{spelling} fall-through");
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
