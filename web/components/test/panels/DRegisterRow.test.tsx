@@ -4,7 +4,7 @@ import { DRegisterRow } from "@/components/panels/DRegisterRow";
 
 afterEach(() => cleanup());
 
-// 3.5 as an IEEE-754 double is 0x400c000000000000 — a known literal, never
+// 3.5 as an IEEE-754 double is 0x400c000000000000, a known literal, never
 // recomputed through the component under test.
 const BITS_3_5 = "0x400c000000000000";
 
