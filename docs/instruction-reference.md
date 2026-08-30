@@ -195,17 +195,25 @@ Pre-registered and available without setup:
 
 | Name     | Notes                                                    |
 | -------- | -------------------------------------------------------- |
-| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %.Nf`; walks `x0..x7` and `d0..d7` independently for mixed int/double args. |
+| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %e %g %.Nf` plus `*` width and precision; walks `x0..x7` and `d0..d7` independently for mixed int/double args. |
+| `sprintf` / `snprintf`         | The printf engine writing into a buffer. `snprintf` truncates to `size - 1` plus the terminator and returns the untruncated length, so `if (n >= size)` detects the overflow. |
 | `scanf`  | `%d %u %x %s %c %f`; returns `WaitingForInput` when stdin runs dry. |
 | `puts` / `putchar` / `getchar` | Standard libc semantics.                  |
+| `fgets` / `fputs`              | Line in, string out, over stdin/stdout/stderr or a virtual file. `fgets` keeps the newline and answers NULL at end of input. |
 | `strlen` / `strcmp` / `strcpy` | Standard libc semantics.                  |
-| `memset` / `memcpy`            | Standard libc semantics.                  |
+| `strncmp` / `strncpy` / `strcat` / `strchr` / `strstr` | glibc-exact where glibc has an opinion: `strncmp` returns the byte difference, `strncpy` NUL-pads the field and omits the terminator when the source fills it, `strchr` can find the terminator itself. |
+| `strtok`                       | glibc's static cursor, kept host-side so step-back re-hands the same token. Cuts the string in place. |
+| `memset` / `memcpy` / `memcmp` / `memmove` | Standard libc semantics; `memmove` is overlap-safe in both directions. |
+| `strtol`                       | glibc's grammar: whitespace, sign, base 0 inferring `0x`/leading-zero/decimal, `endptr` writeback, LONG_MIN/LONG_MAX clamp on overflow. |
+| `abs` / `labs`                 | Wrap at the minimum value, like the hardware. |
+| `isdigit` / `isalpha` / `isspace` / `toupper` / `tolower` | C locale. The is* stubs return glibc's mask bit (nonzero, not 1), and the `__ctype_b_loc` table the macros index is hosted too. |
+| `calloc` / `realloc`           | glibc's edges: `calloc` zeroes and refuses an overflowing product; `realloc` is malloc for NULL, free for size 0, in place when the block already fits. |
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
 | `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
 | `rand` / `srand`               | glibc's TYPE_3 additive generator, `RAND_MAX` 2147483647: the sequence is identical to the course servers', so unseeded draws diff cleanly against sample runs. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
 | `time`                         | Returns a fixed timestamp (and stores it through `x0` when non-null), so `srand(time(0))` seeds the same run every time. Reproducibility over wall-clock realism, by design. |
-| `malloc` / `free`              | A fixed 1 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
+| `malloc` / `free`              | A fixed 16 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
 | `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
 | `fflush`                       | Accepted and ignored: output is never buffered here. |
 | `fopen`                        | Opens a virtual-filesystem file by C mode string (`r`, `w`, `a`, with `+`); returns an opaque FILE* handle, NULL on a missing `r` file or a refused wall. The handle is not a real pointer -- dereferencing it faults. |
