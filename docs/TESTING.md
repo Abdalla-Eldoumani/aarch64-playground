@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/`, a vitest suite in `web/` for the React and library code, and an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build. At the time of writing that is 900 Rust tests, 1998 web tests, and 16 corpus programs. CI (`.github/workflows/check.yml`) runs all three on every PR to `main`.
+Four layers: Rust unit and integration tests in `emulator/` (which include the C corpus below), a vitest suite in `web/` for the React and library code, an end-to-end corpus run (`scripts/verify-corpus.js`) that exercises the example programs through a node-target WASM build, and the C corpus. At the time of writing that is about 970 Rust tests, about 2,000 web tests, 16 example fixtures, and the 50-program C corpus. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
 
 ## Rust
 
@@ -62,6 +62,27 @@ node scripts/verify-corpus.js
 ```
 
 Runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout and post-run VFS state. It loads a prebuilt node-target bundle rather than building one, so build that first from `emulator/`: `wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node` (or point `WASM_DIR` at an existing build). Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
+
+## The C corpus
+
+Fifty small C programs compiled by gcc, whose assembly is replayed
+through the emulator and required to match a real AArch64 machine's
+stdout and exit code byte for byte. It proves the emulator against code
+a compiler wrote rather than code a person wrote for the emulator; its
+first sweep found a silent wrong-target bug in every dotless conditional
+branch. It runs inside the ordinary Rust suite with no toolchain at all:
+
+```bash
+cargo test --manifest-path emulator/Cargo.toml --test c_corpus
+```
+
+The `-O2` tier is an ignored coverage map (`-- --ignored` runs it), not
+a gate. Adding a program and regenerating the references needs a cross
+compiler and qemu-user; [`emulator/tests/c-corpus/README.md`](../emulator/tests/c-corpus/README.md)
+has the steps, where the tracked references came from, and the one
+recorded hardware-versus-qemu divergence. A weekly workflow
+(`corpus.yml`) regenerates everything and fails on drift, so a toolchain
+change announces itself.
 
 ## Type and lint
 
