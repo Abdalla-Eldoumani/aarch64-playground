@@ -98,6 +98,8 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   TST: { summary: "`ANDS ZR, Rn, op2`. Sets NZCV; accepts bitmask immediates.", cExample: "// (Rn & op2) sets NZCV" },
   CSEL: { summary: "Rd = cond ? Rn : Rm.", example: "csel x0, x1, x2, eq", cExample: "Rd = cond ? Rn : Rm;" },
   CSINC: { summary: "Rd = cond ? Rn : Rm+1. Basis of `CSET`.", cExample: "Rd = cond ? Rn : Rm + 1;" },
+  CSINV: { summary: "Rd = cond ? Rn : ~Rm.", example: "csinv x0, x1, x2, eq", cExample: "Rd = cond ? Rn : ~Rm;" },
+  CSNEG: { summary: "Rd = cond ? Rn : -Rm. How gcc spells abs().", example: "csneg x0, x1, x2, pl", cExample: "Rd = cond ? Rn : -Rm;" },
   CSET: { summary: "Rd = cond ? 1 : 0 (pseudo for `CSINC Rd, ZR, ZR, cond-inv`).", cExample: "Rd = cond ? 1 : 0;" },
   LDR: {
     summary: "Load from memory. Picks 32-vs-64 bit based on Wt/Xt.",
@@ -194,6 +196,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     summary: "Set NZCV from Fn vs Fm (S or D form).",
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
   },
+  FCMPE: { summary: "Signaling FCMP; sets the same flags here (no FP exceptions are raised).", example: "fcmpe d0, d1", cExample: "// (a < b) etc. via NZCV" },
   FCVT: {
     summary: "Convert between the float views: `FCVT Dd, Sn` widens exactly, `FCVT Sd, Dn` narrows with rounding.",
     details: [

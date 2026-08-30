@@ -142,6 +142,8 @@ pub enum BrRegOp {
 pub enum CondSelOp {
     Csel,
     Csinc,
+    Csinv,
+    Csneg,
 }
 
 /// Multiply/divide variant.
@@ -835,7 +837,10 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     }
 
     // FCMP: opcode2 = 001000 in bits 15:10, bits 4:0 = 00000, bits 20:16 = Rm.
-    if bits(instr, 15, 10) == 0b001000 && bits(instr, 4, 0) == 0 {
+    // opc bits 4:3 pick the variant: 00 FCMP, 10 FCMPE. The signaling
+    // form differs only in how quiet NaNs trap, and the emulator raises
+    // no FP exceptions, so both set the same flags.
+    if bits(instr, 15, 10) == 0b001000 && matches!(bits(instr, 4, 0), 0b00000 | 0b10000) {
         return Ok(Instruction::FpCompare { fn_: rn, fm: rm, single });
     }
 
@@ -1638,13 +1643,10 @@ fn decode_logical_reg(instr: u32) -> Result<Instruction, EmuError> {
 
 fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
-    // Bit 30 is the op field: 0 = CSEL/CSINC (supported; CSET lowers to
-    // CSINC), 1 = CSINV/CSNEG. The executor has no CsInv/CsNeg and the
-    // assembler never emits them, so reject rather than silently decode a
-    // hand-crafted `.word` csinv as csel.
-    if bit(instr, 30) != 0 {
-        return Err(EmuError::UnknownInstruction(instr));
-    }
+    // Bit 30 is the op field (0 = CSEL/CSINC, 1 = CSINV/CSNEG); bit 10
+    // picks within each pair. gcc reaches CSNEG for abs()-shaped code
+    // even at -O0.
+    let op_bit = bit(instr, 30);
     let op2 = bit(instr, 10);
     let rm = bits(instr, 20, 16) as u8;
     let cond_bits = bits(instr, 15, 12) as u8;
@@ -1653,9 +1655,11 @@ fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
 
     let cond = Condition::from_u8(cond_bits)?;
 
-    let op = match op2 {
-        0 => CondSelOp::Csel,
-        1 => CondSelOp::Csinc,
+    let op = match (op_bit, op2) {
+        (0, 0) => CondSelOp::Csel,
+        (0, 1) => CondSelOp::Csinc,
+        (1, 0) => CondSelOp::Csinv,
+        (1, 1) => CondSelOp::Csneg,
         _ => unreachable!(),
     };
 

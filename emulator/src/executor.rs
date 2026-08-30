@@ -907,6 +907,22 @@ fn exec_cond_sel(
                 val_m.wrapping_add(1) & mask
             }
         }
+        CondSelOp::Csinv => {
+            if taken {
+                val_n
+            } else {
+                let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
+                !val_m & mask
+            }
+        }
+        CondSelOp::Csneg => {
+            if taken {
+                val_n
+            } else {
+                let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
+                val_m.wrapping_neg() & mask
+            }
+        }
     };
 
     regs.write_gpr(rd, sf, result);

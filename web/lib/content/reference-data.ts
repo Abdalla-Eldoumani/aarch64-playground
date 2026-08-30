@@ -834,6 +834,22 @@ cmp     w9, 3
 csinc   w10, w9, w9, ne     // ne is false: the else arm, w10 = w9 + 1 = 4`,
   },
   {
+    mnemonic: "csinv",
+    category: "Conditional select",
+    syntax: "csinv xd, xn, xm, cond",
+    example: `mov     w9, 3
+cmp     w9, 3
+csinv   w10, w9, w9, ne     // ne is false: the else arm, w10 = ~3`,
+  },
+  {
+    mnemonic: "csneg",
+    category: "Conditional select",
+    syntax: "csneg xd, xn, xm, cond",
+    example: `mov     w9, -8
+cmp     w9, 0
+csneg   w10, w9, w9, pl     // pl is false: w10 = -w9 = 8. abs(), no branch`,
+  },
+  {
     mnemonic: "cset",
     category: "Conditional select",
     syntax: "cset xd, cond",
@@ -1161,6 +1177,15 @@ fcvtzs  x9, d17             // x9 = 3`,
 fmov    d17, 2.5
 fcmp    d16, d17            // same nzcv flags as integer cmp
 cset    w9, lt              // w9 = 1: d16 is below d17`,
+  },
+  {
+    mnemonic: "fcmpe",
+    category: "Floating point",
+    syntax: "fcmpe dn, dm / fcmpe sn, sm",
+    example: `fmov    d16, 1.5
+fmov    d17, 2.5
+fcmpe   d16, d17            // gcc's spelling for float < and >
+cset    w9, lt              // w9 = 1`,
   },
   {
     mnemonic: "fcvt",

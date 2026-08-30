@@ -156,7 +156,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
-    "FADD", "FSUB", "FMUL", "FDIV", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP",
+    "FADD", "FSUB", "FMUL", "FDIV", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
     "FCVT", "SCVTF", "FCVTZS", "LDP", "STP",
     // pc-relative address formation
     "ADR", "ADRP",
@@ -181,7 +181,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // compare/test and branch
     "CBZ", "CBNZ", "TBZ", "TBNZ",
     // conditional select
-    "CSEL", "CSINC", "CSET",
+    "CSEL", "CSINC", "CSINV", "CSNEG", "CSET",
     // system
     "NOP", "SVC",
 ];
@@ -284,7 +284,8 @@ fn encode_line(
         "FNEG" => encode_fp_unary(&ops, 0b000010, "fneg", line_num),
         "FABS" => encode_fp_unary(&ops, 0b000001, "fabs", line_num),
         "FSQRT" => encode_fp_unary(&ops, 0b000011, "fsqrt", line_num),
-        "FCMP" => encode_fcmp(&ops, line_num),
+        "FCMP" => encode_fcmp(&ops, false, line_num),
+        "FCMPE" => encode_fcmp(&ops, true, line_num),
         "FCVT" => encode_fcvt(&ops, line_num),
         "SCVTF" => encode_scvtf(&ops, line_num),
         "FCVTZS" => encode_fcvtzs(&ops, line_num),
@@ -309,8 +310,10 @@ fn encode_line(
         "TBNZ" => encode_test_branch(&ops, true, pc, labels, line_num),
 
         // -- conditional select --
-        "CSEL" => encode_cond_sel(&ops, 0, line_num),
-        "CSINC" => encode_cond_sel(&ops, 1, line_num),
+        "CSEL" => encode_cond_sel(&ops, 0, 0, line_num),
+        "CSINC" => encode_cond_sel(&ops, 0, 1, line_num),
+        "CSINV" => encode_cond_sel(&ops, 1, 0, line_num),
+        "CSNEG" => encode_cond_sel(&ops, 1, 1, line_num),
         "CSET" => encode_cset(&ops, line_num),
 
         // -- system --
@@ -1548,15 +1551,18 @@ fn encode_fcvt(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     Ok(0x1E20_4000 | fp_ftype(wn) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
-fn encode_fcmp(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
-        return asm_err(ln, "fcmp requires 2 operands");
+        return asm_err(ln, "fcmp/fcmpe requires 2 operands");
     }
     let (fn_, wn) = parse_fp_register(ops[0], ln)?;
     let (fm, wm) = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("fcmp", &[wn, wm], ln)?;
-    // FCMP Fn, Fm: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_0_0000
-    Ok(0x1E20_2000 | fp_ftype(width) | ((fm as u32) << 16) | ((fn_ as u32) << 5))
+    // FCMP Fn, Fm: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_0_0000; FCMPE sets
+    // opc bit 4. The emulator raises no FP exceptions, so the two set the
+    // same flags either way.
+    let opc: u32 = if signaling { 0b10000 } else { 0 };
+    Ok(0x1E20_2000 | fp_ftype(width) | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc)
 }
 
 fn encode_scvtf(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -2405,9 +2411,9 @@ fn encode_ret(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     Ok(0xD61F_0000 | (0b0010 << 21) | ((rn as u32) << 5))
 }
 
-fn encode_cond_sel(ops: &[&str], op2: u8, ln: usize) -> Result<u32, EmuError> {
+fn encode_cond_sel(ops: &[&str], op_bit: u8, op2: u8, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 4 {
-        return asm_err(ln, "CSEL/CSINC requires 4 operands");
+        return asm_err(ln, "CSEL/CSINC/CSINV/CSNEG requires 4 operands");
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
@@ -2415,7 +2421,7 @@ fn encode_cond_sel(ops: &[&str], op2: u8, ln: usize) -> Result<u32, EmuError> {
     let cond = parse_condition(ops[3], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
 
-    Ok((sf_bit << 31) | (0b0011010100 << 21) | ((rm as u32) << 16)
+    Ok((sf_bit << 31) | (0b0011010100 << 21) | ((op_bit as u32) << 30) | ((rm as u32) << 16)
         | ((cond as u32) << 12) | ((op2 as u32) << 10)
         | ((rn as u32) << 5) | (rd as u32))
 }
@@ -2660,6 +2666,51 @@ mod tests {
         cpu.run_until_break(20).unwrap();
 
         assert_eq!(cpu.regs.read_gpr(2, true), 1);
+    }
+
+    #[test]
+    fn csinv_and_csneg_select_or_transform_like_the_hardware() {
+        use crate::cpu::Cpu;
+        let source = r#"
+            MOV X1, #7
+            MOV X2, #5
+            CMP X1, X1
+            CSINV X3, X1, X2, EQ
+            CSINV X4, X1, X2, NE
+            CSNEG X5, X1, X2, NE
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(10).unwrap();
+        assert_eq!(cpu.regs.read_gpr(3, true), 7, "taken picks rn");
+        assert_eq!(cpu.regs.read_gpr(4, true), !5u64, "not taken inverts rm");
+        assert_eq!(cpu.regs.read_gpr(5, true) as i64, -5, "not taken negates rm");
+    }
+
+    #[test]
+    fn fcmpe_encodes_beside_fcmp_and_sets_the_same_flags() {
+        use crate::cpu::Cpu;
+        use crate::decoder::{decode, Instruction};
+        let labels = HashMap::new();
+        let plain = encode_line("fcmp d0, d1", 0, &labels, 1).unwrap();
+        let signaling = encode_line("fcmpe d0, d1", 0, &labels, 1).unwrap();
+        assert_eq!(plain | 0b10000, signaling);
+        assert!(matches!(decode(signaling).unwrap(), Instruction::FpCompare { .. }));
+
+        let source = r#"
+            FMOV D0, #2.0
+            FMOV D1, #5.0
+            FCMPE D0, D1
+            CSET X2, LT
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(10).unwrap();
+        assert_eq!(cpu.regs.read_gpr(2, true), 1, "2.0 < 5.0 through fcmpe");
     }
 
     #[test]
