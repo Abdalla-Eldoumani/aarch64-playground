@@ -156,10 +156,21 @@ the `adrp` / `add` pair runs unchanged.
 Pre-registered libc stubs at addresses `0xFFFF_0000 + idx * 16`:
 
 ```
-printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy,
-memset, memcpy, atoi, rand, srand, time, exit, atof, malloc, free, usleep,
-fflush, fopen, fprintf, fclose
+printf, sprintf, snprintf, scanf, puts, putchar, getchar,
+strlen, strcmp, strncmp, strcpy, strncpy, strcat, strchr, strstr, strtok,
+memset, memcpy, memcmp, memmove,
+atoi, atof, strtol, abs, labs,
+isdigit, isalpha, isspace, toupper, tolower,
+rand, srand, time, exit, usleep,
+malloc, free, calloc, realloc,
+fflush, fopen, fprintf, fgets, fputs, fclose
 ```
+
+The `stdin`, `stdout`, and `stderr` symbols resolve to loader-written
+words holding their `FILE*` handles, so `fprintf(stderr, ...)` and
+`fputs(s, stdout)` link and run the way they do on the servers. The
+`isdigit`/`isalpha`/`isspace` macros' `__ctype_b_loc` table is hosted
+too, so gcc-compiled ctype code runs unmodified.
 
 The libm subset, in the floating-point convention (argument in `d0`, second
 argument in `d1` for `pow` and `fmod`, result in `d0`):
