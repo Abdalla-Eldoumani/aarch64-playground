@@ -2281,6 +2281,12 @@ fn encode_cset(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let cond = parse_condition(ops[1], ln)?;
+    // GAS rejects `cset al`: the alias encodes the INVERTED condition, and
+    // AL has no invertible spelling. Accepting it would silently produce an
+    // always-1 CSINC the server toolchain refuses to assemble.
+    if cond == 0b1110 {
+        return asm_err(ln, "CSET cannot use the AL condition (there is nothing to invert; use `mov Xd, 1`)");
+    }
     let inv_cond = cond ^ 1; // invert low bit
     let sf_bit = if sf { 1u32 } else { 0 };
 
@@ -2508,6 +2514,16 @@ mod tests {
         cpu.run_until_break(20).unwrap();
 
         assert_eq!(cpu.regs.read_gpr(2, true), 1);
+    }
+
+    #[test]
+    fn cset_rejects_al_like_gas() {
+        let labels = HashMap::new();
+        let err = encode_line("cset x0, al", 0, &labels, 3).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("AL"), "was: {msg}");
+        // The raw CSINC form keeps taking AL, exactly as GAS does.
+        encode_line("csinc x0, xzr, xzr, al", 0, &labels, 3).unwrap();
     }
 
     #[test]
