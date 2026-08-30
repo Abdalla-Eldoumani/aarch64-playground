@@ -361,7 +361,12 @@ fn format_conversion(
         }
         'p' => {
             let value = walker.next_int(ctx);
-            let body = format!("0x{value:x}");
+            // glibc prints a NULL pointer as `(nil)`, not `0x0`.
+            let body = if value == 0 {
+                "(nil)".to_string()
+            } else {
+                format!("0x{value:x}")
+            };
             pad_and_emit(&body, spec, out);
         }
         'c' => {
@@ -976,6 +981,14 @@ mod tests {
             regs.write_gpr(1, true, 0x0040_0000);
         });
         assert_eq!(s, "0x400000");
+    }
+
+    #[test]
+    fn printf_percent_p_of_null_prints_nil_like_glibc() {
+        let (s, _) = call("%p", |regs, _| {
+            regs.write_gpr(1, true, 0);
+        });
+        assert_eq!(s, "(nil)");
     }
 
     #[test]
