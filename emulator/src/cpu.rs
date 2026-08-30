@@ -466,6 +466,11 @@ impl Cpu {
         cpu.mem.map_page(RODATA_BASE);
         cpu.mem.map_page(DATA_BASE);
         cpu.mem.map_page(BSS_BASE);
+        // The words the `stdin`/`stdout`/`stderr` symbols address. Part of
+        // the machine's fixed layout, so the constructor, `reset`, and the
+        // loader all leave the same three handles behind.
+        crate::hosted::stdio::write_stdio_globals(&mut cpu.mem)
+            .expect("the stdio globals page is freshly mapped");
         cpu
     }
 
@@ -538,6 +543,7 @@ impl Cpu {
             self.regs.write_gpr(30, true, ret_addr);
         }
         crate::argv::setup_argv(&mut self.regs, &mut self.mem, args).map_err(map_write_fault)?;
+        crate::hosted::stdio::write_stdio_globals(&mut self.mem).map_err(map_write_fault)?;
         self.halted = false;
         // Refresh the symbol table from the linker so debugger
         // surfaces (`gdb b <label>`, future symbolic features) can
@@ -1411,6 +1417,8 @@ impl Cpu {
         self.mem.map_page(RODATA_BASE);
         self.mem.map_page(DATA_BASE);
         self.mem.map_page(BSS_BASE);
+        crate::hosted::stdio::write_stdio_globals(&mut self.mem)
+            .expect("the stdio globals page is freshly mapped");
         self.changed_regs.clear();
         self.changed_fprs.clear();
         self.halted = false;

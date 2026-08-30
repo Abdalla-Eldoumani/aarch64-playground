@@ -20,6 +20,7 @@ use crate::errors::EmuError;
 use crate::hosted::printf::{format_into, read_c_string};
 use crate::hosted::syscalls::{open_vfs, write_to_fd};
 use crate::hosted::{HostContext, HostOutcome};
+use crate::memory::Memory;
 
 /// Base of the synthetic FILE* handle range: one page above the host
 /// stub table's end (`HOST_STUB_BASE` 0xFFFF_0000 + 256 * 16 =
@@ -27,8 +28,34 @@ use crate::hosted::{HostContext, HostOutcome};
 pub const FILE_HANDLE_BASE: u64 = 0xFFFF_2000;
 const FILE_HANDLE_STRIDE: u64 = 16;
 
+/// Base of the loader-written stdio globals: `stdin` at +0, `stdout` at
+/// +8, `stderr` at +16, one 8-byte word each holding that descriptor's
+/// FILE* handle.
+///
+/// glibc's `stdout` names a word that HOLDS a FILE*, not the FILE*
+/// itself -- gcc-compiled code does `adrp`/`add` to the symbol and then
+/// `ldr`s the handle out of memory -- so the three linker symbols have to
+/// address real memory for `ldr x0, =stdout` + `ldr x0, [x0]` to answer
+/// what it answers on the course servers.
+///
+/// The page sits immediately above the argv page and below the heap
+/// window, in the gap `ARGV_BASE` already left for it, so no section, the
+/// stack, or the heap can reach it.
+pub const STDIO_GLOBALS_BASE: u64 = 0x0080_1000;
+
 fn handle_of(fd: u32) -> u64 {
     FILE_HANDLE_BASE + fd as u64 * FILE_HANDLE_STRIDE
+}
+
+/// Write the `stdin`/`stdout`/`stderr` words. The loader calls this on
+/// every hosted load, beside the argv page, and `Cpu::new`/`Cpu::reset`
+/// call it too so the fixed layout is there before any program is.
+pub fn write_stdio_globals(mem: &mut Memory) -> Result<(), EmuError> {
+    mem.map_page(STDIO_GLOBALS_BASE);
+    for fd in 0..3u32 {
+        mem.write_u64(STDIO_GLOBALS_BASE + fd as u64 * 8, handle_of(fd))?;
+    }
+    Ok(())
 }
 
 /// Decode a handle back to its descriptor. Valid only when the value
@@ -44,6 +71,12 @@ fn fd_of(ctx: &HostContext<'_>, handle: u64) -> Option<u32> {
         return None;
     }
     let fd = u32::try_from(rel / FILE_HANDLE_STRIDE).ok()?;
+    // The three standard streams never pass through fopen, so the fd
+    // table has no entry to find them by; they are open for the life of
+    // the program, exactly as they are under a shell.
+    if fd <= 2 {
+        return Some(fd);
+    }
     if ctx.open_files.contains_key(&fd) {
         Some(fd)
     } else {
@@ -108,7 +141,13 @@ pub fn fclose(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let handle = ctx.regs.read_gpr(0, true);
     match fd_of(ctx, handle) {
         Some(fd) => {
-            ctx.open_files.remove(&fd);
+            // Closing a standard stream succeeds and takes nothing away:
+            // there is no descriptor to drop, and making later printf
+            // output vanish would punish a habit (fclose everything the
+            // function touched) that costs nothing on the servers.
+            if fd > 2 {
+                ctx.open_files.remove(&fd);
+            }
             ctx.regs.write_gpr(0, true, 0);
         }
         None => ctx.regs.write_gpr(0, true, (-1i64) as u64),

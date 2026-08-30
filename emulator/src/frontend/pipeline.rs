@@ -138,6 +138,18 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         }
     }
 
+    // The three standard streams, as glibc exposes them: a symbol naming
+    // a loader-written word that holds the FILE*, so `ldr x0, =stderr`
+    // followed by `ldr x0, [x0]` reaches the handle fprintf wants. Seeded
+    // like the host stubs above, so a program with its own `stdout` label
+    // keeps it.
+    for (i, name) in ["stdin", "stdout", "stderr"].iter().enumerate() {
+        layout
+            .symbols
+            .entry((*name).to_string())
+            .or_insert(crate::hosted::stdio::STDIO_GLOBALS_BASE + (i as u64) * 8);
+    }
+
     resolve_equates(&mut layout)?;
     let pool = size_literal_pool(prog, &mut layout)?;
     let emission = emit_image(prog, &layout, &pool)?;
