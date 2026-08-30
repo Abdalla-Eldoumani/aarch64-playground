@@ -1223,7 +1223,12 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
                 // ASR: SBFM Xd, Xn, #amt, #(reg_size - 1)
                 (0b00, amt, reg_size - 1)
             }
-            _ => unreachable!(),
+            // The dispatch passes only 0/1/2; anything else is a crate
+            // bug, and on wasm a panic costs the whole worker where an
+            // error is one calm halt.
+            other => {
+                return asm_err(ln, &format!("internal: unknown shift selector {other}"));
+            }
         };
 
         let n_bit = if sf { 1u32 } else { 0 };
@@ -1239,7 +1244,9 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
         0 => 0b001000, // LSLV
         1 => 0b001001, // LSRV
         2 => 0b001010, // ASRV
-        _ => unreachable!(),
+        other => {
+            return asm_err(ln, &format!("internal: unknown shift selector {other}"));
+        }
     };
     Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
         | (opcode << 10) | ((rn as u32) << 5) | (rd as u32))
@@ -1295,7 +1302,7 @@ fn encode_mul_div(ops: &[&str], variant: u8, ln: usize) -> Result<u32, EmuError>
             Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
                 | (0b000011 << 10) | ((rn as u32) << 5) | (rd as u32))
         }
-        _ => unreachable!(),
+        other => asm_err(ln, &format!("internal: unknown multiply selector {other}")),
     }
 }
 
@@ -1634,9 +1641,11 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
             if size == 0b11 {
                 // Unreachable from the dispatch: LDRSB/LDRSH/LDRSW come in
                 // as 00/01/10 and no sign-extending load has a 64-bit
-                // access size. Kept explicit so the shared MemSize mapping,
-                // which does answer for 11, cannot silently scale by 8.
-                unreachable!("LDRS* never carries the 64-bit size field");
+                // access size. Named explicitly so the shared MemSize
+                // mapping, which does answer for 11, cannot silently
+                // scale by 8 -- and as an error, not a panic, because on
+                // wasm a panic costs the whole worker.
+                return asm_err(ln, "internal: LDRS* never carries the 64-bit size field");
             }
             let scale = u64::from(MemSize::from_size_field(size).bytes());
             // Two distinct rejections, named separately: one message that
