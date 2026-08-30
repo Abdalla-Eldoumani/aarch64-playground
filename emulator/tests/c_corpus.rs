@@ -213,7 +213,10 @@ fn corpus_at_o2_coverage_map() {
     for f in &failures {
         println!("  {f}");
     }
-    const O2_FLOOR: usize = 0; // measured after the first full run
+    // Measured 2026-08-31: the missing forms are ubfiz, standalone
+    // uxtw, cinc, label+offset immediates, ldrsw writeback, fixed-point
+    // fcvtzs, v-register moves, and __ctype_toupper_loc.
+    const O2_FLOOR: usize = 36;
     assert!(
         passing >= O2_FLOOR,
         "o2 coverage fell below the recorded floor: {passing} < {O2_FLOOR}"
