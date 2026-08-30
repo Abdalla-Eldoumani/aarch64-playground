@@ -636,7 +636,25 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                     if *n > 0 {
                         let rem = offset % n;
                         if rem != 0 {
-                            offset += n - rem;
+                            let pad = n - rem;
+                            // GAS fills a .text alignment gap with NOPs so a
+                            // fall-through executes cleanly; data sections
+                            // stay zero-filled by the fresh pages. Pad words
+                            // are not student instructions, so they get no
+                            // line-map entry and no instruction_count bump.
+                            if section.kind == SectionKind::Text && offset.is_multiple_of(4) {
+                                let words = (pad / 4) as usize;
+                                if words > 0 {
+                                    let mut bytes = Vec::with_capacity(words * 4);
+                                    for _ in 0..words {
+                                        bytes.extend_from_slice(
+                                            &crate::decoder::NOP_WORD.to_le_bytes(),
+                                        );
+                                    }
+                                    writes.push((base + offset, bytes));
+                                }
+                            }
+                            offset += pad;
                         }
                     }
                 }
