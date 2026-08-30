@@ -109,8 +109,11 @@ function isInOperandContext(line: string): boolean {
 }
 
 function isBranchContext(line: string): boolean {
-  // Lines that start with bl / b / b.cond / br / blr / cbz / etc.
-  return /^\s*(bl|blr|br|b|b\.[a-z]+|cbz|cbnz|tbz|tbnz)\s+/i.test(line);
+  // Lines that start with bl / b / b.cond / the dotless bcond spellings
+  // (bne, beq, ...) / br / blr / cbz / etc.
+  return /^\s*(bl|blr|br|b|b\.[a-z]+|b(?:eq|ne|hs|cs|lo|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)|cbz|cbnz|tbz|tbnz)\s+/i.test(
+    line,
+  );
 }
 
 function isDirectiveContext(line: string): boolean {
