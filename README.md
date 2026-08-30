@@ -42,7 +42,7 @@ Live at <https://aarch64-playground.com>.
 
 Requires [Rust](https://rustup.rs/) with the `wasm32-unknown-unknown` target,
 [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/installer/), and Node.js
-20+ (CI runs on 24).
+24 or newer.
 
 ```bash
 # build the wasm module
