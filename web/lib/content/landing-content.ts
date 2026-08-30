@@ -14,7 +14,10 @@ export interface Feature {
   glyph?: string;
 }
 
-// Ordered roughly most-to-least headline. Every entry is truthful to what ships.
+// Ordered roughly most-to-least headline. Every entry is truthful to what
+// ships, and every entry tells a student something they could not learn by
+// glancing at the screen -- the visible chrome (themes, the args box, the
+// embedded lesson machines) speaks for itself.
 export const FEATURES: Feature[] = [
   {
     title: "Hand-written interpreter",
@@ -25,7 +28,7 @@ export const FEATURES: Feature[] = [
   {
     title: "Visual debugger",
     description:
-      "Watch registers, the stack, memory, and the console update as each instruction runs.",
+      "Registers, the stack, memory, and the console update as each instruction runs.",
     glyph: "x0",
   },
   {
@@ -37,7 +40,7 @@ export const FEATURES: Feature[] = [
   {
     title: "Hosted runtime",
     description:
-      "printf, scanf, malloc, and Linux syscalls answer the way the course servers do, so tutorial programs run unmodified.",
+      "printf, scanf, malloc, argv, and Linux syscalls answer the way the course servers do, so tutorial programs run unmodified.",
     glyph: "io",
   },
   {
@@ -47,34 +50,10 @@ export const FEATURES: Feature[] = [
     glyph: "m4",
   },
   {
-    title: "Command-line arguments",
-    description:
-      "Type arguments in the args box and the program receives a real argc and argv, argv[0] included.",
-    glyph: "argv",
-  },
-  {
-    title: "Embeddable surface",
-    description:
-      "Lessons and exercises embed the same live machine, so the examples in the reading are runnable, not screenshots.",
-    glyph: "</>",
-  },
-  {
     title: "Bounded sandbox",
     description:
       "A runaway loop or memory bomb halts calmly with a plain explanation instead of freezing the tab.",
     glyph: "[]",
-  },
-  {
-    title: "Three themes",
-    description:
-      "Dark, light, and high-contrast themes, all driven by design tokens.",
-    glyph: "rgb",
-  },
-  {
-    title: "Installable and offline",
-    description:
-      "Install it as an app; after the first load the whole debugger works with no connection.",
-    glyph: "pwa",
   },
 ];
 
