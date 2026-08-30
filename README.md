@@ -31,9 +31,12 @@ Live at <https://aarch64-playground.com>.
   examples, kept in sync with what the emulator actually supports.
 - **Realistic hosted runtime**: m4 register-alias macros, GAS directives and
   sections, frame-pointer prologues, the `ldr xN, =label` literal pool, the
-  AAPCS64 `printf`/`scanf` path, Linux syscalls via `svc 0`, argc/argv on
+  AAPCS64 `printf`/`scanf` path and the wider libc surface student and
+  gcc-compiled code reach for, Linux syscalls via `svc 0`, argc/argv on
   entry, and single- and double-precision floating point (the `s`/`d`
-  register views with `fcvt` between them).
+  register views with `fcvt` between them). A tracked corpus of fifty
+  gcc-compiled C programs is replayed against real AArch64 server outputs
+  on every change, byte for byte.
 - **Fully client-side and installable**: runs offline as a PWA. The emulator
   runs in a Web Worker with a main-thread fallback, and is bounded so a
   runaway program halts cleanly instead of freezing the tab.
