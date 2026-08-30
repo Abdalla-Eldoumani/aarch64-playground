@@ -402,10 +402,32 @@ fn format_conversion(
             let body = format_fixed(value, prec, spec.plus, spec.space);
             pad_and_emit(&body, spec, out);
         }
-        'e' | 'E' | 'g' | 'G' | 'a' | 'A' => {
-            // Real glibc formats these. Echoing the specifier literally
-            // also left its argument unconsumed, silently shifting every
-            // later conversion of the same class -- worse than stopping.
+        'e' | 'E' => {
+            let value = walker.next_double(ctx);
+            let prec = spec.precision.unwrap_or(6);
+            let mut body = format_scientific(value, prec, spec.plus, spec.space);
+            if conv == 'E' {
+                body = body.to_ascii_uppercase();
+            }
+            pad_and_emit(&body, spec, out);
+        }
+        'g' | 'G' => {
+            let value = walker.next_double(ctx);
+            // C: precision is SIGNIFICANT digits (0 reads as 1), and the
+            // fixed/scientific choice plus zero-stripping follow the
+            // standard's rule glibc implements.
+            let prec = spec.precision.unwrap_or(6).max(1);
+            let mut body = format_general(value, prec, spec.plus, spec.space);
+            if conv == 'G' {
+                body = body.to_ascii_uppercase();
+            }
+            pad_and_emit(&body, spec, out);
+        }
+        'a' | 'A' => {
+            // Real glibc formats hex floats. Echoing the specifier
+            // literally also left its argument unconsumed, silently
+            // shifting every later conversion of the same class -- worse
+            // than stopping.
             return Err(EmuError::RuntimeError {
                 message: format!(
                     "printf %{conv} is not supported by this emulator; format the value with %f"
@@ -434,6 +456,65 @@ fn format_fixed(value: f64, precision: usize, plus: bool, space: bool) -> String
     } else {
         body
     }
+}
+
+/// `%e`: d.dddddde+XX with glibc's shape (six fraction digits by
+/// default, a signed exponent of at least two digits).
+fn format_scientific(value: f64, precision: usize, plus: bool, space: bool) -> String {
+    if !value.is_finite() {
+        return format_fixed(value, precision, plus, space);
+    }
+    // Rust's `{:.*e}` renders the correctly rounded mantissa but a bare
+    // exponent ("2.500000e0"); reshape the exponent to C's e+00 form.
+    let raw = format!("{:.*e}", precision, value);
+    let (mantissa, exp) = raw.split_once('e').expect("float scientific form");
+    let (exp_sign, exp_abs) = match exp.strip_prefix('-') {
+        Some(rest) => ('-', rest),
+        None => ('+', exp),
+    };
+    let body = format!("{mantissa}e{exp_sign}{exp_abs:0>2}");
+    if value.is_sign_negative() {
+        body
+    } else if plus {
+        format!("+{body}")
+    } else if space {
+        format!(" {body}")
+    } else {
+        body
+    }
+}
+
+/// `%g`: C's rule -- with P significant digits, use `%e` when the
+/// exponent is below -4 or at least P, else `%f`, and strip trailing
+/// zeros (and a bare trailing point) either way.
+fn format_general(value: f64, sig: usize, plus: bool, space: bool) -> String {
+    if !value.is_finite() {
+        return format_fixed(value, sig, plus, space);
+    }
+    let probe = format!("{:.*e}", sig - 1, value);
+    let exp: i32 = probe
+        .split_once('e')
+        .expect("float scientific form")
+        .1
+        .parse()
+        .expect("exponent parses");
+    let mut body = if exp < -4 || exp >= sig as i32 {
+        format_scientific(value, sig - 1, plus, space)
+    } else {
+        let after_point = (sig as i32 - 1 - exp).max(0) as usize;
+        format_fixed(value, after_point, plus, space)
+    };
+    // Strip trailing fraction zeros, then a bare point, from the
+    // mantissa only (never from an exponent).
+    let mantissa_end = body.find('e').unwrap_or(body.len());
+    if body[..mantissa_end].contains('.') {
+        let trimmed = body[..mantissa_end]
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .len();
+        body.replace_range(trimmed..mantissa_end, "");
+    }
+    body
 }
 
 fn apply_precision_int(body: &mut String, spec: &FormatSpec) {
@@ -981,6 +1062,42 @@ mod tests {
             regs.write_gpr(1, true, 0x0040_0000);
         });
         assert_eq!(s, "0x400000");
+    }
+
+    #[test]
+    fn percent_e_matches_glibc_shape() {
+        let cases: &[(&str, f64, &str)] = &[
+            ("%e", 3.14159, "3.141590e+00"),
+            ("%e", 0.0, "0.000000e+00"),
+            ("%.2e", 12345.678, "1.23e+04"),
+            ("%e", -0.000001, "-1.000000e-06"),
+            ("%E", 2.5, "2.500000E+00"),
+        ];
+        for (fmt, v, want) in cases {
+            let (s, _) = call(fmt, |regs, _| {
+                regs.write_fpr_bits(0, v.to_bits());
+            });
+            assert_eq!(&s, want, "{fmt} of {v}");
+        }
+    }
+
+    #[test]
+    fn percent_g_picks_the_form_and_strips_zeros_like_glibc() {
+        let cases: &[(&str, f64, &str)] = &[
+            ("%g", 3.14159, "3.14159"),
+            ("%g", 100.0, "100"),
+            ("%g", 0.0001, "0.0001"),
+            ("%g", 0.00001, "1e-05"),
+            ("%g", 1234567.0, "1.23457e+06"),
+            ("%.3g", 3.14159, "3.14"),
+            ("%g", 0.0, "0"),
+        ];
+        for (fmt, v, want) in cases {
+            let (s, _) = call(fmt, |regs, _| {
+                regs.write_fpr_bits(0, v.to_bits());
+            });
+            assert_eq!(&s, want, "{fmt} of {v}");
+        }
     }
 
     #[test]
