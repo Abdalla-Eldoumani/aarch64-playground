@@ -18,6 +18,30 @@ use serde::Serialize;
 #[allow(unused_imports)]
 use cpu::{Cpu, StepOutcome};
 
+/// Every C-callable name the hosted runtime registers, as `bl <name>`
+/// spells it. A program that calls one of these needs the hosted
+/// pipeline, so the list has to keep pace with the stub table: the unit
+/// test `every_registered_stub_is_detected_as_hosted` fails the moment a
+/// new stub is registered without being named here.
+pub const HOSTED_LIBC_NAMES: &[&str] = &[
+    // console and formatted output
+    "printf", "scanf", "sprintf", "snprintf", "puts", "putchar", "getchar",
+    // strings
+    "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strchr",
+    "strstr", "strtok", "memset", "memcpy", "memmove", "memcmp",
+    // conversion and process control
+    "atof", "atoi", "strtol", "abs", "labs", "exit", "rand", "srand", "time",
+    // heap and pacing
+    "malloc", "calloc", "realloc", "free", "usleep", "fflush",
+    // character classes
+    "isdigit", "isalpha", "isspace", "toupper", "tolower", "__ctype_b_loc",
+    // FILE*-level stdio
+    "fopen", "fprintf", "fgets", "fputs", "fclose",
+    // libm
+    "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor",
+    "fabs", "fmod",
+];
+
 /// Decide whether the source uses the hosted cpsc 355 feature set
 /// (sections, `.global main`, libc BLs, m4 defines). The bare-metal
 /// examples hit none of these so they keep the legacy single-`.text`
@@ -69,11 +93,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     // same as `bl printf`; the raw `contains("bl printf")` matched only a
     // single space.
     let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    for libc in [
-        "printf", "scanf", "puts", "putchar", "getchar", "strlen", "strcmp", "strcpy",
-        "memset", "memcpy", "atof", "atoi", "exit", "rand", "srand", "time",
-        "malloc", "free", "usleep", "fflush", "fopen", "fprintf", "fclose",
-    ] {
+    for libc in HOSTED_LIBC_NAMES {
         let pat = format!("bl {libc}");
         if normalized.contains(&pat) {
             return true;
@@ -1054,6 +1074,34 @@ mod hosted_mode_tests {
         assert!(!detect_hosted_mode(src));
         let semi = "mov x0, 1 ; .global main is unrelated here\nsvc 0\n";
         assert!(!detect_hosted_mode(semi));
+    }
+
+    #[test]
+    fn every_registered_stub_is_detected_as_hosted() {
+        // The drift this closes: a stub registered in `Cpu::new` but
+        // never added here left `bl <name>` on the bare-metal path,
+        // where the call resolves to nothing. The table is the source of
+        // truth; the two sentinels are not names a program can call.
+        let cpu = crate::cpu::Cpu::new();
+        let missing: Vec<String> = cpu
+            .host
+            .names()
+            .filter(|name| !matches!(*name, "__host_noop" | "__main_return"))
+            .filter(|name| !super::HOSTED_LIBC_NAMES.contains(name))
+            .map(str::to_string)
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "these stubs are registered but not in HOSTED_LIBC_NAMES: {missing:?}"
+        );
+        // And each listed name really does route a `bl` to the hosted
+        // pipeline, rather than only sitting in the list.
+        for name in super::HOSTED_LIBC_NAMES {
+            assert!(
+                detect_hosted_mode(&format!("main:\n    bl {name}\n    ret\n")),
+                "`bl {name}` must detect as hosted"
+            );
+        }
     }
 
     #[test]
