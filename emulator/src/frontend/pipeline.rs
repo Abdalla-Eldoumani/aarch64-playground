@@ -726,7 +726,18 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         let addr_reg: u8 = match parse_ldr_dest(&reg) {
                             Some(LdrDest::Gpr { idx }) => idx,
                             Some(LdrDest::Fp) => 16,
-                            None => unreachable!("recognizer only claims parseable dests"),
+                            // The recognizer only claims parseable dests;
+                            // if the two ever disagree that is a crate
+                            // bug, surfaced as a calm error rather than a
+                            // worker-killing panic.
+                            None => {
+                                return Err(EmuError::AssemblyError {
+                                    line: *original_line,
+                                    message: format!(
+                                        "internal: ldr destination `{reg}` was recognized but did not parse"
+                                    ),
+                                });
+                            }
                         };
                         let slot = *pool_slots
                             .get(&(label_text.clone(), None))
