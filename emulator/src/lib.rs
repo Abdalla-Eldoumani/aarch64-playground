@@ -64,27 +64,15 @@ pub fn detect_hosted_mode(source: &str) -> bool {
         .collect::<Vec<_>>()
         .join("\n");
     let lower = clean.to_lowercase();
-    if lower.contains(".text")
-        || lower.contains(".data")
-        || lower.contains(".bss")
-        || lower.contains(".rodata")
-        || lower.contains(".global")
-        || lower.contains(".globl")
-        || lower.contains(".string")
-        || lower.contains(".asciz")
-        || lower.contains(".ascii")
-        || lower.contains(".word")
-        || lower.contains(".quad")
-        || lower.contains(".hword")
-        || lower.contains(".short")
-        || lower.contains(".byte")
-        || lower.contains(".double")
-        || lower.contains(".float")
-        || lower.contains(".skip")
-        || lower.contains(".zero")
-        || lower.contains(".space")
-        || lower.contains(".balign")
-        || lower.contains(".align")
+    // The directive set is the parser's own table, not a second hand-kept
+    // list beside it. That closes the gap the hand-kept list had: `.section`,
+    // `.dword`, `.type` and `.size` are directives the parser has always
+    // understood but detection did not look for, so a file whose only
+    // directive was one of them took the legacy path. `define(` stays an
+    // extra term -- m4 is a preprocessor construct, not a directive.
+    if crate::frontend::parser::DIRECTIVES
+        .iter()
+        .any(|directive| lower.contains(directive))
         || lower.contains("define(")
     {
         return true;
@@ -741,12 +729,13 @@ impl Emulator {
         }
     }
 
-    /// Set a breakpoint at an address.
+    /// The wasm boundary carries addresses as u32: every reachable band
+    /// sits below 4 GiB, and JS numbers hand u32 across losslessly where
+    /// u64 would arrive as BigInt.
     pub fn set_breakpoint(&mut self, address: u32) {
         self.cpu.set_breakpoint(address as u64);
     }
 
-    /// Clear a breakpoint at an address.
     pub fn clear_breakpoint(&mut self, address: u32) {
         self.cpu.clear_breakpoint(address as u64);
     }
@@ -1102,6 +1091,36 @@ mod hosted_mode_tests {
                 "`bl {name}` must detect as hosted"
             );
         }
+    }
+
+    #[test]
+    fn detection_covers_every_directive_the_parser_knows() {
+        // Detection derives from the parser's table, so a directive the
+        // parser understands routes to the hosted path even when it is the
+        // only one in the file. These four used to fall through to the
+        // legacy path because the hand-kept list beside the parser had
+        // never grown them; each case below carries no other directive, so
+        // it is the named one doing the work.
+        assert!(detect_hosted_mode(".section .rodata\n"));
+        assert!(detect_hosted_mode("table: .dword 1, 2, 3\n"));
+        assert!(detect_hosted_mode(".type main, %function\n"));
+        assert!(detect_hosted_mode(".size main, 4\n"));
+        // And the whole table, so a directive added later cannot be
+        // recognized by the parser and missed by detection.
+        for directive in crate::frontend::parser::DIRECTIVES {
+            assert!(
+                detect_hosted_mode(&format!("{directive} 1\n")),
+                "`{directive}` must detect as hosted"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bare_metal_program_still_takes_the_legacy_path() {
+        // The widening must not swallow the directive-free programs the
+        // legacy single-.text path exists for.
+        assert!(!detect_hosted_mode("main:\n    mov x0, 1\n    ret\n"));
+        assert!(!detect_hosted_mode("loop:\n    add x0, x0, 1\n    b loop\n"));
     }
 
     #[test]
