@@ -571,6 +571,38 @@ mov     x11, 100
 msub    x12, x9, x10, x11   // x12 = 100 - 6 * 7 = 58`,
   },
   {
+    mnemonic: "smull",
+    category: "Data processing",
+    syntax: "smull xd, wn, wm",
+    example: `mov     w9, -3
+mov     w10, 5
+smull   x11, w9, w10        // x11 = -15, exact in 64 bits`,
+  },
+  {
+    mnemonic: "umull",
+    category: "Data processing",
+    syntax: "umull xd, wn, wm",
+    example: `mov     w9, 0xffffffff
+mov     w10, 2
+umull   x11, w9, w10        // x11 = 0x1fffffffe: no 32-bit wrap`,
+  },
+  {
+    mnemonic: "smulh",
+    category: "Data processing",
+    syntax: "smulh xd, xn, xm",
+    example: `mov     x9, 0x4000000000000000
+mov     x10, 4
+smulh   x11, x9, x10        // x11 = 1: the product's top 64 bits`,
+  },
+  {
+    mnemonic: "umulh",
+    category: "Data processing",
+    syntax: "umulh xd, xn, xm",
+    example: `mov     x9, 0x8000000000000000
+mov     x10, 2
+umulh   x11, x9, x10        // x11 = 1: the carry out of bit 63`,
+  },
+  {
     mnemonic: "udiv",
     category: "Data processing",
     syntax: "udiv xd, xn, xm",

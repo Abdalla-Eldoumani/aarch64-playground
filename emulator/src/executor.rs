@@ -161,6 +161,7 @@ pub fn execute(
         Instruction::MulAccumulate { op, sf, rd, rn, rm, ra } => {
             exec_mul_accumulate(*op, *sf, *rd, *rn, *rm, *ra, regs)
         }
+        Instruction::MulWide { op, rd, rn, rm } => exec_mul_wide(*op, *rd, *rn, *rm, regs),
         Instruction::LdrSignExtended { rt, rn, offset, size, mode, sf } => {
             exec_ldrs(*rt, *rn, offset, *size, *mode, *sf, regs, mem)
         }
@@ -1036,6 +1037,37 @@ fn exec_mul_accumulate(
         MulAccumulateOp::Msub => c.wrapping_sub(product) & mask,
     };
     regs.write_gpr(rd, sf, result);
+    Ok(ExecResult::Advance)
+}
+
+fn exec_mul_wide(
+    op: MulWideOp, rd: u8, rn: u8, rm: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let result = match op {
+        // 32x32 cannot overflow 64 bits, so the plain product is exact.
+        MulWideOp::Smull => {
+            let a = i64::from(regs.read_gpr(rn, false) as u32 as i32);
+            let b = i64::from(regs.read_gpr(rm, false) as u32 as i32);
+            (a * b) as u64
+        }
+        MulWideOp::Umull => {
+            let a = regs.read_gpr(rn, false) & 0xFFFF_FFFF;
+            let b = regs.read_gpr(rm, false) & 0xFFFF_FFFF;
+            a * b
+        }
+        MulWideOp::Smulh => {
+            let a = i128::from(regs.read_gpr(rn, true) as i64);
+            let b = i128::from(regs.read_gpr(rm, true) as i64);
+            ((a * b) >> 64) as u64
+        }
+        MulWideOp::Umulh => {
+            let a = u128::from(regs.read_gpr(rn, true));
+            let b = u128::from(regs.read_gpr(rm, true));
+            ((a * b) >> 64) as u64
+        }
+    };
+    regs.write_gpr(rd, true, result);
     Ok(ExecResult::Advance)
 }
 

@@ -161,6 +161,18 @@ pub enum MulAccumulateOp {
     Msub,
 }
 
+/// Widening and high-half multiply variant. `Smull`/`Umull` are 32x32 -> 64
+/// (the SMADDL/UMADDL encodings with Ra=XZR, the only forms gcc emits);
+/// `Smulh`/`Umulh` return the top 64 bits of the full 128-bit product. gcc
+/// leans on these for division and remainder by a constant even at -O0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MulWideOp {
+    Smull,
+    Umull,
+    Smulh,
+    Umulh,
+}
+
 /// Floating-point binary operation. The instruction's `single` flag picks
 /// the S (f32) or D (f64) form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -372,6 +384,14 @@ pub enum Instruction {
         rn: u8,
         rm: u8,
         ra: u8,
+    },
+    /// SMULL/UMULL (Xd = Wn * Wm, widening) and SMULH/UMULH (Xd = the top
+    /// 64 bits of Xn * Xm). All four write an X destination, so no `sf`.
+    MulWide {
+        op: MulWideOp,
+        rd: u8,
+        rn: u8,
+        rm: u8,
     },
     /// LDRSB / LDRSH / LDRSW: sign-extending loads. `sf` selects the
     /// target register width (Xt when true, Wt when false; LDRSW only
@@ -1667,6 +1687,23 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
             rm,
             ra,
         });
+    }
+
+    // SMULL/UMULL are SMADDL/UMADDL with Ra=XZR; SMULH/UMULH fix the Ra
+    // field at 11111. The accumulate forms proper (Ra != XZR) stay
+    // undecoded: gcc emits only the aliases, and half-implementing the
+    // accumulate would be a silent wrong answer waiting to happen.
+    if sf && o0 == 0 && ra == 31 {
+        let op = match op31 {
+            0b001 => Some(MulWideOp::Smull),
+            0b101 => Some(MulWideOp::Umull),
+            0b010 => Some(MulWideOp::Smulh),
+            0b110 => Some(MulWideOp::Umulh),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Ok(Instruction::MulWide { op, rd, rn, rm });
+        }
     }
 
     Err(EmuError::UnknownInstruction(instr))

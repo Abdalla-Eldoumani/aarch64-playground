@@ -19,6 +19,10 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `MUL`    | `MUL Xd, Xn, Xm`                 | Low 64 bits of product. Alias for `MADD Xd, Xn, Xm, XZR`. |
 | `MADD`   | `MADD Xd, Xn, Xm, Xa`            | Multiply-add: `Xd = Xa + Xn * Xm`.       |
 | `MSUB`   | `MSUB Xd, Xn, Xm, Xa`            | Multiply-subtract: `Xd = Xa - Xn * Xm`. |
+| `SMULL`  | `SMULL Xd, Wn, Wm`               | Widening multiply: the exact 64-bit product of two signed 32-bit values. |
+| `UMULL`  | `UMULL Xd, Wn, Wm`               | Widening multiply, unsigned.             |
+| `SMULH`  | `SMULH Xd, Xn, Xm`               | The top 64 bits of the signed 128-bit product. |
+| `UMULH`  | `UMULH Xd, Xn, Xm`               | The top 64 bits of the unsigned 128-bit product. |
 | `UDIV`   | `UDIV Xd, Xn, Xm`                | Unsigned divide, zero on divide-by-zero. |
 | `SDIV`   | `SDIV Xd, Xn, Xm`                | Signed divide.                           |
 | `NEG`    | `NEG Xd, Xm`                     | Alias for `SUB Xd, XZR, Xm`.             |

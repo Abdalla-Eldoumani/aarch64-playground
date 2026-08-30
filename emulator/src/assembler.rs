@@ -152,6 +152,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "UBFX", "SBFX", "BFI",
     // multiply / divide
     "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG",
+    "SMULL", "UMULL", "SMULH", "UMULH",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
@@ -256,6 +257,10 @@ fn encode_line(
         "SDIV" => encode_mul_div(&ops, 2, line_num),
         "MADD" => encode_mul_accumulate(&ops, false, line_num),
         "MSUB" => encode_mul_accumulate(&ops, true, line_num),
+        "SMULL" => encode_mul_wide(&ops, 0b001, true, line_num),
+        "UMULL" => encode_mul_wide(&ops, 0b101, true, line_num),
+        "SMULH" => encode_mul_wide(&ops, 0b010, false, line_num),
+        "UMULH" => encode_mul_wide(&ops, 0b110, false, line_num),
         "NEG" => encode_neg(&ops, line_num),
 
         // -- memory --
@@ -1311,6 +1316,34 @@ fn encode_mul_accumulate(ops: &[&str], subtract: bool, ln: usize) -> Result<u32,
         | ((rm as u32) << 16)
         | (o0 << 15)
         | ((ra as u32) << 10)
+        | ((rn as u32) << 5)
+        | (rd as u32))
+}
+
+fn encode_mul_wide(ops: &[&str], op31: u32, widening: bool, ln: usize) -> Result<u32, EmuError> {
+    // SMULL/UMULL Xd, Wn, Wm  (the SMADDL/UMADDL alias with Ra=XZR)
+    // SMULH/UMULH Xd, Xn, Xm  (the top 64 bits of the 128-bit product)
+    if ops.len() != 3 {
+        return asm_err(ln, "SMULL/UMULL/SMULH/UMULH require 3 operands");
+    }
+    reject_sp_operands(ops, ln, "SMULL/UMULL/SMULH/UMULH")?;
+    let (rd, rd_x) = parse_register(ops[0], ln)?;
+    let (rn, rn_x) = parse_register(ops[1], ln)?;
+    let (rm, rm_x) = parse_register(ops[2], ln)?;
+    if !rd_x {
+        return asm_err(ln, "the destination must be an X register (the product is 64-bit)");
+    }
+    if widening && (rn_x || rm_x) {
+        return asm_err(ln, "SMULL/UMULL take W source registers (32 x 32 -> 64)");
+    }
+    if !widening && (!rn_x || !rm_x) {
+        return asm_err(ln, "SMULH/UMULH take X source registers");
+    }
+    Ok((1 << 31)
+        | (0b11011 << 24)
+        | (op31 << 21)
+        | ((rm as u32) << 16)
+        | (0b11111 << 10)
         | ((rn as u32) << 5)
         | (rd as u32))
 }
@@ -2524,6 +2557,68 @@ mod tests {
         assert!(msg.contains("AL"), "was: {msg}");
         // The raw CSINC form keeps taking AL, exactly as GAS does.
         encode_line("csinc x0, xzr, xzr, al", 0, &labels, 3).unwrap();
+    }
+
+    #[test]
+    fn widening_multiplies_encode_as_the_arm_arm_words_and_round_trip() {
+        use crate::decoder::{decode, Instruction, MulWideOp};
+        let labels = HashMap::new();
+        let cases = [
+            ("smull x0, w1, w2", 0x9B22_7C20, MulWideOp::Smull),
+            ("umull x0, w1, w2", 0x9BA2_7C20, MulWideOp::Umull),
+            ("smulh x0, x1, x2", 0x9B42_7C20, MulWideOp::Smulh),
+            ("umulh x0, x1, x2", 0x9BC2_7C20, MulWideOp::Umulh),
+        ];
+        for (src, want, op) in cases {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert_eq!(word, want, "{src}");
+            match decode(word).unwrap() {
+                Instruction::MulWide { op: got, rd: 0, rn: 1, rm: 2 } => {
+                    assert_eq!(got, op, "{src}");
+                }
+                other => panic!("{src} decoded to {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn widening_multiplies_reject_wrong_register_widths() {
+        let labels = HashMap::new();
+        for src in ["smull w0, w1, w2", "smull x0, x1, x2", "umulh x0, w1, w2"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("register"), "{src}: {err}");
+        }
+    }
+
+    #[test]
+    fn widening_multiplies_compute_signed_and_high_halves() {
+        use crate::cpu::Cpu;
+        // smull: (-3) * 5 = -15 across the width boundary; umulh: the high
+        // 64 bits of (2^63 + 1) squared.
+        let source = r#"
+            MOVN W1, #2
+            MOV W2, #5
+            SMULL X3, W1, W2
+            MOV X4, #1
+            MOVK X4, #0x8000, LSL #48
+            UMULH X5, X4, X4
+            SMULH X6, X4, X4
+            UMULL X7, W1, W2
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(3, true) as i64, -15);
+        // x4 = 0x8000_0000_0000_0001; x4*x4 = 2^126 + 2^64 + 1, so the
+        // unsigned high half is 2^62 + 1.
+        assert_eq!(cpu.regs.read_gpr(5, true), (1u64 << 62) + 1);
+        // Signed, x4 is -(2^63 - 1); the signed high half of its square
+        // (2^126 - 2^64 + 1) is 2^62 - 1.
+        assert_eq!(cpu.regs.read_gpr(6, true), (1u64 << 62) - 1);
+        // umull treats w1 (0xFFFF_FFFD) as unsigned.
+        assert_eq!(cpu.regs.read_gpr(7, true), 0xFFFF_FFFDu64 * 5);
     }
 
     #[test]
