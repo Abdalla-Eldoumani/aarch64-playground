@@ -812,9 +812,10 @@ mod tests {
 
     #[test]
     fn unimplemented_float_conversions_stop_with_a_remedy() {
-        // Echoing `%e` literally desynced later float conversions; the
-        // student saw a plausible wrong number with no message.
-        let err = try_call("%e", |_, _| {}).unwrap_err();
+        // Echoing an unimplemented specifier literally desynced later
+        // float conversions; the student saw a plausible wrong number
+        // with no message. %a is the one float form still unhosted.
+        let err = try_call("%a", |_, _| {}).unwrap_err();
         assert!(err.to_string().contains("%f"), "was: {err}");
     }
 
