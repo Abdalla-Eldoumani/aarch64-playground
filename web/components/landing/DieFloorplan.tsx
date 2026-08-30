@@ -1,5 +1,5 @@
 /**
- * Die floorplan motif: the interface drawn as a silicon floorplan — the
+ * Die floorplan motif: the interface drawn as a silicon floorplan. The
  * fetch/decode strip across the top with the program-counter marker, the
  * execute block lit amber (the machine acting), and the register file,
  * memory, and I/O blocks below, echoing the playground's own panel layout.
