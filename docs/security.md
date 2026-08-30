@@ -84,8 +84,10 @@ tab. The walls live in the Rust core and hold however the program arrived
 
 - Step ceiling `cpu::MAX_TOTAL_STEPS` = 10,000,000, counted across every step
   and the run loop. A runaway loop trips it and stops.
-- Mapped-page cap `memory::MAX_MAPPED_PAGES` = 1024 (4 MiB live). A store past
-  the cap faults, and the step converts that fault to a halt.
+- Mapped-page cap `memory::MAX_MAPPED_PAGES` = 8192 (32 MiB live), sized so
+  the 8 MiB stack and the 16 MiB heap window can be fully touched with
+  headroom. A store past the cap faults, and the step converts that fault
+  to a halt.
 - Host-runtime caps so one libc or syscall call cannot allocate without bound
   from a guest-supplied size: `write` reads into a growable buffer instead of
   pre-reserving its count, and `printf` clamps field width and precision
