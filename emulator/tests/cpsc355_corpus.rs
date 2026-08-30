@@ -5,10 +5,11 @@
 //! clean pause on stdin for the interactive ones).
 //!
 //! The corpus lives at `cpsc355-kb/tutorials/` and is gitignored (it's
-//! course material, not for public redistribution). When the corpus is
-//! not present on disk (CI, a clean clone), each file is reported as
-//! skipped and the test still passes. Run this locally with the course
-//! knowledge base in place to see it check every file.
+//! course material, not for public redistribution). Both tests are
+//! #[ignore]d so CI and clean clones never see them, and a run with
+//! --ignored on a machine WITHOUT the corpus fails loudly rather than
+//! passing as a skip. Individual files missing under a present root are
+//! still reported as skipped.
 //!
 //! `REQUIRED` lists the tutorial programs that stand alone: the two
 //! `sepcomp-asm-main-calls-c-*` files are left out on purpose, since
