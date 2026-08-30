@@ -571,6 +571,13 @@ mov     x11, 100
 msub    x12, x9, x10, x11   // x12 = 100 - 6 * 7 = 58`,
   },
   {
+    mnemonic: "negs",
+    category: "Data processing",
+    syntax: "negs xd, xm",
+    example: `mov     x9, 1
+negs    x10, x9             // x10 = -1 and n is set: subs from zero`,
+  },
+  {
     mnemonic: "smull",
     category: "Data processing",
     syntax: "smull xd, wn, wm",

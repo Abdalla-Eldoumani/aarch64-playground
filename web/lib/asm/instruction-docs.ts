@@ -91,6 +91,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   UDIV: { summary: "Unsigned divide; divide-by-zero writes 0.", cExample: "Rd = (unsigned)Rn / (unsigned)Rm;" },
   SDIV: { summary: "Signed divide; divide-by-zero writes 0.", cExample: "Rd = (int)Rn / (int)Rm;" },
   NEG: { summary: "Rd = -Rn (alias for `SUB Rd, ZR, Rn`).", cExample: "Rd = -Rn;" },
+  NEGS: { summary: "Rd = -Rn and sets NZCV (alias for `SUBS Rd, ZR, Rn`).", example: "negs x0, x1", cExample: "Rd = -Rn; // flags from 0 - Rn" },
   MVN: { summary: "Rd = ~Rn (alias for `ORN Rd, ZR, Rn`).", cExample: "Rd = ~Rn;" },
   CMP: { summary: "`SUBS ZR, Rn, op2`. Sets NZCV, discards result.", cExample: "// (Rn - op2) sets NZCV" },
   CMN: { summary: "`ADDS ZR, Rn, op2`. Sets NZCV.", cExample: "// (Rn + op2) sets NZCV" },

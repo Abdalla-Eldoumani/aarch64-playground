@@ -151,7 +151,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // bitfield extract / insert
     "UBFX", "SBFX", "BFI",
     // multiply / divide
-    "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG",
+    "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG", "NEGS",
     "SMULL", "UMULL", "SMULH", "UMULH",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
@@ -261,7 +261,8 @@ fn encode_line(
         "UMULL" => encode_mul_wide(&ops, 0b101, true, line_num),
         "SMULH" => encode_mul_wide(&ops, 0b010, false, line_num),
         "UMULH" => encode_mul_wide(&ops, 0b110, false, line_num),
-        "NEG" => encode_neg(&ops, line_num),
+        "NEG" => encode_neg(&ops, false, line_num),
+        "NEGS" => encode_neg(&ops, true, line_num),
 
         // -- memory --
         "LDR" => encode_ldst(&ops, 1, 0b11, line_num),
@@ -1348,15 +1349,15 @@ fn encode_mul_wide(ops: &[&str], op31: u32, widening: bool, ln: usize) -> Result
         | (rd as u32))
 }
 
-fn encode_neg(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
-    // NEG Xd, Xm -> SUB Xd, XZR, Xm
+fn encode_neg(ops: &[&str], set_flags: bool, ln: usize) -> Result<u32, EmuError> {
+    // NEG Xd, Xm -> SUB Xd, XZR, Xm; NEGS is the SUBS form and sets NZCV.
     if ops.len() != 2 {
-        return asm_err(ln, "NEG requires 2 operands");
+        return asm_err(ln, "NEG/NEGS requires 2 operands");
     }
     let (_, sf) = parse_register(ops[0], ln)?;
     let zr = if sf { "XZR" } else { "WZR" };
     let new_ops = [ops[0], zr, ops[1]];
-    encode_dp(&new_ops, 1, 0, ln)
+    encode_dp(&new_ops, 1, if set_flags { 1 } else { 0 }, ln)
 }
 
 fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
@@ -2669,6 +2670,30 @@ mod tests {
         assert!(msg.contains("AL"), "was: {msg}");
         // The raw CSINC form keeps taking AL, exactly as GAS does.
         encode_line("csinc x0, xzr, xzr, al", 0, &labels, 3).unwrap();
+    }
+
+    #[test]
+    fn negs_sets_the_flags_where_neg_does_not() {
+        use crate::cpu::Cpu;
+        let source = r#"
+            MOV X1, #1
+            NEGS X0, X1
+            CSET X2, MI
+            NEG X3, X1
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(10).unwrap();
+        assert_eq!(cpu.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(cpu.regs.read_gpr(2, true), 1, "negs set N");
+        assert_eq!(cpu.regs.read_gpr(3, true) as i64, -1);
+        // The two spellings differ only in the S bit (SUB vs SUBS).
+        let labels = HashMap::new();
+        let neg = encode_line("neg x0, x1", 0, &labels, 1).unwrap();
+        let negs = encode_line("negs x0, x1", 0, &labels, 1).unwrap();
+        assert_eq!(neg | (1 << 29), negs);
     }
 
     #[test]

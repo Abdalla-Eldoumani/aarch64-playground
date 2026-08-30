@@ -26,6 +26,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `UDIV`   | `UDIV Xd, Xn, Xm`                | Unsigned divide, zero on divide-by-zero. |
 | `SDIV`   | `SDIV Xd, Xn, Xm`                | Signed divide.                           |
 | `NEG`    | `NEG Xd, Xm`                     | Alias for `SUB Xd, XZR, Xm`.             |
+| `NEGS`   | `NEGS Xd, Xm`                    | Alias for `SUBS Xd, XZR, Xm`; sets NZCV. |
 | `AND`    | `AND Xd, Xn, Xm` / `..., #imm`   | Logical AND.                             |
 | `ANDS`   | same                             | Sets NZCV.                               |
 | `ORR`    | `ORR Xd, Xn, Xm`                 | Logical OR.                              |
