@@ -11,3 +11,12 @@
 
 # Shell scripts must be LF or bash on Linux refuses to run them.
 *.sh text eol=lf
+
+# The C corpus references are byte-compared against emulator output and
+# against tools/sanitize.py's regeneration, so none of them may be
+# rewritten at checkout. .out files carry program-controlled bytes and
+# stay untranslated outright.
+emulator/tests/c-corpus/*.out -text
+emulator/tests/c-corpus/*.code text eol=lf
+emulator/tests/c-corpus/*.c    text eol=lf
+emulator/tests/c-corpus/*.flags text eol=lf
