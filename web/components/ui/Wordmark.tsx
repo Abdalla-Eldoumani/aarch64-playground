@@ -3,7 +3,7 @@ import Link from "next/link";
 /**
  * Brand wordmark: the field-box lockup paired with the "aarch64" mono mark,
  * linking home. The lockup draws a 32-bit instruction word as four field
- * cells sharing edges; the third cell is filled amber — the machine bit set —
+ * cells sharing edges; the third cell is filled amber (the machine bit set)
  * so the brand reads as "the machine acting" at any size. When `showLabel`
  * is set, a quiet "playground" label rides alongside (header on wide
  * viewports, drawer); collapsed, the lockup plus mark stand in as the mark.
