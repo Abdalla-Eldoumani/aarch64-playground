@@ -1,5 +1,5 @@
 /**
- * Numbered section kicker: `NN · TITLE` in the datasheet voice — the number
+ * Numbered section kicker: `NN · TITLE` in the datasheet voice. The number
  * in amber (the sheet's machine coordinate), the title in tertiary mono,
  * then a hairline that runs out the measure. Heads every numbered section on
  * the landing and reading surfaces.
