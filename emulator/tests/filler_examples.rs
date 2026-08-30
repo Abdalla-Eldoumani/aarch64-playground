@@ -620,14 +620,14 @@ fn deadzone_survivor_links_across_its_files_and_plays_a_timed_session() {
 /// Every printf conversion the shipped examples use must be one the hosted
 /// runtime implements. Driving the menus cannot prove this on its own: a
 /// conversion sitting in a branch the scripted session never reaches still
-/// aborts the program for the student who does reach it, which is exactly
-/// how `%*s` shipped inside the sorting module. Reading the format strings
-/// costs nothing and covers every branch at once.
+/// aborts the program for the student who does reach it, which is how a
+/// then-unsupported `%*s` shipped inside the sorting module. Reading the
+/// format strings costs nothing and covers every branch at once.
 #[test]
 fn shipped_examples_only_use_conversions_the_runtime_implements() {
-    // What hosted/printf.rs accepts: flags, a digit width, a .precision, the
-    // length modifiers, and one of these conversions. A `*` width is
-    // explicitly rejected there, so it must never appear here.
+    // What hosted/printf.rs accepts: flags, a width (digits or a `*`
+    // taking it from the varargs), a .precision in either form, the
+    // length modifiers, and one of these conversions.
     const CONVERSIONS: &str = "diouxXeEfgGcspn%";
     let mut offenders: Vec<String> = Vec::new();
 
@@ -688,13 +688,21 @@ fn shipped_examples_only_use_conversions_the_runtime_implements() {
                 while j < bytes.len() && b"-+ #0".contains(&bytes[j]) {
                     j += 1;
                 }
-                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                if j < bytes.len() && bytes[j] == b'*' {
                     j += 1;
+                } else {
+                    while j < bytes.len() && bytes[j].is_ascii_digit() {
+                        j += 1;
+                    }
                 }
                 if j < bytes.len() && bytes[j] == b'.' {
                     j += 1;
-                    while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    if j < bytes.len() && bytes[j] == b'*' {
                         j += 1;
+                    } else {
+                        while j < bytes.len() && bytes[j].is_ascii_digit() {
+                            j += 1;
+                        }
                     }
                 }
                 while j < bytes.len() && b"hlLzjt".contains(&bytes[j]) {

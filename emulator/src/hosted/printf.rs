@@ -51,7 +51,7 @@ pub(crate) fn format_into(
             continue;
         }
         i += 1;
-        let spec = parse_spec(&chars, &mut i);
+        let spec = parse_spec(&chars, &mut i, ctx, &mut walker);
         if i >= chars.len() {
             // Trailing '%' with nothing after it; emit literally.
             push_char(&mut out, '%');
@@ -156,7 +156,17 @@ fn narrow_unsigned(raw: u64, spec: &FormatSpec) -> u64 {
     }
 }
 
-fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
+/// Walk one conversion's flags, width, precision and length modifier.
+///
+/// A `*` in the width or precision position takes its value from the
+/// varargs, so this walks the same cursor the conversion itself will:
+/// for `"%*d"` the width argument comes BEFORE the value, per C.
+fn parse_spec(
+    chars: &[char],
+    i: &mut usize,
+    ctx: &mut HostContext<'_>,
+    walker: &mut VarargWalker,
+) -> FormatSpec {
     let mut spec = FormatSpec::default();
     // Flags.
     while *i < chars.len() {
@@ -171,26 +181,47 @@ fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
         *i += 1;
     }
     // Width (clamped so a guest-supplied value cannot blow up the output).
-    while *i < chars.len() && chars[*i].is_ascii_digit() {
-        spec.width = spec
-            .width
-            .saturating_mul(10)
-            .saturating_add(chars[*i] as usize - '0' as usize)
-            .min(MAX_FIELD_WIDTH);
+    // `*` reads an int vararg; C says a negative one means the `-` flag
+    // with the width's absolute value.
+    if *i < chars.len() && chars[*i] == '*' {
         *i += 1;
-    }
-    // Precision.
-    if *i < chars.len() && chars[*i] == '.' {
-        *i += 1;
-        let mut prec = 0usize;
+        let arg = walker.next_int(ctx) as u32 as i32;
+        if arg < 0 {
+            spec.left_align = true;
+        }
+        spec.width = (arg.unsigned_abs() as usize).min(MAX_FIELD_WIDTH);
+    } else {
         while *i < chars.len() && chars[*i].is_ascii_digit() {
-            prec = prec
+            spec.width = spec
+                .width
                 .saturating_mul(10)
                 .saturating_add(chars[*i] as usize - '0' as usize)
                 .min(MAX_FIELD_WIDTH);
             *i += 1;
         }
-        spec.precision = Some(prec);
+    }
+    // Precision. `.*` reads an int vararg too, where C defines a negative
+    // value as no precision at all rather than a clamped zero.
+    if *i < chars.len() && chars[*i] == '.' {
+        *i += 1;
+        if *i < chars.len() && chars[*i] == '*' {
+            *i += 1;
+            let arg = walker.next_int(ctx) as u32 as i32;
+            spec.precision = match usize::try_from(arg) {
+                Ok(prec) => Some(prec.min(MAX_FIELD_WIDTH)),
+                Err(_) => None,
+            };
+        } else {
+            let mut prec = 0usize;
+            while *i < chars.len() && chars[*i].is_ascii_digit() {
+                prec = prec
+                    .saturating_mul(10)
+                    .saturating_add(chars[*i] as usize - '0' as usize)
+                    .min(MAX_FIELD_WIDTH);
+                *i += 1;
+            }
+            spec.precision = Some(prec);
+        }
     }
     // Length modifier. The fetch slot is the same 64-bit register either
     // way, but the WIDTH read out of it must follow C: plain `%d` is an
@@ -334,12 +365,6 @@ fn format_conversion(
                 message: format!(
                     "printf %{conv} is not supported by this emulator; format the value with %f"
                 ),
-            });
-        }
-        '*' => {
-            return Err(EmuError::RuntimeError {
-                message: "printf's `*` width is not supported; write the width as digits, like %8d"
-                    .into(),
             });
         }
         _ => {
@@ -554,8 +579,6 @@ mod tests {
         // student saw a plausible wrong number with no message.
         let err = try_call("%e", |_, _| {}).unwrap_err();
         assert!(err.to_string().contains("%f"), "was: {err}");
-        let err = try_call("%*d", |_, _| {}).unwrap_err();
-        assert!(err.to_string().contains("width"), "was: {err}");
     }
 
     #[test]
@@ -839,6 +862,92 @@ mod tests {
         // buffer; it clamps to the cap.
         let (s, n) = call("%2000000000d", |regs, _| {
             regs.write_gpr(1, true, 5);
+        });
+        assert_eq!(n, MAX_FIELD_WIDTH);
+        assert_eq!(s.len(), MAX_FIELD_WIDTH);
+        assert!(s.ends_with('5'));
+    }
+
+    #[test]
+    fn star_width_reads_the_argument_before_the_value() {
+        // glibc: printf("%*d", 8, 42) is "      42". The width arg comes
+        // first, so x1 is the width and x2 the value.
+        let (s, n) = call("%*d", |regs, _| {
+            regs.write_gpr(1, true, 8);
+            regs.write_gpr(2, true, 42);
+        });
+        assert_eq!(s, "      42");
+        assert_eq!(n, 8);
+        // The rest of the format keeps walking from where the star left
+        // the cursor, so a second conversion still reads its own arg.
+        let (s, _) = call("[%*d][%d]", |regs, _| {
+            regs.write_gpr(1, true, 4);
+            regs.write_gpr(2, true, 7);
+            regs.write_gpr(3, true, 9);
+        });
+        assert_eq!(s, "[   7][9]");
+    }
+
+    #[test]
+    fn star_width_honors_the_left_align_flag() {
+        let (s, _) = call("%-*d|", |regs, _| {
+            regs.write_gpr(1, true, 6);
+            regs.write_gpr(2, true, 42);
+        });
+        assert_eq!(s, "42    |");
+    }
+
+    #[test]
+    fn a_negative_star_width_left_justifies() {
+        // C: a negative field width is the `-` flag with its absolute
+        // value, so printf("%*d|", -6, 42) matches printf("%-6d|", 42).
+        let (s, _) = call("%*d|", |regs, _| {
+            regs.write_gpr(1, true, (-6i64) as u64);
+            regs.write_gpr(2, true, 42);
+        });
+        assert_eq!(s, "42    |");
+    }
+
+    #[test]
+    fn star_precision_reads_an_int_before_the_double() {
+        // The precision is an int vararg (x1) and the value a double
+        // (d0): the two register files advance independently.
+        let (s, _) = call("%.*f", |regs, _| {
+            regs.write_gpr(1, true, 2);
+            regs.write_fpr_f64(0, std::f64::consts::PI);
+        });
+        assert_eq!(s, "3.14");
+        // A negative precision is as if none were given: %f falls back to
+        // its default of six places.
+        let (s, _) = call("%.*f", |regs, _| {
+            regs.write_gpr(1, true, (-1i64) as u64);
+            regs.write_fpr_f64(0, std::f64::consts::PI);
+        });
+        assert_eq!(s, "3.141593");
+    }
+
+    #[test]
+    fn star_width_pads_a_string() {
+        let (s, _) = call("%*s|", |regs, mem| {
+            let str_addr = 0x0052_0000u64;
+            mem.map_page(str_addr);
+            for (i, b) in b"hi".iter().enumerate() {
+                mem.write_u8(str_addr + i as u64, *b).unwrap();
+            }
+            mem.write_u8(str_addr + 2, 0).unwrap();
+            regs.write_gpr(1, true, 8);
+            regs.write_gpr(2, true, str_addr);
+        });
+        assert_eq!(s, "      hi|");
+    }
+
+    #[test]
+    fn an_absurd_star_width_is_clamped_like_a_written_one() {
+        // The cap has to cover the guest-supplied width too, or a single
+        // register value builds a multi-gigabyte string.
+        let (s, n) = call("%*d", |regs, _| {
+            regs.write_gpr(1, true, 2_000_000_000);
+            regs.write_gpr(2, true, 5);
         });
         assert_eq!(n, MAX_FIELD_WIDTH);
         assert_eq!(s.len(), MAX_FIELD_WIDTH);
