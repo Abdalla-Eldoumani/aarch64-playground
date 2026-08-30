@@ -315,6 +315,17 @@ pub enum Instruction {
         imm7: i16,
         mode: IndexMode,
     },
+    /// LDP/STP of the FP file (V=1): opc 00 = S pairs, 01 = D pairs.
+    /// `imm7` is the byte offset, already scaled by the register width.
+    FpLdStPair {
+        op: LdStPairOp,
+        single: bool,
+        rt: u8,
+        rt2: u8,
+        rn: u8,
+        imm7: i16,
+        mode: IndexMode,
+    },
     /// B/BL (26-bit signed offset, already shifted left 2).
     BrImm {
         link: bool,
@@ -1221,7 +1232,7 @@ fn decode_ldr_literal(instr: u32) -> Result<Instruction, EmuError> {
 
 fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
     let opc = bits(instr, 31, 30);
-    let sf = opc == 0b10; // 10 = 64-bit, 00 = 32-bit
+    let v = bit(instr, 26); // 0 = general registers, 1 = SIMD&FP
     let mode_bits = bits(instr, 24, 23);
     let l = bit(instr, 22); // 0=STP, 1=LDP
     let imm7 = bits(instr, 21, 15);
@@ -1237,6 +1248,30 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
     };
 
     let op = if l == 1 { LdStPairOp::Ldp } else { LdStPairOp::Stp };
+
+    if v == 1 {
+        // SIMD&FP pair: opc 00 = S, 01 = D; 10 (Q registers) is not
+        // implemented. Before this gate an FP pair fell into the general
+        // decode below and ran as a 32-bit GP pair with a halved offset.
+        let single = match opc {
+            0b00 => true,
+            0b01 => false,
+            _ => return Err(EmuError::UnknownInstruction(instr)),
+        };
+        let scale = if single { 4 } else { 8 };
+        let signed_imm = sign_extend(imm7, 7) as i16 * scale;
+        return Ok(Instruction::FpLdStPair {
+            op,
+            single,
+            rt,
+            rt2,
+            rn,
+            imm7: signed_imm,
+            mode,
+        });
+    }
+
+    let sf = opc == 0b10; // 10 = 64-bit, 00 = 32-bit
 
     // imm7 is signed, scaled by access size (4 for 32-bit, 8 for 64-bit)
     let scale = if sf { 8 } else { 4 };

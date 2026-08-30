@@ -73,8 +73,8 @@ Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`,
 | `STRB`   | same                                                  | Byte store.                        |
 | `LDRH`   | same                                                  | Halfword load.                     |
 | `STRH`   | same                                                  | Halfword store.                    |
-| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` (+ pre/post index)         | Load pair.                         |
-| `STP`    | same                                                  | Store pair.                        |
+| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Dt1, Dt2, ...` (+ pre/post index) | Load pair, general or FP registers (D pairs scale by 8, S pairs by 4). |
+| `STP`    | same                                                  | Store pair. `stp d8, d9, [sp, -16]!` is the AAPCS64 callee-saved FP prologue. |
 | `LDRSB`  | `LDRSB Wt, [Xn, #imm]` / `LDRSB Xt, [Xn, #imm]`       | Byte load, sign-extended into Wt or Xt. |
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
 | `LDRSW`  | `LDRSW Xt, [Xn, #imm]`                                | Word load, sign-extended to 64 bits. `Xt` target only, per the ARM spec. |
@@ -254,8 +254,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- SIMD vector widths (Q registers, `LDP Dn, Dm, ...`, arrangement
-  specifiers)
+- SIMD vector widths (Q registers and arrangement specifiers)
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release

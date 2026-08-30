@@ -916,11 +916,14 @@ ldp     x11, x12, [sp], 16  // one instruction, two loads: 7 and 9`,
   {
     mnemonic: "stp",
     category: "Memory",
-    syntax: "stp xt1, xt2, [xn, #imm]",
+    syntax: "stp xt1, xt2, [xn, #imm] / stp dt1, dt2, [xn, #imm]",
     example: `mov     x9, 1
 mov     x10, 2
 stp     x9, x10, [sp, -16]! // push the pair; sp drops 16 first
 ldp     x11, x12, [sp], 16  // pop it back: x11 = 1, x12 = 2`,
+    gotchas: [
+      "d and s pairs work too: `stp d8, d9, [sp, -16]!` is how a prologue saves the callee-saved fp registers.",
+    ],
   },
   {
     mnemonic: "ldrsb",

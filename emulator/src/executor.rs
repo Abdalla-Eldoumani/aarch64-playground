@@ -134,6 +134,9 @@ pub fn execute(
         Instruction::LdStPair { op, sf, rt, rt2, rn, imm7, mode } => {
             exec_ldst_pair(*op, *sf, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
         }
+        Instruction::FpLdStPair { op, single, rt, rt2, rn, imm7, mode } => {
+            exec_fp_ldst_pair(*op, *single, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
+        }
         Instruction::LdrLiteral { sf, rt, offset } => {
             exec_ldr_literal(*sf, *rt, *offset, regs, mem)
         }
@@ -705,6 +708,70 @@ fn exec_ldst_pair(
             } else {
                 mem.write_u32(address, v1 as u32)?;
                 mem.write_u32(address + pair_size, v2 as u32)?;
+            }
+        }
+    }
+
+    if let Some(wb) = writeback {
+        regs.write_gpr_or_sp(rn, true, wb);
+    }
+
+    Ok(ExecResult::Advance)
+}
+
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
+fn exec_fp_ldst_pair(
+    op: LdStPairOp, single: bool, rt: u8, rt2: u8, rn: u8,
+    imm7: i16, mode: IndexMode,
+    regs: &mut RegisterFile, mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    check_sp_alignment(rn, regs)?;
+    let base = regs.read_gpr_or_sp(rn, true);
+
+    let (address, writeback) = match mode {
+        IndexMode::PreIndex => {
+            let addr = (base as i64 + imm7 as i64) as u64;
+            (addr, Some(addr))
+        }
+        IndexMode::PostIndex => {
+            let wb = (base as i64 + imm7 as i64) as u64;
+            (base, Some(wb))
+        }
+        IndexMode::SignedOffset => {
+            let addr = (base as i64 + imm7 as i64) as u64;
+            (addr, None)
+        }
+    };
+
+    let pair_size: u64 = if single { 4 } else { 8 };
+    let access = match op {
+        LdStPairOp::Ldp => crate::errors::MemAccess::Read,
+        LdStPairOp::Stp => crate::errors::MemAccess::Write,
+    };
+    check_guest_address(address, access)?;
+    check_guest_address(address.wrapping_add(pair_size), access)?;
+
+    match op {
+        LdStPairOp::Ldp => {
+            // S loads zero the upper 32 bits of the FP register, like the
+            // single-register S load.
+            let (v1, v2) = if single {
+                (mem.read_u32(address)? as u64, mem.read_u32(address + pair_size)? as u64)
+            } else {
+                (mem.read_u64(address)?, mem.read_u64(address + pair_size)?)
+            };
+            regs.write_fpr_bits(rt, v1);
+            regs.write_fpr_bits(rt2, v2);
+        }
+        LdStPairOp::Stp => {
+            let v1 = regs.read_fpr_bits(rt);
+            let v2 = regs.read_fpr_bits(rt2);
+            if single {
+                mem.write_u32(address, v1 as u32)?;
+                mem.write_u32(address + pair_size, v2 as u32)?;
+            } else {
+                mem.write_u64(address, v1)?;
+                mem.write_u64(address + pair_size, v2)?;
             }
         }
     }

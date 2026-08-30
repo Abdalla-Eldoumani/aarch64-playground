@@ -116,11 +116,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   LDRSH: { summary: "Load halfword, sign-extend to Wt or Xt.", cExample: "Rd = *(short*)(Rn + off);" },
   LDRSW: { summary: "Load word, sign-extend to Xt.", cExample: "Rd = *(int*)(Rn + off);" },
   LDP: {
-    summary: "Load pair: `LDP Xt1, Xt2, [Xn, #imm]`.",
-    details: ["Offset is scaled by register size (8 for X, 4 for W)."],
+    summary: "Load pair: `LDP Xt1, Xt2, [Xn, #imm]`, or the FP file with D/S registers.",
+    details: ["Offset is scaled by register size (8 for X and D, 4 for W and S)."],
     cExample: "Rt1 = *(long*)(Rn + off); Rt2 = *(long*)(Rn + off + 8);",
   },
-  STP: { summary: "Store pair; mirrors LDP.", cExample: "*(long*)(Rn + off) = Rt1; *(long*)(Rn + off + 8) = Rt2;" },
+  STP: { summary: "Store pair; mirrors LDP (D/S pairs reach the FP file).", cExample: "*(long*)(Rn + off) = Rt1; *(long*)(Rn + off + 8) = Rt2;" },
   ADR: {
     summary: "Pc-relative byte address of a label into Xd.",
     example: "adr x0, label",

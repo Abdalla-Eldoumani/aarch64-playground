@@ -2054,6 +2054,18 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     if ops.len() < 3 {
         return asm_err(ln, "LDP/STP requires at least 3 operands");
     }
+    // An FP first operand (d8, s0) routes the pair through the SIMD&FP
+    // class, the same sniff encode_ldst does for single registers. The
+    // digit check keeps `sp` on the general path.
+    let first = ops[0].trim();
+    if let Some(c) = first.chars().next() {
+        if matches!(c.to_ascii_uppercase(), 'D' | 'S')
+            && first.len() >= 2
+            && first[1..].chars().all(|d| d.is_ascii_digit())
+        {
+            return encode_ldst_pair_fp(ops, load, ln);
+        }
+    }
     let (rt, sf) = parse_register(ops[0], ln)?;
     let (rt2, sf2) = parse_register(ops[1], ln)?;
     // GAS rejects a mixed-width pair; accepting one took the width (and
@@ -2112,6 +2124,54 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     };
 
     Ok((opc << 30) | (0b101 << 27) | (0 << 26) | (mode_bits << 23)
+        | ((load as u32) << 22) | (imm7_enc << 15)
+        | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
+}
+
+/// LDP/STP of the FP file: V=1, opc 00 for S pairs (scale 4) or 01 for D
+/// pairs (scale 8). Same addressing modes and imm7 range as the general
+/// form; a callee-saved `stp d8, d9, [sp, -16]!` prologue is correct
+/// AAPCS64 and lands here.
+fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    let (rt, wt) = parse_fp_register(ops[0], ln)?;
+    let (rt2, wt2) = parse_fp_register(ops[1], ln)?;
+    let width = require_same_fp_width("ldp/stp", &[wt, wt2], ln)?;
+
+    let addr_str: String = ops[2..].join(",");
+    let am = parse_addressing_mode(addr_str.trim(), ln)?;
+    let (rn, offset_val, mode) = match am {
+        AddressingMode::Immediate { rn, offset, mode } => (rn, offset.unwrap_or(0), mode),
+        AddressingMode::RegOffset { .. } => {
+            return asm_err(ln, "LDP/STP does not accept a register offset");
+        }
+    };
+
+    let scale: i64 = if width == 'D' { 8 } else { 4 };
+    if offset_val % scale != 0 {
+        return asm_err(ln, "pair offset must be aligned to register size");
+    }
+    let quotient = offset_val / scale;
+    if !(-64..=63).contains(&quotient) {
+        return asm_err(
+            ln,
+            &format!(
+                "pair offset {offset_val} is out of range: stp/ldp reaches [{}, {}] \
+                 for this register width",
+                -64 * scale,
+                63 * scale
+            ),
+        );
+    }
+    let imm7_enc = (quotient as u32) & 0x7F;
+
+    let opc: u32 = if width == 'D' { 0b01 } else { 0b00 };
+    let mode_bits: u32 = match mode {
+        IndexMode::PostIndex => 0b01,
+        IndexMode::Unsigned => 0b10,
+        IndexMode::PreIndex => 0b11,
+    };
+
+    Ok((opc << 30) | (0b101 << 27) | (1 << 26) | (mode_bits << 23)
         | ((load as u32) << 22) | (imm7_enc << 15)
         | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
 }
@@ -2609,6 +2669,75 @@ mod tests {
         assert!(msg.contains("AL"), "was: {msg}");
         // The raw CSINC form keeps taking AL, exactly as GAS does.
         encode_line("csinc x0, xzr, xzr, al", 0, &labels, 3).unwrap();
+    }
+
+    #[test]
+    fn fp_pairs_encode_as_the_gas_words_and_round_trip() {
+        use crate::decoder::{decode, Instruction, LdStPairOp};
+        let labels = HashMap::new();
+        // The canonical callee-saved prologue word, byte-matched to GAS.
+        let word = encode_line("stp d8, d9, [sp, -16]!", 0, &labels, 1).unwrap();
+        assert_eq!(word, 0x6DBF_27E8);
+        match decode(word).unwrap() {
+            Instruction::FpLdStPair { op, single, rt, rt2, rn, imm7, .. } => {
+                assert_eq!(op, LdStPairOp::Stp);
+                assert!(!single);
+                assert_eq!((rt, rt2, rn, imm7), (8, 9, 31, -16));
+            }
+            other => panic!("decoded to {other:?} (the V=1 pair once ran as a GP pair)"),
+        }
+        for src in [
+            "ldp d8, d9, [sp], 16",
+            "stp s0, s1, [sp, 8]",
+            "ldp s2, s3, [x0]",
+            "stp d0, d1, [x1, 32]",
+        ] {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert!(
+                matches!(decode(word).unwrap(), Instruction::FpLdStPair { .. }),
+                "{src}"
+            );
+        }
+    }
+
+    #[test]
+    fn fp_pairs_reject_mixed_widths_and_q_pairs_stay_unknown() {
+        use crate::decoder::decode;
+        let labels = HashMap::new();
+        let err = encode_line("stp d0, s1, [sp, -16]!", 0, &labels, 1)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("all S or all D"), "{err}");
+        // A Q-register pair word (opc=10, V=1) stays undecoded rather than
+        // mis-running.
+        assert!(decode(0xAD00_07E0).is_err(), "q pair must not decode");
+    }
+
+    #[test]
+    fn fp_pair_prologue_saves_and_restores_callee_saved_doubles() {
+        use crate::cpu::Cpu;
+        let source = r#"
+            MOV X0, #0x4045
+            LSL X0, X0, #48
+            FMOV D8, X0
+            MOV X1, #0x4050
+            LSL X1, X1, #48
+            FMOV D9, X1
+            STP D8, D9, [SP, #-16]!
+            FMOV D8, XZR
+            FMOV D9, XZR
+            LDP D8, D9, [SP], #16
+            FMOV X2, D8
+            FMOV X3, D9
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(30).unwrap();
+        assert_eq!(cpu.regs.read_gpr(2, true), 0x4045u64 << 48, "d8 restored");
+        assert_eq!(cpu.regs.read_gpr(3, true), 0x4050u64 << 48, "d9 restored");
+        assert_eq!(cpu.regs.read_sp(), crate::cpu::STACK_BASE, "sp balanced");
     }
 
     #[test]
