@@ -130,14 +130,19 @@ pub fn memcmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let b_ptr = ctx.regs.read_gpr(1, true);
     let n = ctx.regs.read_gpr(2, true);
     let mut result = 0i32;
+    let mut compared = 0u64;
     for i in 0..n {
         let a = ctx.mem.read_u8(a_ptr.wrapping_add(i))?;
         let b = ctx.mem.read_u8(b_ptr.wrapping_add(i))?;
+        compared = i + 1;
         if a != b {
             result = a as i32 - b as i32;
             break;
         }
     }
+    // The walk is priced like a write of the same size: `n` is
+    // guest-chosen and the whole mapped space is reachable.
+    ctx.mem.note_bulk_read(compared * 2);
     write_int(ctx, result);
     Ok(HostOutcome::Continue)
 }
@@ -155,9 +160,11 @@ pub fn strncmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let b_ptr = ctx.regs.read_gpr(1, true);
     let n = ctx.regs.read_gpr(2, true);
     let mut result = 0i32;
+    let mut compared = 0u64;
     for i in 0..n {
         let a = ctx.mem.read_u8(a_ptr.wrapping_add(i))?;
         let b = ctx.mem.read_u8(b_ptr.wrapping_add(i))?;
+        compared = i + 1;
         if a != b {
             result = a as i32 - b as i32;
             break;
@@ -168,6 +175,8 @@ pub fn strncmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             break;
         }
     }
+    // Priced like memcmp: the length is guest-chosen.
+    ctx.mem.note_bulk_read(compared * 2);
     write_int(ctx, result);
     Ok(HostOutcome::Continue)
 }

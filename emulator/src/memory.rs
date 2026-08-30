@@ -111,6 +111,15 @@ impl Memory {
         self.written
     }
 
+    /// Charge bulk READ work against the same counter the write path
+    /// feeds, without touching the dirty log (nothing changed for the
+    /// UI to tint). memcmp/strncmp walk a guest-chosen length over
+    /// mapped memory, and unpriced reads would let one call do
+    /// megabytes of work per step the runaway budget never saw.
+    pub fn note_bulk_read(&mut self, len: u64) {
+        self.written = self.written.saturating_add(len);
+    }
+
     /// Record a write for the UI's changed-byte tint and the bulk-work
     /// counter. Sequential writes extend the previous range instead of
     /// appending, which is what keeps a buffer-filling loop from
