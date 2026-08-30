@@ -20,3 +20,4 @@ emulator/tests/c-corpus/*.out -text
 emulator/tests/c-corpus/*.code text eol=lf
 emulator/tests/c-corpus/*.c    text eol=lf
 emulator/tests/c-corpus/*.flags text eol=lf
+emulator/tests/addressing-freeze.txt text eol=lf
