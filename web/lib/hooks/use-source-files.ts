@@ -26,7 +26,7 @@ function readStore(key: string): SourceFile[] {
       return parsed as SourceFile[];
     }
   } catch {
-    // ignore
+    // malformed or absent localStorage payload; fall through to the empty list.
   }
   return [];
 }
