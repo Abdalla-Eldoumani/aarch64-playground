@@ -2023,13 +2023,21 @@ fn parse_reg_offset(src: &str, parts: &[Seg], ln: usize) -> Result<AddressingMod
     // base, 1 the index register, 2 the optional extend/shift.
     let (rn, _) = parse_register(parts[0].text(src), ln)?;
     let (rm, rm_is_x) = parse_register(parts[1].text(src), ln)?;
-    // No explicit extend / shift: default LSL for Xm, UXTW for Wm.
+    // No explicit extend / shift: LSL for Xm. A bare W index is a GAS
+    // error (an extend must say how the 32 bits widen), and accepting it
+    // here with an implicit UXTW assembled programs the course servers
+    // reject.
     if parts.len() == 2 {
-        let option = if rm_is_x { 0b011 } else { 0b010 };
+        if !rm_is_x {
+            return asm_err(
+                ln,
+                "a W index register needs an extend keyword: write [Xn, Wm, uxtw] or [Xn, Wm, sxtw]",
+            );
+        }
         return Ok(AddressingMode::RegOffset {
             rn,
             rm,
-            option,
+            option: 0b011,
             shift_amount: None,
         });
     }
@@ -2129,15 +2137,15 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
     };
     let (inner_lo, inner_hi) = (toks[0].end, toks[close].start);
 
-    // `[Xn], #imm` -> post-index. Anything at all after the bracket
-    // group makes it one; the comma is optional.
+    // `[Xn], #imm` -> post-index. GAS requires the comma, and so do we:
+    // `[x0] #8` used to slide through as post-index and assemble a
+    // spelling the servers reject.
     if let Some(first_after) = toks.get(close + 1) {
         let (rn, _) = parse_register(s[inner_lo..inner_hi].trim(), ln)?;
-        let from = if first_after.kind == TokKind::Comma {
-            first_after.end
-        } else {
-            toks[close].end
-        };
+        if first_after.kind != TokKind::Comma {
+            return asm_err(ln, "post-index needs a comma: [Xn], #imm");
+        }
+        let from = first_after.end;
         let offset = parse_immediate(s[from..].trim(), ln)?;
         return Ok(AddressingMode::Immediate {
             rn,
@@ -2160,6 +2168,14 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
     }
     let (rn, _) = parse_register(parts[0].text(s), ln)?;
     if parts.len() > 1 {
+        // The old splitn shape silently DROPPED anything past the second
+        // comma, so `[x0, #8, #9]` encoded as `[x0, #8]` with no message.
+        if parts.len() > 2 {
+            return asm_err(
+                ln,
+                "unexpected third operand in the address -- the immediate form is [Xn, #imm]",
+            );
+        }
         let offset = parse_immediate(parts[1].text(s), ln)?;
         return Ok(AddressingMode::Immediate {
             rn,
