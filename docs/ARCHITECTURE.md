@@ -116,6 +116,42 @@ SUBS/ADDS/ANDS against XZR, NEG/MVN to SUB/ORN against XZR, CSET to
 CSINC, LSL/LSR/ASR immediates to UBFM/SBFM); CBZ/CBNZ and TBZ/TBNZ are
 first-class. This keeps the executor to canonical encodings only.
 
+The dispatch itself stays a match on the mnemonic, roughly ninety arms
+long, on purpose. Each arm carries the constants that mnemonic needs
+(opcode bits, an operand-count rule, the flag-setting variant), and a
+match whose arms carry constants reads better than a table of function
+pointers: the encoder for any instruction is one grep away, and the
+compiler still checks it.
+
+## Shared fact tables
+
+A handful of facts used to be spelled out separately in the assembler, the
+decoder, the parser, and the linter, which is how the two copies of a fact
+drift apart. Each now has one home, and a test walks the table so a row
+added in one place cannot be missed in another:
+
+- Condition codes, `registers.rs`: the primary spelling, its aliases, and
+  the 4-bit encoding, read by condition parsing, conditional-branch
+  dispatch, and the branch recognizer.
+- Register aliases, `registers.rs`: `sp`, `xzr`, `wzr`, `fp`, `lr` with the
+  register number and width each resolves to, read by the assembler's
+  register parser and its addressing-mode recognizer, the pipeline's
+  operand classifier, and the linter's reserved-name check.
+- Load/store extend keywords, `decoder.rs`: the keyword, its 3-bit option
+  field, and whether the index register must be an X. The assembler encodes
+  from it and the decoder decodes back through it. The extended-register
+  ADD/SUB keywords stay a separate table, because that form deliberately
+  skips the width check to match GAS.
+- Directive names, `parser.rs`: every spelling the parser recognizes,
+  aliases included. Hosted-mode detection now derives its directive set
+  from it rather than keeping a second list.
+- Access sizes, `decoder.rs`: the 2-bit size field, the access width in
+  bytes, and the offset scale that follows from it.
+- Floating-point opcode rows, `decoder.rs`: the mnemonic, the opcode field,
+  and the operation, for the two-source and one-source families. FMOV and
+  FCVT keep their own encoders, since their opcodes are entangled with the
+  operand width.
+
 ## Decoder
 
 ARMv8 instructions are fixed 32-bit. The decoder is a cascade of
