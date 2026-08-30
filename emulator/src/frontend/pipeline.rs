@@ -1175,10 +1175,26 @@ fn lower_operands(
 
 fn is_branch_mnemonic(mn: &str) -> bool {
     let lower = mn.to_ascii_lowercase();
-    // Unconditional and link branches, conditional branches (b.cond), CBZ/CBNZ
-    // and TBZ/TBNZ families; all take a label in their last operand slot.
+    // Unconditional and link branches, conditional branches (both the
+    // `b.cond` and dotless `bcond` spellings), CBZ/CBNZ and TBZ/TBNZ
+    // families; all take a label in their last operand slot. Missing the
+    // dotless spellings here once rewrote `bne loop` to a section offset
+    // that encode_bcond then took as a pc-relative displacement, so the
+    // branch landed at pc + (loop - .text base) with no error.
     matches!(lower.as_str(), "b" | "bl" | "cbz" | "cbnz" | "tbz" | "tbnz")
         || lower.starts_with("b.")
+        || is_dotless_bcond(&lower)
+}
+
+/// `b<cc>` for any condition spelling in the shared table. The whole tail
+/// must be a condition, which keeps `bl`, `blr` and `bic` out.
+fn is_dotless_bcond(lower: &str) -> bool {
+    lower.strip_prefix('b').is_some_and(|tail| {
+        crate::registers::CONDITIONS.iter().any(|(primary, aliases, _)| {
+            primary.eq_ignore_ascii_case(tail)
+                || aliases.iter().any(|a| a.eq_ignore_ascii_case(tail))
+        })
+    })
 }
 
 fn rewrite_operand_list(
@@ -1513,10 +1529,37 @@ fn strip_leading_labels(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        redirect_bl_to_trampoline_tokens, stringify_tokens, strip_leading_labels,
+        is_branch_mnemonic, redirect_bl_to_trampoline_tokens, stringify_tokens,
+        strip_leading_labels,
     };
     use crate::frontend::lexer::{lex, TokenKind};
     use std::collections::HashMap;
+
+    #[test]
+    fn every_label_taking_mnemonic_is_recognised_as_a_branch() {
+        // A conditional-branch spelling the recognizer misses gets its label
+        // rewritten to a section offset, which encodes as a wrong-target
+        // branch with no error; this walks the whole set so the gap class
+        // cannot reopen.
+        for mn in ["b", "bl", "cbz", "cbnz", "tbz", "tbnz"] {
+            assert!(is_branch_mnemonic(mn), "{mn}");
+        }
+        for (primary, aliases, _) in crate::registers::CONDITIONS {
+            for cc in std::iter::once(primary).chain(aliases.iter()) {
+                for spelling in [
+                    format!("b.{cc}"),
+                    format!("b{cc}"),
+                    format!("B.{cc}"),
+                    format!("B{cc}"),
+                ] {
+                    assert!(is_branch_mnemonic(&spelling), "{spelling}");
+                }
+            }
+        }
+        for mn in ["blr", "br", "bic", "bfi", "bfxil", "add", "ldr"] {
+            assert!(!is_branch_mnemonic(mn), "{mn} is not a label-taking branch");
+        }
+    }
 
     #[test]
     fn strip_leading_labels_keeps_literal_semicolons() {
