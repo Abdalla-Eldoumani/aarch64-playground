@@ -1066,6 +1066,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14159 is the corpus value, not a stand-in for PI
     fn percent_e_matches_glibc_shape() {
         let cases: &[(&str, f64, &str)] = &[
             ("%e", 3.14159, "3.141590e+00"),
@@ -1083,6 +1084,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14159 is the corpus value, not a stand-in for PI
     fn percent_g_picks_the_form_and_strips_zeros_like_glibc() {
         let cases: &[(&str, f64, &str)] = &[
             ("%g", 3.14159, "3.14159"),
