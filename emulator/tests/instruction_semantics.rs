@@ -126,38 +126,11 @@ main:
 }
 
 // ---------------------------------------------------------------------------
-// conditional branches: the fall-through direction
-// ---------------------------------------------------------------------------
-
-/// Build a program that compares w1 against w2, takes `b.<cond>` to set
-/// w0 = 1, and falls through to w0 = 0 otherwise (the same shape the
-/// acceptance matrix uses for the taken direction).
-fn bcond_taken(setup: &str, cond: &str) -> bool {
-    let src = format!(
-        ".text\n.global main\nmain:\n{setup}\n    cmp w1, w2\n    b.{cond} taken\n    \
-         mov w0, 0\n    b done\ntaken:\n    mov w0, 1\ndone:\n    mov x8, 93\n    svc 0\n",
-        setup = setup,
-        cond = cond,
-    );
-    let cpu = run(&src);
-    cpu.exit_code() == Some(1)
-}
-
-#[test]
-fn conditional_branches_fall_through_when_false() {
-    assert!(!bcond_taken("    mov w1, 5\n    mov w2, 3", "eq"), "eq falls through");
-    assert!(!bcond_taken("    mov w1, 5\n    mov w2, 5", "ne"), "ne falls through");
-    assert!(!bcond_taken("    mov w1, 3\n    mov w2, 5", "hs"), "hs falls through");
-    assert!(!bcond_taken("    mov w1, 5\n    mov w2, 3", "lo"), "lo falls through");
-    assert!(!bcond_taken("    mov w1, 5\n    mov w2, 5", "hi"), "hi falls through on equality");
-    assert!(!bcond_taken("    mov w1, 3\n    mov w2, 5", "gt"), "gt falls through");
-    assert!(!bcond_taken("    mov w1, 5\n    mov w2, 3", "le"), "le falls through");
-    assert!(!bcond_taken("    mov w1, 3\n    mov w2, 5", "ge"), "ge falls through");
-}
-
-// ---------------------------------------------------------------------------
 // division by zero
 // ---------------------------------------------------------------------------
+// (The conditional-branch fall-through direction lives in acceptance.rs's
+// every_conditional_branch, which walks the shared condition table in both
+// directions under both spellings.)
 
 #[test]
 fn division_by_zero_produces_zero_not_a_fault() {
