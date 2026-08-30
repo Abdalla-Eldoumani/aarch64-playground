@@ -62,6 +62,10 @@ obvious place and a newcomer can navigate by directory name alone:
 - Component files are `PascalCase.tsx`, matching the exported component --
   the React and Next.js community standard, so a file name is the symbol
   you import.
+- A component's `Props` interface is exported alongside it even when
+  nothing imports it yet: the export is the component's public shape, and
+  keeping the convention uniform beats auditing which ones happen to have
+  external consumers today.
 - Everything else (lib modules, scripts, docs) is lowercase kebab-case
   (`use-emulator.ts`, `verify-corpus.js`): dashes are the least ambiguous
   word separator in URLs and shells (no escaping, no case-sensitivity
