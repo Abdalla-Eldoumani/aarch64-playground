@@ -23,6 +23,46 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
+/// sprintf(buf, fmt, ...) -> the characters written, not counting the
+/// terminator. x0 is the buffer and x1 the format, so the varargs start
+/// at x2 -- the same shift fprintf makes for its stream. The buffer's
+/// size is the caller's problem, exactly as in C.
+pub fn sprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let buf = ctx.regs.read_gpr(0, true);
+    let fmt_ptr = ctx.regs.read_gpr(1, true);
+    let out = format_into(ctx, fmt_ptr, 2, "sprintf's format string")?;
+    write_c_string(ctx, buf, &out)?;
+    ctx.regs.write_gpr(0, true, out.len() as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// snprintf(buf, size, fmt, ...) -> the length the formatted string
+/// WOULD have had. That return value is the whole point of the call: it
+/// does not shrink to the truncated length, so `if (n >= size)` detects
+/// the overflow. At most `size - 1` characters plus a terminator are
+/// stored, and a size of 0 stores nothing at all (the buffer may be
+/// NULL then, so it must not be touched).
+pub fn snprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let buf = ctx.regs.read_gpr(0, true);
+    let size = ctx.regs.read_gpr(1, true);
+    let fmt_ptr = ctx.regs.read_gpr(2, true);
+    let out = format_into(ctx, fmt_ptr, 3, "snprintf's format string")?;
+    if size > 0 {
+        let keep = (out.len() as u64).min(size - 1) as usize;
+        write_c_string(ctx, buf, &out[..keep])?;
+    }
+    ctx.regs.write_gpr(0, true, out.len() as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// Store bytes plus a terminator at a guest address.
+fn write_c_string(ctx: &mut HostContext<'_>, buf: u64, bytes: &[u8]) -> Result<(), EmuError> {
+    for (i, b) in bytes.iter().enumerate() {
+        ctx.mem.write_u8(buf.wrapping_add(i as u64), *b)?;
+    }
+    ctx.mem.write_u8(buf.wrapping_add(bytes.len() as u64), 0)
+}
+
 /// The printf engine with the destination left to the caller: read the
 /// format at `fmt_ptr`, walk the varargs starting at GP register
 /// `first_gp` (1 for printf -- x0 is the format; 2 for fprintf -- x0 is
@@ -496,6 +536,7 @@ mod tests {
         let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
+        let mut strtok_save = 0u64;
         let mut ctx = HostContext {
             regs: &mut regs,
             mem: &mut mem,
@@ -509,11 +550,121 @@ mod tests {
             rand_state: &mut rand_state,
             term: &mut term,
             heap: &mut heap,
+            strtok_save: &mut strtok_save,
         };
         printf(&mut ctx)?;
         let written = ctx.regs.read_gpr(0, true) as usize;
         let s = String::from_utf8(stdout).unwrap();
         Ok((s, written))
+    }
+
+    /// Scratch addresses for the buffer-writing stubs: the format string
+    /// at one, the destination at the other.
+    const FMT_ADDR: u64 = 0x0050_0000;
+    const BUF_ADDR: u64 = 0x0060_0000;
+
+    /// Run a stub that formats into guest memory. `setup` places every
+    /// register the call takes (the buffer, the format, any varargs);
+    /// the buffer is pre-filled with a marker byte so a test can see
+    /// exactly how far the stub wrote. Hands back the first `read_back`
+    /// bytes of the buffer and the stub's return value.
+    fn call_into_buffer(
+        stub: crate::hosted::HostFn,
+        fmt: &str,
+        read_back: usize,
+        setup: impl FnOnce(&mut RegisterFile, &mut Memory),
+    ) -> (Vec<u8>, u64) {
+        let mut regs = RegisterFile::new();
+        let mut mem = Memory::new();
+        mem.map_page(FMT_ADDR);
+        mem.map_page(BUF_ADDR);
+        for (i, b) in fmt.as_bytes().iter().enumerate() {
+            mem.write_u8(FMT_ADDR + i as u64, *b).unwrap();
+        }
+        mem.write_u8(FMT_ADDR + fmt.len() as u64, 0).unwrap();
+        for i in 0..64u64 {
+            mem.write_u8(BUF_ADDR + i, 0xEE).unwrap();
+        }
+        setup(&mut regs, &mut mem);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut stdin = Vec::new();
+        let mut vfs: HashMap<String, Vec<u8>> = HashMap::new();
+        let mut open_files: HashMap<u32, OpenFile> = HashMap::new();
+        let mut next_fd = 3u32;
+        let mut rand_state = crate::hosted::libc::RandState::default();
+        let mut term = crate::cpu::TermState::default();
+        let mut heap = crate::hosted::heap::HeapState::default();
+        let mut strtok_save = 0u64;
+        let mut ctx = HostContext {
+            regs: &mut regs,
+            mem: &mut mem,
+            stdout: &mut stdout,
+            stderr: &mut stderr,
+            stdin: &mut stdin,
+            stdin_closed: false,
+            vfs: &mut vfs,
+            open_files: &mut open_files,
+            next_fd: &mut next_fd,
+            rand_state: &mut rand_state,
+            term: &mut term,
+            heap: &mut heap,
+            strtok_save: &mut strtok_save,
+        };
+        stub(&mut ctx).unwrap();
+        let returned = ctx.regs.read_gpr(0, true);
+        let bytes = (0..read_back as u64)
+            .map(|i| mem.read_u8(BUF_ADDR + i).unwrap())
+            .collect();
+        (bytes, returned)
+    }
+
+    #[test]
+    fn sprintf_terminates_the_buffer_and_returns_the_length() {
+        // x0 is the buffer and x1 the format, so the first vararg is x2.
+        let (bytes, n) = call_into_buffer(sprintf, "%s=%d", 8, |regs, mem| {
+            let text = 0x0050_0100u64;
+            for (i, b) in b"hp".iter().enumerate() {
+                mem.write_u8(text + i as u64, *b).unwrap();
+            }
+            mem.write_u8(text + 2, 0).unwrap();
+            regs.write_gpr(0, true, BUF_ADDR);
+            regs.write_gpr(1, true, FMT_ADDR);
+            regs.write_gpr(2, true, text);
+            regs.write_gpr(3, true, 42);
+        });
+        assert_eq!(n, 5);
+        assert_eq!(&bytes[..6], b"hp=42\0");
+        // Nothing past the terminator was touched.
+        assert_eq!(bytes[6], 0xEE);
+    }
+
+    #[test]
+    fn snprintf_truncates_but_returns_the_full_length() {
+        // x0 buffer, x1 size, x2 format: the varargs start at x3.
+        let call = |size: u64| {
+            call_into_buffer(snprintf, "%d-%d", 10, move |regs, _| {
+                regs.write_gpr(0, true, BUF_ADDR);
+                regs.write_gpr(1, true, size);
+                regs.write_gpr(2, true, FMT_ADDR);
+                regs.write_gpr(3, true, 12);
+                regs.write_gpr(4, true, 345);
+            })
+        };
+        // Room to spare: the whole string plus its terminator.
+        let (bytes, n) = call(16);
+        assert_eq!(n, 6);
+        assert_eq!(&bytes[..7], b"12-345\0");
+        // Truncated: size - 1 characters, still terminated, and the
+        // return value is the length it WOULD have needed.
+        let (bytes, n) = call(4);
+        assert_eq!(n, 6, "the return value must not shrink to the truncation");
+        assert_eq!(&bytes[..4], b"12-\0");
+        assert_eq!(bytes[4], 0xEE);
+        // Size 0 writes nothing at all -- not even a terminator.
+        let (bytes, n) = call(0);
+        assert_eq!(n, 6);
+        assert_eq!(bytes[0], 0xEE);
     }
 
     #[test]

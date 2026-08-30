@@ -298,6 +298,11 @@ pub struct Cpu {
     /// malloc/free allocator state, snapshotted with the rest of the
     /// machine so step-back restores the heap exactly.
     pub heap: crate::hosted::heap::HeapState,
+    /// strtok's saved cursor, the static glibc hides inside libc.
+    /// Snapshotted for the same reason the heap is: a stepped-back
+    /// tokenizing loop has to hand out the same token again. Zero is
+    /// glibc's NULL start, where `strtok(NULL, ...)` faults.
+    pub strtok_save: u64,
     /// Host-requested pause of the step-back snapshot ring. The web sets
     /// it for live terminal sessions, where per-step clones cost far more
     /// than the steps and stepping back mid-session has no meaning.
@@ -385,6 +390,7 @@ impl Cpu {
             rand_state: crate::hosted::libc::RandState::default(),
             term: TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
+            strtok_save: 0,
             snapshots_paused: false,
             pending_sleep_ns: None,
             refund_steps_total: 0,
@@ -410,25 +416,51 @@ impl Cpu {
         cpu.host.register("puts", crate::hosted::libc::puts);
         cpu.host.register("putchar", crate::hosted::libc::putchar);
         cpu.host.register("getchar", crate::hosted::libc::getchar);
+        cpu.host.register("sprintf", crate::hosted::printf::sprintf);
+        cpu.host.register("snprintf", crate::hosted::printf::snprintf);
         cpu.host.register("strlen", crate::hosted::libc::strlen);
         cpu.host.register("strcmp", crate::hosted::libc::strcmp);
+        cpu.host.register("strncmp", crate::hosted::libc::strncmp);
         cpu.host.register("strcpy", crate::hosted::libc::strcpy);
+        cpu.host.register("strncpy", crate::hosted::libc::strncpy);
+        cpu.host.register("strcat", crate::hosted::libc::strcat);
+        cpu.host.register("strchr", crate::hosted::libc::strchr);
+        cpu.host.register("strstr", crate::hosted::libc::strstr);
+        cpu.host.register("strtok", crate::hosted::libc::strtok);
         cpu.host.register("memset", crate::hosted::libc::memset);
         cpu.host.register("memcpy", crate::hosted::libc::memcpy);
+        cpu.host.register("memmove", crate::hosted::libc::memmove);
+        cpu.host.register("memcmp", crate::hosted::libc::memcmp);
         cpu.host.register("exit", crate::hosted::libc::exit);
         cpu.host.register("atof", crate::hosted::libc::atof);
         cpu.host.register("atoi", crate::hosted::libc::atoi);
+        cpu.host.register("strtol", crate::hosted::libc::strtol);
+        cpu.host.register("abs", crate::hosted::libc::abs);
+        cpu.host.register("labs", crate::hosted::libc::labs);
         cpu.host.register("rand", crate::hosted::libc::rand);
         cpu.host.register("srand", crate::hosted::libc::srand);
         cpu.host.register("time", crate::hosted::libc::time);
         cpu.host.register("malloc", crate::hosted::heap::malloc);
+        cpu.host.register("calloc", crate::hosted::heap::calloc);
+        cpu.host.register("realloc", crate::hosted::heap::realloc);
         cpu.host.register("free", crate::hosted::heap::free);
         cpu.host.register("usleep", crate::hosted::libc::usleep);
         cpu.host.register("fflush", crate::hosted::libc::fflush);
+        // The C-locale character classes, both ways a program reaches
+        // them: the functions, and the table __ctype_b_loc points into.
+        cpu.host.register("isdigit", crate::hosted::ctype::isdigit);
+        cpu.host.register("isalpha", crate::hosted::ctype::isalpha);
+        cpu.host.register("isspace", crate::hosted::ctype::isspace);
+        cpu.host.register("toupper", crate::hosted::ctype::toupper);
+        cpu.host.register("tolower", crate::hosted::ctype::tolower);
+        cpu.host
+            .register("__ctype_b_loc", crate::hosted::ctype::ctype_b_loc);
         // FILE*-level stdio over the VFS; the handle scheme lives in
         // hosted/stdio.rs.
         cpu.host.register("fopen", crate::hosted::stdio::fopen);
         cpu.host.register("fprintf", crate::hosted::stdio::fprintf);
+        cpu.host.register("fgets", crate::hosted::stdio::fgets);
+        cpu.host.register("fputs", crate::hosted::stdio::fputs);
         cpu.host.register("fclose", crate::hosted::stdio::fclose);
         // The libm subset: double in d0 (and d1 for the two-argument
         // forms), double out in d0.
@@ -528,6 +560,10 @@ impl Cpu {
         self.abort_message = None;
         self.stdin_closed = false;
         self.term = TermState::default();
+        // A fresh program tokenizes from scratch; a cursor into the last
+        // program's memory would hand its first strtok(NULL) a stale
+        // address that now means something else.
+        self.strtok_save = 0;
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
         self.refund_output_total = 0;
@@ -848,6 +884,7 @@ impl Cpu {
                 rand_state: self.rand_state,
                 term: self.term,
                 heap: self.heap.clone(),
+                strtok_save: self.strtok_save,
                 stdout_seen: self.stdout_seen,
                 stderr_seen: self.stderr_seen,
             });
@@ -1194,6 +1231,7 @@ impl Cpu {
             rand_state: &mut self.rand_state,
             term: &mut self.term,
             heap: &mut self.heap,
+            strtok_save: &mut self.strtok_save,
         };
         let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
         match outcome {
@@ -1261,6 +1299,7 @@ impl Cpu {
             rand_state: &mut self.rand_state,
             term: &mut self.term,
             heap: &mut self.heap,
+            strtok_save: &mut self.strtok_save,
         };
         let outcome = table
             .dispatch(pc, &mut ctx)
@@ -1440,6 +1479,7 @@ impl Cpu {
         self.rand_state = crate::hosted::libc::RandState::default();
         self.term = TermState::default();
         self.heap = crate::hosted::heap::HeapState::default();
+        self.strtok_save = 0;
         self.snapshots_paused = false;
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
@@ -1487,6 +1527,7 @@ impl Cpu {
             rand_state: self.rand_state,
             term: self.term,
             heap: self.heap.clone(),
+            strtok_save: self.strtok_save,
             stdout_seen: self.stdout_seen,
             stderr_seen: self.stderr_seen,
         };
@@ -1513,6 +1554,7 @@ impl Cpu {
         self.rand_state = snap.rand_state;
         self.term = snap.term;
         self.heap = snap.heap;
+        self.strtok_save = snap.strtok_save;
         // Display counters follow the machine; the output-flood budget
         // deliberately does not, for the same reason the step budget
         // survives a restore.
@@ -1576,6 +1618,7 @@ impl Cpu {
         self.rand_state = snap.rand_state;
         self.term = snap.term;
         self.heap = snap.heap;
+        self.strtok_save = snap.strtok_save;
         // What the frame printed is now un-printed as far as the display
         // is concerned, so a host can trim its transcript back. The
         // output-flood budget below is untouched on purpose.
@@ -2111,6 +2154,27 @@ mod tests {
         assert!(cpu.vfs.is_empty());
         assert!(cpu.open_files.is_empty());
         assert_eq!(cpu.next_fd, 3);
+    }
+
+    #[test]
+    fn the_strtok_cursor_rides_in_snapshots_and_clears_on_reset() {
+        // strtok's cursor is the one piece of libc state a program can
+        // observe without holding it: if step-back left it where the
+        // undone call put it, replaying the call would hand out the
+        // NEXT token instead of the same one.
+        let mut cpu = Cpu::new();
+        cpu.load_program(&[encode_movz(0, 1, 0), encode_movz(0, 2, 0)]);
+        cpu.strtok_save = 0x0050_0004;
+        cpu.save_state("mid-parse");
+        cpu.step().unwrap();
+        cpu.strtok_save = 0x0050_0009;
+        cpu.step_back();
+        assert_eq!(cpu.strtok_save, 0x0050_0004);
+        cpu.strtok_save = 0x0050_000E;
+        assert!(cpu.load_state("mid-parse"));
+        assert_eq!(cpu.strtok_save, 0x0050_0004);
+        cpu.reset();
+        assert_eq!(cpu.strtok_save, 0);
     }
 
     #[test]

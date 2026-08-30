@@ -12,6 +12,7 @@
 use crate::cpu::{HOST_STUB_BASE, HOST_STUB_COUNT, HOST_STUB_STRIDE};
 use crate::errors::EmuError;
 
+pub mod ctype;
 pub mod heap;
 pub mod libc;
 pub mod math;
@@ -78,6 +79,12 @@ pub struct HostContext<'a> {
     /// malloc/free allocator state. Lives on the `Cpu` and in every
     /// snapshot, like `rand_state`.
     pub heap: &'a mut crate::hosted::heap::HeapState,
+    /// strtok's saved cursor -- glibc keeps it in a static inside libc,
+    /// and it is the one piece of libc state a program can observe
+    /// without passing it in. On the `Cpu` and in every snapshot, so
+    /// stepping back into the middle of a tokenizing loop resumes at the
+    /// token it was really on. Zero is glibc's NULL start.
+    pub strtok_save: &'a mut u64,
 }
 
 /// AAPCS64 vararg cursor, shared by printf and scanf: both walk the same
@@ -224,6 +231,7 @@ mod tests {
         rand_state: &'a mut crate::hosted::libc::RandState,
         term: &'a mut crate::cpu::TermState,
         heap: &'a mut crate::hosted::heap::HeapState,
+        strtok_save: &'a mut u64,
     ) -> HostContext<'a> {
         HostContext {
             regs,
@@ -238,6 +246,7 @@ mod tests {
             rand_state,
             term,
             heap,
+            strtok_save,
         }
     }
 
@@ -284,9 +293,10 @@ mod tests {
         let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
+        let mut strtok_save = 0u64;
         let mut ctx = fresh_ctx(
             &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
-            &mut rand_state, &mut term, &mut heap,
+            &mut rand_state, &mut term, &mut heap, &mut strtok_save,
         );
         let outcome = t.dispatch(addr, &mut ctx).unwrap().unwrap();
         assert_eq!(outcome, HostOutcome::Continue);
@@ -307,9 +317,10 @@ mod tests {
         let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
+        let mut strtok_save = 0u64;
         let mut ctx = fresh_ctx(
             &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
-            &mut rand_state, &mut term, &mut heap,
+            &mut rand_state, &mut term, &mut heap, &mut strtok_save,
         );
         // Address past the end of the table.
         assert!(t
