@@ -428,6 +428,16 @@ pub enum Instruction {
         fn_: u8,
         single: bool,
     },
+    /// FMOV between the general and FP register files, raw bits either
+    /// direction. `to_fp` is the GP -> FP direction; `sf`/`single` always
+    /// name a legal width pair (w<->s, x<->d), enforced at decode.
+    FpMoveGeneral {
+        to_fp: bool,
+        sf: bool,
+        single: bool,
+        rd: u8,
+        rn: u8,
+    },
     /// FCMP Fn, Fm. Sets NZCV; Fd is unused in the encoding.
     FpCompare {
         fn_: u8,
@@ -828,6 +838,24 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     if bits(instr, 20, 10) == 0b00010_000000 {
         let sf = bit(instr, 31) == 1;
         return Ok(Instruction::FpScvtf { fd: rd, rn, sf, single });
+    }
+
+    // FMOV between the register files: rmode 00, opcode 110 (FP -> GP) or
+    // 111 (GP -> FP), bits 15:10 zero. Only the matched-width pairs are
+    // valid encodings (w<->s when sf=0/ftype=S, x<->d when sf=1/ftype=D).
+    let fmov_field = bits(instr, 20, 10);
+    if fmov_field == 0b00110_000000 || fmov_field == 0b00111_000000 {
+        let sf = bit(instr, 31) == 1;
+        if sf == single {
+            return Err(EmuError::UnknownInstruction(instr));
+        }
+        return Ok(Instruction::FpMoveGeneral {
+            to_fp: fmov_field == 0b00111_000000,
+            sf,
+            single,
+            rd,
+            rn,
+        });
     }
 
     Err(EmuError::UnknownInstruction(instr))

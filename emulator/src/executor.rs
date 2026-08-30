@@ -240,6 +240,20 @@ pub fn execute(
             regs.write_fpr_bits(*fd, v);
             Ok(ExecResult::Advance)
         }
+        Instruction::FpMoveGeneral { to_fp, sf, single, rd, rn } => {
+            // Raw bits either direction; the S forms move the low 32 bits
+            // and (into the FP file) zero the upper half.
+            if *to_fp {
+                let v = regs.read_gpr(*rn, *sf);
+                let v = if *single { v & 0xFFFF_FFFF } else { v };
+                regs.write_fpr_bits(*rd, v);
+            } else {
+                let v = regs.read_fpr_bits(*rn);
+                let v = if *single { v & 0xFFFF_FFFF } else { v };
+                regs.write_gpr(*rd, *sf, v);
+            }
+            Ok(ExecResult::Advance)
+        }
         Instruction::FpUnary { op, fd, fn_, single } => {
             if *single {
                 let v = regs.read_fpr_f32(*fn_);

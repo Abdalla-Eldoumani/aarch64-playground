@@ -1065,11 +1065,12 @@ ret                         // back to the caller: exit code 7`,
   {
     mnemonic: "fmov",
     category: "Floating point",
-    syntax: "fmov dd, dn / fmov sd, sn / fmov dd, #imm",
+    syntax: "fmov dd, dn / fmov dd, xn / fmov xd, dn / fmov dd, #imm",
     example: `fmov    d16, 5.0            // one of the encodable immediates
 fcvtzs  x9, d16             // x9 = 5: the double, made visible`,
     gotchas: [
       "the immediate is 8 bits of float: a power-of-two multiple of 1.0 through 1.9375. constants like 5.0 and 9.0 fit; 0.0 and most decimals do not, so load those from a `.double` in `.data`.",
+      "the between-files forms (`fmov d0, x0`, `fmov x0, d0`, and the s/w pair) copy raw bits with no conversion: `fmov d0, x0` with x0 = 42 is not 42.0. convert with `scvtf`/`fcvtzs`.",
     ],
   },
   {

@@ -127,7 +127,7 @@ Every scalar instruction takes both course views of the register file: the S for
 
 | Mnemonic | Form                              | Notes                                   |
 | -------- | --------------------------------- | --------------------------------------- |
-| `FMOV`   | `FMOV Dd, Dn` / `FMOV Sd, Sn` / `FMOV Dd, #imm` / `FMOV Sd, #imm` | Bit-for-bit copy, or an 8-bit float immediate (`fmov d9, 5.0`, `fmov s1, 0.5`). The immediate must be a small power-of-two multiple of 1.0-1.9375 (so 0.5, 1.0, 2.0, 5.0, 9.0 work; 0.0 and 100.0 do not: load those from a `.double` / `.float`). |
+| `FMOV`   | `FMOV Dd, Dn` / `FMOV Dd, Xn` / `FMOV Xd, Dn` / `FMOV Dd, #imm` (and the S/W forms of each) | Bit-for-bit copy: within the FP file, or between the files (`fmov d0, x0` pairs x with d and w with s; no conversion happens). The immediate form takes an 8-bit float immediate (`fmov d9, 5.0`, `fmov s1, 0.5`): a small power-of-two multiple of 1.0-1.9375, so 0.5, 1.0, 2.0, 5.0, 9.0 work and 0.0 or 100.0 do not (load those from a `.double` / `.float`). |
 | `FADD`   | `FADD Dd, Dn, Dm` / `FADD Sd, Sn, Sm` | The register width picks the precision. |
 | `FSUB`   | `FSUB Dd, Dn, Dm` / `FSUB Sd, Sn, Sm` |                                     |
 | `FMUL`   | `FMUL Dd, Dn, Dm` / `FMUL Sd, Sn, Sm` |                                     |

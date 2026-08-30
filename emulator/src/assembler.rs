@@ -1420,6 +1420,20 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "fmov requires 2 operands");
     }
+    // General destination is the FP -> GP direction: `fmov x0, d0`,
+    // `fmov w0, s0`. Raw bits move; no conversion.
+    if let Ok((rd, sf)) = parse_register(ops[0], ln) {
+        if ops[0].trim().eq_ignore_ascii_case("sp") {
+            return asm_err(ln, "fmov cannot target sp");
+        }
+        let (fn_, wn) = parse_fp_register(ops[1], ln).map_err(|_| {
+            asm_error(
+                ln,
+                &format!("fmov with a general destination takes an FP source, got: {}", ops[1]),
+            )
+        })?;
+        return encode_fmov_general(rd, sf, wn, fn_, false, ln);
+    }
     let (fd, wd) = parse_fp_register(ops[0], ln)?;
 
     // Immediate form: `fmov d9, 9.0` / `fmov s0, 0.5` (course style, `#`
@@ -1455,10 +1469,48 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return Ok(0x1E20_1000 | fp_ftype(wd) | ((imm8 as u32) << 13) | (fd as u32));
     }
 
+    // General source is the GP -> FP direction: `fmov d0, x0`, `fmov s0, w0`.
+    if let Ok((rn, sf)) = parse_register(ops[1], ln) {
+        if ops[1].trim().eq_ignore_ascii_case("sp") {
+            return asm_err(ln, "fmov cannot read sp");
+        }
+        return encode_fmov_general(rn, sf, wd, fd, true, ln);
+    }
+
     let (fn_, wn) = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("fmov", &[wd, wn], ln)?;
     // FMOV Fd, Fn: 0_0_0_11110_ftype_1_00000_010000_Rn_Rd
     Ok(0x1E20_4000 | fp_ftype(width) | ((fn_ as u32) << 5) | (fd as u32))
+}
+
+/// FMOV between the register files, either direction: raw bits, no
+/// conversion. Only the matched-width pairs encode (`w<->s`, `x<->d`);
+/// the layout is sf_0011110_ftype_1_00_opcode_000000_Rn_Rd with opcode
+/// 111 for GP -> FP and 110 for FP -> GP.
+fn encode_fmov_general(
+    gp: u8,
+    gp_is_x: bool,
+    fp_width: char,
+    fp: u8,
+    to_fp: bool,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let widths_match = (gp_is_x && fp_width == 'D') || (!gp_is_x && fp_width == 'S');
+    if !widths_match {
+        return asm_err(
+            ln,
+            "fmov pairs w with s and x with d (use fcvt to change the value's width)",
+        );
+    }
+    let sf_bit = if gp_is_x { 1u32 } else { 0 };
+    let opcode: u32 = if to_fp { 0b111 } else { 0b110 };
+    let (rd, rn) = if to_fp { (fp, gp) } else { (gp, fp) };
+    Ok((sf_bit << 31)
+        | 0x1E20_0000
+        | fp_ftype(fp_width)
+        | (opcode << 16)
+        | ((rn as u32) << 5)
+        | (rd as u32))
 }
 
 /// Encode an FP data-processing 1-source op (`FNEG` / `FABS` / `FSQRT`
@@ -2557,6 +2609,68 @@ mod tests {
         assert!(msg.contains("AL"), "was: {msg}");
         // The raw CSINC form keeps taking AL, exactly as GAS does.
         encode_line("csinc x0, xzr, xzr, al", 0, &labels, 3).unwrap();
+    }
+
+    #[test]
+    fn fmov_general_forms_encode_and_round_trip() {
+        use crate::decoder::{decode, Instruction};
+        let labels = HashMap::new();
+        let cases = [
+            ("fmov s0, w1", 0x1E27_0020, true, false),
+            ("fmov w1, s0", 0x1E26_0001, false, false),
+            ("fmov d2, x3", 0x9E67_0062, true, true),
+            ("fmov x3, d2", 0x9E66_0043, false, true),
+        ];
+        for (src, want, to_fp, is_double) in cases {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert_eq!(word, want, "{src}");
+            match decode(word).unwrap() {
+                Instruction::FpMoveGeneral { to_fp: t, sf, single, .. } => {
+                    assert_eq!(t, to_fp, "{src} direction");
+                    assert_eq!(sf, is_double, "{src} sf");
+                    assert_eq!(single, !is_double, "{src} width");
+                }
+                other => panic!("{src} decoded to {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn fmov_general_rejects_mismatched_widths_and_sp() {
+        let labels = HashMap::new();
+        for src in ["fmov d0, w1", "fmov w1, d0", "fmov x1, s0", "fmov s0, x1"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("fcvt"), "{src}: {err}");
+        }
+        let err = encode_line("fmov sp, d0", 0, &labels, 1).unwrap_err().to_string();
+        assert!(err.contains("sp"), "{err}");
+    }
+
+    #[test]
+    fn fmov_moves_raw_bits_between_the_files() {
+        use crate::cpu::Cpu;
+        let source = r#"
+            MOV X0, #0x4045
+            LSL X0, X0, #48
+            FMOV D1, X0
+            FMOV X2, D1
+            MOV W3, #0x3F80
+            LSL W3, W3, #16
+            FMOV S4, W3
+            FMOV W5, S4
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        // 0x4045_0000_0000_0000 is 42.0 as an f64; the bits survive the
+        // round trip and the D view reads as the float.
+        assert_eq!(cpu.regs.read_gpr(2, true), 0x4045u64 << 48);
+        assert_eq!(cpu.regs.read_fpr_f64(1), 42.0);
+        // 0x3F80_0000 is 1.0f32; the S round trip stays 32-bit clean.
+        assert_eq!(cpu.regs.read_gpr(5, true), 0x3F80_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(4), 0x3F80_0000);
     }
 
     #[test]

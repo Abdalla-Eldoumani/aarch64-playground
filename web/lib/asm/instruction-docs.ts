@@ -161,8 +161,9 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   },
   NOP: { summary: "Do nothing; PC advances." },
   FMOV: {
-    summary: "Copy FP register bit-for-bit, or load an 8-bit float immediate (S or D form).",
+    summary: "Copy bits: FP to FP, between the register files, or an 8-bit float immediate.",
     details: [
+      "`FMOV Dd, Xn` / `FMOV Xd, Dn` (and the S/W pair) move raw bits between the files with no conversion; use `scvtf`/`fcvtzs` to convert a value.",
       "`FMOV Dd, #imm` / `FMOV Sd, #imm` takes a small power-of-two multiple of 1.0-1.9375 (0.5, 1.0, 2.0, 5.0, 9.0 all fit).",
       "Values outside that set (0.0, 0.1, 100.0) do not encode; load them from a `.double` / `.float` instead.",
     ],
