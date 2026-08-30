@@ -308,7 +308,7 @@ fn encode_line(
         "CSET" => encode_cset(&ops, line_num),
 
         // -- system --
-        "NOP" => Ok(0xD503_201F),
+        "NOP" => Ok(crate::decoder::NOP_WORD),
         "SVC" => encode_svc(&ops, line_num),
 
         _ => asm_err(line_num, &format!("unknown mnemonic: {mn}")),
