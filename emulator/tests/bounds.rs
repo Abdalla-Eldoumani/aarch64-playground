@@ -299,3 +299,31 @@ fn normal_program_runs_to_halt_unaffected() {
 }
 
 
+
+/// Real runaway recursion descends the full 8 MiB stack and halts with the
+/// stack-overflow cause, never the memory-cap one: the floor sits well
+/// under the page cap in page terms, which is the ordering this pins.
+#[test]
+fn runaway_recursion_halts_with_the_stack_overflow_cause() {
+    let src = "
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        sub     sp, sp, 4080
+        bl      main
+";
+    let mut cpu = load(src);
+    let error = loop {
+        let r = cpu.run_until_break(1_000_000).expect("run");
+        if r.halted {
+            break r.error;
+        }
+    };
+    let msg = error.expect("runaway recursion must abort with a message");
+    assert!(
+        msg.contains("stack overflow"),
+        "the cause must be the stack floor, not the page cap: {msg}"
+    );
+    assert!(msg.contains("recursion"), "the message names the usual cause: {msg}");
+}
