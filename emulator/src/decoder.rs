@@ -2293,16 +2293,22 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_condsel_and_dp1_source_are_rejected() {
-        // csinv/csneg (cond-select op bit set) and rev/rev32 (DP 1-source,
-        // bit 30 set) are not implemented and the assembler never emits
-        // them; a hand-crafted .word must reject, not silently run as
-        // csel/csinc or udiv/sdiv.
-        assert!(decode(0x5A80_0000).is_err(), "csinv w0,w0,w0,eq");
-        assert!(decode(0xDA80_0400).is_err(), "csinv x0,x0,x0 variant");
+    fn unsupported_dp1_source_words_are_rejected() {
+        // rev/rev32 (DP 1-source, bit 30 set) are not implemented and the
+        // assembler never emits them; a hand-crafted .word must reject,
+        // not silently run as udiv/sdiv. The cond-select op=1 family
+        // (csinv/csneg) decodes now, so those words are supported.
+        assert!(
+            matches!(decode(0x5A80_0000), Ok(Instruction::CondSel { op: CondSelOp::Csinv, .. })),
+            "csinv w0,w0,w0,eq decodes"
+        );
+        assert!(
+            matches!(decode(0xDA80_0400), Ok(Instruction::CondSel { op: CondSelOp::Csneg, .. })),
+            "csneg x0,x0,x0,eq decodes"
+        );
         assert!(decode(0xDAC0_0800).is_err(), "rev32 x0,x0");
         assert!(decode(0x5AC0_0800).is_err(), "dp2 group with the op bit set");
-        // sanity: the supported forms still decode.
+        // sanity: the older forms still decode.
         assert!(decode(0x1A80_0000).is_ok(), "csel w0,w0,w0,eq");
         assert!(decode(0x1AC0_0800).is_ok(), "udiv w0,w0,w0");
     }
