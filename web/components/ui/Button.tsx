@@ -21,7 +21,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // pointer-down frame, discrete state rather than an animation, so it reads
 // under prefers-reduced-motion without motion over time.
 const BASE =
-  "inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] " +
+  "inline-flex items-center justify-center gap-2 " +
   "px-4 min-h-[44px] font-sans text-[14px] font-medium transition-colors " +
   "focus:outline-none focus-visible:[box-shadow:var(--ring)] " +
   "active:translate-y-px disabled:opacity-50 disabled:pointer-events-none";
@@ -30,14 +30,18 @@ const BASE =
 // control with opacity, so the label gains contrast while hovered and the
 // shift lands correctly in all three themes (brighter on dark, deeper on
 // light) from the same rule.
+// Primary keeps the soft action edge (--radius-action); the supporting
+// variants sit in machine chrome and follow the square control token.
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    "bg-[var(--cyan)] text-[var(--on-cyan)] " +
+    "rounded-[var(--radius-action)] bg-[var(--cyan)] text-[var(--on-cyan)] " +
     "hover:bg-[color-mix(in_srgb,var(--cyan)_88%,var(--text-primary))]",
   secondary:
+    "rounded-[var(--radius-control)] " +
     "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] " +
     "hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_92%,var(--text-primary))]",
-  ghost: "bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]",
+  ghost:
+    "rounded-[var(--radius-control)] bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]",
 };
 
 /**
