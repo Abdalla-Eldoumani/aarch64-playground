@@ -158,15 +158,21 @@ exit, openat, close, lseek, plus the interactive set (ioctl termios,
 fcntl O_NONBLOCK, nanosleep, clock_gettime, getrandom). Other syscalls
 halt (bare-metal compatibility).
 
-BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc
-(printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy, memset,
-memcpy, exit, atof, atoi, rand, srand, time, malloc, free, usleep,
-fflush, fopen, fprintf, fclose) plus the libm subset (sqrt, pow, sin, cos, tan, log, log10, exp,
-floor, fabs, fmod), which takes its arguments in `d0` (and `d1` for pow
-and fmod) and returns in `d0`. malloc and free run over a fixed 1 MiB
-heap window at `0x0090_0000` with host-side allocator state, so a stray
-store cannot corrupt the free list; a wild or double free halts with a
-plain message.
+BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc:
+the stdio family (printf, sprintf, snprintf, scanf, puts, putchar,
+getchar, fflush, fopen, fprintf, fgets, fputs, fclose, with `stdin`/
+`stdout`/`stderr` as linkable symbols naming loader-written FILE*
+words), the string family (strlen, strcmp, strncmp, strcpy, strncpy,
+strcat, strchr, strstr, strtok, memset, memcpy, memcmp, memmove),
+conversions and ctype (atoi, atof, strtol, abs, labs, isdigit, isalpha,
+isspace, toupper, tolower, plus the `__ctype_b_loc` classification table
+gcc lowers the is* macros to), the allocator (malloc, free, calloc,
+realloc), rand/srand/time/exit/usleep, and the libm subset (sqrt, pow,
+sin, cos, tan, log, log10, exp, floor, fabs, fmod), which takes its
+arguments in `d0` (and `d1` for pow and fmod) and returns in `d0`.
+malloc and friends run over a fixed 16 MiB heap window at `0x0090_0000`
+with host-side allocator state, so a stray store cannot corrupt the
+free list; a wild or double free halts with a plain message.
 Stubs read argument registers per AAPCS64, call into
 Rust, write results to `x0`/`d0`, then return via `pc = lr`. `main`
 returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
@@ -188,11 +194,12 @@ hold no matter how the source arrived:
 - `cpu::MAX_TOTAL_STEPS` = 10_000_000: cumulative executed-instruction
   ceiling across every `step` and `run_until_break`, persistent until
   load/reset. A runaway loop trips it and halts.
-- `memory::MAX_MAPPED_PAGES` = 1024 (4 MiB live): a store that would map a
-  new page past the cap faults instead of allocating. Kept low because
-  the ring's frames share pages copy-on-write, so the peak is the live
-  cap plus whatever those frames still hold of pages the program has
-  since rewritten.
+- `memory::MAX_MAPPED_PAGES` = 8192 (32 MiB live): a store that would map a
+  new page past the cap faults instead of allocating. Sized so the 8 MiB
+  stack (matching the course servers' `ulimit -s`) and the 16 MiB heap
+  window can be fully touched together; the ring's frames share pages
+  copy-on-write, so the peak is the live cap plus whatever those frames
+  still hold of pages the program has since rewritten.
 
 Each abort is a calm halt with a plain-language message in the result
 `error` field, never a panic.
