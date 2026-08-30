@@ -1438,17 +1438,16 @@ impl Cpu {
         self.max_total_steps = ceiling;
     }
 
-    /// Set a breakpoint at an address.
+    /// Setting the same address twice is one breakpoint: the set both
+    /// dedupes and makes clearing idempotent, so UI toggles cannot drift.
     pub fn set_breakpoint(&mut self, addr: u64) {
         self.breakpoints.insert(addr);
     }
 
-    /// Clear a breakpoint.
     pub fn clear_breakpoint(&mut self, addr: u64) {
         self.breakpoints.remove(&addr);
     }
 
-    /// Clear all breakpoints.
     pub fn clear_all_breakpoints(&mut self) {
         self.breakpoints.clear();
     }
