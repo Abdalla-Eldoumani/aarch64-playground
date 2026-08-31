@@ -1,7 +1,7 @@
 {
   "title": "stack of plates",
   "slug": "stack-of-plates",
-  "order": 25,
+  "order": 47,
   "topic": "memory",
   "difficulty": "core",
   "prompt": "Four plates go into the frame, and they come back out top-first: store `21`, `34`, `55`, `89` into the four named stack slots, then load and print them in reverse order.\n\nThe starter's frame is already sized with the course's alignment formula, and each slot has a named offset. Your job is the `str`s going in and the `ldr`s coming out; the printing order is what makes it a stack.\n\n## what is checked\n\n- four lines: `89`, `55`, `34`, `21`\n- the program exits cleanly\n- the values make a round trip through memory (`str` and `ldr` both present)",

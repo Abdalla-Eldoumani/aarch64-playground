@@ -1,7 +1,7 @@
 {
   "title": "double, double, double",
   "slug": "double-trouble",
-  "order": 12,
+  "order": 57,
   "topic": "bitwise",
   "difficulty": "intro",
   "prompt": "Multiplying by a power of two never needs a multiply: shifting left by one bit doubles a value, and doing it three times multiplies by eight.\n\nCompute `8 * (a + b)` using shifts instead of `mul`. The starter adds up nothing yet; put the sum in the total register and scale it with `lsl`.\n\n## what is checked\n\n- the scaled sum is printed on its own line\n- the program exits cleanly\n- the scaling is done with a left shift, and `mul` stays out of the program",
