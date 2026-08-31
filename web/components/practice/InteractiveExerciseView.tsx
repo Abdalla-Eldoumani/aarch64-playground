@@ -62,6 +62,7 @@ export function InteractiveExerciseView({
   };
 
   return (
+    <div className="flex w-full flex-col">
     <article className="mx-auto w-full max-w-3xl px-6 py-10 sm:py-12">
       <div className="flex flex-col gap-5">
         <Kicker number={sheetNumber} title="exercise" />
@@ -102,5 +103,18 @@ export function InteractiveExerciseView({
           />
         ))}
     </article>
+        <div className="mt-8 flex justify-center pb-12">
+  <button
+  onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+  type="button"
+  className="group flex items-center gap-2 rounded-full border-2 border-[var(--border-strong)] bg-transparent px-5 py-2 text-[14px] font-semibold text-[var(--text-secondary)] transition-all duration-200 hover:border-[var(--text-primary)] hover:bg-[var(--bg-elevated)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+>
+  <span className="transition-transform duration-200 group-hover:-translate-y-0.5">
+    ↑
+  </span>
+  Return to top
+</button>
+</div>
+</div>
   );
 }
