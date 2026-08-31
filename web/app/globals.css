@@ -271,7 +271,7 @@ body {
 /* Register write flash: the 2px write bar strikes in wide and settles,
    like a latch closing -- no background wash, no rounded pill, so the
    register file keeps its terminal voice. The end state equals the static
-   bar the changed row carries, so the settle is seamless. Amber-driven so
+   bar the changed row carries, so the settle reads as one motion. Amber-driven so
    it follows the theme; applied only inside the reduced-motion-safe block
    below, so it is static under prefers-reduced-motion. */
 @keyframes reg-flash {
