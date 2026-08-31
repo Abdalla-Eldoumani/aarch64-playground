@@ -46,6 +46,9 @@ pub struct Snapshot {
     /// malloc/free allocator state, restored so a stepped-back program
     /// re-allocates the same addresses.
     pub heap: crate::hosted::heap::HeapState,
+    /// strtok's saved cursor, restored so a stepped-back tokenizing loop
+    /// hands out the same token again.
+    pub strtok_save: u64,
     /// Display counters: bytes appended to stdout / stderr up to this
     /// frame. The buffers themselves stay where they are (see the module
     /// note); these let the host trim its own transcript instead.
@@ -137,6 +140,7 @@ mod tests {
             rand_state: crate::hosted::libc::RandState::default(),
             term: crate::cpu::TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
+            strtok_save: 0,
             stdout_seen: 0,
             stderr_seen: 0,
         }

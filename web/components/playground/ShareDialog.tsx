@@ -39,7 +39,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // ignore
+      // clipboard permission denied or unavailable; the url stays selectable by hand.
     }
   };
 

@@ -1,6 +1,6 @@
 /**
- * Bit ruler: a 26px strip of 32 tick marks — one per bit of an instruction
- * word — with bit-index labels on the nibble boundaries. Pure CSS (a
+ * Bit ruler: a 26px strip of 32 tick marks (one per bit of an instruction
+ * word) with bit-index labels on the nibble boundaries. Pure CSS (a
  * repeating-linear-gradient draws the ticks), zero assets. Rides under the
  * site nav on the landing page as the brand's calibration strip. Decorative:
  * `aria-hidden` so screen readers skip it. Under sm only every-8th label

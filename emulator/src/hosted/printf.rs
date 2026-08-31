@@ -23,6 +23,46 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
+/// sprintf(buf, fmt, ...) -> the characters written, not counting the
+/// terminator. x0 is the buffer and x1 the format, so the varargs start
+/// at x2 -- the same shift fprintf makes for its stream. The buffer's
+/// size is the caller's problem, exactly as in C.
+pub fn sprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let buf = ctx.regs.read_gpr(0, true);
+    let fmt_ptr = ctx.regs.read_gpr(1, true);
+    let out = format_into(ctx, fmt_ptr, 2, "sprintf's format string")?;
+    write_c_string(ctx, buf, &out)?;
+    ctx.regs.write_gpr(0, true, out.len() as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// snprintf(buf, size, fmt, ...) -> the length the formatted string
+/// WOULD have had. That return value is the whole point of the call: it
+/// does not shrink to the truncated length, so `if (n >= size)` detects
+/// the overflow. At most `size - 1` characters plus a terminator are
+/// stored, and a size of 0 stores nothing at all (the buffer may be
+/// NULL then, so it must not be touched).
+pub fn snprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let buf = ctx.regs.read_gpr(0, true);
+    let size = ctx.regs.read_gpr(1, true);
+    let fmt_ptr = ctx.regs.read_gpr(2, true);
+    let out = format_into(ctx, fmt_ptr, 3, "snprintf's format string")?;
+    if size > 0 {
+        let keep = (out.len() as u64).min(size - 1) as usize;
+        write_c_string(ctx, buf, &out[..keep])?;
+    }
+    ctx.regs.write_gpr(0, true, out.len() as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// Store bytes plus a terminator at a guest address.
+fn write_c_string(ctx: &mut HostContext<'_>, buf: u64, bytes: &[u8]) -> Result<(), EmuError> {
+    for (i, b) in bytes.iter().enumerate() {
+        ctx.mem.write_u8(buf.wrapping_add(i as u64), *b)?;
+    }
+    ctx.mem.write_u8(buf.wrapping_add(bytes.len() as u64), 0)
+}
+
 /// The printf engine with the destination left to the caller: read the
 /// format at `fmt_ptr`, walk the varargs starting at GP register
 /// `first_gp` (1 for printf -- x0 is the format; 2 for fprintf -- x0 is
@@ -51,7 +91,7 @@ pub(crate) fn format_into(
             continue;
         }
         i += 1;
-        let spec = parse_spec(&chars, &mut i);
+        let spec = parse_spec(&chars, &mut i, ctx, &mut walker);
         if i >= chars.len() {
             // Trailing '%' with nothing after it; emit literally.
             push_char(&mut out, '%');
@@ -156,7 +196,17 @@ fn narrow_unsigned(raw: u64, spec: &FormatSpec) -> u64 {
     }
 }
 
-fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
+/// Walk one conversion's flags, width, precision and length modifier.
+///
+/// A `*` in the width or precision position takes its value from the
+/// varargs, so this walks the same cursor the conversion itself will:
+/// for `"%*d"` the width argument comes BEFORE the value, per C.
+fn parse_spec(
+    chars: &[char],
+    i: &mut usize,
+    ctx: &mut HostContext<'_>,
+    walker: &mut VarargWalker,
+) -> FormatSpec {
     let mut spec = FormatSpec::default();
     // Flags.
     while *i < chars.len() {
@@ -171,26 +221,47 @@ fn parse_spec(chars: &[char], i: &mut usize) -> FormatSpec {
         *i += 1;
     }
     // Width (clamped so a guest-supplied value cannot blow up the output).
-    while *i < chars.len() && chars[*i].is_ascii_digit() {
-        spec.width = spec
-            .width
-            .saturating_mul(10)
-            .saturating_add(chars[*i] as usize - '0' as usize)
-            .min(MAX_FIELD_WIDTH);
+    // `*` reads an int vararg; C says a negative one means the `-` flag
+    // with the width's absolute value.
+    if *i < chars.len() && chars[*i] == '*' {
         *i += 1;
-    }
-    // Precision.
-    if *i < chars.len() && chars[*i] == '.' {
-        *i += 1;
-        let mut prec = 0usize;
+        let arg = walker.next_int(ctx) as u32 as i32;
+        if arg < 0 {
+            spec.left_align = true;
+        }
+        spec.width = (arg.unsigned_abs() as usize).min(MAX_FIELD_WIDTH);
+    } else {
         while *i < chars.len() && chars[*i].is_ascii_digit() {
-            prec = prec
+            spec.width = spec
+                .width
                 .saturating_mul(10)
                 .saturating_add(chars[*i] as usize - '0' as usize)
                 .min(MAX_FIELD_WIDTH);
             *i += 1;
         }
-        spec.precision = Some(prec);
+    }
+    // Precision. `.*` reads an int vararg too, where C defines a negative
+    // value as no precision at all rather than a clamped zero.
+    if *i < chars.len() && chars[*i] == '.' {
+        *i += 1;
+        if *i < chars.len() && chars[*i] == '*' {
+            *i += 1;
+            let arg = walker.next_int(ctx) as u32 as i32;
+            spec.precision = match usize::try_from(arg) {
+                Ok(prec) => Some(prec.min(MAX_FIELD_WIDTH)),
+                Err(_) => None,
+            };
+        } else {
+            let mut prec = 0usize;
+            while *i < chars.len() && chars[*i].is_ascii_digit() {
+                prec = prec
+                    .saturating_mul(10)
+                    .saturating_add(chars[*i] as usize - '0' as usize)
+                    .min(MAX_FIELD_WIDTH);
+                *i += 1;
+            }
+            spec.precision = Some(prec);
+        }
     }
     // Length modifier. The fetch slot is the same 64-bit register either
     // way, but the WIDTH read out of it must follow C: plain `%d` is an
@@ -290,7 +361,12 @@ fn format_conversion(
         }
         'p' => {
             let value = walker.next_int(ctx);
-            let body = format!("0x{value:x}");
+            // glibc prints a NULL pointer as `(nil)`, not `0x0`.
+            let body = if value == 0 {
+                "(nil)".to_string()
+            } else {
+                format!("0x{value:x}")
+            };
             pad_and_emit(&body, spec, out);
         }
         'c' => {
@@ -326,20 +402,36 @@ fn format_conversion(
             let body = format_fixed(value, prec, spec.plus, spec.space);
             pad_and_emit(&body, spec, out);
         }
-        'e' | 'E' | 'g' | 'G' | 'a' | 'A' => {
-            // Real glibc formats these. Echoing the specifier literally
-            // also left its argument unconsumed, silently shifting every
-            // later conversion of the same class -- worse than stopping.
+        'e' | 'E' => {
+            let value = walker.next_double(ctx);
+            let prec = spec.precision.unwrap_or(6);
+            let mut body = format_scientific(value, prec, spec.plus, spec.space);
+            if conv == 'E' {
+                body = body.to_ascii_uppercase();
+            }
+            pad_and_emit(&body, spec, out);
+        }
+        'g' | 'G' => {
+            let value = walker.next_double(ctx);
+            // C: precision is SIGNIFICANT digits (0 reads as 1), and the
+            // fixed/scientific choice plus zero-stripping follow the
+            // standard's rule glibc implements.
+            let prec = spec.precision.unwrap_or(6).max(1);
+            let mut body = format_general(value, prec, spec.plus, spec.space);
+            if conv == 'G' {
+                body = body.to_ascii_uppercase();
+            }
+            pad_and_emit(&body, spec, out);
+        }
+        'a' | 'A' => {
+            // Real glibc formats hex floats. Echoing the specifier
+            // literally also left its argument unconsumed, silently
+            // shifting every later conversion of the same class -- worse
+            // than stopping.
             return Err(EmuError::RuntimeError {
                 message: format!(
                     "printf %{conv} is not supported by this emulator; format the value with %f"
                 ),
-            });
-        }
-        '*' => {
-            return Err(EmuError::RuntimeError {
-                message: "printf's `*` width is not supported; write the width as digits, like %8d"
-                    .into(),
             });
         }
         _ => {
@@ -364,6 +456,65 @@ fn format_fixed(value: f64, precision: usize, plus: bool, space: bool) -> String
     } else {
         body
     }
+}
+
+/// `%e`: d.dddddde+XX with glibc's shape (six fraction digits by
+/// default, a signed exponent of at least two digits).
+fn format_scientific(value: f64, precision: usize, plus: bool, space: bool) -> String {
+    if !value.is_finite() {
+        return format_fixed(value, precision, plus, space);
+    }
+    // Rust's `{:.*e}` renders the correctly rounded mantissa but a bare
+    // exponent ("2.500000e0"); reshape the exponent to C's e+00 form.
+    let raw = format!("{:.*e}", precision, value);
+    let (mantissa, exp) = raw.split_once('e').expect("float scientific form");
+    let (exp_sign, exp_abs) = match exp.strip_prefix('-') {
+        Some(rest) => ('-', rest),
+        None => ('+', exp),
+    };
+    let body = format!("{mantissa}e{exp_sign}{exp_abs:0>2}");
+    if value.is_sign_negative() {
+        body
+    } else if plus {
+        format!("+{body}")
+    } else if space {
+        format!(" {body}")
+    } else {
+        body
+    }
+}
+
+/// `%g`: C's rule -- with P significant digits, use `%e` when the
+/// exponent is below -4 or at least P, else `%f`, and strip trailing
+/// zeros (and a bare trailing point) either way.
+fn format_general(value: f64, sig: usize, plus: bool, space: bool) -> String {
+    if !value.is_finite() {
+        return format_fixed(value, sig, plus, space);
+    }
+    let probe = format!("{:.*e}", sig - 1, value);
+    let exp: i32 = probe
+        .split_once('e')
+        .expect("float scientific form")
+        .1
+        .parse()
+        .expect("exponent parses");
+    let mut body = if exp < -4 || exp >= sig as i32 {
+        format_scientific(value, sig - 1, plus, space)
+    } else {
+        let after_point = (sig as i32 - 1 - exp).max(0) as usize;
+        format_fixed(value, after_point, plus, space)
+    };
+    // Strip trailing fraction zeros, then a bare point, from the
+    // mantissa only (never from an exponent).
+    let mantissa_end = body.find('e').unwrap_or(body.len());
+    if body[..mantissa_end].contains('.') {
+        let trimmed = body[..mantissa_end]
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .len();
+        body.replace_range(trimmed..mantissa_end, "");
+    }
+    body
 }
 
 fn apply_precision_int(body: &mut String, spec: &FormatSpec) {
@@ -471,6 +622,7 @@ mod tests {
         let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
+        let mut strtok_save = 0u64;
         let mut ctx = HostContext {
             regs: &mut regs,
             mem: &mut mem,
@@ -484,11 +636,121 @@ mod tests {
             rand_state: &mut rand_state,
             term: &mut term,
             heap: &mut heap,
+            strtok_save: &mut strtok_save,
         };
         printf(&mut ctx)?;
         let written = ctx.regs.read_gpr(0, true) as usize;
         let s = String::from_utf8(stdout).unwrap();
         Ok((s, written))
+    }
+
+    /// Scratch addresses for the buffer-writing stubs: the format string
+    /// at one, the destination at the other.
+    const FMT_ADDR: u64 = 0x0050_0000;
+    const BUF_ADDR: u64 = 0x0060_0000;
+
+    /// Run a stub that formats into guest memory. `setup` places every
+    /// register the call takes (the buffer, the format, any varargs);
+    /// the buffer is pre-filled with a marker byte so a test can see
+    /// exactly how far the stub wrote. Hands back the first `read_back`
+    /// bytes of the buffer and the stub's return value.
+    fn call_into_buffer(
+        stub: crate::hosted::HostFn,
+        fmt: &str,
+        read_back: usize,
+        setup: impl FnOnce(&mut RegisterFile, &mut Memory),
+    ) -> (Vec<u8>, u64) {
+        let mut regs = RegisterFile::new();
+        let mut mem = Memory::new();
+        mem.map_page(FMT_ADDR);
+        mem.map_page(BUF_ADDR);
+        for (i, b) in fmt.as_bytes().iter().enumerate() {
+            mem.write_u8(FMT_ADDR + i as u64, *b).unwrap();
+        }
+        mem.write_u8(FMT_ADDR + fmt.len() as u64, 0).unwrap();
+        for i in 0..64u64 {
+            mem.write_u8(BUF_ADDR + i, 0xEE).unwrap();
+        }
+        setup(&mut regs, &mut mem);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut stdin = Vec::new();
+        let mut vfs: HashMap<String, Vec<u8>> = HashMap::new();
+        let mut open_files: HashMap<u32, OpenFile> = HashMap::new();
+        let mut next_fd = 3u32;
+        let mut rand_state = crate::hosted::libc::RandState::default();
+        let mut term = crate::cpu::TermState::default();
+        let mut heap = crate::hosted::heap::HeapState::default();
+        let mut strtok_save = 0u64;
+        let mut ctx = HostContext {
+            regs: &mut regs,
+            mem: &mut mem,
+            stdout: &mut stdout,
+            stderr: &mut stderr,
+            stdin: &mut stdin,
+            stdin_closed: false,
+            vfs: &mut vfs,
+            open_files: &mut open_files,
+            next_fd: &mut next_fd,
+            rand_state: &mut rand_state,
+            term: &mut term,
+            heap: &mut heap,
+            strtok_save: &mut strtok_save,
+        };
+        stub(&mut ctx).unwrap();
+        let returned = ctx.regs.read_gpr(0, true);
+        let bytes = (0..read_back as u64)
+            .map(|i| mem.read_u8(BUF_ADDR + i).unwrap())
+            .collect();
+        (bytes, returned)
+    }
+
+    #[test]
+    fn sprintf_terminates_the_buffer_and_returns_the_length() {
+        // x0 is the buffer and x1 the format, so the first vararg is x2.
+        let (bytes, n) = call_into_buffer(sprintf, "%s=%d", 8, |regs, mem| {
+            let text = 0x0050_0100u64;
+            for (i, b) in b"hp".iter().enumerate() {
+                mem.write_u8(text + i as u64, *b).unwrap();
+            }
+            mem.write_u8(text + 2, 0).unwrap();
+            regs.write_gpr(0, true, BUF_ADDR);
+            regs.write_gpr(1, true, FMT_ADDR);
+            regs.write_gpr(2, true, text);
+            regs.write_gpr(3, true, 42);
+        });
+        assert_eq!(n, 5);
+        assert_eq!(&bytes[..6], b"hp=42\0");
+        // Nothing past the terminator was touched.
+        assert_eq!(bytes[6], 0xEE);
+    }
+
+    #[test]
+    fn snprintf_truncates_but_returns_the_full_length() {
+        // x0 buffer, x1 size, x2 format: the varargs start at x3.
+        let call = |size: u64| {
+            call_into_buffer(snprintf, "%d-%d", 10, move |regs, _| {
+                regs.write_gpr(0, true, BUF_ADDR);
+                regs.write_gpr(1, true, size);
+                regs.write_gpr(2, true, FMT_ADDR);
+                regs.write_gpr(3, true, 12);
+                regs.write_gpr(4, true, 345);
+            })
+        };
+        // Room to spare: the whole string plus its terminator.
+        let (bytes, n) = call(16);
+        assert_eq!(n, 6);
+        assert_eq!(&bytes[..7], b"12-345\0");
+        // Truncated: size - 1 characters, still terminated, and the
+        // return value is the length it WOULD have needed.
+        let (bytes, n) = call(4);
+        assert_eq!(n, 6, "the return value must not shrink to the truncation");
+        assert_eq!(&bytes[..4], b"12-\0");
+        assert_eq!(bytes[4], 0xEE);
+        // Size 0 writes nothing at all -- not even a terminator.
+        let (bytes, n) = call(0);
+        assert_eq!(n, 6);
+        assert_eq!(bytes[0], 0xEE);
     }
 
     #[test]
@@ -550,12 +812,11 @@ mod tests {
 
     #[test]
     fn unimplemented_float_conversions_stop_with_a_remedy() {
-        // Echoing `%e` literally desynced later float conversions; the
-        // student saw a plausible wrong number with no message.
-        let err = try_call("%e", |_, _| {}).unwrap_err();
+        // Echoing an unimplemented specifier literally desynced later
+        // float conversions; the student saw a plausible wrong number
+        // with no message. %a is the one float form still unhosted.
+        let err = try_call("%a", |_, _| {}).unwrap_err();
         assert!(err.to_string().contains("%f"), "was: {err}");
-        let err = try_call("%*d", |_, _| {}).unwrap_err();
-        assert!(err.to_string().contains("width"), "was: {err}");
     }
 
     #[test]
@@ -805,6 +1066,52 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14159 is the corpus value, not a stand-in for PI
+    fn percent_e_matches_glibc_shape() {
+        let cases: &[(&str, f64, &str)] = &[
+            ("%e", 3.14159, "3.141590e+00"),
+            ("%e", 0.0, "0.000000e+00"),
+            ("%.2e", 12345.678, "1.23e+04"),
+            ("%e", -0.000001, "-1.000000e-06"),
+            ("%E", 2.5, "2.500000E+00"),
+        ];
+        for (fmt, v, want) in cases {
+            let (s, _) = call(fmt, |regs, _| {
+                regs.write_fpr_bits(0, v.to_bits());
+            });
+            assert_eq!(&s, want, "{fmt} of {v}");
+        }
+    }
+
+    #[test]
+    #[allow(clippy::approx_constant)] // 3.14159 is the corpus value, not a stand-in for PI
+    fn percent_g_picks_the_form_and_strips_zeros_like_glibc() {
+        let cases: &[(&str, f64, &str)] = &[
+            ("%g", 3.14159, "3.14159"),
+            ("%g", 100.0, "100"),
+            ("%g", 0.0001, "0.0001"),
+            ("%g", 0.00001, "1e-05"),
+            ("%g", 1234567.0, "1.23457e+06"),
+            ("%.3g", 3.14159, "3.14"),
+            ("%g", 0.0, "0"),
+        ];
+        for (fmt, v, want) in cases {
+            let (s, _) = call(fmt, |regs, _| {
+                regs.write_fpr_bits(0, v.to_bits());
+            });
+            assert_eq!(&s, want, "{fmt} of {v}");
+        }
+    }
+
+    #[test]
+    fn printf_percent_p_of_null_prints_nil_like_glibc() {
+        let (s, _) = call("%p", |regs, _| {
+            regs.write_gpr(1, true, 0);
+        });
+        assert_eq!(s, "(nil)");
+    }
+
+    #[test]
     fn printf_percent_o() {
         let (s, _) = call("%o", |regs, _| {
             regs.write_gpr(1, true, 0o755);
@@ -839,6 +1146,92 @@ mod tests {
         // buffer; it clamps to the cap.
         let (s, n) = call("%2000000000d", |regs, _| {
             regs.write_gpr(1, true, 5);
+        });
+        assert_eq!(n, MAX_FIELD_WIDTH);
+        assert_eq!(s.len(), MAX_FIELD_WIDTH);
+        assert!(s.ends_with('5'));
+    }
+
+    #[test]
+    fn star_width_reads_the_argument_before_the_value() {
+        // glibc: printf("%*d", 8, 42) is "      42". The width arg comes
+        // first, so x1 is the width and x2 the value.
+        let (s, n) = call("%*d", |regs, _| {
+            regs.write_gpr(1, true, 8);
+            regs.write_gpr(2, true, 42);
+        });
+        assert_eq!(s, "      42");
+        assert_eq!(n, 8);
+        // The rest of the format keeps walking from where the star left
+        // the cursor, so a second conversion still reads its own arg.
+        let (s, _) = call("[%*d][%d]", |regs, _| {
+            regs.write_gpr(1, true, 4);
+            regs.write_gpr(2, true, 7);
+            regs.write_gpr(3, true, 9);
+        });
+        assert_eq!(s, "[   7][9]");
+    }
+
+    #[test]
+    fn star_width_honors_the_left_align_flag() {
+        let (s, _) = call("%-*d|", |regs, _| {
+            regs.write_gpr(1, true, 6);
+            regs.write_gpr(2, true, 42);
+        });
+        assert_eq!(s, "42    |");
+    }
+
+    #[test]
+    fn a_negative_star_width_left_justifies() {
+        // C: a negative field width is the `-` flag with its absolute
+        // value, so printf("%*d|", -6, 42) matches printf("%-6d|", 42).
+        let (s, _) = call("%*d|", |regs, _| {
+            regs.write_gpr(1, true, (-6i64) as u64);
+            regs.write_gpr(2, true, 42);
+        });
+        assert_eq!(s, "42    |");
+    }
+
+    #[test]
+    fn star_precision_reads_an_int_before_the_double() {
+        // The precision is an int vararg (x1) and the value a double
+        // (d0): the two register files advance independently.
+        let (s, _) = call("%.*f", |regs, _| {
+            regs.write_gpr(1, true, 2);
+            regs.write_fpr_f64(0, std::f64::consts::PI);
+        });
+        assert_eq!(s, "3.14");
+        // A negative precision is as if none were given: %f falls back to
+        // its default of six places.
+        let (s, _) = call("%.*f", |regs, _| {
+            regs.write_gpr(1, true, (-1i64) as u64);
+            regs.write_fpr_f64(0, std::f64::consts::PI);
+        });
+        assert_eq!(s, "3.141593");
+    }
+
+    #[test]
+    fn star_width_pads_a_string() {
+        let (s, _) = call("%*s|", |regs, mem| {
+            let str_addr = 0x0052_0000u64;
+            mem.map_page(str_addr);
+            for (i, b) in b"hi".iter().enumerate() {
+                mem.write_u8(str_addr + i as u64, *b).unwrap();
+            }
+            mem.write_u8(str_addr + 2, 0).unwrap();
+            regs.write_gpr(1, true, 8);
+            regs.write_gpr(2, true, str_addr);
+        });
+        assert_eq!(s, "      hi|");
+    }
+
+    #[test]
+    fn an_absurd_star_width_is_clamped_like_a_written_one() {
+        // The cap has to cover the guest-supplied width too, or a single
+        // register value builds a multi-gigabyte string.
+        let (s, n) = call("%*d", |regs, _| {
+            regs.write_gpr(1, true, 2_000_000_000);
+            regs.write_gpr(2, true, 5);
         });
         assert_eq!(n, MAX_FIELD_WIDTH);
         assert_eq!(s.len(), MAX_FIELD_WIDTH);

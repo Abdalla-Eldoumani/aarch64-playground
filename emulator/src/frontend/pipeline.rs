@@ -138,6 +138,18 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         }
     }
 
+    // The three standard streams, as glibc exposes them: a symbol naming
+    // a loader-written word that holds the FILE*, so `ldr x0, =stderr`
+    // followed by `ldr x0, [x0]` reaches the handle fprintf wants. Seeded
+    // like the host stubs above, so a program with its own `stdout` label
+    // keeps it.
+    for (i, name) in ["stdin", "stdout", "stderr"].iter().enumerate() {
+        layout
+            .symbols
+            .entry((*name).to_string())
+            .or_insert(crate::hosted::stdio::STDIO_GLOBALS_BASE + (i as u64) * 8);
+    }
+
     resolve_equates(&mut layout)?;
     let pool = size_literal_pool(prog, &mut layout)?;
     let emission = emit_image(prog, &layout, &pool)?;
@@ -636,7 +648,25 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                     if *n > 0 {
                         let rem = offset % n;
                         if rem != 0 {
-                            offset += n - rem;
+                            let pad = n - rem;
+                            // GAS fills a .text alignment gap with NOPs so a
+                            // fall-through executes cleanly; data sections
+                            // stay zero-filled by the fresh pages. Pad words
+                            // are not student instructions, so they get no
+                            // line-map entry and no instruction_count bump.
+                            if section.kind == SectionKind::Text && offset.is_multiple_of(4) {
+                                let words = (pad / 4) as usize;
+                                if words > 0 {
+                                    let mut bytes = Vec::with_capacity(words * 4);
+                                    for _ in 0..words {
+                                        bytes.extend_from_slice(
+                                            &crate::decoder::NOP_WORD.to_le_bytes(),
+                                        );
+                                    }
+                                    writes.push((base + offset, bytes));
+                                }
+                            }
+                            offset += pad;
                         }
                     }
                 }
@@ -696,7 +726,18 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         let addr_reg: u8 = match parse_ldr_dest(&reg) {
                             Some(LdrDest::Gpr { idx }) => idx,
                             Some(LdrDest::Fp) => 16,
-                            None => unreachable!("recognizer only claims parseable dests"),
+                            // The recognizer only claims parseable dests;
+                            // if the two ever disagree that is a crate
+                            // bug, surfaced as a calm error rather than a
+                            // worker-killing panic.
+                            None => {
+                                return Err(EmuError::AssemblyError {
+                                    line: *original_line,
+                                    message: format!(
+                                        "internal: ldr destination `{reg}` was recognized but did not parse"
+                                    ),
+                                });
+                            }
                         };
                         let slot = *pool_slots
                             .get(&(label_text.clone(), None))
@@ -1175,10 +1216,26 @@ fn lower_operands(
 
 fn is_branch_mnemonic(mn: &str) -> bool {
     let lower = mn.to_ascii_lowercase();
-    // Unconditional and link branches, conditional branches (b.cond), CBZ/CBNZ
-    // and TBZ/TBNZ families; all take a label in their last operand slot.
+    // Unconditional and link branches, conditional branches (both the
+    // `b.cond` and dotless `bcond` spellings), CBZ/CBNZ and TBZ/TBNZ
+    // families; all take a label in their last operand slot. Missing the
+    // dotless spellings here once rewrote `bne loop` to a section offset
+    // that encode_bcond then took as a pc-relative displacement, so the
+    // branch landed at pc + (loop - .text base) with no error.
     matches!(lower.as_str(), "b" | "bl" | "cbz" | "cbnz" | "tbz" | "tbnz")
         || lower.starts_with("b.")
+        || is_dotless_bcond(&lower)
+}
+
+/// `b<cc>` for any condition spelling in the shared table. The whole tail
+/// must be a condition, which keeps `bl`, `blr` and `bic` out.
+fn is_dotless_bcond(lower: &str) -> bool {
+    lower.strip_prefix('b').is_some_and(|tail| {
+        crate::registers::CONDITIONS.iter().any(|(primary, aliases, _)| {
+            primary.eq_ignore_ascii_case(tail)
+                || aliases.iter().any(|a| a.eq_ignore_ascii_case(tail))
+        })
+    })
 }
 
 fn rewrite_operand_list(
@@ -1346,9 +1403,14 @@ fn is_register_or_shift_keyword(s: &str) -> bool {
             }
         }
     }
+    // The bare-name registers come from the shared alias table; the tail is
+    // this recognizer's own -- shift and extend keywords are operands here,
+    // not registers.
+    if crate::registers::reg_alias(&lower).is_some() {
+        return true;
+    }
     matches!(
         lower.as_str(),
-        "sp" | "xzr" | "wzr" | "fp" | "lr" |
         "lsl" | "lsr" | "asr" | "ror" |
         "sxtw" | "sxtx" | "uxtw" | "uxtx" |
         "sxtb" | "sxth" | "uxtb" | "uxth"
@@ -1513,10 +1575,37 @@ fn strip_leading_labels(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        redirect_bl_to_trampoline_tokens, stringify_tokens, strip_leading_labels,
+        is_branch_mnemonic, redirect_bl_to_trampoline_tokens, stringify_tokens,
+        strip_leading_labels,
     };
     use crate::frontend::lexer::{lex, TokenKind};
     use std::collections::HashMap;
+
+    #[test]
+    fn every_label_taking_mnemonic_is_recognised_as_a_branch() {
+        // A conditional-branch spelling the recognizer misses gets its label
+        // rewritten to a section offset, which encodes as a wrong-target
+        // branch with no error; this walks the whole set so the gap class
+        // cannot reopen.
+        for mn in ["b", "bl", "cbz", "cbnz", "tbz", "tbnz"] {
+            assert!(is_branch_mnemonic(mn), "{mn}");
+        }
+        for (primary, aliases, _) in crate::registers::CONDITIONS {
+            for cc in std::iter::once(primary).chain(aliases.iter()) {
+                for spelling in [
+                    format!("b.{cc}"),
+                    format!("b{cc}"),
+                    format!("B.{cc}"),
+                    format!("B{cc}"),
+                ] {
+                    assert!(is_branch_mnemonic(&spelling), "{spelling}");
+                }
+            }
+        }
+        for mn in ["blr", "br", "bic", "bfi", "bfxil", "add", "ldr"] {
+            assert!(!is_branch_mnemonic(mn), "{mn} is not a label-taking branch");
+        }
+    }
 
     #[test]
     fn strip_leading_labels_keeps_literal_semicolons() {

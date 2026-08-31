@@ -34,7 +34,7 @@
   --success:        #4ADE80;
   --warning:        #FFB454;
   --danger:         #FF6B6B;
-  --changed:        #FFCB5E;  /* register-write flash: drives the animation so it follows the theme */
+  --changed:        #FFCB5E;  /* the just-written value's ink; the flash itself is the amber write bar */
 
   --focus:          var(--cyan);
 
@@ -119,7 +119,7 @@
   --text-tertiary:  #C7C7C7;
 
   --amber:          #FFC247;
-  --amber-dim:      #C99220;
+  --amber-dim:      #6B4A00;
   --cyan:           #5AD7F0;
   --cyan-dim:       #2C9FB8;
   --on-cyan:        #00181E;
@@ -176,7 +176,15 @@
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
   --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
 
-  --radius-control: 4px;
+  /* Corner doctrine: machine-facing chrome (toolbars, tabs, panels,
+     register and memory rows, chips, panel micro-inputs) is square, in
+     the terminal's voice -- that is --radius-control, and the Tailwind
+     rounded/rounded-sm scale resolves to it, so the rule holds by token.
+     The soft edge survives only on the two content-facing primitives:
+     text inputs and primary action buttons (--radius-action), cards
+     (--radius-card), and dialogs (--radius-modal). */
+  --radius-control: 0px;
+  --radius-action:  4px;
   --radius-card:    8px;
   --radius-modal:   10px;
 
@@ -260,14 +268,22 @@ body {
   to   { opacity: 1; }
 }
 
-/* Register write flash: a brief tint pulled from --changed so it follows the
-   theme (never a hardcoded amber). Defined like the other motions and applied
-   only inside the reduced-motion-safe block below, so it is static under
-   prefers-reduced-motion. */
+/* Register write flash: the 2px write bar strikes in wide and settles,
+   like a latch closing -- no background wash, no rounded pill, so the
+   register file keeps its terminal voice. The end state equals the static
+   bar the changed row carries, so the settle reads as one motion. Amber-driven so
+   it follows the theme; applied only inside the reduced-motion-safe block
+   below, so it is static under prefers-reduced-motion. */
 @keyframes reg-flash {
-  0%   { background-color: transparent; }
-  20%  { background-color: color-mix(in srgb, var(--changed) 38%, transparent); }
-  100% { background-color: transparent; }
+  0%   { box-shadow: inset 6px 0 0 0 var(--amber); }
+  100% { box-shadow: inset 2px 0 0 0 var(--amber); }
+}
+/* The landing boot flash reuses the strike but releases the bar at the
+   end: values land, latch, and let go, row by row. */
+@keyframes boot-flash {
+  0%   { box-shadow: inset 6px 0 0 0 var(--amber); }
+  70%  { box-shadow: inset 2px 0 0 0 var(--amber); }
+  100% { box-shadow: inset 2px 0 0 0 transparent; }
 }
 
 /* Program-counter breathing while the program runs: a subtle amber edge-bar that
@@ -355,7 +371,7 @@ body {
        landing in a register file, top to bottom. Content never moves or
        hides, so there is no layout shift; under prefers-reduced-motion the
        rows are simply static. */
-    animation: reg-flash calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
+    animation: boot-flash calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
     animation-delay: var(--boot-delay, 0ms);
     animation-fill-mode: backwards;
   }

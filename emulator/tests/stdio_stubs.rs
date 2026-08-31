@@ -1,9 +1,12 @@
 //! End-to-end contracts for the FILE*-level stdio stubs (fopen /
 //! fprintf / fclose over the VFS), the shape assignment log-file
 //! programs use: fopen("file", "w"), fprintf per record, one fclose.
+//! Plus the three standard streams, which are linkable symbols naming
+//! loader-written words rather than descriptors fopen handed out.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
+use aarch64_emulator::hosted::stdio::STDIO_GLOBALS_BASE;
 
 fn run(source: &str) -> Cpu {
     let mut cpu = Cpu::new();
@@ -198,6 +201,142 @@ main:
 "#;
     let mut cpu = run(source);
     assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "0 -1\n");
+}
+
+#[test]
+fn the_standard_stream_symbols_name_the_loader_written_words() {
+    // gcc-compiled code reaches `stdout` as an address and loads the
+    // FILE* out of it, so the symbols have to resolve to the three words
+    // the loader writes -- not to the handles themselves.
+    let source = r#"
+        .text
+        .balign 4
+        .global main
+main:
+        mov     w0, 0
+        ret
+"#;
+    let cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    assert_eq!(image.symbols.get("stdin"), Some(&STDIO_GLOBALS_BASE));
+    assert_eq!(image.symbols.get("stdout"), Some(&(STDIO_GLOBALS_BASE + 8)));
+    assert_eq!(image.symbols.get("stderr"), Some(&(STDIO_GLOBALS_BASE + 16)));
+}
+
+#[test]
+fn fprintf_through_the_stream_symbols_splits_stdout_from_stderr() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+err_fmt:        .string "error: code %d\n"
+out_fmt:        .string "ok: %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =stderr
+        ldr     x0, [x0]
+        ldr     x1, =err_fmt
+        mov     w2, 7
+        bl      fprintf
+
+        ldr     x0, =stdout
+        ldr     x0, [x0]
+        ldr     x1, =out_fmt
+        mov     w2, 9
+        bl      fprintf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut cpu = run(source);
+    assert_eq!(
+        String::from_utf8_lossy(&cpu.take_stderr()),
+        "error: code 7\n"
+    );
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "ok: 9\n");
+}
+
+#[test]
+fn fflush_of_the_stdout_stream_answers_zero_and_keeps_going() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "fflush says %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =stdout
+        ldr     x0, [x0]
+        bl      fflush
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut cpu = run(source);
+    assert_eq!(
+        String::from_utf8_lossy(&cpu.take_stdout()),
+        "fflush says 0\n"
+    );
+}
+
+#[test]
+fn fclose_of_a_standard_stream_succeeds_without_closing_it() {
+    // A student who closes every stream the function touched must not
+    // lose the rest of the program's output: fd 0/1/2 are not fopen
+    // descriptors, so there is nothing to drop.
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "fclose says %d\n"
+after:          .string "still printing\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =stdout
+        ldr     x0, [x0]
+        bl      fclose
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+
+        ldr     x0, =after
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut cpu = run(source);
+    assert_eq!(
+        String::from_utf8_lossy(&cpu.take_stdout()),
+        "fclose says 0\nstill printing\n"
+    );
 }
 
 #[test]

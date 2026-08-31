@@ -47,6 +47,20 @@ pub enum MemSize {
 }
 
 impl MemSize {
+    /// The access width a load/store encoding's 2-bit `size` field names.
+    /// The assembler's offset-scaling and the decoder both come through
+    /// here, so `bytes` below is the only place the bytes-per-size mapping
+    /// is written down. Only the low two bits are read; there is no invalid
+    /// value to reject.
+    pub fn from_size_field(size: u8) -> Self {
+        match size & 0b11 {
+            0b00 => Self::B,
+            0b01 => Self::H,
+            0b10 => Self::W,
+            _ => Self::X,
+        }
+    }
+
     /// Number of bytes for this access width.
     pub fn bytes(self) -> u32 {
         match self {
@@ -87,6 +101,27 @@ pub enum ExtendType {
     /// Sign-extend a 64-bit value (no-op, kept for encoding symmetry).
     Sxtx,
 }
+
+/// The extend/shift keywords a load/store register-offset address accepts:
+/// the spelling, its 3-bit `option` field, and whether the index register
+/// must be an X (the ARM width rule -- UXTW/SXTW take a Wm, the rest take
+/// an Xm). `lsl` and `uxtx` share option 0b011 because they mean the same
+/// thing for a 64-bit index; `lsl` is listed first so a lookup by option
+/// spells it the way GAS disassembles it.
+///
+/// Deliberately separate from the assembler's `EXTEND_KEYWORDS`, which is
+/// the ADD/SUB extended-register table: that one carries all eight options
+/// (byte and halfword extends included) and skips the width check entirely,
+/// because GAS assembles `add x0, x1, x2, sxtw` to the same word as the
+/// `w2` spelling and refusing it would reject source the course toolchain
+/// accepts. The two sets are not the same set and must not be merged.
+pub const LDST_EXTENDS: &[(&str, u8, bool)] = &[
+    ("lsl", 0b011, true),
+    ("uxtw", 0b010, false),
+    ("sxtw", 0b110, false),
+    ("sxtx", 0b111, true),
+    ("uxtx", 0b011, true),
+];
 
 /// Extension applied to Rm in the extended-register ADD/SUB form (the
 /// 3-bit option field). UXTX doubles as LSL when the other operand is SP,
@@ -142,6 +177,8 @@ pub enum BrRegOp {
 pub enum CondSelOp {
     Csel,
     Csinc,
+    Csinv,
+    Csneg,
 }
 
 /// Multiply/divide variant.
@@ -159,6 +196,18 @@ pub enum MulDivOp {
 pub enum MulAccumulateOp {
     Madd,
     Msub,
+}
+
+/// Widening and high-half multiply variant. `Smull`/`Umull` are 32x32 -> 64
+/// (the SMADDL/UMADDL encodings with Ra=XZR, the only forms gcc emits);
+/// `Smulh`/`Umulh` return the top 64 bits of the full 128-bit product. gcc
+/// leans on these for division and remainder by a constant even at -O0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MulWideOp {
+    Smull,
+    Umull,
+    Smulh,
+    Umulh,
 }
 
 /// Floating-point binary operation. The instruction's `single` flag picks
@@ -180,6 +229,28 @@ pub enum FpUnaryOp {
     Fabs,
     Fsqrt,
 }
+
+/// The FP two-source rows: mnemonic, the 4-bit opcode field, and the
+/// operation it decodes to. `encode_fp_binary` reads the opcode out of here
+/// and `decode_fp_group` reads the operation back, so the two directions of
+/// the same four numbers cannot drift apart.
+pub const FP_BINARY_OPS: &[(&str, u8, FpBinOp)] = &[
+    ("fadd", 0b0010, FpBinOp::Fadd),
+    ("fsub", 0b0011, FpBinOp::Fsub),
+    ("fmul", 0b0000, FpBinOp::Fmul),
+    ("fdiv", 0b0001, FpBinOp::Fdiv),
+];
+
+/// The FP one-source rows that share `FpUnary`: mnemonic, the 6-bit opcode
+/// field, and the operation. FMOV-register and FCVT live in the same opcode
+/// space but stay out of the table: FMOV has its own instruction variant
+/// and its own encoder, and FCVT's opcode carries the DESTINATION width, so
+/// it is entangled with ftype rather than being a plain row.
+pub const FP_UNARY_OPS: &[(&str, u8, FpUnaryOp)] = &[
+    ("fabs", 0b000001, FpUnaryOp::Fabs),
+    ("fneg", 0b000010, FpUnaryOp::Fneg),
+    ("fsqrt", 0b000011, FpUnaryOp::Fsqrt),
+];
 
 /// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
 /// zero-extends it; `Bfm` merges the field into the destination and keeps
@@ -303,6 +374,17 @@ pub enum Instruction {
         imm7: i16,
         mode: IndexMode,
     },
+    /// LDP/STP of the FP file (V=1): opc 00 = S pairs, 01 = D pairs.
+    /// `imm7` is the byte offset, already scaled by the register width.
+    FpLdStPair {
+        op: LdStPairOp,
+        single: bool,
+        rt: u8,
+        rt2: u8,
+        rn: u8,
+        imm7: i16,
+        mode: IndexMode,
+    },
     /// B/BL (26-bit signed offset, already shifted left 2).
     BrImm {
         link: bool,
@@ -373,6 +455,14 @@ pub enum Instruction {
         rm: u8,
         ra: u8,
     },
+    /// SMULL/UMULL (Xd = Wn * Wm, widening) and SMULH/UMULH (Xd = the top
+    /// 64 bits of Xn * Xm). All four write an X destination, so no `sf`.
+    MulWide {
+        op: MulWideOp,
+        rd: u8,
+        rn: u8,
+        rm: u8,
+    },
     /// LDRSB / LDRSH / LDRSW: sign-extending loads. `sf` selects the
     /// target register width (Xt when true, Wt when false; LDRSW only
     /// has the Xt form so it always sets `sf = true`). `size` is the
@@ -404,6 +494,24 @@ pub enum Instruction {
     /// FMOV Fd, Fn (reg-to-reg). The S form copies and zero-extends the
     /// low 32 bits.
     FpMoveReg {
+        fd: u8,
+        fn_: u8,
+        single: bool,
+    },
+    /// FMOV between the general and FP register files, raw bits either
+    /// direction. `to_fp` is the GP -> FP direction; `sf`/`single` always
+    /// name a legal width pair (w<->s, x<->d), enforced at decode.
+    FpMoveGeneral {
+        to_fp: bool,
+        sf: bool,
+        single: bool,
+        rd: u8,
+        rn: u8,
+    },
+    /// SCVTF (scalar, from the FP register file): the integer bits are
+    /// already in Fn (gcc loads an int with `ldr s31, [...]` and converts
+    /// in place), interpreted at the register's own width.
+    FpScvtfFp {
         fd: u8,
         fn_: u8,
         single: bool,
@@ -674,11 +782,26 @@ pub fn encode_bitmask_imm(value: u64, sf: bool) -> Option<(bool, u8, u8)> {
 // top-level decoder
 // ---------------------------------------------------------------------------
 
+/// The NOP encoding, shared by the encoder arm, the decode fast path, and
+/// the linker's `.text` alignment padding.
+pub const NOP_WORD: u32 = 0xD503_201F;
+
 /// Decode a 32-bit ARM64 instruction word into a typed `Instruction`.
 pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
     // NOP is a specific encoding
-    if instr == 0xD503_201F {
+    if instr == NOP_WORD {
         return Ok(Instruction::Nop);
+    }
+
+    // SCVTF (scalar, integer bits already in the FP register): the
+    // SIMD-scalar encoding class, which the group dispatch below would
+    // misroute to loads/stores (its op0 overlaps). Bit 22 picks S or D.
+    if (instr & 0xFFBF_FC00) == 0x5E21_D800 {
+        return Ok(Instruction::FpScvtfFp {
+            fd: bits(instr, 4, 0) as u8,
+            fn_: bits(instr, 9, 5) as u8,
+            single: bit(instr, 22) == 0,
+        });
     }
 
     // SVC: 1101_0100 000i_iiii iiii_iiii iii0_0001
@@ -738,14 +861,11 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     // FP data-processing 2-source: bits[15:10] = opcode | 10
     if bits(instr, 11, 10) == 0b10 {
         let opcode = bits(instr, 15, 12);
-        let op = match opcode {
-            0b0000 => FpBinOp::Fmul,
-            0b0001 => FpBinOp::Fdiv,
-            0b0010 => FpBinOp::Fadd,
-            0b0011 => FpBinOp::Fsub,
-            _ => return Err(EmuError::UnknownInstruction(instr)),
+        let Some((_, _, op)) = FP_BINARY_OPS.iter().find(|(_, code, _)| u32::from(*code) == opcode)
+        else {
+            return Err(EmuError::UnknownInstruction(instr));
         };
-        return Ok(Instruction::FpBinary { op, fd: rd, fn_: rn, fm: rm, single });
+        return Ok(Instruction::FpBinary { op: *op, fd: rd, fn_: rn, fm: rm, single });
     }
 
     // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.
@@ -753,17 +873,13 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     // opcode is 0001‖dest-type: the ftype names the SOURCE width, so only
     // the cross-width pairs are valid encodings.
     if bits(instr, 14, 10) == 0b10000 {
-        match bits(instr, 20, 15) {
+        let opcode = bits(instr, 20, 15);
+        if let Some((_, _, op)) = FP_UNARY_OPS.iter().find(|(_, code, _)| u32::from(*code) == opcode)
+        {
+            return Ok(Instruction::FpUnary { op: *op, fd: rd, fn_: rn, single });
+        }
+        match opcode {
             0b000000 => return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn, single }),
-            0b000001 => {
-                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fabs, fd: rd, fn_: rn, single })
-            }
-            0b000010 => {
-                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fneg, fd: rd, fn_: rn, single })
-            }
-            0b000011 => {
-                return Ok(Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: rd, fn_: rn, single })
-            }
             // FCVT Sd, Dn: dest single, source double (narrow).
             0b000100 if !single => {
                 return Ok(Instruction::FpCvt { fd: rd, fn_: rn, widen: false })
@@ -790,7 +906,10 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     }
 
     // FCMP: opcode2 = 001000 in bits 15:10, bits 4:0 = 00000, bits 20:16 = Rm.
-    if bits(instr, 15, 10) == 0b001000 && bits(instr, 4, 0) == 0 {
+    // opc bits 4:3 pick the variant: 00 FCMP, 10 FCMPE. The signaling
+    // form differs only in how quiet NaNs trap, and the emulator raises
+    // no FP exceptions, so both set the same flags.
+    if bits(instr, 15, 10) == 0b001000 && matches!(bits(instr, 4, 0), 0b00000 | 0b10000) {
         return Ok(Instruction::FpCompare { fn_: rn, fm: rm, single });
     }
 
@@ -804,6 +923,24 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     if bits(instr, 20, 10) == 0b00010_000000 {
         let sf = bit(instr, 31) == 1;
         return Ok(Instruction::FpScvtf { fd: rd, rn, sf, single });
+    }
+
+    // FMOV between the register files: rmode 00, opcode 110 (FP -> GP) or
+    // 111 (GP -> FP), bits 15:10 zero. Only the matched-width pairs are
+    // valid encodings (w<->s when sf=0/ftype=S, x<->d when sf=1/ftype=D).
+    let fmov_field = bits(instr, 20, 10);
+    if fmov_field == 0b00110_000000 || fmov_field == 0b00111_000000 {
+        let sf = bit(instr, 31) == 1;
+        if sf == single {
+            return Err(EmuError::UnknownInstruction(instr));
+        }
+        return Ok(Instruction::FpMoveGeneral {
+            to_fp: fmov_field == 0b00111_000000,
+            sf,
+            single,
+            rd,
+            rn,
+        });
     }
 
     Err(EmuError::UnknownInstruction(instr))
@@ -1169,7 +1306,7 @@ fn decode_ldr_literal(instr: u32) -> Result<Instruction, EmuError> {
 
 fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
     let opc = bits(instr, 31, 30);
-    let sf = opc == 0b10; // 10 = 64-bit, 00 = 32-bit
+    let v = bit(instr, 26); // 0 = general registers, 1 = SIMD&FP
     let mode_bits = bits(instr, 24, 23);
     let l = bit(instr, 22); // 0=STP, 1=LDP
     let imm7 = bits(instr, 21, 15);
@@ -1185,6 +1322,30 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
     };
 
     let op = if l == 1 { LdStPairOp::Ldp } else { LdStPairOp::Stp };
+
+    if v == 1 {
+        // SIMD&FP pair: opc 00 = S, 01 = D; 10 (Q registers) is not
+        // implemented. Before this gate an FP pair fell into the general
+        // decode below and ran as a 32-bit GP pair with a halved offset.
+        let single = match opc {
+            0b00 => true,
+            0b01 => false,
+            _ => return Err(EmuError::UnknownInstruction(instr)),
+        };
+        let scale = if single { 4 } else { 8 };
+        let signed_imm = sign_extend(imm7, 7) as i16 * scale;
+        return Ok(Instruction::FpLdStPair {
+            op,
+            single,
+            rt,
+            rt2,
+            rn,
+            imm7: signed_imm,
+            mode,
+        });
+    }
+
+    let sf = opc == 0b10; // 10 = 64-bit, 00 = 32-bit
 
     // imm7 is signed, scaled by access size (4 for 32-bit, 8 for 64-bit)
     let scale = if sf { 8 } else { 4 };
@@ -1202,14 +1363,7 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
-    let size_bits = bits(instr, 31, 30);
-    let size = match size_bits {
-        0b00 => MemSize::B,
-        0b01 => MemSize::H,
-        0b10 => MemSize::W,
-        0b11 => MemSize::X,
-        _ => unreachable!(),
-    };
+    let size = MemSize::from_size_field(bits(instr, 31, 30) as u8);
 
     let v = bit(instr, 26);
     if v == 1 {
@@ -1321,20 +1475,26 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
             let rm = bits(instr, 20, 16) as u8;
             let option = bits(instr, 15, 13);
             let s = bit(instr, 12) as u8;
-            let extend = match option {
-                0b010 => ExtendType::Uxtw,
-                0b011 => ExtendType::Lsl,
-                0b110 => ExtendType::Sxtw,
-                0b111 => ExtendType::Sxtx,
+            // The legal option fields are the ones the assembler can write,
+            // so the set comes from the shared table. 0b011 is spelled both
+            // `lsl` and `uxtx`; the table lists `lsl` first, so a 64-bit
+            // index decodes as Lsl the way GAS disassembles it.
+            let extend = match LDST_EXTENDS
+                .iter()
+                .find(|(_, opt, _)| u32::from(*opt) == option)
+                .map(|(keyword, _, _)| *keyword)
+            {
+                Some("uxtw") => ExtendType::Uxtw,
+                Some("lsl") => ExtendType::Lsl,
+                Some("sxtw") => ExtendType::Sxtw,
+                Some("sxtx") => ExtendType::Sxtx,
                 _ => return Err(EmuError::UnknownInstruction(instr)),
             };
+            // S=1 means "scale the index by the access size", so the shift
+            // is log2 of that width -- read off the shared byte count
+            // rather than re-spelled as a second size table.
             let shift_amount = if s == 1 {
-                match size {
-                    MemSize::B => 0,
-                    MemSize::H => 1,
-                    MemSize::W => 2,
-                    MemSize::X => 3,
-                }
+                size.bytes().trailing_zeros() as u8
             } else {
                 0
             };
@@ -1551,13 +1711,10 @@ fn decode_logical_reg(instr: u32) -> Result<Instruction, EmuError> {
 
 fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
-    // Bit 30 is the op field: 0 = CSEL/CSINC (supported; CSET lowers to
-    // CSINC), 1 = CSINV/CSNEG. The executor has no CsInv/CsNeg and the
-    // assembler never emits them, so reject rather than silently decode a
-    // hand-crafted `.word` csinv as csel.
-    if bit(instr, 30) != 0 {
-        return Err(EmuError::UnknownInstruction(instr));
-    }
+    // Bit 30 is the op field (0 = CSEL/CSINC, 1 = CSINV/CSNEG); bit 10
+    // picks within each pair. gcc reaches CSNEG for abs()-shaped code
+    // even at -O0.
+    let op_bit = bit(instr, 30);
     let op2 = bit(instr, 10);
     let rm = bits(instr, 20, 16) as u8;
     let cond_bits = bits(instr, 15, 12) as u8;
@@ -1566,9 +1723,11 @@ fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
 
     let cond = Condition::from_u8(cond_bits)?;
 
-    let op = match op2 {
-        0 => CondSelOp::Csel,
-        1 => CondSelOp::Csinc,
+    let op = match (op_bit, op2) {
+        (0, 0) => CondSelOp::Csel,
+        (0, 1) => CondSelOp::Csinc,
+        (1, 0) => CondSelOp::Csinv,
+        (1, 1) => CondSelOp::Csneg,
         _ => unreachable!(),
     };
 
@@ -1663,6 +1822,23 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
             rm,
             ra,
         });
+    }
+
+    // SMULL/UMULL are SMADDL/UMADDL with Ra=XZR; SMULH/UMULH fix the Ra
+    // field at 11111. The accumulate forms proper (Ra != XZR) stay
+    // undecoded: gcc emits only the aliases, and half-implementing the
+    // accumulate would be a silent wrong answer waiting to happen.
+    if sf && o0 == 0 && ra == 31 {
+        let op = match op31 {
+            0b001 => Some(MulWideOp::Smull),
+            0b101 => Some(MulWideOp::Umull),
+            0b010 => Some(MulWideOp::Smulh),
+            0b110 => Some(MulWideOp::Umulh),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Ok(Instruction::MulWide { op, rd, rn, rm });
+        }
     }
 
     Err(EmuError::UnknownInstruction(instr))
@@ -2185,16 +2361,22 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_condsel_and_dp1_source_are_rejected() {
-        // csinv/csneg (cond-select op bit set) and rev/rev32 (DP 1-source,
-        // bit 30 set) are not implemented and the assembler never emits
-        // them; a hand-crafted .word must reject, not silently run as
-        // csel/csinc or udiv/sdiv.
-        assert!(decode(0x5A80_0000).is_err(), "csinv w0,w0,w0,eq");
-        assert!(decode(0xDA80_0400).is_err(), "csinv x0,x0,x0 variant");
+    fn unsupported_dp1_source_words_are_rejected() {
+        // rev/rev32 (DP 1-source, bit 30 set) are not implemented and the
+        // assembler never emits them; a hand-crafted .word must reject,
+        // not silently run as udiv/sdiv. The cond-select op=1 family
+        // (csinv/csneg) decodes now, so those words are supported.
+        assert!(
+            matches!(decode(0x5A80_0000), Ok(Instruction::CondSel { op: CondSelOp::Csinv, .. })),
+            "csinv w0,w0,w0,eq decodes"
+        );
+        assert!(
+            matches!(decode(0xDA80_0400), Ok(Instruction::CondSel { op: CondSelOp::Csneg, .. })),
+            "csneg x0,x0,x0,eq decodes"
+        );
         assert!(decode(0xDAC0_0800).is_err(), "rev32 x0,x0");
         assert!(decode(0x5AC0_0800).is_err(), "dp2 group with the op bit set");
-        // sanity: the supported forms still decode.
+        // sanity: the older forms still decode.
         assert!(decode(0x1A80_0000).is_ok(), "csel w0,w0,w0,eq");
         assert!(decode(0x1AC0_0800).is_ok(), "udiv w0,w0,w0");
     }

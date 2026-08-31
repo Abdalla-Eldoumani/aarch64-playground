@@ -20,19 +20,21 @@ export interface RegisterRowProps {
  * shrink, so in a panel narrower than one full line it reflows onto its own
  * right-aligned line under the name and alias instead of painting into the
  * neighboring column; `title` keeps the full value one hover away. On a
- * write the row plays the `anim-reg-flash` keyframe, a tint read from
- * `--changed` so the flash follows the theme (never a hardcoded amber); the
- * keyframe lives inside a `prefers-reduced-motion: no-preference` block, so
- * under reduced motion the row is static and the value's `--changed` tint is
- * the only indicator. The alias stays on `--text-secondary` at full opacity
- * so it clears WCAG AA (not a faded label).
+ * write the row plays the `anim-reg-flash` keyframe: the amber write bar
+ * strikes in wide and settles into the static 2px edge, a latch closing
+ * rather than a background wash, so the register file keeps its terminal
+ * voice. The keyframe lives inside a `prefers-reduced-motion:
+ * no-preference` block, so under reduced motion the row is static and the
+ * bar plus the value's `--changed` ink are the indicators. The alias stays
+ * on `--text-secondary` at full opacity so it clears WCAG AA (not a faded
+ * label).
  */
 export function RegisterRow({ name, alias, value, changed = false }: RegisterRowProps) {
   return (
     <div
-      // A written row also carries a 2px amber edge bar -- the machine's
-      // write marker -- alongside the --changed tint, so the write reads
-      // even while the background flash fades.
+      // The 2px amber edge bar is the machine's write marker; the flash
+      // above strikes into it, and the --changed ink on the value keeps
+      // the write readable after the motion ends.
       className={`flex flex-wrap items-center gap-x-2 rounded-[var(--radius-control)] px-2 py-1 ${
         changed
           ? "anim-reg-flash [box-shadow:inset_2px_0_0_0_var(--amber)]"

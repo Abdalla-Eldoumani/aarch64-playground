@@ -19,9 +19,14 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `MUL`    | `MUL Xd, Xn, Xm`                 | Low 64 bits of product. Alias for `MADD Xd, Xn, Xm, XZR`. |
 | `MADD`   | `MADD Xd, Xn, Xm, Xa`            | Multiply-add: `Xd = Xa + Xn * Xm`.       |
 | `MSUB`   | `MSUB Xd, Xn, Xm, Xa`            | Multiply-subtract: `Xd = Xa - Xn * Xm`. |
+| `SMULL`  | `SMULL Xd, Wn, Wm`               | Widening multiply: the exact 64-bit product of two signed 32-bit values. |
+| `UMULL`  | `UMULL Xd, Wn, Wm`               | Widening multiply, unsigned.             |
+| `SMULH`  | `SMULH Xd, Xn, Xm`               | The top 64 bits of the signed 128-bit product. |
+| `UMULH`  | `UMULH Xd, Xn, Xm`               | The top 64 bits of the unsigned 128-bit product. |
 | `UDIV`   | `UDIV Xd, Xn, Xm`                | Unsigned divide, zero on divide-by-zero. |
 | `SDIV`   | `SDIV Xd, Xn, Xm`                | Signed divide.                           |
 | `NEG`    | `NEG Xd, Xm`                     | Alias for `SUB Xd, XZR, Xm`.             |
+| `NEGS`   | `NEGS Xd, Xm`                    | Alias for `SUBS Xd, XZR, Xm`; sets NZCV. |
 | `AND`    | `AND Xd, Xn, Xm` / `..., #imm`   | Logical AND.                             |
 | `ANDS`   | same                             | Sets NZCV.                               |
 | `ORR`    | `ORR Xd, Xn, Xm`                 | Logical OR.                              |
@@ -55,6 +60,8 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | -------- | ------------------------------- | ----------------------------------- |
 | `CSEL`   | `CSEL Xd, Xn, Xm, cond`         | Xd = cond ? Xn : Xm.                |
 | `CSINC`  | `CSINC Xd, Xn, Xm, cond`        | Xd = cond ? Xn : Xm+1.              |
+| `CSINV`  | `CSINV Xd, Xn, Xm, cond`        | Xd = cond ? Xn : ~Xm.               |
+| `CSNEG`  | `CSNEG Xd, Xn, Xm, cond`        | Xd = cond ? Xn : -Xm.               |
 | `CSET`   | `CSET Xd, cond`                 | Alias for `CSINC Xd, XZR, XZR, !cond`. |
 
 Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`, `LS`, `GE`, `LT`, `GT`, `LE`.
@@ -69,8 +76,8 @@ Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`,
 | `STRB`   | same                                                  | Byte store.                        |
 | `LDRH`   | same                                                  | Halfword load.                     |
 | `STRH`   | same                                                  | Halfword store.                    |
-| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` (+ pre/post index)         | Load pair.                         |
-| `STP`    | same                                                  | Store pair.                        |
+| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Dt1, Dt2, ...` (+ pre/post index) | Load pair, general or FP registers (D pairs scale by 8, S pairs by 4). |
+| `STP`    | same                                                  | Store pair. `stp d8, d9, [sp, -16]!` is the AAPCS64 callee-saved FP prologue. |
 | `LDRSB`  | `LDRSB Wt, [Xn, #imm]` / `LDRSB Xt, [Xn, #imm]`       | Byte load, sign-extended into Wt or Xt. |
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
 | `LDRSW`  | `LDRSW Xt, [Xn, #imm]`                                | Word load, sign-extended to 64 bits. `Xt` target only, per the ARM spec. |
@@ -123,7 +130,7 @@ Every scalar instruction takes both course views of the register file: the S for
 
 | Mnemonic | Form                              | Notes                                   |
 | -------- | --------------------------------- | --------------------------------------- |
-| `FMOV`   | `FMOV Dd, Dn` / `FMOV Sd, Sn` / `FMOV Dd, #imm` / `FMOV Sd, #imm` | Bit-for-bit copy, or an 8-bit float immediate (`fmov d9, 5.0`, `fmov s1, 0.5`). The immediate must be a small power-of-two multiple of 1.0-1.9375 (so 0.5, 1.0, 2.0, 5.0, 9.0 work; 0.0 and 100.0 do not: load those from a `.double` / `.float`). |
+| `FMOV`   | `FMOV Dd, Dn` / `FMOV Dd, Xn` / `FMOV Xd, Dn` / `FMOV Dd, #imm` (and the S/W forms of each) | Bit-for-bit copy: within the FP file, or between the files (`fmov d0, x0` pairs x with d and w with s; no conversion happens). The immediate form takes an 8-bit float immediate (`fmov d9, 5.0`, `fmov s1, 0.5`): a small power-of-two multiple of 1.0-1.9375, so 0.5, 1.0, 2.0, 5.0, 9.0 work and 0.0 or 100.0 do not (load those from a `.double` / `.float`). |
 | `FADD`   | `FADD Dd, Dn, Dm` / `FADD Sd, Sn, Sm` | The register width picks the precision. |
 | `FSUB`   | `FSUB Dd, Dn, Dm` / `FSUB Sd, Sn, Sm` |                                     |
 | `FMUL`   | `FMUL Dd, Dn, Dm` / `FMUL Sd, Sn, Sm` |                                     |
@@ -132,8 +139,9 @@ Every scalar instruction takes both course views of the register file: the S for
 | `FABS`   | `FABS Dd, Dn` / `FABS Sd, Sn`     | Absolute value: clears the sign bit.    |
 | `FSQRT`  | `FSQRT Dd, Dn` / `FSQRT Sd, Sn`   | Square root. A negative operand gives NaN, not a fault. |
 | `FCMP`   | `FCMP Dn, Dm` / `FCMP Sn, Sm`     | Updates NZCV. Unordered sets C and V.   |
+| `FCMPE`  | same                              | The signaling form; here it sets the same flags (the emulator raises no FP exceptions). |
 | `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). |
-| `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Dd, Wn` / `SCVTF Sd, Wn` | Signed integer to float.  |
+| `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Sd, Wn` / `SCVTF Sd, Sn` / `SCVTF Dd, Dn` | Signed integer to float. The FP-source forms convert integer bits already sitting in the register (how gcc converts an int it loaded with `ldr s31, [...]`). |
 | `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` / `FCVTZS Wd, Sn` | Truncate float to signed integer. |
 
 ## Directives
@@ -187,17 +195,25 @@ Pre-registered and available without setup:
 
 | Name     | Notes                                                    |
 | -------- | -------------------------------------------------------- |
-| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %.Nf`; walks `x0..x7` and `d0..d7` independently for mixed int/double args. |
+| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %e %g %.Nf` plus `*` width and precision; walks `x0..x7` and `d0..d7` independently for mixed int/double args. |
+| `sprintf` / `snprintf`         | The printf engine writing into a buffer. `snprintf` truncates to `size - 1` plus the terminator and returns the untruncated length, so `if (n >= size)` detects the overflow. |
 | `scanf`  | `%d %u %x %s %c %f`; returns `WaitingForInput` when stdin runs dry. |
 | `puts` / `putchar` / `getchar` | Standard libc semantics.                  |
+| `fgets` / `fputs`              | Line in, string out, over stdin/stdout/stderr or a virtual file. `fgets` keeps the newline and answers NULL at end of input. |
 | `strlen` / `strcmp` / `strcpy` | Standard libc semantics.                  |
-| `memset` / `memcpy`            | Standard libc semantics.                  |
+| `strncmp` / `strncpy` / `strcat` / `strchr` / `strstr` | glibc-exact where glibc has an opinion: `strncmp` returns the byte difference, `strncpy` NUL-pads the field and omits the terminator when the source fills it, `strchr` can find the terminator itself. |
+| `strtok`                       | glibc's static cursor, kept host-side so step-back re-hands the same token. Cuts the string in place. |
+| `memset` / `memcpy` / `memcmp` / `memmove` | Standard libc semantics; `memmove` is overlap-safe in both directions. |
+| `strtol`                       | glibc's grammar: whitespace, sign, base 0 inferring `0x`/leading-zero/decimal, `endptr` writeback, LONG_MIN/LONG_MAX clamp on overflow. |
+| `abs` / `labs`                 | Wrap at the minimum value, like the hardware. |
+| `isdigit` / `isalpha` / `isspace` / `toupper` / `tolower` | C locale. The is* stubs return glibc's mask bit (nonzero, not 1), and the `__ctype_b_loc` table the macros index is hosted too. |
+| `calloc` / `realloc`           | glibc's edges: `calloc` zeroes and refuses an overflowing product; `realloc` is malloc for NULL, free for size 0, in place when the block already fits. |
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
 | `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
 | `rand` / `srand`               | glibc's TYPE_3 additive generator, `RAND_MAX` 2147483647: the sequence is identical to the course servers', so unseeded draws diff cleanly against sample runs. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
 | `time`                         | Returns a fixed timestamp (and stores it through `x0` when non-null), so `srand(time(0))` seeds the same run every time. Reproducibility over wall-clock realism, by design. |
-| `malloc` / `free`              | A fixed 1 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
+| `malloc` / `free`              | A fixed 16 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
 | `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
 | `fflush`                       | Accepted and ignored: output is never buffered here. |
 | `fopen`                        | Opens a virtual-filesystem file by C mode string (`r`, `w`, `a`, with `+`); returns an opaque FILE* handle, NULL on a missing `r` file or a refused wall. The handle is not a real pointer -- dereferencing it faults. |
@@ -250,8 +266,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- SIMD vector widths (Q registers, `LDP Dn, Dm, ...`, arrangement
-  specifiers)
+- SIMD vector widths (Q registers and arrangement specifiers)
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release

@@ -16,7 +16,7 @@ function loadInitial(): string[] {
       return parsed as string[];
     }
   } catch {
-    // ignore
+    // malformed stored expressions; fall through to the empty list.
   }
   return [];
 }

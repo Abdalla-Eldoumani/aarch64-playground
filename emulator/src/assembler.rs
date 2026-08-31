@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
+use crate::decoder::{MemSize, FP_BINARY_OPS, FP_UNARY_OPS, LDST_EXTENDS};
 use crate::errors::EmuError;
+use crate::registers::{reg_alias, CONDITIONS};
 
 /// Assemble ARM64 source text into a vector of 32-bit instruction words.
 ///
@@ -150,11 +152,12 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // bitfield extract / insert
     "UBFX", "SBFX", "BFI",
     // multiply / divide
-    "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG",
+    "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG", "NEGS",
+    "SMULL", "UMULL", "SMULH", "UMULH",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
-    "FADD", "FSUB", "FMUL", "FDIV", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP",
+    "FADD", "FSUB", "FMUL", "FDIV", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
     "FCVT", "SCVTF", "FCVTZS", "LDP", "STP",
     // pc-relative address formation
     "ADR", "ADRP",
@@ -175,10 +178,11 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "B.LT", "BLT",
     "B.GT", "BGT",
     "B.LE", "BLE",
+    "B.AL", "BAL",
     // compare/test and branch
     "CBZ", "CBNZ", "TBZ", "TBNZ",
     // conditional select
-    "CSEL", "CSINC", "CSET",
+    "CSEL", "CSINC", "CSINV", "CSNEG", "CSET",
     // system
     "NOP", "SVC",
 ];
@@ -196,6 +200,13 @@ fn encode_line(
     } else {
         split_operands(operands)
     };
+
+    // Conditional branches take both spellings of every condition
+    // (`B.NE` and `BNE`); the set comes from the shared condition table
+    // rather than a hand-written arm per condition.
+    if let Some(cond) = bcond_condition(&mn) {
+        return encode_bcond(&ops, cond, pc, labels, line_num);
+    }
 
     match mn.as_str() {
         // -- moves --
@@ -247,7 +258,12 @@ fn encode_line(
         "SDIV" => encode_mul_div(&ops, 2, line_num),
         "MADD" => encode_mul_accumulate(&ops, false, line_num),
         "MSUB" => encode_mul_accumulate(&ops, true, line_num),
-        "NEG" => encode_neg(&ops, line_num),
+        "SMULL" => encode_mul_wide(&ops, 0b001, true, line_num),
+        "UMULL" => encode_mul_wide(&ops, 0b101, true, line_num),
+        "SMULH" => encode_mul_wide(&ops, 0b010, false, line_num),
+        "UMULH" => encode_mul_wide(&ops, 0b110, false, line_num),
+        "NEG" => encode_neg(&ops, false, line_num),
+        "NEGS" => encode_neg(&ops, true, line_num),
 
         // -- memory --
         "LDR" => encode_ldst(&ops, 1, 0b11, line_num),
@@ -261,15 +277,16 @@ fn encode_line(
         "LDRSW" => encode_ldrs(&ops, 0b10, line_num),
 
         // -- floating-point --
-        "FADD" => encode_fp_binary(&ops, 0b0010, "fadd", line_num),
-        "FSUB" => encode_fp_binary(&ops, 0b0011, "fsub", line_num),
-        "FMUL" => encode_fp_binary(&ops, 0b0000, "fmul", line_num),
-        "FDIV" => encode_fp_binary(&ops, 0b0001, "fdiv", line_num),
+        "FADD" => encode_fp_binary(&ops, "fadd", line_num),
+        "FSUB" => encode_fp_binary(&ops, "fsub", line_num),
+        "FMUL" => encode_fp_binary(&ops, "fmul", line_num),
+        "FDIV" => encode_fp_binary(&ops, "fdiv", line_num),
         "FMOV" => encode_fmov(&ops, line_num),
-        "FNEG" => encode_fp_unary(&ops, 0b000010, "fneg", line_num),
-        "FABS" => encode_fp_unary(&ops, 0b000001, "fabs", line_num),
-        "FSQRT" => encode_fp_unary(&ops, 0b000011, "fsqrt", line_num),
-        "FCMP" => encode_fcmp(&ops, line_num),
+        "FNEG" => encode_fp_unary(&ops, "fneg", line_num),
+        "FABS" => encode_fp_unary(&ops, "fabs", line_num),
+        "FSQRT" => encode_fp_unary(&ops, "fsqrt", line_num),
+        "FCMP" => encode_fcmp(&ops, false, line_num),
+        "FCMPE" => encode_fcmp(&ops, true, line_num),
         "FCVT" => encode_fcvt(&ops, line_num),
         "SCVTF" => encode_scvtf(&ops, line_num),
         "FCVTZS" => encode_fcvtzs(&ops, line_num),
@@ -287,22 +304,6 @@ fn encode_line(
         "BLR" => encode_branch_reg(&ops, 0b0001, line_num),
         "RET" => encode_ret(&ops, line_num),
 
-        // -- conditional branches --
-        "B.EQ" | "BEQ" => encode_bcond(&ops, 0b0000, pc, labels, line_num),
-        "B.NE" | "BNE" => encode_bcond(&ops, 0b0001, pc, labels, line_num),
-        "B.HS" | "B.CS" | "BHS" | "BCS" => encode_bcond(&ops, 0b0010, pc, labels, line_num),
-        "B.LO" | "B.CC" | "BLO" | "BCC" => encode_bcond(&ops, 0b0011, pc, labels, line_num),
-        "B.MI" | "BMI" => encode_bcond(&ops, 0b0100, pc, labels, line_num),
-        "B.PL" | "BPL" => encode_bcond(&ops, 0b0101, pc, labels, line_num),
-        "B.VS" | "BVS" => encode_bcond(&ops, 0b0110, pc, labels, line_num),
-        "B.VC" | "BVC" => encode_bcond(&ops, 0b0111, pc, labels, line_num),
-        "B.HI" | "BHI" => encode_bcond(&ops, 0b1000, pc, labels, line_num),
-        "B.LS" | "BLS" => encode_bcond(&ops, 0b1001, pc, labels, line_num),
-        "B.GE" | "BGE" => encode_bcond(&ops, 0b1010, pc, labels, line_num),
-        "B.LT" | "BLT" => encode_bcond(&ops, 0b1011, pc, labels, line_num),
-        "B.GT" | "BGT" => encode_bcond(&ops, 0b1100, pc, labels, line_num),
-        "B.LE" | "BLE" => encode_bcond(&ops, 0b1101, pc, labels, line_num),
-
         // -- compare/test and branch --
         "CBZ" => encode_compare_branch(&ops, false, pc, labels, line_num),
         "CBNZ" => encode_compare_branch(&ops, true, pc, labels, line_num),
@@ -310,12 +311,14 @@ fn encode_line(
         "TBNZ" => encode_test_branch(&ops, true, pc, labels, line_num),
 
         // -- conditional select --
-        "CSEL" => encode_cond_sel(&ops, 0, line_num),
-        "CSINC" => encode_cond_sel(&ops, 1, line_num),
+        "CSEL" => encode_cond_sel(&ops, 0, 0, line_num),
+        "CSINC" => encode_cond_sel(&ops, 0, 1, line_num),
+        "CSINV" => encode_cond_sel(&ops, 1, 0, line_num),
+        "CSNEG" => encode_cond_sel(&ops, 1, 1, line_num),
         "CSET" => encode_cset(&ops, line_num),
 
         // -- system --
-        "NOP" => Ok(0xD503_201F),
+        "NOP" => Ok(crate::decoder::NOP_WORD),
         "SVC" => encode_svc(&ops, line_num),
 
         _ => asm_err(line_num, &format!("unknown mnemonic: {mn}")),
@@ -363,35 +366,28 @@ fn split_operands(s: &str) -> Vec<&str> {
 fn parse_register(s: &str, line_num: usize) -> Result<(u8, bool), EmuError> {
     let original = s.trim();
     let s = original.to_uppercase();
-    match s.as_str() {
-        "SP" => Ok((31, true)), // sf=true for SP
-        "XZR" => Ok((31, true)),
-        "WZR" => Ok((31, false)),
-        // Real GNU as predefines the frame-pointer and link-register
-        // aliases, so course prologues written with bare fp/lr assemble
-        // without a define(fp, x29) line.
-        "FP" => Ok((29, true)),
-        "LR" => Ok((30, true)),
-        _ => {
-            let (prefix, sf) = if let Some(rest) = s.strip_prefix('X') {
-                (rest, true)
-            } else if let Some(rest) = s.strip_prefix('W') {
-                (rest, false)
-            } else {
-                return asm_err(
-                    line_num,
-                    &format!("expected a register here, got `{original}`"),
-                );
-            };
-            let num: u8 = prefix
-                .parse()
-                .map_err(|_| asm_error(line_num, &format!("invalid register: {s}")))?;
-            if num > 30 {
-                return asm_err(line_num, &format!("register index out of range: {s}"));
-            }
-            Ok((num, sf))
-        }
+    // sp/xzr/wzr/fp/lr come from the shared alias table in registers.rs so
+    // the encoder and the operand recognizers cannot disagree about the set.
+    if let Some((num, sf)) = reg_alias(&s) {
+        return Ok((num, sf));
     }
+    let (prefix, sf) = if let Some(rest) = s.strip_prefix('X') {
+        (rest, true)
+    } else if let Some(rest) = s.strip_prefix('W') {
+        (rest, false)
+    } else {
+        return asm_err(
+            line_num,
+            &format!("expected a register here, got `{original}`"),
+        );
+    };
+    let num: u8 = prefix
+        .parse()
+        .map_err(|_| asm_error(line_num, &format!("invalid register: {s}")))?;
+    if num > 30 {
+        return asm_err(line_num, &format!("register index out of range: {s}"));
+    }
+    Ok((num, sf))
 }
 
 fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError> {
@@ -469,24 +465,28 @@ fn parse_char_body(body: &str, line_num: usize) -> Result<i64, EmuError> {
 }
 
 fn parse_condition(s: &str, line_num: usize) -> Result<u8, EmuError> {
-    match s.trim().to_uppercase().as_str() {
-        "EQ" => Ok(0b0000),
-        "NE" => Ok(0b0001),
-        "HS" | "CS" => Ok(0b0010),
-        "LO" | "CC" => Ok(0b0011),
-        "MI" => Ok(0b0100),
-        "PL" => Ok(0b0101),
-        "VS" => Ok(0b0110),
-        "VC" => Ok(0b0111),
-        "HI" => Ok(0b1000),
-        "LS" => Ok(0b1001),
-        "GE" => Ok(0b1010),
-        "LT" => Ok(0b1011),
-        "GT" => Ok(0b1100),
-        "LE" => Ok(0b1101),
-        "AL" => Ok(0b1110),
-        _ => asm_err(line_num, &format!("unknown condition: {s}")),
+    match condition_bits(&s.trim().to_uppercase()) {
+        Some(bits) => Ok(bits),
+        None => asm_err(line_num, &format!("unknown condition: {s}")),
     }
+}
+
+/// Look an uppercase condition spelling up in the shared table.
+fn condition_bits(name: &str) -> Option<u8> {
+    CONDITIONS.iter().find_map(|(primary, aliases, bits)| {
+        (*primary == name || aliases.contains(&name)).then_some(*bits)
+    })
+}
+
+/// The condition bits of a conditional-branch mnemonic (`B.<cc>` or `B<cc>`,
+/// uppercase), or None for anything else. The bare form matches only when
+/// the whole tail is a condition spelling, so `BL`, `BLR` and `BIC` never
+/// strip to one.
+fn bcond_condition(mn: &str) -> Option<u8> {
+    if let Some(tail) = mn.strip_prefix("B.") {
+        return condition_bits(tail);
+    }
+    condition_bits(mn.strip_prefix('B')?)
 }
 
 fn asm_err<T>(line_num: usize, msg: &str) -> Result<T, EmuError> {
@@ -675,7 +675,10 @@ fn parse_shift_modifier(
 }
 
 /// The eight extend keywords ADD/SUB's extended-register form accepts, in
-/// `option` field order.
+/// `option` field order. Not the load/store set: that one is
+/// `decoder::LDST_EXTENDS`, a five-row table that also carries the Rm width
+/// rule. This table has no width column on purpose (see
+/// `parse_extend_modifier`), so the two stay separate.
 const EXTEND_KEYWORDS: [(&str, u32); 8] = [
     ("UXTB", 0b000),
     ("UXTH", 0b001),
@@ -1220,7 +1223,12 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
                 // ASR: SBFM Xd, Xn, #amt, #(reg_size - 1)
                 (0b00, amt, reg_size - 1)
             }
-            _ => unreachable!(),
+            // The dispatch passes only 0/1/2; anything else is a crate
+            // bug, and on wasm a panic costs the whole worker where an
+            // error is one calm halt.
+            other => {
+                return asm_err(ln, &format!("internal: unknown shift selector {other}"));
+            }
         };
 
         let n_bit = if sf { 1u32 } else { 0 };
@@ -1236,7 +1244,9 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
         0 => 0b001000, // LSLV
         1 => 0b001001, // LSRV
         2 => 0b001010, // ASRV
-        _ => unreachable!(),
+        other => {
+            return asm_err(ln, &format!("internal: unknown shift selector {other}"));
+        }
     };
     Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
         | (opcode << 10) | ((rn as u32) << 5) | (rd as u32))
@@ -1292,7 +1302,7 @@ fn encode_mul_div(ops: &[&str], variant: u8, ln: usize) -> Result<u32, EmuError>
             Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
                 | (0b000011 << 10) | ((rn as u32) << 5) | (rd as u32))
         }
-        _ => unreachable!(),
+        other => asm_err(ln, &format!("internal: unknown multiply selector {other}")),
     }
 }
 
@@ -1318,15 +1328,43 @@ fn encode_mul_accumulate(ops: &[&str], subtract: bool, ln: usize) -> Result<u32,
         | (rd as u32))
 }
 
-fn encode_neg(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
-    // NEG Xd, Xm -> SUB Xd, XZR, Xm
+fn encode_mul_wide(ops: &[&str], op31: u32, widening: bool, ln: usize) -> Result<u32, EmuError> {
+    // SMULL/UMULL Xd, Wn, Wm  (the SMADDL/UMADDL alias with Ra=XZR)
+    // SMULH/UMULH Xd, Xn, Xm  (the top 64 bits of the 128-bit product)
+    if ops.len() != 3 {
+        return asm_err(ln, "SMULL/UMULL/SMULH/UMULH require 3 operands");
+    }
+    reject_sp_operands(ops, ln, "SMULL/UMULL/SMULH/UMULH")?;
+    let (rd, rd_x) = parse_register(ops[0], ln)?;
+    let (rn, rn_x) = parse_register(ops[1], ln)?;
+    let (rm, rm_x) = parse_register(ops[2], ln)?;
+    if !rd_x {
+        return asm_err(ln, "the destination must be an X register (the product is 64-bit)");
+    }
+    if widening && (rn_x || rm_x) {
+        return asm_err(ln, "SMULL/UMULL take W source registers (32 x 32 -> 64)");
+    }
+    if !widening && (!rn_x || !rm_x) {
+        return asm_err(ln, "SMULH/UMULH take X source registers");
+    }
+    Ok((1 << 31)
+        | (0b11011 << 24)
+        | (op31 << 21)
+        | ((rm as u32) << 16)
+        | (0b11111 << 10)
+        | ((rn as u32) << 5)
+        | (rd as u32))
+}
+
+fn encode_neg(ops: &[&str], set_flags: bool, ln: usize) -> Result<u32, EmuError> {
+    // NEG Xd, Xm -> SUB Xd, XZR, Xm; NEGS is the SUBS form and sets NZCV.
     if ops.len() != 2 {
-        return asm_err(ln, "NEG requires 2 operands");
+        return asm_err(ln, "NEG/NEGS requires 2 operands");
     }
     let (_, sf) = parse_register(ops[0], ln)?;
     let zr = if sf { "XZR" } else { "WZR" };
     let new_ops = [ops[0], zr, ops[1]];
-    encode_dp(&new_ops, 1, 0, ln)
+    encode_dp(&new_ops, 1, if set_flags { 1 } else { 0 }, ln)
 }
 
 fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
@@ -1369,7 +1407,14 @@ fn require_same_fp_width(name: &str, widths: &[char], ln: usize) -> Result<char,
     Ok(first)
 }
 
-fn encode_fp_binary(ops: &[&str], opcode: u32, name: &str, ln: usize) -> Result<u32, EmuError> {
+/// `name` is both the display name in the diagnostics and the key into
+/// `FP_BINARY_OPS`, so the dispatch arm names the operation once and the
+/// opcode comes from the shared row rather than a number spelled beside it.
+fn encode_fp_binary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
+    let Some((_, opcode, _)) = FP_BINARY_OPS.iter().find(|(mn, _, _)| *mn == name) else {
+        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+    };
+    let opcode = u32::from(*opcode);
     if ops.len() != 3 {
         return asm_err(ln, &format!("{name} requires 3 operands: {name} fd, fn, fm"));
     }
@@ -1389,6 +1434,20 @@ fn encode_fp_binary(ops: &[&str], opcode: u32, name: &str, ln: usize) -> Result<
 fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "fmov requires 2 operands");
+    }
+    // General destination is the FP -> GP direction: `fmov x0, d0`,
+    // `fmov w0, s0`. Raw bits move; no conversion.
+    if let Ok((rd, sf)) = parse_register(ops[0], ln) {
+        if ops[0].trim().eq_ignore_ascii_case("sp") {
+            return asm_err(ln, "fmov cannot target sp");
+        }
+        let (fn_, wn) = parse_fp_register(ops[1], ln).map_err(|_| {
+            asm_error(
+                ln,
+                &format!("fmov with a general destination takes an FP source, got: {}", ops[1]),
+            )
+        })?;
+        return encode_fmov_general(rd, sf, wn, fn_, false, ln);
     }
     let (fd, wd) = parse_fp_register(ops[0], ln)?;
 
@@ -1425,17 +1484,60 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return Ok(0x1E20_1000 | fp_ftype(wd) | ((imm8 as u32) << 13) | (fd as u32));
     }
 
+    // General source is the GP -> FP direction: `fmov d0, x0`, `fmov s0, w0`.
+    if let Ok((rn, sf)) = parse_register(ops[1], ln) {
+        if ops[1].trim().eq_ignore_ascii_case("sp") {
+            return asm_err(ln, "fmov cannot read sp");
+        }
+        return encode_fmov_general(rn, sf, wd, fd, true, ln);
+    }
+
     let (fn_, wn) = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("fmov", &[wd, wn], ln)?;
     // FMOV Fd, Fn: 0_0_0_11110_ftype_1_00000_010000_Rn_Rd
     Ok(0x1E20_4000 | fp_ftype(width) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
+/// FMOV between the register files, either direction: raw bits, no
+/// conversion. Only the matched-width pairs encode (`w<->s`, `x<->d`);
+/// the layout is sf_0011110_ftype_1_00_opcode_000000_Rn_Rd with opcode
+/// 111 for GP -> FP and 110 for FP -> GP.
+fn encode_fmov_general(
+    gp: u8,
+    gp_is_x: bool,
+    fp_width: char,
+    fp: u8,
+    to_fp: bool,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let widths_match = (gp_is_x && fp_width == 'D') || (!gp_is_x && fp_width == 'S');
+    if !widths_match {
+        return asm_err(
+            ln,
+            "fmov pairs w with s and x with d (use fcvt to change the value's width)",
+        );
+    }
+    let sf_bit = if gp_is_x { 1u32 } else { 0 };
+    let opcode: u32 = if to_fp { 0b111 } else { 0b110 };
+    let (rd, rn) = if to_fp { (fp, gp) } else { (gp, fp) };
+    Ok((sf_bit << 31)
+        | 0x1E20_0000
+        | fp_ftype(fp_width)
+        | (opcode << 16)
+        | ((rn as u32) << 5)
+        | (rd as u32))
+}
+
 /// Encode an FP data-processing 1-source op (`FNEG` / `FABS` / `FSQRT`
-/// `Fd, Fn`).
-/// `opcode` fills bits 20:15 of the 1-source layout:
+/// `Fd, Fn`). The row's opcode fills bits 20:15 of the 1-source layout:
 /// 0_0_0_11110_ftype_1_opcode_10000_Rn_Rd.
-fn encode_fp_unary(ops: &[&str], opcode: u32, name: &str, ln: usize) -> Result<u32, EmuError> {
+/// Same shape as `encode_fp_binary`: `name` doubles as the display name and
+/// the key into `FP_UNARY_OPS`.
+fn encode_fp_unary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
+    let Some((_, opcode, _)) = FP_UNARY_OPS.iter().find(|(mn, _, _)| *mn == name) else {
+        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+    };
+    let opcode = u32::from(*opcode);
     if ops.len() != 2 {
         return asm_err(ln, &format!("{name} requires 2 operands: {name} fd, fn"));
     }
@@ -1465,15 +1567,18 @@ fn encode_fcvt(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     Ok(0x1E20_4000 | fp_ftype(wn) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
-fn encode_fcmp(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
-        return asm_err(ln, "fcmp requires 2 operands");
+        return asm_err(ln, "fcmp/fcmpe requires 2 operands");
     }
     let (fn_, wn) = parse_fp_register(ops[0], ln)?;
     let (fm, wm) = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("fcmp", &[wn, wm], ln)?;
-    // FCMP Fn, Fm: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_0_0000
-    Ok(0x1E20_2000 | fp_ftype(width) | ((fm as u32) << 16) | ((fn_ as u32) << 5))
+    // FCMP Fn, Fm: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_0_0000; FCMPE sets
+    // opc bit 4. The emulator raises no FP exceptions, so the two set the
+    // same flags either way.
+    let opc: u32 = if signaling { 0b10000 } else { 0 };
+    Ok(0x1E20_2000 | fp_ftype(width) | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc)
 }
 
 fn encode_scvtf(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -1481,6 +1586,14 @@ fn encode_scvtf(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return asm_err(ln, "scvtf requires 2 operands: scvtf fd, rn");
     }
     let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    // The source is either a general register (the usual course form) or
+    // an FP register already holding the integer bits (gcc emits
+    // `ldr s31, [...]` then `scvtf s30, s31`): the SIMD-scalar encoding.
+    if let Ok((fn_, wn)) = parse_fp_register(ops[1], ln) {
+        let width = require_same_fp_width("scvtf", &[wd, wn], ln)?;
+        let sz: u32 = if width == 'D' { 1 << 22 } else { 0 };
+        return Ok(0x5E21_D800 | sz | ((fn_ as u32) << 5) | (fd as u32));
+    }
     let (rn, sf) = parse_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
     // SCVTF Fd, Rn: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
@@ -1525,12 +1638,16 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
             mode: IndexMode::Unsigned,
         } => {
             let offset_val = offset.unwrap_or(0);
-            let scale: u64 = match size {
-                0b00 => 1,
-                0b01 => 2,
-                0b10 => 4,
-                _ => unreachable!(),
-            };
+            if size == 0b11 {
+                // Unreachable from the dispatch: LDRSB/LDRSH/LDRSW come in
+                // as 00/01/10 and no sign-extending load has a 64-bit
+                // access size. Named explicitly so the shared MemSize
+                // mapping, which does answer for 11, cannot silently
+                // scale by 8 -- and as an error, not a panic, because on
+                // wasm a panic costs the whole worker.
+                return asm_err(ln, "internal: LDRS* never carries the 64-bit size field");
+            }
+            let scale = u64::from(MemSize::from_size_field(size).bytes());
             // Two distinct rejections, named separately: one message that
             // asserted "must be positive and aligned" blamed alignment for
             // ldrsb, whose scale of 1 makes alignment impossible to violate.
@@ -1639,14 +1756,10 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
             mode: IndexMode::Unsigned,
         } => {
             let offset_val = offset.unwrap_or(0);
-            // unsigned offset encoding
-            let scale = match size {
-                0b00 => 1u64,
-                0b01 => 2,
-                0b10 => 4,
-                0b11 => 8,
-                _ => unreachable!(),
-            };
+            // Unsigned offset encoding: the immediate is scaled by the
+            // access width, which the shared MemSize mapping names. `size`
+            // has already been narrowed above for a W target.
+            let scale = u64::from(MemSize::from_size_field(size).bytes());
             if offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
                 // Negative or unaligned offsets have no scaled form; GAS
                 // silently emits the unscaled LDUR/STUR encoding instead
@@ -1761,9 +1874,13 @@ fn looks_like_register(s: &str) -> bool {
         return false;
     }
     let lower = s.to_ascii_lowercase();
-    if matches!(lower.as_str(), "sp" | "xzr" | "wzr" | "fp" | "lr") {
+    if reg_alias(&lower).is_some() {
         return true;
     }
+    // Deliberately looser than `parse_register`: this only has to tell a
+    // register-offset address apart from an immediate one, so an
+    // out-of-range index like `x99` still reads as a register and reaches
+    // `parse_register` for the real complaint.
     for prefix in ["x", "w"] {
         if let Some(rest) = lower.strip_prefix(prefix) {
             if rest == "zr" {
@@ -1777,38 +1894,184 @@ fn looks_like_register(s: &str) -> bool {
     false
 }
 
-fn parse_reg_offset_tail(parts: &[&str], ln: usize) -> Result<AddressingMode, EmuError> {
-    // `parts` has been pre-split on commas; index 0 is the base, the
-    // rest describe the offset.
-    let (rn, _) = parse_register(parts[0], ln)?;
-    let (rm, rm_is_x) = parse_register(parts[1], ln)?;
-    // No explicit extend / shift: default LSL for Xm, UXTW for Wm.
+// ---------------------------------------------------------------------------
+// address operand tokens
+// ---------------------------------------------------------------------------
+
+/// What one token of an address operand is. The four structural kinds
+/// stand alone; a word is classified by what it opens with, which is all
+/// the shape match below needs to tell `[x0, x1]` from `[x0, #8]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TokKind {
+    LBracket,
+    RBracket,
+    Comma,
+    Bang,
+    /// A word that reads as a register name (`x0`, `w29`, `sp`).
+    Reg,
+    /// A word that opens like a number or a character literal.
+    Imm,
+    /// Any other word: an extend/shift keyword, a label, a typo.
+    Keyword,
+}
+
+/// One token, as a kind plus the byte span it covers. The span rather
+/// than the text on purpose: the shape match reads `kind`, and every
+/// leaf parse still runs on the original source slice, so
+/// `parse_register` and `parse_immediate` report exactly what the writer
+/// typed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Tok {
+    kind: TokKind,
+    start: usize,
+    end: usize,
+}
+
+/// One comma-separated piece of an operand, as byte offsets into the
+/// source. Both views are needed: the token shape decides the form, the
+/// raw text feeds the leaf parsers.
+#[derive(Debug, Clone, Copy)]
+struct Seg {
+    lo: usize,
+    hi: usize,
+}
+
+impl Seg {
+    fn text<'a>(&self, src: &'a str) -> &'a str {
+        &src[self.lo..self.hi]
+    }
+
+    /// The tokens lying inside this segment. Segment boundaries always
+    /// fall on token boundaries -- a comma edge or a bracket edge -- so
+    /// this never splits a token in half.
+    fn toks<'a>(&self, toks: &'a [Tok]) -> &'a [Tok] {
+        let lo = toks.partition_point(|t| t.start < self.lo);
+        let hi = toks.partition_point(|t| t.end <= self.hi).max(lo);
+        &toks[lo..hi]
+    }
+}
+
+fn structural_kind(c: char) -> Option<TokKind> {
+    match c {
+        '[' => Some(TokKind::LBracket),
+        ']' => Some(TokKind::RBracket),
+        ',' => Some(TokKind::Comma),
+        '!' => Some(TokKind::Bang),
+        _ => None,
+    }
+}
+
+/// Which kind of word this is. The register test is the loose
+/// `looks_like_register`, not `parse_register`: `x99` has to read as a
+/// register so it reaches `parse_register` for the real complaint
+/// instead of being silently taken for an offset.
+fn classify_word(word: &str) -> TokKind {
+    if looks_like_register(word) {
+        TokKind::Reg
+    } else if word.starts_with(|c: char| matches!(c, '#' | '-' | '\'') || c.is_ascii_digit()) {
+        TokKind::Imm
+    } else {
+        TokKind::Keyword
+    }
+}
+
+/// Split an address operand into tokens. Total by construction: nothing
+/// is rejected here, so tokenizing can never introduce a rejection the
+/// old string parser did not have. Whitespace separates words and is
+/// otherwise dropped; the segment slices keep it, because the leaf
+/// parsers trim for themselves.
+fn tokenize_address(s: &str) -> Vec<Tok> {
+    let mut toks: Vec<Tok> = Vec::new();
+    let mut chars = s.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if c.is_whitespace() {
+            continue;
+        }
+        if let Some(kind) = structural_kind(c) {
+            toks.push(Tok { kind, start: i, end: i + c.len_utf8() });
+            continue;
+        }
+        let mut end = i + c.len_utf8();
+        while let Some(&(j, next)) = chars.peek() {
+            if next.is_whitespace() || structural_kind(next).is_some() {
+                break;
+            }
+            end = j + next.len_utf8();
+            chars.next();
+        }
+        toks.push(Tok { kind: classify_word(&s[i..end]), start: i, end });
+    }
+    toks
+}
+
+/// The comma-separated segments of `src[lo..hi)`, at most `limit` of
+/// them. Mirrors `str::splitn`, which is what the old parser reached for:
+/// the last segment keeps any commas past the limit, and no segment is
+/// trimmed.
+fn comma_segments(toks: &[Tok], lo: usize, hi: usize, limit: usize) -> Vec<Seg> {
+    let mut segments: Vec<Seg> = Vec::new();
+    let mut start = lo;
+    for tok in toks {
+        if tok.kind != TokKind::Comma || tok.start < lo || tok.end > hi {
+            continue;
+        }
+        if segments.len() + 1 >= limit {
+            break;
+        }
+        segments.push(Seg { lo: start, hi: tok.start });
+        start = tok.end;
+    }
+    segments.push(Seg { lo: start, hi });
+    segments
+}
+
+/// `[Xn, (Wm|Xm) (, LSL|UXTW|SXTW|SXTX|UXTX #<amount>)?]`, reached once
+/// the shape match has seen an index register in the offset segment.
+fn parse_reg_offset(src: &str, parts: &[Seg], ln: usize) -> Result<AddressingMode, EmuError> {
+    // `parts` is the comma split of the bracket group; index 0 is the
+    // base, 1 the index register, 2 the optional extend/shift.
+    let (rn, _) = parse_register(parts[0].text(src), ln)?;
+    let (rm, rm_is_x) = parse_register(parts[1].text(src), ln)?;
+    // No explicit extend / shift: LSL for Xm. A bare W index is a GAS
+    // error (an extend must say how the 32 bits widen), and accepting it
+    // here with an implicit UXTW assembled programs the course servers
+    // reject.
     if parts.len() == 2 {
-        let option = if rm_is_x { 0b011 } else { 0b010 };
+        if !rm_is_x {
+            return asm_err(
+                ln,
+                "a W index register needs an extend keyword: write [Xn, Wm, uxtw] or [Xn, Wm, sxtw]",
+            );
+        }
         return Ok(AddressingMode::RegOffset {
             rn,
             rm,
-            option,
+            option: 0b011,
             shift_amount: None,
         });
     }
-    let modifier = parts[2].trim();
+    // The keyword is taken off the raw text rather than off the first
+    // token: `split_extend_keyword` reads it as everything up to the
+    // first whitespace, punctuation included, so `lsl,` is one bad
+    // keyword and is reported as one. Slicing at the token boundary
+    // instead would rename that complaint.
+    let modifier = parts[2].text(src).trim();
     let (keyword, shift_str) = split_extend_keyword(modifier);
     let keyword_lower = keyword.to_ascii_lowercase();
-    let option = match keyword_lower.as_str() {
-        "lsl" => 0b011,
-        "uxtw" => 0b010,
-        "sxtw" => 0b110,
-        "sxtx" => 0b111,
-        "uxtx" => 0b011,
-        _ => return asm_err(ln, &format!("bad extend/shift keyword: {keyword}")),
+    let Some((_, option, needs_x)) = LDST_EXTENDS
+        .iter()
+        .find(|(kw, _, _)| *kw == keyword_lower.as_str())
+    else {
+        return asm_err(ln, &format!("bad extend/shift keyword: {keyword}"));
     };
+    let (option, needs_x) = (*option, *needs_x);
     // Require the extend keyword to match the Rm width ARM-spec rules:
-    // UXTW/SXTW only make sense with Wm; LSL/UXTX/SXTX with Xm.
-    if matches!(keyword_lower.as_str(), "uxtw" | "sxtw") && rm_is_x {
+    // UXTW/SXTW only make sense with Wm; LSL/UXTX/SXTX with Xm. The table's
+    // third column is that rule.
+    if !needs_x && rm_is_x {
         return asm_err(ln, "UXTW/SXTW require a W index register");
     }
-    if matches!(keyword_lower.as_str(), "lsl" | "uxtx" | "sxtx") && !rm_is_x {
+    if needs_x && !rm_is_x {
         return asm_err(ln, "LSL/UXTX/SXTX require an X index register");
     }
     let shift_amount = if shift_str.trim().is_empty() {
@@ -1834,19 +2097,37 @@ fn split_extend_keyword(s: &str) -> (&str, &str) {
     }
 }
 
+/// Parse a load/store address operand.
+///
+/// The operand is tokenized first and the form is chosen by matching on
+/// the token shape: where the brackets, the commas and the writeback `!`
+/// fall, and whether the offset segment names a register. The parser it
+/// replaced discriminated by string shape instead -- `ends_with('!')`,
+/// then `starts_with('[')`, then `find(']')` with a non-empty tail, then
+/// `looks_like_register` on a `splitn` piece -- an order that was
+/// load-bearing and written down nowhere. A form checked too late was
+/// not rejected there: it was re-read as a different form, because
+/// whatever the register test turned away went straight to
+/// `parse_immediate`. That produces a wrong ENCODING, not an error.
+///
+/// Every leaf parse still runs on the raw source slice of its segment,
+/// so the rejections read exactly as they did before.
 fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError> {
     let s = s.trim();
+    let toks = tokenize_address(s);
 
-    // [Xn, #imm]! -> pre-index
-    if s.ends_with('!') {
-        let inner = s.strip_suffix('!').unwrap().trim();
-        let inner = inner.strip_prefix('[')
-            .and_then(|s| s.strip_suffix(']'))
-            .ok_or_else(|| asm_error(ln, "expected [Xn, #imm]!"))?;
-        let parts: Vec<&str> = inner.splitn(2, ',').collect();
-        let (rn, _) = parse_register(parts[0], ln)?;
+    // `[Xn, #imm]!` -> pre-index. Checked first because a trailing `!`
+    // is the one thing that can follow the bracket group and still not
+    // be an offset.
+    if toks.last().is_some_and(|t| t.kind == TokKind::Bang) {
+        let n = toks.len();
+        if n < 3 || toks[0].kind != TokKind::LBracket || toks[n - 2].kind != TokKind::RBracket {
+            return asm_err(ln, "expected [Xn, #imm]!");
+        }
+        let parts = comma_segments(&toks, toks[0].end, toks[n - 2].start, 2);
+        let (rn, _) = parse_register(parts[0].text(s), ln)?;
         let offset = if parts.len() > 1 {
-            Some(parse_immediate(parts[1], ln)?)
+            Some(parse_immediate(parts[1].text(s), ln)?)
         } else {
             Some(0)
         };
@@ -1857,50 +2138,65 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
         });
     }
 
-    // check if it starts with [
-    if !s.starts_with('[') {
+    if !toks.first().is_some_and(|t| t.kind == TokKind::LBracket) {
         return asm_err(ln, "expected [ for addressing mode");
     }
+    let Some(close) = toks.iter().position(|t| t.kind == TokKind::RBracket) else {
+        return asm_err(ln, "invalid addressing mode");
+    };
+    let (inner_lo, inner_hi) = (toks[0].end, toks[close].start);
 
-    // [Xn], #imm -> post-index
-    if let Some(bracket_end) = s.find(']') {
-        let inside = &s[1..bracket_end];
-        let after = s[bracket_end + 1..].trim();
-
-        if !after.is_empty() {
-            // post-index
-            let (rn, _) = parse_register(inside.trim(), ln)?;
-            let offset_str = after.strip_prefix(',').unwrap_or(after).trim();
-            let offset = parse_immediate(offset_str, ln)?;
-            return Ok(AddressingMode::Immediate {
-                rn,
-                offset: Some(offset),
-                mode: IndexMode::PostIndex,
-            });
+    // `[Xn], #imm` -> post-index. GAS requires the comma, and so do we:
+    // `[x0] #8` used to slide through as post-index and assemble a
+    // spelling the servers reject.
+    if let Some(first_after) = toks.get(close + 1) {
+        let (rn, _) = parse_register(s[inner_lo..inner_hi].trim(), ln)?;
+        if first_after.kind != TokKind::Comma {
+            return asm_err(ln, "post-index needs a comma: [Xn], #imm");
         }
-
-        // [Xn] or [Xn, ...]
-        let parts: Vec<&str> = inside.splitn(3, ',').collect();
-        if parts.len() >= 2 && looks_like_register(parts[1]) {
-            return parse_reg_offset_tail(&parts, ln);
-        }
-        let (rn, _) = parse_register(parts[0], ln)?;
-        if parts.len() > 1 {
-            let offset = parse_immediate(parts[1], ln)?;
-            return Ok(AddressingMode::Immediate {
-                rn,
-                offset: Some(offset),
-                mode: IndexMode::Unsigned,
-            });
-        }
+        let from = first_after.end;
+        let offset = parse_immediate(s[from..].trim(), ln)?;
         return Ok(AddressingMode::Immediate {
             rn,
-            offset: None,
-            mode: IndexMode::Unsigned,
+            offset: Some(offset),
+            mode: IndexMode::PostIndex,
         });
     }
 
-    asm_err(ln, "invalid addressing mode")
+    // `[Xn]`, `[Xn, #imm]`, `[Xn, Xm, ...]`. The offset segment decides:
+    // one register token and nothing else is the register-offset form.
+    // Everything else -- a `#imm`, a bare number, a `d1`, an empty
+    // piece -- is the immediate form and reports through
+    // `parse_immediate`, which is where those complaints came from
+    // before and still do.
+    let parts = comma_segments(&toks, inner_lo, inner_hi, 3);
+    let offset_is_register = parts.len() >= 2
+        && matches!(parts[1].toks(&toks), [tok] if tok.kind == TokKind::Reg);
+    if offset_is_register {
+        return parse_reg_offset(s, &parts, ln);
+    }
+    let (rn, _) = parse_register(parts[0].text(s), ln)?;
+    if parts.len() > 1 {
+        // The old splitn shape silently DROPPED anything past the second
+        // comma, so `[x0, #8, #9]` encoded as `[x0, #8]` with no message.
+        if parts.len() > 2 {
+            return asm_err(
+                ln,
+                "unexpected third operand in the address -- the immediate form is [Xn, #imm]",
+            );
+        }
+        let offset = parse_immediate(parts[1].text(s), ln)?;
+        return Ok(AddressingMode::Immediate {
+            rn,
+            offset: Some(offset),
+            mode: IndexMode::Unsigned,
+        });
+    }
+    Ok(AddressingMode::Immediate {
+        rn,
+        offset: None,
+        mode: IndexMode::Unsigned,
+    })
 }
 
 fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
@@ -1972,6 +2268,18 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     if ops.len() < 3 {
         return asm_err(ln, "LDP/STP requires at least 3 operands");
     }
+    // An FP first operand (d8, s0) routes the pair through the SIMD&FP
+    // class, the same sniff encode_ldst does for single registers. The
+    // digit check keeps `sp` on the general path.
+    let first = ops[0].trim();
+    if let Some(c) = first.chars().next() {
+        if matches!(c.to_ascii_uppercase(), 'D' | 'S')
+            && first.len() >= 2
+            && first[1..].chars().all(|d| d.is_ascii_digit())
+        {
+            return encode_ldst_pair_fp(ops, load, ln);
+        }
+    }
     let (rt, sf) = parse_register(ops[0], ln)?;
     let (rt2, sf2) = parse_register(ops[1], ln)?;
     // GAS rejects a mixed-width pair; accepting one took the width (and
@@ -2030,6 +2338,54 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     };
 
     Ok((opc << 30) | (0b101 << 27) | (0 << 26) | (mode_bits << 23)
+        | ((load as u32) << 22) | (imm7_enc << 15)
+        | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
+}
+
+/// LDP/STP of the FP file: V=1, opc 00 for S pairs (scale 4) or 01 for D
+/// pairs (scale 8). Same addressing modes and imm7 range as the general
+/// form; a callee-saved `stp d8, d9, [sp, -16]!` prologue is correct
+/// AAPCS64 and lands here.
+fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    let (rt, wt) = parse_fp_register(ops[0], ln)?;
+    let (rt2, wt2) = parse_fp_register(ops[1], ln)?;
+    let width = require_same_fp_width("ldp/stp", &[wt, wt2], ln)?;
+
+    let addr_str: String = ops[2..].join(",");
+    let am = parse_addressing_mode(addr_str.trim(), ln)?;
+    let (rn, offset_val, mode) = match am {
+        AddressingMode::Immediate { rn, offset, mode } => (rn, offset.unwrap_or(0), mode),
+        AddressingMode::RegOffset { .. } => {
+            return asm_err(ln, "LDP/STP does not accept a register offset");
+        }
+    };
+
+    let scale: i64 = if width == 'D' { 8 } else { 4 };
+    if offset_val % scale != 0 {
+        return asm_err(ln, "pair offset must be aligned to register size");
+    }
+    let quotient = offset_val / scale;
+    if !(-64..=63).contains(&quotient) {
+        return asm_err(
+            ln,
+            &format!(
+                "pair offset {offset_val} is out of range: stp/ldp reaches [{}, {}] \
+                 for this register width",
+                -64 * scale,
+                63 * scale
+            ),
+        );
+    }
+    let imm7_enc = (quotient as u32) & 0x7F;
+
+    let opc: u32 = if width == 'D' { 0b01 } else { 0b00 };
+    let mode_bits: u32 = match mode {
+        IndexMode::PostIndex => 0b01,
+        IndexMode::Unsigned => 0b10,
+        IndexMode::PreIndex => 0b11,
+    };
+
+    Ok((opc << 30) | (0b101 << 27) | (1 << 26) | (mode_bits << 23)
         | ((load as u32) << 22) | (imm7_enc << 15)
         | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
 }
@@ -2262,9 +2618,9 @@ fn encode_ret(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     Ok(0xD61F_0000 | (0b0010 << 21) | ((rn as u32) << 5))
 }
 
-fn encode_cond_sel(ops: &[&str], op2: u8, ln: usize) -> Result<u32, EmuError> {
+fn encode_cond_sel(ops: &[&str], op_bit: u8, op2: u8, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 4 {
-        return asm_err(ln, "CSEL/CSINC requires 4 operands");
+        return asm_err(ln, "CSEL/CSINC/CSINV/CSNEG requires 4 operands");
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (rn, _) = parse_register(ops[1], ln)?;
@@ -2272,7 +2628,7 @@ fn encode_cond_sel(ops: &[&str], op2: u8, ln: usize) -> Result<u32, EmuError> {
     let cond = parse_condition(ops[3], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
 
-    Ok((sf_bit << 31) | (0b0011010100 << 21) | ((rm as u32) << 16)
+    Ok((sf_bit << 31) | (0b0011010100 << 21) | ((op_bit as u32) << 30) | ((rm as u32) << 16)
         | ((cond as u32) << 12) | ((op2 as u32) << 10)
         | ((rn as u32) << 5) | (rd as u32))
 }
@@ -2284,6 +2640,12 @@ fn encode_cset(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let cond = parse_condition(ops[1], ln)?;
+    // GAS rejects `cset al`: the alias encodes the INVERTED condition, and
+    // AL has no invertible spelling. Accepting it would silently produce an
+    // always-1 CSINC the server toolchain refuses to assemble.
+    if cond == 0b1110 {
+        return asm_err(ln, "CSET cannot use the AL condition (there is nothing to invert; use `mov Xd, 1`)");
+    }
     let inv_cond = cond ^ 1; // invert low bit
     let sf_bit = if sf { 1u32 } else { 0 };
 
@@ -2511,6 +2873,310 @@ mod tests {
         cpu.run_until_break(20).unwrap();
 
         assert_eq!(cpu.regs.read_gpr(2, true), 1);
+    }
+
+    #[test]
+    fn scvtf_converts_integer_bits_already_in_the_fp_register() {
+        use crate::cpu::Cpu;
+        use crate::decoder::{decode, Instruction};
+        let labels = HashMap::new();
+        let s_form = encode_line("scvtf s30, s31", 0, &labels, 1).unwrap();
+        assert_eq!(s_form, 0x5E21_DBFE);
+        assert!(matches!(
+            decode(s_form).unwrap(),
+            Instruction::FpScvtfFp { fd: 30, fn_: 31, single: true }
+        ));
+        let d_form = encode_line("scvtf d1, d2", 0, &labels, 1).unwrap();
+        assert!(matches!(
+            decode(d_form).unwrap(),
+            Instruction::FpScvtfFp { fd: 1, fn_: 2, single: false }
+        ));
+
+        // 7 as integer bits in s31 becomes 7.0f32 in s30.
+        let source = r#"
+            MOV W0, #7
+            FMOV S31, W0
+            SCVTF S30, S31
+            FMOV W1, S30
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(10).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, true), u64::from(7.0f32.to_bits()));
+    }
+
+    #[test]
+    fn csinv_and_csneg_select_or_transform_like_the_hardware() {
+        use crate::cpu::Cpu;
+        let source = r#"
+            MOV X1, #7
+            MOV X2, #5
+            CMP X1, X1
+            CSINV X3, X1, X2, EQ
+            CSINV X4, X1, X2, NE
+            CSNEG X5, X1, X2, NE
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(10).unwrap();
+        assert_eq!(cpu.regs.read_gpr(3, true), 7, "taken picks rn");
+        assert_eq!(cpu.regs.read_gpr(4, true), !5u64, "not taken inverts rm");
+        assert_eq!(cpu.regs.read_gpr(5, true) as i64, -5, "not taken negates rm");
+    }
+
+    #[test]
+    fn fcmpe_encodes_beside_fcmp_and_sets_the_same_flags() {
+        use crate::cpu::Cpu;
+        use crate::decoder::{decode, Instruction};
+        let labels = HashMap::new();
+        let plain = encode_line("fcmp d0, d1", 0, &labels, 1).unwrap();
+        let signaling = encode_line("fcmpe d0, d1", 0, &labels, 1).unwrap();
+        assert_eq!(plain | 0b10000, signaling);
+        assert!(matches!(decode(signaling).unwrap(), Instruction::FpCompare { .. }));
+
+        let source = r#"
+            FMOV D0, #2.0
+            FMOV D1, #5.0
+            FCMPE D0, D1
+            CSET X2, LT
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(10).unwrap();
+        assert_eq!(cpu.regs.read_gpr(2, true), 1, "2.0 < 5.0 through fcmpe");
+    }
+
+    #[test]
+    fn cset_rejects_al_like_gas() {
+        let labels = HashMap::new();
+        let err = encode_line("cset x0, al", 0, &labels, 3).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("AL"), "was: {msg}");
+        // The raw CSINC form keeps taking AL, exactly as GAS does.
+        encode_line("csinc x0, xzr, xzr, al", 0, &labels, 3).unwrap();
+    }
+
+    #[test]
+    fn negs_sets_the_flags_where_neg_does_not() {
+        use crate::cpu::Cpu;
+        let source = r#"
+            MOV X1, #1
+            NEGS X0, X1
+            CSET X2, MI
+            NEG X3, X1
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(10).unwrap();
+        assert_eq!(cpu.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(cpu.regs.read_gpr(2, true), 1, "negs set N");
+        assert_eq!(cpu.regs.read_gpr(3, true) as i64, -1);
+        // The two spellings differ only in the S bit (SUB vs SUBS).
+        let labels = HashMap::new();
+        let neg = encode_line("neg x0, x1", 0, &labels, 1).unwrap();
+        let negs = encode_line("negs x0, x1", 0, &labels, 1).unwrap();
+        assert_eq!(neg | (1 << 29), negs);
+    }
+
+    #[test]
+    fn fp_pairs_encode_as_the_gas_words_and_round_trip() {
+        use crate::decoder::{decode, Instruction, LdStPairOp};
+        let labels = HashMap::new();
+        // The canonical callee-saved prologue word, byte-matched to GAS.
+        let word = encode_line("stp d8, d9, [sp, -16]!", 0, &labels, 1).unwrap();
+        assert_eq!(word, 0x6DBF_27E8);
+        match decode(word).unwrap() {
+            Instruction::FpLdStPair { op, single, rt, rt2, rn, imm7, .. } => {
+                assert_eq!(op, LdStPairOp::Stp);
+                assert!(!single);
+                assert_eq!((rt, rt2, rn, imm7), (8, 9, 31, -16));
+            }
+            other => panic!("decoded to {other:?} (the V=1 pair once ran as a GP pair)"),
+        }
+        for src in [
+            "ldp d8, d9, [sp], 16",
+            "stp s0, s1, [sp, 8]",
+            "ldp s2, s3, [x0]",
+            "stp d0, d1, [x1, 32]",
+        ] {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert!(
+                matches!(decode(word).unwrap(), Instruction::FpLdStPair { .. }),
+                "{src}"
+            );
+        }
+    }
+
+    #[test]
+    fn fp_pairs_reject_mixed_widths_and_q_pairs_stay_unknown() {
+        use crate::decoder::decode;
+        let labels = HashMap::new();
+        let err = encode_line("stp d0, s1, [sp, -16]!", 0, &labels, 1)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("all S or all D"), "{err}");
+        // A Q-register pair word (opc=10, V=1) stays undecoded rather than
+        // mis-running.
+        assert!(decode(0xAD00_07E0).is_err(), "q pair must not decode");
+    }
+
+    #[test]
+    fn fp_pair_prologue_saves_and_restores_callee_saved_doubles() {
+        use crate::cpu::Cpu;
+        let source = r#"
+            MOV X0, #0x4045
+            LSL X0, X0, #48
+            FMOV D8, X0
+            MOV X1, #0x4050
+            LSL X1, X1, #48
+            FMOV D9, X1
+            STP D8, D9, [SP, #-16]!
+            FMOV D8, XZR
+            FMOV D9, XZR
+            LDP D8, D9, [SP], #16
+            FMOV X2, D8
+            FMOV X3, D9
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(30).unwrap();
+        assert_eq!(cpu.regs.read_gpr(2, true), 0x4045u64 << 48, "d8 restored");
+        assert_eq!(cpu.regs.read_gpr(3, true), 0x4050u64 << 48, "d9 restored");
+        assert_eq!(cpu.regs.read_sp(), crate::cpu::STACK_BASE, "sp balanced");
+    }
+
+    #[test]
+    fn fmov_general_forms_encode_and_round_trip() {
+        use crate::decoder::{decode, Instruction};
+        let labels = HashMap::new();
+        let cases = [
+            ("fmov s0, w1", 0x1E27_0020, true, false),
+            ("fmov w1, s0", 0x1E26_0001, false, false),
+            ("fmov d2, x3", 0x9E67_0062, true, true),
+            ("fmov x3, d2", 0x9E66_0043, false, true),
+        ];
+        for (src, want, to_fp, is_double) in cases {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert_eq!(word, want, "{src}");
+            match decode(word).unwrap() {
+                Instruction::FpMoveGeneral { to_fp: t, sf, single, .. } => {
+                    assert_eq!(t, to_fp, "{src} direction");
+                    assert_eq!(sf, is_double, "{src} sf");
+                    assert_eq!(single, !is_double, "{src} width");
+                }
+                other => panic!("{src} decoded to {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn fmov_general_rejects_mismatched_widths_and_sp() {
+        let labels = HashMap::new();
+        for src in ["fmov d0, w1", "fmov w1, d0", "fmov x1, s0", "fmov s0, x1"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("fcvt"), "{src}: {err}");
+        }
+        let err = encode_line("fmov sp, d0", 0, &labels, 1).unwrap_err().to_string();
+        assert!(err.contains("sp"), "{err}");
+    }
+
+    #[test]
+    fn fmov_moves_raw_bits_between_the_files() {
+        use crate::cpu::Cpu;
+        let source = r#"
+            MOV X0, #0x4045
+            LSL X0, X0, #48
+            FMOV D1, X0
+            FMOV X2, D1
+            MOV W3, #0x3F80
+            LSL W3, W3, #16
+            FMOV S4, W3
+            FMOV W5, S4
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        // 0x4045_0000_0000_0000 is 42.0 as an f64; the bits survive the
+        // round trip and the D view reads as the float.
+        assert_eq!(cpu.regs.read_gpr(2, true), 0x4045u64 << 48);
+        assert_eq!(cpu.regs.read_fpr_f64(1), 42.0);
+        // 0x3F80_0000 is 1.0f32; the S round trip stays 32-bit clean.
+        assert_eq!(cpu.regs.read_gpr(5, true), 0x3F80_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(4), 0x3F80_0000);
+    }
+
+    #[test]
+    fn widening_multiplies_encode_as_the_arm_arm_words_and_round_trip() {
+        use crate::decoder::{decode, Instruction, MulWideOp};
+        let labels = HashMap::new();
+        let cases = [
+            ("smull x0, w1, w2", 0x9B22_7C20, MulWideOp::Smull),
+            ("umull x0, w1, w2", 0x9BA2_7C20, MulWideOp::Umull),
+            ("smulh x0, x1, x2", 0x9B42_7C20, MulWideOp::Smulh),
+            ("umulh x0, x1, x2", 0x9BC2_7C20, MulWideOp::Umulh),
+        ];
+        for (src, want, op) in cases {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert_eq!(word, want, "{src}");
+            match decode(word).unwrap() {
+                Instruction::MulWide { op: got, rd: 0, rn: 1, rm: 2 } => {
+                    assert_eq!(got, op, "{src}");
+                }
+                other => panic!("{src} decoded to {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn widening_multiplies_reject_wrong_register_widths() {
+        let labels = HashMap::new();
+        for src in ["smull w0, w1, w2", "smull x0, x1, x2", "umulh x0, w1, w2"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("register"), "{src}: {err}");
+        }
+    }
+
+    #[test]
+    fn widening_multiplies_compute_signed_and_high_halves() {
+        use crate::cpu::Cpu;
+        // smull: (-3) * 5 = -15 across the width boundary; umulh: the high
+        // 64 bits of (2^63 + 1) squared.
+        let source = r#"
+            MOVN W1, #2
+            MOV W2, #5
+            SMULL X3, W1, W2
+            MOV X4, #1
+            MOVK X4, #0x8000, LSL #48
+            UMULH X5, X4, X4
+            SMULH X6, X4, X4
+            UMULL X7, W1, W2
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(3, true) as i64, -15);
+        // x4 = 0x8000_0000_0000_0001; x4*x4 = 2^126 + 2^64 + 1, so the
+        // unsigned high half is 2^62 + 1.
+        assert_eq!(cpu.regs.read_gpr(5, true), (1u64 << 62) + 1);
+        // Signed, x4 is -(2^63 - 1); the signed high half of its square
+        // (2^126 - 2^64 + 1) is 2^62 - 1.
+        assert_eq!(cpu.regs.read_gpr(6, true), (1u64 << 62) - 1);
+        // umull treats w1 (0xFFFF_FFFD) as unsigned.
+        assert_eq!(cpu.regs.read_gpr(7, true), 0xFFFF_FFFDu64 * 5);
     }
 
     #[test]
@@ -3017,17 +3683,37 @@ svc 0").unwrap();
     // -- floating-point --
 
     #[test]
-    fn assemble_fadd_round_trips() {
-        let code = assemble("FADD D0, D1, D2").unwrap();
-        let decoded = crate::decoder::decode(code[0]).unwrap();
-        match decoded {
-            crate::decoder::Instruction::FpBinary { op, fd, fn_, fm, single: false } => {
-                assert_eq!(op, crate::decoder::FpBinOp::Fadd);
-                assert_eq!(fd, 0);
-                assert_eq!(fn_, 1);
-                assert_eq!(fm, 2);
+    fn fp_op_tables_round_trip_at_both_widths() {
+        // One walk over both shared row tables, in place of the four
+        // hand-written round trips that covered fadd, fneg, fabs and fsqrt
+        // and left fsub, fmul and fdiv with no round trip at all.
+        for (mnemonic, _, expected) in crate::decoder::FP_BINARY_OPS {
+            for (letter, single) in [('d', false), ('s', true)] {
+                let src = format!("{mnemonic} {letter}0, {letter}1, {letter}2");
+                let word = assemble(&src).unwrap()[0];
+                match crate::decoder::decode(word).unwrap() {
+                    crate::decoder::Instruction::FpBinary { op, fd, fn_, fm, single: got } => {
+                        assert_eq!(op, *expected, "{src}");
+                        assert_eq!((fd, fn_, fm), (0, 1, 2), "{src}");
+                        assert_eq!(got, single, "{src}: wrong width");
+                    }
+                    other => panic!("{src}: expected FpBinary, got {other:?}"),
+                }
             }
-            other => panic!("expected FpBinary, got {other:?}"),
+        }
+        for (mnemonic, _, expected) in crate::decoder::FP_UNARY_OPS {
+            for (letter, single) in [('d', false), ('s', true)] {
+                let src = format!("{mnemonic} {letter}9, {letter}8");
+                let word = assemble(&src).unwrap()[0];
+                match crate::decoder::decode(word).unwrap() {
+                    crate::decoder::Instruction::FpUnary { op, fd, fn_, single: got } => {
+                        assert_eq!(op, *expected, "{src}");
+                        assert_eq!((fd, fn_), (9, 8), "{src}");
+                        assert_eq!(got, single, "{src}: wrong width");
+                    }
+                    other => panic!("{src}: expected FpUnary, got {other:?}"),
+                }
+            }
         }
     }
 
@@ -3047,18 +3733,6 @@ svc 0").unwrap();
     }
 
     #[test]
-    fn assemble_fneg_round_trips() {
-        let code = assemble("fneg d16, d16").unwrap();
-        match crate::decoder::decode(code[0]).unwrap() {
-            crate::decoder::Instruction::FpUnary { op, fd, fn_, single: false } => {
-                assert_eq!(op, crate::decoder::FpUnaryOp::Fneg);
-                assert_eq!((fd, fn_), (16, 16));
-            }
-            other => panic!("expected FpUnary, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn assemble_fneg_distinct_from_fmov_and_fabs() {
         let fneg = assemble("FNEG D0, D1").unwrap()[0];
         let fmov = assemble("FMOV D0, D1").unwrap()[0];
@@ -3066,33 +3740,6 @@ svc 0").unwrap();
         assert_ne!(fneg, fmov);
         assert_ne!(fabs, fmov);
         assert_ne!(fabs, fneg);
-    }
-
-    #[test]
-    fn assemble_fabs_round_trips() {
-        let code = assemble("fabs d10, d11").unwrap();
-        match crate::decoder::decode(code[0]).unwrap() {
-            crate::decoder::Instruction::FpUnary { op, fd, fn_, single: false } => {
-                assert_eq!(op, crate::decoder::FpUnaryOp::Fabs);
-                assert_eq!((fd, fn_), (10, 11));
-            }
-            other => panic!("expected FpUnary, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn assemble_fsqrt_round_trips_both_widths() {
-        for (src, single) in [("fsqrt d9, d8", false), ("fsqrt s9, s8", true)] {
-            let code = assemble(src).unwrap();
-            match crate::decoder::decode(code[0]).unwrap() {
-                crate::decoder::Instruction::FpUnary { op, fd, fn_, single: got } => {
-                    assert_eq!(op, crate::decoder::FpUnaryOp::Fsqrt);
-                    assert_eq!((fd, fn_), (9, 8));
-                    assert_eq!(got, single, "{src}: wrong width");
-                }
-                other => panic!("expected FpUnary, got {other:?}"),
-            }
-        }
     }
 
     #[test]
@@ -3545,12 +4192,253 @@ svc 0").unwrap();
     }
 
     #[test]
+    fn every_dispatch_arm_is_listed_in_supported_mnemonics() {
+        // The direction `supported_mnemonics_all_reach_an_arm` cannot cover:
+        // that one proves every listed name reaches an arm, this one proves
+        // every arm is listed, so the assembler cannot quietly accept a
+        // mnemonic the public reference has no obligation to document. A
+        // match has no runtime list of its own patterns, so read them off
+        // this file's own text.
+        let source = include_str!("assembler.rs");
+        let start = source
+            .find("match mn.as_str() {")
+            .expect("the dispatch match must be findable");
+        let region = &source[start..];
+        let end = region
+            .find("\n        _ => asm_err(")
+            .expect("the dispatch's fallthrough arm must be findable");
+        let region = &region[..end];
+
+        let mut arms: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for line in region.lines() {
+            // Arm patterns are string literals, alternatives separated by
+            // `|`: `"MOV" => ...` and `"A" | "B" => ...`.
+            let Some((head, _)) = line.split_once("=>") else {
+                continue;
+            };
+            let head = head.trim();
+            if !head.starts_with('"') {
+                continue;
+            }
+            for piece in head.split('|') {
+                let piece = piece.trim();
+                let name = piece
+                    .strip_prefix('"')
+                    .and_then(|rest| rest.strip_suffix('"'))
+                    .filter(|name| !name.contains('"'))
+                    .unwrap_or_else(|| panic!("could not read the arm pattern in: {line}"));
+                assert!(arms.insert(name.to_string()), "`{name}` has two arms");
+            }
+        }
+        assert!(
+            arms.len() > 50,
+            "the scan found only {} arms, so it is reading the wrong region",
+            arms.len()
+        );
+
+        // Conditional branches never reach the match: they are peeled off
+        // ahead of it, both spellings of every primary and alias.
+        for (primary, aliases, _) in CONDITIONS {
+            for cc in std::iter::once(primary).chain(aliases.iter()) {
+                arms.insert(format!("B.{cc}"));
+                arms.insert(format!("B{cc}"));
+            }
+        }
+
+        let listed: std::collections::BTreeSet<String> =
+            SUPPORTED_MNEMONICS.iter().map(|m| (*m).to_string()).collect();
+        assert_eq!(
+            arms, listed,
+            "the dispatch and SUPPORTED_MNEMONICS disagree: an arm with no \
+             entry is a mnemonic no document has to mention, an entry with \
+             no arm is a promise the assembler does not keep"
+        );
+    }
+
+    #[test]
     fn supported_mnemonics_has_no_duplicates() {
         // A duplicate would let a real arm hide behind a repeated name and
         // still keep the count looking right.
         let mut seen = std::collections::HashSet::new();
         for mnemonic in SUPPORTED_MNEMONICS {
             assert!(seen.insert(*mnemonic), "`{mnemonic}` is listed twice");
+        }
+    }
+
+    #[test]
+    fn supported_mnemonics_bcond_block_matches_the_condition_table() {
+        // The const cannot derive from the table at compile time, so this
+        // pins the two to each other: every spelling the table implies is
+        // listed, and nothing else in the const looks like a bcond.
+        let mut expected = std::collections::BTreeSet::new();
+        for (primary, aliases, _) in CONDITIONS {
+            expected.insert(format!("B.{primary}"));
+            expected.insert(format!("B{primary}"));
+            for alias in *aliases {
+                expected.insert(format!("B.{alias}"));
+                expected.insert(format!("B{alias}"));
+            }
+        }
+        let listed: std::collections::BTreeSet<String> = SUPPORTED_MNEMONICS
+            .iter()
+            .filter(|m| bcond_condition(m).is_some())
+            .map(|m| m.to_string())
+            .collect();
+        assert_eq!(
+            listed, expected,
+            "SUPPORTED_MNEMONICS' conditional-branch block disagrees with the condition table"
+        );
+    }
+
+    // -- the load/store extend table --
+
+    #[test]
+    fn ldst_extends_table_round_trips_and_holds_the_width_rule() {
+        use crate::decoder::{ExtendType, Instruction, LdStOffset};
+        for (keyword, option, needs_x) in LDST_EXTENDS {
+            let (right, wrong) = if *needs_x { ("x2", "w2") } else { ("w2", "x2") };
+            let src = format!("ldr x0, [x1, {right}, {keyword}]");
+            let word = assemble(&src).unwrap()[0];
+            // Option 0b011 has two spellings and decodes as the first one
+            // the table lists, so `uxtx` comes back as Lsl.
+            let expected = match *keyword {
+                "uxtw" => ExtendType::Uxtw,
+                "sxtw" => ExtendType::Sxtw,
+                "sxtx" => ExtendType::Sxtx,
+                _ => ExtendType::Lsl,
+            };
+            match crate::decoder::decode(word).unwrap() {
+                Instruction::LdSt {
+                    offset: LdStOffset::Register { rm, extend, .. },
+                    ..
+                } => {
+                    assert_eq!(rm, 2, "{src}");
+                    assert_eq!(extend, expected, "{src}");
+                }
+                other => panic!("{src}: expected a register-offset LdSt, got {other:?}"),
+            }
+            assert_eq!(
+                (word >> 13) & 0b111,
+                u32::from(*option),
+                "{src}: wrong option field"
+            );
+            let bad = format!("ldr x0, [x1, {wrong}, {keyword}]");
+            assert!(
+                assemble(&bad).is_err(),
+                "`{bad}` must be refused: the width rule is the table's third column"
+            );
+        }
+    }
+
+    // -- the address operand tokenizer --
+
+    /// Render a token stream as `kind:text` so a mismatch reads as the
+    /// spelling it came from rather than as a span arithmetic puzzle.
+    fn tokens_of(src: &str) -> Vec<String> {
+        tokenize_address(src)
+            .iter()
+            .map(|t| format!("{:?}:{}", t.kind, &src[t.start..t.end]))
+            .collect()
+    }
+
+    #[test]
+    fn tokenizer_classifies_the_operand_words() {
+        // The three word kinds are the whole grammar: a register name, a
+        // number-ish word, and anything else. Whitespace and casing move
+        // the spans, never the kinds -- which is why the shape match can
+        // be spelled once and cover every spelling.
+        for spelling in ["[x0, w2, sxtw #2]", "[x0,w2,sxtw #2]", "[ X0 , W2 , SXTW #2 ]"] {
+            assert_eq!(
+                tokens_of(spelling)
+                    .iter()
+                    .map(|t| t.split(':').next().unwrap().to_string())
+                    .collect::<Vec<_>>(),
+                vec![
+                    "LBracket", "Reg", "Comma", "Reg", "Comma", "Keyword", "Imm", "RBracket"
+                ],
+                "{spelling}"
+            );
+        }
+        assert_eq!(
+            tokens_of("[sp, #-8]!"),
+            vec!["LBracket:[", "Reg:sp", "Comma:,", "Imm:#-8", "RBracket:]", "Bang:!"]
+        );
+        // `d1` is not a general register, so it is a Keyword and lands on
+        // the immediate path -- exactly where `[x0, d1]`'s complaint
+        // comes from.
+        assert_eq!(tokens_of("d1"), vec!["Keyword:d1"]);
+        assert_eq!(tokens_of("x99"), vec!["Reg:x99"]);
+        assert_eq!(tokens_of("0x10"), vec!["Imm:0x10"]);
+        assert_eq!(tokens_of("'a'"), vec!["Imm:'a'"]);
+        assert_eq!(tokens_of(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn comma_segments_match_splitn() {
+        // The segments are what the leaf parsers used to receive from
+        // `splitn`, untrimmed and with the limit's overflow left on the
+        // last piece. Drift here is a silently different parse.
+        for (src, limit) in [("x0, x1, lsl #3, junk", 3), ("x0, #8", 2), ("x0", 3), ("", 2)] {
+            let toks = tokenize_address(src);
+            let got: Vec<&str> = comma_segments(&toks, 0, src.len(), limit)
+                .iter()
+                .map(|seg| seg.text(src))
+                .collect();
+            let want: Vec<&str> = src.splitn(limit, ',').collect();
+            assert_eq!(got, want, "`{src}` split {limit} ways");
+        }
+    }
+
+    // -- the register-alias table --
+
+    #[test]
+    fn reg_aliases_resolve_and_read_as_registers() {
+        // Both directions of the table in one walk: the encoder resolves
+        // every row to the number and width it names, in any casing, and
+        // the addressing-mode recognizer agrees that the row is a register
+        // (the discrimination `[x0, sp]` vs `[x0, #8]` rides on that).
+        for (alias, num, sf) in crate::registers::REG_ALIASES {
+            for spelling in [alias.to_string(), alias.to_ascii_lowercase()] {
+                assert_eq!(
+                    parse_register(&spelling, 1).unwrap(),
+                    (*num, *sf),
+                    "`{spelling}` resolved wrong"
+                );
+                assert!(
+                    looks_like_register(&spelling),
+                    "`{spelling}` must read as a register"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn looks_like_register_still_takes_an_out_of_range_index() {
+        // It is the addressing-mode discriminator, not a validator: `x99`
+        // has to reach `parse_register` to be told it is out of range,
+        // rather than being silently read as an immediate offset.
+        assert!(looks_like_register("x99"));
+        assert!(parse_register("x99", 1).is_err());
+        assert!(!looks_like_register("pc"));
+        assert!(!looks_like_register("lsl"));
+    }
+
+    #[test]
+    fn bcond_lookup_never_claims_a_non_branch() {
+        for mn in ["B", "BL", "BLR", "BR", "BIC", "BFI", "BAD"] {
+            assert!(
+                bcond_condition(mn).is_none(),
+                "`{mn}` must not parse as a conditional branch"
+            );
+        }
+    }
+
+    #[test]
+    fn b_al_assembles_as_the_always_branch() {
+        let labels = HashMap::from([("target".to_string(), 8u64)]);
+        for spelling in ["b.al target", "bal target", "B.AL target"] {
+            let word = encode_line(spelling, 0, &labels, 1).unwrap();
+            assert_eq!(word, 0x5400_004E, "{spelling}");
         }
     }
 }

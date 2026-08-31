@@ -18,6 +18,30 @@ use serde::Serialize;
 #[allow(unused_imports)]
 use cpu::{Cpu, StepOutcome};
 
+/// Every C-callable name the hosted runtime registers, as `bl <name>`
+/// spells it. A program that calls one of these needs the hosted
+/// pipeline, so the list has to keep pace with the stub table: the unit
+/// test `every_registered_stub_is_detected_as_hosted` fails the moment a
+/// new stub is registered without being named here.
+pub const HOSTED_LIBC_NAMES: &[&str] = &[
+    // console and formatted output
+    "printf", "scanf", "sprintf", "snprintf", "puts", "putchar", "getchar",
+    // strings
+    "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strchr",
+    "strstr", "strtok", "memset", "memcpy", "memmove", "memcmp",
+    // conversion and process control
+    "atof", "atoi", "strtol", "abs", "labs", "exit", "rand", "srand", "time",
+    // heap and pacing
+    "malloc", "calloc", "realloc", "free", "usleep", "fflush",
+    // character classes
+    "isdigit", "isalpha", "isspace", "toupper", "tolower", "__ctype_b_loc",
+    // FILE*-level stdio
+    "fopen", "fprintf", "fgets", "fputs", "fclose",
+    // libm
+    "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor",
+    "fabs", "fmod",
+];
+
 /// Decide whether the source uses the hosted cpsc 355 feature set
 /// (sections, `.global main`, libc BLs, m4 defines). The bare-metal
 /// examples hit none of these so they keep the legacy single-`.text`
@@ -40,27 +64,15 @@ pub fn detect_hosted_mode(source: &str) -> bool {
         .collect::<Vec<_>>()
         .join("\n");
     let lower = clean.to_lowercase();
-    if lower.contains(".text")
-        || lower.contains(".data")
-        || lower.contains(".bss")
-        || lower.contains(".rodata")
-        || lower.contains(".global")
-        || lower.contains(".globl")
-        || lower.contains(".string")
-        || lower.contains(".asciz")
-        || lower.contains(".ascii")
-        || lower.contains(".word")
-        || lower.contains(".quad")
-        || lower.contains(".hword")
-        || lower.contains(".short")
-        || lower.contains(".byte")
-        || lower.contains(".double")
-        || lower.contains(".float")
-        || lower.contains(".skip")
-        || lower.contains(".zero")
-        || lower.contains(".space")
-        || lower.contains(".balign")
-        || lower.contains(".align")
+    // The directive set is the parser's own table, not a second hand-kept
+    // list beside it. That closes the gap the hand-kept list had: `.section`,
+    // `.dword`, `.type` and `.size` are directives the parser has always
+    // understood but detection did not look for, so a file whose only
+    // directive was one of them took the legacy path. `define(` stays an
+    // extra term -- m4 is a preprocessor construct, not a directive.
+    if crate::frontend::parser::DIRECTIVES
+        .iter()
+        .any(|directive| lower.contains(directive))
         || lower.contains("define(")
     {
         return true;
@@ -69,11 +81,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     // same as `bl printf`; the raw `contains("bl printf")` matched only a
     // single space.
     let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    for libc in [
-        "printf", "scanf", "puts", "putchar", "getchar", "strlen", "strcmp", "strcpy",
-        "memset", "memcpy", "atof", "atoi", "exit", "rand", "srand", "time",
-        "malloc", "free", "usleep", "fflush", "fopen", "fprintf", "fclose",
-    ] {
+    for libc in HOSTED_LIBC_NAMES {
         let pat = format!("bl {libc}");
         if normalized.contains(&pat) {
             return true;
@@ -721,12 +729,13 @@ impl Emulator {
         }
     }
 
-    /// Set a breakpoint at an address.
+    /// The wasm boundary carries addresses as u32: every reachable band
+    /// sits below 4 GiB, and JS numbers hand u32 across losslessly where
+    /// u64 would arrive as BigInt.
     pub fn set_breakpoint(&mut self, address: u32) {
         self.cpu.set_breakpoint(address as u64);
     }
 
-    /// Clear a breakpoint at an address.
     pub fn clear_breakpoint(&mut self, address: u32) {
         self.cpu.clear_breakpoint(address as u64);
     }
@@ -1054,6 +1063,64 @@ mod hosted_mode_tests {
         assert!(!detect_hosted_mode(src));
         let semi = "mov x0, 1 ; .global main is unrelated here\nsvc 0\n";
         assert!(!detect_hosted_mode(semi));
+    }
+
+    #[test]
+    fn every_registered_stub_is_detected_as_hosted() {
+        // The drift this closes: a stub registered in `Cpu::new` but
+        // never added here left `bl <name>` on the bare-metal path,
+        // where the call resolves to nothing. The table is the source of
+        // truth; the two sentinels are not names a program can call.
+        let cpu = crate::cpu::Cpu::new();
+        let missing: Vec<String> = cpu
+            .host
+            .names()
+            .filter(|name| !matches!(*name, "__host_noop" | "__main_return"))
+            .filter(|name| !super::HOSTED_LIBC_NAMES.contains(name))
+            .map(str::to_string)
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "these stubs are registered but not in HOSTED_LIBC_NAMES: {missing:?}"
+        );
+        // And each listed name really does route a `bl` to the hosted
+        // pipeline, rather than only sitting in the list.
+        for name in super::HOSTED_LIBC_NAMES {
+            assert!(
+                detect_hosted_mode(&format!("main:\n    bl {name}\n    ret\n")),
+                "`bl {name}` must detect as hosted"
+            );
+        }
+    }
+
+    #[test]
+    fn detection_covers_every_directive_the_parser_knows() {
+        // Detection derives from the parser's table, so a directive the
+        // parser understands routes to the hosted path even when it is the
+        // only one in the file. These four used to fall through to the
+        // legacy path because the hand-kept list beside the parser had
+        // never grown them; each case below carries no other directive, so
+        // it is the named one doing the work.
+        assert!(detect_hosted_mode(".section .rodata\n"));
+        assert!(detect_hosted_mode("table: .dword 1, 2, 3\n"));
+        assert!(detect_hosted_mode(".type main, %function\n"));
+        assert!(detect_hosted_mode(".size main, 4\n"));
+        // And the whole table, so a directive added later cannot be
+        // recognized by the parser and missed by detection.
+        for directive in crate::frontend::parser::DIRECTIVES {
+            assert!(
+                detect_hosted_mode(&format!("{directive} 1\n")),
+                "`{directive}` must detect as hosted"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bare_metal_program_still_takes_the_legacy_path() {
+        // The widening must not swallow the directive-free programs the
+        // legacy single-.text path exists for.
+        assert!(!detect_hosted_mode("main:\n    mov x0, 1\n    ret\n"));
+        assert!(!detect_hosted_mode("loop:\n    add x0, x0, 1\n    b loop\n"));
     }
 
     #[test]

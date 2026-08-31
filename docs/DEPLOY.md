@@ -19,7 +19,7 @@ The first deploy is slower because rustup downloads the toolchain. Later deploys
 1. Installs rustup (minimal profile) if `rustup` isn't on `PATH`, then sources `~/.cargo/env` when present. The Rust toolchain is pinned to the version named at the top of the script, not floating `stable`: production wasm is built by the same compiler the release was verified with. Bump the pin only with a full local rebuild and test pass on the new version.
 2. Installs the pinned toolchain, scopes it to the build via `RUSTUP_TOOLCHAIN`, and adds the `wasm32-unknown-unknown` target.
 3. Runs `cargo install --locked --version <pin> wasm-pack` unless that exact version is already present; a warm builder carrying some other wasm-pack is replaced.
-4. From `emulator/`, runs `wasm-pack build --target web --out-dir ../web/lib/wasm`.
+4. From `emulator/`, runs `wasm-pack build --target web --out-dir ../web/lib/wasm`, then the node-target build (`--target nodejs --out-dir ../web/lib/wasm-node`). The node bundle never ships, but `next build` type-checks the test files and several of them type-import it, so the deploy fails the TypeScript step without it.
 5. From `web/`, runs `npm run build` (`next build --webpack`).
 
 The `--webpack` flag is required: the `next.config` webpack hook (the `?raw` source-import rule) only applies under webpack, so the deploy must match local and CI. Output lands in `web/.next`, served by Vercel's Next.js runtime.

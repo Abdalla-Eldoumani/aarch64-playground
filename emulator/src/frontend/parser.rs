@@ -265,6 +265,30 @@ fn parse_line(
     }
 }
 
+/// Every directive spelling `parse_directive` recognizes, aliases included.
+/// Recognized is not the same as accepted: `.equ`/`.set` are listed because
+/// the parser answers them with the teaching message that points at
+/// `NAME = expression`, which is a real answer rather than "unknown
+/// directive". `detect_hosted_mode` in lib.rs decides from this list which
+/// programs take the hosted path, and `every_directive_reaches_an_arm`
+/// proves no entry falls through to the unknown-directive arm.
+pub const DIRECTIVES: &[&str] = &[
+    // sections
+    ".text", ".data", ".bss", ".rodata", ".section",
+    // symbol attributes
+    ".global", ".globl", ".type", ".size",
+    // alignment and reservation
+    ".balign", ".align", ".skip", ".zero", ".space",
+    // strings
+    ".string", ".asciz", ".ascii",
+    // integers
+    ".byte", ".hword", ".short", ".word", ".quad", ".dword",
+    // floats
+    ".double", ".float",
+    // recognized, answered with the "write NAME = expression" message
+    ".equ", ".set",
+];
+
 fn parse_directive(
     name: &str,
     rest: &[Token],
@@ -1258,6 +1282,43 @@ mod tests {
                 assert_eq!(line, 3);
             }
             other => panic!("expected PreprocError at line 3, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn every_directive_reaches_an_arm() {
+        // Feed each listed spelling a plausible operand and check what comes
+        // back is never the unknown-directive fallthrough. What else it says
+        // does not matter: `.equ`/`.set` answer with the teaching message,
+        // which is the point of listing them. So this fails on exactly one
+        // thing -- a name in DIRECTIVES the match no longer has an arm for.
+        //
+        // First pin that the probe reaches the fallthrough at all, so a
+        // directive that died earlier could not pass the walk vacuously.
+        let unknown = parse(".nosuchthing 1\n").unwrap_err().to_string();
+        assert!(
+            unknown.contains("unknown directive"),
+            "the probe must reach the fallthrough, got: {unknown}"
+        );
+        for name in DIRECTIVES {
+            let operand = match *name {
+                ".section" => " .rodata",
+                ".global" | ".globl" | ".type" | ".size" => " main",
+                ".balign" | ".align" | ".skip" | ".zero" | ".space" => " 4",
+                ".string" | ".asciz" | ".ascii" => " \"hi\"",
+                ".byte" | ".hword" | ".short" | ".word" | ".quad" | ".dword" => " 1",
+                ".double" | ".float" => " 1.0",
+                ".equ" | ".set" => " SIZE, 40",
+                _ => "",
+            };
+            if let Err(e) = parse(&format!("{name}{operand}\n")) {
+                let message = e.to_string();
+                assert!(
+                    !message.contains("unknown directive"),
+                    "`{name}` is listed in DIRECTIVES but falls through the \
+                     match: {message}"
+                );
+            }
         }
     }
 }

@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { ROUTE_REGISTERS } from "@/lib/content/landing-content";
 import { Kicker } from "@/components/ui/Kicker";
 
-/** Micro field-box: the row's bit lit in the row's ink — the wordmark's
+/** Micro field-box: the row's bit lit in the row's ink, the wordmark's
  *  lockup grammar at jump-table scale. */
 function MicroFieldBox({ lit, onPrimary }: { lit: number; onPrimary: boolean }) {
   const stroke = onPrimary ? "border-[var(--on-cyan)]" : "border-[var(--border-strong)]";

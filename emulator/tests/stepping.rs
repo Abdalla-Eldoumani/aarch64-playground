@@ -306,3 +306,41 @@ fn loading_a_program_resumes_snapshotting() {
     cpu.step().expect("step");
     assert!(cpu.can_step_back(), "a loaded program records frames");
 }
+
+/// A coarse `.balign` inside `.text` pads with NOP words, so execution can
+/// fall through the gap the way it does under GAS; the pad words execute
+/// but stay out of the line map (they are not student instructions).
+#[test]
+fn text_alignment_padding_executes_as_nops_and_stays_out_of_the_line_map() {
+    let src = "\
+        .text
+        .balign 4
+        .global main
+main:   mov     w0, 7
+        .balign 16
+after:  add     w0, w0, 1
+        mov     x8, 93
+        svc     0
+";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+
+    // One instruction at main, then a 12-byte pad up to the 16-byte
+    // boundary, then the rest.
+    let after = image.symbols["after"];
+    assert_eq!(after, CODE_BASE + 16, "the label lands on the boundary");
+    for pad_addr in ((CODE_BASE + 4)..after).step_by(4) {
+        let word = cpu.mem.read_u32(pad_addr).expect("pad readable");
+        assert_eq!(word, 0xD503_201F, "pad word at {pad_addr:#x} is a NOP");
+        assert!(
+            !image.line_map.iter().any(|(a, _)| *a == pad_addr),
+            "pad word at {pad_addr:#x} must not appear in the line map"
+        );
+    }
+
+    let r = cpu.run_until_break(1_000).expect("run");
+    assert!(r.halted, "program halts");
+    assert!(r.error.is_none(), "no runtime error: {:?}", r.error);
+    assert_eq!(cpu.exit_code(), Some(8), "the fall-through executed the add");
+}

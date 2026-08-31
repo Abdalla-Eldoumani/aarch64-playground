@@ -504,6 +504,7 @@ mod tests {
         rand_state: crate::hosted::libc::RandState,
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
+        strtok_save: u64,
     }
 
     impl Host {
@@ -523,6 +524,7 @@ mod tests {
                 rand_state: crate::hosted::libc::RandState::default(),
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
+                strtok_save: 0,
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -539,6 +541,7 @@ mod tests {
                 rand_state: &mut self.rand_state,
                 term: &mut self.term,
                 heap: &mut self.heap,
+                strtok_save: &mut self.strtok_save,
             }
         }
         fn place_fmt(&mut self, fmt: &str) {

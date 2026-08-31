@@ -31,7 +31,7 @@ function load(): MemoryWatch[] {
       return parsed as MemoryWatch[];
     }
   } catch {
-    // ignore
+    // malformed stored watches; fall through to the empty list.
   }
   return [];
 }

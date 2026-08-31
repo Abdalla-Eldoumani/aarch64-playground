@@ -10,7 +10,7 @@ import {
 
 // The emulator's eight bands, transcribed by hand from the loader constants
 // (CODE_BASE 0x00400000 with a 1 MiB SECTION_WINDOW spacing the four
-// sections, ARGV_BASE + one page, HEAP_BASE + 1 MiB, the 1 MiB stack band
+// sections, ARGV_BASE + one page, HEAP_BASE + 16 MiB, the 8 MiB stack band
 // below STACK_BASE, and 256 16-byte stub slots at 0xFFFF0000). Literals, not
 // a re-derivation: the wasm-contract suite is what pins them to the crate.
 const REGIONS: MemoryRegion[] = [
@@ -19,15 +19,15 @@ const REGIONS: MemoryRegion[] = [
   { name: ".data", start: 0x00600000, end: 0x00700000 },
   { name: ".bss", start: 0x00700000, end: 0x00800000 },
   { name: "argv", start: 0x00800000, end: 0x00801000 },
-  { name: "heap", start: 0x00900000, end: 0x00a00000 },
-  { name: "stack", start: 0x7ff00000, end: 0x80000000 },
+  { name: "heap", start: 0x00900000, end: 0x01900000 },
+  { name: "stack", start: 0x7f800000, end: 0x80000000 },
   { name: "host stubs", start: 0xffff0000, end: 0xffff1000 },
 ];
 
 describe("regionFor", () => {
   it("names the band holding the first byte", () => {
     expect(regionFor(0x00600000, REGIONS)?.name).toBe(".data");
-    expect(regionFor(0x7ff00000, REGIONS)?.name).toBe("stack");
+    expect(regionFor(0x7f800000, REGIONS)?.name).toBe("stack");
   });
 
   it("names the band holding the last byte and excludes the end address", () => {
@@ -43,7 +43,7 @@ describe("regionFor", () => {
     // argv is one page, so the rest of its megabyte is a gap...
     expect(regionFor(0x00801000, REGIONS)).toBeNull();
     // ...and so is everything between the heap's end and the stack floor.
-    expect(regionFor(0x00a00000, REGIONS)).toBeNull();
+    expect(regionFor(0x01900000, REGIONS)).toBeNull();
     expect(regionFor(0x40000000, REGIONS)).toBeNull();
   });
 

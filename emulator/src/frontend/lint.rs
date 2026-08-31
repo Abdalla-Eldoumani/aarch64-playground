@@ -56,7 +56,10 @@ pub fn lint(source: &str) -> Vec<LintWarning> {
 /// design: the cost of a miss is one fewer warning, never a wrong one.
 fn is_reserved_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    if matches!(lower.as_str(), "sp" | "fp" | "lr" | "xzr" | "wzr" | "pc") {
+    // `pc` is a deliberate lint-only extra on top of the shared alias table:
+    // the lint warns about macro names shadowing things students think of as
+    // registers, and `pc` is one even though no encoder accepts it.
+    if lower == "pc" || crate::registers::reg_alias(&lower).is_some() {
         return true;
     }
     if let Some(rest) = lower.strip_prefix('x').or_else(|| lower.strip_prefix('w')) {
@@ -300,6 +303,12 @@ fn split_functions(text: &str) -> Vec<FunctionSegment> {
         }
         if rest.starts_with('.') {
             let lower = rest.to_ascii_lowercase();
+            // Deliberately its own prefix chain rather than the parser's
+            // DIRECTIVES table: `.section` always leaves .text here, even
+            // when it names `.section .text`, because the bare `.text`
+            // check runs first and `.section` never re-enters. The function
+            // segments this lint reports depend on that, so widening it to
+            // the parser's set would change which code gets linted.
             if lower.starts_with(".text") {
                 in_text = true;
             } else if lower.starts_with(".data")
@@ -683,5 +692,19 @@ mod tests {
     fn a_broken_m4_pass_produces_no_warnings() {
         // The assemble surfaces the m4 error; lint must stay quiet.
         assert_eq!(lint("ifdef(FOO, x)\n"), Vec::new());
+    }
+
+    #[test]
+    fn every_reg_alias_is_a_reserved_name() {
+        // The lint's reserved set is the shared alias table plus `pc`; walk
+        // both so a row added to the table cannot go unwarned here.
+        for (alias, _, _) in crate::registers::REG_ALIASES {
+            assert!(is_reserved_name(alias), "`{alias}` must be reserved");
+            assert!(
+                is_reserved_name(&alias.to_ascii_lowercase()),
+                "`{alias}` must be reserved in lowercase too"
+            );
+        }
+        assert!(is_reserved_name("pc"), "`pc` is the lint-only extra");
     }
 }

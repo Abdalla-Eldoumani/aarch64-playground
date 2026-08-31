@@ -84,8 +84,10 @@ tab. The walls live in the Rust core and hold however the program arrived
 
 - Step ceiling `cpu::MAX_TOTAL_STEPS` = 10,000,000, counted across every step
   and the run loop. A runaway loop trips it and stops.
-- Mapped-page cap `memory::MAX_MAPPED_PAGES` = 1024 (4 MiB live). A store past
-  the cap faults, and the step converts that fault to a halt.
+- Mapped-page cap `memory::MAX_MAPPED_PAGES` = 8192 (32 MiB live), sized so
+  the 8 MiB stack and the 16 MiB heap window can be fully touched with
+  headroom. A store past the cap faults, and the step converts that fault
+  to a halt.
 - Host-runtime caps so one libc or syscall call cannot allocate without bound
   from a guest-supplied size: `write` reads into a growable buffer instead of
   pre-reserving its count, and `printf` clamps field width and precision
@@ -146,8 +148,8 @@ hosted-runtime unit tests.
 
 ## Dependency posture
 
-Direct dependencies in `web/package.json` are pinned to exact versions, save
-for the `playwright` dev tool (`^1.59.1`). A clean audit of the shipped
+Direct dependencies in `web/package.json` are pinned to exact versions, with
+no caret or tilde ranges in the manifest. A clean audit of the shipped
 dependency set is enforced in CI (`node scripts/audit-deps.js --omit=dev`
 fails the build on any moderate-or-higher advisory), and the full audit runs
 before each release. `dompurify` (transitive, via monaco-editor) is held to a

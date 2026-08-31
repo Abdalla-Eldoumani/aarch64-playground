@@ -5,7 +5,7 @@
  * RegisterRow's grammar. The primary value is the decimal double decoded
  * from the register's raw IEEE-754 bit pattern; the raw bits ride beneath
  * it in tertiary mono (or swap places in hex mode). On a write the row
- * plays the same `--changed`-driven flash as the integer rows, with the
+ * plays the same write-bar strike as the integer rows, with the
  * amber edge bar; under prefers-reduced-motion the `--changed` ink alone
  * carries the state.
  */

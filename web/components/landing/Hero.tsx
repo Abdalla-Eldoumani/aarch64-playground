@@ -7,12 +7,12 @@ import { HERO_PROGRAM } from "@/lib/content/landing-content";
 
 /**
  * The live landing hero: an amber bit-range kicker, the display headline with
- * the brand block cursor, the serif lead, and — on wide viewports — the die
+ * the brand block cursor, the serif lead, and (on wide viewports) the die
  * floorplan motif beside the copy, echoing the instrument below. The shared
  * embeddable runs in a package frame (pin stubs on the rails, a live-die-view
  * header band) and autoplays the tiny hero program so the registers flash and
  * the pc marker advances on load. The embed supplies its own loading beat and
- * reduced-motion fallback inherently, so the hero adds no competing motion —
+ * reduced-motion fallback inherently, so the hero adds no competing motion;
  * it only frames it. The primary action deep-links into the full playground.
  */
 export function Hero() {

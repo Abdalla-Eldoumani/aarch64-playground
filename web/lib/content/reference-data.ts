@@ -571,6 +571,45 @@ mov     x11, 100
 msub    x12, x9, x10, x11   // x12 = 100 - 6 * 7 = 58`,
   },
   {
+    mnemonic: "negs",
+    category: "Data processing",
+    syntax: "negs xd, xm",
+    example: `mov     x9, 1
+negs    x10, x9             // x10 = -1 and n is set: subs from zero`,
+  },
+  {
+    mnemonic: "smull",
+    category: "Data processing",
+    syntax: "smull xd, wn, wm",
+    example: `mov     w9, -3
+mov     w10, 5
+smull   x11, w9, w10        // x11 = -15, exact in 64 bits`,
+  },
+  {
+    mnemonic: "umull",
+    category: "Data processing",
+    syntax: "umull xd, wn, wm",
+    example: `mov     w9, 0xffffffff
+mov     w10, 2
+umull   x11, w9, w10        // x11 = 0x1fffffffe: no 32-bit wrap`,
+  },
+  {
+    mnemonic: "smulh",
+    category: "Data processing",
+    syntax: "smulh xd, xn, xm",
+    example: `mov     x9, 0x4000000000000000
+mov     x10, 4
+smulh   x11, x9, x10        // x11 = 1: the product's top 64 bits`,
+  },
+  {
+    mnemonic: "umulh",
+    category: "Data processing",
+    syntax: "umulh xd, xn, xm",
+    example: `mov     x9, 0x8000000000000000
+mov     x10, 2
+umulh   x11, x9, x10        // x11 = 1: the carry out of bit 63`,
+  },
+  {
     mnemonic: "udiv",
     category: "Data processing",
     syntax: "udiv xd, xn, xm",
@@ -795,6 +834,22 @@ cmp     w9, 3
 csinc   w10, w9, w9, ne     // ne is false: the else arm, w10 = w9 + 1 = 4`,
   },
   {
+    mnemonic: "csinv",
+    category: "Conditional select",
+    syntax: "csinv xd, xn, xm, cond",
+    example: `mov     w9, 3
+cmp     w9, 3
+csinv   w10, w9, w9, ne     // ne is false: the else arm, w10 = ~3`,
+  },
+  {
+    mnemonic: "csneg",
+    category: "Conditional select",
+    syntax: "csneg xd, xn, xm, cond",
+    example: `mov     w9, -8
+cmp     w9, 0
+csneg   w10, w9, w9, pl     // pl is false: w10 = -w9 = 8. abs(), no branch`,
+  },
+  {
     mnemonic: "cset",
     category: "Conditional select",
     syntax: "cset xd, cond",
@@ -884,11 +939,14 @@ ldp     x11, x12, [sp], 16  // one instruction, two loads: 7 and 9`,
   {
     mnemonic: "stp",
     category: "Memory",
-    syntax: "stp xt1, xt2, [xn, #imm]",
+    syntax: "stp xt1, xt2, [xn, #imm] / stp dt1, dt2, [xn, #imm]",
     example: `mov     x9, 1
 mov     x10, 2
 stp     x9, x10, [sp, -16]! // push the pair; sp drops 16 first
 ldp     x11, x12, [sp], 16  // pop it back: x11 = 1, x12 = 2`,
+    gotchas: [
+      "d and s pairs work too: `stp d8, d9, [sp, -16]!` is how a prologue saves the callee-saved fp registers.",
+    ],
   },
   {
     mnemonic: "ldrsb",
@@ -1033,11 +1091,12 @@ ret                         // back to the caller: exit code 7`,
   {
     mnemonic: "fmov",
     category: "Floating point",
-    syntax: "fmov dd, dn / fmov sd, sn / fmov dd, #imm",
+    syntax: "fmov dd, dn / fmov dd, xn / fmov xd, dn / fmov dd, #imm",
     example: `fmov    d16, 5.0            // one of the encodable immediates
 fcvtzs  x9, d16             // x9 = 5: the double, made visible`,
     gotchas: [
       "the immediate is 8 bits of float: a power-of-two multiple of 1.0 through 1.9375. constants like 5.0 and 9.0 fit; 0.0 and most decimals do not, so load those from a `.double` in `.data`.",
+      "the between-files forms (`fmov d0, x0`, `fmov x0, d0`, and the s/w pair) copy raw bits with no conversion: `fmov d0, x0` with x0 = 42 is not 42.0. convert with `scvtf`/`fcvtzs`.",
     ],
   },
   {
@@ -1118,6 +1177,15 @@ fcvtzs  x9, d17             // x9 = 3`,
 fmov    d17, 2.5
 fcmp    d16, d17            // same nzcv flags as integer cmp
 cset    w9, lt              // w9 = 1: d16 is below d17`,
+  },
+  {
+    mnemonic: "fcmpe",
+    category: "Floating point",
+    syntax: "fcmpe dn, dm / fcmpe sn, sm",
+    example: `fmov    d16, 1.5
+fmov    d17, 2.5
+fcmpe   d16, d17            // gcc's spelling for float < and >
+cset    w9, lt              // w9 = 1`,
   },
   {
     mnemonic: "fcvt",

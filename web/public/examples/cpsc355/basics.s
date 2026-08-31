@@ -1,5 +1,5 @@
-// calc.asm - Demonstrate all arithmetic operations
-// Compile: m4 calc.asm > calc.s && gcc calc.s -o calc && ./calc
+// basics.asm - Demonstrate all arithmetic operations
+// Compile: m4 basics.asm > basics.s && gcc basics.s -o basics && ./basics
 
 define(a, x19)
 define(b, x20)

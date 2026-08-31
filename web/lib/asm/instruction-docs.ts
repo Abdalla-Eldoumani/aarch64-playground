@@ -84,15 +84,22 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   MUL: { summary: "Rd = Rn * Rm. Low bits only.", cExample: "Rd = Rn * Rm;" },
   MADD: { summary: "Rd = Ra + Rn * Rm.", cExample: "Rd = Ra + Rn * Rm;" },
   MSUB: { summary: "Rd = Ra - Rn * Rm.", cExample: "Rd = Ra - Rn * Rm;" },
+  SMULL: { summary: "Xd = Wn * Wm, the exact 64-bit product of two signed 32-bit values.", example: "smull x0, w1, w2", cExample: "long d = (long)a * b;" },
+  UMULL: { summary: "Xd = Wn * Wm, the exact 64-bit product of two unsigned 32-bit values.", example: "umull x0, w1, w2", cExample: "unsigned long d = (unsigned long)a * b;" },
+  SMULH: { summary: "Xd = the top 64 bits of the signed 128-bit product Xn * Xm.", example: "smulh x0, x1, x2", cExample: "Rd = (long)(((__int128)a * b) >> 64);" },
+  UMULH: { summary: "Xd = the top 64 bits of the unsigned 128-bit product Xn * Xm.", example: "umulh x0, x1, x2", cExample: "Rd = (unsigned long)(((unsigned __int128)a * b) >> 64);" },
   UDIV: { summary: "Unsigned divide; divide-by-zero writes 0.", cExample: "Rd = (unsigned)Rn / (unsigned)Rm;" },
   SDIV: { summary: "Signed divide; divide-by-zero writes 0.", cExample: "Rd = (int)Rn / (int)Rm;" },
   NEG: { summary: "Rd = -Rn (alias for `SUB Rd, ZR, Rn`).", cExample: "Rd = -Rn;" },
+  NEGS: { summary: "Rd = -Rn and sets NZCV (alias for `SUBS Rd, ZR, Rn`).", example: "negs x0, x1", cExample: "Rd = -Rn; // flags from 0 - Rn" },
   MVN: { summary: "Rd = ~Rn (alias for `ORN Rd, ZR, Rn`).", cExample: "Rd = ~Rn;" },
   CMP: { summary: "`SUBS ZR, Rn, op2`. Sets NZCV, discards result.", cExample: "// (Rn - op2) sets NZCV" },
   CMN: { summary: "`ADDS ZR, Rn, op2`. Sets NZCV.", cExample: "// (Rn + op2) sets NZCV" },
   TST: { summary: "`ANDS ZR, Rn, op2`. Sets NZCV; accepts bitmask immediates.", cExample: "// (Rn & op2) sets NZCV" },
   CSEL: { summary: "Rd = cond ? Rn : Rm.", example: "csel x0, x1, x2, eq", cExample: "Rd = cond ? Rn : Rm;" },
   CSINC: { summary: "Rd = cond ? Rn : Rm+1. Basis of `CSET`.", cExample: "Rd = cond ? Rn : Rm + 1;" },
+  CSINV: { summary: "Rd = cond ? Rn : ~Rm.", example: "csinv x0, x1, x2, eq", cExample: "Rd = cond ? Rn : ~Rm;" },
+  CSNEG: { summary: "Rd = cond ? Rn : -Rm. How gcc spells abs().", example: "csneg x0, x1, x2, pl", cExample: "Rd = cond ? Rn : -Rm;" },
   CSET: { summary: "Rd = cond ? 1 : 0 (pseudo for `CSINC Rd, ZR, ZR, cond-inv`).", cExample: "Rd = cond ? 1 : 0;" },
   LDR: {
     summary: "Load from memory. Picks 32-vs-64 bit based on Wt/Xt.",
@@ -112,11 +119,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   LDRSH: { summary: "Load halfword, sign-extend to Wt or Xt.", cExample: "Rd = *(short*)(Rn + off);" },
   LDRSW: { summary: "Load word, sign-extend to Xt.", cExample: "Rd = *(int*)(Rn + off);" },
   LDP: {
-    summary: "Load pair: `LDP Xt1, Xt2, [Xn, #imm]`.",
-    details: ["Offset is scaled by register size (8 for X, 4 for W)."],
+    summary: "Load pair: `LDP Xt1, Xt2, [Xn, #imm]`, or the FP file with D/S registers.",
+    details: ["Offset is scaled by register size (8 for X and D, 4 for W and S)."],
     cExample: "Rt1 = *(long*)(Rn + off); Rt2 = *(long*)(Rn + off + 8);",
   },
-  STP: { summary: "Store pair; mirrors LDP.", cExample: "*(long*)(Rn + off) = Rt1; *(long*)(Rn + off + 8) = Rt2;" },
+  STP: { summary: "Store pair; mirrors LDP (D/S pairs reach the FP file).", cExample: "*(long*)(Rn + off) = Rt1; *(long*)(Rn + off + 8) = Rt2;" },
   ADR: {
     summary: "Pc-relative byte address of a label into Xd.",
     example: "adr x0, label",
@@ -157,8 +164,9 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   },
   NOP: { summary: "Do nothing; PC advances." },
   FMOV: {
-    summary: "Copy FP register bit-for-bit, or load an 8-bit float immediate (S or D form).",
+    summary: "Copy bits: FP to FP, between the register files, or an 8-bit float immediate.",
     details: [
+      "`FMOV Dd, Xn` / `FMOV Xd, Dn` (and the S/W pair) move raw bits between the files with no conversion; use `scvtf`/`fcvtzs` to convert a value.",
       "`FMOV Dd, #imm` / `FMOV Sd, #imm` takes a small power-of-two multiple of 1.0-1.9375 (0.5, 1.0, 2.0, 5.0, 9.0 all fit).",
       "Values outside that set (0.0, 0.1, 100.0) do not encode; load them from a `.double` / `.float` instead.",
     ],
@@ -188,6 +196,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     summary: "Set NZCV from Fn vs Fm (S or D form).",
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
   },
+  FCMPE: { summary: "Signaling FCMP; sets the same flags here (no FP exceptions are raised).", example: "fcmpe d0, d1", cExample: "// (a < b) etc. via NZCV" },
   FCVT: {
     summary: "Convert between the float views: `FCVT Dd, Sn` widens exactly, `FCVT Sd, Dn` narrows with rounding.",
     details: [

@@ -12,14 +12,18 @@ const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 /// allocation -- a memory bomb, or unbounded recursion growing the stack --
 /// aborts calmly rather than growing the wasm heap until the tab dies.
 ///
-/// 1024 pages is 4 MiB of live program memory: roughly 20x a real cpsc 355
-/// working set (tens of pages -- stack, code, a data section, a buffer) yet
-/// well under tab exhaustion. Page buffers are shared copy-on-write with
-/// the step-back snapshot ring, so the peak is the live cap plus whatever
-/// the ring's frames still hold of pages the program has since rewritten.
-/// The pre-mapped stack/code/data baseline and `map_page` are not subject
-/// to the cap (they are the fixed baseline).
-pub const MAX_MAPPED_PAGES: usize = 1024;
+/// 8192 pages is 32 MiB of live program memory: enough to back the full
+/// 8 MiB stack (2048 pages, matching the course servers' `ulimit -s`) and
+/// the 16 MiB heap window (4096 pages) touched together, with the section
+/// baseline and headroom on top, yet still well under tab exhaustion. The
+/// stack floor must stay below this cap in page terms so runaway recursion
+/// meets the stack-overflow message, never the memory-cap one. Page
+/// buffers are shared copy-on-write with the step-back snapshot ring, so
+/// the peak is the live cap plus whatever the ring's frames still hold of
+/// pages the program has since rewritten. The pre-mapped stack/code/data
+/// baseline and `map_page` are not subject to the cap (they are the fixed
+/// baseline).
+pub const MAX_MAPPED_PAGES: usize = 8192;
 
 /// Upper bound on how many `(addr, len)` ranges the dirty log holds
 /// between drains. The log is a hint for the UI's changed-byte tint, not
@@ -105,6 +109,15 @@ impl Memory {
     /// against the runaway-step budget.
     pub fn bytes_written(&self) -> u64 {
         self.written
+    }
+
+    /// Charge bulk READ work against the same counter the write path
+    /// feeds, without touching the dirty log (nothing changed for the
+    /// UI to tint). memcmp/strncmp walk a guest-chosen length over
+    /// mapped memory, and unpriced reads would let one call do
+    /// megabytes of work per step the runaway budget never saw.
+    pub fn note_bulk_read(&mut self, len: u64) {
+        self.written = self.written.saturating_add(len);
     }
 
     /// Record a write for the UI's changed-byte tint and the bulk-work

@@ -1,0 +1,8 @@
+argc=5
+argv0_nonempty=1
+arg1=12 len=2
+arg2=-5 len=2
+arg3=abc len=3
+arg4=30 len=2
+total=37
+argv_end_null=1

@@ -6,7 +6,7 @@ You need:
 
 - **Rust** (stable, installed via rustup) with the `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`. Use rustup, not a standalone package; wasm-pack requires it.
 - **wasm-pack**: `cargo install wasm-pack`, or the installer at <https://wasm-bindgen.github.io/wasm-pack/installer/>.
-- **Node.js** 20+ (CI runs on 24).
+- **Node.js** 24 or newer (`web/package.json` enforces the floor through `engines`).
 - Optional: `cargo install cargo-watch` enables the WASM auto-rebuild half of `npm run dev:all` (without it, `dev:all` still runs the web dev server).
 
 First build:
@@ -62,6 +62,10 @@ obvious place and a newcomer can navigate by directory name alone:
 - Component files are `PascalCase.tsx`, matching the exported component --
   the React and Next.js community standard, so a file name is the symbol
   you import.
+- A component's `Props` interface is exported alongside it even when
+  nothing imports it yet: the export is the component's public shape, and
+  keeping the convention uniform beats auditing which ones happen to have
+  external consumers today.
 - Everything else (lib modules, scripts, docs) is lowercase kebab-case
   (`use-emulator.ts`, `verify-corpus.js`): dashes are the least ambiguous
   word separator in URLs and shells (no escaping, no case-sensitivity
@@ -122,7 +126,7 @@ By opening a pull request you agree that your contribution is licensed under AGP
 1. **Decoder**: in [`emulator/src/decoder.rs`](../emulator/src/decoder.rs), add a branch that recognizes the bit pattern and returns the `Instruction` variant. Test-drive it with a hand-encoded word.
 2. **Executor**: in [`emulator/src/executor.rs`](../emulator/src/executor.rs), add the semantics. Route NZCV through the `add_flags` / `sub_flags` / `logic_flags` helpers at the top of the same file; FP arithmetic goes through `fpu.rs`; faults return the right `EmuError`.
 3. **Assembler**: in [`emulator/src/assembler.rs`](../emulator/src/assembler.rs), add the mnemonic to the `match` in `encode_line` and implement the encoder (register vs. immediate forms, shifts, the usual ARM64 quirks). Text-only CPSC 355 source flows through [`emulator/src/frontend/pipeline.rs`](../emulator/src/frontend/pipeline.rs) via `lower_operands` into the same backend.
-4. **Tests**: each file has a `#[cfg(test)] mod tests`. Add a round-trip test (assemble, run, assert state). If the instruction appears in the corpus, also exercise it through `tests/cpsc355_corpus.rs` or `tests/hosted_end_to_end.rs`.
+4. **Tests**: each file has a `#[cfg(test)] mod tests`. Add a round-trip test (assemble, run, assert state). If gcc emits the instruction, the C corpus (`tests/c_corpus.rs` over `tests/c-corpus/`) is the natural end-to-end home; `tests/hosted_end_to_end.rs` covers hand-built cases.
 5. **Docs**: append the mnemonic to [`docs/instruction-reference.md`](instruction-reference.md), and add its hover card in `web/lib/asm/instruction-docs.ts` with the matching `/reference` entry in `web/lib/content/reference-data.ts` (kept in sync by the reference-encoding test and `emulator/tests/reference_consistency.rs`). For hosted-runtime instructions, also update [`docs/cpsc355-style-guide.md`](cpsc355-style-guide.md).
 
 ## Adding a visible feature

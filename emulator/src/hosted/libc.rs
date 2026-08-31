@@ -100,6 +100,173 @@ pub fn memcpy(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
+/// memmove(dst, src, n) -> dst. The overlap-safe copy: when the
+/// destination starts above the source the walk runs backwards, so the
+/// bytes still to be read are never overwritten first. (memcpy beside it
+/// stays a plain forward walk, which is what glibc's memcpy is too.)
+pub fn memmove(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let dst = ctx.regs.read_gpr(0, true);
+    let src = ctx.regs.read_gpr(1, true);
+    let n = ctx.regs.read_gpr(2, true);
+    if dst < src {
+        for i in 0..n {
+            let b = ctx.mem.read_u8(src.wrapping_add(i))?;
+            ctx.mem.write_u8(dst.wrapping_add(i), b)?;
+        }
+    } else {
+        for i in (0..n).rev() {
+            let b = ctx.mem.read_u8(src.wrapping_add(i))?;
+            ctx.mem.write_u8(dst.wrapping_add(i), b)?;
+        }
+    }
+    ctx.regs.write_gpr(0, true, dst);
+    Ok(HostOutcome::Continue)
+}
+
+/// memcmp(a, b, n) -> the difference of the first bytes that differ,
+/// read as unsigned chars, or 0 when the ranges match.
+pub fn memcmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let a_ptr = ctx.regs.read_gpr(0, true);
+    let b_ptr = ctx.regs.read_gpr(1, true);
+    let n = ctx.regs.read_gpr(2, true);
+    let mut result = 0i32;
+    let mut compared = 0u64;
+    for i in 0..n {
+        let a = ctx.mem.read_u8(a_ptr.wrapping_add(i))?;
+        let b = ctx.mem.read_u8(b_ptr.wrapping_add(i))?;
+        compared = i + 1;
+        if a != b {
+            result = a as i32 - b as i32;
+            break;
+        }
+    }
+    // The walk is priced like a write of the same size: `n` is
+    // guest-chosen and the whole mapped space is reachable.
+    ctx.mem.note_bulk_read(compared * 2);
+    write_int(ctx, result);
+    Ok(HostOutcome::Continue)
+}
+
+/// strncmp(a, b, n) -> the difference of the first bytes that differ, or
+/// 0 when the first `n` bytes (or both strings) match.
+///
+/// glibc hands back that DIFFERENCE, not a normalized -1/0/1: `strncmp`
+/// on "a" and "z" answers -25 on the servers. The strcmp stub above
+/// normalizes and predates this note; the sign is all C promises, so
+/// both satisfy the contract while this one also matches the number a
+/// student prints.
+pub fn strncmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let a_ptr = ctx.regs.read_gpr(0, true);
+    let b_ptr = ctx.regs.read_gpr(1, true);
+    let n = ctx.regs.read_gpr(2, true);
+    let mut result = 0i32;
+    let mut compared = 0u64;
+    for i in 0..n {
+        let a = ctx.mem.read_u8(a_ptr.wrapping_add(i))?;
+        let b = ctx.mem.read_u8(b_ptr.wrapping_add(i))?;
+        compared = i + 1;
+        if a != b {
+            result = a as i32 - b as i32;
+            break;
+        }
+        // Equal terminators end the comparison early -- neither string
+        // has anything left for byte n-1 to disagree about.
+        if a == 0 {
+            break;
+        }
+    }
+    // Priced like memcmp: the length is guest-chosen.
+    ctx.mem.note_bulk_read(compared * 2);
+    write_int(ctx, result);
+    Ok(HostOutcome::Continue)
+}
+
+/// strncpy(dst, src, n) -> dst, with glibc's two sharp edges intact: a
+/// source shorter than `n` leaves the rest of the destination filled
+/// with NULs (not just one terminator), and a source at least `n` long
+/// leaves the destination with NO terminator at all.
+pub fn strncpy(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let dst = ctx.regs.read_gpr(0, true);
+    let src = ctx.regs.read_gpr(1, true);
+    let n = ctx.regs.read_gpr(2, true);
+    let mut past_end = false;
+    for i in 0..n {
+        // Past the source's terminator nothing more is read: the source
+        // may legitimately end one byte before an unmapped page.
+        let b = if past_end {
+            0
+        } else {
+            ctx.mem.read_u8(src.wrapping_add(i))?
+        };
+        if b == 0 {
+            past_end = true;
+        }
+        ctx.mem.write_u8(dst.wrapping_add(i), b)?;
+    }
+    ctx.regs.write_gpr(0, true, dst);
+    Ok(HostOutcome::Continue)
+}
+
+/// strcat(dst, src) -> dst. Appends at the destination's terminator and
+/// re-terminates; the caller owns the space, exactly as in C.
+pub fn strcat(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let dst = ctx.regs.read_gpr(0, true);
+    let src = ctx.regs.read_gpr(1, true);
+    let existing = read_c_string(ctx.mem, dst, "strcat's destination")?;
+    let bytes = read_c_string(ctx.mem, src, "strcat's source")?;
+    let end = dst.wrapping_add(existing.len() as u64);
+    for (i, b) in bytes.iter().enumerate() {
+        ctx.mem.write_u8(end.wrapping_add(i as u64), *b)?;
+    }
+    ctx.mem.write_u8(end.wrapping_add(bytes.len() as u64), 0)?;
+    ctx.regs.write_gpr(0, true, dst);
+    Ok(HostOutcome::Continue)
+}
+
+/// strchr(s, c) -> a pointer to the first `c`, or NULL. The int is cut
+/// down to a char first, and the terminator counts as part of the
+/// string: `strchr(s, 0)` answers the address of the NUL, which is how
+/// C finds the end of a string in one call.
+pub fn strchr(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let s = ctx.regs.read_gpr(0, true);
+    let needle = (ctx.regs.read_gpr(1, false) & 0xFF) as u8;
+    let bytes = read_c_string(ctx.mem, s, "strchr")?;
+    let found = match bytes.iter().position(|b| *b == needle) {
+        Some(i) => s.wrapping_add(i as u64),
+        None if needle == 0 => s.wrapping_add(bytes.len() as u64),
+        None => 0,
+    };
+    ctx.regs.write_gpr(0, true, found);
+    Ok(HostOutcome::Continue)
+}
+
+/// strstr(haystack, needle) -> a pointer to the first occurrence, or
+/// NULL. An empty needle matches immediately and answers the haystack
+/// itself, which is what C specifies and what glibc does.
+pub fn strstr(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let hay_ptr = ctx.regs.read_gpr(0, true);
+    let needle_ptr = ctx.regs.read_gpr(1, true);
+    let hay = read_c_string(ctx.mem, hay_ptr, "strstr's haystack")?;
+    let needle = read_c_string(ctx.mem, needle_ptr, "strstr's needle")?;
+    let at = if needle.is_empty() {
+        Some(0)
+    } else {
+        hay.windows(needle.len()).position(|w| w == needle.as_slice())
+    };
+    let found = match at {
+        Some(i) => hay_ptr.wrapping_add(i as u64),
+        None => 0,
+    };
+    ctx.regs.write_gpr(0, true, found);
+    Ok(HostOutcome::Continue)
+}
+
+/// Return an `int` the way the ABI does: sign-extended through x0, so a
+/// `%d` print and a `cmp w0` read the same value.
+fn write_int(ctx: &mut HostContext<'_>, value: i32) {
+    ctx.regs.write_gpr(0, true, value as i64 as u64);
+}
+
 pub fn exit(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let code = crate::hosted::exit_status(ctx.regs);
     Ok(HostOutcome::Exited(code))
@@ -313,6 +480,183 @@ pub fn atof(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
+/// abs(w0) -> |w0| as an int. INT_MIN has no positive counterpart, so it
+/// comes back as itself, the wrap glibc and the hardware both produce.
+pub fn abs(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let value = ctx.regs.read_gpr(0, false) as u32 as i32;
+    ctx.regs.write_gpr(0, true, value.wrapping_abs() as i64 as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// labs(x0) -> |x0| as a long, LONG_MIN wrapping to itself like abs.
+pub fn labs(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let value = ctx.regs.read_gpr(0, true) as i64;
+    ctx.regs.write_gpr(0, true, value.wrapping_abs() as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// C's isspace in the default locale, byte-level: space, \t, \n, \v, \f,
+/// \r. Same rule scanf parses tokens by; Rust's Unicode whitespace would
+/// split a pasted NBSP mid-character.
+fn is_c_space(b: u8) -> bool {
+    b.is_ascii_whitespace() || b == 0x0B
+}
+
+/// strtol(nptr, endptr, base) -> the converted long.
+/// Leading whitespace and an optional sign are skipped, base 0 infers
+/// the base from the prefix, and `endptr` (when it is not NULL) is left
+/// pointing at the first character the conversion did not use -- back at
+/// `nptr` itself when nothing converted, which is how C code detects
+/// "that was not a number".
+pub fn strtol(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let nptr = ctx.regs.read_gpr(0, true);
+    let endptr = ctx.regs.read_gpr(1, true);
+    let base = ctx.regs.read_gpr(2, false) as u32 as i32;
+    let bytes = read_c_string(ctx.mem, nptr, "strtol's string")?;
+    let (value, consumed) = parse_strtol(&bytes, base);
+    if endptr != 0 {
+        ctx.mem.write_u64(endptr, nptr.wrapping_add(consumed as u64))?;
+    }
+    ctx.regs.write_gpr(0, true, value as u64);
+    Ok(HostOutcome::Continue)
+}
+
+/// The strtol grammar, returning the value and how many bytes it used.
+/// A value too big for a long clamps to LONG_MAX / LONG_MIN, which is
+/// what glibc returns alongside ERANGE (nothing here models errno, and
+/// the clamped value is the part course code reads).
+fn parse_strtol(bytes: &[u8], base: i32) -> (i64, usize) {
+    // An impossible base converts nothing at all, EINVAL in glibc.
+    if base != 0 && !(2..=36).contains(&base) {
+        return (0, 0);
+    }
+    let mut i = 0;
+    while i < bytes.len() && is_c_space(bytes[i]) {
+        i += 1;
+    }
+    let negative = match bytes.get(i) {
+        Some(b'-') => {
+            i += 1;
+            true
+        }
+        Some(b'+') => {
+            i += 1;
+            false
+        }
+        _ => false,
+    };
+    // The 0x prefix counts only when a hex digit actually follows it:
+    // "0x" alone converts the bare zero and leaves endptr on the 'x',
+    // exactly as glibc does.
+    let hex_prefix = bytes.get(i) == Some(&b'0')
+        && matches!(bytes.get(i + 1), Some(b'x') | Some(b'X'))
+        && bytes.get(i + 2).is_some_and(u8::is_ascii_hexdigit);
+    let base = match base {
+        0 if hex_prefix => {
+            i += 2;
+            16
+        }
+        // A leading zero with no 'x' is octal, and that zero is itself
+        // the first octal digit.
+        0 if bytes.get(i) == Some(&b'0') => 8,
+        0 => 10,
+        16 if hex_prefix => {
+            i += 2;
+            16
+        }
+        other => other as u32,
+    };
+    let limit = if negative { 1u64 << 63 } else { i64::MAX as u64 };
+    let mut magnitude = 0u64;
+    let mut overflowed = false;
+    let mut digits = 0;
+    while let Some(d) = bytes.get(i).and_then(|b| digit_value(*b, base)) {
+        magnitude = magnitude
+            .saturating_mul(base as u64)
+            .saturating_add(d as u64);
+        if magnitude > limit {
+            overflowed = true;
+        }
+        digits += 1;
+        i += 1;
+    }
+    if digits == 0 {
+        // No conversion: the value is 0 and endptr goes back to the very
+        // start, whitespace and sign included.
+        return (0, 0);
+    }
+    let value = if overflowed {
+        if negative {
+            i64::MIN
+        } else {
+            i64::MAX
+        }
+    } else if negative {
+        // A magnitude of exactly 2^63 negates to LONG_MIN.
+        (magnitude as i64).wrapping_neg()
+    } else {
+        magnitude as i64
+    };
+    (value, i)
+}
+
+/// The value of one digit in `base`, or None when the byte is not one.
+fn digit_value(b: u8, base: u32) -> Option<u32> {
+    let value = match b {
+        b'0'..=b'9' => (b - b'0') as u32,
+        b'a'..=b'z' => (b - b'a') as u32 + 10,
+        b'A'..=b'Z' => (b - b'A') as u32 + 10,
+        _ => return None,
+    };
+    (value < base).then_some(value)
+}
+
+/// strtok(s, delim) -> the next token, or NULL when the string is spent.
+/// glibc's exact walk: leading delimiters are skipped, the delimiter
+/// that ends the token is overwritten with a NUL, and the cursor for the
+/// next `strtok(NULL, ...)` is parked just past it. Once the string runs
+/// out the cursor sits on the terminator, so every further call keeps
+/// answering NULL.
+pub fn strtok(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let arg = ctx.regs.read_gpr(0, true);
+    let delim_ptr = ctx.regs.read_gpr(1, true);
+    let delims = read_c_string(ctx.mem, delim_ptr, "strtok's delimiters")?;
+    // A NULL first argument means "continue"; glibc reads its static
+    // cursor, and a program that continues before it ever started reads
+    // through NULL and dies. Reading address 0 faults here the same way.
+    let mut cursor = if arg != 0 { arg } else { *ctx.strtok_save };
+    loop {
+        let b = ctx.mem.read_u8(cursor)?;
+        if b == 0 {
+            *ctx.strtok_save = cursor;
+            ctx.regs.write_gpr(0, true, 0);
+            return Ok(HostOutcome::Continue);
+        }
+        if !delims.contains(&b) {
+            break;
+        }
+        cursor = cursor.wrapping_add(1);
+    }
+    let start = cursor;
+    loop {
+        let b = ctx.mem.read_u8(cursor)?;
+        if b == 0 {
+            // The last token ends at the string's own terminator; the
+            // cursor stays on it so the next call reports exhaustion.
+            *ctx.strtok_save = cursor;
+            break;
+        }
+        if delims.contains(&b) {
+            ctx.mem.write_u8(cursor, 0)?;
+            *ctx.strtok_save = cursor.wrapping_add(1);
+            break;
+        }
+        cursor = cursor.wrapping_add(1);
+    }
+    ctx.regs.write_gpr(0, true, start);
+    Ok(HostOutcome::Continue)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,6 +677,7 @@ mod tests {
         rand_state: RandState,
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
+        strtok_save: u64,
     }
 
     impl Host {
@@ -352,6 +697,7 @@ mod tests {
                 rand_state: RandState::default(),
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
+                strtok_save: 0,
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -368,6 +714,7 @@ mod tests {
                 rand_state: &mut self.rand_state,
                 term: &mut self.term,
                 heap: &mut self.heap,
+                strtok_save: &mut self.strtok_save,
             }
         }
         fn place_string(&mut self, addr: u64, s: &[u8]) {
@@ -521,6 +868,310 @@ mod tests {
         strcpy(&mut h.ctx()).unwrap();
         assert_eq!(h.mem.read_u8(u64::MAX).unwrap(), b'b');
         assert_eq!(h.mem.read_u8(1).unwrap(), 0);
+    }
+
+    #[test]
+    fn strncmp_stops_at_n_and_reports_the_byte_difference() {
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"apple");
+        h.place_string(0x0050_0010, b"apricot");
+        // "ap" is common to both, so a compare bounded there says equal.
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0x0050_0010);
+        h.regs.write_gpr(2, true, 2);
+        strncmp(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, 0);
+        // One byte further, 'p' - 'r' is the value glibc hands back, not -1.
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0x0050_0010);
+        h.regs.write_gpr(2, true, 5);
+        strncmp(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, b'p' as i64 - b'r' as i64);
+        // A shorter string loses to its own terminator.
+        h.place_string(0x0050_0020, b"app");
+        h.regs.write_gpr(0, true, 0x0050_0020);
+        h.regs.write_gpr(1, true, 0x0050_0000);
+        h.regs.write_gpr(2, true, 10);
+        strncmp(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, 0 - b'l' as i64);
+    }
+
+    #[test]
+    fn strncmp_never_reads_past_the_limit() {
+        // Two buffers that fill their page to the last byte with no
+        // terminator: a compare bounded at n must not walk into the
+        // unmapped page after them.
+        let mut h = Host::new();
+        for i in 0..4u64 {
+            h.mem.write_u8(0x0060_0FFC + i, b'z').unwrap();
+            h.mem.write_u8(0x0050_0FFC + i, b'z').unwrap();
+        }
+        h.regs.write_gpr(0, true, 0x0060_0FFC);
+        h.regs.write_gpr(1, true, 0x0050_0FFC);
+        h.regs.write_gpr(2, true, 4);
+        strncmp(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, 0);
+    }
+
+    #[test]
+    fn strncpy_pads_with_nuls_and_omits_the_terminator_when_full() {
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"hi");
+        // Short source: the rest of the field is zero-filled, not left
+        // as it was.
+        for i in 0..6 {
+            h.mem.write_u8(0x0060_0000 + i, b'X').unwrap();
+        }
+        h.regs.write_gpr(0, true, 0x0060_0000);
+        h.regs.write_gpr(1, true, 0x0050_0000);
+        h.regs.write_gpr(2, true, 6);
+        strncpy(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0x0060_0000);
+        let field: Vec<u8> = (0..6).map(|i| h.mem.read_u8(0x0060_0000 + i).unwrap()).collect();
+        assert_eq!(field, b"hi\0\0\0\0");
+
+        // Source at least n long: exactly n bytes and NO terminator.
+        h.place_string(0x0050_0010, b"abcdef");
+        h.mem.write_u8(0x0060_0100 + 3, b'!').unwrap();
+        h.regs.write_gpr(0, true, 0x0060_0100);
+        h.regs.write_gpr(1, true, 0x0050_0010);
+        h.regs.write_gpr(2, true, 3);
+        strncpy(&mut h.ctx()).unwrap();
+        let field: Vec<u8> = (0..4).map(|i| h.mem.read_u8(0x0060_0100 + i).unwrap()).collect();
+        assert_eq!(field, b"abc!");
+    }
+
+    #[test]
+    fn strcat_appends_at_the_terminator() {
+        let mut h = Host::new();
+        h.place_string(0x0060_0000, b"log: ");
+        h.place_string(0x0050_0000, b"done");
+        h.regs.write_gpr(0, true, 0x0060_0000);
+        h.regs.write_gpr(1, true, 0x0050_0000);
+        strcat(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0x0060_0000);
+        assert_eq!(read_c_string(&h.mem, 0x0060_0000, "test").unwrap(), b"log: done");
+    }
+
+    #[test]
+    fn strchr_finds_bytes_the_terminator_included() {
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"a,b");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, b',' as u64);
+        strchr(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0x0050_0001);
+        // Absent byte: NULL.
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, b'z' as u64);
+        strchr(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0);
+        // Searching for 0 answers the terminator's own address.
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0);
+        strchr(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0x0050_0003);
+    }
+
+    #[test]
+    fn strstr_matches_substrings_and_the_empty_needle() {
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"the answer is 42");
+        h.place_string(0x0050_0020, b"answer");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0x0050_0020);
+        strstr(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0x0050_0004);
+        // An empty needle matches at once, at the haystack itself.
+        h.place_string(0x0050_0030, b"");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0x0050_0030);
+        strstr(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0x0050_0000);
+        // A needle longer than the haystack cannot match.
+        h.place_string(0x0050_0040, b"the answer is 42 exactly");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0x0050_0040);
+        strstr(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0);
+    }
+
+    #[test]
+    fn memcmp_compares_raw_bytes_including_zeros() {
+        let mut h = Host::new();
+        for i in 0..4u64 {
+            h.mem.write_u8(0x0060_0000 + i, 0).unwrap();
+            h.mem.write_u8(0x0060_0010 + i, 0).unwrap();
+        }
+        h.regs.write_gpr(0, true, 0x0060_0000);
+        h.regs.write_gpr(1, true, 0x0060_0010);
+        h.regs.write_gpr(2, true, 4);
+        memcmp(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, 0);
+        // A difference after an embedded NUL still counts, which is the
+        // whole reason memcmp is not strcmp.
+        h.mem.write_u8(0x0060_0013, 9).unwrap();
+        h.regs.write_gpr(0, true, 0x0060_0000);
+        h.regs.write_gpr(1, true, 0x0060_0010);
+        h.regs.write_gpr(2, true, 4);
+        memcmp(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, -9);
+    }
+
+    #[test]
+    fn memmove_survives_overlap_in_both_directions() {
+        let mut h = Host::new();
+        let load = |h: &mut Host| {
+            for i in 0..6u64 {
+                h.mem.write_u8(0x0060_0000 + i, (i + 1) as u8).unwrap();
+            }
+        };
+        let field = |h: &Host| -> Vec<u8> {
+            (0..8).map(|i| h.mem.read_u8(0x0060_0000 + i).unwrap()).collect()
+        };
+        // Shift up: a forward copy would smear byte 1 across the range.
+        load(&mut h);
+        h.regs.write_gpr(0, true, 0x0060_0002);
+        h.regs.write_gpr(1, true, 0x0060_0000);
+        h.regs.write_gpr(2, true, 6);
+        memmove(&mut h.ctx()).unwrap();
+        assert_eq!(field(&h), vec![1, 2, 1, 2, 3, 4, 5, 6]);
+        // Shift down: the same hazard with the walk reversed.
+        load(&mut h);
+        h.regs.write_gpr(0, true, 0x0060_0000);
+        h.regs.write_gpr(1, true, 0x0060_0002);
+        h.regs.write_gpr(2, true, 4);
+        memmove(&mut h.ctx()).unwrap();
+        assert_eq!(field(&h)[..4], [3, 4, 5, 6]);
+        assert_eq!(h.regs.read_gpr(0, true), 0x0060_0000);
+    }
+
+    #[test]
+    fn abs_and_labs_wrap_at_the_minimum_like_glibc() {
+        let mut h = Host::new();
+        h.regs.write_gpr(0, false, (-7i32) as u32 as u64);
+        abs(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, 7);
+        h.regs.write_gpr(0, false, i32::MIN as u32 as u64);
+        abs(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, i32::MIN as i64);
+
+        h.regs.write_gpr(0, true, (-9_000_000_000i64) as u64);
+        labs(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, 9_000_000_000);
+        h.regs.write_gpr(0, true, i64::MIN as u64);
+        labs(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, i64::MIN);
+    }
+
+    #[test]
+    fn strtol_infers_the_base_and_reports_where_it_stopped() {
+        let cases: &[(&[u8], i32, i64, u64)] = &[
+            // text, base, value, bytes consumed
+            (b"  -0x1f rest", 0, -31, 7),
+            (b"0755", 0, 493, 4),
+            (b"0", 0, 0, 1),
+            (b"+42abc", 0, 42, 3),
+            (b"ff", 16, 255, 2),
+            (b"0xFF", 16, 255, 4),
+            (b"1011", 2, 11, 4),
+            (b"zz", 36, 1295, 2),
+            // A 0x with no hex digit converts the bare zero and leaves
+            // endptr on the x.
+            (b"0x", 0, 0, 1),
+            (b"0xg", 16, 0, 1),
+            // Nothing convertible: endptr goes back to the start.
+            (b"   abc", 0, 0, 0),
+            (b"", 10, 0, 0),
+            // An impossible base converts nothing at all.
+            (b"10", 1, 0, 0),
+            (b"10", 37, 0, 0),
+        ];
+        for (text, base, value, consumed) in cases {
+            let mut h = Host::new();
+            h.place_string(0x0050_0000, text);
+            h.regs.write_gpr(0, true, 0x0050_0000);
+            h.regs.write_gpr(1, true, 0x0060_0000);
+            h.regs.write_gpr(2, false, *base as u32 as u64);
+            strtol(&mut h.ctx()).unwrap();
+            let text = String::from_utf8_lossy(text).into_owned();
+            assert_eq!(h.regs.read_gpr(0, true) as i64, *value, "value of {text:?}");
+            assert_eq!(
+                h.mem.read_u64(0x0060_0000).unwrap(),
+                0x0050_0000 + consumed,
+                "endptr for {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strtol_clamps_out_of_range_values_and_tolerates_a_null_endptr() {
+        let mut h = Host::new();
+        h.place_string(0x0050_0000, b"99999999999999999999");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0);
+        h.regs.write_gpr(2, false, 10);
+        strtol(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, i64::MAX);
+
+        h.place_string(0x0050_0000, b"-99999999999999999999");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0);
+        h.regs.write_gpr(2, false, 10);
+        strtol(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, i64::MIN);
+
+        // The exact edges are not overflow.
+        h.place_string(0x0050_0000, b"-9223372036854775808");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0);
+        h.regs.write_gpr(2, false, 10);
+        strtol(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, i64::MIN);
+        h.place_string(0x0050_0000, b"9223372036854775807");
+        h.regs.write_gpr(0, true, 0x0050_0000);
+        h.regs.write_gpr(1, true, 0);
+        h.regs.write_gpr(2, false, 10);
+        strtol(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true) as i64, i64::MAX);
+    }
+
+    #[test]
+    fn strtok_walks_delimiter_runs_and_then_stays_exhausted() {
+        let mut h = Host::new();
+        h.place_string(0x0060_0000, b" one,,two ; three ");
+        h.place_string(0x0050_0000, b" ,;");
+        let token = |h: &mut Host, first: bool| -> String {
+            h.regs.write_gpr(0, true, if first { 0x0060_0000 } else { 0 });
+            h.regs.write_gpr(1, true, 0x0050_0000);
+            strtok(&mut h.ctx()).unwrap();
+            let at = h.regs.read_gpr(0, true);
+            if at == 0 {
+                return String::new();
+            }
+            String::from_utf8_lossy(&read_c_string(&h.mem, at, "test").unwrap()).into_owned()
+        };
+        assert_eq!(token(&mut h, true), "one");
+        assert_eq!(token(&mut h, false), "two");
+        assert_eq!(token(&mut h, false), "three");
+        // Exhausted, and it stays exhausted however often it is asked.
+        assert_eq!(token(&mut h, false), "");
+        assert_eq!(token(&mut h, false), "");
+        // The cursor is saved on the terminator, glibc's parking spot.
+        assert_eq!(h.mem.read_u8(h.strtok_save).unwrap(), 0);
+    }
+
+    #[test]
+    fn strtok_of_delimiters_only_answers_null_immediately() {
+        let mut h = Host::new();
+        h.place_string(0x0060_0000, b",,,");
+        h.place_string(0x0050_0000, b",");
+        h.regs.write_gpr(0, true, 0x0060_0000);
+        h.regs.write_gpr(1, true, 0x0050_0000);
+        strtok(&mut h.ctx()).unwrap();
+        assert_eq!(h.regs.read_gpr(0, true), 0);
+        // Nothing was cut: the string is untouched apart from the walk.
+        assert_eq!(read_c_string(&h.mem, 0x0060_0000, "test").unwrap(), b",,,");
     }
 
     #[test]

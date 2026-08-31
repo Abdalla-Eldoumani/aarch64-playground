@@ -20,8 +20,60 @@ pub enum Condition {
     AL = 0b1110,
 }
 
+/// The condition-code table: primary spelling, alias spellings, and the 4-bit
+/// encoding. This is the one place the set is written down; the assembler's
+/// `parse_condition` and conditional-branch dispatch, the hosted pipeline's
+/// branch recognizer, and the drift tests all walk it. NV (0b1111) is left
+/// out on purpose: GAS accepts it nowhere the course reaches, and `from_u8`
+/// folds it onto AL the way the hardware executes it.
+pub const CONDITIONS: &[(&str, &[&str], u8)] = &[
+    ("EQ", &[], 0b0000),
+    ("NE", &[], 0b0001),
+    ("HS", &["CS"], 0b0010),
+    ("LO", &["CC"], 0b0011),
+    ("MI", &[], 0b0100),
+    ("PL", &[], 0b0101),
+    ("VS", &[], 0b0110),
+    ("VC", &[], 0b0111),
+    ("HI", &[], 0b1000),
+    ("LS", &[], 0b1001),
+    ("GE", &[], 0b1010),
+    ("LT", &[], 0b1011),
+    ("GT", &[], 0b1100),
+    ("LE", &[], 0b1101),
+    ("AL", &[], 0b1110),
+];
+
+/// The register spellings that name an index without an `x`/`w` prefix and
+/// digits: the alias, the register number it resolves to, and whether it
+/// reads as the 64-bit view. GNU as predefines all five, so course
+/// prologues written with bare `fp`/`lr` assemble without a
+/// `define(fp, x29)` line. This is the one place the set is written down:
+/// the assembler's `parse_register` and `looks_like_register`, the hosted
+/// pipeline's `is_register_or_shift_keyword`, and the linter's
+/// `is_reserved_name` all read it. Spellings are uppercase; every consumer
+/// compares case-insensitively.
+pub const REG_ALIASES: &[(&str, u8, bool)] = &[
+    ("SP", 31, true),
+    ("XZR", 31, true),
+    ("WZR", 31, false),
+    ("FP", 29, true),
+    ("LR", 30, true),
+];
+
+/// Resolve a register alias spelling, case-insensitively. `None` means the
+/// text is not an alias -- the caller falls back to the `xN`/`wN` form.
+pub fn reg_alias(name: &str) -> Option<(u8, bool)> {
+    REG_ALIASES
+        .iter()
+        .find(|(alias, _, _)| alias.eq_ignore_ascii_case(name))
+        .map(|(_, num, sf)| (*num, *sf))
+}
+
 impl Condition {
-    /// Decode a 4-bit condition field. Returns `Err` for the reserved 0b1111.
+    /// Decode a 4-bit condition field. The reserved 0b1111 folds onto AL,
+    /// matching hardware: cond 1111 executes as always, it just has no
+    /// assembler spelling.
     pub fn from_u8(val: u8) -> Result<Self, EmuError> {
         match val & 0xF {
             0b0000 => Ok(Self::EQ),
@@ -333,6 +385,36 @@ mod tests {
     fn nzcv_pack() {
         let flags = NzcvFlags { n: true, z: false, c: true, v: false };
         assert_eq!(flags.pack(), 0b1010);
+    }
+
+    #[test]
+    fn condition_table_and_from_u8_agree_on_every_row() {
+        for (primary, aliases, bits) in CONDITIONS {
+            let cond = Condition::from_u8(*bits).unwrap();
+            assert_eq!(
+                cond as u8, *bits,
+                "{primary}: the enum discriminant and the table bits diverged"
+            );
+            // Aliases share the primary's encoding; nothing else in the table
+            // reuses it.
+            for alias in *aliases {
+                assert_ne!(*alias, *primary, "{primary} lists itself as an alias");
+            }
+            let same_bits = CONDITIONS.iter().filter(|(_, _, b)| b == bits).count();
+            assert_eq!(same_bits, 1, "{primary}: encoding {bits:#06b} appears twice");
+        }
+        // Every enum value the decoder can produce has a table row.
+        for bits in 0..=0b1110u8 {
+            assert!(
+                CONDITIONS.iter().any(|(_, _, b)| *b == bits),
+                "encoding {bits:#06b} has no table row"
+            );
+        }
+    }
+
+    #[test]
+    fn reserved_nv_encoding_folds_onto_al() {
+        assert_eq!(Condition::from_u8(0b1111).unwrap(), Condition::AL);
     }
 
     #[test]

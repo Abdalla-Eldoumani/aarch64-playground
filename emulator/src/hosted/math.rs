@@ -97,6 +97,7 @@ mod tests {
         let mut rand_state = crate::hosted::libc::RandState::default();
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
+        let mut strtok_save = 0u64;
         regs.write_fpr_f64(0, x);
         regs.write_fpr_f64(1, y);
         let mut ctx = HostContext {
@@ -112,6 +113,7 @@ mod tests {
             rand_state: &mut rand_state,
             term: &mut term,
             heap: &mut heap,
+            strtok_save: &mut strtok_save,
         };
         f(&mut ctx).unwrap();
         ctx.regs.read_fpr_f64(0)

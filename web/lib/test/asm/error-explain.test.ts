@@ -61,7 +61,7 @@ describe("explainError", () => {
 
   it("explains a stack overflow via the recursion base case first", () => {
     const e = explainError(
-      "stack overflow: sp has moved more than 1 MiB below the stack base -- usually recursion with no base case, a prologue that repeats without its epilogue, or sp loaded from a register that was never set up",
+      "stack overflow: sp has moved more than 8 MiB below the stack base -- usually recursion with no base case, a prologue that repeats without its epilogue, or sp loaded from a register that was never set up",
     );
     expect(e).not.toBeNull();
     expect(e!.fix.toLowerCase()).toContain("base case");

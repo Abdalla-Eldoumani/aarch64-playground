@@ -134,6 +134,9 @@ pub fn execute(
         Instruction::LdStPair { op, sf, rt, rt2, rn, imm7, mode } => {
             exec_ldst_pair(*op, *sf, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
         }
+        Instruction::FpLdStPair { op, single, rt, rt2, rn, imm7, mode } => {
+            exec_fp_ldst_pair(*op, *single, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
+        }
         Instruction::LdrLiteral { sf, rt, offset } => {
             exec_ldr_literal(*sf, *rt, *offset, regs, mem)
         }
@@ -161,6 +164,7 @@ pub fn execute(
         Instruction::MulAccumulate { op, sf, rd, rn, rm, ra } => {
             exec_mul_accumulate(*op, *sf, *rd, *rn, *rm, *ra, regs)
         }
+        Instruction::MulWide { op, rd, rn, rm } => exec_mul_wide(*op, *rd, *rn, *rm, regs),
         Instruction::LdrSignExtended { rt, rn, offset, size, mode, sf } => {
             exec_ldrs(*rt, *rn, offset, *size, *mode, *sf, regs, mem)
         }
@@ -237,6 +241,33 @@ pub fn execute(
             let v = regs.read_fpr_bits(*fn_);
             let v = if *single { v & 0xFFFF_FFFF } else { v };
             regs.write_fpr_bits(*fd, v);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpScvtfFp { fd, fn_, single } => {
+            // The integer bits already sit in Fn; convert at the
+            // register's own width. S results are an f32 pattern in the
+            // low 32 bits with the upper half zeroed, like every S write.
+            let bits = regs.read_fpr_bits(*fn_);
+            let out = if *single {
+                u64::from(((bits as u32 as i32) as f32).to_bits())
+            } else {
+                ((bits as i64) as f64).to_bits()
+            };
+            regs.write_fpr_bits(*fd, out);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpMoveGeneral { to_fp, sf, single, rd, rn } => {
+            // Raw bits either direction; the S forms move the low 32 bits
+            // and (into the FP file) zero the upper half.
+            if *to_fp {
+                let v = regs.read_gpr(*rn, *sf);
+                let v = if *single { v & 0xFFFF_FFFF } else { v };
+                regs.write_fpr_bits(*rd, v);
+            } else {
+                let v = regs.read_fpr_bits(*rn);
+                let v = if *single { v & 0xFFFF_FFFF } else { v };
+                regs.write_gpr(*rd, *sf, v);
+            }
             Ok(ExecResult::Advance)
         }
         Instruction::FpUnary { op, fd, fn_, single } => {
@@ -701,6 +732,70 @@ fn exec_ldst_pair(
     Ok(ExecResult::Advance)
 }
 
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
+fn exec_fp_ldst_pair(
+    op: LdStPairOp, single: bool, rt: u8, rt2: u8, rn: u8,
+    imm7: i16, mode: IndexMode,
+    regs: &mut RegisterFile, mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    check_sp_alignment(rn, regs)?;
+    let base = regs.read_gpr_or_sp(rn, true);
+
+    let (address, writeback) = match mode {
+        IndexMode::PreIndex => {
+            let addr = (base as i64 + imm7 as i64) as u64;
+            (addr, Some(addr))
+        }
+        IndexMode::PostIndex => {
+            let wb = (base as i64 + imm7 as i64) as u64;
+            (base, Some(wb))
+        }
+        IndexMode::SignedOffset => {
+            let addr = (base as i64 + imm7 as i64) as u64;
+            (addr, None)
+        }
+    };
+
+    let pair_size: u64 = if single { 4 } else { 8 };
+    let access = match op {
+        LdStPairOp::Ldp => crate::errors::MemAccess::Read,
+        LdStPairOp::Stp => crate::errors::MemAccess::Write,
+    };
+    check_guest_address(address, access)?;
+    check_guest_address(address.wrapping_add(pair_size), access)?;
+
+    match op {
+        LdStPairOp::Ldp => {
+            // S loads zero the upper 32 bits of the FP register, like the
+            // single-register S load.
+            let (v1, v2) = if single {
+                (mem.read_u32(address)? as u64, mem.read_u32(address + pair_size)? as u64)
+            } else {
+                (mem.read_u64(address)?, mem.read_u64(address + pair_size)?)
+            };
+            regs.write_fpr_bits(rt, v1);
+            regs.write_fpr_bits(rt2, v2);
+        }
+        LdStPairOp::Stp => {
+            let v1 = regs.read_fpr_bits(rt);
+            let v2 = regs.read_fpr_bits(rt2);
+            if single {
+                mem.write_u32(address, v1 as u32)?;
+                mem.write_u32(address + pair_size, v2 as u32)?;
+            } else {
+                mem.write_u64(address, v1)?;
+                mem.write_u64(address + pair_size, v2)?;
+            }
+        }
+    }
+
+    if let Some(wb) = writeback {
+        regs.write_gpr_or_sp(rn, true, wb);
+    }
+
+    Ok(ExecResult::Advance)
+}
+
 fn exec_ldr_literal(
     sf: bool,
     rt: u8,
@@ -823,6 +918,22 @@ fn exec_cond_sel(
             } else {
                 let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
                 val_m.wrapping_add(1) & mask
+            }
+        }
+        CondSelOp::Csinv => {
+            if taken {
+                val_n
+            } else {
+                let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
+                !val_m & mask
+            }
+        }
+        CondSelOp::Csneg => {
+            if taken {
+                val_n
+            } else {
+                let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
+                val_m.wrapping_neg() & mask
             }
         }
     };
@@ -1036,6 +1147,37 @@ fn exec_mul_accumulate(
         MulAccumulateOp::Msub => c.wrapping_sub(product) & mask,
     };
     regs.write_gpr(rd, sf, result);
+    Ok(ExecResult::Advance)
+}
+
+fn exec_mul_wide(
+    op: MulWideOp, rd: u8, rn: u8, rm: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let result = match op {
+        // 32x32 cannot overflow 64 bits, so the plain product is exact.
+        MulWideOp::Smull => {
+            let a = i64::from(regs.read_gpr(rn, false) as u32 as i32);
+            let b = i64::from(regs.read_gpr(rm, false) as u32 as i32);
+            (a * b) as u64
+        }
+        MulWideOp::Umull => {
+            let a = regs.read_gpr(rn, false) & 0xFFFF_FFFF;
+            let b = regs.read_gpr(rm, false) & 0xFFFF_FFFF;
+            a * b
+        }
+        MulWideOp::Smulh => {
+            let a = i128::from(regs.read_gpr(rn, true) as i64);
+            let b = i128::from(regs.read_gpr(rm, true) as i64);
+            ((a * b) >> 64) as u64
+        }
+        MulWideOp::Umulh => {
+            let a = u128::from(regs.read_gpr(rn, true));
+            let b = u128::from(regs.read_gpr(rm, true));
+            ((a * b) >> 64) as u64
+        }
+    };
+    regs.write_gpr(rd, true, result);
     Ok(ExecResult::Advance)
 }
 

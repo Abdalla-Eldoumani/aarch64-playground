@@ -354,7 +354,7 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
-  // Load register (literal): opc(2) 011 V 00 imm19 Rt — the `ldr xN, =label` pool path.
+  // Load register (literal): opc(2) 011 V 00 imm19 Rt, the `ldr xN, =label` pool path.
   if (bits(w, 29, 27) === 0b011 && bits(w, 25, 24) === 0b00) {
     return slice(
       w,

@@ -116,6 +116,42 @@ SUBS/ADDS/ANDS against XZR, NEG/MVN to SUB/ORN against XZR, CSET to
 CSINC, LSL/LSR/ASR immediates to UBFM/SBFM); CBZ/CBNZ and TBZ/TBNZ are
 first-class. This keeps the executor to canonical encodings only.
 
+The dispatch itself stays a match on the mnemonic, roughly ninety arms
+long, on purpose. Each arm carries the constants that mnemonic needs
+(opcode bits, an operand-count rule, the flag-setting variant), and a
+match whose arms carry constants reads better than a table of function
+pointers: the encoder for any instruction is one grep away, and the
+compiler still checks it.
+
+## Shared fact tables
+
+A handful of facts used to be spelled out separately in the assembler, the
+decoder, the parser, and the linter, which is how the two copies of a fact
+drift apart. Each now has one home, and a test walks the table so a row
+added in one place cannot be missed in another:
+
+- Condition codes, `registers.rs`: the primary spelling, its aliases, and
+  the 4-bit encoding, read by condition parsing, conditional-branch
+  dispatch, and the branch recognizer.
+- Register aliases, `registers.rs`: `sp`, `xzr`, `wzr`, `fp`, `lr` with the
+  register number and width each resolves to, read by the assembler's
+  register parser and its addressing-mode recognizer, the pipeline's
+  operand classifier, and the linter's reserved-name check.
+- Load/store extend keywords, `decoder.rs`: the keyword, its 3-bit option
+  field, and whether the index register must be an X. The assembler encodes
+  from it and the decoder decodes back through it. The extended-register
+  ADD/SUB keywords stay a separate table, because that form deliberately
+  skips the width check to match GAS.
+- Directive names, `parser.rs`: every spelling the parser recognizes,
+  aliases included. Hosted-mode detection now derives its directive set
+  from it rather than keeping a second list.
+- Access sizes, `decoder.rs`: the 2-bit size field, the access width in
+  bytes, and the offset scale that follows from it.
+- Floating-point opcode rows, `decoder.rs`: the mnemonic, the opcode field,
+  and the operation, for the two-source and one-source families. FMOV and
+  FCVT keep their own encoders, since their opcodes are entangled with the
+  operand width.
+
 ## Decoder
 
 ARMv8 instructions are fixed 32-bit. The decoder is a cascade of
@@ -158,15 +194,21 @@ exit, openat, close, lseek, plus the interactive set (ioctl termios,
 fcntl O_NONBLOCK, nanosleep, clock_gettime, getrandom). Other syscalls
 halt (bare-metal compatibility).
 
-BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc
-(printf, scanf, puts, putchar, getchar, strlen, strcmp, strcpy, memset,
-memcpy, exit, atof, atoi, rand, srand, time, malloc, free, usleep,
-fflush, fopen, fprintf, fclose) plus the libm subset (sqrt, pow, sin, cos, tan, log, log10, exp,
-floor, fabs, fmod), which takes its arguments in `d0` (and `d1` for pow
-and fmod) and returns in `d0`. malloc and free run over a fixed 1 MiB
-heap window at `0x0090_0000` with host-side allocator state, so a stray
-store cannot corrupt the free list; a wild or double free halts with a
-plain message.
+BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc:
+the stdio family (printf, sprintf, snprintf, scanf, puts, putchar,
+getchar, fflush, fopen, fprintf, fgets, fputs, fclose, with `stdin`/
+`stdout`/`stderr` as linkable symbols naming loader-written FILE*
+words), the string family (strlen, strcmp, strncmp, strcpy, strncpy,
+strcat, strchr, strstr, strtok, memset, memcpy, memcmp, memmove),
+conversions and ctype (atoi, atof, strtol, abs, labs, isdigit, isalpha,
+isspace, toupper, tolower, plus the `__ctype_b_loc` classification table
+gcc lowers the is* macros to), the allocator (malloc, free, calloc,
+realloc), rand/srand/time/exit/usleep, and the libm subset (sqrt, pow,
+sin, cos, tan, log, log10, exp, floor, fabs, fmod), which takes its
+arguments in `d0` (and `d1` for pow and fmod) and returns in `d0`.
+malloc and friends run over a fixed 16 MiB heap window at `0x0090_0000`
+with host-side allocator state, so a stray store cannot corrupt the
+free list; a wild or double free halts with a plain message.
 Stubs read argument registers per AAPCS64, call into
 Rust, write results to `x0`/`d0`, then return via `pc = lr`. `main`
 returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
@@ -188,11 +230,12 @@ hold no matter how the source arrived:
 - `cpu::MAX_TOTAL_STEPS` = 10_000_000: cumulative executed-instruction
   ceiling across every `step` and `run_until_break`, persistent until
   load/reset. A runaway loop trips it and halts.
-- `memory::MAX_MAPPED_PAGES` = 1024 (4 MiB live): a store that would map a
-  new page past the cap faults instead of allocating. Kept low because
-  the ring's frames share pages copy-on-write, so the peak is the live
-  cap plus whatever those frames still hold of pages the program has
-  since rewritten.
+- `memory::MAX_MAPPED_PAGES` = 8192 (32 MiB live): a store that would map a
+  new page past the cap faults instead of allocating. Sized so the 8 MiB
+  stack (matching the course servers' `ulimit -s`) and the 16 MiB heap
+  window can be fully touched together; the ring's frames share pages
+  copy-on-write, so the peak is the live cap plus whatever those frames
+  still hold of pages the program has since rewritten.
 
 Each abort is a calm halt with a plain-language message in the result
 `error` field, never a panic.
@@ -200,12 +243,16 @@ Each abort is a calm halt with a plain-language message in the result
 ## Snapshots and save states
 
 `SnapshotRing` (capacity 128) captures a `Snapshot { regs, mem, halted,
-blocked, exit_code, stdin, stdin_closed, vfs, open_files, next_fd,
-rand_state, term, heap }` before each `step()`; `step_back()` pops the
+blocked, exit_code, stdin, stdin_segments, stdin_closed, vfs, open_files,
+next_fd, rand_state, term, heap, strtok_save, stdout_seen, stderr_seen }`
+before each `step()`; `step_back()` pops the
 newest frame. Recording stops, and the history clears, in raw mode,
 while the host pauses the ring, and once the state a frame copies whole
 outgrows `MAX_SNAPSHOT_SIDE_BYTES` -- so step-back never leaps over an
-unrecorded stretch. Stdout and stderr are not rolled back. Named save states live in a separate
+unrecorded stretch. The stdout and stderr buffers are not rolled back, but
+the `stdout_seen` / `stderr_seen` counters beside them are, so the host
+trims its transcript back to what the restored frame had shown. Named save
+states live in a separate
 `HashMap<String, Snapshot>` on the same ring, so a named snapshot
 survives stepping while the rolling 128-frame history stays intact.
 

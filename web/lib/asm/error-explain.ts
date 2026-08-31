@@ -95,7 +95,7 @@ export function explainError(message: string): ErrorExplanation | null {
   }
   if (lower.startsWith("stack overflow")) {
     return {
-      what: "SP moved more than 1 MiB below the stack base (0x80000000, growing down) -- far past any legitimate frame chain.",
+      what: "SP moved more than 8 MiB below the stack base (0x80000000, growing down) -- far past any legitimate frame chain.",
       why: "Recursion with no reachable base case is the usual cause; a prologue that repeats without its epilogue, or sp loaded from a register that was never set up, gets here too.",
       fix: "Check the recursion's stopping condition first (does the base case compare the right register?). Then check that every prologue has a matching epilogue with the same dealloc.",
       styleSection: "general",

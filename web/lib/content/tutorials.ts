@@ -326,7 +326,7 @@ export function loadProgress(): TutorialProgress {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") return parsed as TutorialProgress;
   } catch {
-    // ignore
+    // malformed stored progress; fall through to the empty record.
   }
   return {};
 }
