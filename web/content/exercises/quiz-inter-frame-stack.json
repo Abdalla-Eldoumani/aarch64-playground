@@ -1,7 +1,7 @@
 {
   "title": "Quiz: Memory Addressing - Intermediate",
   "slug": "quiz-inter-frame-stack",
-  "order": 7,
+  "order": 43,
   "topic": "memory",
   "difficulty": "core",
   "variant": "quiz",
@@ -11,106 +11,121 @@
       "question": "What is the key difference between pre-indexed and post-indexed addressing modes?",
       "options": [
         "Pre-indexed updates the base register before the memory access, while post-indexed updates it after.",
-        "Pre-indexed uses the Link Register, while post-indexed uses the Frame Pointer.",
+        "Pre-indexed uses the link register, while post-indexed uses the frame pointer.",
         "Pre-indexed reads memory, while post-indexed writes to memory.",
         "Pre-indexed requires a 64-bit offset, while post-indexed uses a 32-bit offset."
       ],
       "correctAnswer": 0,
-      "explanation": "In pre-indexed addressing, the address expression is calculated first and the base is updated before the load/store. In post-indexed addressing, the address in base is used for the load/store, and then the base is updated.",
-      "hint": "Pay attention to when the 'update' to the base register happens."
+      "explanation": "In pre-indexed addressing the base register is updated first, and the load or store then uses the updated address. In post-indexed addressing the load or store uses the address already in the base register, and only then is the base updated.",
+      "hint": "Pay attention to when the update to the base register happens."
     },
     {
-      "question": "How many bytes does the 'strh' (Store Halfword) instruction write to memory?",
-      "options": ["1 byte", "2 bytes", "4 bytes", "8 bytes"],
+      "question": "How many bytes does the strh (store halfword) instruction write to memory?",
+      "options": [
+        "1 byte",
+        "2 bytes",
+        "4 bytes",
+        "8 bytes"
+      ],
       "correctAnswer": 1,
-      "explanation": "The 'strh' instruction stores the low-order halfword (2 bytes) to RAM.",
-      "hint": "A 'word' is 4 bytes in AArch64 context."
+      "explanation": "strh stores the low-order halfword of Wt to RAM, and a halfword is 2 bytes. The other three widths belong to strb, str with a w register, and str with an x register.",
+      "hint": "A halfword is half of a word, and a word is 4 bytes."
     },
     {
-      "question": "What is the purpose of the bitwise calculation 'add sp, sp, -20 & -16'?",
+      "question": "What is the purpose of the expression -20 & -16 when it is used to allocate stack memory?",
       "options": [
         "To subtract exactly 20 bytes from the stack.",
-        "To allocate stack memory while guaranteeing it remains quadword (16-byte) aligned.",
+        "To allocate stack memory while guaranteeing that sp stays quadword (16-byte) aligned.",
         "To zero out the stack memory for security purposes.",
         "To calculate a memory offset for an array element."
       ],
       "correctAnswer": 1,
-      "explanation": "To guarantee alignment, one can add a negative number, clear the low 4 bits of this number, and AND it with -16. The assembler evaluates -20 & -16 and substitutes the calculated constant.",
-      "hint": "The stack must always remain divisible by 16."
+      "explanation": "The stack pointer must stay quadword aligned, so a negative allocation size is ANDed with -16 to clear its low 4 bits. -20 & -16 is -32, and the assembler folds the expression to that constant, so 32 bytes are allocated instead of 20.",
+      "hint": "ANDing with -16 clears the low 4 bits. What is the next multiple of 16 below -20?"
     },
     {
-      "question": "What specific action does the 'stp x29, x30, [sp, -16]!' instruction perform?",
+      "question": "What specific action does stp x29, x30, [sp, -16]! perform?",
       "options": [
-        "It deallocates 16 bytes and restores the Frame Pointer and Link Register.",
-        "It stores x29 and x30 to the stack and then updates SP by subtracting 16.",
-        "It subtracts 16 from SP, creating the frame record, and then stores the contents of FP and LR.",
-        "It aligns the stack to 16 bytes."
+        "It deallocates 16 bytes and restores the frame pointer and link register.",
+        "It stores x29 and x30 to the stack without changing sp.",
+        "It subtracts 16 from sp and then stores x29 and x30 at the new sp address.",
+        "It aligns sp to the nearest 16-byte boundary without storing any registers."
       ],
       "correctAnswer": 2,
-      "explanation": "The pre-increment part allocates 16 bytes on the stack, and 'stp' stores the contents of x29 (FP) and x30 (LR) to these 16 bytes, which is called the frame record.",
-      "hint": "Look at the '!' at the end. It modifies the pointer first."
+      "explanation": "The ! selects pre-indexed addressing, so sp is decremented by 16 first, which allocates the space. stp then writes x29 and x30 to that new address, and those 16 bytes are the frame record.",
+      "hint": "The ! means the base register is updated before the memory access."
     },
     {
-      "question": "How are stack variables typically addressed within a function's body?",
+      "question": "How are stack variables typically addressed inside the body of a function?",
       "options": [
-        "By adding a positive offset to the base address in the Frame Pointer (FP).",
-        "By popping them directly from the Stack Pointer (SP).",
-        "By using the Link Register (LR) as a base.",
-        "By dynamically calculating their address using the PC."
+        "By adding a positive offset to the base address in the frame pointer x29.",
+        "By popping them directly from the stack pointer sp.",
+        "By using the link register x30 as a base.",
+        "By calculating their address from the program counter at run time."
       ],
       "correctAnswer": 0,
-      "explanation": "Stack variables are addressed by adding an offset to the base address in FP (e.g., FP+16, FP+20).",
-      "hint": "They sit 'above' the frame record in the stack frame."
+      "explanation": "The frame pointer holds one fixed base address for the whole call, so locals sitting above the frame record are reached with a positive offset such as [fp, 16] or [fp, 20]. An offset from sp would go stale as soon as the function pushed anything else.",
+      "hint": "The frame pointer provides a stable base address for the stack frame."
     },
     {
-      "question": "If you need to declare an alias for a register to make code more readable (e.g., renaming x29 to fp), which assembler directive should you use?",
-      "options": [".alias", ".define", ".req", ".macro"],
+      "question": "To declare an alias for a register so the code reads better, such as naming x29 as fp, which assembler directive should you use?",
+      "options": [
+        ".alias",
+        ".define",
+        ".req",
+        ".macro"
+      ],
       "correctAnswer": 2,
-      "explanation": "Register equates are useful for renaming x29 and x30 to FP and LR, and this is done using the '.req' directive (e.g., fp .req x29).",
-      "hint": "It looks like an abbreviation for 'request' or 'require'."
+      "explanation": "A register equate is written with .req. Writing fp .req x29 lets the rest of the file say fp wherever x29 is meant, and the assembler substitutes the real register.",
+      "hint": "The directive is short for the word request."
     },
     {
-      "question": "How are variables that are local to a specific block of code (like an if-statement) managed in assembly?",
+      "question": "How are variables that are local to one block of code, such as the body of an if statement, managed in assembly?",
       "options": [
         "They are allocated in the heap.",
-        "They are allocated by directly decrementing SP when entering the block, and deallocated by incrementing SP when leaving.",
+        "They are allocated by decrementing sp when the block is entered and released by incrementing sp when it is left.",
         "They are mapped to global registers.",
         "They overwrite the frame record."
       ],
       "correctAnswer": 1,
-      "explanation": "Variables local to blocks of code are allocated when entering the block by directly decrementing SP, and deallocated when leaving the block by incrementing SP.",
-      "hint": "Their lifecycle is strictly tied to entering and exiting that specific block."
+      "explanation": "A block local is allocated on entry by decrementing sp, which places it below the frame record, so it is read and written through fp with a negative offset. Incrementing sp on the way out releases it.",
+      "hint": "Its lifetime is tied to entering and leaving the block."
     },
     {
-      "question": "If an instruction needs to load 4 bytes from RAM into an X register and sign-extend the high-order bits, which instruction must be used?",
-      "options": ["ldr", "ldrb", "ldrsh", "ldrsw"],
+      "question": "Which instruction loads 4 bytes from RAM into an X register and sign-extends the high-order bits?",
+      "options": [
+        "ldr",
+        "ldrb",
+        "ldrsh",
+        "ldrsw"
+      ],
       "correctAnswer": 3,
-      "explanation": "The 'ldrsw' instruction loads 4 bytes from RAM into Xt, sign-extending the high-order bits.",
-      "hint": "Load Register Signed Word."
+      "explanation": "ldrsw loads 4 bytes into Xt and copies the sign bit through bits 32 to 63. ldr with an X register would load 8 bytes, ldrb loads 1, and ldrsh loads 2.",
+      "hint": "The mnemonic spells out load register signed word."
     },
     {
-      "question": "What defines a 'full, descending' stack architecture?",
+      "question": "What defines a full, descending stack?",
       "options": [
         "It grows from a lower to a higher address, and the pointer points to the next free space.",
-        "It grows from higher to a lower address, and the pointer points at the last pushed item (the top).",
+        "It grows from a higher to a lower address, and the pointer points at the last pushed item.",
         "It pushes data to the heap and descends in size.",
         "It requires all 32 registers to be saved."
       ],
       "correctAnswer": 1,
-      "explanation": "A descending stack grows from a higher to a lower address, and a full stack means the stack pointer points at the top of the stack (the last pushed item).",
-      "hint": "It moves 'down' in memory addresses, and SP sits directly on the active data."
+      "explanation": "Descending means each push moves the pointer toward lower addresses. Full means the pointer sits on the last item pushed rather than on the next free slot.",
+      "hint": "One word describes the direction of growth, the other describes what sp points at."
     },
     {
-      "question": "What happens if a program attempts a memory access using a Stack Pointer (SP) that is not evenly divisible by 16?",
+      "question": "What happens if a program performs a memory access through a stack pointer that is not evenly divisible by 16?",
       "options": [
         "The hardware automatically pads the memory with zeroes.",
         "The OS shifts the pointer to the nearest aligned boundary.",
-        "The program will abort with a bus error.",
+        "The program aborts with a bus error.",
         "The data is loaded but truncated."
       ],
       "correctAnswer": 2,
-      "explanation": "Addresses in SP must be quadword aligned. If not, the program will abort with a bus error.",
-      "hint": "The hardware strictly enforces this alignment constraint."
+      "explanation": "An access made through sp requires sp to be quadword aligned. A misaligned sp raises a stack alignment fault, which Linux delivers as SIGBUS, so the program aborts with a bus error.",
+      "hint": "The address in sp has to be evenly divisible by 16 on every access that uses it."
     }
   ]
 }
