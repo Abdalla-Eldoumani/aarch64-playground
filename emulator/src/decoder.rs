@@ -313,6 +313,19 @@ pub enum Instruction {
         /// Left shift applied after the extend, 0..=4.
         shift: u8,
     },
+    /// ADC/ADCS/SBC/SBCS: add (or subtract) with the carry flag as the
+    /// low-order carry-in, the multi-precision arithmetic family. There is
+    /// no immediate form in A64, and no shift/extend field: register 31 is
+    /// ZR in every position, never SP.
+    DpCarry {
+        /// True for SBC/SBCS (Rn + NOT(Rm) + C), false for ADC/ADCS.
+        sub: bool,
+        set_flags: bool,
+        sf: bool,
+        rd: u8,
+        rn: u8,
+        rm: u8,
+    },
     /// MOVZ/MOVK/MOVN.
     MoveWide {
         op: MoveWideOp,
@@ -1587,11 +1600,14 @@ fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
         (0, 1) => decode_add_sub_reg(instr),
         (1, 1) => decode_dp3(instr),
         (1, 0) => {
-            // conditional select vs dp2: differentiate by bits [23:21]
-            // conditional select: bits[23:21] = 100
-            // dp2:                bits[23:21] = 110
+            // add/sub with carry vs conditional select vs dp2, by bits [23:21]
+            // add/sub (with carry): bits[23:21] = 000, bits[15:10] = 000000
+            // conditional select:   bits[23:21] = 100
+            // dp2:                  bits[23:21] = 110
             let sub = bits(instr, 23, 21);
-            if sub == 0b100 {
+            if sub == 0b000 && bits(instr, 15, 10) == 0 {
+                decode_add_sub_carry(instr)
+            } else if sub == 0b100 {
                 decode_cond_select(instr)
             } else {
                 decode_dp2(instr)
@@ -1634,6 +1650,21 @@ fn decode_add_sub_reg(instr: u32) -> Result<Instruction, EmuError> {
         rm,
         shift,
         amount: imm6,
+    })
+}
+
+/// ADC/ADCS/SBC/SBCS: sf_op_S_11010000_Rm_000000_Rn_Rd. Bit 30 picks
+/// add vs subtract, bit 29 the flag-setting form. The caller has already
+/// checked bits [23:21] and the fixed-zero [15:10] field, so every word
+/// reaching here is one of the four.
+fn decode_add_sub_carry(instr: u32) -> Result<Instruction, EmuError> {
+    Ok(Instruction::DpCarry {
+        sub: bit(instr, 30) == 1,
+        set_flags: bit(instr, 29) == 1,
+        sf: bit(instr, 31) == 1,
+        rd: bits(instr, 4, 0) as u8,
+        rn: bits(instr, 9, 5) as u8,
+        rm: bits(instr, 20, 16) as u8,
     })
 }
 
@@ -2587,6 +2618,100 @@ mod tests {
                 mode: IndexMode::PostIndex,
             }
         );
+    }
+
+    // -- add/sub with carry --
+
+    #[test]
+    fn decode_adc_x0_x1_x2() {
+        // ADC X0, X1, X2 = 0x9A020020
+        let decoded = decode(0x9A02_0020).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::DpCarry {
+                sub: false,
+                set_flags: false,
+                sf: true,
+                rd: 0,
+                rn: 1,
+                rm: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_adcs_w3_w4_w5() {
+        // ADCS W3, W4, W5 = 0x3A050083
+        let decoded = decode(0x3A05_0083).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::DpCarry {
+                sub: false,
+                set_flags: true,
+                sf: false,
+                rd: 3,
+                rn: 4,
+                rm: 5,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_sbc_x9_x10_x11() {
+        // SBC X9, X10, X11 = 0xDA0B0149
+        let decoded = decode(0xDA0B_0149).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::DpCarry {
+                sub: true,
+                set_flags: false,
+                sf: true,
+                rd: 9,
+                rn: 10,
+                rm: 11,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_sbcs_w0_w1_w2() {
+        // SBCS W0, W1, W2 = 0x7A020020
+        let decoded = decode(0x7A02_0020).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::DpCarry {
+                sub: true,
+                set_flags: true,
+                sf: false,
+                rd: 0,
+                rn: 1,
+                rm: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_adc_with_zero_register_operand() {
+        // ADC X0, X1, XZR = 0x9A1F0020 -- register 31 is ZR here, never SP.
+        let decoded = decode(0x9A1F_0020).unwrap();
+        assert_eq!(
+            decoded,
+            Instruction::DpCarry {
+                sub: false,
+                set_flags: false,
+                sf: true,
+                rd: 0,
+                rn: 1,
+                rm: 31,
+            }
+        );
+    }
+
+    #[test]
+    fn decode_rejects_carry_word_with_nonzero_fixed_field() {
+        // Same space with bits [15:10] = 000001, which no instruction uses:
+        // it must stay unknown rather than decoding as ADC.
+        assert!(decode(0x9A02_0420).is_err());
     }
 
     #[test]

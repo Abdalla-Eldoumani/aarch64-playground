@@ -77,6 +77,44 @@ fn sub_flags(a: u64, b: u64, result: u64, sf: bool) -> NzcvFlags {
     }
 }
 
+/// The ARM `AddWithCarry` primitive: result = a + b + carry_in at the
+/// register width, with the NZCV the architecture derives from it.
+///
+/// ADC/ADCS/SBC/SBCS cannot reuse `add_flags`/`sub_flags`: those assume a
+/// carry-in of 0 and 1 respectively, so with the other carry-in the borrow
+/// chain differs and C comes out wrong. Carrying the sum in a u128 keeps the
+/// carry-out visible at both widths without a special case per width.
+fn add_with_carry(a: u64, b: u64, carry_in: bool, sf: bool) -> (u64, NzcvFlags) {
+    let (sign_bit, mask) = if sf {
+        (63u8, u64::MAX)
+    } else {
+        (31, 0xFFFF_FFFF)
+    };
+    let ra = a & mask;
+    let rb = b & mask;
+    let carry = u128::from(carry_in);
+
+    let usum = u128::from(ra) + u128::from(rb) + carry;
+    let result = (usum as u64) & mask;
+
+    // Signed overflow: the same operand-sign test the add path uses, which
+    // holds for any carry-in because the carry only ever shifts the result
+    // by one.
+    let sa = (ra >> sign_bit) & 1;
+    let sb = (rb >> sign_bit) & 1;
+    let sr = (result >> sign_bit) & 1;
+
+    let flags = NzcvFlags {
+        n: sr == 1,
+        z: result == 0,
+        // C is the carry OUT of the register width: the exact sum did not
+        // fit in 32/64 bits.
+        c: usum > u128::from(mask),
+        v: sa == sb && sa != sr,
+    };
+    (result, flags)
+}
+
 /// Compute N and Z flags for logical operations (C and V cleared).
 fn logic_flags(result: u64, sf: bool) -> NzcvFlags {
     let sign_bit = if sf { 63u8 } else { 31 };
@@ -109,6 +147,9 @@ pub fn execute(
         }
         Instruction::DpRegExt { op, sf, rd, rn, rm, extend, shift } => {
             exec_dp_ext(*op, *sf, *rd, *rn, *rm, *extend, *shift, regs)
+        }
+        Instruction::DpCarry { sub, set_flags, sf, rd, rn, rm } => {
+            exec_dp_carry(*sub, *set_flags, *sf, *rd, *rn, *rm, regs)
         }
         Instruction::VarShift { sf, rd, rn, rm, shift } => {
             // Shift amount is Rm modulo the register width (apply_shift
@@ -431,6 +472,31 @@ fn exec_dp_reg(
 
     let sets_flags = matches!(op, DpOp::Adds | DpOp::Subs);
     if sets_flags {
+        regs.nzcv = flags;
+    }
+    regs.write_gpr(rd, sf, result);
+
+    Ok(ExecResult::Advance)
+}
+
+fn exec_dp_carry(
+    sub: bool, set_flags: bool, sf: bool, rd: u8, rn: u8, rm: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    // Register 31 is ZR in all three positions -- this family has no SP form.
+    let operand1 = regs.read_gpr(rn, sf);
+    let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
+    // SBC is the same adder with Rm inverted: Rn + NOT(Rm) + C, which is
+    // Rn - Rm - (1 - C). Inverting at the register width keeps the W form's
+    // NOT inside 32 bits.
+    let operand2 = if sub {
+        !regs.read_gpr(rm, sf) & mask
+    } else {
+        regs.read_gpr(rm, sf)
+    };
+
+    let (result, flags) = add_with_carry(operand1, operand2, regs.nzcv.c, sf);
+    if set_flags {
         regs.nzcv = flags;
     }
     regs.write_gpr(rd, sf, result);
@@ -2571,6 +2637,188 @@ mod tests {
         execute(&stp, &mut regs, &mut mem).unwrap();
         assert_eq!(mem.read_u32(0x0070_0000).unwrap(), 0xAAAA_0001);
         assert_eq!(mem.read_u32(0x0070_0004).unwrap(), 0xBBBB_0002);
+    }
+
+    // -- add/sub with carry --
+
+    #[test]
+    fn adc_adds_the_carry_the_previous_adds_produced() {
+        let (mut regs, mut mem) = fresh();
+        // Low half: 0xFFFF_FFFF_FFFF_FFFF + 1 wraps and sets C.
+        regs.write_gpr(1, true, u64::MAX);
+        regs.write_gpr(2, true, 1);
+        let adds = Instruction::DpReg {
+            op: DpOp::Adds, sf: true, rd: 0, rn: 1, rm: 2,
+            shift: ShiftType::LSL, amount: 0,
+        };
+        execute(&adds, &mut regs, &mut mem).unwrap();
+        assert!(regs.nzcv.c);
+
+        // High half: 1 + 2 + C = 4.
+        regs.write_gpr(3, true, 1);
+        regs.write_gpr(4, true, 2);
+        let adc = Instruction::DpCarry {
+            sub: false, set_flags: false, sf: true, rd: 5, rn: 3, rm: 4,
+        };
+        execute(&adc, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(5, true), 4);
+    }
+
+    #[test]
+    fn adc_without_carry_leaves_the_sum_alone() {
+        let (mut regs, mut mem) = fresh();
+        regs.nzcv.c = false;
+        regs.write_gpr(1, true, 40);
+        regs.write_gpr(2, true, 2);
+        let adc = Instruction::DpCarry {
+            sub: false, set_flags: false, sf: true, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&adc, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 42);
+    }
+
+    #[test]
+    fn adc_does_not_touch_the_flags() {
+        let (mut regs, mut mem) = fresh();
+        regs.nzcv = NzcvFlags { n: true, z: true, c: true, v: true };
+        regs.write_gpr(1, true, 1);
+        regs.write_gpr(2, true, 1);
+        let adc = Instruction::DpCarry {
+            sub: false, set_flags: false, sf: true, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&adc, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 3);
+        assert_eq!(regs.nzcv, NzcvFlags { n: true, z: true, c: true, v: true });
+    }
+
+    #[test]
+    fn adcs_sets_carry_and_zero_on_a_64_bit_wrap() {
+        let (mut regs, mut mem) = fresh();
+        regs.nzcv.c = false;
+        regs.write_gpr(1, true, u64::MAX);
+        regs.write_gpr(2, true, 1);
+        let adcs = Instruction::DpCarry {
+            sub: false, set_flags: true, sf: true, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&adcs, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0);
+        assert!(regs.nzcv.c);
+        assert!(regs.nzcv.z);
+        assert!(!regs.nzcv.n);
+    }
+
+    #[test]
+    fn adcs_carry_in_alone_can_wrap_the_width() {
+        // 0xFFFF_FFFF_FFFF_FFFF + 0 + 1: the carry-in is the whole overflow,
+        // which the add path's flags could not express.
+        let (mut regs, mut mem) = fresh();
+        regs.nzcv.c = true;
+        regs.write_gpr(1, true, u64::MAX);
+        regs.write_gpr(2, true, 0);
+        let adcs = Instruction::DpCarry {
+            sub: false, set_flags: true, sf: true, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&adcs, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0);
+        assert!(regs.nzcv.c);
+        assert!(regs.nzcv.z);
+    }
+
+    #[test]
+    fn sbcs_with_carry_set_matches_subs() {
+        // With C=1 there is no borrow, so SBCS is SUBS bit for bit --
+        // result and all four flags.
+        for (a, b) in [(10u64, 3u64), (3, 10), (0, 0), (i64::MIN as u64, 1), (u64::MAX, 1)] {
+            let (mut regs, mut mem) = fresh();
+            regs.write_gpr(1, true, a);
+            regs.write_gpr(2, true, b);
+            let subs = Instruction::DpReg {
+                op: DpOp::Subs, sf: true, rd: 0, rn: 1, rm: 2,
+                shift: ShiftType::LSL, amount: 0,
+            };
+            execute(&subs, &mut regs, &mut mem).unwrap();
+            let expected_result = regs.read_gpr(0, true);
+            let expected_flags = regs.nzcv;
+
+            let (mut regs, mut mem) = fresh();
+            regs.nzcv.c = true;
+            regs.write_gpr(1, true, a);
+            regs.write_gpr(2, true, b);
+            let sbcs = Instruction::DpCarry {
+                sub: true, set_flags: true, sf: true, rd: 0, rn: 1, rm: 2,
+            };
+            execute(&sbcs, &mut regs, &mut mem).unwrap();
+            assert_eq!(regs.read_gpr(0, true), expected_result, "result for {a} - {b}");
+            assert_eq!(regs.nzcv, expected_flags, "flags for {a} - {b}");
+        }
+    }
+
+    #[test]
+    fn sbcs_with_carry_clear_subtracts_the_borrow() {
+        // 5 - 3 - (1 - 0) = 1, and the subtraction did not borrow, so C = 1.
+        let (mut regs, mut mem) = fresh();
+        regs.nzcv.c = false;
+        regs.write_gpr(1, true, 5);
+        regs.write_gpr(2, true, 3);
+        let sbcs = Instruction::DpCarry {
+            sub: true, set_flags: true, sf: true, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&sbcs, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 1);
+        assert!(regs.nzcv.c);
+        assert!(!regs.nzcv.z);
+        assert!(!regs.nzcv.n);
+        assert!(!regs.nzcv.v);
+    }
+
+    #[test]
+    fn sbcs_borrows_out_of_zero_and_clears_carry() {
+        // 0 - 0 - 1 = -1: the borrow leaves the width, so C = 0.
+        let (mut regs, mut mem) = fresh();
+        regs.nzcv.c = false;
+        regs.write_gpr(1, true, 0);
+        regs.write_gpr(2, true, 0);
+        let sbcs = Instruction::DpCarry {
+            sub: true, set_flags: true, sf: true, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&sbcs, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), u64::MAX);
+        assert!(!regs.nzcv.c);
+        assert!(regs.nzcv.n);
+    }
+
+    #[test]
+    fn adcs_w_form_wraps_and_zero_extends_at_32_bits() {
+        let (mut regs, mut mem) = fresh();
+        // Rd holds a full 64-bit value first, so a missing zero-extend on
+        // the W write would survive into the assertion.
+        regs.write_gpr(0, true, u64::MAX);
+        regs.nzcv.c = false;
+        regs.write_gpr(1, false, 0xFFFF_FFFF);
+        regs.write_gpr(2, false, 1);
+        let adcs = Instruction::DpCarry {
+            sub: false, set_flags: true, sf: false, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&adcs, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0);
+        assert!(regs.nzcv.z);
+        assert!(regs.nzcv.c);
+        assert!(!regs.nzcv.n);
+    }
+
+    #[test]
+    fn sbc_w_form_borrows_inside_32_bits() {
+        // 0 - 0 - 1 at 32 bits is 0xFFFF_FFFF, zero-extended into Xd -- not
+        // the 64-bit all-ones a width-blind NOT would produce.
+        let (mut regs, mut mem) = fresh();
+        regs.nzcv.c = false;
+        regs.write_gpr(1, false, 0);
+        regs.write_gpr(2, false, 0);
+        let sbc = Instruction::DpCarry {
+            sub: true, set_flags: false, sf: false, rd: 0, rn: 1, rm: 2,
+        };
+        execute(&sbc, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_gpr(0, true), 0xFFFF_FFFF);
     }
 
     // -- b.cond on the signed boundary --
