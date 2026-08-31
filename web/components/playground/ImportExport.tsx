@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
 import {
   MAX_BOOKMARK_JSON_BYTES,
@@ -189,30 +190,24 @@ export function ImportExport({
       >
         import
       </button>
-      <button
-        type="button"
-        onClick={() => download("asm")}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-        aria-label="download as .asm"
-      >
-        .asm
-      </button>
-      <button
-        type="button"
-        onClick={() => download("s")}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-        aria-label="download as .s"
-      >
-        .s
-      </button>
-      <button
-        type="button"
-        onClick={downloadWorkspace}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-        aria-label="download the whole workspace as .json"
-      >
-        .json
-      </button>
+      <Select
+        placeholder="export..."
+        ariaLabel="export the program"
+        size="xs"
+        groups={[
+          {
+            options: [
+              { value: "asm", label: ".asm" },
+              { value: "s", label: ".s" },
+              { value: "workspace", label: "workspace .json" },
+            ],
+          },
+        ]}
+        onSelect={(choice) => {
+          if (choice === "workspace") downloadWorkspace();
+          else download(choice === "asm" ? "asm" : "s");
+        }}
+      />
       <button
         type="button"
         onClick={copy}
