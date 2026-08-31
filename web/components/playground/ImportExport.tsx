@@ -53,6 +53,7 @@ export function ImportExport({
 }: ImportExportProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const toast = useToast();
 
   const saveBlob = useCallback((body: string, name: string, mime: string) => {
@@ -189,30 +190,58 @@ export function ImportExport({
       >
         import
       </button>
-      <button
-        type="button"
-        onClick={() => download("asm")}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-        aria-label="download as .asm"
-      >
-        .asm
-      </button>
-      <button
-        type="button"
-        onClick={() => download("s")}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-        aria-label="download as .s"
-      >
-        .s
-      </button>
-      <button
-        type="button"
-        onClick={downloadWorkspace}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-        aria-label="download the whole workspace as .json"
-      >
-        .json
-      </button>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsExportOpen(!isExportOpen)}
+          className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+          aria-label="export options"
+          aria-expanded={isExportOpen}
+        >
+          export ▾
+        </button>
+        {isExportOpen && (
+          <>
+            {/* Invisible overlay handles "click away to close" without needing an event listener */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setIsExportOpen(false)}
+            />
+            <div className="absolute right-0 top-full z-50 mt-1 flex min-w-[120px] flex-col overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-elevated)] shadow-lg">
+              <button
+                type="button"
+                onClick={() => {
+                  download("asm");
+                  setIsExportOpen(false);
+                }}
+                className="px-3 py-2 text-left text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)] focus:bg-[var(--bg-sunken)] focus:text-[var(--text-primary)] focus:outline-none"
+              >
+                Download .asm
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  download("s");
+                  setIsExportOpen(false);
+                }}
+                className="px-3 py-2 text-left text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)] focus:bg-[var(--bg-sunken)] focus:text-[var(--text-primary)] focus:outline-none"
+              >
+                Download .s
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  downloadWorkspace();
+                  setIsExportOpen(false);
+                }}
+                className="border-t border-[var(--border)] px-3 py-2 text-left text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)] focus:bg-[var(--bg-sunken)] focus:text-[var(--text-primary)] focus:outline-none"
+              >
+                Workspace (.json)
+              </button>
+            </div>
+          </>
+        )}
+      </div>
       <button
         type="button"
         onClick={copy}
