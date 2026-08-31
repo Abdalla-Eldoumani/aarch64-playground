@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Binary Arithmetic - Fundamentals",
+  "slug": "quiz-fundam-binary-arithmetic",
+  "order": 12,
+  "topic": "binary-arithmetic",
+  "difficulty": "Fundamental",
+  "variant": "quiz",
+  "prompt": "Test your foundational understanding of CPU arithmetic, modulus constraints, and hardware math operations.",
+  "questions": [
+    {
+      "question": "What type of arithmetic do CPUs normally perform when the calculation must fit into a fixed-size register?",
+      "options": [
+        "Floating-point arithmetic",
+        "Modulus arithmetic",
+        "Unbounded arithmetic",
+        "Fractional arithmetic"
+      ],
+      "correctAnswer": 1,
+      "explanation": "CPUs normally perform modulus arithmetic because a fixed-size register can represent only a limited number of bit patterns. For an N-bit register, the modulus is 2^N.",
+      "hint": "Think about what happens when a calculation produces a value that is too large to fit in the register."
+    },
+    {
+      "question": "How does the Arithmetic Logic Unit (ALU) perform subtraction in hardware?",
+      "options": [
+        "By using a dedicated subtractor circuit.",
+        "By shifting the bits to the right and truncating.",
+        "By negating the subtrahend and then adding.",
+        "By taking the one's complement and ignoring the carry."
+      ],
+      "correctAnswer": 2,
+      "explanation": "The ALU performs subtraction by negating the subtrahend and then adding it to the other operand. This allows the addition circuitry to be reused.",
+      "hint": "The hardware uses addition to perform subtraction."
+    },
+    {
+      "question": "When adding unsigned integers, what does a carry out indicate?",
+      "options": [
+        "A negative result",
+        "An overflow",
+        "A successful execution",
+        "A divide-by-zero error"
+      ],
+      "correctAnswer": 1,
+      "explanation": "For unsigned arithmetic, a carry out means that the mathematical result is too large to fit in the available number of bits, so an overflow has occurred.",
+      "hint": "If the result needs one more bit than the register has, what has happened?"
+    },
+    {
+      "question": "In extended-precision arithmetic, what is the purpose of instructions such as `adc` and `adcs`?",
+      "options": [
+        "They automatically clear the Zero flag.",
+        "They perform addition using floating-point logic.",
+        "They use the Carry (C) flag when adding.",
+        "They concatenate two 32-bit registers into a 64-bit register."
+      ],
+      "correctAnswer": 2,
+      "explanation": "The `adc` and `adcs` instructions include the current Carry flag in the addition. This allows a carry from a lower-order register to be included when adding the next higher-order register.",
+      "hint": "The `c` in the instruction name refers to Carry."
+    },
+    {
+      "question": "In the iterative binary multiplication algorithm, what two sub-steps are performed in each iteration?",
+      "options": [
+        "A conditional addition followed by an arithmetic shift right.",
+        "An unconditional addition followed by a logical shift left.",
+        "A subtraction followed by sign extension.",
+        "A bitwise AND followed by an arithmetic shift right."
+      ],
+      "correctAnswer": 0,
+      "explanation": "Each iteration checks the lowest bit of the multiplier. If it is 1, the multiplicand is added to the product register, and then the combined product/multiplier registers are shifted right arithmetically.",
+      "hint": "The algorithm first decides whether to add, then shifts."
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "title": "Predict: Arithmetic Execution",
+  "slug": "predict-binary-arithmetic",
+  "order": 16,
+  "topic": "binary-arithmetic",
+  "difficulty": "Advance",
+  "variant": "prediction",
+  "prompt": "Predict the state of the CPU flags and registers when executing specific arithmetic and extended precision operations.",
+  "predictions": [
+    {
+      "code": "// 4-bit CPU operating in modulus 16\n// Calculates 9 + 8\nadd reg, 9, 8",
+      "question": "What exact decimal value is stored in the 4-bit register after this addition?",
+      "answer": "1",
+      "explanation": "The mathematical result is 17, but a 4-bit register operates modulo 16. The 5-bit result `10001` is reduced to its low 4 bits, `0001`, which is decimal 1.",
+      "hint": "Calculate 17 modulo 16."
+    },
+    {
+      "code": "adds x27, x21, x24\nadcs x26, x20, x23",
+      "question": "Which status flag carries information from the first instruction into the second instruction?",
+      "answer": "Carry",
+      "explanation": "The `adds` instruction sets the Carry (C) flag based on the lower 64-bit addition. The following `adcs` instruction uses that C flag when adding the next 64-bit portions.",
+      "hint": "Look at what the `c` in `adcs` refers to."
+    },
+    {
+      "code": "// Iterative multiplication algorithm finishes for 2 x -5\n// CPU recognizes the original multiplier was negative",
+      "question": "What arithmetic operation must be performed on the high-order part of the result to correct the product?",
+      "answer": "subtract",
+      "explanation": "When the original multiplier is negative, the algorithm requires an additional correction step: subtract the multiplicand from the high-order part of the result.",
+      "hint": "The correction step uses the opposite of addition on the high-order product register."
+    }
+  ]
+}

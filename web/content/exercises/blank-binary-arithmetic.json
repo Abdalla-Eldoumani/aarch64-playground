@@ -1,0 +1,46 @@
+{
+  "title": "Fill in the Blank: Binary Arithmetic",
+  "slug": "blank-binary-arithmetic",
+  "order": 15,
+  "topic": "binary-arithmetic",
+  "difficulty": "Intermediate",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonics or condition codes to perform proper arithmetic and branching.",
+  "blanks": [
+    {
+      "prompt": "Perform an unsigned higher or same (>=) branch comparison.",
+      "code": "b.___ endif",
+      "blanks": ["hs", "HS"],
+      "explanation": "The `hs` condition means unsigned higher or same, corresponding to >= for unsigned integers.",
+      "hint": "Higher or Same."
+    },
+    {
+      "prompt": "Add two registers, including the Carry (C) flag in the result.",
+      "code": "___ x25, x19, x22",
+      "blanks": ["adc", "ADC"],
+      "explanation": "The `adc` and `adcs` instructions use the current Carry flag when performing the addition.",
+      "hint": "Add with Carry."
+    },
+    {
+      "prompt": "Add two registers and set the Carry flag for use by a later extended-precision addition.",
+      "code": "___ x27, x21, x24",
+      "blanks": ["adds", "ADDS"],
+      "explanation": "The `adds` instruction performs the addition and sets the condition flags, including the Carry flag needed for extended-precision arithmetic.",
+      "hint": "Add and set flags."
+    },
+    {
+      "prompt": "Subtract two registers without setting the condition flags.",
+      "code": "___ x0, x1, x2",
+      "blanks": ["sub", "SUB"],
+      "explanation": "The `sub` instruction performs subtraction without setting the condition flags. The corresponding flag-setting instruction is `subs`.",
+      "hint": "Use the standard subtract instruction without the `s` suffix."
+    },
+    {
+      "prompt": "Perform an unsigned branch if the comparison evaluates to unsigned higher (>).",
+      "code": "b.___ target",
+      "blanks": ["hi", "HI"],
+      "explanation": "The `hi` condition means unsigned higher and corresponds to > for unsigned integers.",
+      "hint": "Higher."
+    }
+  ]
+}

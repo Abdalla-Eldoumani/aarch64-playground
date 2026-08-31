@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Binary Arithmetic - Advanced",
+  "slug": "quiz-advance-binary-arithmetic",
+  "order": 14,
+  "topic": "binary-arithmetic",
+  "difficulty": "Advance",
+  "variant": "quiz",
+  "prompt": "Test your advanced understanding of extended precision chaining, iterative multiplication logic, and flag mechanics.",
+   "questions": [
+    {
+      "question": "When chaining additions for extended-precision arithmetic across three 64-bit registers representing a 192-bit number, what is the correct instruction sequence for the lowest, middle, and highest bits?",
+      "options": [
+        "`add`, `add`, `add`",
+        "`adds`, `adcs`, `adc`",
+        "`adc`, `adc`, `adc`",
+        "`adds`, `adds`, `adds`"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The lowest 64-bit addition uses `adds` so that its carry is placed in the C flag. The middle addition uses `adcs` to include that carry and set the next carry. The highest addition uses `adc` to include the final carry.",
+      "hint": "The first instruction needs to create the carry, the middle instruction needs to pass it along, and the last instruction only needs to consume it."
+    },
+    {
+      "question": "What is the equivalent subtraction instruction sequence to `adds`, `adcs`, `adc` for extended-precision subtraction?",
+      "options": [
+        "`sub`, `sbc`, `sbc`",
+        "`subs`, `sbcs`, `sbc`",
+        "`subs`, `subs`, `sub`",
+        "`sub`, `sub`, `sub`"
+      ],
+      "correctAnswer": 1,
+      "explanation": "Extended-precision subtraction follows the same pattern as addition: `subs` performs the lowest-order subtraction and sets the carry/borrow information, `sbcs` includes that information in the middle subtraction, and `sbc` includes it in the final subtraction.",
+      "hint": "Follow the same pattern as extended-precision addition, but use the subtraction instructions."
+    },
+    {
+      "question": "In the iterative multiplication algorithm for M × N, when is the multiplicand M added to the accumulator T?",
+      "options": [
+        "If the highest bit of the multiplier N is 1.",
+        "If the lowest bit of the multiplier N, N[0], is 1.",
+        "On every iteration.",
+        "Only when the multiplier N is negative."
+      ],
+      "correctAnswer": 1,
+      "explanation": "At each iteration, the algorithm examines N[0], the lowest bit of the multiplier. If N[0] is 1, the multiplicand M is added to T before the arithmetic shift right.",
+      "hint": "The algorithm checks the rightmost bit of N on every iteration."
+    },
+    {
+      "question": "What happens to the product of a binary multiplication operation in terms of register space?",
+      "options": [
+        "It always overwrites the multiplicand register.",
+        "It must fit into the same number of bits as the source operands.",
+        "It may require twice as many bits as the source registers and is stored in two concatenated registers.",
+        "It automatically sets an overflow flag whenever the result exceeds 64 bits."
+      ],
+      "correctAnswer": 2,
+      "explanation": "Multiplying two N-bit values can produce a result requiring up to 2N bits. The multiplication algorithm therefore uses two concatenated registers to hold the product.",
+      "hint": "Think about the maximum number of bits needed when multiplying two N-bit numbers."
+    },
+    {
+      "question": "Why can the signed `lt` condition not simply test whether the Negative (N) flag is 1?",
+      "options": [
+        "Because N is never set by subtraction.",
+        "Because signed overflow can make the sign bit disagree with the true mathematical result, so V must also be considered.",
+        "Because the Zero flag always overrides N.",
+        "Because the Carry flag determines all signed comparisons."
+      ],
+      "correctAnswer": 1,
+      "explanation": "For signed comparisons, overflow can make the sign bit of the result misleading. The `lt` condition therefore uses `N != V` rather than testing N alone. This allows the comparison to remain correct even when signed overflow occurs.",
+      "hint": "The lecture defines signed `lt` as N != V. Why would checking N alone fail when overflow occurs?"
+    }
+  ]
+}

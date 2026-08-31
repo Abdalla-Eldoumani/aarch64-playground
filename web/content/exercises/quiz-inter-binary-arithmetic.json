@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: Binary Arithmetic - Intermediate",
+  "slug": "quiz-inter-binary-arithmetic",
+  "order": 13,
+  "topic": "binary-arithmetic",
+  "difficulty": "Intermediate",
+  "variant": "quiz",
+  "prompt": "Test your intermediate understanding of branching conditions, iterative multiplication, and carry flags.",
+  "questions": [
+    {
+      "question": "In a 4-bit register, what is the modulus (M) value used to constrain arithmetic?",
+      "options": [
+        "4",
+        "8",
+        "15",
+        "16"
+      ],
+      "correctAnswer": 3,
+      "explanation": "For an N-bit register, the modulus is M = 2^N. For a 4-bit register, M = 2^4 = 16, so arithmetic results are constrained to the range 0 through 15.",
+      "hint": "The modulus is 2 raised to the power of the number of bits."
+    },
+    {
+      "question": "When performing standard addition with an instruction like `add`, what happens to a carry out of the most significant bit?",
+      "options": [
+        "It sets the Carry (C) flag to 1.",
+        "It is ignored as part of the arithmetic result.",
+        "It triggers an overflow exception.",
+        "It is saved in a separate register."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Ordinary arithmetic instructions such as `add` ignore the carry out when producing the fixed-size result. Instructions such as `adds` can set the condition flags, including the Carry flag, so the carry can be used for extended-precision arithmetic.",
+      "hint": "A fixed-size register cannot keep an extra bit beyond its most significant bit."
+    },
+    {
+      "question": "Which branching condition should be used to check if one unsigned integer is strictly greater than another?",
+      "options": [
+        "`gt` (greater than)",
+        "`ge` (greater than or equal)",
+        "`hi` (unsigned higher)",
+        "`hs` (unsigned higher or same)"
+      ],
+      "correctAnswer": 2,
+      "explanation": "For unsigned integers, the `hi` condition means unsigned higher and corresponds to the `>` comparison.",
+      "hint": "Unsigned comparisons use `hi`, `hs`, `lo`, and `ls` rather than the signed `gt`, `ge`, `lt`, and `le` conditions."
+    },
+    {
+      "question": "Why are the Negative (N) and Overflow (V) flags ignored when evaluating unsigned number branching conditions?",
+      "options": [
+        "Because unsigned branches only evaluate the Zero (Z) flag.",
+        "Because they are only updated by multiplication instructions.",
+        "Because N and V have no meaning for unsigned integers.",
+        "Because unsigned numbers are stored in separate registers."
+      ],
+      "correctAnswer": 2,
+      "explanation": "The N and V flags describe signed-number results, so they have no meaning when the values are interpreted as unsigned integers. Unsigned comparisons instead use the C and Z flags.",
+      "hint": "Think about which flags describe signed results and which flags are used by the unsigned conditions."
+    },
+    {
+      "question": "In the binary multiplication algorithm, what extra step is required at the end if the original multiplier is negative?",
+      "options": [
+        "Perform a two's complement on the final product.",
+        "Subtract the multiplicand from the high-order part of the result (the product register).",
+        "Add the multiplier to the remainder.",
+        "Shift the product register left by one bit."
+      ],
+      "correctAnswer": 1,
+      "explanation": "When the original multiplier is negative, the algorithm requires one additional correction step: subtract the multiplicand from the high-order part of the result.",
+      "hint": "The lecture adds one correction step after the repeated conditional-add-and-shift process."
+    },
+    {
+      "question": "How does a full adder circuit handle the addition of multi-bit numbers in hardware?",
+      "options": [
+        "It processes all bits simultaneously using a single logic gate.",
+        "It uses a full adder for each bit, passing the carry out from one bit to the carry in of the next.",
+        "It converts the numbers to decimal, adds them, and converts them back to binary.",
+        "It uses a multiplexer to shift bits one at a time into an accumulator."
+      ],
+      "correctAnswer": 1,
+      "explanation": "A multi-bit addition can be built from a full adder for each bit. The carry out from one bit becomes the carry in for the next bit, allowing the addition to propagate from the least significant bit toward the most significant bit.",
+      "hint": "Think about how the carry from one bit affects the next bit."
+    },
+    {
+      "question": "Why does the ALU perform subtraction by negating the subtrahend and then adding?",
+      "options": [
+        "To minimize hardware complexity by reusing the addition circuitry.",
+        "Because addition is always faster than subtraction.",
+        "To prevent the Carry flag from being set.",
+        "Because subtraction is not defined for two's-complement numbers."
+      ],
+      "correctAnswer": 0,
+      "explanation": "The ALU can perform subtraction by negating the subtrahend and adding it to the first operand. This allows the hardware to reuse the addition circuitry instead of requiring a separate subtractor.",
+      "hint": "Think about why using the existing adder would simplify the hardware."
+    },
+    {
+      "question": "When comparing signed integers using `subs` or `cmp`, why does the `lt` (less than) condition evaluate to true when N is not equal to V?",
+      "options": [
+        "Because the Zero (Z) flag must be set.",
+        "Because N and V being equal indicates a negative result.",
+        "Because the signed `lt` condition is defined by N != V.",
+        "Because the Carry (C) flag must be cleared."
+      ],
+      "correctAnswer": 2,
+      "explanation": "For signed integers, the `lt` condition is defined by N != V. The Overflow flag accounts for cases where signed overflow changes the apparent sign of the result, so checking only N would not always give the correct comparison.",
+      "hint": "Look at the signed branching table: what is the exact flag condition listed for `lt`?"
+    }
+  ]
+}
