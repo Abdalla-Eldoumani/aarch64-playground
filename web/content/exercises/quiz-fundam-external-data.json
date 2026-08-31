@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: External Data - Fundamentals",
+  "slug": "quiz-fundam-external-data",
+  "order": 61,
+  "topic": "external-data",
+  "difficulty": "Fundamental",
+  "variant": "quiz",
+  "prompt": "Test your knowledge of memory sections (.data, .bss, .text), ASCII string literals, pointers, and handling command-line arguments in assembly.",
+  "questions": [
+    {
+      "question": "Which memory section is used specifically for programmer-initialized, read/write data?",
+      "options": [
+        ".text",
+        ".data",
+        ".bss",
+        "Heap"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The .data section contains programmer-initialized data and is read/write memory. The .text section is read-only, and .bss is for zero-initialized data.",
+      "hint": "Think about where global variables with explicit starting values are stored."
+    },
+    {
+      "question": "In C, where are local (automatic) variables always allocated?",
+      "options": [
+        "In the .bss section",
+        "In the .data section",
+        "In the stack frame for a function",
+        "In the .text section"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Local (automatic) variables are always allocated in the stack frame for a function. They are not stored in the .data or .bss sections.",
+      "hint": "These variables only live for the lifetime of the block of code."
+    },
+    {
+      "question": "When executing `main(int argc, char *argv[])`, which registers hold `argc` and `argv` respectively?",
+      "options": [
+        "x0 and x1",
+        "w0 and x1",
+        "w19 and w20",
+        "w0 and w1"
+      ],
+      "correctAnswer": 1,
+      "explanation": "For main(), argc (the number of arguments) is a 32-bit integer passed in w0, and argv (an array of pointers) is a 64-bit address passed in x1.",
+      "hint": "The number of arguments is a standard integer, but the array is an address (pointer)."
+    },
+    {
+      "question": "Which of the following is typically stored in the `.text` memory section?",
+      "options": [
+        "Uninitialized variables",
+        "Machine code and programmer-initialized constants",
+        "The run-time stack",
+        "Dynamically allocated heap memory"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The .text section contains program text (machine code) and read-only, programmer-initialized data such as constants and string literals.",
+      "hint": "This section is entirely read-only."
+    },
+    {
+      "question": "How do you denote a character constant directly in assembly syntax?",
+      "options": [
+        "mov w19, \"Z\"",
+        "mov w19, 'Z'",
+        "mov w19, \\Z\\",
+        "mov w19, char(Z)"
+      ],
+      "correctAnswer": 1,
+      "explanation": "In assembly, character constants can be denoted with the character enclosed in single quotes, such as 'Z'.",
+      "hint": "It uses the same syntax as a single character literal in C."
+    }
+  ]
+}

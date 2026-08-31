@@ -1,0 +1,46 @@
+{
+  "title": "Prediction: External Data",
+  "slug": "predict-external-data",
+  "order": 65,
+  "topic": "external-data",
+  "difficulty": "Intermediate",
+  "variant": "prediction",
+  "prompt": "Test your knowledge of memory sections (.data, .bss, .text), ASCII string literals, pointers, and handling command-line arguments in assembly.",
+  "predictions": [
+    {
+      "code": ".data\na_m: .hword 23\nb_m: .word 42\nc_m: .dword 0",
+      "question": "How many total decimal bytes are allocated in the data section by these three declarations?",
+      "answer": "14",
+      "explanation": ".hword allocates 2 bytes, .word allocates 4 bytes, and .dword allocates 8 bytes. 2 + 4 + 8 = 14 bytes.",
+      "hint": "Calculate the byte sizes: halfword + word + doubleword."
+    },
+    {
+      "code": "char *season[4] = {\"spring\", \"summer\", \"fall\", \"winter\"};",
+      "question": "Assume pointers are 8 bytes each, and the `season` array starts exactly at memory address 0x1000. What is the exact hex address of the pointer to 'fall'?",
+      "answer": "0x1010",
+      "explanation": "\"fall\" is at index 2. Each pointer is 8 bytes. Offset = 2 * 8 = 16 (0x10 in hex). 0x1000 + 0x10 = 0x1010.",
+      "hint": "Index 2 multiplied by 8 bytes equals 16 decimal bytes. What is 16 in hexadecimal?"
+    },
+    {
+      "code": ".text\n.string \"Hello\"",
+      "question": "How many total bytes does this string literal consume in the .text section?",
+      "answer": "6",
+      "explanation": "The string has 5 visible characters, plus 1 hidden null-terminator byte automatically added by the .string pseudo-op.",
+      "hint": "Don't forget the invisible termination byte added by .string!"
+    },
+    {
+      "code": "int f() {\n  static int count = 0;\n  count++;\n  return count;\n}\n// Function is called twice",
+      "question": "If function `f()` is called twice, what exact integer value does it return on the second call?",
+      "answer": "2",
+      "explanation": "Because `count` is static, it is initialized only once and persists between function calls. On the second call, it increments the existing value (1) to 2.",
+      "hint": "A static local variable acts like a global variable that only the function can see."
+    },
+    {
+      "code": ".data\nseason_m: .dword spr_m, sum_m, fal_m, win_m",
+      "question": "How many total decimal bytes are allocated in the `.data` section for this specific array of pointers?",
+      "answer": "32",
+      "explanation": ".dword allocates 8 bytes per value. There are 4 pointer labels in the list, so 4 * 8 = 32 bytes.",
+      "hint": "Multiply the number of items by the size of a doubleword."
+    }
+  ]
+}

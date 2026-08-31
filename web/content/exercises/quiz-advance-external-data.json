@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: External Data - Advanced",
+  "slug": "quiz-advance-external-data",
+  "order": 63,
+  "topic": "external-data",
+  "difficulty": "Advance",
+  "variant": "quiz",
+  "prompt": "Test your knowledge of memory sections (.data, .bss, .text), ASCII string literals, pointers, and handling command-line arguments in assembly.",
+  "questions": [
+    {
+      "question": "What is the primary difference in scope between a static local variable and a static global variable?",
+      "options": [
+        "Static locals die when the block ends, while static globals live for the whole program.",
+        "Static locals are public to all files, while static globals are private.",
+        "Static local variables are private to the block in which they are declared, while static global variables are private to the file in which they are declared.",
+        "Static locals are stored on the stack, while static globals are in the .data section."
+      ],
+      "correctAnswer": 2,
+      "explanation": "Both have a lifetime that lasts for the life of the program. However, static global variables are private to the file in which they are declared, while static local variables are private to the block in which they are declared.",
+      "hint": "Both persist for the entire program execution, but their visibility (scope) differs."
+    },
+    {
+      "question": "When accessing `season[i]` from an array of string pointers, why is the `SXTW 3` shift used in the instruction `ldr x2, [base_r, i_r, SXTW 3]`?",
+      "options": [
+        "To multiply the 32-bit integer index by 8 because each pointer in the array is 64 bits (8 bytes) long.",
+        "To multiply the index by 4 because strings are always 4-byte aligned.",
+        "To sign-extend a 64-bit base register to match the 128-bit FPU registers.",
+        "To add 3 pad bytes for strict memory alignment."
+      ],
+      "correctAnswer": 0,
+      "explanation": "The instruction sign-extends the 32-bit register index (SXTW) and then shifts left by 3 (multiplying by 8) to calculate the offset for 64-bit (8-byte) pointer addresses within the array.",
+      "hint": "A pointer is a memory address, which in AArch64 is 64 bits wide."
+    },
+    {
+      "question": "What is the maximum addressable range of the `adrp` and `add` combination relative to the current Program Counter (PC)?",
+      "options": [
+        "±1MB",
+        "±16MB",
+        "±4GB",
+        "±128MB"
+      ],
+      "correctAnswer": 2,
+      "explanation": "In conjunction with an ADD (immediate) instruction, ADRP allows for the calculation of any address within ±4GB of the current PC.",
+      "hint": "It combines a 21-bit page offset shifted by 12, allowing for a massive 33-bit relative range."
+    },
+    {
+      "question": "If you declare a programmer-initialized constant directly in the `.text` section (e.g., `const_m: .hword 42`), what happens if your code attempts to overwrite it?",
+      "options": [
+        "It causes a segmentation fault because the .text section is read-only.",
+        "The assembler silently moves it to the .data section.",
+        "It overwrites the value successfully.",
+        "It corrupts the adjacent machine instructions causing a branch error."
+      ],
+      "correctAnswer": 0,
+      "explanation": "The .text section is read-only memory, and attempting to write to this memory causes a segmentation fault.",
+      "hint": "The OS strictly protects the section containing executable machine code."
+    },
+    {
+      "question": "When dealing with an external variable in the `.data` section, why must you typically use a two-step process (`adrp` followed by `add`) before loading its value?",
+      "options": [
+        "To calculate the 64-bit absolute address of the label in memory.",
+        "To load the value directly from the hard drive.",
+        "To sign-extend the 32-bit value into a 64-bit register.",
+        "To shift the variable into the correct endianness."
+      ],
+      "correctAnswer": 0,
+      "explanation": "Labels represent 64-bit addresses, so `adrp` and `add` are used together to calculate and put the 64-bit address into a register before using `ldr` or `str` to access the variable.",
+      "hint": "You cannot fit a full 64-bit address inside a single 32-bit machine instruction."
+    }
+  ]
+}

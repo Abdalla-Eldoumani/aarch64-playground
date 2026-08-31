@@ -1,0 +1,56 @@
+{
+  "title": "Fill in the Blank: External Data",
+  "slug": "blanks-external-data",
+  "order": 64,
+  "topic": "external-data",
+  "difficulty": "Intermediate",
+  "variant": "blanks",
+  "prompt": "Test your knowledge of memory sections (.data, .bss, .text), ASCII string literals, pointers, and handling command-line arguments in assembly.",
+  "blanks": [
+    {
+      "prompt": "Allocate 40 bytes of uninitialized space in the .bss section for a 10-element integer array.",
+      "code": "myarray: .___ 10 * 4",
+      "blanks": [
+        "skip"
+      ],
+      "explanation": "Uninitialized space can be allocated in the .bss section with the .skip pseudo-op.",
+      "hint": "You want to 'jump over' this amount of memory."
+    },
+    {
+      "prompt": "Declare a 64-bit integer initialized to 0 in the .data section.",
+      "code": "c_m: .___ 0",
+      "blanks": [
+        "dword"
+      ],
+      "explanation": "A doubleword (.dword) allocates 64 bits (8 bytes) in the data section.",
+      "hint": "A word is 32 bits, so you need a 'double' word."
+    },
+    {
+      "prompt": "Print register w19's contents as a character in GDB.",
+      "code": "p/___ $w19",
+      "blanks": [
+        "c"
+      ],
+      "explanation": "In gdb, use p/c $w19 to print register contents as a character.",
+      "hint": "The format specifier is the first letter of 'character'."
+    },
+    {
+      "prompt": "Make a variable label accessible to other compilation units (files).",
+      "code": ".___ myvar_m",
+      "blanks": [
+        "global"
+      ],
+      "explanation": "Use .global if the variable is to be made available to other compilation units.",
+      "hint": "It broadens the scope of the variable to the entire program."
+    },
+    {
+      "prompt": "Declare a null-terminated string literal in the .text section.",
+      "code": "fmt: .___ \"Hello, world!\\n\"",
+      "blanks": [
+        "string"
+      ],
+      "explanation": "The .string pseudo-op creates a read-only array of characters that is implicitly null-terminated.",
+      "hint": "It is more convenient than using .ascii and adding a 0 manually."
+    }
+  ]
+}

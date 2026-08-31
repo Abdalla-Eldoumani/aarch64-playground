@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: External Data - Intermediary",
+  "slug": "quiz-inter-external-data",
+  "order": 62,
+  "topic": "external-data",
+  "difficulty": "Intermediate",
+  "variant": "quiz",
+  "prompt": "Test your knowledge of memory sections (.data, .bss, .text), ASCII string literals, pointers, and handling command-line arguments in assembly.",
+  "questions": [
+    {
+      "question": "What exactly does the `adrp` instruction do to calculate a memory address?",
+      "options": [
+        "Shifts a 21-bit immediate right by 12 bits and adds it to the Stack Pointer.",
+        "Shifts a signed 21-bit immediate left by 12 bits and adds it to the PC with the bottom 12 bits cleared to zero.",
+        "Adds a 64-bit immediate directly to the Frame Pointer.",
+        "Multiplies the immediate by 4096 and adds it to the Link Register."
+      ],
+      "correctAnswer": 1,
+      "explanation": "ADRP shifts a signed, 21-bit immediate left by 12 bits, adds it to the value of PC with the bottom 12 bits cleared to zero, and writes the result to a register.",
+      "hint": "ADRP stands for Address of Page, which is why it forces a 4KB aligned memory region by manipulating the bottom 12 bits."
+    },
+    {
+      "question": "Why does it not make sense to initialize memory to non-zero values (using `.word` or `.hword`) within the `.bss` section?",
+      "options": [
+        "Because the .bss section is strictly read-only memory.",
+        "Because all .bss memory is zeroed before program execution by the OS.",
+        "Because the assembler will throw a syntax error during compilation.",
+        "Because .bss is reserved exclusively for string literals."
+      ],
+      "correctAnswer": 1,
+      "explanation": "All bss memory is zeroed before program execution, so initializing memory to non-zero values there doesn't make sense.",
+      "hint": "The OS wipes this entire section clean when the program is loaded into RAM."
+    },
+    {
+      "question": "What is the key difference between the `.ascii` and `.string` pseudo-ops?",
+      "options": [
+        ".string automatically adds a null-terminator byte at the end of the character array, while .ascii does not.",
+        ".ascii is for read-only memory, while .string is for read/write memory.",
+        ".string stores characters as 16-bit unicode, while .ascii uses 7-bit characters.",
+        "There is no difference; they are exact aliases."
+      ],
+      "correctAnswer": 0,
+      "explanation": "In C, strings are null terminated, which could be done manually using .ascii and a .byte 0, but is done more conveniently with .asciz or .string.",
+      "hint": "C requires a specific byte at the end of an array to know where a string stops."
+    },
+    {
+      "question": "In the typical memory layout shown in the lecture, which section immediately follows the `.data` section moving towards higher memory?",
+      "options": [
+        ".text",
+        "OS",
+        ".bss",
+        "Stack"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The sections are located in low memory, just after the section reserved for the OS kernel, in the order of: .text, .data, and then .bss.",
+      "hint": "Look at how the zero-initialized data sits below the programmer-initialized data."
+    },
+    {
+      "question": "What happens if you declare a static variable in C without explicitly initializing it (e.g., `static int count;`)?",
+      "options": [
+        "It contains garbage data from the stack.",
+        "It is initialized implicitly to 0.",
+        "It causes a compile-time error.",
+        "It is stored in the .text section."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Static variables are initialized implicitly to 0, unlike stack variables which are not implicitly initialized.",
+      "hint": "Because they are stored in the .bss section if uninitialized, the OS handles their starting value."
+    }
+  ]
+}
