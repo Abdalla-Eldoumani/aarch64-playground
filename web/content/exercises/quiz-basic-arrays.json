@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Arrays and Structures - Fundamentals",
+  "slug": "quiz-basic-arrays",
+  "order": 33,
+  "topic": "arrays",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Work through how arrays and structures are laid out in memory, and how AArch64 code computes the address of a single element or field.",
+  "questions": [
+    {
+      "question": "A function declares a local array of ten int values. Where does that array live while the function is running?",
+      "options": [
+        "In one contiguous block inside the function's stack frame",
+        "On the heap, allocated by malloc when the function is entered",
+        "Spread across the temporary registers x9 through x15",
+        "In the .bss section, alongside the global variables"
+      ],
+      "correctAnswer": 0,
+      "explanation": "A local array is just another local variable, so the prologue reserves one contiguous block for it in the stack frame and the elements are reached by an offset from x29. A global array is different: it is placed in .data or .bss and lasts for the whole run.",
+      "hint": "Local variables live exactly as long as the frame that holds them."
+    },
+    {
+      "question": "For a one-dimensional array, what is the address of element i?",
+      "options": [
+        "base address + i",
+        "base address * (i + element size)",
+        "base address + (i * element size)",
+        "i * element size"
+      ],
+      "correctAnswer": 2,
+      "explanation": "An index counts elements, not bytes, so it has to be scaled by the element size before it is added to the base address. AArch64 can do that scaling inside the addressing mode, as in ldr x1, [x0, x2, lsl 3] for 8-byte elements.",
+      "hint": "Scale the index by the size of one element before adding it to the starting address."
+    },
+    {
+      "question": "How does C map a two-dimensional array onto the flat bytes of memory?",
+      "options": [
+        "Column-major order, storing every element of column 0 first",
+        "Row-major order, storing every element of row 0 first",
+        "As an array of heap pointers, one per row",
+        "In whatever order the compiler finds convenient"
+      ],
+      "correctAnswer": 1,
+      "explanation": "C uses row-major order: all of row 0, then all of row 1, and so on. So for an array with ncols columns, a[r][c] sits at base address + (r * ncols + c) * element size.",
+      "hint": "It finishes a whole row before it moves down to the next one."
+    },
+    {
+      "question": "How does assembly code reach an individual field inside a structure?",
+      "options": [
+        "By an offset added to the structure's base address",
+        "By an array index, since every field is the same size",
+        "By a loop counter that walks the fields in order",
+        "By a system call that resolves the field name"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The assembler has no field names, so each field is a fixed byte offset from the base address of the structure, as in ldr w0, [x19, 8]. Course code usually gives those offsets readable names with m4 define().",
+      "hint": "Fields have different sizes, so what matters is how far each one sits from the start."
+    },
+    {
+      "question": "On 64-bit Linux, an array of long values starts at the address in arr. Which expression gives the address of arr[2]?",
+      "options": [
+        "arr + 2",
+        "arr + 2 * 4",
+        "arr + 2 * 8",
+        "arr + 16 * 2"
+      ],
+      "correctAnswer": 2,
+      "explanation": "A long is 8 bytes on 64-bit Linux, so element 2 begins 16 bytes past the base: arr + 2 * 8. Using 2 * 4 applies the 4-byte int stride, so it would land on element 1 instead of element 2.",
+      "hint": "Work out the byte size of a long first, then scale the index by it."
+    }
+  ]
+}

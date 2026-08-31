@@ -1,0 +1,39 @@
+{
+  "title": "Predict: Array Memory Tracing",
+  "slug": "predict-arrays",
+  "order": 37,
+  "topic": "arrays",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Act as the CPU. Work out the block sizes and the byte offsets that map C array declarations onto AArch64 memory operands.",
+  "predictions": [
+    {
+      "code": "// C: int ia[5];\n\n        .bss\n        .balign 4\nia:     .skip N",
+      "question": "How many bytes must N reserve for ia? Answer in decimal.",
+      "answer": "20",
+      "explanation": "The block size of an array is the number of elements times the element size. An int is 4 bytes, so 5 * 4 gives 20 bytes of .bss for ia.",
+      "hint": "An int is 4 bytes wide."
+    },
+    {
+      "code": "// C: char array[2][3];\n// x20 holds the address of array[0][0]\n\nldrb w21, [x20, OFFSET]",
+      "question": "Arrays are laid out in row-major order. What decimal byte offset replaces OFFSET to load array[1][2]?",
+      "answer": "5",
+      "explanation": "Row-major order stores one whole row before the next, so the offset of array[i][j] is (i * columns + j) * element size. Here that is (1 * 3 + 2) * 1, which is 5.",
+      "hint": "Step over one full row of 3 bytes, then 2 more elements."
+    },
+    {
+      "code": "// C: long myArray[5] = {10, 20, 30, 40, 50};\n// x20 holds the address of myArray[0]\n\nldr x21, [x20, OFFSET]",
+      "question": "What decimal byte offset replaces OFFSET so that x21 receives the value 30?",
+      "answer": "16",
+      "explanation": "The value 30 sits at index 2, and each long is 8 bytes, so the offset is 2 * 8, which is 16. The offset form [x20, 16] reaches that element in one instruction.",
+      "hint": "Indexes start at 0, and a long is 8 bytes."
+    },
+    {
+      "code": "// C: int ia[2][3][3];",
+      "question": "How many bytes in total does ia occupy? Answer in decimal.",
+      "answer": "72",
+      "explanation": "The block size of a multidimensional array is the product of all its bounds times the element size. 2 * 3 * 3 is 18 elements, and each int is 4 bytes, so ia occupies 72 bytes.",
+      "hint": "Multiply the three bounds together, then multiply by 4."
+    }
+  ]
+}

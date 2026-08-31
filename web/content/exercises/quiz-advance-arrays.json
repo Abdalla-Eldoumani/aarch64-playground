@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Arrays and Structures - Advanced",
+  "slug": "quiz-advance-arrays",
+  "order": 35,
+  "topic": "arrays",
+  "difficulty": "challenge",
+  "variant": "quiz",
+  "prompt": "Work through offset arithmetic for multi-dimensional arrays and padded structures, scaled register addressing, and the constant that allocates an aligned stack frame.",
+  "questions": [
+    {
+      "question": "An array is declared int ia[2][3][4]. Which expression gives the byte offset of ia[i][j][k] from the base of the array?",
+      "options": [
+        "((i * 3 * 4) + (j * 4) + k) * 4",
+        "((i * 2 * 3) + (j * 3) + k) * 4",
+        "((i * 12) + (j * 3) + k) * 8",
+        "((i * 4) + (j * 3) + k) * 4"
+      ],
+      "correctAnswer": 0,
+      "explanation": "In row-major order each index is scaled by the product of the dimensions to its right, so i steps over 3 * 4 = 12 elements and j steps over 4. The element count is then scaled by 4, the size of an int.",
+      "hint": "Multiply i by the two dimensions to its right, then j by the last dimension, then scale by the element size."
+    },
+    {
+      "question": "The base address of an int array is in x21 and a 64-bit index is in x20. Which line stores w22 into the element at that index in one instruction?",
+      "options": [
+        "str w22, [x21, x20, lsl #2]",
+        "str w22, [x21, x20, sxtw #2]",
+        "str w22, [x21, x20 * 4]",
+        "str w22, [x21, lsl #2, x20]"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The register offset form scales the index inside the brackets, and lsl #2 multiplies it by 4, the size of an int. The sxtw extension applies only to a 32-bit index in a w register, and the addressing syntax accepts no arithmetic expression and no reordered operands.",
+      "hint": "The shift goes last, inside the brackets, and a left shift of 2 multiplies by 4."
+    },
+    {
+      "question": "The same array base is in x21, but the index is now a signed 32-bit value in w20. Which line stores w22 into the element at that index?",
+      "options": [
+        "str w22, [x21, w20, lsl #2]",
+        "str w22, [x21, w20, sxtw #2]",
+        "str w22, [x21, w20, uxtw #2]",
+        "str w22, [x21, w20]"
+      ],
+      "correctAnswer": 1,
+      "explanation": "A 32-bit offset register must be widened to 64 bits before it is added to the base, so the operand names the extension and #2 scales the index by 4. Use sxtw for a signed index, since uxtw would zero-extend a negative value into a large positive offset, and plain lsl only accepts a 64-bit index register.",
+      "hint": "Sign-extend the word and scale it in the same operand."
+    },
+    {
+      "question": "Given struct rec { int id; char tag; short flag; }; and struct rec table[8];, what byte offset from the start of table does table[3].flag sit at?",
+      "options": [
+        "24",
+        "26",
+        "29",
+        "30"
+      ],
+      "correctAnswer": 3,
+      "explanation": "Each member sits at its natural alignment, so id is at 0, tag at 4, and flag at 6 after one byte of padding, which makes one struct rec 8 bytes. Element 3 starts at 3 * 8 = 24, so flag is at 24 + 6 = 30.",
+      "hint": "Work out the padded size of one struct rec first, then add the offset of flag inside it."
+    },
+    {
+      "question": "A function needs a frame record plus room for the locals a, b, and the array ia. Which equate gives a constant that makes add sp, sp, alloc reserve at least that much space and leave sp 16-byte aligned?",
+      "options": [
+        "alloc = (16 + a_size + b_size + ia_size) / 16",
+        "alloc = -(16 + a_size + b_size + ia_size) & -16",
+        "alloc = -(16 + a_size + b_size + ia_size) | 16",
+        "alloc = (16 + a_size + b_size + ia_size) & -16"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The total is negated so that adding it moves sp down, and the AND with -16 clears the low four bits of that negative constant, rounding it further from zero to a multiple of 16. The assembler folds the whole expression into one immediate.",
+      "hint": "The stack grows toward lower addresses, so the constant is negative before it is aligned."
+    }
+  ]
+}
