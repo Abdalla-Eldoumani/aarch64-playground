@@ -266,7 +266,7 @@ finishes on the next step.
 
 ## NZCV flags
 
-`ADDS`, `SUBS`, `ANDS`, `CMP`, `CMN`, `TST` update the condition flags. They are visible in the register panel as `N Z C V` and used by `B.cond` / `CSEL` / `CSET` / friends.
+`ADDS`, `SUBS`, `ADCS`, `SBCS`, `ANDS`, `NEGS`, `CMP`, `CMN`, `TST`, and `FCMP` / `FCMPE` update the condition flags. They are visible in the register panel as `N Z C V` and used by `B.cond` / `CSEL` / `CSET` / friends.
 
 ## Things that are not implemented
 
