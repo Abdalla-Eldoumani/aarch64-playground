@@ -507,3 +507,53 @@ fn sp_is_refused_where_the_encoding_has_no_room_for_it() {
     assert!(assemble("add x0, sp, x1").is_ok());
     assert!(assemble("sub sp, sp, 16").is_ok());
 }
+
+// ---------------------------------------------------------------------------
+// Multi-precision arithmetic: the whole reason ADC/SBC exist. The low half
+// runs through the flag-setting form, and the carry it leaves in NZCV is the
+// carry-in of the high half.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn adc_chains_a_128_bit_add_across_two_registers() {
+    // A = 0x0000000000000001_FFFFFFFFFFFFFFFF, B = 0x0000000000000002_0000000000000001.
+    // The low halves wrap to 0 and carry, so the high halves sum to 1+2+1 = 4.
+    let src = r#"
+.text
+.global main
+main:
+    movn    x1, 0
+    mov     x2, 1
+    mov     x3, 1
+    mov     x4, 2
+    adds    x5, x1, x3
+    adc     x6, x2, x4
+    mov     x8, 93
+    svc     0
+"#;
+    let cpu = run(src);
+    assert_eq!(cpu.regs.read_gpr(5, true), 0, "low half wraps to zero");
+    assert_eq!(cpu.regs.read_gpr(6, true), 4, "high half takes the carry in");
+}
+
+#[test]
+fn sbc_chains_a_128_bit_subtract_across_two_registers() {
+    // 0x0000000000000001_0000000000000000 - 1 = 0x0000000000000000_FFFFFFFFFFFFFFFF.
+    // The low half borrows, which clears C, and sbc subtracts that borrow.
+    let src = r#"
+.text
+.global main
+main:
+    mov     x1, 0
+    mov     x2, 1
+    mov     x3, 1
+    mov     x4, 0
+    subs    x5, x1, x3
+    sbc     x6, x2, x4
+    mov     x8, 93
+    svc     0
+"#;
+    let cpu = run(src);
+    assert_eq!(cpu.regs.read_gpr(5, true), u64::MAX, "low half borrows");
+    assert_eq!(cpu.regs.read_gpr(6, true), 0, "high half pays the borrow");
+}
