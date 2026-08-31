@@ -27,7 +27,7 @@ export type StructuralAssertion =
   | { kind: "forbids-literal"; value: number | string };
 
 export type ExerciseVariant = "write" | "identify-bug" | "quiz" | "prediction" | "blanks";
-export type ExerciseDifficulty = "intro" | "core" | "challenge";
+export type ExerciseDifficulty = "Fundamental" | "Intermediate" | "Advance";
 
 /** The acceptance criteria: required result checks plus optional structure. */
 export interface Acceptance {
@@ -66,7 +66,7 @@ export interface BlanksQuestion {
 }
 
 /**
- * Core fields shared by EVERY exercise variant. These properties govern
+ * Intermediate fields shared by EVERY exercise variant. These properties govern
  * how the exercise is indexed, routed, and initially rendered before
  * variant-specific UI logic takes over.
  */
@@ -450,8 +450,8 @@ export function validateExercise(data: unknown): ExerciseResult {
   let difficulty: ExerciseDifficulty | undefined;
   if (o.difficulty !== undefined) {
     const d = o.difficulty;
-    if (d !== "intro" && d !== "core" && d !== "challenge") {
-      return { ok: false, error: "difficulty: expected one of intro|core|challenge" };
+    if (d !== "Fundamental" && d !== "Intermediate" && d !== "Advance") {
+      return { ok: false, error: "difficulty: expected one of Fundamental|Intermediate|Advance" };
     }
     difficulty = d;
   }

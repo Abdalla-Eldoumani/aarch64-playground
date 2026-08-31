@@ -40,7 +40,7 @@ export function QuizBlock({
   return (
     <div className="my-8 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-6">
       <h3 className="mb-4 font-serif text-lg font-semibold text-[var(--text-primary)]">
-        Knowledge Check
+        Multiple Choice
       </h3>
       <p className="mb-6 text-[15px] leading-relaxed text-[var(--text-primary)]">{question}</p>
 
