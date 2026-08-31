@@ -68,7 +68,7 @@ const exercises: Exercise[] = [
     slug: "unsolved-two",
     order: 2,
     topic: "stack",
-    difficulty: "core",
+    difficulty: "Intermediate",
     prompt: "# work with the stack",
   }),
   makeExercise({
@@ -76,7 +76,7 @@ const exercises: Exercise[] = [
     slug: "solved-one",
     order: 1,
     topic: "registers",
-    difficulty: "intro",
+    difficulty: "Fundamental",
     prompt: "# work with registers",
   }),
 ];
@@ -115,7 +115,7 @@ describe("ExerciseIndex", () => {
 
   it("filters by a selected difficulty chip", () => {
     render(<ExerciseIndex exercises={exercises} />);
-    const chip = screen.getByRole("button", { name: "intro" });
+    const chip = screen.getByRole("button", { name: "Fundamental" });
     fireEvent.click(chip);
     expect(chip.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Alpha Exercise")).toBeTruthy();

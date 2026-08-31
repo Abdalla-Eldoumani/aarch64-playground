@@ -131,7 +131,7 @@ Fields every variant carries:
 - `slug`: url-safe kebab-case, matching the file name.
 - `order`: the index sorts by this; a number or string.
 - `topic`: optional string for the index filter.
-- `difficulty`: optional, one of `intro`, `core`, or `challenge`.
+- `difficulty`: optional, one of `Fundamental`, `Intermediate`, or `Advance`.
 - `prompt`: the task description, Markdown.
 - `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
   or `blanks`.
@@ -230,7 +230,7 @@ Saved as `web/content/exercises/subtract-two-numbers.json`:
   "slug": "subtract-two-numbers",
   "order": 2,
   "topic": "arithmetic",
-  "difficulty": "intro",
+  "difficulty": "Fundamental",
   "prompt": "The starter loads two values, `a` and `b`. Subtract `b` from `a` so the difference ends up in `a`, then let the program print it.\n\n## what is checked\n\n- the printed line reads `diff = 12`\n- the program exits cleanly\n- the difference is computed, not written in as a constant",
   "starter": "// subtract b from a and print the difference\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"diff = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 20\n        mov     b, 8\n\n        // TODO: subtract b from a, leaving the result in a\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",
   "args": "",
