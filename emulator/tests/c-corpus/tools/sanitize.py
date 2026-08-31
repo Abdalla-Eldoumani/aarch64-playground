@@ -10,8 +10,13 @@ The corpus directory above this one holds, per program NAME:
     NAME.stdin/.args/.flags   optional inputs and per-program compile flags
 
 This script rebuilds all of that with a cross compiler and qemu-user and
-fails when a regenerated file differs from the tracked one, so toolchain
-drift becomes a signal instead of silent rot:
+fails when the rebuilt programs BEHAVE differently from the tracked
+references (stdout or exit code), so toolchain drift becomes a signal
+instead of silent rot. Assembly text is reported but never fails the
+run: the tracked .s files were produced by the course server's own gcc,
+and two gcc versions never emit identical text, so a text comparison
+only means something under --write, which re-records everything with
+the local toolchain:
 
     python3 sanitize.py regen             # both tiers, compare, report drift
     python3 sanitize.py regen --tier O0   # one tier
@@ -100,8 +105,8 @@ QUOTED_SPAN = re.compile(r'"(?:[^"\\]|\\.)*"')
 
 # Programs whose runtime behaviour under qemu-user differs from real
 # hardware. Their tracked references come from the real machine and stay;
-# regen under qemu skips the run comparison (the assembly comparison
-# still holds) and says so, instead of crying drift every week.
+# regen under qemu skips the run comparison and says so, instead of
+# crying drift every week.
 QEMU_DIVERGES = {
     "45_misaligned_sp": "real hardware dies with SIGBUS before any output; "
                         "qemu-user tolerates the misaligned sp and runs on",
@@ -177,8 +182,12 @@ def flags_for(name):
     return f.read_text().split() if f.exists() else []
 
 
-def regen_one(cc, qemu, name, tier, write):
-    """Rebuild one program at one tier; return a list of drift strings."""
+def regen_one(cc, qemu, name, tier, write, notes):
+    """Rebuild one program at one tier; return a list of drift strings.
+
+    Behaviour differences (stdout, exit code) and build failures are
+    drift. A tracked .s whose text differs from the local rebuild is
+    appended to notes instead: informative, never a failure."""
     infix = "" if tier == "O0" else f".{tier}"
     drift = []
     with tempfile.TemporaryDirectory() as td:
@@ -192,7 +201,9 @@ def regen_one(cc, qemu, name, tier, write):
         san = sanitize((td / "a.s").read_text())
         tracked_s = CORPUS / f"{name}{infix}.s"
         if not tracked_s.exists() or tracked_s.read_text().replace("\r\n", "\n") != san:
-            drift.append(f"{name} {tier}: sanitized assembly drifted")
+            # Text differs whenever the local gcc is not the one that made
+            # the references; only behaviour decides pass or fail.
+            notes.append(f"{name} {tier}")
             if write:
                 tracked_s.write_text(san)
         # 2. reference run
@@ -251,19 +262,26 @@ def main():
     tiers = [opts.tier] if opts.tier else ["O0", "O2"]
 
     all_drift = []
+    text_notes = []
     for name in names:
         for tier in tiers:
             try:
-                all_drift += regen_one(opts.cc, opts.qemu, name, tier, opts.write)
+                all_drift += regen_one(opts.cc, opts.qemu, name, tier, opts.write,
+                                       text_notes)
             except subprocess.TimeoutExpired as e:
                 # One hung compile or run marks its program and moves on.
                 all_drift.append(f"{name} {tier}: timed out ({e.cmd[0]})")
+    if text_notes:
+        print(f"assembly text differs from the tracked files for "
+              f"{len(text_notes)} of {len(names) * len(tiers)} rebuilds. "
+              f"That is expected under any gcc other than the one that "
+              f"produced the references; behaviour was compared instead.")
     if all_drift:
         print(f"{len(all_drift)} drift item(s):")
         for d in all_drift:
             print("  " + d)
         sys.exit(0 if opts.write else 1)
-    print(f"{len(names)} program(s) x {len(tiers)} tier(s): no drift")
+    print(f"{len(names)} program(s) x {len(tiers)} tier(s): behaviour matches the references")
 
 
 if __name__ == "__main__":
