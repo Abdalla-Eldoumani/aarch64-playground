@@ -174,8 +174,10 @@ describe("ImportExport export path", () => {
     });
 
     setup("ret\n");
-    fireEvent.click(screen.getByRole("button", { name: "download as .asm" }));
-    fireEvent.click(screen.getByRole("button", { name: "download as .s" }));
+    fireEvent.click(screen.getByRole("button", { name: "export options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download .asm" }));
+    fireEvent.click(screen.getByRole("button", { name: "export options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download .s" }));
 
     expect(downloads).toEqual(["program.asm", "program.s"]);
     expect(createObjectURL).toHaveBeenCalledTimes(2);
@@ -240,9 +242,8 @@ describe("ImportExport workspace bundle", () => {
     const captured = captureDownload();
     setupWorkspace("mov x0, 1\n");
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "download the whole workspace as .json" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "export options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace (.json)" }));
 
     expect(captured.names).toEqual(["workspace.json"]);
     const text = await captured.blobs[0].text();
