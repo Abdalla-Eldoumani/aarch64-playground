@@ -1,0 +1,32 @@
+{
+  "title": "Predict: Arithmetic Execution",
+  "slug": "predict-binary-arithmetic",
+  "order": 16,
+  "topic": "binary-arithmetic",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Act as the CPU. Trace fixed-width wraparound, carry propagation across a pair of adds, and a signed widening multiply.",
+  "predictions": [
+    {
+      "code": "mov w20, -1\nadd w20, w20, 2",
+      "question": "What exact decimal value does w20 hold after this code runs?",
+      "answer": "1",
+      "explanation": "mov w20, -1 writes 0xFFFFFFFF, every one of the 32 bits set. Adding 2 gives 0x100000001, but a w register keeps only the low 32 bits, so the value wraps to 1. Fixed-width addition is always modulo 2^32, and a plain add ignores the carry out of bit 31.",
+      "hint": "Only the low 32 bits of the sum survive."
+    },
+    {
+      "code": "mov x20, 5\nmov x23, 7\nmov x21, -1\nmov x24, 1\nadds x27, x21, x24\nadcs x26, x20, x23",
+      "question": "What exact decimal value does x26 hold after this code runs?",
+      "answer": "13",
+      "explanation": "x21 holds 0xFFFFFFFFFFFFFFFF, so adds leaves 0 in x27 and sets the carry flag. adcs then computes 5 + 7 + 1 and leaves 13 in x26. This is how a 128-bit addition is built from two 64-bit adds.",
+      "hint": "adds sets C when the sum carries out of bit 63, and adcs adds that C into its own sum."
+    },
+    {
+      "code": "mov w20, 2\nmov w21, -5\nsmull x22, w20, w21",
+      "question": "What exact hex value does x22 hold after this code runs? Write all 16 hex digits, starting with 0x.",
+      "answer": "0xFFFFFFFFFFFFFFF6",
+      "explanation": "smull sign-extends both 32-bit sources and writes the full 64-bit signed product, so no separate correction step is needed for the negative operand. 2 * -5 is -10, and -10 as a 64-bit two's complement value is 0xFFFFFFFFFFFFFFF6.",
+      "hint": "Work out -10 as a 64-bit two's complement pattern."
+    }
+  ]
+}

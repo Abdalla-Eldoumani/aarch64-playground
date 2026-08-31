@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: Binary Arithmetic - Intermediate",
+  "slug": "quiz-inter-binary-arithmetic",
+  "order": 13,
+  "topic": "binary-arithmetic",
+  "difficulty": "core",
+  "variant": "quiz",
+  "prompt": "Work through fixed-width modular arithmetic, the carry out of the most significant bit, the flags behind the signed and unsigned branch conditions, and the shift-and-add multiplication algorithm.",
+  "questions": [
+    {
+      "question": "Arithmetic in an N-bit register wraps modulo M. For a 4-bit register, what is M?",
+      "options": [
+        "4",
+        "8",
+        "15",
+        "16"
+      ],
+      "correctAnswer": 3,
+      "explanation": "For an N-bit register the modulus is M = 2^N, so a 4-bit register has M = 2^4 = 16 and every result wraps into the range 0 through 15.",
+      "hint": "The modulus is 2 raised to the number of bits, not the largest value the register can hold."
+    },
+    {
+      "question": "An add produces a carry out of the most significant bit. What happens to that carry?",
+      "options": [
+        "It sets the Carry (C) flag to 1.",
+        "It is discarded, and the destination keeps only the low-order bits that fit.",
+        "It triggers an overflow exception.",
+        "It is saved in a separate register."
+      ],
+      "correctAnswer": 1,
+      "explanation": "A register is a fixed width, so add drops the carry out and writes only the bits that fit. The s-suffixed form adds records that carry in the C flag, which adc then folds into the next word for extended-precision arithmetic.",
+      "hint": "Which form of the instruction is allowed to touch the condition flags?"
+    },
+    {
+      "question": "Which branching condition should be used to check if one unsigned integer is strictly greater than another?",
+      "options": [
+        "gt (greater than)",
+        "ge (greater than or equal)",
+        "hi (unsigned higher)",
+        "hs (unsigned higher or same)"
+      ],
+      "correctAnswer": 2,
+      "explanation": "For unsigned values hi means unsigned higher and matches >. After a cmp it is true when C is set and Z is clear, that is, when the subtraction did not borrow and did not give zero.",
+      "hint": "Unsigned comparisons use hi, hs, lo, and ls rather than the signed gt, ge, lt, and le."
+    },
+    {
+      "question": "Why do the unsigned branch conditions ignore the Negative (N) and Overflow (V) flags?",
+      "options": [
+        "Because unsigned branches only evaluate the Zero (Z) flag.",
+        "Because they are only updated by multiplication instructions.",
+        "Because N and V describe a signed result and mean nothing for unsigned values.",
+        "Because unsigned numbers are stored in separate registers."
+      ],
+      "correctAnswer": 2,
+      "explanation": "N copies the top bit as a sign and V reports signed overflow, neither of which applies when the bits are read as an unsigned value. The unsigned conditions read C and Z instead: C is the borrow-free indicator from the subtraction and Z reports equality.",
+      "hint": "Ask which flags describe a sign, and which two are all an unsigned comparison needs."
+    },
+    {
+      "question": "In the shift-and-add multiplication algorithm taught in the course, what extra step is needed at the end when the original multiplier is negative?",
+      "options": [
+        "Perform a two's complement on the final product.",
+        "Subtract the multiplicand from the high-order part of the result (the product register).",
+        "Add the multiplier to the remainder.",
+        "Shift the product register left by one bit."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The loop treats the multiplier's top bit as a positive weight of 2^(N-1) when two's complement gives it the weight -2^(N-1), so the running product is too large by the multiplicand times 2^N. Subtracting the multiplicand once from the high-order half of the product removes exactly that amount.",
+      "hint": "One correction follows the repeated conditional-add-and-shift loop, and it acts on the high half of the product."
+    },
+    {
+      "question": "How is a multi-bit binary adder built out of full adders?",
+      "options": [
+        "A single full adder processes every bit at once.",
+        "One full adder per bit, with the carry out of each bit feeding the carry in of the next.",
+        "The numbers are converted to decimal, added, and converted back to binary.",
+        "A multiplexer shifts bits one at a time into an accumulator."
+      ],
+      "correctAnswer": 1,
+      "explanation": "A full adder takes two bits plus a carry in and produces a sum bit and a carry out. Chaining one per bit lets the carry propagate from the least significant bit toward the most significant, and the carry out of the top bit is what adds records in C.",
+      "hint": "A full adder handles a single bit position, so what connects one position to the next?"
+    },
+    {
+      "question": "Why does the ALU perform subtraction by negating the subtrahend and then adding?",
+      "options": [
+        "To minimize hardware complexity by reusing the addition circuitry.",
+        "Because addition is always faster than subtraction.",
+        "To prevent the Carry flag from being set.",
+        "Because subtraction is not defined for two's-complement numbers."
+      ],
+      "correctAnswer": 0,
+      "explanation": "In two's complement a - b equals a + (NOT b) + 1, and the adder's carry in supplies the +1 for free. One adder therefore serves both operations, which is also why C after a cmp reads as a not-borrowed indicator rather than a plain carry.",
+      "hint": "Think about what the adder already has available: an inverter on one input and a spare carry in."
+    },
+    {
+      "question": "After a subs or cmp on signed integers, why is the lt condition true exactly when N is not equal to V?",
+      "options": [
+        "Because the Zero (Z) flag must be set.",
+        "Because N and V being equal indicates a negative result.",
+        "Because signed overflow can flip the sign of the result, so N alone is not enough.",
+        "Because the Carry (C) flag must be cleared."
+      ],
+      "correctAnswer": 2,
+      "explanation": "N alone would be right only if the subtraction never overflowed. Compare w0 holding 0x80000000 with 1: the result 0x7fffffff has N = 0 yet V = 1, and N != V still reports correctly that the value in w0 is less than 1.",
+      "hint": "Signed conditions pair N with V, while the unsigned ones pair C with Z."
+    }
+  ]
+}

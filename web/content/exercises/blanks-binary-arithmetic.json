@@ -1,0 +1,57 @@
+{
+  "title": "Fill in the Blank: Binary Arithmetic",
+  "slug": "blanks-binary-arithmetic",
+  "order": 15,
+  "topic": "binary-arithmetic",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonics and condition codes so each instruction performs the arithmetic or the unsigned branch described.",
+  "blanks": [
+    {
+      "prompt": "Branch to endif when the earlier cmp found the first operand greater than or equal to the second, comparing both as unsigned values.",
+      "code": "b.___ endif",
+      "blanks": [
+        "hs",
+        "cs"
+      ],
+      "explanation": "b.hs branches when the C flag is set, which after a cmp means the first operand was greater than or equal to the second as unsigned values. cs is another name for the same condition, and ge is the signed counterpart.",
+      "hint": "Higher or Same."
+    },
+    {
+      "prompt": "Add x19, x22, and the current Carry flag into x25, leaving the condition flags unchanged.",
+      "code": "___ x25, x19, x22",
+      "blanks": [
+        "adc"
+      ],
+      "explanation": "adc computes x19 + x22 + C and does not write the condition flags. It is the second half of an extended-precision addition, where the carry out of the low words was produced by an earlier adds.",
+      "hint": "Add with Carry."
+    },
+    {
+      "prompt": "Add x21 and x24 into x27 and update the condition flags so a following adc can pick up the carry out.",
+      "code": "___ x27, x21, x24",
+      "blanks": [
+        "adds"
+      ],
+      "explanation": "adds performs the addition and writes NZCV, so the carry out of the low 64 bits survives for the next step. Plain add leaves the flags alone, which is why extended-precision code needs the s suffix here.",
+      "hint": "Add and Set flags."
+    },
+    {
+      "prompt": "Subtract x2 from x1 into x0 without changing the condition flags.",
+      "code": "___ x0, x1, x2",
+      "blanks": [
+        "sub"
+      ],
+      "explanation": "sub writes only its destination register. The flag-setting form is subs, and cmp x1, x2 is just subs with xzr as the destination, which is why a comparison throws the difference away but keeps the flags.",
+      "hint": "The plain subtract, with no s suffix."
+    },
+    {
+      "prompt": "Branch to done when the earlier cmp found the first operand strictly greater than the second, comparing both as unsigned values.",
+      "code": "b.___ done",
+      "blanks": [
+        "hi"
+      ],
+      "explanation": "b.hi branches when C is set and Z is clear, which after a cmp means the first operand was strictly greater than the second as unsigned values. The signed counterpart is gt.",
+      "hint": "Higher."
+    }
+  ]
+}

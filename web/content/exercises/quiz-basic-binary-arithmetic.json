@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Binary Arithmetic - Fundamentals",
+  "slug": "quiz-basic-binary-arithmetic",
+  "order": 12,
+  "topic": "binary-arithmetic",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "How a CPU does integer arithmetic in fixed-size registers: modulus wraparound, subtraction through negation, the meaning of a carry out, `adc` for extended precision, and the iterative multiplication algorithm.",
+  "questions": [
+    {
+      "question": "What kind of arithmetic does a CPU normally do, given that every integer result has to fit in a fixed-size register?",
+      "options": [
+        "Floating-point arithmetic",
+        "Modulus arithmetic",
+        "Unbounded arithmetic",
+        "Fractional arithmetic"
+      ],
+      "correctAnswer": 1,
+      "explanation": "An N-bit register holds only 2^N distinct bit patterns, so integer results are kept modulo 2^N. A sum that passes the top of that range wraps around instead of growing wider.",
+      "hint": "Think about what happens when a calculation produces a value that is too large to fit in the register."
+    },
+    {
+      "question": "How does the Arithmetic Logic Unit (ALU) perform subtraction in hardware?",
+      "options": [
+        "By using a separate dedicated subtractor circuit",
+        "By shifting the bits right and truncating",
+        "By negating the subtrahend and then adding",
+        "By taking the one's complement and discarding the carry in"
+      ],
+      "correctAnswer": 2,
+      "explanation": "sub x0, x1, x2 computes x1 plus the two's complement of x2, that is the inverted bits of x2 plus 1. Reusing the one adder for both add and sub keeps the hardware simple.",
+      "hint": "The hardware uses addition to perform subtraction."
+    },
+    {
+      "question": "When two unsigned values are added, what does a carry out of the most significant bit indicate?",
+      "options": [
+        "The result is negative",
+        "The true sum is too large for the register width",
+        "The instruction executed without faulting",
+        "A divide-by-zero condition"
+      ],
+      "correctAnswer": 1,
+      "explanation": "For unsigned addition a carry out of the top bit means the exact sum needs one more bit than the register has, so the value left in the register has wrapped. Only the flag-setting form records it: adds sets C, and plain add leaves the flags alone.",
+      "hint": "Count the bits the exact sum would need."
+    },
+    {
+      "question": "In extended-precision arithmetic, what do adc and adcs add that add does not?",
+      "options": [
+        "They clear the Zero flag before adding",
+        "They perform the addition using floating-point logic",
+        "They include the current C flag in the sum",
+        "They join two 32-bit registers into one 64-bit register"
+      ],
+      "correctAnswer": 2,
+      "explanation": "adc and adcs add the carry flag along with the two operands, so a carry out of the low-order 64 bits is folded into the next 64 bits. A chain like adds, adcs, adc works because each flag-setting form leaves C ready for the step above it, and the final adc no longer needs to set flags.",
+      "hint": "The c in the mnemonic is the carry flag."
+    },
+    {
+      "question": "In the iterative binary multiplication algorithm, what two sub-steps are performed in each iteration?",
+      "options": [
+        "A conditional addition followed by an arithmetic shift right",
+        "An unconditional addition followed by a logical shift left",
+        "A subtraction followed by sign extension",
+        "A bitwise AND followed by an arithmetic shift right"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Each iteration tests the low-order bit of the multiplier: a 1 adds the multiplicand into the product register and a 0 adds nothing. The product and multiplier are then shifted right together as one pair, arithmetically so that a negative partial product keeps its sign.",
+      "hint": "The algorithm first decides whether to add, then shifts."
+    }
+  ]
+}
