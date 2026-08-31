@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: ARMv8 Assembly - Advanced",
+  "slug": "quiz-advance-armv8",
+  "order": 19,
+  "topic": "armv8",
+  "difficulty": "challenge",
+  "variant": "quiz",
+  "prompt": "Work through loop conversion, exception levels, the program counter, multiply-accumulate, and integer division by zero in AArch64.",
+  "questions": [
+    {
+      "question": "When a C while loop (pre-test) is hand-translated to AArch64, why is the branch at the top of the loop usually written with the complement of the C condition?",
+      "options": [
+        "Because ARMv8 has no instructions that compare two values.",
+        "Because that branch has to leave the loop, so it fires when the C condition is false.",
+        "Because complementing the condition turns the loop into a post-test do-while loop.",
+        "Because the callee-saved registers require an inverted test."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The C condition says when to keep looping, but the branch at the top says when to skip the body, so the two are complements. For while (i < 10) you write cmp followed by b.ge done, and the body ends with an unconditional b back to the test.",
+      "hint": "Ask what has to happen when the C test is already false on the first iteration."
+    },
+    {
+      "question": "Which ARMv8-A Exception Level is reserved for a hypervisor running guest operating systems?",
+      "options": [
+        "EL0",
+        "EL1",
+        "EL2",
+        "EL3"
+      ],
+      "correctAnswer": 2,
+      "explanation": "ARMv8-A defines four levels: EL0 for application code, EL1 for the operating system kernel, EL2 for a hypervisor hosting guest kernels, and EL3 for the secure monitor. Course programs run entirely at EL0 and reach the kernel only through system calls.",
+      "hint": "It sits one privilege level above the operating system kernel."
+    },
+    {
+      "question": "The multiply-add instruction madd Wd, Wn, Wm, Wa computes which expression?",
+      "options": [
+        "Wd = (Wa + Wn) * Wm",
+        "Wd = Wa + (Wn * Wm)",
+        "Wd = Wa - (Wn * Wm)",
+        "Wd = (Wn * Wm) / Wa"
+      ],
+      "correctAnswer": 1,
+      "explanation": "madd multiplies the first two source registers and adds the accumulator, so Wd = Wa + (Wn * Wm). The subtracting form is msub, which computes Wd = Wa - (Wn * Wm), and mul Wd, Wn, Wm is just madd with wzr as the accumulator.",
+      "hint": "The fourth operand is the accumulator, not a second multiplicand."
+    },
+    {
+      "question": "Why can the program counter not be named as an operand the way x0 can in AArch64?",
+      "options": [
+        "It is only 32 bits wide, so it cannot hold a full address.",
+        "It is not a data register: branches change it and adr reads it implicitly.",
+        "It is reserved for the secure monitor and is readable only at EL3.",
+        "It is reachable only through the zero register wzr."
+      ],
+      "correctAnswer": 1,
+      "explanation": "AArch64 dropped the ARMv7 habit of exposing the program counter as a numbered register. It changes through branches, calls and exception returns, and instructions such as adr, adrp and literal-pool loads read it implicitly to form an address.",
+      "hint": "Think about what would happen to the flow of execution if you could mov any value you liked into it."
+    },
+    {
+      "question": "What does an integer divide instruction (sdiv or udiv) do when the divisor register holds 0?",
+      "options": [
+        "It raises an exception and the program halts.",
+        "It produces infinity and sets the overflow (V) flag.",
+        "It substitutes a divisor of 1 so the division still succeeds.",
+        "It raises no exception and writes 0 to the destination register."
+      ],
+      "correctAnswer": 3,
+      "explanation": "AArch64 integer division by zero is defined to write 0 into the destination register with no trap and no flag change. Nothing tells you the division was meaningless, so the program has to compare the divisor against zero itself before dividing.",
+      "hint": "Unlike a high-level language, the hardware here reports nothing at all."
+    }
+  ]
+}

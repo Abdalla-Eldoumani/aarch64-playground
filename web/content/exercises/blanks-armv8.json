@@ -1,0 +1,57 @@
+{
+  "title": "Fill in the Blank: ARMv8 Mechanics",
+  "slug": "blanks-armv8",
+  "order": 20,
+  "topic": "armv8",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonics, suffixes, and symbols across stack frames, flag setting, branching, and gdb stepping.",
+  "blanks": [
+    {
+      "prompt": "Allocate 16 bytes on the stack and store the frame record there in one instruction.",
+      "code": "stp x29, x30, [sp, -16]___",
+      "blanks": [
+        "!"
+      ],
+      "explanation": "The ! makes the addressing pre-indexed, so sp moves down by 16 before the pair is written. One instruction both allocates the frame record and fills it with x29 and x30.",
+      "hint": "The mark that updates the base register before the access."
+    },
+    {
+      "prompt": "Subtract x2 from x1 into x0 and set the condition flags (N, Z, C, V).",
+      "code": "sub___ x0, x1, x2",
+      "blanks": [
+        "s"
+      ],
+      "explanation": "The s suffix is what makes an arithmetic instruction write the condition flags, so subs computes x1 - x2 and updates N, Z, C, and V. Plain sub leaves the flags as they were, and cmp x1, x2 is the same subtraction with the result thrown away.",
+      "hint": "One extra letter turns an arithmetic instruction into a flag-setting one."
+    },
+    {
+      "prompt": "Ask gdb to reprint the current instruction automatically after every step.",
+      "code": "___ $pc",
+      "blanks": [
+        "display/i",
+        "display /i"
+      ],
+      "explanation": "display/i $pc adds $pc to gdb's display list with the instruction format, so the next instruction is shown again after each si or ni.",
+      "hint": "The gdb command that re-shows an expression at every stop, with the instruction format letter."
+    },
+    {
+      "prompt": "A pre-test while loop runs its body while the signed value in x19 is less than 10. After the compare cmp x19, 10, branch past the body when the loop should stop.",
+      "code": "b.___ done",
+      "blanks": [
+        "ge"
+      ],
+      "explanation": "The guard branches on the complement of the loop condition, so x19 < 10 becomes b.ge done. ge is the signed test; the unsigned counterpart would be b.hs.",
+      "hint": "Signed greater than or equal."
+    },
+    {
+      "prompt": "Branch back to the label top unconditionally.",
+      "code": "___ top",
+      "blanks": [
+        "b"
+      ],
+      "explanation": "b always transfers control to the label, and unlike bl it does not write a return address into x30.",
+      "hint": "The single-letter branch mnemonic."
+    }
+  ]
+}

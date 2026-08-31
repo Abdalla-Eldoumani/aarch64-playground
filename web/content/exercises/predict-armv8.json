@@ -1,0 +1,39 @@
+{
+  "title": "Predict: ARMv8 Execution",
+  "slug": "predict-armv8",
+  "order": 21,
+  "topic": "armv8",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Predict the register values and flags these AArch64 snippets leave behind.",
+  "predictions": [
+    {
+      "code": "// sp holds 0x8000 on entry to main\nstp x29, x30, [sp, -32]!\nmov x29, sp",
+      "question": "What exact value does x29 hold after these two instructions? Answer in hex with a 0x prefix.",
+      "answer": "0x7fe0",
+      "explanation": "The pre-indexed stp lowers sp by 32 bytes to 0x7fe0 and writes the frame record there, so the following mov x29, sp copies 0x7fe0 into the frame pointer.",
+      "hint": "Subtract 32 from 0x8000 first, then copy that value across."
+    },
+    {
+      "code": "mov w1, 14\nmov w2, 3\nsdiv w0, w1, w2",
+      "question": "What is the exact integer value stored in w0 after execution?",
+      "answer": "4",
+      "explanation": "sdiv performs integer division and truncates toward zero, so 14 / 3 gives 4 and the remainder of 2 is discarded. Nothing records that remainder, so a program that needs it recovers it afterwards with msub.",
+      "hint": "14 divided by 3, truncating any remainder."
+    },
+    {
+      "code": "mov x22, 10\nmov x23, 0\nudiv x21, x22, x23",
+      "question": "What exact value does the CPU write into the destination register x21?",
+      "answer": "0",
+      "explanation": "Division by zero raises no exception and no trap in AArch64. Both udiv and sdiv simply write 0 into the destination register, so the program has to check the divisor itself.",
+      "hint": "AArch64 has no divide-by-zero trap."
+    },
+    {
+      "code": "mov x1, 7\nmov x2, 7\ncmp x1, x2\nb.eq top",
+      "question": "b.eq branches on the state of one condition flag. Write that flag's letter (N, Z, C, or V).",
+      "answer": "Z",
+      "explanation": "cmp is an alias for subs that discards the result but keeps the flags, and subtracting two equal values leaves zero, so Z is set to 1. b.eq branches exactly when Z is 1, so the branch to top is taken.",
+      "hint": "cmp subtracts the two values. Which flag records a zero result?"
+    }
+  ]
+}
