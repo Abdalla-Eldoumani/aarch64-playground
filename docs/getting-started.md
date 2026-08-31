@@ -112,10 +112,12 @@ editor; nothing is sent to a server.
 - **Practice** (`/practice`): coding exercises graded by running your
   program against expected behavior, where the checker never reads or
   stores a solution, alongside quizzes, fill-in-the-blank drills, and
-  mental-trace prediction sets graded right on the page. Which exercises
-  you have solved is kept in this browser alone, so the **progress** row
-  under the list exports that record as a small `.json` file and imports
-  one back, on this device or another.
+  mental-trace prediction sets graded right on the page. The index shows
+  the two side by side, coding exercises on the left and theory sets on
+  the right, each grouped by topic in the order the course meets them.
+  Which exercises you have solved is kept in this browser alone, so the
+  **progress** row under the columns exports that record as a small
+  `.json` file and imports one back, on this device or another.
 - **Reference** (`/reference`): the supported instruction set, with a
   worked encoding diagram per instruction and an interactive NZCV panel
   on the flag-setters; a calling-convention guide with a step-through
