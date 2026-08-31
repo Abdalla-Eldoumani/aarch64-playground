@@ -1,7 +1,7 @@
 {
   "title": "gcd, the euclid way",
   "slug": "gcd-the-euclid-way",
-  "order": 19,
+  "order": 10,
   "topic": "loops",
   "difficulty": "core",
   "prompt": "Euclid noticed around 300 BC that the greatest common divisor of two numbers does not change when you replace the larger with its remainder by the smaller. Keep doing that and one of them hits zero; the other is the answer.\n\nThe starter loads Euclid's own example pair, 1071 and 462. Write the loop: remainder via `udiv` plus `msub`, shuffle, repeat while the second value is nonzero.\n\n## what is checked\n\n- the gcd is printed on its own line\n- the program exits cleanly\n- the remainder loop does the work (`udiv`, `msub`, and no smuggling the answer in)",

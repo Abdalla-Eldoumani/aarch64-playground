@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Binary Arithmetic - Advanced",
+  "slug": "quiz-advance-binary-arithmetic",
+  "order": 39,
+  "topic": "binary-arithmetic",
+  "difficulty": "challenge",
+  "variant": "quiz",
+  "prompt": "Work through extended-precision carry chains, the shift-and-add multiplication algorithm, and the flag rules behind signed comparison.",
+  "questions": [
+    {
+      "question": "A 192-bit value is held in three 64-bit registers. Two such values are added low word first. Which instruction sequence is correct for the low, middle, and high words?",
+      "options": [
+        "add, add, add",
+        "adds, adcs, adc",
+        "adc, adc, adc",
+        "adds, adds, adds"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The low word uses adds so its carry-out lands in the C flag. The middle word uses adcs to fold that carry in and set the next one. The high word uses adc, which consumes the last carry but does not need to produce one.",
+      "hint": "The first instruction has to create the carry, the middle one has to pass it along, and the last one only has to consume it."
+    },
+    {
+      "question": "Which sequence is the subtraction counterpart of adds, adcs, adc for extended-precision arithmetic?",
+      "options": [
+        "sub, sbc, sbc",
+        "subs, sbcs, sbc",
+        "subs, subs, sub",
+        "sub, sub, sub"
+      ],
+      "correctAnswer": 1,
+      "explanation": "subs does the low-order subtraction and records the borrow in C, which the hardware clears when a borrow was needed. sbcs folds that borrow into the middle subtraction and updates C again, and sbc consumes the final borrow. Only the s-suffixed forms write the flags, so a plain sub cannot pass a borrow onward.",
+      "hint": "Same shape as the addition chain: set, propagate, consume."
+    },
+    {
+      "question": "In the shift-and-add multiplication algorithm for M * N, when is the multiplicand M added to the accumulator T?",
+      "options": [
+        "When the highest bit of the multiplier N is 1.",
+        "When the lowest bit of the multiplier, N[0], is 1.",
+        "On every iteration.",
+        "Only when the multiplier N is negative."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Each iteration tests N[0], the low bit of the multiplier, and adds M to T only when that bit is 1. The iteration then shifts M left by one and N right by one, so the next bit of N lines up with the next power-of-two multiple of M.",
+      "hint": "The algorithm inspects the rightmost bit of N on every pass."
+    },
+    {
+      "question": "Multiplying two 64-bit values can produce a result that does not fit in one register. How is the full product held?",
+      "options": [
+        "It always overwrites the multiplicand register.",
+        "It is truncated to the same width as the source operands, with no way to recover the rest.",
+        "It can need up to 128 bits, so it is held in two registers: mul gives the low half and umulh or smulh gives the high half.",
+        "It sets the V flag whenever the result exceeds 64 bits."
+      ],
+      "correctAnswer": 2,
+      "explanation": "The product of two N-bit values needs up to 2N bits. mul writes only the low 64 bits, so the high 64 bits come from a separate umulh (unsigned) or smulh (signed) instruction. None of the multiply instructions set the flags.",
+      "hint": "Think about the widest result two 64-bit operands can produce, and how many registers that takes."
+    },
+    {
+      "question": "Why can the signed lt condition not be decided by testing the Negative (N) flag alone?",
+      "options": [
+        "Because N is never written by a subtraction.",
+        "Because signed overflow can make the result's sign bit disagree with the true mathematical result, so V has to be considered too.",
+        "Because the Zero flag always overrides N.",
+        "Because the Carry flag decides every signed comparison."
+      ],
+      "correctAnswer": 1,
+      "explanation": "cmp compares by subtracting, and when that subtraction overflows the sign bit of the result is the opposite of the true sign of the difference. lt is therefore defined as N != V, which stays correct in exactly the cases where N on its own would lie.",
+      "hint": "The course defines signed lt as N != V. Ask what V is telling you that N cannot."
+    }
+  ]
+}

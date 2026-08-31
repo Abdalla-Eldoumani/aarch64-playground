@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: ARMv8 Assembly - Fundamentals",
+  "slug": "quiz-basic-armv8",
+  "order": 42,
+  "topic": "armv8",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Work through the AArch64 exception levels, the register conventions, integer division by zero, the gdb stepping commands, and what `mov x29, sp` really assembles to.",
+  "questions": [
+    {
+      "question": "In ARMv8-A, which exception level runs ordinary user applications with the least privilege?",
+      "options": [
+        "EL1",
+        "EL0",
+        "EL2",
+        "EL3"
+      ],
+      "correctAnswer": 1,
+      "explanation": "EL0 runs user applications and has restricted access to instructions, system registers, and memory. EL1 is the operating system kernel, EL2 is a hypervisor, and EL3 is the secure monitor.",
+      "hint": "User programs run at the lowest numbered exception level."
+    },
+    {
+      "question": "Which block of general-purpose registers is callee-saved, so a function you call must preserve it?",
+      "options": [
+        "x0 to x7",
+        "x9 to x15",
+        "x19 to x28",
+        "x16 to x18"
+      ],
+      "correctAnswer": 2,
+      "explanation": "x19 to x28 are callee-saved, so their values survive a call and a function that wants to use them saves and restores them itself. x0 to x7 pass arguments and return results, x9 to x15 are caller-saved temporaries, and x16 to x18 are the two intra-procedure-call scratch registers and the platform register.",
+      "hint": "It is the block that ends just before x29, the frame pointer."
+    },
+    {
+      "question": "What happens when a program divides by zero with sdiv or udiv?",
+      "options": [
+        "The instruction raises an exception and the program aborts.",
+        "The instruction writes 0 to the destination register.",
+        "The instruction sets the Z flag and leaves the destination register unchanged.",
+        "The instruction writes the largest representable integer to the destination register."
+      ],
+      "correctAnswer": 1,
+      "explanation": "AArch64 integer division by zero does not trap. The destination register is set to 0 and execution continues, so the bug surfaces as a wrong result rather than a crash. Neither sdiv nor udiv touches the condition flags.",
+      "hint": "Nothing traps here, so the question is what value the destination register is left holding."
+    },
+    {
+      "question": "In gdb, how do si and ni differ when the next instruction is a bl to a function?",
+      "options": [
+        "si steps into the called function, while ni runs the whole call and stops on the instruction after it.",
+        "si steps over the call, while ni steps into the called function.",
+        "si advances one line of source, while ni advances one machine instruction.",
+        "si runs until the next breakpoint, while ni executes a single instruction."
+      ],
+      "correctAnswer": 0,
+      "explanation": "Both commands advance one machine instruction in the ordinary case. On a bl, si steps into the called function, while ni lets the call run to completion and stops at the following instruction.",
+      "hint": "One of the two steps into a subroutine, the other steps over it."
+    },
+    {
+      "question": "mov x29, sp is an alias. Which instruction does the assembler actually encode?",
+      "options": [
+        "add x29, sp, 0",
+        "orr x29, xzr, sp",
+        "ldr x29, [sp]",
+        "sub x29, sp, 0"
+      ],
+      "correctAnswer": 0,
+      "explanation": "When either operand is sp, mov is an alias for the immediate form add xd, xn, 0. The plain register-to-register mov is an alias for orr xd, xzr, xm instead, and that encoding has no way to name sp.",
+      "hint": "Copying a value is the same arithmetic as adding zero to it."
+    }
+  ]
+}

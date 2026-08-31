@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: Subroutines - Intermediate",
+  "slug": "quiz-inter-subroutines",
+  "order": 58,
+  "topic": "subroutines",
+  "difficulty": "core",
+  "variant": "quiz",
+  "prompt": "Work through the AArch64 procedure call convention: the link register, the frame record chain, saved registers, argument passing, and indirect results.",
+  "questions": [
+    {
+      "question": "When a bl instruction executes, what value is placed in the link register (x30)?",
+      "options": [
+        "The address of the bl instruction itself",
+        "The address of the instruction immediately after bl, which is PC + 4",
+        "The current stack pointer minus 16",
+        "The current frame pointer plus 16"
+      ],
+      "correctAnswer": 1,
+      "explanation": "bl writes the return address into x30 before branching. Every AArch64 instruction is 4 bytes, so that address is the one immediately after the bl. A later ret branches to whatever x30 holds.",
+      "hint": "The callee has to know where execution resumes once it finishes."
+    },
+    {
+      "question": "How do frame pointers let a program walk back through previous stack frames?",
+      "options": [
+        "Each saved frame pointer points at the previous frame record, forming a chain.",
+        "Each frame pointer stores all of the arguments passed to the program.",
+        "Each frame pointer holds the address of the next instruction to execute.",
+        "Each frame pointer stores a copy of every register the subroutine used."
+      ],
+      "correctAnswer": 0,
+      "explanation": "The frame record at the base of a frame holds the caller's x29 and x30. Because the saved x29 points at the caller's own frame record, following those links walks backward through every active call, which is what a backtrace does.",
+      "hint": "Think about what the saved copy of x29 inside a frame record points at."
+    },
+    {
+      "question": "A subroutine wants to use x19 as a working register. What must it do to follow the AArch64 procedure call convention?",
+      "options": [
+        "Move the value into x0 before changing x19.",
+        "Save the incoming value of x19 and restore it before returning.",
+        "Nothing, because x19 is a caller-saved register.",
+        "Set x19 to zero before returning."
+      ],
+      "correctAnswer": 1,
+      "explanation": "x19 through x28 are callee-saved. A subroutine that writes one of them must save the incoming value, usually on the stack, and restore it before ret so the caller sees the value it left there.",
+      "hint": "The term callee-saved names which side of the call owns the register's contents."
+    },
+    {
+      "question": "When an argument is passed by reference, what does the argument register hold?",
+      "options": [
+        "The address of the data",
+        "A copy of the data itself",
+        "The return address of the calling routine",
+        "The address of the link register"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Passing by reference puts the address of the data in the argument register instead of the data. The subroutine loads through that address to read the original, and stores through it to change that same original in place.",
+      "hint": "The subroutine is told where the value lives rather than being handed the value."
+    },
+    {
+      "question": "A subroutine returns a large composite result that does not fit in the normal result registers. How does the caller tell it where to put that result?",
+      "options": [
+        "The caller passes the address of the result space in x8.",
+        "The caller passes the address in x30.",
+        "The caller pushes space onto the stack and the callee locates it from sp.",
+        "The caller splits the address across x0 and x1."
+      ],
+      "correctAnswer": 0,
+      "explanation": "x8 is the indirect result location register. The caller allocates memory for the result, puts that address in x8, and the callee writes the result through it.",
+      "hint": "One dedicated register sits just past the eight argument registers and carries an address, not a value."
+    },
+    {
+      "question": "What makes a subroutine a leaf subroutine?",
+      "options": [
+        "It is expanded inline at every call site.",
+        "It takes no arguments.",
+        "It returns no value.",
+        "It calls no other subroutine."
+      ],
+      "correctAnswer": 3,
+      "explanation": "A leaf subroutine makes no calls of its own, so nothing overwrites x30 while it runs. That is why a leaf can keep the return address in x30 and finish with ret instead of saving and restoring a frame record.",
+      "hint": "Think of a leaf on a tree: nothing branches farther down from it."
+    },
+    {
+      "question": "Which register range does the AArch64 procedure call convention set aside purely as caller-saved temporaries, with no argument or result role?",
+      "options": [
+        "x0 through x7",
+        "x9 through x15",
+        "x19 through x28",
+        "x29 and x30"
+      ],
+      "correctAnswer": 1,
+      "explanation": "x9 through x15 are the temporary registers: a subroutine may overwrite them freely, so the caller must save anything it still needs across a call. x0 through x7 are also caller-saved, but they carry arguments and results rather than serving as free scratch space.",
+      "hint": "Rule out the ranges that already have a job: arguments, callee-saved values, and the frame record pair."
+    },
+    {
+      "question": "A subroutine is called with nine integer arguments. Where is the ninth argument passed under the AArch64 procedure call convention?",
+      "options": [
+        "In stack memory set up by the caller",
+        "In x8",
+        "In the link register x30",
+        "In x9"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The first eight integer arguments travel in x0 through x7. Anything beyond that goes in the argument area the caller builds on the stack, and the callee reads it at a positive offset from the frame it was given.",
+      "hint": "Count the argument registers, then ask where the leftovers can go."
+    }
+  ]
+}

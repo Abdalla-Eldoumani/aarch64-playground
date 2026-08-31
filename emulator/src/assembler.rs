@@ -141,6 +141,8 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "MOV", "MOVZ", "MOVK", "MOVN",
     // arithmetic immediate / register
     "ADD", "ADDS", "SUB", "SUBS",
+    // arithmetic with carry (register only)
+    "ADC", "ADCS", "SBC", "SBCS",
     // compare (aliases)
     "CMP", "CMN",
     // logical
@@ -220,6 +222,12 @@ fn encode_line(
         "ADDS" => encode_dp(&ops, 0, 1, line_num),
         "SUB" => encode_dp(&ops, 1, 0, line_num),
         "SUBS" => encode_dp(&ops, 1, 1, line_num),
+
+        // -- arithmetic with carry (register only) --
+        "ADC" => encode_carry(&ops, false, false, line_num),
+        "ADCS" => encode_carry(&ops, false, true, line_num),
+        "SBC" => encode_carry(&ops, true, false, line_num),
+        "SBCS" => encode_carry(&ops, true, true, line_num),
 
         // -- compare (aliases) --
         "CMP" => encode_cmp(&ops, 1, line_num),
@@ -852,6 +860,55 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
     Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
         | (0b01011 << 24) | (shift_bits << 22) | ((rm as u32) << 16)
         | ((shift_amt as u32) << 10) | ((rn as u32) << 5) | (rd as u32))
+}
+
+/// Encode `ADC/ADCS/SBC/SBCS Rd, Rn, Rm`: sf_op_S_11010000_Rm_000000_Rn_Rd.
+/// The family carries the NZCV carry bit into the adder, which is how
+/// multi-precision arithmetic chains one word to the next. It is
+/// register-only -- A64 has no add-with-carry immediate -- so an immediate
+/// third operand is named rather than reported as "expected a register".
+fn encode_carry(ops: &[&str], sub: bool, set_flags: bool, ln: usize) -> Result<u32, EmuError> {
+    let name = match (sub, set_flags) {
+        (false, false) => "ADC",
+        (false, true) => "ADCS",
+        (true, false) => "SBC",
+        (true, true) => "SBCS",
+    };
+    if ops.len() != 3 {
+        return asm_err(ln, &format!("{name} requires 3 operands: Rd, Rn, Rm"));
+    }
+    // The immediate spellings encode_dp accepts, refused here by name: this
+    // family has no immediate encoding at all, and `expected a register
+    // here` would leave a student hunting for a typo that is not there.
+    let op3 = ops[2].trim();
+    if op3.starts_with('#')
+        || op3.starts_with('\'')
+        || op3.starts_with('-')
+        || op3.chars().next().is_some_and(|c| c.is_ascii_digit())
+    {
+        return asm_err(
+            ln,
+            &format!("{name} takes three registers; there is no immediate form"),
+        );
+    }
+    reject_sp_operands(ops, ln, name)?;
+
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, rn_sf) = parse_register(ops[1], ln)?;
+    let (rm, rm_sf) = parse_register(op3, ln)?;
+    // One sf bit covers all three operands, so a mixed-width line has no
+    // encoding: it would silently assemble as whatever the destination said.
+    if rn_sf != sf || rm_sf != sf {
+        let width = if sf { "X" } else { "W" };
+        return asm_err(
+            ln,
+            &format!("{name} needs all three registers the same width (all {width} registers here)"),
+        );
+    }
+    let sf_bit = if sf { 1u32 } else { 0 };
+
+    Ok((sf_bit << 31) | ((sub as u32) << 30) | ((set_flags as u32) << 29)
+        | (0b11010000 << 21) | ((rm as u32) << 16) | ((rn as u32) << 5) | (rd as u32))
 }
 
 /// Refuse `sp` anywhere in an instruction whose encoding has no room for
@@ -3177,6 +3234,81 @@ mod tests {
         assert_eq!(cpu.regs.read_gpr(6, true), (1u64 << 62) - 1);
         // umull treats w1 (0xFFFF_FFFD) as unsigned.
         assert_eq!(cpu.regs.read_gpr(7, true), 0xFFFF_FFFDu64 * 5);
+    }
+
+    #[test]
+    fn carry_ops_encode_as_the_arm_arm_words_and_round_trip() {
+        use crate::decoder::{decode, Instruction};
+        let labels = HashMap::new();
+        let cases = [
+            (
+                "adc x0, x1, x2",
+                0x9A02_0020u32,
+                Instruction::DpCarry {
+                    sub: false, set_flags: false, sf: true, rd: 0, rn: 1, rm: 2,
+                },
+            ),
+            (
+                "adcs w3, w4, w5",
+                0x3A05_0083,
+                Instruction::DpCarry {
+                    sub: false, set_flags: true, sf: false, rd: 3, rn: 4, rm: 5,
+                },
+            ),
+            (
+                "sbc x9, x10, x11",
+                0xDA0B_0149,
+                Instruction::DpCarry {
+                    sub: true, set_flags: false, sf: true, rd: 9, rn: 10, rm: 11,
+                },
+            ),
+            (
+                "sbcs w0, w1, w2",
+                0x7A02_0020,
+                Instruction::DpCarry {
+                    sub: true, set_flags: true, sf: false, rd: 0, rn: 1, rm: 2,
+                },
+            ),
+            (
+                "adc x0, x1, xzr",
+                0x9A1F_0020,
+                Instruction::DpCarry {
+                    sub: false, set_flags: false, sf: true, rd: 0, rn: 1, rm: 31,
+                },
+            ),
+        ];
+        for (src, want, decoded) in cases {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert_eq!(word, want, "{src}");
+            assert_eq!(decode(word).unwrap(), decoded, "{src}");
+        }
+    }
+
+    #[test]
+    fn carry_ops_reject_an_immediate_third_operand() {
+        let labels = HashMap::new();
+        for (src, name) in [
+            ("adc x0, x1, #1", "ADC"),
+            ("adcs w0, w1, #1", "ADCS"),
+            ("sbc x0, x1, 5", "SBC"),
+            ("sbcs x0, x1, -1", "SBCS"),
+        ] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(
+                err.contains(&format!("{name} takes three registers")),
+                "{src}: {err}",
+            );
+            assert!(err.contains("no immediate form"), "{src}: {err}");
+        }
+    }
+
+    #[test]
+    fn carry_ops_reject_mixed_register_widths() {
+        let labels = HashMap::new();
+        for src in ["adc x0, w1, x2", "adcs w0, w1, x2", "sbc x0, x1, w2"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("same width"), "{src}: {err}");
+        }
     }
 
     #[test]

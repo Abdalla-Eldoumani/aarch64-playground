@@ -101,6 +101,22 @@ export function InteractiveExerciseView({
             onAttempt={(isCorrect) => handleAttempt(index, isCorrect)}
           />
         ))}
+      <p className="mt-12 flex justify-center">
+        <button
+          type="button"
+          onClick={() =>
+            window.scrollTo({
+              top: 0,
+              behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                ? "auto"
+                : "smooth",
+            })
+          }
+          className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] underline-offset-4 hover:text-[var(--text-primary)] hover:underline focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        >
+          back to top
+        </button>
+      </p>
     </article>
   );
 }

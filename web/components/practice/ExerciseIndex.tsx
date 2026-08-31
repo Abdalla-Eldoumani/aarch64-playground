@@ -1,25 +1,28 @@
 "use client";
 
 /**
- * The practice index: ruled datasheet rows ordered by metadata, with a labeled
- * search box, topic and difficulty filters, a solved/unsolved indicator, and
- * empty + loading states. It receives already-validated exercises as props from
- * the server index page and renders every row field as plain React text
+ * The practice index: two columns of ruled datasheet rows, coding exercises
+ * on the left and theory sets on the right, each grouped by topic in course
+ * order (lib/content/practice-topics owns both the split and the order). A
+ * shared search box and difficulty filter sit above both columns; a
+ * solved/unsolved indicator, empty and loading states, and the progress row
+ * complete it. It receives already-validated exercises as props from the
+ * server index page and renders every row field as plain React text
  * (auto-escaped) - the blurb is plain-text-derived from the prompt, never
  * Markdown - so there is no markdown/HTML injection path here.
  *
  * Each row leads with its sheet number `5.N` (the 1-based position in the
  * sorted order, stable under filtering), then the title, a quieter blurb line,
- * and the topic/difficulty/solved meta, inside one bordered container with
- * hairlines between rows.
+ * and the difficulty/solved meta, inside one bordered container per column
+ * with hairlines between rows and a sunken band at each topic boundary.
  *
  * Solved state comes from a useSyncExternalStore over the solved-state store:
  * the server snapshot is empty, so the server and first client render agree and
  * the solved badges appear after hydration without a mismatch, then update live
  * when a check passes here or in another tab.
  *
- * A quiet progress row below the list exports that set as a small json file and
- * imports one back, since localStorage is the only place it lives.
+ * A quiet progress row below the columns exports that set as a small json file
+ * and imports one back, since localStorage is the only place it lives.
  */
 
 import {
@@ -41,6 +44,13 @@ import {
   subscribeSolved,
 } from "@/lib/playground/solved-state";
 import { compareByOrder } from "@/lib/content/content-order";
+import {
+  PRACTICE_SIDES,
+  practiceSide,
+  topicLabel,
+  topicRank,
+  type PracticeSideInfo,
+} from "@/lib/content/practice-topics";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 
@@ -91,6 +101,7 @@ const ROW_CLASS =
 const CHIP_CLASS =
   "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
 const META_CLASS = "font-mono text-[11px] text-[var(--text-tertiary)]";
+const CAPTION_CLASS = "font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
 
 /** A quiet placeholder card, reused for the no-exercises and no-match states. */
 function EmptyCard({ message }: { message: string }): JSX.Element {
@@ -203,6 +214,129 @@ function toggleValue(set: Set<string>, value: string): Set<string> {
   return next;
 }
 
+interface Row {
+  exercise: Exercise;
+  blurb: string;
+  sheetNumber: string;
+}
+
+interface TopicGroup {
+  topic: string | undefined;
+  rows: Row[];
+}
+
+/**
+ * Rows of one side bucketed by topic, groups in course order, rows inside a
+ * group in sheet order. An exercise with no topic lands in a last, unlabeled
+ * group rather than vanishing.
+ */
+function groupByTopic(rows: Row[]): TopicGroup[] {
+  const groups = new Map<string | undefined, Row[]>();
+  for (const row of rows) {
+    const topic = row.exercise.topic;
+    const bucket = groups.get(topic);
+    if (bucket) bucket.push(row);
+    else groups.set(topic, [row]);
+  }
+  return [...groups.entries()]
+    .map(([topic, grouped]) => ({ topic, rows: grouped }))
+    .sort((a, b) => topicRank(a.topic) - topicRank(b.topic));
+}
+
+function ExerciseRow({ row, isSolved }: { row: Row; isSolved: boolean }): JSX.Element {
+  const { exercise, blurb, sheetNumber } = row;
+  return (
+    <li>
+      <Link href={`/practice/${exercise.slug}`} className={ROW_CLASS}>
+        <span className="font-mono text-[13px] font-medium text-[var(--text-tertiary)] group-hover:text-[var(--amber)]">
+          {sheetNumber}
+        </span>
+        <span className="flex flex-col gap-0.5">
+          <span className="font-sans text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--cyan)]">
+            {exercise.title}
+          </span>
+          {blurb && <span className="text-sm text-[var(--text-secondary)]">{blurb}</span>}
+          {(exercise.difficulty || isSolved) && (
+            <span className="mt-1 flex flex-wrap items-center gap-3">
+              {exercise.difficulty && <span className={META_CLASS}>{exercise.difficulty}</span>}
+              {isSolved && (
+                <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--success)]">
+                  <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[var(--success)]" />
+                  solved
+                </span>
+              )}
+            </span>
+          )}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+/**
+ * One column: its caption, title, and count, then the grouped rows. `all` is
+ * the side's full row set (for the count line); `rows` is what survives the
+ * search and difficulty filter.
+ */
+function SideColumn({
+  side,
+  all,
+  rows,
+  solvedSet,
+}: {
+  side: PracticeSideInfo;
+  all: Row[];
+  rows: Row[];
+  solvedSet: Set<string>;
+}): JSX.Element {
+  const headingId = useId();
+  const solvedCount = all.filter(({ exercise }) => solvedSet.has(exercise.slug)).length;
+  const noun = all.length === 1 ? "exercise" : "exercises";
+  const groups = groupByTopic(rows);
+
+  return (
+    <section aria-labelledby={headingId} className="space-y-4">
+      <div className="space-y-1">
+        <p className={CAPTION_CLASS}>{side.caption}</p>
+        <h2
+          id={headingId}
+          className="font-serif text-2xl font-semibold leading-tight text-[var(--text-primary)]"
+        >
+          {side.title}
+        </h2>
+        <p className="text-sm text-[var(--text-secondary)]">{side.description}</p>
+        <p className={META_CLASS}>
+          {all.length} {noun}
+          {solvedCount > 0 && ` · ${solvedCount} solved`}
+        </p>
+      </div>
+      {rows.length === 0 ? (
+        <EmptyCard message="No exercises match your search." />
+      ) : (
+        <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
+          {groups.map((group) => (
+            <li key={group.topic ?? "untagged"}>
+              <h3 className={`${CAPTION_CLASS} bg-[var(--bg-sunken)] px-4 py-2`}>
+                {group.topic ? topicLabel(group.topic) : "other"}
+                <span className="ml-2 normal-case tracking-normal">· {group.rows.length}</span>
+              </h3>
+              <ul className="divide-y divide-[var(--border)]">
+                {group.rows.map((row) => (
+                  <ExerciseRow
+                    key={row.exercise.slug}
+                    row={row}
+                    isSolved={solvedSet.has(row.exercise.slug)}
+                  />
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function ExerciseIndex({
   exercises,
   loading,
@@ -211,7 +345,6 @@ export function ExerciseIndex({
   loading?: boolean;
 }): JSX.Element {
   const [query, setQuery] = useState("");
-  const [activeTopics, setActiveTopics] = useState<Set<string>>(new Set());
   const [activeDifficulties, setActiveDifficulties] = useState<Set<string>>(new Set());
   const searchId = useId();
 
@@ -232,12 +365,6 @@ export function ExerciseIndex({
     [exercises],
   );
 
-  const allTopics = useMemo(() => {
-    const set = new Set<string>();
-    for (const { exercise } of rows) if (exercise.topic) set.add(exercise.topic);
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [rows]);
-
   const allDifficulties = useMemo(() => {
     const set = new Set<string>();
     for (const { exercise } of rows) if (exercise.difficulty) set.add(exercise.difficulty);
@@ -251,14 +378,21 @@ export function ExerciseIndex({
         .join(" ")
         .toLowerCase();
       const matchesQuery = q === "" || haystack.includes(q);
-      const matchesTopic =
-        activeTopics.size === 0 || (exercise.topic ? activeTopics.has(exercise.topic) : false);
       const matchesDifficulty =
         activeDifficulties.size === 0 ||
         (exercise.difficulty ? activeDifficulties.has(exercise.difficulty) : false);
-      return matchesQuery && matchesTopic && matchesDifficulty;
+      return matchesQuery && matchesDifficulty;
     });
-  }, [rows, query, activeTopics, activeDifficulties]);
+  }, [rows, query, activeDifficulties]);
+
+  // A side with nothing on the sheet at all is left out, so a content set
+  // that is all coding exercises renders as one column rather than one
+  // column and an empty card.
+  const sides = PRACTICE_SIDES.map((side) => ({
+    side,
+    all: rows.filter(({ exercise }) => practiceSide(exercise) === side.id),
+    rows: filtered.filter(({ exercise }) => practiceSide(exercise) === side.id),
+  })).filter(({ all }) => all.length > 0);
 
   if (loading) {
     return (
@@ -279,7 +413,7 @@ export function ExerciseIndex({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="space-y-3">
         <div>
           <label htmlFor={searchId} className="sr-only">
@@ -294,21 +428,6 @@ export function ExerciseIndex({
             className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:shadow-[var(--ring)]"
           />
         </div>
-        {allTopics.length > 0 && (
-          <div role="group" aria-label="Filter by topic" className="flex flex-wrap gap-2">
-            {allTopics.map((topic) => (
-              <button
-                key={topic}
-                type="button"
-                aria-pressed={activeTopics.has(topic)}
-                onClick={() => setActiveTopics((prev) => toggleValue(prev, topic))}
-                className={CHIP_CLASS}
-              >
-                {topic}
-              </button>
-            ))}
-          </div>
-        )}
         {allDifficulties.length > 0 && (
           <div role="group" aria-label="Filter by difficulty" className="flex flex-wrap gap-2">
             {allDifficulties.map((difficulty) => (
@@ -326,49 +445,11 @@ export function ExerciseIndex({
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyCard message="No exercises match your search." />
-      ) : (
-        <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
-          {filtered.map(({ exercise, blurb, sheetNumber }) => {
-            const isRowSolved = solvedSet.has(exercise.slug);
-            return (
-              <li key={exercise.slug}>
-                <Link href={`/practice/${exercise.slug}`} className={ROW_CLASS}>
-                  <span className="font-mono text-[13px] font-medium text-[var(--text-tertiary)] group-hover:text-[var(--amber)]">
-                    {sheetNumber}
-                  </span>
-                  <span className="flex flex-col gap-0.5">
-                    <span className="font-sans text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--cyan)]">
-                      {exercise.title}
-                    </span>
-                    {blurb && (
-                      <span className="text-sm text-[var(--text-secondary)]">{blurb}</span>
-                    )}
-                    {(exercise.topic || exercise.difficulty || isRowSolved) && (
-                      <span className="mt-1 flex flex-wrap items-center gap-3">
-                        {exercise.topic && <span className={META_CLASS}>{exercise.topic}</span>}
-                        {exercise.difficulty && (
-                          <span className={META_CLASS}>{exercise.difficulty}</span>
-                        )}
-                        {isRowSolved && (
-                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--success)]">
-                            <span
-                              aria-hidden="true"
-                              className="h-2 w-2 rounded-full bg-[var(--success)]"
-                            />
-                            solved
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <div className={`grid gap-10 ${sides.length > 1 ? "lg:grid-cols-2 lg:gap-8" : ""}`}>
+        {sides.map(({ side, all, rows: sideRows }) => (
+          <SideColumn key={side.id} side={side} all={all} rows={sideRows} solvedSet={solvedSet} />
+        ))}
+      </div>
 
       <ProgressRow />
     </div>

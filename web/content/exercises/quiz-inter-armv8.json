@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: ARMv8 Assembly - Intermediate",
+  "slug": "quiz-inter-armv8",
+  "order": 43,
+  "topic": "armv8",
+  "difficulty": "core",
+  "variant": "quiz",
+  "prompt": "Work through argument registers, instruction aliases, the frame record, integer division, condition flags, and stepping in gdb.",
+  "questions": [
+    {
+      "question": "What role do registers x0 through x7 play in an AArch64 procedure call?",
+      "options": [
+        "They are callee-saved registers.",
+        "They pass the first eight arguments into a procedure and carry the result back out.",
+        "They hold intra-procedure-call scratch data.",
+        "They act as the frame pointer and the procedure link register."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The first eight arguments travel in x0 through x7, and the result comes back in x0. Anything past the eighth argument is passed on the stack instead.",
+      "hint": "Think about where arguments have to be sitting before you execute a bl."
+    },
+    {
+      "question": "The instruction cmp x20, x21 is an alias. Which instruction does the assembler actually encode?",
+      "options": [
+        "subs xzr, x20, x21",
+        "adds xzr, x20, x21",
+        "sub x20, x20, x21",
+        "ands xzr, x20, x21"
+      ],
+      "correctAnswer": 0,
+      "explanation": "cmp subtracts with the s suffix so the condition flags are set, and writes the difference to xzr so the numeric result is thrown away. That is why cmp never disturbs either operand.",
+      "hint": "Comparing means subtracting and keeping the flags, not the difference."
+    },
+    {
+      "question": "At the top of a routine, what does stp x29, x30, [sp, -16]! accomplish?",
+      "options": [
+        "It loads 16 bytes from the stack into x29 and x30.",
+        "It subtracts 16 from sp first, then stores x29 and x30 into the 16 bytes it just allocated.",
+        "It sets sp to -16.",
+        "It stores x29 and x30, then adds 16 to sp to release the space."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The ! makes this pre-indexed, so sp moves down by 16 before the store. Those 16 bytes hold the saved frame pointer and link register, and that pair is the frame record.",
+      "hint": "The ! decides whether sp moves before or after the store."
+    },
+    {
+      "question": "What happens to the remainder when sdiv divides one register by another?",
+      "options": [
+        "It is stored in x8, the indirect result register.",
+        "It raises an exception.",
+        "The quotient is truncated toward zero and the remainder is discarded.",
+        "It is written to the destination register alongside the quotient."
+      ],
+      "correctAnswer": 2,
+      "explanation": "sdiv produces only an integer quotient, truncated toward zero, and keeps nothing else. To recover the remainder you multiply the quotient back and subtract, which msub does in one instruction.",
+      "hint": "Divide 14 by 3 with sdiv and the destination register holds 4."
+    },
+    {
+      "question": "In gdb, what is the difference between si and ni?",
+      "options": [
+        "si steps over calls, ni steps into them.",
+        "Both execute one instruction, but at a bl the ni command runs the whole call and stops after it returns, while si stops on the callee's first instruction.",
+        "si prints signed integers, ni prints negative integers.",
+        "There is no difference; they are aliases for the same command."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Both advance by one machine instruction, so on ordinary instructions they behave the same. They diverge only at a call: si steps into the callee, ni steps over it.",
+      "hint": "Read them as 'step instruction' and 'next instruction'."
+    },
+    {
+      "question": "Which condition flag records that the result of an operation is negative?",
+      "options": [
+        "Z",
+        "N",
+        "V",
+        "C"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The N flag takes the value of the result's sign bit, bit 63 for an X register and bit 31 for a W register. Most instructions leave the flags alone; the s-suffixed forms such as subs and adds, along with cmp, cmn, and tst, are the ones that write them.",
+      "hint": "One of the four flags copies the sign bit of the result."
+    },
+    {
+      "question": "In GAS, which prefix marks an immediate written in binary?",
+      "options": [
+        "0x",
+        "a leading 0",
+        "0b",
+        "#"
+      ],
+      "correctAnswer": 2,
+      "explanation": "0b introduces a binary literal, so 0b101 is 5. A leading 0x means hexadecimal, a bare leading 0 means octal, and # is the optional immediate marker, not a radix.",
+      "hint": "Hex takes a letter after the zero, and so does binary."
+    },
+    {
+      "question": "What does it mean that x19 through x28 are callee-saved?",
+      "options": [
+        "Their values are wiped when a function returns.",
+        "A routine that wants to use one must save it on entry and restore it before returning, so a caller sees them unchanged across a call.",
+        "The hardware saves and restores them automatically on every bl.",
+        "They are scratch registers that nobody has to preserve."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Callee-saved means the routine being called owns the responsibility: it puts the values back before returning. That is what lets a caller keep a value in x19 across a bl without spilling it.",
+      "hint": "Ask which side of the call, caller or callee, has to do the saving."
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "title": "Fill in the Blank: Array and Struct Syntax",
+  "slug": "blanks-arrays",
+  "order": 50,
+  "topic": "arrays",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonics, extend options, and offsets that reach array elements and struct fields in memory.",
+  "blanks": [
+    {
+      "prompt": "An array of .dword values starts at the label nums. Give the number of bytes between one element and the next, in decimal.",
+      "code": "address of nums[i] = nums + (i * ___)",
+      "blanks": [
+        "8"
+      ],
+      "explanation": "Element i sits at the base address plus i times the element size, and one .dword is 8 bytes wide. Scaling by the element size instead of by 1 is what makes an index land on an element boundary.",
+      "hint": "How many bytes does one .dword take?"
+    },
+    {
+      "prompt": "Store w22 into a .word array based at x19, scaling the 64-bit index held in x20 inside the brackets.",
+      "code": "str w22, [x19, x20, ___ 2]",
+      "blanks": [
+        "lsl"
+      ],
+      "explanation": "The register offset form can scale the index for you: lsl 2 multiplies x20 by 4, the size of one .word element. That saves a separate shift instruction before the store.",
+      "hint": "Logical shift left."
+    },
+    {
+      "prompt": "Store w22 into the same .word array, this time with the index held in the 32-bit register w20.",
+      "code": "str w22, [x19, w20, ___ 2]",
+      "blanks": [
+        "sxtw"
+      ],
+      "explanation": "A 32-bit index needs an extend option before it can be added to a 64-bit base. sxtw 2 sign-extends w20 to 64 bits and then scales it by 4, so a negative index still computes the right address.",
+      "hint": "Sign-extend word."
+    },
+    {
+      "prompt": "A date struct has field offsets date_year, date_month, and date_day. An employee struct holds a date at offset employee_start. With the employee record base in x19, store the day byte from w20.",
+      "code": "strb w20, [x19, employee_start + ___]",
+      "blanks": [
+        "date_day"
+      ],
+      "explanation": "Offsets into a nested struct add up: employee_start reaches the inner date, and date_day reaches the field inside it. The assembler evaluates the sum and encodes one constant offset.",
+      "hint": "Add the offset of the field inside the nested struct."
+    },
+    {
+      "prompt": "The record base is in x19 and rec_b is the offset of a signed char field. Load that field into a 32-bit register.",
+      "code": "___ w21, [x19, rec_b]",
+      "blanks": [
+        "ldrsb"
+      ],
+      "explanation": "ldrsb loads one byte and sign-extends it across all 32 bits of w21, so a stored -1 reads back as -1. ldrb would zero-extend the same byte to 255.",
+      "hint": "Load register signed byte."
+    }
+  ]
+}

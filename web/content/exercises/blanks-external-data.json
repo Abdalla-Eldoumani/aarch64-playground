@@ -1,0 +1,57 @@
+{
+  "title": "Fill in the Blank: External Data",
+  "slug": "blanks-external-data",
+  "order": 65,
+  "topic": "external-data",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing pieces of data declared outside a function: a `.bss` reservation, `.data` values and string literals, cross-file symbol visibility, and one gdb print format.",
+  "blanks": [
+    {
+      "prompt": "Reserve 40 bytes of uninitialized space in the .bss section for a 10-element array of 4-byte integers.",
+      "code": "myarray: .___ 10 * 4",
+      "blanks": [
+        "skip"
+      ],
+      "explanation": ".bss holds data that starts out zeroed and needs no initializer in the file, so the array is declared by reserving a byte count with .skip. The assembler folds 10 * 4 to 40 while assembling.",
+      "hint": "The directive steps over a run of bytes rather than emitting values."
+    },
+    {
+      "prompt": "Declare a 64-bit integer initialized to 0 in the .data section.",
+      "code": "c_m: .___ 0",
+      "blanks": [
+        "dword"
+      ],
+      "explanation": ".dword emits 8 bytes, the width an x register loads and stores. .word would emit only 4 bytes, which is the width of a w register.",
+      "hint": "A word is 4 bytes, so a 64-bit value takes a double word."
+    },
+    {
+      "prompt": "In gdb, print the low 32 bits of x19 as a character.",
+      "code": "p/___ $w19",
+      "blanks": [
+        "c"
+      ],
+      "explanation": "The letter after the slash selects the print format, and c shows the value as a character next to its numeric code. $w19 is gdb's name for the 32-bit view of x19.",
+      "hint": "The format letter is the first letter of character."
+    },
+    {
+      "prompt": "Make the label myvar_m visible to other files that are assembled separately and linked together.",
+      "code": ".___ myvar_m",
+      "blanks": [
+        "global"
+      ],
+      "explanation": "A label is local to the file that defines it until it is exported, and .global exports it so the linker can match it against references from another file. The matching file declares nothing extra; it just refers to the name.",
+      "hint": "The directive widens a label's visibility past its own file."
+    },
+    {
+      "prompt": "Declare a null-terminated string literal in the .data section.",
+      "code": "fmt: .___ \"Hello, world!\\n\"",
+      "blanks": [
+        "string",
+        "asciz"
+      ],
+      "explanation": ".string emits the characters and appends the terminating zero byte for you, which is what printf needs to know where the text ends. .ascii emits the characters alone, so it would need an explicit 0 after it.",
+      "hint": "The directive is named after the kind of data it stores."
+    }
+  ]
+}

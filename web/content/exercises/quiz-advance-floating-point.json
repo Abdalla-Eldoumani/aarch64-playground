@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Floating Point Instructions - Advanced",
+  "slug": "quiz-advance-floating-point",
+  "order": 69,
+  "topic": "floating-point",
+  "difficulty": "challenge",
+  "variant": "quiz",
+  "prompt": "Work through the callee-saved `d` registers, the `fmov` immediate range, conversions between integers and floats, and the fused multiply-add family.",
+  "questions": [
+    {
+      "question": "When a subroutine saves the callee-saved floating-point registers d8 to d15 on the stack, how much of the underlying 128-bit hardware register must actually be preserved?",
+      "options": [
+        "All 128 bits.",
+        "Only the low 64 bits.",
+        "Only the low 32 bits.",
+        "Only the high 64 bits."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The calling convention makes a callee preserve v8 through v15, but only the low 64 bits of each one. Those low 64 bits are exactly the d8 to d15 view, so storing the d register saves everything a caller is allowed to depend on.",
+      "hint": "You only need to save the part that holds a double."
+    },
+    {
+      "question": "What restriction applies to the immediate value in an fmov that loads a floating-point constant into a register?",
+      "options": [
+        "The immediate must be a whole integer.",
+        "The immediate must be expressible as +/- n/16 * 2^r, where n is 16 to 31 and r is -3 to +4.",
+        "The immediate cannot be negative.",
+        "The immediate must be a power of two."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The fmov immediate is packed into 8 bits, so only a small set of constants encodes exactly: +/- n/16 * 2^r with n in 16 to 31 and r in -3 to +4. Anything outside that set is loaded from memory instead, usually a .double in .data reached with an ldr.",
+      "hint": "The encoding is 8 bits total: 1 sign bit, 3 exponent bits, 4 fraction bits."
+    },
+    {
+      "question": "Which instruction converts a single-precision float into the nearest 32-bit signed integer?",
+      "options": [
+        "fcvt Wd, Sn",
+        "scvtf Wd, Sn",
+        "fcvtns Wd, Sn",
+        "fcvtnu Wd, Sn"
+      ],
+      "correctAnswer": 2,
+      "explanation": "fcvtns Wd, Sn reads the single in Sn and writes the nearest signed integer to Wd, with ties going to even. fcvtnu produces an unsigned result, scvtf runs the other direction from integer to float, and fcvt only changes precision between float formats.",
+      "hint": "Read the mnemonic as float convert, nearest, signed."
+    },
+    {
+      "question": "The instruction fmsub Dd, Dn, Dm, Da executes. Which formula does it apply?",
+      "options": [
+        "Dd = Da - (Dn * Dm)",
+        "Dd = (Da - Dn) * Dm",
+        "Dd = (Dn * Dm) - Da",
+        "Dd = -(Da * Dn * Dm)"
+      ],
+      "correctAnswer": 0,
+      "explanation": "fmsub subtracts the product of the first two source registers from the fourth operand, so Dd = Da - (Dn * Dm). It is a fused operation, meaning the product is not rounded before the subtraction, and fmadd is the same shape with the product added instead.",
+      "hint": "The last operand is the value being subtracted from, not the value being subtracted."
+    },
+    {
+      "question": "Which instruction converts a 64-bit signed integer into a double-precision float?",
+      "options": [
+        "fcvtns Dd, Xn",
+        "scvtf Dd, Xn",
+        "ucvtf Dd, Xn",
+        "fmov Dd, Xn"
+      ],
+      "correctAnswer": 1,
+      "explanation": "scvtf Dd, Xn reads Xn as a two's complement signed value and writes the equivalent double to Dd. ucvtf would read the same bits as unsigned, and fmov Dd, Xn copies the 64 bits unchanged so they are reinterpreted as a double's bit pattern rather than converted.",
+      "hint": "Read the mnemonic as signed convert to float."
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "title": "argv arithmetic",
   "slug": "argv-arithmetic",
-  "order": 31,
+  "order": 27,
   "topic": "argv",
   "difficulty": "challenge",
   "prompt": "Every number on the command line gets added into one total. The args box already holds four of them.\n\n`main` receives `argc` in `x0` and `argv`, an array of string pointers, in `x1`. Entry zero is the program's own name, so start at one. Each entry is eight bytes, which is what the scaled form `ldr x0, [argv_r, i_r, lsl 3]` is for; `bl atoi` turns the string into a number.\n\nChange the args box and run again: the total should follow.\n\n## what is checked\n\n- the total of the arguments is printed on its own line\n- the program exits cleanly\n- the numbers really come from argv (`atoi` called, total not written in)",

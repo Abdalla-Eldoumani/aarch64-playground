@@ -1,7 +1,7 @@
 {
   "title": "fizzbuzz, by hand",
   "slug": "fizzbuzz-by-hand",
-  "order": 17,
+  "order": 9,
   "topic": "loops",
   "difficulty": "core",
   "prompt": "The classic interview question, without the safety net of a remainder operator: print the numbers 1 through 15, except say `fizz` for multiples of 3, `buzz` for multiples of 5, and `fizzbuzz` for multiples of both.\n\nAArch64 has division but no remainder instruction. The course idiom is `udiv` then `msub`: divide, multiply the quotient back, subtract, and what is left is the remainder.\n\n## what is checked\n\n- all fifteen lines, exactly as fizzbuzz demands\n- the program exits cleanly\n- the remainders come from `msub`, not from a lookup",

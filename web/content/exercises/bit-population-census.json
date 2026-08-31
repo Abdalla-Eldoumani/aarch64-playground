@@ -1,7 +1,7 @@
 {
   "title": "bit population census",
   "slug": "bit-population-census",
-  "order": 21,
+  "order": 14,
   "topic": "bitwise",
   "difficulty": "core",
   "prompt": "How many bits of `0xb7a5` are set? Count them with a loop instead of trusting anyone's arithmetic.\n\nThe classic walk: mask off the lowest bit with `and`, add it to the count, shift the value right by one, and stop when nothing is left. Every set bit takes exactly one turn through position zero.\n\n## what is checked\n\n- the count of set bits is printed on its own line\n- the program exits cleanly\n- the count comes from masking and shifting (`and`, `lsr`), not from counting on paper",

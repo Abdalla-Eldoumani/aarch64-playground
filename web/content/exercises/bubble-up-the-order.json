@@ -1,7 +1,7 @@
 {
   "title": "bubble up the order",
   "slug": "bubble-up-the-order",
-  "order": 32,
+  "order": 18,
   "topic": "arrays",
   "difficulty": "challenge",
   "prompt": "Six values sit in a tangle in `.data`. Bubble sort them in place, smallest first; the print loop at the bottom will show whatever order the memory ends up in.\n\nBubble sort is two nested loops: the outer one counts passes, the inner one walks adjacent pairs, swapping any pair that is out of order. Both elements of a pair load with the scaled-index form, and a swap is simply storing them back in each other's slots. After each pass the largest remaining value has bubbled to the end, so the inner walk can shrink as the passes go by.\n\n## what is checked\n\n- six lines, the values in ascending order\n- the program exits cleanly\n- the sort rearranges memory (`str` present, comparisons present)",

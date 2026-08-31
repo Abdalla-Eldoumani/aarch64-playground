@@ -1,7 +1,7 @@
 {
   "title": "fix the loop bound",
   "slug": "fix-the-loop-bound",
-  "order": 2,
+  "order": 4,
   "topic": "loops",
   "difficulty": "core",
   "prompt": "This program should compute `n` factorial, the product `1 * 2 * ... * n`, and print it. With `n` set to 5 it runs and prints a number, but the number is wrong: the loop stops one step too early, so the last value never makes it into the product.\n\nFind the loop's exit condition and correct the bound so every value from 1 through `n` is included. Leave the rest of the program as it is, and let the loop do the work rather than writing the result in directly.\n\n## what is checked\n\n- the corrected product is printed on its own line\n- the program exits cleanly\n- the product is still computed by the loop, not written in as a constant",

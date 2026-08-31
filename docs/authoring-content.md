@@ -129,12 +129,22 @@ Fields every variant carries:
 
 - `title`: the heading, a non-empty string.
 - `slug`: url-safe kebab-case, matching the file name.
-- `order`: the index sorts by this; a number or string.
-- `topic`: optional string for the index filter.
+- `order`: the index sorts by this; a number or string. The sheet runs
+  every coding exercise first (1 to 27 today) and then every theory set
+  (28 onward), so give a new set the next number after the last one on its
+  side. Nothing checks that two files share a number, so look before you
+  pick.
+- `topic`: optional string; the practice page groups exercises under it.
+  The topics, their order on the page, and their printed labels live in
+  `web/lib/content/practice-topics.ts`; a topic missing from that table
+  still renders (its id is the label) but sorts after every listed one, so
+  a new topic wants a row there.
 - `difficulty`: optional, one of `intro`, `core`, or `challenge`.
 - `prompt`: the task description, Markdown.
 - `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
-  or `blanks`.
+  or `blanks`. The variant decides where the exercise appears: `write` and
+  `identify-bug` sit in the coding column of the practice page, the other
+  three in the theory column.
 
 The coding variants (`write`, and `identify-bug`, where the starter is a
 broken program the reader fixes) add:
@@ -169,8 +179,16 @@ a coding exercise's file carries no answer key.
 
 The interactive variants skip the editor and grade entirely in the page, so
 their files declare the expected answers (that is by design and only applies
-to these variants; coding exercises still never store one). Each carries one
-question list in place of `starter`/`acceptance`:
+to these variants; coding exercises still never store one). They ship in
+families named `quiz-basic-<family>`, `quiz-inter-<family>`, and
+`quiz-advance-<family>` (titled "Quiz: <Topic> - Fundamentals",
+"- Intermediate", and "- Advanced"), `blanks-<family>` ("Fill in the Blank:
+..."), and `predict-<family>` ("Predict: ..."). The family is the shared
+part of the five slugs and is usually the `topic` id, but it does not have
+to be: the memory-and-stack sets are the `frame-stack` family under the
+`memory` topic, and a slug never changes once shipped, so pick the family
+name once. Each carries one question list in place of
+`starter`/`acceptance`:
 
 - `quiz`: `questions`, each
   `{ "question": "...", "options": ["...", "..."], "correctAnswer": 1,
@@ -187,7 +205,11 @@ question list in place of `starter`/`acceptance`:
   answer.
 
 `hint` is optional everywhere and is the only feedback a wrong attempt sees;
-the explanation renders only after a correct one.
+the explanation renders only after a correct one. Unlike the exercise
+`prompt`, the per-question fields (`question`, `options`, `code`, `answer`,
+`explanation`, `hint`, and a blank's `prompt`) render as plain text, so
+write mnemonics and registers bare there; a backtick would show up as a
+literal character.
 
 ### a worked exercise
 

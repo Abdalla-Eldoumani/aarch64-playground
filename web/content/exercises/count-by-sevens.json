@@ -1,7 +1,7 @@
 {
   "title": "count by sevens",
   "slug": "count-by-sevens",
-  "order": 14,
+  "order": 7,
   "topic": "loops",
   "difficulty": "intro",
   "prompt": "Print every multiple of seven from 7 up to and including 70, one per line.\n\nThe starter holds the first multiple and the limit in callee-saved registers. Write the loop: print, step by seven, and keep going while the counter has not passed the limit. Since `printf` is a function call, it is free to clobber the caller-saved registers; that is exactly why the loop state lives in `x19` and `x20`.\n\n## what is checked\n\n- ten lines, `7` through `70`\n- the program exits cleanly\n- a comparison drives the loop",

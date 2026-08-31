@@ -1,7 +1,7 @@
 {
   "title": "pick the bigger one",
   "slug": "pick-the-bigger-one",
-  "order": 15,
+  "order": 3,
   "topic": "branching",
   "difficulty": "intro",
   "prompt": "Two contenders sit in registers. Print the larger one.\n\nA clean pattern: assume one of them is the winner, then compare and replace the assumption only when the other is bigger. That way there is exactly one branch to reason about.\n\n## what is checked\n\n- the larger value is printed on its own line\n- the program exits cleanly\n- a comparison decides it",

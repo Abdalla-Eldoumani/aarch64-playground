@@ -18,7 +18,7 @@ reference).
 | 404 and fault pages (route error boundary, root boundary, copyable report) | `web/app/not-found.tsx`, `web/components/chrome/NotFound.tsx`, `web/app/error.tsx`, `web/app/global-error.tsx` |
 | Shared embeddable emulator | `web/components/playground/EmbeddablePlayground.tsx` |
 | Lessons (`/learn`) | `web/app/(site)/learn/`, `web/components/learn/LessonIndex.tsx`, `LessonArticle.tsx`, `LessonMarkdown.tsx`, `web/lib/content/lessons.ts` |
-| Exercises (`/practice`) | `web/app/(site)/practice/`, `web/components/practice/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/content/exercises.ts` |
+| Exercises (`/practice`) | `web/app/(site)/practice/`, `web/components/practice/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/content/exercises.ts`, `web/lib/content/practice-topics.ts` (the code/theory split and the topic order) |
 | Interactive question sets (quiz, fill-in-the-blank, mental trace; graded in the page) | `web/components/practice/InteractiveExerciseView.tsx`, `QuizBlock.tsx`, `BlanksBlock.tsx`, `PredictionBlock.tsx`, `FeedbackAlert.tsx` |
 | Read-only code listing with one-click copy | `web/components/ui/CodeBlock.tsx` |
 | "Open in playground" hand-off (shared pill; asm code blocks only) | `web/components/ui/OpenInPlayground.tsx` (used by `web/components/learn/LessonArticle.tsx` and `web/components/practice/ExerciseView.tsx`) |

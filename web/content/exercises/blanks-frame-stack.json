@@ -1,81 +1,102 @@
 {
-  "title": "Practice: Memory Addressing Syntax",
+  "title": "Fill in the Blank: Memory Addressing Syntax",
   "slug": "blanks-frame-stack",
-  "order": 9,
-  "topic": "syntax",
+  "order": 55,
+  "topic": "memory",
   "difficulty": "core",
   "variant": "blanks",
-  "prompt": "Fill in the missing mnemonics, registers, or symbols to construct accurate AArch64 memory instructions.",
+  "prompt": "Fill in the missing mnemonics, registers, directives, and symbols that complete these AArch64 instructions.",
   "blanks": [
     {
       "prompt": "Load a single byte from memory into w20, zero-extending the remaining bits.",
       "code": "___ w20, [x29, 16]",
-      "blanks": ["ldrb"],
-      "explanation": "The 'ldrb' instruction loads 1 byte from RAM into the low-order part of Wt, zero-extending high-order bits.",
+      "blanks": [
+        "ldrb"
+      ],
+      "explanation": "ldrb loads one byte into the low 8 bits of w20 and zeroes every bit above it. Use it when the byte in memory is unsigned; ldrsb is the sign-extending counterpart.",
       "hint": "Load Register Byte."
     },
     {
       "prompt": "Store exactly 2 bytes (a halfword) from w21 into memory.",
       "code": "___ w21, [x29, 20]",
-      "blanks": ["strh"],
-      "explanation": "The 'strh' instruction stores the low-order halfword (2 bytes) in Wt to RAM.",
+      "blanks": [
+        "strh"
+      ],
+      "explanation": "strh writes the low 16 bits of w21 and touches no other memory. The h suffix selects the halfword width, which is 2 bytes.",
       "hint": "Store Register Halfword."
     },
     {
       "prompt": "Load a 64-bit value using pre-indexed addressing, updating x20 by 10.",
       "code": "ldr x21, [x20, 10]___",
-      "blanks": ["!"],
-      "explanation": "Pre-indexed addressing is denoted by adding an exclamation mark '!' to the end of the brackets.",
-      "hint": "The exclamation mark updates the base register."
+      "blanks": [
+        "!"
+      ],
+      "explanation": "The ! after the closing bracket selects the pre-indexed form. x20 becomes x20 + 10 first, and the load reads from that updated address.",
+      "hint": "The exclamation mark marks the pre-indexed form."
     },
     {
       "prompt": "Load a 32-bit value using post-indexed addressing, moving x28 forward by 8 bytes after the load.",
       "code": "ldr w20, [x28]___ 8",
-      "blanks": [","],
-      "explanation": "In post-indexed addressing, the immediate offset is placed outside the brackets, separated by a comma.",
-      "hint": "Look at where the offset is located in relation to the brackets."
+      "blanks": [
+        ","
+      ],
+      "explanation": "In post-indexed addressing the offset sits outside the brackets, separated from them by a comma. The load uses the address already in x28, then x28 advances by 8.",
+      "hint": "Look at where the offset appears in relation to the brackets."
     },
     {
       "prompt": "Add a sign-extended 32-bit register offset (w21) to the base register (x29) during a load.",
       "code": "ldr x22, [x29, w21, ___]",
-      "blanks": ["SXTW", "sxtw"],
-      "explanation": "The SXTW extension adds a sign-extended offset in Wm to the base.",
+      "blanks": [
+        "sxtw"
+      ],
+      "explanation": "sxtw sign-extends the 32-bit value in w21 to 64 bits before it is added to the base in x29. A 32-bit register offset needs an extend operator, since the assembler cannot otherwise tell whether the index is signed or unsigned.",
       "hint": "Sign eXtend Word."
     },
     {
-      "prompt": "Define a macro 'a_s' with a value of 16.",
+      "prompt": "Define a macro a_s with a value of 16.",
       "code": "___(a_s, 16)",
-      "blanks": ["define"],
-      "explanation": "m4 macros can be used for offsets to improve readability using the 'define' keyword.",
-      "hint": "Standard m4 macro keyword."
+      "blanks": [
+        "define"
+      ],
+      "explanation": "m4 expands define(a_s, 16) by substituting 16 for every later use of a_s. Naming stack offsets this way keeps the frame layout readable when the offsets change.",
+      "hint": "The standard m4 macro keyword."
     },
     {
-      "prompt": "Create an assembler equate that renames register x29 to 'fp'.",
+      "prompt": "Create an assembler equate that renames register x29 to fp.",
       "code": "fp .___ x29",
-      "blanks": ["req"],
-      "explanation": "Register equates are useful for renaming using the '.req' directive.",
-      "hint": "Stands for 'request'."
+      "blanks": [
+        "req"
+      ],
+      "explanation": ".req creates a register alias, so fp .req x29 lets the rest of the file write fp wherever x29 is meant. The alias is an assemble-time rename, not a separate register.",
+      "hint": "Short for request."
     },
     {
       "prompt": "Ensure the following machine instruction is properly 4-byte aligned.",
       "code": ".___ 4",
-      "blanks": ["balign"],
-      "explanation": "Machine instructions must be word-aligned. To ensure this, use: .balign 4.",
-      "hint": "Byte Align."
+      "blanks": [
+        "balign"
+      ],
+      "explanation": "Machine instructions must start on a 4-byte boundary, and .balign 4 pads forward until the next multiple of 4. The operand of .balign counts bytes, not powers of two.",
+      "hint": "Think byte align."
     },
     {
-      "prompt": "Calculate a stack allocation of -20 bytes while forcing quadword (-16) alignment.",
+      "prompt": "Calculate a stack allocation of -20 bytes while forcing 16-byte alignment.",
       "code": "add sp, sp, -20 & ___",
-      "blanks": ["-16"],
-      "explanation": "To guarantee alignment, clear the low 4 bits of the number and AND it with -16.",
-      "hint": "You need to AND it with negative sixteen."
+      "blanks": [
+        "-16"
+      ],
+      "explanation": "ANDing with -16 clears the low four bits, so -20 becomes -32 and sp stays 16-byte aligned. The assembler folds the whole expression into one constant before the instruction is encoded.",
+      "hint": "You need to AND the value with negative sixteen."
     },
     {
-      "prompt": "Set the Frame Pointer as a stable anchor at the beginning of a subroutine.",
+      "prompt": "Set the frame pointer as a stable anchor at the beginning of a subroutine.",
       "code": "mov ___, sp",
-      "blanks": ["x29", "fp"],
-      "explanation": "The 'mov' instruction sets x29 (FP) to point to the frame record.",
-      "hint": "Which register is the Frame Pointer?"
+      "blanks": [
+        "x29",
+        "fp"
+      ],
+      "explanation": "x29 is the frame pointer. Copying sp into it once the frame record is on the stack gives the body of the subroutine a base that stays put even if sp moves again.",
+      "hint": "Which register is the frame pointer?"
     }
   ]
 }

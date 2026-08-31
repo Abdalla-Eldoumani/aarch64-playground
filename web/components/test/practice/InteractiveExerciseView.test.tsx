@@ -68,4 +68,12 @@ describe("InteractiveExerciseView", () => {
     expect(screen.getByText("0 of 2 correct")).toBeTruthy();
     expect(markSolved).not.toHaveBeenCalled();
   });
+
+  it("offers a back-to-top control after the last block that scrolls the window up", () => {
+    const scrollTo = vi.fn();
+    Object.defineProperty(window, "scrollTo", { value: scrollTo, writable: true });
+    render(<InteractiveExerciseView exercise={QUIZ} />);
+    fireEvent.click(screen.getByRole("button", { name: "back to top" }));
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0 }));
+  });
 });

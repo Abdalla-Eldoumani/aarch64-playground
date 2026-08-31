@@ -1,0 +1,39 @@
+{
+  "title": "Predict: Bitwise Mechanics",
+  "slug": "predict-binary-logic",
+  "order": 36,
+  "topic": "binary-logic",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Act as the CPU. Trace each shift, mask, and sign-extension snippet and give the exact value it leaves in the destination register.",
+  "predictions": [
+    {
+      "code": "mov w20, 5\nlsl w19, w20, 3",
+      "question": "What value does w19 hold after these two instructions? Answer in decimal.",
+      "answer": "40",
+      "explanation": "lsl by n multiplies by 2^n, so shifting 5 left by 3 multiplies it by 8. The result is 40, which is 0010 1000 in binary.",
+      "hint": "A shift left by 3 multiplies the value by 2^3."
+    },
+    {
+      "code": "mov w20, -8\nlsr w19, w20, 1",
+      "question": "What value does w19 hold after the shift? Write it as 0x followed by eight hex digits.",
+      "answer": "0x7FFFFFFC",
+      "explanation": "-8 sits in w20 as 0xFFFFFFF8, and lsr shifts a 0 into the vacated high bit instead of copying the sign bit. The negative value becomes the large positive 0x7FFFFFFC, which is why halving a signed value needs asr.",
+      "hint": "lsr does not preserve the sign bit. What fills the top bit after the shift?"
+    },
+    {
+      "code": "mov x20, 0xFF\nmov x21, 0x3C\nbic x19, x20, x21",
+      "question": "Write the low 8 bits of x19 as eight binary digits, with no prefix.",
+      "answer": "11000011",
+      "explanation": "bic computes an AND with the inverted second operand, so every bit set in x21 (0011 1100) is cleared in the copy of x20 (1111 1111). What survives is 1100 0011, or 0xC3.",
+      "hint": "The mask clears the middle four bits and leaves the outer two pairs alone."
+    },
+    {
+      "code": "mov w20, 0xFF\nsxtb w19, w20",
+      "question": "What value does w19 hold after the sign extension? Write it as 0x followed by eight hex digits.",
+      "answer": "0xFFFFFFFF",
+      "explanation": "sxtb keeps the low byte and copies its top bit, bit 7, through bits 8 to 31. Bit 7 of 0xFF is 1, so the register fills with ones and holds -1 as a 32-bit signed value.",
+      "hint": "Sign extension repeats bit 7 of the byte across the rest of the register."
+    }
+  ]
+}

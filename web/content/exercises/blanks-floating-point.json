@@ -1,0 +1,57 @@
+{
+  "title": "Fill in the Blank: Floating Point Instructions",
+  "slug": "blanks-floating-point",
+  "order": 70,
+  "topic": "floating-point",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing directive, mnemonics, and gdb command used to declare floating-point values in memory, convert an integer to single precision, and compare and negate in the FP registers.",
+  "blanks": [
+    {
+      "prompt": "Reserve and initialize four bytes in the .data section holding the single-precision value 5.0.",
+      "code": "a_m: .___ 0r5.0",
+      "blanks": [
+        "float"
+      ],
+      "explanation": ".float emits the 4-byte IEEE 754 single for the literal, and GAS accepts .single as another spelling of the same directive. .double would emit the 8-byte form instead.",
+      "hint": "Four bytes, not eight."
+    },
+    {
+      "prompt": "In gdb, examine the double stored at b_m and print it in floating-point form.",
+      "code": "___ &b_m",
+      "blanks": [
+        "x/gf",
+        "x/fg"
+      ],
+      "explanation": "x examines memory, g is the giant (8-byte) size letter, and f is the float format, so the eight bytes print as a double. The size and format letters may be given in either order. x/gx reads the same bytes but shows them as raw hex.",
+      "hint": "eXamine, giant size, float format."
+    },
+    {
+      "prompt": "Convert the signed 32-bit integer in w19 to single precision, leaving the result in s0.",
+      "code": "___ s0, w19",
+      "blanks": [
+        "scvtf"
+      ],
+      "explanation": "scvtf Sd, Wn reads the source as a signed integer and writes the converted value into the FP register. ucvtf treats the source as unsigned, and fcvtzs goes the other way, float to signed integer with truncation toward zero.",
+      "hint": "Signed ConVerT To Float."
+    },
+    {
+      "prompt": "Set the condition flags by comparing the single-precision values in s0 and s1.",
+      "code": "___ s0, s1",
+      "blanks": [
+        "fcmp"
+      ],
+      "explanation": "fcmp Sn, Sm compares the two registers and writes NZCV, so a following conditional branch such as b.ge acts on the result. If either operand is NaN the comparison is unordered, which sets C and V.",
+      "hint": "Floating-point compare."
+    },
+    {
+      "prompt": "The product of s1 and s2 is already in s0. Negate it in place so s0 holds -(s1 * s2).",
+      "code": "___ s0, s0",
+      "blanks": [
+        "fneg"
+      ],
+      "explanation": "fneg Sd, Sn flips the sign bit of the source, so an fmul followed by an fneg leaves the negated product in s0. The single-precision s form and the double-precision d form differ only in the register letter.",
+      "hint": "Floating-point negate."
+    }
+  ]
+}

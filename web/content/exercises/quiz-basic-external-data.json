@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: External Data - Fundamentals",
+  "slug": "quiz-basic-external-data",
+  "order": 62,
+  "topic": "external-data",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Where a program's data lives in `.data`, `.bss`, and `.text`, how character constants are written, and how `argc` and `argv` reach `main`.",
+  "questions": [
+    {
+      "question": "Which memory section holds data that the programmer initializes and that the program can still write to while it runs?",
+      "options": [
+        ".text",
+        ".data",
+        ".bss",
+        "The run-time heap"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The .data section holds programmer-initialized data and stays read/write for the life of the program. .text is read-only, and .bss is reserved for data that starts out as zero.",
+      "hint": "Think about where a global variable with an explicit starting value goes."
+    },
+    {
+      "question": "Where does a local (automatic) variable in a C function live while that function runs?",
+      "options": [
+        "In the .bss section",
+        "In the .data section",
+        "In the stack frame of the running function",
+        "In the .text section"
+      ],
+      "correctAnswer": 2,
+      "explanation": "An automatic variable exists only for the duration of one call, so it is allocated in that call's stack frame and released when the function returns. .data and .bss hold storage that lasts for the whole program instead.",
+      "hint": "It exists only while the call that created it is running."
+    },
+    {
+      "question": "A program is entered as main(int argc, char *argv[]). Which registers hold argc and argv on entry?",
+      "options": [
+        "x0 and w1",
+        "w0 and x1",
+        "w19 and w20",
+        "w0 and w1"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The first two arguments arrive in the first two argument registers. argc is an int, so it is read with the 32-bit name w0, and argv is a pointer, so it needs the full 64-bit x1.",
+      "hint": "A count is a 32-bit integer, but an array of pointers is a 64-bit address."
+    },
+    {
+      "question": "Which of these is stored in the .text section?",
+      "options": [
+        "Variables declared with no starting value",
+        "Machine code, plus read-only initialized data such as string literals",
+        "The run-time stack",
+        "Memory handed out by malloc"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The .text section holds the program text, meaning the machine instructions, together with read-only initialized data such as string constants. Nothing placed there can be written once the program is running.",
+      "hint": "This section is read-only after the program is loaded."
+    },
+    {
+      "question": "How is the character constant Z written as an immediate in GAS AArch64 source?",
+      "options": [
+        "mov w19, \"Z\"",
+        "mov w19, 'Z'",
+        "mov w19, [Z]",
+        "mov w19, char(Z)"
+      ],
+      "correctAnswer": 1,
+      "explanation": "A character constant is written between single quotes and the assembler substitutes its ASCII code, so mov w19, 'Z' puts 90 into w19. Double quotes mark a string of characters, not a single one.",
+      "hint": "It is written the same way as a character literal in C."
+    }
+  ]
+}

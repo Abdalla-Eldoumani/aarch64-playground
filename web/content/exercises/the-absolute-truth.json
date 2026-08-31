@@ -1,7 +1,7 @@
 {
   "title": "the absolute truth",
   "slug": "the-absolute-truth",
-  "order": 13,
+  "order": 2,
   "topic": "branching",
   "difficulty": "intro",
   "prompt": "The value register starts at `-42`, and the program should print its magnitude: `42`.\n\nCompare the register against zero, skip the sign flip when it is already positive, and flip it otherwise. `neg` produces the negation of a register in one instruction.\n\nWorth noticing once your solution passes: the same code must not damage a value that starts out positive. Change the starting value to `42` and run again to convince yourself.\n\n## what is checked\n\n- the magnitude is printed on its own line\n- the program exits cleanly\n- the sign flip uses `neg`",

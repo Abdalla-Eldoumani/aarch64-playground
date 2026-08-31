@@ -1,0 +1,46 @@
+{
+  "title": "Predict: External Data",
+  "slug": "predict-external-data",
+  "order": 66,
+  "topic": "external-data",
+  "difficulty": "core",
+  "variant": "prediction",
+  "prompt": "Work out how bytes land in `.data`: the size of each directive, what a string literal really costs, how a table of addresses is indexed, and what happens to a counter that lives outside any stack frame.",
+  "predictions": [
+    {
+      "code": "        .data\na_m:    .hword 23\nb_m:    .word 42\nc_m:    .dword 0",
+      "question": "How many bytes do these three declarations occupy in total? Answer in decimal.",
+      "answer": "14",
+      "explanation": ".hword reserves 2 bytes, .word reserves 4, and .dword reserves 8, and the assembler inserts no padding between them, so the block is 2 + 4 + 8 = 14 bytes. That packing also leaves b_m and c_m at misaligned addresses, which is why a data block is usually declared widest first or separated with .balign.",
+      "hint": "Add the size of a halfword, a word, and a doubleword, then check whether the assembler puts anything between them."
+    },
+    {
+      "code": "        .data\nspr_m:      .string \"spring\"\nsum_m:      .string \"summer\"\nfal_m:      .string \"fall\"\nwin_m:      .string \"winter\"\n\n        .balign 8\nseason_m:   .dword spr_m, sum_m, fal_m, win_m",
+      "question": "The table season_m starts at address 0x1000. At what address does the pointer to fal_m sit? Answer in hex, in the form 0x1234.",
+      "answer": "0x1010",
+      "explanation": "fal_m is element 2 of the table, and every element is an 8-byte address, so the offset is 2 * 8 = 16 bytes, which is 0x10. 0x1000 + 0x10 = 0x1010.",
+      "hint": "Element 2 sits 16 bytes past the base. What is 16 in hex?"
+    },
+    {
+      "code": "        .data\nmsg_m:  .string \"Hello\"",
+      "question": "How many bytes does msg_m occupy? Answer in decimal.",
+      "answer": "6",
+      "explanation": ".string emits the five characters and then a terminating zero byte, so the label covers 6 bytes. .ascii would emit the same five characters with no terminator.",
+      "hint": "Count the characters, then count the byte that ends a C string."
+    },
+    {
+      "code": "        .data\ncount_m:    .word 0\n\n        .text\n        .balign 4\nbump_f:\n        ldr     x9, =count_m\n        ldr     w10, [x9]\n        add     w10, w10, 1\n        str     w10, [x9]\n        ret",
+      "question": "bump_f is called twice in a row. What value does count_m hold after the second call returns? Answer in decimal.",
+      "answer": "2",
+      "explanation": "count_m is allocated in .data, not in a stack frame, so it keeps its value between calls. Each call loads the stored word, adds one, and stores it back, so two calls leave 2.",
+      "hint": "Nothing resets this counter when the function returns, because it is not a local."
+    },
+    {
+      "code": "        .data\nspr_m:      .string \"spring\"\nsum_m:      .string \"summer\"\nfal_m:      .string \"fall\"\nwin_m:      .string \"winter\"\n\n        .balign 8\nseason_m:   .dword spr_m, sum_m, fal_m, win_m",
+      "question": "How many bytes does the season_m table itself occupy, not counting the strings it points at? Answer in decimal.",
+      "answer": "32",
+      "explanation": ".dword reserves 8 bytes per value and the list holds four addresses, so the table is 4 * 8 = 32 bytes. The characters of the four strings live elsewhere in .data.",
+      "hint": "Four addresses, eight bytes each."
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: Arrays and Structures - Intermediate",
+  "slug": "quiz-inter-arrays",
+  "order": 48,
+  "topic": "arrays",
+  "difficulty": "core",
+  "variant": "quiz",
+  "prompt": "Address arithmetic for one- and two-dimensional arrays, scaled register offsets, and the constant offsets that reach struct fields.",
+  "questions": [
+    {
+      "question": "An array list is declared with n rows and m columns and stored in row-major order. For zero-based indices i and j, and an element size of E_size bytes, what is the byte offset of list[i][j] from the base of the array?",
+      "options": [
+        "((n * j) + i) * E_size",
+        "((m * i) + j) * E_size",
+        "(m + (i * j)) * E_size",
+        "((m * j) + i) * E_size"
+      ],
+      "correctAnswer": 1,
+      "explanation": "Row-major order stores each row in full before the next one starts, so i skips i whole rows of m elements and j picks the element inside that row. Multiplying the element count by E_size turns it into a byte offset.",
+      "hint": "Multiply the row index by the number of columns, then add the column index."
+    },
+    {
+      "question": "An array of words has its base address in x22 and a signed element index in w19. Which extension completes ldr w20, [x22, w19, ___ 2]?",
+      "options": [
+        "lsr, which shifts the index right by two bits.",
+        "sxtw, which sign-extends the 32-bit index to 64 bits.",
+        "uxtb, which zero-extends the low byte of the index.",
+        "sxtb, which sign-extends the low byte of the index."
+      ],
+      "correctAnswer": 1,
+      "explanation": "An address is 64 bits wide, so a 32-bit index has to be widened before it can be added to the base. sxtw sign-extends w19 to 64 bits, and the trailing 2 shifts it left two bits to turn a word count into a byte offset.",
+      "hint": "The index register is half the width of an address."
+    },
+    {
+      "question": "What is the total number of bytes to reserve for an n-dimensional array?",
+      "options": [
+        "The largest dimension multiplied by the element size.",
+        "The sum of all the dimensions, multiplied by the element size.",
+        "The product of all the dimensions, multiplied by the element size.",
+        "The number of dimensions multiplied by the element size."
+      ],
+      "correctAnswer": 2,
+      "explanation": "An n-dimensional array is one flat block of memory, so its element count is the product of every dimension. Multiplying that count by the element size gives the byte size to hand to .skip in .bss.",
+      "hint": "Think about a volume: length * width * depth."
+    },
+    {
+      "question": "A struct field is itself a struct. How is a subfield of that inner struct reached from the outer struct's base address?",
+      "options": [
+        "By loading the whole inner struct into one register and shifting it into place.",
+        "By adding the subfield's offset to the outer field's offset, giving one constant displacement from the base.",
+        "By multiplying the subfield's position by the size of the outer struct.",
+        "By re-basing a register on the inner struct first, because two offsets cannot be added."
+      ],
+      "correctAnswer": 1,
+      "explanation": "A nested struct brings a second set of offsets. The outer field's offset locates the inner struct and the subfield's offset locates the field inside it, and the two add up to a single displacement from the base register.",
+      "hint": "Two offsets, one addition."
+    },
+    {
+      "question": "Which language stores two-dimensional arrays in column-major order?",
+      "options": [
+        "C",
+        "C++",
+        "Fortran",
+        "Java"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Fortran walks down a column before moving across, so adjacent elements in memory share a column. C and C++ lay each row out contiguously instead, and a Java array of arrays keeps each row in its own block.",
+      "hint": "It is the older scientific language in the list."
+    },
+    {
+      "question": "An array of doublewords has its base in x22 and an index in x19. Which load scales that index by eight without a separate mul?",
+      "options": [
+        "ldr x20, [x22, x19, lsl 3], folding the shift into the addressing mode.",
+        "ldr x20, [x22, x19] followed by an add that corrects the address.",
+        "ldr x20, [x22, 8], because the assembler scales an immediate offset by the element size.",
+        "ldr x20, [x22, x19, lsl 8], shifting by the element size in bytes."
+      ],
+      "correctAnswer": 0,
+      "explanation": "The register-offset form accepts an optional left shift, so lsl 3 multiplies the index by eight as part of computing the address. Shifting by the base-two logarithm of the element size replaces the multiply.",
+      "hint": "Eight is two to the third power."
+    },
+    {
+      "question": "Struct field offsets are written as a sum of named constants, such as employee_start + date_month. When does that sum become a number?",
+      "options": [
+        "The CPU adds the two offsets during the fetch cycle.",
+        "The assembler evaluates the expression and produces one constant.",
+        "The linker resolves it against a shared library at load time.",
+        "The kernel resolves it when the page is mapped."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The expression is arithmetic on values the assembler already knows, so it is folded at assembly time and the instruction carries a single immediate. Naming the offsets costs nothing at run time.",
+      "hint": "The translation step does the arithmetic before the program ever runs."
+    },
+    {
+      "question": "A struct field holds a signed one-byte value. Which load brings it into w20 with the sign copied through the upper bits?",
+      "options": [
+        "ldrb",
+        "ldrsb",
+        "ldrsh",
+        "ldr"
+      ],
+      "correctAnswer": 1,
+      "explanation": "ldrsb loads one byte and sign-extends it across the destination register, so a stored -1 reads back as -1. ldrb loads the same byte but zero-extends it, which would read that -1 as 255.",
+      "hint": "Load Register Signed Byte."
+    }
+  ]
+}

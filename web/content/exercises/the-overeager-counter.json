@@ -1,7 +1,7 @@
 {
   "title": "the overeager counter",
   "slug": "the-overeager-counter",
-  "order": 16,
+  "order": 5,
   "topic": "loops",
   "difficulty": "intro",
   "prompt": "This countdown should print `5` through `1` and stop. Run it and look closely at the output: it goes one line too far.\n\nThe loop's exit test is the culprit. Fix the condition so the countdown ends where it should, and leave everything else alone.\n\n## what is checked\n\n- exactly five lines, `5` down to `1`\n- the program exits cleanly\n- the countdown still comes from the loop",

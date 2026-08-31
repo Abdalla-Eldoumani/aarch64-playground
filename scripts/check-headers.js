@@ -35,7 +35,12 @@ const REQUIRED = {
 async function main() {
   let res;
   try {
-    res = await fetch(SITE, { redirect: "manual" });
+    // The production firewall challenges non-browser clients; a deploy
+    // probe presents the bypass token when the operator has one.
+    const headers = process.env.PROBE_TOKEN
+      ? { "x-playground-probe": process.env.PROBE_TOKEN }
+      : {};
+    res = await fetch(SITE, { redirect: "manual", headers });
   } catch (e) {
     console.error(`fetch failed: ${e.message}`);
     process.exit(1);

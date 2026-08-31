@@ -1,0 +1,57 @@
+{
+  "title": "Fill in the Blank: Subroutine Linkage",
+  "slug": "blanks-subroutines",
+  "order": 60,
+  "topic": "subroutines",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonics and registers that let an AArch64 subroutine be called, build a frame, return a result, and hand back the registers it borrowed.",
+  "blanks": [
+    {
+      "prompt": "Call the subroutine print_sum so that control comes back to the following instruction when it finishes.",
+      "code": "___ print_sum",
+      "blanks": [
+        "bl"
+      ],
+      "explanation": "bl branches to the label and writes the address of the following instruction into x30, the link register. That saved return address is what lets one copy of the code serve every call site instead of being pasted into each one, which is what makes it a closed subroutine.",
+      "hint": "Branch with Link."
+    },
+    {
+      "prompt": "Open the stack frame: allocate 16 bytes and save the frame pointer and the link register into them with a single instruction.",
+      "code": "___ x29, x30, [sp, -16]!",
+      "blanks": [
+        "stp"
+      ],
+      "explanation": "stp stores a pair of registers, and the ! makes the addressing pre-indexed, so sp drops by 16 before the write happens. The saved x29 and x30 sitting together at the new top of the stack are the frame record.",
+      "hint": "Store Pair."
+    },
+    {
+      "prompt": "The caller has reserved space at sp for a structure the subroutine will fill in. Complete the line that passes that address in the indirect result location register.",
+      "code": "mov ___, sp",
+      "blanks": [
+        "x8"
+      ],
+      "explanation": "A result too large to come back in x0 and x1 is returned indirectly: the caller allocates the memory, puts its address in x8, and the subroutine writes the result through that pointer. x8 sits one past x0 through x7, the argument registers, and the ABI reserves it for exactly this job.",
+      "hint": "It sits one register past the last argument register."
+    },
+    {
+      "prompt": "square calls no other subroutine, so it saves nothing and builds no frame. Complete its final line.",
+      "code": "___ // branch back to the address in x30",
+      "blanks": [
+        "ret",
+        "ret x30"
+      ],
+      "explanation": "ret branches to the address held in x30, and writing the register out as ret x30 means the same thing. A leaf subroutine calls nothing, so nothing overwrites x30 after bl set it, and the return address survives without ever being pushed to the stack.",
+      "hint": "The instruction that reads the link register and jumps there."
+    },
+    {
+      "prompt": "A subroutine has to keep a running total across a bl to another subroutine. Complete the mov that parks the total in the lowest callee-saved register.",
+      "code": "mov ___, x0",
+      "blanks": [
+        "x19"
+      ],
+      "explanation": "x19 through x28 are callee-saved: a subroutine that writes one of them must restore the caller's value before it returns, so a value left there survives a call. x0 through x15 make no such promise and can come back changed.",
+      "hint": "Not an argument register and not a temporary; it is the first of the ten a subroutine has to restore."
+    }
+  ]
+}
