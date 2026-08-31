@@ -180,11 +180,15 @@ a coding exercise's file carries no answer key.
 The interactive variants skip the editor and grade entirely in the page, so
 their files declare the expected answers (that is by design and only applies
 to these variants; coding exercises still never store one). They ship in
-topic families named `quiz-basic-<topic>`, `quiz-inter-<topic>`, and
-`quiz-advance-<topic>` (titled "Quiz: <Topic> - Fundamentals",
-"- Intermediate", and "- Advanced"), `blanks-<topic>` ("Fill in the Blank:
-..."), and `predict-<topic>` ("Predict: ..."). Each carries one question
-list in place of `starter`/`acceptance`:
+families named `quiz-basic-<family>`, `quiz-inter-<family>`, and
+`quiz-advance-<family>` (titled "Quiz: <Topic> - Fundamentals",
+"- Intermediate", and "- Advanced"), `blanks-<family>` ("Fill in the Blank:
+..."), and `predict-<family>` ("Predict: ..."). The family is the shared
+part of the five slugs and is usually the `topic` id, but it does not have
+to be: the memory-and-stack sets are the `frame-stack` family under the
+`memory` topic, and a slug never changes once shipped, so pick the family
+name once. Each carries one question list in place of
+`starter`/`acceptance`:
 
 - `quiz`: `questions`, each
   `{ "question": "...", "options": ["...", "..."], "correctAnswer": 1,
