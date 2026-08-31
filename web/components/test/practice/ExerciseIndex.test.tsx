@@ -103,14 +103,42 @@ describe("ExerciseIndex", () => {
     expect(screen.queryByText("Alpha Exercise")).toBeNull();
   });
 
-  it("filters by a selected topic chip, toggling aria-pressed", () => {
-    render(<ExerciseIndex exercises={exercises} />);
-    const chip = screen.getByRole("button", { name: "registers" });
-    expect(chip.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(chip);
-    expect(chip.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("Alpha Exercise")).toBeTruthy();
-    expect(screen.queryByText("Beta Exercise")).toBeNull();
+  it("splits coding exercises and theory sets into two columns, grouped by topic in course order", () => {
+    const quiz: Exercise = {
+      title: "Loop Quiz",
+      slug: "loop-quiz",
+      order: 3,
+      topic: "loops",
+      difficulty: "intro",
+      prompt: "# check what you know",
+      variant: "quiz",
+      questions: [
+        { question: "q", options: ["a", "b"], correctAnswer: 0, explanation: "because" },
+      ],
+    };
+    const arithmetic = makeExercise({
+      title: "Gamma Exercise",
+      slug: "gamma",
+      order: 4,
+      topic: "arithmetic",
+      prompt: "# add things",
+    });
+    render(<ExerciseIndex exercises={[...exercises, quiz, arithmetic]} />);
+
+    const code = screen.getByRole("region", { name: "Coding exercises" });
+    const theory = screen.getByRole("region", { name: "Theory sets" });
+    expect(within(code).getByText("Gamma Exercise")).toBeTruthy();
+    expect(within(code).queryByText("Loop Quiz")).toBeNull();
+    expect(within(theory).getByText("Loop Quiz")).toBeTruthy();
+    expect(within(theory).getByRole("heading", { name: /^loops/ })).toBeTruthy();
+
+    // A listed topic (arithmetic) groups ahead of unlisted ones, which keep
+    // their id as the label and sort after the table.
+    const groupNames = within(code)
+      .getAllByRole("heading", { level: 3 })
+      .map((heading) => (heading.textContent ?? "").replace(/·.*$/, "").trim());
+    expect(groupNames).toEqual(["arithmetic", "registers", "stack"]);
+    expect(screen.queryByRole("button", { name: "registers" })).toBeNull();
   });
 
   it("filters by a selected difficulty chip", () => {
