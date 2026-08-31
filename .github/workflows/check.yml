@@ -94,10 +94,38 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
+  # The corpus gate replays fifty gcc-compiled programs and was nearly all
+  # of the cargo runtime, so the suite is partitioned the way the vitest
+  # shards below are: one job runs every test except that gate, and three
+  # more slice the corpus programs round-robin (CORPUS_SHARD, read by the
+  # test itself; every program runs exactly once across the union). The
+  # other half of the speedup lives in emulator/Cargo.toml: the test
+  # profile runs at opt-level 1 with overflow checks and debug assertions
+  # still on, because an unoptimized walk of the interpreter loop was
+  # minutes of pure constant factor.
   rust:
-    name: cargo test
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: cargo test
+            args: "-- --skip corpus_at_o0"
+            cache: test
+          - name: cargo corpus 1/3
+            args: "--test c_corpus"
+            shard: "1/3"
+            cache: corpus
+          - name: cargo corpus 2/3
+            args: "--test c_corpus"
+            shard: "2/3"
+            cache: corpus
+          - name: cargo corpus 3/3
+            args: "--test c_corpus"
+            shard: "3/3"
+            cache: corpus
     steps:
       - uses: actions/checkout@v7
 
@@ -106,6 +134,10 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
+      # The corpus shards compile an identical subset (the library plus one
+      # test binary), so they share one cache key and whichever saves first
+      # wins; the full-suite job keeps the key it always had rather than
+      # letting a subset save evict the artifacts its next run restores.
       - name: cache cargo
         uses: actions/cache@v6
         with:
@@ -113,12 +145,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             emulator/target
-          key: ${{ runner.os }}-cargo-test-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('emulator/Cargo.toml', 'emulator/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ matrix.cache }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('emulator/Cargo.toml', 'emulator/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-test-${{ env.RUST_TOOLCHAIN }}-
+            ${{ runner.os }}-cargo-${{ matrix.cache }}-${{ env.RUST_TOOLCHAIN }}-
 
-      - name: cargo test
-        run: cargo test --manifest-path emulator/Cargo.toml
+      - name: ${{ matrix.name }}
+        env:
+          CORPUS_SHARD: ${{ matrix.shard }}
+        run: cargo test --manifest-path emulator/Cargo.toml ${{ matrix.args }}
 
   corpus:
     name: verify-corpus
