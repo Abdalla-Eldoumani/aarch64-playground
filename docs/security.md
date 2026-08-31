@@ -128,6 +128,10 @@ hosted-runtime unit tests.
   `web/proxy.test.ts`.
 - No SharedArrayBuffer, so we need no COEP and the strict cross-origin
   isolation it requires. The worker copies bytes through `postMessage`.
+- The site sits behind Vercel's firewall: the platform's automatic DDoS
+  mitigation, plus bot protection in challenge mode, so a client that is not a
+  browser answers a JavaScript challenge before it reaches the site. Verified
+  crawlers (search engines, social link previews) pass without one.
 - Vercel Analytics and Speed Insights are anonymized, set no cookies, and run
   only on the production deploy. Their script and beacon endpoints are the only
   third-party origins the page reaches.
