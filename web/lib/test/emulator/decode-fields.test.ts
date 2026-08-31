@@ -137,6 +137,21 @@ describe("decodeFields", () => {
     expect(condField?.meaning).toBe("ne");
   });
 
+  it("slices adc into the with-carry layout with Rd as the destination", () => {
+    // adc x0, x1, x2 assembles to 0x9a020020: sf=1 op=0 S=0 Rm=2 Rn=1 Rd=0.
+    const decoded = decodeFields(0x9a020020);
+    const labels = decoded.fields.map((field) => field.label);
+    expect(labels).toEqual(["sf", "op", "S", "11010000", "Rm", "000000", "Rn", "Rd"]);
+    expect(decoded.fields[1].meaning).toBe("adc");
+    expect(decoded.fields[4].meaning).toBe("x2");
+    expect(decoded.fields[6].meaning).toBe("x1");
+    expect(decoded.destIndex).toBe(7);
+    // sbcs w0, w1, w2 (0x7a020020) reads as the subtracting form at W width.
+    const sbcs = decodeFields(0x7a020020);
+    expect(sbcs.fields[1].meaning).toBe("sbc");
+    expect(sbcs.fields[7].meaning).toBe("w0");
+  });
+
   it("falls back to a single unsplit word for unmapped encodings", () => {
     // An FP data-processing word (fadd d2, d0, d1) is outside the mapped set.
     const decoded = decodeFields(0x1e612802);

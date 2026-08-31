@@ -116,6 +116,25 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
+  // Add/sub with carry: sf op S 11010000 Rm 000000 Rn Rd. Register 31 is
+  // the zero register in every position; the family has no SP form.
+  if (bits(w, 28, 21) === 0b11010000 && bits(w, 15, 10) === 0) {
+    return slice(
+      w,
+      [
+        { label: "sf", hi: 31, lo: 31, kind: "opcode" },
+        { label: "op", hi: 30, lo: 30, kind: "opcode", meaning: (x) => (bits(x, 30, 30) ? "sbc" : "adc") },
+        { label: "S", hi: 29, lo: 29, kind: "opcode" },
+        { label: "11010000", hi: 28, lo: 21, kind: "opcode" },
+        { label: "Rm", hi: 20, lo: 16, kind: "register", meaning: (x) => xreg(sf, bits(x, 20, 16)) },
+        { label: "000000", hi: 15, lo: 10, kind: "opcode" },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => xreg(sf, bits(x, 9, 5)) },
+        { label: "Rd", hi: 4, lo: 0, kind: "register", meaning: (x) => xreg(sf, bits(x, 4, 0)) },
+      ],
+      "Rd",
+    );
+  }
+
   // Add/sub shifted register: sf op S 01011 shift(2) 0 Rm imm6 Rn Rd.
   if (bits(w, 28, 24) === 0b01011 && bits(w, 21, 21) === 0) {
     return slice(
