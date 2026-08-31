@@ -1,0 +1,49 @@
+{
+  "title": "Fill in the Blank: System Architecture",
+  "slug": "blanks-architecture",
+  "order": 4,
+  "topic": "architecture",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing terminology to construct accurate statements about the parts of a CPU, the clock that paces it, the register that tracks execution, and the marker that starts a comment in GAS.",
+  "blanks": [
+    {
+      "prompt": "Name the part of the CPU that directs the execution of instructions.",
+      "code": "CPU = ALU + registers + ___",
+      "blanks": [
+        "control unit",
+        "cu"
+      ],
+      "explanation": "A CPU is built from three parts: the control unit, the arithmetic logic unit (ALU), and the registers. The control unit fetches and decodes each instruction, then drives the ALU and the registers to carry it out.",
+      "hint": "It does no arithmetic itself, it decides what the other two parts do next."
+    },
+    {
+      "prompt": "Start a comment at the end of an AArch64 assembly statement.",
+      "code": "add x20, x20, x21 ___ accumulate the next term",
+      "blanks": [
+        "//"
+      ],
+      "explanation": "In GAS, // marks the rest of the line as a comment, so a note explaining an instruction can sit beside it. The assembler ignores everything from the marker to the end of the line.",
+      "hint": "The same two-character marker that opens a line comment in C++."
+    },
+    {
+      "prompt": "Name the shape of the signal produced by the system clock.",
+      "code": "system clock = ___ wave",
+      "blanks": [
+        "square"
+      ],
+      "explanation": "The system clock is a square wave running at a fixed frequency. Its edges pace the processor, so every fetch, decode, and register update is timed against that signal.",
+      "hint": "The signal sits at one of two levels and snaps between them, with no gradual ramp."
+    },
+    {
+      "prompt": "Name the register that holds the address of the instruction being executed.",
+      "code": "address of the currently executing instruction = ___",
+      "blanks": [
+        "pc",
+        "program counter"
+      ],
+      "explanation": "The program counter (pc) holds the address of the instruction currently being executed. It is not a general-purpose register: no instruction names it as a source or destination operand, branches change it, adr reads it to form a PC-relative address, and gdb prints it as $pc.",
+      "hint": "Every AArch64 instruction is 4 bytes, so this register normally advances by 4."
+    }
+  ]
+}

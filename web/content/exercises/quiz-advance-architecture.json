@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: System Architecture - Advanced",
+  "slug": "quiz-advance-architecture",
+  "order": 3,
+  "topic": "architecture",
+  "difficulty": "challenge",
+  "variant": "quiz",
+  "prompt": "Work through how RISC and CISC machine code differ, how `m4` expansion fits into the build, and how a load/store machine moves data between memory and the register file.",
+  "questions": [
+    {
+      "question": "Compared with AArch64, why is a CISC instruction stream harder for a processor to decode?",
+      "options": [
+        "Every CISC instruction is exactly the same width, so a long operation has to be split across several instructions.",
+        "CISC machine instructions vary in length, and a single instruction may take many cycles to execute.",
+        "CISC keeps program memory and data memory in separate address spaces.",
+        "CISC has no register file, so the decoder must resolve every operand to a memory address."
+      ],
+      "correctAnswer": 1,
+      "explanation": "CISC instructions vary in length, so the decoder has to work out where one instruction ends before it can start on the next, and a single instruction may expand into many cycles of work. Every AArch64 instruction is a fixed 4 bytes, which keeps decoding simple.",
+      "hint": "An AArch64 instruction is always 4 bytes wide. An x86-64 instruction can be anywhere from 1 to 15 bytes."
+    },
+    {
+      "question": "The course writes macros for m4 rather than for the assembler. What is the standard sequence for building such a program?",
+      "options": [
+        "Write the macros in a .s file and let gcc expand them while it assembles.",
+        "Put the source with macros in a .asm file, run m4 and redirect its output to a .s file, then run gcc on the .s file.",
+        "Run the assembler on a .m4 file, which expands the macros and assembles in one step.",
+        "Pass -m4 to gcc so it expands the macros before assembling."
+      ],
+      "correctAnswer": 1,
+      "explanation": "m4 is a separate text processor that runs before the assembler ever sees the file. Source containing macros lives in a .asm file, m4 prog.asm > prog.s writes the expanded text, and gcc prog.s assembles and links that output.",
+      "hint": "Macro expansion is its own command, run before the compiler."
+    },
+    {
+      "question": "On a load/store machine such as AArch64, what is the sequence for adding two values held in memory and saving the result back to memory?",
+      "options": [
+        "Apply the ALU operation to the two memory operands directly, then write the result back over one of them.",
+        "Load both values into registers, add the two source registers into a destination register, then store that register back to memory.",
+        "Load both values into a single accumulator, add them there, then store the accumulator to memory.",
+        "Push both values onto the stack, add the top two stack slots, then pop the result into memory."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Arithmetic instructions on a load/store machine read and write registers only. ldr brings each value into a register, add combines two source registers into a destination register, and str writes that register back to memory.",
+      "hint": "The ALU can only see data that is already in the register file."
+    },
+    {
+      "question": "An opcode has just been fetched from memory into the instruction register. What happens next in the CPU?",
+      "options": [
+        "The ALU executes the operation.",
+        "The result is written back into the register file.",
+        "The control unit decodes the opcode to work out which operation it names.",
+        "The program counter is reset to the start of the program."
+      ],
+      "correctAnswer": 2,
+      "explanation": "The cycle is fetch, decode, execute. Fetch places the opcode in the instruction register, the control unit then decodes it to identify the operation and its operands, and only after that does the ALU do any work.",
+      "hint": "The CPU has to work out what an instruction means before it can carry it out."
+    },
+    {
+      "question": "What is a label in an assembly source file, and what is it used for?",
+      "options": [
+        "An assembler directive that expands an inline macro.",
+        "A symbol whose value is the address of the location it marks, which can serve as the target of a branch.",
+        "A command the control unit sends over the control bus at run time.",
+        "A request that reserves storage for a variable while the program is running."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The assembler records each label as a symbol whose value is the address of the instruction or data that follows it. That is why b loop assembles into a branch to the address marked by loop, and why loops and if-statements are written with labels.",
+      "hint": "Labels are resolved to addresses at assembly time, not while the program runs."
+    }
+  ]
+}

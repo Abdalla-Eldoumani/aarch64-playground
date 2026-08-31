@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: System Architecture - Fundamentals",
+  "slug": "quiz-basic-architecture",
+  "order": 1,
+  "topic": "architecture",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Covers the parts of a CPU, volatile and non-volatile memory, what RISC means, the fetch-execute cycle, and comment syntax in AArch64 source.",
+  "questions": [
+    {
+      "question": "What are the three main parts of a central processing unit (CPU)?",
+      "options": [
+        "The address bus, the data bus, and the control bus",
+        "Primary memory, secondary memory, and the system clock",
+        "The control unit, the arithmetic logic unit, and the registers",
+        "Input devices, output devices, and secondary storage"
+      ],
+      "correctAnswer": 2,
+      "explanation": "A CPU is built from a control unit that directs the fetch-execute cycle and tells the other parts what to do, an arithmetic logic unit that performs the arithmetic and bitwise operations, and registers that hold the operands and results while the work happens. The system buses, main memory, and peripherals sit outside the CPU.",
+      "hint": "Think about what directs the work, what does the arithmetic, and what holds the values in between."
+    },
+    {
+      "question": "What happens to the data in primary memory (RAM) when the computer is powered off?",
+      "options": [
+        "It is copied to the disk drive automatically before shutdown.",
+        "It is lost, because RAM is volatile.",
+        "It survives the power cycle, because RAM is non-volatile.",
+        "It is preserved in the CPU registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Primary memory is volatile, so its contents are gone once power is removed. Anything that has to survive a power cycle must be written to secondary storage such as a disk.",
+      "hint": "One kind of memory needs power to hold its contents, the other does not."
+    },
+    {
+      "question": "In the context of computer architectures, what does the acronym RISC stand for?",
+      "options": [
+        "Reduced Instruction Set Computer",
+        "Rapid Integrated System Controller",
+        "Random Internal Storage Cache",
+        "Redundant Instruction Sequence Component"
+      ],
+      "correctAnswer": 0,
+      "explanation": "RISC stands for Reduced Instruction Set Computer. The instruction set is kept small and regular, instructions are a fixed width, and memory is reached only through load and store instructions, which is why AArch64 arithmetic works on registers rather than directly on memory.",
+      "hint": "The first word describes the size of the instruction set, not the speed of the chip."
+    },
+    {
+      "question": "During the fetch step of the fetch-execute cycle, where does the CPU get the next instruction from, and where does it put it?",
+      "options": [
+        "From secondary memory, such as a disk drive, into the ALU",
+        "From primary memory, into the instruction register (IR)",
+        "From the system bus, which holds instructions between cycles",
+        "From the arithmetic logic unit, which produces the next instruction"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The fetch step uses the address in the program counter to read the next instruction out of primary memory and copies it into the instruction register, where the decode step can look at it. Secondary storage is far too slow to be read once per instruction.",
+      "hint": "Instructions live in RAM and have to reach a register inside the CPU before they can be decoded."
+    },
+    {
+      "question": "In an AArch64 GAS source file, how is a comment appended to the end of an instruction line?",
+      "options": [
+        "After a // delimiter",
+        "After an @ delimiter",
+        "After a ; delimiter",
+        "After a # delimiter"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The assembler treats // as the start of a comment that runs to the end of the line, so course code puts the explanation after // on the same line as the instruction. @ is the comment character for 32-bit ARM, and ; separates statements rather than starting a comment.",
+      "hint": "It is the same two-character delimiter that starts a single-line comment in C or C++."
+    }
+  ]
+}

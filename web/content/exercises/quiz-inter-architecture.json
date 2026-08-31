@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: System Architecture - Intermediate",
+  "slug": "quiz-inter-architecture",
+  "order": 2,
+  "topic": "architecture",
+  "difficulty": "core",
+  "variant": "quiz",
+  "prompt": "Work through the machine model behind AArch64 assembly: where code and data live, which instructions are allowed to touch memory, what the system bus carries, and the registers that track execution.",
+  "questions": [
+    {
+      "question": "Which of the following describes a key characteristic of a von Neumann architecture compared to a Harvard architecture?",
+      "options": [
+        "A von Neumann architecture uses a single accumulator.",
+        "In a von Neumann architecture, RAM holds both the program and its data.",
+        "A von Neumann architecture is only possible on a RISC machine.",
+        "A von Neumann architecture completes every instruction in one cycle."
+      ],
+      "correctAnswer": 1,
+      "explanation": "A von Neumann machine keeps the program and its data in one memory, so an instruction fetch and a data access reach the same RAM. A Harvard machine keeps them in separate memories with separate paths.",
+      "hint": "Think about whether instructions and variables share one memory."
+    },
+    {
+      "question": "How do load/store machines differ from accumulator machines when accessing RAM?",
+      "options": [
+        "Only load and store instructions reach RAM, while every other instruction operates on the register file.",
+        "Load/store machines put every ALU result into the accumulator.",
+        "Load/store machines perform arithmetic directly on operands in primary memory.",
+        "Load/store machines bypass the control unit when transferring data."
+      ],
+      "correctAnswer": 0,
+      "explanation": "On a load/store machine only the load and store instructions reach memory, and everything else works on the register file. That is why AArch64 code loads a value with ldr, computes on it in registers, then writes it back with str.",
+      "hint": "The name is the clue: those are the only two operations allowed to touch memory."
+    },
+    {
+      "question": "What is a defining trait of machine instruction sizes in a RISC architecture?",
+      "options": [
+        "They vary in length from 1 to 15 bytes to save memory.",
+        "They grow or shrink depending on the size of the immediate operand.",
+        "They are all the same size, which keeps decoding simple and fast.",
+        "They are always exactly one byte long."
+      ],
+      "correctAnswer": 2,
+      "explanation": "A RISC encoding uses one fixed instruction size, so the decoder is simple and the address of the next instruction is predictable. Every AArch64 instruction is 32 bits wide.",
+      "hint": "Ask how many bytes the processor has to read before it knows where the next instruction starts."
+    },
+    {
+      "question": "What does the program counter hold while an instruction executes?",
+      "options": [
+        "The address of the instruction that is currently executing.",
+        "The address of the last value that was loaded from memory.",
+        "The address of the top of the stack.",
+        "The 32-bit encoding of the instruction that is currently executing."
+      ],
+      "correctAnswer": 0,
+      "explanation": "The program counter holds the address of the instruction being executed. Because every AArch64 instruction is 4 bytes, ordinary execution moves it on by 4, and a branch writes a different address into it instead. The encoding fetched from that address goes to the instruction register, not the program counter.",
+      "hint": "It answers where in the code the processor is, not what the instruction looks like."
+    },
+    {
+      "question": "What is the purpose of pseudo-ops (assembler directives) in an assembly program?",
+      "options": [
+        "They encode multi-cycle arithmetic operations for the ALU.",
+        "They run at program start to set up the branch targets.",
+        "They generate no machine instruction, and instead give the assembler information it needs.",
+        "They are expanded by the assembler into a fixed sequence of machine instructions."
+      ],
+      "correctAnswer": 2,
+      "explanation": "A pseudo-op produces no machine instruction. It tells the assembler something: .global main makes a symbol visible to the linker, .balign 4 aligns what follows, and .string emits the bytes of a string literal.",
+      "hint": "They are directions for the translator, not work for the processor."
+    },
+    {
+      "question": "What are the three sub-components of the system bus?",
+      "options": [
+        "Input, output, and execution buses",
+        "Address, data, and control buses",
+        "Primary, secondary, and peripheral buses",
+        "ALU, control unit, and register buses"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The system bus is usually described as three buses. The address bus carries which location is being accessed, the data bus carries the value moving to or from it, and the control bus carries the read/write and timing signals that say what kind of access it is.",
+      "hint": "One says where, one carries the value, and one says what kind of access it is."
+    },
+    {
+      "question": "Where does an accumulator machine put every ALU result?",
+      "options": [
+        "Into a destination register named by the instruction",
+        "Directly into primary memory",
+        "Into the status register",
+        "Into the accumulator"
+      ],
+      "correctAnswer": 3,
+      "explanation": "An accumulator machine has one working register, the accumulator, and every ALU result lands there. A load/store machine like AArch64 instead names a destination register in the instruction, which is why add x0, x1, x2 can choose where the sum goes.",
+      "hint": "The architecture is named after the register it forces every result into."
+    },
+    {
+      "question": "Which register holds the flags describing the result of a previous instruction, such as an overflow?",
+      "options": [
+        "Instruction register",
+        "Program counter",
+        "Status register",
+        "Link register"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The status register holds the flags that describe the previous result. On AArch64 these are the N, Z, C, and V condition flags, and a plain add or sub leaves them untouched: the flag-setting forms such as adds and subs, along with cmp, cmn, and tst, are what write them.",
+      "hint": "It records whether the last calculation came out negative, came out zero, carried, or overflowed."
+    }
+  ]
+}
