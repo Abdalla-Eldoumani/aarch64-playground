@@ -1,9 +1,13 @@
 name: corpus
 
-# Regenerates the C corpus with a cross compiler and qemu-user and fails
-# on drift from the tracked files, so a toolchain change announces itself
-# instead of rotting silently. The per-PR gate never runs this: the
-# ordinary corpus test replays the tracked files with no toolchain at all.
+# Rebuilds the C corpus with a cross compiler and qemu-user and fails
+# when the rebuilt programs behave differently from the tracked
+# references (stdout or exit code), so a toolchain change announces
+# itself instead of rotting silently. Assembly text is expected to
+# differ (the references were recorded with the course server's own
+# gcc) and is reported, never failed on. The per-PR gate never runs
+# this: the ordinary corpus test replays the tracked files with no
+# toolchain at all.
 on:
   schedule:
     - cron: "0 6 * * 1"
@@ -14,7 +18,7 @@ permissions:
 
 jobs:
   regen:
-    name: regenerate and compare (cross gcc + qemu)
+    name: rebuild and compare behaviour (cross gcc + qemu)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
