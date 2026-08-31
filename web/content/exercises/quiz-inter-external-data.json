@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: External Data - Intermediate",
+  "slug": "quiz-inter-external-data",
+  "order": 63,
+  "topic": "external-data",
+  "difficulty": "core",
+  "variant": "quiz",
+  "prompt": "Where a program's data lives: the `.text`, `.data`, and `.bss` sections, the string pseudo-ops, and how `adrp` forms an address.",
+  "questions": [
+    {
+      "question": "How does the adrp instruction compute the address it writes to its destination register?",
+      "options": [
+        "It shifts a 21-bit immediate right by 12 bits and adds it to the stack pointer.",
+        "It shifts a signed 21-bit immediate left by 12 bits and adds it to the PC with the bottom 12 bits cleared to zero.",
+        "It adds a 64-bit immediate directly to the frame pointer in x29.",
+        "It multiplies the immediate by 4096 and adds it to the link register in x30."
+      ],
+      "correctAnswer": 1,
+      "explanation": "adrp shifts a signed 21-bit immediate left by 12 bits, adds it to the address of the instruction with the bottom 12 bits cleared to zero, and writes the result to the destination register. The low 12 bits of the target are then supplied by a following add or by the offset of a load or store.",
+      "hint": "The name means address of page, and a page here is 4 KB, which is what the bottom 12 bits cover."
+    },
+    {
+      "question": "Why does it not make sense to give a .bss item a non-zero initial value with a directive such as .word or .hword?",
+      "options": [
+        "Because .bss is read-only once the program is running.",
+        "Because .bss records only a size in the object file, with no bytes to hold an initial value.",
+        "Because .bss is allocated on the heap at run time, after the initial value would be needed.",
+        "Because .bss is reserved exclusively for string literals."
+      ],
+      "correctAnswer": 1,
+      "explanation": ".bss reserves space without recording any bytes in the executable file, and the loader hands the program that space already zeroed. Data that needs a non-zero starting value belongs in .data instead.",
+      "hint": "Reserve the space with .skip, then ask yourself where the initial bytes would be written down."
+    },
+    {
+      "question": "What is the key difference between the .ascii and .string pseudo-ops?",
+      "options": [
+        ".string appends a null terminator byte after the characters, while .ascii does not.",
+        ".ascii places its characters in read-only memory, while .string places them in read/write memory.",
+        ".string stores 16-bit characters, while .ascii stores 8-bit characters.",
+        "There is no difference; they are exact aliases."
+      ],
+      "correctAnswer": 0,
+      "explanation": "C strings end with a null byte, and .string (like .asciz) writes that byte for you. .ascii emits only the characters you typed, so you would follow it with a .byte 0 to get the same result.",
+      "hint": "Think about how printf knows where the text stops."
+    },
+    {
+      "question": "In the memory layout used in the course, which region comes immediately after .data as addresses increase?",
+      "options": [
+        ".text",
+        "The heap",
+        ".bss",
+        "The stack"
+      ],
+      "correctAnswer": 2,
+      "explanation": "A linked program places .text lowest, then .data, then .bss. The heap grows upward above .bss, and the stack sits far above it and grows down.",
+      "hint": "The zero-initialized data sits just above the data you initialized yourself."
+    },
+    {
+      "question": "What is the initial value of a static variable in C that is declared without an initializer, such as static int count;?",
+      "options": [
+        "Whatever garbage is left on the stack at that address.",
+        "Zero, before any of the program's code runs.",
+        "It is a compile-time error to leave it uninitialized.",
+        "The value of the last int written to .text."
+      ],
+      "correctAnswer": 1,
+      "explanation": "An object with static storage duration is zero initialized, so count starts at 0. An uninitialized static lands in .bss, which the loader zeroes, unlike a local variable on the stack, which starts with whatever was already there.",
+      "hint": "Where does an uninitialized static live, and what is that section's starting state?"
+    }
+  ]
+}
