@@ -6,7 +6,7 @@ import { Kicker } from "@/components/ui/Kicker";
 import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 
 const DESCRIPTION =
-  "AArch64 exercises checked by running your program against expected behavior, not a stored solution.";
+  "AArch64 coding exercises checked by running your program, beside theory sets graded on the page.";
 
 export const metadata: Metadata = {
   title: "practice",
@@ -36,14 +36,14 @@ export const metadata: Metadata = {
 export default function PracticePage() {
   const exercises = loadAllExercises();
   return (
-    <section className="mx-auto w-full max-w-2xl px-6 py-10 sm:py-14">
+    <section className="mx-auto w-full max-w-5xl px-6 py-10 sm:py-14">
       <DocRule section="sheet 05 · practice" context="cpsc 355 study aid" className="mb-8" />
       <Kicker number="05" title="practice" className="mb-5" />
       <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">
         Exercises
       </h1>
-      <p className="mt-4 text-[var(--text-secondary)] [font:var(--type-lead)]">
-        Exercises checked by running your program against expected behavior, never by matching a stored solution.
+      <p className="mt-4 max-w-2xl text-[var(--text-secondary)] [font:var(--type-lead)]">
+        Coding exercises on the left, checked by running your program against expected behavior rather than a stored solution. Theory sets on the right, graded on the page. Both follow the course from the first week to the last.
       </p>
       <div className="mt-10">
         <ExerciseIndex exercises={exercises} />
