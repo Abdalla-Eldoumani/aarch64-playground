@@ -1,0 +1,46 @@
+{
+  "title": "Predict: Floating Point Instructions",
+  "slug": "predict-floating-point",
+  "order": 75,
+  "topic": "floating-point",
+  "difficulty": "core",
+  "variant": "prediction",
+  "prompt": "Trace single and double precision arithmetic by hand: add, fused multiply-add, multiply-negate, and the two sign-only instructions. Every answer is the exact decimal value left in the destination register.",
+  "predictions": [
+    {
+      "code": "// s1 holds 2.5\n// s2 holds 3.5\nfadd s0, s1, s2",
+      "question": "What value does s0 hold after this instruction? Answer in decimal with one digit after the point.",
+      "answer": "6.0",
+      "explanation": "fadd computes Sd = Sn + Sm, so s0 gets 2.5 + 3.5. Both operands and the sum are exactly representable in single precision, so nothing is rounded and s0 holds exactly 6.0.",
+      "hint": "Both values are exact in binary, so add them as written."
+    },
+    {
+      "code": "// d1 holds 2.0\n// d2 holds 3.0\n// d3 holds 10.0\nfmadd d0, d1, d2, d3",
+      "question": "What value does d0 hold after this instruction? Answer in decimal with one digit after the point.",
+      "answer": "16.0",
+      "explanation": "fmadd Dd, Dn, Dm, Da computes Dd = Da + Dn * Dm, so the addend d3 is written last even though it comes first in the arithmetic: 10.0 + (2.0 * 3.0) = 16.0. The multiply and the add are fused, so the exact product is added and only the final result is rounded.",
+      "hint": "The addend is the fourth operand. Multiply the middle two first."
+    },
+    {
+      "code": "// d1 holds -42.5\nfabs d0, d1",
+      "question": "What value does d0 hold after this instruction? Answer in decimal with one digit after the point.",
+      "answer": "42.5",
+      "explanation": "fabs clears the sign bit of the source and copies the exponent and fraction through untouched, so the magnitude is unchanged and d0 holds 42.5.",
+      "hint": "Absolute value touches nothing but the sign."
+    },
+    {
+      "code": "// s1 holds 15.0\nfneg s0, s1",
+      "question": "What value does s0 hold after this instruction? Answer in decimal with one digit after the point.",
+      "answer": "-15.0",
+      "explanation": "fneg inverts the sign bit rather than computing 0 - Sn, so the exponent and fraction survive and s0 holds -15.0.",
+      "hint": "Negation flips one bit, the sign."
+    },
+    {
+      "code": "// s1 holds 2.0\n// s2 holds 4.0\nfnmul s0, s1, s2",
+      "question": "What value does s0 hold after this instruction? Answer in decimal with one digit after the point.",
+      "answer": "-8.0",
+      "explanation": "fnmul computes Sd = -(Sn * Sm): it multiplies first, then negates the product. That gives -(2.0 * 4.0) = -8.0.",
+      "hint": "The n in fnmul negates the product, not an operand."
+    }
+  ]
+}

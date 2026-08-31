@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Floating Point Instructions - Intermediate",
+  "slug": "quiz-inter-floating-point",
+  "order": 72,
+  "topic": "floating-point",
+  "difficulty": "core",
+  "variant": "quiz",
+  "prompt": "This set covers single and double precision registers, which ones a subroutine has to preserve, conversions between the two formats, and the rules for arithmetic, argument passing, and comparison.",
+  "questions": [
+    {
+      "question": "What can go wrong when fcvt s0, d0 executes?",
+      "options": [
+        "The program aborts with an alignment fault.",
+        "The condition flags are cleared.",
+        "Precision can be lost, because the single-precision destination has fewer fraction bits than the source.",
+        "The sign bit is inverted."
+      ],
+      "correctAnswer": 2,
+      "explanation": "fcvt s0, d0 converts the double in d0 to a single in s0, rounding to the nearest representable value. A double carries 52 fraction bits and a single carries 23, so the narrowing conversion can round digits away.",
+      "hint": "Compare the fraction field of a double with the fraction field of a single."
+    },
+    {
+      "question": "In fmadd s0, s1, s2, s3, what value does the destination receive?",
+      "options": [
+        "s0 = (s3 + s1) * s2",
+        "s0 = s3 + (s1 * s2)",
+        "s0 = (s3 * s1) + s2",
+        "s0 = s3 * (s1 + s2)"
+      ],
+      "correctAnswer": 1,
+      "explanation": "fmadd multiplies the second and third operands and adds the fourth to the product, so s0 gets s3 + s1 * s2. The companion fmsub subtracts the product from the addend instead.",
+      "hint": "The last operand is the addend, the middle two are the multiplicands."
+    },
+    {
+      "question": "Which floating-point registers must a subroutine preserve across a call, saving and restoring them if it uses them?",
+      "options": [
+        "d0 to d7",
+        "d8 to d15",
+        "d16 to d31",
+        "s0 to s7"
+      ],
+      "correctAnswer": 1,
+      "explanation": "d8 to d15 are the callee-saved floating-point registers, and only their low 64 bits have to survive a call. d0 to d7 carry arguments and results, and d16 to d31 are free for a subroutine to use.",
+      "hint": "It is the second block of eight registers."
+    },
+    {
+      "question": "How many floating-point arguments can be passed to a subroutine in registers before the rest have to go on the stack?",
+      "options": [
+        "4",
+        "8",
+        "16",
+        "32"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The first eight floating-point arguments travel in v0 to v7, read as d0 to d7 for doubles and s0 to s7 for singles. A ninth floating-point argument is passed on the stack.",
+      "hint": "Count the argument registers from 0 to 7."
+    },
+    {
+      "question": "Where does fcmp d0, d1 leave its result?",
+      "options": [
+        "In d0, as 1.0, 0.0, or -1.0.",
+        "In the NZCV condition flags, with no register written.",
+        "In x0, as 1, 0, or -1.",
+        "In fpsr, which has to be copied out with mrs before a branch can use it."
+      ],
+      "correctAnswer": 1,
+      "explanation": "fcmp sets the same NZCV condition flags that cmp sets, so an ordinary conditional branch such as b.eq or b.gt follows it directly. No general-purpose register and no floating-point register is written.",
+      "hint": "Ask what a conditional branch reads after any compare instruction."
+    }
+  ]
+}
