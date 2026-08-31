@@ -1,6 +1,6 @@
 [package]
 name = "aarch64-emulator"
-version = "2.4.0"
+version = "2.5.0"
 edition = "2021"
 # The toolchain the crate is actually built and tested with (CI and the
 # deploy pin the same version); an older rustc gets this message instead of
