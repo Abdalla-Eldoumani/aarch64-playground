@@ -115,6 +115,28 @@ fn check_tier(infix: &str) -> Vec<String> {
     stems.sort();
     assert!(stems.len() >= 50, "corpus shrank: {} programs", stems.len());
 
+    // CI slices the corpus across parallel runners: CORPUS_SHARD=i/n takes
+    // every nth program starting at the ith of the sorted list, so the
+    // union of the shards is exactly the corpus and no program runs twice.
+    // The count guard above sits before the slice on purpose (a shrunken
+    // corpus must fail every shard, not just the one missing a program),
+    // and a plain local `cargo test` still runs all fifty.
+    if let Some(spec) = std::env::var("CORPUS_SHARD").ok().filter(|s| !s.is_empty()) {
+        let parsed = spec
+            .split_once('/')
+            .and_then(|(i, n)| Some((i.parse::<usize>().ok()?, n.parse::<usize>().ok()?)));
+        let (index, count) = match parsed {
+            Some((i, n)) if 1 <= i && i <= n => (i, n),
+            _ => panic!("CORPUS_SHARD must be i/n with 1 <= i <= n, got {spec:?}"),
+        };
+        stems = stems
+            .into_iter()
+            .enumerate()
+            .filter(|(position, _)| position % count == index - 1)
+            .map(|(_, stem)| stem)
+            .collect();
+    }
+
     let mut failures = Vec::new();
     let mut slowest = (0u64, String::new());
     for stem in &stems {
