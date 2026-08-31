@@ -545,6 +545,53 @@ sub     x10, x9, 8          // x10 = 42`,
 subs    w10, w9, 5          // w10 = -2 and n is set: the branch fuel`,
   },
   {
+    mnemonic: "adc",
+    category: "Data processing",
+    syntax: "adc xd, xn, xm",
+    example: `movn    x9, 0               // the low half of a 128-bit value
+mov     x10, 1
+adds    x11, x9, x10        // low sum wraps to 0 and sets c
+mov     x12, 1
+mov     x13, 2
+adc     x14, x12, x13       // high sum = 1 + 2 + carry = 4`,
+    gotchas: [
+      "Register form only: there is no add-with-carry immediate in AArch64.",
+      "The carry-in is whatever NZCV holds, so the flag-setting instruction that produces it has to be the one right before.",
+    ],
+  },
+  {
+    mnemonic: "adcs",
+    category: "Data processing",
+    syntax: "adcs xd, xn, xm",
+    example: `movn    w9, 0               // 0xffffffff
+mov     w10, 1
+adds    w11, w9, w10        // w11 = 0 and c is set
+adcs    w12, wzr, wzr       // w12 = 0 + 0 + 1 = 1, and nzcv updated`,
+  },
+  {
+    mnemonic: "sbc",
+    category: "Data processing",
+    syntax: "sbc xd, xn, xm",
+    example: `mov     x9, 0
+mov     x10, 1
+subs    x11, x9, x10        // the low half borrows, so c clears
+mov     x12, 1
+mov     x13, 0
+sbc     x14, x12, x13       // high half = 1 - 0 - 1 = 0`,
+    gotchas: [
+      "The carry is the not-borrow: c set means the previous subtraction did NOT borrow, so nothing extra comes off.",
+    ],
+  },
+  {
+    mnemonic: "sbcs",
+    category: "Data processing",
+    syntax: "sbcs xd, xn, xm",
+    example: `mov     x9, 5
+mov     x10, 3
+cmp     x9, x10             // 5 >= 3, so c is set: no borrow
+sbcs    x11, x9, x10        // x11 = 5 - 3 - 0 = 2, and nzcv updated`,
+  },
+  {
     mnemonic: "mul",
     category: "Data processing",
     syntax: "mul xd, xn, xm",

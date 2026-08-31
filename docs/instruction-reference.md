@@ -16,6 +16,10 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `ADDS`   | same                             | Sets NZCV.                               |
 | `SUB`    | `SUB Xd, Xn, Xm` / `..., #imm` / `SUB Xd, Xn, Wm, SXTW #s` | No flags. Same extended-register form as `ADD`. |
 | `SUBS`   | same                             | Sets NZCV.                               |
+| `ADC`    | `ADC Xd, Xn, Xm`                 | Add with carry: `Xd = Xn + Xm + C`, the carry flag as the carry-in. Register form only; AArch64 has no add-with-carry immediate. Chains 64-bit words into wider arithmetic after an `ADDS`. |
+| `ADCS`   | same                             | Sets NZCV from `Xn + Xm + C`: C is the carry out of the register width, V the signed overflow. |
+| `SBC`    | `SBC Xd, Xn, Xm`                 | Subtract with carry: `Xd = Xn + NOT(Xm) + C`, that is `Xn - Xm - (1 - C)`. Register form only; the carry is the not-borrow an earlier `SUBS` left. |
+| `SBCS`   | same                             | Sets NZCV from `Xn + NOT(Xm) + C`. With C set it matches `SUBS`; with C clear it also takes the borrow away. |
 | `MUL`    | `MUL Xd, Xn, Xm`                 | Low 64 bits of product. Alias for `MADD Xd, Xn, Xm, XZR`. |
 | `MADD`   | `MADD Xd, Xn, Xm, Xa`            | Multiply-add: `Xd = Xa + Xn * Xm`.       |
 | `MSUB`   | `MSUB Xd, Xn, Xm, Xa`            | Multiply-subtract: `Xd = Xa - Xn * Xm`. |
