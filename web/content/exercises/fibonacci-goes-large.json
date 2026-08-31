@@ -1,7 +1,7 @@
 {
   "title": "fibonacci goes large",
   "slug": "fibonacci-goes-large",
-  "order": 59,
+  "order": 12,
   "topic": "loops",
   "difficulty": "core",
   "prompt": "Compute the fiftieth Fibonacci number. It is 12,586,269,025, which is the point: that does not fit in 32 bits, so this loop is why the `x` registers exist.\n\nKeep the classic sliding pair: `a` and `b` start as 0 and 1, and fifty times over, the new value is `a + b`, then the pair slides forward. When the loop ends, `a` holds the answer.\n\n## what is checked\n\n- `fib(50)` printed on its own line\n- the program exits cleanly\n- the loop builds it (answer not written in)",

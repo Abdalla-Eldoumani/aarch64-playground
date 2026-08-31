@@ -1,7 +1,7 @@
 {
   "title": "min-max tournament",
   "slug": "min-max-tournament",
-  "order": 25,
+  "order": 16,
   "topic": "arrays",
   "difficulty": "core",
   "prompt": "Eight entries, one pass, two records: find the smallest and the largest element of the array, and print both.\n\nSeed both records with element zero (the starter already has), then walk the rest once. Each element gets two comparisons: does it beat the minimum, does it beat the maximum. Resist the urge to loop twice.\n\n## what is checked\n\n- `min` and `max` each printed on their own line\n- the program exits cleanly\n- comparisons decide the records",

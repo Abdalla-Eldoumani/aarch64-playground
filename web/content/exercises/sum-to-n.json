@@ -1,7 +1,7 @@
 {
   "title": "sum from one to n",
   "slug": "sum-to-n",
-  "order": 28,
+  "order": 6,
   "topic": "loops",
   "difficulty": "core",
   "prompt": "Write a loop that adds up every integer from 1 to `n` and prints the total.\n\nThe starter sets `n` to 10 and leaves a running total and a counter ready in registers. Fill in the loop body so it adds each value from 1 through `n` into the total. The program already prints whatever the total register holds.\n\n## what is checked\n\n- the total is printed on its own line\n- the program exits cleanly\n- the total is built up in the loop, not written in as a constant",

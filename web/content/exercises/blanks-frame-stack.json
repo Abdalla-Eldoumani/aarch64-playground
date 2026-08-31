@@ -1,8 +1,8 @@
 {
   "title": "Fill in the Blank: Memory Addressing Syntax",
   "slug": "blanks-frame-stack",
-  "order": 45,
-  "topic": "syntax",
+  "order": 55,
+  "topic": "memory",
   "difficulty": "core",
   "variant": "blanks",
   "prompt": "Fill in the missing mnemonics, registers, directives, and symbols that complete these AArch64 instructions.",

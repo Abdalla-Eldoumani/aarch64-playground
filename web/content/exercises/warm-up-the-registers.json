@@ -1,7 +1,7 @@
 {
   "title": "warm up the registers",
   "slug": "warm-up-the-registers",
-  "order": 22,
+  "order": 1,
   "topic": "arithmetic",
   "difficulty": "intro",
   "prompt": "Three values are waiting in registers: `a`, `b`, and `c`. Compute `(a + b) - c` and print it.\n\nThe starter loads the three values and prints whatever the result register holds, so all that is missing is the arithmetic in the middle. Two instructions are enough.\n\n## what is checked\n\n- the combined result is printed on its own line\n- the program exits cleanly\n- the subtraction actually happens (no writing the answer in directly)",

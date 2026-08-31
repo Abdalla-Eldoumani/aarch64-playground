@@ -1,7 +1,7 @@
 {
   "title": "Predict: Floating Point Instructions",
   "slug": "predict-floating-point",
-  "order": 75,
+  "order": 71,
   "topic": "floating-point",
   "difficulty": "core",
   "variant": "prediction",

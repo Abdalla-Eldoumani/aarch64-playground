@@ -1,7 +1,7 @@
 {
   "title": "call yourself",
   "slug": "call-yourself",
-  "order": 58,
+  "order": 25,
   "topic": "functions",
   "difficulty": "challenge",
   "prompt": "Write `fact`, a subroutine that computes a factorial by calling itself, and use it to print `10!`.\n\nRecursion is where the calling convention stops being theory. Each call to `fact` needs its own frame (`lr` must survive the recursive `bl`), and `n` has to outlive the recursive call, which means a callee-saved register that you save on entry and restore on exit. Base case first: when `n` is 1 or less, the answer is 1. Otherwise it is `n * fact(n - 1)`.\n\n## what is checked\n\n- `10!` printed on its own line\n- the program exits cleanly\n- a real call chain does it: a frame is built (`stp`) and the recursion happens (`bl`), with no precomputed answer",

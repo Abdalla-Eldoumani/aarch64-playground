@@ -1,8 +1,8 @@
 {
   "title": "Quiz: Addressing & Records - Advanced",
   "slug": "quiz-advance-frame-stack",
-  "order": 44,
-  "topic": "advanced",
+  "order": 54,
+  "topic": "memory",
   "difficulty": "challenge",
   "variant": "quiz",
   "prompt": "Work through register-offset addressing with sign extension and shifts, plus the pre-indexed and post-indexed forms that build and tear down a frame record.",

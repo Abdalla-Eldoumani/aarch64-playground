@@ -1,7 +1,7 @@
 {
   "title": "count the vowels",
   "slug": "count-the-vowels",
-  "order": 39,
+  "order": 19,
   "topic": "strings",
   "difficulty": "core",
   "prompt": "A sentence lives in `.data` (a famous one: it uses every letter of the alphabet). Count its vowels.\n\nStrings are just bytes ending in a zero. Load one byte at a time with `ldrb`, stop at the terminator, and bump the count for every `a`, `e`, `i`, `o`, or `u`. Character literals like `'a'` work directly in `cmp`, and the post-indexed form `ldrb wX, [ptr], 1` loads and advances the pointer in one instruction.\n\n## what is checked\n\n- the vowel count is printed on its own line\n- the program exits cleanly\n- the walk is byte by byte (`ldrb` present, count not written in)",

@@ -1,8 +1,8 @@
 {
   "title": "Predict: Memory Tracing",
   "slug": "predict-frame-stack",
-  "order": 46,
-  "topic": "tracing",
+  "order": 56,
+  "topic": "memory",
   "difficulty": "challenge",
   "variant": "prediction",
   "prompt": "Act as the CPU. Trace the memory addresses and register values through these AArch64 snippets. Write hex answers as 0x followed by the digits, and decimal answers as plain integers.",
