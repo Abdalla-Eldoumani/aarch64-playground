@@ -243,12 +243,16 @@ Each abort is a calm halt with a plain-language message in the result
 ## Snapshots and save states
 
 `SnapshotRing` (capacity 128) captures a `Snapshot { regs, mem, halted,
-blocked, exit_code, stdin, stdin_closed, vfs, open_files, next_fd,
-rand_state, term, heap }` before each `step()`; `step_back()` pops the
+blocked, exit_code, stdin, stdin_segments, stdin_closed, vfs, open_files,
+next_fd, rand_state, term, heap, strtok_save, stdout_seen, stderr_seen }`
+before each `step()`; `step_back()` pops the
 newest frame. Recording stops, and the history clears, in raw mode,
 while the host pauses the ring, and once the state a frame copies whole
 outgrows `MAX_SNAPSHOT_SIDE_BYTES` -- so step-back never leaps over an
-unrecorded stretch. Stdout and stderr are not rolled back. Named save states live in a separate
+unrecorded stretch. The stdout and stderr buffers are not rolled back, but
+the `stdout_seen` / `stderr_seen` counters beside them are, so the host
+trims its transcript back to what the restored frame had shown. Named save
+states live in a separate
 `HashMap<String, Snapshot>` on the same ring, so a named snapshot
 survives stepping while the rolling 128-frame history stays intact.
 
