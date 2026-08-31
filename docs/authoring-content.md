@@ -187,7 +187,11 @@ question list in place of `starter`/`acceptance`:
   answer.
 
 `hint` is optional everywhere and is the only feedback a wrong attempt sees;
-the explanation renders only after a correct one.
+the explanation renders only after a correct one. Unlike the exercise
+`prompt`, the per-question fields (`question`, `options`, `code`, `answer`,
+`explanation`, `hint`, and a blank's `prompt`) render as plain text, so
+write mnemonics and registers bare there; a backtick would show up as a
+literal character.
 
 ### a worked exercise
 
