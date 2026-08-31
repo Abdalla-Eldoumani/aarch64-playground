@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: ARMv8 Assembly - Intermediate",
+  "slug": "quiz-inter-armv8",
+  "order": 18,
+  "topic": "armv8",
+  "difficulty": "Intermediate",
+  "variant": "quiz",
+  "prompt": "Test your intermediate understanding of ARMv8 instructions, register conventions, and gdb debugging.",
+  "questions": [
+    {
+      "question": "What is the specific use of registers x0-x7 in ARMv8 procedure calls?",
+      "options": [
+        "They are callee-saved registers.",
+        "They are used to pass arguments into a procedure and return results.",
+        "They hold intra-procedure-call scratch data.",
+        "They act as the frame pointer and procedure link registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Registers x0-x7 are used to pass arguments into a procedure, and return results.",
+      "hint": "Think about where arguments go when you execute a Branch and Link (bl) instruction."
+    },
+    {
+      "question": "What is the instruction `cmp Xn, Xm` actually executing as an alias under the hood?",
+      "options": [
+        "subs xzr, Xn, Xm",
+        "adds xzr, Xn, Xm",
+        "sub Xn, Xn, Xm",
+        "mneg Xn, Xm"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The `cmp` instruction is more intuitive, but it is actually an alias for `subs xzr, Xn, Xm`.",
+      "hint": "Comparing two registers involves subtracting them and setting the condition flags, while discarding the actual numerical result."
+    },
+    {
+      "question": "When setting up the main routine, what does the instruction `stp x29, x30, [sp, -16]!` accomplish?",
+      "options": [
+        "It loads 16 bytes of data into x29 and x30 from the stack.",
+        "It stores the frame pointer and link register to the stack, allocating 16 bytes by pre-incrementing the stack pointer by -16.",
+        "It sets the stack pointer to -16.",
+        "It deallocates 16 bytes of stack memory by post-incrementing the SP."
+      ],
+      "correctAnswer": 1,
+      "explanation": "It allocates 16 bytes in stack memory by pre-incrementing the SP register by -16, and stores the pair of registers (x29 and x30) to the stack.",
+      "hint": "The exclamation mark (!) indicates a pre-increment operation that updates the stack pointer."
+    },
+    {
+      "question": "What happens to the remainder when you use the `sdiv` instruction in AArch64?",
+      "options": [
+        "It is stored in the x8 indirect result register.",
+        "It generates an exception trap.",
+        "The calculated quotient is an integer, and any remainder is discarded.",
+        "It is stored in the destination register alongside the quotient."
+      ],
+      "correctAnswer": 2,
+      "explanation": "These instructions do integer division. The calculated quotient is an integer, and any remainder is discarded.",
+      "hint": "If you divide 14 by 3, the instruction just returns 4."
+    },
+    {
+      "question": "In gdb, what is the functional difference between the `si` and `ni` commands?",
+      "options": [
+        "si steps over functions, ni steps into them.",
+        "si executes the next instruction, ni proceeds until a function returns if it hits a function call.",
+        "si displays signed integers, ni displays negative integers.",
+        "There is no difference; they are aliases."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Both execute the next instruction, but if it is a function call, `ni` proceeds until the function returns, while `si` will step into the function's instructions.",
+      "hint": "Think of `si` as 'step instruction' (into) and `ni` as 'next instruction' (over)."
+    },
+    {
+      "question": "Which condition flag records if the result of an instruction is negative?",
+      "options": [
+        "Z",
+        "N",
+        "V",
+        "C"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The N flag is true if the result is negative.",
+      "hint": "The flag letter corresponds directly to the first letter of the word 'negative'."
+    },
+    {
+      "question": "When using an immediate value in A64 assembly, what prefix denotes a binary number?",
+      "options": [
+        "0x",
+        "0",
+        "0b",
+        "#"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Immediates are prefixed with `0b` to indicate a binary number (e.g., 0b101).",
+      "hint": "Hex uses '0x', octal uses '0', and binary uses a letter representing its base."
+    },
+    {
+      "question": "Which block of registers (x19-x28) are considered callee-saved?",
+      "options": [
+        "Their value is wiped upon returning from a function.",
+        "Their value is preserved by any function you call.",
+        "They are used exclusively for system calls in EL1.",
+        "They act as temporary scratch registers that do not need to be saved."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Registers x19-x28 are callee-saved registers, meaning their value is preserved by any function you call.",
+      "hint": "Callee-saved means the routine being called is responsible for putting the values back exactly as they were before returning."
+    }
+  ]
+}

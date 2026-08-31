@@ -1,0 +1,46 @@
+{
+  "title": "Fill in the Blank: ARMv8 Mechanics",
+  "slug": "blank-armv8",
+  "order": 20,
+  "topic": "armv8",
+  "difficulty": "Intermediate",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonics, registers, or symbols to construct accurate AArch64 mechanics.",
+  "blanks": [
+    {
+      "prompt": "Allocate 16 bytes on the stack by pre-incrementing the Stack Pointer.",
+      "code": "stp x29, x30, [sp, -16]___",
+      "blanks": ["!"],
+      "explanation": "Allocates 16 bytes in stack memory by pre-incrementing the SP register by -16.",
+      "hint": "Use the exclamation mark."
+    },
+    {
+      "prompt": "Update condition flags (Z, N, V, C) when performing a subtraction.",
+      "code": "sub___ x0, x1, x2",
+      "blanks": ["s", "S"],
+      "explanation": "Condition flags are set by instructions that end in 's' (short for set flags).",
+      "hint": "Append 's' for set flags."
+    },
+    {
+      "prompt": "Automatically show the current instruction when single stepping in gdb.",
+      "code": "___ $pc",
+      "blanks": ["display/i", "display /i"],
+      "explanation": "Use display/i $pc to automatically show the current instruction when single stepping in gdb.",
+      "hint": "Command to display instructions."
+    },
+    {
+      "prompt": "Create a pre-test while loop condition where the loop continues if x < 10, branching over the body if the logical complement is met.",
+      "code": "cmp x19, 10\nb.___ done",
+      "blanks": ["ge", "GE"],
+      "explanation": "Must use the logical complement (e.g. >= for <) to branch over the statement body.",
+      "hint": "Greater than or equal."
+    },
+    {
+      "prompt": "Execute an unconditional branch to the label 'top'.",
+      "code": "___ top",
+      "blanks": ["b", "B"],
+      "explanation": "An unconditional branch is always taken.",
+      "hint": "The single-letter mnemonic for branch."
+    }
+  ]
+}

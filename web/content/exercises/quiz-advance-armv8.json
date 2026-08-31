@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: ARMv8 Assembly - Advanced",
+  "slug": "quiz-advance-armv8",
+  "order": 19,
+  "topic": "armv8",
+  "difficulty": "Advance",
+  "variant": "quiz",
+  "prompt": "Test your advanced understanding of ARMv8 branch logic, loop conversion, and instruction mathematics.",
+  "questions": [
+    {
+      "question": "When converting a C `while` loop (pre-test) into assembly, why is the logical complement of the condition commonly used for the branch test at the start of the loop?",
+      "options": [
+        "Because ARMv8 cannot evaluate standard logic operators.",
+        "To branch over the loop body and exit if the condition is not true.",
+        "Because it transforms the loop into a post-test do-while loop.",
+        "To satisfy the requirements of the callee-saved registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "We branch over the loop body if the condition fails (e.g., branching if x >= 10 when the C code is while x < 10). The logic operation is complemented to jump to the 'done' label.",
+      "hint": "If the loop condition is false, you need an instruction that jumps entirely past the loop body."
+    },
+    {
+      "question": "What Exception Level (EL) is specifically reserved for a Hypervisor to support virtualization?",
+      "options": [
+        "EL0",
+        "EL1",
+        "EL2",
+        "EL3"
+      ],
+      "correctAnswer": 2,
+      "explanation": "EL2 is for a Hypervisor, which supports virtualization where the computer hosts multiple guest operating systems.",
+      "hint": "It sits one privilege level above the standard OS Kernel."
+    },
+    {
+      "question": "The multiply-add instruction `madd Wd, Wn, Wm, Wa` calculates which of the following exact formulas?",
+      "options": [
+        "Wd = (Wa + Wn) * Wm",
+        "Wd = Wa + (Wn * Wm)",
+        "Wd = Wa - (Wn * Wm)",
+        "Wd = (Wn * Wm) / Wa"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The madd instruction calculates: Wd = Wa + (Wn * Wm).",
+      "hint": "It multiplies the two source registers first, then adds the accumulator register."
+    },
+    {
+      "question": "Why can't the Program Counter (PC) be accessed directly as a named register (like x0) for data manipulation in AArch64?",
+      "options": [
+        "It is only 32 bits wide.",
+        "It is changed indirectly by branch instructions and used implicitly by PC-relative loads/stores.",
+        "It is strictly reserved for the Secure Monitor in EL3.",
+        "It must be accessed using the WZR register."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The PC cannot be accessed directly as a named register; it is changed indirectly by branch and other instructions, and is used implicitly by PC-relative loads/stores.",
+      "hint": "If you could directly write a random number to this register like a standard variable, the CPU would immediately lose its place in the execution flow."
+    },
+    {
+      "question": "If you execute an integer division instruction (`udiv` or `sdiv`) where the denominator is 0, what happens in the ARMv8 architecture?",
+      "options": [
+        "The system throws an exception and halts execution.",
+        "The instruction calculates infinity and sets the Overflow (V) flag.",
+        "It divides by 1 instead to prevent a crash.",
+        "It does not generate an exception, but simply writes 0 to the destination register."
+      ],
+      "correctAnswer": 3,
+      "explanation": "Dividing by 0 does not generate an exception (a trap). It writes 0 to the destination register.",
+      "hint": "Unlike high-level languages that crash with a DivideByZero error, ARMv8 handles it silently by defaulting the output register."
+    }
+  ]
+}

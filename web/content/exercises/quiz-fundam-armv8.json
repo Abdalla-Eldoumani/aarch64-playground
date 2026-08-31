@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: ARMv8 Assembly - Fundamentals",
+  "slug": "quiz-fundam-armv8",
+  "order": 17,
+  "topic": "armv8",
+  "difficulty": "Fundamental",
+  "variant": "quiz",
+  "prompt": "Test your foundational understanding of the ARMv8-A architecture and its basic register file.",
+  "questions": [
+    {
+        "question": "In the ARMv8-A architecture, which exception level is used for normal user applications with limited privileges?",
+        "options": [
+          "EL1",
+          "EL0",
+          "EL2",
+          "EL3"
+        ],
+        "correctAnswer": 1,
+        "explanation": "EL0 is used for normal user applications and has restricted access to instructions, registers, and memory[cite: 2]. EL1 is for the OS Kernel, EL2 is for a Hypervisor, and EL3 is for the Secure Monitor[cite: 2].",
+        "hint": "Most programs work at the lowest numbered exception level[cite: 2]."
+      },
+      {
+        "question": "Which set of registers are 'callee-saved' and recommended for most of your general work?",
+        "options": [
+          "x0 - x7",
+          "x9 - x15",
+          "x19 - x28",
+          "x29 - x30"
+        ],
+        "correctAnswer": 2,
+        "explanation": "Registers x19-x28 are callee-saved, meaning their values are preserved by any function you call[cite: 2]. Registers x0-x7 are used for arguments and results, and x9-x15 are temporary caller-saved registers[cite: 2].",
+        "hint": "Look for the block of registers right before the Frame Pointer (x29) and Link Register (x30)."
+      },
+      {
+        "question": "What happens if a program attempts to divide an integer by zero using the 'sdiv' or 'udiv' instructions?",
+        "options": [
+          "It generates an exception (a trap) and crashes the program.",
+          "It writes a value of 0 to the destination register.",
+          "It sets the Z (Zero) condition flag to 1 but leaves the register unchanged.",
+          "It writes the maximum possible integer value to the destination register."
+        ],
+        "correctAnswer": 1,
+        "explanation": "In ARMv8, dividing by 0 does not generate an exception or trap; instead, it simply writes 0 to the destination register[cite: 2].",
+        "hint": "Unlike many high-level languages, ARMv8 handles this silently without crashing[cite: 2]."
+      },
+      {
+        "question": "When debugging with gdb, what is the critical difference between the 'si' (step instruction) and 'ni' (next instruction) commands?",
+        "options": [
+          "'si' executes the next instruction, while 'ni' proceeds until a function returns if the instruction is a function call.",
+          "'si' skips function calls entirely, while 'ni' steps into them.",
+          "'si' steps through source code lines, while 'ni' steps through machine code.",
+          "'si' executes until the next breakpoint, while 'ni' only executes one instruction."
+        ],
+        "correctAnswer": 0,
+        "explanation": "Both execute the next instruction, but if that instruction is a function call, 'ni' will proceed until the function returns, whereas 'si' will step directly into the function[cite: 2].",
+        "hint": "One of these commands will 'step into' a subroutine, while the other will 'step over' it by running the whole subroutine at once[cite: 2]."
+      },
+      {
+        "question": "The instruction 'mov x29, sp' is actually an alias provided for readability. What underlying instruction does the assembler translate this to?",
+        "options": [
+          "add x29, sp, 0",
+          "orr x29, xzr, sp",
+          "ldr x29, [sp]",
+          "sub x29, sp, 0"
+        ],
+        "correctAnswer": 0,
+        "explanation": "The 'mov' instruction for copying the stack pointer (SP) into x29 is an alias for 'add x29, sp, 0'[cite: 2].",
+        "hint": "Moving a value is mathematically the same as adding zero to it[cite: 2]."
+      }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "title": "Predict: ARMv8 Execution",
+  "slug": "predict-armv8",
+  "order": 21,
+  "topic": "armv8",
+  "difficulty": "Advance",
+  "variant": "prediction",
+  "prompt": "Predict the state of the CPU registers or execution flow based on the provided ARMv8 instruction scenarios.",
+  "predictions": [
+    {
+      "code": "mov x29, sp\n// Executes during the setup of the main routine",
+      "question": "Which specific register's value is the x29 (Frame Pointer) register updated to hold?",
+      "answer": "Stack Pointer",
+      "explanation": "The x29 register (Frame Pointer) is updated to hold the current value of the Stack Pointer (SP), allowing it to be used as a base address in the routine.",
+      "hint": "Look at the source operand (SP)."
+    },
+    {
+      "code": "mov w1, 14\nmov w2, 3\nsdiv w0, w1, w2",
+      "question": "What is the exact integer value stored in w0 after execution?",
+      "answer": "4",
+      "explanation": "The value 4 is written to w0, and the remainder of 2 is permanently discarded because sdiv strictly performs integer division.",
+      "hint": "14 divided by 3, truncating any remainder."
+    },
+    {
+      "code": "mov x22, 10\nmov x23, 0\nudiv x21, x22, x23",
+      "question": "What exact value does the CPU silently write into the destination register x21?",
+      "answer": "0",
+      "explanation": "Dividing by 0 does not generate an exception or a trap. Instead, the CPU silently writes the value 0 into the destination register x21.",
+      "hint": "ARMv8 does not throw a Divide By Zero error."
+    },
+    {
+      "code": "// x1 and x2 contain identical values\ncmp x1, x2\nb.eq top",
+      "question": "Which specific condition flag is set to 1 (true) by the cmp instruction?",
+      "answer": "Zero",
+      "explanation": "The cmp instruction (an alias for subs) will set the Zero (Z) flag to 1 (true) because the difference is zero. The program flow will then successfully take the branch to the 'top' label.",
+      "hint": "What is the result when you subtract two identical numbers?"
+    }
+  ]
+}
