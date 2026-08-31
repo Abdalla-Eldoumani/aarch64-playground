@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Floating Point Instructions - Advanced",
+  "slug": "quiz-advance-floating-point",
+  "order": 73,
+  "topic": "floating-point-instructions",
+  "difficulty": "Advance",
+  "variant": "quiz",
+  "prompt": "Test your ability to work with single and double-precision floating-point registers, type conversions, and FPU arithmetic instructions.",
+  "questions": [
+    {
+      "question": "When a subroutine needs to save the callee-saved floating-point registers (d8 - d15) to the stack, how much of the underlying 128-bit hardware register actually needs to be preserved?",
+      "options": [
+        "All 128 bits.",
+        "Only the bottom 64 bits.",
+        "Only the bottom 32 bits.",
+        "The highest 64 bits containing the SIMD vector data."
+      ],
+      "correctAnswer": 1,
+      "explanation": "When saving callee-saved registers (d8 - d15) on the stack, only the bottom 64-bits of the 128-bit register need to be preserved.",
+      "hint": "You only need to save the portion that holds the standard double-precision float."
+    },
+    {
+      "question": "What strict mathematical limitation exists when trying to load an immediate floating-point number directly into a register using the `fmov` instruction?",
+      "options": [
+        "The immediate must be a whole integer.",
+        "The immediate must be expressible as ± n/16 * 2^r, where n is 16-31 and r is -3 to +4.",
+        "The immediate cannot be negative.",
+        "The immediate is limited to 8 bits of total precision."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The #fpimm must be expressible as ± n/16 * 2^r, with n in the range 16 to 31, and r in the range -3 to +4.",
+      "hint": "The immediate encoding uses only 8 bits total (1 sign, 4 fraction, 3 exponent), severely limiting the range of exact numbers it can represent."
+    },
+    {
+      "question": "Which instruction correctly converts a single-precision floating-point number into the nearest 32-bit signed integer?",
+      "options": [
+        "fcvt Wd, Sn",
+        "scvtf Wd, Sn",
+        "fcvtns Wd, Sn",
+        "fcvtnu Wd, Sn"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The instruction `fcvtns Wd, Sn` converts a single in Sn to the nearest signed 32-bit signed integer in Wd.",
+      "hint": "Float ConVerT Nearest Signed."
+    },
+    {
+      "question": "If the instruction `fmsub Dd, Dn, Dm, Da` is executed, what is the exact algebraic formula applied?",
+      "options": [
+        "Dd = Da - (Dn * Dm)",
+        "Dd = (Da - Dn) * Dm",
+        "Dd = (Dn * Dm) - Da",
+        "Dd = -(Da * Dn * Dm)"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The `fmsub` instruction calculates Dd = Da - (Dn * Dm).",
+      "hint": "The final operand is the base value you are subtracting the product from."
+    },
+    {
+      "question": "To convert a 64-bit signed integer into a double-precision float, which instruction is used?",
+      "options": [
+        "fcvtns Dd, Xn",
+        "scvtf Dd, Xn",
+        "ucvtf Dd, Xn",
+        "fmov Dd, Xn"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The `scvtf Dd, Xn` instruction converts a signed 64-bit integer in Xn to a double in Dd.",
+      "hint": "Signed ConVerT to Float."
+    }
+  ]
+}

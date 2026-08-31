@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Floating Point Instructions - Fundamentals",
+  "slug": "quiz-fundam-floating-point",
+  "order": 71,
+  "topic": "floating-point-instructions",
+  "difficulty": "Fundamental",
+  "variant": "quiz",
+  "prompt": "Test your ability to work with single and double-precision floating-point registers, type conversions, and FPU arithmetic instructions.",
+  "questions": [
+    {
+      "question": "How many bits are used by the 'D' registers to hold double-precision floating-point numbers?",
+      "options": [
+        "32 bits",
+        "64 bits",
+        "128 bits",
+        "256 bits"
+      ],
+      "correctAnswer": 1,
+      "explanation": "D registers use the low-order 64 bits of the 128-bit FP registers to hold double-precision floating-point numbers. S registers use the low-order 32 bits for single-precision.",
+      "hint": "The 'D' stands for Double, which is twice the size of a 32-bit single-precision float."
+    },
+    {
+      "question": "Which prefix must be used in an assembly pseudo-op to correctly specify a 'real' floating-point value?",
+      "options": [
+        "0x",
+        "0f",
+        "0r",
+        "0b"
+      ],
+      "correctAnswer": 2,
+      "explanation": "You must use the prefix '0r' to specify a 'real' floating-point value when initializing memory using `.single` or `.double` pseudo-ops.",
+      "hint": "Think 'r' for 'real' number."
+    },
+    {
+      "question": "If an assembly subroutine returns a double-precision floating-point number to the calling C function, which register will contain the return value?",
+      "options": [
+        "x0",
+        "s0",
+        "d0",
+        "d8"
+      ],
+      "correctAnswer": 2,
+      "explanation": "A double-precision FP number is returned from a subroutine in register d0. A single-precision value is returned in s0.",
+      "hint": "It uses the lowest-numbered register corresponding to the double-precision size."
+    },
+    {
+      "question": "How do basic floating-point arithmetic instructions (like `fadd` and `fmul`) differ from integer arithmetic instructions regarding operands?",
+      "options": [
+        "They only accept immediate values.",
+        "They use registers only and do not allow immediate values.",
+        "They require a memory address as the third operand.",
+        "They automatically update the condition flags without needing a special suffix."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Basic floating-point arithmetic instructions use registers only; they do not accept immediate values.",
+      "hint": "You must load your floating-point constants into registers before doing math with them."
+    },
+    {
+      "question": "When debugging in GDB, which command format is used to print the contents of a floating-point register?",
+      "options": [
+        "p/d",
+        "p/x",
+        "p/f",
+        "x/f"
+      ],
+      "correctAnswer": 2,
+      "explanation": "In gdb, you use `p/f` to print the contents of a floating-point register (e.g., `p/f $d0`).",
+      "hint": "The format specifier is the first letter of 'float'."
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "title": "Fill in the Blank: Floating Point Instructions",
+  "slug": "blank-floating-point",
+  "order": 74,
+  "topic": "floating-point-instructions",
+  "difficulty": "Intermediate",
+  "variant": "blanks",
+  "prompt": "Test your ability to work with single and double-precision floating-point registers, type conversions, and FPU arithmetic instructions.",
+  "blanks": [
+    {
+      "prompt": "Allocate memory in the `.data` section for a single-precision floating-point number initialized to 5.0.",
+      "code": "a_m: .___ 0r5.0",
+      "blanks": [
+        "single"
+      ],
+      "explanation": "Use the `.single` or `.double` pseudo-ops to allocate and initialize memory for a FP number.",
+      "hint": "It holds a 32-bit float."
+    },
+    {
+      "prompt": "Examine a double-precision floating-point value in memory using GDB.",
+      "code": "___ <address>",
+      "blanks": [
+        "x/gf",
+        "x/gx"
+      ],
+      "explanation": "Use `x/gf` or `x/gx` in GDB to examine a double in memory.",
+      "hint": "eXamine / Giant Float."
+    },
+    {
+      "prompt": "Convert a signed 32-bit integer located in `w19` into a single-precision float and store it in `s0`.",
+      "code": "___ s0, w19",
+      "blanks": [
+        "scvtf"
+      ],
+      "explanation": "The `scvtf Sd, Wn` instruction converts a signed 32-bit integer in Wn to a single.",
+      "hint": "Signed ConVerT to Float."
+    },
+    {
+      "prompt": "Set the condition flags (NZCV) by comparing the floats in `s0` and `s1`.",
+      "code": "___ s0, s1",
+      "blanks": [
+        "fcmp"
+      ],
+      "explanation": "The `fcmp Sn, Sm` instruction compares the registers and sets the condition flags, normally followed by a conditional branch.",
+      "hint": "Floating Compare."
+    },
+    {
+      "prompt": "Multiply the values in `s1` and `s2`, negate the product, and store the result in `s0`.",
+      "code": "___ s0, s1, s2",
+      "blanks": [
+        "fnmul"
+      ],
+      "explanation": "The `fnmul Sd, Sn, Sm` instruction calculates Sd = -(Sn * Sm).",
+      "hint": "Floating Negate Multiply."
+    }
+  ]
+}

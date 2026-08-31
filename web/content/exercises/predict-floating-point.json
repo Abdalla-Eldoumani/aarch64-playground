@@ -1,0 +1,46 @@
+{
+  "title": "Prediction: Floating Point Instructions",
+  "slug": "predict-floating-point",
+  "order": 75,
+  "topic": "floating-point-instructions",
+  "difficulty": "Intermediate",
+  "variant": "prediction",
+  "prompt": "Test your ability to work with single and double-precision floating-point registers, type conversions, and FPU arithmetic instructions.",
+  "predictions": [
+    {
+      "code": "// s1 holds 2.5\n// s2 holds 3.5\nfadd s0, s1, s2",
+      "question": "What exact decimal value is stored in s0 after execution?",
+      "answer": "6.0",
+      "explanation": "The `fadd` instruction calculates Sd = Sn + Sm. 2.5 + 3.5 = 6.0.",
+      "hint": "Simply add the two decimal values."
+    },
+    {
+      "code": "// d1 holds 2.0\n// d2 holds 3.0\n// d3 holds 10.0\nfmadd d0, d1, d2, d3",
+      "question": "What exact decimal value is stored in d0 after execution?",
+      "answer": "16.0",
+      "explanation": "The `fmadd` instruction calculates Dd = Da + (Dn * Dm). Here, 10.0 + (2.0 * 3.0) = 16.0.",
+      "hint": "Multiply the middle two operands, then add the final operand."
+    },
+    {
+      "code": "// d1 holds -42.5\nfabs d0, d1",
+      "question": "What exact decimal value is stored in d0 after execution?",
+      "answer": "42.5",
+      "explanation": "The `fabs` instruction calculates Dd = abs(Dn), dropping the negative sign.",
+      "hint": "Absolute value removes the negative sign."
+    },
+    {
+      "code": "// s1 holds 15.0\nfneg s0, s1",
+      "question": "What exact decimal value is stored in s0 after execution?",
+      "answer": "-15.0",
+      "explanation": "The `fneg` instruction calculates Sd = -Sn, inverting the sign of the value.",
+      "hint": "Negation flips the sign."
+    },
+    {
+      "code": "// s1 holds 2.0\n// s2 holds 4.0\nfnmul s0, s1, s2",
+      "question": "What exact decimal value is stored in s0 after execution?",
+      "answer": "-8.0",
+      "explanation": "The `fnmul` instruction calculates Sd = -(Sn * Sm). -(2.0 * 4.0) = -8.0.",
+      "hint": "Multiply the two operands, then make the result negative."
+    }
+  ]
+}

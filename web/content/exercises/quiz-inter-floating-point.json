@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Floating Point Instructions - Intermediary",
+  "slug": "quiz-inter-floating-point",
+  "order": 72,
+  "topic": "floating-point-instructions",
+  "difficulty": "Intermediate",
+  "variant": "quiz",
+  "prompt": "Test your ability to work with single and double-precision floating-point registers, type conversions, and FPU arithmetic instructions.",
+  "questions": [
+    {
+      "question": "What is a potential consequence of executing the instruction `fcvt Sd, Dn`?",
+      "options": [
+        "The application crashes due to an alignment fault.",
+        "The condition flags are cleared automatically.",
+        "Precision may be lost since fewer bits are used to encode the single-precision destination.",
+        "The sign bit is inverted."
+      ],
+      "correctAnswer": 2,
+      "explanation": "The instruction converts a double in Dn to a single in Sd, rounding as necessary. Precision may be lost since we use fewer bits to encode Sd.",
+      "hint": "You are squeezing 64 bits of data into a 32-bit container."
+    },
+    {
+      "question": "In the Multiply-Add instruction `fmadd Sd, Sn, Sm, Sa`, what exact mathematical operation is performed?",
+      "options": [
+        "Sd = (Sa + Sn) * Sm",
+        "Sd = Sa + (Sn * Sm)",
+        "Sd = (Sa * Sn) + Sm",
+        "Sd = Sa * (Sn + Sm)"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The `fmadd` instruction multiplies Sn and Sm together, and then adds Sa to the product: Sd = Sa + (Sn * Sm).",
+      "hint": "The last operand (Sa) is the addend; the middle two are the multiplicands."
+    },
+    {
+      "question": "Which range of double-precision floating-point registers is considered 'callee-saved' (must be preserved by a subroutine if used)?",
+      "options": [
+        "d0 - d7",
+        "d8 - d15",
+        "d16 - d31",
+        "s0 - s7"
+      ],
+      "correctAnswer": 1,
+      "explanation": "Registers d8 - d15 are callee-saved registers. The subroutine must save and restore their values on the stack if it uses them.",
+      "hint": "It is the second block of 8 registers."
+    },
+    {
+      "question": "When passing floating-point arguments into a subroutine, how many FP arguments can be passed via registers before the program must use the stack?",
+      "options": [
+        "4",
+        "8",
+        "16",
+        "32"
+      ],
+      "correctAnswer": 1,
+      "explanation": "Arguments are passed into a subroutine using registers d0 - d7 (for doubles) and/or s0 - s7 (for singles). Stack memory is used if there are more than 8 FP arguments.",
+      "hint": "Count the registers from 0 to 7."
+    },
+    {
+      "question": "How does the floating-point compare instruction (`fcmp`) handle comparing a register directly to zero?",
+      "options": [
+        "You must load 0.0 into a temporary register first.",
+        "It provides a specific syntax: `fcmp Sn, 0.0`.",
+        "It implicitly compares to zero if only one register is provided.",
+        "Zero comparisons are done using the integer `cmp` instruction against xzr."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The `fcmp` instruction has specific forms `fcmp Sn, 0.0` and `fcmp Dn, 0.0` allowing direct comparison against floating-point zero.",
+      "hint": "ARM provides a convenient shortcut syntax specifically for zero."
+    }
+  ]
+}
