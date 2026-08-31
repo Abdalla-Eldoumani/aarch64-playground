@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: System Architecture - Fundamentals",
+  "slug": "quiz-fundam-architecture",
+  "order": 1,
+  "topic": "architecture",
+  "difficulty": "Fundamental",
+  "variant": "quiz",
+  "prompt": "Test your foundational understanding of basic computer components and CPU architecture.",
+  "questions": [
+    {
+      "question": "What are the three main parts that make up a Central Processing Unit (CPU)?",
+      "options": [
+        "Address Bus, Data Bus, and Control Bus",
+        "Primary Memory, Secondary Memory, and the System Clock",
+        "Control Unit (CU), Arithmetic Logic Unit (ALU), and Registers",
+        "Keyboard, Monitor, and Hard Disk Drive"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The CPU consists of 3 main parts: Control Unit (CU), Arithmetic Logic Unit (ALU), and Registers.",
+      "hint": "Think about the internal components that calculate logic and control the flow of data across the chip."
+    },
+    {
+      "question": "What happens to the data in Primary Memory (RAM) when the computer is powered off?",
+      "options": [
+        "It is automatically moved to the hard disk drive.",
+        "It disappears because RAM is volatile.",
+        "It persists through the power cycle because RAM is non-volatile.",
+        "It is saved in the CPU registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Primary memory is volatile, which means data disappears when powered off.",
+      "hint": "Consider the difference between volatile and non-volatile memory."
+    },
+    {
+      "question": "In the context of computer architectures, what does the acronym RISC stand for?",
+      "options": [
+        "Reduced Instruction Set Computer",
+        "Rapid Integrated System Controller",
+        "Random Internal Storage Cache",
+        "Redundant Instruction Sequence Component"
+      ],
+      "correctAnswer": 0,
+      "explanation": "RISC stands for Reduced Instruction Set Computer.",
+      "hint": "The 'R' refers to keeping the instruction set simple so they execute in one machine cycle."
+    },
+    {
+      "question": "During the first step of the fetch-execute cycle, where does the CPU fetch the next instruction from?",
+      "options": [
+        "The secondary memory (HDD)",
+        "Primary memory into the Instruction Register (IR)",
+        "The system bus",
+        "The Arithmetic Logic Unit (ALU)"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The CPU fetches the next instruction from memory into the instruction register (IR).",
+      "hint": "Instructions are stored in RAM and moved to a specific CPU register to be decoded."
+    },
+    {
+      "question": "How are comments appended to the end of a statement in an ARMv8 assembly program?",
+      "options": [
+        "After a // delimiter",
+        "Enclosed within /* and */ brackets",
+        "Starting with a semicolon (;)",
+        "Starting with a hash symbol (#)"
+      ],
+      "correctAnswer": 0,
+      "explanation": "In ARMv8, comments may be appended to the end of a statement after a // delimiter.",
+      "hint": "ARMv8 uses the same comment delimiter as C++ or JavaScript single-line comments."
+    }
+  ]
+}

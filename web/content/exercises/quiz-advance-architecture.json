@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: System Architecture - Advanced",
+  "slug": "quiz-advance-architecture",
+  "order": 3,
+  "topic": "architecture",
+  "difficulty": "Advance",
+  "variant": "quiz",
+  "prompt": "Test your advanced understanding of RISC vs CISC architectures, macro expansion, and Load/Store instruction execution.",
+  "questions": [
+    {
+      "question": "Why do CISC architectures generally suffer from slower overall execution speed compared to RISC?",
+      "options": [
+        "CISC instructions are always the same size.",
+        "CISC lacks a multiply instruction.",
+        "Machine instructions vary in length and may take many cycles to execute, making decoding difficult and slow.",
+        "CISC separates data and program memory."
+      ],
+      "correctAnswer": 2,
+      "explanation": "In a CISC architecture, machine instructions vary in length and may take many cycles to execute, which makes decoding difficult and slow, slowing down overall execution speed.",
+      "hint": "Intel x86 is a CISC architecture where instructions can range from 1 to 15 bytes long."
+    },
+    {
+      "question": "Because gcc (and the 'as' assembler) has limited support for macros, what is the standard procedure to compile macros in this course?",
+      "options": [
+        "Write source code in a .s file and run gcc natively.",
+        "Put source code with macros in a .asm file, invoke m4 to output to a .s file, and then run gcc on the .s file.",
+        "Use the assembler directly on a .m4 file.",
+        "Compile directly with gcc using the -m4 flag."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The general procedure is to put your source code containing macros into a file ending in .asm, invoke m4 redirecting output to a file ending in .s, and then run gcc as usual.",
+      "hint": "We use a standard UNIX command to handle macro expansion before we actually run the compiler."
+    },
+    {
+      "question": "In a Load/Store architecture, what is the correct sequence of events to add two numbers and save the result?",
+      "options": [
+        "Execute the ALU instruction on memory directly, then save to the SR.",
+        "Load the variables into the ACC, execute ALU, and store the ACC to RAM.",
+        "Load registers from memory, execute an instruction using two source registers putting the result into a destination register, and store the result back into memory.",
+        "Fetch the opcode, store it in the IR, and output via the control bus."
+      ],
+      "correctAnswer": 2,
+      "explanation": "A typical program sequence in a Load/Store machine is to load registers from memory, execute the instruction putting the result into a destination register, and store the result back into memory.",
+      "hint": "Remember that the ALU can only operate on data that is already inside the register file, not in RAM."
+    },
+    {
+      "question": "What happens in the CPU immediately after an instruction's opcode is loaded from primary memory into the Instruction Register (IR)?",
+      "options": [
+        "The instruction is executed by the ALU.",
+        "The result is stored in the register file.",
+        "The Control Unit (CU) decodes the opcode to identify the operation.",
+        "The Program Counter is reset."
+      ],
+      "correctAnswer": 2,
+      "explanation": "The CU loads an operation code (opcode) from primary memory into the Instruction Register (IR), and then decodes the opcode to identify the operation.",
+      "hint": "Before the CPU can execute the instruction, it has to figure out what the instruction actually means."
+    },
+    {
+      "question": "How are labels structured and utilized within an assembly language program?",
+      "options": [
+        "A label is an assembler directive used to expand inline macros.",
+        "A label is a symbol whose value is the address of the machine instruction, and may be used as a target for a branch instruction.",
+        "A label is a command passed via the control bus.",
+        "A label dynamically allocates primary memory to variables."
+      ],
+      "correctAnswer": 1,
+      "explanation": "A label is a symbol whose value is the address of the machine instruction, and it may be used as a target for a branch instruction.",
+      "hint": "Labels allow you to reference specific lines of code, like a target address for jumping or looping."
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: System Architecture - Intermediate",
+  "slug": "quiz-inter-architecture",
+  "order": 2,
+  "topic": "architecture",
+  "difficulty": "Intermediate",
+  "variant": "quiz",
+  "prompt": "Test your intermediate understanding of memory models, bus systems, and CPU instruction cycles.",
+  "questions": [
+    {
+      "question": "Which of the following describes a key characteristic of a von Neumann architecture compared to a Harvard architecture?",
+      "options": [
+        "A von Neumann architecture uses a single accumulator.",
+        "In a von Neumann architecture, RAM contains both data and programs.",
+        "A von Neumann architecture is strictly for RISC machines.",
+        "A von Neumann architecture executes instructions in one cycle."
+      ],
+      "correctAnswer": 1,
+      "explanation": "In a von Neumann architecture, RAM contains both data and programs, whereas a Harvard architecture uses separate memories for data and programs.",
+      "hint": "Think about how memory is partitioned (or not partitioned) for storing instructions and variables."
+    },
+    {
+      "question": "How do Load/Store machines differ from Accumulator machines when accessing RAM?",
+      "options": [
+        "Only load and store instructions can access RAM, while other instructions operate on the register file.",
+        "Load/Store machines use the accumulator for all ALU results.",
+        "Load/Store machines perform operations directly in primary memory.",
+        "Load/Store machines bypass the control unit to transfer data."
+      ],
+      "correctAnswer": 0,
+      "explanation": "In a Load/Store machine, only load and store instructions can access RAM, and other instructions operate on a specified register file.",
+      "hint": "Consider the name 'Load/Store'—those are the only two actions allowed to interact directly with memory."
+    },
+    {
+      "question": "What is a defining trait of machine instruction sizes in a RISC architecture?",
+      "options": [
+        "They vary in length from 1 to 15 bytes to save memory.",
+        "They dynamically resize based on immediate data.",
+        "They are always the same size, making decoding simpler and faster.",
+        "They are always exactly one byte long."
+      ],
+      "correctAnswer": 2,
+      "explanation": "Machine instructions are always the same size in RISC architectures, which makes decoding simpler and faster.",
+      "hint": "ARMv8 instructions are an example of this architecture and are always 32 bits wide."
+    },
+    {
+      "question": "What specific address does the Program Counter (PC) hold during execution?",
+      "options": [
+        "The memory address of the ALU result.",
+        "The address in memory of the currently executing instruction.",
+        "The secondary memory address of the file system.",
+        "The memory-mapped I/O device address."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The Program Counter (PC) contains the address in memory of the currently executing instruction, and it is incremented to execute the next instruction.",
+      "hint": "This register tracks where the CPU is currently 'looking' in the code."
+    },
+    {
+      "question": "What is the purpose of pseudo-ops (assembler directives) in an assembly program?",
+      "options": [
+        "They generate multi-cycle machine instructions for the ALU.",
+        "They execute loops and branch targets during runtime.",
+        "They do not generate machine instructions, but give the assembler extra information.",
+        "They dynamically allocate secondary memory."
+      ],
+      "correctAnswer": 2,
+      "explanation": "Pseudo-ops do not generate machine instructions, but give the assembler extra information, like defining globals.",
+      "hint": "Think of them as instructions for the translator (the assembler), not instructions for the CPU itself."
+    },
+    {
+      "question": "What are the three sub-components of the system bus?",
+      "options": [
+        "Input, Output, and Execution busses",
+        "Address, Data, and Control busses",
+        "Primary, Secondary, and Peripheral busses",
+        "ALU, CU, and Register busses"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The bus is often subdivided into the address, data, and control busses.",
+      "hint": "One specifies location, one transfers information, and one monitors devices."
+    },
+    {
+      "question": "Where are ALU results always put in an Accumulator Machine architecture?",
+      "options": [
+        "Into a destination register within the register file",
+        "Directly into primary memory",
+        "Into the Status Register (SR)",
+        "Into the accumulator register (ACC)"
+      ],
+      "correctAnswer": 3,
+      "explanation": "In an Accumulator Machine, ALU results are always put into the ACC.",
+      "hint": "The name of the architecture is a big clue for where it forces all of its arithmetic outputs."
+    },
+    {
+      "question": "Which register contains information (flags) about the result of a previous instruction, such as an overflow?",
+      "options": [
+        "Instruction Register (IR)",
+        "Program Counter (PC)",
+        "Status Register (SR)",
+        "Control Unit (CU)"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The Status Register (SR) contains information (flags) about the result of a previous instruction.",
+      "hint": "It tracks the 'status' of the last calculation, like whether there was a carry bit."
+    }
+  ]
+}
