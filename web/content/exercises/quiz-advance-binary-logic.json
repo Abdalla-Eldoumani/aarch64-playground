@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Binary Logic & Numbers - Advanced",
+  "slug": "quiz-advance-binary-logic",
+  "order": 7,
+  "topic": "binary-logic",
+  "difficulty": "Advance",
+  "variant": "quiz",
+  "prompt": "Test your advanced understanding of bitfield extractions, two's complement anomalies, and shift mechanics.",
+  "questions": [
+    {
+      "question": "Why is the Arithmetic Shift Right (ASR) instruction required when dividing a negative signed integer by a power of two?",
+      "options": [
+        "Because LSR will trigger an arithmetic exception on negative numbers.",
+        "Because ASR duplicates the sign bit during the shift (sign extension), whereas LSR shifts a 0 into the leftmost bit, destroying the negative sign.",
+        "Because ASR automatically rounds up the lost remainder.",
+        "Because ASR uses the 64-bit X registers while LSR only uses W registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "ASR preserves the sign by duplicating the sign bit when shifting. If you use LSR on a negative number, a 0 is inserted at the left, destroying the sign and corrupting the value.",
+      "hint": "Think about what happens to the left-most bit (the sign bit) when you shift bits to the right."
+    },
+    {
+      "question": "The standard `mov Xd, Xm` instruction is actually an alias for which logical operation?",
+      "options": [
+        "orr Xd, xzr, Xm",
+        "and Xd, xzr, Xm",
+        "eor Xd, xzr, Xm",
+        "add Xd, xzr, Xm"
+      ],
+      "correctAnswer": 0,
+      "explanation": "mov Xd, Xm is an alias for orr Xd, xzr, Xm (Inclusive OR with the Zero Register).",
+      "hint": "Moving a value unchanged is the equivalent of combining it with zero using an Inclusive OR."
+    },
+    {
+      "question": "What is the primary difference between the `bfi` (Bitfield Insert) and `ubfiz` (Unsigned Bitfield Insert in Zero) instructions?",
+      "options": [
+        "bfi clears the source register, while ubfiz does not.",
+        "bfi replaces only the target bitfield and leaves other bits in Wd unchanged, whereas ubfiz zeroes out the entire Wd register first.",
+        "ubfiz sign-extends the bits on the left, while bfi does not.",
+        "bfi can only operate on 64-bit registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "ubfiz is similar to bfi, except that the destination register (Wd) is zeroed first, rather than leaving the non-targeted bits unchanged.",
+      "hint": "The 'z' in the instruction name stands for 'Zero'."
+    },
+    {
+      "question": "What does the instruction `bfxil Wd, Wn, #lsb, #width` do to the un-targeted bits in the destination register `Wd`?",
+      "options": [
+        "It zero-extends them.",
+        "It sign-extends them.",
+        "It leaves all other bits in Wd unchanged.",
+        "It flips them using a NOT operation."
+      ],
+      "correctAnswer": 2,
+      "explanation": "In Bitfield Extract and Insert Low (bfxil), bits 0 to (width - 1) in Wd are replaced by the source bitfield, and all other bits in Wd are unchanged.",
+      "hint": "This instruction 'inserts' into the low bits without destroying the rest of the existing data in the destination."
+    },
+    {
+      "question": "When converting a negative number to its positive counterpart in two's complement, what happens if you apply the negation steps (one's complement + 1) to -5 (1011 in 4-bit)?",
+      "options": [
+        "It generates an overflow error.",
+        "It results in 0101, which is exactly +5.",
+        "It results in 0100, which requires a separate sign bit change.",
+        "The operation fails because negation only works from positive to negative."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The negation process (one's complement + 1) works identically in both directions. The one's complement of 1011 (-5) is 0100. Adding 1 results in 0101 (+5).",
+      "hint": "The algorithm is symmetrical regardless of which direction you are converting."
+    }
+  ]
+}

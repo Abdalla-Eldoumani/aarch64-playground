@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Binary Logic & Numbers - Fundamentals",
+  "slug": "quiz-fundam-binary-logic",
+  "order": 5,
+  "topic": "binary-logic",
+  "difficulty": "Fundamental",
+  "variant": "quiz",
+  "prompt": "Test your foundational understanding of binary numbers, hexadecimal, and basic logic operations.",
+  "questions": [
+    {
+      "question": "How is a positive integer negated using the two's complement representation?",
+      "options": [
+        "By flipping the sign bit from 0 to 1.",
+        "By taking the one's complement (toggling all 0s to 1s and vice versa) and adding 1.",
+        "By shifting all bits to the left by one position.",
+        "By taking the one's complement and subtracting 1."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Negating a number is done by taking the one's complement (toggling all 0s to 1s, and vice versa) and adding 1 to the result.",
+      "hint": "It is a two-step mathematical process, starting with flipping every single bit."
+    },
+    {
+      "question": "How many bits are represented by a single hexadecimal digit?",
+      "options": [
+        "2 bits",
+        "3 bits",
+        "4 bits",
+        "8 bits"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Each hexadecimal digit corresponds to a particular 4-bit pattern.",
+      "hint": "Hexadecimal is base-16. 2 to what power equals 16?"
+    },
+    {
+      "question": "What mathematical operation does a Logical Shift Left (LSL) instruction simulate?",
+      "options": [
+        "Division by a power of two.",
+        "Multiplication by a power of two.",
+        "Addition of two integers.",
+        "Sign extension of a negative number."
+      ],
+      "correctAnswer": 1,
+      "explanation": "LSL is a quick way to do multiplication by a power of two (i.e. by 2^n, where n is the shift count).",
+      "hint": "Shifting the binary digits to the left makes the number larger."
+    },
+    {
+      "question": "Which ARMv8 instruction is used to perform a logical NOT operation?",
+      "options": [
+        "not",
+        "mvn",
+        "eon",
+        "bic"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The NOT operation is implemented using mvn (move NOT).",
+      "hint": "It stands for 'move NOT'."
+    },
+    {
+      "question": "In signed integers, what does a 1 in the left-most bit indicate?",
+      "options": [
+        "The number is even.",
+        "The number is positive.",
+        "The number is negative.",
+        "The register has overflowed."
+      ],
+      "correctAnswer": 2,
+      "explanation": "All negative numbers will have a 1 in the left-most bit, called the sign bit.",
+      "hint": "This bit acts as a flag to indicate the polarity of the number."
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: Binary Logic & Numbers - Intermediate",
+  "slug": "quiz-inter-binary-logic",
+  "order": 6,
+  "topic": "binary-logic",
+  "difficulty": "Intermediate",
+  "variant": "quiz",
+  "prompt": "Test your intermediate understanding of logic aliases, data models, and bitwise manipulation.",
+  "questions": [
+    {
+      "question": "What is the specific integer range for a signed 32-bit register using two's complement?",
+      "options": [
+        "-32,768 to +32,767",
+        "0 to 4,294,967,295",
+        "-2,147,483,648 to +2,147,483,647",
+        "-2^63 to +2^63-1"
+      ],
+      "correctAnswer": 2,
+      "explanation": "A 32-bit signed integer ranges from -2,147,483,648 to +2,147,483,647.",
+      "hint": "The total number of states is 2^32, split evenly between negative and positive (accounting for zero)."
+    },
+    {
+      "question": "In the LP64 data model used by Linux on ARMv8 AArch64, what is the bit size of a 'long int'?",
+      "options": [
+        "16 bits",
+        "32 bits",
+        "64 bits",
+        "128 bits"
+      ],
+      "correctAnswer": 2,
+      "explanation": "In the LP64 data model, long ints and pointers are 64-bits long (a doubleword).",
+      "hint": "The '64' in LP64 gives away the size of longs and pointers."
+    },
+    {
+      "question": "The `tst` instruction is actually an alias for which base instruction?",
+      "options": [
+        "and",
+        "ands",
+        "orr",
+        "eor"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The tst instruction is an alias for ands (e.g., tst Xn, Xm is an alias for ands xzr, Xn, Xm).",
+      "hint": "It performs an AND operation and sets the condition flags (N and Z), discarding the result."
+    },
+    {
+      "question": "What logical operation does the `bic` (Bit Clear) instruction perform under the hood?",
+      "options": [
+        "OR NOT",
+        "EOR NOT",
+        "AND NOT",
+        "NAND"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Bit Clear (bic) is actually an AND NOT operation.",
+      "hint": "It combines two logic gates to mask out specific bits."
+    },
+    {
+      "question": "What is the crucial difference between a Logical Shift Right (LSR) and an Arithmetic Shift Right (ASR)?",
+      "options": [
+        "LSR drops the remainder, while ASR saves it in a separate register.",
+        "LSR shifts in a 0 to the leftmost bit, while ASR duplicates the sign bit to preserve the sign.",
+        "LSR is used for 64-bit registers, and ASR is used for 32-bit registers.",
+        "LSR rotates bits around the register, while ASR drops them completely."
+      ],
+      "correctAnswer": 1,
+      "explanation": "LSR shifts a 0 into the leftmost bit, making it unsuitable for negative signed integers. ASR preserves the sign bit by duplicating it when shifting (called sign extension).",
+      "hint": "One of these instructions is 'arithmetic', meaning it understands positive vs. negative values."
+    },
+    {
+      "question": "What does the `sxtb Wd, Wn` instruction do?",
+      "options": [
+        "Extracts bits 0-7 and shifts them to the left.",
+        "Zero-extends bits 8-31 of the register.",
+        "Sign-extends bit 7 in Wn to bits 8-31 in Wd.",
+        "Swaps the upper and lower bytes of a word."
+      ],
+      "correctAnswer": 2,
+      "explanation": "Signed Extend Byte (sxtb Wd, Wn) sign-extends bit 7 in Wn to bits 8-31.",
+      "hint": "It takes a signed byte (8 bits) and extends it safely to fill a 32-bit word."
+    },
+    {
+      "question": "In the Bitfield Insert instruction `bfi Wd, Wn, #lsb, #width`, what does `#lsb` specify?",
+      "options": [
+        "The number of bits to extract from Wn.",
+        "The insertion position in the destination register Wd.",
+        "The left-shift bias applied to the source.",
+        "The sign bit location."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The #lsb specifies the insertion position in the destination register.",
+      "hint": "It stands for 'least significant bit' of the insertion window."
+    },
+    {
+      "question": "How many bits does a single octal digit represent?",
+      "options": [
+        "2 bits",
+        "3 bits",
+        "4 bits",
+        "8 bits"
+      ],
+      "correctAnswer": 1,
+      "explanation": "Each octal digit corresponds to a 3-bit pattern.",
+      "hint": "Octal is base 8. 2 to what power equals 8?"
+    }
+  ]
+}

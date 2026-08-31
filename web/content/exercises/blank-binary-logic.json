@@ -1,0 +1,46 @@
+{
+  "title": "Fill in the Blank: Binary Logic",
+  "slug": "blank-binary-logic",
+  "order": 8,
+  "topic": "binary-logic",
+  "difficulty": "Intermediate",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonics or values to construct accurate binary logic operations.",
+  "blanks": [
+    {
+      "prompt": "Perform a Logical Shift Left to effectively multiply x20 by 8 (2^3).",
+      "code": "___ x19, x20, 3",
+      "blanks": ["lsl", "LSL"],
+      "explanation": "LSL is a quick way to do multiplication by a power of two.",
+      "hint": "Logical Shift Left."
+    },
+    {
+      "prompt": "Perform a Bit Clear (AND NOT) operation on x20 using the mask in x21.",
+      "code": "___ x19, x20, x21",
+      "blanks": ["bic", "BIC"],
+      "explanation": "Bit Clear (bic) is actually AND NOT.",
+      "hint": "Bit Clear."
+    },
+    {
+      "prompt": "Use the standard alias for an Inclusive OR (orr) instruction with the zero register.",
+      "code": "___ Xd, Xm",
+      "blanks": ["mov", "MOV"],
+      "explanation": "mov Xd, Xm is an alias for: orr Xd, xzr, Xm.",
+      "hint": "Move."
+    },
+    {
+      "prompt": "Sign-extend bit 7 of a byte in w20 to fill the rest of the 32-bit word in w19.",
+      "code": "___ w19, w20",
+      "blanks": ["sxtb", "SXTB"],
+      "explanation": "sxtb (Signed Extend Byte) sign-extends bit 7 in Wn to bits 8-31.",
+      "hint": "Sign eXtend Byte."
+    },
+    {
+      "prompt": "Perform an Arithmetic Shift Right by 1 to divide x20 by 2 while preserving the sign bit.",
+      "code": "___ x19, x20, 1",
+      "blanks": ["asr", "ASR"],
+      "explanation": "ASR preserves the sign when dividing by a power of two (Sign bit is duplicated when shifting).",
+      "hint": "Arithmetic Shift Right."
+    }
+  ]
+}

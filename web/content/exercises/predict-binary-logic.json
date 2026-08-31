@@ -1,0 +1,39 @@
+{
+  "title": "Predict: Bitwise Mechanics",
+  "slug": "predict-binary-logic",
+  "order": 9,
+  "topic": "binary-logic",
+  "difficulty": "Advance",
+  "variant": "prediction",
+  "prompt": "Predict the state of the registers and memory after executing specific bitwise and shift operations.",
+  "predictions": [
+    {
+      "code": "mov w20, 5\nlsl w19, w20, 3",
+      "question": "What is the exact integer value stored in w19 after execution?",
+      "answer": "40",
+      "explanation": "Logical Shift Left multiplies the value by 2^n. Since the shift count is 3, it multiplies 5 by 2^3 (8), resulting in 40 (0010 1000 in binary).",
+      "hint": "5 * (2^3)"
+    },
+    {
+      "code": "mov x20, -8\nlsr x19, x20, 1\n// Intentionally used lsr instead of asr",
+      "question": "What binary digit is shifted into the leftmost bit position?",
+      "answer": "0",
+      "explanation": "Because Logical Shift Right (LSR) shifts a 0 into the leftmost bit, it overwrites the sign bit, destroying the negative value instead of dividing it by 2.",
+      "hint": "LSR does not respect sign extension."
+    },
+    {
+      "code": "mov x20, 0xFF\nmov x21, 0x3C\nbic x19, x20, x21",
+      "question": "What is the resulting 8-bit binary pattern in x19?",
+      "answer": "11000011",
+      "explanation": "The bic (Bit Clear) instruction performs an AND NOT operation, meaning any bits set to 1 in x21 (0011 1100) will be forced to 0 in x20 (1111 1111).",
+      "hint": "Mask out the middle 4 bits."
+    },
+    {
+      "code": "mov w20, 0xFF\nsxtb w19, w20",
+      "question": "What is the exact hex value stored in the 32-bit register w19?",
+      "answer": "0xFFFFFFFF",
+      "explanation": "The Signed Extend Byte (sxtb) instruction takes the sign bit (bit 7, which is a 1 in 0xFF) and duplicates it all the way to bit 31 to maintain the value of -1 in a 32-bit space.",
+      "hint": "Every bit to the left of the original byte becomes a 1."
+    }
+  ]
+}
