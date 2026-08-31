@@ -1,0 +1,83 @@
+{
+  "title": "Quiz: Subroutines - Fundamentals",
+  "slug": "quiz-basic-subroutines",
+  "order": 49,
+  "topic": "subroutines",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Work through open and closed subroutines, the argument and result registers, and how `bl` and `ret` carry the return address.",
+  "questions": [
+    {
+      "question": "What is the primary advantage of using an open (inline) subroutine?",
+      "options": [
+        "It produces more compact machine code.",
+        "It avoids the overhead of calling and returning from a separate subroutine.",
+        "It allows an unlimited number of arguments to be passed without using memory.",
+        "It automatically saves all caller registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "An open subroutine is placed directly into the code where it is used, so the program does not need to branch to a separate routine and then return from it. This can make execution faster, but it also makes the program larger if the same routine is used in many places.",
+      "hint": "Think about the difference between inserting the subroutine directly into the code and jumping to a separate location."
+    },
+    {
+      "question": "A program uses the instruction bl to call a subroutine. What instruction would normally be used to return to the calling code?",
+      "options": [
+        "bl",
+        "b",
+        "ret",
+        "stp"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The ret instruction returns from a subroutine by transferring control to the return address held in the link register, x30.",
+      "hint": "The call needs to remember where execution should continue after the subroutine finishes."
+    },
+    {
+      "question": "Under the AArch64 procedure call convention, where are the first eight integer or pointer arguments normally passed to a procedure?",
+      "options": [
+        "x9 - x15",
+        "x19 - x28",
+        "x0 - x7",
+        "x16 - x17"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The registers x0 through x7 pass the first eight integer or pointer arguments to a procedure, and x0 carries an integer or pointer result back to the caller. Double-precision floating-point arguments travel in d0 through d7 instead.",
+      "hint": "These registers are used for both passing arguments into a procedure and returning results."
+    },
+    {
+      "question": "A subroutine uses a stack frame to keep track of its local data. Which register is conventionally used as the frame pointer in AArch64?",
+      "options": [
+        "x8",
+        "x28",
+        "x29",
+        "x30"
+      ],
+      "correctAnswer": 2,
+      "explanation": "In AArch64, x29 is conventionally used as the frame pointer. It gives a stable base address for reaching the data in a subroutine's stack frame, even when sp moves during the call.",
+      "hint": "The frame pointer and link register are commonly saved together when setting up a stack frame."
+    },
+    {
+      "question": "What is a key characteristic of a closed subroutine?",
+      "options": [
+        "Its instructions are inserted directly into the program every time it is used.",
+        "Its instructions are stored separately and can be called from multiple locations.",
+        "Its instructions are expanded by a macro processor before assembly.",
+        "Its instructions are pushed onto the stack whenever the subroutine is called."
+      ],
+      "correctAnswer": 1,
+      "explanation": "A closed subroutine is stored once as a separate sequence of instructions. When the program needs it, control is transferred to that one copy and then returns to the caller, so the instructions are not duplicated at every call site.",
+      "hint": "Think about whether the subroutine's instructions are copied into the caller or stored in one separate location."
+    },
+    {
+      "question": "When a bl instruction calls a subroutine, what happens to the return address?",
+      "options": [
+        "It is stored in x29, the frame pointer.",
+        "It is stored in x30, the link register.",
+        "It is pushed onto the stack automatically.",
+        "It is stored in x0, the first argument register."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The bl instruction writes the address of the following instruction into x30, the link register. When the subroutine finishes, ret uses that address to continue execution in the calling code.",
+      "hint": "The bl instruction itself does not touch the stack. It writes the address into one specific register."
+    }
+  ]
+}
