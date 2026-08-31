@@ -1,0 +1,46 @@
+{
+  "title": "Fill in the Blank: Subroutine Architecture",
+  "slug": "blanks-subroutines",
+  "order": 52,
+  "topic": "subroutines",
+  "difficulty": "Intermediate",
+  "variant": "blanks",
+  "prompt": "Fill in the missing terminology related to ARMv8 subroutine linkage and memory.",
+  "blanks": [
+  {
+    "prompt": "Code for a ___ subroutine is stored in one location and can be called from multiple places.",
+    "code": "A ___ subroutine",
+    "blanks": ["closed", "Closed"],
+    "explanation": "A closed subroutine is stored as a separate sequence of instructions. Multiple parts of a program can call the same code instead of having the instructions copied into each call site.",
+    "hint": "Think about the opposite of an open or inline subroutine."
+  },
+  {
+    "prompt": "In a typical AArch64 function prologue, `stp` can save the FP and LR together in a ___.",
+    "code": "save the FP and LR in a ___",
+    "blanks": ["frame record", "Frame record"],
+    "explanation": "A frame record commonly stores the previous frame pointer and the link register. A typical function prologue uses `stp` to save these values together, helping establish the stack frame for the subroutine.",
+    "hint": "It is a record that links the current stack frame to the previous one."
+  },
+  {
+    "prompt": "To return a large structure indirectly, the calling code puts the address of the allocated memory into register ___.",
+    "code": "register ___",
+    "blanks": ["x8", "X8"],
+    "explanation": "For an indirect result, the caller provides memory for the result and places its address in `x8` before calling the subroutine. `x8` is known as the indirect result location register.",
+    "hint": "Think of the register designated for an indirect result location."
+  },
+  {
+    "prompt": "Subroutines that do not call any other subroutines are known as ___ subroutines.",
+    "code": "known as ___ subroutines",
+    "blanks": ["leaf", "Leaf"],
+    "explanation": "A leaf subroutine does not call any other subroutines. It is called a 'leaf' because, like a leaf at the end of a branch, nothing extends further from it.",
+    "hint": "Think about the nodes at the bottom of a tree diagram."
+  },
+  {
+    "prompt": "Registers `x19` to `x28` are known as ___ registers and must be preserved across a function call if the subroutine modifies them.",
+    "code": "known as ___ registers",
+    "blanks": ["callee-saved", "callee saved"],
+    "explanation": "Registers `x19` through `x28` are callee-saved registers. If a subroutine modifies one of them, it must preserve the original value and restore it before returning so that the calling code sees the value it expected.",
+    "hint": "The function being called is responsible for preserving these registers."
+  }
+]
+}

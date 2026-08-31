@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: Subroutines - Intermediate",
+  "slug": "quiz-inter-subroutines",
+  "order": 50,
+  "topic": "subroutines",
+  "difficulty": "Intermediate",
+  "variant": "quiz",
+  "prompt": "Test your intermediate understanding of the stack frame, linkage registers, and parameter passing.",
+  "questions": [
+    {
+  "question": "When a `bl` instruction is executed, what value is placed in the Link Register (`x30`)?",
+  "options": [
+    "The address of the `bl` instruction",
+    "The address of the instruction immediately after `bl` (`PC + 4`)",
+    "The current stack pointer minus 16",
+    "The current frame pointer plus 16"
+  ],
+  "correctAnswer": 1,
+  "explanation": "When `bl` calls a subroutine, it saves the return address in `x30`. In AArch64, that return address is the address of the instruction immediately after `bl`, which is `PC + 4`. The `ret` instruction can later use this address to return to the caller.",
+  "hint": "The subroutine needs to remember where execution should continue after the `bl` instruction finishes."
+},
+    {
+  "question": "How can frame pointers allow a program to keep track of previous stack frames?",
+  "options": [
+    "Each frame pointer can point to the previous frame record, creating a chain of stack frames.",
+    "Each frame pointer stores all of the arguments passed to the program.",
+    "Each frame pointer contains the address of the next instruction to execute.",
+    "Each frame pointer stores a copy of every register used by the subroutine."
+  ],
+  "correctAnswer": 0,
+  "explanation": "A frame record can contain the previous frame pointer and the saved link register. When frame pointers are used to maintain this information, each frame can point to the previous frame, creating a chain that can be followed when examining nested subroutine calls.",
+  "hint": "Think about how each stack frame could remember where the previous stack frame begins."
+},
+    {
+  "question": "A subroutine wants to modify `x19`. What must it do to follow the AArch64 procedure call convention?",
+  "options": [
+    "Move the value into `x0` before changing `x19`.",
+    "Preserve the original value of `x19` and restore it before returning.",
+    "Do nothing because `x19` is a caller-saved register.",
+    "Set `x19` to zero before returning."
+  ],
+  "correctAnswer": 1,
+  "explanation": "Registers `x19` through `x28` are callee-saved registers. If a subroutine changes one of them, it must preserve the original value and restore it before returning so that the calling code sees the value it expected.",
+  "hint": "The name 'callee-saved' tells you which side of the call is responsible for preserving the register."
+},
+    {
+  "question": "When an argument is passed by reference, what does the argument register contain?",
+  "options": [
+    "The address of the data",
+    "A copy of the data itself",
+    "The return address of the calling function",
+    "The address of the Link Register"
+  ],
+  "correctAnswer": 0,
+  "explanation": "When an argument is passed by reference, the register contains the address of the data rather than the data itself. The subroutine can use that address to access or modify the original data.",
+  "hint": "Instead of receiving the value itself, the subroutine receives information about where the value can be found."
+},
+    {
+  "question": "When a composite result must be returned indirectly, how does the caller tell the subroutine where to store the result?",
+  "options": [
+    "It places the address of the result storage in `x8`.",
+    "It places the address in `x30`.",
+    "It pushes the result onto the stack and the callee finds it there.",
+    "It splits the address between `x0` and `x1`."
+  ],
+  "correctAnswer": 0,
+  "explanation": "For an indirect result, the caller provides memory where the result can be stored and passes the address of that memory in `x8`. The subroutine can then write the result to that location.",
+  "hint": "If the result cannot be returned directly in the usual result registers, the caller can give the subroutine an address where the result should go."
+},
+    {
+  "question": "What defines a leaf subroutine?",
+  "options": [
+    "It uses only open (inline) subroutines.",
+    "It does not take any arguments.",
+    "It does not return any values.",
+    "It does not call any other subroutines."
+  ],
+  "correctAnswer": 3,
+  "explanation": "A leaf subroutine is a subroutine that does not call any other subroutines. Because it makes no further subroutine calls, it does not need to make another call that would overwrite its link register (`x30`).",
+  "hint": "Think of a leaf on a tree: nothing branches farther down from it."
+},
+    {
+  "question": "Which registers are temporary caller-saved registers that a subroutine is allowed to overwrite?",
+  "options": [
+    "`x0` - `x7`",
+    "`x9` - `x15`",
+    "`x19` - `x28`",
+    "`x29` - `x30`"
+  ],
+  "correctAnswer": 1,
+  "explanation": "Registers `x9` through `x15` are temporary caller-saved registers. A subroutine may overwrite them without restoring their previous values. If the calling code needs one of these values to survive a subroutine call, the calling code must preserve it first.",
+  "hint": "Caller-saved means the caller is responsible for preserving the value if it will be needed after the call."
+},
+    {
+  "question": "A procedure is called with nine integer arguments. Where is the ninth argument normally passed under the AArch64 procedure call convention?",
+  "options": [
+    "In stack memory provided by the caller",
+    "In `x8`",
+    "In the Link Register (`x30`)",
+    "In `x9`"
+  ],
+  "correctAnswer": 0,
+  "explanation": "The first eight integer arguments are passed in `x0` through `x7`. When there are more arguments than can be passed in those registers, the additional arguments are passed in memory, using the stack argument area provided by the caller.",
+  "hint": "The first eight integer argument registers are `x0` through `x7`. What happens when there are more arguments than available registers?"
+}
+  ]
+}

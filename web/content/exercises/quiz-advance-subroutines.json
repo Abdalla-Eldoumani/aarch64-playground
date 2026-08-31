@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Subroutines - Advanced",
+  "slug": "quiz-advance-subroutines",
+  "order": 51,
+  "topic": "subroutines",
+  "difficulty": "Advance",
+  "variant": "quiz",
+  "prompt": "Test your advanced understanding of stack frame alignment, optimization, and exact memory mapping.",
+  "questions": [
+  {
+    "question": "A leaf subroutine does not call any other subroutines. Under what conditions can it avoid creating a stack frame?",
+    "options": [
+      "If it does not modify any callee-saved registers and does not need stack storage for local data or spills.",
+      "If it uses only registers `x0` through `x7`, regardless of what other storage it needs.",
+      "If it passes all arguments by reference.",
+      "If it returns a structure larger than 16 bytes."
+    ],
+    "correctAnswer": 0,
+    "explanation": "A leaf subroutine can avoid creating a stack frame when it does not need to preserve callee-saved registers and does not need stack storage for local data, spills, or other purposes. Simply being a leaf is not enough by itself; the routine must also have no reason to use the stack.",
+    "hint": "Ask yourself what a stack frame is needed for. If the subroutine needs neither saved registers nor stack-based local storage, does it need to create one?"
+  },
+  {
+    "question": "Which statement about stack alignment in AArch64 is correct?",
+    "options": [
+      "Every subroutine must allocate at least 16 bytes for its stack frame.",
+      "The stack pointer must be 16-byte aligned at a public interface, but a subroutine does not necessarily need to allocate a stack frame.",
+      "Every stack frame must be exactly 16 bytes.",
+      "The stack pointer only needs to be aligned when the subroutine uses `x29`."
+    ],
+    "correctAnswer": 1,
+    "explanation": "AArch64 requires the stack pointer to be 16-byte aligned at a public interface. This does not mean that every subroutine must allocate a 16-byte stack frame. A leaf subroutine, for example, may not need a stack frame at all.",
+    "hint": "Separate the idea of keeping `sp` correctly aligned from the idea of allocating space for a stack frame."
+  },
+  {
+    "question": "A procedure is called with ten integer arguments. After the first eight arguments have been placed in `x0` through `x7`, who is responsible for providing the stack memory used for the additional arguments?",
+    "options": [
+      "The operating system.",
+      "The called subroutine (callee).",
+      "The calling code (caller).",
+      "The linker."
+    ],
+    "correctAnswer": 2,
+    "explanation": "The calling code is responsible for preparing the argument area for arguments that are passed in memory. The additional argument values are placed in the appropriate stack locations before the subroutine is called.",
+    "hint": "The callee cannot use stack argument storage that the caller has not prepared before the call."
+  },
+  {
+    "question": "What are `x16` and `x17` used for in the AArch64 procedure call convention?",
+    "options": [
+      "They are callee-saved registers that must be preserved by every subroutine.",
+      "They are used as indirect result location registers.",
+      "They are intra-procedure-call scratch registers, known as IP0 and IP1.",
+      "They are reserved exclusively for storing the frame pointer and link register."
+    ],
+    "correctAnswer": 2,
+    "explanation": "Registers `x16` and `x17` are intra-procedure-call scratch registers, also called IP0 and IP1. They are temporary registers that may be used during procedure calls, including by call veneers or other linkage-related code, so code should not assume their values survive a call.",
+    "hint": "Their names include 'IP' for Intra-Procedure. Think about temporary workspace used during a call."
+  },
+  {
+    "question": "A calling function stores an important value in `x9` and then needs that value after executing `bl`. What must the calling function do?",
+    "options": [
+      "Nothing. The called subroutine must preserve `x9`.",
+      "Preserve the value of `x9` itself before making the call, if it needs the value afterward.",
+      "Move the value into `x30`, the Link Register.",
+      "Set `x9` to zero before calling the subroutine."
+    ],
+    "correctAnswer": 1,
+    "explanation": "`x9` is a caller-saved temporary register, so the called subroutine is allowed to overwrite it. If the caller needs the value to survive the call, the caller is responsible for preserving it before executing `bl` and restoring it afterward.",
+    "hint": "The name 'caller-saved' tells you who is responsible for protecting the value before the call."
+  }
+]
+}
