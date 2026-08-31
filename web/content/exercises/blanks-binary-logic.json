@@ -1,0 +1,56 @@
+{
+  "title": "Fill in the Blank: Binary Logic",
+  "slug": "blanks-binary-logic",
+  "order": 8,
+  "topic": "binary-logic",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonic so each line performs the bitwise or shift operation described.",
+  "blanks": [
+    {
+      "prompt": "Shift the bits in x20 left by 3 so the value in x19 is x20 multiplied by 8.",
+      "code": "___ x19, x20, 3",
+      "blanks": [
+        "lsl"
+      ],
+      "explanation": "lsl moves every bit up by the shift amount and feeds zeros in at the bottom, so shifting by 3 multiplies by 2^3, that is 8. Shifting is the cheap way to multiply by a power of two.",
+      "hint": "Logical Shift Left."
+    },
+    {
+      "prompt": "Clear the bits of x20 that are set in the mask held in x21, leaving the rest untouched.",
+      "code": "___ x19, x20, x21",
+      "blanks": [
+        "bic"
+      ],
+      "explanation": "bic (bit clear) ANDs the first source with the bitwise complement of the second, so every bit set in x21 ends up zero in x19. It turns selected bits off without building an inverted mask first.",
+      "hint": "Bit Clear."
+    },
+    {
+      "prompt": "Copy the whole 64-bit value in x20 into x19 using the alias the assembler encodes as an inclusive OR with the zero register.",
+      "code": "___ x19, x20",
+      "blanks": [
+        "mov"
+      ],
+      "explanation": "mov x19, x20 is an alias for orr x19, xzr, x20. Inclusive OR against xzr contributes no set bits, so the source value arrives in the destination unchanged.",
+      "hint": "Move."
+    },
+    {
+      "prompt": "Take the low byte of w20 and sign-extend bit 7 across the rest of the 32-bit result in w19.",
+      "code": "___ w19, w20",
+      "blanks": [
+        "sxtb"
+      ],
+      "explanation": "sxtb copies the low byte and replicates bit 7 into bits 8 through 31, so a byte holding -1 becomes 0xFFFFFFFF rather than 0x000000FF. Use uxtb when the byte is meant to be unsigned.",
+      "hint": "Sign eXtend Byte."
+    },
+    {
+      "prompt": "Shift the signed value in x20 right by 1, copying the sign bit into the vacated high bit.",
+      "code": "___ x19, x20, 1",
+      "blanks": [
+        "asr"
+      ],
+      "explanation": "asr duplicates the sign bit as it shifts, so a negative value stays negative while lsr would not. It rounds toward negative infinity, so -3 shifted right by 1 gives -2, while sdiv by 2 truncates toward zero and gives -1.",
+      "hint": "Arithmetic Shift Right."
+    }
+  ]
+}

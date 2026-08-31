@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Binary Logic & Numbers - Advanced",
+  "slug": "quiz-advance-binary-logic",
+  "order": 7,
+  "topic": "binary-logic",
+  "difficulty": "challenge",
+  "variant": "quiz",
+  "prompt": "Work through bitfield insert and extract, arithmetic versus logical shifts, and two's complement negation on AArch64.",
+  "questions": [
+    {
+      "question": "Why must asr be used instead of lsr when dividing a negative signed integer by a power of two?",
+      "options": [
+        "Because lsr raises an arithmetic exception on a negative operand.",
+        "Because asr copies the sign bit into the vacated high bits, while lsr shifts in zeros and destroys the sign.",
+        "Because asr rounds the discarded remainder up to the next integer.",
+        "Because asr works on the 64-bit x registers while lsr is limited to the w registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "asr replicates the sign bit as the value moves right, so a negative number stays negative. lsr shifts in zeros instead, turning a negative number into a large positive one. Note that asr rounds toward negative infinity, so shifting -7 right by one gives -4, while sdiv truncates toward zero and gives -3.",
+      "hint": "Think about which bit gets copied into the leftmost position as the bits move right."
+    },
+    {
+      "question": "The register-to-register mov xd, xm, where neither operand is sp, is an alias for which instruction?",
+      "options": [
+        "orr xd, xzr, xm",
+        "and xd, xzr, xm",
+        "eor xd, xzr, xm",
+        "add xd, xzr, xm"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Register-to-register mov assembles as orr xd, xzr, xm, because inclusive OR with all zeros leaves every bit of the source unchanged. eor xd, xzr, xm computes the same value, but the architecture names only the orr form as the mov alias. The sp forms are the exception: mov to or from sp is an alias for add with a zero immediate.",
+      "hint": "More than one of these computes the right value against xzr, so recall which one the architecture actually names as the mov alias."
+    },
+    {
+      "question": "What separates bfi (bitfield insert) from ubfiz (unsigned bitfield insert in zero)?",
+      "options": [
+        "bfi clears the source register after the insert, ubfiz leaves the source alone.",
+        "bfi replaces only the target bitfield and leaves the rest of wd unchanged, while ubfiz zeros the whole of wd first.",
+        "ubfiz sign-extends the inserted field to the left, bfi does not.",
+        "bfi is available only on the 64-bit x registers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "bfi writes width bits into wd starting at bit lsb and leaves every other bit of wd as it was. ubfiz places the same field but zeros the rest of the destination, so none of the old value survives.",
+      "hint": "The z in ubfiz names what happens to the bits outside the field."
+    },
+    {
+      "question": "bfxil wd, wn, lsb, width copies a field into the low bits of wd. What happens to the remaining bits of wd?",
+      "options": [
+        "They are zeroed.",
+        "They are filled with copies of the field's top bit.",
+        "They keep the values they already held.",
+        "They are inverted."
+      ],
+      "correctAnswer": 2,
+      "explanation": "bfxil (bitfield extract and insert low) writes the extracted field into bits 0 through width - 1 of wd and leaves the higher bits untouched. ubfx is the variant that zeros them, and sbfx is the one that sign-extends.",
+      "hint": "The il ending stands for insert low, so this is an insert rather than a full overwrite."
+    },
+    {
+      "question": "In 4-bit two's complement, -5 is 1011. What do you get by inverting every bit and then adding 1?",
+      "options": [
+        "The operation overflows and the result is undefined.",
+        "0101, which is +5.",
+        "0100, which still needs a separate sign-bit change.",
+        "Nothing usable, because the sequence only converts positive values to negative."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Inverting 1011 gives 0100, and adding 1 gives 0101, which reads as +5. The same two steps negate in either direction, so one routine handles positive and negative operands alike.",
+      "hint": "Run the two steps on paper, then read the 4-bit result as a signed value."
+    }
+  ]
+}

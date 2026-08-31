@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Binary Logic & Numbers - Fundamentals",
+  "slug": "quiz-basic-binary-logic",
+  "order": 5,
+  "topic": "binary-logic",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Work through two's complement negation, the sign bit, how many bits one hexadecimal digit carries, what a logical shift left does to a value, and the instruction that complements a register.",
+  "questions": [
+    {
+      "question": "How is a positive integer negated in two's complement representation?",
+      "options": [
+        "By flipping the sign bit from 0 to 1.",
+        "By taking the one's complement (toggling all 0s to 1s and vice versa) and adding 1.",
+        "By shifting all bits to the left by one position.",
+        "By taking the one's complement and subtracting 1."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Take the one's complement (toggle every bit), then add 1. AArch64 spells this neg xd, xm, which assembles as sub xd, xzr, xm.",
+      "hint": "It is a two-step process, and it starts by flipping every single bit."
+    },
+    {
+      "question": "How many bits are represented by a single hexadecimal digit?",
+      "options": [
+        "2 bits",
+        "3 bits",
+        "4 bits",
+        "8 bits"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Base 16 needs 4 bits per digit because 2^4 = 16, so each hexadecimal digit maps to exactly one 4-bit pattern. That is why a full 64-bit register value is written with 16 hexadecimal digits.",
+      "hint": "Hexadecimal is base 16. 2 to what power equals 16?"
+    },
+    {
+      "question": "What arithmetic does a logical shift left (lsl) by n bits perform on the value in a register?",
+      "options": [
+        "Division by 2^n.",
+        "Multiplication by 2^n.",
+        "Addition of n to the value.",
+        "Sign extension of a negative value."
+      ],
+      "correctAnswer": 1,
+      "explanation": "lsl moves every bit n places toward the high end and shifts in zeros, so each place doubles the value's weight and the result is the value times 2^n. Bits pushed past the top of the register are discarded, so the answer wraps if the product does not fit.",
+      "hint": "Each place a bit moves toward the high end doubles what that bit is worth."
+    },
+    {
+      "question": "Which AArch64 instruction writes the bitwise NOT (the complement of every bit) of one general-purpose register into another?",
+      "options": [
+        "not",
+        "mvn",
+        "eon",
+        "bic"
+      ],
+      "correctAnswer": 1,
+      "explanation": "mvn xd, xm writes the complement of xm into xd, and it assembles as orn xd, xzr, xm. bic xd, xn, xm clears in xn the bits that are set in xm, and eon xd, xn, xm exclusive-ORs xn with the complement of xm, so both are two-source operations; mvn is the one-source form, and there is no scalar not mnemonic.",
+      "hint": "It stands for 'move NOT'."
+    },
+    {
+      "question": "In a two's complement signed integer, what does a 1 in the left-most bit indicate?",
+      "options": [
+        "The remaining bits hold the magnitude of the value.",
+        "The value is positive.",
+        "The value is negative.",
+        "The last operation overflowed the register."
+      ],
+      "correctAnswer": 2,
+      "explanation": "In two's complement the left-most bit carries a negative weight, so any value with that bit set is negative. The other bits keep their usual positive weights rather than holding a magnitude. In a 64-bit register the top bit is worth -2^63, which is why the signed range runs from -2^63 to 2^63 - 1.",
+      "hint": "That bit has a name: the sign bit."
+    }
+  ]
+}
