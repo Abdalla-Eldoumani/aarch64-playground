@@ -58,7 +58,7 @@ Run `npm audit` from `web/` before a release and either clear what it reports or
 ## Releasing
 
 A release is its own PR. It bumps every version surface together so none can
-drift: `web/package.json`, the root `package.json`, `emulator/Cargo.toml`
+drift: `web/package.json` and `web/package-lock.json` (which carries the version twice), the root `package.json`, `emulator/Cargo.toml`
 (with `Cargo.lock` refreshed in the same commit), and `CITATION.cff`
 (`version` and `date-released`). Tag the merged commit `v<version>` and
 publish the GitHub release; the docs index links there for the change
