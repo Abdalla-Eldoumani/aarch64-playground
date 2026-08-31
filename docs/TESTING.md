@@ -124,7 +124,11 @@ does not need:
 
 - **wasm**: the web and nodejs wasm-pack builds, uploaded as an artifact
   every other job below downloads.
-- **rust**: `cargo test`, in parallel with everything.
+- **rust**: four jobs in parallel with everything: `cargo test` minus the
+  corpus gate, and the fifty-program corpus sliced three ways
+  (`CORPUS_SHARD=i/3`, read by the test itself), every program running
+  exactly once across the slices. A plain local `cargo test` still runs
+  the whole suite in one piece.
 - **corpus**: `node scripts/verify-corpus.js`.
 - **web-static**: the dependency audit, `npm run lint`, `npm run typecheck`.
 - **web-build**: `npm run build` and `npm run size`.

@@ -1,6 +1,6 @@
 {
   "name": "aarch64-playground-web",
-  "version": "2.5.1",
+  "version": "2.5.101",
   "private": true,
   "engines": {
     "node": ">=24"

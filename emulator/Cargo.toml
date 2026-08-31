@@ -1,6 +1,6 @@
 [package]
 name = "aarch64-emulator"
-version = "2.5.0"
+version = "2.5.101"
 edition = "2021"
 # The toolchain the crate is actually built and tested with (CI and the
 # deploy pin the same version); an older rustc gets this message instead of
@@ -24,3 +24,11 @@ wasm-bindgen-test = "0.3"
 [profile.release]
 opt-level = "s"
 lto = true
+
+# The test profile keeps its safety nets (overflow-checks and
+# debug-assertions stay on; only opt-level moves off zero) but stops
+# interpreting the interpreter: the corpus gate replays tens of millions
+# of emulator steps, and an unoptimized walk of that loop is minutes of
+# pure constant factor.
+[profile.test]
+opt-level = 1
