@@ -36,6 +36,12 @@ a toolchain change announces itself; a scheduled workflow runs it weekly.
 Exit codes use the shell convention: a program killed by signal N records
 128+N (139 for SIGSEGV, 135 for SIGBUS).
 
+One program is a recorded exception in the other direction: `13_float_double`
+does not assemble here at all, because gcc copies a 16-byte struct through a
+q register and the fp file is 64-bit scalar by design. The corpus test carries
+it on a pending list, so the day it starts assembling the list turns red and
+the fix gets recorded instead of passing silently.
+
 Three programs crash on purpose, and the corpus test asserts the
 emulator's own diagnosis instead of an output match:
 
