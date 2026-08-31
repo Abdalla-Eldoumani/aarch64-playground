@@ -1,9 +1,9 @@
 {
   "title": "fizzbuzz, by hand",
   "slug": "fizzbuzz-by-hand",
-  "order": 17,
+  "order": 31,
   "topic": "loops",
-  "difficulty": "core",
+  "difficulty": "Intermediate",
   "prompt": "The classic interview question, without the safety net of a remainder operator: print the numbers 1 through 15, except say `fizz` for multiples of 3, `buzz` for multiples of 5, and `fizzbuzz` for multiples of both.\n\nAArch64 has division but no remainder instruction. The course idiom is `udiv` then `msub`: divide, multiply the quotient back, subtract, and what is left is the remainder.\n\n## what is checked\n\n- all fifteen lines, exactly as fizzbuzz demands\n- the program exits cleanly\n- the remainders come from `msub`, not from a lookup",
   "starter": "// fizzbuzz: multiples of 3 say fizz, of 5 say buzz, of both say fizzbuzz\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(i_r, x19)\ndefine(limit_r, x20)\ndefine(q_r, x21)\ndefine(rem3_r, x22)\ndefine(rem5_r, x23)\n\n        .data\nfmt_num:    .string \"%lld\\n\"\nfmt_fizz:   .string \"fizz\\n\"\nfmt_buzz:   .string \"buzz\\n\"\nfmt_both:   .string \"fizzbuzz\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     i_r, 1                      // count 1 through limit\n        mov     limit_r, 15\n\n        // TODO: for each i from 1 to limit, print fizzbuzz when i is\n        // divisible by both 3 and 5, fizz for 3 alone, buzz for 5\n        // alone, and the number itself otherwise. There is no\n        // remainder instruction: divide, then multiply back and\n        // subtract (that is exactly what msub is for).\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",

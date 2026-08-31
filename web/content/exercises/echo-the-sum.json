@@ -1,9 +1,9 @@
 {
   "title": "echo the sum",
   "slug": "echo-the-sum",
-  "order": 18,
+  "order": 56,
   "topic": "io",
-  "difficulty": "core",
+  "difficulty": "Intermediate",
   "prompt": "Read two integers from input with `scanf`, add them, and print the total.\n\n`scanf` does not want values, it wants addresses to write into. The starter reserves two stack locals in the frame and names their offsets; build each pointer with `add xN, fp, offset`, hand both to `scanf`, then load the values back out of the frame to do the arithmetic.\n\n## what is checked\n\n- the sum of the two input numbers is printed on its own line\n- the program exits cleanly\n- the answer is computed, not written in",
   "starter": "// read two integers from input and print their sum\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\n\na_s = 16                                    // first local's frame offset\nb_s = 24                                    // second local's frame offset\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n        .data\nfmt_in:     .string \"%lld %lld\"\nfmt_out:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        // TODO: call scanf with fmt_in and the ADDRESSES of the two\n        // stack locals (fp + a_s and fp + b_s), then load both values\n        // back into registers, add them, and print the sum with\n        // fmt_out. scanf needs pointers, and add is how you build one\n        // from fp plus an offset.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
   "args": "",

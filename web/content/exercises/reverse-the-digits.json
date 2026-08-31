@@ -1,9 +1,9 @@
 {
   "title": "reverse the digits",
   "slug": "reverse-the-digits",
-  "order": 20,
+  "order": 40,
   "topic": "loops",
-  "difficulty": "core",
+  "difficulty": "Intermediate",
   "prompt": "Take `9317` and print `7139`: the same digits, reversed, as a number.\n\nEach trip around the loop, peel off the last digit (the remainder mod 10), append it to the running result with `result = result * 10 + digit`, and cut the source number down by a factor of ten. `msub` gives you the remainder; `madd` does the multiply-and-add in one instruction.\n\n## what is checked\n\n- the reversed number is printed on its own line\n- the program exits cleanly\n- the digits are peeled in a loop (`msub` present, answer not written in)",
   "starter": "// reverse the decimal digits of a number\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\ndefine(rev_r, x20)\ndefine(q_r, x21)\ndefine(digit_r, x22)\ndefine(ten_r, x23)\n\n        .data\nfmt:    .string \"reversed = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     n_r, 9317                   // the number to reverse\n        mov     rev_r, 0\n        mov     ten_r, 10\n\n        // TODO: peel the last digit off n_r each time around (n mod\n        // 10, via udiv and msub), append it to rev_r with\n        // rev = rev * 10 + digit, and shrink n_r by a factor of ten.\n        // Stop when n_r hits zero.\n\n        ldr     x0, =fmt\n        mov     x1, rev_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",

@@ -1,12 +1,12 @@
 {
   "title": "Quiz: Memory Addressing - Intermediate",
   "slug": "quiz-inter-frame-stack",
-  "order": 7,
+  "order": 43,
   "topic": "memory",
-  "difficulty": "core",
+  "difficulty": "Intermediate",
   "variant": "quiz",
   "prompt": "Apply your knowledge of AArch64 addressing modes, local variables, and alignment mechanics.",
-  "questions": [
+   "questions": [
     {
       "question": "What is the key difference between pre-indexed and post-indexed addressing modes?",
       "options": [
@@ -16,39 +16,44 @@
         "Pre-indexed requires a 64-bit offset, while post-indexed uses a 32-bit offset."
       ],
       "correctAnswer": 0,
-      "explanation": "In pre-indexed addressing, the address expression is calculated first and the base is updated before the load/store. In post-indexed addressing, the address in base is used for the load/store, and then the base is updated.",
-      "hint": "Pay attention to when the 'update' to the base register happens."
+      "explanation": "In pre-indexed addressing, the address expression is calculated and the base register is updated before the load or store. In post-indexed addressing, the address in the base register is used first, and then the base register is updated.",
+      "hint": "Pay attention to when the update to the base register happens."
     },
     {
-      "question": "How many bytes does the 'strh' (Store Halfword) instruction write to memory?",
-      "options": ["1 byte", "2 bytes", "4 bytes", "8 bytes"],
+      "question": "How many bytes does the `strh` (Store Halfword) instruction write to memory?",
+      "options": [
+        "1 byte",
+        "2 bytes",
+        "4 bytes",
+        "8 bytes"
+      ],
       "correctAnswer": 1,
-      "explanation": "The 'strh' instruction stores the low-order halfword (2 bytes) to RAM.",
-      "hint": "A 'word' is 4 bytes in AArch64 context."
+      "explanation": "The `strh` instruction stores the low-order halfword from Wt to RAM. A halfword is 2 bytes.",
+      "hint": "A halfword is smaller than a word, which is 4 bytes."
     },
     {
-      "question": "What is the purpose of the bitwise calculation 'add sp, sp, -20 & -16'?",
+      "question": "What is the purpose of the calculation `-20 & -16` when used to allocate stack memory?",
       "options": [
         "To subtract exactly 20 bytes from the stack.",
-        "To allocate stack memory while guaranteeing it remains quadword (16-byte) aligned.",
+        "To allocate stack memory while guaranteeing that SP remains quadword (16-byte) aligned.",
         "To zero out the stack memory for security purposes.",
         "To calculate a memory offset for an array element."
       ],
       "correctAnswer": 1,
-      "explanation": "To guarantee alignment, one can add a negative number, clear the low 4 bits of this number, and AND it with -16. The assembler evaluates -20 & -16 and substitutes the calculated constant.",
-      "hint": "The stack must always remain divisible by 16."
+      "explanation": "The stack pointer must remain quadword aligned. ANDing the negative allocation amount with -16 clears the low 4 bits and produces an allocation size that keeps SP aligned. For `-20 & -16`, the assembler evaluates the expression and uses the resulting aligned constant.",
+      "hint": "The stack pointer must stay divisible by 16. What does ANDing with -16 do to the low 4 bits?"
     },
     {
-      "question": "What specific action does the 'stp x29, x30, [sp, -16]!' instruction perform?",
+      "question": "What specific action does the `stp x29, x30, [sp, -16]!` instruction perform?",
       "options": [
         "It deallocates 16 bytes and restores the Frame Pointer and Link Register.",
-        "It stores x29 and x30 to the stack and then updates SP by subtracting 16.",
-        "It subtracts 16 from SP, creating the frame record, and then stores the contents of FP and LR.",
-        "It aligns the stack to 16 bytes."
+        "It stores x29 and x30 to the stack without changing SP.",
+        "It updates SP by subtracting 16 and then stores the contents of x29 and x30 at the new SP address.",
+        "It aligns SP to the nearest 16-byte boundary without storing any registers."
       ],
       "correctAnswer": 2,
-      "explanation": "The pre-increment part allocates 16 bytes on the stack, and 'stp' stores the contents of x29 (FP) and x30 (LR) to these 16 bytes, which is called the frame record.",
-      "hint": "Look at the '!' at the end. It modifies the pointer first."
+      "explanation": "The `!` indicates pre-indexed addressing. SP is first changed from SP to SP - 16, allocating 16 bytes, and then `stp` stores x29 and x30 at that new stack location. These 16 bytes form the frame record.",
+      "hint": "The `!` means the base register is updated before the memory access."
     },
     {
       "question": "How are stack variables typically addressed within a function's body?",
@@ -59,46 +64,56 @@
         "By dynamically calculating their address using the PC."
       ],
       "correctAnswer": 0,
-      "explanation": "Stack variables are addressed by adding an offset to the base address in FP (e.g., FP+16, FP+20).",
-      "hint": "They sit 'above' the frame record in the stack frame."
+      "explanation": "Stack variables are addressed by adding an offset to the base address in FP. For example, the lecture uses offsets such as FP + 16, FP + 20, and FP + 24.",
+      "hint": "The frame pointer provides a stable base address for accessing the stack frame."
     },
     {
-      "question": "If you need to declare an alias for a register to make code more readable (e.g., renaming x29 to fp), which assembler directive should you use?",
-      "options": [".alias", ".define", ".req", ".macro"],
+      "question": "If you need to declare an alias for a register to make code more readable, such as renaming x29 to fp, which assembler directive should you use?",
+      "options": [
+        ".alias",
+        ".define",
+        ".req",
+        ".macro"
+      ],
       "correctAnswer": 2,
-      "explanation": "Register equates are useful for renaming x29 and x30 to FP and LR, and this is done using the '.req' directive (e.g., fp .req x29).",
-      "hint": "It looks like an abbreviation for 'request' or 'require'."
+      "explanation": "The `.req` directive can be used for register equates. For example, `fp .req x29` gives x29 the alias fp.",
+      "hint": "Think of the assembler directive used to request a register alias."
     },
     {
-      "question": "How are variables that are local to a specific block of code (like an if-statement) managed in assembly?",
+      "question": "How are variables that are local to a specific block of code, such as an if-statement, managed in assembly?",
       "options": [
         "They are allocated in the heap.",
-        "They are allocated by directly decrementing SP when entering the block, and deallocated by incrementing SP when leaving.",
+        "They are allocated by decrementing SP when entering the block and deallocated by incrementing SP when leaving.",
         "They are mapped to global registers.",
         "They overwrite the frame record."
       ],
       "correctAnswer": 1,
-      "explanation": "Variables local to blocks of code are allocated when entering the block by directly decrementing SP, and deallocated when leaving the block by incrementing SP.",
-      "hint": "Their lifecycle is strictly tied to entering and exiting that specific block."
+      "explanation": "Variables local to a block are allocated when the block is entered by directly decrementing SP. They are accessed using FP plus a negative offset and are deallocated by incrementing SP when the block ends.",
+      "hint": "Their lifetime is tied to entering and leaving the block."
     },
     {
       "question": "If an instruction needs to load 4 bytes from RAM into an X register and sign-extend the high-order bits, which instruction must be used?",
-      "options": ["ldr", "ldrb", "ldrsh", "ldrsw"],
+      "options": [
+        "ldr",
+        "ldrb",
+        "ldrsh",
+        "ldrsw"
+      ],
       "correctAnswer": 3,
-      "explanation": "The 'ldrsw' instruction loads 4 bytes from RAM into Xt, sign-extending the high-order bits.",
-      "hint": "Load Register Signed Word."
+      "explanation": "The `ldrsw` instruction loads 4 bytes from RAM into Xt and sign-extends the high-order bits.",
+      "hint": "Think: Load Register Signed Word."
     },
     {
       "question": "What defines a 'full, descending' stack architecture?",
       "options": [
         "It grows from a lower to a higher address, and the pointer points to the next free space.",
-        "It grows from higher to a lower address, and the pointer points at the last pushed item (the top).",
+        "It grows from a higher to a lower address, and the pointer points at the last pushed item (the top).",
         "It pushes data to the heap and descends in size.",
         "It requires all 32 registers to be saved."
       ],
       "correctAnswer": 1,
-      "explanation": "A descending stack grows from a higher to a lower address, and a full stack means the stack pointer points at the top of the stack (the last pushed item).",
-      "hint": "It moves 'down' in memory addresses, and SP sits directly on the active data."
+      "explanation": "A descending stack grows from higher to lower memory addresses, while a full stack has the stack pointer pointing to the top of the stack, which is the last pushed item.",
+      "hint": "It moves down in memory addresses, and SP points directly to the active top of the stack."
     },
     {
       "question": "What happens if a program attempts a memory access using a Stack Pointer (SP) that is not evenly divisible by 16?",
@@ -109,8 +124,8 @@
         "The data is loaded but truncated."
       ],
       "correctAnswer": 2,
-      "explanation": "Addresses in SP must be quadword aligned. If not, the program will abort with a bus error.",
-      "hint": "The hardware strictly enforces this alignment constraint."
+      "explanation": "The stack pointer must be quadword aligned. If SP is not properly aligned, the program will abort with a bus error.",
+      "hint": "The lecture notes state that SP must be evenly divisible by 16."
     }
   ]
 }

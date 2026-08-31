@@ -1,9 +1,9 @@
 {
   "title": "the leaky frame",
   "slug": "the-leaky-frame",
-  "order": 35,
+  "order": 48,
   "topic": "memory",
-  "difficulty": "challenge",
+  "difficulty": "Advance",
   "prompt": "This program stashes a lucky number in its stack frame and prints it back. It should be a two-line story. Run it: the program dies before printing anything, exactly the way it would crash with a bus error on the course servers.\n\nThe rule it breaks: `sp` must stay 16-byte aligned at every moment a call happens. Count the bytes this frame allocates and check them against the course's alignment formula, `alloc = -(16 + locals) & -16`. Fix the allocation (and its matching deallocation) so the frame is legal.\n\n## what is checked\n\n- the lucky number is printed\n- the program exits cleanly\n- the value still makes its round trip through the frame (`str` and `ldr` intact)",
   "starter": "// stash a lucky number in the frame and print it back\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(lucky_r, x19)\n\nlucky_s = 16                                // the local's frame offset\n\n        .data\nfmt:    .string \"lucky = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -24]!\n        mov     fp, sp\n\n        mov     lucky_r, 7\n        str     lucky_r, [fp, lucky_s]\n\n        ldr     x1, [fp, lucky_s]\n        ldr     x0, =fmt\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 24\n        ret\n",
   "args": "",

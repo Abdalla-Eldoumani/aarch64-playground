@@ -1,9 +1,9 @@
 {
   "title": "double, double, double",
   "slug": "double-trouble",
-  "order": 12,
+  "order": 57,
   "topic": "bitwise",
-  "difficulty": "intro",
+  "difficulty": "Fundamental",
   "prompt": "Multiplying by a power of two never needs a multiply: shifting left by one bit doubles a value, and doing it three times multiplies by eight.\n\nCompute `8 * (a + b)` using shifts instead of `mul`. The starter adds up nothing yet; put the sum in the total register and scale it with `lsl`.\n\n## what is checked\n\n- the scaled sum is printed on its own line\n- the program exits cleanly\n- the scaling is done with a left shift, and `mul` stays out of the program",
   "starter": "// scale a sum by eight using shifts alone\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(total_r, x21)\n\n        .data\nfmt:    .string \"8 * (a + b) = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, 5                      // first addend\n        mov     b_r, 7                      // second addend\n        mov     total_r, 0                  // replace this placeholder\n\n        // TODO: put 8 * (a_r + b_r) into total_r without a multiply\n\n        ldr     x0, =fmt\n        mov     x1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",

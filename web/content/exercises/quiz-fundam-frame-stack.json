@@ -1,9 +1,9 @@
 {
   "title": "Quiz: Memory & Stack - Fundamentals",
   "slug": "quiz-fundam-frame-stack",
-  "order": 6,
+  "order": 42,
   "topic": "memory",
-  "difficulty": "intro",
+  "difficulty": "Fundamental",
   "variant": "quiz",
   "prompt": "Test your foundational understanding of AArch64 memory access and stack operations.",
   "questions": [
@@ -16,23 +16,23 @@
         "32-bit addresses, virtual memory address space"
       ],
       "correctAnswer": 1,
-      "explanation": "ARMv8 uses 64-bit addresses, which form a virtual memory address space that is mapped to physical memory by the OS and hardware.",
-      "hint": "The architecture is 64-bit, and the OS handles the actual hardware mapping."
+      "explanation": "AArch64 uses 64-bit addresses, which form a virtual memory address space. The virtual addresses are mapped to physical memory by the OS and hardware.",
+      "hint": "The architecture uses 64-bit addresses, and the OS and hardware handle the mapping to physical memory."
     },
     {
       "question": "Which direction does the system stack grow in memory?",
       "options": [
         "Upward, toward higher memory addresses",
         "It does not grow; it is a fixed block in the middle of RAM",
-        "Backwards, toward lower memory addresses (toward 0)",
+        "Backward, toward lower memory addresses (toward 0)",
         "Outward from the heap"
       ],
       "correctAnswer": 2,
-      "explanation": "The stack uses high memory and grows 'backwards' (toward 0).",
+      "explanation": "The stack uses high memory and grows backward toward lower memory addresses, toward 0.",
       "hint": "Programs are loaded into low memory, while the stack starts high and moves down."
     },
     {
-      "question": "What is the strict alignment requirement for the stack pointer (SP) in AArch64?",
+      "question": "What is the alignment requirement for the Stack Pointer (SP) in AArch64?",
       "options": [
         "Word aligned (4 bytes)",
         "Doubleword aligned (8 bytes)",
@@ -40,18 +40,23 @@
         "Page aligned (4096 bytes)"
       ],
       "correctAnswer": 2,
-      "explanation": "The stack must be quadword aligned, meaning the address in SP must be evenly divisible by 16.",
+      "explanation": "The stack pointer must be quadword aligned, meaning the address in SP must be evenly divisible by 16.",
       "hint": "Think about the size required to store a pair of 64-bit registers."
     },
     {
-      "question": "Which register acts as a stable 'anchor' to point to local variables within a stack frame?",
-      "options": ["The Stack Pointer (SP)", "The Frame Pointer (FP / x29)", "The Link Register (LR / x30)", "x0"],
+      "question": "Which register acts as a stable anchor to point to local variables within a stack frame?",
+      "options": [
+        "The Stack Pointer (SP)",
+        "The Frame Pointer (FP / x29)",
+        "The Link Register (LR / x30)",
+        "x0"
+      ],
       "correctAnswer": 1,
-      "explanation": "The frame pointer (FP) is register x29 and is used to point to local variables in a stack frame because it is stable once set, whereas SP is unstable.",
-      "hint": "SP moves during execution, so another register is used as a fixed reference."
+      "explanation": "The Frame Pointer (FP) is register x29. Once set, it provides a stable reference for local variables in the stack frame, while SP can change as temporary stack space is allocated or deallocated.",
+      "hint": "SP can move during execution, so another register is used as a stable reference."
     },
     {
-      "question": "What happens to the high-order bits of a 32-bit (W) register when the 'ldrb' (Load Byte) instruction is executed?",
+      "question": "What happens to the high-order bits of a 32-bit (W) register when the `ldrb` (Load Byte) instruction is executed?",
       "options": [
         "They remain unchanged.",
         "They are sign-extended based on the loaded byte.",
@@ -59,8 +64,8 @@
         "They trigger an alignment fault."
       ],
       "correctAnswer": 2,
-      "explanation": "The 'ldrb' instruction loads 1 byte from RAM into the low-order part of Wt, zero-extending the high-order bits.",
-      "hint": "Notice it is an 'ldrb' and not an 'ldrsb'."
+      "explanation": "The `ldrb` instruction loads 1 byte from RAM into the low-order part of Wt and zero-extends the high-order bits.",
+      "hint": "Notice that it is `ldrb`, not `ldrsb`."
     }
   ]
 }

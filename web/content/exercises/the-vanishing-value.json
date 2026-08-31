@@ -1,9 +1,9 @@
 {
   "title": "the vanishing value",
   "slug": "the-vanishing-value",
-  "order": 22,
+  "order": 55,
   "topic": "tracing",
-  "difficulty": "core",
+  "difficulty": "Intermediate",
   "prompt": "This program swaps two registers, then prints them in their new order. At least, that was the plan. Run it: one of the values has vanished, and the other now appears twice.\n\nTrace the two `mov` instructions of the swap by hand and watch where the first value goes. Fix the swap so both values survive; the starter even aliases a spare register if you want one, though there are other ways.\n\n## what is checked\n\n- both values appear, in swapped order\n- the program exits cleanly",
   "starter": "// swap two registers, then print them in their new order\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(tmp_r, x21)\n\n        .data\nfmt:    .string \"a = %lld, b = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, 123\n        mov     b_r, 87\n\n        // the swap\n        mov     a_r, b_r\n        mov     b_r, a_r\n\n        ldr     x0, =fmt\n        mov     x1, a_r\n        mov     x2, b_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
