@@ -1,0 +1,46 @@
+{
+  "title": "Fill in the Blank: Array & Struct Syntax",
+  "slug": "blanks-arrays",
+  "order": 36,
+  "topic": "arrays",
+  "difficulty": "Intermediate",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonics, extensions, or offset logic to accurately access arrays and nested structures.",
+  "blanks": [
+    {
+      "prompt": "Identify the multiplier used to scale an array index to its effective address.",
+      "code": "Base address + (i * ___)",
+      "blanks": ["element size", "element_size"],
+      "explanation": "The address of element i is: Base address + (i * element size).",
+      "hint": "The size of the data type."
+    },
+    {
+      "prompt": "Optimize an array store operation by scaling a 64-bit index directly inside the instruction brackets.",
+      "code": "str w22, [x19, x20, ___ 2]",
+      "blanks": ["LSL", "lsl"],
+      "explanation": "It can be optimized by doing the LSL in the STR instruction.",
+      "hint": "Logical Shift Left."
+    },
+    {
+      "prompt": "Safely use a 32-bit (W) register as an array index by sign-extending and shifting it simultaneously.",
+      "code": "str w22, [x19, w20, ___ 2]",
+      "blanks": ["SXTW", "sxtw"],
+      "explanation": "If index is a w register, one must sign extend first using SXTW.",
+      "hint": "Sign eXtend Word."
+    },
+    {
+      "prompt": "Calculate the static offset for a nested structure field (day) inside a parent structure (start).",
+      "code": "strb w20, [x19, employee_start + ___]",
+      "blanks": ["date_day"],
+      "explanation": "The field's subfields are accessed using a 2nd set of offsets, evaluated as an expression by the assembler.",
+      "hint": "The variable name for the day offset."
+    },
+    {
+      "prompt": "Load a signed 'char' (1 byte) from a struct field into a 32-bit register.",
+      "code": "___ w21, [x19, rec_b]",
+      "blanks": ["ldrsb", "LDRSB"],
+      "explanation": "Use ldrsb to load a signed byte from memory.",
+      "hint": "Load Register Signed Byte."
+    }
+  ]
+}

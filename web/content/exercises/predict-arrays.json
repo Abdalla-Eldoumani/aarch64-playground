@@ -1,0 +1,39 @@
+{
+  "title": "Predict: Array Memory Tracing",
+  "slug": "predict-arrays",
+  "order": 37,
+  "topic": "arrays",
+  "difficulty": "Advance",
+  "variant": "prediction",
+  "prompt": "Act as the CPU. Trace the memory calculations and exact offsets required to map multidimensional arrays and structures.",
+  "predictions": [
+    {
+      "code": "int ia[5];",
+      "question": "What is the exact block size in bytes allocated on the stack for this array?",
+      "answer": "20",
+      "explanation": "Block size = number of elements * element size. 5 elements * 4 bytes = 20 bytes.",
+      "hint": "An integer is 4 bytes."
+    },
+    {
+      "code": "char array[2][3];\n// C code mapping",
+      "question": "Using row-major ordering, what is the exact byte offset for array[1][2]?",
+      "answer": "5",
+      "explanation": "The formula is ((m * i) + j) * E_size. ((3 * 1) + 2) * 1 = 5.",
+      "hint": "Row index * columns + column index."
+    },
+    {
+      "code": "long myArray[5] = {10, 20, 30, 40, 50};\n// Base address is 0x1000",
+      "question": "What is the exact decimal offset added to the base address to access the cell containing '30'?",
+      "answer": "16",
+      "explanation": "Cell containing 30 is at index 2. The formula is base + 2 * 8 = base + 16.",
+      "hint": "A long integer is 8 bytes."
+    },
+    {
+      "code": "int ia[2][3][3];",
+      "question": "What is the exact block size in bytes allocated for this 3-dimensional array?",
+      "answer": "72",
+      "explanation": "The block size for an n-dimensional array is the product of its dimensions multiplied by element size: (2 * 3 * 3) * 4 = 72 bytes.",
+      "hint": "Multiply all array bounds, then multiply by 4."
+    }
+  ]
+}

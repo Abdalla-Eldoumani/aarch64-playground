@@ -1,0 +1,107 @@
+{
+  "title": "Quiz: Arrays and Structures - Intermediate",
+  "slug": "quiz-inter-arrays",
+  "order": 34,
+  "topic": "arrays",
+  "difficulty": "Intermediate",
+  "variant": "quiz",
+  "prompt": "Test your intermediate understanding of address scaling, multi-dimensional offsets, and struct layouts.",
+  "questions": [
+    {
+      "question": "What is the formula to calculate the memory offset for a 2D array `list[i][j]` using row-major ordering?",
+      "options": [
+        "((n * j) + i) * E_size",
+        "((m * i) + j) * E_size",
+        "(m + i * j) * E_size",
+        "((m * j) + i) * E_size"
+      ],
+      "correctAnswer": 1,
+      "explanation": "For a 2D array list[1..n][1..m] in row-major order, the offset is ((m * i) + j) * E_size.",
+      "hint": "You multiply the row index by the total number of columns (m), then add the column index."
+    },
+    {
+      "question": "When storing an element into an array using a 32-bit (w) register as the index, what must be done to the index register inside the instruction?",
+      "options": [
+        "It must be logical-shifted right.",
+        "It must be sign-extended using SXTW.",
+        "It must be zero-extended using UXTB.",
+        "It must be converted to a floating-point value."
+      ],
+      "correctAnswer": 1,
+      "explanation": "If the index is a w register, one must sign extend it first using SXTW.",
+      "hint": "A 32-bit register cannot act directly as a 64-bit address component without being stretched safely."
+    },
+    {
+      "question": "How do you calculate the total memory block size required for an n-dimensional array?",
+      "options": [
+        "Multiply the largest dimension by the element size.",
+        "Add all dimensions together and multiply by the element size.",
+        "Take the product of all dimensions and multiply by the element size.",
+        "Multiply the number of dimensions by the element size."
+      ],
+      "correctAnswer": 2,
+      "explanation": "The block size for an n-dimensional array is the product of all its dimensions multiplied by the element size.",
+      "hint": "Think about calculating volume: length * width * depth."
+    },
+    {
+      "question": "In a nested structure (a struct inside a struct), how are the subfields of the inner structure accessed?",
+      "options": [
+        "Using a dynamic pointer.",
+        "Using a 2nd set of offsets added to the base address.",
+        "By loading the entire struct into a single register.",
+        "Using index multipliers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The field's subfields are accessed using a 2nd set of offsets.",
+      "hint": "You combine the offset of the parent field with the offset of the child field."
+    },
+    {
+      "question": "Which programming language maps 2D arrays using column-major ordering?",
+      "options": [
+        "C",
+        "C++",
+        "FORTRAN",
+        "Java"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Column-major ordering is used by FORTRAN.",
+      "hint": "It is an older mathematical and scientific programming language."
+    },
+    {
+      "question": "How can the calculation of an array offset be optimized in ARMv8 assembly without using a separate multiplication instruction?",
+      "options": [
+        "By doing a Logical Shift Left (LSL) directly inside the load/store instruction.",
+        "By using the ADD instruction twice.",
+        "By using a macro processor.",
+        "By ignoring the element size."
+      ],
+      "correctAnswer": 0,
+      "explanation": "The offset calculation can be optimized by doing the LSL inside the STR or LDR instruction.",
+      "hint": "You can shift bits directly inside the memory brackets."
+    },
+    {
+      "question": "When defining offsets for a nested structure in assembly, how is the final offset value determined before runtime?",
+      "options": [
+        "The CPU calculates it dynamically during the fetch cycle.",
+        "The assembler evaluates the expression, producing a constant.",
+        "The linker resolves it from a shared library.",
+        "The OS kernel maps it virtually."
+      ],
+      "correctAnswer": 1,
+      "explanation": "The assembler evaluates the expression (e.g., employee_start + date_month), producing a constant.",
+      "hint": "The translator does the math before the code ever runs."
+    },
+    {
+      "question": "What is the specific load instruction required to retrieve a 'char' from a structure field and store it properly in a 32-bit register?",
+      "options": [
+        "ldr",
+        "ldrsh",
+        "ldrsb",
+        "ldrb"
+      ],
+      "correctAnswer": 2,
+      "explanation": "To load a signed char (1 byte) from a struct field, you use ldrsb.",
+      "hint": "Load Register Signed Byte."
+    }
+  ]
+}

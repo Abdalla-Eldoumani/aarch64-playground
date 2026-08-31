@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Arrays and Structures - Fundamentals",
+  "slug": "quiz-fundam-arrays",
+  "order": 33,
+  "topic": "arrays",
+  "difficulty": "Fundamental",
+  "variant": "quiz",
+  "prompt": "Test your foundational understanding of one-dimensional arrays, multi-dimensional structures, and memory layouts.",
+  "questions": [
+    {
+      "question": "Where are one-dimensional arrays and structures allocated in memory during the execution of a function?",
+      "options": [
+        "In the global heap.",
+        "In a single block of memory on the stack.",
+        "In the primary registers.",
+        "In the instruction cache."
+      ],
+      "correctAnswer": 1,
+      "explanation": "Like other local variables, an array or structure is allocated in a single block of memory on the function's stack frame.",
+      "hint": "Think about where local variables 'live' during a function call."
+    },
+    {
+      "question": "What is the formula to calculate the exact address of element 'i' in a one-dimensional array?",
+      "options": [
+        "Base address + i",
+        "Base address * (i + element size)",
+        "Base address + (i * element size)",
+        "i * element size"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The address of element i is: Base address + (i * element size).",
+      "hint": "You must scale the index by the size of the data type before adding it to the starting point."
+    },
+    {
+      "question": "How are two-dimensional arrays mapped onto memory in high-level languages like C and C++?",
+      "options": [
+        "Using column-major ordering.",
+        "Using row-major ordering.",
+        "Using dynamic heap allocation.",
+        "Using random access pointers."
+      ],
+      "correctAnswer": 1,
+      "explanation": "C and C++ use row-major ordering, which stores each element of row 0, then row 1, etc.",
+      "hint": "It reads left to right across the row before moving down."
+    },
+    {
+      "question": "How are individual fields within a structure accessed in assembly language?",
+      "options": [
+        "Using array indices.",
+        "Using loop counters.",
+        "Using offsets added to the base address.",
+        "Using system calls."
+      ],
+      "correctAnswer": 2,
+      "explanation": "Fields are accessed using offsets from the structure's base address.",
+      "hint": "Because fields are different sizes, you access them by defining how far away they are from the start."
+    },
+    {
+      "question": "For a 1D array of 'long' integers named 'myArray', what is the mathematical address of the cell containing `myArray[2]`?",
+      "options": [
+        "myArray + 2",
+        "myArray + 2 * 4",
+        "myArray + 2 * 8",
+        "myArray + 16 * 2"
+      ],
+      "correctAnswer": 2,
+      "explanation": "A long integer is 8 bytes. The cell has the address myArray + 2 * 8.",
+      "hint": "Determine the byte size of a 'long' integer first."
+    }
+  ]
+}

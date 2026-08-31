@@ -1,0 +1,71 @@
+{
+  "title": "Quiz: Arrays and Structures - Advanced",
+  "slug": "quiz-advance-arrays",
+  "order": 35,
+  "topic": "arrays",
+  "difficulty": "Advance",
+  "variant": "quiz",
+  "prompt": "Test your advanced understanding of 3D array offset formulas, embedded LSL syntax, and memory space mapping.",
+  "questions": [
+    {
+      "question": "For a 3-dimensional array declared as `int ia[2][3][4]`, what is the exact offset formula to access element `ia[i][j][k]`?",
+      "options": [
+        "[[i * 3 * 4] + [j * 4] + k] * 4",
+        "[[i * 2 * 3] + [j * 3] + k] * 4",
+        "[[i * 12] + [j * 3] + k] * 8",
+        "[[i * 4] + [j * 3] + k] * 4"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Its offset for ia[i][j][k] would be: [[i * 3 * 4] + [j * 4] + k] * 4.",
+      "hint": "Multiply the row (i) by the sizes of the remaining dimensions (dim2 and dim3), then multiply the column (j) by the depth (dim3)."
+    },
+    {
+      "question": "What is the proper ARMv8 syntax to execute an optimized store instruction for a 32-bit integer into an array, using a 64-bit index register?",
+      "options": [
+        "str w22, [ia_base_r, index_r, LSL 2]",
+        "str w22, [ia_base_r, index_r, SXTW 2]",
+        "str w22, [ia_base_r, index_r * 4]",
+        "str w22, [ia_base_r, LSL 2, index_r]"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The optimized syntax is: str w22, [ia_base_r, index_r, LSL 2].",
+      "hint": "The Logical Shift Left sits at the very end of the brackets."
+    },
+    {
+      "question": "If you are storing an element into an array using a 32-bit index register (w20), what is the correct syntax?",
+      "options": [
+        "str w22, [ia_base_r, w20, LSL 2]",
+        "str w22, [ia_base_r, w20, SXTW 2]",
+        "str w22, [ia_base_r, w20, UXTB]",
+        "str w22, [ia_base_r, w20]"
+      ],
+      "correctAnswer": 1,
+      "explanation": "If the index is a w register, one must sign extend first: str w22, [ia_base_r, index_r, SXTW 2].",
+      "hint": "You must Sign eXtend the Word and shift it simultaneously."
+    },
+    {
+      "question": "How does Java map a 2D array of chars declared as `char array[2][3]` in physical memory when calculating the offset for `array[1][2]`?",
+      "options": [
+        "(3 * 1 + 2) * 1 = 5",
+        "(2 * 1 + 3) * 2 = 10",
+        "(3 * 1 + 2) * 2 = 10",
+        "(3 * 2 + 1) * 2 = 14"
+      ],
+      "correctAnswer": 2,
+      "explanation": "In Java, chars are 2 bytes. The calculation is (3 * 1 + 2) * 2 = 10.",
+      "hint": "Java uses 2 bytes for a char instead of 1."
+    },
+    {
+      "question": "When defining the memory allocation (alloc) for a function utilizing a 1D array on the stack, which formula guarantees 16-byte alignment?",
+      "options": [
+        "alloc = (16 + a_size + b_size + ia_size) / 16",
+        "alloc = -(16 + a_size + b_size + ia_size) & -16",
+        "alloc = -(16 + ia_size) | 16",
+        "alloc = (ia_size * 4) & -16"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The formula to allocate memory and guarantee alignment is: alloc = -(16 + a_size + b_size + ia_size) & -16.",
+      "hint": "You must use the bitwise AND operation with negative sixteen."
+    }
+  ]
+}
