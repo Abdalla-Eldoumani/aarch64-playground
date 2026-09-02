@@ -7,12 +7,6 @@ const MIN = 0.6;
 const MAX = 1.8;
 const STEP = 0.1;
 
-/**
- * Per-panel zoom. Returns a scale (1 = default), setter, and the CSS
- * style object to spread onto the panel so children pick up
- * `--font-scale` for size inheritance. Persisted in localStorage under
- * the supplied key so each panel remembers its own zoom.
- */
 function loadInitialScale(storageKey: string): number {
   const raw = safeGetItem(`aarch64-playground:zoom:${storageKey}`);
   if (raw) {
@@ -22,6 +16,12 @@ function loadInitialScale(storageKey: string): number {
   return 1;
 }
 
+/**
+ * Per-panel zoom. Returns a scale (1 = default), setter, and the CSS
+ * style object to spread onto the panel so children pick up
+ * `--font-scale` for size inheritance. Persisted in localStorage under
+ * the supplied key so each panel remembers its own zoom.
+ */
 export function useZoom(storageKey: string) {
   const [scale, setScale] = useState<number>(() => loadInitialScale(storageKey));
 
