@@ -117,7 +117,7 @@ export function FpRegisterFileDiagram({
         <span className="font-mono text-[var(--text-primary)]">dN</span>
         {" is the 64-bit double and "}
         <span className="font-mono text-[var(--text-primary)]">sN</span>
-        {" is the same register's low 32 bits, the float view -- "}
+        {" is the same register's low 32 bits, the float view: "}
         <span className="font-mono text-[var(--text-primary)]">s0</span>
         {" and "}
         <span className="font-mono text-[var(--text-primary)]">d0</span>
