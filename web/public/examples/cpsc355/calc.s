@@ -1,5 +1,5 @@
-// calc -- a pocket scientific calculator: a terminal device, or a line
-// calculator on plain stdio. https://github.com/Abdalla-Eldoumani/calc
+// calc: a pocket scientific calculator, as a terminal device or as a
+// line calculator on plain stdio. https://github.com/Abdalla-Eldoumani/calc
 //
 // run: make, then ./calculator for the device or ./calculator console for
 // the line calculator. In the playground: assemble, then run, with the
@@ -43,7 +43,7 @@ O_NONBLOCK = 0x800
 // keypress lands on the next repaint instead of the one after it.
 POLL_NS = 16000000
 
-// A typed key stays lit for this many polls -- about a tenth of a
+// A typed key stays lit for this many polls, about a tenth of a
 // second, long enough to see and short enough not to smear.
 FLASH_POLLS = 6
 
@@ -212,7 +212,7 @@ main_quit:
         ret
 
 // ------------------------------------------------------------------ //
-// console mode -- the line calculator                                  //
+// console mode: the line calculator                                    //
 //                                                                      //
 // The same expression engine EXPR mode runs, driven from cooked stdio.  //
 // Nothing on this path touches termios or fcntl and nothing on it       //
@@ -685,7 +685,7 @@ str_len_done:
         ret
 
 // emit_goto: append the cursor address for row w1, column w2. Addressing
-// each changed cell is what makes the repaint local -- nothing clears
+// each changed cell is what makes the repaint local; nothing clears
 // the screen after the opening draw.
 emit_goto:
         stp     fp, lr, [sp, -16]!
@@ -813,8 +813,8 @@ repaint_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// paint_display: the three rows inside the bezel -- the lamp strip, the
-// working line, and the reading.
+// paint_display: the three rows inside the bezel, namely the lamp strip,
+// the working line, and the reading.
 paint_display:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -1191,7 +1191,7 @@ paint_dirty_keys_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// paint_key: one cap, at key index w1. A cap has three looks -- resting
+// paint_key: one cap, at key index w1. A cap has three looks, resting
 // in its own colour, lit amber for the moment after you type it, and
 // held under the cyan navigation highlight.
 paint_key:
@@ -1250,7 +1250,7 @@ paint_key_face:
         ret
 
 // key_colour: the resting colour for the action in w9. Colour carries
-// the same grouping the layout does -- white for what you enter, amber
+// the same grouping the layout does: white for what you enter, amber
 // for what combines it, red for what throws it away, cyan for the
 // functions.
 key_colour:
@@ -1902,7 +1902,7 @@ memory_is_set:
         ret
 
 // ------------------------------------------------------------------ //
-// immediate mode -- a pocket calculator that chains                    //
+// immediate mode: a pocket calculator that chains                      //
 // ------------------------------------------------------------------ //
 
 imm_key:
@@ -2218,7 +2218,7 @@ imm_dot_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// imm_sign: +/- flips the sign of whatever the display is showing -- the
+// imm_sign: +/- flips the sign of whatever the display is showing, the
 // digits being typed if there are any, otherwise the stored value.
 imm_sign:
         stp     fp, lr, [sp, -16]!
@@ -2565,7 +2565,7 @@ imm_unary_done:
 
 // imm_percent: the convention a pocket calculator ships. After + or -,
 // a percent is a percent OF the running total, so 200 + 10 % is 220.
-// After * or / -- and with nothing pending at all -- it is a plain
+// After * or / (and with nothing pending at all) it is a plain
 // divide by a hundred, so 200 * 10 % is 20 and 50 % on its own is 0.5.
 imm_percent:
         stp     fp, lr, [sp, -16]!
@@ -2641,7 +2641,7 @@ imm_pi:
         ret
 
 // ------------------------------------------------------------------ //
-// expression mode -- precedence and parentheses                        //
+// expression mode: precedence and parentheses                          //
 // ------------------------------------------------------------------ //
 
 expr_key:
@@ -2687,7 +2687,7 @@ expr_key_done:
         ret
 
 // expr_prepare: typing after an evaluated expression starts the next
-// one. An operator is the exception -- it carries the answer forward, so
+// one. An operator is the exception: it carries the answer forward, so
 // you can keep working from what you just got.
 expr_prepare:
         stp     fp, lr, [sp, -16]!
@@ -2874,7 +2874,7 @@ parse_expr_done:
         ret
 
 // parse_term: multiplication and division, binding tighter than the
-// additive level above -- which is the whole of why 2+3*4 is 14.
+// additive level above, which is the whole of why 2+3*4 is 14.
 parse_term:
         stp     fp, lr, [sp, parse_alloc]!
         mov     fp, sp
@@ -3412,7 +3412,7 @@ check_positive_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// check_result: the two ways a value stops being displayable -- it is
+// check_result: the two ways a value stops being displayable. Either it is
 // not a number at all, or it has run past the hundred-decade window the
 // display can address.
 check_result:
@@ -4204,7 +4204,7 @@ txt_rad:     .string "rad"
 usage_txt: .ascii "usage: calculator [console]\n"
 usage_txt_len = . - usage_txt
 banner_txt:
-        .ascii "calc -- scientific calculator\n"
+        .ascii "calc: scientific calculator\n"
         .ascii "type an expression, deg or rad for the trig mode, q to quit\n"
 banner_txt_len = . - banner_txt
 prompt_txt: .ascii "calc> "
