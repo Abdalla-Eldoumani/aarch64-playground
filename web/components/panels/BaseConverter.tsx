@@ -67,6 +67,7 @@ const HINT = "type in any field, or click a bit to flip it";
  */
 export function BaseConverter({ className = "" }: { className?: string }) {
   const uid = useId();
+  // Two reads of one blob: each initializer takes the field it owns.
   const [width, setWidth] = useState<Width>(() => loadInitial().width);
   const [bits, setBits] = useState<bigint>(() => loadInitial().bits);
   const [draft, setDraft] = useState<{ rep: Rep; text: string } | null>(null);
