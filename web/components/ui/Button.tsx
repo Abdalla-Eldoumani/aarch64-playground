@@ -16,7 +16,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 // 44px tall so coarse pointers can hit it; the focus ring is the `--ring` token
 // (two-layer box-shadow that resolves `--focus` -> cyan per theme) shown only on
-// keyboard focus. Every color reads from a token; nothing is hardcoded.
+// keyboard focus.
 // `active:translate-y-px` is the press: one device pixel of travel on the
 // pointer-down frame, discrete state rather than an animation, so it reads
 // under prefers-reduced-motion without motion over time.
