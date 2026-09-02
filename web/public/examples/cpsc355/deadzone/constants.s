@@ -13,7 +13,7 @@ SCREEN_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT      // Total screen characters
 // Play screen rows
 // A marquee on row 0, the arena between the two rules, then the four-row
 // status bar along the bottom. The field has to stop at ROW_FIELD_LAST for
-// the bar to fit, and player.asm bounds the player inside those rows.
+// the bar to fit, and player.s bounds the player inside those rows.
 ROW_MARQUEE = 0                                 // Game name, dark band
 ROW_TOP_BORDER = 1                              // Top rule of the arena
 ROW_FIELD_FIRST = 2                             // First playable row
@@ -25,9 +25,9 @@ ROW_BAR_ABILITIES = 22                          // The two ability charges
 ROW_BAR_BOTTOM = 23                             // Status bar lower rule
 
 // File descriptors
-STDIN = 0                                       // Standard input
-STDOUT = 1                                      // Standard output
-STDERR = 2                                      // Standard error
+STDIN = 0
+STDOUT = 1
+STDERR = 2
 
 // Linux syscall numbers (AArch64)
 SYS_FCNTL = 25                                  // fcntl(fd, cmd, arg)
@@ -38,10 +38,8 @@ SYS_READ = 63                                   // read(fd, buf, count)
 SYS_WRITE = 64                                  // write(fd, buf, count)
 SYS_EXIT = 93                                   // exit(status)
 SYS_NANOSLEEP = 101                             // nanosleep(req, rem)
-SYS_CLOCK_GETTIME = 113                         // clock_gettime(clk_id, tp)
 
 // Clock ids
-CLOCK_MONOTONIC = 1                             // Monotonic clock for timing
 
 // Ioctl requests (termios)
 TCGETS = 0x5401                                 // Get terminal attributes
@@ -76,7 +74,7 @@ O_NONBLOCK = 0x800                              // Reads return instead of waiti
 
 // Key codes
 KEY_NONE = -1                                   // No key pressed
-KEY_ESC = 27                                    // Escape key
+KEY_ESC = 27
 KEY_SPACE = 32                                  // Space bar
 KEY_ENTER = 10                                  // Enter/Return key (LF)
 KEY_CR = 13                                     // Carriage return
@@ -86,10 +84,6 @@ KEY_W = 119                                     // W key (up)
 KEY_A = 97                                      // A key (left)
 KEY_S = 115                                     // S key (down)
 KEY_D = 100                                     // D key (right)
-KEY_w = 119                                     // w key (same as W)
-KEY_a = 97                                      // a key (same as A)
-KEY_s = 115                                     // s key (same as S)
-KEY_d = 100                                     // d key (same as D)
 
 // Control keys
 KEY_P = 112                                     // P key (pause)
@@ -98,9 +92,9 @@ KEY_Q = 113                                     // Q key (quit)
 KEY_q = 113                                     // q key (quit)
 
 // Number keys (for upgrade selection)
-KEY_1 = 49                                      // 1 key
-KEY_2 = 50                                      // 2 key
-KEY_3 = 51                                      // 3 key
+KEY_1 = 49
+KEY_2 = 50
+KEY_3 = 51
 
 // Arrow key escape sequences (after ESC [)
 KEY_ARROW_UP = 65                               // Up arrow (ESC [ A)
@@ -109,25 +103,25 @@ KEY_ARROW_RIGHT = 67                            // Right arrow (ESC [ C)
 KEY_ARROW_LEFT = 68                             // Left arrow (ESC [ D)
 
 // Ansi color codes
-COLOR_RESET = 0                                 // Reset all attributes
-COLOR_BLACK = 30                                // Black foreground
-COLOR_RED = 31                                  // Red foreground
-COLOR_GREEN = 32                                // Green foreground
-COLOR_YELLOW = 33                               // Yellow foreground
-COLOR_BLUE = 34                                 // Blue foreground
-COLOR_MAGENTA = 35                              // Magenta foreground
-COLOR_CYAN = 36                                 // Cyan foreground
-COLOR_WHITE = 37                                // White foreground
+COLOR_RESET = 0
+COLOR_BLACK = 30
+COLOR_RED = 31
+COLOR_GREEN = 32
+COLOR_YELLOW = 33
+COLOR_BLUE = 34
+COLOR_MAGENTA = 35
+COLOR_CYAN = 36
+COLOR_WHITE = 37
 
 // Bright colors
-COLOR_BRIGHT_BLACK = 90                         // Bright black (gray)
-COLOR_BRIGHT_RED = 91                           // Bright red
-COLOR_BRIGHT_GREEN = 92                         // Bright green
-COLOR_BRIGHT_YELLOW = 93                        // Bright yellow
-COLOR_BRIGHT_BLUE = 94                          // Bright blue
-COLOR_BRIGHT_MAGENTA = 95                       // Bright magenta
-COLOR_BRIGHT_CYAN = 96                          // Bright cyan
-COLOR_BRIGHT_WHITE = 97                         // Bright white
+COLOR_BRIGHT_BLACK = 90
+COLOR_BRIGHT_RED = 91
+COLOR_BRIGHT_GREEN = 92
+COLOR_BRIGHT_YELLOW = 93
+COLOR_BRIGHT_BLUE = 94
+COLOR_BRIGHT_MAGENTA = 95
+COLOR_BRIGHT_CYAN = 96
+COLOR_BRIGHT_WHITE = 97
 
 // Roles the colours play on screen. Everything structural is dim grey so the
 // enemies, the player and the gauges are the only bright things in the frame.
@@ -138,14 +132,6 @@ VALUE_COLOR = COLOR_BRIGHT_WHITE                // Status bar numbers
 WALL_GLYPH = '#'                                // Arena wall and rule
 
 // Background colors (add 10 to foreground)
-BG_BLACK = 40                                   // Black background
-BG_RED = 41                                     // Red background
-BG_GREEN = 42                                   // Green background
-BG_YELLOW = 43                                  // Yellow background
-BG_BLUE = 44                                    // Blue background
-BG_MAGENTA = 45                                 // Magenta background
-BG_CYAN = 46                                    // Cyan background
-BG_WHITE = 47                                   // White background
 
 // Game timing
 TARGET_FPS = 30                                 // Target frames per second
@@ -153,24 +139,20 @@ FRAME_TIME_NS = 33333333                        // Nanoseconds per frame (1/30 s
 FRAME_TIME_SEC = 0                              // Seconds component of frame time
 
 // Game states
-STATE_INTRO = 0                                 // Intro/title animation
-STATE_MENU = 1                                  // Main menu
-STATE_PLAYING = 2                               // Game in progress
-STATE_PAUSED = 3                                // Game paused
-STATE_GAMEOVER = 4                              // Game over screen
-STATE_QUIT = 5                                  // Exit game
-STATE_LEVELUP = 6                               // Level up selection screen
+STATE_INTRO = 0
+STATE_MENU = 1
+STATE_PLAYING = 2
+STATE_PAUSED = 3
+STATE_GAMEOVER = 4
+STATE_QUIT = 5
+STATE_LEVELUP = 6
 
 // Entity limits
 MAX_ENEMIES = 100                               // Maximum enemy count
 MAX_PROJECTILES = 50                            // Maximum projectile count
-MAX_PICKUPS = 30                                // Maximum pickup count
 
 // Timespec structure
-TIMESPEC_SIZE = 16                              // Size of timespec (8 + 8 bytes)
-TIMESPEC_SEC = 0                                // Offset to tv_sec
-TIMESPEC_NSEC = 8                               // Offset to tv_nsec
 
 // Boolean values
-FALSE = 0                                       // Boolean false
-TRUE = 1                                        // Boolean true
+FALSE = 0
+TRUE = 1
