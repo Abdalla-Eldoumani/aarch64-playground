@@ -7,7 +7,7 @@ import { isDeadInstance } from "@/lib/worker/dead-instance";
  * module because the worker entry cannot be imported under vitest (it calls
  * `self.addEventListener` at module scope and pulls in the generated wasm
  * glue by a literal relative URL the bundler pins), and this rule is
- * expensive to get wrong in EITHER direction -- too eager and a student
+ * expensive to get wrong in EITHER direction: too eager and a student
  * loses their registers, console and VFS to a typo; too shy and one trap
  * wedges the playground until a page reload.
  */
