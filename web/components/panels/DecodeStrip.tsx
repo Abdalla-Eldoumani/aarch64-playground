@@ -5,7 +5,7 @@ import { describeLine, extractAliases } from "@/lib/asm/explain-line";
 import { decodeFields } from "@/lib/emulator/decode-fields";
 
 export interface DecodeStripProps {
-  /** Full source text -- needed to extract the line the CPU is on. */
+  /** Full source text, so the line the CPU is on can be extracted. */
   source: string;
   /** 1-based line of the most recently executed (or about-to-execute) instruction, or null. */
   currentLine: number | null;
@@ -17,7 +17,7 @@ export interface DecodeStripProps {
    * Set while the pc sits inside a hosted libc call: the strip drops the
    * field row and the gloss (the word under the pc is a trampoline or a
    * synthetic stub, neither of which is anything the student wrote) and
-   * explains where execution is instead. `waiting` is the blocked variant --
+   * explains where execution is instead. `waiting` is the blocked variant:
    * the call is parked on a read.
    */
   externalCall?: { name: string; waiting: boolean } | null;
@@ -30,11 +30,10 @@ export interface DecodeStripProps {
 }
 
 /**
- * The live decode strip: the flagship panel that renders the instruction
- * under the program counter as its actual 32-bit encoding, sliced into
- * labeled field boxes, with the plain-language gloss underneath. The
- * destination field (the register the machine is about to write) reads
- * amber -- the machine acting -- and the whole field row re-latches on every
+ * The live decode strip: renders the instruction under the program counter as
+ * its actual 32-bit encoding, sliced into labeled field boxes, with the
+ * plain-language gloss underneath. The destination field (the register the machine is about to write) reads
+ * amber (the machine acting), and the whole field row re-latches on every
  * step (`anim-decode-latch`, static under reduced motion). Field layouts
  * come from lib/decode-fields, which is pinned to the real assembler by its
  * tests; unrecognized words render as one unsplit box so the strip never
@@ -129,8 +128,7 @@ export function DecodeStrip({
                   // Floor per field so 1-bit boxes keep their labels legible;
                   // min-w-max above is the harder floor, so a cell can never be
                   // squeezed under its own bit string. The row scrolls
-                  // horizontally when the floors overflow, which is the
-                  // intended behaviour, not a defect.
+                  // horizontally when the floors overflow.
                   flexBasis: `${Math.max(34, field.bits * 8)}px`,
                   backgroundColor: dest
                     ? "color-mix(in srgb, var(--amber) 8%, transparent)"
