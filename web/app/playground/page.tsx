@@ -45,15 +45,17 @@ const ShareDialog = dynamic(
 );
 
 const SHORTCUTS: Shortcut[] = [
-  { keys: "F6", description: "assemble" },
+  { keys: "F6", description: "assemble (Ctrl+Enter does the same)" },
   { keys: "F10", description: "step" },
-  { keys: "Shift+F10", description: "step back (up to 128 frames)" },
+  { keys: "Shift+F10", description: "step back (up to 128 instructions)" },
   { keys: "F5", description: "run / pause" },
   { keys: "Shift+F5", description: "reset" },
   { keys: "Ctrl+K", description: "open command palette" },
-  { keys: "Ctrl+S", description: "your buffer is auto-saved continuously" },
+  { keys: "Ctrl+Shift+F", description: "format the source" },
+  { keys: "Ctrl+S", description: "nothing to save: the buffer is written continuously" },
   { keys: "Ctrl+/", description: "toggle line comment" },
   { keys: "Shift+Alt+A", description: "toggle block comment" },
+  { keys: "Ctrl+Wheel", description: "zoom the panel under the pointer" },
   { keys: "?", description: "show this help" },
 ];
 
@@ -171,12 +173,12 @@ export default function Home() {
       timers.push(setTimeout(() => playgroundRef.current?.notifyError(message), 1500));
     };
     // A share link that failed to decode fell back to the autosave; say
-    // so -- the only signal used to be the ABSENCE of the share banner.
+    // so; the only signal used to be the absence of the share banner.
     if (boot.shareError) {
       toastSoon(
         boot.shareError === "too-large"
-          ? "that share link is too large to load -- showing your own buffer instead"
-          : "that share link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
+          ? "that share link is too large to load, so your own buffer is still here"
+          : "that share link is damaged, usually a partial copy. your own buffer is still here; ask the sender for the link again",
       );
     }
     // A bundle failure is reported by the delivery pass below, not here: the
@@ -196,13 +198,13 @@ export default function Home() {
         toastSoon(
           handoff.reason === "too-large"
             ? "that share link is too large to load"
-            : "that share link is damaged (often a partial copy) -- ask for the link again",
+            : "that share link is damaged, usually a partial copy. ask the sender for the link again",
         );
       } else if (handoff?.kind === "bundle-error") {
         toastSoon(
           handoff.reason === "too-large"
-            ? "that diagnostic-bundle link is too large to load"
-            : "that diagnostic-bundle link is damaged (often a partial copy) -- ask for the link again",
+            ? "that diagnostic-bundle link is too large to load, so your own buffer is still here"
+            : "that diagnostic-bundle link is damaged, usually a partial copy. your own buffer is still here; ask the sender for the link again",
         );
       } else if (handoff?.kind === "example") {
         // fetchExample's failures are already student-readable ("invalid
@@ -241,7 +243,7 @@ export default function Home() {
           toastSoon(
             next.reason === "too-large"
               ? "that link is too large to load"
-              : "that link is damaged (often a partial copy) -- ask for it again",
+              : "that link is damaged, usually a partial copy. ask the sender for it again",
           );
         } else if (next?.kind === "example") {
           // The run override rides the URL, so this pass re-reads it from
