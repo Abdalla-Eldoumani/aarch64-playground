@@ -14,7 +14,7 @@
 //!
 //! `.` resolves to the caller-supplied current address. Symbols resolve via
 //! the caller-supplied closure; returning `None` produces an
-//! "unknown symbol" error, which the linker catches when it needs a second
+//! undefined-symbol error, which the linker catches when it needs a second
 //! pass for forward references.
 //!
 //! Arithmetic is i64 with wrapping semantics on `+`, `-`, `*`. Division and
@@ -266,7 +266,15 @@ impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
             // because of the leading dot.
             TokenKind::Ident(name) | TokenKind::DirectiveIdent(name) => {
                 let resolved = (self.resolve)(name).ok_or_else(|| {
-                    err(line, &format!("unknown symbol `{name}`"))
+                    err(
+                        line,
+                        &format!(
+                            "`{name}` is not defined anywhere in this program: check \
+                             the spelling against the label or the `name = value` \
+                             line that defines it. m4 substitution is whole-token \
+                             and case-sensitive"
+                        ),
+                    )
                 })?;
                 self.advance();
                 Ok(resolved)
@@ -291,9 +299,9 @@ impl<'a, F: Fn(&str) -> Option<i64>> Parser<'a, F> {
                     crate::frontend::lexer::describe(other),
                     match other {
                         TokenKind::Hash =>
-                            " -- values in data directives are written without the #",
+                            ". Values in data directives are written without the #",
                         TokenKind::StringLit(_) =>
-                            " -- text belongs in .string/.asciz, not a numeric directive",
+                            ". Text belongs in .string or .asciz, not a numeric directive",
                         _ => "",
                     }
                 ),

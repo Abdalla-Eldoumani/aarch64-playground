@@ -246,6 +246,12 @@ fn a_typod_macro_name_in_an_operand_names_the_symbol() {
     let msg = assemble_err(src);
     assert!(msg.contains("SZIE"), "message was: {msg}");
     assert!(msg.contains("line 5"), "message was: {msg}");
+    // The web layer picks its undefined-symbol teaching block off this
+    // wording, and the terminal pane never runs that layer at all.
+    assert!(
+        msg.contains("is not defined anywhere in this program"),
+        "message was: {msg}"
+    );
     // Division by zero keeps its own diagnosis on the same path.
     let msg = assemble_err(".text
 .global main
