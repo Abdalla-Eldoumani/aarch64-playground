@@ -45,7 +45,6 @@ describe("Action shape", () => {
       },
     });
     const registry: Action[] = [make("assemble"), make("step"), make("reset")];
-    // The palette finds an action by id and invokes only that handler.
     registry.find((a) => a.id === "step")?.run();
     expect(fired).toEqual(["step"]);
   });
