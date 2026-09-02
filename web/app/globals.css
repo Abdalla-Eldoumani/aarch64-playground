@@ -570,6 +570,29 @@ body {
 }
 
 /* =============================================================================
+   CONTROLS BAND
+   The action row takes the same treatment as the header band: under sm it is
+   one nowrap strip that scrolls within itself, so a fifth button is reached by
+   swiping rather than clipped by the pane's overflow-hidden, and every control
+   keeps its full size and 44px hit target.
+============================================================================= */
+@media (max-width: 639.98px) {
+  .controls-band {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .controls-band > button {
+    flex-shrink: 0;
+  }
+  /* The spacer pushes the status chips right on a wide row; inside a scrolling
+     strip it would only add empty scroll width. */
+  .controls-spacer {
+    display: none;
+  }
+}
+
+/* =============================================================================
    EMBEDDED PLAYGROUND LAYOUT
    The hero, lesson, and exercise embeds render at whatever width their host
    gives them (a wide hero, a prose measure), so the arrangement is chosen by
