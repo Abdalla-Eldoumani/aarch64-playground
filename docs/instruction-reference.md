@@ -45,6 +45,8 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `SBFX`   | `SBFX Xd, Xn, #lsb, #width`      | Signed bitfield extract: the same field, sign-extended from its top bit instead of zeroed. Alias for `SBFM`. |
 | `BFI`    | `BFI Xd, Xn, #lsb, #width`       | Bitfield insert: drops the low `width` bits of `Xn` into `Xd` at `lsb`; every other `Xd` bit survives. Alias for `BFM`. |
 | `BFXIL`  | `BFXIL Xd, Xn, #lsb, #width`     | Bitfield extract and insert low: pulls `width` bits from `lsb` in `Xn` down to bit 0 of `Xd` and leaves every other `Xd` bit alone. Same field math as `UBFX`, which zeroes the rest instead. Alias for `BFM`. |
+| `UBFIZ`  | `UBFIZ Xd, Xn, #lsb, #width`     | Unsigned bitfield insert in zeros: takes the low `width` bits of `Xn`, places them at `lsb`, zeroes everything else. The inverse shape of `UBFX`. Alias for `UBFM`; GCC emits it for `(long)(unsigned)x * 4`. |
+| `SBFIZ`  | `SBFIZ Xd, Xn, #lsb, #width`     | The same placement, sign-extended from the field's top bit upward instead of zeroed. Alias for `SBFM`. |
 | `SXTB`   | `SXTB Xd, Wn` / `SXTB Wd, Wn`    | Sign-extend a byte. Alias for `SBFM`.    |
 | `SXTH`   | `SXTH Xd, Wn` / `SXTH Wd, Wn`    | Sign-extend a halfword.                  |
 | `SXTW`   | `SXTW Xd, Wn`                    | Sign-extend a word to 64 bits.           |

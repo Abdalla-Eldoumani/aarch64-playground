@@ -152,7 +152,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // sign / zero extension
     "SXTB", "SXTH", "SXTW", "UXTB", "UXTH",
     // bitfield extract / insert
-    "UBFX", "SBFX", "BFI", "BFXIL",
+    "UBFX", "SBFX", "BFI", "BFXIL", "UBFIZ", "SBFIZ",
     // multiply / divide
     "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG", "NEGS",
     "SMULL", "UMULL", "SMULH", "UMULH",
@@ -260,6 +260,8 @@ fn encode_line(
         "SBFX" => encode_bitfield_alias(&ops, "SBFX", 0b00, BitfieldForm::Extract, line_num),
         "BFI"  => encode_bitfield_alias(&ops, "BFI",  0b01, BitfieldForm::Insert,  line_num),
         "BFXIL" => encode_bitfield_alias(&ops, "BFXIL", 0b01, BitfieldForm::Extract, line_num),
+        "UBFIZ" => encode_bitfield_alias(&ops, "UBFIZ", 0b10, BitfieldForm::Insert,  line_num),
+        "SBFIZ" => encode_bitfield_alias(&ops, "SBFIZ", 0b00, BitfieldForm::Insert,  line_num),
 
         // -- multiply / divide --
         "MUL" => encode_mul_div(&ops, 0, line_num),
@@ -4303,6 +4305,54 @@ svc 0").unwrap();
         cpu.run_until_break(20).unwrap();
         assert_eq!(cpu.regs.read_gpr(0, true), 0xFFFF_FFFF_FFFF_FFAB);
         assert_eq!(cpu.regs.read_gpr(2, true), 0x0000_0000_0000_00AB);
+    }
+
+    #[test]
+    fn bitfield_insert_zero_aliases_shift_then_mask() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("ubfiz x0, x1, #2, #32", 0xD37E_7C20u32),
+            ("sbfiz x0, x1, #2, #30", 0x937E_7420),
+            ("ubfiz x0, x1, #4, #2", 0xD37C_0420),
+            ("sbfiz x2, x1, #4, #2", 0x937C_0422),
+            ("ubfiz w0, w1, #4, #8", 0x531C_1C20),
+            ("sbfiz w0, w1, #4, #8", 0x131C_1C20),
+            ("ubfiz x0, x1, #4, #60", 0xD37C_EC20),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let source = r#"
+            MOVZ X1, #0xFFFF
+            MOVK X1, #0xFFFF, LSL #16
+            MOVK X1, #0xDEAD, LSL #32
+            UBFIZ X2, X1, #2, #32
+            SBFIZ X3, X1, #2, #30
+            MOV X5, #2
+            SBFIZ X6, X5, #4, #2
+            UBFIZ X7, X5, #4, #2
+            UBFIZ X8, X5, #4, #60
+            LSL X9, X5, #4
+            MOV W10, #0xFF
+            UBFIZ W11, W10, #4, #8
+            SBFIZ W12, W10, #4, #8
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        // low 32 bits taken, shifted left 2, everything above zeroed
+        assert_eq!(cpu.regs.read_gpr(2, true), 0x0000_0003_FFFF_FFFC);
+        assert_eq!(cpu.regs.read_gpr(3, true), 0xFFFF_FFFF_FFFF_FFFC);
+        // field 0b10: the top bit is set, so sbfiz fills upward and ubfiz does not
+        assert_eq!(cpu.regs.read_gpr(6, true), 0xFFFF_FFFF_FFFF_FFE0);
+        assert_eq!(cpu.regs.read_gpr(7, true), 0x0000_0000_0000_0020);
+        // #4, #60 collapses onto the LSL alias; it must still be a plain shift
+        assert_eq!(cpu.regs.read_gpr(8, true), cpu.regs.read_gpr(9, true));
+        // at W width the sign fill stops at bit 31
+        assert_eq!(cpu.regs.read_gpr(11, false), 0x0000_0FF0);
+        assert_eq!(cpu.regs.read_gpr(12, false), 0xFFFF_FFF0);
     }
 
     #[test]
