@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::decoder::{MemSize, FP_BINARY_OPS, FP_UNARY_OPS, LDST_EXTENDS};
+use crate::decoder::{MemSize, FP_BINARY_OPS, FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS};
 use crate::errors::EmuError;
 use crate::registers::{reg_alias, Condition, CONDITIONS};
 
@@ -160,7 +160,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
-    "FCVT", "SCVTF", "FCVTZS", "LDP", "STP",
+    "FCVT", "SCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
     // pc-relative address formation
     "ADR", "ADRP",
     // branches
@@ -304,7 +304,9 @@ fn encode_line(
         "FCMPE" => encode_fcmp(&ops, true, line_num),
         "FCVT" => encode_fcvt(&ops, line_num),
         "SCVTF" => encode_scvtf(&ops, line_num),
-        "FCVTZS" => encode_fcvtzs(&ops, line_num),
+        "FCVTZS" => encode_fp_cvt_int(&ops, "fcvtzs", line_num),
+        "FCVTNS" => encode_fp_cvt_int(&ops, "fcvtns", line_num),
+        "FCVTNU" => encode_fp_cvt_int(&ops, "fcvtnu", line_num),
         "LDP" => encode_ldst_pair(&ops, 1, line_num),
         "STP" => encode_ldst_pair(&ops, 0, line_num),
 
@@ -1690,15 +1692,30 @@ fn encode_scvtf(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     Ok((sf_bit << 31) | 0x1E22_0000 | fp_ftype(wd) | ((rn as u32) << 5) | (fd as u32))
 }
 
-fn encode_fcvtzs(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+/// FCVT{N,Z}{S,U} Rd, Fn. `name` is the key into `FP_TO_INT_OPS`, so the
+/// dispatch arm names the operation once and the rmode/opcode pair comes
+/// from the row the decoder reads back.
+fn encode_fp_cvt_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
+    let Some((_, rmode, opcode, _)) = FP_TO_INT_OPS.iter().find(|(mn, _, _, _)| *mn == name)
+    else {
+        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+    };
     if ops.len() != 2 {
-        return asm_err(ln, "fcvtzs requires 2 operands: fcvtzs rd, fn");
+        return asm_err(ln, &format!("{name} requires 2 operands: {name} rd, fn"));
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (fn_, wn) = parse_fp_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
-    // FCVTZS Rd, Fn: sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
-    Ok((sf_bit << 31) | 0x1E38_0000 | fp_ftype(wn) | ((fn_ as u32) << 5) | (rd as u32))
+    // sf_0_0_11110_ftype_1_rmode_opcode_000000_Rn_Rd. Bit 21 is what
+    // separates the integer form from the fixed-point one.
+    Ok((sf_bit << 31)
+        | 0x1E00_0000
+        | fp_ftype(wn)
+        | (1 << 21)
+        | (u32::from(*rmode) << 19)
+        | (u32::from(*opcode) << 16)
+        | ((fn_ as u32) << 5)
+        | (rd as u32))
 }
 
 fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
@@ -4154,6 +4171,57 @@ svc 0").unwrap();
         let err = assemble("fcvt d0, d1").unwrap_err().to_string();
         assert!(err.contains("converts between widths"), "got: {err}");
         assert!(err.contains("fmov"), "should point at fmov: {err}");
+    }
+
+    #[test]
+    fn fp_to_int_rounding_modes_encode_and_round_ties_to_even() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("fcvtns w0, d0", 0x1E60_0000u32),
+            ("fcvtns x0, d0", 0x9E60_0000),
+            ("fcvtns w0, s0", 0x1E20_0000),
+            ("fcvtns x0, s0", 0x9E20_0000),
+            ("fcvtnu w0, d0", 0x1E61_0000),
+            ("fcvtnu x0, d0", 0x9E61_0000),
+            ("fcvtnu w0, s0", 0x1E21_0000),
+            ("fcvtzs w0, d0", 0x1E78_0000),
+            ("fcvtzs x0, s0", 0x9E38_0000),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        // 2.5 and 3.5 separate ties-to-even from ties-away; -1.5 separates
+        // it from truncation, and -2.5 from the unsigned saturation.
+        let source = r#"
+            FMOV D0, 2.5
+            FCVTNS W1, D0
+            FCVTZS W2, D0
+            FMOV D3, -2.5
+            FCVTNS W4, D3
+            FCVTNU W5, D3
+            FMOV D6, 3.5
+            FCVTNS W7, D6
+            FCVTZS W8, D6
+            FCVTNU W9, D6
+            FMOV D10, -1.5
+            FCVTNS W11, D10
+            FCVTZS W12, D10
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, false), 2);
+        assert_eq!(cpu.regs.read_gpr(2, false), 2);
+        assert_eq!(cpu.regs.read_gpr(4, false) as i32, -2);
+        // a negative source saturates to zero, never to a wrapped pattern
+        assert_eq!(cpu.regs.read_gpr(5, false), 0);
+        assert_eq!(cpu.regs.read_gpr(7, false), 4);
+        assert_eq!(cpu.regs.read_gpr(8, false), 3);
+        assert_eq!(cpu.regs.read_gpr(9, false), 4);
+        assert_eq!(cpu.regs.read_gpr(11, false) as i32, -2);
+        assert_eq!(cpu.regs.read_gpr(12, false) as i32, -1);
     }
 
     #[test]
