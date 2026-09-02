@@ -1,12 +1,12 @@
 //! Cooked-tty echo for typed input, and the display counters that let a
 //! host unprint it again.
 //!
-//! A real terminal in cooked mode prints what you type, which is why a
-//! session at a real prompt reads "Enter score 1: 10" while a console that
-//! only ever saw the program's own output read "Enter score 1: " with the
-//! answer nowhere in sight. `push_stdin_interactive` marks a run of queued
-//! bytes as typed; the first read that touches the run echoes it whole, at
-//! the moment it is consumed. `push_stdin` keeps the old silent behavior
+//! A real terminal in cooked mode prints what you type, so a session at a
+//! real prompt reads "Enter score 1: 10" while a console that shows only
+//! the program's own output reads "Enter score 1: ".
+//! `push_stdin_interactive` marks a run of queued bytes as typed; the
+//! first read that touches the run echoes it whole, at the moment it is
+//! consumed. `push_stdin` keeps the old silent behavior
 //! for the redirect paths (fixtures, scripted terminal drives, the
 //! exercise checker), and raw mode echoes nothing at all.
 
@@ -34,8 +34,8 @@ fn stdout_of(cpu: &mut Cpu) -> String {
     String::from_utf8(cpu.take_stdout()).expect("stdout is utf-8")
 }
 
-/// Two prompts, two scanf reads, one printed total -- the shape of the
-/// course program whose transcript started this.
+/// Two prompts, two scanf reads, one printed total: the shape of the
+/// course program the echo behaviour was reported against.
 const TWO_PROMPTS: &str = r#"
 define(fp, x29)
 define(lr, x30)
@@ -193,7 +193,7 @@ main:
 fn push_stdin_never_echoes() {
     // The redirect path. Every fixture, the corpus runner, the scripted
     // terminal drives and the exercise checker come through here, so this
-    // transcript must stay byte for byte what it has always been.
+    // transcript must not change.
     let mut cpu = load(TWO_PROMPTS);
     cpu.push_stdin(b"10\n20\n");
     run_to_halt(&mut cpu);
