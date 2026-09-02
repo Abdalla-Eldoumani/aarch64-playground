@@ -1,7 +1,7 @@
 //! Server-parity regression suite. Every behavior here was verified
-//! against the real course toolchain -- GAS + glibc + GNU m4 on the
-//! U of C ARM servers (and cross-checked under qemu-user with the same
-//! toolchain) -- before it was implemented. Each test pins one behavior
+//! against the real course toolchain (GAS + glibc + GNU m4 on the
+//! U of C ARM servers, cross-checked under qemu-user with the same
+//! toolchain) before it was implemented. Each test pins one behavior
 //! a syntactically valid course program depends on, so a regression
 //! shows up as a program that works on the servers but not here.
 
@@ -164,9 +164,9 @@ fn run_expect_halt_message(source: &str) -> (Cpu, String) {
 
 // The first page is never mapped on Linux, so a store through a zeroed
 // base register is SIGSEGV on the servers. The emulator auto-maps pages
-// on write, which let the week-10 find-max shape -- an m4 alias
-// (`define(i_r, w19)`) that reuses the register the array base was just
-// loaded into -- run to a wrong answer instead of stopping where real
+// on write, which let the week-10 find-max shape (an m4 alias
+// `define(i_r, w19)` reusing the register the array base was just
+// loaded into) run to a wrong answer instead of stopping where real
 // hardware stops.
 #[test]
 fn store_through_a_zeroed_base_register_halts_like_the_servers() {
@@ -216,7 +216,7 @@ done:
 }
 
 // Linux sets SCTLR_EL1.SA0: any load or store through a misaligned SP
-// is a bus error on the servers (verified there -- exit 135). The check
+// is a bus error on the servers (verified there: exit 135). The check
 // is on SP itself, pre-writeback, so `stp ..., [sp, -8]!` from an
 // aligned SP passes and the NEXT sp-based access faults.
 #[test]
@@ -313,8 +313,9 @@ main:
 // rand() must reproduce glibc's TYPE_3 sequence exactly: shell-sort
 // style assignments print unseeded draws and students diff the
 // playground against the servers' sample runs. The pinned values are
-// glibc's, captured from the course toolchain (`& 0x1FF` of the first
-// draws gives the 359 454 105 115 81... the assignment-3 shape prints).
+// glibc's, captured from the course toolchain. Masking each with `& 0x1FF`
+// gives 359, 454, 105, 115, 81, the sequence the assignment-3 shape
+// prints.
 #[test]
 fn unseeded_and_seeded_rand_match_glibc() {
     let source = r#"
@@ -371,8 +372,8 @@ done:
 }
 
 // Linux never starts a process with argc = 0: argv[0] is the program
-// path. Assignment solutions gate on `cmp argc, 3` and print usage --
-// dereferencing argv[0] -- when the count is wrong; with no arguments
+// path. Assignment solutions gate on `cmp argc, 3` and print usage,
+// dereferencing argv[0], when the count is wrong; with no arguments
 // the emulator used to hand them argc = 0 and argv = NULL, so the
 // usage path faulted at address 0 instead of printing.
 #[test]
@@ -438,8 +439,8 @@ done:
     assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "42\n");
 }
 
-// GAS accepts `ldr <reg>, <label>` -- LDR (literal), a load FROM the
-// label's address -- and course code writes it alongside `ldr =label`.
+// GAS accepts `ldr <reg>, <label>`, LDR (literal), a load FROM the
+// label's address, and course code writes it alongside `ldr =label`.
 // The value must be read at run time: this program stores to the label
 // first and loads it back through the literal form.
 #[test]
@@ -477,8 +478,8 @@ main:
 }
 
 // The same form reaches W and the fp registers (`ldr d0, label`), and a
-// label in `.bss` -- 3 MiB from .text, far past a real LDR (literal)'s
-// imm19 -- still loads.
+// label in `.bss`, 3 MiB from .text and far past a real LDR (literal)'s
+// imm19, still loads.
 #[test]
 fn ldr_label_literal_load_covers_w_d_and_bss() {
     let source = r#"
