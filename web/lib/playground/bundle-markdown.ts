@@ -2,11 +2,11 @@
  * The diagnostic bundle's markdown form: the report a student pastes into a
  * bug report or the course forum.
  *
- * Its own module because the two error boundaries want exactly this and
- * nothing else, while its sibling diagnostic-bundle.ts imports lz-string for
- * the `?bundle=` codec. Reaching the builder through that module put the
- * compressor -- and this report format -- in the script list of every
- * document, the landing's included.
+ * Its own module because the two error boundaries want exactly this and nothing
+ * else, while its sibling diagnostic-bundle.ts imports lz-string for the
+ * `?bundle=` codec. Reaching the builder through that module put the
+ * compressor, and this report format, in the script list of every document, the
+ * landing's included.
  */
 
 import type { DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
