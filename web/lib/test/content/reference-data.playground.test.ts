@@ -34,8 +34,7 @@ describe("every try-in-playground payload assembles", () => {
   it("runs every payload to a clean halt", { timeout: 30_000 }, () => {
     // The reference can also run these in place, so a payload that assembles
     // but faults mid-run (a load off a zero register, an unbalanced sp)
-    // would strand the student on an error the entry never mentions. Every
-    // worked example must execute to halt with no fault.
+    // would strand the student on an error the entry never mentions.
     const failures: string[] = [];
     for (const inst of REFERENCE_INSTRUCTIONS) {
       const emu = new Emulator();
