@@ -119,7 +119,7 @@ export function PlaygroundHeaderBand({
             target="_blank"
             rel="noreferrer noopener"
             className="inline-flex items-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-sans text-[var(--text-secondary)] hover:text-[var(--cyan)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-            aria-label="View source on GitHub"
+            aria-label="source on github"
           >
             source
           </a>
