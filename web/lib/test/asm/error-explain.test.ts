@@ -18,7 +18,7 @@ describe("explainError", () => {
 
   it("explains unknown instructions without inventing causes", () => {
     const e = explainError(
-      "unknown instruction 0x00600000 at this address: execution probably branched into data rather than code. Check the branch that got here, and the return address if this followed a ret",
+      "unknown instruction 0x00600000: execution probably branched into data rather than code. Check the branch that got here, and the return address if this followed a ret",
     );
     expect(e).not.toBeNull();
     expect(e!.what.toLowerCase()).toContain("decoder");
