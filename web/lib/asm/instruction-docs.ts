@@ -13,7 +13,7 @@ export interface InstructionDoc {
   example?: string;
   /** Optional one-line C equivalent for students translating between
    *  asm and C. Operand names are placeholders (`Rd`, `Rn`, `op2`,
-   *  `off`, etc.) -- the hover surfaces this verbatim. */
+   *  `off`, etc.); the hover surfaces this verbatim. */
   cExample?: string;
   /** True when the mnemonic exists in ARMv8 but this emulator doesn't
    *  implement it; hover shows "not implemented" instead. */
@@ -247,7 +247,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   },
   STP: { summary: "Store pair; mirrors LDP (D/S pairs reach the FP file).", cExample: "*(long*)(Rn + off) = Rt1; *(long*)(Rn + off + 8) = Rt2;" },
   ADR: {
-    summary: "Pc-relative byte address of a label into Xd.",
+    summary: "PC-relative byte address of a label into Xd.",
     example: "adr x0, label",
     cExample: "Rd = &label;",
   },
