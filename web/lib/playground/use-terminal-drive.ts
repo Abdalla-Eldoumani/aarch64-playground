@@ -106,7 +106,7 @@ export function useTerminalDrive(opts: {
   const termIORef = useRef<TerminalProgramIO | null>(null);
   // The pane's io surface. State, not a ref: the pane mounts lazily on first
   // tab activation, which happens AFTER a raw-mode program's rising edge
-  // switches the tab -- the self-attach effect must re-fire when the
+  // switches the tab, so the self-attach effect must re-fire when the
   // registration lands.
   const [termIO, setTermIO] = useState<TerminalProgramIO | null>(null);
   const foregroundActiveRef = useRef(false);
@@ -124,9 +124,9 @@ export function useTerminalDrive(opts: {
 
   const dropTerminalWatermark = useCallback(() => setTerminalOwnedFrom(null), []);
 
-  // Reset and clear both empty the console, so the watermark they leave
-  // behind describes bytes that no longer exist: it goes with them, and the
-  // next classic run renders exactly as it always has.
+  // Reset and clear both empty the console, so the watermark they leave behind
+  // describes bytes that no longer exist: it goes with them, and the next
+  // console run renders with no watermark.
   const resetMachine = useCallback(() => {
     setTerminalOwnedFrom(null);
     machine.current.reset();
@@ -147,12 +147,11 @@ export function useTerminalDrive(opts: {
     if (blocked && !lastBlockedRef.current) {
       lastBlockedRef.current = true;
       if (wantsTerminal) return;
-      // A foreground terminal session owns the program's input even
-      // without raw mode: a menu program run as `./program` reads its
-      // scanf lines from the term pane, so the console jump stands down.
-      // A terminal-mode program keeps that ownership for its whole
-      // life, including the gap before its drive attaches -- the console
-      // must never steal a read it cannot answer.
+      // A foreground terminal session owns the program's input even without raw
+      // mode: a menu program run as `./program` reads its scanf lines from the
+      // term pane, so the console jump stands down. A terminal-mode program
+      // keeps that ownership for its whole life, including the gap before its
+      // drive attaches: the console must never steal a read it cannot answer.
       if (foregroundActiveRef.current || launchModeRef.current === "terminal") return;
       queueMicrotask(() => {
         // Phones route panes through the pane switcher, not the tab state.
@@ -163,9 +162,9 @@ export function useTerminalDrive(opts: {
     }
   }, [blocked, wantsTerminal, launchModeRef, requestPane]);
 
-  // Hiding the pane blurs its textarea, so coming back to a live session
-  // needs the keyboard handed over again -- otherwise the student types
-  // into nothing while the console says "type in the terminal".
+  // Hiding the pane blurs its textarea, so coming back to a live session needs
+  // the keyboard handed over again, or the student types into nothing while the
+  // console says "type in the terminal".
   useEffect(() => {
     if (!terminalTabActive || !foregroundLive) return;
     termIORef.current?.focus?.();
@@ -292,6 +291,8 @@ export function useTerminalDrive(opts: {
         let started = false;
         const openedAt = Date.now();
         for (;;) {
+          // 32ms: two frames, slow enough not to starve the machine and fast
+          // enough that a keystroke echoes.
           await new Promise<void>((r) => setTimeout(r, 32));
           // Stand down if the host surface unmounted (a route change) or
           // the pane we are driving went away (a mobile pane switch
@@ -299,11 +300,11 @@ export function useTerminalDrive(opts: {
           // blocked program, holding the console's stdin disabled and
           // the snapshot ring paused with no way back.
           if (!mountedRef.current) break;
-          // A pane that unmounts deregisters by writing null, so "not this
-          // io" has to include null -- the earlier `!== null` clause meant
-          // the one case this guard exists for was the one it let through.
-          // It stays tolerant only until the pane first registers, since a
-          // drive can start a frame before that lands.
+          // A pane that unmounts deregisters by writing null, so "not this io"
+          // has to include null. The earlier `!== null` clause let through the
+          // one case this guard exists for. It stays tolerant only until the
+          // pane first registers, since a drive can start a frame before that
+          // lands.
           if (termIORef.current === io) sawPane = true;
           else if (sawPane || termIORef.current !== null) break;
           const e = machine.current;
@@ -311,9 +312,9 @@ export function useTerminalDrive(opts: {
           if (cancelled || e.isHalted || e.error) break;
           // An assemble or a reset mid-session drops the loaded flag: the
           // program this drive was running no longer exists, and the resume
-          // latch below would otherwise start whatever took its place --
-          // pressing Assemble while a session waited for input could set the
-          // freshly assembled program running on its own.
+          // latch below would otherwise start whatever took its place: pressing
+          // Assemble while a session waited for input could set the freshly
+          // assembled program running on its own.
           if (started && !e.programLoaded) break;
           if (e.isRunning || e.blocked) started = true;
           if (e.isRunning) continue;
@@ -362,10 +363,10 @@ export function useTerminalDrive(opts: {
     // Without it the request was preserved and then never honoured.
   }, [termRunRequest, termIO, driveForeground, foregroundLive]);
 
-  // Self-attach: a raw-mode program started from the run button (not
-  // `./name`) still deserves live terminal I/O. When the flag rises and
-  // no session owns the pane, the pane takes the program over and
-  // prints the exit line itself when the session ends.
+  // Self-attach: a raw-mode program started from the run button (not `./name`)
+  // still needs live terminal I/O. When the flag rises and no session owns the
+  // pane, the pane takes the program over and prints the exit line itself when
+  // the session ends.
   useEffect(() => {
     if (!wantsTerminal) return;
     if (!termIO || foregroundActiveRef.current) return;
