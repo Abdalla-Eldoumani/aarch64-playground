@@ -1,6 +1,10 @@
 "use client";
 
-import { parseDeepLink, resolveExampleStem } from "@/lib/hooks/use-deep-link";
+import {
+  parseDeepLink,
+  resolveExampleStem,
+  type BundleDecoder,
+} from "@/lib/hooks/use-deep-link";
 import { validateFileName, type SourceFile } from "@/lib/playground/file-map";
 import { readShareHash } from "@/lib/playground/share";
 import {
@@ -88,17 +92,36 @@ export interface PlaygroundBoot {
 }
 
 /**
+ * The bundle decoder for a URL that actually carries one. Importing it
+ * statically would put diagnostic-bundle (and lz-string's decompressor
+ * behind it) on every page that reaches this module, the landing hero
+ * included, for a parameter almost no load carries.
+ */
+export async function loadBundleDecoder(
+  search: string,
+): Promise<BundleDecoder | undefined> {
+  const trimmed = search.startsWith("?") ? search.slice(1) : search;
+  if (!new URLSearchParams(trimmed).has("bundle")) return undefined;
+  const { decodeBundle } = await import("@/lib/playground/diagnostic-bundle");
+  return decodeBundle;
+}
+
+/**
  * Resolve the starter buffer from the URL actually visible at render
  * time. Precedence: a diagnostic bundle deep-link, then a share hash,
- * then the autosaved buffer, then the cold-load default.
+ * then the autosaved buffer, then the cold-load default. The bundle
+ * branch needs a decoder passed in: a render pass has nothing to await
+ * loadBundleDecoder with, so the playground route boots without one and
+ * lets the post-mount pass deliver the bundle.
  */
 export function resolveBoot(
   search: string,
   hash: string,
   saved: string | null,
   fallback: string,
+  decode?: BundleDecoder,
 ): PlaygroundBoot {
-  const dl = parseDeepLink(search);
+  const dl = parseDeepLink(search, decode);
   if (dl.bundle) {
     return {
       source: dl.bundle.source,
@@ -145,14 +168,17 @@ export type HandoffDecision =
  * URL) is returned for delivery. An example stem is always delivered
  * here -- the boot never fetches -- but only when no share-state payload
  * is in the URL, so a link carrying both never overwrites the richer
- * payload with the example file.
+ * payload with the example file. This is the pass that delivers a
+ * `?bundle=` link: it runs after mount, so its caller can await
+ * loadBundleDecoder and hand the decoder in.
  */
 export function resolveHandoff(
   boot: Pick<PlaygroundBoot, "fromShare" | "fromBundle" | "shareError" | "bundleError">,
   search: string,
   hash: string,
+  decode?: BundleDecoder,
 ): HandoffDecision {
-  const dl = parseDeepLink(search);
+  const dl = parseDeepLink(search, decode);
   if (dl.bundle) {
     if (boot.fromBundle) return null;
     return {
