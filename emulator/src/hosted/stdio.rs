@@ -286,7 +286,7 @@ fn not_a_stream(call: &str, handle: u64) -> EmuError {
     EmuError::RuntimeError {
         message: format!(
             "{call} was given 0x{handle:x}, which is not a stream fopen \
-             returned -- check the fopen return value for NULL (x0 == 0) \
+             returned. Check the fopen return value for NULL (x0 == 0) \
              before using it, and keep the FILE* in a callee-saved register"
         ),
     }
