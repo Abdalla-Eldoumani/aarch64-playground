@@ -151,6 +151,27 @@ pub fn execute(
         Instruction::DpCarry { sub, set_flags, sf, rd, rn, rm } => {
             exec_dp_carry(*sub, *set_flags, *sf, *rd, *rn, *rm, regs)
         }
+        Instruction::CondCompare { sub, sf, rn, operand, cond, nzcv } => {
+            if regs.nzcv.check(*cond) {
+                let a = regs.read_gpr(*rn, *sf);
+                let b = match operand {
+                    CondCmpOperand::Reg(rm) => regs.read_gpr(*rm, *sf),
+                    CondCmpOperand::Imm(imm) => u64::from(*imm),
+                };
+                regs.nzcv = if *sub {
+                    sub_flags(a, b, a.wrapping_sub(b), *sf)
+                } else {
+                    add_flags(a, b, a.wrapping_add(b), *sf)
+                };
+            } else {
+                // The false path WRITES the literal; it does not leave the
+                // old flags in place. That difference is invisible in
+                // every short-circuit idiom and visible only when the
+                // literal forces a condition the compare would not.
+                regs.nzcv = NzcvFlags::unpack(*nzcv);
+            }
+            Ok(ExecResult::Advance)
+        }
         Instruction::DataProc1 { op, sf, rd, rn } => exec_dp1(*op, *sf, *rd, *rn, regs),
         Instruction::VarShift { sf, rd, rn, rm, shift } => {
             // Shift amount is Rm modulo the register width (apply_shift

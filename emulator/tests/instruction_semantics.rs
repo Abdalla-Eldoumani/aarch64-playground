@@ -387,6 +387,58 @@ main:
 }
 
 #[test]
+fn conditional_compare_leaves_the_exact_nzcv_nibble() {
+    // csarm's cond_compare probe read the flags back one nibble at a
+    // time. The false path must write the literal in `pack`'s own bit
+    // order (N Z C V, high bit first), and the taken path must leave what
+    // a plain CMP would.
+    let src = r#"
+.text
+.global main
+main:
+    mov     w0, 9
+    cmp     w0, 1
+    ccmp    w0, 0, 0, eq
+    cmp     w0, 1
+    ccmp    w0, 0, 1, eq
+    cmp     w0, 1
+    ccmp    w0, 0, 4, eq
+    cmp     w0, 1
+    ccmp    w0, 0, 8, eq
+    cmp     w0, 1
+    ccmp    w0, 0, 15, eq
+    cmp     w0, 9
+    ccmp    w0, 9, 0, eq
+    cmp     w0, 9
+    ccmp    w0, 20, 0, eq
+    cmp     w0, 9
+    ccmp    w0, 2, 0, eq
+    mov     w0, 0
+    ret
+"#;
+    let mut cpu = assemble(src);
+    cpu.step().expect("mov w0, 9 steps");
+    // The false-path literals, then the taken path's own flags: equal
+    // (Z and C), less (N alone), greater (C alone).
+    for (want, what) in [
+        (0b0000u8, "literal 0"),
+        (0b0001, "literal 1"),
+        (0b0100, "literal 4"),
+        (0b1000, "literal 8"),
+        (0b1111, "literal 15"),
+        (0b0110, "9 == 9"),
+        (0b1000, "9 < 20"),
+        (0b0010, "9 > 2"),
+    ] {
+        cpu.step().expect("cmp steps");
+        cpu.step().expect("ccmp steps");
+        assert_eq!(cpu.regs.nzcv.pack(), want, "{what}");
+    }
+    let r = cpu.run_until_break(1_000).expect("run to halt");
+    assert!(r.halted);
+}
+
+#[test]
 fn fp_to_int_saturates_at_the_destination_width() {
     // 5e9 fits an X destination and not a W one, which is the pair that
     // separates a per-width clamp from a single 64-bit one. NaN answers

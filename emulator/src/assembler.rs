@@ -146,8 +146,8 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "ADD", "ADDS", "SUB", "SUBS",
     // arithmetic with carry (register only)
     "ADC", "ADCS", "SBC", "SBCS",
-    // compare (aliases)
-    "CMP", "CMN",
+    // compare (aliases) and the conditional compares
+    "CMP", "CMN", "CCMP", "CCMN",
     // logical
     "AND", "ANDS", "ORR", "EOR", "BIC", "ORN", "EON", "MVN", "TST",
     // shifts and rotate
@@ -241,6 +241,8 @@ fn encode_line(
         // -- compare (aliases) --
         "CMP" => encode_cmp(&ops, 1, line_num),
         "CMN" => encode_cmp(&ops, 0, line_num),
+        "CCMP" => encode_cond_compare(&ops, 1, "ccmp", line_num),
+        "CCMN" => encode_cond_compare(&ops, 0, "ccmn", line_num),
 
         // -- logical --
         "AND" => encode_log_dispatch(&ops, 0b00, line_num),
@@ -1451,6 +1453,56 @@ fn encode_mul_accumulate(ops: &[&str], subtract: bool, ln: usize) -> Result<u32,
         | ((ra as u32) << 10)
         | ((rn as u32) << 5)
         | (rd as u32))
+}
+
+/// CCMP / CCMN Rn, Rm|#imm5, #nzcv, cond. The second operand's shape
+/// picks the register or the immediate form, the same way
+/// `encode_log_dispatch` reads it. GAS lets these carry AL and NV.
+fn encode_cond_compare(
+    ops: &[&str], op_bit: u32, name: &str, ln: usize,
+) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(
+            ln,
+            &format!("{name} requires 4 operands: Rn, Rm or #imm5, #nzcv, cond"),
+        );
+    }
+    let (rn, sf) = parse_register(ops[0], ln)?;
+    let nzcv = parse_immediate(ops[2], ln)?;
+    if !(0..=15).contains(&nzcv) {
+        return asm_err(
+            ln,
+            &format!("{name} nzcv must be 0 to 15 (the four flag bits, N Z C V)"),
+        );
+    }
+    let cond = parse_condition_allowing_nv(ops[3], ln)?;
+    let op2 = ops[1].trim();
+    let (field, imm_flag) = if op2.starts_with('#')
+        || op2.starts_with('\'')
+        || op2.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
+    {
+        let imm = parse_immediate(op2, ln)?;
+        if !(0..=31).contains(&imm) {
+            return asm_err(
+                ln,
+                &format!("{name} takes an unsigned 5-bit immediate (0 to 31)"),
+            );
+        }
+        (imm as u32, 1u32)
+    } else {
+        (u32::from(parse_register(op2, ln)?.0), 0)
+    };
+    let sf_bit = if sf { 1u32 } else { 0 };
+    // sf_op_S=1_11010010_imm5|Rm_cond(4)_imm_o2=0_Rn_o3=0_nzcv(4)
+    Ok((sf_bit << 31)
+        | (op_bit << 30)
+        | (1 << 29)
+        | (0b11010010 << 21)
+        | (field << 16)
+        | ((cond as u32) << 12)
+        | (imm_flag << 11)
+        | ((rn as u32) << 5)
+        | (nzcv as u32))
 }
 
 /// CLZ / CLS / RBIT / REV / REV16 / REV32 Rd, Rn. `name` keys into
@@ -3583,6 +3635,95 @@ mod tests {
         assert_eq!(cpu.regs.read_gpr(6, true), (1u64 << 62) - 1);
         // umull treats w1 (0xFFFF_FFFD) as unsigned.
         assert_eq!(cpu.regs.read_gpr(7, true), 0xFFFF_FFFDu64 * 5);
+    }
+
+    #[test]
+    fn conditional_compare_writes_flags_or_the_literal() {
+        use crate::cpu::Cpu;
+        use crate::decoder::{decode, CondCmpOperand, Instruction};
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("ccmp x0, x1, #0, eq", 0xFA41_0000u32),
+            ("ccmp w0, #31, #4, ne", 0x7A5F_1804),
+            ("ccmn x0, x1, #15, lt", 0xBA41_B00F),
+            ("ccmn w0, #1, #4, ne", 0x3A41_1804),
+            ("ccmp w0, w1, #0, eq", 0x7A41_0000),
+            ("ccmp x0, #31, #0, eq", 0xFA5F_0800),
+            ("ccmn x0, #0, #0, eq", 0xBA40_0800),
+            ("ccmp w0, #0, #15, eq", 0x7A40_080F),
+            // GAS takes AL and NV here, and gives them different words.
+            ("ccmp x0, x1, #15, al", 0xFA41_E00F),
+            ("ccmn x0, x1, #15, al", 0xBA41_E00F),
+            ("ccmp w0, #31, #4, al", 0x7A5F_E804),
+            ("ccmp x0, x1, #0, nv", 0xFA41_F000),
+            ("ccmn x0, x1, #0, nv", 0xBA41_F000),
+            ("ccmp w0, #31, #4, nv", 0x7A5F_F804),
+            ("ccmn w0, #1, #4, nv", 0x3A41_F804),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        match decode(0xFA41_0000).unwrap() {
+            Instruction::CondCompare {
+                sub: true, sf: true, rn: 0, operand, cond, nzcv: 0,
+            } => {
+                assert_eq!(operand, CondCmpOperand::Reg(1));
+                assert_eq!(cond, Condition::EQ);
+            }
+            other => panic!("expected a register CondCompare, got {other:?}"),
+        }
+        match decode(0x7A5F_1804).unwrap() {
+            Instruction::CondCompare { sub: true, sf: false, rn: 0, operand, nzcv: 4, .. } => {
+                assert_eq!(operand, CondCmpOperand::Imm(31));
+            }
+            other => panic!("expected an immediate CondCompare, got {other:?}"),
+        }
+        for (src, needle) in [
+            ("ccmp x0, x1, #16, eq", "nzcv must be 0 to 15"),
+            ("ccmp x0, #32, #0, eq", "unsigned 5-bit immediate"),
+        ] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains(needle), "{src}: {err}");
+        }
+        // The short-circuit idiom gcc builds `a == 1 && b == 2` out of,
+        // in all three outcomes.
+        let source = r#"
+            MOV W0, #1
+            MOV W1, #2
+            CMP W0, #1
+            CCMP W1, #2, #0, EQ
+            CSET W2, EQ
+            MOV W3, #9
+            CMP W3, #1
+            CCMP W1, #2, #0, EQ
+            CSET W4, EQ
+            CMP W3, #1
+            CCMP W1, #29, #4, EQ
+            CSET W5, EQ
+            MOV W6, #7
+            MOV W7, #7
+            CMP W6, W7
+            CCMP W6, W7, #0, EQ
+            CSET W8, EQ
+            MOV W9, #-3
+            CMP W6, W7
+            CCMN W9, #3, #0, EQ
+            CSET W10, EQ
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        assert_eq!(cpu.regs.read_gpr(2, false), 1, "the taken path compares");
+        assert_eq!(cpu.regs.read_gpr(4, false), 0, "literal 0 leaves Z clear");
+        // The trap: an implementation that leaves NZCV alone on the false
+        // path answers 0 here and still passes the two rows above.
+        assert_eq!(cpu.regs.read_gpr(5, false), 1, "literal 4 forces Z although 2 != 29");
+        assert_eq!(cpu.regs.read_gpr(8, false), 1, "the register form");
+        assert_eq!(cpu.regs.read_gpr(10, false), 1, "ccmn adds instead");
+        // -3 + 3 is zero with a carry out, so the last flags are N=0 Z=1
+        // C=1 V=0.
+        assert_eq!(cpu.regs.nzcv.pack(), 0b0110);
     }
 
     #[test]

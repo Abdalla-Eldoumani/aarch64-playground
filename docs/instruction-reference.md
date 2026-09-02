@@ -70,6 +70,8 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `CMP`    | `CMP Xn, Xm/#imm` | `SUBS XZR, ...`; sets NZCV. A negative immediate flips to `CMN` with the positive value, as GAS does (`cmp w1, -1` = `cmn w1, 1`). |
 | `CMN`    | `CMN Xn, Xm/#imm` | `ADDS XZR, ...`. Negative immediates flip to `CMP` the same way. |
 | `TST`    | `TST Xn, Xm/#imm` | `ANDS XZR, ...`.                    |
+| `CCMP`   | `CCMP Xn, Xm, #nzcv, cond` / `CCMP Xn, #imm5, #nzcv, cond` | Conditional compare: when `cond` holds, set NZCV from `Xn - Xm` as `CMP` would; otherwise set NZCV to the 4-bit literal (`N Z C V`, high bit first). The immediate is 0 to 31, unsigned. GCC builds `&&` and `\|\|` chains out of these instead of branching. |
+| `CCMN`   | same shapes       | The `CMN` form: the taken path sets NZCV from `Xn + Xm`. |
 
 ## Conditional select
 
@@ -308,7 +310,7 @@ finishes on the next step.
 
 ## NZCV flags
 
-`ADDS`, `SUBS`, `ADCS`, `SBCS`, `ANDS`, `NEGS`, `CMP`, `CMN`, `TST`, and `FCMP` / `FCMPE` update the condition flags. They are visible in the register panel as `N Z C V` and used by `B.cond` / `CSEL` / `CSET` / friends.
+`ADDS`, `SUBS`, `ADCS`, `SBCS`, `ANDS`, `NEGS`, `CMP`, `CMN`, `CCMP`, `CCMN`, `TST`, and `FCMP` / `FCMPE` update the condition flags. They are visible in the register panel as `N Z C V` and used by `B.cond` / `CSEL` / `CSET` / friends.
 
 ## Things that are not implemented
 

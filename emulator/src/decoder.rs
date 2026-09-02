@@ -210,6 +210,14 @@ pub enum MulWideOp {
     Umulh,
 }
 
+/// The second operand of a conditional compare: a register, or the
+/// 5-bit unsigned immediate the `#imm` form carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CondCmpOperand {
+    Reg(u8),
+    Imm(u8),
+}
+
 /// Data-processing 1-source operation: the bit and byte reversals plus
 /// the two leading-bit counts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -381,6 +389,17 @@ pub enum Instruction {
         rm: u8,
         shift: ShiftType,
         amount: u8,
+    },
+    /// CCMP / CCMN: compare only when `cond` holds, otherwise write the
+    /// literal flags. `sub` is CCMP. `nzcv` is the 4-bit literal in
+    /// `NzcvFlags::pack`'s layout (N=bit3, Z=bit2, C=bit1, V=bit0).
+    CondCompare {
+        sub: bool,
+        sf: bool,
+        rn: u8,
+        operand: CondCmpOperand,
+        cond: Condition,
+        nzcv: u8,
     },
     /// CLZ/CLS/RBIT/REV/REV16/REV32: one source, one destination, no
     /// flags. `sf` is the operand width both registers share.
@@ -1790,13 +1809,17 @@ fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
         (0, 1) => decode_add_sub_reg(instr),
         (1, 1) => decode_dp3(instr),
         (1, 0) => {
-            // add/sub with carry vs conditional select vs dp2, by bits [23:21]
+            // add/sub with carry vs conditional compare vs conditional
+            // select vs dp2, by bits [23:21]
             // add/sub (with carry): bits[23:21] = 000, bits[15:10] = 000000
+            // conditional compare:  bits[23:21] = 010
             // conditional select:   bits[23:21] = 100
             // dp2:                  bits[23:21] = 110
             let sub = bits(instr, 23, 21);
             if sub == 0b000 && bits(instr, 15, 10) == 0 {
                 decode_add_sub_carry(instr)
+            } else if sub == 0b010 {
+                decode_cond_compare(instr)
             } else if sub == 0b100 {
                 decode_cond_select(instr)
             } else {
@@ -1927,6 +1950,27 @@ fn decode_logical_reg(instr: u32) -> Result<Instruction, EmuError> {
         amount: imm6,
         set_flags,
         invert,
+    })
+}
+
+/// CCMP / CCMN: sf op S=1 11010010 imm5|Rm cond(4) imm o2=0 Rn o3=0 nzcv.
+/// Bit 11 picks the immediate form; bits 10 and 4 are reserved zero.
+fn decode_cond_compare(instr: u32) -> Result<Instruction, EmuError> {
+    if bit(instr, 29) != 1 || bit(instr, 10) != 0 || bit(instr, 4) != 0 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    let field = bits(instr, 20, 16) as u8;
+    Ok(Instruction::CondCompare {
+        sub: bit(instr, 30) == 1,
+        sf: bit(instr, 31) == 1,
+        rn: bits(instr, 9, 5) as u8,
+        operand: if bit(instr, 11) == 1 {
+            CondCmpOperand::Imm(field)
+        } else {
+            CondCmpOperand::Reg(field)
+        },
+        cond: Condition::from_u8(bits(instr, 15, 12) as u8)?,
+        nzcv: bits(instr, 3, 0) as u8,
     })
 }
 

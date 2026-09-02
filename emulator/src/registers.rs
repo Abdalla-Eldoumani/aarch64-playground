@@ -174,6 +174,18 @@ impl NzcvFlags {
         ((self.n as u8) << 3) | ((self.z as u8) << 2) | ((self.c as u8) << 1) | (self.v as u8)
     }
 
+    /// Unpack a 4-bit value written as N=bit3, Z=bit2, C=bit1, V=bit0:
+    /// the same layout `pack` produces, and the one CCMP's and CCMN's
+    /// `#nzcv` literal carries.
+    pub fn unpack(bits: u8) -> Self {
+        Self {
+            n: bits & 0b1000 != 0,
+            z: bits & 0b0100 != 0,
+            c: bits & 0b0010 != 0,
+            v: bits & 0b0001 != 0,
+        }
+    }
+
     /// Evaluate a condition code against the current flags.
     pub fn check(&self, cond: Condition) -> bool {
         match cond {
@@ -385,6 +397,17 @@ mod tests {
     fn nzcv_pack() {
         let flags = NzcvFlags { n: true, z: false, c: true, v: false };
         assert_eq!(flags.pack(), 0b1010);
+    }
+
+    #[test]
+    fn nzcv_unpack_is_the_inverse_of_pack() {
+        // CCMP's literal path writes this nibble straight into the flags,
+        // so the two directions of the same four bits cannot drift.
+        for bits in 0..16u8 {
+            assert_eq!(NzcvFlags::unpack(bits).pack(), bits);
+        }
+        let f = NzcvFlags::unpack(0b0100);
+        assert!(f.z && !f.n && !f.c && !f.v, "bit 2 is Z");
     }
 
     #[test]
