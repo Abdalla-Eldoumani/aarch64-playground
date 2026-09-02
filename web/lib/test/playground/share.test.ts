@@ -10,9 +10,8 @@ import {
 import { MAX_SHARE_DECOMPRESSED_BYTES, MAX_SHARE_HASH_BYTES } from "@/lib/playground/upload-guard";
 
 // readShareHash returns a discriminated verdict: "none" (not our hash),
-// "ok", "corrupt" (our prefix, broken payload), "too-large". Collapsing
-// the failures into null used to make a truncated link silently boot the
-// autosave with no signal.
+// "ok", "corrupt" (our prefix, broken payload), "too-large". Collapsing the
+// failures into null makes a truncated link boot the autosave with no signal.
 function okState(hash: string): ShareState {
   const r = readShareHash(hash);
   if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
@@ -53,7 +52,7 @@ describe("share hash p2", () => {
   });
 
   it("drops a malformed files array instead of failing the link", () => {
-    // Hand-built v2 hash (no checksum -- legacy links load without one)
+    // Hand-built v2 hash (no checksum: legacy links load without one)
     // whose files entries are not {name, body} objects.
     const json = JSON.stringify({
       source: "NOP\n",
@@ -79,7 +78,7 @@ describe("share hash p2", () => {
 
   it("stores a whitespace-padded name trimmed, never with the padding", () => {
     // validateFileName trims before its shape check, so an untrimmed store
-    // once validated "\nret.s\n" as ret.s and handed the newlines to the
+    // validates "\nret.s\n" as ret.s and hands the newlines to the
     // `// ---- name ----` boundary comment as program text.
     const padded = `#p2=${LZString.compressToEncodedURIComponent(
       JSON.stringify({
@@ -202,9 +201,8 @@ describe("readShareHash decompression-bomb guard", () => {
   it("stops an UNDER-cap bomb at the output ceiling", () => {
     // lz-string output grows quadratically in fragment length: this
     // fragment is a few KB (inside the raw cap) but inflates past the
-    // 1 MB output ceiling. The old 64 KB raw cap admitted fragments that
-    // inflated to ~200 MB -- the exact attack the guard's comment
-    // claimed to stop.
+    // 1 MB output ceiling. A 64 KB raw cap admits fragments that inflate to
+    // ~200 MB.
     const bomb = LZString.compressToEncodedURIComponent("a".repeat(2_000_000));
     expect(bomb.length).toBeLessThan(MAX_SHARE_HASH_BYTES);
     expect(kindOf(`#p2=${bomb}`)).toBe("too-large");
@@ -306,9 +304,8 @@ describe("shareHashSize", () => {
 
   it("catches a workspace whose link the receiver would refuse", () => {
     // A multi-file workspace on the scale of the course's data-structures
-    // program: buildShareHash has never had a guard, so the sender got a
-    // copyable URL that opens to "that share link is too large" and no way
-    // to tell before sending it.
+    // program: without a guard the sender gets a copyable URL that opens to
+    // "that share link is too large" and no way to tell before sending it.
     const files = Array.from({ length: 12 }, (_, i) => ({
       name: `part${i}.s`,
       body: Array.from(
@@ -319,7 +316,7 @@ describe("shareHashSize", () => {
     const hash = buildShareHash({ source: "mov x0, 1\nret\n", files });
     const size = shareHashSize(hash);
     expect(size.chars).toBeGreaterThan(size.max);
-    // ...and the receiver agrees, which is the whole point of measuring.
+    // ...and the receiver agrees.
     expect(readShareHash(hash).kind).toBe("too-large");
   });
 
