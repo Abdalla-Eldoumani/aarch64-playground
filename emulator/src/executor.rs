@@ -1209,14 +1209,14 @@ fn exec_fp_mul_add(
         let a = regs.read_fpr_f32(fa);
         let n = if neg_n { -n } else { n };
         let a = if neg_a { -a } else { a };
-        regs.write_fpr_f32(fd, n.mul_add(m, a));
+        regs.write_fpr_f32(fd, default_nan_if_new(n.mul_add(m, a), &[n, m, a]));
     } else {
         let n = regs.read_fpr_f64(fn_);
         let m = regs.read_fpr_f64(fm);
         let a = regs.read_fpr_f64(fa);
         let n = if neg_n { -n } else { n };
         let a = if neg_a { -a } else { a };
-        regs.write_fpr_f64(fd, n.mul_add(m, a));
+        regs.write_fpr_f64(fd, default_nan_if_new(n.mul_add(m, a), &[n, m, a]));
     }
     Ok(ExecResult::Advance)
 }
@@ -1843,6 +1843,30 @@ mod tests {
         };
         execute(&add, &mut regs, &mut mem).unwrap();
         assert_eq!(regs.read_fpr_bits(0), carried, "an operand NaN propagates");
+    }
+
+    #[test]
+    fn a_fused_multiply_add_of_an_invalid_product_writes_the_default_nan() {
+        // 0 * inf + 1 is invalid at the product, and the fused path must
+        // answer with the same positive default NaN the binary ops do.
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 0.0);
+        regs.write_fpr_f64(2, f64::INFINITY);
+        regs.write_fpr_f64(3, 1.0);
+        let instr = Instruction::FpMulAdd {
+            op: FpMulAddOp::Fmadd, fd: 0, fn_: 1, fm: 2, fa: 3, single: false,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), 0x7FF8_0000_0000_0000u64, "fmadd d");
+
+        regs.write_fpr_f32(1, 0.0);
+        regs.write_fpr_f32(2, f32::INFINITY);
+        regs.write_fpr_f32(3, 1.0);
+        let instr = Instruction::FpMulAdd {
+            op: FpMulAddOp::Fmadd, fd: 0, fn_: 1, fm: 2, fa: 3, single: true,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), 0x7FC0_0000u64, "fmadd s");
     }
 
     #[test]
