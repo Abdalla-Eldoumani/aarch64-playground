@@ -718,3 +718,24 @@ body {
     outline-offset: 2px;
   }
 }
+
+/* =============================================================================
+   MONACO BUTTON TOOLTIPS
+   Monaco renders the hover for a widget button (the find widget's close, say)
+   through its context-view service, which positions the card by setting a
+   left offset and then lets the box shrink to fit whatever room is left
+   between that offset and the container's right edge. Against the right edge
+   of the editor pane that room is 120px, too narrow for "Close
+   (Shift+Escape)", so the label wrapped to a second line and the taller card
+   covered the 16px button it belonged to: elementFromPoint returned the card
+   and the click never reached the button, leaving the widget with no working
+   close. Sizing the card to its content instead lets it stay one line and
+   clear of the button, capped so a long label still wraps rather than running
+   off the page. The override has to win over the inline width the service
+   writes, and it is scoped to hover cards so context menus keep their own
+   measured width.
+============================================================================= */
+.context-view.monaco-component:has(.workbench-hover) {
+  width: max-content !important;
+  max-width: 500px !important;
+}
