@@ -38,7 +38,7 @@ describe("LessonIndex", () => {
 
   it("filters by the search query and exposes an accessible search name", () => {
     render(<LessonIndex lessons={lessons} />);
-    const input = screen.getByLabelText("Search lessons");
+    const input = screen.getByLabelText("search lessons");
     fireEvent.change(input, { target: { value: "Alpha" } });
     expect(screen.getByText("Alpha Lesson")).toBeTruthy();
     expect(screen.queryByText("Beta Lesson")).toBeNull();
