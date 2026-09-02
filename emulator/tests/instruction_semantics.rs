@@ -286,7 +286,8 @@ main:
 fn single_precision_scanf_compute_fcvt_printf_flow() {
     // scanf %f stores a 4-byte float; the program reads it into s0,
     // halves it in single precision, widens with fcvt, and prints it as
-    // the double printf expects. This is the canonical C float flow.
+    // the double printf expects. It is the flow a C `float` takes through
+    // scanf, arithmetic, and printf.
     let src = r#"
 define(fp, x29)
 define(lr, x30)
@@ -487,8 +488,8 @@ main:
 #[test]
 fn unterminated_string_reports_itself_at_the_opening_line() {
     // A string missing its closing quote must say exactly that, at the
-    // line where the quote opened -- never swallow following lines and
-    // blame a directive further down.
+    // line where the quote opened, never swallowing following lines and
+    // blaming a directive further down.
     let src = r#"        .text
 msg:    .string "broken
         .global main
@@ -514,7 +515,7 @@ fn add_sub_immediates_encode_exactly_as_gas_does() {
     use aarch64_emulator::assembler::assemble;
 
     let cases: [(&str, u32); 5] = [
-        // sub sp, sp, #0x1, lsl #12 -- the prologue that could not assemble
+        // sub sp, sp, #0x1, lsl #12: the prologue that could not assemble
         ("sub sp, sp, 4096", 0xd140_07ff),
         ("add x0, x1, #1, lsl #12", 0x9140_0420),
         // GAS turns a negative into the opposite operation
@@ -622,9 +623,10 @@ fn an_immediate_that_needs_more_than_a_shift_is_refused_with_the_rule() {
 }
 
 /// `parse_register` collapses sp and xzr to index 31, so these forms used
-/// to assemble and compute with ZERO instead of the stack pointer -- a
+/// to assemble and compute with ZERO instead of the stack pointer: a
 /// silent wrong answer from a plausible typo. GAS refuses every one of
-/// them ("expected an integer or zero register"), and so must we.
+/// them ("expected an integer or zero register"), and so does this
+/// encoder.
 #[test]
 fn sp_is_refused_where_the_encoding_has_no_room_for_it() {
     use aarch64_emulator::assembler::assemble;
