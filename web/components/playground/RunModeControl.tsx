@@ -20,18 +20,16 @@ interface RunModeControlProps {
 
 /**
  * Which surface owns the pane when this program runs: the console's cooked
- * stdin box, or a live terminal session. Rendered only for the examples
- * where both answers are real (EXAMPLE_INTERACTIVE), so every other program
- * keeps the header band it has today and the mode stops being invisible
- * machinery for the ones that have it.
+ * stdin box, or a live terminal session. Rendered only for the examples where
+ * both answers are real (EXAMPLE_INTERACTIVE), so every other program keeps the
+ * header band it has today and the examples that have a choice show it.
  *
- * Built on ThemeControl's shipped pattern -- one bordered strip with
- * hairline separators rather than two loose pills, `role="group"` with
- * `aria-pressed` per cell, token focus ring. The chosen cell reads cyan
- * because the choice is the student's; nothing here is amber, since
- * nothing is executing yet. Cells are 36px like the band's other
- * controls, widened horizontally instead: the band must not change
- * height as programs load and unload under a student's thumb.
+ * Built on ThemeControl's pattern: one bordered strip with hairline separators
+ * rather than two loose pills, `role="group"` with `aria-pressed` per cell,
+ * token focus ring. The chosen cell reads cyan because the choice is the
+ * student's; nothing here is amber, since nothing is executing yet. Cells are
+ * 36px like the band's other controls, widened horizontally instead: the band
+ * must not change height as programs load and unload under a student's thumb.
  */
 export function RunModeControl({ mode, onChange, disabled = false }: RunModeControlProps) {
   return (
