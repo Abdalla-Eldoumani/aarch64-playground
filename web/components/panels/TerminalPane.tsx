@@ -153,7 +153,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
   // refs so no callback below depends on it: a dependency chain from
   // these props into the init effect would dispose and recreate the
   // terminal on each machine change, destroying the scrollback
-  // mid-session -- including during the terminal's own program runs.
+  // mid-session, including during the terminal's own program runs.
   const buildContextRef = useRef(buildContext);
   const onUploadRequestRef = useRef(onUploadRequest);
   const onRegisterIORef = useRef(onRegisterIO);
@@ -192,10 +192,10 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
         writePrompt();
         return;
       }
-      // A rejection used to vanish into an unhandled promise: the command
-      // echoed, then nothing -- no output, no error, no prompt. Whatever
-      // happens, the student gets a line and their prompt back; the raw
-      // detail (often internal wording) goes to the console only.
+      // An unhandled rejection would leave the command echoed and nothing
+      // else: no output, no error, no prompt. Whatever happens, the student
+      // gets a line and their prompt back; the raw detail (often internal
+      // wording) goes to the console only.
       try {
         const ctx = { ...buildContextRef.current(), terminalIO: terminalIORef.current };
         const result = await dispatchCommand(line, ctx);
@@ -219,7 +219,6 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
 
   useEffect(() => {
     if (!containerRef.current) return;
-    // Allocate xterm once per mount; teardown in cleanup.
     const term = new Terminal({
       convertEol: true,
       cursorBlink: true,
@@ -318,7 +317,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
         fg.pushInput(data);
         return;
       }
-      // xterm fires onKey AND onData for the same keypress with the same
+      // xterm fires both onKey and onData for the same keypress with the same
       // string, and special keys (arrows, Home, Delete, F-keys) arrive as
       // multi-character escape sequences. Those belong to onKey alone: fed
       // into the buffer they are invisible on screen but corrupt the
@@ -337,10 +336,10 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       s.handlePrintable(lines[0]);
       repaintInput();
       if (lines.length === 1) return;
-      // Serialize the pasted commands: each must FINISH before the next
+      // Serialize the pasted commands: each must finish before the next
       // dispatches. Fire-and-forget ran them concurrently, so the course
       // toolchain paste (m4 > prog.s, gcc prog.s, ./prog) failed
-      // deterministically -- gcc read prog.s before m4 wrote it, with
+      // deterministically: gcc read prog.s before m4 wrote it, with
       // the errors printing in reverse causal order.
       void (async () => {
         for (let i = 1; i < lines.length; i++) {
@@ -352,12 +351,12 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       })();
     });
 
-    // Refit on container resize -- important when the parent panel
+    // Refit on container resize, which the parent panel does when it
     // resizes (PanelGroup drag, mobile keyboard show/hide).
     const ro = new ResizeObserver(() => {
       // A hidden pane (the tab strip keeps a live session mounted behind
       // `display:none`) reports no layout box, and the fit addon would
-      // read the computed "100%" as 100px and resize the LIVE buffer to
+      // read the computed "100%" as 100px and resize the live buffer to
       // a few columns, reflowing the running program's screen. Only fit
       // a pane that is actually on screen.
       const el = containerRef.current;
