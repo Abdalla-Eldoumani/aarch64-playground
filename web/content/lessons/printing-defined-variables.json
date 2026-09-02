@@ -10,13 +10,8 @@
   "body": [
     {
       "type": "callout",
-      "variant": "note",
-      "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
-    },
-    {
-      "type": "callout",
       "variant": "prereq",
-      "markdown": "Before starting this lesson, you should have a basic understanding of the following prerequisite lesson:\n\n- [Printing Hello World in ARMv8 AArch64 Assembly](/learn/printing-strings-hello-world)\n\n- [Printing Integer and Other Data Types in ARMv8 AArch64 Assembly](/learn/printing-other-data-types)" 
+      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n\n- [Printing integers and characters](/learn/printing-other-data-types)" 
     },
     {
     "type": "prose",
@@ -25,11 +20,11 @@
     },
     {
         "type": "prose",
-        "markdown": "## A Review of Printing with `printf`\n\nIf you have reached this point, you should be familiar with the general process of printing in Assembly using the `printf` function. Although printing in Assembly requires more manual preparation compared to high-level programming languages, the overall workflow remains consistent.\n\nThe printing process can be summarized into the following steps:\n\n1. Define the string or format string.\n2. Load the address of the string or format string into `x0`.\n3. Place the corresponding value to be printed into the appropriate argument registers (if any).\n4. Call `printf`.\n\nThese steps remain the same when printing variables stored in the `.data` section. However, the main difference is found in step 3.\n\nIn previous lessons, the values being printed were provided directly as immediate values and moved into the appropriate argument registers. For example:\n\n`mov x1, 67`\n\nIn this lesson, we will follow the same principle of placing the value to be printed into the appropriate argument register. However, instead of moving an immediate value directly into the register, we will first retrieve the value stored in a variable defined in the `.data` section and then pass it to `printf`.\n"
+        "markdown": "## A review of printing with printf\n\nIf you have reached this point, you should be familiar with the general process of printing in Assembly using the `printf` function. Although printing in Assembly requires more manual preparation compared to high-level programming languages, the overall workflow remains consistent.\n\nThe printing process can be summarized into the following steps:\n\n1. Define the string or format string.\n2. Load the address of the string or format string into `x0`.\n3. Place the corresponding value to be printed into the appropriate argument registers (if any).\n4. Call `printf`.\n\nThese steps remain the same when printing variables stored in the `.data` section. However, the main difference is found in step 3.\n\nIn previous lessons, the values being printed were provided directly as immediate values and moved into the appropriate argument registers. For example:\n\n`mov x1, 67`\n\nIn this lesson, we will follow the same principle of placing the value to be printed into the appropriate argument register. However, instead of moving an immediate value directly into the register, we will first retrieve the value stored in a variable defined in the `.data` section and then pass it to `printf`.\n"
     },
     {
         "type": "prose",
-        "markdown": "## Loading Values from the `.data` Section\n\nSuppose we have an integer value of `85` stored in a variable named `importantNumber` within the `.data` section, as shown below:\n\n"
+        "markdown": "## Loading values from .data\n\nSuppose we have an integer value of `85` stored in a variable named `importantNumber` within the `.data` section, as shown below:\n\n"
     },
     {
         "type": "code",
@@ -58,7 +53,7 @@
     },
     {
         "type": "prose",
-        "markdown": "## Printing Out the Variable Content\n\nOnce the variable value and format string have been loaded into the appropriate argument registers, the `printf` function can be called to display the formatted output. The following code demonstrates the complete process:\n\n"    
+        "markdown": "## Printing the variable\n\nOnce the variable value and format string have been loaded into the appropriate argument registers, the `printf` function can be called to display the formatted output. The following code demonstrates the complete process:\n\n"    
     },
     {
         "type": "editor",
