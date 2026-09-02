@@ -3,9 +3,9 @@ import { parseArgsDetailed } from "@/lib/playground/args";
 
 /**
  * Result of running a single command line. `lines` is the printable
- * payload (terminal will write each line followed by `\r\n`); `status`
- * lets callers style the prompt accordingly. `control` lets a command
- * ask the terminal pane for special behaviour (clear screen, etc.).
+ * payload (terminal will write each line followed by `\r\n`); `status` lets
+ * callers style the prompt. `control` lets a command ask the terminal pane to
+ * clear the screen.
  */
 export interface DispatchResult {
   status: "ok" | "err";
@@ -53,11 +53,6 @@ export function parseCommandLine(line: string): ParsedCommandLine {
   return { cmd, args, stdinFrom, stdoutTo };
 }
 
-/**
- * Hooks the terminal needs from the surrounding playground -- VFS, the
- * emulator backend, register reads, and a label resolver. Tests pass in
- * stubbed implementations; the production wiring sits in TerminalPane.
- */
 /** A running foreground program's input surface: the pane forwards raw
  *  keystrokes here and Ctrl+C cancels. */
 export interface TerminalForegroundProgram {
@@ -72,18 +67,23 @@ export interface TerminalProgramIO {
   write(text: string): void;
   setForeground(fg: TerminalForegroundProgram | null): void;
   /** Wipe the pane (scrollback included) the moment a program takes it
-   *  over, so the game starts on a clean screen instead of layering
+   *  over, so the program starts on a clean screen instead of layering
    *  onto whatever the shell ran before. */
   clear?(): void;
   /** Called only by self-attached sessions (a raw-mode program started
    *  from the run button): the pane prints the exit line and a fresh
-   *  prompt. `./name` runs skip it -- dispatch prints those lines. */
+   *  prompt. `./name` runs skip it; dispatch prints those lines. */
   sessionEnded?(exitCode: number | null): void;
   /** Put the keyboard back on the pane (returning to the terminal tab
    *  mid-session; hiding the pane blurs its textarea). */
   focus?(): void;
 }
 
+/**
+ * Hooks the terminal needs from the surrounding playground: VFS, the
+ * emulator backend, register reads, and a label resolver. Tests pass in
+ * stubbed implementations; the production wiring sits in TerminalPane.
+ */
 export interface DispatchContext {
   /** Lower-level VFS handle (rare; helpers below are usually enough). */
   vfs: Map<string, string>;
@@ -219,8 +219,7 @@ export async function dispatchCommand(
     const [src, dst] = args;
     if (!src || !dst) return { status: "err", lines: ["mv: usage: mv <old> <new>"] };
     if (src === dst) {
-      // Real mv refuses a self-move; the old copy-then-delete shape
-      // deleted the file instead.
+      // Real mv refuses a self-move; copy-then-delete would delete the file.
       return { status: "err", lines: [`mv: '${src}' and '${dst}' are the same file`] };
     }
     const body = await ctx.readVfs(src);
@@ -306,9 +305,8 @@ export async function dispatchCommand(
 
   if (cmd === "./program" || cmd === "program" || cmd.startsWith("./")) {
     const name = cmd.startsWith("./") ? cmd.slice(2) : cmd;
-    // A compiled artifact always wins: `gcc x.s -o program` used to be
-    // silently shadowed by the editor buffer, with no command able to
-    // reveal the built executable existed.
+    // A compiled artifact always wins: otherwise `gcc x.s -o program` is
+    // silently shadowed by the editor buffer.
     const compiled = ctx.executables.get(name);
     const isEditorProgram = name === "program" && compiled === undefined;
     if (!isEditorProgram && compiled === undefined) {
@@ -399,7 +397,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
 }
 
 async function runGdbExamine(args: string[], ctx: DispatchContext): Promise<DispatchResult> {
-  // Accepts `x/Ni $pc` (N words at PC). Anything else for now is a stub.
+  // Accepts `x/Ni $pc` (N words at PC). an unrecognized format falls back to 4.
   const fmt = args[0];
   const target = args[1];
   if (!target || !target.startsWith("$")) {
@@ -407,8 +405,8 @@ async function runGdbExamine(args: string[], ctx: DispatchContext): Promise<Disp
   }
   const m = fmt.match(/^x\/(\d+)i$/);
   const count = m ? Number(m[1]) : 4;
-  // The count is untrusted free text; an absurd one froze the worker for
-  // minutes building megabytes of hex lines nobody could read.
+  // The count is untrusted free text; an absurd one freezes the worker
+  // building megabytes of hex lines.
   const MAX_EXAMINE_COUNT = 1024;
   if (!Number.isFinite(count) || count > MAX_EXAMINE_COUNT) {
     return {
