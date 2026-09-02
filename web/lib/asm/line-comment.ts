@@ -5,13 +5,10 @@
  * `comments.lineComment`); this backs the plain-textarea fallback so both
  * surfaces behave the same.
  *
- * The toggle spans every line the selection touches -- from the line holding
+ * The toggle spans every line the selection touches, from the line holding
  * `selStart` through the line holding `selEnd`, inclusive, even for a
- * zero-width caret. If every non-blank line in that range is already
- * commented it uncomments; otherwise every non-blank line gets a `//`
- * prefix at the shallowest shared indentation so the markers line up. Blank
- * lines are left untouched. The returned selection spans the same lines so a
- * second toggle is immediate.
+ * zero-width caret. The returned selection spans the same lines so a second
+ * toggle is immediate.
  */
 
 /** The canonical CPSC 355 line-comment marker (docs/cpsc355-style-guide.md). */
