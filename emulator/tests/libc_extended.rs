@@ -297,8 +297,8 @@ at_eof:
 fn ctype_conversion_tables_answer_like_the_functions() {
     // The mirror of the class-table case above, for the two conversion
     // tables gcc lowers the `toupper`/`tolower` macros to. The byte
-    // offsets are the ones 42_libc_map.O2.s uses: 388 is 4 * 'a' and 260
-    // is 4 * 'A'. Values from csarm's ctype_tables probe.
+    // offsets are the ones 42_libc_map.O2.s uses: 388 is 4 * 'a', 260 is
+    // 4 * 'A', and 212 is 4 * '5'. Values from csarm's ctype_tables probe.
     let src = r#"
 define(fp, x29)
 define(lr, x30)
