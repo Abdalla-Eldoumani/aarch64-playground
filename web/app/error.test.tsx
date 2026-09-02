@@ -2,11 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import ErrorPage from "./error";
 
-// The route error boundary: it wears the 404's fault-card register, its retry
-// button calls the reset prop Next hands it, and the copy action puts a small
-// markdown report (the autosaved program plus the error and its digest) on the
-// clipboard. Colocated beside the route file it pins, like the other app/
-// route tests (layout, sitemap, the two page tests).
+// Pins the route error boundary: the fault-card register, the retry prop, and
+// the copied markdown report.
 
 afterEach(() => {
   cleanup();
