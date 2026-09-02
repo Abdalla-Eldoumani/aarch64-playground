@@ -44,3 +44,24 @@ describe("BlanksBlock", () => {
     expect(input.value).toBe("");
   });
 });
+
+describe("BlanksBlock controlled answer", () => {
+  it("renders the answer the sheet passes in", () => {
+    render(<BlanksBlock {...PROPS} value="ldrb" onValueChange={() => {}} />);
+    expect((screen.getByLabelText(PROPS.prompt) as HTMLInputElement).value).toBe("ldrb");
+  });
+
+  it("reports every keystroke", () => {
+    const onValueChange = vi.fn();
+    render(<BlanksBlock {...PROPS} value="" onValueChange={onValueChange} />);
+    fireEvent.change(screen.getByLabelText(PROPS.prompt), { target: { value: "ldr" } });
+    expect(onValueChange).toHaveBeenCalledWith("ldr");
+  });
+
+  it("still owns its answer when no value is passed", () => {
+    render(<BlanksBlock {...PROPS} />);
+    const input = screen.getByLabelText(PROPS.prompt) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "ldrb" } });
+    expect(input.value).toBe("ldrb");
+  });
+});

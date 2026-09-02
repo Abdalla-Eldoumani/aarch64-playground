@@ -19,6 +19,8 @@ export function BlanksBlock({
   blanks,
   explanation,
   hint,
+  value,
+  onValueChange,
   onAttempt,
 }: {
   prompt: string;
@@ -30,12 +32,23 @@ export function BlanksBlock({
   explanation: string;
   /** Optional guidance rendered on a failed attempt. */
   hint?: string;
+  /** The typed answer when the sheet owns it, so it survives a reload. */
+  value?: string;
+  /** Fires on every keystroke so the sheet can persist it. */
+  onValueChange?: (value: string) => void;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
-  const [inputVal, setInputVal] = useState("");
+  const [ownValue, setOwnValue] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const inputId = useId();
+
+  // Controlled when the sheet passes `value`, self-owned otherwise.
+  const inputVal = value !== undefined ? value : ownValue;
+  const setInputVal = (next: string): void => {
+    setOwnValue(next);
+    if (onValueChange) onValueChange(next);
+  };
 
   const parts = code.split("___");
   const isCorrect = blanks.some(
