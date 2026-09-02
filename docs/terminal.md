@@ -11,10 +11,10 @@ fits the task.
 
 | Command | Effect |
 | --- | --- |
-| `./program [args]` | Re-assemble the editor workspace (main.asm plus every file in the strip) with `args` and run it live in the pane. |
-| `./name [args]` | Run an executable built with `gcc` (see the toolchain below). |
-| `./program < file` | Either form, with the named VFS file fed to stdin. The file is the WHOLE input: stdin closes after it, so a read-until-EOF loop finishes instead of waiting. |
-| `./program > file` | Either form, with stdout captured into the named VFS file. |
+| `./program [args]` | Re-assemble the editor workspace (main.asm plus every file in the strip) with `args` and run it live in the pane. Here `program` is a literal name, not a placeholder: it always means the editor's own buffer. |
+| `./name [args]` | Run an executable built with `gcc` under whatever name you gave it (see the toolchain below). |
+| `./name < file` | Either form, with the named VFS file fed to stdin. The file is the whole input: stdin closes after it, so a read-until-EOF loop finishes instead of waiting. |
+| `./name > file` | Either form, with stdout captured into the named VFS file. |
 
 A run prints the program's exit status when it finishes; a program that
 stops without exiting (a fault, the step budget) prints
