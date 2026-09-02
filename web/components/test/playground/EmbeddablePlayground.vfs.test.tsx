@@ -22,8 +22,8 @@ vi.mock("@/components/playground/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
 }));
 
-// Capture the terminal context so the tests can drive writeVfs/deleteVfs --
-// the staged write paths -- without an xterm.
+// Capture the terminal context so the tests can drive writeVfs and deleteVfs,
+// the staged write paths, without an xterm.
 const terminalProps = vi.hoisted(() => ({
   current: null as null | {
     buildContext: () => {
