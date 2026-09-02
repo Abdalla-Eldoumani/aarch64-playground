@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { ROUTE_REGISTERS } from "@/lib/content/landing-content";
 import { Kicker } from "@/components/ui/Kicker";
+import { BootFlashList } from "@/components/diagrams/BootFlashList";
 
 /** Micro field-box: the row's bit lit in the row's ink, the wordmark's
  *  lockup grammar at jump-table scale. */
@@ -31,7 +32,8 @@ function MicroFieldBox({ lit, onPrimary }: { lit: number; onPrimary: boolean }) 
  * table rather than a generic card row. The playground is the cyan primary (x0);
  * Learn / Practice / Reference are quiet rows that go cyan on hover/focus. The
  * hrefs come from ROUTE_REGISTERS, which derives them from NAV_ROUTES, so the
- * addresses never drift. A server component -- it ships no client JS.
+ * addresses never drift. A server component: the one piece of client code
+ * under it is BootFlashList, which arms the boot stagger after mount.
  */
 export function RoutesRegisterFile() {
   return (
@@ -43,12 +45,12 @@ export function RoutesRegisterFile() {
         jump table
       </h2>
       <Kicker number="01" title="jump table" className="mb-4" />
-      <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)]">
+      <BootFlashList className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)]">
         {ROUTE_REGISTERS.map((route, index) => (
-          // Each row plays the register-write flash once on first paint,
-          // staggered 70ms per row so the block powers on like values landing
-          // in a register file, top to bottom. Pure CSS with no movement or
-          // hidden start state: nothing shifts, and under
+          // Each row plays the register-write flash once the list arms itself
+          // after mount, staggered 70ms per row so the block powers on like
+          // values landing in a register file, top to bottom. CSS with no
+          // movement or hidden start state: nothing shifts, and under
           // prefers-reduced-motion the rows are simply static.
           <li
             key={route.href}
@@ -92,7 +94,7 @@ export function RoutesRegisterFile() {
             </Link>
           </li>
         ))}
-      </ul>
+      </BootFlashList>
     </section>
   );
 }
