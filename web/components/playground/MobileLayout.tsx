@@ -134,6 +134,8 @@ export function MobileLayout({
         return;
       }
     }
+    // groups is rebuilt per render with fixed membership, so the request
+    // nonce alone decides when this runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paneRequest]);
 
