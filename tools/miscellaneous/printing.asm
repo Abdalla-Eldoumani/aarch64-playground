@@ -19,7 +19,6 @@ main:
     // passing the integer value to be printed to next argument register.
     ldr  x21, =importantNumber
     ldr x1, [x21]
-    // calling printf to print the integer value.
     bl printf
 
     // program epilogue
