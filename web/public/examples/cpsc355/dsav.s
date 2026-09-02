@@ -39,7 +39,7 @@ opt_search:     .string "searching"
 opt_recursion:  .string "recursion"
 opt_exit:       .string "exit"
 
-// One line of context each, so the menu teaches before a key is pressed.
+// One line of context under each option name.
 sub_array:      .string "indexed cells, constant-time access"
 sub_stack:      .string "last in, first out"
 sub_queue:      .string "first in, first out"
@@ -91,7 +91,6 @@ main_loop:
     mov     w1, 12                          // max choice
     bl      read_int_range                  // w0 = validated choice
 
-    // dispatch
     cmp     w0, 0
     b.eq    main_exit
     cmp     w0, 1
@@ -121,8 +120,8 @@ main_loop:
 
     b       main_loop                       // unreachable: choice already validated
 
-// Every module runs its own loop and only returns when the student picks
-// back, so there is nothing left to read here: redraw home straight away.
+// Every module runs its own loop and returns only when the student picks
+// back.
 handle_array_menu:
     bl      array_menu
     b       main_loop
@@ -183,8 +182,8 @@ main_exit:
     ret
 
 // home_entry(w0 = row, x1 = number, x2 = name, x3 = blurb or 0)
-// One menu line: the key in its own colour, the name, then the quiet
-// blurb that says what the thing is before a keystroke is spent on it.
+// One menu line: the key in its own colour, the name, then the blurb column,
+// drawn when x3 is not zero.
 home_entry:
     stp     fp, lr, [sp, -64]!
     mov     fp, sp
