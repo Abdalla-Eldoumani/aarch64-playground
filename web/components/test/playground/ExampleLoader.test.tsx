@@ -68,7 +68,7 @@ describe("ExampleLoader", () => {
     expect(optionLabels(listbox).length).toBeGreaterThanOrEqual(headers.length);
   });
 
-  it("seeds the two previously-empty stages with the filler programs", () => {
+  it("seeds the two stages that carry only filler programs", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
 
