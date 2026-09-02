@@ -94,7 +94,8 @@ anchor_m:       .double -273.15
                 .double 100.0
 
 // The band edges. A reading inside one of these windows is named
-// outright rather than called "somewhere between",
+// outright rather than called "somewhere between", which is the answer a
+// person wants when they type 32F or 98.6F.
 frost_lo_m:     .double -0.5
 frost_hi_m:     .double 0.5
 body_lo_m:      .double 36.5
@@ -353,7 +354,7 @@ main_done:
 
 // set_palette(w0 = 1 for a face with no escapes in it) : point the five
 // slots at the escapes, or all five at the empty string. Every colour a
-// row prints is one load from here,
+// row prints is one load from here, so this is the whole of the gate.
 set_palette:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
