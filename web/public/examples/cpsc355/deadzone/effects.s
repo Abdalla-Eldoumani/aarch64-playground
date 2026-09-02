@@ -15,7 +15,7 @@ DMGNUM_X = 0                                    // X position (2 bytes)
 DMGNUM_Y = 2                                    // Y position (2 bytes)
 DMGNUM_VALUE = 4                                // Damage value (2 bytes)
 DMGNUM_LIFE = 6                                 // Frames remaining (1 byte)
-// Color code (1 byte)
+DMGNUM_COLOR = 7                                // Color code (1 byte)
 DMGNUM_SIZE = 8                                 // Total structure size
 
 // Effect limits
@@ -44,8 +44,6 @@ shake_intensity: .word  0                       // Cells of jitter; callers pass
 shake_timer:    .word   0                       // Frames remaining
 shake_offset_x: .word   0                       // Current X offset
 shake_offset_y: .word   0                       // Current Y offset
-
-// Effect colors by enemy type
 
                 .text
                 .balign 4
