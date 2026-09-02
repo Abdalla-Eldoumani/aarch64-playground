@@ -207,7 +207,7 @@ main:
 fn the_standard_stream_symbols_name_the_loader_written_words() {
     // gcc-compiled code reaches `stdout` as an address and loads the
     // FILE* out of it, so the symbols have to resolve to the three words
-    // the loader writes -- not to the handles themselves.
+    // the loader writes, not to the handles themselves.
     let source = r#"
         .text
         .balign 4
@@ -300,9 +300,9 @@ main:
 
 #[test]
 fn fclose_of_a_standard_stream_succeeds_without_closing_it() {
-    // A student who closes every stream the function touched must not
-    // lose the rest of the program's output: fd 0/1/2 are not fopen
-    // descriptors, so there is nothing to drop.
+    // A student who calls fclose on stdout must not lose the rest of the
+    // program's output: fd 0/1/2 are not fopen descriptors, so there is
+    // nothing to drop.
     let source = r#"
 define(fp, x29)
 define(lr, x30)
