@@ -45,9 +45,6 @@ pub enum HostOutcome {
     Exited(i64),
 }
 
-/// Context passed to each host stub. Split out so stubs can borrow what
-/// they need without holding a `&mut Cpu` (which would conflict with the
-/// dispatcher's mutable borrow of the table).
 /// The exit status C hands around: `exit(int)`, `return` from `int main`,
 /// and the Linux exit syscalls all take a 32-bit value in w0. Reading x0 at
 /// full width made `exit(-1)` report 4294967295 while `return -1` reported
@@ -56,6 +53,9 @@ pub fn exit_status(regs: &crate::registers::RegisterFile) -> i64 {
     regs.read_gpr(0, false) as i32 as i64
 }
 
+/// Context passed to each host stub. Split out so stubs can borrow what
+/// they need without holding a `&mut Cpu` (which would conflict with the
+/// dispatcher's mutable borrow of the table).
 pub struct HostContext<'a> {
     pub regs: &'a mut crate::registers::RegisterFile,
     pub mem: &'a mut crate::memory::Memory,
@@ -79,7 +79,7 @@ pub struct HostContext<'a> {
     /// malloc/free allocator state. Lives on the `Cpu` and in every
     /// snapshot, like `rand_state`.
     pub heap: &'a mut crate::hosted::heap::HeapState,
-    /// strtok's saved cursor -- glibc keeps it in a static inside libc,
+    /// strtok's saved cursor: glibc keeps it in a static inside libc,
     /// and it is the one piece of libc state a program can observe
     /// without passing it in. On the `Cpu` and in every snapshot, so
     /// stepping back into the middle of a tokenizing loop resumes at the
@@ -90,8 +90,8 @@ pub struct HostContext<'a> {
 /// AAPCS64 vararg cursor, shared by printf and scanf: both walk the same
 /// convention (ints in the next GP register through x7, doubles through
 /// d7, then a SHARED stack spill at the caller's SP advancing 8 bytes per
-/// arg). scanf once walked a bare register counter instead, so its 8th
-/// pointer read x8 -- a live scratch register -- rather than `[sp]`.
+/// arg). A bare register counter would read x8 (a live scratch register)
+/// for the 8th pointer instead of `[sp]`.
 pub(crate) struct VarargWalker {
     /// Next GP register index. <= 7 means read xN; > 7 means spill.
     pub(crate) gp_idx: u8,
