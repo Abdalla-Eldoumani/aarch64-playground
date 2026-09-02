@@ -117,7 +117,7 @@ Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending
 | `ADR`    | `ADR Xd, label`       | Byte-relative address of `label`.              |
 | `ADRP`   | `ADRP Xd, label`      | Address of the 4 KiB page containing `label`.  |
 
-The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` gives the page base, then `add Xd, Xd, :lo12:sym` adds the low 12 bits. Interchangeable with `ldr Xd, =sym`.
+The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` gives the page base, then `add Xd, Xd, :lo12:sym` adds the low 12 bits. Interchangeable with `ldr Xd, =sym`. Both halves accept a symbol plus a constant offset (`adrp x0, msg+8` / `add x0, x0, :lo12:msg+8`), which is how GCC addresses the middle of a string or a struct field; the offset folds into the address before the page split, so write the same expression in both halves.
 
 ## Branches
 

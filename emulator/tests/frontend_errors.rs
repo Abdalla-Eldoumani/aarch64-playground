@@ -497,6 +497,110 @@ fn the_conformance_corpus_lints_clean() {
 /// site (`R_AARCH64_ABS64 .text+0xc` and `.text+0x14` for two
 /// `ldr xN, =. + 8` four instructions apart).
 #[test]
+fn symbol_plus_offset_resolves_into_the_middle_of_an_object() {
+    // csarm's sym_offset probe: `msg+19` is 19 bytes past `msg`, the
+    // byte there is 's' (115), and `adr`, `ldr =`, and the spaced
+    // spelling all land on the same address.
+    let src = ".section .rodata\n\
+               .LC0: .string \"hello world, this is the tail\"\n\
+               .text\n\
+               .global main\n\
+               main:\n\
+               adrp x0, .LC0\n\
+               add  x0, x0, :lo12:.LC0\n\
+               adrp x1, .LC0+19\n\
+               add  x1, x1, :lo12:.LC0+19\n\
+               ldr  x2, =.LC0\n\
+               adrp x3, .LC0 + 19\n\
+               add  x3, x3, :lo12:.LC0 + 19\n\
+               adr  x4, .LC0+19\n\
+               adrp x5, .LC0+19-4\n\
+               add  x5, x5, :lo12:.LC0+19-4\n\
+               ldrb w6, [x1]\n\
+               mov x8, 93\n\
+               svc 0\n";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("symbol+offset must assemble");
+    cpu.load_linked_image(&image).expect("load failed");
+    let r = cpu.run_until_break(1000).expect("run failed");
+    assert!(r.halted);
+    let base = cpu.regs.read_gpr(0, true);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 19, "the addend folds into the address");
+    assert_eq!(cpu.regs.read_gpr(2, true), base, "ldr = is the oracle for the bare symbol");
+    assert_eq!(cpu.regs.read_gpr(3, true), base + 19, "the spaced spelling is the same operand");
+    assert_eq!(cpu.regs.read_gpr(4, true), base + 19, "adr takes the addend too");
+    assert_eq!(cpu.regs.read_gpr(5, true), base + 15, "a negative addend subtracts");
+    assert_eq!(cpu.regs.read_gpr(6, false), 115, "index 19 of the string is 's'");
+}
+
+#[test]
+fn plain_symbol_operands_assemble_to_the_same_bytes_as_before() {
+    // The bypass for a bare label has to stay byte-identical: these two
+    // words were recorded from a run before symbol+offset existed.
+    let src = ".section .rodata\n\
+               .LC0: .string \"hi\"\n\
+               .text\n\
+               .global main\n\
+               main:\n\
+               adrp x3, .LC0\n\
+               add  x3, x3, :lo12:.LC0\n\
+               mov x8, 93\n\
+               svc 0\n";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("bare symbol must assemble");
+    cpu.load_linked_image(&image).expect("load failed");
+    assert_eq!(cpu.mem.read_u32(image.text_base).unwrap(), 0x9000_0803, "adrp x3, .LC0");
+    assert_eq!(
+        cpu.mem.read_u32(image.text_base + 4).unwrap(),
+        0x9100_0063,
+        "add x3, x3, :lo12:.LC0"
+    );
+}
+
+#[test]
+fn page_straddling_offset_folds_before_the_split() {
+    // csarm's straddle probe: `edge` sits six bytes below a 4 KiB
+    // boundary, so `edge+8` is on the next page. An implementation that
+    // pages `edge` and then adds 8 to the low bits is 4096 low.
+    let src = ".section .rodata\n\
+               .balign 4096\n\
+               pad: .skip 4090\n\
+               edge: .string \"AB\"\n\
+               .text\n\
+               .global main\n\
+               main:\n\
+               adrp x0, edge\n\
+               add  x0, x0, :lo12:edge\n\
+               adrp x4, edge+8\n\
+               add  x4, x4, :lo12:edge+8\n\
+               mov x8, 93\n\
+               svc 0\n";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("straddling offset must assemble");
+    cpu.load_linked_image(&image).expect("load failed");
+    let r = cpu.run_until_break(1000).expect("run failed");
+    assert!(r.halted);
+    let base = cpu.regs.read_gpr(0, true);
+    assert_eq!(base & 0xFFF, 4090, "edge is six bytes below the page boundary");
+    assert_ne!((base + 8) >> 12, base >> 12, "edge+8 is on the next page");
+    assert_eq!(cpu.regs.read_gpr(4, true), base + 8);
+}
+
+#[test]
+fn relocatable_operand_errors_name_the_symbol() {
+    for src in [
+        ".text\n.global main\nmain:\nadrp x0, nosuchsym+4\nret\n",
+        ".section .rodata\n.LC0: .string \"hi\"\n.text\n.global main\nmain:\nadd x0, x0, :lo12:.LC0+notasym\nret\n",
+    ] {
+        let msg = assemble_err(src);
+        assert!(
+            msg.contains("nosuchsym") || msg.contains("notasym"),
+            "message was: {msg}"
+        );
+    }
+}
+
+#[test]
 fn dot_relative_ldr_eq_resolves_per_site() {
     let src = ".text\n\
                .global main\n\

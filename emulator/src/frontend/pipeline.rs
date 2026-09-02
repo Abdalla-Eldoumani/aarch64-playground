@@ -1146,6 +1146,37 @@ fn resolve_ldr_eq_target(
     Ok(value as u64)
 }
 
+/// Resolve a relocatable expression operand (a bare symbol, or a symbol
+/// plus or minus a constant: `msg+8`, `.LC0 + 19`, `end-start`) to an
+/// absolute address. Same evaluator `resolve_ldr_eq_target` uses, so the
+/// `=expr` form and the `adrp`/`:lo12:` forms cannot disagree about what
+/// an expression means.
+fn resolve_relocatable_operand(
+    text: &str,
+    symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
+    here: u64,
+    line: usize,
+) -> Result<u64, EmuError> {
+    let tokens = lex(text, line)?;
+    let value = evaluate(
+        &tokens,
+        &|name| symbol_at(name, line, symbols, equates),
+        here as i64,
+        line,
+    )?;
+    Ok(value as u64)
+}
+
+/// True when an operand is a plain label name with no expression around
+/// it. Bare labels keep the ADR/ADRP bypass so their encoding is
+/// byte-identical to what it is today; anything else is resolved here.
+fn is_bare_identifier(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '$')
+}
+
 /// Evaluate an assignment body at a specific point in the section walk,
 /// using the symbol table accumulated so far. `here` is the absolute
 /// address the assignment line appears at; expressions using `.` resolve
@@ -1201,14 +1232,26 @@ fn lower_operands(
         return Ok(mnemonic.to_string());
     }
     // Branches want to see a label name, not an evaluated offset; leave
-    // the tail alone for them. ADR/ADRP likewise carry a label the encoder
-    // resolves against the absolute symbol table (and `:lo12:` operands are
-    // handled per-operand below).
-    if is_branch_mnemonic(mnemonic)
-        || mnemonic.eq_ignore_ascii_case("adr")
-        || mnemonic.eq_ignore_ascii_case("adrp")
-    {
+    // the tail alone for them.
+    if is_branch_mnemonic(mnemonic) {
         return Ok(format!("{mnemonic} {tail}"));
+    }
+    // ADR/ADRP likewise carry a label the encoder resolves against the
+    // absolute symbol table, but only when the operand IS a bare label.
+    // `adrp x0, .LC0+19` is a relocatable expression, and the addend has
+    // to fold in before the page split, so it is resolved here and handed
+    // to the encoder as a number. (`:lo12:` operands are handled
+    // per-operand below.)
+    if mnemonic.eq_ignore_ascii_case("adr") || mnemonic.eq_ignore_ascii_case("adrp") {
+        let Some((head, last)) = tail.rsplit_once(',') else {
+            return Ok(format!("{mnemonic} {tail}"));
+        };
+        let last = last.trim();
+        if is_bare_identifier(last) {
+            return Ok(format!("{mnemonic} {tail}"));
+        }
+        let value = resolve_relocatable_operand(last, symbols, equates, pc, ln)?;
+        return Ok(format!("{mnemonic} {head}, {value}"));
     }
     let rewritten = rewrite_operand_list(tail, pc, symbols, equates, label_offsets, ln, 0)?;
     Ok(format!("{mnemonic} {rewritten}"))
@@ -1302,15 +1345,21 @@ fn rewrite_operand(
         .or_else(|| trimmed.strip_prefix(":LO12:"))
     {
         let name = sym.trim();
-        match symbols.get(name) {
-            Some(addr) => return Ok(format!("{}", addr & 0xFFF)),
-            None => {
-                return Err(EmuError::AssemblyError {
+        if is_bare_identifier(name) {
+            return match symbols.get(name) {
+                Some(addr) => Ok(format!("{}", addr & 0xFFF)),
+                None => Err(EmuError::AssemblyError {
                     line: ln,
                     message: format!("unknown symbol in :lo12: `{name}`"),
-                })
-            }
+                }),
+            };
         }
+        // A relocatable expression, not just a bare symbol: gcc writes
+        // `:lo12:.LC0+19` when it addresses the middle of an object. The
+        // addend folds into the address BEFORE the low-12 mask, which is
+        // the whole reason this cannot be a lookup plus an add.
+        let value = resolve_relocatable_operand(name, symbols, equates, pc, ln)?;
+        return Ok(format!("{}", value & 0xFFF));
     }
     // Bracketed operand [Xn, <expr>] or [Xn, <expr>]!: rewrite the inside
     // recursively and preserve the trailing characters (whitespace, !).
