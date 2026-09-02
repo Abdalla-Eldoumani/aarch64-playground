@@ -25,21 +25,31 @@ Live at <https://aarch64-playground.com>.
   against a stored answer, so any correct approach passes; plus quizzes,
   fill-in-the-blank drills, and mental-trace prediction sets graded right
   on the page.
-- **Reference** (`/reference`): a searchable instruction reference with
-  worked encodings and interactive flag panels, a calling-convention guide
-  with a step-through frame walk, and a pitfalls catalog with runnable
-  examples, kept in sync with what the emulator supports.
+- **Reference** (`/reference`): a searchable reference for all 165
+  mnemonics the assembler accepts, with worked encodings and interactive
+  flag panels, a calling-convention guide with a step-through frame walk,
+  and a pitfalls catalog with runnable examples, kept in sync with what the
+  emulator supports.
 - **Realistic hosted runtime**: m4 register-alias macros, GAS directives and
   sections, frame-pointer prologues, the `ldr xN, =label` literal pool, the
   AAPCS64 `printf`/`scanf` path and the wider libc surface that student and
   gcc-compiled code reach for, Linux syscalls via `svc 0`, argc/argv on
   entry, and single- and double-precision floating point (the `s`/`d`
-  register views with `fcvt` between them). A tracked corpus of fifty
-  gcc-compiled C programs is replayed against real AArch64 server outputs
-  on every change, byte for byte.
+  register views with `fcvt` between them). Beyond the course's own
+  instructions it assembles what gcc reaches for: conditional compares, the
+  conditional-select aliases, bit counting and reversal, the bitfield insert
+  and extract forms, widening multiply-accumulate, the inverted logical
+  operations, and in floating point fused multiply-add, min and max,
+  `fcsel`, and every float-to-integer rounding mode. A tracked corpus of
+  fifty gcc-compiled C programs is replayed against real AArch64 server
+  outputs byte for byte: at `-O0` as a gate on every change, and at `-O2` as
+  a coverage map of the forms the optimizer emits.
 - **Fully client-side and installable**: runs offline as a PWA. The emulator
   runs in a Web Worker with a main-thread fallback, and is bounded so a
-  runaway program halts cleanly instead of freezing the tab.
+  runaway program halts cleanly instead of freezing the tab. The landing
+  page ships no editor code at all: it draws its program as static text, and
+  the editor arrives only when you open the playground or an embed you can
+  type into.
 
 ## Quickstart
 
