@@ -28,10 +28,10 @@ export interface Breakpoints {
 
 /**
  * Breakpoints in both of their forms: the editor LINES a student clicked
- * and the CPU ADDRESSES those lines resolve to. The two are not 1:1 --
- * labels, blanks, and comments forward-resolve to the next instruction --
- * so the address set is kept keyed by the lines sharing it, and a CPU
- * breakpoint is cleared only when the last of its dots goes.
+ * and the CPU ADDRESSES those lines resolve to. The two are not 1:1 (labels,
+ * blanks, and comments forward-resolve to the next instruction), so the
+ * address set is kept keyed by the lines sharing it, and a CPU breakpoint is
+ * cleared only when the last of its dots goes.
  */
 export function useBreakpoints({
   backendRef,
@@ -77,8 +77,8 @@ export function useBreakpoints({
         if (next.has(line)) {
           next.delete(line);
           lines.delete(line);
-          // Removing one of several dots sharing this instruction used to
-          // silently disarm the CPU breakpoint under the dots that stayed.
+          // The CPU breakpoint goes only with the last dot on this
+          // instruction.
           if (lines.size === 0) {
             byAddr.delete(addr);
             void backend.clearBreakpoint(addr);
