@@ -1,6 +1,6 @@
 // The shell's view of the machine: what `./program`, `gcc`, and gdb-lite
 // actually do to the hub. The contracts pinned here are the ones the module's
-// comments name -- argv[0] belongs to the emulator, the home directory is
+// comments name: argv[0] belongs to the emulator, the home directory is
 // re-seeded after every tool assemble, output is reported as the DELTA over
 // the editor's scrollback, a `< file` redirect gets the same stdin cap as
 // every other ingress, and a run waits for the machine to actually stop.
