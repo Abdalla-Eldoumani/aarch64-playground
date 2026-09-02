@@ -104,7 +104,7 @@ impl HeapState {
 }
 
 /// malloc(x0 = size) -> x0 = block address, or NULL when the window is
-/// exhausted or the request is absurd.
+/// exhausted or the request is larger than the window.
 pub fn malloc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let size = ctx.regs.read_gpr(0, true);
     let addr = ctx.heap.alloc(size).unwrap_or(0);
@@ -185,8 +185,8 @@ pub fn free(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
-/// The calm halt a pointer neither call may take earns: which call saw
-/// it, what is wrong with it, and the rule that would have avoided it.
+/// The halt for a pointer free/realloc cannot take: which call saw it,
+/// what is wrong with it, and the rule that would have avoided it.
 fn wild_pointer(addr: u64, why: &str, call: &str) -> EmuError {
     EmuError::RuntimeError {
         message: format!(
@@ -196,7 +196,7 @@ fn wild_pointer(addr: u64, why: &str, call: &str) -> EmuError {
     }
 }
 
-/// Give a block back, turning the allocator's refusal into that halt.
+/// Give a block back, turning the allocator's refusal into `wild_pointer`.
 fn release_or_halt(ctx: &mut HostContext<'_>, addr: u64, call: &str) -> Result<(), EmuError> {
     ctx.heap
         .release(addr)
