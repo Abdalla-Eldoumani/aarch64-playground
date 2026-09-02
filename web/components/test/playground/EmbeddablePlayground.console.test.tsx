@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 // The embed console contract: hub output must reach the student through the
-// REAL ConsolePanel inside embed chrome, so these tests stub only the heavy
+// real ConsolePanel inside embed chrome, so these tests stub only the heavy
 // neighbors (Monaco editor, register grid) and leave the console unmocked.
 // EmbeddablePlayground.test.tsx owns the control-logic coverage; this file
 // owns what the student actually sees in the console.
