@@ -575,11 +575,12 @@ body {
    gives them (a wide hero, a prose measure), so the arrangement is chosen by
    container queries against the embed itself, not viewport breakpoints.
    Under 38rem: a vertical stack, editor first and largest.
-   38rem to 56rem: a full-width editor over a registers | console split, so
-   the editor keeps real line length inside a reading column. 38rem sits
-   below the narrowest prose measure the site produces (the exercise column
-   at 622px), so every reading column gets the split and only true phone
-   widths stack.
+   38rem to 56rem: a full-width editor over full-width registers over the
+   console, so the editor keeps real line length inside a reading column and
+   the register file gets the whole measure to lay its columns out in. 38rem
+   sits below the narrowest prose measure the site produces (the exercise
+   column at 691px), so every reading column gets that arrangement and only
+   true phone widths keep the even stack.
    56rem and up: the editor beside a registers-over-console rail.
    The base stack doubles as the fallback where container queries are
    unsupported.
@@ -606,13 +607,15 @@ body {
 }
 @container (min-width: 38rem) {
   .embed-grid {
-    grid-template-areas: "editor editor" "registers console";
-    grid-template-rows: minmax(0, 11fr) minmax(0, 9fr);
+    grid-template-areas: "editor editor" "registers registers" "console console";
+    grid-template-rows: minmax(0, 11fr) minmax(0, 5fr) minmax(0, 4fr);
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* The 56rem band sets the side-by-side borders; this band stacks again, so
+     it has to put the base rule's seam back. */
   .embed-area-registers {
-    border-bottom: 0;
-    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    border-right: 0;
   }
 }
 @container (min-width: 56rem) {
