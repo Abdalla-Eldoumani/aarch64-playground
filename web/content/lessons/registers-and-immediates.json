@@ -14,12 +14,12 @@
     },
     {
       "type": "prose",
-      "markdown": "## Moving values into registers\n\n`mov` copies a value into a register, either from another register or from a small immediate. When the constant is small enough, `mov x0, 42` is all you need and the assembler picks a suitable encoding for you.\n\nWider constants are built one 16-bit halfword at a time. `movz` writes a halfword and zeroes the rest of the register, while `movk` writes a halfword and keeps everything else. Reaching for these by hand is how you place a value a single `mov` cannot encode."
+      "markdown": "## Moving values into registers\n\n`mov` copies a value into a register, either from another register or from a small immediate. When the constant is small enough, `mov x0, 42` is all you need and the assembler picks a suitable encoding for you.\n\nWider constants are built one 16-bit halfword at a time. `movz` writes a halfword and zeroes the rest of the register, while `movk` writes a halfword and keeps everything else. Use them by hand when a value is too wide for a single `mov`."
     },
     {
       "type": "code",
       "language": "asm",
-      "source": "// the immediate move forms: mov, movz, movk, and add with an immediate\ndefine(r, x19)\n\n        .data\nfmt:    .string \"%lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     r, 42                       // a small immediate moves straight in\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        movz    r, 0x0002, lsl 16           // zero the register, set one halfword\n        movk    r, 0x0003                    // keep that halfword, set the low one\n        add     r, r, 1                      // add a small immediate\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "source": "// the immediate move forms: mov, movz, movk, and add with an immediate\ndefine(r, x19)\n\n        .data\nfmt:    .string \"%lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     r, 42\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        movz    r, 0x0002, lsl 16           // zero the register, set one halfword\n        movk    r, 0x0003                    // keep that halfword, set the low one\n        add     r, r, 1\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
     },
     {
       "type": "callout",
@@ -32,7 +32,7 @@
     },
     {
       "type": "editor",
-      "starter": "// build a wide constant halfword by halfword, then add an immediate\ndefine(value_r, x19)\n\n        .data\nfmt:    .string \"value = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        movz    value_r, 0x0001, lsl 16       // value_r = 0x0000_0000_0001_0000\n        movk    value_r, 0x2710                // keep the upper halfword, set the low one\n        add     value_r, value_r, 0x20          // add a small immediate\n\n        ldr     x0, =fmt\n        mov     x1, value_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "starter": "// build a wide constant halfword by halfword, then add an immediate\ndefine(value_r, x19)\n\n        .data\nfmt:    .string \"value = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        movz    value_r, 0x0001, lsl 16       // value_r = 0x0000_0000_0001_0000\n        movk    value_r, 0x2710                // keep the upper halfword, set the low one\n        add     value_r, value_r, 0x20\n\n        ldr     x0, =fmt\n        mov     x1, value_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
     }
   ]
 }
