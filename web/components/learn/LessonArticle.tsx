@@ -26,10 +26,6 @@ import { validateStdin } from "@/lib/playground/upload-guard";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
 
-/**
- * The author stdin only when it is present and within the stdin cap; otherwise
- * undefined, so an oversize input is dropped rather than seeded into the embed.
- */
 function safeStdin(stdin: string | undefined): string | undefined {
   if (stdin === undefined) return undefined;
   return validateStdin(stdin) === null ? stdin : undefined;
@@ -45,7 +41,7 @@ export function LessonArticle({
   lesson: Lesson;
   /** Datasheet coordinate for this lesson, e.g. "4.3" (position in the
    *  sorted order); drives the kicker, the numbered TOC, and the figure
-   *  captions. Purely presentational -- the lesson schema is untouched. */
+   *  captions. Purely presentational: the lesson schema is untouched. */
   sheetNumber?: string;
 }): JSX.Element {
   const toc = extractToc(lesson);
