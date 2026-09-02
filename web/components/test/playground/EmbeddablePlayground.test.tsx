@@ -238,15 +238,68 @@ describe("EmbeddablePlayground", () => {
     expect(state.exitCode).toBe(0);
   });
 
-  it("renders only a minimal control set in embed chrome", () => {
+  it("renders the embed control set: run, step, back, reset, and no assemble or check", () => {
     const { container } = render(<EmbeddablePlayground chrome="embed" />);
     engage(container);
     expect(screen.getByLabelText("run")).toBeTruthy();
+    expect(screen.getByLabelText("step")).toBeTruthy();
+    expect(screen.getByLabelText("back")).toBeTruthy();
     expect(screen.getByLabelText("reset")).toBeTruthy();
-    // Full-only controls (assemble / step / back) belong to the full chrome.
+    // Assemble stays full-only: the embed's run and step assemble first.
     expect(screen.queryByLabelText("assemble")).toBeNull();
-    expect(screen.queryByLabelText("step")).toBeNull();
+    // Check belongs to checker chrome.
     expect(screen.queryByLabelText("check")).toBeNull();
+  });
+
+  it("drops step and back when the host opts out", () => {
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" showStep={false} showBack={false} />,
+    );
+    engage(container);
+    expect(screen.getByLabelText("run")).toBeTruthy();
+    expect(screen.getByLabelText("reset")).toBeTruthy();
+    expect(screen.queryByLabelText("step")).toBeNull();
+    expect(screen.queryByLabelText("back")).toBeNull();
+  });
+
+  it("embed Step assembles the current source before advancing", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    fireEvent.click(screen.getByLabelText("step"));
+    await waitFor(() => expect(hub.step).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
+    // A bare step over empty memory executes nothing the student wrote.
+    expect(vi.mocked(hub.assemble).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(hub.step).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("embed Step restarts a halted program instead of standing still", async () => {
+    const hub: Hub = makeHub({
+      instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
+      isHalted: true,
+    });
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    const step = screen.getByLabelText("step");
+    // The button stays live on a finished program: step means run it again
+    // from the first instruction, the same reading run takes.
+    expect(step.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(step);
+    await waitFor(() => expect(hub.step).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(hub.assemble).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(hub.step).mock.invocationCallOrder[0],
+    );
   });
 
   it("checker Check runs the current source to completion, then reports the post-run snapshot", async () => {
