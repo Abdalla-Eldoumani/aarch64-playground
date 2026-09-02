@@ -21,11 +21,11 @@ increment:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        ldr     x9, =count_m
-        ldr     w10, [x9]
-        add     w10, w10, 1
+        ldr     x9, =count_m           // address of count
+        ldr     w10, [x9]              // w10 = count
+        add     w10, w10, 1            // count++
         str     w10, [x9]
-        mov     w0, w10
+        mov     w0, w10                // return count
 
         ldp     fp, lr, [sp], 16
         ret
@@ -35,16 +35,16 @@ increment:
 main:   stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     i_r, 1
+        mov     i_r, 1                 // call number
         b       test
 
 loop:
-        bl      increment
-        mov     w20, w0
+        bl      increment              // w0 = new count
+        mov     w20, w0                // save return value
 
         ldr     x0, =fmt
-        mov     w1, i_r
-        mov     w2, w20
+        mov     w1, i_r                // call number
+        mov     w2, w20                // count value
         bl      printf
 
         add     i_r, i_r, 1
