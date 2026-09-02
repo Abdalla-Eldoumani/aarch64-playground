@@ -2,7 +2,7 @@
 
 /**
  * The condition-code explorer for the b.cond reference entry. Ten chips:
- * the course's condition codes grouped either-sign / signed / unsigned -- and
+ * the course's condition codes grouped either-sign / signed / unsigned, and
  * a detail card that answers, for the picked code: the question it asks after
  * `cmp a, b`, the exact flag formula, why that formula answers the question,
  * and the C reading. Below, a live compare: the student types the two
