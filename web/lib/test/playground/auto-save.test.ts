@@ -80,14 +80,13 @@ describe("useRecentPrograms", () => {
       }
     });
     expect(result.current.entries).toHaveLength(10);
-    // Oldest entries dropped; newest first.
     expect(result.current.entries[0].name).toBe("name14");
     expect(result.current.entries[9].name).toBe("name5");
   });
 
   it("drops stored entries of the wrong shape instead of handing them to the UI", () => {
     // Another tab, an older build, or a hand-edited localStorage can hold
-    // anything; a missing body used to load an empty program.
+    // anything; an entry with no body would load an empty program.
     window.localStorage.setItem(
       RECENT_KEY,
       JSON.stringify([
