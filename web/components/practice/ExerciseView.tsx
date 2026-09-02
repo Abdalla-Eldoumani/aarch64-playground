@@ -7,15 +7,14 @@
  * chrome and a RESULTS panel). Below `lg` the columns stack: statement, then
  * editor, then results.
  *
- * Reuse, no fork: the prompt renders ONLY through the single sanitizing
- * LessonMarkdown (no second Markdown path, no raw-HTML injection), and the
- * editor is the one EmbeddablePlayground in `chrome="checker"`, never a copy.
+ * The prompt renders through the single sanitizing LessonMarkdown, and the
+ * editor is the shared EmbeddablePlayground in `chrome="checker"`.
  * The Check button fires `onCheck(snapshot)`; the handler runs `checkExercise`
- * against the snapshot and the LIVE student source (read through the embed ref),
+ * against the snapshot and the live student source (read through the embed ref),
  * so structural checks see what the student actually wrote. A passing check
  * marks the exercise solved once.
  *
- * No answer leak: the SPECIFICATION table describes the SHAPE of each check (no
+ * No answer leak: the specification table describes the shape of each check (no
  * expected values); the RESULTS panel shows expected-vs-actual as feedback but
  * the view never holds or renders a reference solution. An author/student stdin
  * is bounded by validateStdin before it reaches the embed.
