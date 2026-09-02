@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
  * is the largest module the app owns, and only an EDITABLE surface ever needs
  * it: the landing hero draws its program with StaticCodeView, so the landing's
  * script list must not name the editor chunk at all. A static import from the
- * shell put it there whether or not any editor rendered.
+ * shell puts it there whether or not any editor renders.
  *
  * Its own module, and module scope inside it, for the reason lazy-panels.tsx
  * gives: a dynamic() call re-evaluated per render hands React a new component
