@@ -83,7 +83,7 @@ Every instruction in the reference works, plus more; see
 [`instruction-reference.md`](instruction-reference.md). A few things that
 come in handy:
 
-- Register aliases (`define(score1_r, w19)`) resolve in the decode strip's gloss, which annotates the operand as `score1_r=w19`. (The faded label beside each register name is the fixed ABI role -- `arg0`, `fp`, `lr` -- not your alias.)
+- Register aliases (`define(score1_r, w19)`) resolve in the decode strip's gloss, which appends the substitutions it used as `(score1_r = w19)`. (The faded label beside each register name is the fixed ABI role, `arg0` or `fp` or `lr`, not your alias.)
 - Stack-frame slots (`score1_s = 16`) resolve to numeric offsets at assemble time, so `[fp, score1_s]` becomes `[x29, 16]`.
 - Literal loads (`ldr x0, =msg`) work without wiring: the linker adds `msg`'s address to the pool and patches the LDR.
 - Host calls (`bl printf`) route through a per-host trampoline the linker plants in `.text`.
@@ -154,14 +154,15 @@ for the full index of where each lives.
 | --- | --- |
 | `F6` | Assemble (also `Ctrl+Enter`) |
 | `F10` | Step one instruction |
-| `Shift+F10` | Step back |
+| `Shift+F10` | Step back (up to 128 instructions) |
 | `F5` | Run / pause |
 | `Shift+F5` | Reset |
 | `Ctrl+K` | Command palette |
 | `Ctrl+Shift+F` | Format the source |
+| `Ctrl+S` | Nothing to save: the buffer is written continuously |
 | `Ctrl+/` | Toggle line comment (on the selected lines) |
 | `Shift+Alt+A` | Toggle block comment |
-| `Ctrl+Wheel` | Zoom the focused panel |
+| `Ctrl+Wheel` | Zoom the panel under the pointer |
 | `?` | Keyboard shortcuts help |
 
 For more depth, read [`cpsc355-style-guide.md`](cpsc355-style-guide.md) or
