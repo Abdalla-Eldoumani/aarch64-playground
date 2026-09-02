@@ -3,7 +3,7 @@
 // One drawing, two orders. The eight vertices sit at hand-picked cells so
 // every edge the module can draw is either a straight run or an exact
 // diagonal: no line algorithm, and the picture stays honest. The frontier
-// -- a queue for the breadth first walk, a stack for the depth first one --
+// (a queue for the breadth first walk, a stack for the depth first one)
 // is on screen the whole time, because which end of it empties next is the
 // only difference between the two walks, and it is the entire lesson.
 
