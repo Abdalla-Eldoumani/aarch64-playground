@@ -10,13 +10,8 @@
   "body": [
     {
       "type": "callout",
-      "variant": "note",
-      "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
-    },
-    {
-      "type": "callout",
       "variant": "prereq",
-      "markdown": "Before starting this lesson, you should have a basic understanding of the following prerequisite lessons:\n\n- [Printing Hello World in ARMv8 AArch64 Assembly](/learn/printing-strings-hello-world)\n\n- [Printing Variables in ARMv8 AArch64 Assembly](/learn/printing-defined-variables)"
+      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n\n- [Printing a variable from .data](/learn/printing-defined-variables)"
     },
     {
       "type": "prose",
@@ -41,7 +36,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## The Big Picture"
+      "markdown": "## The big picture"
     },
     {
       "type": "prose",
@@ -54,11 +49,11 @@
     },
     {
       "type": "prose",
-      "markdown": "## More about `cmp` and `b.cond`\n\nThe `cmp` instruction is the compare instruction. It compares the contents of two registers, or the contents of a register with an immediate value, and serves as the foundation for conditional logic in Assembly.\n\nComparing two values is essentially a way of checking whether a particular condition is met. However, the `cmp` instruction only performs the comparison; it does not take any action based on the result.\n\nInstead, the comparison updates the condition flags in the background. These flags record information about the result of the comparison.\n\nInstructions that use a condition code, such as `b.cond`, examine these condition flags. If the specified condition code (`cond`) is met, `b.cond` branches to the specified label. Otherwise, execution continues with the instruction immediately following `b.cond`."
+      "markdown": "## More about cmp and b.cond\n\nThe `cmp` instruction is the compare instruction. It compares the contents of two registers, or the contents of a register with an immediate value, and serves as the foundation for conditional logic in Assembly.\n\nComparing two values is essentially a way of checking whether a particular condition is met. However, the `cmp` instruction only performs the comparison; it does not take any action based on the result.\n\nInstead, the comparison updates the condition flags in the background. These flags record information about the result of the comparison.\n\nInstructions that use a condition code, such as `b.cond`, examine these condition flags. If the specified condition code (`cond`) is met, `b.cond` branches to the specified label. Otherwise, execution continues with the instruction immediately following `b.cond`."
     },
     {
       "type": "prose",
-      "markdown": "## Implementing Conditionals in Assembly\n\nThe above C code can be translated into Assembly as follows:"
+      "markdown": "## Implementing a conditional\n\nThe above C code can be translated into Assembly as follows:"
     },
     {
       "type": "code",
@@ -71,7 +66,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## The Complete Assembly Implementation\n\nThe code below demonstrates the complete process of implementing conditionals in Assembly, including the pseudo-ops, function prologue, and function epilogue."
+      "markdown": "## The whole program\n\nThe code below demonstrates the complete process of implementing conditionals in Assembly, including the pseudo-ops, function prologue, and function epilogue."
     },
     {
       "type": "editor",
