@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Addressing & Records - Advanced",
+  "title": "Quiz: memory and the stack",
   "slug": "quiz-advance-frame-stack",
   "order": 54,
   "topic": "memory",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Work through register-offset addressing with sign extension and shifts, plus the pre-indexed and post-indexed forms that build and tear down a frame record.",
+  "prompt": "Register-offset addressing with sign extension and shifts, plus the pre-indexed and post-indexed forms that build and tear down a frame record.",
   "questions": [
     {
       "question": "What does the addressing mode [x29, w21, sxtw] accomplish?",
