@@ -22,7 +22,7 @@ const SNAPSHOT_CAPACITY: usize = 128;
 /// copies taken on every step, so a program holding megabytes of them
 /// paid that price per instruction (100k steps with a 1 MiB virtual file
 /// took 51 s against 73 ms with none). Past the budget the ring stops
-/// recording -- the same trade raw-mode terminal programs already make.
+/// recording, the same trade raw-mode terminal programs already make.
 /// A course program's files and typed input are a few hundred bytes, so
 /// step-back stays available for the programs students step through.
 pub const MAX_SNAPSHOT_SIDE_BYTES: usize = 4096;
@@ -51,7 +51,7 @@ pub const STACK_BASE: u64 = 0x8000_0000;
 /// `ulimit -s` on the course servers so a deep-but-legal recursion that
 /// runs there runs here. Only unbounded recursion (or a garbage sp) gets
 /// past it, and that deserves a stack-overflow message, not the
-/// memory-cap one -- which is why this floor stays well under
+/// memory-cap one, which is why this floor stays well under
 /// `memory::MAX_MAPPED_PAGES` in page terms.
 pub const STACK_FLOOR: u64 = STACK_BASE - 8 * 1024 * 1024;
 
@@ -65,9 +65,9 @@ pub const HOST_STUB_STRIDE: u64 = 16;
 pub const HOST_STUB_COUNT: u64 = 256;
 
 /// Cumulative executed-instruction ceiling (the runaway-loop wall). Once a
-/// loaded program has executed this many steps -- counted across every
+/// loaded program has executed this many steps (counted across every
 /// `step` and the inner `run_until_break` loop, persistent until the next
-/// load/reset -- the run aborts calmly instead of hanging the tab. ~10M
+/// load/reset), the run aborts calmly instead of hanging the tab. ~10M
 /// sits far above any real cpsc 355 program's step count, yet an infinite
 /// loop reaches it in well under a second of wall time per run chunk.
 pub const MAX_TOTAL_STEPS: u64 = 10_000_000;
@@ -99,8 +99,8 @@ pub fn step_ceiling_message() -> String {
 
 /// Cumulative stdout+stderr ceiling (the output-flood wall). The step and
 /// page walls do not cover printing: one printf is one step, and the host
-/// buffers live outside guest pages, so a print in a tight loop -- or one
-/// crafted wide-format call -- could grow the console without bound. The
+/// buffers live outside guest pages, so a print in a tight loop (or one
+/// crafted wide-format call) could grow the console without bound. The
 /// counter survives the UI draining the buffers, so it measures what the
 /// program produced, not what happens to be queued. 4 MiB dwarfs any real
 /// course program's output.
@@ -108,8 +108,8 @@ pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 
 /// Map a Write fault into the calm page-cap message. Stores are the only
 /// writer that faults (memory.rs's cap check is the sole producer), so a
-/// Write fault anywhere -- executing code, a host stub, or loading an
-/// image whose sections need pages the budget no longer covers -- always
+/// Write fault anywhere (executing code, a host stub, or loading an
+/// image whose sections need pages the budget no longer covers) always
 /// means the cap, never a raw internal fault worth showing a student.
 fn map_write_fault(e: EmuError) -> EmuError {
     match e {
@@ -172,8 +172,8 @@ pub struct TermState {
 /// Pacing credit for sleeping programs: each nanosecond a program asks
 /// nanosleep to pause refunds step and output budget at these rates
 /// (one step per microsecond slept, one output byte per ten
-/// microseconds). A paced game therefore runs indefinitely -- its
-/// budgets refill in real time while the tab sits idle -- yet a
+/// microseconds). A paced game therefore runs indefinitely (its
+/// budgets refill in real time while the tab sits idle), yet a
 /// CPU-bound runaway still hits the walls, because refunds only come
 /// from real pauses the runner actually honors.
 pub const SLEEP_STEP_REFUND_NS_PER_STEP: u64 = 1_000;
@@ -191,12 +191,11 @@ pub const MAX_SLEEP_NS: u64 = 2_000_000_000;
 /// CPU, before the step wall halts it calmly.
 pub const MAX_REFUND_STEPS: u64 = 200_000_000;
 
-/// Lifetime cap on output bytes the sleep refund may credit back. The
-/// step refund has its own cap; the output refund had none, so the step
-/// cap alone let a paced program earn back 20 MB and quietly raised the
-/// 4 MiB output wall to 23 MiB. Capping it here states the real ceiling:
-/// a program may print MAX_OUTPUT_BYTES, plus this much more if it paced
-/// itself with real sleeps to earn it.
+/// Lifetime cap on output bytes the sleep refund may credit back.
+/// Without a cap of its own, the step cap alone lets a paced program earn
+/// back 20 MB, raising the 4 MiB output wall to 23 MiB. Capping it here
+/// states the real ceiling: a program may print MAX_OUTPUT_BYTES, plus
+/// this much more if it paced itself with real sleeps to earn it.
 pub const MAX_REFUND_OUTPUT_BYTES: usize = MAX_OUTPUT_BYTES;
 
 /// Bytes of guest memory one host stub may move per step it is charged
@@ -235,11 +234,11 @@ pub struct OpenFile {
 /// cooked-tty echo has gone out yet.
 ///
 /// A real terminal in cooked mode prints what you type, which is why the
-/// terminal pane's transcript reads "Enter score 1: 10" while the console
-/// panel -- where the bytes arrive through an input box rather than a
-/// keyboard -- used to read "Enter score 1: " with the answer nowhere in
-/// sight. The echo is the emulator's job because only the emulator knows
-/// WHEN a read consumed the line.
+/// terminal pane's transcript reads "Enter score 1: 10". In the console
+/// panel the bytes arrive through an input box rather than a keyboard, so
+/// without the echo the transcript reads "Enter score 1: " with the answer
+/// nowhere in sight. The echo is the emulator's job because only the
+/// emulator knows WHEN a read consumed the line.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StdinSegment {
     /// The run's bytes, kept whole so the echo prints the line the
@@ -247,7 +246,7 @@ pub struct StdinSegment {
     pub bytes: Vec<u8>,
     /// How many of `bytes` reads have already taken.
     pub consumed: usize,
-    /// The run arrived through `push_stdin_interactive` -- typed at a
+    /// The run arrived through `push_stdin_interactive`: typed at a
     /// prompt, so a cooked tty would have echoed it.
     pub interactive: bool,
     /// The echo has already been written to stdout. Snapshotted, so
@@ -267,7 +266,7 @@ pub struct RunResult {
 
 /// Top-level CPU wrapping register file, memory, breakpoints, and the
 /// hosted-runtime state (stdout/stderr/stdin buffers, virtual filesystem,
-/// exit status) that phase B's libc stubs and syscall dispatcher populate.
+/// exit status) that the libc stubs and the syscall dispatcher populate.
 pub struct Cpu {
     pub regs: RegisterFile,
     pub mem: Memory,
@@ -364,7 +363,7 @@ pub struct Cpu {
     /// Bytes ever appended to `stdout` / `stderr`, echo included. DISPLAY
     /// state, not budget: a snapshot carries them and step-back restores
     /// them, so the web can drop exactly the characters a rolled-back step
-    /// printed. `output_total` above is the wall and is never restored --
+    /// printed. `output_total` above is the wall and is never restored:
     /// undoing a step must not refund the flood budget.
     stdout_seen: u64,
     stderr_seen: u64,
@@ -375,7 +374,7 @@ pub struct Cpu {
     pub abort_message: Option<String>,
     /// First address past the loaded program's last instruction. A fetch
     /// landing exactly here means execution fell off the end (a main with
-    /// no ret), which deserves its own message -- without the guard the
+    /// no ret), which deserves its own message; without the guard the
     /// zero-filled page decoded as `unknown instruction: 0x00000000` and
     /// the teaching layer guessed at causes that never happened.
     text_end: Option<u64>,
@@ -509,7 +508,9 @@ impl Cpu {
         cpu.regs.write_sp(STACK_BASE);
         cpu.regs.write_pc(CODE_BASE);
 
-        // pre-map stack pages so initial pushes don't need auto-map
+        // pre-map stack pages so initial pushes don't need auto-map.
+        // Four pages each: enough for the loader's first writes, so the
+        // wasm32 dlmalloc gotcha below never fires mid-call.
         for i in 0..4 {
             cpu.mem.map_page(STACK_BASE - (i + 1) * 4096);
         }
@@ -627,7 +628,7 @@ impl Cpu {
     pub fn host_call_name(&self, pc: u64) -> Option<&str> {
         if let Some(name) = self.host.name_for_address(pc) {
             // `__main_return` is the loader's return sentinel, not a call the
-            // program made -- the same exemption the SP-alignment check
+            // program made, the same exemption the SP-alignment check
             // makes. Naming it would report an external call for the one step
             // between main's `ret` and the halt.
             if name == "__main_return" {
@@ -661,7 +662,7 @@ impl Cpu {
     /// because `Memory` pages are allocated zero-filled. `AlignToBytes`
     /// rounds the offset up. `Instruction` items are counted as 4 bytes
     /// so later `Bytes` items in the same section land at the right spot;
-    /// the linker in phase A.7 takes over the actual instruction encoding.
+    /// `frontend::pipeline` does the actual instruction encoding.
     /// PC resets to CODE_BASE. Labels resolved via `Program::symbols` stay
     /// the caller's concern.
     pub fn load_sections(&mut self, program: &Program) -> Result<(), EmuError> {
@@ -713,7 +714,7 @@ impl Cpu {
 
     /// Build the calm memory-cap halt result and record the abort, so a
     /// page-cap write fault reports identically no matter which path raised
-    /// it -- the executor, a hosted libc stub, or a syscall. Sets `halted`
+    /// it: the executor, a hosted libc stub, or a syscall. Sets `halted`
     /// and `abort_message`; the caller returns the result through `step`.
     fn memory_cap_halt(&mut self) -> StepResult {
         self.halted = true;
@@ -732,7 +733,7 @@ impl Cpu {
     /// The arguments are `stdout.len()` and `stderr.len()` captured before
     /// the call, so UI drains between steps never reset the accounting.
     /// The two display counters ride along here because this is the one
-    /// place bytes reach the drainable buffers -- input echo included,
+    /// place bytes reach the drainable buffers, input echo included,
     /// since the echo is appended before this runs.
     fn charge_output(&mut self, out_before: usize, err_before: usize) -> bool {
         let out_new = self.stdout.len().saturating_sub(out_before);
@@ -751,7 +752,7 @@ impl Cpu {
     /// the FIRST byte of an interactive run, the run's whole text goes to
     /// stdout. A submitted line then lands as one typed line ("Enter score
     /// 1: 10\n"), and the trailing "\n" a later scanf skips does not print
-    /// itself a second time. Raw mode echoes nothing -- a termios program
+    /// itself a second time. Raw mode echoes nothing: a termios program
     /// paints its own screen and would fight the echo for the cursor.
     fn echo_consumed_stdin(&mut self, before: usize) {
         let mut left = before.saturating_sub(self.stdin.len());
@@ -779,8 +780,8 @@ impl Cpu {
         }
     }
 
-    /// Whether the state a snapshot frame copies WHOLE -- virtual files,
-    /// queued stdin, open-file paths -- has outgrown the ring's budget.
+    /// Whether the state a snapshot frame copies WHOLE (virtual files,
+    /// queued stdin, open-file paths) has outgrown the ring's budget.
     /// Guest pages are shared copy-on-write, so they cost nothing to
     /// snapshot, but these are real copies on every step: 100k steps with
     /// a 1 MiB virtual file took 51 s against 73 ms with none.
@@ -825,12 +826,12 @@ impl Cpu {
         }
     }
 
-    /// Convert a propagated runtime error -- a fetch fault, an undecodable
-    /// word, an executor fault, or a failed host stub / syscall -- into the
-    /// same calm halt the bounds use. Without this boundary the CPU stayed
-    /// live at the faulting PC: Step re-derived the identical error forever,
-    /// Run re-issued chunks against the wedged machine at full speed, and
-    /// `is_halted()` disagreed with the step payload. PC is left unadvanced
+    /// Convert a propagated runtime error (a fetch fault, an undecodable
+    /// word, an executor fault, or a failed host stub / syscall) into the
+    /// same calm halt the bounds use. Without this boundary the CPU stays
+    /// live at the faulting PC: Step re-derives the identical error forever
+    /// and Run re-issues chunks against the wedged machine at full speed.
+    /// PC is left unadvanced
     /// so the fault resolves to the line that raised it.
     fn runtime_error_halt(&mut self, e: EmuError) -> StepResult {
         self.halted = true;
@@ -866,8 +867,8 @@ impl Cpu {
 
         // Stack wall: sp far below the base is runaway recursion (or a
         // frame pointer that was never set up). Without this check the
-        // store path silently mapped page after page downward until the
-        // memory cap fired blaming "too much memory" -- the wrong cause.
+        // store path maps page after page downward until the memory cap
+        // fires, blaming memory instead of the recursion.
         if self.regs.read_sp() < STACK_FLOOR {
             return Some(self.runtime_error_halt(EmuError::StackOverflow));
         }
@@ -984,9 +985,9 @@ impl Cpu {
         }
 
         // The pending pause belongs to the step that asked for it. Left
-        // set, it made every later step report `Sleeping` again and
-        // pre-empted the next `run_until_break` into executing nothing --
-        // a permanent stall for any driver that did not remember to call
+        // set, it makes every later step report `Sleeping` again and
+        // pre-empts the next `run_until_break` into executing nothing, a
+        // permanent stall for a driver that never calls
         // `take_pending_sleep_ns`.
         self.pending_sleep_ns = None;
 
@@ -1012,7 +1013,7 @@ impl Cpu {
             // stack access; the stubs here are Rust and mostly skip guest
             // stack reads, so the boundary check is what reproduces the
             // bus error. `__main_return` is the loader's return sentinel,
-            // not a call -- faulting there would blame the wrong line on
+            // not a call: faulting there would blame the wrong line on
             // an unbalanced epilogue, which has its own diagnosis.
             let sp = self.regs.read_sp();
             if !sp.is_multiple_of(16) && self.host.lookup("__main_return") != Some(pc) {
@@ -1161,7 +1162,7 @@ impl Cpu {
     }
 
     /// Shared tail of the two push entry points. An empty push records no
-    /// segment -- it queues nothing, and a segment per empty push would
+    /// segment: it queues nothing, and a segment per empty push would
     /// grow the list (and every snapshot frame) without bound.
     fn queue_stdin(&mut self, bytes: &[u8], interactive: bool) {
         self.stdin.extend_from_slice(bytes);
@@ -1346,7 +1347,7 @@ impl Cpu {
                 self.blocked = true;
             }
             HostOutcome::Sleep(ns) => {
-                // No libc stub sleeps today, but keep the arm honest: a
+                // No libc stub returns Sleep, but the arm stays correct: a
                 // sleeping stub returns to its caller like Continue.
                 self.apply_sleep(ns);
                 let lr = self.regs.read_gpr(30, true);
@@ -1599,7 +1600,7 @@ impl Cpu {
         self.changed_fprs.clear();
         // The ring still holds frames recorded AFTER this save was taken,
         // so every one of them lies in the restored machine's future:
-        // stepping back into one moved the program FORWARD past the
+        // stepping back into one would move the program FORWARD past the
         // restore point. A restore ends the history, the same way an
         // unrecorded stretch does. Named saves survive `clear()`.
         self.snapshots.clear();
@@ -1792,7 +1793,7 @@ mod tests {
     fn changed_fp_regs_tracked() {
         // movz x5, 42 (integer step: fp set stays empty), then fmov d0, #1.5.
         // The VFP8 immediate for 1.5 is 0x78 and the IEEE-754 double bits are
-        // 0x3FF8000000000000 -- both independent literals from the ARM ARM,
+        // 0x3FF8000000000000, both independent literals from the ARM ARM,
         // never recomputed through the code under test.
         let mut cpu = Cpu::new();
         let code = vec![
@@ -2068,13 +2069,12 @@ mod tests {
 
     #[test]
     fn unsupported_syscall_halts_calmly_instead_of_wedging() {
-        // The wedge this guards: the error used to propagate raw with
-        // `halted` left false and PC unmoved, so Run re-issued chunks
-        // against the same fault at full speed and froze the tab, and
-        // every Step reproduced the identical error forever.
+        // A raw error with `halted` false and PC unmoved lets Run re-issue
+        // chunks against the same fault at full speed and freeze the tab,
+        // and every Step reproduces the identical error forever.
         let mut cpu = Cpu::new();
         cpu.load_program(&[encode_movz(8, 172, 0), encode_svc(0)]);
-        cpu.step().unwrap(); // mov x8, 172 (getpid -- not implemented)
+        cpu.step().unwrap(); // mov x8, 172 (getpid, not implemented)
         let r = cpu.step().unwrap(); // svc 0
         assert!(r.halted);
         assert!(r.error.as_deref().unwrap_or("").contains("172"));
@@ -2126,7 +2126,7 @@ mod tests {
             encode_movz(0, 1, 0),
             encode_movz(1, 2, 0),
             encode_movz(2, 3, 0),
-            0xF940_0020, // ldr x0, [x1] -- x1 = 2, unmapped/unaligned
+            0xF940_0020, // ldr x0, [x1]: x1 = 2, unmapped/unaligned
         ]);
         let r = cpu.run_until_break(100).unwrap();
         assert!(r.halted);
@@ -2425,9 +2425,9 @@ mod tests {
 
     #[test]
     fn restoring_a_save_drops_the_step_back_history() {
-        // The ring still held frames recorded after the save, so they sat
-        // in the restored machine's FUTURE: one step back off a restore
-        // landed two instructions past the restore point.
+        // Frames recorded after the save sit in the restored machine's
+        // FUTURE: one step back off a restore would land two instructions
+        // past the restore point.
         let mut cpu = Cpu::new();
         cpu.load_program(&[
             encode_movz(0, 1, 0),
@@ -2471,9 +2471,9 @@ mod tests {
         assert_eq!(first.steps_executed, 1, "the run hands back at the pause");
         assert!(!first.halted);
 
-        // The runner never asks for the pause -- a native embedder, or any
-        // driver that forgets `take_pending_sleep_ns`. Both later calls
-        // used to execute zero steps forever.
+        // The runner never asks for the pause: a native embedder, or any
+        // driver that forgets `take_pending_sleep_ns`. A kept pause makes
+        // every later call execute zero steps.
         let second = cpu.run_until_break(10).unwrap();
         assert!(
             second.steps_executed > 0,
@@ -2538,9 +2538,9 @@ mod tests {
 
     #[test]
     fn the_sleep_output_refund_stops_at_its_lifetime_cap() {
-        // Refunded output had no cap of its own, so the step refund's cap
-        // was the only limit and the documented 4 MiB output wall was
-        // really 23 MiB. The lifetime cap states the true ceiling:
+        // Without a cap of its own the step refund's cap is the only limit,
+        // and the documented 4 MiB output wall becomes 23 MiB. The lifetime
+        // cap states the true ceiling:
         // MAX_OUTPUT_BYTES, plus at most MAX_REFUND_OUTPUT_BYTES earned
         // back by real pauses.
         let mut cpu = Cpu::new();
