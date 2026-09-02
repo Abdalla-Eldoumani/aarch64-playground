@@ -297,7 +297,7 @@ describe("fetchExample", () => {
   it("rejects a helper file name outside the file-name shape before fetching it", async () => {
     // The name is pasted into the fetch path and then into combineSources'
     // `// ---- name ----` marker, so it is checked like any other untrusted
-    // name -- and checked before a request goes out.
+    // name, and checked before a request goes out.
     const calls = stubFetch({ "/examples/cpsc355/basics.s": "mov x0, 1\n" });
     EXAMPLE_FILES.basics = ["helper.s\n.global evil"];
     try {
@@ -387,8 +387,8 @@ describe("EXAMPLE_INPUTS manifest", () => {
 describe("launch tables", () => {
   it("names exactly the two default-terminal examples", () => {
     // Both draw a full-screen ANSI frame that the console's plain-text
-    // scrollback would render as escape-sequence garbage. Everything else
-    // defaults to console, which is what all 18 examples do today.
+    // scrollback would render as escape-sequence garbage. Every other example
+    // defaults to console.
     expect(Object.keys(EXAMPLE_TERMINAL).sort()).toEqual(["dsav", "two-sum"]);
   });
 
@@ -405,8 +405,8 @@ describe("launch tables", () => {
 
   it("offers the control for every example that defaults to the terminal", () => {
     // The default-owner table is a subset of the offer set: an example
-    // whose default is terminal with no way to see or change it would be
-    // the one-way door the design rules out.
+    // whose default is terminal with no way to see or change it would leave
+    // the student stuck in the terminal.
     for (const stem of Object.keys(EXAMPLE_TERMINAL)) {
       expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
     }
