@@ -1,9 +1,9 @@
-// utils.asm - input, delays, and random numbers
+// utils.s - input, delays, and random numbers
 
 define(fp, x29)
 define(lr, x30)
 
-// ui.asm draws by role; this file names only the one it uses. Each file
+// ui.s draws by role; this file names only the one it uses. Each file
 // assembles on its own, so the constant is repeated rather than shared.
     UI_ROLE_FAINT = 2
 
@@ -16,9 +16,8 @@ press_enter_msg:    .string "press enter to continue"
 // The complaint always lands on one fixed line inside the frame, below
 // the body and above the footer, and the line is wiped before it is
 // written, so retries overwrite in place instead of stacking copies
-// down the screen. Row 23 is the kernel's message row (ui.asm owns the
-// layout); clearing spans only the inner columns so the frame's sides
-// survive.
+// down the screen. Row 23 is the message row (ui.s owns the layout); clearing
+// spans only the inner columns so the frame's sides survive.
 msg_row_home:       .string "[23;2H"
 msg_row_blank:      .string "                                                                              "
 invalid_input_msg:  .string "[23;25H[38;5;211mInvalid input! Please try again.[0m"
@@ -28,7 +27,7 @@ save_input_pos:     .string "[s"        // remember where typing begins
 // of spaces. Erase-to-end-of-line would take the frame's right wall.
 restore_input_pos:  .string "[u                [u"
 
-input_buffer:       .skip 64                // scratch space for user input
+input_buffer:       .skip 64
 
     .text
     .balign 4
@@ -79,7 +78,7 @@ read_int_retry:
     cmp     w0, 1                           // items converted
     b.ne    read_int_no_value
 
-    ldr     w19, [sp]                       // hold the value across the calls
+    ldr     w19, [sp]
     add     sp, sp, 16
     bl      read_int_clear_message
     mov     w0, w19
@@ -96,7 +95,7 @@ read_int_no_value:
     b       read_int_retry
 
 read_int_eof:
-    bl      read_int_clear_message          // no mistake outlives the read
+    bl      read_int_clear_message          // clear the complaint before returning
     mov     w0, 0
     mov     w1, 0
 
@@ -125,7 +124,7 @@ read_int_complain:
     ret
 
 // read_int_clear_message() - wipe the message row once a good value
-// lands, so a stale complaint never outlives the mistake
+// lands, so a complaint does not survive the value that fixed it
 read_int_clear_message:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
@@ -149,8 +148,8 @@ read_int_clear_message:
 // nobody can answer.
 //
 // A menu can read w0 alone: min is its back choice either way. A prompt
-// asking for a VALUE cannot: min is a real answer there, and taking it
-// silently committed a number nobody typed. Those callers check w1.
+// asking for a VALUE cannot: min is a real answer there, so taking it would
+// commit a number nobody typed. Those callers check w1.
     .global read_int_range
 read_int_range:
     stp     fp, lr, [sp, -48]!
@@ -196,8 +195,7 @@ read_int_range_done:
 
 // wait_for_enter() - hold the finished screen until enter
 // Shares the message row with the input complaint, and starts inside the
-// frame: column 1 is the frame's left wall, and writing there tore a hole
-// through every screen that paused.
+// frame: column 1 is the frame's left wall.
     .global wait_for_enter
 wait_for_enter:
     stp     fp, lr, [sp, -16]!
