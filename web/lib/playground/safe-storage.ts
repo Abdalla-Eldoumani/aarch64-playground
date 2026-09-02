@@ -3,11 +3,11 @@
  * that persists something: the panels, the generic hooks, the workspace
  * stores, the backend picker.
  *
- * Both defenses are needed at every site. There is no `window` during SSR,
- * and a real browser can still throw on the property access itself (a
- * sandboxed iframe, a third-party context with site data blocked) or on the
- * write (quota, private mode). Hand-rolling the pair per module is how five
- * of them ended up with the try/catch and no window guard.
+ * Both defenses are needed at every site. There is no `window` during SSR, and
+ * a real browser can still throw on the property access itself (a sandboxed
+ * iframe, a third-party context with site data blocked) or on the write (quota,
+ * private mode). Hand-rolled per module, five call sites carried the try/catch
+ * and no window guard.
  *
  * A read degrades to null, so a caller's "nothing stored" path covers a
  * broken store too. A write reports whether the value actually reached
