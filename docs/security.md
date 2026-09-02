@@ -1,9 +1,9 @@
 # Security posture
 
 This is a fully client-side application: every byte of the emulator runs in
-your tab. We still take a defensive stance because the playground accepts
-URL-borne input (share hashes, diagnostic-bundle deep links, query params) and
-file uploads (source files, VFS payloads, bookmark JSON), all untrusted. There
+your tab. The gates below exist because the playground accepts URL-borne
+input (share hashes, diagnostic-bundle deep links, query params) and file
+uploads (source files, VFS payloads, bookmark JSON), all untrusted. There
 are no API routes and no server actions: nothing you type, upload, or run ever
 leaves the tab. The server's whole job is rendering the pages, and the one
 outbound call it makes during that render reads the repository's public star
@@ -44,7 +44,7 @@ per-route in `vercel.json`.
 
 The script policy allows `'wasm-unsafe-eval'` so the emulator can instantiate
 its WebAssembly. It allows `'unsafe-eval'` only in development, where the
-Next.js dev runtime (React Refresh) evaluates modules with `eval` -- without it
+Next.js dev runtime (React Refresh) evaluates modules with `eval`; without it
 the in-page editor renders blank. Production and `next start` never include
 `'unsafe-eval'`: `web/proxy.ts` gates it behind `NODE_ENV`, and `vercel.json`
 (production-only) omits it, so the deployed policy keeps the `eval`-based XSS
@@ -106,9 +106,9 @@ tab. The walls live in the Rust core and hold however the program arrived
   with sp off the 16-byte boundary stop with a plain-language halt, the
   same programs Linux kills with SIGSEGV or a bus error.
 
-Every limit is a calm halt or a refused call carrying a plain-language result,
-never a panic or a silent stop. Proven by `emulator/tests/bounds.rs` and the
-hosted-runtime unit tests.
+Every limit halts or refuses the call with a plain-language result, never a
+panic. Proven by `emulator/tests/bounds.rs` and the hosted-runtime unit
+tests.
 
 ### Practices we follow
 
