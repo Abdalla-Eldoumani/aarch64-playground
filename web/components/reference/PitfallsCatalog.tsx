@@ -122,7 +122,7 @@ export function PitfallsCatalog({
                 {/* Fixed frame so the editor loading never shifts the page;
                     key remounts the embed when the variant switches, which
                     resets the machine for the other program. */}
-                <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+                <div className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px]">
                   <EmbeddablePlayground
                     key={`${index}-${openHere.variant}`}
                     chrome="embed"
