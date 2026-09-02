@@ -55,6 +55,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `SXTW`   | `SXTW Xd, Wn`                    | Sign-extend a word to 64 bits.           |
 | `UXTB`   | `UXTB Wd, Wn`                    | Zero-extend a byte. Alias for `UBFM`.    |
 | `UXTH`   | `UXTH Wd, Wn`                    | Zero-extend a halfword.                  |
+| `UXTW`   | `UXTW Xd, Wn` / `UXTW Wd, Wn`    | Zero-extend a word to 64 bits. GAS assembles it as `MOV Wd, Wn`, the same word either spelling produces, because a W-register write clears the top half. The counterpart of `SXTW`; GCC emits it for an `unsigned int` index widened before an address computation. |
 
 ## Compare and test
 

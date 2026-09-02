@@ -150,7 +150,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // shifts and rotate
     "LSL", "LSR", "ASR", "ROR",
     // sign / zero extension
-    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH",
+    "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UXTW",
     // bitfield extract / insert
     "UBFX", "SBFX", "BFI", "BFXIL", "UBFIZ", "SBFIZ",
     // multiply / divide
@@ -256,6 +256,7 @@ fn encode_line(
         "SXTW" => encode_extend(&ops, true, 31, line_num),
         "UXTB" => encode_extend(&ops, false, 7, line_num),
         "UXTH" => encode_extend(&ops, false, 15, line_num),
+        "UXTW" => encode_extend_word(&ops, line_num),
 
         // -- bitfield extract / insert (SBFM / UBFM / BFM aliases) --
         "UBFX" => encode_bitfield_alias(&ops, "UBFX", 0b10, BitfieldForm::Extract, line_num),
@@ -1324,6 +1325,28 @@ fn encode_extend(ops: &[&str], signed: bool, imms: u8, ln: usize) -> Result<u32,
         | ((imms as u32) << 10)
         | ((rn as u32) << 5)
         | (rd as u32))
+}
+
+/// Encode `UXTW Xd, Wn` the way GAS does: as `ORR Wd, WZR, Wn`, the
+/// 32-bit MOV, whose W-width write clears the top half for free. It is
+/// NOT lowered to UBFM here; binutils disassembles that word as `ubfx`
+/// and never as `uxtw`. The `uxtw` in `EXTEND_KEYWORDS` and
+/// `decoder::LDST_EXTENDS` is the unrelated addressing keyword and stays
+/// exactly as it is.
+fn encode_extend_word(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "UXTW requires 2 operands: UXTW Xd, Wn");
+    }
+    reject_sp_operands(ops, ln, "UXTW")?;
+    let (rd, _) = parse_register(ops[0], ln)?;
+    let (rn, rn_x) = parse_register(ops[1], ln)?;
+    if rn_x {
+        return asm_err(
+            ln,
+            "UXTW takes a W source (uxtw xd, wn); from an X source the value is already 64 bits",
+        );
+    }
+    Ok(0x2A00_0000 | ((rn as u32) << 16) | (0b11111 << 5) | (rd as u32))
 }
 
 fn encode_mul_div(ops: &[&str], variant: u8, ln: usize) -> Result<u32, EmuError> {
@@ -4168,6 +4191,42 @@ svc 0").unwrap();
             }
             other => panic!("expected Bitfield, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn uxtw_zero_extends_a_word_into_an_x_register() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("uxtw x0, w0", 0x2A00_03E0u32),
+            ("uxtw x2, w1", 0x2A01_03E2),
+            // GAS narrows the X destination to the W form, so both
+            // spellings assemble to the same word.
+            ("uxtw w0, w0", 0x2A00_03E0),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let err = encode_line("uxtw x0, x0", 0, &labels, 1).unwrap_err().to_string();
+        assert!(err.contains("W source"), "{err}");
+        let source = r#"
+            MOV X1, #-1
+            UXTW X2, W1
+            SXTW X3, W1
+            MOVZ X4, #0xDEF0
+            MOVK X4, #0x9ABC, LSL #16
+            MOVK X4, #0x5678, LSL #32
+            MOVK X4, #0x1234, LSL #48
+            UXTW X5, W4
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(30).unwrap();
+        // -1 is the only value that separates uxtw from sxtw and from a copy
+        assert_eq!(cpu.regs.read_gpr(2, true), 0x0000_0000_FFFF_FFFF);
+        assert_eq!(cpu.regs.read_gpr(3, true), 0xFFFF_FFFF_FFFF_FFFF);
+        assert_eq!(cpu.regs.read_gpr(5, true), 0x0000_0000_9ABC_DEF0);
     }
 
     #[test]
