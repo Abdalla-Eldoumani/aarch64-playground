@@ -199,10 +199,9 @@ describe("readShareHash decompression-bomb guard", () => {
   });
 
   it("stops an UNDER-cap bomb at the output ceiling", () => {
-    // lz-string output grows quadratically in fragment length: this
-    // fragment is a few KB (inside the raw cap) but inflates past the
-    // 1 MB output ceiling. A 64 KB raw cap admits fragments that inflate to
-    // ~200 MB.
+    // lz-string output grows quadratically in fragment length: this fragment is
+    // a few KB (inside the raw cap) but inflates past the 1 MB output ceiling.
+    // A 30 KB raw cap admits fragments that inflate to ~200 MB.
     const bomb = LZString.compressToEncodedURIComponent("a".repeat(2_000_000));
     expect(bomb.length).toBeLessThan(MAX_SHARE_HASH_BYTES);
     expect(kindOf(`#p2=${bomb}`)).toBe("too-large");
@@ -218,9 +217,10 @@ describe("readShareHash decompression-bomb guard", () => {
 
 describe("share integrity checksum", () => {
   it("reports corrupt when a decodable payload's source fails the checksum", () => {
-    // A one-character mangle can decode to a VALID payload whose source
-    // differs from what the sender shared (17 of 68 substitutions did in
-    // the audit); the checksum catches what JSON validation cannot.
+    // A one-character mangle can decode to a VALID payload whose source differs
+    // from what the sender shared (17 of 68 one-character substitutions
+    // produced a valid payload with different source); the checksum catches
+    // what JSON validation cannot.
     const real = buildShareHash({ source: "mov x0, 1\nret\n" });
     const tampered = `#p2=${LZString.compressToEncodedURIComponent(
       JSON.stringify({ source: "mov x2, 1\nret\n", h: "deadbeef" }),
