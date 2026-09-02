@@ -1050,7 +1050,6 @@ fn exec_fp_binary(
 /// saturate at the destination width. Widening f32 to f64 is exact, so
 /// one f64 path serves both source widths. No NZCV write: none of these
 /// touches the flags.
-#[allow(clippy::too_many_arguments)]
 fn exec_fp_to_int(
     op: FpToIntOp, rd: u8, fn_: u8, sf: bool, single: bool, fbits: u8,
     regs: &mut RegisterFile,
@@ -1105,7 +1104,6 @@ fn exec_fp_to_int(
 
 /// SCVTF / UCVTF. The only difference is how the source register's bits
 /// are read; -1 is the value where the two answers diverge maximally.
-#[allow(clippy::too_many_arguments)]
 fn exec_fp_from_int(
     op: FpFromIntOp, fd: u8, rn: u8, sf: bool, single: bool, fbits: u8,
     regs: &mut RegisterFile,
