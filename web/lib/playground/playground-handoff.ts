@@ -25,10 +25,10 @@ import {
 
 /**
  * Which surface owns the pane at run press: a live terminal session
- * ("terminal") or the classic console flow ("console"). It is NOT a
- * statement about whether the program may ever own the pane -- a raw-mode
- * program still takes the terminal mid-run under either value, and
- * `./name` still runs anything in the pane.
+ * ("terminal") or the classic console flow ("console"). It is NOT a statement
+ * about whether the program may ever own the pane: a raw-mode program still
+ * takes the terminal mid-run under either value, and `./name` still runs
+ * anything in the pane.
  */
 export type LaunchMode = "terminal" | "console";
 
@@ -52,8 +52,8 @@ export interface HandoffPayload {
    *  inherits another workspace's helpers. */
   files?: SourceFile[];
   /** Who owns the pane when this program's run is pressed. Absent means
-   *  console -- the same thing an absent flag meant before the field had
-   *  two names. */
+   *  console, the same thing an absent flag meant before the field had two
+   *  names. */
   launch?: LaunchMode;
   /** The example stem this payload came from, when it came from one. The
    *  label is the human name (and callers overwrite it), so the stem is
@@ -162,14 +162,13 @@ export type HandoffDecision =
   | null;
 
 /**
- * Decide what the post-mount pass must still deliver. A bundle or share
- * payload the boot already consumed returns null (hard load, nothing to
- * do); one the boot missed (client-side navigation read the previous
- * URL) is returned for delivery. An example stem is always delivered
- * here -- the boot never fetches -- but only when no share-state payload
- * is in the URL, so a link carrying both never overwrites the richer
- * payload with the example file. This is the pass that delivers a
- * `?bundle=` link: it runs after mount, so its caller can await
+ * Decide what the post-mount pass must still deliver. A bundle or share payload
+ * the boot already consumed returns null (hard load, nothing to do); one the
+ * boot missed (client-side navigation read the previous URL) is returned for
+ * delivery. An example stem is always delivered here (the boot never fetches),
+ * but only when no share-state payload is in the URL, so a link carrying both
+ * never overwrites the richer payload with the example file. This is the pass
+ * that delivers a `?bundle=` link: it runs after mount, so its caller can await
  * loadBundleDecoder and hand the decoder in.
  */
 export function resolveHandoff(
@@ -234,17 +233,6 @@ export const MAX_VFS_FIXTURE_FILES = 16;
 /** Longest VFS file name an example fixture may declare. */
 const MAX_VFS_FIXTURE_NAME_CHARS = 128;
 
-/**
- * Which examples carry input fixtures (`<stem>.args`, `<stem>.stdin`,
- * `<stem>.vfs.json` under the fixtures directory). Kept in exact sync
- * with the fixtures directory by a test, so a new fixture cannot land
- * without the loader delivering it.
- */
-/**
- * Extra source files a multi-file example loads into the files strip,
- * served from `<stem>/<name>` beside the main `<stem>.s`. Order is the
- * tab order.
- */
 /** Examples whose DEFAULT owner at run press is the terminal pane: run
  *  takes it over (clear, focus, live keys) instead of routing scanf to
  *  the console. Both entries draw a full-screen ANSI frame, which the
@@ -254,10 +242,10 @@ export const EXAMPLE_TERMINAL: Record<string, true> = {
   "two-sum": true,
 };
 
-/** Examples the run-mode control is offered for: the ones where both
- *  surfaces are a real answer. It gates a SURFACE, never behavior -- a
- *  program outside it runs exactly as it does today, and a stem listed
- *  here before its source lands simply never reaches the loader. */
+/** Examples the run-mode control is offered for: the ones where both surfaces
+ *  are a real answer. It gates a SURFACE, never behavior: a program outside it
+ *  runs unchanged, and a stem listed here before its source lands simply never
+ *  reaches the loader. */
 export const EXAMPLE_INTERACTIVE: Record<string, true> = {
   snake: true,
   dsav: true,
@@ -277,7 +265,7 @@ export const EXAMPLE_INTERACTIVE: Record<string, true> = {
  *  The rule the playground applies from it: for a stem listed here the mode
  *  OWNS the args box, at load and on every run-mode flip. That overrides the
  *  fixture args EXAMPLE_INPUTS seeds (temp-convert is in both tables), and it
- *  stops at the student -- a box edited to anything other than the two seeded
+ *  stops at the student: a box edited to anything other than the two seeded
  *  forms or the payload's own value is theirs and is left alone. */
 export const EXAMPLE_MODE_ARGS: Record<string, true> = {
   calc: true,
@@ -310,6 +298,11 @@ export function legacyModeArgsFor(stem: string | null | undefined): string | nul
   return `./${stem} console`;
 }
 
+/**
+ * Extra source files a multi-file example loads into the files strip,
+ * served from `<stem>/<name>` beside the main `<stem>.s`. Order is the
+ * tab order.
+ */
 export const EXAMPLE_FILES: Record<string, string[]> = {
   dsav: [
     "theme.s",
@@ -350,6 +343,12 @@ export const EXAMPLE_FILES: Record<string, string[]> = {
   ],
 };
 
+/**
+ * Which examples carry input fixtures (`<stem>.args`, `<stem>.stdin`,
+ * `<stem>.vfs.json` under the fixtures directory). Kept in exact sync
+ * with the fixtures directory by a test, so a new fixture cannot land
+ * without the loader delivering it.
+ */
 export const EXAMPLE_INPUTS: Record<
   string,
   { args?: true; stdin?: true; vfs?: true }
@@ -367,10 +366,10 @@ export const EXAMPLE_INPUTS: Record<
 };
 
 /**
- * Parse and bound a `<stem>.vfs.json` fixture: a flat JSON object of
- * file name to text content. Anything outside that shape, or outside
- * the size caps, throws -- the caller treats the payload as undeliverable
- * rather than seeding a partial or hostile file set.
+ * Parse and bound a `<stem>.vfs.json` fixture: a flat JSON object of file name
+ * to text content. Anything outside that shape, or outside the size caps,
+ * throws, and the caller treats the payload as undeliverable rather than
+ * seeding a partial or hostile file set.
  */
 export function parseVfsFixture(raw: string): Record<string, string> {
   let parsed: unknown;
