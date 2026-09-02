@@ -41,8 +41,11 @@ export function SiteFooter() {
         </div>
 
         <nav aria-label="footer" className="flex flex-col gap-2 font-sans text-sm">
+          {/* The footer routes are the fallback path, never the intended one:
+              nobody needs them warm, and four route prefetches fired from the
+              bottom of the landing race the hero for the same connection. */}
           {NAV_ROUTES.map((route) => (
-            <Link key={route.href} href={route.href} className={LINK_CLASS}>
+            <Link key={route.href} href={route.href} prefetch={false} className={LINK_CLASS}>
               {route.label}
             </Link>
           ))}
