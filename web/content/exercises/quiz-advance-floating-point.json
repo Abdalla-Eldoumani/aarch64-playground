@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Floating Point Instructions - Advanced",
+  "title": "Quiz: floating point",
   "slug": "quiz-advance-floating-point",
   "order": 69,
   "topic": "floating-point",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Work through the callee-saved `d` registers, the `fmov` immediate range, conversions between integers and floats, and the fused multiply-add family.",
+  "prompt": "The callee-saved `d` registers, the `fmov` immediate range, conversions between integers and floats, and the fused multiply-add family.",
   "questions": [
     {
       "question": "When a subroutine saves the callee-saved floating-point registers d8 to d15 on the stack, how much of the underlying 128-bit hardware register must actually be preserved?",
