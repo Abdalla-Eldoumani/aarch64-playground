@@ -585,13 +585,26 @@ body {
    The base stack doubles as the fallback where container queries are
    unsupported.
 ============================================================================= */
+/* The host frame every embed but the hero sits in. On a phone a fixed 560px
+   frame is most of the viewport before the page's own chrome, so the height
+   follows the small viewport instead: svh is the collapsed-toolbar height, so
+   the frame never hides under a mobile browser's expanding bar, and the vh
+   line above it is the fallback for engines that drop the svh declaration.
+   The floor keeps a landscape phone from squeezing the editor to nothing. */
+@media (max-width: 639.98px) {
+  .embed-frame {
+    height: min(72vh, 560px);
+    height: min(72svh, 560px);
+    min-height: 420px;
+  }
+}
 .embed-layout {
   container-type: inline-size;
 }
 .embed-grid {
   display: grid;
   grid-template-areas: "editor" "registers" "console";
-  grid-template-rows: minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
 }
 .embed-area-editor {
