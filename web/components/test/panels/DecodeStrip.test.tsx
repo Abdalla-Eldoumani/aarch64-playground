@@ -30,14 +30,14 @@ describe("DecodeStrip", () => {
     expect(text).toContain("(score1_r = w19)");
   });
 
-  it("shows the calm prompt when no line is active", () => {
+  it("shows the step prompt when no line is active", () => {
     render(<DecodeStrip source="    mov x0, 1\n" currentLine={null} />);
     const text = screen.getByLabelText("current instruction").textContent ?? "";
     expect(text.toLowerCase()).toContain("step the program");
   });
 
   it("renders the field row for the encoding and lights the destination", () => {
-    // movz x19, 42 -- verified machine word from the emulator's disassembly.
+    // movz x19, 42: machine word taken from the emulator's disassembly.
     render(
       <DecodeStrip source="main:\n    mov x19, 42\n" currentLine={2} encodingHex="0xd2800553" />,
     );
