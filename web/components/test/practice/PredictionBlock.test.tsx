@@ -43,3 +43,24 @@ describe("PredictionBlock", () => {
     expect(input.value).toBe("");
   });
 });
+
+describe("PredictionBlock controlled answer", () => {
+  it("renders the answer the sheet passes in", () => {
+    render(<PredictionBlock {...PROPS} value="0x1010" onValueChange={() => {}} />);
+    expect((screen.getByLabelText(PROPS.question) as HTMLInputElement).value).toBe("0x1010");
+  });
+
+  it("reports every keystroke", () => {
+    const onValueChange = vi.fn();
+    render(<PredictionBlock {...PROPS} value="" onValueChange={onValueChange} />);
+    fireEvent.change(screen.getByLabelText(PROPS.question), { target: { value: "0x10" } });
+    expect(onValueChange).toHaveBeenCalledWith("0x10");
+  });
+
+  it("still owns its answer when no value is passed", () => {
+    render(<PredictionBlock {...PROPS} />);
+    const input = screen.getByLabelText(PROPS.question) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "0x1010" } });
+    expect(input.value).toBe("0x1010");
+  });
+});
