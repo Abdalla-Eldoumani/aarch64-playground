@@ -24,8 +24,8 @@ import {
 } from "@/lib/worker/protocol";
 
 // Every heartbeat is a postMessage, so they are paced: one per chunk would
-// flood the very thread the pacing exists to keep responsive. Only the
-// snapshot fan-out rides this pace; pause and epoch are read every chunk.
+// flood the main thread. Only the snapshot fan-out is paced; pause and epoch
+// are read every chunk.
 const HEARTBEAT_INTERVAL_MS = 50;
 
 let emulator: Emulator | null = null;
@@ -67,8 +67,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
   try {
     switch (msg.kind) {
       case "init": {
-        // Respond with the empty snapshot immediately; defer the WASM
-        // fetch to the first state-mutating message.
+        // The WASM fetch waits for the first state-mutating message.
         post({ id: msg.id, kind: "ok", value: snapshot() });
         return;
       }
@@ -183,8 +182,9 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         const emu = require_emulator();
         // A line the student typed at a prompt is echoed by the machine at
         // consume time, so the transcript reads like a cooked-mode terminal.
-        // A redirect never echoes, and neither does an older wasm build --
-        // it falls back to the silent queue instead of crashing the worker.
+        // A redirect never echoes, and neither does an older wasm build,
+        // which falls back to the silent queue instead of crashing the
+        // worker.
         const interactive = (emu as { push_stdin_interactive?: (s: string) => void })
           .push_stdin_interactive;
         if (msg.interactive && typeof interactive === "function") {
@@ -199,7 +199,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
       case "lint": {
         await ensureWasm();
         const emu = require_emulator();
-        // Feature-detect: an older local wasm build simply has no lint.
+        // Feature-detect: an older local wasm build has no lint.
         const probe = (emu as { lint_source?: (s: string) => unknown }).lint_source;
         const warnings = typeof probe === "function" ? probe.call(emu, msg.source) : [];
         post({ id: msg.id, kind: "ok", value: warnings });
@@ -209,7 +209,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         await ensureWasm();
         const emu = require_emulator();
         // Feature-detect: an older local wasm build reports everything
-        // mapped, degrading to the previous zero-fill behavior.
+        // mapped, so unmapped reads zero-fill.
         const probe = (emu as { is_range_mapped?: (a: number, l: number) => boolean })
           .is_range_mapped;
         const mapped = typeof probe === "function" ? probe.call(emu, msg.addr, msg.len) : true;
@@ -362,8 +362,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         const addr = emu.resolve_label(msg.name);
         // wasm-bindgen returns Option<u64> as bigint | undefined; flatten to
         // number | null for the JS protocol.
-        const value =
-          addr == null ? null : typeof addr === "bigint" ? Number(addr) : Number(addr);
+        const value = addr == null ? null : Number(addr);
         post({ id: msg.id, kind: "ok", value });
         return;
       }
@@ -404,11 +403,8 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
     }
   } catch (e) {
     if (isDeadInstance(e)) {
-      // The instance cannot be used again: a wasm trap skips
-      // wasm-bindgen's borrow-guard Drop, so the guard stays latched and
-      // every later call throws on it. Dropping both makes the next
-      // mutating message build a fresh machine instead of wedging the
-      // playground until the student reloads the page.
+      // Dropping both makes the next mutating message build a fresh machine
+      // instead of wedging the playground until the student reloads the page.
       emulator = null;
       wasmReady = null;
     }
@@ -433,9 +429,9 @@ function bumpFrame(): void {
 
 /**
  * The emulator's address bands, read once from the module-level export and
- * kept: the layout is fixed for the life of the module. Feature-detected
- * like every optional surface -- an older local wasm build has no map, and
- * the memory panel then falls back to its own section list.
+ * kept: the layout is fixed for the life of the module. Feature-detected like
+ * every optional surface: an older local wasm build has no map, and the
+ * memory panel then falls back to its own section list.
  */
 function readMemoryMap(): MemoryRegion[] {
   if (regions) return regions;
@@ -447,10 +443,7 @@ function readMemoryMap(): MemoryRegion[] {
 function snapshot(): StateSnapshot {
   if (!emulator) {
     // WASM is instantiated lazily on the first mutating message, so `init`
-    // and any pre-assemble snapshot run with no emulator. Return the shared
-    // reset snapshot (a full 31-register file, not an empty array) so the
-    // cold register panel shows every register instead of collapsing to
-    // SP/PC, matching the main-thread backend.
+    // and any pre-assemble snapshot run with no emulator.
     return emptyStateSnapshot(frame);
   }
   const regs = emulator.get_all_registers() as {
@@ -473,7 +466,7 @@ function snapshot(): StateSnapshot {
   const wantsTerminal = emulatorTerm.wants_terminal?.() ?? false;
   // The external call the pc sits inside, read on every snapshot (the
   // wasm side only reads state). Optional export: an older cached WASM
-  // reports null and the stepping surfaces stay exactly as they were.
+  // reports null, which hides the feature.
   const externalCall = readExternalCall(emulator);
   // Drain stdout/stderr so React can append the delta as new bytes
   // arrive (versus polling the full buffer each frame).
@@ -481,7 +474,7 @@ function snapshot(): StateSnapshot {
   const stderrDelta = emulator.take_stderr();
   // Optional display counters, feature-detected like every other surface:
   // absent on an older cached WASM, and the web then keeps its scrollback
-  // append-only exactly as before.
+  // append-only.
   const emulatorSeen = emulator as unknown as {
     stdout_seen?: () => number;
     stderr_seen?: () => number;
