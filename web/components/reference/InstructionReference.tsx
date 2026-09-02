@@ -413,7 +413,7 @@ export function InstructionReference({
             {benchFor === current.mnemonic ? (
               // Fixed frame so the editor loading never shifts the page; the
               // embed carries the exact payload the deep link would.
-              <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+              <div className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px]">
                 <EmbeddablePlayground
                   key={current.mnemonic}
                   chrome="embed"
