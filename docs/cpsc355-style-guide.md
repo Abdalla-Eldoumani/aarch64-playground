@@ -45,7 +45,7 @@ the author meant:
 - m4 substitutes a macro name **anywhere** it appears as a whole word,
   including inside `"..."` strings and `'.'` character literals.
   `define(register, w19)` turns `.string "register count:"` into
-  `.string "w19 count:"` -- on the server and here alike. Escapes are
+  `.string "w19 count:"`, on the server and here alike. Escapes are
   not special either: `define(n, w19)` rewrites a later `"\n"` into
   `"\w19"`. Rename the macro (`register_r`).
 - m4 binds **sequentially**: a name used above its `define(...)` line
@@ -194,7 +194,7 @@ Pre-registered syscalls (via `svc 0` with the syscall number in `x8`):
 Plus the interactive set a terminal program reaches for:
 
 ```
-29  ioctl          (TCGETS / TCSETS termios -- the raw-mode handshake)
+29  ioctl          (TCGETS / TCSETS termios, the raw-mode handshake)
 25  fcntl          (F_GETFL / F_SETFL, O_NONBLOCK on stdin)
 101 nanosleep      (pauses the run; the virtual clock advances)
 113 clock_gettime  (the virtual clock, so replay stays deterministic)
@@ -228,6 +228,6 @@ The corpus follows a convention that shows up in the alias names:
 | `_s`   | stack-frame slot (bytes)       | `score2_s = 20`            |
 | `_m`   | `.data` / `.bss` object        | `count_m: .word 0`         |
 
-Following this convention keeps `lower_operands` honest: when it sees
-`[fp, score2_s]` it looks up `score2_s` in the symbol table, substitutes
-`20`, and hands `[fp, 20]` to the encoder.
+`lower_operands` relies on this convention: when it sees `[fp, score2_s]`
+it looks up `score2_s` in the symbol table, substitutes `20`, and hands
+`[fp, 20]` to the encoder.
