@@ -1,6 +1,9 @@
 "use client";
 
-import { decodeBundle, type DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
+import type {
+  BundleReadResult,
+  DiagnosticBundle,
+} from "@/lib/playground/diagnostic-bundle";
 import type { LaunchMode } from "@/lib/playground/playground-handoff";
 import type { Theme } from "@/lib/hooks/use-theme";
 
@@ -20,11 +23,21 @@ export interface DeepLink {
 }
 
 /**
+ * The bundle codec's read, taken as an argument rather than imported.
+ * Decoding is what pulls lz-string in, and the landing hero reaches this
+ * module through EmbeddablePlayground -> useLaunchMode -> playground-handoff
+ * without ever decoding a bundle; only the playground route supplies one.
+ */
+export type BundleDecoder = (value: string | null) => BundleReadResult;
+
+/**
  * Parse the URL query string into a deep-link record. Pure so that
  * tests don't need a window. Unknown values for typed params are
- * dropped (treated as undefined) rather than passing through.
+ * dropped (treated as undefined) rather than passing through. With no
+ * decoder supplied a `?bundle=` is left undecoded, so `bundle` and
+ * `bundleError` stay absent.
  */
-export function parseDeepLink(search: string): DeepLink {
+export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink {
   const trimmed = search.startsWith("?") ? search.slice(1) : search;
   const params = new URLSearchParams(trimmed);
   const result: DeepLink = { embed: false };
@@ -45,10 +58,10 @@ export function parseDeepLink(search: string): DeepLink {
 
   result.embed = params.get("embed") === "1";
 
-  const bundle = decodeBundle(params.get("bundle"));
-  if (bundle.kind === "ok") {
+  const bundle = decode?.(params.get("bundle"));
+  if (bundle?.kind === "ok") {
     result.bundle = bundle.bundle;
-  } else if (bundle.kind === "corrupt" || bundle.kind === "too-large") {
+  } else if (bundle?.kind === "corrupt" || bundle?.kind === "too-large") {
     result.bundleError = bundle.kind;
   }
 
