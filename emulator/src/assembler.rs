@@ -256,9 +256,9 @@ fn encode_line(
         "UXTH" => encode_extend(&ops, false, 15, line_num),
 
         // -- bitfield extract / insert (SBFM / UBFM / BFM aliases) --
-        "UBFX" => encode_bfx(&ops, false, line_num),
-        "SBFX" => encode_bfx(&ops, true, line_num),
-        "BFI" => encode_bfi(&ops, line_num),
+        "UBFX" => encode_bitfield_alias(&ops, "UBFX", 0b10, BitfieldForm::Extract, line_num),
+        "SBFX" => encode_bitfield_alias(&ops, "SBFX", 0b00, BitfieldForm::Extract, line_num),
+        "BFI"  => encode_bitfield_alias(&ops, "BFI",  0b01, BitfieldForm::Insert,  line_num),
 
         // -- multiply / divide --
         "MUL" => encode_mul_div(&ops, 0, line_num),
@@ -1033,13 +1033,24 @@ fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     encode_log_reg(ops, 0b00, true, ln)
 }
 
-/// Encode `UBFX/SBFX Rd, Rn, #lsb, #width` (bitfield extract), the
-/// course's pull-a-field-out instructions. Both lower onto a bitfield move
-/// with `immr = lsb`, `imms = lsb + width - 1`; UBFX zero-extends the
-/// field (UBFM) and SBFX sign-extends it (SBFM). The executor's existing
-/// `Bitfield` path does the extract-and-extend for either.
-fn encode_bfx(ops: &[&str], signed: bool, ln: usize) -> Result<u32, EmuError> {
-    let name = if signed { "SBFX" } else { "UBFX" };
+/// The two field layouts every SBFM/UBFM/BFM alias uses. `Extract` is the
+/// `Rd, Rn, #lsb, #width` reading UBFX/SBFX/BFXIL share; `Insert` is the
+/// one UBFIZ/SBFIZ/BFI share. Splitting them out is what lets six aliases
+/// be six dispatch arms instead of six copies of the same validation.
+enum BitfieldForm {
+    /// UBFX / SBFX / BFXIL: immr = lsb, imms = lsb + width - 1.
+    Extract,
+    /// UBFIZ / SBFIZ / BFI: immr = (size - lsb) % size, imms = width - 1.
+    Insert,
+}
+
+/// Encode one bitfield alias onto SBFM/UBFM/BFM. `opc` is the ARM opc
+/// field (00 = SBFM, 10 = UBFM, 01 = BFM) and `form` picks which of the
+/// two immr/imms formulas the alias uses. N tracks sf, as it does for
+/// every valid bitfield encoding.
+fn encode_bitfield_alias(
+    ops: &[&str], name: &str, opc: u32, form: BitfieldForm, ln: usize,
+) -> Result<u32, EmuError> {
     if ops.len() != 4 {
         return asm_err(ln, &format!("{name} requires 4 operands: Rd, Rn, #lsb, #width"));
     }
@@ -1059,11 +1070,12 @@ fn encode_bfx(ops: &[&str], signed: bool, ln: usize) -> Result<u32, EmuError> {
         return asm_err(ln, &format!("{name} field runs past the top of the register"));
     }
 
-    let immr = lsb as u32;
-    let imms = (lsb + width - 1) as u32;
+    let (immr, imms) = match form {
+        BitfieldForm::Extract => (lsb as u32, (lsb + width - 1) as u32),
+        BitfieldForm::Insert => (((reg_size - lsb) % reg_size) as u32, (width - 1) as u32),
+    };
     let sf_bit = if sf { 1u32 } else { 0 };
-    let n_bit = sf_bit; // N matches sf for the valid SBFM/UBFM encodings
-    let opc: u32 = if signed { 0b00 } else { 0b10 };
+    let n_bit = sf_bit; // N matches sf for the valid SBFM/UBFM/BFM encodings
     Ok((sf_bit << 31) | (opc << 29) | (0b100110 << 23) | (n_bit << 22)
         | (immr << 16) | (imms << 10) | ((rn as u32) << 5) | (rd as u32))
 }
@@ -1105,38 +1117,6 @@ fn encode_ror(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     let (rm, _) = parse_register(op3, ln)?;
     Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
         | (0b001011 << 10) | ((rn as u32) << 5) | (rd as u32))
-}
-
-/// Encode `BFI Rd, Rn, #lsb, #width` (bitfield insert): drop the low
-/// `width` bits of Rn into Rd starting at `lsb`, leaving Rd's other bits
-/// alone. Lowers onto BFM with `immr = (reg_size - lsb) % reg_size`,
-/// `imms = width - 1`.
-fn encode_bfi(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
-    if ops.len() != 4 {
-        return asm_err(ln, "BFI requires 4 operands: Rd, Rn, #lsb, #width");
-    }
-    let (rd, sf) = parse_register(ops[0], ln)?;
-    let (rn, _) = parse_register(ops[1], ln)?;
-    let lsb = parse_immediate(ops[2], ln)?;
-    let width = parse_immediate(ops[3], ln)?;
-    let reg_size: i64 = if sf { 64 } else { 32 };
-
-    if width < 1 {
-        return asm_err(ln, "BFI width must be at least 1");
-    }
-    if lsb < 0 || lsb >= reg_size {
-        return asm_err(ln, "BFI lsb is out of range for the register width");
-    }
-    if lsb + width > reg_size {
-        return asm_err(ln, "BFI field runs past the top of the register");
-    }
-
-    let immr = ((reg_size - lsb) % reg_size) as u32;
-    let imms = (width - 1) as u32;
-    let sf_bit = if sf { 1u32 } else { 0 };
-    let n_bit = sf_bit;
-    Ok((sf_bit << 31) | (0b01 << 29) | (0b100110 << 23) | (n_bit << 22)
-        | (immr << 16) | (imms << 10) | ((rn as u32) << 5) | (rd as u32))
 }
 
 fn encode_mvn(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
