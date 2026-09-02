@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Binary Logic & Numbers - Advanced",
+  "title": "Quiz: binary logic",
   "slug": "quiz-advance-binary-logic",
   "order": 34,
   "topic": "binary-logic",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Work through bitfield insert and extract, arithmetic versus logical shifts, and two's complement negation on AArch64.",
+  "prompt": "Bitfield insert and extract, arithmetic versus logical shifts, and two's complement negation.",
   "questions": [
     {
       "question": "Why must asr be used instead of lsr when dividing a negative signed integer by a power of two?",
