@@ -46,7 +46,7 @@
     {
       "question": "Why does ldp x29, x30, [sp], 16 use post-indexed addressing when the function returns?",
       "options": [
-        "To ensure the stack remains full and descending.",
+        "To keep the stack full and descending.",
         "Because it restores the frame record from the current sp first, then increments sp to deallocate the 16 bytes.",
         "Because fp is unstable during stack-frame teardown.",
         "To prevent alignment faults on x30."
