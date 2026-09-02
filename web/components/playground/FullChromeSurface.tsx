@@ -67,8 +67,8 @@ import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 /**
  * The handful of full-chrome actions the shell defers to. The shell owns the
  * program buffer and the imperative handle, but some of what it does to them
- * -- adopting a payload's launch, dropping the console watermark, resetting
- * through a live terminal session -- exists only on this surface, and this
+ * (adopting a payload's launch, dropping the console watermark, resetting
+ * through a live terminal session) exists only on this surface, and this
  * surface loads lazily. So it publishes them upward when it mounts and the
  * shell reads them through a ref, falling back to the plain machine where they
  * are absent (embed and checker, which never load this module).
@@ -136,7 +136,7 @@ export interface FullChromeSurfaceProps {
 /**
  * The playground's own half of the shared shell: the header band, the files
  * strip, the three-column resizable layout with its eight machine views, the
- * controls, the tour -- and the two hooks only this surface has a use for, the
+ * controls, the tour, and the two hooks only this surface has a use for, the
  * launch mode and the terminal drive.
  *
  * Its own module, reached through dynamic(), because everything named above is
@@ -206,8 +206,6 @@ export function FullChromeSurface({
     adoptLaunch,
     reset: resetLaunch,
   } = useLaunchMode({ args: argsText, setArgs: setArgsText });
-  // A share-link boot carries its own workspace: replace the persisted
-  // files strip once, before the first assemble can mix the two.
   const importTarget = getImportTarget(activeFile);
 
   const handleImport = useCallback(
@@ -273,13 +271,12 @@ export function FullChromeSurface({
     requestPane,
   });
   // The one-action interactive launch: assemble, then hand the pane over.
-  // Reached from the palette's launch action and from a run press in
-  // terminal mode with nothing assembled -- the state that used to be a
-  // silent no-op. It bypasses handleRun's finished-screen guard on
-  // purpose: that guard protects a completed program's output, and this
-  // just replaced the program with a freshly assembled one. The order
-  // matters -- the assemble must land before the nonce, or the drive's
-  // programLoaded standdown tears the session down at once.
+  // Reached from the palette's launch action and from a run press in terminal
+  // mode with nothing assembled. It bypasses handleRun's finished-screen guard
+  // on purpose: that guard protects a completed program's output, and this just
+  // replaced the program with a freshly assembled one. The order matters: the
+  // assemble must land before the nonce, or the drive's programLoaded standdown
+  // tears the session down at once.
   const launchInteractive = useCallback(async () => {
     const ok = await assembleWithHistory();
     // The failure already renders in Controls' error box, and the pane is
@@ -288,25 +285,24 @@ export function FullChromeSurface({
     requestPane("term");
     requestTerminalRun();
   }, [assembleWithHistory, requestPane, requestTerminalRun]);
-  // Run in terminal mode: hand the program the pane up front -- switch
-  // the tab, then let the attach effect below start the drive once the
-  // pane's io registration lands (the pane mounts lazily on the tab
-  // switch, so the drive cannot start synchronously here).
+  // Run in terminal mode: hand the program the pane up front. Switch the tab,
+  // then let the attach effect below start the drive once the pane's io
+  // registration lands (the pane mounts lazily on the tab switch, so the drive
+  // cannot start synchronously here).
   const handleRun = useCallback(() => {
     if (launchMode === "terminal") {
-      // Cold load: nothing is assembled, so there is no screen to protect
-      // and nothing to hand over yet. This was a silent no-op; in terminal
-      // mode it becomes the one-action launch the mode promises. The run
-      // button is disabled here, so this is the F5 / palette / handle path.
+      // Cold load: nothing is assembled, so there is no screen to protect and
+      // nothing to hand over yet. This was a silent no-op; in terminal mode the
+      // press is the launch. The run button is disabled here, so this is the F5
+      // / palette / handle path.
       if (!emu.programLoaded) {
         void launchInteractive();
         return;
       }
-      // The terminal takeover WIPES the pane, so a finished or already
-      // running program is left alone: without this, F5 and the palette
-      // cleared a finished program's output and printed an exit line onto
-      // an empty screen. An assembled program hands over without
-      // re-assembling -- the same run press it has always been.
+      // The terminal takeover WIPES the pane, so a finished or already running
+      // program is left alone: without this, F5 and the palette cleared a
+      // finished program's output and printed an exit line onto an empty
+      // screen. An assembled program hands over without re-assembling.
       if (emu.isHalted || emu.isRunning) return;
       requestPane("term");
       requestTerminalRun();
@@ -398,11 +394,11 @@ export function FullChromeSurface({
   // The decode strip reads the line under the pc out of the source it is
   // handed, and `emu.currentLine` is a COMBINED-string line. Handing it
   // main.asm alone indexed past the end for any pc inside a helper, so the
-  // gloss fell to its placeholder for the whole of a multi-file program --
-  // and helper `define` aliases never labelled a register.
-  // Keyed on the pin alone, so the concatenation happens once per assemble
-  // rather than on every keystroke of a large workspace. Nothing is pinned
-  // before the first assemble, and with no program there is no line to gloss.
+  // gloss fell to its placeholder for the whole of a multi-file program, and
+  // helper `define` aliases never labelled a register. Keyed on the pin alone,
+  // so the concatenation happens once per assemble rather than on every
+  // keystroke of a large workspace. Nothing is pinned before the first
+  // assemble, and with no program there is no line to gloss.
   const pinnedCombined = useMemo(() => {
     if (!assembledLayout) return null;
     return assembledLayout.extras.length > 0
@@ -466,10 +462,10 @@ export function FullChromeSurface({
   const bpLayoutRef = useRef<Workspace>({ main: source, extras: extraFiles });
   // The shell's own latest-value refs are synced from ITS effects, and a
   // child's effects run before its parent's, so the hub and the workspace read
-  // through them here would both be one render stale -- and a re-anchor keyed
-  // on the shape gets exactly one chance at each change. This mirror is
-  // written from the effect declared immediately above the reader, and effects
-  // in one component run in declaration order.
+  // through them here would both be one render stale, and a re-anchor keyed on
+  // the shape gets exactly one chance at each change. This mirror is written
+  // from the effect declared immediately above the reader, and effects in one
+  // component run in declaration order.
   const latestRef = useRef({
     machine: emu,
     workspace: { main: source, extras: extraFiles } as Workspace,
@@ -533,9 +529,9 @@ export function FullChromeSurface({
         onRestoreBackup={filesBackup.restore}
         onAdd={(name) => {
           // A second tab with the same name strands one of them: a re-import
-          // refreshes only the first. A tab called main.asm is worse -- it
-          // still concatenates, and `resolveLine` labels its diagnostics
-          // main.asm too, so the student hunts the error in the wrong buffer.
+          // refreshes only the first. A tab called main.asm is worse: it still
+          // concatenates, and `resolveLine` labels its diagnostics main.asm
+          // too, so the student hunts the error in the wrong buffer.
           const reason = validateFileName(name, extraFiles);
           if (reason) {
             toast.error(reason);
@@ -591,9 +587,9 @@ export function FullChromeSurface({
   const disasmBlock = (
     <div className="h-full overflow-auto">
       {emu.instructions.length === 0 ? (
-        // Cold load / nothing assembled: the designed first-run hero, not a
-        // blank dense IDE. Replaces InstructionView's bare "no program
-        // assembled" line with a brief what-this-is / what-to-press lead.
+        // Cold load / nothing assembled: FirstRunState replaces
+        // InstructionView's bare "no program assembled" line with a
+        // what-this-is / what-to-press lead.
         <FirstRunState onAssemble={assembleWithHistory} />
       ) : (
         <ErrorBoundary label="disassembly">
@@ -613,9 +609,9 @@ export function FullChromeSurface({
   const regsBlock = (
     <ErrorBoundary label="registers">
       <div className="h-full flex flex-col">
-        {/* The prominent, always-on decode strip heads the registers column --
-            the beginner's lifeline: the plain-language gloss plus the live
-            bit-field view of the word under the program counter. */}
+        {/* The always-on decode strip heads the registers column: the
+            plain-language gloss plus the live bit-field view of the word under
+            the program counter. */}
         <DecodeStrip
           source={decodeSource}
           currentLine={emu.currentLine}
@@ -625,7 +621,8 @@ export function FullChromeSurface({
           externalCall={
             // A live terminal session steps through libc calls constantly and
             // its input lands in the terminal pane, so the card's console
-            // wording would be wrong there; the strip reads as it always has.
+            // wording would be wrong there; the strip reads as it does for any
+            // other run.
             emu.externalCall && !foregroundLive
               ? { name: emu.externalCall.name, waiting: emu.blocked }
               : null
@@ -652,11 +649,11 @@ export function FullChromeSurface({
     </ErrorBoundary>
   );
 
-  // Every panel block wraps in its own ErrorBoundary: the blocks mount in
-  // three different layouts, so wrapping at the definition covers them all,
-  // and a tab switch remounts a failed one fresh. The editor stays unwrapped
-  // on purpose; with the buffer surface itself broken, the route-level fault
-  // page is the honest state.
+  // Every panel block wraps in its own ErrorBoundary: the blocks mount in three
+  // different layouts, so wrapping at the definition covers them all, and a tab
+  // switch remounts a failed one fresh. The editor stays unwrapped on purpose;
+  // with the buffer surface itself broken, the route-level fault page is the
+  // right fallback.
   const memoryBlock = (
     <ErrorBoundary label="memory">
       <MemoryPanel
@@ -876,8 +873,8 @@ export function FullChromeSurface({
         isHalted={emu.isHalted}
         programLoaded={emu.programLoaded}
         // Terminal mode's run press on a cold load assembles and starts the
-        // session, so the button must be reachable by mouse -- otherwise
-        // the one-action launch exists only for the keyboard.
+        // session, so the button must be reachable by mouse, or the one-action
+        // launch exists only for the keyboard.
         runAssemblesFirst={launchable}
         blocked={emu.blocked}
         error={controlsError}
