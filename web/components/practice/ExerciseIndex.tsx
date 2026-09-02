@@ -161,7 +161,7 @@ function ProgressRow(): JSX.Element {
           toast.success(`imported ${result.added} solved ${noun}`);
         })
         .catch(() => {
-          toast.error("could not read that file -- try picking it again");
+          toast.error("could not read that file. pick it again");
         });
     },
     [toast],
@@ -296,7 +296,7 @@ function SideColumn({
         </p>
       </div>
       {rows.length === 0 ? (
-        <EmptyCard message="No exercises match your search." />
+        <EmptyCard message="no exercises match that search" />
       ) : (
         <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
           {groups.map((group) => (
@@ -394,7 +394,7 @@ export function ExerciseIndex({
   }
 
   if (rows.length === 0) {
-    return <EmptyCard message="No exercises yet." />;
+    return <EmptyCard message="no exercises yet" />;
   }
 
   return (
@@ -402,14 +402,14 @@ export function ExerciseIndex({
       <div className="space-y-3">
         <div>
           <label htmlFor={searchId} className="sr-only">
-            Search exercises
+            search exercises
           </label>
           <input
             id={searchId}
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search exercises"
+            placeholder="search exercises"
             className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:shadow-[var(--ring)]"
           />
         </div>

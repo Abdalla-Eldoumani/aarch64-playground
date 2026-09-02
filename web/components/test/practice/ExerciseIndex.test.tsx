@@ -94,7 +94,7 @@ describe("ExerciseIndex", () => {
 
   it("filters by the search query (title and topic) with an accessible search name", () => {
     render(<ExerciseIndex exercises={exercises} />);
-    const input = screen.getByLabelText("Search exercises");
+    const input = screen.getByLabelText("search exercises");
     fireEvent.change(input, { target: { value: "Alpha" } });
     expect(screen.getByText("Alpha Exercise")).toBeTruthy();
     expect(screen.queryByText("Beta Exercise")).toBeNull();
@@ -153,7 +153,7 @@ describe("ExerciseIndex", () => {
       makeRow({ title: "Beta", slug: "beta", order: 2, blurb: "unrelated" }),
     ];
     render(<ExerciseIndex exercises={rows} />);
-    fireEvent.change(screen.getByLabelText("Search exercises"), {
+    fireEvent.change(screen.getByLabelText("search exercises"), {
       target: { value: "elimination" },
     });
     expect(screen.getByText("Alpha")).toBeTruthy();
@@ -171,16 +171,16 @@ describe("ExerciseIndex", () => {
 
   it("renders the empty state when there are no exercises", () => {
     const { container } = render(<ExerciseIndex exercises={[]} />);
-    expect(screen.getByText("No exercises yet.")).toBeTruthy();
+    expect(screen.getByText("no exercises yet")).toBeTruthy();
     expect(container.querySelector('a[href^="/practice/"]')).toBeNull();
   });
 
   it("renders the no-match state when the query matches nothing", () => {
     render(<ExerciseIndex exercises={exercises} />);
-    fireEvent.change(screen.getByLabelText("Search exercises"), {
+    fireEvent.change(screen.getByLabelText("search exercises"), {
       target: { value: "zzznomatch" },
     });
-    expect(screen.getByText("No exercises match your search.")).toBeTruthy();
+    expect(screen.getByText("no exercises match that search")).toBeTruthy();
   });
 
   it("renders the loading skeleton instead of the list", () => {
