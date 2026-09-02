@@ -21,8 +21,7 @@ interface RegisterPanelProps {
 
 // nzcv packs N at bit 3, Z at bit 2, C at bit 1, V at bit 0 (see the
 // emulator's NzcvFlags::pack). Rendered left-to-right against `bitPos = 3 - i`
-// so each label reads its own bit, in the conventional ARM N Z C V order --
-// the prior ["V","C","Z","N"] paired every label with the wrong bit.
+// so each label reads its own bit, in the conventional ARM N Z C V order.
 const FLAG_NAMES = ["N", "Z", "C", "V"];
 
 const VIEW_KEY = "aarch64-playground:regfile-view";
@@ -75,8 +74,8 @@ export function RegisterPanel({
   nzcv,
 }: RegisterPanelProps) {
   // 16 nibbles like every other row: PC renders through the same RegisterRow
-  // as x0-x30 and SP, whose values are already 64-bit wide, so the column is
-  // sized for it and the short form only made one row disagree.
+  // as x0-x30 and SP, whose values are already 64-bit wide, so PC uses the
+  // same width as the rest of the column.
   const pcHex = formatWord64(pc);
 
   // The d-view exists only when the loaded WASM exposes FP registers.
@@ -119,7 +118,7 @@ export function RegisterPanel({
 
   // Auto-follow the executing instruction's register class: a step that
   // writes a d-register flips to the fp file, an integer-only write flips
-  // back, so a mixed program narrates itself without manual switching. The
+  // back, so a mixed program needs no manual switching. The
   // toggle still works between steps (a click just sets the view the next
   // write may move again); a step that writes both files, or none, leaves
   // the student's choice alone.
