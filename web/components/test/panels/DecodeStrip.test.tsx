@@ -52,6 +52,24 @@ describe("DecodeStrip", () => {
     expect(screen.getByText("0xd2800553")).toBeTruthy();
   });
 
+  it("keeps a bit string on one line and floors its cell to its own width", () => {
+    // Same movz x19, 42 word: Rd is the five bits 10011.
+    render(
+      <DecodeStrip source="main:
+    mov x19, 42
+" currentLine={2} encodingHex="0xd2800553" />,
+    );
+    const row = screen.getByRole("img", { name: /instruction encoding/ });
+    const value = Array.from(row.querySelectorAll("span")).find(
+      (span) => span.textContent === "10011",
+    );
+    expect(value).toBeTruthy();
+    expect(value!.className).toContain("whitespace-nowrap");
+    expect(value!.className).not.toContain("break-all");
+    // The cell floors on its own content rather than on a computed advance.
+    expect(value!.parentElement!.className).toContain("min-w-max");
+  });
+
   it("renders no field row before the program is assembled", () => {
     render(<DecodeStrip source="    mov x0, 1\n" currentLine={null} encodingHex={null} />);
     expect(screen.queryByRole("img")).toBeNull();
