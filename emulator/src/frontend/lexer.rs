@@ -1,5 +1,5 @@
 //! Token stream for cpsc 355 assembly. Runs after m4 expansion, so it does
-//! not see `define(...)` or the assignment form -- those are gone by now.
+//! not see `define(...)` or the assignment form: those are gone by now.
 //!
 //! The lexer classifies at the cheapest possible level. It does not know
 //! which identifiers are mnemonics or registers (the parser decides that
@@ -61,8 +61,8 @@ pub enum TokenKind {
 }
 
 /// Render one token the way it reads in source, for error messages. The
-/// derived Debug form leaked compiler internals (``unexpected token
-/// `StringLit([104, 105])```) into student-facing errors.
+/// derived Debug form shows compiler internals (`StringLit([104, 105])`),
+/// which no student-facing error should carry.
 pub fn describe(kind: &TokenKind) -> String {
     match kind {
         TokenKind::Ident(s) | TokenKind::DirectiveIdent(s) => format!("`{s}`"),
@@ -419,9 +419,9 @@ fn is_id_continue(b: u8) -> bool {
 
 fn is_int_body(b: u8) -> bool {
     // Accept characters valid across decimal, hex, binary, and octal forms.
-    // `parse_int` does the per-prefix validation. Note b'a'..=b'f' already
-    // covers b'b', and b'A'..=b'F' covers b'B', so the hex ranges include
-    // the binary-prefix letters.
+    // `parse_int` does the per-prefix validation. b'a'..=b'f' already covers
+    // b'b' and b'A'..=b'F' covers b'B', so the hex ranges include the
+    // binary-prefix letters.
     matches!(b,
         b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'x' | b'X' | b'_'
     )
@@ -432,7 +432,7 @@ fn is_float_body(b: u8) -> bool {
 }
 
 fn parse_int(text: &str) -> Option<i64> {
-    // Strip internal underscores, per the brief's tolerance for readability.
+    // Strip internal underscores: `0x0040_0000` is the course spelling.
     let clean: String = text.chars().filter(|c| *c != '_').collect();
     let s = clean.as_str();
     // Hex/binary parse as u64 first so values with the top bit set
@@ -447,9 +447,9 @@ fn parse_int(text: &str) -> Option<i64> {
     // Leading-zero octal a la GAS. "0" alone is decimal zero. A digit
     // outside 0-7 makes the whole literal invalid rather than decimal:
     // GAS reads `018` as the octal `01` and then rejects the stray `8`,
-    // so falling through to decimal handed back 18 for a literal the real
-    // assembler never accepts -- and 017 already meant 15 here, so the
-    // radix silently changed between two adjacent-looking numbers.
+    // so falling through to decimal would answer 18 for a literal GAS
+    // refuses, while `017` already means 15 here: the radix would change
+    // between two adjacent-looking numbers.
     if s.len() > 1 && s.starts_with('0') {
         if !s.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
             return None;
@@ -460,7 +460,7 @@ fn parse_int(text: &str) -> Option<i64> {
 }
 
 /// Message for an integer literal the lexer cannot read. A leading zero
-/// means octal, so `018` is not decimal 18 -- naming the rule saves the
+/// means octal, so `018` is not decimal 18: naming the rule saves the
 /// student from reading it as a typo in the emulator.
 fn integer_error(text: &str) -> String {
     let clean: String = text.chars().filter(|c| *c != '_').collect();
@@ -546,8 +546,8 @@ fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
         b'r' => Ok((b'\r' as u32, 2)),
         d @ b'0'..=b'7' => {
             // GAS octal escape: backslash + 1 to 3 octal digits, value mod
-            // 256. `\0` alone is still NUL; `\012` is a newline; `\101` is
-            // 'A'. The old arm only handled `\0` and rejected `\1`..`\7`.
+            // 256. `\0` alone is still NUL; `\012` is a newline; `\101`
+            // is 'A'.
             let mut val = u32::from(d - b'0');
             let mut consumed = 2; // backslash + first digit
             while consumed < 4
@@ -565,10 +565,10 @@ fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
         b'x' | b'X' => {
             // GAS consumes as many hex digits as follow the `x` and keeps
             // the low byte: `"\xA"` is one newline and `"\x123"` is 0x23.
-            // The old fixed two-digit window rejected the first outright
-            // and split the second into 0x12 plus a literal '3'. Masking
-            // each round is the same as masking at the end, since the low
-            // byte of a base-16 accumulation only ever depends on itself.
+            // A fixed two-digit window would reject the first and split the
+            // second into 0x12 plus a literal '3'. Masking each round is the
+            // same as masking at the end, since the low byte of a base-16
+            // accumulation only ever depends on itself.
             let mut value: u32 = 0;
             let mut consumed = 2;
             while consumed < bytes.len() && bytes[consumed].is_ascii_hexdigit() {
@@ -727,8 +727,7 @@ mod tests {
     #[test]
     fn string_literal_with_octal_escape() {
         // GAS octal: backslash + up to 3 octal digits (value mod 256).
-        // \101 = 'A', \0 = NUL, \11 = tab; the old
-        // lexer only handled \0 and rejected \1..\7.
+        // \101 = 'A', \0 = NUL, \11 = tab.
         assert_eq!(kinds(&lex(r#""\101""#, 1).unwrap()), vec![TokenKind::StringLit(b"A".to_vec())]);
         assert_eq!(kinds(&lex(r#""a\0b""#, 1).unwrap()), vec![TokenKind::StringLit(vec![b'a', 0, b'b'])]);
         assert_eq!(kinds(&lex(r#""\11""#, 1).unwrap()), vec![TokenKind::StringLit(vec![9u8])]);
@@ -744,8 +743,8 @@ mod tests {
     fn hex_escape_takes_every_digit_that_follows_like_gas() {
         // GAS on `.ascii "\xA" / "\x123" / "\x41"` emits 0a 23 41: it
         // consumes as many hex digits as follow and keeps the low byte.
-        // The old fixed two-digit window made `"\xA"` a hard error and
-        // split `"\x123"` into 0x12 plus a literal '3'.
+        // A fixed two-digit window makes `"\xA"` a hard error and splits
+        // `"\x123"` into 0x12 plus a literal '3'.
         assert_eq!(
             kinds(&lex(r#""\xA""#, 1).unwrap()),
             vec![TokenKind::StringLit(vec![0x0A])]
@@ -770,8 +769,8 @@ mod tests {
     fn leading_zero_integers_stay_octal_or_fail() {
         // `.word 017` is 15 on the course toolchain and `.word 018` is a
         // hard error there ("junk at end of line"). Falling through to
-        // decimal gave 18 for the second, so two adjacent-looking literals
-        // silently used different radixes.
+        // decimal answers 18 for the second, so two adjacent-looking
+        // literals use different radixes.
         assert_eq!(kinds(&lex("017", 1).unwrap()), vec![TokenKind::IntLit(15)]);
         let err = lex("018", 1).unwrap_err().to_string();
         assert!(err.contains("octal"), "message was: {err}");
@@ -879,7 +878,7 @@ mod tests {
 
     #[test]
     fn extended_register_tokens() {
-        // [x12, w9, SXTW 2] -- the SXTW is just an identifier here.
+        // [x12, w9, SXTW 2]: the SXTW is just an identifier here.
         let t = lex("[x12, w9, SXTW 2]", 1).unwrap();
         assert_eq!(
             kinds(&t),
