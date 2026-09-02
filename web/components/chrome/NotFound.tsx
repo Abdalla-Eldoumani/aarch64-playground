@@ -14,7 +14,7 @@ interface NotFoundProps {
  */
 export function NotFound({
   title = "page not found",
-  message = "the address you requested isn't mapped.",
+  message = "the address you requested is not mapped",
   returnHref = "/playground",
   returnLabel = "return to playground",
 }: NotFoundProps) {
@@ -26,9 +26,8 @@ export function NotFound({
       role="main"
     >
       <div className="flex items-baseline gap-3 border-b border-[var(--border)] pb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
-        <span>sheet not found</span>
+        <span>404</span>
         <span className="text-[var(--danger)]">0x00000404</span>
-        <span>signal 11</span>
       </div>
 
       <h1 className="font-serif text-3xl font-semibold text-[var(--text-primary)]">{title}</h1>
