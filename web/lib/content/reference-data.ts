@@ -1103,7 +1103,7 @@ ldp     x11, x12, [sp], 16  // pop it back: x11 = 1, x12 = 2`,
   {
     mnemonic: "ldrsb",
     category: "Memory",
-    syntax: "ldrsb wt, [xn, #imm] / ldrsb xt, [xn, #imm]",
+    syntax: "ldrsb wt, [xn, #imm] / [xn, #imm]! / [xn], #imm",
     example: `sub     sp, sp, 16
 mov     w9, 0x80            // as a signed byte: -128
 strb    w9, [sp, 8]
@@ -1113,7 +1113,7 @@ add     sp, sp, 16`,
   {
     mnemonic: "ldrsh",
     category: "Memory",
-    syntax: "ldrsh wt, [xn, #imm] / ldrsh xt, [xn, #imm]",
+    syntax: "ldrsh wt, [xn, #imm] / [xn, #imm]! / [xn], #imm",
     example: `sub     sp, sp, 16
 mov     w9, 0x8000          // as a signed halfword: -32768
 strh    w9, [sp, 8]
@@ -1123,13 +1123,16 @@ add     sp, sp, 16`,
   {
     mnemonic: "ldrsw",
     category: "Memory",
-    syntax: "ldrsw xt, [xn, #imm]",
+    syntax: "ldrsw xt, [xn, #imm] / [xn, #imm]! / [xn], #imm",
     example: `sub     sp, sp, 16
 mov     w9, 1
 neg     w9, w9              // -1 as an int
 str     w9, [sp, 8]
 ldrsw   x10, [sp, 8]        // x10 = -1 across all 64 bits
 add     sp, sp, 16`,
+    gotchas: [
+      "post-index (`ldrsw x0, [x1], 4`) loads from the old base and then advances it; pre-index (`[x1, 4]!`) advances first. gcc walks int arrays with the post-index form.",
+    ],
   },
 
   // pc-relative addressing

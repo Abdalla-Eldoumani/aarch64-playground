@@ -172,9 +172,21 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   STRB: { summary: "Store low byte of Wt.", cExample: "*(unsigned char*)(Rn + off) = (unsigned char)Rd;" },
   LDRH: { summary: "Load halfword into Wt.", cExample: "Rd = *(unsigned short*)(Rn + off);" },
   STRH: { summary: "Store low halfword of Wt.", cExample: "*(unsigned short*)(Rn + off) = (unsigned short)Rd;" },
-  LDRSB: { summary: "Load byte, sign-extend to Wt or Xt.", cExample: "Rd = *(signed char*)(Rn + off);" },
-  LDRSH: { summary: "Load halfword, sign-extend to Wt or Xt.", cExample: "Rd = *(short*)(Rn + off);" },
-  LDRSW: { summary: "Load word, sign-extend to Xt.", cExample: "Rd = *(int*)(Rn + off);" },
+  LDRSB: {
+    summary: "Load byte, sign-extend to Wt or Xt.",
+    details: ["Takes the same pre/post-index writeback and unscaled negative offsets as `LDR`."],
+    cExample: "Rd = *(signed char*)(Rn + off);",
+  },
+  LDRSH: {
+    summary: "Load halfword, sign-extend to Wt or Xt.",
+    details: ["Takes the same pre/post-index writeback and unscaled negative offsets as `LDR`."],
+    cExample: "Rd = *(short*)(Rn + off);",
+  },
+  LDRSW: {
+    summary: "Load word, sign-extend to Xt.",
+    details: ["Takes the same pre/post-index writeback and unscaled negative offsets as `LDR`. GCC walks an int array with `ldrsw x0, [x1], 4`."],
+    cExample: "Rd = *(int*)(Rn + off);",
+  },
   LDP: {
     summary: "Load pair: `LDP Xt1, Xt2, [Xn, #imm]`, or the FP file with D/S registers.",
     details: ["Offset is scaled by register size (8 for X and D, 4 for W and S)."],
