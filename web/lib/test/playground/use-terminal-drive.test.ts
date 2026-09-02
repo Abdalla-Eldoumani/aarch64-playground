@@ -416,6 +416,7 @@ describe("forwarding keystrokes", () => {
     // The machine parks on a read: running stops, blocked rises.
     machine.isRunning = false;
     machine.blocked = true;
+    // longer than one poll interval, so the drive has seen the parked read
     await new Promise((r) => setTimeout(r, 80));
     expect(machine.run).toHaveBeenCalledTimes(1);
     machine.blocked = false;
