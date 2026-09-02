@@ -457,7 +457,8 @@ describe("standing down", () => {
     const { session } = await startSession(machine);
     let exit: number | null = 7;
     await act(async () => {
-      machine.error = "memory fault: read at 0x0000000000000000";
+      machine.error =
+        "memory fault: the program tried to read 0x0000000000000000, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant";
       exit = await session;
     });
     expect(exit).toBeNull();
