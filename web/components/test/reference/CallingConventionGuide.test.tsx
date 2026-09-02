@@ -111,14 +111,13 @@ describe("CallingConventionGuide", () => {
   it("attaches the shared register roles to the inline tokens", () => {
     render(<CallingConventionGuide />);
     // x19 written as inline code resolves to the callee-saved role summary, the
-    // same classification the hover cards and the register-file diagram use, so
-    // the guide tells one story with them.
+    // same classification the hover cards and the register-file diagram use.
     expect(
       screen.getAllByLabelText(/callee-saved register \(x19-x28\)/i).length,
     ).toBeGreaterThan(0);
   });
 
-  it("shows the authentic prologue and epilogue", () => {
+  it("shows the course prologue and epilogue", () => {
     const { container } = render(<CallingConventionGuide />);
     const text = container.textContent ?? "";
     expect(text).toContain("[sp, alloc]!"); // pre-indexed save opens the frame
