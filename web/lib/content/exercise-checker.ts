@@ -55,8 +55,7 @@ const MAX_DISPLAY = 200;
 /**
  * Strip AArch64 comments so structural checks see only real code. Block
  * comments are removed first (so a `//` inside a block is already gone), then
- * line comments to end of line. This is the load-bearing rule for "a token
- * only inside a comment does not count".
+ * line comments to end of line.
  */
 function stripComments(source: string): string {
   const withoutBlocks = source.replace(/\/\*[\s\S]*?\*\//g, " ");
