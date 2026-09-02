@@ -53,3 +53,30 @@ describe("QuizBlock", () => {
     expect(option.disabled).toBe(true);
   });
 });
+
+describe("QuizBlock controlled selection", () => {
+  it("renders the pick the sheet passes in", () => {
+    render(<QuizBlock {...PROPS} value={1} onValueChange={() => {}} />);
+    expect(screen.getByRole("button", { name: "x29" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("reports every pick, and the clear that try again performs", () => {
+    const onValueChange = vi.fn();
+    render(<QuizBlock {...PROPS} value={null} onValueChange={onValueChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "x0" }));
+    expect(onValueChange).toHaveBeenCalledWith(0);
+
+    cleanup();
+    render(<QuizBlock {...PROPS} value={0} onValueChange={onValueChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "check answer" }));
+    fireEvent.click(screen.getByRole("button", { name: "try again" }));
+    expect(onValueChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("still owns its selection when no value is passed", () => {
+    render(<QuizBlock {...PROPS} />);
+    fireEvent.click(screen.getByRole("button", { name: "x29" }));
+    expect(screen.getByRole("button", { name: "x29" }).getAttribute("aria-pressed")).toBe("true");
+  });
+});
