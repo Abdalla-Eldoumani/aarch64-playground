@@ -13,8 +13,7 @@
  *                         or at fp + slot offset + 3*8 for a frame slot
  *   `arr[i]` / `arr[w3]`  same with i read from a register (wN only)
  *
- * The parser is deliberately minimal; unsupported syntax returns a
- * descriptive error rather than throwing.
+ * Unsupported syntax returns an error rather than throwing.
  */
 
 /** A memory read is three-valued: bytes, a definite fault, or a verdict
@@ -26,9 +25,9 @@ export interface EvalContext {
   readMemory: (addr: bigint, size: number) => MemRead;
   /** `name = value` frame-slot offset, for `[reg, name]`. */
   resolveSlotOffset: (name: string) => bigint | null;
-  /** Absolute address of a data label, for `arr[i]`. The two meanings
-   *  used to share one callback, so a frame-slot OFFSET was dereferenced
-   *  as an absolute address and read a zero from low memory. */
+  /** Absolute address of a data label, for `arr[i]`. Kept apart from
+   * `resolveSlotOffset`: a frame-slot OFFSET dereferenced as an absolute
+   * address reads zero from low memory. */
   resolveLabelAddress: (name: string) => bigint | null;
 }
 
@@ -62,7 +61,7 @@ export function evaluateWatch(expr: string, ctx: EvalContext): EvalOutcome {
     if ("error" in innerResult || "pending" in innerResult) return innerResult;
     const addr = innerResult.value;
     // The deref width follows the inner expression: *x0 reads a quad,
-    // *w0 reads a word -- the 4-byte view students want for .word data.
+    // *w0 reads a word, the 4-byte view students want for .word data.
     const size = innerResult.size;
     return readAt(ctx, addr, size);
   }
