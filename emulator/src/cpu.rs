@@ -74,12 +74,27 @@ pub const MAX_TOTAL_STEPS: u64 = 10_000_000;
 
 /// Calm, plain-language abort surfaced through the result `error` field
 /// when a store would allocate past `memory::MAX_MAPPED_PAGES`.
-pub const MEMORY_CAP_MESSAGE: &str = "stopped -- program tried to use too much memory";
+pub const MEMORY_CAP_MESSAGE: &str = "stopped: the program asked for more memory than \
+     the playground gives it (8 MiB of stack and 16 MiB of heap). Check for a loop that \
+     stores past the end of an array, a malloc inside a loop with no free, or a frame \
+     size computed from a value that was never initialized";
+
+// The ceiling is reported in millions because ten million printed in
+// full is a digit string a student has to count. This keeps the division
+// exact, so raising the ceiling to a value that is not a whole number of
+// millions fails the build instead of silently truncating the count.
+const _: () = assert!(MAX_TOTAL_STEPS % 1_000_000 == 0);
 
 /// Calm, plain-language abort surfaced when the cumulative step ceiling is
 /// hit. Built dynamically so the count always matches `MAX_TOTAL_STEPS`.
 pub fn step_ceiling_message() -> String {
-    format!("stopped after {MAX_TOTAL_STEPS} steps -- possible infinite loop")
+    format!(
+        "stopped after {} million steps, which is the playground's ceiling. The usual \
+         cause is a loop whose exit condition never becomes true: check that the \
+         counter is actually changing, and that the branch condition is the one you \
+         meant (b.le against b.lt, b.ne against b.eq)",
+        MAX_TOTAL_STEPS / 1_000_000
+    )
 }
 
 /// Cumulative stdout+stderr ceiling (the output-flood wall). The step and
@@ -108,7 +123,8 @@ fn map_write_fault(e: EmuError) -> EmuError {
 /// Calm, plain-language abort surfaced when the output ceiling is hit.
 pub fn output_ceiling_message() -> String {
     format!(
-        "stopped -- the program printed over {} MiB of output; check for a print inside a loop that never ends",
+        "stopped: the program printed more than {} MiB of output; check for a print \
+         inside a loop that never ends",
         MAX_OUTPUT_BYTES / (1024 * 1024)
     )
 }
@@ -1035,7 +1051,7 @@ impl Cpu {
         // decoding the padding that happens to live here.
         if self.text_end == Some(pc) {
             self.halted = true;
-            let msg = "execution ran past the last instruction of the program -- \
+            let msg = "execution ran past the last instruction of the program. \
                        main needs a `ret` (with an epilogue if it pushed one) or an \
                        exit call as its final step"
                 .to_string();
