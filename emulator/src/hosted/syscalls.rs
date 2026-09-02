@@ -74,13 +74,13 @@ pub const MAX_VFS_FILE_BYTES: usize = 4 * 1024 * 1024;
 /// worst case to one cap's worth regardless of file count.
 pub const MAX_VFS_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 
-/// Upper bound on how many files `openat` may create. Entries were
-/// previously inserted unbounded; course programs open one or two.
+/// Upper bound on how many files `openat` may create. Course programs
+/// create one or two.
 pub const MAX_VFS_FILES: usize = 16;
 
 /// Upper bound on how many descriptors may be open at once. The file
 /// count caps the VFS, not the fd table: re-opening one existing file in
-/// a loop still grew `open_files` without limit, and each entry carries
+/// a loop grows `open_files` without limit, and each entry carries
 /// its own copy of the path (200 re-opens of a 60 KiB path held 11 MiB,
 /// cloned again into every snapshot frame). Linux answers EMFILE past
 /// its own limit; course programs open one or two files at a time.
@@ -119,7 +119,7 @@ pub fn dispatch(number: u64, ctx: &mut HostContext<'_>) -> Result<HostOutcome, E
 
 /// ioctl(fd, request, argp). Supports the termios pair a raw-mode
 /// program needs: TCGETS reports a cooked terminal, and any TCSETS
-/// variant applies the caller's c_lflag -- clearing ICANON is the
+/// variant applies the caller's c_lflag: clearing ICANON is the
 /// raw-mode handshake that marks this program as a terminal program.
 /// Unknown requests return -1 without halting, like the kernel's
 /// EINVAL, so a stray ioctl stays a program-visible error.
@@ -178,7 +178,7 @@ pub fn sys_fcntl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 }
 
 /// nanosleep(req, rem). Reads the timespec, returns success, and hands
-/// the duration up as `Sleep` -- the CPU advances its virtual clock and
+/// the duration up as `Sleep`: the CPU advances its virtual clock and
 /// credits the pacing budgets, and a real-time runner waits it out.
 pub fn sys_nanosleep(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let req = ctx.regs.read_gpr(0, true);
@@ -192,8 +192,9 @@ pub fn sys_nanosleep(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError>
 }
 
 /// clock_gettime(clkid, tp). Every clock id reads the same virtual
-/// monotonic clock, which only nanosleep advances -- deterministic for
-/// replay, yet it tracks real pacing whenever the runner honors sleeps.
+/// monotonic clock, which only nanosleep advances. It is deterministic
+/// for replay, yet it tracks real pacing whenever the runner honors
+/// sleeps.
 pub fn sys_clock_gettime(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let tp = ctx.regs.read_gpr(1, true);
     let ns = ctx.term.virtual_ns;
@@ -235,8 +236,7 @@ fn write_u32(ctx: &mut HostContext<'_>, addr: u64, value: u32) -> Result<(), Emu
 }
 
 /// write(fd, buf, count) -> bytes written.
-/// fd == 1 goes to stdout; fd == 2 goes to stderr. Other fds require the
-/// VFS (phase B.7).
+/// fd == 1 goes to stdout; fd == 2 goes to stderr. Other fds go to the VFS.
 pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fd = ctx.regs.read_gpr(0, true);
     let buf = ctx.regs.read_gpr(1, true);
