@@ -160,6 +160,7 @@ Every scalar instruction takes both course views of the register file: the S for
 | `FCMPE`  | same                              | The signaling form; here it sets the same flags (the emulator raises no FP exceptions). |
 | `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). |
 | `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Sd, Wn` / `SCVTF Sd, Sn` / `SCVTF Dd, Dn` | Signed integer to float. The FP-source forms convert integer bits already sitting in the register (how gcc converts an int it loaded with `ldr s31, [...]`). |
+| `UCVTF`  | `UCVTF Dd, Xn` / `UCVTF Sd, Wn` (and the other width pairs) | Unsigned integer to float. `SCVTF` reads the same bits as signed, so the two differ on any value with the top bit set. |
 | `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` / `FCVTZS Wd, Sn` | Truncate float to signed integer. |
 | `FCVTNS` | `FCVTNS Wd, Dn` / `FCVTNS Xd, Sn` (and the other two width pairs) | Float to signed integer, round to nearest with ties to even. `2.5` and `3.5` both land on the even neighbour (2 and 4), unlike `FCVTZS`, which truncates toward zero. |
 | `FCVTNU` | same shapes                       | The unsigned form. A negative input saturates to 0. |

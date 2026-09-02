@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::decoder::{MemSize, FP_BINARY_OPS, FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS};
+use crate::decoder::{
+    MemSize, FP_BINARY_OPS, FP_FROM_INT_OPS, FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS,
+};
 use crate::errors::EmuError;
 use crate::registers::{reg_alias, Condition, CONDITIONS};
 
@@ -160,7 +162,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
-    "FCVT", "SCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
+    "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
     // pc-relative address formation
     "ADR", "ADRP",
     // branches
@@ -303,7 +305,8 @@ fn encode_line(
         "FCMP" => encode_fcmp(&ops, false, line_num),
         "FCMPE" => encode_fcmp(&ops, true, line_num),
         "FCVT" => encode_fcvt(&ops, line_num),
-        "SCVTF" => encode_scvtf(&ops, line_num),
+        "SCVTF" => encode_fp_cvt_from_int(&ops, "scvtf", line_num),
+        "UCVTF" => encode_fp_cvt_from_int(&ops, "ucvtf", line_num),
         "FCVTZS" => encode_fp_cvt_int(&ops, "fcvtzs", line_num),
         "FCVTNS" => encode_fp_cvt_int(&ops, "fcvtns", line_num),
         "FCVTNU" => encode_fp_cvt_int(&ops, "fcvtnu", line_num),
@@ -1673,23 +1676,44 @@ fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u32, EmuError
     Ok(0x1E20_2000 | fp_ftype(width) | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc)
 }
 
-fn encode_scvtf(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+/// SCVTF / UCVTF Fd, Rn, plus SCVTF's SIMD-scalar spelling. `name` keys
+/// into `FP_FROM_INT_OPS`, the same table the decoder reads back.
+fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
+    let Some((_, rmode, opcode, _)) = FP_FROM_INT_OPS.iter().find(|(mn, _, _, _)| *mn == name)
+    else {
+        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+    };
     if ops.len() != 2 {
-        return asm_err(ln, "scvtf requires 2 operands: scvtf fd, rn");
+        return asm_err(ln, &format!("{name} requires 2 operands: {name} fd, rn"));
     }
     let (fd, wd) = parse_fp_register(ops[0], ln)?;
     // The source is either a general register (the usual course form) or
     // an FP register already holding the integer bits (gcc emits
-    // `ldr s31, [...]` then `scvtf s30, s31`): the SIMD-scalar encoding.
+    // `ldr s31, [...]` then `scvtf s30, s31`): the SIMD-scalar encoding,
+    // which exists for SCVTF only.
     if let Ok((fn_, wn)) = parse_fp_register(ops[1], ln) {
-        let width = require_same_fp_width("scvtf", &[wd, wn], ln)?;
+        if name != "scvtf" {
+            return asm_err(
+                ln,
+                &format!("{name} takes a general-register source ({name} fd, xn / {name} fd, wn)"),
+            );
+        }
+        let width = require_same_fp_width(name, &[wd, wn], ln)?;
         let sz: u32 = if width == 'D' { 1 << 22 } else { 0 };
         return Ok(0x5E21_D800 | sz | ((fn_ as u32) << 5) | (fd as u32));
     }
     let (rn, sf) = parse_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
-    // SCVTF Fd, Rn: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
-    Ok((sf_bit << 31) | 0x1E22_0000 | fp_ftype(wd) | ((rn as u32) << 5) | (fd as u32))
+    // sf_0_0_11110_ftype_1_rmode_opcode_000000_Rn_Rd, the same class the
+    // float-to-integer direction uses.
+    Ok((sf_bit << 31)
+        | 0x1E00_0000
+        | fp_ftype(wd)
+        | (1 << 21)
+        | (u32::from(*rmode) << 19)
+        | (u32::from(*opcode) << 16)
+        | ((rn as u32) << 5)
+        | (fd as u32))
 }
 
 /// FCVT{N,Z}{S,U} Rd, Fn. `name` is the key into `FP_TO_INT_OPS`, so the
@@ -4222,6 +4246,51 @@ svc 0").unwrap();
         assert_eq!(cpu.regs.read_gpr(9, false), 4);
         assert_eq!(cpu.regs.read_gpr(11, false) as i32, -2);
         assert_eq!(cpu.regs.read_gpr(12, false) as i32, -1);
+    }
+
+    #[test]
+    fn ucvtf_reads_the_source_as_unsigned() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("scvtf d0, x0", 0x9E62_0000u32),
+            ("scvtf s0, w0", 0x1E22_0000),
+            ("ucvtf d0, x0", 0x9E63_0000),
+            ("ucvtf d0, w0", 0x1E63_0000),
+            ("ucvtf s0, w0", 0x1E23_0000),
+            ("ucvtf s0, x0", 0x9E23_0000),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let err = encode_line("ucvtf s0, s1", 0, &labels, 1).unwrap_err().to_string();
+        assert!(err.contains("general-register source"), "{err}");
+        let source = r#"
+            MOV X0, #-1
+            SCVTF D0, X0
+            UCVTF D1, X0
+            MOV W2, #-1
+            SCVTF D2, W2
+            UCVTF D3, W2
+            UCVTF S4, W2
+            UCVTF S5, X0
+            MOVZ X6, #0x8000, LSL #48
+            UCVTF D7, X6
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        // -1 is the value at which signed and unsigned diverge maximally,
+        // and it catches a copy of the SCVTF arm.
+        assert_eq!(cpu.regs.read_fpr_bits(0), 0xBFF0_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(1), 0x43F0_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(2), 0xBFF0_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(3), 0x41EF_FFFF_FFE0_0000);
+        // the S results round: 2^32 - 1 and 2^64 - 1 are not representable
+        assert_eq!(cpu.regs.read_fpr_bits(4), 0x4F80_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(5), 0x5F80_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(7), 0x43E0_0000_0000_0000);
     }
 
     #[test]
