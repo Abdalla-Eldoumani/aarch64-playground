@@ -454,19 +454,19 @@ update_loop:
                 cmp     w24, w22
                 b.eq    update_check_y
                 b.lt    update_move_right
-                sub     w0, w0, 1
+                sub     w0, w0, 1               // Move left
                 b       update_check_y
 update_move_right:
-                add     w0, w0, 1
+                add     w0, w0, 1               // Move right
 
 update_check_y:
                 cmp     w21, w23
                 b.eq    update_apply_move
                 b.lt    update_move_down
-                sub     w1, w1, 1
+                sub     w1, w1, 1               // Move up
                 b       update_apply_move
 update_move_down:
-                add     w1, w1, 1
+                add     w1, w1, 1               // Move down
 
 update_apply_move:
                 add     w24, w24, w0
