@@ -64,92 +64,99 @@ export function Controls({
   return (
     <div
       style={{ paddingBottom: "calc(0.5rem + var(--safe-bottom))" }}
-      className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)]"
+      className="flex flex-col gap-1.5 px-2 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center sm:gap-2 sm:px-4"
     >
-      <Button
-        variant="primary"
-        onClick={onAssemble}
-        disabled={isAssembling}
-        aria-label="assemble"
-        aria-busy={isAssembling}
-        aria-keyshortcuts="F6"
-        title="F6"
-      >
-        <span>{isAssembling ? "loading…" : "assemble"}</span>
-        <Shortcut keys="F6" />
-      </Button>
-      <Button
-        variant="primary"
-        onClick={isRunning ? onPause : onRun}
-        aria-label={isRunning ? "pause" : "run"}
-        aria-keyshortcuts="F5"
-        title="F5"
-        disabled={
-          (!programLoaded && (!runAssemblesFirst || isAssembling)) ||
-          (isHalted && !isRunning) ||
-          (blocked && !isRunning)
-        }
-      >
-        <span>{isRunning ? "pause" : "run"}</span>
-        <Shortcut keys="F5" />
-      </Button>
-      <Button
-        variant="secondary"
-        onClick={onStep}
-        aria-label="step"
-        aria-keyshortcuts="F10"
-        title="F10"
-        disabled={!programLoaded || isRunning || isHalted || blocked}
-      >
-        <span>step</span>
-        <Shortcut keys="F10" />
-      </Button>
-      {onStepBack && (
+      {/* Under sm the controls take one nowrap strip that scrolls within
+          itself, so the fifth button is reachable instead of clipped, and the
+          assemble error drops to its own row underneath rather than off the
+          right edge. At sm and up the band dissolves and every control is a
+          direct child of the row again, laid out as it always was. */}
+      <div className="controls-band flex items-center gap-1.5 sm:contents">
+        <Button
+          variant="primary"
+          onClick={onAssemble}
+          disabled={isAssembling}
+          aria-label="assemble"
+          aria-busy={isAssembling}
+          aria-keyshortcuts="F6"
+          title="F6"
+        >
+          <span>{isAssembling ? "loading…" : "assemble"}</span>
+          <Shortcut keys="F6" />
+        </Button>
+        <Button
+          variant="primary"
+          onClick={isRunning ? onPause : onRun}
+          aria-label={isRunning ? "pause" : "run"}
+          aria-keyshortcuts="F5"
+          title="F5"
+          disabled={
+            (!programLoaded && (!runAssemblesFirst || isAssembling)) ||
+            (isHalted && !isRunning) ||
+            (blocked && !isRunning)
+          }
+        >
+          <span>{isRunning ? "pause" : "run"}</span>
+          <Shortcut keys="F5" />
+        </Button>
         <Button
           variant="secondary"
-          onClick={onStepBack}
-          aria-label="back"
-          aria-keyshortcuts="Shift+F10"
-          title="Shift+F10"
-          disabled={!programLoaded || isRunning || !canStepBack || blocked}
+          onClick={onStep}
+          aria-label="step"
+          aria-keyshortcuts="F10"
+          title="F10"
+          disabled={!programLoaded || isRunning || isHalted || blocked}
         >
-          <span>back</span>
-          <Shortcut keys="Shift+F10" />
+          <span>step</span>
+          <Shortcut keys="F10" />
         </Button>
-      )}
-      <Button
-        variant="secondary"
-        onClick={onReset}
-        aria-label="reset"
-        aria-keyshortcuts="Shift+F5"
-        title="Shift+F5"
-      >
-        <span>reset</span>
-        <Shortcut keys="Shift+F5" />
-      </Button>
-
-      <div className="flex-1" />
-
-      {stepCount != null && stepCount > 0 && (
-        <span
-          key={stepCount}
-          className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono anim-step-pop"
-          role="status"
-          aria-label={`${stepCount} instructions executed`}
+        {onStepBack && (
+          <Button
+            variant="secondary"
+            onClick={onStepBack}
+            aria-label="back"
+            aria-keyshortcuts="Shift+F10"
+            title="Shift+F10"
+            disabled={!programLoaded || isRunning || !canStepBack || blocked}
+          >
+            <span>back</span>
+            <Shortcut keys="Shift+F10" />
+          </Button>
+        )}
+        <Button
+          variant="secondary"
+          onClick={onReset}
+          aria-label="reset"
+          aria-keyshortcuts="Shift+F5"
+          title="Shift+F5"
         >
-          {stepCount.toLocaleString()} steps
-        </span>
-      )}
+          <span>reset</span>
+          <Shortcut keys="Shift+F5" />
+        </Button>
 
-      {isHalted && !error && (
-        <span
-          className="hidden sm:inline-flex items-center gap-2 font-sans text-xs tracking-wide text-[var(--text-secondary)]"
-          role="status"
-        >
-          <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--success)]" />
-          halted
-        </span>
-      )}
+        <div className="controls-spacer flex-1" />
+
+        {stepCount != null && stepCount > 0 && (
+          <span
+            key={stepCount}
+            className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono anim-step-pop"
+            role="status"
+            aria-label={`${stepCount} instructions executed`}
+          >
+            {stepCount.toLocaleString()} steps
+          </span>
+        )}
+
+        {isHalted && !error && (
+          <span
+            className="hidden sm:inline-flex items-center gap-2 font-sans text-xs tracking-wide text-[var(--text-secondary)]"
+            role="status"
+          >
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[var(--success)]" />
+            halted
+          </span>
+        )}
+      </div>
 
       {error && (
         <div
