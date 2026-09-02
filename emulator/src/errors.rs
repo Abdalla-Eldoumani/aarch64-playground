@@ -79,9 +79,9 @@ impl fmt::Display for EmuError {
             Self::UnknownInstruction(word) => {
                 write!(
                     f,
-                    "unknown instruction 0x{word:08x} at this address: execution \
-                     probably branched into data rather than code. Check the branch \
-                     that got here, and the return address if this followed a ret"
+                    "unknown instruction 0x{word:08x}: execution probably branched \
+                     into data rather than code. Check the branch that got here, \
+                     and the return address if this followed a ret"
                 )
             }
             Self::MemoryFault { address, access } => {
