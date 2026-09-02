@@ -3,18 +3,18 @@ import type { JSX } from "react";
 /**
  * Static AAPCS64 floating-point register-file teaching diagram: d0-d31
  * grouped by ABI role, the floating-point sibling of RegisterFileDiagram.
- * Presentational only -- no runtime, no live debugger state. Each cell
+ * Presentational only: no runtime, no live debugger state. Each cell
  * names both course views of the register: dN (double, 64 bits) with its
  * sN float view (the low 32 bits) beneath, exactly the s/d pairing the
- * course teaches -- SIMD's extra width stays out of the story. The tints
- * tell the saved-ness story for floats: cyan = the argument/result area
+ * course teaches; SIMD's extra width is left out. The tints mark
+ * saved-ness for floats: cyan = the argument/result area
  * (d0-d7, matching the integer diagram's argument band), amber = the
  * callee-must-preserve band d8-d15 (a caution rather than plain
  * success-green: the promise covers the d-sized value, which is all a
  * course double needs), and a neutral border tint = the d16-d31
  * caller-saved temporaries. There is no floating-point frame pointer to
  * mark: x29/x30 stay the frame record, so this strip carries no fp/lr
- * analogue by design.
+ * analogue.
  */
 
 type FpFamily = "args" | "callee" | "caller";
