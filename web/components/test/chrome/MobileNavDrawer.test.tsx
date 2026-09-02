@@ -26,7 +26,7 @@ describe("MobileNavDrawer", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    // jsdom's fireEvent.click does NOT move focus, so focus the trigger first.
+    // jsdom's fireEvent.click does not move focus, so focus the trigger first.
     // Otherwise useFocusTrap captures <body> as the previously-focused element
     // and the focus-return assertion below would fail for the wrong reason.
     trigger.focus();
