@@ -1454,6 +1454,22 @@ scvtf   d0, x0              // d0 = -1.0
 ucvtf   d1, x0              // d1 = 1.8446744073709552e19: the same bits, read unsigned`,
   },
   {
+    mnemonic: "fcsel",
+    category: "Floating point",
+    syntax: "fcsel dd, dn, dm, cond / fcsel sd, sn, sm, cond",
+    example: `fmov    d1, 1.5
+fmov    d2, 2.5
+mov     w0, 5
+cmp     w0, 5
+fcsel   d3, d1, d2, eq      // d3 = 1.5: the condition held
+cmp     w0, 4
+fcsel   d4, d1, d2, eq      // d4 = 2.5: it did not
+fcvtzs  x9, d3              // x9 = 1`,
+    gotchas: [
+      "the flags come from an earlier `fcmp` or `cmp`. `fcsel` reads nzcv and never writes it.",
+    ],
+  },
+  {
     mnemonic: "fmax",
     category: "Floating point",
     syntax: "fmax dd, dn, dm / fmax sd, sn, sm",

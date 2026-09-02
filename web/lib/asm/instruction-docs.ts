@@ -300,6 +300,15 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "fsqrt d1, d0",
     cExample: "Dd = sqrt(Dn);",
   },
+  FCSEL: {
+    summary: "Fd = cond ? Fn : Fm. The integer `CSEL` for the FP file.",
+    details: [
+      "The flags come from an earlier `FCMP` or `CMP`; `FCSEL` sets none of its own.",
+      "The chosen register's bits are copied, so a NaN or a `-0.0` arrives untouched.",
+    ],
+    example: "fcsel d0, d1, d2, lt",
+    cExample: "Fd = cond ? Fn : Fm;",
+  },
   FCMP: {
     summary: "Set NZCV from Fn vs Fm (S or D form).",
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
