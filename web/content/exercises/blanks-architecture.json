@@ -1,11 +1,11 @@
 {
-  "title": "Fill in the Blank: System Architecture",
+  "title": "Fill in the blank: system architecture",
   "slug": "blanks-architecture",
   "order": 31,
   "topic": "architecture",
   "difficulty": "core",
   "variant": "blanks",
-  "prompt": "Fill in the missing terminology to construct accurate statements about the parts of a CPU, the clock that paces it, the register that tracks execution, and the marker that starts a comment in GAS.",
+  "prompt": "Fill in the missing terms: the parts of a CPU, the clock that paces it, the register that tracks execution, and the marker that starts a comment in GAS.",
   "blanks": [
     {
       "prompt": "Name the part of the CPU that directs the execution of instructions.",
