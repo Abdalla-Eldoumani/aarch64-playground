@@ -221,7 +221,7 @@ hint_welcome:   .string "press enter to begin"
 msg_need_arr:   .string "no array yet."
 msg_need_tgt:   .string "no target yet."
 msg_saved:      .string "saved."
-msg_bye:        .string "bye."
+msg_bye:        .string "thanks for watching."
 
 // Shown on the message row when an answer is rejected. Both name the
 // cause and the range, so the fix is on screen with the complaint.
