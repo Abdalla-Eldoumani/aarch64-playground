@@ -134,7 +134,12 @@ export function SiteNav({
             )}
           </a>
 
-          <ThemeControl size="compact" />
+          {/* The bar's copy yields under md, exactly where MobileNavDrawer
+              (its root is md:hidden) starts carrying the comfortable one, so
+              one theme control is reachable at every width and never two. */}
+          <div className="hidden md:flex">
+            <ThemeControl size="compact" />
+          </div>
 
           {full ? (
             <Link
