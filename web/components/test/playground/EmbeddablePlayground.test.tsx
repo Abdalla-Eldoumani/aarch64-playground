@@ -87,6 +87,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // The idle-engage cases stub globals jsdom does not provide; leaving one in
+  // place would change what every later case sees.
+  vi.unstubAllGlobals();
 });
 
 describe("EmbeddablePlayground", () => {
@@ -128,6 +131,61 @@ describe("EmbeddablePlayground", () => {
     expect(screen.queryByTestId("editor")).toBeNull();
 
     engage(container);
+    expect(useEmulatorMock).toHaveBeenCalled();
+    expect(screen.getByTestId("editor")).toBeTruthy();
+  });
+
+  it("routes the observer's engage through an idle slot, once", () => {
+    // jsdom supplies neither of these, so both are stubbed: the observer to
+    // drive the only engage path that defers, and the idle queue to hold the
+    // callback rather than run it.
+    let intersect: () => void = () => {};
+    class ObserverStub {
+      readonly root = null;
+      readonly rootMargin = "";
+      readonly thresholds: readonly number[] = [];
+      constructor(callback: IntersectionObserverCallback) {
+        intersect = () => {
+          callback(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          );
+        };
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    }
+    let runIdle: () => void = () => {};
+    let idleOptions: IdleRequestOptions | undefined;
+    const requestIdle = vi.fn(
+      (callback: IdleRequestCallback, options?: IdleRequestOptions) => {
+        runIdle = () => callback({ didTimeout: false, timeRemaining: () => 0 });
+        idleOptions = options;
+        return 7;
+      },
+    );
+    vi.stubGlobal("IntersectionObserver", ObserverStub);
+    vi.stubGlobal("requestIdleCallback", requestIdle);
+    vi.stubGlobal("cancelIdleCallback", vi.fn());
+
+    render(<EmbeddablePlayground chrome="embed" />);
+    expect(useEmulatorMock).not.toHaveBeenCalled();
+
+    // Two intersections, one queued engage: the observer reports every change.
+    act(() => {
+      intersect();
+      intersect();
+    });
+    expect(requestIdle).toHaveBeenCalledTimes(1);
+    expect(idleOptions).toEqual({ timeout: 1200 });
+    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("editor")).toBeNull();
+
+    act(() => runIdle());
     expect(useEmulatorMock).toHaveBeenCalled();
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
@@ -771,8 +829,11 @@ describe("autoplay", () => {
     const { container, rerender } = render(view());
     // The global matchMedia stub reports not-reduced, so the walk runs.
     engage(container);
-    // Flush the awaited assemble so the step interval registers.
+    // Drive the walk's idle wait -- jsdom has no requestIdleCallback, so it
+    // sits on the setTimeout fallback -- then flush the awaited assemble so
+    // the step interval registers.
     await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
       await Promise.resolve();
     });
     // Drive the per-step re-renders that hand useEmulator a new identity. The
@@ -793,6 +854,47 @@ describe("autoplay", () => {
     expect(assemble).toHaveBeenCalledTimes(1);
     expect(assemble).toHaveBeenCalledWith("mov x0, #1", []);
     expect(step).toHaveBeenCalledTimes(3);
+  });
+
+  it("waits for an idle slot before the first assemble", async () => {
+    let runIdle: () => void = () => {};
+    let idleOptions: IdleRequestOptions | undefined;
+    const requestIdle = vi.fn(
+      (callback: IdleRequestCallback, options?: IdleRequestOptions) => {
+        runIdle = () => callback({ didTimeout: false, timeRemaining: () => 0 });
+        idleOptions = options;
+        return 11;
+      },
+    );
+    vi.stubGlobal("requestIdleCallback", requestIdle);
+    vi.stubGlobal("cancelIdleCallback", vi.fn());
+    const assemble = vi.fn().mockResolvedValue(true);
+    const step = vi.fn();
+    useEmulatorMock.mockImplementation(() => ({ ...makeHub(), assemble, step }));
+    const { container } = render(
+      <EmbeddablePlayground
+        chrome="embed"
+        autoplay
+        autoplaySteps={3}
+        startSource="mov x0, #1"
+      />,
+    );
+    engage(container);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    // The walk is parked in the idle queue: nothing has reached the machine,
+    // and the timeout is what keeps a busy thread from stranding it there.
+    expect(assemble).not.toHaveBeenCalled();
+    expect(requestIdle).toHaveBeenCalledTimes(1);
+    expect(idleOptions).toEqual({ timeout: 1200 });
+
+    await act(async () => {
+      runIdle();
+      await Promise.resolve();
+    });
+    expect(assemble).toHaveBeenCalledTimes(1);
+    expect(assemble).toHaveBeenCalledWith("mov x0, #1", []);
   });
 
   it("does nothing under prefers-reduced-motion: reduce", async () => {
