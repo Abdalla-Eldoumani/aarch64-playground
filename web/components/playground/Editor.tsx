@@ -17,10 +17,11 @@ import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playgro
 // now decides both the runtime build and the compile-time types.
 //
 // Two details of the arrangement carry their own reasons:
-//   - `edcore.main` is monaco's editor-only entry: every widget the
-//     playground uses (suggest, hover, find) and none of the bundled
-//     language services. This editor registers arm64 itself and never asks
-//     for another language, so those services, and the extra workers they
+//   - the editor-only build is two entries, `editor` for the API surface
+//     and `features/register.all` for every widget the playground uses
+//     (suggest, hover, find). Neither one pulls a bundled language
+//     service, and this editor registers arm64 itself and never asks for
+//     another language, so those services, and the extra workers they
 //     need, would be megabytes of dead weight.
 //   - the import is dynamic because monaco is a browser-only module and
 //     this component is rendered on the server too, and because the editor
@@ -37,7 +38,7 @@ function loadMonaco(): Promise<void> {
     self.MonacoEnvironment = {
       getWorker: () =>
         new Worker(
-          new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url),
+          new URL("monaco-editor/editor/editor.worker.js", import.meta.url),
           // The worker name is also the bundler's chunk name, which is what
           // lets the bundle budget in package.json glob the editor's assets
           // by name instead of by a hashed webpack id that moves with any
@@ -45,9 +46,13 @@ function loadMonaco(): Promise<void> {
           { name: "monaco-worker" },
         ),
     };
-    const monaco = await import(
-      /* webpackChunkName: "monaco" */ "monaco-editor/esm/vs/editor/edcore.main.js"
-    );
+    // Registering the widgets is a pure side effect of importing them, and
+    // the API entry exports without registering anything, so both have to
+    // be asked for. They share a chunk name so the budget still measures
+    // one file, and they are ordered the way monaco's own all-in entry
+    // orders them: contributions first, the API that reads them second.
+    await import(/* webpackChunkName: "monaco" */ "monaco-editor/features/register.all");
+    const monaco = await import(/* webpackChunkName: "monaco" */ "monaco-editor/editor");
     loader.config({ monaco });
   })();
   return monacoLoad;
