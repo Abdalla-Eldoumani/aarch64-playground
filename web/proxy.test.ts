@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { SECURITY_HEADERS } from "./proxy";
 
 // vercel.json and proxy.ts each promise the security headers on their own
-// layer (the platform edge and the framework). The lockstep used to be held
-// by a comment; this test makes a drift between the two a suite failure.
-// Vitest runs with cwd = web/, so vercel.json sits one level up.
+// layer (the platform edge and the framework). This test makes a drift
+// between the two a suite failure. Vitest runs with cwd = web/, so
+// vercel.json sits one level up.
 
 function vercelCatchAllHeaders(): Record<string, string> {
   const raw = readFileSync(join(process.cwd(), "..", "vercel.json"), "utf8");
