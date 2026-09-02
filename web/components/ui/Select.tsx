@@ -90,7 +90,6 @@ export function Select({
     [flat, onSelect],
   );
 
-  // Outside pointer-down closes without selecting.
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -145,6 +144,7 @@ export function Select({
         // active one so repeats cycle through same-prefix options.
         const now = Date.now();
         const state = typeahead.current;
+        // 500ms is the WAI-ARIA type-ahead window: after it, the buffer restarts.
         state.buffer = now - state.at > 500 ? key : state.buffer + key;
         state.at = now;
         const query = state.buffer.toLowerCase();
