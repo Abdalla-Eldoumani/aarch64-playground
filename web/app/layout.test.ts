@@ -50,7 +50,7 @@ describe("share card metadata", () => {
     expect(metadata.alternates?.canonical).toBe("/");
   });
 
-  it("composes route titles with a double hyphen, never an em dash", () => {
+  it("composes route titles with a middle dot, never an em dash", () => {
     const title = metadata.title;
     const template =
       title && typeof title === "object" && "template" in title ? title.template : null;
@@ -99,8 +99,8 @@ describe("share card metadata", () => {
   });
 });
 
-// Nothing pinned the font configuration before, and it is the one place a
-// stray face costs every route: the next/font stylesheet is render-blocking.
+// A stray face costs every route: the next/font stylesheet is
+// render-blocking.
 describe("font declarations", () => {
   it("declares the serif upright only", () => {
     const options = sourceSerif.mock.calls[0][0];
