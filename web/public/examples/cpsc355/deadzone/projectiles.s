@@ -120,13 +120,13 @@ projectiles_fire:
                 cmp     w0, 0
                 b.eq    proj_dx_zero
                 b.lt    proj_dx_neg
-                mov     w0, 1
+                mov     w0, 1                   // dx = 1
                 b       proj_calc_dy
 proj_dx_neg:
-                mov     w0, -1
+                mov     w0, -1                  // dx = -1
                 b       proj_calc_dy
 proj_dx_zero:
-                mov     w0, 0
+                mov     w0, 0                   // dx = 0
 
 proj_calc_dy:
                 strh    w0, [x19, PROJ_DX]
@@ -136,13 +136,13 @@ proj_calc_dy:
                 cmp     w1, 0
                 b.eq    proj_dy_zero
                 b.lt    proj_dy_neg
-                mov     w1, 1
+                mov     w1, 1                   // dy = 1
                 b       proj_store_dy
 proj_dy_neg:
-                mov     w1, -1
+                mov     w1, -1                  // dy = -1
                 b       proj_store_dy
 proj_dy_zero:
-                mov     w1, 0
+                mov     w1, 0                   // dy = 0
 
 proj_store_dy:
                 strh    w1, [x19, PROJ_DY]
@@ -239,10 +239,10 @@ find_abs_dy_done:
                 cmp     w4, w21
                 b.ge    find_enemy_next
 
-                mov     w21, w4
-                mov     w22, w2
-                mov     w23, w3
-                mov     w24, 1
+                mov     w21, w4                 // Best distance
+                mov     w22, w2                 // Best X
+                mov     w23, w3                 // Best Y
+                mov     w24, 1                  // Found
 
 find_enemy_next:
                 add     x0, x0, ENEMY_STRUCT_SIZE
@@ -250,9 +250,9 @@ find_enemy_next:
                 b       find_enemy_loop
 
 find_enemy_done:
-                mov     w0, w22
-                mov     w1, w23
-                mov     w2, w24
+                mov     w0, w22                 // Return X
+                mov     w1, w23                 // Return Y
+                mov     w2, w24                 // Return found flag
 
                 ldp     x23, x24, [sp, 48]
                 ldp     x21, x22, [sp, 32]
@@ -346,7 +346,7 @@ proj_check_collision:
                 bl      achievements_on_boss_kill
 
                 // Fixed 100 XP, not the TITAN_XP boss_damage returned
-                mov     w0, 100
+                mov     w0, 100                 // Boss XP reward
                 bl      player_add_xp
 
                 // Increment kill count
@@ -355,8 +355,8 @@ proj_check_collision:
                 b       proj_deactivate
 
 proj_check_enemies:
-                mov     w0, w23
-                mov     w1, w24
+                mov     w0, w23                 // Restore X
+                mov     w1, w24                 // Restore Y
                 bl      enemies_check_collision
                 cmp     w0, -1
                 b.eq    proj_update_next
@@ -520,19 +520,19 @@ proj_draw_loop:
                 b       proj_char_diag2
 
 proj_char_horiz:
-                mov     w0, BULLET_CHAR
+                mov     w0, BULLET_CHAR         // '-'
                 b       proj_draw_char
 
 proj_char_vert:
-                mov     w0, BULLET_CHAR_V
+                mov     w0, BULLET_CHAR_V       // '|'
                 b       proj_draw_char
 
 proj_char_diag1:
-                mov     w0, BULLET_CHAR_D
+                mov     w0, BULLET_CHAR_D       // '\'
                 b       proj_draw_char
 
 proj_char_diag2:
-                mov     w0, BULLET_CHAR_D2
+                mov     w0, BULLET_CHAR_D2      // '/'
 
 proj_draw_char:
                 bl      write_char
@@ -564,12 +564,12 @@ enemy_damage:
                 add     x19, x2, x3             // x19 = enemy pointer
 
                 ldrb    w2, [x19, ENEMY_HEALTH]
-                subs    w2, w2, w1
+                subs    w2, w2, w1              // health -= damage
 
                 b.le    enemy_killed
 
                 strb    w2, [x19, ENEMY_HEALTH]
-                mov     w0, 0
+                mov     w0, 0                   // Return 0 (alive)
                 b       enemy_damage_done
 
 enemy_killed:
