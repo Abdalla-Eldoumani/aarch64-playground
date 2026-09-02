@@ -27,7 +27,7 @@ describe("DecodeStrip", () => {
     ].join("\n");
     render(<DecodeStrip source={source} currentLine={4} />);
     const text = screen.getByLabelText("current instruction").textContent ?? "";
-    expect(text).toContain("score1_r=w19");
+    expect(text).toContain("(score1_r = w19)");
   });
 
   it("shows the calm prompt when no line is active", () => {

@@ -8,7 +8,7 @@ import { lookupDoc } from "@/lib/asm/instruction-docs";
 
 /**
  * Collect `define(name, value)` macro aliases from the full source so a gloss
- * can show `score1_r=w19` next to the operand a student wrote.
+ * can show `score1_r = w19` beside the line a student wrote.
  *
  * The regex is deliberately free of overlapping quantifiers: an earlier
  * shape (`\s*` around a lazy `[^)]+?`, all three matching whitespace across
@@ -48,27 +48,32 @@ export function describeLine(
   const doc = lookupDoc(mnemonic);
   if (!doc) {
     // Directives, labels, and pseudo-ops fall through.
-    if (mnemonic.startsWith(".")) return `directive ${mnemonic.toLowerCase()} -- emits data or controls section layout`;
+    if (mnemonic.startsWith(".")) return `directive ${mnemonic.toLowerCase()}: emits data, or controls where a section is laid out`;
     return null;
   }
   if (doc.notImplemented) {
-    return `${mnemonic.toLowerCase()} -- not implemented in this emulator`;
+    return `${mnemonic.toLowerCase()}: not implemented in this emulator`;
   }
-  // Surface alias resolutions so a student sees `score1_r -> w19`.
-  const resolved = aliases ? resolveAliases(operands, aliases) : null;
-  const detail = resolved && resolved !== operands ? ` (aliases: ${resolved})` : "";
-  return `${mnemonic.toLowerCase()} ${operands}${detail} -- ${doc.summary}`;
+  // Only the substitutions are named. Annotating the whole operand list and
+  // labelling it "aliases" swept the untouched literals in with them, so
+  // `mov b, 5` claimed `5` was an alias.
+  const detail = aliases ? aliasPairs(operands, aliases) : "";
+  return `${mnemonic.toLowerCase()} ${operands}${detail} · ${doc.summary}`;
 }
 
 /**
- * Annotate each operand token that matches a known alias with its target, e.g.
- * `score1_r` -> `score1_r=w19`. Tokens with no alias are left untouched.
+ * The ` (name = target, ...)` suffix for the aliases these operands use, in
+ * the order the tokens appear. Empty when nothing resolves.
  */
-export function resolveAliases(operands: string, aliases: Record<string, string>): string {
-  if (!operands) return operands;
-  return operands.replace(/\b([A-Za-z_][\w]*)\b/g, (match) => {
-    const target = aliases[match];
-    if (!target || target === match) return match;
-    return `${match}=${target}`;
-  });
+export function aliasPairs(operands: string, aliases: Record<string, string>): string {
+  const seen = new Set<string>();
+  const pairs: string[] = [];
+  for (const m of operands.matchAll(/\b[A-Za-z_]\w*\b/g)) {
+    const name = m[0];
+    const target = aliases[name];
+    if (!target || target === name || seen.has(name)) continue;
+    seen.add(name);
+    pairs.push(`${name} = ${target}`);
+  }
+  return pairs.length ? ` (${pairs.join(", ")})` : "";
 }

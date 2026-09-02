@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeLine, extractAliases, resolveAliases } from "@/lib/asm/explain-line";
+import { aliasPairs, describeLine, extractAliases } from "@/lib/asm/explain-line";
 
 describe("describeLine", () => {
   it("resolves a known mnemonic to its course-voice summary", () => {
@@ -9,10 +9,11 @@ describe("describeLine", () => {
     expect(out!.toLowerCase()).toContain("copy register");
   });
 
-  it("surfaces m4 alias resolution in the operand list", () => {
+  it("names the alias substitution without claiming the literals are aliases", () => {
     const aliases = extractAliases("define(score1_r, w19)\n");
     const out = describeLine("    mov score1_r, 5", aliases);
-    expect(out).toContain("score1_r=w19");
+    expect(out).toContain("(score1_r = w19)");
+    expect(out).not.toContain(", 5)");
   });
 
   it("returns null for blank, comment-only, and label-only lines", () => {
@@ -59,12 +60,12 @@ describe("extractAliases", () => {
   });
 });
 
-describe("resolveAliases", () => {
-  it("annotates operands with their alias targets", () => {
-    expect(resolveAliases("score1_r, 5", { score1_r: "w19" })).toBe("score1_r=w19, 5");
+describe("aliasPairs", () => {
+  it("lists each substitution once, in operand order", () => {
+    expect(aliasPairs("score1_r, score1_r, 5", { score1_r: "w19" })).toBe(" (score1_r = w19)");
   });
 
-  it("leaves operands without a matching alias untouched", () => {
-    expect(resolveAliases("x0, 5", { score1_r: "w19" })).toBe("x0, 5");
+  it("returns nothing when no operand token has an alias", () => {
+    expect(aliasPairs("x0, 5", { score1_r: "w19" })).toBe("");
   });
 });
