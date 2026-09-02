@@ -1,5 +1,5 @@
 // alias-sum.s - .req register aliases across a summing loop
-// later assignments name registers with .req instead of m4 defines,
+// Later assignments name registers with .req instead of m4 defines,
 // for integer and fp registers alike. the definitions carry trailing
 // comments, fp and lr are re-aliased over their own names, and the
 // alias word total inside the format string has to reach stdout
