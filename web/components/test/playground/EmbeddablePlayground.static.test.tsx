@@ -1,7 +1,8 @@
 // Pins the hero's static-editor configuration: the program is in the render
-// before the embed engages, the embed frame paints its panes before the hub
-// finishes loading, full chrome keeps its loading beat, and a static view
-// asked for without readOnly warns in development.
+// before the embed engages, the pre-engage frame is the SAME grid the engaged
+// frame is, the embed paints its panes before the hub finishes loading, full
+// chrome keeps its loading beat, and a static view asked for without readOnly
+// warns in development.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -53,6 +54,35 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(container.textContent).toContain("ret");
     expect(screen.queryByTestId("editor")).toBeNull();
     expect(screen.queryByText("loading editor...")).toBeNull();
+  });
+
+  it("paints the same grid areas before and after the embed engages", () => {
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
+    );
+    const areas = () =>
+      Array.from(container.querySelectorAll(".embed-grid > *")).map(
+        (el) => (el.className.match(/embed-area-[a-z]+/) ?? [""])[0],
+      );
+    const before = areas();
+    expect(before).toEqual([
+      "embed-area-editor",
+      "embed-area-registers",
+      "embed-area-console",
+    ]);
+    // The panes are the real components, so this also pins that both render
+    // against no hub at all.
+    expect(screen.getByRole("heading", { name: "regfile" })).toBeTruthy();
+    expect(container.querySelector(".embed-area-editor")?.textContent).toContain(
+      "mov",
+    );
+
+    engage(container);
+
+    expect(areas()).toEqual(before);
+    expect(container.querySelector(".embed-area-editor")?.textContent).toContain(
+      "mov",
+    );
   });
 
   it("keeps the loading beat for an embed without the prop", () => {
