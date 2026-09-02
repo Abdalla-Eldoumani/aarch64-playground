@@ -75,12 +75,12 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           <p role="alert" className="text-[11px] text-[var(--danger)] mb-2">
             this workspace is too large to share as a link (
             {size.chars.toLocaleString()} characters compressed, limit{" "}
-            {size.max.toLocaleString()}). Export the files with the .json
+            {size.max.toLocaleString()}). export the files with the .json
             button in the header and send those instead.
           </p>
         ) : (
           <p className="text-[11px] text-[var(--text-secondary)] mb-2">
-            The source is compressed into the URL hash; nothing is sent to a server.
+            the source is compressed into the URL hash; nothing is sent to a server.
           </p>
         )}
         {!oversize && (
