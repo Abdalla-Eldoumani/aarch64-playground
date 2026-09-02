@@ -45,7 +45,7 @@ One component is the emulator surface everywhere it appears:
 landing hero, the lessons, and the exercises. It owns the single
 `useEmulator()` hub, and that hub crosses one component boundary, into
 `FullChromeSurface`, which `next/dynamic` loads only where the full debugger
-renders. The editor is dynamic on the same reasoning (`lazy-editor.tsx`), so
+renders. The editor is dynamic for the same reason (`lazy-editor.tsx`), so
 the landing ships no Monaco at all: its hero draws the program with
 `StaticCodeView`. `lib/content` sends the index pages a projection of each
 lesson and exercise (`LessonIndexRow`, `ExerciseIndexRow`) instead of the
