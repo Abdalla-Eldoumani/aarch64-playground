@@ -4,18 +4,19 @@
  * Hands-on 16-byte alignment probe for the calling-convention guide: a column
  * of 8-byte stack cells, sp as an amber marker, and preset buttons that move
  * sp exactly the way the course prologue lines do. Pure client-side
- * arithmetic -- sp starts at 0x7fffff00, every preset is authored data, no
- * emulator, no worker. The verdict is an aria-live region that reads the new
+ * arithmetic: sp starts at 0x7fffff00, every preset is authored data, no
+ * emulator and no worker. The verdict is an aria-live region that reads the new
  * sp and its low bits on every move: a success-tinted "aligned" chip while
  * sp % 16 == 0, a danger-tinted note when an odd multiple of 8 breaks the
  * boundary the next bl needs. Amber marks the machine's pointer, the buttons
  * are the reader acting (the shared Button chrome), and every state is
- * discrete, so reduced motion holds by construction.
+ * discrete, so there is no motion to reduce.
  */
 
 import { useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 
+// The 16-byte-aligned row the emulator's stack band starts a frame on.
 const START_SP = 0x7fffff00;
 /** 8-byte cells rendered below the caller's edge; 96 bytes of headroom. */
 const CELL_COUNT = 12;
