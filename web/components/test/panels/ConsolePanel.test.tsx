@@ -91,7 +91,7 @@ describe("ConsolePanel stdin validation", () => {
 
 describe("ConsolePanel vfs upload", () => {
   function uploadInput() {
-    return screen.getByLabelText("Upload file to virtual filesystem") as HTMLInputElement;
+    return screen.getByLabelText("upload a file for the program to read") as HTMLInputElement;
   }
 
   it("registers an uploaded file into the vfs with its bytes", async () => {
@@ -141,7 +141,7 @@ describe("ConsolePanel controls and state", () => {
     const { input } = setup({ blocked: true });
     expect(screen.getByRole("status").textContent).toBe("waiting for input");
     expect(input.placeholder).toBe(
-      "program is waiting for input... (ctrl-d = end of input)",
+      "the program is waiting for input. type a line and press enter, or press Ctrl+D to close the input",
     );
   });
 
@@ -251,7 +251,7 @@ describe("ConsolePanel output a terminal session produced", () => {
     expect(screen.getByText("exit 0")).toBeTruthy();
   });
 
-  it("leaves stderr whole -- the pane never showed it", () => {
+  it("leaves stderr whole because the pane never showed it", () => {
     setup({
       stdout: "[2J frame",
       stderr: "warning: no such file\n",

@@ -177,7 +177,7 @@ export function ConsolePanel({
               type="file"
               className="hidden"
               onChange={handleFile}
-              aria-label="Upload file to virtual filesystem"
+              aria-label="upload a file for the program to read"
             />
           </label>
           <button
@@ -238,9 +238,9 @@ export function ConsolePanel({
           }}
           placeholder={
             ownedByTerminal
-              ? "this program reads from the terminal tab -- type there"
+              ? "this program reads from the terminal tab; type there"
               : blocked
-                ? "program is waiting for input... (ctrl-d = end of input)"
+                ? "the program is waiting for input. type a line and press enter, or press Ctrl+D to close the input"
                 : "stdin"
           }
           disabled={ownedByTerminal}
