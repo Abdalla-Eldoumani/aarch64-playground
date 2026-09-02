@@ -1,19 +1,17 @@
-// stack_viz.asm - eight slots, and only the top one is ever in play
+// stack.s - eight slots, and only the top one is ever in play
 //
 // The tower is drawn from the bottom up because that is the order the
 // slots fill: slot 0 first, the top pointer climbing one slot per push.
-// Everything a stack refuses to let you do is visible here - the values
-// under the top are on screen the whole time and stay untouched.
+// The values under the top stay on screen and untouched, so what a stack
+// refuses is visible.
 //
-// stack_get_data / stack_get_top / stack_get_capacity read the state out
-// for the c++ build, which draws the same eight words its own way.
 
 define(fp, x29)
 define(lr, x30)
 
     stack_max_size = 8
 
-// Role numbers mirror the UI_ROLE_* set in ui.asm. They are repeated so
+// Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated so
 // this file also assembles on its own, the way the web build feeds it.
     STACK_ROLE_TEXT  = 0
     STACK_ROLE_DIM   = 1
@@ -1083,8 +1081,7 @@ stack_clear_interactive:
     ret
 
 // stack_push(w0 = value) -> w0 = 1 on success, 0 on overflow
-// No calls, so scratch registers are all it needs and no caller state is
-// at risk.
+// No calls, so no callee-saved register has to be spilled.
     .global stack_push
 stack_push:
     stp     fp, lr, [sp, -16]!
@@ -1220,7 +1217,7 @@ stack_clear:
     ldp     fp, lr, [sp], 16
     ret
 
-// accessors for the c++ build: read the state without touching it
+// accessors: read the state without touching it
 
 // stack_get_data() -> x0 = address of the slots
     .global stack_get_data
