@@ -82,7 +82,7 @@ compiler and qemu-user; [`emulator/tests/c-corpus/README.md`](../emulator/tests/
 has the steps, where the tracked references came from, and the one
 recorded hardware-versus-qemu divergence. A weekly workflow
 (`corpus.yml`) regenerates everything and fails on drift, so a toolchain
-change announces itself.
+change is caught without a PR.
 
 ## Type and lint
 
@@ -100,7 +100,7 @@ The eslint flat config ignores `lib/wasm/` and `lib/wasm-node/` (both wasm-pack-
 From `web/`:
 
 ```bash
-npm run size               # size-limit budgets from package.json
+npm run size               # size-limit budgets from package.json, then scripts/bundle-budget.js
 npm run lighthouse         # desktop preset, headless
 npm run lighthouse:mobile  # mobile preset, headless
 ```
@@ -115,7 +115,7 @@ From `web/`:
 npm run smoke:firefox
 ```
 
-Drives Firefox through the live app to confirm CSP boots Monaco, the editor renders, and the service worker registers. Back when the editor loaded from a CDN this caught a `style-src` omission Chromium allowed silently; the editor is served same-origin now, and the smoke run still guards the boot.
+Drives Firefox through the live app to confirm CSP boots Monaco and the editor renders, and prints the service-worker registration count. Back when the editor loaded from a CDN this caught a `style-src` omission Chromium allowed silently; the editor is served same-origin now, and the smoke run still guards the boot.
 
 ## What CI runs
 
@@ -124,8 +124,8 @@ does not need:
 
 - **wasm**: the web and nodejs wasm-pack builds, uploaded as an artifact
   every other job below downloads.
-- **rust**: four jobs in parallel with everything: `cargo test` minus the
-  corpus gate, and the fifty-program corpus sliced three ways
+- **rust**: four jobs that run alongside the web jobs: `cargo test` minus
+  the corpus gate, and the fifty-program corpus sliced three ways
   (`CORPUS_SHARD=i/3`, read by the test itself), every program running
   exactly once across the slices. A plain local `cargo test` still runs
   the whole suite in one piece.
