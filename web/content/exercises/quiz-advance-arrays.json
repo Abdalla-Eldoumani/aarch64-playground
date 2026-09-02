@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Arrays and Structures - Advanced",
+  "title": "Quiz: arrays and structures",
   "slug": "quiz-advance-arrays",
   "order": 49,
   "topic": "arrays",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Work through offset arithmetic for multi-dimensional arrays and padded structures, scaled register addressing, and the constant that allocates an aligned stack frame.",
+  "prompt": "Offset arithmetic for multi-dimensional arrays and padded structures, scaled register addressing, and the constant that allocates an aligned stack frame.",
   "questions": [
     {
       "question": "An array is declared int ia[2][3][4]. Which expression gives the byte offset of ia[i][j][k] from the base of the array?",
