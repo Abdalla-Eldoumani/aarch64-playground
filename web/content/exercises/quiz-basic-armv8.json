@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: ARMv8 Assembly - Fundamentals",
+  "title": "Quiz: ARMv8 assembly",
   "slug": "quiz-basic-armv8",
   "order": 42,
   "topic": "armv8",
   "difficulty": "intro",
   "variant": "quiz",
-  "prompt": "Work through the AArch64 exception levels, the register conventions, integer division by zero, the gdb stepping commands, and what `mov x29, sp` really assembles to.",
+  "prompt": "How AArch64 splits privilege across exception levels, which registers a call may clobber, what integer division by zero produces, how gdb steps, and what `mov x29, sp` really assembles to.",
   "questions": [
     {
       "question": "In ARMv8-A, which exception level runs ordinary user applications with the least privilege?",
