@@ -2,12 +2,12 @@ import type { JSX } from "react";
 
 /**
  * Static AAPCS64 register-file teaching diagram: a labeled, role-grouped map of
- * x0-x30 + sp with the fp/lr (and ip0/ip1) aliases. This is presentational only
- * -- it has no runtime, reads no live debugger state, and is deliberately not
- * the interactive register view. The ABI role split mirrors REGISTER_ROLES in
+ * x0-x30 + sp with the fp/lr (and ip0/ip1) aliases. Presentational only: no
+ * runtime, no live debugger state. The interactive register view is
+ * RegisterPanel. The ABI role split mirrors REGISTER_ROLES in
  * LessonMarkdown.tsx exactly (esp. x8 = indirect result, x16/x17 = ip0/ip1,
  * x18 = platform) so the hover-define, this diagram, and the calling-convention
- * guide tell one story. The four color families are saved-ness, read from
+ * guide agree. The four color families are saved-ness, read from
  * tokens: cyan = the argument/result area, danger = caller-saved (volatile
  * across a call), success = callee-saved (preserved), and a neutral border
  * tint = the special lr/sp and platform-reserved x18. --amber stays reserved
