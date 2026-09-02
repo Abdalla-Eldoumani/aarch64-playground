@@ -15,18 +15,17 @@ count_m:.word   0                       // static local: lives in .data
 fmt:    .string "Call %d: count = %d\n"
 
 // increment() -> w0
-// Loads count from .data, increments, stores back, returns new value
         .balign 4
         .global increment
 increment:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        ldr     x9, =count_m           // address of count
-        ldr     w10, [x9]              // w10 = count
-        add     w10, w10, 1            // count++
-        str     w10, [x9]              // store back
-        mov     w0, w10                // return count
+        ldr     x9, =count_m
+        ldr     w10, [x9]
+        add     w10, w10, 1
+        str     w10, [x9]
+        mov     w0, w10
 
         ldp     fp, lr, [sp], 16
         ret
@@ -36,21 +35,23 @@ increment:
 main:   stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     i_r, 1                 // call number
+        mov     i_r, 1
         b       test
 
 loop:
-        bl      increment              // w0 = new count
-        mov     w20, w0                // save return value
+        bl      increment
+        mov     w20, w0
 
         ldr     x0, =fmt
-        mov     w1, i_r                // call number
-        mov     w2, w20                // count value
+        mov     w1, i_r
+        mov     w2, w20
         bl      printf
 
         add     i_r, i_r, 1
 test:   cmp     i_r, 3
         b.le    loop
 
+        // main returns printf's byte count, not 0: the exit status is not
+        // part of what this example demonstrates.
         ldp     fp, lr, [sp], 16
         ret
