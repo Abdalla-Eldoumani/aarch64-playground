@@ -1,8 +1,8 @@
 {
-  "title": "Printing Hello World in ARMv8 AArch64 Assembly",
+  "title": "Printing a string with printf",
   "slug": "printing-strings-hello-world",
   "order": 4,
-  "summary": "A guided walkthrough of printing a string using Assembly Aarch64.",
+  "summary": "How to store a string in .data, load its address, and hand it to printf.",
   "tags": [
     "printing"
   ],
