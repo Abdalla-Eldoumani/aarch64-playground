@@ -68,9 +68,9 @@ main:
 }
 
 #[test]
-fn sleeping_refunds_steps_but_never_past_the_lifetime_cap() {
-    // Sleep the single-call max in a loop; each iteration refunds
-    // MAX_SLEEP_NS / 1000 steps until the cap runs dry.
+fn three_max_length_sleeps_advance_the_virtual_clock_by_three_clamps() {
+    // Sleep the single-call max three times: each call clamps to
+    // MAX_SLEEP_NS, so the virtual clock advances by exactly three clamps.
     let src = r#"
         .data
 ts:     .skip 16
@@ -262,7 +262,7 @@ main:
 
 #[test]
 fn raw_mode_disables_the_step_back_ring() {
-    // Before raw mode the ring accumulates; after TCSETS raw it stops.
+    // The ring records frames until TCSETS raw, then stops.
     let src = r#"
         .data
 tio:    .skip 60
