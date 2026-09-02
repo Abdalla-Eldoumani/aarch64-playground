@@ -8,7 +8,8 @@ import Link from "next/link";
  * is set, a quiet "playground" label rides alongside (header on wide
  * viewports, drawer); collapsed, the lockup plus mark stand in as the mark.
  * `"sm-up"` keeps the label out of viewports under the sm breakpoint, where
- * a crowded bar (the 375px nav) cannot spare its width.
+ * a crowded bar (the 375px nav) cannot spare its width, and out of the md
+ * band, where the route links and the theme control already fill the bar.
  */
 export function Wordmark({
   showLabel = false,
@@ -46,7 +47,7 @@ export function Wordmark({
       {showLabel ? (
         <span
           className={`font-sans text-[14px] leading-none text-[var(--text-secondary)] ${
-            showLabel === "sm-up" ? "hidden sm:inline" : ""
+            showLabel === "sm-up" ? "hidden sm:inline md:hidden lg:inline" : ""
           }`}
         >
           playground

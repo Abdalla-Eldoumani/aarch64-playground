@@ -39,17 +39,20 @@ describe("Wordmark", () => {
     expect(screen.getByText("playground")).toBeTruthy();
   });
 
-  it("sm-up renders the label but yields it below the sm breakpoint", () => {
+  it("sm-up renders the label but yields it below sm and across the md band", () => {
     render(<Wordmark showLabel="sm-up" />);
     const link = screen.getByRole("link", { name: /aarch64/i });
     expect(link.getAttribute("aria-label")).toBeNull();
     expect(screen.getByRole("link", { name: /home/i })).toBe(link);
     // The label stays in the DOM (wide viewports show it) but must carry the
-    // responsive classes that keep it out of a 375px nav, where the labeled
-    // mark plus the actions cluster overflow the viewport.
+    // responsive classes that keep it out of a 375px nav and out of the md
+    // band, where at exactly 768px the labeled mark, the route links, and the
+    // theme control overflow the viewport by 19px.
     const label = screen.getByText("playground");
     expect(label.className).toContain("hidden");
     expect(label.className).toContain("sm:inline");
+    expect(label.className).toContain("md:hidden");
+    expect(label.className).toContain("lg:inline");
   });
 
   it("keeps the contract with the label hidden", () => {
