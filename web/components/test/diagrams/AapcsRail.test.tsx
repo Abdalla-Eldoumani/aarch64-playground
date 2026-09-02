@@ -10,8 +10,8 @@ afterEach(() => {
 });
 
 // Every row group of the rail: range on the left, role note on the right.
-// The integer and float callee-saved rows share one note on purpose: the
-// role is one story across both files.
+// The integer and float callee-saved rows share one note: the role is the
+// same in both files.
 const ROWS: Array<[string, string]> = [
   ["x0 – x7", "arguments · results"],
   ["x8", "indirect result"],
@@ -62,7 +62,7 @@ describe("AapcsRail", () => {
     expect(screen.getByText("x0 – x7").className).toContain("var(--cyan)");
     expect(screen.getByText("x19 – x28").className).toContain("var(--amber)");
     expect(screen.getByText("x29 · x30").className).toContain("var(--amber)");
-    // The platform rows read at 60% opacity: theirs to avoid, not to style up.
+    // The platform rows read at 60% opacity: they are the ones to avoid.
     expect(screen.getByText("x16 – x18").closest("li")?.className).toContain(
       "opacity-60",
     );
