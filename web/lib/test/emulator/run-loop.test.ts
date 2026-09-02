@@ -98,7 +98,7 @@ describe("runChunked", () => {
     expect(result.error).toBeNull();
   });
 
-  it("does not call a paused stop at the budget a step-limit stop", async () => {
+  it("reports a pause that lands at the budget as a pause, not as a step-limit stop", async () => {
     // The flag is still set when the result is folded: a run the student
     // paused must not be reported as an endless loop that ran out of budget.
     const { host, state } = fakeHost();
@@ -128,8 +128,8 @@ describe("runChunked", () => {
   });
 
   it("checks the epoch on every chunk, not on every heartbeat", async () => {
-    // The worker paces its heartbeats; the cancel check used to ride that
-    // pace, so a replaced machine kept being driven for whole chunks.
+    // The worker paces its heartbeats; a cancel check riding that pace would
+    // keep driving a replaced machine for whole chunks.
     const { host, state } = fakeHost();
     const result = await runChunked(host, 1_000_000, {
       ...options(() => {
@@ -150,8 +150,8 @@ describe("runChunked", () => {
     expect(result.error).toBe(NO_PROGRESS_ERROR);
     expect(result.steps_executed).toBe(0);
     expect(result.step_limit_reached).toBe(false);
-    // The host's own record is untouched: one host used to write the
-    // message into it in place.
+    // The host's own record is untouched: the loop must not write the message
+    // into it in place.
     expect(state.handedBack[0].error).toBeNull();
   });
 
