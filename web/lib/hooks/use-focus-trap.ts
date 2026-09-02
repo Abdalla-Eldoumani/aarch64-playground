@@ -17,14 +17,13 @@ function getFocusables(root: HTMLElement | null): HTMLElement[] {
  * `onClose`. On close, restores focus to the previously-focused element.
  *
  * Caller still renders `role="dialog" aria-modal="true"` and any backdrop
- * dismissal -- this hook only handles keyboard focus management.
+ * dismissal; this hook only handles keyboard focus management.
  */
 export function useFocusTrap(
   open: boolean,
   ref: RefObject<HTMLElement | null>,
   onClose: () => void,
 ): void {
-  // Focus first item on open; restore previous focus on close.
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -35,7 +34,6 @@ export function useFocusTrap(
     };
   }, [open, ref]);
 
-  // Tab cycle + Escape close.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
