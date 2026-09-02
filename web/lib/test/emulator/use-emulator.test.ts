@@ -596,7 +596,7 @@ describe("useEmulator assemble", () => {
   it("assembleForTool returns the precise verdict and never touches error state", async () => {
     const fake = makeBackend({
       assembleSuccess: false,
-      assembleError: "unknown mnemonic: MOVQ",
+      assembleError: "unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it",
       assembleErrorLine: 2,
     });
     const { result } = await mountLoaded(fake);
@@ -610,7 +610,7 @@ describe("useEmulator assemble", () => {
     // The caller gets the full verdict directly...
     expect(verdict).toEqual({
       success: false,
-      error: "unknown mnemonic: MOVQ",
+      error: "unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it",
       errorLine: 2,
     });
     // ...and the editor-facing error surface stays exactly as it was.
