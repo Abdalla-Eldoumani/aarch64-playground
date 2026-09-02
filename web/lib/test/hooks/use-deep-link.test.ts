@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import LZString from "lz-string";
 import { buildDeepLinkQuery, parseDeepLink, resolveExampleStem } from "@/lib/hooks/use-deep-link";
-// parseDeepLink no longer imports the decoder -- that edge is what put
-// lz-string on the landing -- so every bundle case hands it in.
+// parseDeepLink does not import the decoder (that import is what put
+// lz-string on the landing), so every bundle case hands it in.
 import { decodeBundle } from "@/lib/playground/diagnostic-bundle";
 import { MAX_SHARE_HASH_BYTES } from "@/lib/playground/upload-guard";
 
