@@ -14,7 +14,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## the prologue and epilogue\n\nA function that calls other functions opens with a *prologue* and closes with an *epilogue*. The prologue saves the caller's frame pointer and the return address, then claims space for the new frame; the epilogue restores them and hands control back.\n\nThe pair instructions do this in one step. `stp fp, lr, [sp, alloc]!` stores `fp` and `lr` and moves `sp` down by `alloc` in one pre-indexed access, and `ldp fp, lr, [sp], dealloc` restores them and lifts `sp` back afterward. Between the two, `mov fp, sp` anchors the frame."
+      "markdown": "## The prologue and epilogue\n\nA function that calls other functions opens with a *prologue* and closes with an *epilogue*. The prologue saves the caller's frame pointer and the return address, then claims space for the new frame; the epilogue restores them and hands control back.\n\nThe pair instructions do this in one step. `stp fp, lr, [sp, alloc]!` stores `fp` and `lr` and moves `sp` down by `alloc` in one pre-indexed access, and `ldp fp, lr, [sp], dealloc` restores them and lifts `sp` back afterward. Between the two, `mov fp, sp` anchors the frame."
     },
     {
       "type": "code",
@@ -28,7 +28,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## locals in the frame\n\nLocal variables live at fixed offsets above `fp`. Storing one is `str w0, [fp, 16]`; reading it back is `ldr w1, [fp, 16]`. The offsets are yours to choose, as long as they stay inside the space the prologue reserved.\n\nThe reserved size comes from the alignment formula `alloc = -(16 + locals) & -16`, where `locals` is the number of bytes the function needs. The `& -16` rounds the frame up to a multiple of sixteen so the stack keeps its alignment, and the leading sixteen bytes hold the saved `fp` and `lr` pair. The two editors below allocate frames, fill locals with fixed values, and read them back by offset."
+      "markdown": "## Locals in the frame\n\nLocal variables live at fixed offsets above `fp`. Storing one is `str w0, [fp, 16]`; reading it back is `ldr w1, [fp, 16]`. The offsets are yours to choose, as long as they stay inside the space the prologue reserved.\n\nThe reserved size comes from the alignment formula `alloc = -(16 + locals) & -16`, where `locals` is the number of bytes the function needs. The `& -16` rounds the frame up to a multiple of sixteen so the stack keeps its alignment, and the leading sixteen bytes hold the saved `fp` and `lr` pair. The two editors below allocate frames, fill locals with fixed values, and read them back by offset."
     },
     {
       "type": "editor",
