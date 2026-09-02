@@ -57,6 +57,7 @@ wave_kills:     .word   0                       // Kills in current wave
 wave_target:    .word   ENEMIES_PER_WAVE        // Kills needed for next wave
 
 // Simple random state (LCG)
+random_state:   .word   12345                   // Random seed
 
                 .text
                 .balign 4
