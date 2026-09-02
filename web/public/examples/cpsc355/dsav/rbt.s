@@ -119,7 +119,7 @@ rb_lg_parent:       .string "parent"
 rb_lg_gp:           .string "grandparent"
 rb_lg_uncle:        .string "uncle"
 
-rb_lbl_rule:        a red node never has a red child, and every path passes the same number of black nodes
+rb_lbl_rule:        .string "a red node never has a red child, and every path holds the same blacks"
 rb_lbl_order:       .string "order"
 rb_lbl_root:        .string "root"
 rb_lbl_none:        .string "no root yet"
@@ -157,7 +157,7 @@ rb_msg_nofix:       .string "the parent was already black, so nothing had to be 
 rb_fmt_cmp_lt:      .string "%d is smaller than %d, so the descent goes left"
 rb_fmt_cmp_gt:      .string "%d is larger than %d, so the descent goes right"
 rb_fmt_dup:         .string "%d is already in the tree, and a search tree keeps one of each"
-rb_fmt_arrived:     %d hangs off %d in red, so no path changes its black count
+rb_fmt_arrived:     .string "%d hangs off %d, red, which is the colour that changes nothing"
 rb_fmt_placed:      .string "inserted %d  \xc2\xb7  comparisons %d  \xc2\xb7  repair steps %d"
 rb_fmt_found:       .string "found %d  \xc2\xb7  comparisons %d  \xc2\xb7  depth %d"
 rb_fmt_missing:     .string "the descent ran out of tree, so %d is not in here"
@@ -167,7 +167,7 @@ rb_fmt_del_two:     .string "%d has two children, so its successor moves up and 
 rb_fmt_deleted:     .string "deleted %d, and every path still counts the same number of blacks"
 rb_fmt_visit:       .string "visit %d"
 rb_fmt_done_in:     .string "sorted order again, but off a tree that cannot go lopsided"
-rb_fmt_sample:      eight values, and the tree never grew taller than it had to
+rb_fmt_sample:      .string "eight values, and not one of them left the tree taller than it had to be"
 rb_fmt_state:       .string "%d nodes, %d levels. a plain search tree could be %d levels here"
 rb_fmt_facts:       .string "%d nodes  \xc2\xb7  height %d  \xc2\xb7  black height %d"
 rb_msg_all_ok:      .string "every rule holds, so no path down can be more than twice the shortest"
@@ -2030,7 +2030,7 @@ rb_ask_prompt:
 
 rb_ask_range:
     // Say why and ask again. Answering 0 here would be indistinguishable
-    // from a closed stdin,
+    // from a closed stdin, and the operation was being abandoned silently.
     ldr     x0, =rb_msg_range
     mov     w1, 0
     mov     w2, 0
