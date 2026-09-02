@@ -1614,7 +1614,8 @@ tick_flash_done:
 // ------------------------------------------------------------------ //
 
 // key_press: the one door every key goes through, however it was
-// pressed. An error locks the device to C and AC,
+// pressed. An error locks the device to C and AC, the way a calculator
+// refuses to carry on until you acknowledge it.
 key_press:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -2586,7 +2587,7 @@ imm_percent:
 
         // Only the additive operators scale by the running total. After
         // a multiply, a divide or a power the hundredth stands on its
-        // own,
+        // own, which is what 200 * 10 % = 20 means on a real device.
         ldr     x9, =pend_op
         ldr     w9, [x9]
         cbz     w9, imm_percent_store
@@ -3666,7 +3667,7 @@ format_double_small_loop:
 
 format_double_sci:
         // Outside the window the display falls back to a mantissa and a
-        // decade,
+        // decade, the same way a pocket device does.
         ldrb    w13, [x12]
         strb    w13, [x20], 1
         cbz     x24, format_double_sci_exp
