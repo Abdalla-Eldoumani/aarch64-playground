@@ -4,8 +4,8 @@ import GlobalError from "./global-error";
 
 // The root-layout error boundary. It renders its own document (the Next
 // contract) with inline literal colors, because the layout that installs
-// globals.css and the fonts is the thing that failed -- so the assertions here
-// pin the register text, the reset wiring, and the copy report rather than any
+// globals.css and the fonts is the thing that failed, so the assertions pin
+// the register text, the reset wiring, and the copy report rather than any
 // class name. jsdom accepts the nested <html>/<body> React renders.
 
 afterEach(() => {
