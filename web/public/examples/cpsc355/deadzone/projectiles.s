@@ -18,10 +18,13 @@ PROJ_STRUCT_SIZE = 16                           // Total struct size
 PROJ_TYPE_BULLET = 1                            // Basic bullet
 
 // Projectile stats
+BULLET_CHAR = '-'                               // Horizontal bullet
+BULLET_CHAR_V = '|'                             // Vertical bullet
+BULLET_CHAR_D = '\\'                            // Diagonal bullet
+BULLET_CHAR_D2 = '/'                            // Other diagonal
 
 // Weapon settings
 FIRE_RATE = 10                                  // Frames between shots
-// Maximum projectiles
 
                 .data
 
