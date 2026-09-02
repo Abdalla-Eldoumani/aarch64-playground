@@ -5,8 +5,7 @@
  * returns the field layout (label, bit width, the actual bits, and a decoded
  * meaning for the register fields), plus which field the instruction writes
  * so the strip can light the destination amber. Unrecognized words fall back
- * to a single unsplit field, so the strip never lies about structure it does
- * not know.
+ * to a single unsplit field rather than a guessed layout.
  *
  * Every layout is validated in decode-fields.test.ts by re-concatenating the
  * sliced bits and comparing against machine words produced by the real
@@ -530,8 +529,7 @@ export function decodeFields(word: number): DecodedWord {
     }
     // Bit 21 splits the 00 family: 1 with idx bits 10 means REGISTER
     // offset (Rm + option + S), everything else is the 9-bit-immediate
-    // pre/post-index form. Slicing register-offset words through the
-    // imm9 layout fabricated an immediate and hid the index register.
+    // pre/post-index form.
     if (bits(w, 21, 21) === 1 && bits(w, 11, 10) === 0b10) {
       const optionNames: Record<number, string> = {
         0b010: "uxtw",
@@ -700,7 +698,7 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
-  // Fallback: one unsplit word, so the strip stays truthful for anything
-  // outside the mapped classes (FP data processing, system ops, data words).
+  // // Fallback: one unsplit word for anything outside the mapped classes (FP
+  // data processing, system ops, data words).
   return slice(w, [{ label: "word", hi: 31, lo: 0, kind: "opcode" }], null);
 }
