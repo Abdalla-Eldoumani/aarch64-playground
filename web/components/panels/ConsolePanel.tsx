@@ -72,6 +72,19 @@ export function ConsolePanel({
   const [stdinValue, setStdinValue] = useState("");
   const toast = useToast();
 
+  // Pointer-aware, not viewport-aware: a laptop with a touchscreen still has
+  // keys, and a phone with a bluetooth keyboard is still a phone. The server
+  // renders the keyboard copy and the effect swaps it after mount.
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const query = window.matchMedia("(pointer: coarse)");
+    const sync = () => setCoarsePointer(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
   // Auto-scroll on new output unless the user has scrolled up.
   useEffect(() => {
     const el = scrollRef.current;
@@ -194,7 +207,9 @@ export function ConsolePanel({
               Output prints here as your program runs.
             </p>
             <p className="font-sans text-[11px] text-[var(--text-secondary)]">
-              Step with F10, run with F5, or feed stdin from the box below.
+              {coarsePointer
+                ? "Tap step or run under the editor, or feed stdin from the box below."
+                : "Step with F10, run with F5, or feed stdin from the box below."}
             </p>
           </div>
         )}

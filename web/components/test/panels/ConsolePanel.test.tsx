@@ -183,6 +183,19 @@ describe("ConsolePanel controls and state", () => {
     expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
   });
 
+  it("swaps the idle hint to touch copy on a coarse pointer", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("coarse"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    setup({});
+    expect(screen.getByText(/Tap step or run under the editor/)).toBeTruthy();
+    expect(screen.queryByText(/Step with F10/)).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it("lists registered vfs files", () => {
     setup({ vfsFiles: ["a.bin", "b.txt"] });
     expect(screen.getByText(/vfs: a\.bin, b\.txt/)).toBeTruthy();
