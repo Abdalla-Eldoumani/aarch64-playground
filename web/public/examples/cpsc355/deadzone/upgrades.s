@@ -250,10 +250,12 @@ upgrades_get_proj_speed:
                 add     x0, x0, :lo12:upgrade_levels
                 ldrb    w0, [x0, UPGRADE_PROJ_SPEED]
 
-                lsr     w0, w0, 1
+                // Calculate: BASE - (level / 2)
+                lsr     w0, w0, 1               // level / 2
                 mov     w1, BASE_PROJ_SPEED
                 sub     w0, w1, w0
 
+                // Minimum speed of 1
                 cmp     w0, 1
                 b.ge    proj_speed_done
                 mov     w0, 1
@@ -377,7 +379,7 @@ upgrades_draw_menu:
                 add     x0, x0, :lo12:msg_choice_1
                 bl      write_str
 
-                ldr     w20, [x19, 0]
+                ldr     w20, [x19, 0]           // Upgrade type 0
                 mov     w0, VALUE_COLOR
                 bl      set_color
                 mov     w0, w20
@@ -398,7 +400,7 @@ upgrades_draw_menu:
                 add     x0, x0, :lo12:msg_choice_2
                 bl      write_str
 
-                ldr     w20, [x19, 4]
+                ldr     w20, [x19, 4]           // Upgrade type 1
                 mov     w0, VALUE_COLOR
                 bl      set_color
                 mov     w0, w20
@@ -419,7 +421,7 @@ upgrades_draw_menu:
                 add     x0, x0, :lo12:msg_choice_3
                 bl      write_str
 
-                ldr     w20, [x19, 8]
+                ldr     w20, [x19, 8]           // Upgrade type 2
                 mov     w0, VALUE_COLOR
                 bl      set_color
                 mov     w0, w20
@@ -443,7 +445,7 @@ upgrades_draw_level_indicator:
                 mov     fp, sp
                 str     x19, [sp, 16]
 
-                mov     w19, w0
+                mov     w19, w0                 // Save upgrade type
 
                 mov     w0, CHROME_COLOR
                 bl      set_color
