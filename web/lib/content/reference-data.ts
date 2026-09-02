@@ -834,6 +834,18 @@ bfi     w9, w10, 4, 4       // merge at bit 4: w9 = 0xffc0`,
     encoding: encBfm,
     encodedAsm: "bfi w19, w20, 8, 4",
   },
+  {
+    mnemonic: "bfxil",
+    category: "Data processing",
+    syntax: "bfxil xd, xn, #lsb, #width",
+    example: `mov     x0, -1              // every bit set
+movz    x1, 0xab00
+bfxil   x0, x1, 8, 8        // x0 = 0xffffffffffffffab: only the low byte changed
+ubfx    x2, x1, 8, 8        // x2 = 0xab: the same field, everything else zeroed`,
+    gotchas: [
+      "`bfxil` reads its destination. unlike `ubfx` it is a merge, so whatever was in xd outside the field is still there.",
+    ],
+  },
 
   // compare and test
   {

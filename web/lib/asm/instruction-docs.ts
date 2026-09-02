@@ -90,6 +90,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "bfi w19, w20, #8, #4",
     cExample: "Rd = (Rd & ~(mask << lsb)) | ((Rn & mask) << lsb);",
   },
+  BFXIL: {
+    summary: "Bitfield extract and insert low: the field lands at bit 0 of Rd, the rest of Rd survives.",
+    details: ["Same `immr`/`imms` as `UBFX`; the difference is that `UBFX` zeroes everything outside the field and `BFXIL` leaves it."],
+    example: "bfxil x0, x1, #8, #8",
+    cExample: "Rd = (Rd & ~mask) | ((Rn >> lsb) & mask);",
+  },
   SXTB: { summary: "Sign-extend a byte to Wd/Xd (alias for `SBFM`).", example: "sxtb w0, w1", cExample: "Rd = (signed char)Rn;" },
   SXTH: { summary: "Sign-extend a halfword to Wd/Xd.", example: "sxth w0, w1", cExample: "Rd = (short)Rn;" },
   SXTW: { summary: "Sign-extend a word to 64-bit Xd.", example: "sxtw x0, w1", cExample: "Xd = (long)(int)Wn;" },
