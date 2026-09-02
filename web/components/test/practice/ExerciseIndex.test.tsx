@@ -113,14 +113,14 @@ describe("ExerciseIndex", () => {
       variant: "quiz",
       blurb: "check what you know",
     };
-    const arithmetic = makeRow({
+    const listedTopic = makeRow({
       title: "Gamma Exercise",
       slug: "gamma",
       order: 4,
-      topic: "arithmetic",
-      blurb: "add things",
+      topic: "bitwise",
+      blurb: "flip some bits",
     });
-    render(<ExerciseIndex exercises={[...exercises, quiz, arithmetic]} />);
+    render(<ExerciseIndex exercises={[...exercises, quiz, listedTopic]} />);
 
     const code = screen.getByRole("region", { name: "Coding exercises" });
     const theory = screen.getByRole("region", { name: "Theory sets" });
@@ -129,12 +129,12 @@ describe("ExerciseIndex", () => {
     expect(within(theory).getByText("Loop Quiz")).toBeTruthy();
     expect(within(theory).getByRole("heading", { name: /^loops/ })).toBeTruthy();
 
-    // A listed topic (arithmetic) groups ahead of unlisted ones, which keep
+    // A listed topic (bitwise) groups ahead of unlisted ones, which keep
     // their id as the label and sort after the table.
     const groupNames = within(code)
       .getAllByRole("heading", { level: 3 })
       .map((heading) => (heading.textContent ?? "").replace(/·.*$/, "").trim());
-    expect(groupNames).toEqual(["arithmetic", "registers", "stack"]);
+    expect(groupNames).toEqual(["bitwise", "registers", "stack"]);
     expect(screen.queryByRole("button", { name: "registers" })).toBeNull();
   });
 
