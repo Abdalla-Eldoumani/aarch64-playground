@@ -174,9 +174,7 @@ class MainThreadBackend implements EmulatorBackend {
 
   async pause(): Promise<void> {
     // Observed by runUntilBreak at its between-chunk yield, mirroring the
-    // worker's flag -- the comment that claimed there was "nothing to
-    // flag" was wrong, and the loop ran all remaining chunks while the
-    // button already showed run again.
+    // worker's flag.
     this.pauseRequested = true;
   }
 
