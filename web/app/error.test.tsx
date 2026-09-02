@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ErrorPage from "./error";
 
 // Pins the route error boundary: the fault-card register, the retry prop, and
@@ -15,6 +15,18 @@ function faulted(message: string, digest?: string): Error & { digest?: string } 
   const error = new Error(message) as Error & { digest?: string };
   if (digest) error.digest = digest;
   return error;
+}
+
+// The report is built when the markdown builder's chunk lands, so the copy
+// button is inert for a beat after mount. Every copy case waits for it.
+async function reportReady() {
+  await waitFor(() => {
+    expect(
+      screen
+        .getByRole("button", { name: "copy error details" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+  });
 }
 
 describe("route error page", () => {
@@ -59,6 +71,7 @@ describe("route error page", () => {
     render(
       <ErrorPage error={faulted("cannot read x of undefined", "abc123")} reset={() => {}} />,
     );
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();
@@ -80,6 +93,7 @@ describe("route error page", () => {
       value: { writeText },
     });
     render(<ErrorPage error={faulted("boom")} reset={() => {}} />);
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();
@@ -94,6 +108,7 @@ describe("route error page", () => {
       value: { writeText: vi.fn().mockRejectedValue(new Error("blocked")) },
     });
     render(<ErrorPage error={faulted("boom")} reset={() => {}} />);
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();
