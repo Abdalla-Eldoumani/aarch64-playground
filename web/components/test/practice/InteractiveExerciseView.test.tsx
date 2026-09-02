@@ -50,12 +50,12 @@ describe("InteractiveExerciseView", () => {
     render(<InteractiveExerciseView exercise={QUIZ} />);
 
     fireEvent.click(screen.getByRole("button", { name: "x29" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Check Answer" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "check answer" })[0]);
     expect(screen.getByText("1 of 2 correct")).toBeTruthy();
     expect(markSolved).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "x30" }));
-    fireEvent.click(screen.getByRole("button", { name: "Check Answer" }));
+    fireEvent.click(screen.getByRole("button", { name: "check answer" }));
     expect(screen.getByText("2 of 2 correct")).toBeTruthy();
     expect(markSolved).toHaveBeenCalledTimes(1);
     expect(markSolved).toHaveBeenCalledWith("registers-quiz");
@@ -64,7 +64,7 @@ describe("InteractiveExerciseView", () => {
   it("does not advance progress on a wrong answer", () => {
     render(<InteractiveExerciseView exercise={QUIZ} />);
     fireEvent.click(screen.getByRole("button", { name: "x0" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "Check Answer" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "check answer" })[0]);
     expect(screen.getByText("0 of 2 correct")).toBeTruthy();
     expect(markSolved).not.toHaveBeenCalled();
   });
