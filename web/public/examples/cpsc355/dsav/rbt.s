@@ -1,11 +1,10 @@
-// rbt_viz.asm - a red-black tree, and the repair work that keeps it short
+// rbt.s - a red-black tree, and the repair work that keeps it short
 //
 // A search tree only stays fast while it stays shallow, and nothing in a
 // plain insert makes it stay shallow. This one pays a small, bounded
 // price on every insert instead: recolour, and rotate at most twice. The
 // three cases of that repair are the whole idea, so the insert screen
-// stops on each one, paints the family it is looking at, and says in
-// plain words what it is about to do and why.
+// stops on each one, paints the family it is looking at, and names the case.
 //
 // The rules, in the order they matter: the root is black; a red node
 // never has a red child; every path from a node down to a nil leaf passes
@@ -28,7 +27,7 @@ define(lr, x30)
     RB_BLACK = 0
     RB_RED   = 1
 
-// Role numbers mirror the UI_ROLE_* set in ui.asm. They are repeated here
+// Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated here
 // so this file also assembles on its own, the way the web build feeds it.
     RB_ROLE_TEXT   = 0
     RB_ROLE_DIM    = 1
@@ -59,7 +58,7 @@ rb_node_count:      .word 0
 rb_hl_role:         .word 0, 0, 0, 0
 rb_order_len:       .word 0
 rb_delay:           .word 600               // milliseconds between beats
-rb_narrate:         .word 0                 // is anyone watching the repair?
+rb_narrate:         .word 0                 // 1 while the insert screen narrates the repair
 rb_fix_steps:       .word 0                 // cases the last repair fired
 
 rb_cell:            .skip 8                 // one value, formatted
@@ -120,7 +119,7 @@ rb_lg_parent:       .string "parent"
 rb_lg_gp:           .string "grandparent"
 rb_lg_uncle:        .string "uncle"
 
-rb_lbl_rule:        .string "a red node never has a red child, and every path holds the same blacks"
+rb_lbl_rule:        a red node never has a red child, and every path passes the same number of black nodes
 rb_lbl_order:       .string "order"
 rb_lbl_root:        .string "root"
 rb_lbl_none:        .string "no root yet"
@@ -158,7 +157,7 @@ rb_msg_nofix:       .string "the parent was already black, so nothing had to be 
 rb_fmt_cmp_lt:      .string "%d is smaller than %d, so the descent goes left"
 rb_fmt_cmp_gt:      .string "%d is larger than %d, so the descent goes right"
 rb_fmt_dup:         .string "%d is already in the tree, and a search tree keeps one of each"
-rb_fmt_arrived:     .string "%d hangs off %d, red, which is the colour that changes nothing"
+rb_fmt_arrived:     %d hangs off %d in red, so no path changes its black count
 rb_fmt_placed:      .string "inserted %d  \xc2\xb7  comparisons %d  \xc2\xb7  repair steps %d"
 rb_fmt_found:       .string "found %d  \xc2\xb7  comparisons %d  \xc2\xb7  depth %d"
 rb_fmt_missing:     .string "the descent ran out of tree, so %d is not in here"
@@ -168,7 +167,7 @@ rb_fmt_del_two:     .string "%d has two children, so its successor moves up and 
 rb_fmt_deleted:     .string "deleted %d, and every path still counts the same number of blacks"
 rb_fmt_visit:       .string "visit %d"
 rb_fmt_done_in:     .string "sorted order again, but off a tree that cannot go lopsided"
-rb_fmt_sample:      .string "eight values, and not one of them left the tree taller than it had to be"
+rb_fmt_sample:      eight values, and the tree never grew taller than it had to
 rb_fmt_state:       .string "%d nodes, %d levels. a plain search tree could be %d levels here"
 rb_fmt_facts:       .string "%d nodes  \xc2\xb7  height %d  \xc2\xb7  black height %d"
 rb_msg_all_ok:      .string "every rule holds, so no path down can be more than twice the shortest"
@@ -506,7 +505,7 @@ rb_insert:
 
     mov     x19, x0
     mov     w20, w1
-    mov     w26, 0                       // nothing is inserted until it is
+    mov     w26, 0                       // set to 1 once the node is linked in
 
     mov     w0, w20
     bl      rb_create_node
@@ -1688,7 +1687,7 @@ rb_render_tree:
     bl      rb_draw
 
     mov     w0, RB_TOP_ROW
-    mov     w1, RB_TOP_COL - 7
+    mov     w1, RB_TOP_COL - 7          // 7 columns left of the root, the width of the root label
     mov     w2, RB_ROLE_KEY
     ldr     x3, =rb_lbl_root
     bl      ui_text
@@ -2031,7 +2030,7 @@ rb_ask_prompt:
 
 rb_ask_range:
     // Say why and ask again. Answering 0 here would be indistinguishable
-    // from a closed stdin, and the operation was being abandoned silently.
+    // from a closed stdin,
     ldr     x0, =rb_msg_range
     mov     w1, 0
     mov     w2, 0
@@ -2183,7 +2182,7 @@ rb_menu_draw:
     ldr     x2, =rb_opt_0
     bl      rb_menu_line
 
-    // how much tree there is, so the menu is never a dead end
+    // node count and height, so the menu says what is loaded
     mov     w0, 15
     mov     w1, 12
     bl      ui_at
@@ -2541,8 +2540,8 @@ rb_search_int_done:
     ldp     fp, lr, [sp], 80
     ret
 
-// rb_delete_interactive() - find the node, say what its colour costs, and
-// hand the work to the delete that knows how to pay it
+// rb_delete_interactive() - find the node, say what its colour costs, then
+// call rb_delete
 rb_delete_interactive:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
@@ -3001,8 +3000,8 @@ rb_rule_line_done:
     ldp     fp, lr, [sp], 48
     ret
 
-// rb_verify_interactive() - the five rules, each measured against the
-// tree that is actually in memory rather than asserted about it
+// rb_verify_interactive() - the five rules, each measured against the tree in
+// memory
 rb_verify_interactive:
     stp     fp, lr, [sp, -64]!
     mov     fp, sp
