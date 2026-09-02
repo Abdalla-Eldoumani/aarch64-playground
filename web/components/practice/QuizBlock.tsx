@@ -89,7 +89,7 @@ export function QuizBlock({
           }}
           className="mt-6"
         >
-          Check Answer
+          check answer
         </Button>
       ) : (
         <div className="mt-6 flex flex-col items-start gap-5">
@@ -101,7 +101,7 @@ export function QuizBlock({
                 setSelected(null);
               }}
             >
-              Try Again
+              try again
             </Button>
           )}
         </div>
