@@ -152,9 +152,8 @@ describe("TerminalInputState", () => {
     s.handlePrintable("a");
     const completions = s.handleTab(["a.txt", "ab.txt", "ac.txt"]);
     expect(completions).toEqual(["a.txt", "ab.txt", "ac.txt"]);
-    // Buffer doesn't change when ambiguous, but the longest common prefix
-    // for the candidates is "a"; we keep what the user typed and let the
-    // caller list the candidates.
+    // An ambiguous prefix leaves the buffer alone; the caller lists the
+    // candidates.
     expect(s.buffer).toBe("ls a");
   });
 
