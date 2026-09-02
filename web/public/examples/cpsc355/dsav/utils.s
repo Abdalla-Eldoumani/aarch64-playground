@@ -78,7 +78,7 @@ read_int_retry:
     cmp     w0, 1                           // items converted
     b.ne    read_int_no_value
 
-    ldr     w19, [sp]
+    ldr     w19, [sp]                       // hold the value across the calls
     add     sp, sp, 16
     bl      read_int_clear_message
     mov     w0, w19
