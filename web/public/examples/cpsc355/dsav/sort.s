@@ -3,7 +3,8 @@
 // The chrome is drawn once when a run starts. After that a frame repaints
 // only the bars, the values, the slot ruler, the marks under the cells and
 // the counters, so nothing blinks. Every state change - a comparison, a move,
-// a cell settling - gets exactly one frame and one delay,
+// a cell settling - gets exactly one frame and one delay, and no change is
+// ever left for the following frame to reveal.
 //
 // A cell's colour is data rather than a branch: sort_role_of reads the
 // marker words and answers with a role from theme.s, so all eight
@@ -166,7 +167,7 @@ sort_many:          .string "+"
 sort_msg_none:      .string "there is no array yet. choose 9 on the sorting menu to make one"
 sort_fmt_have:      .string "the array holds %d values"
 sort_msg_have_not:  .string "no array yet: 9 makes one"
-sort_fmt_fresh:     %d random values, in no order
+sort_fmt_fresh:     .string "%d random values, not one of them in order yet"
 sort_fmt_ready:     .string "%d values, before a single comparison"
 sort_fmt_done:      .string "sorted: %d comparisons and %d moves"
 
@@ -233,7 +234,7 @@ sort_fmt_csums:     .string "now add each bucket to the one before it"
 sort_fmt_csum:      .string "bucket %d reads %d: that many keys are no larger than %d"
 sort_fmt_cplace:    .string "%d belongs at output slot %d, and its bucket steps back"
 sort_fmt_cback:     .string "output slot %d goes home to the array"
-sort_fmt_cnone:     not one value was compared with another: the buckets did the ordering
+sort_fmt_cnone:     .string "not one value was compared with another: the buckets did it all"
 
 sort_lbl_keys_lo:   .string "keys  0-49"
 sort_lbl_keys_hi:   .string "keys 50-99"
