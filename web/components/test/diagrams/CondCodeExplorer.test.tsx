@@ -28,11 +28,11 @@ describe("COND_CODES", () => {
   });
 
   // Literal flag states, not recomputed: cmp -1, 1 at 32 bits leaves
-  // n=1 z=0 c=1 v=0 -- the classic signed-below / unsigned-above split.
+  // n=1 z=0 c=1 v=0, the classic signed-below and unsigned-above split.
   const SPLIT = { n: true, z: false, c: true, v: false };
   // cmp 5, 5 leaves n=0 z=1 c=1 v=0.
   const EQUAL = { n: false, z: true, c: true, v: false };
-  // cmp 3, 5 borrows: n=1 z=0 c=0 v=0 -- below in both readings.
+  // cmp 3, 5 borrows: n=1 z=0 c=0 v=0, below in both readings.
   const BELOW = { n: true, z: false, c: false, v: false };
 
   it("splits signed from unsigned on cmp -1, 1", () => {
@@ -120,7 +120,7 @@ describe("CondCodeExplorer", () => {
     expect((screen.getByLabelText("w9") as HTMLInputElement).value).toBe("5");
   });
 
-  it("shows a calm hint instead of verdicts on a non-number", () => {
+  it("shows the input hint instead of verdicts on a non-number", () => {
     render(<CondCodeExplorer />);
     fireEvent.change(screen.getByLabelText("w9"), {
       target: { value: "ten" },
