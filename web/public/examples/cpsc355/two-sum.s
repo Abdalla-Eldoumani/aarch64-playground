@@ -1220,6 +1220,7 @@ dsb_arr_unset:
         bl      th_off
 
 dsb_target:
+        // Row 18: "target:  N" or "not set yet".
         mov     w0, 18
         mov     w1, 4
         mov     w2, UI_ROLE_DIM
@@ -1245,6 +1246,7 @@ dsb_tgt_unset:
         bl      th_off
 
 dsb_speed:
+        // Row 19: "speed:   N ms/frame".
         mov     w0, 19
         mov     w1, 4
         mov     w2, UI_ROLE_DIM
@@ -1610,6 +1612,7 @@ draw_array:
         str     w1, [fp, 20]
         str     w2, [fp, 24]
 
+        // Wipe the caret rows so old ^ / i / j characters are gone.
         mov     w0, 9
         mov     w1, 2
         bl      move_cursor
@@ -1833,6 +1836,7 @@ dh_loop:
         bl      printf                      // reads as a stored value
         bl      th_off
 
+        // Value row, one below the label row.
         ldr     w9, [fp, 24]
         lsr     w10, w9, 3
         add     w10, w10, w10
@@ -1846,6 +1850,7 @@ dh_loop:
         mov     w1, w12
         bl      move_cursor
 
+        // Colour pick: is this slot the highlighted one?
         ldr     w9, [fp, 24]
         ldr     w10, [fp, 16]
         cmp     w9, w10
