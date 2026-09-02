@@ -245,11 +245,13 @@ fn corpus_at_o2_coverage_map() {
     for f in &failures {
         println!("  {f}");
     }
-    // Measured 2026-09-02: the missing forms are ubfiz, standalone
-    // uxtw, cinc, label+offset immediates, ldrsw writeback, fixed-point
-    // fcvtzs, v-register moves, and __ctype_toupper_loc. The fifteenth
-    // non-passing program is 13_float_double, which is on PENDING.
-    const O2_FLOOR: usize = 35;
+    // Measured 2026-09-02, after tier 1. Three programs still fail to
+    // assemble: 50_float_basic needs the fixed-point `fcvtzs Xd, Sn, #n`,
+    // 42_libc_map needs __ctype_toupper_loc and __ctype_tolower_loc, and
+    // 14_float_single zeroes a float with `movi v0.2s, #0`, which is SIMD
+    // and out of scope. The fourth non-passing program is
+    // 13_float_double, which is on PENDING.
+    const O2_FLOOR: usize = 46;
     assert!(
         passing >= O2_FLOOR,
         "o2 coverage fell below the recorded floor: {passing} < {O2_FLOOR}"
