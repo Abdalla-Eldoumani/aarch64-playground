@@ -35,7 +35,7 @@ export function OfflineBadge() {
       aria-live="polite"
       className="px-3 py-1 text-[11px] text-center bg-[var(--bg-sunken)] border-b border-[var(--border)] text-[var(--text-secondary)]"
     >
-      offline -- the playground runs fully in your browser and keeps working from cached files.
+      offline: the playground runs fully in your browser and keeps working from cached files
     </div>
   );
 }
