@@ -236,7 +236,7 @@ describe("the terminal toolchain and the working set", () => {
     const hub: Hub = makeHub({
       assembleForTool: vi.fn().mockResolvedValue({
         success: false,
-        error: "unknown mnemonic: MOVQ",
+        error: "unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it",
         errorLine: 3,
       }),
     });
@@ -253,7 +253,7 @@ describe("the terminal toolchain and the working set", () => {
     });
     expect(verdict).toEqual({
       success: false,
-      errors: ["line 3: unknown mnemonic: MOVQ"],
+      errors: ["line 3: unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it"],
     });
     expect(hub.assemble).not.toHaveBeenCalled();
   });
