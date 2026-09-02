@@ -78,7 +78,10 @@ describe("embed console rendering", () => {
     // let a faulting run stop silently (the pitfall demos depend on the
     // failure being visible).
     useEmulatorMock.mockReturnValue(
-      makeHub({ error: "memory fault: read at 0x0000000800600008" }),
+      makeHub({
+        error:
+          "memory fault: the program tried to read 0x0000000800600008, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant",
+      }),
     );
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
