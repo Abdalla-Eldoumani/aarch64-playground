@@ -36,9 +36,8 @@ function row(actions: Action[], id: string): Action {
   return found!;
 }
 
-// The whole table, in order, written out by hand: a row that disappears (or
-// arrives) is a change to what the student can find, not an implementation
-// detail.
+// The whole table, in order, written out by hand: a row that disappears or
+// arrives changes what the student can find.
 const EVERY_ID = [
   "assemble",
   "step",
@@ -220,9 +219,7 @@ describe("the rows that act on the buffer", () => {
     expect(blobs).toHaveLength(2);
     expect(blobs[0].type).toBe("text/plain;charset=utf-8");
     expect(await blobs[0].text()).toBe(SOURCE);
-    // The object URL is released as soon as the click is dispatched.
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
-    // The anchor does not stay in the document.
     expect(document.querySelector("a")).toBeNull();
   });
 
