@@ -15,11 +15,11 @@
     },
     {
         "type": "prose",
-        "markdown": "There are times when you need to use a pre-test loop to repeatedly execute a set of instructions or iterate through a collection of elements, such as an array. A common implementation of a pre-test loop is the `for loop` or the `while-loop`. This lesson covers how `pre-test` loops can be implemented in Assembly."
+        "markdown": "A pre-test loop repeats a set of instructions, or walks a collection such as an array, checking its condition before every pass. A common implementation of a pre-test loop is the `for loop` or the `while-loop`. This lesson builds one in Assembly."
     },
     {
         "type": "prose",
-        "markdown": "## What a pre-test loop is\nA `pre-test` loop is a type of loop in which the loop condition is evaluated before each iteration, including the first. In other words, the condition must be evaluated and satisfied before the loop body is executed. Consequently, a pre-test loop may execute zero or more times, as the loop body is skipped entirely if the condition is false during the initial evaluation.\n\nThe implementation of this type of loop in high-level programming languages is commonly achieved using `for loops` or `while loops`, in which the loop condition is evaluated before each iteration of the loop body. The following code demonstrates an example of a pre-test loop implemented in C."
+        "markdown": "## What a pre-test loop is\nA `pre-test` loop is a type of loop in which the loop condition is evaluated before each iteration, including the first. Consequently, a pre-test loop may execute zero or more times, as the loop body is skipped entirely if the condition is false during the initial evaluation.\n\nThe implementation of this type of loop in high-level programming languages is commonly achieved using `for loops` or `while loops`, in which the loop condition is evaluated before each iteration of the loop body. The following code demonstrates an example of a pre-test loop implemented in C."
     },
 
     {
@@ -34,16 +34,16 @@
     },
     {
         "type": "prose",
-        "markdown": "The above loop in C produces the same output of printing the numbers 1 to 5, with the only difference of one being a `for loop` and the other being a `while loop`."
+        "markdown": "Both loops print the numbers 1 to 5; only the `for` and `while` syntax differs."
     },
     {
         "type": "callout",
         "variant": "note",
-        "markdown": "The term `pre-conditional` loop refers to a `pre-test` loop. These terminologies are generally used interchangeably because both refer to a loop where the condition is evaluated before the loop body executes."
+        "markdown": "The term `pre-conditional` loop refers to a `pre-test` loop. The two terms are interchangeable."
     },
     {
         "type" : "prose",
-        "markdown": "## The logic behind it\nBased on the observations from the loops above, both loops produce the same output, and their underlying logic can be simplified as follows:"
+        "markdown": "## The logic behind it\nBoth loops produce the same output, and their underlying logic is:"
     },
     {
         "type": "code",
@@ -52,12 +52,12 @@
     },
     {
         "type": "prose",
-        "markdown": "The logic presented above closely resembles the branching mechanism used in Assembly and provides the basic control flow needed to implement a pre-test loop. The process of implementing a pre-test loop can therefore be summarised as follows:\n\n1. Initialise the loop variable.\n\n2. State and check the loop condition.\n\n3. Execute the loop body if the condition is satisfied.\n\n4. Branch back to the condition check.\n\n5. Exit the loop when the condition is no longer satisfied."
+        "markdown": "That pseudocode maps straight onto compare-and-branch. The steps are:\n\n1. Initialise the loop variable.\n\n2. State and check the loop condition.\n\n3. Execute the loop body if the condition is satisfied.\n\n4. Branch back to the condition check.\n\n5. Exit the loop when the condition is no longer satisfied."
     },
     { 
         "type": "callout",
         "variant": "note",
-        "markdown": "It can be observed that the logic more closely resembles a `while` loop. There is no direct one-to-one equivalent of a `for` loop or a `while` loop in Assembly. Instead, Assembly implementations reproduce the control flow and behaviour of these high-level loop constructs. Therefore, when implementing a `for` loop in Assembly, it can be helpful to first express it in the form of a `while` loop. This provides a clearer representation of the loop's control flow and makes it easier to translate into Assembly instructions."
+        "markdown": "The logic reads more like a `while` loop. There is no direct one-to-one equivalent of a `for` loop or a `while` loop in Assembly. Instead, Assembly implementations reproduce the control flow and behaviour of these high-level loop constructs. Therefore, when implementing a `for` loop in Assembly, it can be helpful to first express it in the form of a `while` loop. That makes the control flow easier to translate."
 
     },
     {
@@ -67,16 +67,16 @@
     {
         "type": "code",
         "language": "asm",
-        "source": "// Pseudo-ops and directives\n...\n// string1 = \"Pre-test loop implementation\\n\"\n// string2 = \"%d\\n\"\n// string3 = \"Loop finished\\n\"\n\nmain:\n    // Program prologue\n    ...\n    // Printing the \"Pre-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n    b loopcond              // Branching to the loop condition\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // loading the i to argument register\n    bl printf\n    add x20, x20, 1         // Incrementing i by one\n                            // x20 = x20 + 1\n\nloopcond:\n    cmp x20, 5              // Comparing i with 5\n    b.le loopbody           // if i is less than or equal to 5, branch to loop body\n                            // otherwise code below is executed\n    ldr x0, =string3\n    bl printf\n\n    // program epilogue."
+        "source": "// Pseudo-ops and directives\n...\n// string1 = \"Pre-test loop implementation\\n\"\n// string2 = \"%d\\n\"\n// string3 = \"Loop finished\\n\"\n\nmain:\n    // Program prologue\n    ...\n    // Printing the \"Pre-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n    b loopcond              // check the condition before the first pass\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // pass i to printf\n    bl printf\n    add x20, x20, 1\n\nloopcond:\n    cmp x20, 5\n    b.le loopbody           // keep looping while i <= 5\n    ldr x0, =string3\n    bl printf\n\n    // program epilogue."
     },
     {
         "type": "prose",
-        "markdown": "The Assembly code above implements a `pre-test` loop that prints the values of `i` from `1` to `5`. The loop variable (`i`) is stored in register `x20`, while `x0` and `x1` are used to pass arguments to `printf`.\n\nThe program first prints the introductory string and then initialises `x20` to `1`, representing the initial value of `i`. The `b loopcond` instruction then transfers execution to the loop condition before the loop body is executed.\n\nAt `loopcond`, the `cmp` instruction compares the value in `x20` with `5`. The `b.le loopbody` instruction checks the result of this comparison. If `x20` is less than or equal to `5`, execution branches to `loopbody`. Otherwise, the branch is not taken and execution continues to the instructions following the loop.\n\nInside `loopbody`, the current value of `x20` is passed to `printf` and printed. The `add` instruction then increments `x20` by `1`. After the loop body finishes, execution naturally continues to the `loopcond` label, where the condition is checked again.\n\nThis process continues until `x20` becomes greater than `5`. At that point, `b.le` loopbody is not taken, so execution continues to the code after the loop, which prints `\"Loop finished\"`."
+        "markdown": "The Assembly code above implements a `pre-test` loop that prints the values of `i` from `1` to `5`. The loop variable (`i`) is stored in register `x20`, while `x0` and `x1` are used to pass arguments to `printf`.\n\nThe program first prints the introductory string and then initialises `x20` to `1`, representing the initial value of `i`. The `b loopcond` instruction then transfers execution to the loop condition before the loop body is executed.\n\nAt `loopcond`, the `cmp` instruction compares the value in `x20` with `5`. The `b.le loopbody` instruction checks the result of this comparison. If `x20` is less than or equal to `5`, execution branches to `loopbody`. Otherwise, the branch is not taken and execution continues to the instructions following the loop.\n\nInside `loopbody`, the current value of `x20` is passed to `printf` and printed. The `add` instruction then increments `x20` by `1`. After the loop body finishes, execution naturally continues to the `loopcond` label, where the condition is checked again.\n\nThis process continues until `x20` becomes greater than `5`. At that point, `b.le loopbody` is not taken, so execution continues to the code after the loop, which prints `\"Loop finished\"`."
     },
     {
         "type": "callout",
         "variant": "note",
-        "markdown": "The loop condition is checked before the execution of the loop body. The condition is evaluated using the `cmp` instruction and the associated conditional branch instruction. In this implementation, the `loopcond` label represents the loop condition, while the `loopbody` label represents the loop body.\n\nThe loop condition sits **after** the loop body in the Assembly code. This approach takes advantage of Assembly's default downward flow of execution. After the loop body is executed, execution naturally continues to the loop condition without requiring an additional branch from the loop body back to the condition. An initial branch to `loopcond` is still required to start the loop. However, this approach avoids requiring an additional branch at the end of every iteration, making the control flow more efficient."
+        "markdown": "The loop condition is checked before the execution of the loop body. The condition is evaluated using the `cmp` instruction and the associated conditional branch instruction. In this implementation, the `loopcond` label represents the loop condition, while the `loopbody` label represents the loop body.\n\nThe loop condition sits **after** the loop body in the Assembly code. This approach takes advantage of Assembly's default downward flow of execution. After the loop body is executed, execution naturally continues to the loop condition without requiring an additional branch from the loop body back to the condition. An initial branch to `loopcond` is still required to start the loop. In exchange, no extra branch is needed at the end of each iteration."
 
     },
     {
@@ -85,7 +85,7 @@
     },
     {
         "type": "editor",
-        "starter": ".data\n    string1: .string \"Pre-test loop implementation\\n\"\n    string2: .string \"%d\\n\"\n    string3: .string \"Loop finished\\n\"\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // This is the program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Printing the \"Pre-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n    b loopcond              // Branching to the loop condition\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // loading the i to argument register\n    bl printf\n    add x20, x20, 1         // Incrementing i by one\n                            // x20 = x20 + 1\n\nloopcond:\n    cmp x20, 5              // Comparing i with 5\n    b.le loopbody           // if i is less than or equal to 5, branch to loop body\n                            // otherwise code below is executed\n    ldr x0, =string3\n    bl printf\n\n    // This is the program epilogue\n    mov     x0, 0                   // End the program by returning 0.\n    ldp     x29, x30, [sp], 16\n    ret"
+        "starter": ".data\n    string1: .string \"Pre-test loop implementation\\n\"\n    string2: .string \"%d\\n\"\n    string3: .string \"Loop finished\\n\"\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Printing the \"Pre-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n    b loopcond              // check the condition before the first pass\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // pass i to printf\n    bl printf\n    add x20, x20, 1\n\nloopcond:\n    cmp x20, 5\n    b.le loopbody           // keep looping while i <= 5\n    ldr x0, =string3\n    bl printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
     }
 
 
