@@ -41,8 +41,7 @@ function parseArgsLine(input) {
 
 // Feed optional stdin / argv / vfs inputs, run until halt or exit, then
 // return stdout + exit code + the post-run state of every VFS file the
-// program may have created. Every cpsc 355 example with a fixture pair
-// under fixtures/ runs through here.
+// program may have created.
 function runHosted(file, stdin, args, vfsIn) {
   const src = fs.readFileSync(file, "utf8");
   const emu = new wasm.Emulator();
