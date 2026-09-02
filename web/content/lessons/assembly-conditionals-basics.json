@@ -1,8 +1,8 @@
 {
-  "title": "Conditionals in ARMv8 AArch64 Assembly",
+  "title": "Conditionals with cmp and b.cond",
   "slug": "assembly-conditionals-basics",
   "order": 7,
-  "summary": "Learn how to implement if-else logic using cmp and conditional branch instructions in ARMv8 AArch64 Assembly.",
+  "summary": "How cmp sets the condition flags and how b.cond reads them to build if-else.",
   "tags": [
     "conditionals",
     "branching"
