@@ -146,7 +146,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // compare (aliases)
     "CMP", "CMN",
     // logical
-    "AND", "ANDS", "ORR", "EOR", "BIC", "MVN", "TST",
+    "AND", "ANDS", "ORR", "EOR", "BIC", "ORN", "EON", "MVN", "TST",
     // shifts and rotate
     "LSL", "LSR", "ASR", "ROR",
     // sign / zero extension
@@ -239,6 +239,8 @@ fn encode_line(
         "ORR" => encode_log_dispatch(&ops, 0b01, line_num),
         "EOR" => encode_log_dispatch(&ops, 0b10, line_num),
         "BIC" => encode_bic(&ops, line_num),
+        "ORN" => encode_log_reg(&ops, 0b01, true, line_num),
+        "EON" => encode_log_reg(&ops, 0b10, true, line_num),
         "MVN" => encode_mvn(&ops, line_num),
         "TST" => encode_tst(&ops, line_num),
 
@@ -1025,8 +1027,11 @@ fn encode_log_reg(ops: &[&str], opc: u8, n: bool, ln: usize) -> Result<u32, EmuE
 /// with the N bit set; AArch64 has no BIC-immediate, so a `#imm` third
 /// operand gets a plain-language error instead of a register-parse failure.
 fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
-    if ops.len() != 3 {
-        return asm_err(ln, "BIC requires 3 operands");
+    if ops.len() != 3 && ops.len() != 4 {
+        return asm_err(
+            ln,
+            "BIC takes 3 operands, or 4 with a shift modifier (bic x0, x1, x2, lsl #1)",
+        );
     }
     let op3 = ops[2].trim();
     if op3.starts_with('#') || op3.starts_with('\'') || op3.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '-')
@@ -1122,18 +1127,22 @@ fn encode_ror(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         | (0b001011 << 10) | ((rn as u32) << 5) | (rd as u32))
 }
 
+/// Encode `MVN Rd, Rm` (and `MVN Rd, Rm, LSL #k`) as `ORN Rd, ZR, Rm`.
+/// Delegating rather than spelling the word inline is what gives the
+/// shifted form for free, the same way BIC gets it from `encode_log_reg`.
 fn encode_mvn(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
-    // MVN Xd, Xm -> ORN Xd, XZR, Xm
-    if ops.len() != 2 {
-        return asm_err(ln, "MVN requires 2 operands");
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(
+            ln,
+            "MVN takes 2 operands, or 3 with a shift modifier (mvn x0, x1, lsl #2)",
+        );
     }
-    let (rd, sf) = parse_register(ops[0], ln)?;
-    let (rm, _) = parse_register(ops[1], ln)?;
-    let sf_bit = if sf { 1u32 } else { 0 };
-
-    // ORN = opc=01, N=1
-    Ok((sf_bit << 31) | (0b01 << 29) | (0b01010 << 24) | (1 << 21)
-        | ((rm as u32) << 16) | (0b11111 << 5) | (rd as u32))
+    let (_, sf) = parse_register(ops[0], ln)?;
+    let zr = if sf { "XZR" } else { "WZR" };
+    if ops.len() == 3 {
+        return encode_log_reg(&[ops[0], zr, ops[1], ops[2]], 0b01, true, ln);
+    }
+    encode_log_reg(&[ops[0], zr, ops[1]], 0b01, true, ln)
 }
 
 /// Dispatch `AND/ANDS/ORR/EOR` between the register-register form and the
@@ -4191,6 +4200,89 @@ svc 0").unwrap();
             }
             other => panic!("expected LogReg, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn orn_and_eon_invert_the_second_source() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("orn x0, x1, x2", 0xAA22_0020u32),
+            ("orn w0, w1, w2", 0x2A22_0020),
+            ("orn w0, w1, w2, lsl #3", 0x2A22_0C20),
+            ("orn x0, xzr, x2", 0xAA22_03E0),
+            ("eon x0, x1, x2", 0xCA22_0020),
+            ("eon w0, w1, w2", 0x4A22_0020),
+            ("eon x0, x1, x2, asr #4", 0xCAA2_1020),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let source = r#"
+            MOVZ X1, #0x0F0F
+            MOVK X1, #0x0F0F, LSL #16
+            MOVK X1, #0x0F0F, LSL #32
+            MOVK X1, #0x0F0F, LSL #48
+            MOVZ X2, #0x00FF
+            MOVK X2, #0x00FF, LSL #16
+            MOVK X2, #0x00FF, LSL #32
+            MOVK X2, #0x00FF, LSL #48
+            ORN X3, X1, X2
+            EON X4, X1, X2
+            MVN X5, X2
+            ORN X6, XZR, X2
+            MOVZ X8, #0xF000, LSL #48
+            EON X7, X1, X8, ASR #4
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        // The words csarm printed for the same two inputs.
+        assert_eq!(cpu.regs.read_gpr(3, true), 0xFF0F_FF0F_FF0F_FF0F);
+        // eon is XNOR, which is what catches an opc swap with orn
+        assert_eq!(cpu.regs.read_gpr(4, true), 0xF00F_F00F_F00F_F00F);
+        // the alias identity: mvn Xd, Xm IS orn Xd, XZR, Xm
+        assert_eq!(cpu.regs.read_gpr(5, true), 0xFF00_FF00_FF00_FF00);
+        assert_eq!(cpu.regs.read_gpr(6, true), cpu.regs.read_gpr(5, true));
+        // asr on a negative source: the sign fills, so the shifted operand
+        // is 0xFF00_0000_0000_0000 before the inversion.
+        assert_eq!(cpu.regs.read_gpr(7, true), 0x0FF0_F0F0_F0F0_F0F0);
+    }
+
+    #[test]
+    fn shifted_bic_and_mvn_assemble_like_gas() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("bic x0, x1, x2", 0x8A22_0020u32),
+            ("bic x0, x1, x2, lsl #1", 0x8A22_0420),
+            ("bic w0, w1, w2, lsr #5", 0x0A62_1420),
+            ("mvn x0, x1", 0xAA21_03E0),
+            ("mvn x0, x1, lsl #2", 0xAA21_0BE0),
+            ("mvn w0, w1, ror #7", 0x2AE1_1FE0),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let source = r#"
+            MOVZ X1, #0x0F0F
+            MOVK X1, #0x0F0F, LSL #16
+            MOVK X1, #0x0F0F, LSL #32
+            MOVK X1, #0x0F0F, LSL #48
+            MOVZ X2, #0x00FF
+            MOVK X2, #0x00FF, LSL #16
+            MOVK X2, #0x00FF, LSL #32
+            MOVK X2, #0x00FF, LSL #48
+            BIC X3, X1, X2, LSL #1
+            MVN X4, X2, LSL #2
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        assert_eq!(cpu.regs.read_gpr(3, true), 0x0E01_0E01_0E01_0E01);
+        assert_eq!(cpu.regs.read_gpr(4, true), 0xFC03_FC03_FC03_FC03);
     }
 
     #[test]

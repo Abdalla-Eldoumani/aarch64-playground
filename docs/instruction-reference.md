@@ -35,8 +35,10 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `ANDS`   | same                             | Sets NZCV.                               |
 | `ORR`    | `ORR Xd, Xn, Xm`                 | Logical OR.                              |
 | `EOR`    | `EOR Xd, Xn, Xm`                 | Exclusive OR.                            |
-| `MVN`    | `MVN Xd, Xm`                     | Bitwise NOT.                             |
-| `BIC`    | `BIC Xd, Xn, Xm`                 | Bit clear: `Xd = Xn & ~Xm`. Register form only; AArch64 has no BIC-immediate. |
+| `MVN`    | `MVN Xd, Xm` (`, LSL #k` optional) | Bitwise NOT. Alias for `ORN Xd, XZR, Xm`, so the shifted form negates the shifted source. |
+| `BIC`    | `BIC Xd, Xn, Xm` (`, LSL #k` optional) | Bit clear: `Xd = Xn & ~Xm`. Register form only; AArch64 has no BIC-immediate. |
+| `ORN`    | `ORN Xd, Xn, Xm` (`, LSL #k` optional) | Logical OR with the second source inverted: `Xd = Xn \| ~Xm`. `MVN Xd, Xm` is `ORN Xd, XZR, Xm`. |
+| `EON`    | `EON Xd, Xn, Xm` (`, LSL #k` optional) | Exclusive OR with the second source inverted: `Xd = Xn ^ ~Xm`, which is XNOR. |
 | `LSL`    | `LSL Xd, Xn, #imm` / `LSL Xd, Xn, Xm` | Logical shift left by an immediate (0 to width-1) or by a register, modulo the width. |
 | `LSR`    | `LSR Xd, Xn, #imm` / `LSR Xd, Xn, Xm` | Logical shift right, immediate or register amount. |
 | `ASR`    | `ASR Xd, Xn, #imm` / `ASR Xd, Xn, Xm` | Arithmetic shift right, immediate or register amount. |
