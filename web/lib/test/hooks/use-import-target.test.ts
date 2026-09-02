@@ -13,7 +13,7 @@ describe("getImportTarget", () => {
 });
 
 describe("describeTarget", () => {
-  test("main", () => {
+  test("main target names main.asm", () => {
     expect(describeTarget({ kind: "main" }, [])).toBe("main.asm");
   });
   test("extra uses file name when present", () => {
