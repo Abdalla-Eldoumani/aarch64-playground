@@ -1,8 +1,8 @@
-// io_ex3_write_file.asm
+// write-file.s
 // Create "output.txt", write two lines to it, close it.
 // Uses openat, write, close via svc. Reports result with printf.
 //
-// Compile: m4 io_ex3_write_file.asm > io_ex3_write_file.s && gcc io_ex3_write_file.s -o io_ex3_write_file
+// Compile: m4 write-file.s > write-file.gen.s && gcc write-file.gen.s -o write-file
 
 define(fp, x29)
 define(lr, x30)
@@ -12,7 +12,7 @@ define(total_r, x20)
         .text
 fname:      .string "output.txt"
 line1:      .string "Line 1: Hello from assembly\n"
-line1_len = . - line1 - 1
+line1_len = . - line1 - 1       // -1 drops the .string NUL
 line2:      .string "Line 2: File I/O works!\n"
 line2_len = . - line2 - 1
 
@@ -58,7 +58,6 @@ main:   stp     fp, lr, [sp, -16]!
         mov     x8, 57
         svc     0
 
-        // print result
         ldr     x0, =fmt_ok
         mov     x1, total_r
         bl      printf
