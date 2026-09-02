@@ -665,6 +665,61 @@ mov     x10, 2
 umulh   x11, x9, x10        // x11 = 1: the carry out of bit 63`,
   },
   {
+    mnemonic: "smaddl",
+    category: "Data processing",
+    syntax: "smaddl xd, wn, wm, xa",
+    example: `mov     w1, -3
+mov     w2, 5
+mov     x3, 100
+smaddl  x4, w1, w2, x3      // x4 = 85: 100 + (-15)`,
+    gotchas: [
+      "the accumulator is a full 64-bit register; only the two sources are 32-bit. `smaddl x4, w1, w2, x9` with x9 = 0x100000001 keeps the top half.",
+    ],
+  },
+  {
+    mnemonic: "smsubl",
+    category: "Data processing",
+    syntax: "smsubl xd, wn, wm, xa",
+    example: `mov     w1, -3
+mov     w2, 5
+mov     x3, 100
+smsubl  x5, w1, w2, x3      // x5 = 115: 100 - (-15)`,
+  },
+  {
+    mnemonic: "umaddl",
+    category: "Data processing",
+    syntax: "umaddl xd, wn, wm, xa",
+    example: `mov     w1, -3
+mov     w2, 5
+mov     x3, 100
+umaddl  x6, w1, w2, x3      // x6 = 0x500000055: w1 read as 0xfffffffd`,
+  },
+  {
+    mnemonic: "umsubl",
+    category: "Data processing",
+    syntax: "umsubl xd, wn, wm, xa",
+    example: `mov     w1, -3
+mov     w2, 5
+mov     x3, 100
+umsubl  x7, w1, w2, x3      // x7 = 0xfffffffb00000073`,
+  },
+  {
+    mnemonic: "smnegl",
+    category: "Data processing",
+    syntax: "smnegl xd, wn, wm",
+    example: `mov     w1, -3
+mov     w2, 5
+smnegl  x8, w1, w2          // x8 = 15`,
+  },
+  {
+    mnemonic: "umnegl",
+    category: "Data processing",
+    syntax: "umnegl xd, wn, wm",
+    example: `mov     w1, -3
+mov     w2, 5
+umnegl  x9, w1, w2          // x9 = 0xfffffffb0000000f`,
+  },
+  {
     mnemonic: "udiv",
     category: "Data processing",
     syntax: "udiv xd, xn, xm",

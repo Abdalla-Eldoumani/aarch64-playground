@@ -63,6 +63,21 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     summary: "The `CMN` form of `CCMP`: the taken path sets NZCV from Rn + Rm.",
     example: "ccmn w1, 3, 0, eq",
   },
+  SMADDL: {
+    summary: "Xd = Xa + Wn * Wm, the 32x32 product widened as signed.",
+    details: ["The accumulator is a full 64-bit register; only the two sources are 32-bit.", "`SMULL` is this with `Xa = XZR`."],
+    example: "smaddl x0, w1, w2, x3",
+    cExample: "Xd = Xa + (long)Wn * (long)Wm;",
+  },
+  SMSUBL: { summary: "Xd = Xa - Wn * Wm, signed and widening.", example: "smsubl x0, w1, w2, x3" },
+  UMADDL: { summary: "Xd = Xa + Wn * Wm, the sources read unsigned.", example: "umaddl x0, w1, w2, x3" },
+  UMSUBL: { summary: "Xd = Xa - Wn * Wm, the sources read unsigned.", example: "umsubl x0, w1, w2, x3" },
+  SMNEGL: {
+    summary: "Xd = -(Wn * Wm), signed and widening.",
+    details: ["Alias for `SMSUBL Xd, Wn, Wm, XZR`."],
+    example: "smnegl x0, w1, w2",
+  },
+  UMNEGL: { summary: "Xd = -(Wn * Wm) with the sources read unsigned, wrapping at 64 bits.", example: "umnegl x0, w1, w2" },
   CLZ: {
     summary: "Rd = the number of leading zero bits in Rn.",
     details: ["Of zero it is the register width (64 for X, 32 for W), not an error."],
