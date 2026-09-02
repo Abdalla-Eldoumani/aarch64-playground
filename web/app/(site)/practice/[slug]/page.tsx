@@ -46,10 +46,10 @@ export async function generateMetadata({
   const pageTitle = exercise.difficulty
     ? `${exercise.title} (${exercise.difficulty})`
     : exercise.title;
-  // The title composes through the root template (%s -- cpsc 355 playground).
+  // The title composes through the root template (%s · cpsc 355 playground).
   // Open Graph and Twitter are not deep-merged across segments, so each exercise
   // restates the full composed title and its own url instead of inheriting.
-  const composedTitle = `${pageTitle} -- cpsc 355 playground`;
+  const composedTitle = `${pageTitle} · cpsc 355 playground`;
   return {
     title: pageTitle,
     description,
