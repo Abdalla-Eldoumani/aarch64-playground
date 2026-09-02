@@ -161,6 +161,10 @@ export type EmbeddablePlaygroundProps = {
   autoplaySteps?: number;
   showRun?: boolean;
   showReset?: boolean;
+  /** Embed/checker step and back. On by default; the hero's autoplay frame
+   *  opts out so the demo stays a two-button surface. */
+  showStep?: boolean;
+  showBack?: boolean;
   /** Check only applies in checker chrome. */
   showCheck?: boolean;
   onStateChange?: (state: EmbeddableState) => void;
@@ -216,6 +220,8 @@ function EmbeddableCore({
   autoplaySteps = 8,
   showRun = true,
   showReset = true,
+  showStep = true,
+  showBack = true,
   showCheck = true,
   onStateChange,
   onCheck,
@@ -547,6 +553,31 @@ function EmbeddableCore({
     emu.run();
   }, [emu, source, argsText, applySeeds]);
 
+  // Step has the same cold-start problem Run has: a bare step would advance
+  // over empty memory. Same gate, so the first press assembles, re-seeds, and
+  // then advances one word -- and a step on a finished program restarts it
+  // from the top, exactly as Run does.
+  const stepEmbed = useCallback(async () => {
+    if (
+      emu.instructions.length === 0 ||
+      lastRunSourceRef.current !== source ||
+      emu.isHalted
+    ) {
+      lastRunSourceRef.current = source;
+      const ok = await emu.assemble(source, parseArgs(argsText));
+      if (!ok) return;
+      applySeeds();
+    }
+    emu.step();
+  }, [emu, source, argsText, applySeeds]);
+
+  // Back cannot pass a blocked read (the machine just re-blocks), so while
+  // stdin is awaited it no-ops. One guard, two callers: the imperative handle
+  // and the embed's back button.
+  const handleStepBack = useCallback(() => {
+    if (!emuRef.current.blocked) emuRef.current.stepBack();
+  }, []);
+
   // Run in terminal mode: hand the program the pane up front -- switch
   // the tab, then let the attach effect below start the drive once the
   // pane's io registration lands (the pane mounts lazily on the tab
@@ -758,9 +789,7 @@ function EmbeddableCore({
       step: () => {
         if (!emuRef.current.blocked) emuRef.current.step();
       },
-      stepBack: () => {
-        if (!emuRef.current.blocked) emuRef.current.stepBack();
-      },
+      stepBack: handleStepBack,
       reset: () => resetMachine(),
       notifyError: (message: string) => toast.error(message),
       loadSource: (next: string) => loadSource(next),
@@ -773,7 +802,7 @@ function EmbeddableCore({
     }),
     // `toast` is referentially stable (useToast memoizes it); notifyError
     // reads it, so it belongs in the dependency list.
-    [loadSource, resetMachine, toast],
+    [loadSource, resetMachine, toast, handleStepBack],
   );
 
   // Register the handle only once the hub is loaded, so a queued host action
@@ -959,11 +988,21 @@ function EmbeddableCore({
       <EmbedLayout
         showRun={showRun}
         showReset={showReset}
+        showStep={showStep}
+        showBack={showBack}
         showCheck={chrome === "checker" && showCheck}
         isRunning={emu.isRunning}
+        // Deliberately no programLoaded test: that is what keeps the
+        // cold-start assemble-first press reachable by pointer.
+        canStep={!emu.isRunning && !emu.blocked}
+        canStepBack={
+          emu.programLoaded && emu.canStepBack && !emu.isRunning && !emu.blocked
+        }
         error={emu.error}
         onRun={() => void runEmbed()}
         onReset={emu.reset}
+        onStep={() => void stepEmbed()}
+        onStepBack={handleStepBack}
         onCheck={() => void checkEmbed()}
         editor={
           <Editor
