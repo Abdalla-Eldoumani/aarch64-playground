@@ -73,4 +73,18 @@ describe("SiteNav", () => {
       screen.getByRole("link", { name: "source on github, 1 star" }),
     ).toBeTruthy();
   });
+
+  it("keeps exactly one reachable theme control, in both variants", () => {
+    for (const variant of ["full", "slim"] as const) {
+      const { unmount } = render(<SiteNav variant={variant} />);
+      // With the drawer closed the bar's is the only one in the document.
+      const groups = screen.getAllByRole("group", { name: "theme" });
+      expect(groups).toHaveLength(1);
+      // jsdom evaluates no media query, so the handover is pinned as the class
+      // contract the bar shares with the drawer's md:hidden root.
+      expect(groups[0].parentElement?.className).toContain("hidden");
+      expect(groups[0].parentElement?.className).toContain("md:flex");
+      unmount();
+    }
+  });
 });
