@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 // neighbors (Monaco editor, register grid) and leave the console unmocked.
 // EmbeddablePlayground.test.tsx owns the control-logic coverage; this file
 // owns what the student actually sees in the console.
-vi.mock("@/components/playground/Editor", () => ({
+vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({

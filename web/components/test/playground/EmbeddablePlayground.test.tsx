@@ -8,7 +8,7 @@ import { createRef } from "react";
 // chrome gating), not the children. The reduced embed/checker chrome renders
 // only these three plus the minimal control set, so they keep the heavy full
 // layout out of these unit tests.
-vi.mock("@/components/playground/Editor", () => ({
+vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({

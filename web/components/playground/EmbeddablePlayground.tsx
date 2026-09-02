@@ -32,7 +32,7 @@ import {
 } from "@/lib/hooks/use-import-target";
 import type { Action } from "@/lib/playground/commands";
 import { buildPaletteCommands } from "@/lib/playground/palette-commands";
-import { Editor } from "@/components/playground/Editor";
+import { Editor } from "@/components/playground/lazy-editor";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";

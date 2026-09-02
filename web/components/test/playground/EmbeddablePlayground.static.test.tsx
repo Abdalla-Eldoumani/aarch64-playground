@@ -10,7 +10,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 // Monaco stays stubbed (jsdom must never instantiate the editor); the static
 // view and the two panes are the real components, because whether they render
 // against an unloaded hub is exactly what these cases pin.
-vi.mock("@/components/playground/Editor", () => ({
+vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
 vi.mock("@/components/playground/ResizableLayout", () => ({

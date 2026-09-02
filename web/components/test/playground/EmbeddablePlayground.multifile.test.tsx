@@ -18,7 +18,7 @@ const editorProps = vi.hoisted(() => ({
     assemblyErrors: Array<{ line: number; message: string }>;
   },
 }));
-vi.mock("@/components/playground/Editor", () => ({
+vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: (props: NonNullable<typeof editorProps.current>) => {
     editorProps.current = props;
     return <div data-testid="editor" />;
