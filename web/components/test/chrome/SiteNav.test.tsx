@@ -67,6 +67,14 @@ describe("SiteNav", () => {
     expect(screen.queryByRole("link", { name: "source on github" })).toBeNull();
   });
 
+  it("shows the count in the slim bar too, so the playground wears it", () => {
+    render(<SiteNav variant="slim" stars={1204} />);
+    expect(
+      screen.getByRole("link", { name: "source on github, 1204 stars" }),
+    ).toBeTruthy();
+    expect(screen.getByText("1.2k")).toBeTruthy();
+  });
+
   it("says star, not stars, at a count of one", () => {
     render(<SiteNav variant="full" stars={1} />);
     expect(
