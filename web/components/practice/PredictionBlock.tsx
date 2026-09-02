@@ -69,7 +69,7 @@ export function PredictionBlock({
           value={inputVal}
           onChange={(event) => setInputVal(event.target.value)}
           disabled={submitted}
-          placeholder="Enter your prediction..."
+          placeholder="your answer"
           className={`w-full max-w-sm rounded-[var(--radius-control)] border px-4 py-2.5 font-mono text-[14px] outline-none transition-colors disabled:opacity-80 ${inputTone}`}
         />
 
@@ -81,14 +81,14 @@ export function PredictionBlock({
               if (onAttempt) onAttempt(isCorrect);
             }}
           >
-            Check Answer
+            check answer
           </Button>
         ) : (
           <div className="mt-2 flex w-full flex-col items-start gap-5">
             <FeedbackAlert
               isCorrect={isCorrect}
               explanation={explanation}
-              hint={hint ?? "Trace the register values line by line again."}
+              hint={hint ?? "Walk the snippet one instruction at a time and write down each register after every line."}
             />
             {!isCorrect && (
               <Button
@@ -97,7 +97,7 @@ export function PredictionBlock({
                   setInputVal("");
                 }}
               >
-                Try Again
+                try again
               </Button>
             )}
           </div>
