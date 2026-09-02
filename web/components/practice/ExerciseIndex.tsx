@@ -6,10 +6,10 @@
  * order (lib/content/practice-topics owns both the split and the order). A
  * shared search box and difficulty filter sit above both columns; a
  * solved/unsolved indicator, empty and loading states, and the progress row
- * complete it. It receives already-validated exercises as props from the
- * server index page and renders every row field as plain React text
- * (auto-escaped) - the blurb is plain-text-derived from the prompt, never
- * Markdown - so there is no markdown/HTML injection path here.
+ * complete it. It receives already-validated index rows as props from the
+ * server index page (loadExerciseIndex narrows each exercise to the seven
+ * fields below, blurb included) and renders every row field as plain React
+ * text (auto-escaped), so there is no markdown/HTML injection path here.
  *
  * Each row leads with its sheet number `5.N` (the 1-based position in the
  * sorted order, stable under filtering), then the title, a quieter blurb line,
@@ -36,7 +36,7 @@ import {
   type JSX,
 } from "react";
 import Link from "next/link";
-import type { Exercise } from "@/lib/content/exercise-schema";
+import type { ExerciseIndexRow } from "@/lib/content/exercise-schema";
 import {
   buildProgressBundle,
   getSolvedSlugs,
@@ -80,21 +80,6 @@ function subscribeSolvedSnapshot(callback: () => void): () => void {
 
 /** Difficulty order for the filter chips, so they read intro -> core -> challenge. */
 const DIFFICULTY_RANK: Record<string, number> = { intro: 0, core: 1, challenge: 2 };
-
-/**
- * A plain-text row summary from the prompt: the first non-empty line with
- * leading Markdown markers (#, >, -, *) stripped, clipped to a row-sized
- * length. Rendered as plain text, never Markdown.
- */
-function blurbFromPrompt(prompt: string): string {
-  const firstLine =
-    prompt
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? "";
-  const plain = firstLine.replace(/^[#>\-*\s]+/, "").trim();
-  return plain.length > 140 ? `${plain.slice(0, 140)}...` : plain;
-}
 
 const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
@@ -215,7 +200,7 @@ function toggleValue(set: Set<string>, value: string): Set<string> {
 }
 
 interface Row {
-  exercise: Exercise;
+  exercise: ExerciseIndexRow;
   blurb: string;
   sheetNumber: string;
 }
@@ -341,7 +326,7 @@ export function ExerciseIndex({
   exercises,
   loading,
 }: {
-  exercises: Exercise[];
+  exercises: ExerciseIndexRow[];
   loading?: boolean;
 }): JSX.Element {
   const [query, setQuery] = useState("");
@@ -359,7 +344,7 @@ export function ExerciseIndex({
     () =>
       [...exercises].sort(compareByOrder).map((exercise, index) => ({
         exercise,
-        blurb: blurbFromPrompt(exercise.prompt),
+        blurb: exercise.blurb,
         sheetNumber: `5.${index + 1}`,
       })),
     [exercises],

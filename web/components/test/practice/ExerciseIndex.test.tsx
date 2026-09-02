@@ -28,7 +28,7 @@ vi.mock("@/components/ui/Toast", () => ({
 }));
 
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
-import type { Exercise, WriteExercise } from "@/lib/content/exercise-schema";
+import type { ExerciseIndexRow } from "@/lib/content/exercise-schema";
 import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 
 const SOLVED_KEY = "aarch64-playground:practice:solved";
@@ -47,37 +47,37 @@ afterEach(() => {
   delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
 });
 
-function makeExercise(over: Partial<WriteExercise>): Exercise {
+// The index takes the narrowed row, so the fixture is a row: the blurb
+// arrives already derived from the server rather than computed here.
+function makeRow(over: Partial<ExerciseIndexRow>): ExerciseIndexRow {
   return {
     title: "Sample",
     slug: "sample",
     order: 1,
-    prompt: "# do the thing",
-    starter: "",
     variant: "write",
-    acceptance: { results: [{ kind: "register", reg: "x0", equals: 0 }] },
+    blurb: "do the thing",
     ...over,
   };
 }
 
 // order 2 then 1, so a correct render proves the order-sort; distinct topics and
 // difficulties drive the filter tests; "solved-one" is the mocked-solved slug.
-const exercises: Exercise[] = [
-  makeExercise({
+const exercises: ExerciseIndexRow[] = [
+  makeRow({
     title: "Beta Exercise",
     slug: "unsolved-two",
     order: 2,
     topic: "stack",
     difficulty: "core",
-    prompt: "# work with the stack",
+    blurb: "work with the stack",
   }),
-  makeExercise({
+  makeRow({
     title: "Alpha Exercise",
     slug: "solved-one",
     order: 1,
     topic: "registers",
     difficulty: "intro",
-    prompt: "# work with registers",
+    blurb: "work with registers",
   }),
 ];
 
@@ -104,24 +104,21 @@ describe("ExerciseIndex", () => {
   });
 
   it("splits coding exercises and theory sets into two columns, grouped by topic in course order", () => {
-    const quiz: Exercise = {
+    const quiz: ExerciseIndexRow = {
       title: "Loop Quiz",
       slug: "loop-quiz",
       order: 3,
       topic: "loops",
       difficulty: "intro",
-      prompt: "# check what you know",
       variant: "quiz",
-      questions: [
-        { question: "q", options: ["a", "b"], correctAnswer: 0, explanation: "because" },
-      ],
+      blurb: "check what you know",
     };
-    const arithmetic = makeExercise({
+    const arithmetic = makeRow({
       title: "Gamma Exercise",
       slug: "gamma",
       order: 4,
       topic: "arithmetic",
-      prompt: "# add things",
+      blurb: "add things",
     });
     render(<ExerciseIndex exercises={[...exercises, quiz, arithmetic]} />);
 
@@ -139,6 +136,28 @@ describe("ExerciseIndex", () => {
       .map((heading) => (heading.textContent ?? "").replace(/·.*$/, "").trim());
     expect(groupNames).toEqual(["arithmetic", "registers", "stack"]);
     expect(screen.queryByRole("button", { name: "registers" })).toBeNull();
+  });
+
+  // The blurb used to be derived here from the prompt; now the server sends
+  // it. Nothing else in the suite would notice if it arrived empty, because
+  // every other assertion has a title or a topic to match on.
+  it("renders the server-derived blurb verbatim", () => {
+    render(<ExerciseIndex exercises={exercises} />);
+    expect(screen.getByText("work with the stack")).toBeTruthy();
+    expect(screen.getByText("work with registers")).toBeTruthy();
+  });
+
+  it("matches the search query against the blurb", () => {
+    const rows = [
+      makeRow({ title: "Alpha", slug: "alpha", order: 1, blurb: "tail-call elimination" }),
+      makeRow({ title: "Beta", slug: "beta", order: 2, blurb: "unrelated" }),
+    ];
+    render(<ExerciseIndex exercises={rows} />);
+    fireEvent.change(screen.getByLabelText("Search exercises"), {
+      target: { value: "elimination" },
+    });
+    expect(screen.getByText("Alpha")).toBeTruthy();
+    expect(screen.queryByText("Beta")).toBeNull();
   });
 
   it("filters by a selected difficulty chip", () => {
