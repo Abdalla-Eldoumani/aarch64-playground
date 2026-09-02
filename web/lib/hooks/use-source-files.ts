@@ -5,11 +5,9 @@ import type { SourceFile } from "@/lib/playground/file-map";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:multi-files";
-// Helper files the last write displaced. Loading a program REPLACES the
-// strip on purpose (a new program must not link another workspace's
-// helpers), but until this key existed a plain click on a recent, a
-// bookmark, or a files-less share link discarded an afternoon of helper
-// files with no way back.
+// Helper files the last write displaced. Loading a program REPLACES the strip
+// on purpose (a new program must not link another workspace's helpers), so
+// the displaced files are kept here and can be restored.
 const BACKUP_KEY = "aarch64-playground:multi-files-backup";
 
 function readStore(key: string): SourceFile[] {
@@ -47,7 +45,7 @@ function writeStore(key: string, files: SourceFile[]): void {
  * A file the write is about to lose: neither its name nor its body survives
  * into the new strip. Matching on either side keeps a rename (same body) and
  * an edit (same name) out of the backup, so the restore affordance appears
- * only when work really went away.
+ * only when work was lost.
  */
 function displacedBy(stored: SourceFile[], next: SourceFile[]): SourceFile[] {
   return stored.filter(
@@ -55,8 +53,8 @@ function displacedBy(stored: SourceFile[], next: SourceFile[]): SourceFile[] {
   );
 }
 
-/** The strip's discarded-work escape hatch: how many helper files the last
- *  replacement took away, and the one call that brings them back. */
+/** How many helper files the last replacement displaced, and the call that
+ * restores them. */
 export interface SourceFilesBackup {
   count: number;
   restore: () => void;
@@ -75,7 +73,7 @@ export function useSourceFiles(): [
   const [files, setFiles] = useState<SourceFile[]>(loadFiles);
   const [backup, setBackup] = useState<SourceFile[]>(loadBackup);
   // The strip as the last writer left it. The backup is decided by comparing
-  // the incoming set against this, at the moment of the write -- not in an
+  // the incoming set against this, at the moment of the write, not in an
   // effect, where the comparison would be a cascading render.
   const filesRef = useRef<SourceFile[]>(files);
   useEffect(() => {
