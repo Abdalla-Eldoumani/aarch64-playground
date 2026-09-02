@@ -62,4 +62,12 @@ describe("MobileNavDrawer", () => {
     // One anchor: the row text and the count share it.
     expect(github.textContent).toBe("source on github1.2k");
   });
+
+  it("carries the theme control the bar drops, inside an md:hidden root", () => {
+    const { container } = render(<MobileNavDrawer />);
+    expect(container.firstElementChild?.className).toContain("md:hidden");
+    fireEvent.click(screen.getByRole("button", { name: "open navigation" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("group", { name: "theme" })).toBeTruthy();
+  });
 });
