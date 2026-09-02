@@ -84,8 +84,8 @@ everything else compiles and tests on native.
 6. After each call the backend emits a `StateSnapshot` (see State sync);
    React applies it in one shot.
 
-Cardinal rule: state lives in Rust. React reads slices through getters
-after every mutation and never mirrors CPU state.
+State lives in Rust. React reads slices through getters after every
+mutation and never mirrors CPU state.
 
 ## Frontend pipeline (hosted CPSC 355 source)
 
@@ -218,7 +218,7 @@ A hosted call costs three steps on addresses the program does not hold: the
 two words of the trampoline, then the synthetic stub. The `hostCallContext`
 export reports which call a paused pc sits inside and recovers the call site
 from LR-4 for all three, so the stepping UI can name the call and hold its
-marker on the `bl`. The recovery has to be dynamic -- one trampoline serves
+marker on the `bl`. The recovery has to be dynamic: one trampoline serves
 every call site of the same function, so nothing static can say which
 `printf` line a pc belongs to.
 
@@ -237,8 +237,8 @@ hold no matter how the source arrived:
   copy-on-write, so the peak is the live cap plus whatever those frames
   still hold of pages the program has since rewritten.
 
-Each abort is a calm halt with a plain-language message in the result
-`error` field, never a panic.
+Each abort halts with a plain-language message in the result `error`
+field, never a panic.
 
 ## Snapshots and save states
 
@@ -248,7 +248,7 @@ next_fd, rand_state, term, heap, strtok_save, stdout_seen, stderr_seen }`
 before each `step()`; `step_back()` pops the
 newest frame. Recording stops, and the history clears, in raw mode,
 while the host pauses the ring, and once the state a frame copies whole
-outgrows `MAX_SNAPSHOT_SIDE_BYTES` -- so step-back never leaps over an
+outgrows `MAX_SNAPSHOT_SIDE_BYTES`, so step-back never leaps over an
 unrecorded stretch. The stdout and stderr buffers are not rolled back, but
 the `stdout_seen` / `stderr_seen` counters beside them are, so the host
 trims its transcript back to what the restored frame had shown. Named save
@@ -306,8 +306,8 @@ Both hosts drive the same chunked run loop,
 [`web/lib/emulator/run-loop.ts`](../web/lib/emulator/run-loop.ts): it runs
 the program in 10,000-step chunks, yields after each one, and reads the
 pause flag and the machine generation right after every yield. Each host
-supplies only what is genuinely its own -- how a chunk's wasm record is
-coerced, where a mid-run snapshot goes, and how often one is emitted.
+supplies only its own part: how a chunk's wasm record is coerced, where a
+mid-run snapshot goes, and how often one is emitted.
 
 ## Security gates
 
