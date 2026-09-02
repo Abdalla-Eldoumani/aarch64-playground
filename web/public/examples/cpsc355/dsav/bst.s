@@ -1,14 +1,14 @@
-// bst_viz.asm - a binary search tree, drawn the way it is drawn on paper
+// bst.s - a binary search tree, drawn the way it is drawn on paper
 //
 // Every operation is the same descent: compare, go left or right, stop.
 // The tree is redrawn between comparisons rather than after them, so the
 // path a value takes is visible while it is being taken. The four
-// traversals paint the nodes they have already visited, which turns an
-// order that is easy to recite and hard to picture into one picture.
+// traversals paint the nodes they have already visited, so the order is
+// visible instead of recited.
 //
 // Five levels fit the frame at four columns a node. Anything deeper is
-// marked rather than drawn, because a tree that runs off the screen
-// teaches nothing about a tree.
+// marked rather than drawn, because a tree that runs off the screen cannot be
+// read.
 
 define(fp, x29)
 define(lr, x30)
@@ -20,7 +20,7 @@ define(lr, x30)
     BST_SEEN  = 24
     BST_SIZE  = 32
 
-// Role numbers mirror the UI_ROLE_* set in ui.asm. They are repeated here
+// Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated here
 // so this file also assembles on its own, the way the web build feeds it.
     BST_ROLE_TEXT  = 0
     BST_ROLE_DIM   = 1
@@ -133,7 +133,7 @@ bst_msg_range:      .string "values run from 0 to 99, so every node stays two di
 bst_msg_root:       .string "the tree was empty, so %d becomes the root"
 bst_msg_sample:     .string "seven values, and the shape depends on the order they arrived in"
 bst_msg_alloc:      .string "the allocator refused a node, so nothing was inserted"
-bst_msg_start:      .string "every descent starts at the root, and every step throws half away"
+bst_msg_start:      every descent starts at the root, and every step drops one subtree
 
 bst_fmt_cmp_lt:     .string "%d is smaller than %d, so the descent goes left"
 bst_fmt_cmp_gt:     .string "%d is larger than %d, so the descent goes right"
@@ -1094,7 +1094,7 @@ bst_ask_prompt:
 
 bst_ask_range:
     // Say why and ask again. Answering 0 here would be indistinguishable
-    // from a closed stdin, and the operation was being abandoned silently.
+    // from a closed stdin,
     ldr     x0, =bst_msg_range
     mov     w1, 0
     mov     w2, 0
@@ -1267,7 +1267,7 @@ bst_menu_draw:
     ldr     x2, =bst_opt_0
     bl      bst_menu_line
 
-    // how much tree there is, so the menu is never a dead end
+    // node count and height, so the menu says what is loaded
     mov     w0, 16
     mov     w1, 10
     bl      ui_at
@@ -1880,7 +1880,7 @@ bst_postorder_walk:
 bst_postorder_walk_done:
     ret
 
-// bst_traverse_frame(x0 = screen title) - the shell every traversal wears
+// bst_traverse_frame(x0 = screen title) - the chrome every traversal shares
 bst_traverse_frame:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
@@ -1907,7 +1907,7 @@ bst_traverse_frame:
     ldp     fp, lr, [sp], 32
     ret
 
-// bst_inorder_interactive() - sorted order, and the reason it is sorted
+// bst_inorder_interactive() - sorted order, one visit a beat
 bst_inorder_interactive:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
