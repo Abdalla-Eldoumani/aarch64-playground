@@ -4,7 +4,7 @@
 
 define(fp, x29)
 define(lr, x30)
-// w22, not w19 -- main keeps the array base in x19, and W-form writes
+// w22, not w19, because main keeps the array base in x19, and W-form writes
 // zero-extend to the full X register, so aliasing the loop counter to
 // w19 would silently destroy the base address as soon as the counter
 // is initialized.
