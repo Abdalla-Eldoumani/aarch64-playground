@@ -406,7 +406,7 @@ describe("forwarding keystrokes", () => {
     const { io, end } = await withSession(machine);
     foregroundOf(io).pushInput("x".repeat(MAX_STDIN_BYTES + 1));
     expect(machine.pushStdin).not.toHaveBeenCalled();
-    expect(io.write).toHaveBeenCalledWith("\r\n[stdin too large (max 100 KB)]\r\n");
+    expect(io.write).toHaveBeenCalledWith("\r\n[stdin too large: the limit is 100 KiB]\r\n");
     await end();
   });
 

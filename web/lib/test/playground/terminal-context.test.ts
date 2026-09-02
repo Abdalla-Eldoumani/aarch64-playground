@@ -175,7 +175,7 @@ describe("a `< file` redirect", () => {
     const result = await ctx.runProgram(["./program"], "x".repeat(MAX_STDIN_BYTES + 1));
     expect(result).toEqual({
       stdout: "",
-      stderr: "stdin too large (max 100 KB)",
+      stderr: "stdin too large: the limit is 100 KiB",
       exitCode: null,
     });
     expect(hub.pushStdin).not.toHaveBeenCalled();

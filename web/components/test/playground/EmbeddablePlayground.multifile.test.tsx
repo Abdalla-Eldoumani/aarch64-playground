@@ -375,7 +375,7 @@ describe("terminal stdin and output bounds", () => {
     // 4 MiB VFS cap in a single push. The message is the literal the student
     // reads: asserting it against validateStdin(huge) would have passed just
     // as happily on a guard that returned null and pushed the megabyte.
-    expect(result!.stderr).toBe("stdin too large (max 100 KB)");
+    expect(result!.stderr).toBe("stdin too large: the limit is 100 KiB");
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
 
