@@ -90,7 +90,7 @@ rec_base:           .string "\xe2\x94\x80"
 
 rec_title:          .string "towers of hanoi"
 rec_foot_menu:      .string "every move is one line of a function that calls itself twice"
-rec_foot_run:       the panel on the right mirrors the call stack, frame by frame
+rec_foot_run:       .string "the panel on the right is the processor stack itself, frame by frame"
 rec_foot_pick:      .string "the value is clamped to the range shown"
 
 rec_panel_pegs:     .string "pegs"
