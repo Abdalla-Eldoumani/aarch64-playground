@@ -82,14 +82,14 @@ export function BlanksBlock({
               if (onAttempt) onAttempt(isCorrect);
             }}
           >
-            Check Answer
+            check answer
           </Button>
         ) : (
           <div className="flex w-full flex-col items-start gap-5">
             <FeedbackAlert
               isCorrect={isCorrect}
               explanation={explanation}
-              hint={hint ?? "Check your syntax carefully and try again."}
+              hint={hint ?? "Check the spelling and the operand order against the instruction reference."}
             />
             {!isCorrect && (
               <Button
@@ -98,7 +98,7 @@ export function BlanksBlock({
                   setInputVal("");
                 }}
               >
-                Try Again
+                try again
               </Button>
             )}
           </div>
