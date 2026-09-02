@@ -2430,7 +2430,10 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
             imm9_form(offset_val, idx, rn)
         }
         AddressingMode::RegOffset { .. } => {
-            asm_err(ln, "FP LDR/STR register-offset not yet supported by the assembler")
+            asm_err(
+                ln,
+                "FP LDR/STR register-offset is not supported; compute the address with add and use [Xn]",
+            )
         }
     }
 }

@@ -293,6 +293,7 @@ finishes on the next step.
 ## Things that are not implemented
 
 - SIMD vector widths (Q registers and arrangement specifiers)
+- FP register-offset addressing (`ldr d0, [x1, x2, lsl #3]`); the integer forms take it
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
