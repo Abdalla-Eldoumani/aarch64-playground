@@ -181,19 +181,19 @@ describe("TutorialRunner expected-register check", () => {
     return renderRunner({ getRegister });
   }
 
-  it("marks OK when the register holds the expected value (hex accepted)", () => {
+  it("marks ok when the register holds the expected value (hex accepted)", () => {
     openOnExpectStep(() => "0x2f");
-    expect(screen.getByText("[OK, actual 47]")).toBeTruthy();
+    expect(screen.getByText("[ok, actual 47]")).toBeTruthy();
   });
 
-  it("marks no when the register holds something else", () => {
+  it("marks not yet when the register holds something else", () => {
     openOnExpectStep(() => "5");
-    expect(screen.getByText("[no, actual 5]")).toBeTruthy();
+    expect(screen.getByText("[not yet, actual 5]")).toBeTruthy();
   });
 
-  it("marks ? when no live state is available", () => {
+  it("marks not read when no live state is available", () => {
     openOnExpectStep(() => null);
-    expect(screen.getByText("[?]")).toBeTruthy();
+    expect(screen.getByText("[not read]")).toBeTruthy();
   });
 
   it("spells out the expectation with its note", () => {

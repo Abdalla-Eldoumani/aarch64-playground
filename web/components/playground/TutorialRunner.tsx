@@ -45,14 +45,14 @@ function ExpectedRegisterCheck({
 }) {
   const actual = readRegisterDecimal(expect.reg, getter);
   let cls = "text-[var(--text-secondary)]";
-  let glyph = "?";
+  let glyph = "not read";
   if (actual !== null) {
     if (actual === expect.value) {
       cls = "text-[var(--success)]";
-      glyph = "OK";
+      glyph = "ok";
     } else {
       cls = "text-[var(--danger)]";
-      glyph = "no";
+      glyph = "not yet";
     }
   }
   return (
