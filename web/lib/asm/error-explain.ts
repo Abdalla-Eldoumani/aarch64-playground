@@ -69,7 +69,10 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "addressing modes",
     };
   }
-  if (lower.includes("register index out of range")) {
+  if (
+    lower.includes("is not a register") ||
+    lower.includes("is not a floating-point register")
+  ) {
     return {
       what: "An instruction referenced a register index outside 0..30.",
       why: "Almost always a typo (W32 instead of W3, X31 instead of XZR or SP) or a stale operand left over from refactoring.",
@@ -109,11 +112,11 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "naming conventions",
     };
   }
-  if (lower.startsWith("argv layout")) {
+  if (lower.includes("the playground reserves for argv")) {
     return {
       what: "The argv pointer table plus the string pool would exceed the single 4 KiB page reserved at 0x00800000.",
       why: "Either too many args (each one needs an 8-byte pointer slot plus the string body and a NUL), or one very large arg.",
-      fix: "Trim the args field above the editor. The argv area is one page, which keeps the emulator footprint predictable.",
+      fix: "Trim the args field above the editor, or pass fewer arguments.",
       styleSection: "hosted runtime",
     };
   }
@@ -130,7 +133,11 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "m4 preprocessing",
     };
   }
-  if (detail.includes("unknown symbol") || detail.includes("undefined symbol")) {
+  if (
+    detail.includes("is not defined anywhere in this program") ||
+    detail.includes("unknown symbol") ||
+    detail.includes("undefined symbol")
+  ) {
     return {
       what: "A label or alias used in this expression is not defined anywhere in the source.",
       why: "Either a typo (the alias was defined as `score1_r` but used as `score_1_r`) or a section ordering issue where a forward reference points at code never reached by the assembler.",
@@ -161,6 +168,12 @@ export function explainError(message: string): ErrorExplanation | null {
       fix: "Re-check the line above the reported one for a missing comma, label colon, or directive opener like `.word`.",
       styleSection: "general",
     };
+  }
+  // The unknown-directive message names the whole set the parser accepts,
+  // so there is nothing to add; it is caught here only because that list
+  // contains `.section` and would otherwise fall into the block below.
+  if (detail.includes("unknown directive")) {
+    return null;
   }
   if (detail.includes("unsupported section")) {
     return {
