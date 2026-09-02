@@ -242,10 +242,10 @@ Pre-registered and available without setup:
 | `malloc` / `free`              | A fixed 16 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
 | `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
 | `fflush`                       | Accepted and ignored: output is never buffered here. |
-| `fopen`                        | Opens a virtual-filesystem file by C mode string (`r`, `w`, `a`, with `+`); returns an opaque FILE* handle, NULL on a missing `r` file or a refused wall. The handle is not a real pointer -- dereferencing it faults. |
+| `fopen`                        | Opens a virtual-filesystem file by C mode string (`r`, `w`, `a`, with `+`); returns an opaque FILE* handle, NULL on a missing `r` file or a refused wall. The handle is not a real pointer; dereferencing it faults. |
 | `fprintf`                      | The printf engine writing to a FILE* (x0 = stream, x1 = format, varargs from x2). Bytes land in the virtual file under the same caps as the write syscall; the file appears in the console's files view. A stream that never came from fopen is a calm halt naming the fix. |
 | `fclose`                       | Drops the stream's descriptor; returns 0, or EOF for a handle that is not open (a second fclose answers EOF, as glibc does). Nothing is buffered, so there is nothing to flush. |
-| `sqrt`                         | Argument in `d0`, result in `d0`. Of a negative it is NaN -- the IEEE answer, not an error. |
+| `sqrt`                         | Argument in `d0`, result in `d0`. Of a negative it is NaN, the IEEE answer rather than an error. |
 | `pow`                          | Base in `d0`, exponent in `d1`, result in `d0`. `pow(0, 0)` is 1, per C. |
 | `sin`                          | Radians in `d0`, result in `d0`.          |
 | `cos`                          | Radians in `d0`, result in `d0`.          |
