@@ -141,7 +141,10 @@ Fields every variant carries:
 
 - `title`: the heading, a non-empty string, in the same sentence case as
   a lesson title, and with no difficulty word in it: `difficulty` carries
-  the tier and the index prints it as its own chip.
+  the tier and the index prints it as its own chip. The page's metadata
+  title composes the two as `<title> (<difficulty>)`, so the three sets of
+  a theory family still get three distinct browser tabs and share cards
+  while the heading on the page stays bare.
 - `slug`: url-safe kebab-case, matching the file name.
 - `order`: the index sorts by this; a number or string. The sheet runs
   every coding exercise first (1 to 27 today) and then every theory set
@@ -149,12 +152,15 @@ Fields every variant carries:
   side. Nothing checks that two files share a number, so look before you
   pick.
 - `topic`: optional string; the practice page groups exercises under it.
-  The topics, their order on the page, and their printed labels live in
-  `web/lib/content/practice-topics.ts`; a topic missing from that table
-  still renders (its id is the label) but sorts after every listed one, so
-  a new topic wants a row there.
+  The sixteen topics, their order on the page, and their printed labels
+  live in `web/lib/content/practice-topics.ts`; a topic missing from that
+  table still renders (its id is the label) but sorts after every listed
+  one, so a new topic wants a row there.
 - `difficulty`: optional, one of `intro`, `core`, or `challenge`.
-- `prompt`: the task description, Markdown.
+- `prompt`: the task description, Markdown. Open with the task itself: what
+  the starter gives the reader, and what the program has to do. A sentence
+  that only sets a mood should become a hint ("One pass over the array is
+  enough") or go.
 - `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
   or `blanks`. The variant decides where the exercise appears: `write` and
   `identify-bug` sit in the coding column of the practice page, the other
