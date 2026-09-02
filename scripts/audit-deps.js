@@ -81,7 +81,7 @@ console.error("\nadvisories:");
 const advisories = report.vulnerabilities ?? {};
 for (const [name, entry] of Object.entries(advisories)) {
   if (SEVERITY_RANK[entry.severity] >= FAIL_AT) {
-    console.error(`  ${name} (${entry.severity}) -- ${entry.via?.[0]?.title ?? "see npm audit"}`);
+    console.error(`  ${name} (${entry.severity}): ${entry.via?.[0]?.title ?? "see npm audit"}`);
   }
 }
 
