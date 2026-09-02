@@ -140,7 +140,7 @@ fn out_of_reach_conditional_branches_are_rejected_not_wrapped() {
 #[test]
 fn a_broken_equate_reports_its_own_line_and_cause() {
     // `size = cont + 1` with `cont` undefined used to vanish, and the USE
-    // site got "invalid immediate: size" -- pointing at correct code.
+    // site got "invalid immediate: size", pointing at correct code.
     let src = ".text\n\
                .global main\n\
                size = cont + 1\n\
@@ -247,7 +247,8 @@ fn a_typod_macro_name_in_an_operand_names_the_symbol() {
     assert!(msg.contains("SZIE"), "message was: {msg}");
     assert!(msg.contains("line 5"), "message was: {msg}");
     // The web layer picks its undefined-symbol teaching block off this
-    // wording, and the terminal pane never runs that layer at all.
+    // wording, and the terminal pane never runs that layer, so the
+    // emulator has to carry the wording itself.
     assert!(
         msg.contains("is not defined anywhere in this program"),
         "message was: {msg}"
@@ -284,7 +285,7 @@ ret
 #[test]
 fn a_malformed_define_is_diagnosed_not_blamed_on_a_mnemonic() {
     // `define(fp, x29` used to pass through and report "unknown mnemonic:
-    // DEFINE(FP," -- uppercased, truncated, describing the macro as a CPU
+    // DEFINE(FP,": uppercased, truncated, describing the macro as a CPU
     // instruction.
     let msg = assemble_err("define(fp, x29
 .text
@@ -750,8 +751,8 @@ fn data_before_text_still_assembles() {
 /// Both of these used to overflow the wasm stack rather than return an
 /// error. A wasm stack overflow is unrecoverable: the trap skips
 /// wasm-bindgen's borrow-guard Drop, so every later call fails on a stuck
-/// borrow flag and the instance is dead until the tab reloads. Depth has
-/// to be refused, not survived.
+/// borrow flag and the instance is dead until the tab reloads. Depth is
+/// refused before the recursion can reach the wasm stack limit.
 #[test]
 fn deeply_nested_addressing_brackets_are_refused_not_overflowed() {
     // rewrite_operand and rewrite_operand_list call each other once per
@@ -773,7 +774,7 @@ fn deeply_nested_addressing_brackets_are_refused_not_overflowed() {
 fn thousands_of_stacked_labels_on_one_line_assemble() {
     // parse_line peels one `label:` per turn. It used to recurse, so a
     // long enough line blew the stack; peeling in a loop makes the line
-    // ordinary work. This is valid assembly, so it must SUCCEED.
+    // ordinary work. Valid assembly, so the assemble must succeed.
     let labels: String = (0..20_000).map(|i| format!("l{i}: ")).collect();
     let src = format!(".text\n.global main\nmain:\n{labels}ret\n");
     let cpu = Cpu::new();
@@ -785,9 +786,9 @@ fn thousands_of_stacked_labels_on_one_line_assemble() {
     assert_eq!(image.symbols["l0"], image.symbols["l19999"]);
 }
 
-/// The entry point comes from a LABEL, and `_start` counts. Three separate
-/// findings met in these few lines: an equate named `main` was taken as the
-/// entry point, `_start`-only programs fell back to the top of .text, and
+/// The entry point comes from a LABEL, and `_start` counts. Three bugs
+/// land on these few lines: an equate named `main` was taken as the entry
+/// point, `_start`-only programs fell back to the top of .text, and
 /// `.global main` alongside `_start:` was refused even though ld links it.
 #[test]
 fn the_entry_point_is_a_label_and_start_counts_as_one() {
