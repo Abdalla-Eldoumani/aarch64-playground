@@ -58,7 +58,7 @@ main:
             bl      printf
 
             // remainder = a - (a / b) * b
-            udiv    result, a, b
+            udiv    result, a, b            // result = 47 / 5 = 9
 
             mul     temp, result, b         // temp = 9 * 5 = 45
 
