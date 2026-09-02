@@ -21,12 +21,19 @@ const EXPECTED_FAULTS: &[(&str, &str)] = &[
     ("46_stack_overflow", "stack overflow"),
 ];
 
-/// Programs expected to fail assembly, with the reason. An entry that
-/// starts assembling flips this list red, so a fix is recorded instead
-/// of passing silently.
+/// Programs expected to fail assembly at every tier, with the reason. An
+/// entry that starts assembling flips this list red, so a fix is recorded
+/// instead of passing silently.
 const PENDING: &[(&str, &str)] = &[(
     "13_float_double",
     "gcc copies a 16-byte struct through a q register; the fp file is 64-bit scalar by design",
+)];
+
+/// The same, for the optimized tier alone: these assemble and match at
+/// -O0 and reach a form only gcc's optimizer emits.
+const PENDING_O2: &[(&str, &str)] = &[(
+    "14_float_single",
+    "gcc zeroes a float with `movi v0.2s, #0`; SIMD arrangements and the v register file are out of scope",
 )];
 
 /// One run's budget. The slowest passing program at -O0 (21_long_loop,
@@ -149,7 +156,8 @@ fn check_tier(infix: &str) -> TierResult {
     let mut passing = 0usize;
     let mut slowest = (0u64, String::new());
     for stem in &stems {
-        let pending = PENDING.iter().find(|(s, _)| s == stem);
+        let tier_pending: &[(&str, &str)] = if infix == ".O2" { PENDING_O2 } else { &[] };
+        let pending = PENDING.iter().chain(tier_pending).find(|(s, _)| s == stem);
         let outcome = match run_program(&dir, stem, infix) {
             Ok(o) => {
                 if let Some((_, why)) = pending {
@@ -245,13 +253,12 @@ fn corpus_at_o2_coverage_map() {
     for f in &failures {
         println!("  {f}");
     }
-    // Measured 2026-09-02, after tier 1. Three programs still fail to
-    // assemble: 50_float_basic needs the fixed-point `fcvtzs Xd, Sn, #n`,
-    // 42_libc_map needs __ctype_toupper_loc and __ctype_tolower_loc, and
-    // 14_float_single zeroes a float with `movi v0.2s, #0`, which is SIMD
-    // and out of scope. The fourth non-passing program is
-    // 13_float_double, which is on PENDING.
-    const O2_FLOOR: usize = 46;
+    // Measured 2026-09-02, after tier 2. Every remaining gap is a v
+    // register: 13_float_double copies a 16-byte struct through q0 and
+    // 14_float_single zeroes a float with `movi v0.2s, #0`. Both are on
+    // the pending lists, so nothing here fails to assemble for a reason
+    // this crate means to cover.
+    const O2_FLOOR: usize = 48;
     assert!(
         passing >= O2_FLOOR,
         "o2 coverage fell below the recorded floor: {passing} < {O2_FLOOR}"
