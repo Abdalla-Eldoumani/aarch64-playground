@@ -24,7 +24,7 @@ export type StyleSection =
 export interface ErrorExplanation {
   /** What the emulator saw, in two short sentences max. */
   what: string;
-  /** Why it failed -- the underlying cause in plain language. */
+  /** Why it failed: the underlying cause in plain language. */
   why: string;
   /** A specific, actionable fix the student can apply right now. */
   fix: string;
@@ -113,7 +113,7 @@ export function explainError(message: string): ErrorExplanation | null {
     return {
       what: "The argv pointer table plus the string pool would exceed the single 4 KiB page reserved at 0x00800000.",
       why: "Either too many args (each one needs an 8-byte pointer slot plus the string body and a NUL), or one very large arg.",
-      fix: "Trim the args field above the editor. The cap is per-page and the playground's argv area is intentionally small to keep the emulator footprint predictable.",
+      fix: "Trim the args field above the editor. The argv area is one page, which keeps the emulator footprint predictable.",
       styleSection: "hosted runtime",
     };
   }
@@ -196,7 +196,7 @@ export function explainError(message: string): ErrorExplanation | null {
   }
   if (detail.includes("converts between widths")) {
     return {
-      what: "fcvt was given two registers of the same width, but its whole job is changing width.",
+      what: "fcvt was given two registers of the same width; it only encodes a change of width.",
       why: "fcvt is the S<->D precision converter: one operand names the source width, the other the destination. Same-width fcvt has no encoding.",
       fix: "For a same-width copy use `fmov d0, d1` (or `fmov s0, s1`). To change precision, pair one S with one D: `fcvt d0, s1` widens, `fcvt s0, d1` narrows.",
       styleSection: "general",
