@@ -1,7 +1,7 @@
 {
   "title": "Pre-test loops",
   "slug": "pretest-loop",
-  "order": 8,
+  "order": 7,
   "summary": "How to build a for or while loop, where the condition is checked before every pass.",
   "tags": [
     "loops",
