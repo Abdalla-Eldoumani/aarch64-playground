@@ -205,7 +205,9 @@ pub fn execute(
         Instruction::MulAccumulate { op, sf, rd, rn, rm, ra } => {
             exec_mul_accumulate(*op, *sf, *rd, *rn, *rm, *ra, regs)
         }
-        Instruction::MulWide { op, rd, rn, rm } => exec_mul_wide(*op, *rd, *rn, *rm, regs),
+        Instruction::MulWide { op, rd, rn, rm, ra } => {
+            exec_mul_wide(*op, *rd, *rn, *rm, *ra, regs)
+        }
         Instruction::LdrSignExtended { rt, rn, offset, size, mode, sf } => {
             exec_ldrs(*rt, *rn, offset, *size, *mode, *sf, regs, mem)
         }
@@ -1276,7 +1278,7 @@ fn exec_mul_accumulate(
 }
 
 fn exec_mul_wide(
-    op: MulWideOp, rd: u8, rn: u8, rm: u8,
+    op: MulWideOp, rd: u8, rn: u8, rm: u8, _ra: u8,
     regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
     let result = match op {

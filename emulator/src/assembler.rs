@@ -3180,7 +3180,7 @@ mod tests {
             let word = encode_line(src, 0, &labels, 1).unwrap();
             assert_eq!(word, want, "{src}");
             match decode(word).unwrap() {
-                Instruction::MulWide { op: got, rd: 0, rn: 1, rm: 2 } => {
+                Instruction::MulWide { op: got, rd: 0, rn: 1, rm: 2, ra: 31 } => {
                     assert_eq!(got, op, "{src}");
                 }
                 other => panic!("{src} decoded to {other:?}"),

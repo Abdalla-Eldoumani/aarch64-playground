@@ -511,6 +511,9 @@ pub enum Instruction {
         rd: u8,
         rn: u8,
         rm: u8,
+        /// `ra` is 31 for SMULL/UMULL/SMULH/UMULH, whose Ra field the
+        /// aliases and the architecture both fix at XZR.
+        ra: u8,
     },
     /// LDRSB / LDRSH / LDRSW: sign-extending loads. `sf` selects the
     /// target register width (Xt when true, Wt when false; LDRSW only
@@ -1920,7 +1923,7 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
             _ => None,
         };
         if let Some(op) = op {
-            return Ok(Instruction::MulWide { op, rd, rn, rm });
+            return Ok(Instruction::MulWide { op, rd, rn, rm, ra });
         }
     }
 
