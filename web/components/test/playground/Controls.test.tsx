@@ -199,7 +199,7 @@ describe("Controls", () => {
         isRunning={false}
         isHalted={false}
         programLoaded={false}
-        error="unknown instruction: 0x12345678"
+        error="unknown instruction 0x12345678 at this address: execution probably branched into data rather than code. Check the branch that got here, and the return address if this followed a ret"
       />,
     );
     const alert = screen.getByRole("alert");
