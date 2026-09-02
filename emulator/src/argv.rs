@@ -149,6 +149,14 @@ mod tests {
         let big = "x".repeat(1024);
         let args: Vec<&str> = vec![&big, &big, &big, &big];
         let err = setup_argv(&mut regs, &mut mem, &args).unwrap_err();
+        // The args box is the only thing a student can shorten, and the web
+        // layer keys its teaching block off this wording.
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("the playground reserves for argv"),
+            "message was: {rendered}"
+        );
+        assert!(rendered.contains("args box"), "message was: {rendered}");
         match err {
             EmuError::ArgvTooLarge { bytes } => {
                 assert!(bytes > ARGV_MAX_BYTES);
