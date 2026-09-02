@@ -290,7 +290,7 @@ describe("helper file names", () => {
     fireEvent.click(screen.getByLabelText("add file"));
 
     expect(toastError).toHaveBeenCalledWith(
-      "main.asm is the editor's own buffer -- pick another name",
+      "main.asm is the editor's own buffer; pick another name",
     );
     expect(screen.queryByLabelText("remove main.asm")).toBeNull();
   });

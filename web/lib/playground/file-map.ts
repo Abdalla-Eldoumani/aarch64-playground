@@ -118,7 +118,7 @@ export function validateFileName(
   const shape = fileNameShapeError(trimmed);
   if (shape) return shape;
   if (MAIN_NAMES.test(trimmed)) {
-    return "main.asm is the editor's own buffer -- pick another name";
+    return "main.asm is the editor's own buffer; pick another name";
   }
   const clash = files.some((f, i) => i !== exceptIndex && f.name === trimmed);
   if (clash) return `a file named ${trimmed} is already open`;
