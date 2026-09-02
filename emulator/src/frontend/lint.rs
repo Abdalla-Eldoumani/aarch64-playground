@@ -4,12 +4,11 @@
 //!   * Frame balance per function: an epilogue that pops bytes the
 //!     prologue never pushed, a frame still held at `ret`, and a
 //!     prologue pair offset that is not 16-byte aligned. These are the
-//!     shapes behind silent stack corruption -- the single most common
-//!     first-week failure. Leaf functions that never touch sp are
-//!     naturally exempt (they produce no stack deltas).
+//!     shapes behind silent stack corruption. Leaf functions that never
+//!     touch sp are naturally exempt (they produce no stack deltas).
 //!   * m4 macro hygiene: the places GNU m4's text-level rules bite.
-//!     m4 substitutes whole-name tokens ANYWHERE -- inside `"` strings
-//!     and `'` char literals included -- treats `NAME(` as a macro call
+//!     m4 substitutes whole-name tokens ANYWHERE (inside `"` strings
+//!     and `'` char literals included), treats `NAME(` as a macro call
 //!     that consumes the parenthesized text, and treats `#` as a
 //!     comment-start after which nothing expands. The playground's m4
 //!     follows the same rules (verified against the course toolchain),
@@ -19,7 +18,7 @@
 //! Everything here is heuristic and fails open: an offset that cannot be
 //! folded to a constant, a function with several `ret`s, or any write to
 //! sp the tracker does not model simply disables analysis for that
-//! function. A missed warning is fine; a false one teaches distrust.
+//! function. Prefer a missed warning to a false one.
 
 use std::collections::{HashMap, HashSet};
 
@@ -35,7 +34,7 @@ pub struct LintWarning {
     pub message: String,
 }
 
-/// Lint a source file. Returns an empty list when the m4 pass fails --
+/// Lint a source file. Returns an empty list when the m4 pass fails:
 /// the assemble that follows will surface that error properly.
 pub fn lint(source: &str) -> Vec<LintWarning> {
     let Ok(expanded) = m4::expand(source) else {
@@ -52,8 +51,8 @@ pub fn lint(source: &str) -> Vec<LintWarning> {
 // m4 macro hygiene
 // ---------------------------------------------------------------------------
 
-/// Registers and mnemonics a macro name must not shadow. Compact by
-/// design: the cost of a miss is one fewer warning, never a wrong one.
+/// Registers and mnemonics a macro name must not shadow. A name missing
+/// from this list costs one warning, never a wrong one.
 fn is_reserved_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     // `pc` is a deliberate lint-only extra on top of the shared alias table:
@@ -84,11 +83,10 @@ fn macro_hygiene(source: &str, expanded: &m4::Expanded, warnings: &mut Vec<LintW
     if expanded.defines.is_empty() {
         return;
     }
-    // One warning per define SITE, quoting that site's own body. Walking
-    // the collapsed `defines` map instead named the last body a redefined
-    // macro ever had, on whichever line a text scan happened to find
-    // first -- so a windowed alias was reported against the wrong
-    // register entirely.
+    // One warning per define SITE, quoting that site's own body. The
+    // collapsed `defines` map holds only the last body a redefined macro
+    // ever had, so a windowed alias would be reported against the wrong
+    // register.
     for (line, name, body) in &expanded.define_events {
         let Some(body) = body else { continue };
         // The course's own canonical aliases: `define(fp, x29)` and
@@ -256,6 +254,8 @@ fn frame_balance(expanded: &m4::Expanded, warnings: &mut Vec<LintWarning>) {
 /// functions using it are skipped.
 fn fold_assignments(expanded: &m4::Expanded) -> HashMap<String, i64> {
     let mut out: HashMap<String, i64> = HashMap::new();
+    // Eight rounds: the lint fails open, so an unresolved chain past this
+    // just skips the function.
     for _ in 0..8 {
         let mut changed = false;
         for (name, body) in &expanded.assignments {
@@ -444,7 +444,7 @@ enum StackEffect {
 }
 
 /// Classify one instruction's effect on sp, or None when it has none (or
-/// cannot be folded -- the caller then checks for unmodeled sp writes).
+/// cannot be folded, and the caller then checks for unmodeled sp writes).
 fn stack_effect(text: &str, symbols: &HashMap<String, i64>) -> Option<StackEffect> {
     let compact: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     // Pre-indexed push: `stp a, b, [sp, N]!` or `str a, [sp, N]!`.
@@ -533,7 +533,8 @@ mod tests {
 
     #[test]
     fn an_epilogue_with_no_prologue_warns_at_the_ldp() {
-        // The A1 live repro: the single most common first-week slip.
+        // An epilogue with no prologue: the balance tracker must fire at
+        // the `ldp`.
         let src = ".text\n\
                    .global main\n\
                    main:\n\
