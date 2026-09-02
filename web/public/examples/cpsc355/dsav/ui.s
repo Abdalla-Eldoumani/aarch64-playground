@@ -127,8 +127,8 @@ ui_cols_done:
 // ui_num(x0 = dest, w1 = value, w2 = minimum width) -> w0 = characters
 // written, not counting the terminator.
 // The hosted runtime gives us printf but no sprintf, so a value that has to
-// end up in a buffer rather than on the screen -- a badge label, a growing
-// order strip -- is converted here. Right-aligned, padded with spaces to
+// end up in a buffer rather than on the screen (a badge label, a growing
+// order strip) is converted here. Right-aligned, padded with spaces to
 // the width, and always terminated.
     .global ui_num
 ui_num:
