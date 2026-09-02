@@ -2,9 +2,6 @@
  * Import-target routing. Decides where an `import` action lands based on
  * the active MultiFileTabs index.
  *
- * - activeFile === -1 -> main editor buffer
- * - activeFile >= 0   -> extras[activeFile]
- *
  * Pure function so it can be exercised without React state. Page-level
  * code calls it on every render and routes the import callback.
  */
