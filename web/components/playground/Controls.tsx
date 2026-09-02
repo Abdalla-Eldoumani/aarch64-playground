@@ -21,9 +21,9 @@ interface ControlsProps {
    *  program, so they render disabled instead of silently no-oping. */
   programLoaded: boolean;
   /** Run has something to do even with nothing assembled: it assembles the
-   *  workspace first and starts the session itself. Only run is affected --
-   *  step and back still need a loaded program -- and an assemble already
-   *  in flight still disables it, so one press cannot start two. */
+   *  workspace first and starts the session itself. Only run is affected (step
+   *  and back still need a loaded program), and an assemble already in flight
+   *  still disables it, so one press cannot start two. */
   runAssemblesFirst?: boolean;
   /** True while the program sits at a blocked read waiting for stdin. Run,
    *  step, and back cannot make progress past the read (the machine just
@@ -57,8 +57,8 @@ export function Controls({
   // listener), so these buttons advertise them via aria-keyshortcuts without
   // binding any keys themselves.
 
-  // The plain-language cause/hint replaces the raw error string alone, so
-  // a beginner's first failed program reads as instructive, not alarming.
+  // The explainer adds a cause and a fix beside the raw error string, so a
+  // first failed program says what to do next.
   const explanation = error ? explainError(error) : null;
 
   return (
@@ -70,7 +70,7 @@ export function Controls({
           itself, so the fifth button is reachable instead of clipped, and the
           assemble error drops to its own row underneath rather than off the
           right edge. At sm and up the band dissolves and every control is a
-          direct child of the row again, laid out as it always was. */}
+          direct child of the row. */}
       <div className="controls-band flex items-center gap-1.5 sm:contents">
         <Button
           variant="primary"
@@ -162,9 +162,8 @@ export function Controls({
         <div
           role="alert"
           // Keyed by the message so a NEW error replays the ~200ms decaying
-          // shake (the instrument buzzing back at a bad input); under
-          // prefers-reduced-motion the class is inert and the danger-colored
-          // text alone carries the state.
+          // shake; under prefers-reduced-motion the class is inert and the
+          // danger-colored text alone carries the state.
           key={error}
           // A readable box, not a truncated line: long messages wrap in
           // full view (scrolling only past ~4 lines) instead of hiding
@@ -190,12 +189,11 @@ export function Controls({
 }
 
 function Shortcut({ keys }: { keys: string }) {
-  // Inherit the button's text color via currentColor so the chip reads on
-  // both the cyan-filled primaries and the surface-toned secondaries, at full
-  // strength so it clears WCAG AA on the filled cyan (quietness comes from
-  // the smaller size and the hairline, not from fading the ink). aria-hidden
-  // keeps the chip out of the accessible name -- the button's label stays the
-  // bare verb and aria-keyshortcuts already carries the key for AT.
+  // Inherit the button's text color via currentColor so the chip reads on both
+  // the cyan-filled primaries and the surface-toned secondaries, at full
+  // strength so it clears WCAG AA on the filled cyan. aria-hidden keeps the
+  // chip out of the accessible name: the button's label stays the bare verb and
+  // aria-keyshortcuts already carries the key for AT.
   return (
     <kbd
       aria-hidden="true"
