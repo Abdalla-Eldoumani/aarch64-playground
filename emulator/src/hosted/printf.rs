@@ -142,7 +142,7 @@ pub fn read_c_string(
     Err(EmuError::RuntimeError {
         message: format!(
             "{what}: the string at 0x{addr:x} has no terminating zero byte \
-             within 64 KiB -- declare strings with .asciz or .string (not \
+             within 64 KiB. Declare strings with .asciz or .string (not \
              .ascii), and check nothing wrote over the terminator"
         ),
     })
@@ -379,7 +379,7 @@ fn format_conversion(
                 EmuError::MemoryFault { .. } => EmuError::RuntimeError {
                     message: format!(
                         "printf %s was handed the pointer 0x{ptr:x}, which does not \
-                         point at readable memory -- check that the argument register \
+                         point at readable memory. Check that the argument register \
                          holds a string address (ldr xN, =label)"
                     ),
                 },
