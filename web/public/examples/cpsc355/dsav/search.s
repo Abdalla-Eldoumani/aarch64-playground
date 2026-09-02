@@ -75,7 +75,8 @@ search_ready:       .word 0                 // 1 once the sample array is loaded
 
 // What a first visit finds already loaded. The values ascend with uneven
 // gaps, a search for 67 costs interpolation one
-// guess and binary four halvings,
+// guess and binary four halvings, which is the lesson the arithmetic line
+// is there to show.
     .balign 4
 search_seed:        .word 4, 11, 19, 28, 35, 46, 67, 73, 81, 94
 
@@ -212,7 +213,7 @@ search_say_typing:   .string "a[%d] is waiting for a value, 0 to 999"
 search_say_stored:   .string "%d values stored, so a search for any of them is a guaranteed hit"
 search_say_random:   .string "%d random values, so a hit is luck; type your own to be certain"
 search_say_inorder:  .string "%d values in order: binary, jump and interpolation can all run"
-search_say_jumbled:  %d values out of order: only linear search will work here
+search_say_jumbled:  .string "%d values out of order: only linear search is honest here"
 
 search_form_linear:  .string "every cell, left to right, and the array need not be in any order"
 search_form_binary:  .string "mid = (low + high) / 2      the values never enter the arithmetic"
@@ -412,7 +413,8 @@ search_blank:
     ret
 
 // search_hold(w0 = halvings of the step delay) - flush, then wait. A
-// compare holds the full delay, a move half of it,
+// compare holds the full delay, a move half of it, so the eye learns
+// which frames are decisions.
 search_hold:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
