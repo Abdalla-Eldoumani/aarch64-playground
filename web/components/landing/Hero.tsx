@@ -98,6 +98,10 @@ export function Hero() {
               // its line into the embed console during the autoplay.
               autoplaySteps={10}
               readOnly
+              // The hero is a demonstration, not a debugger: it keeps the
+              // two-button frame the autoplay walk was designed around.
+              showStep={false}
+              showBack={false}
             />
           </div>
         </div>
