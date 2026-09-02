@@ -564,10 +564,17 @@ export function Editor({
 
       // Escape blurs the editor when no internal Monaco widget is open,
       // so keyboard-only users aren't trapped inside Monaco when they
-      // hit Esc to back out of a focused control.
-      editor.addCommand(monaco.KeyCode.Escape, () => {
-        editor.getDomNode()?.blur();
-      });
+      // hit Esc to back out of a focused control. The context expression
+      // is what makes "no widget open" hold: a command registered without
+      // one outranks Monaco's own Escape bindings, which left the find
+      // widget with nothing to close it from the keyboard.
+      editor.addCommand(
+        monaco.KeyCode.Escape,
+        () => {
+          editor.getDomNode()?.blur();
+        },
+        "!findWidgetVisible",
+      );
 
       // Ctrl+Shift+F invokes the playground's source formatter (the
       // command palette uses the same handler). Mirrors VS Code's
