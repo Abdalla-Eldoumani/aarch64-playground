@@ -423,7 +423,7 @@ export function Editor({
         if (live) setMonacoReady(true);
       },
       () => {
-        if (live) toast.error("the editor failed to load -- reload the page to try again");
+        if (live) toast.error("the editor failed to load. reload the page to try again");
       },
     );
     return () => {
@@ -626,7 +626,7 @@ export function Editor({
       if (!file) return;
       if (!/\.(s|asm|txt)$/i.test(file.name)) {
         toast.error(
-          "only .s, .asm, and .txt files can be dropped here -- rename the file or paste its contents",
+          "only .s, .asm, and .txt files can be dropped here. rename the file, or paste its contents into the editor",
         );
         return;
       }
@@ -642,7 +642,7 @@ export function Editor({
         .text()
         .then((text) => handleChange(text))
         .catch(() => {
-          toast.error("could not read the dropped file -- try again or paste its contents");
+          toast.error("could not read the dropped file. drop it again, or paste its contents into the editor");
         });
     },
     [handleChange, toast],
