@@ -17,7 +17,12 @@ import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/content/site";
 const fontSerif = Source_Serif_4({
   subsets: ["latin"],
   weight: ["400", "600"],
-  style: ["normal", "italic"],
+  // Upright only. The drawn italic had exactly two consumers in the repo, the
+  // lesson caption and the aapcs note, both route-scoped and both small
+  // secondary type, while this declaration put twelve @font-face rules and
+  // four woff2 files into the render-blocking font stylesheet on every route,
+  // the landing included. Those two keep `italic` and take the browser's
+  // synthesized oblique.
   display: "swap",
   variable: "--font-serif",
 });
