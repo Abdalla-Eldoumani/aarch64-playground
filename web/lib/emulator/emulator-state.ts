@@ -29,7 +29,7 @@ export interface EmulatorState {
   isLoaded: boolean;
   loadError: string | null;
   registers: string[];
-  /** d0-d31 as raw IEEE-754 bit patterns ("0x…"); [] until the loaded WASM
+  /** d0-d31 as raw IEEE-754 bit patterns ("0x..."); [] until the loaded WASM
    *  ships the FP surface, which is the UI's cue to hide the d-view. */
   fpRegisters: string[];
   sp: string;
@@ -40,8 +40,7 @@ export interface EmulatorState {
   isRunning: boolean;
   /** True while an assemble is in flight. The FIRST assemble also fetches
    *  and compiles the wasm inside the worker, which can take visible time
-   *  on a cold load -- without this flag that first click looks like a
-   *  hang. */
+   * on a cold load; without this flag that first click looks like a hang. */
   isAssembling: boolean;
   isHalted: boolean;
   /** True only while a successfully assembled (or state-restored) program
@@ -55,11 +54,11 @@ export interface EmulatorState {
   /**
    * The external call the paused pc sits inside, or null when the pc is one
    * of the program's own instructions. Non-null means `currentLine` is the
-   * call SITE, not the executing address -- the three steps a hosted call
-   * takes land on a trampoline and a synthetic stub, neither of which is a
-   * line the student wrote. Always null while the program is running (a
-   * full run passes through dozens of calls a second) and on wasm builds
-   * that predate the export.
+   * call SITE, not the executing address: the three steps a hosted call takes
+   * land on a trampoline and a synthetic stub, neither of which is a line the
+   * student wrote. Always null while the program is running (a full run
+   * passes through dozens of calls a second) and on wasm builds that predate
+   * the export.
    */
   externalCall: ExternalCall | null;
   instructions: DecodedInstruction[];
@@ -125,8 +124,8 @@ export interface EmulatorState {
    * Queue stdin. `interactive` marks a line the student typed at a prompt:
    * the machine echoes it into stdout as a read consumes it, so the console
    * transcript reads "Enter score 1: 10" the way the terminal pane does.
-   * Redirects (seeds, `< file`, the terminal's own keystrokes) leave it off
-   * -- a redirect prints nothing, and the pane echoes for itself.
+   * Redirects (seeds, `< file`, the terminal's own keystrokes) leave it off:
+   * a redirect prints nothing, and the pane echoes for itself.
    */
   pushStdin: (s: string, interactive?: boolean) => void;
   /** Pause/resume the step-back snapshot ring (terminal sessions). */
@@ -150,10 +149,10 @@ export interface EmulatorState {
   /**
    * Restore a named bookmark: assemble the saved source with the saved
    * args, push the saved stdin (if any), then step the live CPU forward
-   * to `stepCount` (clamped to the run ceiling). Resolves a verdict --
-   * `success` false means the saved source no longer assembles, and
-   * `stepped` is how far the machine actually got (a halt, fault, or
-   * input wait stops the walk early) so the caller reports the truth.
+   * to `stepCount` (clamped to the run ceiling). Resolves a verdict:
+   * `success` false means the saved source no longer assembles, and `stepped`
+   * is how far the machine actually got (a halt, fault, or input wait stops
+   * the walk early) so the caller can say how far it got.
    */
   restoreBookmark: (params: {
     source: string;
@@ -164,8 +163,7 @@ export interface EmulatorState {
   clearConsole: () => void;
   /**
    * Most-recent snapshot's `(addr, len)` memory writes. Drives the
-   * replay scrubber's memory-diff highlighting and any future
-   * "show me what changed last step" UI.
+   * replay scrubber's memory-diff highlighting
    */
   dirtyAddrs: Array<[number, number]>;
   /**
