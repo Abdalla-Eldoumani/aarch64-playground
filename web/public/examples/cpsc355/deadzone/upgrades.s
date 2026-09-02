@@ -52,9 +52,8 @@ upgrade_name_fire_rate:   .string "Fire Rate+"
 upgrade_name_damage:      .string "Damage+"
 upgrade_name_proj_speed:  .string "Bullet Speed+"
 upgrade_name_max_health:  .string "Max Health+"
+upgrade_name_move_speed:  .string "Move Speed+"
 upgrade_name_multi_shot:  .string "Multi-Shot+"
-
-// Upgrade descriptions
 
 // Level up UI strings
 msg_levelup_title:  .string "LEVEL UP"
