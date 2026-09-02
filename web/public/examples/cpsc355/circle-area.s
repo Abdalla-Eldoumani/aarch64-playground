@@ -33,14 +33,14 @@ main:
         ldr     radius_r, [fp, r_s]     // w19 = radius (int)
 
         // Convert radius to double
-        scvtf   d1, radius_r
+        scvtf   d1, radius_r            // d1 = (double)radius
 
         ldr     x9, =pi_m
         ldr     d0, [x9]               // d0 = pi
 
         // Compute area = pi * r * r
-        fmul    d2, d1, d1
-        fmul    d0, d0, d2
+        fmul    d2, d1, d1              // d2 = r * r
+        fmul    d0, d0, d2              // d0 = pi * r^2
 
         ldr     x0, =fmt_out
         bl      printf
