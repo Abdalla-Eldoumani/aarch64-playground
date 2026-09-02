@@ -31,7 +31,7 @@
     {
       "name": "practice route entry js (index + exercise page chunks)",
       "path": ".next/static/chunks/app/\\(site\\)/practice/**/page-*.js",
-      "limit": "16 KB"
+      "limit": "15.4 KB"
     },
     {
       "name": "reference route entry js (page chunk)",
@@ -63,6 +63,16 @@
       "name": "stylesheets (tailwind + fonts + monaco/xterm)",
       "path": ".next/static/css/*.css",
       "limit": "35 KB"
+    },
+    {
+      "name": "practice index flight payload (the rows the server sends)",
+      "path": ".next/server/app/practice.rsc",
+      "limit": "8.8 KB"
+    },
+    {
+      "name": "learn index flight payload (the rows the server sends)",
+      "path": ".next/server/app/learn.rsc",
+      "limit": "4.6 KB"
     }
   ],
   "dependencies": {
