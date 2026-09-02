@@ -2,19 +2,19 @@
 
 Every instruction the playground understands. If it isn't listed here, the assembler will reject it with an `unknown mnemonic` error.
 
-Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/`WZR`. Immediates are prefixed with `#` and can be written decimal (`#42`), hex (`#0x2a`), or binary (`#0b101010`). Labels end with a colon.
+Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/`WZR`. Immediates can be written decimal (`#42`), hex (`#0x2a`), or binary (`#0b101010`). The `#` is conventional and optional: `add x0, x1, 8` and `movk x4, 0x10, lsl 16` assemble exactly like their hashed forms, which is why unmodified GCC output, where the hash never appears, works unchanged. Labels end with a colon.
 
 ## Data processing
 
 | Mnemonic | Form                             | Notes                                    |
 | -------- | -------------------------------- | ---------------------------------------- |
-| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift; a repeating bit pattern that fits no shifted field (e.g. `#0x5555555555555555`) lowers to `ORR Xd, XZR, #imm` instead. |
+| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift; a repeating bit pattern that fits no shifted field (e.g. `#0x5555555555555555`) lowers to `ORR Xd, XZR, #imm` instead. A negative immediate lowers to `MOVN`, so `mov x0, #-5` and `movn x0, #4` produce the identical word. |
 | `MOVZ`   | `MOVZ Xd, #imm, LSL #shift`      | Zero upper bits, shift is 0/16/32/48.    |
 | `MOVK`   | `MOVK Xd, #imm, LSL #shift`      | Keep other halfwords.                    |
 | `MOVN`   | `MOVN Xd, #imm, LSL #shift`      | Bitwise NOT, same shifts.                |
-| `ADD`    | `ADD Xd, Xn, Xm` / `..., #imm` / `ADD Xd, Xn, Wm, SXTW #s` | No flags. The last form is the extended-register one: the index register is widened (`UXTB`/`UXTH`/`UXTW`/`UXTX`/`SXTB`/`SXTH`/`SXTW`/`SXTX`) and then shifted left by 0 to 4. It is the only register form that reaches `SP`. |
+| `ADD`    | `ADD Xd, Xn, Xm` / `..., #imm` / `ADD Xd, Xn, Xm, LSL #k` / `ADD Xd, Xn, Wm, SXTW #s` | No flags. The plain register form is the shifted-register one: an optional `LSL`/`LSR`/`ASR` amount of 0 to 63 (31 for a W destination) rides the second source, and `add x0, x1, x2` is that form with an amount of zero. The last form is the extended-register one: the index register is widened (`UXTB`/`UXTH`/`UXTW`/`UXTX`/`SXTB`/`SXTH`/`SXTW`/`SXTX`) and then shifted left by 0 to 4. It is the only register form that reaches `SP`. GAS also accepts the bare `add x0, sp, x1` spelling, which is the same extended form with `UXTX #0`. |
 | `ADDS`   | same                             | Sets NZCV.                               |
-| `SUB`    | `SUB Xd, Xn, Xm` / `..., #imm` / `SUB Xd, Xn, Wm, SXTW #s` | No flags. Same extended-register form as `ADD`. |
+| `SUB`    | `SUB Xd, Xn, Xm` / `..., #imm` / `SUB Xd, Xn, Xm, LSL #k` / `SUB Xd, Xn, Wm, SXTW #s` | No flags. Same shifted- and extended-register forms as `ADD`. |
 | `SUBS`   | same                             | Sets NZCV.                               |
 | `ADC`    | `ADC Xd, Xn, Xm`                 | Add with carry: `Xd = Xn + Xm + C`, the carry flag as the carry-in. Register form only; AArch64 has no add-with-carry immediate. Chains 64-bit words into wider arithmetic after an `ADDS`. |
 | `ADCS`   | same                             | Sets NZCV from `Xn + Xm + C`: C is the carry out of the register width, V the signed overflow. |
@@ -38,10 +38,10 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `SDIV`   | `SDIV Xd, Xn, Xm`                | Signed divide.                           |
 | `NEG`    | `NEG Xd, Xm`                     | Alias for `SUB Xd, XZR, Xm`.             |
 | `NEGS`   | `NEGS Xd, Xm`                    | Alias for `SUBS Xd, XZR, Xm`; sets NZCV. |
-| `AND`    | `AND Xd, Xn, Xm` / `..., #imm`   | Logical AND.                             |
+| `AND`    | `AND Xd, Xn, Xm` / `..., #imm` / `AND Xd, Xn, Xm, LSR #k` | Logical AND. |
 | `ANDS`   | same                             | Sets NZCV.                               |
-| `ORR`    | `ORR Xd, Xn, Xm`                 | Logical OR.                              |
-| `EOR`    | `EOR Xd, Xn, Xm`                 | Exclusive OR.                            |
+| `ORR`    | `ORR Xd, Xn, Xm` / `ORR Xd, Xn, #imm` / `ORR Xd, Xn, Xm, LSL #k` | Logical OR. The immediate is an ARM64 bitmask immediate (a repeating run of ones), not any 12-bit value. |
+| `EOR`    | `EOR Xd, Xn, Xm` / `EOR Xd, Xn, #imm` / `EOR Xd, Xn, Xm, LSL #k` | Exclusive OR. The immediate is the same bitmask form `ORR` takes. |
 | `MVN`    | `MVN Xd, Xm` (`, LSL #k` optional) | Bitwise NOT. Alias for `ORN Xd, XZR, Xm`, so the shifted form negates the shifted source. |
 | `BIC`    | `BIC Xd, Xn, Xm` (`, LSL #k` optional) | Bit clear: `Xd = Xn & ~Xm`. Register form only; AArch64 has no BIC-immediate. |
 | `ORN`    | `ORN Xd, Xn, Xm` (`, LSL #k` optional) | Logical OR with the second source inverted: `Xd = Xn \| ~Xm`. `MVN Xd, Xm` is `ORN Xd, XZR, Xm`. |
@@ -73,9 +73,9 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 
 | Mnemonic | Form              | Notes                               |
 | -------- | ----------------- | ----------------------------------- |
-| `CMP`    | `CMP Xn, Xm/#imm` | `SUBS XZR, ...`; sets NZCV. A negative immediate flips to `CMN` with the positive value, as GAS does (`cmp w1, -1` = `cmn w1, 1`). |
-| `CMN`    | `CMN Xn, Xm/#imm` | `ADDS XZR, ...`. Negative immediates flip to `CMP` the same way. |
-| `TST`    | `TST Xn, Xm/#imm` | `ANDS XZR, ...`.                    |
+| `CMP`    | `CMP Xn, Xm/#imm` / `CMP Xn, Xm, LSL #k` / `CMP Xn, Wm, SXTW` | `SUBS XZR, ...`; sets NZCV. Takes the same shifted- and extended-register second operands `SUBS` does. A negative immediate flips to `CMN` with the positive value, as GAS does (`cmp w1, -1` = `cmn w1, 1`). |
+| `CMN`    | `CMN Xn, Xm/#imm` / `CMN Xn, Xm, LSL #k` / `CMN Xn, Wm, SXTW` | `ADDS XZR, ...`. Takes the same shifted- and extended-register second operands `ADDS` does. Negative immediates flip to `CMP` the same way. |
+| `TST`    | `TST Xn, Xm/#imm` / `TST Xn, Xm, LSL #k` | `ANDS XZR, ...`. |
 | `CCMP`   | `CCMP Xn, Xm, #nzcv, cond` / `CCMP Xn, #imm5, #nzcv, cond` | Conditional compare: when `cond` holds, set NZCV from `Xn - Xm` as `CMP` would; otherwise set NZCV to the 4-bit literal (`N Z C V`, high bit first). The immediate is 0 to 31, unsigned. GCC builds `&&` and `\|\|` chains out of these instead of branching. |
 | `CCMN`   | same shapes       | The `CMN` form: the taken path sets NZCV from `Xn + Xm`. |
 
@@ -108,7 +108,7 @@ which is why none of them accepts `AL` or `NV`.
 | `STRB`   | same                                                  | Byte store.                        |
 | `LDRH`   | same                                                  | Halfword load.                     |
 | `STRH`   | same                                                  | Halfword store.                    |
-| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Dt1, Dt2, ...` (+ pre/post index) | Load pair, general or FP registers (D pairs scale by 8, S pairs by 4). |
+| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Wt1, Wt2, ...` / `LDP Dt1, Dt2, ...` (+ pre/post index) | Load pair, general or FP registers. X and D pairs scale by 8, W and S pairs by 4. |
 | `STP`    | same                                                  | Store pair. `stp d8, d9, [sp, -16]!` is the AAPCS64 callee-saved FP prologue. |
 | `LDRSB`  | `LDRSB Wt, [Xn, #imm]` / `LDRSB Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Byte load, sign-extended into Wt or Xt. |
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
@@ -241,7 +241,7 @@ The `FCVT` conversion family names its rounding mode in the mnemonic: `N` neares
 
 ## GCC output compatibility
 
-Unmodified AArch64 GCC `-S` output assembles: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, and label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them.
+Unmodified AArch64 GCC `-S` output assembles: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, and label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them.
 
 ## Host stubs (hosted runtime)
 
