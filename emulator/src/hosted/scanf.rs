@@ -18,7 +18,7 @@ use crate::hosted::printf::read_c_string;
 use crate::hosted::{HostContext, HostOutcome, VarargWalker};
 
 /// C's isspace in the default locale: space, \t, \n, \v, \f, \r. Byte-level
-/// on purpose -- Rust's Unicode `char::is_whitespace` on a raw byte treated
+/// on purpose: Rust's Unicode `char::is_whitespace` on a raw byte treated
 /// 0xA0 (the tail of a UTF-8 NBSP) as a separator and split tokens
 /// mid-character; glibc's scanf never does.
 fn is_c_space(b: u8) -> bool {
@@ -72,7 +72,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         }
         // Optional maximum field width. This is the one overflow defense
         // C gives students (`%4s` on a 5-byte buffer), so it must truly
-        // bound the read; it used to be parsed and thrown away.
+        // bound the read.
         let mut width: Option<usize> = None;
         while f < fmt_chars.len() && fmt_chars[f].is_ascii_digit() {
             let digit = (fmt_chars[f] as usize) - ('0' as usize);
@@ -337,8 +337,8 @@ fn parse_signed_int(buf: &[u8], flexible: bool, complete: bool) -> (i64, usize, 
         prefixed = true;
         i += 2;
     }
-    // `start` AFTER the prefix skip: capturing it before left `0x` inside
-    // the digits slice, so every `%i` hex read parsed as Err and stored 0
+    // `start` AFTER the prefix skip: capturing it before the skip leaves
+    // `0x` inside the digits slice, and the parse then fails and stores 0
     // while still reporting a match.
     let start = i;
     while i < buf.len() && is_digit_for_base(buf[i], base) {
@@ -352,7 +352,7 @@ fn parse_signed_int(buf: &[u8], flexible: bool, complete: bool) -> (i64, usize, 
         }
         if prefixed {
             // `0xzz`: the longest valid token is the bare `0`, exactly
-            // strtol's answer -- consume sign+`0` and leave the rest.
+            // strtol's answer: consume sign+`0` and leave the rest.
             return (0, start - 1, false);
         }
         return (0, 0, false);
@@ -564,9 +564,9 @@ mod tests {
 
     #[test]
     fn percent_ld_writes_eight_bytes() {
-        // scanf("%ld", &x) must write 8 bytes; the store used to be a fixed
-        // write_u32, leaving the top 4 bytes of a .dword stale. Pre-fill the
-        // destination with 0xFF so a 4-byte write would leave the high half set.
+        // scanf("%ld", &x) must write 8 bytes; a fixed write_u32 here
+        // leaves the top 4 bytes of a .dword stale. Pre-fill the destination
+        // with 0xFF so a 4-byte write would leave the high half set.
         let mut h = Host::new();
         h.place_fmt("%ld");
         let dst = 0x0060_0000u64;
@@ -633,8 +633,8 @@ mod tests {
 
     #[test]
     fn scanf_completes_a_trailing_token_when_stdin_is_closed() {
-        // "42" with no trailing separator used to stall forever waiting
-        // for more digits; a closed stdin makes the token complete.
+        // "42" with no trailing separator stalls waiting for more digits
+        // while stdin stays open; a closed stdin makes the token complete.
         let mut h = Host::new();
         h.place_fmt("%d");
         h.regs.write_gpr(1, true, 0x0060_0000);
@@ -765,7 +765,7 @@ mod tests {
     #[test]
     fn hex_prefix_with_no_digits_consumes_the_bare_zero() {
         // strtol's answer for `0xzz` is 0 consuming just the `0`, leaving
-        // `xzz` -- not a phantom match that eats the prefix.
+        // `xzz`, not a phantom match that eats the prefix.
         let (v, consumed, stalled) = parse_signed_int(b"0xzz ", true, false);
         assert!(!stalled);
         assert_eq!((v, consumed), (0, 1));
