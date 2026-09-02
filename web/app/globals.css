@@ -374,12 +374,14 @@ body {
    simply swap.
 
    border-color is a paint property, so the amber is an overlay ring that fades
-   out over the box's own resting border instead. inset: -1px lands the ring on
-   that border rather than a second one inside it. */
+   out against the box's own resting border instead. inset: 0 keeps the ring
+   inside the border box: a negative inset would sit exactly on the border but
+   would also push a permanent pixel of scrollable overflow into the field
+   row's overflow-x-auto strip. */
 .anim-decode-latch::before {
   content: "";
   position: absolute;
-  inset: -1px;
+  inset: 0;
   border: 1px solid var(--amber);
   opacity: 0;
   pointer-events: none;
