@@ -124,7 +124,7 @@ const failResult: CheckResult = {
     },
   ],
   structural: [{ assertion: { kind: "forbids-literal", value: 55 }, pass: false }],
-  summary: "1 of 2 checks failed",
+  summary: "1 of 2 checks passing",
 };
 
 describe("ExerciseView", () => {
@@ -139,9 +139,9 @@ describe("ExerciseView", () => {
     render(<ExerciseView exercise={writeExercise} />);
     const criteria = screen.getByRole("region", { name: /specification/i });
     const text = criteria.textContent ?? "";
-    expect(text).toContain("leaves the expected value in x0");
-    expect(text).toContain("exits with the expected code");
-    expect(text).toContain("prints the expected output");
+    expect(text).toContain("leaves the right value in x0");
+    expect(text).toContain("exits with the right code");
+    expect(text).toContain("prints the right output");
     expect(text).toContain("uses b.lt");
     expect(text).toContain("computes the result (does not hardcode it)");
     // The expected register value and the expected stdout must never appear.
@@ -212,9 +212,11 @@ describe("ExerciseView", () => {
     fireEvent.click(screen.getByRole("button", { name: /check/i }));
 
     const status = screen.getByRole("status");
-    expect(status.textContent).toContain("leaves the expected value in x0");
+    expect(status.textContent).toContain("leaves the right value in x0");
     expect(status.textContent).toContain("expected 55, got 42");
-    expect(status.textContent).toContain("computes the result (does not hardcode it)");
+    expect(status.textContent).toContain(
+      "computes the result (does not hardcode it): the value 55 appears literally in your source",
+    );
     expect(markSolvedMock).not.toHaveBeenCalled();
   });
 

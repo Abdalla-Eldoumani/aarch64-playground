@@ -61,11 +61,11 @@ const CRITERION_CODE =
 function resultCriterion(assertion: ResultAssertion): ReactNode {
   switch (assertion.kind) {
     case "register":
-      return `leaves the expected value in ${assertion.reg}`;
+      return `leaves the right value in ${assertion.reg}`;
     case "exit":
-      return "exits with the expected code";
+      return "exits with the right code";
     case "stdout":
-      return "prints the expected output";
+      return "prints the right output";
     default: {
       const exhaustive: never = assertion;
       return exhaustive;
@@ -88,6 +88,23 @@ function structuralCriterion(assertion: StructuralAssertion): ReactNode {
       );
     case "forbids-literal":
       return "computes the result (does not hardcode it)";
+    default: {
+      const exhaustive: never = assertion;
+      return exhaustive;
+    }
+  }
+}
+
+/**
+ * Why a structural check missed. It reports the shape of the miss, which the
+ * student can already see in their own source, so it leaks no answer.
+ */
+function structuralMiss(assertion: StructuralAssertion): string {
+  switch (assertion.kind) {
+    case "uses-instruction":
+      return `${assertion.mnemonic} does not appear in your program`;
+    case "forbids-literal":
+      return `the value ${assertion.value} appears literally in your source`;
     default: {
       const exhaustive: never = assertion;
       return exhaustive;
@@ -231,7 +248,7 @@ export function ExerciseView({
                   Results
                 </span>
                 <span className="font-mono text-[11px] uppercase text-[var(--text-tertiary)]">
-                  {passingCount} of {allChecks.length} passing
+                  {passingCount} of {allChecks.length} checks passing
                 </span>
               </div>
               {result.results.map((check, index) => (
@@ -259,6 +276,11 @@ export function ExerciseView({
                   <CheckSquare pass={check.pass} />
                   <span className="font-mono text-[13px] leading-snug text-[var(--text-primary)]">
                     {structuralCriterion(check.assertion)}
+                    {!check.pass && (
+                      <span className="text-[var(--danger)]">
+                        : {structuralMiss(check.assertion)}
+                      </span>
+                    )}
                   </span>
                 </div>
               ))}
