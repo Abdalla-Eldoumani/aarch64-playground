@@ -14,8 +14,8 @@ export interface EmbedLayoutProps {
   showBack: boolean;
   /** Checker chrome only; the shell folds the chrome test into this flag. */
   showCheck: boolean;
-  /** Disables run while one is in flight -- a halted machine still runs
-   *  again, because the embedded run re-assembles first. */
+  /** Disables run while one is in flight; a halted machine still runs again,
+   *  because the embedded run re-assembles first. */
   isRunning: boolean;
   /** Step is live with nothing loaded and on a halted machine: the embedded
    *  step assembles first, the same way the embedded run does. */
