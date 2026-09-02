@@ -39,6 +39,9 @@ describe("Hero", () => {
     expect(embed.props!.chrome).toBe("embed");
     expect(embed.props!.autoplay).toBeTruthy();
     expect(embed.props!.readOnly).toBeTruthy();
+    // A demonstration, not a debugger: the walk keeps its two-button frame.
+    expect(embed.props!.showStep).toBe(false);
+    expect(embed.props!.showBack).toBe(false);
     // The start program is fed from the single landing-content source, not
     // inlined, so the hero and the data module can never disagree.
     expect(embed.props!.startSource).toBe(HERO_PROGRAM);
