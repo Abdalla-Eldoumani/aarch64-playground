@@ -1,8 +1,8 @@
 // pins the strict address parse the memory panels share: 0x-hex in either
 // case or a bare decimal, surrounding whitespace tolerated, and null for
-// everything else. The reason it is strict is parseInt's prefix parsing --
-// "0x0060O000" (a capital O for the second zero) used to come back as 0x60
-// and relocate the memory window to an address full of zeros.
+// everything else. The reason it is strict is parseInt's prefix parsing:
+// "0x0060O000" (a capital O for the second zero) comes back as 0x60 and
+// relocates the memory window to an address full of zeros.
 import { describe, expect, it } from "vitest";
 import { parseAddress } from "@/lib/emulator/parse-address";
 
