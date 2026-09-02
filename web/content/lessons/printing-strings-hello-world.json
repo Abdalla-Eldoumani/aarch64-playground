@@ -4,7 +4,7 @@
   "order": 4,
   "summary": "A guided walkthrough of printing a string using Assembly Aarch64.",
   "tags": [
-    "Printing in Assembly"
+    "printing"
   ],
   "body": [
     {
