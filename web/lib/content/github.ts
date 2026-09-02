@@ -1,7 +1,7 @@
 // The repository's star count, read on the server and threaded into the nav as a
 // prop. Public REST, no token: the count is public data, and a credential in a
 // client-rendered app has nowhere safe to live. Every failure path returns null
-// so the nav falls back to the icon-only link it has always rendered.
+// so the nav falls back to the icon-only link.
 
 import { REPO_URL } from "@/lib/content/site";
 
@@ -15,14 +15,14 @@ const STARS_ENDPOINT = `https://api.github.com/repos/${REPO_URL.replace(
 /**
  * Server-only: the current stargazer count, or null when the count cannot be
  * trusted. Null covers a non-ok response, a thrown request, a payload without a
- * numeric stargazers_count, and a count of zero -- a visible "0" reads as a
- * broken widget, and the affordance exists to signal credibility.
+ * numeric stargazers_count, and a count of zero: a visible "0" reads as a
+ * broken widget,
  */
 export async function fetchStarCount(): Promise<number | null> {
   try {
     const response = await fetch(STARS_ENDPOINT, {
       headers: { Accept: "application/vnd.github+json" },
-      // An hour: this is chrome, not data, and the unauthenticated rate limit is
+      // An hour: a stale star count is harmless, and the unauthenticated rate limit is
       // per requesting ip, so visitors must not each spend a request.
       next: { revalidate: 3600 },
       // A hanging GitHub must never stall a prerender: this fetch runs inside
