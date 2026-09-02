@@ -32,6 +32,7 @@ import {
 import type { Action } from "@/lib/playground/commands";
 import { buildPaletteCommands } from "@/lib/playground/palette-commands";
 import { Editor } from "@/components/playground/Editor";
+import { StaticCodeView } from "@/components/playground/StaticCodeView";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { Controls } from "@/components/playground/Controls";
@@ -153,6 +154,14 @@ export type EmbeddablePlaygroundProps = {
   fromShare?: boolean;
   /** Hero = non-editable taste; lessons / exercises editable. */
   readOnly?: boolean;
+  /**
+   * Embed/checker chrome only: render the program through StaticCodeView
+   * instead of the Monaco editor, so the code text is in the server HTML and
+   * the editor never enters the host page's graph. The landing hero takes it.
+   * Read-only by construction (the view has no input path), so passing it
+   * without `readOnly` is a caller mistake and warns in development.
+   */
+  staticEditor?: boolean;
   /** Landing hero only: once the hub engages, assemble the start program and
    *  step it on a timer with no user action. Off by default, so full and
    *  checker chrome are unchanged. Suppressed under prefers-reduced-motion. */
@@ -216,6 +225,7 @@ function EmbeddableCore({
   startCursor,
   fromShare,
   readOnly,
+  staticEditor,
   autoplay,
   autoplaySteps = 8,
   showRun = true,
@@ -675,6 +685,16 @@ function EmbeddableCore({
     buildCommandsRef.current = buildCommands;
   }, [emu, source, extraFiles, argsText, cursor, onStateChange, assembleWithHistory, loadProgram, buildCommands]);
 
+  // A static view that is not read-only is a caller mistake: there is no input
+  // path to honour, so the program would silently be uneditable.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" && staticEditor && !readOnly) {
+      console.warn(
+        "EmbeddablePlayground: staticEditor renders a read-only view; pass readOnly too.",
+      );
+    }
+  }, [staticEditor, readOnly]);
+
   // Seed starter stdin once the hub is live so a program that reads has its
   // input queued before the first run.
   const seededStdin = useRef(false);
@@ -972,7 +992,12 @@ function EmbeddableCore({
     );
   }
 
-  if (!emu.isLoaded) {
+  // Full chrome keeps the loading beat: it is the page's primary content and
+  // there is nothing else to show. Embed and checker paint their whole frame
+  // immediately and let the registers and console fill in behind it, so the
+  // layout is identical before and after the hub arrives and the host page's
+  // largest element is not withheld for three init round trips.
+  if (!emu.isLoaded && chrome === "full") {
     return (
       <div className="flex flex-1 min-h-0 items-center justify-center text-[var(--text-secondary)]">
         loading emulator...
@@ -1005,19 +1030,23 @@ function EmbeddableCore({
         onStepBack={handleStepBack}
         onCheck={() => void checkEmbed()}
         editor={
-          <Editor
-            value={source}
-            onChange={readOnly ? () => {} : setSource}
-            currentLine={emu.currentLine}
-            currentLineInCall={emu.externalCall != null}
-            breakpoints={emu.breakpoints}
-            onToggleBreakpoint={emu.toggleBreakpoint}
-            assemblyErrors={emu.assemblyErrors}
-            lintWarnings={lintWarnings}
-            onCursorChange={setCursor}
-            focusRequest={errorFocus}
-            readOnly={readOnly}
-          />
+          staticEditor ? (
+            <StaticCodeView value={source} currentLine={emu.currentLine} />
+          ) : (
+            <Editor
+              value={source}
+              onChange={readOnly ? () => {} : setSource}
+              currentLine={emu.currentLine}
+              currentLineInCall={emu.externalCall != null}
+              breakpoints={emu.breakpoints}
+              onToggleBreakpoint={emu.toggleBreakpoint}
+              assemblyErrors={emu.assemblyErrors}
+              lintWarnings={lintWarnings}
+              onCursorChange={setCursor}
+              focusRequest={errorFocus}
+              readOnly={readOnly}
+            />
+          )
         }
         registers={
           <RegisterPanel
@@ -1443,7 +1472,7 @@ export const EmbeddablePlayground = forwardRef<
   EmbeddablePlaygroundHandle,
   EmbeddablePlaygroundProps
 >(function EmbeddablePlayground(props, ref) {
-  const { chrome, startSource, startArgs, className } = props;
+  const { chrome, startSource, startArgs, className, staticEditor } = props;
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Full chrome is the primary in-viewport content, so it engages on mount,
   // preserving the loading -> ready flow. Embed/checker defer to the lazy
@@ -1565,6 +1594,15 @@ export const EmbeddablePlayground = forwardRef<
     >
       {engaged ? (
         <EmbeddableCore {...props} registerHandle={registerHandle} />
+      ) : staticEditor && startSource !== undefined ? (
+        // A static-editor embed can draw its whole editor pane before the hub
+        // exists: the program is a prop, so the code text is in the server HTML
+        // and is the host page's largest element rather than a placeholder a
+        // client-side chain has to replace. Every other configuration keeps
+        // the loading beat.
+        <div className="flex flex-1 min-h-0 flex-col">
+          <StaticCodeView value={startSource} currentLine={null} />
+        </div>
       ) : (
         <div className="flex flex-1 min-h-0 items-center justify-center text-[var(--text-secondary)] text-sm">
           loading editor...
