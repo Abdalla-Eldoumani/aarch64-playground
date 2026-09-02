@@ -11,21 +11,6 @@ import { ThemeControl } from "@/components/chrome/ThemeControl";
 import { MobileNavDrawer } from "@/components/chrome/MobileNavDrawer";
 
 /**
- * The persistent top navigation: one component, two variants driven by a prop so
- * there is no second nav to keep in sync. `full` is the content-page bar -- the
- * wordmark carries its "playground" label and an "Open playground" call to action
- * sits in the actions cluster. `slim` is the playground bar -- no label, no CTA,
- * and a shorter desktop height so it never steals the debugger's vertical space.
- * Both reuse the same wordmark, route data, theme control, and mobile drawer; the
- * variant only toggles the label, the CTA, and the height. Under md the routes and
- * the GitHub link fold into the shared drawer, leaving the wordmark, a compact
- * theme control, and the drawer trigger.
- *
- * `stars` is optional because only the server-rendered mounts can supply it; the
- * playground's client-mounted slim bar passes nothing and keeps the icon-only
- * link, which is also what a failed lookup renders.
- */
-/**
  * A route link that starts cold and warms on intent. `prefetch={false}` means
  * never in the App Router, viewport and hover alike, so hover warming has to
  * be built: swap back to the default once a pointer or the keyboard arrives
@@ -54,6 +39,21 @@ function HoverPrefetchLink({
   );
 }
 
+/**
+ * The persistent top navigation: one component, two variants driven by a prop so
+ * there is no second nav to keep in sync. `full` is the content-page bar: the
+ * wordmark carries its "playground" label and an "Open playground" call to action
+ * sits in the actions cluster. `slim` is the playground bar: no label, no CTA,
+ * and a shorter desktop height so it never steals the debugger's vertical space.
+ * Both reuse the same wordmark, route data, theme control, and mobile drawer; the
+ * variant only toggles the label, the CTA, and the height. Under md the routes and
+ * the GitHub link fold into the shared drawer, leaving the wordmark, a compact
+ * theme control, and the drawer trigger.
+ *
+ * `stars` is optional because only the server-rendered mounts can supply it; the
+ * playground's client-mounted slim bar passes nothing and keeps the icon-only
+ * link, which is also what a failed lookup renders.
+ */
 export function SiteNav({
   variant,
   stars = null,
@@ -106,10 +106,10 @@ export function SiteNav({
 
         <div className="flex items-center gap-1">
           {/* The count rides inside the same anchor so there is one 44px target
-              that widens instead of a second control beside it. Tertiary text,
-              not amber or cyan: a star count is neither the machine acting nor
-              the reader acting. The numeral is aria-hidden because the label
-              already reads it, spelled out and pluralized. */}
+              that widens instead of a second control beside it. Tertiary text:
+              a star count is not execution state and not an action. The numeral
+              is aria-hidden because the label already reads it, spelled out and
+              pluralized. */}
           <a
             href={REPO_URL}
             target="_blank"
