@@ -26,8 +26,8 @@ import {
 import { SiteNav } from "@/components/chrome/SiteNav";
 import { useStarCount } from "@/components/chrome/StarCount";
 // The cold-load default program is the arithmetic basics example. Import its
-// single source -- the same file the example loader serves and the corpus
-// verifier checks against fixtures -- so the default can never drift from it.
+// single source (the same file the example loader serves and the corpus
+// verifier checks against fixtures) so the default can never drift from it.
 import DEFAULT_SOURCE from "@/public/examples/cpsc355/basics.s?raw";
 
 // The three page-level modals mount only when opened. The emulator surface
@@ -60,10 +60,10 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "?", description: "show this help" },
 ];
 
-// `?embed=1` is a client-only URL flag. Reading it through
-// useSyncExternalStore keeps the first hydration render matching the server
-// (chrome="full") and switches to embed afterwards without a mismatch -- and
-// without a setState-in-effect.
+// `?embed=1` is a client-only URL flag. Reading it through useSyncExternalStore
+// keeps the first hydration render matching the server (chrome="full") and
+// switches to embed afterwards without a mismatch, and without a
+// setState-in-effect.
 function subscribeEmbedParam(): () => void {
   return () => {};
 }
@@ -176,8 +176,8 @@ export default function Home() {
       // is already looking at a settled page rather than racing the boot.
       timers.push(setTimeout(() => playgroundRef.current?.notifyError(message), 1500));
     };
-    // A share link that failed to decode fell back to the autosave; say
-    // so; the only signal used to be the absence of the share banner.
+    // A share link that failed to decode fell back to the autosave, and only
+    // the absent share banner would say so.
     if (boot.shareError) {
       toastSoon(
         boot.shareError === "too-large"
@@ -186,13 +186,12 @@ export default function Home() {
       );
     }
     // A bundle failure is reported by the delivery pass below, not here: the
-    // boot render has no decoder, so it can no longer carry one.
-    // The bundle decoder is fetched only for a URL that carries one, so the
-    // delivery runs a beat behind this effect. That is also why the boot pass
-    // no longer decodes: a hard `?bundle=` load arrives here instead.
-    // Pinned before the await: the URL can change under a deferred pass, and
-    // this one must deliver the URL it was started for or the change handler
-    // below delivers the new one a second time.
+    // boot render has no decoder, so a hard `?bundle=` load is reported here
+    // instead. The bundle decoder is fetched only for a URL that carries one,
+    // so the delivery runs a beat behind this effect. Pinned before the await:
+    // the URL can change under a deferred pass, and this one must deliver the
+    // URL it was started for or the change handler below delivers the new one a
+    // second time.
     const bootSearch = window.location.search;
     const bootHash = window.location.hash;
     void (async () => {
@@ -275,8 +274,8 @@ export default function Home() {
   // Global shortcuts, single owner. Every execution key delegates to the
   // component through the imperative handle; palette / help toggle page state.
   // Controls renders the same actions as visible buttons but no longer binds
-  // keys, so a keypress fires exactly once -- and embed chrome, which omits
-  // Controls, still gets the shortcuts from here.
+  // keys, so a keypress fires exactly once. Embed chrome, which omits Controls,
+  // still gets the shortcuts from here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -328,7 +327,7 @@ export default function Home() {
         {/* This route's single main landmark and the root skip link's target.
             The emulator component itself is a labeled section, so every page
             that composes it (hero, lessons, exercises, reference) keeps one
-            main -- its own -- and this route still has one of its own. */}
+            main of its own, and this route has one too. */}
         <main id="main" tabIndex={-1} className="flex-1 min-h-0 flex flex-col">
           <EmbeddablePlayground
             ref={playgroundRef}
