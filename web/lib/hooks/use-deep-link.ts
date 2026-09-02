@@ -12,7 +12,7 @@ export interface DeepLink {
   theme?: Theme;
   /** Which surface `?example=`'s program runs in, overriding that
    *  example's own default for this load only. Absent means the default,
-   *  so every `?example=` link ever shared keeps its exact meaning. */
+   *  so an older `?example=` link resolves the same way it always did. */
   run?: LaunchMode;
   embed: boolean;
   /** Decoded `?bundle=<lz>` payload, when present and well-formed. */
@@ -50,9 +50,8 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
     result.theme = theme;
   }
 
-  // Same drop-unknown discipline as theme: `?run=1`, `?run=interactive`,
-  // and `?run=` are dropped rather than defaulted, so a typo falls back
-  // to the example's own default instead of guessing at a surface.
+  // Drop unknown values the way theme does: a typo falls back to the
+  // example's own default instead of guessing at a surface.
   const run = params.get("run");
   if (run === "terminal" || run === "console") result.run = run;
 
@@ -72,8 +71,8 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
  * Legacy example stems (the old course-labeled file names) mapped to the
  * renamed clean stems. A `?example=` link shared before the corpus was
  * renamed still resolves: the resolver translates the old stem to the new
- * one before fetching. This is a fixed allow-list -- only these known
- * stems are translated; everything else passes through untouched.
+ * one before fetching. This is a fixed allow-list: only these stems are
+ * translated.
  */
 export const LEGACY_EXAMPLE_ALIASES: Record<string, string> = {
   week03_exercise: "basics",
