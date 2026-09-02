@@ -22,8 +22,8 @@ vi.mock("@/components/panels/ConsolePanel", () => ({
 vi.mock("@/components/playground/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
 }));
-// Capture the tutorial's props so tests can drive onLoadSnippet -- the
-// snippet handoff contract -- without walking the real tour UI.
+// Capture the tutorial's props so tests can drive onLoadSnippet, the snippet
+// handoff contract, without walking the real tour UI.
 const tutorialProps = vi.hoisted(() => ({
   current: null as null | {
     onLoadSnippet: (
@@ -40,8 +40,8 @@ vi.mock("@/components/playground/TutorialRunner", () => ({
     return <div data-testid="tutorial-runner" />;
   },
 }));
-// Capture the terminal's props so tests can exercise buildTerminalContext --
-// the run-wait contract behind `./program` -- without booting a real xterm.
+// Capture the terminal's props so tests can exercise buildTerminalContext, the
+// run-wait contract behind `./program`, without booting a real xterm.
 const terminalProps = vi.hoisted(() => ({
   current: null as null | {
     buildContext: () => {
@@ -334,7 +334,7 @@ describe("EmbeddablePlayground", () => {
     engage(container);
     fireEvent.click(screen.getByLabelText("check"));
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledTimes(1));
-    // The old unconditional callback graded the stale machine, ticking
+    // An unconditional callback would grade the stale machine, ticking
     // structural checks green against source that never built.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(hub.run).not.toHaveBeenCalled();
@@ -511,7 +511,7 @@ describe("EmbeddablePlayground", () => {
     );
   });
 
-  it("renders the calm fault treatment when the hub fails to load", () => {
+  it("renders the load-failure message when the hub fails to load", () => {
     useEmulatorMock.mockReturnValue(
       makeHub({ isLoaded: false, loadError: "wasm exploded" }),
     );
@@ -791,10 +791,10 @@ describe("terminal context", () => {
   it("runProgram reports the post-run stdout and exit code, not the pre-run state", async () => {
     // Mirror the real useEmulator: run() flips isRunning through React state,
     // so the hub object the wait loop reads through emuRef only advances when
-    // a render commits. The stub keeps that latency -- `phase` moves inside
-    // run(), but no hub carries the new value until the next rerender -- which
-    // is exactly what makes a check-before-sleep loop exit on the pre-run
-    // false and report stale stdout and exit code.
+    // a render commits. The stub keeps that latency: `phase` moves inside
+    // run(), but no hub carries the new value until the next rerender, which
+    // is what makes a check-before-sleep loop exit on the pre-run false and
+    // report stale stdout and exit code.
     let phase: "idle" | "running" | "done" = "idle";
     const assemble = vi.fn(async () => true);
     const run = vi.fn(() => {
@@ -821,7 +821,7 @@ describe("terminal context", () => {
     const pending = context.runProgram(["./program"]).then((r) => {
       result = r;
     });
-    // Flush the awaited assemble so run() fires; the running hub has NOT
+    // Flush the awaited assemble so run() fires; the running hub has not
     // committed yet, so a loop that checks before sleeping would bail here.
     await act(async () => {
       await new Promise<void>((r) => setTimeout(r, 0));
@@ -865,7 +865,7 @@ describe("autoplay", () => {
     // Mirror the real useEmulator: a fresh hub object every render (its memo
     // deps include the changing registers/pc) while the assemble/step spies
     // persist. A referentially stable hub would pass even if `emu` were
-    // re-added to the autoplay effect's deps -- the freeze regression this
+    // re-added to the autoplay effect's deps, the freeze regression this
     // guards: keying on `emu` clears the interval on the first re-render and the
     // once-per-engage guard then strands the walk (step fires 0-1 times).
     useEmulatorMock.mockImplementation(() => ({ ...makeHub(), assemble, step }));
@@ -882,8 +882,8 @@ describe("autoplay", () => {
     const { container, rerender } = render(view());
     // The global matchMedia stub reports not-reduced, so the walk runs.
     engage(container);
-    // Drive the walk's idle wait -- jsdom has no requestIdleCallback, so it
-    // sits on the setTimeout fallback -- then flush the awaited assemble so
+    // Drive the walk's idle wait (jsdom has no requestIdleCallback, so it
+    // sits on the setTimeout fallback), then flush the awaited assemble so
     // the step interval registers.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
