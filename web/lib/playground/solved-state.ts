@@ -12,11 +12,6 @@
  * a versioned json file and imports one back: a browser that evicts
  * script-writable storage (Safari does, after seven days without a visit)
  * takes the set with it, and that file is the only way back.
- *
- * A same-tab CustomEvent plus the
- * native cross-tab "storage" event keep every open instance in sync (the
- * "storage" event fires only in OTHER tabs, so the same-tab event is what
- * updates the tab that did the writing).
  */
 
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
@@ -121,8 +116,8 @@ export function buildProgressBundle(): ProgressBundle {
  * survives a round trip through an older build.
  *
  * A malformed bundle fails closed with a student-facing reason and writes
- * nothing at all -- a partial import would leave the student unable to say
- * what actually landed.
+ * nothing at all; a partial import would leave the student unable to say what
+ * actually landed.
  */
 export function importProgressBundle(raw: unknown): ProgressImportResult {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
