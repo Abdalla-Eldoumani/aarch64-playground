@@ -36,7 +36,7 @@ function gutterLines(): number[] {
 }
 
 /** jsdom gives every element a zero scrollTop and clientHeight, and a plain
- *  `value` descriptor is not writable -- the reveal has to be able to write. */
+ *  `value` descriptor is not writable, and the reveal has to write. */
 function makeScrollable(el: HTMLElement, clientHeight: number): void {
   let top = 0;
   Object.defineProperty(el, "scrollTop", {
