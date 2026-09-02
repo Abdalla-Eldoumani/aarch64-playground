@@ -14,7 +14,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## moving values into registers\n\n`mov` copies a value into a register, either from another register or from a small immediate. When the constant is small enough, `mov x0, 42` is all you need and the assembler picks a suitable encoding for you.\n\nWider constants are built one 16-bit halfword at a time. `movz` writes a halfword and zeroes the rest of the register, while `movk` writes a halfword and keeps everything else. Reaching for these by hand is how you place a value a single `mov` cannot encode."
+      "markdown": "## Moving values into registers\n\n`mov` copies a value into a register, either from another register or from a small immediate. When the constant is small enough, `mov x0, 42` is all you need and the assembler picks a suitable encoding for you.\n\nWider constants are built one 16-bit halfword at a time. `movz` writes a halfword and zeroes the rest of the register, while `movk` writes a halfword and keeps everything else. Reaching for these by hand is how you place a value a single `mov` cannot encode."
     },
     {
       "type": "code",
@@ -28,7 +28,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## building a wide constant\n\nTo place a value that spans more than one halfword, start with `movz` to set one halfword and clear the register, then use `movk` with a left shift to fill each remaining halfword. The shift selects which 16-bit slot the immediate lands in: `lsl 16` targets bits 16 to 31, `lsl 32` targets bits 32 to 47, and so on.\n\nOnce the constant is in place, ordinary arithmetic such as `add` with an immediate adjusts it without touching memory. Run the program below, then change the halfwords and watch the printed value follow."
+      "markdown": "## Building a wide constant\n\nTo place a value that spans more than one halfword, start with `movz` to set one halfword and clear the register, then use `movk` with a left shift to fill each remaining halfword. The shift selects which 16-bit slot the immediate lands in: `lsl 16` targets bits 16 to 31, `lsl 32` targets bits 32 to 47, and so on.\n\nOnce the constant is in place, ordinary arithmetic such as `add` with an immediate adjusts it without touching memory. Run the program below, then change the halfwords and watch the printed value follow."
     },
     {
       "type": "editor",
