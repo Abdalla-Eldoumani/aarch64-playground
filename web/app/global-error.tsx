@@ -7,8 +7,8 @@ import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 /**
  * The last resort: the error boundary for the root layout itself. Per the Next
  * contract it replaces the whole document, so it renders its own <html> and
- * <body> -- and because the root layout never ran, none of what the layout
- * installs is available here: no globals.css custom properties, no next/font
+ * <body>. Because the root layout never ran, none of what the layout installs
+ * is available here: no globals.css custom properties, no next/font
  * variables, no theme attribute on <html>.
  *
  * So this file is the one documented exception to the "colors come from tokens"
@@ -17,10 +17,9 @@ import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
  * on a page whose stylesheet may not have loaded. When a token moves in
  * globals.css, move it here too. Fonts fall back to generic stacks for the
  * same reason. It wears the same fault-card register as the 404 and the route
- * error page, in the same voice, with the same three ways out.
+ * error page.
  */
 
-// Dark-theme literals, mirroring the :root block of app/globals.css.
 const BG_BASE = "#0B0C10";
 const BG_SUNKEN = "#0F1116";
 const BG_ELEVATED = "#212630";
