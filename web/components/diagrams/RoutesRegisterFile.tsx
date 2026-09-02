@@ -57,6 +57,10 @@ export function RoutesRegisterFile() {
           >
             <Link
               href={route.href}
+              // Plain false, not the nav's hover wrapper: that wrapper needs
+              // state and this file is a server component on purpose (see
+              // above). The nav carries the hover path for pointer users.
+              prefetch={false}
               className={`grid min-h-[48px] grid-cols-[5.5rem_1fr_auto] items-center gap-3 px-4 transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
                 route.primary
                   ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
