@@ -17,7 +17,7 @@ const LINK_CLASS =
  * wordmark with a one-line description and the Rust-to-WASM engine note, the
  * route links, the repository and license links, the course context, the
  * open-source line, and the not-affiliated disclaimer. The one footer everywhere,
- * the landing included -- it carries the project's credibility facts itself so no
+ * the landing included: it carries the project's credibility facts itself so no
  * page needs a second footer-like band above it. Stays a server component (no
  * hooks) so it ships no client JS and can be imported by server layouts. The
  * author's name lives only in the committed LICENSE, never here.
@@ -75,9 +75,8 @@ export function SiteFooter() {
         </div>
       </div>
 
-      {/* The closing doc-rule line: the sheet's colophon in the datasheet
-          voice, over a hairline like the document rule that opened it,
-          segments reading as one grouped line. */}
+      {/* The closing hairline row: the three credibility segments read as one
+          line. */}
       <div className="mx-auto mt-8 flex w-full max-w-5xl flex-wrap gap-x-6 gap-y-1 border-t border-[var(--border)] pt-3 font-mono text-[10px] uppercase leading-[1.6] tracking-[0.08em] text-[var(--text-tertiary)]">
         <span>Open source · free to use and study</span>
         <span>{CREDIBILITY.privacyNote}</span>
