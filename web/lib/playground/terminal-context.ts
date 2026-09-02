@@ -5,9 +5,9 @@ import { validateStdin } from "@/lib/playground/upload-guard";
 
 export type TerminalContextDeps = {
   /** The hub as a ref, never the render's object: the hub is new after every
-   *  snapshot, so a closure over it freezes mid-command state -- the wait
-   *  loop below would poll an isRunning that can never change and report the
-   *  pre-run stdout and exit code. */
+   *  snapshot, so a closure over it freezes mid-command state: the wait loop
+   *  below would poll an isRunning that can never change and report the pre-run
+   *  stdout and exit code. */
   machine: RefObject<EmulatorState>;
   /** The editor's live workspace as the one string the assembler sees. */
   combinedSource: () => string;
@@ -36,9 +36,8 @@ export type TerminalContextDeps = {
 export function createTerminalContext(deps: TerminalContextDeps): DispatchContext {
   const { machine, applySeeds, driveForeground } = deps;
   const dec = new TextDecoder();
-  // One wait loop for every terminal-run shape: sleep BEFORE checking so
-  // React has committed run()'s isRunning=true into the ref (see the
-  // comment on the original runProgram).
+  // One wait loop for every terminal-run shape: sleep BEFORE checking so React
+  // has committed run()'s isRunning=true into the ref.
   const waitForHalt = async () => {
     const startedAt = Date.now();
     do {
@@ -99,10 +98,10 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
       machine.current.closeStdin();
     }
     if (io) {
-      // Interactive run: output streams into the pane as it is
-      // produced, keystrokes reach stdin while the program lives, and
-      // there is no wall-clock cap -- the machine's own step/output
-      // walls bound a runaway, and the player owns the exit.
+      // Interactive run: output streams into the pane as it is produced,
+      // keystrokes reach stdin while the program lives, and there is no
+      // wall-clock cap: the machine's own step/output walls bound a runaway,
+      // and the player owns the exit.
       const exitCode = await driveForeground(io);
       return {
         // Already streamed through the tap; nothing left to print.
