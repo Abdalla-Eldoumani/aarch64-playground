@@ -16,7 +16,7 @@ export interface BitFieldDiagramProps {
    *  each field gains a top line with its bit range ("30 : 21"), computed
    *  right-to-left from bit 31, and the destination field (the datasheet's
    *  "the machine is about to write here" convention: label `Rd`) takes the
-   *  amber treatment -- 1px amber border, 8% amber fill, amber ink. */
+   *  amber treatment (1px amber border, 8% amber fill, amber ink). */
   bitHeaders?: boolean;
   className?: string;
 }
@@ -100,7 +100,7 @@ const FIELD_LI_DEST =
  *
  * With worked values it becomes the course's by-hand encoding exercise in
  * reverse: hover or focus a field and its bits light up inside the full 32-bit
- * word, which is regrouped into nibbles with the hex digit under each -- the
+ * word, which is regrouped into nibbles with the hex digit under each, the
  * exact pack-then-read-hex procedure exams ask for. The trace highlight is a
  * discrete state (no animation), so reduced motion needs no fallback.
  */
