@@ -4,9 +4,7 @@ import { useEffect } from "react";
 import { registerServiceWorker } from "@/lib/playground/register-sw";
 
 /**
- * Tiny client component whose only job is to call
- * `registerServiceWorker` once on mount. Mounted near the root so the
- * registration is best-effort and doesn't gate any other UI.
+ * Mounted near the root so registration never gates other UI.
  */
 export function RegisterSW() {
   useEffect(() => {
