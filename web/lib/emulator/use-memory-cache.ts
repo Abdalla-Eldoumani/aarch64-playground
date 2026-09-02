@@ -31,7 +31,6 @@ export interface MemoryCache {
 export function useMemoryCache(
   backendRef: RefObject<EmulatorBackend | null>,
 ): MemoryCache {
-  // Stores Uint8Arrays keyed by addr+len.
   const memCacheRef = useRef<Map<string, Uint8Array>>(new Map());
   const memPendingRef = useRef<Set<string>>(new Set());
   // Parallel mapped-ness cache for the watch panel's fault display;
@@ -49,9 +48,6 @@ export function useMemoryCache(
     setMemTick((t) => t + 1);
   }, []);
 
-  // Synchronous read from the per-frame cache. On a miss we kick off
-  // an async fetch; the next snapshot/heartbeat will trigger a re-
-  // render with the bytes available.
   const getMemory = useCallback(
     (addr: number, len: number): Uint8Array => {
       const backend = backendRef.current;
@@ -75,8 +71,7 @@ export function useMemoryCache(
       return new Uint8Array(len);
     },
     // memTick included so React knows this callback closure should
-    // re-fire on cache invalidation; not strictly required since the
-    // cache lives in refs but keeps the dependency set honest.
+    // re-fire on cache invalidation; the cache itself lives in refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [memTick],
   );
@@ -106,7 +101,7 @@ export function useMemoryCache(
       }
       return null;
     },
-    // Same honest-dependency note as getMemory.
+    // Same memTick dependency as getMemory.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [memTick],
   );
