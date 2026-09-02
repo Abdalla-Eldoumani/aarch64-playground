@@ -54,10 +54,10 @@ function toHex(n: number): string {
   return "0x" + n.toString(16).padStart(16, "0");
 }
 
-// A hosted m4 + data program whose `main` prologue -- the first real
-// instruction -- is editor line 9. The legacy line-count fallback counts
-// the `define` line as instruction index 0 and so puts the marker on line
-// 1; only the authoritative address->line map lands it on the prologue.
+// A hosted m4 + data program whose `main` prologue (the first real
+// instruction) is editor line 9. The legacy line-count fallback counts the
+// `define` line as instruction index 0 and so puts the marker on line 1; only
+// the authoritative address->line map lands it on the prologue.
 const HOSTED_SOURCE = [
   "define(a, x19)",
   "",
@@ -1326,9 +1326,9 @@ describe("useEmulator replay + bookmarks", () => {
 
 describe("useEmulator source-line helpers", () => {
   // These two exist so the disassembly decode reads the source ONCE per
-  // assemble. The pair they replaced re-split the buffer and re-ran two
-  // regexes for every instruction, so an 88 KB workspace spent ~930ms of
-  // blocked main thread building the listing and a 200 KB one 5.5s.
+  // assemble: re-splitting the buffer and re-running two regexes per
+  // instruction cost ~930ms of blocked main thread on an 88 KB workspace and
+  // 5.5s on a 200 KB one.
   const SOURCE = [
     "        .text",
     "main:                 // entry",
@@ -1431,9 +1431,9 @@ describe("useEmulator terminal builds", () => {
     await act(async () => {
       await result.current.assembleForTool("mov x0, 1\nret");
     });
-    // The build reset the machine, so its next snapshot restarts the
-    // display counters at zero -- which must re-anchor over the editor's
-    // scrollback, never unprint it.
+    // The build reset the machine, so its next snapshot restarts the display
+    // counters at zero, which must re-anchor over the editor's scrollback,
+    // never unprint it.
     act(() => {
       fake.fire({ stdoutSeen: 0, stderrSeen: 0 });
     });
@@ -1580,8 +1580,8 @@ describe("useEmulator terminal ownership", () => {
     });
     expect(result.current.wantsTerminal).toBe(true);
 
-    // The emulator only ever SETS raw mode; nothing clears it on exit, so a
-    // finished program kept claiming the pane until the next assemble.
+    // The emulator only ever SETS raw mode; nothing clears it on exit, so
+    // without this the pane stays claimed until the next assemble.
     act(() => {
       fake.fire({ wantsTerminal: true, halted: true, exitCode: 0 });
     });
