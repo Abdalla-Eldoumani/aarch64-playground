@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { validateLesson } from "@/lib/content/lesson-schema";
 
-// Vitest runs from web/, so the real content directory is cwd-relative. This
-// proves the shipped seed validates headlessly and carries no week labels.
+// Vitest runs from web/, so the real content directory is cwd-relative. The
+// shipped seed must validate headlessly and carry no week labels.
 const DIR = path.join(process.cwd(), "content/lessons");
 const files = fs.readdirSync(DIR).filter((name) => name.endsWith(".json"));
 
