@@ -6,11 +6,10 @@ import type { RunResultPayload } from "@/lib/worker/protocol";
  * A run cannot be one wasm call: the machine would hold its thread until
  * the program finished, so a pause would never be read, panels would never
  * refresh, and an endless loop would wedge the tab. Both hosts run the
- * program in bounded chunks and come up for air between them instead. They
- * used to keep private copies of that loop, which drifted; this is the one
- * copy. What the hosts genuinely differ in -- how a chunk's wasm record is
- * coerced, how a mid-run snapshot is surfaced -- arrives as injection
- * points, not as forks of the loop.
+ * program in bounded chunks and come up for air between them instead. This is
+ * the only copy of that loop. What the hosts differ in (how a chunk's wasm
+ * record is coerced, how a mid-run snapshot is surfaced) arrives as injection
+ * points.
  */
 
 /** Instructions one chunk runs before the loop comes up for air. */
