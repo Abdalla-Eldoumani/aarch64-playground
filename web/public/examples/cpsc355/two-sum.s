@@ -1,4 +1,4 @@
-// two_sum_viz.asm -- the two-sum problem in ARMv8 AArch64 assembly:
+// two_sum_viz.asm solves the two-sum problem in ARMv8 AArch64 assembly:
 // an animated visualizer, and the same two algorithms as plain text.
 // Project: https://github.com/Abdalla-Eldoumani/twosum-arm
 //
@@ -116,7 +116,7 @@ app_sub:        .string "two-sum, traced in ARMv8 assembly"
 ui_dot:         .string "  ·  "
 
 // Screen names for the title bar, and the same words again as menu
-// entries where they fit -- one string, both places.
+// entries where they fit: one string, both places.
 nm_home:        .string "home"
 nm_presets:     .string "presets"
 nm_preset:      .string "preset"
@@ -269,7 +269,7 @@ narr_hs_result:      .string "result: arr[%d] (%d) + arr[%d] (%d) = %d.  probes:
 stats_bf_fmt:   .string "\x1b[38;5;146mcomparisons \x1b[38;5;189m%-3d\x1b[38;5;146m of \x1b[38;5;189m%-3d\x1b[38;5;146m  worst case n(n-1)/2\x1b[0m"
 stats_hs_fmt:   .string "\x1b[38;5;146mprobes \x1b[38;5;189m%-4d\x1b[38;5;146m  inserts \x1b[38;5;189m%-4d\x1b[0m"
 
-// State block on the home screen -- three lines (array, target,
+// State block on the home screen, three lines (array, target,
 // speed) instead of one cramped line. Shows the actual array values.
 state_lbl_arr:  .string "array:   "
 state_lbl_tgt:  .string "target:  "
@@ -314,7 +314,7 @@ lbl_j_s:        .string "j"
 // same two algorithms over the same input and prints plain lines --
 // no cursor moves, no colour, nothing a pipe or a log would mangle.
 arg_console:    .string "console"
-con_line_1:     .string "two-sum -- brute force O(n^2) and hash set O(n)\n"
+con_line_1:     .string "two-sum: brute force O(n^2) and hash set O(n)\n"
 con_line_2:     .string "type an array and a target; each solver prints the pair it finds.\n"
 con_bf_found:   .string "brute force:  arr[%d] (%d) + arr[%d] (%d) = %d   comparisons: %d\n"
 con_bf_none:    .string "brute force:  no pair sums to %d   comparisons: %d\n"
@@ -762,7 +762,7 @@ chs_outer:
 chs_insert:
         // No match yet. Record (val, i) unless val is already in the
         // table, in which case the index sitting there is the earlier
-        // one and it stays -- the rule the visualizer follows too, so
+        // one and it stays; the rule the visualizer follows too, so
         // a repeated value names the same index on both paths.
         mov     w0, w23
         mov     w1, w25
@@ -801,7 +801,7 @@ chs_done:
 // frame, a boxed title, four lines of description, and the hint to
 // press enter.  It blocks on the user's keypress and returns so
 // main_loop can take over.  Running it again would look fine, but we
-// only call it once -- on menu returns the home screen stands alone.
+// only call it once: on menu returns the home screen stands alone.
 draw_splash:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -1169,7 +1169,7 @@ draw_footer:
 
 
 // draw_state_block paints a three-line summary of current state at
-// rows 17 / 18 / 19 -- array contents, target, animation speed. The
+// rows 17 / 18 / 19 (array contents, target, animation speed). The
 // labels are dim and the values plain, so the block reads as a
 // readout rather than competing with the menu entries. The array is
 // printed element by element with commas, so the user sees exactly
@@ -1601,10 +1601,10 @@ er_done:
 //   row 10  label row      "   i          j"
 //
 // Modes:
-//   0  normal  -- cell i is the element in hand, cell j the one being
-//                 compared against it, carets rendered
-//   1  match   -- both i and j settled, no carets
-//   2  dim all -- every cell faint, used for the "no pair" state
+//   0  normal:  cell i is the element in hand, cell j the one being
+//               compared against it, carets rendered
+//   1  match:   both i and j settled, no carets
+//   2  dim all: every cell faint, used for the "no pair" state
 //
 // Rows 9 and 10 are blanked on every entry so carets from the
 // previous frame do not linger when i / j advance.
@@ -1735,7 +1735,7 @@ da_val_print:
         b       da_val_loop
 da_val_done:
 
-        // Carets and labels -- only in normal mode.
+        // Carets and labels, only in normal mode.
         ldr     w9, [fp, 24]
         cbnz    w9, da_ptr_skip
 
@@ -3193,8 +3193,8 @@ cib_done:
 
 
 // wait_enter prints the press-enter prompt on the prompt row and
-// blocks until the user hits enter. Every screen that pauses -- an
-// input handler that just saved, a run that just finished -- ends
+// blocks until the user hits enter. Every screen that pauses (an
+// input handler that just saved, a run that just finished) ends
 // here, so the pause is always in the same place.
 wait_enter:
         stp     fp, lr, [sp, -16]!
