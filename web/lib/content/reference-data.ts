@@ -974,6 +974,30 @@ cset    w10, eq             // w10 = 1: w9 was -1`,
 tst     w9, 1               // bit 0 clear, so z is set
 cset    w10, eq             // w10 = 1: 6 is even`,
   },
+  {
+    mnemonic: "ccmp",
+    category: "Compare and test",
+    syntax: "ccmp xn, xm, #nzcv, cond / ccmp xn, #imm5, #nzcv, cond",
+    example: `mov     w0, 1
+mov     w1, 2
+cmp     w0, 1
+ccmp    w1, 2, 0, eq        // the first test held, so compare again
+cset    w2, eq              // w2 = 1: a == 1 && b == 2, no branch taken`,
+    gotchas: [
+      "the untaken path writes the literal into nzcv, it does not leave the old flags. a literal with z set makes a later `cset eq` fire even though the operands differ.",
+      "the immediate second operand is 0 to 31 unsigned, and #nzcv is 0 to 15.",
+    ],
+  },
+  {
+    mnemonic: "ccmn",
+    category: "Compare and test",
+    syntax: "ccmn xn, xm, #nzcv, cond / ccmn xn, #imm5, #nzcv, cond",
+    example: `mov     w0, 7
+mov     w1, -3
+cmp     w0, 7
+ccmn    w1, 3, 0, eq        // -3 + 3 = 0, so z is set
+cset    w2, eq              // w2 = 1`,
+  },
 
   // conditional select
   {

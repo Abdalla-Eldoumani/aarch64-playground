@@ -49,6 +49,20 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   ADDS: { summary: "Rd = Rn + Rm/imm, sets NZCV.", cExample: "Rd = Rn + op2; // NZCV updated" },
   SUB: { summary: "Rd = Rn - Rm/imm. No flags.", cExample: "Rd = Rn - op2;" },
   SUBS: { summary: "Rd = Rn - Rm/imm, sets NZCV (the basis of `CMP`).", cExample: "Rd = Rn - op2; // NZCV updated" },
+  CCMP: {
+    summary: "Compare only when cond holds; otherwise write the literal flags.",
+    details: [
+      "The taken path sets NZCV from `Rn - Rm` exactly as `CMP` does.",
+      "The other path WRITES the 4-bit literal (`N Z C V`, high bit first), it does not leave the old flags alone.",
+      "GCC builds `&&` and `||` chains out of these instead of branching.",
+    ],
+    example: "ccmp w1, 2, 0, eq",
+    cExample: "// a == 1 && b == 2, without a branch",
+  },
+  CCMN: {
+    summary: "The `CMN` form of `CCMP`: the taken path sets NZCV from Rn + Rm.",
+    example: "ccmn w1, 3, 0, eq",
+  },
   CLZ: {
     summary: "Rd = the number of leading zero bits in Rn.",
     details: ["Of zero it is the register width (64 for X, 32 for W), not an error."],
