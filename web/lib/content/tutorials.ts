@@ -3,12 +3,12 @@
  *  check the runner can verify against the live CPU state.
  *
  *  Sources are kept in `/examples/cpsc355/` so a tutorial loads the same
- *  file the student gets from the example loader -- no parallel copies. */
+ *  file the student gets from the example loader, with no parallel copies. */
 
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 export interface ExpectedRegister {
-  /** Register name -- "w0".."w30", "x0".."x30", "sp", "pc". */
+  /** Register name: "w0".."w30", "x0".."x30", "sp", "pc". */
   reg: string;
   /** Decimal integer the register should hold when the step is verified. */
   value: number;
@@ -145,7 +145,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Set grade = 'A' as a single byte",
         body:
-          "`mov w19, 'A'` puts ASCII 65 in w19; `strb w19, [fp, stu_grade]` stores ONE byte at offset 40. After this step, w19 should be 65.",
+          "`mov w19, 'A'` puts ASCII 65 in w19; `strb w19, [fp, stu_grade]` stores one byte at offset 40. After this step, w19 should be 65.",
         highlight: { start: 47, end: 49 },
         expect: { reg: "w19", value: 65, note: "ASCII 'A' is 65" },
       },
@@ -232,7 +232,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Static vs argv",
         body:
-          "Take a moment: where does each function get its data from? increment from a single fixed address in .data; main from a pointer table the loader laid out at 0x00800000.",
+          "Where does each function get its data? increment from a single fixed address in .data; main from a pointer table the loader laid out at 0x00800000.",
       },
     ],
   },
@@ -252,7 +252,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Convert int to double",
         body:
-          "`scvtf d1, w19` is signed-int to floating-point: it produces 5.0 in d1. Watch d1 in the register panel after this step (FP registers may live in their own panel).",
+          "`scvtf d1, w19` is signed-int to floating-point: it produces 5.0 in d1. Watch d1 in the register panel after this step.",
         highlight: { start: 35, end: 36 },
       },
       {
@@ -299,13 +299,13 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Print the buffer",
         body:
-          "Now we go through the libc trampoline: printf is a host stub at 0xFFFF_*. The `bl printf` instruction is rewritten by the linker to jump through a per-host trampoline so the imm26 offset stays in range.",
+          "This call goes through the libc trampoline: printf is a host stub at 0xFFFF_*. The `bl printf` instruction is rewritten by the linker to jump through a per-host trampoline so the imm26 offset stays in range.",
         highlight: { start: 47, end: 50 },
       },
       {
         title: "Exit cleanly",
         body:
-          "The function returns via the standard epilogue. The loader stashed a `__main_return` sentinel in lr so the final `ret` halts the CPU and stamps w0 (which we set to 0) as the exit code.",
+          "The function returns via the standard epilogue. The loader stashed a `__main_return` sentinel in lr so the final `ret` halts the CPU and stamps w0 (set to 0 above) as the exit code.",
         highlight: { start: 52, end: 54 },
         expect: { reg: "w0", value: 0, note: "exit code 0" },
       },
