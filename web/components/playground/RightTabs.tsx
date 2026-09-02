@@ -55,7 +55,7 @@ const TABS: readonly RightTab[] = [
  * reaches the same panes through MobileLayout's group switcher). The selected
  * tab is the shell's state so a command-palette action can bring a pane
  * forward, but which panes have ever been MOUNTED is this component's own
- * business -- see the terminal latch below.
+ * business; see the terminal latch below.
  */
 export function RightTabs({
   activeTab,
@@ -122,10 +122,10 @@ export function RightTabs({
           <div className="h-full flex flex-col">{panes.console}</div>
         )}
         {/* The terminal stays MOUNTED once opened and hides with CSS.
-            Unmounting it disposed xterm and dropped the io registration,
-            so switching to another tab mid-session killed a running
-            program's screen and its input -- the student had to re-run
-            it. `hidden` keeps the DOM node (and the session) alive. */}
+            Unmounting it disposed xterm and dropped the io registration, so
+            switching to another tab mid-session killed a running program's
+            screen and its input, so the student had to re-run it. `hidden`
+            keeps the DOM node (and the session) alive. */}
         {termOpened && (
           <div className={activeTab === "term" ? "h-full" : "hidden"}>
             {panes.terminal}
