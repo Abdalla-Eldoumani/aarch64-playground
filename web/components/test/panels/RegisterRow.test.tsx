@@ -22,7 +22,7 @@ describe("RegisterRow", () => {
     expect(screen.getByText("0x00000000deadbeef").className).toContain("tabular-nums");
   });
 
-  it("reflows deliberately in a narrow panel: wrap-capable row, full value on hover", () => {
+  it("reflows in a narrow panel: wrap-capable row, full value on hover", () => {
     const { container } = render(<RegisterRow name="X9" value="0x0123456789abcdef" />);
     // An 18-character hex value cannot shrink; the row must wrap it onto its
     // own line rather than let it paint into the neighboring column.
@@ -50,7 +50,7 @@ describe("RegisterRow", () => {
     expect(screen.getByText("0x0").className).not.toContain("text-[var(--changed)]");
   });
 
-  it("keeps the alias legible: secondary token at full opacity, not a faded label", () => {
+  it("keeps the alias on the secondary token at full opacity", () => {
     render(<RegisterRow name="X30" alias="lr" value="0x0" />);
     const alias = screen.getByText("lr");
     expect(alias.className).toContain("text-[var(--text-secondary)]");
