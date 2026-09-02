@@ -806,6 +806,15 @@ function FallbackEditor({
 }: FallbackEditorProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
+  // The textarea owns the offset, so the gutter's transform is written to the
+  // element in the frame of the scroll that caused it. The state write only
+  // decides which window of rows the next render commits; letting it drive the
+  // transform too left the numbers a frame behind the code.
+  const paintGutter = useCallback((top: number) => {
+    const gutter = gutterRef.current;
+    if (gutter) gutter.style.transform = `translateY(${FALLBACK_PAD_Y - top}px)`;
+  }, []);
   // A comment toggle changes the controlled `value`, so the DOM selection is
   // lost on the re-render. Stash the target range and reapply it after the
   // new value lands (before paint, so the caret never visibly jumps).
@@ -826,6 +835,25 @@ function FallbackEditor({
     const max = ta.value.length;
     ta.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
   });
+
+  // Follow the pc the way Monaco's revealLine does: nearest, so the buffer
+  // moves only as far as it must. Monaco gets this for free; without it the
+  // marker walks off-screen on a phone during autoplay and during any step
+  // past the visible window.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta || currentLine == null) return;
+    const top = FALLBACK_PAD_Y + (currentLine - 1) * FALLBACK_LINE_H;
+    const above = top < ta.scrollTop;
+    const below = top + FALLBACK_LINE_H > ta.scrollTop + ta.clientHeight;
+    if (!above && !below) return;
+    const next = Math.max(0, above ? top : top + FALLBACK_LINE_H - ta.clientHeight);
+    ta.scrollTop = next;
+    // The scroll event this write raises carries the new offset into state
+    // and re-picks the row window; the paint here is what keeps the numbers
+    // aligned in the meantime.
+    paintGutter(next);
+  }, [currentLine, paintGutter]);
 
   // Ctrl/Cmd + / toggles line comments on the touched lines, mirroring the
   // desktop Monaco editor's built-in commentLine. `onChange` (the parent's
@@ -854,11 +882,13 @@ function FallbackEditor({
         role="presentation"
       >
         <div
+          ref={gutterRef}
           className="absolute left-0 right-0 will-change-transform"
           style={{
-            transform: `translateY(${
-              FALLBACK_PAD_Y - scrollTop + gutterFirst * FALLBACK_LINE_H
-            }px)`,
+            // Scroll and window are split across two properties so the scroll
+            // half can be written imperatively without fighting this render.
+            transform: `translateY(${FALLBACK_PAD_Y - scrollTop}px)`,
+            paddingTop: `${gutterFirst * FALLBACK_LINE_H}px`,
           }}
         >
           {Array.from({ length: gutterRows }, (_, i) => gutterFirst + i + 1).map((n) => {
@@ -916,7 +946,10 @@ function FallbackEditor({
         autoCorrect="off"
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onScroll={(e) => {
+          paintGutter(e.currentTarget.scrollTop);
+          setScrollTop(e.currentTarget.scrollTop);
+        }}
         onSelect={(e) => {
           if (!onCursorChange) return;
           const ta = e.currentTarget;
