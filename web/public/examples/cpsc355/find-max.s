@@ -27,13 +27,13 @@ find_max:
         mov     fp, sp
 
         // Copy args into scratch regs (need x0 free for return)
-        mov     x12, x0
+        mov     x12, x0                // x12 = array base
         mov     w13, w1                 // w13 = n
 
         // Initialize max = arr[0]
-        ldr     w10, [x12]
+        ldr     w10, [x12]              // w10 = max = arr[0]
 
-        mov     w9, 1
+        mov     w9, 1                   // i = 1
         b       fm_test
 
 fm_loop:
@@ -47,7 +47,7 @@ fm_test:
         cmp     w9, w13
         b.lt    fm_loop
 
-        mov     w0, w10
+        mov     w0, w10                 // return max
         ldp     fp, lr, [sp], 16
         ret
 
@@ -57,14 +57,14 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        ldr     x19, =arr
+        ldr     x19, =arr              // x19 = array base
 
         // Fill array: a[i] = (i+1) * 7 (so values are 7, 14, 21, ..., 70)
         mov     i_r, 0
 fill:
         add     w9, i_r, 1
         mov     w10, 7
-        mul     w9, w9, w10
+        mul     w9, w9, w10             // value = (i+1) * 7
         str     w9, [x19, i_r, SXTW 2]
 
         add     i_r, i_r, 1
@@ -84,10 +84,10 @@ print_loop:
         b.lt    print_loop
 
         // Call find_max
-        ldr     x0, =arr
-        mov     w1, 10
+        ldr     x0, =arr               // pass array base
+        mov     w1, 10                  // pass size
         bl      find_max
-        mov     w20, w0
+        mov     w20, w0                 // save return value
 
         // Print max
         ldr     x0, =fmt_out
