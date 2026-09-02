@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Subroutines - Advanced",
+  "title": "Quiz: subroutines",
   "slug": "quiz-advance-subroutines",
   "order": 59,
   "topic": "subroutines",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Work through the procedure call standard: when a leaf routine can skip its frame, what 16-byte alignment actually demands, who prepares stack-passed arguments, and which registers survive a `bl`.",
+  "prompt": "The procedure call standard: when a leaf routine can skip its frame, what 16-byte alignment actually demands, who prepares stack-passed arguments, and which registers survive a `bl`.",
   "questions": [
     {
       "question": "A leaf subroutine does not call any other subroutines. Under what conditions can it avoid creating a stack frame?",
