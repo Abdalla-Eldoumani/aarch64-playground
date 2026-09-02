@@ -40,7 +40,7 @@ describe("SavesPanel bookmark load", () => {
     });
     const props = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "load" }));
-    // Source, args, AND stdin ride one handoff: the machine resets and the
+    // Source, args, and stdin all ride one handoff: the machine resets and the
     // bookmark's inputs become the seeds a later manual re-assemble
     // re-applies, instead of whatever program was loaded before it.
     expect(props.onLoadProgram).toHaveBeenCalledWith({
