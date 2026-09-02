@@ -66,11 +66,11 @@ pub fn detect_hosted_mode(source: &str) -> bool {
         .join("\n");
     let lower = clean.to_lowercase();
     // The directive set is the parser's own table, not a second hand-kept
-    // list beside it. That closes the gap the hand-kept list had: `.section`,
-    // `.dword`, `.type` and `.size` are directives the parser has always
-    // understood but detection did not look for, so a file whose only
-    // directive was one of them took the legacy path. `define(` stays an
-    // extra term -- m4 is a preprocessor construct, not a directive.
+    // list beside it. A hand-kept second list drifts: `.section`,
+    // `.dword`, `.type` and `.size` are directives the parser understands,
+    // and a file whose only directive is one of them would take the legacy
+    // path. `define(` stays an extra term because m4 runs before the
+    // directives are parsed.
     if crate::frontend::parser::DIRECTIVES
         .iter()
         .any(|directive| lower.contains(directive))
@@ -79,8 +79,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
         return true;
     }
     // Collapse whitespace runs so `bl   printf` and `bl\tprintf` detect the
-    // same as `bl printf`; the raw `contains("bl printf")` matched only a
-    // single space.
+    // same as `bl printf`.
     let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
     for libc in HOSTED_LIBC_NAMES {
         let pat = format!("bl {libc}");
@@ -116,7 +115,7 @@ pub struct MemoryRegionJs {
 /// row the whole table capacity, because a panel labelling an address wants
 /// the band it belongs to regardless of what the program has reached. Built
 /// outside the wasm boundary so a native test pins every row to the
-/// constant it comes from -- the panel's labels and jump targets are only
+/// constant it comes from: the panel's labels and jump targets are only
 /// trustworthy while they agree with the loader.
 pub fn memory_map() -> Vec<MemoryRegionJs> {
     let section = |name, base: u64| MemoryRegionJs {
@@ -179,7 +178,7 @@ pub struct HostCallContext {
 ///
 /// The call site is LR-4, the same recovery `error_line_for` uses for a
 /// fault raised inside a stub: LR holds the address the `bl` will return
-/// to, and the instruction before it is the `bl`. It has to be dynamic --
+/// to, and the instruction before it is the `bl`. It has to be dynamic:
 /// one trampoline serves every call site of a function, so nothing static
 /// can say which `printf` line the pc belongs to.
 pub fn host_call_context(cpu: &Cpu, line_map: &[u32]) -> Option<HostCallContext> {
@@ -406,9 +405,9 @@ impl Emulator {
 
     /// Same as `assemble_and_load` but additionally writes argc/argv at
     /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
-    /// sees the supplied arguments. `args` is argv[1..] -- the loader
+    /// sees the supplied arguments. `args` is argv[1..]: the loader
     /// owns argv[0] (`./program`), so no caller prepends a program
-    /// name. Bare-metal sources (no hosted features) ignore args --
+    /// name. Bare-metal sources (no hosted features) ignore args:
     /// argc/argv only have meaning for hosted programs that read them
     /// through w0/x1.
     pub fn assemble_and_load_with_args(
@@ -460,7 +459,7 @@ impl Emulator {
                 }
             }
         } else {
-            // Bare-metal path -- args have no caller, just delegate.
+            // Bare-metal path: args have no caller, just delegate.
             self.assemble_and_load(source)
         }
     }
@@ -472,7 +471,7 @@ impl Emulator {
     /// appear in the line map.
     fn error_line_for(&self, pc: u64) -> Option<u32> {
         // The fell-off-the-end halt stops one word past the image; point
-        // the marker at the LAST mapped instruction line -- the place the
+        // the marker at the LAST mapped instruction line, the place the
         // missing ret belongs.
         if self.cpu.text_end() == Some(pc) {
             return self.line_map.chunks_exact(2).last().map(|pair| pair[1]);
@@ -673,7 +672,7 @@ impl Emulator {
     }
 
     /// The 32 FP registers (d0-d31) as raw IEEE-754 bit patterns, hex-encoded
-    /// ("0x…"), so the UI can render both the decimal double and the raw bits
+    /// ("0x..."), so the UI can render both the decimal double and the raw bits
     /// without a lossy float round-trip at the boundary.
     pub fn get_fp_registers(&self) -> Vec<String> {
         (0..32)
@@ -782,7 +781,7 @@ impl Emulator {
         }
     }
 
-    // -- hosted runtime (phase B) --
+    // -- hosted runtime --
 
     /// Drain accumulated stdout as a UTF-8 string.
     pub fn take_stdout(&mut self) -> String {
@@ -795,7 +794,7 @@ impl Emulator {
     }
 
     /// Push bytes onto the stdin buffer. Clears the blocked flag so a
-    /// paused read/scanf resumes on the next step. Nothing is echoed --
+    /// paused read/scanf resumes on the next step. Nothing is echoed:
     /// this is the redirect path (fixtures, scripted terminal drives, the
     /// exercise checker), and a redirect prints nothing.
     pub fn push_stdin(&mut self, s: &str) {
@@ -827,7 +826,7 @@ impl Emulator {
 
     /// Remove every breakpoint. The UI calls this when a different
     /// program loads or the source is re-assembled, then re-arms the
-    /// surviving gutter lines through the fresh line map -- the CPU's
+    /// surviving gutter lines through the fresh line map: the CPU's
     /// address set otherwise outlives the assembly it belonged to.
     pub fn clear_all_breakpoints(&mut self) {
         self.cpu.clear_all_breakpoints();
@@ -848,7 +847,6 @@ impl Emulator {
         self.cpu.snapshots_paused = paused;
     }
 
-    /// Whether the CPU is paused waiting for stdin.
     /// True once the running program has put the terminal in raw mode
     /// (ioctl TCSETS clearing ICANON/ECHO): the UI treats it as a
     /// terminal program and hands it the terminal pane.
@@ -856,6 +854,7 @@ impl Emulator {
         self.cpu.term.raw_mode
     }
 
+    /// Whether the CPU is paused waiting for stdin.
     pub fn is_blocked(&self) -> bool {
         self.cpu.is_blocked()
     }
@@ -1068,10 +1067,10 @@ mod hosted_mode_tests {
 
     #[test]
     fn every_registered_stub_is_detected_as_hosted() {
-        // The drift this closes: a stub registered in `Cpu::new` but
-        // never added here left `bl <name>` on the bare-metal path,
-        // where the call resolves to nothing. The table is the source of
-        // truth; the two sentinels are not names a program can call.
+        // A stub registered in `Cpu::new` but missing here leaves
+        // `bl <name>` on the bare-metal path, where the call resolves to
+        // nothing. The table is the source of truth; the two sentinels are
+        // not names a program can call.
         let cpu = crate::cpu::Cpu::new();
         let missing: Vec<String> = cpu
             .host
@@ -1098,10 +1097,9 @@ mod hosted_mode_tests {
     fn detection_covers_every_directive_the_parser_knows() {
         // Detection derives from the parser's table, so a directive the
         // parser understands routes to the hosted path even when it is the
-        // only one in the file. These four used to fall through to the
-        // legacy path because the hand-kept list beside the parser had
-        // never grown them; each case below carries no other directive, so
-        // it is the named one doing the work.
+        // only one in the file. These four are the ones a hand-kept list
+        // beside the parser is most likely to miss; each case below carries
+        // no other directive, so it is the named one doing the work.
         assert!(detect_hosted_mode(".section .rodata\n"));
         assert!(detect_hosted_mode("table: .dword 1, 2, 3\n"));
         assert!(detect_hosted_mode(".type main, %function\n"));
