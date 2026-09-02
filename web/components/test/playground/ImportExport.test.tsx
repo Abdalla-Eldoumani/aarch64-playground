@@ -187,9 +187,9 @@ describe("ImportExport export path", () => {
 });
 
 describe("ImportExport workspace bundle", () => {
-  // The share link is the only other carrier for a multi-file program, and
-  // it dies well before a real one fits in a URL fragment; before this the
-  // export buttons all closed over the main buffer alone.
+  // The share link is the only other carrier for a multi-file program, and a
+  // real workspace exceeds the fragment cap, so the bundle is the export that
+  // carries the helpers.
   const FILES = [
     { name: "util.s", body: "// util\n" },
     { name: "sort.s", body: "// sort\n" },
