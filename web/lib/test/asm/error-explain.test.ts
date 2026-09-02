@@ -5,8 +5,7 @@ import { explainError } from "@/lib/asm/error-explain";
 // errors arrive as the BARE inner message (the wasm boundary strips the
 // "X error at line N:" prefix and ships the line separately); runtime
 // aborts pass through Display unchanged. Testing prefixed strings gave the
-// old generic fallback false confidence -- it could never fire in
-// production.
+// old generic fallback false confidence: it could never fire in production.
 describe("explainError", () => {
   it("explains falling off the end as a missing ret", () => {
     const e = explainError(
@@ -21,8 +20,8 @@ describe("explainError", () => {
     const e = explainError("unknown instruction: 0x00600000");
     expect(e).not.toBeNull();
     expect(e!.what.toLowerCase()).toContain("decoder");
-    // The old block asserted an off-by-one stack write "overwrote your
-    // own code" -- a cause the common triggers never had.
+    // The common triggers never overwrite the program's own code, so the why
+    // must not claim it.
     expect(e!.why.toLowerCase()).not.toContain("junk over");
     expect(e!.why.toLowerCase()).toContain("data");
   });
@@ -155,9 +154,8 @@ describe("explainError", () => {
   });
 
   it("returns null when no tailored block exists, so the raw message renders", () => {
-    // The old generic fallback was unreachable in production and its
-    // advice was content-free; deleted, not repaired. The emulator's own
-    // wording carries the remedy in these cases.
+    // // The emulator's own wording carries the remedy in these cases, so
+    // there is no generic fallback.
     expect(explainError("nope, just nope")).toBeNull();
     expect(explainError("empty value in this list -- remove the extra comma")).toBeNull();
   });
