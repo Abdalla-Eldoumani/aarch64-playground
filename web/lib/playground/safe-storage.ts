@@ -48,3 +48,23 @@ export function safeRemoveItem(key: string): void {
     // nothing to undo: the key either never existed or is unreachable
   }
 }
+
+/**
+ * Every key currently in localStorage, for the one store that is spread
+ * across a key per record (the per-exercise practice answers) and has to
+ * find them all to build an export. Degrades to an empty list, so a caller
+ * reads "nothing stored" from a broken store too.
+ */
+export function safeKeys(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key !== null) keys.push(key);
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}
