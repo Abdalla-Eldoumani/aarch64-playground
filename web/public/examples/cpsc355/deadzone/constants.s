@@ -39,8 +39,6 @@ SYS_WRITE = 64                                  // write(fd, buf, count)
 SYS_EXIT = 93                                   // exit(status)
 SYS_NANOSLEEP = 101                             // nanosleep(req, rem)
 
-// Clock ids
-
 // Ioctl requests (termios)
 TCGETS = 0x5401                                 // Get terminal attributes
 TCSETS = 0x5402                                 // Set terminal attributes
@@ -131,8 +129,6 @@ LABEL_COLOR = COLOR_RED                         // Status bar field names
 VALUE_COLOR = COLOR_BRIGHT_WHITE                // Status bar numbers
 WALL_GLYPH = '#'                                // Arena wall and rule
 
-// Background colors (add 10 to foreground)
-
 // Game timing
 TARGET_FPS = 30                                 // Target frames per second
 FRAME_TIME_NS = 33333333                        // Nanoseconds per frame (1/30 sec)
@@ -150,8 +146,6 @@ STATE_LEVELUP = 6
 // Entity limits
 MAX_ENEMIES = 100                               // Maximum enemy count
 MAX_PROJECTILES = 50                            // Maximum projectile count
-
-// Timespec structure
 
 // Boolean values
 FALSE = 0
