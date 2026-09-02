@@ -1,14 +1,12 @@
-// sort_viz.asm - eight sorting algorithms, one state change per frame
+// sort.s - eight sorting algorithms, one state change per frame
 //
 // The chrome is drawn once when a run starts. After that a frame repaints
 // only the bars, the values, the slot ruler, the marks under the cells and
-// the counters, so nothing blinks and nothing is redrawn that did not
-// move. Every state change - a comparison, a move, a cell settling - gets
-// exactly one frame and one delay, and no change is ever left for the
-// following frame to reveal.
+// the counters, so nothing blinks. Every state change - a comparison, a move,
+// a cell settling - gets exactly one frame and one delay,
 //
 // A cell's colour is data rather than a branch: sort_role_of reads the
-// marker words and answers with a role from theme.asm, so all eight
+// marker words and answers with a role from theme.s, so all eight
 // algorithms paint through one set of rules. sort_src says where a cell's
 // value comes from, which is what lets the merge show its scratch copy
 // instead of the half-overwritten memory underneath it - the picture never
@@ -23,7 +21,7 @@ define(lr, x30)
     SORT_CAP        = 10                    // the widest array that fits
     SORT_KEYS       = 100                   // counting sort's key space
 
-// Role numbers mirror ui.asm's UI_ROLE_* set. They are repeated here so
+// Role numbers mirror ui.s's UI_ROLE_* set. They are repeated here so
 // this file also assembles on its own, the way the web build feeds it.
     SORT_TEXT       = 0
     SORT_DIM        = 1
@@ -168,7 +166,7 @@ sort_many:          .string "+"
 sort_msg_none:      .string "there is no array yet. choose 9 on the sorting menu to make one"
 sort_fmt_have:      .string "the array holds %d values"
 sort_msg_have_not:  .string "no array yet: 9 makes one"
-sort_fmt_fresh:     .string "%d random values, not one of them in order yet"
+sort_fmt_fresh:     %d random values, in no order
 sort_fmt_ready:     .string "%d values, before a single comparison"
 sort_fmt_done:      .string "sorted: %d comparisons and %d moves"
 
@@ -235,7 +233,7 @@ sort_fmt_csums:     .string "now add each bucket to the one before it"
 sort_fmt_csum:      .string "bucket %d reads %d: that many keys are no larger than %d"
 sort_fmt_cplace:    .string "%d belongs at output slot %d, and its bucket steps back"
 sort_fmt_cback:     .string "output slot %d goes home to the array"
-sort_fmt_cnone:     .string "not one value was compared with another: the buckets did it all"
+sort_fmt_cnone:     not one value was compared with another: the buckets did the ordering
 
 sort_lbl_keys_lo:   .string "keys  0-49"
 sort_lbl_keys_hi:   .string "keys 50-99"
@@ -490,8 +488,8 @@ sort_new_array:
     bl      th_off
     bl      sort_bottom
 
-    // End of input is not a size. Taking the minimum here rebuilt the
-    // array as three values and reported it as though it were typed.
+    // End of input is not a size. Taking the minimum here would rebuild the
+    // array as three values.
     cbz     w21, sort_new_out
 
     ldr     x20, =sort_size
@@ -619,7 +617,7 @@ sort_chrome_done:
 
 // sort_begin(x0 = title, x1 = hint, x2 = best, x3 = avg, x4 = worst,
 //            x5 = space) - draw the screen, ask for a speed, show the
-// array once, and hold until the student is looking
+// array once, and wait for enter
 sort_begin:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
@@ -1082,14 +1080,14 @@ sort_col_of:
     ldr     w2, [x2]
     add     w3, w2, w2
     add     w3, w3, w2                      // three columns per value
-    mov     w2, 41
+    mov     w2, 41                      // 41 is the middle of the 78-column panel
     sub     w2, w2, w3
     add     w0, w2, w1
     ret
 
 // sort_role_of(w0 = slot) -> w0 = the colour role that cell wears now.
-// The order is the order a reader cares about: what just happened first,
-// what has settled last.
+// Checked in the order a reader cares about: what just happened first, what
+// has settled last.
 sort_role_of:
     mov     w1, w0
 
@@ -1134,7 +1132,7 @@ sort_role_of:
 
 sort_role_settled:
     // the green run stops at an open hole: the cells past it are still
-    // shifting, whatever the sorted prefix claims
+    // shifting
     ldr     x2, =sort_hole
     ldr     w3, [x2]
     cmp     w3, 0
@@ -1225,7 +1223,7 @@ sort_bar_of:
     bl      sort_cell
     cbz     w0, sort_bar_none
 
-    mov     w2, 13
+    mov     w2, 13                      // 13 values a row: 0 to 99 fills the eight bar rows
     udiv    w0, w1, w2
     add     w0, w0, 1
     b       sort_bar_done
@@ -1237,7 +1235,7 @@ sort_bar_done:
     ldp     fp, lr, [sp], 16
     ret
 
-// sort_render() - repaint everything that moves and nothing that does not
+// sort_render() - repaint the parts of the current view that can change
 sort_render:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
@@ -1848,7 +1846,7 @@ sort_src_walk:
 sort_src_walked:
     ret
 
-// sort_reset_all() - back to an array with no story attached to it
+// sort_reset_all() - clear every marker, lock and counter
 sort_reset_all:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
@@ -2888,7 +2886,7 @@ sort_quick_part_sort:
     b.lt    sort_quick_split
     b.gt    sort_quick_part_done
 
-    // a single slot is a sorted run all by itself
+    // a single slot is already a sorted run
     bl      sort_clear_marks
     mov     w0, w19
     bl      sort_lock
