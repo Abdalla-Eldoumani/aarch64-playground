@@ -190,7 +190,7 @@ export function InstructionReference({
   );
 
   // On mount, bring the fragment-named instruction's index item into view.
-  // Scroll only -- selection itself comes from the fragment store above.
+  // Scroll only: selection comes from the fragment store above.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const raw = window.location.hash.replace(/^#/, "");
@@ -202,8 +202,8 @@ export function InstructionReference({
   }, [instructions]);
 
   // A click pins the selection via `picked` and writes the fragment with
-  // replaceState, which fires no hashchange. A later hashchange -- browser
-  // back/forward or a manual `#...` edit -- must win, so clear `picked` and let
+  // replaceState, which fires no hashchange. A later hashchange (browser
+  // back/forward, or a manual `#...` edit) must win, so clear `picked` and let
   // the fragment store drive the selection again. Cold load and cross-tab open
   // already select from the fragment because `picked` starts null.
   useEffect(() => {
