@@ -343,39 +343,11 @@ pub fn execute(
             regs.nzcv = crate::fpu::fcmp_flags(a, b);
             Ok(ExecResult::Advance)
         }
-        Instruction::FpScvtf { fd, rn, sf, single } => {
-            let raw = regs.read_gpr(*rn, *sf);
-            let int_value = if *sf { raw as i64 } else { (raw as u32 as i32) as i64 };
-            if *single {
-                regs.write_fpr_f32(*fd, int_value as f32);
-            } else {
-                regs.write_fpr_f64(*fd, int_value as f64);
-            }
-            Ok(ExecResult::Advance)
+        Instruction::FpToInt { op, rd, fn_, sf, single, fbits } => {
+            exec_fp_to_int(*op, *rd, *fn_, *sf, *single, *fbits, regs)
         }
-        Instruction::FpFcvtzs { rd, fn_, sf, single } => {
-            // Read at the instruction's width, then truncate toward zero
-            // with saturation. The f32 -> f64 widening is exact, so one
-            // f64 saturation path serves both widths.
-            let value = if *single {
-                regs.read_fpr_f32(*fn_) as f64
-            } else {
-                regs.read_fpr_f64(*fn_)
-            };
-            let truncated = value.trunc();
-            let int_value = if *sf {
-                if truncated.is_nan() { 0i64 }
-                else if truncated >= i64::MAX as f64 { i64::MAX }
-                else if truncated <= i64::MIN as f64 { i64::MIN }
-                else { truncated as i64 }
-            } else {
-                if truncated.is_nan() { 0i64 }
-                else if truncated >= i32::MAX as f64 { i32::MAX as i64 }
-                else if truncated <= i32::MIN as f64 { i32::MIN as i64 }
-                else { truncated as i32 as i64 }
-            };
-            regs.write_gpr(*rd, *sf, int_value as u64);
-            Ok(ExecResult::Advance)
+        Instruction::FpFromInt { op, fd, rn, sf, single, fbits } => {
+            exec_fp_from_int(*op, *fd, *rn, *sf, *single, *fbits, regs)
         }
         Instruction::FpCvt { fd, fn_, widen } => {
             if *widen {
@@ -1067,6 +1039,93 @@ fn exec_fp_binary(
             FpBinOp::Fdiv => a / b,
         };
         regs.write_fpr_f64(fd, result);
+    }
+    Ok(ExecResult::Advance)
+}
+
+/// FCVT{N,A,M,P,Z}{S,U}. Read at the instruction's width, scale by
+/// 2^fbits for the fixed-point form, round by the named mode, then
+/// saturate at the destination width. Widening f32 to f64 is exact, so
+/// one f64 path serves both source widths. No NZCV write: none of these
+/// touches the flags.
+#[allow(clippy::too_many_arguments)]
+fn exec_fp_to_int(
+    op: FpToIntOp, rd: u8, fn_: u8, sf: bool, single: bool, fbits: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let mut value = if single {
+        regs.read_fpr_f32(fn_) as f64
+    } else {
+        regs.read_fpr_f64(fn_)
+    };
+    if fbits != 0 {
+        // powi, not a shift: fbits reaches 64 and the exponent form is
+        // exact for every value the field can hold.
+        value *= 2f64.powi(i32::from(fbits));
+    }
+    let rounded = match op {
+        FpToIntOp::Ns | FpToIntOp::Nu => value.round_ties_even(),
+        FpToIntOp::As | FpToIntOp::Au => value.round(),
+        FpToIntOp::Ms | FpToIntOp::Mu => value.floor(),
+        FpToIntOp::Ps | FpToIntOp::Pu => value.ceil(),
+        FpToIntOp::Zs | FpToIntOp::Zu => value.trunc(),
+    };
+    let signed = matches!(
+        op,
+        FpToIntOp::Ns | FpToIntOp::As | FpToIntOp::Ms | FpToIntOp::Ps | FpToIntOp::Zs
+    );
+    let result: u64 = if signed {
+        let v = if rounded.is_nan() {
+            0i64
+        } else if sf {
+            if rounded >= i64::MAX as f64 { i64::MAX }
+            else if rounded <= i64::MIN as f64 { i64::MIN }
+            else { rounded as i64 }
+        } else if rounded >= i32::MAX as f64 { i32::MAX as i64 }
+        else if rounded <= i32::MIN as f64 { i32::MIN as i64 }
+        else { rounded as i32 as i64 };
+        v as u64
+    } else if rounded.is_nan() || rounded <= 0.0 {
+        // Negatives saturate to zero, not to the wrapped bit pattern.
+        0
+    } else if sf {
+        // u64::MAX as f64 rounds UP to 2^64, so >= is the correct
+        // boundary; < it, the cast is exact.
+        if rounded >= u64::MAX as f64 { u64::MAX } else { rounded as u64 }
+    } else if rounded >= u32::MAX as f64 {
+        u64::from(u32::MAX)
+    } else {
+        rounded as u32 as u64
+    };
+    regs.write_gpr(rd, sf, result);
+    Ok(ExecResult::Advance)
+}
+
+/// SCVTF / UCVTF. The only difference is how the source register's bits
+/// are read; -1 is the value where the two answers diverge maximally.
+#[allow(clippy::too_many_arguments)]
+fn exec_fp_from_int(
+    op: FpFromIntOp, fd: u8, rn: u8, sf: bool, single: bool, fbits: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let raw = regs.read_gpr(rn, sf);
+    let mut value = match op {
+        FpFromIntOp::Scvtf => {
+            let i = if sf { raw as i64 } else { (raw as u32 as i32) as i64 };
+            i as f64
+        }
+        FpFromIntOp::Ucvtf => {
+            let u = if sf { raw } else { raw & 0xFFFF_FFFF };
+            u as f64
+        }
+    };
+    if fbits != 0 {
+        value /= 2f64.powi(i32::from(fbits));
+    }
+    if single {
+        regs.write_fpr_f32(fd, value as f32);
+    } else {
+        regs.write_fpr_f64(fd, value);
     }
     Ok(ExecResult::Advance)
 }
@@ -2232,7 +2291,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_gpr(1, false, (-7i32) as u32 as u64);
         execute(
-            &Instruction::FpScvtf { fd: 0, rn: 1, sf: false, single: true },
+            &Instruction::FpFromInt {
+                op: FpFromIntOp::Scvtf, fd: 0, rn: 1, sf: false, single: true, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2246,7 +2307,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_fpr_f32(1, -2.7);
         execute(
-            &Instruction::FpFcvtzs { rd: 0, fn_: 1, sf: false, single: true },
+            &Instruction::FpToInt {
+                op: FpToIntOp::Zs, rd: 0, fn_: 1, sf: false, single: true, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2316,7 +2379,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_gpr(3, true, 42);
         execute(
-            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true, single: false },
+            &Instruction::FpFromInt {
+                op: FpFromIntOp::Scvtf, fd: 0, rn: 3, sf: true, single: false, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2329,7 +2394,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_gpr(3, true, (-7i64) as u64);
         execute(
-            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true, single: false },
+            &Instruction::FpFromInt {
+                op: FpFromIntOp::Scvtf, fd: 0, rn: 3, sf: true, single: false, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2342,7 +2409,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_fpr_f64(2, 3.9);
         execute(
-            &Instruction::FpFcvtzs { rd: 0, fn_: 2, sf: true, single: false },
+            &Instruction::FpToInt {
+                op: FpToIntOp::Zs, rd: 0, fn_: 2, sf: true, single: false, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2351,7 +2420,9 @@ mod tests {
 
         regs.write_fpr_f64(2, -3.9);
         execute(
-            &Instruction::FpFcvtzs { rd: 1, fn_: 2, sf: true, single: false },
+            &Instruction::FpToInt {
+                op: FpToIntOp::Zs, rd: 1, fn_: 2, sf: true, single: false, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )

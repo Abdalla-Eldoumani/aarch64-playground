@@ -252,6 +252,42 @@ pub const FP_UNARY_OPS: &[(&str, u8, FpUnaryOp)] = &[
     ("fsqrt", 0b000011, FpUnaryOp::Fsqrt),
 ];
 
+/// FP-to-integer rounding mode and signedness. The letter pairs read the
+/// way the mnemonics do: N nearest-ties-even, A nearest-ties-away, M
+/// toward minus infinity, P toward plus infinity, Z toward zero; the
+/// trailing S/U picks a signed or unsigned result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpToIntOp { Ns, Nu, As, Au, Ms, Mu, Ps, Pu, Zs, Zu }
+
+/// Integer-to-FP direction: SCVTF reads the source signed, UCVTF unsigned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpFromIntOp { Scvtf, Ucvtf }
+
+/// The rmode:opcode rows of the FP/integer conversion class
+/// (sf 0 0 11110 ftype 1 rmode(2) opcode(3) 000000 Rn Rd).
+/// `encode_fp_cvt_int` reads the pair out of here and `decode_fp_group`
+/// reads the operation back, so the two directions cannot drift.
+/// FMOV's rmode 00 / opcode 110 and 111 stay out: FMOV has its own
+/// variant and its own width-pairing rule.
+pub const FP_TO_INT_OPS: &[(&str, u8, u8, FpToIntOp)] = &[
+    ("fcvtns", 0b00, 0b000, FpToIntOp::Ns),
+    ("fcvtnu", 0b00, 0b001, FpToIntOp::Nu),
+    ("fcvtas", 0b00, 0b100, FpToIntOp::As),
+    ("fcvtau", 0b00, 0b101, FpToIntOp::Au),
+    ("fcvtps", 0b01, 0b000, FpToIntOp::Ps),
+    ("fcvtpu", 0b01, 0b001, FpToIntOp::Pu),
+    ("fcvtms", 0b10, 0b000, FpToIntOp::Ms),
+    ("fcvtmu", 0b10, 0b001, FpToIntOp::Mu),
+    ("fcvtzs", 0b11, 0b000, FpToIntOp::Zs),
+    ("fcvtzu", 0b11, 0b001, FpToIntOp::Zu),
+];
+
+/// The two integer-to-FP rows of the same class.
+pub const FP_FROM_INT_OPS: &[(&str, u8, u8, FpFromIntOp)] = &[
+    ("scvtf", 0b00, 0b010, FpFromIntOp::Scvtf),
+    ("ucvtf", 0b00, 0b011, FpFromIntOp::Ucvtf),
+];
+
 /// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
 /// zero-extends it; `Bfm` merges the field into the destination and keeps
 /// the other bits (the form behind `bfi`). The `sxtb`/`sxth`/`sxtw` and
@@ -542,21 +578,28 @@ pub enum Instruction {
         fn_: u8,
         single: bool,
     },
-    /// SCVTF Fd, Rn: signed int (W or X) to float. `sf` picks Xn vs Wn;
-    /// `single` picks Sd vs Dd.
-    FpScvtf {
-        fd: u8,
-        rn: u8,
-        sf: bool,
-        single: bool,
-    },
-    /// FCVTZS Rd, Fn: float to signed int (W or X), round-toward-zero.
-    /// `sf` picks Xd vs Wd; `single` picks Sn vs Dn.
-    FpFcvtzs {
+    /// FCVT{N,A,M,P,Z}{S,U} Rd, Fn: float to integer at a named rounding
+    /// mode. `sf` picks Xd vs Wd, `single` picks Sn vs Dn. `fbits` is 0
+    /// for the integer form and 1..=64 for the fixed-point form
+    /// (`fcvtzs x1, s15, #2`), where the source is read as value * 2^fbits
+    /// before rounding.
+    FpToInt {
+        op: FpToIntOp,
         rd: u8,
         fn_: u8,
         sf: bool,
         single: bool,
+        fbits: u8,
+    },
+    /// SCVTF / UCVTF Fd, Rn: integer to float, the source read signed or
+    /// unsigned. `fbits` carries the fixed-point scale, 0 for the plain form.
+    FpFromInt {
+        op: FpFromIntOp,
+        fd: u8,
+        rn: u8,
+        sf: bool,
+        single: bool,
+        fbits: u8,
     },
     /// FCVT: precision convert. `widen` = FCVT Dd, Sn (exact); otherwise
     /// FCVT Sd, Dn (rounds to nearest single).
@@ -926,16 +969,25 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         return Ok(Instruction::FpCompare { fn_: rn, fm: rm, single });
     }
 
-    // FCVTZS (float -> signed int): sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
-    if bits(instr, 20, 10) == 0b11000_000000 {
+    // FP <-> integer conversion: rmode in 20:19, opcode in 18:16, and
+    // bits 15:10 zero for the integer form. The rows come from the shared
+    // tables so the encoder and this cannot drift.
+    if bits(instr, 15, 10) == 0 {
+        let rmode = bits(instr, 20, 19) as u8;
+        let opcode = bits(instr, 18, 16) as u8;
         let sf = bit(instr, 31) == 1;
-        return Ok(Instruction::FpFcvtzs { rd, fn_: rn, sf, single });
-    }
-
-    // SCVTF (signed int -> float): sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
-    if bits(instr, 20, 10) == 0b00010_000000 {
-        let sf = bit(instr, 31) == 1;
-        return Ok(Instruction::FpScvtf { fd: rd, rn, sf, single });
+        if let Some((_, _, _, op)) = FP_TO_INT_OPS
+            .iter()
+            .find(|(_, r, o, _)| *r == rmode && *o == opcode)
+        {
+            return Ok(Instruction::FpToInt { op: *op, rd, fn_: rn, sf, single, fbits: 0 });
+        }
+        if let Some((_, _, _, op)) = FP_FROM_INT_OPS
+            .iter()
+            .find(|(_, r, o, _)| *r == rmode && *o == opcode)
+        {
+            return Ok(Instruction::FpFromInt { op: *op, fd: rd, rn, sf, single, fbits: 0 });
+        }
     }
 
     // FMOV between the register files: rmode 00, opcode 110 (FP -> GP) or

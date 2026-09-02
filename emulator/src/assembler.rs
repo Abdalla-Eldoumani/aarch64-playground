@@ -3982,17 +3982,23 @@ svc 0").unwrap();
         let scvtf = assemble("scvtf s0, w1").unwrap();
         assert_eq!(scvtf[0], 0x1E22_0020);
         match crate::decoder::decode(scvtf[0]).unwrap() {
-            crate::decoder::Instruction::FpScvtf { fd, rn, sf: false, single: true } => {
+            crate::decoder::Instruction::FpFromInt {
+                op: crate::decoder::FpFromIntOp::Scvtf, fd, rn, sf: false, single: true,
+                fbits: 0,
+            } => {
                 assert_eq!((fd, rn), (0, 1));
             }
-            other => panic!("expected single FpScvtf, got {other:?}"),
+            other => panic!("expected single FpFromInt, got {other:?}"),
         }
         let fcvtzs = assemble("fcvtzs w0, s1").unwrap();
         match crate::decoder::decode(fcvtzs[0]).unwrap() {
-            crate::decoder::Instruction::FpFcvtzs { rd, fn_, sf: false, single: true } => {
+            crate::decoder::Instruction::FpToInt {
+                op: crate::decoder::FpToIntOp::Zs, rd, fn_, sf: false, single: true,
+                fbits: 0,
+            } => {
                 assert_eq!((rd, fn_), (0, 1));
             }
-            other => panic!("expected single FpFcvtzs, got {other:?}"),
+            other => panic!("expected single FpToInt, got {other:?}"),
         }
     }
 
@@ -4040,8 +4046,8 @@ svc 0").unwrap();
             let decoded = crate::decoder::decode(code[0]).unwrap();
             match decoded {
                 crate::decoder::Instruction::FpCompare { single: false, .. }
-                | crate::decoder::Instruction::FpScvtf { single: false, .. }
-                | crate::decoder::Instruction::FpFcvtzs { single: false, .. } => {}
+                | crate::decoder::Instruction::FpFromInt { single: false, .. }
+                | crate::decoder::Instruction::FpToInt { single: false, .. } => {}
                 other => panic!("unexpected decode for `{src}`: {other:?}"),
             }
         }
