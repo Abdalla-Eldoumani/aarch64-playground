@@ -179,11 +179,11 @@ save_load_stats_loop:
                 b       save_load_stats_loop
 
 save_load_success:
-                mov     w0, 1
+                mov     w0, 1                   // Success
                 b       save_load_done
 
 save_load_fail:
-                mov     w0, 0
+                mov     w0, 0                   // Failed
 
 save_load_done:
                 ldr     x19, [sp, 16]
@@ -264,11 +264,11 @@ save_write_file:
                 mov     x8, SYS_CLOSE
                 svc     0
 
-                mov     w0, 1
+                mov     w0, 1                   // Success
                 b       save_write_done
 
 save_write_fail:
-                mov     w0, 0
+                mov     w0, 0                   // Failed
 
 save_write_done:
                 ldr     x19, [sp, 16]
@@ -365,7 +365,7 @@ end_game_add_score:
 
                 bl      save_write
 
-                mov     w0, w19
+                mov     w0, w19                 // Return rank
 
                 ldp     x21, x22, [sp, 32]
                 ldp     x19, x20, [sp, 16]
@@ -410,7 +410,7 @@ find_position:
 insert_score:
                 // Shift scores down from position to make room
                 mov     w0, MAX_HIGH_SCORES
-                sub     w0, w0, 1
+                sub     w0, w0, 1               // Start from last position
 
 shift_loop:
                 cmp     w0, w24
@@ -448,7 +448,7 @@ do_insert:
                 b       add_score_done
 
 no_high_score:
-                mov     w0, 0
+                mov     w0, 0                   // Didn't qualify
 
 add_score_done:
                 ldp     x23, x24, [sp, 48]
