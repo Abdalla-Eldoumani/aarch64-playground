@@ -10,13 +10,8 @@
   "body": [
     {
       "type": "callout",
-      "variant": "note",
-      "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
-    },
-    {
-      "type": "callout",
       "variant": "prereq",
-      "markdown": "Before starting this lesson, you should have a basic understanding of the following prerequisite lessons:\n\n- [Printing Hello World in ARMv8 AArch64 Assembly](/learn/printing-strings-hello-world)\n\n- [Printing Variables in ARMv8 AArch64 Assembly](/learn/printing-defined-variables)\n\n- [Conditionals in ARMv8 AArch64 Assembly](/learn/assembly-conditionals-basics)"
+      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n\n- [Printing a variable from .data](/learn/printing-defined-variables)\n\n- [Conditionals with cmp and b.cond](/learn/assembly-conditionals-basics)"
     },
     {
         "type": "prose",
@@ -24,7 +19,7 @@
     },
     {
         "type": "prose",
-        "markdown": "## The Definition\nA `pre-test` loop is a type of loop in which the loop condition is evaluated before each iteration, including the first. In other words, the condition must be evaluated and satisfied before the loop body is executed. Consequently, a pre-test loop may execute zero or more times, as the loop body is skipped entirely if the condition is false during the initial evaluation.\n\nThe implementation of this type of loop in high-level programming languages is commonly achieved using `for loops` or `while loops`, in which the loop condition is evaluated before each iteration of the loop body. The following code demonstrates an example of a pre-test loop implemented in C."
+        "markdown": "## What a pre-test loop is\nA `pre-test` loop is a type of loop in which the loop condition is evaluated before each iteration, including the first. In other words, the condition must be evaluated and satisfied before the loop body is executed. Consequently, a pre-test loop may execute zero or more times, as the loop body is skipped entirely if the condition is false during the initial evaluation.\n\nThe implementation of this type of loop in high-level programming languages is commonly achieved using `for loops` or `while loops`, in which the loop condition is evaluated before each iteration of the loop body. The following code demonstrates an example of a pre-test loop implemented in C."
     },
 
     {
@@ -48,7 +43,7 @@
     },
     {
         "type" : "prose",
-        "markdown": "## The Logic Behind It\nBased on the observations from the loops above, both loops produce the same output, and their underlying logic can be simplified as follows:"
+        "markdown": "## The logic behind it\nBased on the observations from the loops above, both loops produce the same output, and their underlying logic can be simplified as follows:"
     },
     {
         "type": "code",
@@ -67,7 +62,7 @@
     },
     {
         "type": "prose",
-        "markdown": "## The Assembly Implementation\n\n The above C code and pseudocode can be implemented in Assembly as follows:"
+        "markdown": "## The assembly implementation\n\n The above C code and pseudocode can be implemented in Assembly as follows:"
     },
     {
         "type": "code",
@@ -86,7 +81,7 @@
     },
     {
         "type": "prose",
-        "markdown": "## Putting it All Together\n\nThe following code demonstrates the complete process of implementing a `pre-test` loop in Assembly, including the pseudo-ops, program prologue, and epilogue."   
+        "markdown": "## The whole program\n\nThe following code demonstrates the complete process of implementing a `pre-test` loop in Assembly, including the pseudo-ops, program prologue, and epilogue."   
     },
     {
         "type": "editor",
