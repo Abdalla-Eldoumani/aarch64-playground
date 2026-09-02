@@ -62,7 +62,7 @@ function ExpectedRegisterCheck({
       <span className="text-[var(--text-secondary)]"> = </span>
       <span className="font-mono">{expect.value}</span>
       {expect.note && (
-        <span className="text-[var(--text-secondary)]"> -- {expect.note}</span>
+        <span className="text-[var(--text-secondary)]"> ({expect.note})</span>
       )}
       <span className={`ml-2 ${cls}`}>
         [{glyph}{actual !== null ? `, actual ${actual}` : ""}]
