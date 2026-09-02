@@ -263,6 +263,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     cExample: "double d = (double)f;",
   },
   SCVTF: { summary: "Signed-int -> float (`SCVTF Dd, Xn` / `Dd, Wn` / `Sd, Wn`)." },
+  UCVTF: {
+    summary: "Unsigned integer -> float (`UCVTF Dd, Xn` / `Sd, Wn`).",
+    details: ["`SCVTF` reads the same bits as signed, so the two differ on every value with the top bit set."],
+    example: "ucvtf d0, x0",
+    cExample: "Fd = (double)(unsigned long)Rn;",
+  },
   FCVTZS: { summary: "Float -> signed-int with truncation (`FCVTZS Wd, Dn` / `Wd, Sn`)." },
   FCVTNS: {
     summary: "Float -> signed integer, rounding to nearest with ties to even.",

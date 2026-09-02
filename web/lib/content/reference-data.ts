@@ -1385,6 +1385,14 @@ fcvtnu  w1, d0              // w1 = 2
 fmov    d2, -2.5
 fcvtnu  w3, d2              // w3 = 0: negatives saturate`,
   },
+  {
+    mnemonic: "ucvtf",
+    category: "Floating point",
+    syntax: "ucvtf dd, xn / ucvtf sd, wn",
+    example: `mov     x0, -1
+scvtf   d0, x0              // d0 = -1.0
+ucvtf   d1, x0              // d1 = 1.8446744073709552e19: the same bits, read unsigned`,
+  },
 ];
 
 export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map(
