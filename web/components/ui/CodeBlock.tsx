@@ -36,10 +36,8 @@ export function CodeBlock({
       : lines.map((line): Token[] => [{ text: line, kind: "text" }]);
 
   const [copied, setCopied] = useState(false);
-  // One press copies the source outright: write the buffer and flash the
-  // label, no hidden textarea and no reveal step, so a single click lands the
-  // code on the clipboard. Insecure contexts reject the write; the label just
-  // stays put rather than lying about a copy that did not happen.
+  // Insecure contexts reject the clipboard write; the label stays put rather
+  // than claiming a copy that did not happen.
   const copy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(code);
