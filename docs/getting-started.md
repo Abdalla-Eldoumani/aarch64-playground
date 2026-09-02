@@ -67,7 +67,9 @@ resumes and consumes it. What you typed appears in the transcript beside
 the prompt that asked for it, the way a terminal shows it, and stepping
 back rewinds the transcript along with the machine. After three numbers
 the program prints the average and the status bar shows it halted with
-exit code 0.
+exit code 0. (Before any output arrives the console says how to start a
+program: `F10` and `F5` on a desktop, the step and run buttons on a touch
+screen.)
 
 ## step and set a breakpoint
 
@@ -108,7 +110,10 @@ editor; nothing is sent to a server.
 ## learn, practice, reference
 
 - **Learn** (`/learn`): lessons that embed the same editor, so you read a
-  short section then run the code beside it.
+  short section then run the code beside it. Each embed carries run, step,
+  back, and reset under the editor, and an exercise adds check. Step on an
+  embed that has not assembled yet assembles first, and a step after the
+  program halts assembles again and starts it over.
 - **Practice** (`/practice`): coding exercises graded by running your
   program against expected behavior, where the checker never reads or
   stores a solution, alongside quizzes, fill-in-the-blank drills, and
@@ -120,7 +125,8 @@ editor; nothing is sent to a server.
   `.json` file and imports one back, on this device or another.
 - **Reference** (`/reference`): the supported instruction set, with a
   worked encoding diagram per instruction and an interactive NZCV panel
-  on the flag-setters; a calling-convention guide with a step-through
+  on the flag-setters, filtered by a box that `/` jumps into from
+  anywhere on the page; a calling-convention guide with a step-through
   frame walk; and a pitfalls catalog whose examples run in place so you
   watch each mistake fail.
 
@@ -141,7 +147,7 @@ for the full index of where each lives.
 - **Run-mode control** (the header's `console | terminal` switch, shown for the Miscellaneous programs) picks which surface owns the run: console keeps the classic debugger flow, terminal makes run assemble and hand the pane over in one action. `?run=terminal|console` on an `?example=` link overrides that example's default for the load.
 - **Terminal** (the term tab) is an xterm.js shell with the course toolchain (`m4 f.asm > f.s`, `gcc f.s -o prog`, `./prog [args]`), redirections, basic VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
 - **Decode strip** above the registers shows the instruction under the pc as its actual encoding fields, with the destination field lit amber; it re-latches on every step.
-- **Floating-point registers**: the register panel switches between `x0`–`x30` and `d0`–`d31`, with decimal and raw-bits readings for the d view. A value written through an `s` register reads as the float it is (suffixed `f`), and an fp-only step flips the panel to the d file automatically.
+- **Floating-point registers**: a pair of cells in the register panel's header switches between `x0`–`x30` and `d0`–`d31`, and a second pair picks decimal or raw bits for the d view. A value written through an `s` register reads as the float it is (suffixed `f`), and an fp-only step flips the panel to the d file automatically.
 - **Three themes** cycle through dark, light, and high-contrast from the header.
 - **Per-panel zoom** with `Ctrl+Wheel` over a panel.
 - **Source formatter** (`Ctrl+Shift+F`) lowercases mnemonics, indents to 8 spaces, and aligns trailing comments to column 40.
