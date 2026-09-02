@@ -2,9 +2,9 @@
 # Vercel build entrypoint. Installs Rust + wasm-pack if missing, compiles the
 # emulator crate to WebAssembly, then hands off to next build in web/.
 #
-# Why not just `cargo install --locked wasm-pack` at top level? wasm-pack 0.14
-# requires rustup; Vercel's build image ships with system rustc but not rustup,
-# so we install a minimal rustup profile into $HOME first.
+# wasm-pack 0.14 requires rustup, and Vercel's build image ships system rustc
+# without it, so a top-level `cargo install --locked wasm-pack` fails; install
+# a minimal rustup profile into $HOME first.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
