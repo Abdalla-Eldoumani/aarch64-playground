@@ -162,7 +162,7 @@ export default function GlobalError({
               color: TEXT_SECONDARY,
             }}
           >
-            brk #0 -- execution stopped before this page finished
+            brk #0 · execution stopped before this page finished
           </p>
 
           <div
