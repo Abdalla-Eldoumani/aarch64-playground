@@ -1,11 +1,11 @@
-// graph_viz.asm - an undirected graph, walked breadth first and depth first
+// graph.s - an undirected graph, walked breadth first and depth first
 //
 // One drawing, two orders. The eight vertices sit at hand-picked cells so
 // every edge the module can draw is either a straight run or an exact
-// diagonal: no line algorithm, and the picture stays honest. The frontier
+// diagonal: no line algorithm. The frontier
 // (a queue for the breadth first walk, a stack for the depth first one)
 // is on screen the whole time, because which end of it empties next is the
-// only difference between the two walks, and it is the entire lesson.
+// only difference between the two walks.
 
 define(fp, x29)
 define(lr, x30)
@@ -43,7 +43,7 @@ graph_ftail:        .word 0
 graph_curr:         .word -1                // the vertex in hand, -1 = none
 graph_order_len:    .word 0
 graph_mode:         .word 0                 // 0 = queue walk, 1 = stack walk
-graph_show_comp:    .word 0                 // components own the colours
+graph_show_comp:    .word 0                 // 1 = paint by component, 0 = paint by walk state
 graph_comp_count:   .word 0
 graph_speed:        .word 320               // ms between animation steps
 graph_ready:        .word 0                 // default graph loaded yet?
@@ -129,7 +129,7 @@ graph_lbl_next:     .string "\xe2\x96\xb8"  // marks the end that leaves next
 
 graph_title:        .string "graph  ·  breadth first and depth first"
 graph_foot_menu:    .string "one graph, two walks: a queue spreads out, a stack dives in"
-graph_foot_run:     .string "watch the frontier - which end empties next is the whole difference"
+graph_foot_run:     watch the frontier: which end empties next is the difference
 graph_foot_pick:    .string "0 cancels and returns to the graph menu"
 
 graph_panel_map:    .string "graph"
@@ -382,7 +382,7 @@ graph_count_done:
     ldp     fp, lr, [sp], 32
     ret
 
-// --------------------------------------------------------------- state
+// --------------------------------------------------- graph state helpers
 
 // graph_reset() - load the graph this module ships with
 graph_reset:
@@ -686,7 +686,7 @@ graph_edges_done:
     ldp     fp, lr, [sp], 80
     ret
 
-// graph_draw_vertices() - the eight chips, each in the role its state earns
+// graph_draw_vertices() - the eight chips, each in the role its state gives it
 graph_draw_vertices:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
@@ -1351,8 +1351,7 @@ graph_cut_out:
 
 // graph_traverse(w0 = 0 breadth first, 1 depth first)
 // One loop runs both walks. The queue hands back its oldest entry and the
-// stack its newest, and that single choice is the whole of the difference
-// the student is here to see.
+// stack its newest,
 graph_traverse:
     stp     fp, lr, [sp, -96]!
     mov     fp, sp
@@ -1725,8 +1724,8 @@ graph_menu_loop:
     mov     w0, 0
     mov     w1, 7
     bl      read_int_range
-    mov     w19, w0                         // printf hands back a count, so
-    bl      ansi_hide_cursor                // the choice has to be parked here
+    mov     w19, w0                         // ansi_hide_cursor calls printf,
+    bl      ansi_hide_cursor                // which overwrites w0
 
     cmp     w19, 0
     b.eq    graph_menu_exit
