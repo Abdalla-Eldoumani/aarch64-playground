@@ -350,7 +350,7 @@ pub fn execute(
                     FpUnaryOp::Fneg => -v,
                     FpUnaryOp::Fabs => v.abs(),
                     // IEEE: a negative operand yields NaN, never a trap.
-                    FpUnaryOp::Fsqrt => v.sqrt(),
+                    FpUnaryOp::Fsqrt => default_nan_if_new(v.sqrt(), &[v]),
                 };
                 regs.write_fpr_f32(*fd, result);
             } else {
@@ -358,7 +358,7 @@ pub fn execute(
                 let result = match op {
                     FpUnaryOp::Fneg => -v,
                     FpUnaryOp::Fabs => v.abs(),
-                    FpUnaryOp::Fsqrt => v.sqrt(),
+                    FpUnaryOp::Fsqrt => default_nan_if_new(v.sqrt(), &[v]),
                 };
                 regs.write_fpr_f64(*fd, result);
             }
@@ -1123,6 +1123,22 @@ fn fp_min_num<T: FpOperand>(a: T, b: T) -> T {
     fp_min(a, b)
 }
 
+/// Replace a NaN this operation GENERATED with the AArch64 default NaN
+/// (0x7FF8000000000000 for D, 0x7FC00000 for S), which is positive. An
+/// invalid operation on x86-64 answers with that host's own "indefinite"
+/// QNaN instead, whose sign bit is set, so `sqrt(-4.0)` and `0.0 / 0.0`
+/// reach the register file as `-nan` where the course servers print
+/// `nan`. A NaN that arrived in an OPERAND is left exactly as it is:
+/// FPCR.DN is clear here, so a quiet NaN propagates with its own sign and
+/// payload.
+fn default_nan_if_new<T: FpOperand>(result: T, sources: &[T]) -> T {
+    if result.is_nan() && !sources.iter().any(|s| s.is_nan()) {
+        T::NAN
+    } else {
+        result
+    }
+}
+
 fn exec_fp_binary(
     op: FpBinOp,
     fd: u8,
@@ -1138,13 +1154,14 @@ fn exec_fp_binary(
         let a = regs.read_fpr_f32(fn_);
         let b = regs.read_fpr_f32(fm);
         let result = match op {
-            FpBinOp::Fadd => a + b,
-            FpBinOp::Fsub => a - b,
-            FpBinOp::Fmul => a * b,
-            FpBinOp::Fdiv => a / b,
+            FpBinOp::Fadd => default_nan_if_new(a + b, &[a, b]),
+            FpBinOp::Fsub => default_nan_if_new(a - b, &[a, b]),
+            FpBinOp::Fmul => default_nan_if_new(a * b, &[a, b]),
+            FpBinOp::Fdiv => default_nan_if_new(a / b, &[a, b]),
             // The sign flips on the PRODUCT, which is what makes
             // fnmul of +0.0 and 3.0 a -0.0 that (-a) * b never produces.
-            FpBinOp::Fnmul => -(a * b),
+            // FPNeg runs after FPMul, so the product is normalized first.
+            FpBinOp::Fnmul => -default_nan_if_new(a * b, &[a, b]),
             FpBinOp::Fmax => fp_max(a, b),
             FpBinOp::Fmin => fp_min(a, b),
             FpBinOp::Fmaxnm => fp_max_num(a, b),
@@ -1155,11 +1172,11 @@ fn exec_fp_binary(
         let a = regs.read_fpr_f64(fn_);
         let b = regs.read_fpr_f64(fm);
         let result = match op {
-            FpBinOp::Fadd => a + b,
-            FpBinOp::Fsub => a - b,
-            FpBinOp::Fmul => a * b,
-            FpBinOp::Fdiv => a / b,
-            FpBinOp::Fnmul => -(a * b),
+            FpBinOp::Fadd => default_nan_if_new(a + b, &[a, b]),
+            FpBinOp::Fsub => default_nan_if_new(a - b, &[a, b]),
+            FpBinOp::Fmul => default_nan_if_new(a * b, &[a, b]),
+            FpBinOp::Fdiv => default_nan_if_new(a / b, &[a, b]),
+            FpBinOp::Fnmul => -default_nan_if_new(a * b, &[a, b]),
             FpBinOp::Fmax => fp_max(a, b),
             FpBinOp::Fmin => fp_min(a, b),
             FpBinOp::Fmaxnm => fp_max_num(a, b),
@@ -1773,6 +1790,57 @@ mod tests {
         let instr = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: false };
         execute(&instr, &mut regs, &mut mem).unwrap();
         assert!(regs.read_fpr_f64(0).is_nan());
+    }
+
+    #[test]
+    fn an_invalid_operation_writes_the_positive_default_nan() {
+        // AArch64 generates the DEFAULT NaN for an invalid operation and it
+        // is positive, which is what the servers print as `nan` rather than
+        // `-nan`. x86-64 answers the same operations with its own
+        // "indefinite" QNaN, whose sign bit is set.
+        let (mut regs, mut mem) = fresh();
+        let d_default = 0x7FF8_0000_0000_0000u64;
+        let s_default = 0x7FC0_0000u64;
+
+        regs.write_fpr_f64(1, -4.0);
+        let sqrt_d = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: false };
+        execute(&sqrt_d, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), d_default, "fsqrt d");
+
+        regs.write_fpr_f32(1, -4.0);
+        let sqrt_s = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: true };
+        execute(&sqrt_s, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), s_default, "fsqrt s");
+
+        for (op, a, b, what) in [
+            (FpBinOp::Fdiv, 0.0f64, 0.0f64, "0/0"),
+            (FpBinOp::Fsub, f64::INFINITY, f64::INFINITY, "inf - inf"),
+            (FpBinOp::Fmul, 0.0f64, f64::INFINITY, "0 * inf"),
+            (FpBinOp::Fadd, f64::INFINITY, f64::NEG_INFINITY, "inf + -inf"),
+        ] {
+            regs.write_fpr_f64(1, a);
+            regs.write_fpr_f64(2, b);
+            let instr = Instruction::FpBinary { op, fd: 0, fn_: 1, fm: 2, single: false };
+            execute(&instr, &mut regs, &mut mem).unwrap();
+            assert_eq!(regs.read_fpr_bits(0), d_default, "{what}");
+
+            regs.write_fpr_f32(1, a as f32);
+            regs.write_fpr_f32(2, b as f32);
+            let instr = Instruction::FpBinary { op, fd: 0, fn_: 1, fm: 2, single: true };
+            execute(&instr, &mut regs, &mut mem).unwrap();
+            assert_eq!(regs.read_fpr_bits(0), s_default, "{what} single");
+        }
+
+        // An operand NaN is NOT regenerated: it propagates with the sign and
+        // payload it arrived with, which is what FPCR.DN = 0 means.
+        let carried = 0xFFF8_0000_0000_00FFu64;
+        regs.write_fpr_bits(1, carried);
+        regs.write_fpr_f64(2, 1.0);
+        let add = Instruction::FpBinary {
+            op: FpBinOp::Fadd, fd: 0, fn_: 1, fm: 2, single: false,
+        };
+        execute(&add, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), carried, "an operand NaN propagates");
     }
 
     #[test]
