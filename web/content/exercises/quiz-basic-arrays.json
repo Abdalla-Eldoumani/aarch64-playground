@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Arrays and Structures - Fundamentals",
+  "title": "Quiz: arrays and structures",
   "slug": "quiz-basic-arrays",
   "order": 47,
   "topic": "arrays",
   "difficulty": "intro",
   "variant": "quiz",
-  "prompt": "Work through how arrays and structures are laid out in memory, and how AArch64 code computes the address of a single element or field.",
+  "prompt": "How arrays and structures are laid out in memory, and how AArch64 code computes the address of a single element or field.",
   "questions": [
     {
       "question": "A function declares a local array of ten int values. Where does that array live while the function is running?",
