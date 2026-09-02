@@ -18,9 +18,14 @@
  * expected values); the RESULTS panel shows expected-vs-actual as feedback but
  * the view never holds or renders a reference solution. An author/student stdin
  * is bounded by validateStdin before it reaches the embed.
+ *
+ * The editor buffer survives a reload: it starts from the answer saved for
+ * this slug when there is one (otherwise the author's starter), writes back
+ * debounced, and the restore control puts the starter back and forgets the
+ * saved answer, so an explicit restore is never undone by the store.
  */
 
-import { useId, useRef, useState, type JSX, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type JSX, type ReactNode } from "react";
 import { buildShareHash } from "@/lib/playground/share";
 import type {
   ResultAssertion,
@@ -29,6 +34,7 @@ import type {
 } from "@/lib/content/exercise-schema";
 import { checkExercise, type CheckResult } from "@/lib/content/exercise-checker";
 import { markSolved } from "@/lib/playground/solved-state";
+import { clearAnswer, readAnswer, saveAnswer } from "@/lib/playground/exercise-answers";
 import { validateStdin } from "@/lib/playground/upload-guard";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { Callout } from "@/components/ui/Callout";
@@ -48,6 +54,23 @@ import {
 function safeStdin(stdin: string | undefined): string | undefined {
   if (stdin === undefined) return undefined;
   return validateStdin(stdin) === null ? stdin : undefined;
+}
+
+/**
+ * 500 ms, the playground autosave's own debounce: a typing burst writes
+ * once, and a pause is enough to have the work stored.
+ */
+const ANSWER_SAVE_DEBOUNCE_MS = 500;
+
+const RESTORE_CLASS =
+  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] px-3 font-mono " +
+  "text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] outline-none " +
+  "transition-colors hover:text-[var(--text-primary)] focus-visible:[box-shadow:var(--ring)]";
+
+/** The buffer this slug reopens with: the saved answer, else the starter. */
+function openingSource(slug: string, starter: string): string {
+  const saved = readAnswer(slug);
+  return saved?.kind === "write" ? saved.source : starter;
 }
 
 const CRITERION_CODE =
@@ -153,6 +176,59 @@ export function ExerciseView({
   const embedRef = useRef<EmbeddablePlaygroundHandle>(null);
   const specHeadingId = useId();
 
+  // Read once, on this client component's first render. The checker paints no
+  // program text before the hub engages, so a buffer the server could not see
+  // cannot mismatch the hydrated DOM.
+  const [startSource] = useState(() => openingSource(exercise.slug, exercise.starter));
+  const lastSavedRef = useRef(startSource);
+  const pendingRef = useRef<string | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const persist = useCallback(
+    (next: string) => {
+      if (next === lastSavedRef.current) return;
+      lastSavedRef.current = next;
+      // An untouched buffer is nothing to remember, and a student back at the
+      // starter has asked for the slot to be empty.
+      if (next === exercise.starter) clearAnswer(exercise.slug);
+      else saveAnswer(exercise.slug, { kind: "write", source: next });
+    },
+    [exercise.slug, exercise.starter],
+  );
+
+  // Debounced through refs rather than state: a keystroke that re-rendered
+  // this view would re-render the prompt and the whole specification table.
+  const handleSourceChange = useCallback(
+    (next: string) => {
+      pendingRef.current = next;
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = null;
+        pendingRef.current = null;
+        persist(next);
+      }, ANSWER_SAVE_DEBOUNCE_MS);
+    },
+    [persist],
+  );
+
+  // Leaving mid-edit must not cost the student the debounce window.
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (pendingRef.current !== null) persist(pendingRef.current);
+    },
+    [persist],
+  );
+
+  const restoreStarter = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    pendingRef.current = null;
+    lastSavedRef.current = exercise.starter;
+    clearAnswer(exercise.slug);
+    embedRef.current?.loadSource(exercise.starter);
+  }, [exercise.slug, exercise.starter]);
+
   const handleCheck = (snapshot: EmbeddableState): void => {
     // Read the LIVE editor source so structural checks run on what the student
     // wrote, falling back to the starter before the embed has registered.
@@ -222,22 +298,29 @@ export function ExerciseView({
           <EmbeddablePlayground
             ref={embedRef}
             chrome="checker"
-            startSource={exercise.starter}
+            startSource={startSource}
             startArgs={exercise.args}
             startStdin={safeStdin(exercise.stdin)}
             readOnly={false}
+            onSourceChange={handleSourceChange}
             onCheck={handleCheck}
           />
         </div>
 
-        <OpenInPlayground
-          href={`/playground${buildShareHash({
-            source: exercise.starter,
-            args: exercise.args,
-            stdin: safeStdin(exercise.stdin),
-          })}`}
-          className="self-start"
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <OpenInPlayground
+            href={`/playground${buildShareHash({
+              source: exercise.starter,
+              args: exercise.args,
+              stdin: safeStdin(exercise.stdin),
+            })}`}
+          />
+          {/* The embed's own reset clears the MACHINE; nothing else puts the
+              author's starter back once a saved answer reopens with it. */}
+          <button type="button" onClick={restoreStarter} className={RESTORE_CLASS}>
+            restore starter
+          </button>
+        </div>
 
         <div role="status">
           {result && (
