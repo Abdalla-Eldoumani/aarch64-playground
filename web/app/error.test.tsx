@@ -28,7 +28,7 @@ describe("route error page", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("something broke");
     expect(screen.getByText(/hit an error while rendering this page/)).toBeTruthy();
     expect(
-      screen.getByText("brk #0 -- execution stopped before this page finished"),
+      screen.getByText("brk #0 · execution stopped before this page finished"),
     ).toBeTruthy();
   });
 

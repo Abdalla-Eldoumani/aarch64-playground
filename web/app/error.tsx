@@ -84,7 +84,7 @@ export default function Error({
       </p>
 
       <p className="rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">
-        brk #0 -- execution stopped before this page finished
+        brk #0 · execution stopped before this page finished
       </p>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
