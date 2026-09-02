@@ -112,6 +112,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   SXTW: { summary: "Sign-extend a word to 64-bit Xd.", example: "sxtw x0, w1", cExample: "Xd = (long)(int)Wn;" },
   UXTB: { summary: "Zero-extend a byte into Wd (alias for `UBFM`).", example: "uxtb w0, w1", cExample: "Rd = (unsigned char)Rn;" },
   UXTH: { summary: "Zero-extend a halfword into Wd.", example: "uxth w0, w1", cExample: "Rd = (unsigned short)Rn;" },
+  UXTW: {
+    summary: "Zero-extend a word into Xd.",
+    details: ["GAS assembles it as `MOV Wd, Wn`: a W-register write clears the top half, so no separate bitfield word is needed. The counterpart of `SXTW`."],
+    example: "uxtw x0, w1",
+    cExample: "Xd = (unsigned long)(unsigned int)Wn;",
+  },
   MUL: { summary: "Rd = Rn * Rm. Low bits only.", cExample: "Rd = Rn * Rm;" },
   MADD: { summary: "Rd = Ra + Rn * Rm.", cExample: "Rd = Ra + Rn * Rm;" },
   MSUB: { summary: "Rd = Ra - Rn * Rm.", cExample: "Rd = Ra - Rn * Rm;" },

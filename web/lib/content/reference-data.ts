@@ -832,6 +832,14 @@ lsl     w9, w9, 8           // w9 = 0x123400
 uxth    w10, w9             // low halfword only: w10 = 0x3400`,
   },
   {
+    mnemonic: "uxtw",
+    category: "Data processing",
+    syntax: "uxtw xd, wn",
+    example: `mov     x1, -1
+uxtw    x2, w1              // x2 = 0xffffffff
+sxtw    x3, w1              // x3 = -1: the contrast`,
+  },
+  {
     mnemonic: "ubfx",
     category: "Data processing",
     syntax: "ubfx xd, xn, #lsb, #width",
