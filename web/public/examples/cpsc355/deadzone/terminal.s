@@ -104,8 +104,8 @@ terminal_init:
                 // Set VMIN = 0, VTIME = 0 for non-blocking reads
                 add     x1, x0, TERMIOS_CC
                 mov     w2, 0
-                strb    w2, [x1, TERMIOS_CC_VMIN]
-                strb    w2, [x1, TERMIOS_CC_VTIME]
+                strb    w2, [x1, TERMIOS_CC_VMIN]  // VMIN = 0
+                strb    w2, [x1, TERMIOS_CC_VTIME] // VTIME = 0
 
                 // Apply new terminal attributes
                 mov     x0, STDIN
