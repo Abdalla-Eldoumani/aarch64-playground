@@ -32,9 +32,9 @@ export function FirstRunState({ onAssemble }: FirstRunStateProps) {
       </p>
       <p className="max-w-sm font-sans text-[13px] leading-relaxed text-[var(--text-secondary)]">
         write or paste a program on the left, then press{" "}
-        <span className="font-mono text-[var(--text-primary)]">Assemble</span> to
-        load it. Step one instruction at a time or Run to the end, and the
-        registers, stack, and memory update as it executes.
+        <span className="font-mono text-[var(--text-primary)]">assemble</span> to
+        load it. Press step to advance one instruction at a time, or run to go
+        to the end, and the registers, stack, and memory update as it executes.
       </p>
       {onAssemble && (
         <Button variant="primary" onClick={onAssemble} aria-label="assemble">
