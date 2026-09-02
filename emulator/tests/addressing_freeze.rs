@@ -5,8 +5,8 @@
 //! whatever it rejects to `parse_immediate`, so a mis-ordered check turns
 //! a register-offset load into an immediate-offset load that assembles
 //! and runs and reads the wrong address. Nothing downstream complains.
-//! So the guard cannot be a handful of asserts: it has to be a spelling
-//! corpus whose every outcome is pinned byte-for-byte.
+//! So the guard is a spelling corpus whose every outcome is pinned byte
+//! for byte.
 //!
 //! Every row's expected outcome comes from RUNNING the encoder, never
 //! from a judgment about what the encoding ought to be. The fixture is a
@@ -17,7 +17,7 @@
 //! Mode A (default): compare the generated corpus against
 //! tests/addressing-freeze.txt and fail listing every divergence.
 //! Mode B (`ADDRESSING_FREEZE_REWRITE=1`): rewrite the fixture from
-//! current behaviour. Regenerating is a deliberate act -- never a way to
+//! current behaviour. Regenerating is a deliberate act, never a way to
 //! make a failing mode A run pass.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -92,17 +92,16 @@ const FORMS: &[&str] = &[
 
 const BASES: &[&str] = &["x0", "x15", "sp", "fp"];
 
-/// Indices into `FORMS` -- one spelling per branch the parser can take.
+/// Indices into `FORMS`: one spelling per branch the parser can take.
 /// The base register plays no part in choosing the branch, so the
 /// non-x0 bases ride this subset instead of the full cross.
 const FORM_SPREAD: &[usize] = &[0, 1, 3, 5, 6, 8, 11, 13];
 
-/// Spellings the parser is expected to turn away -- plus a few it does
+/// Spellings the parser is expected to turn away, plus a few it does
 /// NOT turn away today (`[sp, w1]` picks up an implicit UXTW, and
 /// `[x0, #8, #9]` silently drops the third operand). Whichever way each
-/// one goes, the fixture pins it: a rewrite that "fixes" one of these
-/// quirks is still a behaviour change and has to be argued for, not
-/// slipped in.
+/// one goes, the fixture pins it: a rewrite that changes one of these
+/// quirks changes behaviour and shows up as a fixture diff.
 const REJECTS: &[&str] = &[
     "[x0, #8",
     "[x0,,x1]",
@@ -128,7 +127,7 @@ const REJECTS: &[&str] = &[
 /// or a malformed tail depending on whether the `!` is looked at first,
 /// `[x0] #8` is a post-index only because a non-empty tail is enough,
 /// `[[x0]]` hinges on the first `]` winning over the last. Nobody writes
-/// these on purpose -- they are here because the order that resolves
+/// these on purpose; they are here because the order that resolves
 /// them was undocumented, and a rewrite that reorders the checks changes
 /// what they encode to without changing anything that looks wrong.
 const ORDER_QUIRKS: &[&str] = &[
@@ -188,8 +187,8 @@ fn corpus() -> Vec<String> {
         }
     }
 
-    // 2. the other three bases -- x15 (a high numbered base), sp and fp
-    // (the alias spellings the discriminator has to read as registers) --
+    // 2. the other three bases: x15 (a high numbered base), sp and fp
+    // (the alias spellings the discriminator has to read as registers),
     // over a spread of widths rather than the full cross.
     for (prefix, _, _) in INSTS
         .iter()
@@ -230,9 +229,9 @@ fn corpus() -> Vec<String> {
     // 5. per-width scale edges. The unsigned-offset form scales the
     // immediate by the access width, so the last in-range value, the
     // first out-of-range one, and a misaligned one are three different
-    // code paths -- and the misaligned/negative ones silently fall
-    // through to the unscaled LDUR/STUR encoding, which is the whole
-    // reason this file exists.
+    // code paths, and the misaligned/negative ones silently fall
+    // through to the unscaled LDUR/STUR encoding, the silent case this
+    // file was written for.
     for (prefix, scale, pair) in INSTS {
         let offsets: Vec<i64> = if *pair {
             vec![63 * scale, 64 * scale, -64 * scale, -65 * scale, scale + 1]
@@ -361,7 +360,7 @@ fn addressing_mode_spellings_are_frozen() {
 
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| {
         panic!(
-            "could not read {}: {e} -- generate it with \
+            "could not read {}: {e}; generate it with \
              ADDRESSING_FREEZE_REWRITE=1 cargo test --test addressing_freeze",
             path.display()
         )
