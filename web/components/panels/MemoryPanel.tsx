@@ -36,16 +36,14 @@ const DEFAULT_ROWS = 16;
 
 /** Section bands the jump list offers, in the order it offers them. The
  *  heap, argv and host-stub bands stay out of the list on purpose: they are
- *  worth LABELLING when the window lands there, not worth a row a student
- *  scrolls past on the way to `.data`. */
+ *  labelled when the window lands there, but they are not jump targets. */
 const JUMP_SECTIONS = [".text", ".rodata", ".data", ".bss"];
 
 /** Where "stack" lands with no live sp to follow: the bottom of the last
- *  page below the stack base, which is what the panel has always offered. */
+ *  page below the stack base. */
 const STACK_LANDING = 0x7fffff00;
 
-/** The list before the exported map exists (an older local wasm build).
- *  Same labels and addresses the panel shipped with. */
+/** The list used when the wasm build exports no memory map. */
 const FALLBACK_JUMP_TARGETS: Array<{ label: string; addr: string }> = [
   { label: ".text", addr: "0x00400000" },
   { label: ".rodata", addr: "0x00500000" },
@@ -57,7 +55,7 @@ const FALLBACK_JUMP_TARGETS: Array<{ label: string; addr: string }> = [
 /**
  * The jump list, derived from the emulator's own map so the offers cannot
  * drift from the loader. "stack" follows the live sp (aligned down to the
- * 16-byte row) whenever sp is inside the stack band -- which is also the
+ * 16-byte row) whenever sp is inside the stack band, which is also the
  * "a program is loaded" test, since a reset machine parks sp at the band's
  * exclusive end and a broken prologue leaves it at zero.
  */
@@ -98,7 +96,7 @@ export function MemoryPanel({
   const [rows] = useState(DEFAULT_ROWS);
   const zoom = useZoom("memory");
   // 16 bytes/row reads naturally on a desktop monospace grid; below sm
-  // the row overflows the viewport, so collapse to 8/row -- still
+  // the row overflows the viewport, so collapse to 8/row, still
   // 16-byte aligned so addresses stay in even multiples.
   const bp = useBreakpoint();
   const bytesPerRow = isAtLeast(bp, "sm") ? 16 : 8;
@@ -112,7 +110,7 @@ export function MemoryPanel({
   const targets = useMemo(() => jumpTargets(regions, spValue), [regions, spValue]);
   // What the trigger reads: the band the window is actually in, updated live
   // as the student types. A bad address holds the last good window, so the
-  // label keeps naming that window's region -- it describes what is on
+  // label keeps naming that window's region: it describes what is on
   // screen, and the alert below already reports the rejection. Without the
   // map there is nothing to name, so the trigger keeps its "jump..." text.
   const region = regions.length > 0 ? regionFor(addr, regions) : null;
