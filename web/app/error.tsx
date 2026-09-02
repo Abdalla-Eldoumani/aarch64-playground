@@ -6,13 +6,9 @@ import { bundleToMarkdown } from "@/lib/playground/diagnostic-bundle";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 
 /**
- * The route error boundary, wearing the 404's fault-card register: a document
- * rule naming the fault by its hex address, the serif head, a mono gloss in the
- * decode strip's voice, and the two ways out (retry, or back to the
- * playground). A student who hits this can hand over a small markdown report
- * with one click -- the autosaved program plus the error itself, which is
- * everything an error page can honestly know. There is no emulator here to
- * snapshot, so the report carries no machine state.
+ * The route error boundary, in the 404's fault-card register. The copy button
+ * hands over a markdown report: the autosaved program and the error. There is
+ * no emulator here to snapshot, so the report carries no machine state.
  *
  * This boundary sits above the (site) layout, so it supplies the route's own
  * <main id="main"> for the root layout's skip link.
@@ -35,9 +31,8 @@ export default function Error({
       ? `${error.message} (digest ${error.digest})`
       : error.message;
     const markdown = bundleToMarkdown({
-      // The autosaved buffer is the one piece of the student's work an error
-      // page can read; an unreadable or absent autosave reports as empty
-      // rather than failing the copy.
+      // An unreadable or absent autosave reports as empty rather than failing
+      // the copy.
       source: loadAutoSavedBuffer() ?? "",
       error: detail,
     });
