@@ -10,13 +10,8 @@
   "body": [
     {
       "type": "callout",
-      "variant": "note",
-      "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
-    },
-    {
-      "type": "callout",
       "variant": "prereq",
-      "markdown": "Before starting this lesson, you should have a basic understanding of the following prerequisite lessons:\n\n- [Printing Hello World in ARMv8 AArch64 Assembly](/learn/printing-strings-hello-world)\n\n- [Printing Variables in ARMv8 AArch64 Assembly](/learn/printing-defined-variables)\n\n- [Conditionals in ARMv8 AArch64 Assembly](/learn/assembly-conditionals-basics)\n\n- [Pre-test Loop in ARMv8 AArch64 Assembly](/learn/pretest-loop)"
+      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n\n- [Printing a variable from .data](/learn/printing-defined-variables)\n\n- [Conditionals with cmp and b.cond](/learn/assembly-conditionals-basics)\n\n- [Pre-test loops](/learn/pretest-loop)"
     },
     {
         "type": "prose",
@@ -24,7 +19,7 @@
     },
     {
         "type": "prose",
-        "markdown" : "## The Definition\n\nA `post-test` loop is a type of loop in which the loop condition is evaluated after each iteration, including the first. In other words, the loop body is executed before the condition is evaluated to determine whether the loop should continue. Consequently, a `post-test` loop executes at least once, as the loop body is never skipped during the initial iteration, even if the condition is initially `false`. \n\nThe implementation of this type of loop in high-level programming languages such as C is commonly achieved using a `do-while` loop, in which the loop condition is evaluated after each iteration of the loop body. The following code demonstrates an example of a `post-test` loop implemented in C."
+        "markdown" : "## What a post-test loop is\n\nA `post-test` loop is a type of loop in which the loop condition is evaluated after each iteration, including the first. In other words, the loop body is executed before the condition is evaluated to determine whether the loop should continue. Consequently, a `post-test` loop executes at least once, as the loop body is never skipped during the initial iteration, even if the condition is initially `false`. \n\nThe implementation of this type of loop in high-level programming languages such as C is commonly achieved using a `do-while` loop, in which the loop condition is evaluated after each iteration of the loop body. The following code demonstrates an example of a `post-test` loop implemented in C."
     },
     {
         "type": "code",
@@ -42,7 +37,7 @@
     },
     {
         "type" : "prose",
-        "markdown": "## The Logic Behind It\nBased on the observations from the loops above, the underlying logic can be simplified as follows:"
+        "markdown": "## The logic behind it\nBased on the observations from the loops above, the underlying logic can be simplified as follows:"
     },
     {
         "type": "code",
@@ -55,7 +50,7 @@
     },
     {
         "type": "prose",
-        "markdown": "## The Assembly Implementation\nThe above C code and pseudocode can be implemented in Assembly as follows:"
+        "markdown": "## The assembly implementation\nThe above C code and pseudocode can be implemented in Assembly as follows:"
     },
     {
         "type": "code",
@@ -68,7 +63,7 @@
     },
     {
         "type": "prose",
-        "markdown": "## Putting it All Together\nThe following code demonstrates the complete process of implementing a `post-test` loop in Assembly, including the pseudo-ops, program prologue, and epilogue."
+        "markdown": "## The whole program\nThe following code demonstrates the complete process of implementing a `post-test` loop in Assembly, including the pseudo-ops, program prologue, and epilogue."
     },
     {
         "type": "editor",
