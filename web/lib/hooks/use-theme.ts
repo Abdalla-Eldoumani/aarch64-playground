@@ -14,16 +14,16 @@ function isTheme(v: unknown): v is Theme {
 
 // One module-level store, so every consumer (the toolbar toggle, the command
 // palette action, and each ThemeControl) reads and writes the same value rather
-// than holding independent useState copies that drift the moment either is used.
+// than holding independent useState copies that drift apart.
 const listeners = new Set<() => void>();
 let current: Theme | null = null;
 
-// Resolve the active theme once, with the original precedence: a persisted
+// Resolve the active theme once, in precedence order: a persisted
 // choice, then the OS preference, then dark. The result is memoized in
 // `current` so useSyncExternalStore always gets a stable snapshot.
 function read(): Theme {
   if (current) return current;
-  // The window guard stays: matchMedia below needs it, not just the read.
+  // matchMedia below needs the window guard, not just the read.
   if (typeof window === "undefined") return "dark";
   const saved = safeGetItem(KEY);
   if (isTheme(saved)) return (current = saved);
@@ -33,8 +33,8 @@ function read(): Theme {
   return current;
 }
 
-// Reflect the theme on the root element and persist it, then wake every
-// consumer so all theme controls re-render against the one shared value.
+// Wake every consumer so all theme controls re-render against the one
+// shared value.
 function write(next: Theme): void {
   current = next;
   safeSetItem(KEY, next);
@@ -68,8 +68,8 @@ export function useTheme(): [Theme, () => void, (next: Theme) => void] {
   const theme = useSyncExternalStore(subscribe, read, getServerSnapshot);
 
   // Nothing sets `data-theme` before hydration, so mirror the resolved theme
-  // onto the document on mount the way the previous effect did. The write is
-  // idempotent, so multiple mounted consumers stay consistent.
+  // onto the document on mount. The write is idempotent, so multiple mounted
+  // consumers stay consistent.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const resolved = read();
