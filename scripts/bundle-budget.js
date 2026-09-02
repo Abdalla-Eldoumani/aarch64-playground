@@ -35,8 +35,8 @@ const ROUTES = [
     name: "landing document js (every chunk / loads)",
     page: "/page",
     document: "index.html",
-    // 235,110 B brotli measured.
-    limit: 258_600,
+    // 190,872 B brotli measured.
+    limit: 210_000,
   },
   {
     name: "playground document js (every chunk /playground loads)",
