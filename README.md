@@ -28,10 +28,10 @@ Live at <https://aarch64-playground.com>.
 - **Reference** (`/reference`): a searchable instruction reference with
   worked encodings and interactive flag panels, a calling-convention guide
   with a step-through frame walk, and a pitfalls catalog with runnable
-  examples, kept in sync with what the emulator actually supports.
+  examples, kept in sync with what the emulator supports.
 - **Realistic hosted runtime**: m4 register-alias macros, GAS directives and
   sections, frame-pointer prologues, the `ldr xN, =label` literal pool, the
-  AAPCS64 `printf`/`scanf` path and the wider libc surface student and
+  AAPCS64 `printf`/`scanf` path and the wider libc surface that student and
   gcc-compiled code reach for, Linux syscalls via `svc 0`, argc/argv on
   entry, and single- and double-precision floating point (the `s`/`d`
   register views with `fcvt` between them). A tracked corpus of fifty
