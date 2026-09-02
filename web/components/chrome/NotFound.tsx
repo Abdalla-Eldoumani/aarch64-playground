@@ -36,7 +36,7 @@ export function NotFound({
       <p className="max-w-md font-sans text-sm text-[var(--text-secondary)]">{message}</p>
 
       <p className="rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">
-        b 0x404 -- branch target does not exist
+        b 0x404 · branch target does not exist
       </p>
 
       <Link

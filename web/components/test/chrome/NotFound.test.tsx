@@ -30,7 +30,7 @@ describe("NotFound", () => {
     render(<NotFound />);
     expect(screen.getByText("0x00000404")).toBeTruthy();
     expect(screen.getByText(/signal 11/i)).toBeTruthy();
-    expect(screen.getByText("b 0x404 -- branch target does not exist")).toBeTruthy();
+    expect(screen.getByText("b 0x404 · branch target does not exist")).toBeTruthy();
   });
 
   it("is the skip link's target on the 404 route", () => {
