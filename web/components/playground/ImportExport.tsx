@@ -149,10 +149,8 @@ export function ImportExport({
             const contentError = validateSource(f.body);
             if (contentError) {
               toast.error(`${f.name}: ${contentError}`);
-              // Intentional security observability: a rejected over-cap
-              // import is surfaced to the console alongside the toast, per
-              // the input-validation policy. This is the only sanctioned
-              // console use here.
+              // A rejected over-cap import goes to the console as well as the
+              // toast, per the input-validation policy.
               console.warn(`rejected over-cap source import: ${contentError}`);
               return;
             }
@@ -164,8 +162,8 @@ export function ImportExport({
           }
         })
         .catch(() => {
-          // A moved or unreadable file rejects file.text(); without this
-          // the rejection was silent and the student saw nothing at all.
+          // A moved or unreadable file rejects file.text(); without it the
+          // rejection is silent.
           toast.error("could not read those files. pick them again");
         });
     },
