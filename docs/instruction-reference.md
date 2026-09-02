@@ -167,6 +167,7 @@ The `FCVT` conversion family names its rounding mode in the mnemonic: `N` neares
 | `FNEG`   | `FNEG Dd, Dn` / `FNEG Sd, Sn`     | Flip the sign: `Fd = -Fn`.              |
 | `FABS`   | `FABS Dd, Dn` / `FABS Sd, Sn`     | Absolute value: clears the sign bit.    |
 | `FSQRT`  | `FSQRT Dd, Dn` / `FSQRT Sd, Sn`   | Square root. A negative operand gives NaN, not a fault. |
+| `FCSEL`  | `FCSEL Dd, Dn, Dm, cond` / S form  | `Fd = cond ? Fn : Fm`. The integer `CSEL` for the FP file; the flags come from an earlier `FCMP` or `CMP`. The chosen register's bits are copied, so a NaN or a signed zero passes through unchanged. Unlike `CSET` and `CINC`, this takes `AL` and `NV`, as GAS does. |
 | `FCMP`   | `FCMP Dn, Dm` / `FCMP Sn, Sm`     | Updates NZCV. Unordered sets C and V.   |
 | `FCMPE`  | same                              | The signaling form; here it sets the same flags (the emulator raises no FP exceptions). |
 | `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). |

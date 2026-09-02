@@ -563,6 +563,16 @@ pub enum Instruction {
         fm: u8,
         single: bool,
     },
+    /// FCSEL Fd, Fn, Fm, cond: the integer CSEL for the FP file. The
+    /// chosen register's BITS are copied, so a NaN or a signed zero
+    /// arrives untouched; the S form keeps only the low 32.
+    FpCondSel {
+        fd: u8,
+        fn_: u8,
+        fm: u8,
+        cond: Condition,
+        single: bool,
+    },
     /// FMOV Fd, #imm (8-bit VFP immediate, already expanded to the full
     /// IEEE 754 bit pattern -- f32 bits for the S form, f64 for D -- so
     /// the executor just writes it).
@@ -989,6 +999,14 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
             return Err(EmuError::UnknownInstruction(instr));
         };
         return Ok(Instruction::FpBinary { op: *op, fd: rd, fn_: rn, fm: rm, single });
+    }
+
+    // FCSEL: bits 11:10 = 11. The 01 neighbour is FCCMP/FCCMPE, which is
+    // out of scope and must keep falling through to the reject at the
+    // bottom rather than being folded in here.
+    if bits(instr, 11, 10) == 0b11 {
+        let cond = Condition::from_u8(bits(instr, 15, 12) as u8)?;
+        return Ok(Instruction::FpCondSel { fd: rd, fn_: rn, fm: rm, cond, single });
     }
 
     // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.

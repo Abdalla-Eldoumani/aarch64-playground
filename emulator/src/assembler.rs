@@ -163,7 +163,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
-    "FMAX", "FMIN", "FMAXNM", "FMINNM",
+    "FMAX", "FMIN", "FMAXNM", "FMINNM", "FCSEL",
     "FMADD", "FMSUB", "FNMADD", "FNMSUB",
     "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
     // the rest of the float-to-integer rounding modes
@@ -308,6 +308,7 @@ fn encode_line(
         "FMIN" => encode_fp_binary(&ops, "fmin", line_num),
         "FMAXNM" => encode_fp_binary(&ops, "fmaxnm", line_num),
         "FMINNM" => encode_fp_binary(&ops, "fminnm", line_num),
+        "FCSEL" => encode_fcsel(&ops, line_num),
         "FMADD" => encode_fp_mul_add(&ops, "fmadd", line_num),
         "FMSUB" => encode_fp_mul_add(&ops, "fmsub", line_num),
         "FNMADD" => encode_fp_mul_add(&ops, "fnmadd", line_num),
@@ -514,6 +515,17 @@ fn parse_condition(s: &str, line_num: usize) -> Result<u8, EmuError> {
         Some(bits) => Ok(bits),
         None => asm_err(line_num, &format!("unknown condition: {s}")),
     }
+}
+
+/// The condition operand of the instructions GAS lets carry `nv`.
+/// `CONDITIONS` leaves NV out because no conditional branch spells it
+/// (GAS refuses `bnv`), but `ccmp`, `ccmn` and `fcsel` all take it, and
+/// the hardware runs condition 1111 as always, exactly like AL.
+fn parse_condition_allowing_nv(s: &str, line_num: usize) -> Result<u8, EmuError> {
+    if s.trim().eq_ignore_ascii_case("NV") {
+        return Ok(0b1111);
+    }
+    parse_condition(s, line_num)
 }
 
 /// Look an uppercase condition spelling up in the shared table.
@@ -1548,6 +1560,26 @@ fn encode_fp_mul_add(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuErro
         | ((fm as u32) << 16)
         | (u32::from(*o0) << 15)
         | ((fa as u32) << 10)
+        | ((fn_ as u32) << 5)
+        | (fd as u32))
+}
+
+/// FCSEL Fd, Fn, Fm, cond: the integer CSEL for the FP file. Bits 11:10
+/// are 11, which is disjoint from the 2-source guard (10), FCMP (00) and
+/// FCCMP (01), so the four classes share the encoding space cleanly.
+fn encode_fcsel(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(ln, "fcsel requires 4 operands: fcsel fd, fn, fm, cond");
+    }
+    let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let (fm, wm) = parse_fp_register(ops[2], ln)?;
+    let width = require_same_fp_width("fcsel", &[wd, wn, wm], ln)?;
+    let cond = parse_condition_allowing_nv(ops[3], ln)?;
+    Ok(0x1E20_0C00
+        | fp_ftype(width)
+        | ((fm as u32) << 16)
+        | ((cond as u32) << 12)
         | ((fn_ as u32) << 5)
         | (fd as u32))
 }
@@ -4279,6 +4311,77 @@ svc 0").unwrap();
         assert_eq!(bits(27), 0x40A0_0000);
         assert_eq!(bits(30), 0x0000_0000);
         assert_eq!(bits(31), 0x8000_0000);
+    }
+
+    #[test]
+    fn fcsel_picks_the_first_source_when_the_condition_holds() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("fcsel d0, d1, d2, eq", 0x1E62_0C20u32),
+            ("fcsel s0, s1, s2, ne", 0x1E22_1C20),
+            ("fcsel d0, d1, d2, lt", 0x1E62_BC20),
+            // GAS accepts AL and NV here, unlike cinc and its siblings.
+            ("fcsel d0, d1, d2, al", 0x1E62_EC20),
+            ("fcsel d0, d1, d2, nv", 0x1E62_FC20),
+            ("fcsel s0, s1, s2, al", 0x1E22_EC20),
+            ("fcsel s0, s1, s2, nv", 0x1E22_FC20),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let err = encode_line("fcsel d0, d1, s2, eq", 0, &labels, 1).unwrap_err().to_string();
+        assert!(err.contains("all S or all D"), "{err}");
+        let source = r#"
+            FMOV D1, 1.5
+            FMOV D2, 2.5
+            MOV W0, #5
+            CMP W0, #5
+            FCSEL D3, D1, D2, EQ
+            CMP W0, #4
+            FCSEL D4, D1, D2, EQ
+            CMP W0, #9
+            FCSEL D5, D1, D2, LT
+            CMP W0, #1
+            FCSEL D6, D1, D2, LT
+            FCSEL D13, D1, D2, AL
+            FCSEL D14, D1, D2, NV
+            MOVZ X2, #0x7FF8, LSL #48
+            FMOV D8, X2
+            CMP W0, #5
+            FCSEL D9, D8, D2, EQ
+            FMOV D10, XZR
+            FNEG D11, D10
+            FCSEL D12, D11, D2, EQ
+            MOVZ X1, #0x3FC0, LSL #16
+            MOVK X1, #0x5678, LSL #32
+            MOVK X1, #0x1234, LSL #48
+            FMOV D20, X1
+            FMOV D21, XZR
+            CMP W0, #1
+            FCSEL S22, S20, S21, NE
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(60).unwrap();
+        let bits = |r: u8| cpu.regs.read_fpr_bits(r);
+        assert_eq!(bits(3), 0x3FF8_0000_0000_0000, "eq holds: the first source");
+        assert_eq!(bits(4), 0x4004_0000_0000_0000, "eq fails: the second");
+        assert_eq!(bits(5), 0x3FF8_0000_0000_0000);
+        assert_eq!(bits(6), 0x4004_0000_0000_0000);
+        // AL and NV both run as always, so they take the first source
+        // even with the flags left NE by the compare above.
+        assert_eq!(bits(13), 0x3FF8_0000_0000_0000);
+        assert_eq!(bits(14), 0x3FF8_0000_0000_0000);
+        // The chosen source is copied, never compared: a NaN and a
+        // negative zero arrive with their bits intact.
+        assert_eq!(bits(9), 0x7FF8_0000_0000_0000);
+        assert_eq!(bits(12), 0x8000_0000_0000_0000);
+        // The S form keeps the low 32 bits only. The source carries a
+        // nonzero upper half on purpose: a 64-bit copy answers
+        // 0x1234_5678_3FC0_0000 here.
+        assert_eq!(bits(22), 0x3FC0_0000);
     }
 
     #[test]

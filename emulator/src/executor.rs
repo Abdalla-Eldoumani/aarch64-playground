@@ -286,6 +286,14 @@ pub fn execute(
             regs.write_fpr_bits(*fd, v);
             Ok(ExecResult::Advance)
         }
+        Instruction::FpCondSel { fd, fn_, fm, cond, single } => {
+            // Bits, not values: the chosen source may be a NaN or a
+            // signed zero, and neither survives a compare-and-rebuild.
+            let src = if regs.nzcv.check(*cond) { *fn_ } else { *fm };
+            let v = regs.read_fpr_bits(src);
+            regs.write_fpr_bits(*fd, if *single { v & 0xFFFF_FFFF } else { v });
+            Ok(ExecResult::Advance)
+        }
         Instruction::FpScvtfFp { fd, fn_, single } => {
             // The integer bits already sit in Fn; convert at the
             // register's own width. S results are an f32 pattern in the
