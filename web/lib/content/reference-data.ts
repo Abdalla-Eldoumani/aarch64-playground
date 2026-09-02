@@ -403,7 +403,7 @@ main:
         mov     fp, sp
 
         ldr     x0, =msg
-        bl      printf          // lr = the next line; printf rides it back
+        bl      printf          // lr = the next line, where printf returns
 
         mov     w0, 0
         ldp     fp, lr, [sp], 16
@@ -458,7 +458,7 @@ triple:
 const runSvc = `// svc 0 dispatches on x8: 64 is write(fd, buf, count)
         .data
 msg:    .string "written by the raw syscall\\n"
-len = . - msg - 1
+len = . - msg - 1               // length without the NUL
 
         .text
         .balign 4
@@ -542,7 +542,7 @@ sub     x10, x9, 8          // x10 = 42`,
     category: "Data processing",
     syntax: "subs xd, xn, xm / subs xd, xn, #imm",
     example: `mov     w9, 3
-subs    w10, w9, 5          // w10 = -2 and n is set: the branch fuel`,
+subs    w10, w9, 5          // w10 = -2 and n is set: b.lt reads that flag`,
   },
   {
     mnemonic: "adc",
@@ -579,7 +579,7 @@ mov     x12, 1
 mov     x13, 0
 sbc     x14, x12, x13       // high half = 1 - 0 - 1 = 0`,
     gotchas: [
-      "the carry is the not-borrow: c set means the previous subtraction did NOT borrow, so nothing extra comes off.",
+      "the carry is the not-borrow: c set means the previous subtraction did not borrow, so nothing extra comes off.",
     ],
   },
   {
@@ -725,7 +725,7 @@ umnegl  x9, w1, w2          // x9 = 0xfffffffb0000000f`,
     syntax: "udiv xd, xn, xm",
     example: `mov     x9, 42
 mov     x10, 5
-udiv    x11, x9, x10        // x11 = 8: the remainder is simply gone`,
+udiv    x11, x9, x10        // x11 = 8: the remainder is discarded`,
     gotchas: [
       "a zero divisor writes zero instead of trapping, so guard the divisor yourself when zero is possible.",
       "no remainder comes back; recover it with `msub xr, xq, xm, xn` after the divide.",
@@ -889,7 +889,7 @@ lsr     w10, w9, 4          // w10 = 3: unsigned divide by 16`,
     syntax: "asr xd, xn, #imm",
     example: `mov     w9, 32
 neg     w9, w9              // w9 = -32
-asr     w10, w9, 2          // w10 = -8: the sign bit rides along`,
+asr     w10, w9, 2          // w10 = -8: asr copies the sign bit down`,
   },
   {
     mnemonic: "ror",
@@ -949,7 +949,7 @@ uxth    w10, w9             // low halfword only: w10 = 0x3400`,
     syntax: "uxtw xd, wn",
     example: `mov     x1, -1
 uxtw    x2, w1              // x2 = 0xffffffff
-sxtw    x3, w1              // x3 = -1: the contrast`,
+sxtw    x3, w1              // x3 = -1: sxtw carries the sign, uxtw does not`,
   },
   {
     mnemonic: "ubfx",
@@ -1004,7 +1004,7 @@ ubfiz   x2, x1, 4, 2        // x2 = 0x20: two bits, placed at bit 4, zeros above
     example: `mov     x1, 2               // field 0b10, top bit set
 sbfiz   x2, x1, 4, 2        // x2 = 0xffffffffffffffe0: the sign fills upward`,
     gotchas: [
-      "the sign comes from the top bit of the FIELD, not of the source register: `sbfiz x2, x1, 4, 2` on 2 sign-extends because bit 1 of 2 is set.",
+      "the sign comes from the top bit of the field, not of the source register: `sbfiz x2, x1, 4, 2` on 2 sign-extends because bit 1 of 2 is set.",
     ],
   },
 
@@ -1015,7 +1015,7 @@ sbfiz   x2, x1, 4, 2        // x2 = 0xffffffffffffffe0: the sign fills upward`,
     syntax: "cmp xn, xm / cmp xn, #imm",
     example: `mov     w9, 3
 cmp     w9, 5               // flags say: less
-cset    w10, lt             // the verdict, captured: w10 = 1`,
+cset    w10, lt             // w10 = 1: cset writes 1 when lt holds`,
   },
   {
     mnemonic: "cmn",
@@ -1102,8 +1102,6 @@ cmp     w9, 0
 cset    w10, gt             // w10 = 1: 5 is positive`,
   },
 
-  // memory: examples carve an aligned scratch slot below sp and put it back,
-  // so every one runs clean inside the playground's wrapped main.
   {
     mnemonic: "csetm",
     category: "Conditional select",
@@ -1124,7 +1122,7 @@ cinc    w2, w1, eq          // condition true:  w2 = 6
 cmp     w1, 4
 cinc    w3, w1, eq          // condition false: w3 = 5, not 6`,
     gotchas: [
-      "the encoded condition is the INVERSE of the one you write, which is why `al` and `nv` are refused: neither has an invertible spelling.",
+      "the encoded condition is the inverse of the one you write, which is why `al` and `nv` are refused: neither has an invertible spelling.",
     ],
   },
   {
@@ -1148,6 +1146,8 @@ cneg    x7, x6, eq          // condition true:  x7 = -7
 cmp     w1, 4
 cneg    x8, x6, eq          // condition false: x8 = 7`,
   },
+  // memory: examples carve an aligned scratch slot below sp and put it back,
+  // so every one runs clean inside the playground's wrapped main.
   {
     mnemonic: "ldr",
     category: "Memory",
@@ -1431,7 +1431,7 @@ fcvtzs  x9, d18             // x9 = 4: the fraction is cut, not rounded`,
     category: "Floating point",
     syntax: "fneg dd, dn / fneg sd, sn",
     example: `fmov    d16, 2.0
-fneg    d16, d16            // d16 = -2.0: just the sign bit flips
+fneg    d16, d16            // d16 = -2.0: only the sign bit changes
 fcvtzs  x9, d16             // x9 = -2`,
     gotchas: [
       "the alternating-sign series idiom: `fneg sign, sign` each pass flips a running +1/-1 factor without a branch.",
@@ -1517,7 +1517,7 @@ fcvtzs  w10, d17, 2         // w10 = 6: the fixed-point form scales by 4 first`,
     category: "Floating point",
     syntax: "fcvtns wd, dn / fcvtns xd, sn",
     example: `fmov    d0, 2.5
-fcvtns  w1, d0              // w1 = 2: the tie goes to the even neighbour
+fcvtns  w1, d0              // w1 = 2: the tie goes to the even neighbor
 fcvtzs  w2, d0              // w2 = 2 as well, but by truncation
 fmov    d3, 3.5
 fcvtns  w4, d3              // w4 = 4: ties to even lands upward here`,
