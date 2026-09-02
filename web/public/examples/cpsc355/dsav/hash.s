@@ -78,7 +78,7 @@ hash_lbl_free:      .string "\xc2\xb7 free"
 hash_lbl_load:      .string "load factor"
 hash_lbl_pct:       .string "load"
 hash_lbl_coll:      .string "collisions"
-hash_lbl_prime:     13 is prime, so keys spread
+hash_lbl_prime:     .string "13 is prime: keys spread"
 hash_lbl_formula:   .string "h(k) = k mod 13  \xc2\xb7  a taken slot sends the probe on, wrapping past slot 12"
 
 hash_fmt_counts:    .string "%2d keys  %2d tomb  %2d free"
