@@ -31,12 +31,12 @@ PLAY_BOTTOM = ROW_FIELD_LAST                    // Last playable row, above the 
 // Player data structure (24 bytes)
                 .balign 8
 player_data:
-                .hword  0
+                .hword  0                       // PLAYER_LEVEL: Level
                 .hword  0
                 .byte   0
                 .byte   0
                 .byte   0, 0
-                .word   0
+                .word   0                       // PLAYER_KILLS: Kill count
                 .hword  0
                 .byte   0
                 .byte   0
@@ -72,7 +72,7 @@ player_init:
                 strb    w1, [x0, PLAYER_MAX_HP]
 
                 mov     w1, 0
-                str     w1, [x0, PLAYER_XP]
+                str     w1, [x0, PLAYER_XP]     // XP = 0
                 strh    w1, [x0, PLAYER_LEVEL]  // Level 0 until the first 50 XP
                 mov     w1, PLAYER_DEFAULT_SPEED
                 strb    w1, [x0, PLAYER_SPEED]
@@ -185,7 +185,7 @@ player_move:
                 b       player_move_done
 
 player_move_blocked:
-                mov     w0, 0
+                mov     w0, 0                   // Return blocked
 
 player_move_done:
                 ldp     x19, x20, [sp, 16]
@@ -207,7 +207,7 @@ player_damage:
                 cbnz    w2, player_damage_immune
 
                 ldrb    w2, [x1, PLAYER_HEALTH]
-                subs    w2, w2, w0
+                subs    w2, w2, w0              // health -= damage
                 b.le    player_damage_dead
 
                 strb    w2, [x1, PLAYER_HEALTH]
@@ -224,17 +224,17 @@ player_damage:
                 mov     w2, PLAYER_IFRAMES_TOTAL
                 strb    w2, [x1, PLAYER_IFRAMES]
 
-                mov     w0, 0
+                mov     w0, 0                   // Return alive
                 b       player_damage_done
 
 player_damage_immune:
-                mov     w0, 0
+                mov     w0, 0                   // Return alive (no damage taken)
                 b       player_damage_done
 
 player_damage_dead:
                 mov     w2, 0
                 strb    w2, [x1, PLAYER_HEALTH]
-                mov     w0, 1
+                mov     w0, 1                   // Return dead
 
 player_damage_done:
                 ldp     fp, lr, [sp], 16
@@ -278,11 +278,11 @@ player_add_xp:
                 mov     w5, 1
                 str     w5, [x4]
 
-                mov     w0, 1
+                mov     w0, 1                   // Return leveled up
                 b       player_xp_done
 
 player_no_levelup:
-                mov     w0, 0
+                mov     w0, 0                   // Return no level up
 
 player_xp_done:
                 ldp     fp, lr, [sp], 16
@@ -369,7 +369,7 @@ player_is_alive:
                 add     x0, x0, :lo12:player_data
                 ldrb    w0, [x0, PLAYER_HEALTH]
                 cmp     w0, 0
-                cset    w0, gt
+                cset    w0, gt                  // w0 = 1 if health > 0
                 ret
 
 // player_check_levelup - Check if level up is pending and clear flag
