@@ -551,21 +551,31 @@ body {
 }
 
 /* =============================================================================
-   HEADER BAND
-   Under sm the debugger header compresses from stacked wrap rows into one
-   horizontally scrolling instrument band: on a phone the editor is the point,
+   INSTRUMENT BANDS (header + controls)
+   Under sm the debugger's two chrome rows compress from stacked wrap rows into
+   horizontally scrolling instrument bands: on a phone the editor is the point,
    so the chrome takes a single strip that scrolls within itself (the same
    self-scroll pattern as the tab strip) with every control at full size and
    hit target, instead of wrapping into rows that push the editor below the
-   fold. The 639.98px bound matches Tailwind's max-sm.
+   fold. The 639.98px bound matches Tailwind's max-sm. The scrollbar is hidden
+   because the fade at each edge is the affordance.
 ============================================================================= */
 @media (max-width: 639.98px) {
-  .header-band {
+  .header-band,
+  .controls-band {
     flex-wrap: nowrap;
     overflow-x: auto;
+    scrollbar-width: none;
   }
-  .header-band > * {
+  .header-band > *,
+  .controls-band > * {
     flex-shrink: 0;
+  }
+  /* The spacer pushes the status chips right on a wide row; inside a scrolling
+     strip it would only add empty scroll width, and its neighbours (the step
+     counter and the halted chip) are already hidden under sm. */
+  .controls-spacer {
+    display: none;
   }
 }
 
