@@ -4,8 +4,8 @@
 //! instruction: registers, memory (all mapped pages), the halt/exit
 //! flags, the VFS/open-files tables, and the stdin queue with its
 //! cooked-tty echo state. The stdout and stderr BUFFERS are intentionally
-//! NOT rolled back -- clearing output that the student already saw is more
-//! confusing than keeping it -- but the display COUNTERS beside them are,
+//! NOT rolled back (clearing output that the student already saw is more
+//! confusing than keeping it), but the display COUNTERS beside them are,
 //! so a host that tracks how much of each stream it has shown can unprint
 //! exactly what a rolled-back step wrote. The output-flood budget is a
 //! third thing again and is never restored.
