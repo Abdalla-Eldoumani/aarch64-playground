@@ -1,27 +1,20 @@
-//! Stepping repro + regression for the headline stepping fix.
+//! Stepping repro and regression for the line-map fix.
 //!
-//! Stepping is predictable for simple all-`.text` programs but drifts for
-//! complex ones: the editor's current-line marker jumps to a wrong line on
-//! entering and moving through `main`, and breakpoints land on unrelated
-//! lines. The drift is NOT in the emulator's PC stepping (proven sound
-//! here) -- it is in the web layer, which derives the current source line
-//! by counting non-label, non-comment source lines and treats m4
-//! `define()` lines, `.data`/`.string` directives, and section directives
-//! as "instructions". That source-text count diverges from the linker's
-//! real instruction layout exactly when a program has data/macros (i.e.
-//! complex programs), which is why simple bare-metal programs look fine.
-//!
-//! These tests pin the emulator-level facts the fix relies on, using one
-//! original complex program (m4 defines + a `.data` word + a non-leaf
-//! `main` that `bl`s a leaf helper + a counted loop with a conditional
-//! branch). They establish the regression baseline so the fix can be
-//! scoped to emitting an authoritative address->editor-line map from the
-//! linker and consuming it on the web side.
+//! The emulator's PC stepping is sound (pinned below). The drift the
+//! marker used to show came from the web layer counting non-label,
+//! non-comment source lines and treating m4 `define()` lines,
+//! `.data`/`.string` directives, and section directives as instructions,
+//! which diverges from the linker's real layout exactly when a program has
+//! data or macros. The linker now emits an authoritative
+//! address-to-editor-line map, and these tests pin the emulator-level
+//! facts it rests on, using one original complex program (m4 defines + a
+//! `.data` word + a non-leaf `main` that `bl`s a leaf helper + a counted
+//! loop with a conditional branch).
 
 use aarch64_emulator::cpu::{Cpu, StepOutcome, CODE_BASE};
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
 
-/// An original cpsc 355-style program exercising the four shapes the drift
+/// An original CPSC 355-style program exercising the four shapes the drift
 /// needs to surface: m4 register aliases, a `.data` word, a non-leaf
 /// `main` that `bl`s a leaf `square`, and a counted loop with a
 /// conditional branch. It sums i*i for i in 1..=n (n read from `.data`)
@@ -90,7 +83,7 @@ fn non_branch_steps_advance_pc_by_four() {
     let (mut cpu, _image) = assemble_complex();
     // The prologue + setup (stp, mov fp, ldr =count_m, ldr [x0], mov, mov)
     // is six straight-line instructions; each must advance the PC by
-    // exactly 4 -- the entry transition into main is a normal sequence,
+    // exactly 4: the entry transition into main is a normal sequence,
     // not a stall.
     for i in 0..6 {
         let before = cpu.regs.read_pc();
@@ -133,8 +126,8 @@ fn bl_enters_callee_and_ret_returns_after_call() {
 #[test]
 fn step_back_restores_prior_state_mid_loop() {
     let (mut cpu, _image) = assemble_complex();
-    // Run forward until sum_r (w19) becomes non-zero -- after the first
-    // squared value is accumulated -- so step-back has real register state
+    // Run forward until sum_r (w19) becomes non-zero, after the first
+    // squared value is accumulated, so step-back has real register state
     // to restore, not just a pc.
     let mut guard = 0;
     while cpu.regs.read_gpr(19, true) == 0 {
@@ -177,19 +170,18 @@ fn complex_program_runs_to_expected_exit_code() {
     assert_eq!(cpu.exit_code(), Some(55), "exit code is the sum of squares");
 }
 
-// -- the authoritative line map (the actual fix surface) --
+// -- the authoritative line map --
 
 #[test]
 fn line_map_maps_main_first_instruction_to_editor_line() {
     let (_cpu, image) = assemble_complex();
     let main_addr = *image.symbols.get("main").expect("main symbol resolved");
     // main's first instruction (`stp fp, lr, [sp, -16]!`) sits on editor
-    // line 14 of COMPLEX_SRC -- after the five define lines, the blank,
+    // line 14 of COMPLEX_SRC: after the five define lines, the blank,
     // the `.data` block (lines 7-9), the blank, and the
-    // `.text`/`.global main`/`main:` header lines. The text-counting
-    // heuristic the fix replaces would instead point at the 9th non-label
-    // source line, which is wrong precisely because it counted the data
-    // and define lines.
+    // `.text`/`.global main`/`main:` header lines. A text-counting
+    // heuristic points at the 9th non-label source line instead, because
+    // it counts the data and define lines.
     let entry = image
         .line_map
         .iter()
@@ -206,7 +198,7 @@ fn line_map_skips_data_and_define_lines_and_strictly_increases() {
     // Entries are emitted in `.text` address order. Addresses are
     // contiguous (4 bytes apart) and the editor lines strictly increase,
     // never pointing back at the m4 define lines (1-5) or the `.data`
-    // block (7-9) -- those carry no instructions and so get no entries.
+    // block (7-9), which carry no instructions and so get no entries.
     let mut prev_addr: Option<u64> = None;
     let mut prev_line: Option<u32> = None;
     for (addr, line) in &image.line_map {
