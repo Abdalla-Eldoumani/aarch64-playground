@@ -16,7 +16,7 @@
         "If it returns a structure larger than 16 bytes."
       ],
       "correctAnswer": 0,
-      "explanation": "A leaf subroutine can skip the frame when it has nothing to preserve and nothing to store: no callee-saved registers written, no local data, no spills. Being a leaf is not enough on its own. The routine must also have no reason to touch the stack.",
+      "explanation": "A leaf subroutine can skip the frame when it has nothing to preserve and nothing to store: no callee-saved registers written, no local data, no spills. The routine must also have no reason to touch the stack.",
       "hint": "Ask what a stack frame is actually for. If the routine needs neither saved registers nor stack-based locals, does it need one?"
     },
     {
@@ -65,7 +65,7 @@
       ],
       "correctAnswer": 1,
       "explanation": "x9 is a caller-saved temporary, so the callee is free to overwrite it. If the caller needs the value after the call, the caller saves it first, typically into its own stack frame or into a callee-saved register such as x19.",
-      "hint": "The name 'caller-saved' names who is responsible for protecting the value."
+      "hint": "The term 'caller-saved' says who is responsible for protecting the value."
     }
   ]
 }
