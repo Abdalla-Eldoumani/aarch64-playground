@@ -1,5 +1,5 @@
 {
-  "title": "registers and immediates",
+  "title": "Registers and immediates",
   "slug": "registers-and-immediates",
   "order": 1,
   "summary": "How registers hold values, and how to load a constant too wide for one instruction.",
