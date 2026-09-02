@@ -6,15 +6,14 @@ import type { EmulatorState } from "@/lib/emulator/use-emulator";
  * suite.
  *
  * Typed against the real EmulatorState rather than a loose record, because a
- * loose record hides exactly the mistakes a fake exists to catch: the five
- * hand-rolled copies this replaces had each drifted, and all five were missing
- * fpRegisters, externalCall, and memoryRegions -- so the d-register view, the
- * external-call card, and the memory jump list rendered their fallback branch
- * in every playground test, and no typo in an override name could ever fail.
+ * loose record hides exactly the mistakes a fake exists to catch: a loose
+ * record lets a suite miss fpRegisters, externalCall, or memoryRegions, so the
+ * d-register view, the external-call card, and the memory jump list render
+ * their fallback branch, and a typo in an override name never fails.
  *
  * The defaults describe a loaded machine with nothing assembled and nothing
  * run. Where a field gates a whole view, the default is the one that leaves
- * the view where it sits today: fpRegisters is [] (RegisterPanel shows the
+ * the view in its fallback branch: fpRegisters is [] (RegisterPanel shows the
  * d-file only at exactly 32 slots, so [] reads as a wasm build with no FP
  * surface), externalCall is null (the pc is on one of the program's own
  * instructions), and memoryRegions is [] (the memory panel falls back to its
@@ -22,8 +21,8 @@ import type { EmulatorState } from "@/lib/emulator/use-emulator";
  *
  * The mocks are built per call, so two hubs in one test never share call
  * records. Every promise-returning field resolves the shape its type
- * promises -- an assemble that resolved `undefined` let a suite pass on a
- * branch the real hub can never take.
+ * promises; an assemble resolving `undefined` lets a suite pass on a branch
+ * the real hub can never take.
  */
 export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
   return {
