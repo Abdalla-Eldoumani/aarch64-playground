@@ -175,7 +175,7 @@ export function MemoryPanel({
       </div>
       {parsed == null && (
         <div role="alert" className="text-[var(--danger)] text-[10px] mb-2">
-          address must be hex (0x...) or decimal -- showing{" "}
+          address must be hex (0x...) or decimal. showing{" "}
           {formatWord32(lastGoodAddr)}
         </div>
       )}
