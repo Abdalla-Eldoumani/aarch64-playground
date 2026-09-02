@@ -262,7 +262,7 @@ where you are for all three. A `bl printf` lands first on the two words of
 the trampoline the linker plants (`ldr x16, =<stub>; br x16`), then on the
 stub address itself; none of the three is an instruction you wrote. Through
 all three the decode strip drops its bit-field row for a card naming the
-call -- `printf`, `external call -- handled by the runtime` -- the editor
+call (`printf`, `external call · handled by the runtime`), the editor
 holds the marker on your `bl` line in a quieter dashed amber rather than
 following the pc somewhere unwritten, and the disassembly stays on the `bl`
 row. A `scanf` that runs out of input parks on the stub, and the card says
