@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::decoder::{MemSize, FP_BINARY_OPS, FP_UNARY_OPS, LDST_EXTENDS};
 use crate::errors::EmuError;
-use crate::registers::{reg_alias, CONDITIONS};
+use crate::registers::{reg_alias, Condition, CONDITIONS};
 
 /// Assemble ARM64 source text into a vector of 32-bit instruction words.
 ///
@@ -2670,6 +2670,24 @@ fn encode_cond_sel(ops: &[&str], op_bit: u8, op2: u8, ln: usize) -> Result<u32, 
         | ((rn as u32) << 5) | (rd as u32))
 }
 
+/// The encoded condition for a `cset`-family alias: the INVERSE of the
+/// spelled one. GAS rejects `AL` here because AL has no invertible
+/// spelling, so an always-true alias would assemble to something the
+/// course toolchain refuses. `hint` is the alias-specific tail of the
+/// message; CSET points at `mov Xd, 1`, the others have no one-line
+/// replacement.
+fn invert_condition_bits(
+    spelled: u8, name: &str, hint: &str, ln: usize,
+) -> Result<u8, EmuError> {
+    if spelled == 0b1110 {
+        return asm_err(
+            ln,
+            &format!("{name} cannot use the AL condition (there is nothing to invert{hint})"),
+        );
+    }
+    Ok(Condition::from_u8(spelled)?.invert() as u8)
+}
+
 fn encode_cset(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     // CSET Xd, cond -> CSINC Xd, XZR, XZR, invert(cond)
     if ops.len() != 2 {
@@ -2677,13 +2695,7 @@ fn encode_cset(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let cond = parse_condition(ops[1], ln)?;
-    // GAS rejects `cset al`: the alias encodes the INVERTED condition, and
-    // AL has no invertible spelling. Accepting it would silently produce an
-    // always-1 CSINC the server toolchain refuses to assemble.
-    if cond == 0b1110 {
-        return asm_err(ln, "CSET cannot use the AL condition (there is nothing to invert; use `mov Xd, 1`)");
-    }
-    let inv_cond = cond ^ 1; // invert low bit
+    let inv_cond = invert_condition_bits(cond, "CSET", "; use `mov Xd, 1`", ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
 
     Ok((sf_bit << 31) | (0b0011010100 << 21) | (0b11111 << 16)
