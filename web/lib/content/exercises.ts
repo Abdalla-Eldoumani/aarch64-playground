@@ -14,7 +14,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { validateExercise, type Exercise } from "@/lib/content/exercise-schema";
+import {
+  validateExercise,
+  type Exercise,
+  type ExerciseIndexRow,
+} from "@/lib/content/exercise-schema";
 import { compareByOrder } from "@/lib/content/content-order";
 
 /** The real content directory, resolved against the build's cwd (web/). */
@@ -69,6 +73,39 @@ export function loadAllExercises(dir: string = DEFAULT_DIR): Exercise[] {
 
   // Stable sort keeps the filename order for exercises that share an `order`.
   return exercises.sort(compareByOrder);
+}
+
+/**
+ * A plain-text row summary from the prompt: the first non-empty line with
+ * leading Markdown markers (#, >, -, *) stripped, clipped to a row-sized
+ * length. Rendered as plain text, never Markdown.
+ */
+function blurbFromPrompt(prompt: string): string {
+  const firstLine =
+    prompt
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "";
+  const plain = firstLine.replace(/^[#>\-*\s]+/, "").trim();
+  return plain.length > 140 ? `${plain.slice(0, 140)}...` : plain;
+}
+
+/**
+ * Every validated exercise narrowed to the index row: same order, same count,
+ * same validation, with the fields the index never reads dropped before they
+ * can reach the client payload. The blurb is derived here, at build time,
+ * because deriving it in the index meant shipping every prompt to do it.
+ */
+export function loadExerciseIndex(dir: string = DEFAULT_DIR): ExerciseIndexRow[] {
+  return loadAllExercises(dir).map((exercise) => ({
+    title: exercise.title,
+    slug: exercise.slug,
+    order: exercise.order,
+    topic: exercise.topic,
+    difficulty: exercise.difficulty,
+    variant: exercise.variant,
+    blurb: blurbFromPrompt(exercise.prompt),
+  }));
 }
 
 /** Find a single validated exercise by slug, or `undefined` when none matches. */
