@@ -6,6 +6,7 @@ import type { ShareState } from "@/lib/playground/share";
 import { parseDeepLink } from "@/lib/hooks/use-deep-link";
 import {
   fetchExample,
+  loadBundleDecoder,
   resolveBoot,
   resolveHandoff,
   type HandoffPayload,
@@ -178,38 +179,44 @@ export default function Home() {
           : "that share link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
       );
     }
-    if (boot.bundleError) {
-      toastSoon(
-        boot.bundleError === "too-large"
-          ? "that diagnostic-bundle link is too large to load -- showing your own buffer instead"
-          : "that diagnostic-bundle link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
-      );
-    }
-    const handoff = resolveHandoff(boot, window.location.search, window.location.hash);
-    if (handoff?.kind === "share-error") {
-      toastSoon(
-        handoff.reason === "too-large"
-          ? "that share link is too large to load"
-          : "that share link is damaged (often a partial copy) -- ask for the link again",
-      );
-    } else if (handoff?.kind === "bundle-error") {
-      toastSoon(
-        handoff.reason === "too-large"
-          ? "that diagnostic-bundle link is too large to load"
-          : "that diagnostic-bundle link is damaged (often a partial copy) -- ask for the link again",
-      );
-    } else if (handoff?.kind === "example") {
-      // fetchExample's failures are already student-readable ("invalid
-      // example name", "failed to load example: 404"); swallowing them
-      // shipped the wrong buffer to a whole class off one typo'd link.
-      void fetchExample(handoff.stem)
-        .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, dl.run)))
-        .catch((e: unknown) => {
-          toastSoon(e instanceof Error ? e.message : "could not load that example");
-        });
-    } else if (handoff) {
-      playgroundRef.current?.loadProgram(handoff.payload);
-    }
+    // A bundle failure is reported by the delivery pass below, not here: the
+    // boot render has no decoder, so it can no longer carry one.
+    // The bundle decoder is fetched only for a URL that carries one, so the
+    // delivery runs a beat behind this effect. That is also why the boot pass
+    // no longer decodes: a hard `?bundle=` load arrives here instead.
+    // Pinned before the await: the URL can change under a deferred pass, and
+    // this one must deliver the URL it was started for or the change handler
+    // below delivers the new one a second time.
+    const bootSearch = window.location.search;
+    const bootHash = window.location.hash;
+    void (async () => {
+      const decode = await loadBundleDecoder(bootSearch);
+      const handoff = resolveHandoff(boot, bootSearch, bootHash, decode);
+      if (handoff?.kind === "share-error") {
+        toastSoon(
+          handoff.reason === "too-large"
+            ? "that share link is too large to load"
+            : "that share link is damaged (often a partial copy) -- ask for the link again",
+        );
+      } else if (handoff?.kind === "bundle-error") {
+        toastSoon(
+          handoff.reason === "too-large"
+            ? "that diagnostic-bundle link is too large to load"
+            : "that diagnostic-bundle link is damaged (often a partial copy) -- ask for the link again",
+        );
+      } else if (handoff?.kind === "example") {
+        // fetchExample's failures are already student-readable ("invalid
+        // example name", "failed to load example: 404"); swallowing them
+        // shipped the wrong buffer to a whole class off one typo'd link.
+        void fetchExample(handoff.stem)
+          .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, dl.run)))
+          .catch((e: unknown) => {
+            toastSoon(e instanceof Error ? e.message : "could not load that example");
+          });
+      } else if (handoff) {
+        playgroundRef.current?.loadProgram(handoff.payload);
+      }
+    })();
     deliveredUrlRef.current = window.location.search + window.location.hash;
 
     // A URL that changes without remounting this page (the back button, or a
@@ -220,29 +227,35 @@ export default function Home() {
       const url = window.location.search + window.location.hash;
       if (url === deliveredUrlRef.current) return;
       deliveredUrlRef.current = url;
-      const next = resolveHandoff(
-        { fromShare: false, fromBundle: false },
-        window.location.search,
-        window.location.hash,
-      );
-      if (next?.kind === "share-error" || next?.kind === "bundle-error") {
-        toastSoon(
-          next.reason === "too-large"
-            ? "that link is too large to load"
-            : "that link is damaged (often a partial copy) -- ask for it again",
+      const search = window.location.search;
+      const hash = window.location.hash;
+      void (async () => {
+        const decode = await loadBundleDecoder(search);
+        const next = resolveHandoff(
+          { fromShare: false, fromBundle: false },
+          search,
+          hash,
+          decode,
         );
-      } else if (next?.kind === "example") {
-        // The run override rides the URL, so this pass re-reads it from
-        // the URL it is delivering, not from the mount-time parse.
-        const run = parseDeepLink(window.location.search).run;
-        void fetchExample(next.stem)
-          .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, run)))
-          .catch((e: unknown) => {
-            toastSoon(e instanceof Error ? e.message : "could not load that example");
-          });
-      } else if (next) {
-        playgroundRef.current?.loadProgram(next.payload);
-      }
+        if (next?.kind === "share-error" || next?.kind === "bundle-error") {
+          toastSoon(
+            next.reason === "too-large"
+              ? "that link is too large to load"
+              : "that link is damaged (often a partial copy) -- ask for it again",
+          );
+        } else if (next?.kind === "example") {
+          // The run override rides the URL, so this pass re-reads it from
+          // the URL it is delivering, not from the mount-time parse.
+          const run = parseDeepLink(search).run;
+          void fetchExample(next.stem)
+            .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, run)))
+            .catch((e: unknown) => {
+              toastSoon(e instanceof Error ? e.message : "could not load that example");
+            });
+        } else if (next) {
+          playgroundRef.current?.loadProgram(next.payload);
+        }
+      })();
     };
     window.addEventListener("hashchange", onUrlChange);
     window.addEventListener("popstate", onUrlChange);
