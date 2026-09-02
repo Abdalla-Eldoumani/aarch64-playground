@@ -74,8 +74,15 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `CSINV`  | `CSINV Xd, Xn, Xm, cond`        | Xd = cond ? Xn : ~Xm.               |
 | `CSNEG`  | `CSNEG Xd, Xn, Xm, cond`        | Xd = cond ? Xn : -Xm.               |
 | `CSET`   | `CSET Xd, cond`                 | Alias for `CSINC Xd, XZR, XZR, !cond`. |
+| `CSETM`  | `CSETM Xd, cond`                | Xd = cond ? all-ones : 0 (the mask form of `CSET`). Alias for `CSINV Xd, XZR, XZR, !cond`. |
+| `CINC`   | `CINC Xd, Xn, cond`             | Xd = cond ? Xn+1 : Xn. Alias for `CSINC Xd, Xn, Xn, !cond`. |
+| `CINV`   | `CINV Xd, Xn, cond`             | Xd = cond ? ~Xn : Xn. Alias for `CSINV Xd, Xn, Xn, !cond`. |
+| `CNEG`   | `CNEG Xd, Xn, cond`             | Xd = cond ? -Xn : Xn. Alias for `CSNEG Xd, Xn, Xn, !cond`. |
 
 Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`, `LS`, `GE`, `LT`, `GT`, `LE`.
+
+The five `cset`-family aliases encode the inverse of the condition you write,
+which is why none of them accepts `AL` or `NV`.
 
 ## Memory
 

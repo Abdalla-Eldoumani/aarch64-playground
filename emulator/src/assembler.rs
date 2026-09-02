@@ -184,7 +184,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // compare/test and branch
     "CBZ", "CBNZ", "TBZ", "TBNZ",
     // conditional select
-    "CSEL", "CSINC", "CSINV", "CSNEG", "CSET",
+    "CSEL", "CSINC", "CSINV", "CSNEG", "CSET", "CSETM", "CINC", "CINV", "CNEG",
     // system
     "NOP", "SVC",
 ];
@@ -330,7 +330,11 @@ fn encode_line(
         "CSINC" => encode_cond_sel(&ops, 0, 1, line_num),
         "CSINV" => encode_cond_sel(&ops, 1, 0, line_num),
         "CSNEG" => encode_cond_sel(&ops, 1, 1, line_num),
-        "CSET" => encode_cset(&ops, line_num),
+        "CSET"  => encode_cond_sel_alias(&ops, "CSET",  0, 1, false, line_num),
+        "CSETM" => encode_cond_sel_alias(&ops, "CSETM", 1, 0, false, line_num),
+        "CINC"  => encode_cond_sel_alias(&ops, "CINC",  0, 1, true,  line_num),
+        "CINV"  => encode_cond_sel_alias(&ops, "CINV",  1, 0, true,  line_num),
+        "CNEG"  => encode_cond_sel_alias(&ops, "CNEG",  1, 1, true,  line_num),
 
         // -- system --
         "NOP" => Ok(crate::decoder::NOP_WORD),
@@ -2720,36 +2724,49 @@ fn encode_cond_sel(ops: &[&str], op_bit: u8, op2: u8, ln: usize) -> Result<u32, 
 }
 
 /// The encoded condition for a `cset`-family alias: the INVERSE of the
-/// spelled one. GAS rejects `AL` here because AL has no invertible
-/// spelling, so an always-true alias would assemble to something the
-/// course toolchain refuses. `hint` is the alias-specific tail of the
-/// message; CSET points at `mov Xd, 1`, the others have no one-line
-/// replacement.
+/// spelled one. GAS rejects `AL` and `NV` here because neither has an
+/// invertible spelling, so an always-true alias would assemble to
+/// something the course toolchain refuses. `hint` is the alias-specific
+/// tail of the message; CSET points at `mov Xd, 1`, the others have no
+/// one-line replacement.
 fn invert_condition_bits(
-    spelled: u8, name: &str, hint: &str, ln: usize,
+    spelled: &str, name: &str, hint: &str, ln: usize,
 ) -> Result<u8, EmuError> {
-    if spelled == 0b1110 {
+    let upper = spelled.trim().to_uppercase();
+    if upper == "AL" || upper == "NV" {
         return asm_err(
             ln,
-            &format!("{name} cannot use the AL condition (there is nothing to invert{hint})"),
+            &format!("{name} cannot use the AL or NV condition (there is nothing to invert{hint})"),
         );
     }
-    Ok(Condition::from_u8(spelled)?.invert() as u8)
+    Ok(Condition::from_u8(parse_condition(spelled, ln)?)?.invert() as u8)
 }
 
-fn encode_cset(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
-    // CSET Xd, cond -> CSINC Xd, XZR, XZR, invert(cond)
-    if ops.len() != 2 {
-        return asm_err(ln, "CSET requires 2 operands");
+/// The `cset` family: conditional-select aliases whose sources are fixed
+/// and whose condition field holds the INVERSE of the spelled one.
+/// `duplicate_rn` is the three-operand shape (CINC/CINV/CNEG), which
+/// reads the same register in both source slots; the two-operand shape
+/// (CSET/CSETM) reads ZR in both. Field layout is the one
+/// `encode_cond_sel` uses.
+fn encode_cond_sel_alias(
+    ops: &[&str], name: &str, op_bit: u8, op2: u8, duplicate_rn: bool, ln: usize,
+) -> Result<u32, EmuError> {
+    let want = if duplicate_rn { 3 } else { 2 };
+    if ops.len() != want {
+        return asm_err(ln, &format!("{name} requires {want} operands"));
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
-    let cond = parse_condition(ops[1], ln)?;
-    let inv_cond = invert_condition_bits(cond, "CSET", "; use `mov Xd, 1`", ln)?;
+    let (rn, cond_text) = if duplicate_rn {
+        (parse_register(ops[1], ln)?.0, ops[2])
+    } else {
+        (31u8, ops[1])
+    };
+    let hint = if name == "CSET" { "; use `mov Xd, 1`" } else { "" };
+    let inv_cond = invert_condition_bits(cond_text, name, hint, ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
-
-    Ok((sf_bit << 31) | (0b0011010100 << 21) | (0b11111 << 16)
-        | ((inv_cond as u32) << 12) | (1 << 10)
-        | (0b11111 << 5) | (rd as u32))
+    Ok((sf_bit << 31) | ((op_bit as u32) << 30) | (0b0011010100 << 21)
+        | ((rn as u32) << 16) | ((inv_cond as u32) << 12) | ((op2 as u32) << 10)
+        | ((rn as u32) << 5) | (rd as u32))
 }
 
 fn encode_svc(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
@@ -3053,11 +3070,84 @@ mod tests {
     #[test]
     fn cset_rejects_al_like_gas() {
         let labels = HashMap::new();
-        let err = encode_line("cset x0, al", 0, &labels, 3).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("AL"), "was: {msg}");
+        for src in ["cset x0, al", "cset x0, nv"] {
+            let msg = encode_line(src, 0, &labels, 3).unwrap_err().to_string();
+            assert!(msg.contains("AL or NV"), "{src}: {msg}");
+        }
         // The raw CSINC form keeps taking AL, exactly as GAS does.
         encode_line("csinc x0, xzr, xzr, al", 0, &labels, 3).unwrap();
+    }
+
+    #[test]
+    fn cset_family_aliases_encode_the_inverted_condition() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("cinc x0, x1, eq", 0x9A81_1420u32),
+            ("cinc w0, w1, eq", 0x1A81_1420),
+            ("cinc x0, x1, ge", 0x9A81_B420),
+            ("cinv x0, x1, eq", 0xDA81_1020),
+            ("cinv w0, w1, eq", 0x5A81_1020),
+            ("cneg x0, x1, eq", 0xDA81_1420),
+            ("cneg w0, w1, eq", 0x5A81_1420),
+            ("cneg x0, x1, lt", 0xDA81_A420),
+            ("csetm x0, eq", 0xDA9F_13E0),
+            ("csetm w0, eq", 0x5A9F_13E0),
+            ("cset w0, eq", 0x1A9F_17E0),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        for src in ["cinc x0, x1, al", "csetm w0, al", "cneg x0, x1, nv", "cinv x0, x1, nv"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("AL or NV"), "{src}: {err}");
+        }
+        let source = r#"
+            MOV W1, #5
+            MOV X6, #7
+            CMP W1, #5
+            CINC W2, W1, EQ
+            CINV W4, W1, EQ
+            CNEG X7, X6, EQ
+            CSETM W9, EQ
+            CMP W1, #4
+            CINC W3, W1, EQ
+            CINV W5, W1, EQ
+            CNEG X8, X6, EQ
+            CSETM W10, EQ
+            CSETM X11, EQ
+            MOV X14, #-1
+            CMP X14, #0
+            CNEG X15, X6, LT
+            CINC X16, X6, GE
+            MOV X17, #1
+            CMP X17, #0
+            CINC X18, X6, GE
+            MOV W12, #-1
+            CMP W1, #5
+            CINC W13, W12, EQ
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(60).unwrap();
+        // The false rows are the whole test: forgetting the inversion
+        // swaps every pair below and each half looks plausible alone.
+        assert_eq!(cpu.regs.read_gpr(2, false), 6);
+        assert_eq!(cpu.regs.read_gpr(3, false), 5);
+        assert_eq!(cpu.regs.read_gpr(4, false), 0xFFFF_FFFA);
+        assert_eq!(cpu.regs.read_gpr(5, false), 5);
+        assert_eq!(cpu.regs.read_gpr(7, true) as i64, -7);
+        assert_eq!(cpu.regs.read_gpr(8, true), 7);
+        assert_eq!(cpu.regs.read_gpr(9, false), 0xFFFF_FFFF);
+        assert_eq!(cpu.regs.read_gpr(10, false), 0);
+        assert_eq!(cpu.regs.read_gpr(11, true), 0);
+        // a non-EQ condition, so the inversion is not a low-bit flip of zero
+        assert_eq!(cpu.regs.read_gpr(15, true) as i64, -7);
+        assert_eq!(cpu.regs.read_gpr(16, true), 7);
+        assert_eq!(cpu.regs.read_gpr(18, true), 8);
+        // the W width masks: cinc of 0xFFFFFFFF wraps to 0, not to 2^32
+        assert_eq!(cpu.regs.read_gpr(13, false), 0);
     }
 
     #[test]
