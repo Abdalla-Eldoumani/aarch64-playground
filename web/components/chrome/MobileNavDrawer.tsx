@@ -30,6 +30,8 @@ export function MobileNavDrawer({ stars = null }: { stars?: number | null }) {
 
   return (
     <div className="md:hidden">
+      {/* Trigger above the panel so the close button stays hittable over the
+          overlay. */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
