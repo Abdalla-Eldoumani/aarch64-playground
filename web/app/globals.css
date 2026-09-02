@@ -3,10 +3,11 @@
 @tailwind utilities;
 
 /* =============================================================================
-   aarch64 playground: design tokens v2 -- "look inside the machine"
+   aarch64 playground: design tokens v2
    One system, two densities. Amber = the machine acting. Cyan = you acting.
    One semantic token drives each state across all three themes. The 32-bit
-   instruction word is the brand: field boxes, bit rulers, blueprint paper.
+   instruction word runs through the field boxes, bit rulers, and blueprint
+   paper.
 ============================================================================= */
 
 /* ----- DARK · primary surface (default) ----- */
@@ -147,8 +148,8 @@
    (editorial leads + margin notes). next/font binds --font-sans/--font-mono/
    --font-serif on <html> to the self-hosted hashed families (layout.tsx); the
    --type-* shorthands reference those vars so they resolve to the self-hosted
-   fonts. The family vars are intentionally NOT redeclared here -- doing so
-   would shadow next/font.
+   fonts. The family vars are not redeclared here: that would shadow
+   next/font.
 ============================================================================= */
 :root {
   --type-display:  700 64px/1.03  var(--font-sans);   /* tracking -0.03em  */
@@ -169,19 +170,17 @@
    SPACE · RADII · ELEVATION · MOTION
    Every .anim-* class below reads its duration from these tokens, so retiming
    the system is a one-line change here. The lone exception is the mobile pane
-   fade, pinned at 50ms because switching panes mid-debug should feel like a
-   register latch, not a transition.
+   fade, pinned at 50ms so a mid-debug pane switch lands rather than eases.
 ============================================================================= */
 :root {
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
   --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
 
   /* Corner doctrine: machine-facing chrome (toolbars, tabs, panels,
-     register and memory rows, chips, panel micro-inputs) is square, in
-     the terminal's voice -- that is --radius-control, and the Tailwind
-     rounded/rounded-sm scale resolves to it, so the rule holds by token.
-     The soft edge survives only on the two content-facing primitives:
-     text inputs and primary action buttons (--radius-action), cards
+     register and memory rows, chips, panel micro-inputs) is square
+     (--radius-control), and the Tailwind rounded/rounded-sm scale resolves
+     to it, so the rule holds by token. The soft edge survives on text
+     inputs and primary action buttons (--radius-action), cards
      (--radius-card), and dialogs (--radius-modal). */
   --radius-control: 0px;
   --radius-action:  4px;
@@ -242,9 +241,9 @@ body {
 /* =============================================================================
    BLUEPRINT PAPER
    A faint 24px cell grid on page roots (landing, learn, practice, reference).
-   Never on the playground main surface: the debugger stays optically flat,
-   density is its texture. In high-contrast --grid-line is transparent, so the
-   helper is self-disabling there.
+   Never on the playground main surface: the debugger stays flat. In
+   high-contrast --grid-line is transparent, so the helper is self-disabling
+   there.
 ============================================================================= */
 .paper {
   background-color: var(--bg-base);
@@ -269,18 +268,17 @@ body {
 }
 
 /* Register write flash: the 2px write bar strikes in wide and settles,
-   like a latch closing -- no background wash, no rounded pill, so the
-   register file keeps its terminal voice. The end state equals the static
-   bar the changed row carries, so the settle reads as one motion. Amber-driven so
-   it follows the theme; applied only inside the reduced-motion-safe block
-   below, so it is static under prefers-reduced-motion.
+   like a latch closing: no background wash and no rounded pill. The end state
+   equals the static bar the changed row carries, so the settle reads as one
+   motion. Amber-driven so it follows the theme.
 
    The four machine animations draw on a ::before layer and animate transform
    and opacity only: box-shadow and border-color keyframes paint, and 31
    register rows re-flashing on every step put that paint on the main thread.
-   The layer rests at scaleX(0) / opacity 0, so where the animation does not
-   run -- under prefers-reduced-motion, and before the landing arms its boot
-   stagger -- nothing is drawn at all and the static bar is the only cue. */
+   The layer rests at scaleX(0) / opacity 0, so where the animation does
+   not run (under prefers-reduced-motion, and before the landing arms its
+   boot stagger) nothing is drawn at all and the static bar is the only
+   cue. */
 .anim-reg-flash,
 .anim-boot-flash,
 .anim-run-breathe,
@@ -310,8 +308,7 @@ body {
   to   { transform: scaleX(0.3333); }
 }
 /* The landing boot flash reuses the strike but releases the bar at the
-   end: values land, latch, and let go, row by row. The release is opacity,
-   which is what the old `inset 2px 0 0 0 transparent` end frame drew. */
+   end: the bar lands, holds, then fades, row by row. The release is opacity. */
 @keyframes boot-strike {
   0%   { transform: scaleX(1);      opacity: 1; }
   70%  { transform: scaleX(0.3333); opacity: 1; }
@@ -320,10 +317,9 @@ body {
 
 /* Program-counter breathing while the program runs: a subtle amber edge-bar that
    pulses on the current instruction row so "the machine is acting" reads at a
-   glance. Amber-driven so it follows the theme (never a hardcoded color); applied
-   only inside the reduced-motion-safe block below, so the row is static under
-   prefers-reduced-motion and the amber current-row highlight is the only cue.
-   0.5 is 3px / 6px, the width the box-shadow version drew. */
+   glance. Amber-driven so it follows the theme (never a hardcoded color).
+   Under prefers-reduced-motion the row is static and the amber current-row
+   highlight is the only cue. 0.5 is 3px / 6px. */
 @keyframes run-breathe-pulse {
   0%, 100% { transform: scaleX(0.5); opacity: 0.4; }
   50%      { transform: scaleX(0.5); opacity: 1; }
@@ -331,8 +327,7 @@ body {
 
 /* Block-cursor blink: the brand block cursor (amber = the machine acting) pulses
    on the first-run hero. A near-instant jump at the midpoint gives a hard on/off
-   blink. Applied only inside the reduced-motion-safe block below, so the cursor
-   holds solid (no blink) under prefers-reduced-motion. */
+   blink. Under prefers-reduced-motion the cursor holds solid. */
 @keyframes cursor-blink {
   0%, 50%      { opacity: 1; }
   50.01%, 100% { opacity: 0; }
@@ -340,25 +335,24 @@ body {
 
 /* Modal entrance: a small fade and ~8px rise over the --modal-rise token so a
    dialog (command palette, share, shortcuts) settles in rather than snapping.
-   Applied only inside the reduced-motion-safe block below, so the modal appears
-   instantly (no fade or rise) under prefers-reduced-motion. */
+   Under prefers-reduced-motion the modal appears instantly. */
 @keyframes modal-rise {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Panel entrance: a quieter cousin of modal-rise for in-page section swaps
-   (the reference tabs). 4px, one UI beat, no opacity start from zero -- the
-   content is readable mid-animation. Static under prefers-reduced-motion. */
+   (the reference tabs). 4px, one UI beat, and no opacity start from zero,
+   so the content is readable mid-animation. Static under
+   prefers-reduced-motion. */
 @keyframes panel-in {
   from { opacity: 0.4; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Error shake: a decaying ~200ms horizontal shake on the assemble-error line,
-   the instrument buzzing back at a bad input. One shot per new error; under
-   prefers-reduced-motion the class animates nothing and the danger-colored
-   alert text alone carries the state. */
+/* Error shake: a decaying ~200ms horizontal shake on the assemble-error line.
+   One shot per new error; under prefers-reduced-motion the class animates
+   nothing and the danger-colored alert text alone carries the state. */
 @keyframes error-shake {
   0%, 100% { transform: translateX(0); }
   20%      { transform: translateX(-3px); }
@@ -399,13 +393,14 @@ body {
   animation: cursor-blink var(--cursor-blink) infinite;
 }
 
+/* Every .anim-* class below is applied only here, so each one is static under
+   prefers-reduced-motion. */
 @media (prefers-reduced-motion: no-preference) {
   .anim-step-pop {
     animation: step-pop var(--step-pop) var(--ease) 1;
   }
   .anim-tab-fade {
-    /* Deliberately off-token at 50ms: a mobile pane switch mid-debug should
-       land like a register latch, not ease in like chrome. */
+    /* Off-token at 50ms; see the motion block above. */
     animation: tab-fade-in 50ms linear 1;
   }
   .anim-reg-flash::before {
@@ -690,7 +685,6 @@ body {
   }
 }
 
-/* scrollbar styling for panels */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
