@@ -92,7 +92,7 @@ describe("DecodeStrip external-call card", () => {
     );
     const text = screen.getByLabelText("current instruction").textContent ?? "";
     expect(text).toContain("printf");
-    expect(text).toContain("external call -- handled by the runtime");
+    expect(text).toContain("external call · handled by the runtime");
     expect(text).toContain(
       "printf runs inside the interpreter, not in your program; it finishes and returns on a later step",
     );

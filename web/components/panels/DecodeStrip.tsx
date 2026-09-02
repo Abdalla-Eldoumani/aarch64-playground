@@ -95,7 +95,7 @@ export function DecodeStrip({
             {externalCall.name}
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--amber)]">
-            external call -- handled by the runtime
+            external call · handled by the runtime
           </span>
           <span className="font-mono text-[12px] leading-[1.6] text-[var(--text-secondary)] break-words">
             {externalCall.waiting
