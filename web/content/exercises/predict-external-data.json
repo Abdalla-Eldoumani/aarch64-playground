@@ -5,7 +5,7 @@
   "topic": "external-data",
   "difficulty": "core",
   "variant": "prediction",
-  "prompt": "How bytes land in `.data`: the size of each directive, what a string literal really costs, how a table of addresses is indexed, and what happens to a counter that lives outside any stack frame.",
+  "prompt": "How bytes land in `.data`: the size of each directive, what a string literal costs, how a table of addresses is indexed, and what happens to a counter that lives outside any stack frame.",
   "predictions": [
     {
       "code": "        .data\na_m:    .hword 23\nb_m:    .word 42\nc_m:    .dword 0",
