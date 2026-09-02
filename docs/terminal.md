@@ -33,7 +33,7 @@ follows the terminal modes a real tty would apply:
   receives the whole line when you press enter.
 - A program that puts the terminal in raw mode (termios, like the snake
   game, the calculator, or deadzone) receives every byte as typed, with
-  no echo -- it draws its own screen.
+  no echo: it draws its own screen.
 - Ctrl+C stops the program and returns the prompt.
 
 Terminal-first examples (snake, the data structures visualizer, calc,
@@ -73,7 +73,7 @@ gcc lab5.s -o lab5        # assemble
 `gcc` rejects `.asm` inputs and points you at the `m4` pass first, exactly
 like the real toolchain would choke on unexpanded macros. A failed
 assemble prints the assembler's own error with its line number in the
-terminal, and leaves the editor's error markers alone -- the build belongs
+terminal, and leaves the editor's error markers alone: the build belongs
 to the terminal's file, not whatever the editor happens to show. Other gcc
 flags are accepted and ignored; there is no C compiler here, only the
 assembler. Executables live for the session and are re-assembled on each
