@@ -1401,6 +1401,46 @@ ucvtf   d1, x0              // d1 = 1.8446744073709552e19: the same bits, read u
 fmov    d2, 3.0
 fnmul   d3, d1, d2          // d3 = -6.0`,
   },
+  {
+    mnemonic: "fmadd",
+    category: "Floating point",
+    syntax: "fmadd dd, dn, dm, da",
+    example: `fmov    d1, 3.0
+fmov    d2, 4.0
+fmov    d3, 10.0
+fmadd   d4, d1, d2, d3      // d4 = 22.0: d3 + d1*d2, not d1 + d2*d3`,
+    gotchas: [
+      "the accumulator is the last operand, and it is the addend. reading it as the first product source gives 43 instead of 22.",
+      "fused: the product is not rounded before the add, so `fmadd` and `fmul` plus `fadd` can differ in the last bit.",
+    ],
+  },
+  {
+    mnemonic: "fmsub",
+    category: "Floating point",
+    syntax: "fmsub dd, dn, dm, da",
+    example: `fmov    d1, 3.0
+fmov    d2, 4.0
+fmov    d3, 10.0
+fmsub   d5, d1, d2, d3      // d5 = -2.0: d3 - d1*d2, not d1*d2 - d3`,
+  },
+  {
+    mnemonic: "fnmadd",
+    category: "Floating point",
+    syntax: "fnmadd dd, dn, dm, da",
+    example: `fmov    d1, 3.0
+fmov    d2, 4.0
+fmov    d3, 10.0
+fnmadd  d6, d1, d2, d3      // d6 = -22.0`,
+  },
+  {
+    mnemonic: "fnmsub",
+    category: "Floating point",
+    syntax: "fnmsub dd, dn, dm, da",
+    example: `fmov    d1, 3.0
+fmov    d2, 4.0
+fmov    d3, 10.0
+fnmsub  d7, d1, d2, d3      // d7 = 2.0`,
+  },
 ];
 
 export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map(

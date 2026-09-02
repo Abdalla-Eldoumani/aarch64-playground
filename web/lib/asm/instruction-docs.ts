@@ -239,6 +239,18 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "fnmul d0, d1, d2",
     cExample: "Fd = -(Fn * Fm);",
   },
+  FMADD: {
+    summary: "Fused multiply-add: Fd = Fa + Fn * Fm. The accumulator is the LAST operand.",
+    details: [
+      "Fused means one rounding, so it is not `fmul` followed by `fadd`.",
+      "`fmadd d4, d1, d2, d3` is `d3 + d1*d2`, never `d1 + d2*d3`.",
+    ],
+    example: "fmadd d0, d1, d2, d3",
+    cExample: "Fd = fma(Fn, Fm, Fa);",
+  },
+  FMSUB: { summary: "Fd = Fa - Fn * Fm (the product is subtracted FROM the accumulator).", example: "fmsub d0, d1, d2, d3", cExample: "Fd = fma(-Fn, Fm, Fa);" },
+  FNMADD: { summary: "Fd = -Fa - Fn * Fm.", example: "fnmadd d0, d1, d2, d3", cExample: "Fd = -fma(Fn, Fm, Fa);" },
+  FNMSUB: { summary: "Fd = -Fa + Fn * Fm.", example: "fnmsub d0, d1, d2, d3", cExample: "Fd = fma(Fn, Fm, -Fa);" },
   FNEG: {
     summary: "Fd = -Fn (flips the sign bit; S or D form).",
     example: "fneg d16, d16",
