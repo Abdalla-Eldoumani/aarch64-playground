@@ -138,9 +138,9 @@ describe("ExerciseIndex", () => {
     expect(screen.queryByRole("button", { name: "registers" })).toBeNull();
   });
 
-  // The blurb used to be derived here from the prompt; now the server sends
-  // it. Nothing else in the suite would notice if it arrived empty, because
-  // every other assertion has a title or a topic to match on.
+  // The blurb comes from the server. Nothing else in the suite would notice
+  // if it arrived empty, because every other assertion matches on a title or
+  // a topic.
   it("renders the server-derived blurb verbatim", () => {
     render(<ExerciseIndex exercises={exercises} />);
     expect(screen.getByText("work with the stack")).toBeTruthy();
