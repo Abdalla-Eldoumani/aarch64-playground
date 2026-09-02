@@ -421,7 +421,7 @@ describe("launchInteractive, the composite launch", () => {
 
     fireEvent.click(screen.getByLabelText("run in the terminal"));
     const runAction = ref.current!.getCommands().find((a) => a.id === "run")!;
-    expect(runAction.description).toBe("hand the terminal pane to this program");
+    expect(runAction.description).toBe("run this program in the terminal tab");
     // An assembled program hands over; it does not re-assemble.
     act(() => runAction.run());
     expect(hub.assemble).not.toHaveBeenCalled();
@@ -474,7 +474,7 @@ describe("run from a cold load", () => {
     mount(ref);
     loadDsav(ref);
     expect(ref.current!.getCommands().find((a) => a.id === "run")!.description).toBe(
-      "assemble, then hand the terminal pane over",
+      "assemble, then run it in the terminal tab",
     );
   });
 

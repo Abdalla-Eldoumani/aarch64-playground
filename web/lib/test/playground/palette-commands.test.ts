@@ -140,7 +140,7 @@ describe("the descriptions that carry the reason", () => {
       makeDeps({ programLoaded: false, canStepBack: false }),
     );
     expect(row(actions, "step").description).toBe("(no program; assemble first)");
-    expect(row(actions, "step-back").description).toBe("(no snapshots; run a step first)");
+    expect(row(actions, "step-back").description).toBe("(nothing to undo; take a step first)");
     expect(row(actions, "run").description).toBe("(no program; assemble first)");
   });
 
@@ -148,18 +148,18 @@ describe("the descriptions that carry the reason", () => {
     const actions = buildPaletteCommands(makeDeps());
     expect(row(actions, "step").description).toBe("execute one instruction");
     expect(row(actions, "step-back").description).toBe(
-      "undo the last instruction from the snapshot ring",
+      "undo the last instruction",
     );
     expect(row(actions, "run").description).toBe("run until halt or breakpoint");
   });
 
-  it("names the terminal pane when run lands there", () => {
+  it("names the terminal tab when run lands there", () => {
     const loaded = buildPaletteCommands(makeDeps({ launchable: true }));
-    expect(row(loaded, "run").description).toBe("hand the terminal pane to this program");
+    expect(row(loaded, "run").description).toBe("run this program in the terminal tab");
     // Nothing assembled yet: in terminal mode run IS the launch, so it says so
     // rather than sending the student to assemble first.
     const cold = buildPaletteCommands(makeDeps({ launchable: true, programLoaded: false }));
-    expect(row(cold, "run").description).toBe("assemble, then hand the terminal pane over");
+    expect(row(cold, "run").description).toBe("assemble, then run it in the terminal tab");
   });
 });
 

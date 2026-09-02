@@ -84,8 +84,8 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
       description: deps.blocked
         ? "(waiting for stdin; feed the console first)"
         : deps.canStepBack
-          ? "undo the last instruction from the snapshot ring"
-          : "(no snapshots; run a step first)",
+          ? "undo the last instruction"
+          : "(nothing to undo; take a step first)",
       shortcut: "Shift+F10",
       run: () => {
         if (!deps.blocked) deps.stepBack();
@@ -103,8 +103,8 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
         ? "(waiting for stdin; feed the console first)"
         : deps.launchable
           ? deps.programLoaded
-            ? "hand the terminal pane to this program"
-            : "assemble, then hand the terminal pane over"
+            ? "run this program in the terminal tab"
+            : "assemble, then run it in the terminal tab"
           : deps.programLoaded
             ? "run until halt or breakpoint"
             : "(no program; assemble first)",
@@ -129,7 +129,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "pause",
       label: "Pause",
-      description: "stop the run loop",
+      description: "stop a run that is in progress",
       shortcut: "F5",
       run: () => deps.pause(),
     },
