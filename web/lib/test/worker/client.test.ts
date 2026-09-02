@@ -145,6 +145,7 @@ describe("WorkerClient", () => {
     const b = vi.fn();
     client.onSnapshot(a);
     client.onSnapshot(b);
+    // a heartbeat answers no request, so its id never matches a pending one
     fire({ id: -1, kind: "heartbeat", snapshot: makeSnapshot() } as never);
     expect(a).toHaveBeenCalledTimes(1);
     expect(b).toHaveBeenCalledTimes(1);
