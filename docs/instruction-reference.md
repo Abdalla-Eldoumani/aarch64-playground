@@ -93,7 +93,8 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `CINV`   | `CINV Xd, Xn, cond`             | Xd = cond ? ~Xn : Xn. Alias for `CSINV Xd, Xn, Xn, !cond`. |
 | `CNEG`   | `CNEG Xd, Xn, cond`             | Xd = cond ? -Xn : Xn. Alias for `CSNEG Xd, Xn, Xn, !cond`. |
 
-Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`, `LS`, `GE`, `LT`, `GT`, `LE`.
+Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`, `LS`, `GE`, `LT`, `GT`, `LE`, and `AL`.
+`NV` is taken only where GAS takes it, on `ccmp`, `ccmn`, and `fcsel`; GAS refuses `bnv`, so there is no `NV` branch here either.
 
 The five `cset`-family aliases encode the inverse of the condition you write,
 which is why none of them accepts `AL` or `NV`.
@@ -320,7 +321,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- SIMD vector widths (Q registers and arrangement specifiers)
+- SIMD: the `V`/`Q` register file and arrangement specifiers (`ldr q0, [x1]`, `movi v0.2s, #0`)
 - FP register-offset addressing (`ldr d0, [x1, x2, lsl #3]`); the integer forms take it
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
