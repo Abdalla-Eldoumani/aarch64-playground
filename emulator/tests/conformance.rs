@@ -1,4 +1,4 @@
-//! CPSC 355 conformance suite -- the emulator regression gate.
+//! CPSC 355 conformance suite: the emulator regression gate.
 //!
 //! Each fixture under `conformance/` is an ORIGINAL assignment-style
 //! program, one per category a student writes: arithmetic and loops,
@@ -13,18 +13,17 @@
 //! discipline, idiomatic addressing and syscalls).
 //!
 //! Two kinds of check run here:
-//!   * run-and-assert -- assemble, load (with stdin / VFS where needed),
+//!   * run-and-assert: assemble, load (with stdin / VFS where needed),
 //!     run to halt, and assert stdout + exit code + register/memory/VFS
 //!     state.
-//!   * full step-check -- on the baseline arithmetic program and the
+//!   * full step-check: on the baseline arithmetic program and the
 //!     non-leaf program, assert the pc advances one instruction at a time
 //!     (and to known branch targets), `bl` steps into the callee and `ret`
 //!     returns after the call, `step_back` restores state, a breakpoint is
 //!     hit at the right address, and the linker line map points main's
 //!     first instruction at the right editor line.
 //!
-//! This suite passing is the hard gate for any later change that touches
-//! the emulator.
+//! Any change to the emulator has to leave this suite green.
 
 use aarch64_emulator::cpu::{Cpu, StepOutcome};
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
@@ -182,7 +181,7 @@ fn pointer_table_selects_weekday_from_argv() {
     let sunday = cpu.resolve_label("day_sun").expect("day_sun symbol");
     let saturday = cpu.resolve_label("day_sat").expect("day_sat symbol");
     assert_eq!(cpu.mem.read_u64(table).unwrap(), sunday);
-    assert_eq!(cpu.mem.read_u64(table + 48).unwrap(), saturday);
+    assert_eq!(cpu.mem.read_u64(table + 48).unwrap(), saturday); // slot 6 of 7, the last day
 }
 
 #[test]
@@ -321,7 +320,7 @@ fn baseline_enters_at_main_and_steps_one_per_instruction() {
     assert_eq!(image.entry_point, main_addr, "entry point is main");
     assert_eq!(cpu.regs.read_pc(), main_addr, "pc starts at main's first instruction");
 
-    // prologue + setup: stp, mov fp, ldr =n_m, ldr [x0], mov, mov -- six
+    // prologue + setup: stp, mov fp, ldr =n_m, ldr [x0], mov, mov. Six
     // straight-line instructions, each advancing the pc by exactly 4.
     for i in 0..6 {
         let before = cpu.regs.read_pc();
@@ -353,7 +352,7 @@ fn baseline_back_edge_branches_to_loop_top() {
 #[test]
 fn baseline_step_back_restores_total_and_pc() {
     let (mut cpu, _image) = assemble(SUM_TO_N);
-    // Run until the running total (w19) is non-zero -- once the first
+    // Run until the running total (w19) is non-zero: once the first
     // `add sum_r, sum_r, i_r` has executed there is real state to restore.
     let mut guard = 0;
     while cpu.regs.read_gpr(19, true) == 0 {
@@ -423,7 +422,7 @@ fn nonleaf_bl_enters_callee_and_ret_returns_after_call() {
     let bl_pc = bl_pc.expect("execution reaches the bl into count_even");
     assert_ne!(bl_pc + 4, callee, "count_even is entered by a call, not fallthrough");
 
-    // Run forward until control returns to the instruction after the bl --
+    // Run forward until control returns to the instruction after the bl;
     // the `ret` out of the non-leaf returns to main.
     let mut returned = false;
     for _ in 0..400 {
