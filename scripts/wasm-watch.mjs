@@ -4,7 +4,7 @@
  * change under emulator/src via cargo-watch.
  *
  * cargo-watch is an optional dev tool. When it is not installed we print the
- * one-line install hint and exit 0 -- so `npm run dev:all` (which runs this
+ * one-line install hint and exit 0, so `npm run dev:all` (which runs this
  * under `concurrently --kill-others-on-fail`) keeps the web dev server up
  * instead of tearing it down over a missing optional dependency.
  */
