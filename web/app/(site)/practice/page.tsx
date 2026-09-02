@@ -17,14 +17,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "cpsc 355 playground",
-    title: "practice -- cpsc 355 playground",
+    title: "practice · cpsc 355 playground",
     description: DESCRIPTION,
     url: "/practice",
     images: [SHARE_CARD_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "practice -- cpsc 355 playground",
+    title: "practice · cpsc 355 playground",
     description: DESCRIPTION,
     images: [SHARE_CARD_IMAGE],
   },
