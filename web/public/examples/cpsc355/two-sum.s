@@ -231,14 +231,13 @@ err_range:      .string "%d is out of range.  enter a value from %d to %d."
 phase_brute:    .string "check every pair (i, j) with i < j"
 phase_hash:     .string "for each i, look up target - arr[i]"
 
-// Cost card: the three time bounds and the space bound.
-// costs in the three cases and in memory. Labels dim, the three time
-// bounds in the roles the cells use for settled, working, and worst.
+// Cost card: what the run costs in the three cases and in memory. Labels
+// dim, the three time bounds in the roles the cells use for settled,
+// working, and worst.
 cx_brute:       .string "\x1b[38;5;146mbest \x1b[38;5;157mO(1)   \x1b[38;5;146mavg \x1b[38;5;223mO(n^2)   \x1b[38;5;146mworst \x1b[38;5;211mO(n^2)   \x1b[38;5;146mspace \x1b[38;5;111mO(1)\x1b[0m"
 cx_hash:        .string "\x1b[38;5;146mbest \x1b[38;5;157mO(n)   \x1b[38;5;146mavg \x1b[38;5;223mO(n)     \x1b[38;5;146mworst \x1b[38;5;211mO(n^2)   \x1b[38;5;146mspace \x1b[38;5;111mO(n)\x1b[0m"
 
-// Panel rules. Panel rules. Each is 74 columns, so it stops short of the
-// frame.
+// Panel rules. Each is 74 columns, so it stops short of the frame.
 sec_array:      .string "── array ─────────────────────────────────────────────────────────────────"
 sec_hash:       .string "── hash table  ·  slot = val & 0x0F, then probe forward ──────────────────"
 sec_trace:      .string "── trace ─────────────────────────────────────────────────────────────────"
