@@ -4,7 +4,7 @@
   "order": 9,
   "summary": "A lesson that covers the implementation of a post-test loop in Assembly language, including its structure and usage.",
   "tags": [
-    "post-conditional loop",
+    "loops",
     "post-test loop"
   ],
   "body": [
