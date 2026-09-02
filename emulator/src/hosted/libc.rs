@@ -2,7 +2,7 @@
 //! them receive their arguments in the AAPCS64 GP registers (`x0..x7`)
 //! and write their return value into `x0` (or `d0` for `atof`).
 //!
-//! These are intentionally naive; they mirror behavior, not optimization.
+//! Each one is written for the behavior, not for speed.
 
 use crate::errors::EmuError;
 use crate::hosted::printf::read_c_string;
@@ -27,8 +27,7 @@ pub fn putchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 pub fn getchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     if ctx.stdin.is_empty() {
         // Closed stdin means EOF (-1), so the canonical read-until-EOF
-        // loop can terminate; before the close signal existed this state
-        // was an unbreakable wait.
+        // loop can terminate.
         if ctx.stdin_closed {
             ctx.regs.write_gpr(0, true, (-1i64) as u64);
             return Ok(HostOutcome::Continue);
@@ -152,9 +151,8 @@ pub fn memcmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 ///
 /// glibc hands back that DIFFERENCE, not a normalized -1/0/1: `strncmp`
 /// on "a" and "z" answers -25 on the servers. The strcmp stub above
-/// normalizes and predates this note; the sign is all C promises, so
-/// both satisfy the contract while this one also matches the number a
-/// student prints.
+/// normalizes instead. C promises only the sign, so both are correct;
+/// this one also matches the number a student prints.
 pub fn strncmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let a_ptr = ctx.regs.read_gpr(0, true);
     let b_ptr = ctx.regs.read_gpr(1, true);
@@ -169,7 +167,7 @@ pub fn strncmp(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             result = a as i32 - b as i32;
             break;
         }
-        // Equal terminators end the comparison early -- neither string
+        // Equal terminators end the comparison early: neither string
         // has anything left for byte n-1 to disagree about.
         if a == 0 {
             break;
@@ -307,7 +305,7 @@ pub const RAND_MAX: i64 = 2_147_483_647;
 /// servers, so students can diff against sample runs.
 ///
 /// `entropy` is the separate 64-bit word the getrandom syscall draws
-/// from -- kept apart so reseeding rand never shifts a raw-mode game's
+/// from: kept apart so reseeding rand never shifts a raw-mode game's
 /// food placement, and vice versa. The whole struct is `Copy` and rides
 /// in every snapshot, so step-back replays draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -365,7 +363,7 @@ impl Default for RandState {
 
 /// The timestamp `time` reports. A browser emulator has no reason to
 /// leak wall-clock time, and a fixed value makes the classic
-/// `srand(time(0))` seeding produce the same run every time -- which is
+/// `srand(time(0))` seeding produce the same run every time, which is
 /// what a student stepping backward and forward through a program needs.
 /// Only stability matters, not the date it decodes to.
 pub const FIXED_TIME: u64 = 355_000_000;
@@ -378,7 +376,7 @@ pub fn rand(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 pub fn srand(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     // C takes an unsigned int seed in w0. The getrandom entropy word
-    // survives the reseed on purpose -- the two streams are unrelated.
+    // survives the reseed on purpose: the two streams are unrelated.
     let entropy = ctx.rand_state.entropy;
     *ctx.rand_state = RandState::seed(ctx.regs.read_gpr(0, false) as u32);
     ctx.rand_state.entropy = entropy;
@@ -435,10 +433,10 @@ pub fn atof(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let bytes = read_c_string(ctx.mem, ptr, "atof")?;
     let s = String::from_utf8_lossy(&bytes);
     // C's atof skips leading whitespace, parses the longest strtod-shaped
-    // prefix, and returns 0.0 when nothing parses -- trailing junk never
-    // errors. Scan the grammar over bytes: slicing at `char_indices() + 1`
-    // panicked mid-character on any non-ASCII byte (a pasted degree sign
-    // or accented letter), which in wasm killed the whole instance.
+    // prefix, and returns 0.0 when nothing parses: trailing junk never
+    // errors. Scan the grammar over bytes: slicing at a char boundary
+    // panics mid-character on a pasted degree sign or accented letter,
+    // and in wasm a panic kills the whole instance.
     let trimmed = s.trim_start();
     let bytes = trimmed.as_bytes();
     let mut end = 0;
@@ -505,7 +503,7 @@ fn is_c_space(b: u8) -> bool {
 /// strtol(nptr, endptr, base) -> the converted long.
 /// Leading whitespace and an optional sign are skipped, base 0 infers
 /// the base from the prefix, and `endptr` (when it is not NULL) is left
-/// pointing at the first character the conversion did not use -- back at
+/// pointing at the first character the conversion did not use, back at
 /// `nptr` itself when nothing converted, which is how C code detects
 /// "that was not a number".
 pub fn strtol(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
@@ -842,9 +840,9 @@ mod tests {
     fn a_buffer_walk_off_the_top_of_memory_stays_defined() {
         // The guest picks the pointer AND the length, so a buffer that
         // runs off the end of the address space is reachable from ordinary
-        // source. `dst + i` panicked the whole instance in a debug build
-        // and wrapped silently in release; the walk wraps by contract now,
-        // and the memory layer treats the wrapped address like any other.
+        // source. `dst + i` panics in a debug build and wraps silently in
+        // release; the walk wraps by contract, and the memory layer treats
+        // the wrapped address like any other.
         let mut h = Host::new();
         let top = u64::MAX - 3;
         h.regs.write_gpr(0, true, top);
@@ -1322,9 +1320,9 @@ mod tests {
 
     #[test]
     fn atof_survives_non_ascii_bytes() {
-        // Slicing at char_indices()+1 panicked inside a multi-byte char --
-        // in wasm that killed the whole instance. A typed degree sign or
-        // a raw 0x80 byte must parse the numeric prefix calmly.
+        // Slicing inside a multi-byte char panics, and in wasm a panic
+        // kills the whole instance. A typed degree sign or a raw 0x80
+        // byte must parse the numeric prefix calmly.
         let mut h = Host::new();
         h.place_string(0x0050_0000, "3.5\u{b0}".as_bytes());
         h.regs.write_gpr(0, true, 0x0050_0000);
