@@ -18,7 +18,7 @@ fits the task.
 
 A run prints the program's exit status when it finishes; a program that
 stops without exiting (a fault, the step budget) prints
-`[no exit -- the program did not finish]` instead of a made-up code. A
+`[no exit: the program did not finish]` instead of a made-up code. A
 compiled executable named `program` takes precedence over the editor-source
 alias, matching a real shell's lookup.
 
