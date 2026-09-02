@@ -3368,6 +3368,16 @@ mod tests {
     }
 
     #[test]
+    fn bic_and_mvn_refuse_an_immediate_source() {
+        // Both are register-only aliases; the shifted-register arity fix
+        // must not have opened a door to an immediate GAS would refuse.
+        assert!(assemble("BIC X0, X1, #1").is_err());
+        assert!(assemble("MVN X0, #1").is_err());
+        assert!(assemble("BIC X0, X1, X2, LSL #1").is_ok());
+        assert!(assemble("MVN X0, X1, LSL #2").is_ok());
+    }
+
+    #[test]
     fn assemble_cmp_cset() {
         let source = r#"
             MOV X0, #10
