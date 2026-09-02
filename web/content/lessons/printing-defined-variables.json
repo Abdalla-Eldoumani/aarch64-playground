@@ -15,12 +15,12 @@
     },
     {
     "type": "prose",
-    "markdown": "In many Assembly programs, data is stored in variables within the `.data` section before it is used. While printing values directly using immediate constants is straightforward, accessing and printing values stored in memory requires additional steps. \n\n In this lesson, we will explore how to print variables defined in the `.data` section in Assembly. We will examine how to access stored values, load them into registers, and pass them correctly to the `printf` function for output."
+    "markdown": "In many Assembly programs, data is stored in variables within the `.data` section before it is used. While printing values directly using immediate constants is straightforward, accessing and printing values stored in memory requires additional steps. \n\n This lesson loads a value out of `.data` into a register and passes it to `printf`."
 
     },
     {
         "type": "prose",
-        "markdown": "## A review of printing with printf\n\nIf you have reached this point, you should be familiar with the general process of printing in Assembly using the `printf` function. Although printing in Assembly requires more manual preparation compared to high-level programming languages, the overall workflow remains consistent.\n\nThe printing process can be summarized into the following steps:\n\n1. Define the string or format string.\n2. Load the address of the string or format string into `x0`.\n3. Place the corresponding value to be printed into the appropriate argument registers (if any).\n4. Call `printf`.\n\nThese steps remain the same when printing variables stored in the `.data` section. However, the main difference is found in step 3.\n\nIn previous lessons, the values being printed were provided directly as immediate values and moved into the appropriate argument registers. For example:\n\n`mov x1, 67`\n\nIn this lesson, we will follow the same principle of placing the value to be printed into the appropriate argument register. However, instead of moving an immediate value directly into the register, we will first retrieve the value stored in a variable defined in the `.data` section and then pass it to `printf`.\n"
+        "markdown": "## A review of printing with printf\n\nPrinting in Assembly always follows the same four steps.\n\nThe printing process can be summarized into the following steps:\n\n1. Define the string or format string.\n2. Load the address of the string or format string into `x0`.\n3. Place the corresponding value to be printed into the appropriate argument registers (if any).\n4. Call `printf`.\n\nThese steps remain the same when printing variables stored in the `.data` section. However, the main difference is found in step 3.\n\nIn previous lessons, the values being printed were provided directly as immediate values and moved into the appropriate argument registers. For example:\n\n`mov x1, 67`\n\nHere the value comes out of a `.data` variable instead of an immediate, but it still ends up in the same argument register.\n"
     },
     {
         "type": "prose",
@@ -44,7 +44,7 @@
     },
     {
         "type": "prose",
-        "markdown": "\nThe ldr instruction is used to retrieve both the address of the variable and the value stored at that address. In this process, two `ldr` instructions are required.\n\nThe first `ldr` instruction retrieves the address of the variable and stores it in register `x21`. The second `ldr` instruction uses this address to access the value stored in memory and loads the retrieved value into register `w1`. A `.word` is 32 bits, so the load uses the 32-bit `w` form of the register; an `x1` load would drag in the 4 bytes stored after the variable too. The register `x0` is preserved for the address of the format string, which is passed to `printf` as the first argument."
+        "markdown": "\nThe `ldr` instruction is used to retrieve both the address of the variable and the value stored at that address. In this process, two `ldr` instructions are required.\n\nThe first `ldr` instruction retrieves the address of the variable and stores it in register `x21`. The second `ldr` instruction uses this address to access the value stored in memory and loads the retrieved value into register `w1`. A `.word` is 32 bits, so the load uses the 32-bit `w` form of the register; an `x1` load would drag in the 4 bytes stored after the variable too. The register `x0` is preserved for the address of the format string, which is passed to `printf` as the first argument."
     },
     {
         "type": "callout",
@@ -57,12 +57,12 @@
     },
     {
         "type": "editor",
-        "starter": "    .data\n    // Format string for printing an integer\n    format1:   .string  \"Integer Variable Content: %d\\n\"\n\n    // Variable storing the number 85\n    importantNumber:      .word 85\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n    \n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // Passing the integer value to be printed to the next argument register.\n    ldr  x21, =importantNumber\n    ldr w1, [x21]\n    // Calling printf to print the integer value.\n    bl printf\n\n    // Program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
+        "starter": "    .data\n    // Format string for printing an integer\n    format1:   .string  \"Integer Variable Content: %d\\n\"\n\n    importantNumber:      .word 85\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n    \n    ldr x0, =format1\n    // x1 is the second argument, and .word is 32 bits, so load it as w1\n    ldr  x21, =importantNumber\n    ldr w1, [x21]\n    bl printf\n\n    // Program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
     },
     {
         "type": "callout",
         "variant":"note",
-        "markdown": "You can print variables of any data type using the process shown above. An important consideration is ensuring that you use the correct format specifier and the **appropriate registers** when retrieving values from variables defined in the `.data` section.\n\nWhen calling `printf`, you must pass arguments whose data types match their corresponding format specifiers. Passing an argument whose type does not match the expected format specifier may result in unintended or incorrect output."
+        "markdown": "You can print variables of any data type using the process shown above. Use the format specifier and the **register width** that match the variable's type.\n\nWhen calling `printf`, you must pass arguments whose data types match their corresponding format specifiers. A mismatch prints garbage."
 
     }
 
