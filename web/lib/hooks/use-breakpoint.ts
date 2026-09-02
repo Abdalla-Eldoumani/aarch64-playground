@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 
 /**
  * Named Tailwind breakpoints. `xs` covers everything below `sm` (640px).
- * Components can ask "which breakpoint are we at right now?" without
- * hard-coding pixel thresholds at every call site.
+ * Call sites compare names instead of repeating pixel thresholds.
  */
 export type Breakpoint = "xs" | "sm" | "md" | "lg" | "xl" | "2xl";
 
