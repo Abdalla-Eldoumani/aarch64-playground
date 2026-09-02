@@ -119,7 +119,7 @@ export function DecodeStrip({
             return (
               <div
                 key={`${field.label}-${index}`}
-                className={`anim-decode-latch flex min-w-0 flex-col items-center border py-1 ${
+                className={`anim-decode-latch flex min-w-max flex-col items-center border py-1 ${
                   dest
                     ? "border-[var(--amber)] z-10"
                     : "border-[var(--border)]"
@@ -127,7 +127,10 @@ export function DecodeStrip({
                 style={{
                   flexGrow: field.bits,
                   // Floor per field so 1-bit boxes keep their labels legible;
-                  // the row scrolls horizontally when floors overflow.
+                  // min-w-max above is the harder floor, so a cell can never be
+                  // squeezed under its own bit string. The row scrolls
+                  // horizontally when the floors overflow, which is the
+                  // intended behaviour, not a defect.
                   flexBasis: `${Math.max(34, field.bits * 8)}px`,
                   backgroundColor: dest
                     ? "color-mix(in srgb, var(--amber) 8%, transparent)"
@@ -142,7 +145,7 @@ export function DecodeStrip({
                   {field.label}
                 </span>
                 <span
-                  className={`px-1 font-mono text-[12px] font-medium tabular-nums break-all ${
+                  className={`px-1 font-mono text-[12px] font-medium tabular-nums whitespace-nowrap ${
                     dest
                       ? "text-[var(--amber)]"
                       : field.kind === "register"
