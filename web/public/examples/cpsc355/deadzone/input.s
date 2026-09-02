@@ -1,5 +1,6 @@
-// Non-blocking keyboard input. Reads at most one byte a frame and decodes
-// arrow-key escape sequences across frames onto the same codes as w/a/s/d.
+// Non-blocking keyboard input. An arrow key arrives as three bytes, so a
+// sequence in progress reads again at once rather than waiting for the next
+// frame; the four arrows come back as the w/a/s/d codes.
 
 define(key_reg, w19)                            // Current key value
 define(state_reg, w20)                          // Escape sequence state
@@ -11,15 +12,12 @@ ESC_STATE_BRACKET = 2                           // Received ESC [
 
                 .data
 
-// Current key state
 current_key:    .word   KEY_NONE                // Last key read
 
-// Escape sequence state
 esc_state:      .word   ESC_STATE_NONE          // Current escape state
 
-// Input buffer (single byte)
                 .balign 4
-input_buf:      .byte   0                       // Input buffer
+input_buf:      .byte   0
                 .balign 4
 
                 .text
@@ -33,16 +31,14 @@ input_init:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Clear key state
                 adrp    x0, current_key
                 add     x0, x0, :lo12:current_key
                 mov     w1, KEY_NONE
                 str     w1, [x0]
 
-                // Clear escape state
                 adrp    x0, esc_state
                 add     x0, x0, :lo12:esc_state
-                mov     w1, ESC_STATE_NONE      // No escape
+                mov     w1, ESC_STATE_NONE
                 str     w1, [x0]
 
                 ldp     fp, lr, [sp], 16
@@ -57,33 +53,30 @@ input_poll:
                 mov     fp, sp
                 stp     x19, x20, [sp, 16]
 
-                // Load current escape state
                 adrp    x0, esc_state
                 add     x0, x0, :lo12:esc_state
-                ldr     state_reg, [x0]         // Load state
+                ldr     state_reg, [x0]
 
                 // Try to read a byte (non-blocking due to VMIN=0, VTIME=0)
                 mov     x0, STDIN
                 adrp    x1, input_buf
                 add     x1, x1, :lo12:input_buf
-                mov     x2, 1                   // Read 1 byte
+                mov     x2, 1
                 mov     x8, SYS_READ
                 svc     0
 
-                // Check if we got a byte
-                cmp     x0, 0                   // Check bytes read
+                cmp     x0, 0
                 b.le    poll_no_input           // No input available
 
-                // Load the byte we read
                 adrp    x0, input_buf
                 add     x0, x0, :lo12:input_buf
-                ldrb    key_reg, [x0]           // Load byte into key_reg
+                ldrb    key_reg, [x0]
 
                 // Handle escape sequence state machine
                 cmp     state_reg, ESC_STATE_NONE
                 b.ne    poll_in_escape          // In escape sequence
 
-                // Not in escape sequence - check if this is ESC
+                // Outside a sequence, ESC starts one
                 cmp     key_reg, KEY_ESC        // Is it ESC?
                 b.ne    poll_return_key         // No, return the key
 
@@ -101,7 +94,7 @@ poll_in_escape:
                 b.ne    poll_in_bracket         // Must be in bracket state
 
                 // In ESC state - expect [
-                cmp     key_reg, '['            // Is it [?
+                cmp     key_reg, '['
                 b.ne    poll_reset_return_esc   // No, return ESC
 
                 // Got [ - advance to bracket state
@@ -115,52 +108,49 @@ poll_in_escape:
 
 poll_in_bracket:
                 // In bracket state - expect A/B/C/D for arrows
-                // Reset state first
                 mov     state_reg, ESC_STATE_NONE
                 adrp    x0, esc_state
                 add     x0, x0, :lo12:esc_state
                 str     state_reg, [x0]
 
-                // Check for arrow keys
-                cmp     key_reg, 'A'            // Up arrow?
+                cmp     key_reg, 'A'
                 b.eq    poll_arrow_up
-                cmp     key_reg, 'B'            // Down arrow?
+                cmp     key_reg, 'B'
                 b.eq    poll_arrow_down
-                cmp     key_reg, 'C'            // Right arrow?
+                cmp     key_reg, 'C'
                 b.eq    poll_arrow_right
-                cmp     key_reg, 'D'            // Left arrow?
+                cmp     key_reg, 'D'
                 b.eq    poll_arrow_left
 
                 // Unknown sequence - return the character
                 b       poll_return_key
 
 poll_arrow_up:
-                mov     key_reg, KEY_W          // Map to W
+                mov     key_reg, KEY_W
                 b       poll_return_key
 
 poll_arrow_down:
-                mov     key_reg, KEY_S          // Map to S
+                mov     key_reg, KEY_S
                 b       poll_return_key
 
 poll_arrow_right:
-                mov     key_reg, KEY_D          // Map to D
+                mov     key_reg, KEY_D
                 b       poll_return_key
 
 poll_arrow_left:
-                mov     key_reg, KEY_A          // Map to A
+                mov     key_reg, KEY_A
                 b       poll_return_key
 
 poll_reset_return_esc:
-                // Reset escape state and return ESC
                 mov     state_reg, ESC_STATE_NONE
                 adrp    x0, esc_state
                 add     x0, x0, :lo12:esc_state
                 str     state_reg, [x0]
-                mov     key_reg, KEY_ESC        // Return ESC
+                mov     key_reg, KEY_ESC
                 b       poll_return_key
 
 poll_no_input:
-                // Check if we're in an escape sequence that timed out
+                // A bare ESC: the sequence never got its bracket
                 cmp     state_reg, ESC_STATE_NONE
                 b.eq    poll_return_none        // Not in escape, return none
 
@@ -169,21 +159,20 @@ poll_no_input:
                 adrp    x0, esc_state
                 add     x0, x0, :lo12:esc_state
                 str     state_reg, [x0]
-                mov     key_reg, KEY_ESC        // Return ESC
+                mov     key_reg, KEY_ESC
                 b       poll_return_key
 
 poll_return_none:
-                mov     key_reg, KEY_NONE       // No key pressed
+                mov     key_reg, KEY_NONE
                 b       poll_done
 
 poll_return_key:
-                // Store current key
                 adrp    x0, current_key
                 add     x0, x0, :lo12:current_key
                 str     key_reg, [x0]
 
 poll_done:
-                mov     w0, key_reg             // Return key code
+                mov     w0, key_reg
                 ldp     x19, x20, [sp, 16]
                 ldp     fp, lr, [sp], 32
                 ret
@@ -193,7 +182,7 @@ input_poll_again:
                 mov     x0, STDIN
                 adrp    x1, input_buf
                 add     x1, x1, :lo12:input_buf
-                mov     x2, 1                   // Read 1 byte
+                mov     x2, 1
                 mov     x8, SYS_READ
                 svc     0
 
