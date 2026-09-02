@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, type ComponentProps } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { REPO_URL, NAV_ROUTES, isActiveRoute } from "@/lib/content/site";
@@ -24,6 +25,35 @@ import { MobileNavDrawer } from "@/components/chrome/MobileNavDrawer";
  * playground's client-mounted slim bar passes nothing and keeps the icon-only
  * link, which is also what a failed lookup renders.
  */
+/**
+ * A route link that starts cold and warms on intent. `prefetch={false}` means
+ * never in the App Router, viewport and hover alike, so hover warming has to
+ * be built: swap back to the default once a pointer or the keyboard arrives
+ * and Next prefetches then. That keeps four route payloads off the landing's
+ * initial network while a reader who aims at a route still gets it warm.
+ * `onFocus` rides along because the nav is a keyboard landmark and tabbing
+ * through should warm what hovering does. The flag is `warm`, not `active`,
+ * which already means the current route in the map below.
+ */
+function HoverPrefetchLink({
+  href,
+  children,
+  ...rest
+}: ComponentProps<typeof Link>) {
+  const [warm, setWarm] = useState(false);
+  return (
+    <Link
+      href={href}
+      prefetch={warm ? null : false}
+      onMouseEnter={() => setWarm(true)}
+      onFocus={() => setWarm(true)}
+      {...rest}
+    >
+      {children}
+    </Link>
+  );
+}
+
 export function SiteNav({
   variant,
   stars = null,
@@ -58,7 +88,7 @@ export function SiteNav({
             const active = isActiveRoute(pathname, route.href);
             return (
               <li key={route.href}>
-                <Link
+                <HoverPrefetchLink
                   href={route.href}
                   aria-current={active ? "page" : undefined}
                   className={`inline-flex min-h-[44px] items-center px-3 font-sans text-[14px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
@@ -68,7 +98,7 @@ export function SiteNav({
                   }`}
                 >
                   {route.label}
-                </Link>
+                </HoverPrefetchLink>
               </li>
             );
           })}
