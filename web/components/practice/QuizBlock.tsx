@@ -3,7 +3,7 @@
 /**
  * One multiple-choice question, graded locally against the validated
  * correct index. Before a wrong answer is corrected the block shows only
- * the author's hint -- never the explanation or the right option -- so a
+ * the author's hint, never the explanation or the right option, so a
  * student cannot read their way to the answer. `onAttempt` reports each
  * submission upward for the exercise-level solved state.
  */
