@@ -192,17 +192,16 @@ a coding exercise's file carries no answer key.
 ### interactive variants
 
 The interactive variants skip the editor and grade entirely in the page, so
-their files declare the expected answers (that is by design and only applies
-to these variants; coding exercises still never store one). They ship in
-families named `quiz-basic-<family>`, `quiz-inter-<family>`, and
+their files declare the expected answers (coding exercises still store none).
+They ship in families named `quiz-basic-<family>`, `quiz-inter-<family>`, and
 `quiz-advance-<family>` (all three titled "Quiz: <subject>"),
 `blanks-<family>` ("Fill in the blank: <subject>"), and
 `predict-<family>` ("Predict: <subject>"). Every set on one topic uses
 the same subject name, so a reader scanning the theory column sees three
 kinds of practice on one subject rather than three names for one topic.
-The family is the shared
-part of the five slugs and is usually the `topic` id, but it does not have
-to be: the memory-and-stack sets are the `frame-stack` family under the
+The family is the shared part of a topic's slugs (five where a prediction
+set exists, four otherwise) and is usually the `topic` id, but it does not
+have to be: the memory-and-stack sets are the `frame-stack` family under the
 `memory` topic, and a slug never changes once shipped, so pick the family
 name once. Each carries one question list in place of
 `starter`/`acceptance`:
