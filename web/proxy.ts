@@ -5,11 +5,11 @@ import { NextResponse, type NextRequest } from "next/server";
  * not just on Vercel's edge. vercel.json carries the same set as a
  * deploy-time guarantee; this proxy is the framework-level one.
  *
- * Keep in lockstep with vercel.json -- both should reject anything we
- * promise in docs/security.md. proxy.test.ts asserts the two sets match,
- * so a drift fails the suite instead of shipping. The old-host redirect
- * lives only in vercel.json: the platform resolves redirects before this
- * proxy runs, and localhost never wears the old host.
+ * Keep in lockstep with vercel.json: both carry what docs/security.md
+ * promises. proxy.test.ts asserts the two sets match, so a drift fails the
+ * suite instead of shipping. The old-host redirect lives only in vercel.json:
+ * the platform resolves redirects before this proxy runs, and localhost never
+ * wears the old host.
  *
  * Exported for that parity test alone; nothing else may import it.
  */
@@ -24,8 +24,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy":
     "default-src 'self'; " +
     // 'unsafe-eval' is only needed by the Next.js dev runtime (React Refresh
-    // evaluates modules with eval). Production must never ship it -- it would
-    // reopen the eval-based XSS the CSP exists to close -- so it is gated to
+    // evaluates modules with eval). Production must never ship it, because it
+    // reopens the eval-based XSS the CSP exists to close, so it is gated to
     // development. vercel.json carries the production policy without it.
     "script-src 'self' " +
     (process.env.NODE_ENV === "development" ? "'unsafe-eval' " : "") +
