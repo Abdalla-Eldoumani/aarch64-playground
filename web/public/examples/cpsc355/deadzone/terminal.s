@@ -15,15 +15,16 @@ new_termios:    .skip   TERMIOS_SIZE            // Modified terminal settings
 // Terminal initialized flag
 term_init:      .word   0                       // 0 = not initialized
 
-// Where the next staged glyph lands, and the colour it is staged in
+// Where the next staged glyph lands, and the colour it is staged in.
+// Three adjacent words: cursor_move and write_char reach fb_y and
+// fb_attr_cur at [fb_x, 4] and [fb_x, 8].
 fb_x:           .word   0                       // Column 0..SCREEN_WIDTH-1
 fb_y:           .word   0                       // Row 0..SCREEN_HEIGHT-1
 fb_attr_cur:    .word   COLOR_RESET             // Colour applied to new cells
 
 // Frame buffer
 // Drawing stages a whole frame in fb_*, and screen_flush sends only the cells
-// that differ from pv_* (what the terminal is already showing). That is what
-// keeps a frame at one write syscall instead of one per glyph.
+// that differ from pv_* (what the terminal is already showing).
 FLUSH_BUF_SIZE = 4096                           // Bytes per outgoing write
 
                 .bss
@@ -33,7 +34,7 @@ fb_attr:        .skip   SCREEN_SIZE             // Colour staged for each cell
 pv_char:        .skip   SCREEN_SIZE             // Glyph the terminal shows
 pv_attr:        .skip   SCREEN_SIZE             // Colour the terminal shows
 flush_buf:      .skip   FLUSH_BUF_SIZE          // Bytes on their way to stdout
-fill_pattern:   .skip   8                       // Byte replicated for row fills
+fill_pattern:   .skip   8                       // Scratch: eight copies of a byte, reloaded as one doubleword
 
                 .text
 
@@ -63,12 +64,11 @@ ansi_last_row_len = . - ansi_last_row - 1
 // Returns: 0 on success, -1 on failure
                 .global terminal_init
 terminal_init:
-                stp     fp, lr, [sp, -16]!      // Save frame pointer and link
+                stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Get current terminal attributes
                 mov     x0, STDIN
-                mov     x1, TCGETS              // TCGETS request
+                mov     x1, TCGETS
                 adrp    x2, old_termios
                 add     x2, x2, :lo12:old_termios
                 mov     x8, SYS_IOCTL
@@ -76,7 +76,6 @@ terminal_init:
                 cmp     x0, 0
                 b.lt    terminal_init_fail
 
-                // Copy old_termios to new_termios
                 adrp    x0, old_termios
                 add     x0, x0, :lo12:old_termios
                 adrp    x1, new_termios
@@ -85,32 +84,32 @@ terminal_init:
                 bl      memcpy_simple
 
                 // Modify local flags: disable ICANON, ECHO, ISIG, IEXTEN
-                adrp    x0, new_termios         // Get new_termios address
+                adrp    x0, new_termios
                 add     x0, x0, :lo12:new_termios
-                ldr     w1, [x0, TERMIOS_LFLAG] // Load current lflag
-                mov     w2, ICANON              // Canonical mode flag
-                orr     w2, w2, ECHO            // OR with echo flag
-                orr     w2, w2, ISIG            // OR with signal flag
-                orr     w2, w2, IEXTEN          // OR with extended flag
+                ldr     w1, [x0, TERMIOS_LFLAG]
+                mov     w2, ICANON
+                orr     w2, w2, ECHO
+                orr     w2, w2, ISIG
+                orr     w2, w2, IEXTEN
                 bic     w1, w1, w2
-                str     w1, [x0, TERMIOS_LFLAG] // Store modified lflag
+                str     w1, [x0, TERMIOS_LFLAG]
 
                 // Modify input flags: disable ICRNL, IXON
-                ldr     w1, [x0, TERMIOS_IFLAG] // Load current iflag
-                mov     w2, ICRNL               // CR to NL flag
-                orr     w2, w2, IXON            // XON/XOFF flag
+                ldr     w1, [x0, TERMIOS_IFLAG]
+                mov     w2, ICRNL
+                orr     w2, w2, IXON
                 bic     w1, w1, w2
-                str     w1, [x0, TERMIOS_IFLAG] // Store modified iflag
+                str     w1, [x0, TERMIOS_IFLAG]
 
                 // Set VMIN = 0, VTIME = 0 for non-blocking reads
                 add     x1, x0, TERMIOS_CC
                 mov     w2, 0
-                strb    w2, [x1, TERMIOS_CC_VMIN]  // VMIN = 0
-                strb    w2, [x1, TERMIOS_CC_VTIME] // VTIME = 0
+                strb    w2, [x1, TERMIOS_CC_VMIN]
+                strb    w2, [x1, TERMIOS_CC_VTIME]
 
                 // Apply new terminal attributes
                 mov     x0, STDIN
-                mov     x1, TCSETS              // TCSETS request
+                mov     x1, TCSETS
                 adrp    x2, new_termios
                 add     x2, x2, :lo12:new_termios
                 mov     x8, SYS_IOCTL
@@ -122,17 +121,16 @@ terminal_init:
                 // only the descriptor's own flags would still block in read().
                 // Ask for non-blocking stdin both ways.
                 mov     x0, STDIN
-                mov     x1, F_GETFL             // Read current status flags
+                mov     x1, F_GETFL
                 mov     x8, SYS_FCNTL
                 svc     0
 
                 orr     x2, x0, O_NONBLOCK      // Add the non-blocking bit
                 mov     x0, STDIN
-                mov     x1, F_SETFL             // Write status flags back
+                mov     x1, F_SETFL
                 mov     x8, SYS_FCNTL
                 svc     0
 
-                // Set initialized flag
                 adrp    x0, term_init
                 add     x0, x0, :lo12:term_init
                 mov     w1, 1
@@ -143,9 +141,9 @@ terminal_init:
                 // zeroes, which no staged glyph matches, so the first flush
                 // repaints every cell.
                 bl      cursor_hide
-                bl      term_clear_raw          // Clear the real terminal
-                bl      screen_clear            // Blank the staged frame
-                bl      screen_invalidate       // Nothing is on screen yet
+                bl      term_clear_raw
+                bl      screen_clear
+                bl      screen_invalidate
 
                 mov     x0, 0
                 ldp     fp, lr, [sp], 16
@@ -164,21 +162,18 @@ terminal_restore:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Check if terminal was initialized
                 adrp    x0, term_init
                 add     x0, x0, :lo12:term_init
                 ldr     w0, [x0]
                 cbz     w0, restore_done
 
-                // Show cursor first
                 bl      cursor_show
 
-                // Reset colors
-                bl      reset_color             // Reset to default
+                bl      reset_color
 
                 // Restore original terminal attributes
                 mov     x0, STDIN
-                mov     x1, TCSETS              // TCSETS request
+                mov     x1, TCSETS
                 adrp    x2, old_termios
                 add     x2, x2, :lo12:old_termios
                 mov     x8, SYS_IOCTL
@@ -186,7 +181,6 @@ terminal_restore:
                 cmp     x0, 0
                 b.lt    restore_fail
 
-                // Clear initialized flag
                 adrp    x0, term_init
                 add     x0, x0, :lo12:term_init
                 mov     w1, 0
@@ -209,14 +203,14 @@ term_clear_raw:
                 mov     fp, sp
 
                 mov     x0, STDOUT
-                adrp    x1, ansi_clear          // Clear sequence
+                adrp    x1, ansi_clear
                 add     x1, x1, :lo12:ansi_clear
                 mov     x2, ansi_clear_len
                 mov     x8, SYS_WRITE
                 svc     0
 
                 mov     x0, STDOUT
-                adrp    x1, ansi_home           // Home sequence
+                adrp    x1, ansi_home
                 add     x1, x1, :lo12:ansi_home
                 mov     x2, ansi_home_len
                 mov     x8, SYS_WRITE
@@ -260,7 +254,7 @@ write_str_raw_done:
                 ret
 
 // screen_end - Park the cursor on the last row and reset colour, raw
-// Called on the way out so the exit message lands where it used to.
+// Called on the way out so the exit message lands on the bottom row.
                 .global screen_end
 screen_end:
                 stp     fp, lr, [sp, -16]!
@@ -327,8 +321,7 @@ invalidate_loop:
 
 // fb_fill_row - Fill one whole screen row with a glyph and colour
 // Parameters: w0 = row, w1 = glyph, w2 = colour
-// Eight cells at a time; a row costs about sixty steps instead of the eighty
-// write syscalls the per-character path used.
+// Eight cells a store: ten stores a row instead of eighty.
                 .global fb_fill_row
 fb_fill_row:
                 cmp     w0, SCREEN_HEIGHT
@@ -596,7 +589,7 @@ cursor_hide:
                 mov     fp, sp
 
                 mov     x0, STDOUT
-                adrp    x1, ansi_hide           // Hide sequence
+                adrp    x1, ansi_hide
                 add     x1, x1, :lo12:ansi_hide
                 mov     x2, ansi_hide_len
                 mov     x8, SYS_WRITE
@@ -612,7 +605,7 @@ cursor_show:
                 mov     fp, sp
 
                 mov     x0, STDOUT
-                adrp    x1, ansi_show           // Show sequence
+                adrp    x1, ansi_show
                 add     x1, x1, :lo12:ansi_show
                 mov     x2, ansi_show_len
                 mov     x8, SYS_WRITE
@@ -890,7 +883,7 @@ flush_cell_room:
                 strb    w1, [x23], 1
                 add     w0, w10, 1              // ANSI rows are 1-based
                 bl      fb_emit_num
-                mov     w1, 59
+                mov     w1, ';'
                 strb    w1, [x23], 1
                 add     w0, w11, 1              // ANSI columns are 1-based
                 bl      fb_emit_num
@@ -925,7 +918,6 @@ flush_cell_glyph:
                 // starts with an address of its own.
                 // Groups are eight cells and SCREEN_WIDTH is a multiple of
                 // eight, so a row can only end on the last cell of a group.
-                // Seven cells in eight get away with the compare.
                 cmp     w7, 7
                 b.ne    flush_cell_next
                 mov     w10, SCREEN_WIDTH
@@ -951,10 +943,10 @@ flush_finish:
                 ldp     fp, lr, [sp], 112
                 ret
 
-// memcpy_simple - Simple memory copy
+// memcpy_simple - Byte-at-a-time copy
 // Parameters: x0 = source, x1 = dest, x2 = count
 memcpy_simple:
-                cbz     x2, memcpy_done         // Return if count is 0
+                cbz     x2, memcpy_done
 memcpy_loop:
                 ldrb    w3, [x0], 1
                 strb    w3, [x1], 1
