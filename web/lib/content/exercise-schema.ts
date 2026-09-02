@@ -133,6 +133,29 @@ export interface BlanksExercise extends BaseExercise {
  */
 export type Exercise = WriteExercise | QuizExercise | PredictionExercise | BlanksExercise;
 
+/**
+ * The row shape the practice index actually renders: exactly the seven fields
+ * ExerciseIndex reads, and nothing else. A full Exercise also carries the
+ * prompt, the starter source, the acceptance criteria, the questions, the
+ * predictions, the blanks, the args, and the stdin, roughly 232 KB across the
+ * authored set, every byte of which used to cross the server-to-client
+ * boundary so one short blurb could be derived during the client render.
+ * The type lives here rather than beside the loader because the loader is
+ * server-only: a client component naming that module is one dropped `type`
+ * keyword away from a confusing build failure.
+ */
+export interface ExerciseIndexRow {
+  title: string;
+  slug: string;
+  order: number | string;
+  topic?: string;
+  difficulty?: ExerciseDifficulty;
+  /** Drives practiceSide(): which of the two columns the row lands in. */
+  variant: ExerciseVariant;
+  /** Plain-text row summary, derived from the prompt at build time. */
+  blurb: string;
+}
+
 /** Discriminated validation result: a typed exercise or a clear error. */
 export type ExerciseResult = { ok: true; exercise: Exercise } | { ok: false; error: string };
 
