@@ -14,6 +14,29 @@ const allHandlers = () => ({
 });
 
 describe("Controls", () => {
+  it("marks the action row as an instrument band and keeps the error out of it", () => {
+    const h = allHandlers();
+    const { container } = render(
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={true}
+        error="undefined label: mian"
+      />,
+    );
+    const band = container.querySelector(".controls-band");
+    expect(band).not.toBeNull();
+    // Every button rides the strip; the spacer it suppresses under sm carries
+    // its own class, and the alert is a sibling row, not a scrolled-away child.
+    expect(band!.querySelectorAll("button")).toHaveLength(5);
+    expect(band!.querySelector(":scope > .controls-spacer")).not.toBeNull();
+    const alert = screen.getByRole("alert");
+    expect(alert.closest(".controls-band")).toBeNull();
+    expect(alert.parentElement).toBe(band!.parentElement);
+  });
+
   it("renders the five control buttons in canonical order", () => {
     const h = allHandlers();
     render(
