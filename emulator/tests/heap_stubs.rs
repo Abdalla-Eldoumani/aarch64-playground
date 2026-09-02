@@ -133,7 +133,7 @@ main:
         mov     x0, 0
         bl      free
 
-        // two windows' worth cannot fit; malloc reports NULL
+        // twice the 16 MiB heap cannot fit; malloc reports NULL
         mov     x0, 0x2000000
         bl      malloc
         ldr     x1, =fmt
