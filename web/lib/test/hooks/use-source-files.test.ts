@@ -12,10 +12,9 @@ afterEach(() => {
 });
 
 describe("useSourceFiles", () => {
-  // Loading a program REPLACES the strip on purpose. Until the backup
-  // existed, a plain click on a recent program (no confirm) took every
-  // helper file with it and only the strip's own localStorage key was
-  // rewritten -- with `[]`.
+  // Loading a program REPLACES the strip on purpose. Without the backup, a
+  // plain click on a recent program (no confirm) takes every helper file with
+  // it and rewrites the strip's localStorage key to `[]`.
   it("keeps a wiped strip recoverable and appends it back on restore", () => {
     const { result } = renderHook(() => useSourceFiles());
     act(() => {
