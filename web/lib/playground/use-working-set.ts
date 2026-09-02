@@ -41,15 +41,15 @@ export type WorkingSet = {
  * IndexedDB so it survives reloads and route changes.
  *
  * `isHome` is the full playground: the VFS there is the student's home
- * directory, so a program's fixtures land BESIDE (and on name collisions,
- * over) the files already present, the map is persisted, and stdin seeds are
- * dropped on purpose -- a program that reads input should block at the read
- * and pull the student to the console, and seeding here re-fed the boot's
- * stdin after every assemble, so a hard-loaded share or bundle link answered
- * its own scanf forever while the same link opened by in-app navigation did
- * not. Embed and checker surfaces are session-only sandboxes that keep their
- * authored seeds and replace the VFS strictly: a lesson figure must see
- * exactly its own fixtures.
+ * directory, so a program's fixtures land BESIDE (and on name collisions, over)
+ * the files already present, the map is persisted, and stdin seeds are dropped
+ * on purpose: a program that reads input should block at the read and pull the
+ * student to the console, and seeding here re-fed the boot's stdin after every
+ * assemble, so a hard-loaded share or bundle link answered its own scanf
+ * forever while the same link opened by in-app navigation did not. Embed and
+ * checker surfaces are session-only sandboxes that keep their authored seeds
+ * and replace the VFS strictly: a lesson figure must see exactly its own
+ * fixtures.
  */
 export function useWorkingSet(opts: {
   isHome: boolean;
