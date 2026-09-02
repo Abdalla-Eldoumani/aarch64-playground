@@ -4,8 +4,8 @@ import { ROUTE_REGISTERS } from "@/lib/content/landing-content";
 import { Kicker } from "@/components/ui/Kicker";
 import { BootFlashList } from "@/components/diagrams/BootFlashList";
 
-/** Micro field-box: the row's bit lit in the row's ink, the wordmark's
- *  lockup grammar at jump-table scale. */
+/** Micro field-box: the wordmark's four-cell lockup at row scale, with the
+ *  row's own bit lit. */
 function MicroFieldBox({ lit, onPrimary }: { lit: number; onPrimary: boolean }) {
   const stroke = onPrimary ? "border-[var(--on-cyan)]" : "border-[var(--border-strong)]";
   const fill = onPrimary ? "bg-[var(--on-cyan)]" : "bg-[var(--cyan)]";
@@ -51,7 +51,7 @@ export function RoutesRegisterFile() {
           // after mount, staggered 70ms per row so the block powers on like
           // values landing in a register file, top to bottom. CSS with no
           // movement or hidden start state: nothing shifts, and under
-          // prefers-reduced-motion the rows are simply static.
+          // prefers-reduced-motion the rows are static.
           <li
             key={route.href}
             className="anim-boot-flash"
