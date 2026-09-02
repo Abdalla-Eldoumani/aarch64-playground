@@ -19,7 +19,7 @@
 //!
 //! Arithmetic is i64 with wrapping semantics on `+`, `-`, `*`. Division and
 //! remainder by zero error out. Shift amounts must be in 0..64. Encountering
-//! a `FloatLit` in an expression is an error -- floats only appear in data
+//! a `FloatLit` in an expression is an error: floats only appear in data
 //! directives like `.double`, never in integer offsets.
 
 use super::lexer::{Token, TokenKind};
