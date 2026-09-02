@@ -34,9 +34,8 @@ MARK_LEAD = BAR_LEAD + BULB_WIDTH
 ANCHORS = 4
 
 // Colour is one indirection: every escape a row prints comes out of
-// pal_m, and console mode fills pal_m with the empty string instead. So
-// the plain face is the coloured face with nothing in the slots, not a
-// second set of strings that can drift.
+// pal_m, and console mode fills pal_m with the empty string instead. so there
+// is no second set of strings to drift.
 P_CYAN = 0
 P_GREY = 8
 P_AMBER = 16
@@ -79,8 +78,7 @@ ice_k_m:        .double 273.15
 half_m:         .double 0.5
 
 // Absolute zero doubles as the bar's column 0, and boiling water as its
-// last column: the scale spans everything that can physically happen up
-// to steam. Indexed by unit code, so a floor can be quoted back in the
+// last column: Indexed by unit code, so a floor can be quoted back in the
 // unit it was typed in.
 abszero_m:      .double -273.15
                 .double -459.67
@@ -96,8 +94,7 @@ anchor_m:       .double -273.15
                 .double 100.0
 
 // The band edges. A reading inside one of these windows is named
-// outright rather than called "somewhere between", which is the answer a
-// person wants when they type 32F or 98.6F.
+// outright rather than called "somewhere between",
 frost_lo_m:     .double -0.5
 frost_hi_m:     .double 0.5
 body_lo_m:      .double 36.5
@@ -164,8 +161,8 @@ face_m:         .string "              abs zero                  ice body  boil"
 fmt_mark_m:     .string "%s%sv%s\n"
 fmt_row_m:      .string "%s %c %7.2f %s%s%s%s %7.2f%s\n"
 
-// Each face names the shape it actually takes, so the advice is usable
-// where it is read.
+// The interactive face takes one token and the one-shot face two, so each
+// names its own shape.
 msg_bad_m:      .string "  need a number and a unit: 36.6C, 98.6F, 310K."
 msg_shot_bad_m: .string "  need a number then a unit: 32 F, 36.6 C, 310 K."
 msg_floor_m:    .string "%s  %.2f %c is below absolute zero (%.2f %c).%s\n"
@@ -212,8 +209,8 @@ main:
         cmp     w0, 2
         b.ne    usage
 
-        // The only single argument this program takes is the word that
-        // asks for the face without any escapes in it.
+        // The one argument this program takes is console, the face with no
+        // escapes in it.
         ldr     x0, [x1, 8]
         ldr     x1, =console_m
         bl      same_word
@@ -237,10 +234,9 @@ usage:
         mov     w0, 1
         b       main_done
 
-// ---------------------------------------------------------------- one shot
+// one shot
 
-// Escape-free because it pipes, but drawn all the same: the trio line
-// and then the same instrument the interactive faces get.
+// No escapes, so the line pipes; the instrument is drawn all the same.
 oneshot:
         mov     w0, 1
         bl      set_palette
@@ -294,7 +290,7 @@ shot_floor:
         mov     w0, 1
         b       main_done
 
-// ------------------------------------------------------- the reading loop
+// the reading loop
 
 // Both interactive faces are this loop. The only difference between them
 // is what set_palette left in the slots.
@@ -353,11 +349,11 @@ main_done:
         ldp     fp, lr, [sp], dealloc
         ret
 
-// ------------------------------------------------------------------ colour
+// colour
 
 // set_palette(w0 = 1 for a face with no escapes in it) : point the five
 // slots at the escapes, or all five at the empty string. Every colour a
-// row prints is one load from here, so this is the whole of the gate.
+// row prints is one load from here,
 set_palette:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -419,7 +415,7 @@ say_field:
         ldp     fp, lr, [sp], 16
         ret
 
-// ------------------------------------------------------------------ parsing
+// parsing
 
 // scan_number(x0 = string) -> w0 = index just past the number,
 //                             w1 = how many digits were in it
@@ -571,7 +567,7 @@ quit_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// ------------------------------------------------------------- conversions
+// conversions
 
 // check_floor() -> w0 = 1 when value_m is at or above absolute zero.
 // The comparison happens in the unit that was typed, so the refusal can
@@ -717,7 +713,7 @@ band_tint:
         ldp     fp, lr, [sp], 16
         ret
 
-// ------------------------------------------------------------- instrument
+// instrument
 
 // bar_column(d0 = celsius) -> w0 = column 0 .. BAR_LAST
 // A reading hotter than boiling parks on the last column rather than
@@ -850,8 +846,8 @@ pad_filled:
         ldp     fp, lr, [sp], 16
         ret
 
-// print_trio() : the answer line, shared by every face and deliberately
-// free of escapes so a shell can pipe it somewhere.
+// print_trio() : the answer line, shared by every face and free of escapes so
+// a shell can pipe it.
 print_trio:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
