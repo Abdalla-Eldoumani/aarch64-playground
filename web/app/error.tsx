@@ -9,9 +9,8 @@ import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
  * rule naming the fault by its hex address, the serif head, a mono gloss in the
  * decode strip's voice, and the two ways out (retry, or back to the
  * playground). A student who hits this can hand over a small markdown report
- * with one click -- the autosaved program plus the error itself, which is
- * everything an error page can honestly know. There is no emulator here to
- * snapshot, so the report carries no machine state.
+ * with one click: the autosaved program plus the error itself. There is no
+ * emulator here to snapshot, so the report carries no machine state.
  *
  * This boundary sits above the (site) layout, so it supplies the route's own
  * <main id="main"> for the root layout's skip link.
