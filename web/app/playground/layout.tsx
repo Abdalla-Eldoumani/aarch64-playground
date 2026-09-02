@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { SHARE_CARD_IMAGE } from "@/lib/content/site";
+import { fetchStarCount } from "@/lib/content/github";
+import { StarCountProvider } from "@/components/chrome/StarCount";
 
 const DESCRIPTION =
   "Assemble and step through AArch64 programs with live registers, stack, memory, and real stdin and stdout in the browser.";
@@ -27,11 +29,16 @@ export const metadata: Metadata = {
 };
 
 // The playground page is a client component and cannot export metadata, so this
-// server layout carries the route's metadata and renders the page unchanged.
-export default function PlaygroundLayout({
+// server layout carries the route's metadata. It also runs the same hourly
+// revalidated star lookup the content layout runs, so the slim bar wears the
+// count the full bar wears; a failed lookup is null and the nav falls back to
+// the icon-only link.
+export default async function PlaygroundLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  const stars = await fetchStarCount();
+
+  return <StarCountProvider stars={stars}>{children}</StarCountProvider>;
 }
