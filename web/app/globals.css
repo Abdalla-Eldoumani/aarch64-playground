@@ -273,27 +273,60 @@ body {
    register file keeps its terminal voice. The end state equals the static
    bar the changed row carries, so the settle reads as one motion. Amber-driven so
    it follows the theme; applied only inside the reduced-motion-safe block
-   below, so it is static under prefers-reduced-motion. */
-@keyframes reg-flash {
-  0%   { box-shadow: inset 6px 0 0 0 var(--amber); }
-  100% { box-shadow: inset 2px 0 0 0 var(--amber); }
+   below, so it is static under prefers-reduced-motion.
+
+   The four machine animations draw on a ::before layer and animate transform
+   and opacity only: box-shadow and border-color keyframes paint, and 31
+   register rows re-flashing on every step put that paint on the main thread.
+   The layer rests at scaleX(0) / opacity 0, so where the animation does not
+   run -- under prefers-reduced-motion, and before the landing arms its boot
+   stagger -- nothing is drawn at all and the static bar is the only cue. */
+.anim-reg-flash,
+.anim-boot-flash,
+.anim-run-breathe,
+.anim-decode-latch {
+  position: relative;
+}
+
+.anim-reg-flash::before,
+.anim-boot-flash::before,
+.anim-run-breathe::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 6px;
+  background: var(--amber);
+  transform-origin: left center;
+  transform: scaleX(0);
+  pointer-events: none;
+}
+
+/* 0.3333 is 2px / 6px: the strike lands exactly on the static 2px bar the
+   changed row already carries, so the pair reads as one motion rather than as
+   a 6px bar retracting past a separate 2px one. */
+@keyframes reg-strike {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0.3333); }
 }
 /* The landing boot flash reuses the strike but releases the bar at the
-   end: values land, latch, and let go, row by row. */
-@keyframes boot-flash {
-  0%   { box-shadow: inset 6px 0 0 0 var(--amber); }
-  70%  { box-shadow: inset 2px 0 0 0 var(--amber); }
-  100% { box-shadow: inset 2px 0 0 0 transparent; }
+   end: values land, latch, and let go, row by row. The release is opacity,
+   which is what the old `inset 2px 0 0 0 transparent` end frame drew. */
+@keyframes boot-strike {
+  0%   { transform: scaleX(1);      opacity: 1; }
+  70%  { transform: scaleX(0.3333); opacity: 1; }
+  100% { transform: scaleX(0.3333); opacity: 0; }
 }
 
 /* Program-counter breathing while the program runs: a subtle amber edge-bar that
    pulses on the current instruction row so "the machine is acting" reads at a
    glance. Amber-driven so it follows the theme (never a hardcoded color); applied
    only inside the reduced-motion-safe block below, so the row is static under
-   prefers-reduced-motion and the amber current-row highlight is the only cue. */
-@keyframes run-breathe {
-  0%, 100% { box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--amber) 40%, transparent); }
-  50%      { box-shadow: inset 3px 0 0 0 var(--amber); }
+   prefers-reduced-motion and the amber current-row highlight is the only cue.
+   0.5 is 3px / 6px, the width the box-shadow version drew. */
+@keyframes run-breathe-pulse {
+  0%, 100% { transform: scaleX(0.5); opacity: 0.4; }
+  50%      { transform: scaleX(0.5); opacity: 1; }
 }
 
 /* Block-cursor blink: the brand block cursor (amber = the machine acting) pulses
@@ -338,10 +371,23 @@ body {
    field box's border flashes from amber back to the resting hairline, the
    fields latching the new instruction word. The destination field stays amber
    via its own inline styling. Static under prefers-reduced-motion: the fields
-   simply swap. */
-@keyframes decode-latch {
-  from { border-color: var(--amber); }
-  to   { border-color: var(--border); }
+   simply swap.
+
+   border-color is a paint property, so the amber is an overlay ring that fades
+   out over the box's own resting border instead. inset: -1px lands the ring on
+   that border rather than a second one inside it. */
+.anim-decode-latch::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--amber);
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes decode-latch-fade {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 
 /* The block caret blinks unconditionally, like a native text caret (browsers
@@ -360,18 +406,20 @@ body {
        land like a register latch, not ease in like chrome. */
     animation: tab-fade-in 50ms linear 1;
   }
-  .anim-reg-flash {
+  .anim-reg-flash::before {
     /* ~120ms in (peak at 20% of the 600ms total) then ~480ms out, timed from
        the register-flash motion tokens. */
-    animation: reg-flash calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
+    animation: reg-strike calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
   }
-  .anim-boot-flash {
+  .boot-flash-armed .anim-boot-flash::before {
     /* Power-on write: a landing row flashes once with the register-write
        tint, staggered per row via --boot-delay so the block reads as values
        landing in a register file, top to bottom. Content never moves or
        hides, so there is no layout shift; under prefers-reduced-motion the
-       rows are simply static. */
-    animation: boot-flash calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
+       rows are simply static. The armed class arrives after mount, so the
+       stagger answers hydration and never the first paint. `backwards` holds
+       the from-frame through the delay. */
+    animation: boot-strike calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
     animation-delay: var(--boot-delay, 0ms);
     animation-fill-mode: backwards;
   }
@@ -381,20 +429,22 @@ body {
   .anim-error-shake {
     animation: error-shake var(--error-shake) var(--ease) 1;
   }
-  .anim-run-breathe {
+  .anim-run-breathe::before {
     /* ~2s amber pulse on the running program-counter row, looping until the run
-       stops. Outside this block (reduced motion) the class has no animation. */
-    animation: run-breathe var(--run-breathe) var(--ease) infinite;
+       stops. Outside this block (reduced motion) the layer stays at scaleX(0)
+       and nothing is drawn. */
+    animation: run-breathe-pulse var(--run-breathe) var(--ease) infinite;
   }
   .anim-modal-rise {
     /* modal fade + ~8px rise over the --modal-rise token. Outside this block
        (reduced motion) the class has no animation, so the modal is static. */
     animation: modal-rise var(--modal-rise) var(--ease) 1;
   }
-  .anim-decode-latch {
+  .anim-decode-latch::before {
     /* Field boxes settle from amber to the hairline over --decode-latch.
-       Outside this block (reduced motion) the fields swap instantly. */
-    animation: decode-latch var(--decode-latch) var(--ease) 1;
+       Outside this block (reduced motion) the ring stays at opacity 0 and the
+       fields swap instantly. */
+    animation: decode-latch-fade var(--decode-latch) var(--ease) 1;
   }
 }
 
