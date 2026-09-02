@@ -104,7 +104,7 @@ pub enum ExtendType {
 
 /// The extend/shift keywords a load/store register-offset address accepts:
 /// the spelling, its 3-bit `option` field, and whether the index register
-/// must be an X (the ARM width rule -- UXTW/SXTW take a Wm, the rest take
+/// must be an X (the ARM width rule: UXTW/SXTW take a Wm, the rest take
 /// an Xm). `lsl` and `uxtx` share option 0b011 because they mean the same
 /// thing for a 64-bit index; `lsl` is listed first so a lookup by option
 /// spells it the way GAS disassembles it.
@@ -114,7 +114,7 @@ pub enum ExtendType {
 /// (byte and halfword extends included) and skips the width check entirely,
 /// because GAS assembles `add x0, x1, x2, sxtw` to the same word as the
 /// `w2` spelling and refusing it would reject source the course toolchain
-/// accepts. The two sets are not the same set and must not be merged.
+/// accepts. The two tables carry different rows and must stay separate.
 pub const LDST_EXTENDS: &[(&str, u8, bool)] = &[
     ("lsl", 0b011, true),
     ("uxtw", 0b010, false),
@@ -422,7 +422,7 @@ pub enum Instruction {
         rm: u8,
         shift: ShiftType,
     },
-    /// ADD/SUB/ADDS/SUBS with EXTENDED register operand (bit 21 = 1) --
+    /// ADD/SUB/ADDS/SUBS with EXTENDED register operand (bit 21 = 1):
     /// the only register form that reaches SP: Rn = 31 reads SP, and
     /// Rd = 31 writes SP for the non-flag-setting ops. Rm = 31 stays XZR.
     DpRegExt {
@@ -632,7 +632,7 @@ pub enum Instruction {
         single: bool,
     },
     /// FMOV Fd, #imm (8-bit VFP immediate, already expanded to the full
-    /// IEEE 754 bit pattern -- f32 bits for the S form, f64 for D -- so
+    /// IEEE 754 bit pattern: f32 bits for the S form, f64 for D, so
     /// the executor just writes it).
     FpMoveImm {
         fd: u8,
@@ -856,7 +856,7 @@ pub fn encode_bitmask_imm(value: u64, sf: bool) -> Option<(bool, u8, u8)> {
     // Reject trivial patterns the ARM spec excludes.
     let trimmed = if sf { value } else { value & 0xFFFF_FFFF };
     if !sf && value != trimmed {
-        // Upper 32 bits set in a 32-bit instruction -- not encodable.
+        // Upper 32 bits set in a 32-bit instruction: not encodable.
         return None;
     }
     if trimmed == 0 {
@@ -978,13 +978,13 @@ pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
     let op0 = bits(instr, 28, 25);
 
     match op0 {
-        // data processing -- immediate
+        // data processing: immediate
         0b1000 | 0b1001 => decode_dp_imm_group(instr),
         // branches, exception, system
         0b1010 | 0b1011 => decode_branch_group(instr),
         // loads and stores
         0b0100 | 0b0110 | 0b1100 | 0b1110 => decode_ldst_group(instr),
-        // data processing -- register
+        // data processing: register
         0b0101 | 0b1101 => decode_dp_reg_group(instr),
         // scalar FP (and SIMD, which we do not implement)
         0b0111 | 0b1111 => decode_fp_group(instr),
@@ -1003,7 +1003,7 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     //   Encoding: sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
     // SCVTF (Xn/Wn -> float):
     //   Encoding: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
-    // ftype picks the scalar width: 00 = single (S), 01 = double (D) --
+    // ftype picks the scalar width: 00 = single (S), 01 = double (D),
     // the two views the course uses. Half precision (11) stays unhandled.
 
     // FP data-processing 3-source (the FMADD family) sits at bits[28:24]
@@ -1104,8 +1104,8 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
 
     // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.
     // FMOV keeps its dedicated variant; FABS/FNEG/FSQRT share FpUnary. FCVT's
-    // opcode is 0001‖dest-type: the ftype names the SOURCE width, so only
-    // the cross-width pairs are valid encodings.
+    // opcode is 0001 followed by dest-type: the ftype names the SOURCE
+    // width, so only the cross-width pairs are valid encodings.
     if bits(instr, 14, 10) == 0b10000 {
         let opcode = bits(instr, 20, 15);
         if let Some((_, _, op)) = FP_UNARY_OPS.iter().find(|(_, code, _)| u32::from(*code) == opcode)
@@ -1169,7 +1169,7 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 // ---------------------------------------------------------------------------
-// data processing -- immediate group
+// data processing: immediate group
 // ---------------------------------------------------------------------------
 
 fn decode_dp_imm_group(instr: u32) -> Result<Instruction, EmuError> {
@@ -1347,8 +1347,8 @@ fn decode_bitfield(instr: u32) -> Result<Instruction, EmuError> {
 
     // The 32-bit form requires N == 0 with both fields inside the register
     // (immr/imms < 32); the 64-bit form requires N == 1. Anything else is
-    // a reserved encoding: without this check `reg_size - immr` underflowed
-    // on crafted words and fabricated a shift instead of rejecting.
+    // a reserved encoding: without this check `reg_size - immr` underflows
+    // on a crafted word and fabricates a shift instead of rejecting.
     if sf != n || (!sf && (immr >= 32 || imms >= 32)) {
         return Err(EmuError::UnknownInstruction(instr));
     }
@@ -1517,7 +1517,7 @@ fn decode_ldst_group(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 fn decode_ldr_literal(instr: u32) -> Result<Instruction, EmuError> {
-    // opc:01_011_0_00 -- bit 30 selects width (0 = W, 1 = X).
+    // opc:01_011_0_00; bit 30 selects width (0 = W, 1 = X).
     let sf = bit(instr, 30) == 1;
     let imm19 = bits(instr, 23, 5);
     let rt = bits(instr, 4, 0) as u8;
@@ -1547,8 +1547,8 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
 
     if v == 1 {
         // SIMD&FP pair: opc 00 = S, 01 = D; 10 (Q registers) is not
-        // implemented. Before this gate an FP pair fell into the general
-        // decode below and ran as a 32-bit GP pair with a halved offset.
+        // implemented. Without this gate an FP pair falls into the general
+        // decode below and runs as a 32-bit GP pair with a halved offset.
         let single = match opc {
             0b00 => true,
             0b01 => false,
@@ -1713,7 +1713,7 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
                 _ => return Err(EmuError::UnknownInstruction(instr)),
             };
             // S=1 means "scale the index by the access size", so the shift
-            // is log2 of that width -- read off the shared byte count
+            // is log2 of that width, read off the shared byte count
             // rather than re-spelled as a second size table.
             let shift_amount = if s == 1 {
                 size.bytes().trailing_zeros() as u8
@@ -1810,7 +1810,7 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 // ---------------------------------------------------------------------------
-// data processing -- register group
+// data processing: register group
 // ---------------------------------------------------------------------------
 
 fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
@@ -1851,7 +1851,7 @@ fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
 fn decode_add_sub_reg(instr: u32) -> Result<Instruction, EmuError> {
     // Bit 21 splits the register family: 0 is the shifted form (register
     // 31 reads as XZR), 1 is the extended form (register 31 is SP). The
-    // two must not be conflated -- executing `add x0, sp, x1` as shifted
+    // two must not be conflated: executing `add x0, sp, x1` as shifted
     // silently computes with 0.
     if bit(instr, 21) == 1 {
         return decode_add_sub_ext(instr);
@@ -2029,8 +2029,8 @@ fn decode_dp2(instr: u32) -> Result<Instruction, EmuError> {
     // Bit 30 set marks the 1-source data-processing group, which shares
     // this decode entry. Its rows come from the shared table, keyed on
     // (opcode, sf) because rev at W width and rev32 at X width collide on
-    // opcode 000010. Without this branch a `.word`-crafted rev32 fell
-    // through to the 2-source table and ran as udiv.
+    // opcode 000010. Without this branch a `.word`-crafted rev32 falls
+    // through to the 2-source table and runs as udiv.
     if bit(instr, 30) != 0 {
         if bit(instr, 29) != 0 || bits(instr, 20, 16) != 0 {
             return Err(EmuError::UnknownInstruction(instr));
@@ -2156,8 +2156,8 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
 #[cfg(test)]
 mod tests {
     // Binary literals here group digits by instruction field (sf/opcode/imm/rn/rd)
-    // rather than by nibble, and zero-valued fields stay written out -- both
-    // deliberate, so the encodings read like the architecture manual.
+    // rather than by nibble, and zero-valued fields stay written out. Both
+    // are deliberate, so the encodings read like the architecture manual.
     #![allow(clippy::unusual_byte_groupings, clippy::identity_op)]
     use super::*;
 
@@ -2175,13 +2175,8 @@ mod tests {
     #[test]
     fn bitmask_alternating_bits() {
         // 0x5555... = alternating 01 pattern. Element size 2, 1 one, rotated by 0.
-        // N=0, immr=0, imms=0b000000 -> len=0 doesn't work...
-        // Actually for element size 2: len=1, so ~imms needs bit1 set.
-        // imms = 0b0000_00, NOT = 0b111111, highest bit at 5 -> len=5? No.
-        // Let me think again. The element size encoding:
-        // N=0: look at highest set bit of NOT(imms[5:0])
-        // For element size 2 (len=1): NOT(imms) must have bit 1 as highest.
-        // So imms = 0b111100 -> NOT = 0b000011 -> highest bit = 1 -> len=1 -> esize=2
+        // Element size 2 needs len=1, so NOT(imms) must top out at bit 1:
+        // imms = 0b111100 -> NOT = 0b000011 -> len=1 -> esize=2.
         // s = imms & 1 = 0 -> 1 one, r = immr & 1
         // With immr=0: element = 0b01, replicated = 0x5555...
         let val = decode_bitmask_imm(false, 0, 0b111100, true).unwrap();
@@ -2716,8 +2711,9 @@ mod tests {
     #[test]
     fn reserved_32bit_bitfield_encodings_are_rejected() {
         // sf=0 with immr/imms >= 32 (or N != sf) is reserved; the LSL-alias
-        // arm used to compute reg_size - immr and underflow. Both words are
-        // from the audit: immr=33/imms=32 and immr=46/imms=45.
+        // arm computes reg_size - immr and underflows without the guard.
+        // Both words are reserved encodings: immr=33/imms=32 and
+        // immr=46/imms=45.
         assert!(decode(0x5321_8000).is_err());
         assert!(decode(0x536E_B400).is_err());
         // N=1 with sf=0 is reserved even with small fields.
@@ -2993,7 +2989,7 @@ mod tests {
 
     #[test]
     fn decode_adc_with_zero_register_operand() {
-        // ADC X0, X1, XZR = 0x9A1F0020 -- register 31 is ZR here, never SP.
+        // ADC X0, X1, XZR = 0x9A1F0020: register 31 is ZR here, never SP.
         let decoded = decode(0x9A1F_0020).unwrap();
         assert_eq!(
             decoded,
