@@ -18,7 +18,7 @@ const ROWS: Array<[string, string]> = [
   ["x9 – x15", "caller-saved temps"],
   ["x16 – x18", "platform · avoid"],
   ["x19 – x28", "callee-saved"],
-  ["x29 · x30", "fp · lr -- the frame record"],
+  ["x29 · x30", "fp · lr (the frame record)"],
   ["d0 – d7", "float args · results"],
   ["d8 – d15", "callee-saved"],
   ["d16 – d31", "caller-saved float temps"],
@@ -39,12 +39,22 @@ describe("AapcsRail", () => {
     }
   });
 
-  it("keeps the amber/cyan legend under the rail, with the two-views note", () => {
+  it("keeps the amber/cyan legend under the rail, with the one-register note", () => {
     render(<AapcsRail />);
     expect(
       screen.getByText(/Amber = the callee must preserve it/),
     ).toBeTruthy();
-    expect(screen.getByText(/two names, one register, one role/)).toBeTruthy();
+    expect(screen.getByText(/row is one register with a/)).toBeTruthy();
+  });
+
+  it("never wraps a register name, only its role note", () => {
+    render(<AapcsRail />);
+    const name = screen.getByText("x29 · x30");
+    expect(name.className).toContain("shrink-0");
+    expect(name.className).toContain("whitespace-nowrap");
+    const note = screen.getByText("fp · lr (the frame record)");
+    expect(note.className).toContain("leading-tight");
+    expect(note.className).not.toContain("whitespace-nowrap");
   });
 
   it("tints the argument rows cyan and the callee-saved rows amber", () => {
