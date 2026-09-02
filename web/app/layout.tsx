@@ -77,7 +77,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default: "cpsc 355 playground",
-    template: "%s -- cpsc 355 playground",
+    template: "%s · cpsc 355 playground",
   },
   description: DESCRIPTION,
   // Relative canonical: resolved against metadataBase, so the one origin above

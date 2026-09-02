@@ -54,7 +54,7 @@ describe("share card metadata", () => {
     const title = metadata.title;
     const template =
       title && typeof title === "object" && "template" in title ? title.template : null;
-    expect(template).toBe("%s -- cpsc 355 playground");
+    expect(template).toBe("%s · cpsc 355 playground");
   });
 
   it("carries a complete open graph card", () => {
