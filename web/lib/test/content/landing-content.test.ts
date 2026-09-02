@@ -5,7 +5,7 @@ import { NAV_ROUTES } from "@/lib/content/site";
 describe("landing data", () => {
   it("FEATURES is a non-empty catalog with a title and description per entry", () => {
     // Data-driven contract: adding a capability is one entry, so the shape is
-    // what matters - every entry must carry renderable title + description text.
+    // what matters: every entry must carry a renderable title and description.
     expect(FEATURES.length).toBeGreaterThanOrEqual(3);
     for (const feature of FEATURES) {
       expect(feature.title.trim().length).toBeGreaterThan(0);
@@ -31,9 +31,9 @@ describe("landing data", () => {
     expect(nonPrimary).toEqual(expectedSecondary);
   });
 
-  it("HERO_PROGRAM is an original, printing, lowercase cpsc 355-style snippet", () => {
-    // Structural authenticity (the full visual/step check happens in a live
-    // browser on the deployed hero): in-repo convention markers must be present.
+  it("HERO_PROGRAM is a lowercase course-style snippet that prints", () => {
+    // Only the structure is checked here; the deployed hero's visuals and
+    // stepping are checked in a browser.
     expect(HERO_PROGRAM).toContain("define(");
     expect(HERO_PROGRAM).toContain("main:");
     expect(HERO_PROGRAM).toContain(".global");
