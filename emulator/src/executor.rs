@@ -490,7 +490,7 @@ fn exec_dp_carry(
     sub: bool, set_flags: bool, sf: bool, rd: u8, rn: u8, rm: u8,
     regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
-    // Register 31 is ZR in all three positions -- this family has no SP form.
+    // Register 31 is ZR in all three positions: this family has no SP form.
     let operand1 = regs.read_gpr(rn, sf);
     let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
     // SBC is the same adder with Rm inverted: Rn + NOT(Rm) + C, which is
@@ -534,7 +534,7 @@ fn exec_dp_ext(
 ) -> Result<ExecResult, EmuError> {
     let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
     // Register 31 means SP for Rn (and for Rd in the non-flag-setting
-    // ops) -- reaching SP is this form's whole purpose. Rm = 31 is XZR.
+    // ops), and reaching SP is this form's whole purpose. Rm = 31 is XZR.
     let operand1 = regs.read_gpr_or_sp(rn, sf);
     let operand2 = (extend_reg(regs.read_gpr(rm, sf), extend) << shift) & mask;
 
@@ -652,7 +652,7 @@ fn check_guest_address(addr: u64, access: crate::errors::MemAccess) -> Result<()
 
 /// AArch64 checks SP itself, never the effective address: SCTLR_EL1.SA0
 /// is set on Linux, so any load or store using SP as the base faults
-/// when SP is off the 16-byte boundary -- `ldr w0, [sp, 4]` from an
+/// when SP is off the 16-byte boundary: `ldr w0, [sp, 4]` from an
 /// aligned SP is legal, `ldr w0, [sp]` from an SP off by 8 is not.
 /// Runs before the offset math and any writeback, like the ARM
 /// pseudocode's CheckSPAlignment(). `rn >= 31` mirrors the
@@ -1255,6 +1255,8 @@ fn exec_fp_to_int(
         let v = if rounded.is_nan() {
             0i64
         } else if sf {
+            // Same boundary rule as the unsigned arm: i64::MAX as f64 rounds
+            // UP to 2^63, so >= is correct.
             if rounded >= i64::MAX as f64 { i64::MAX }
             else if rounded <= i64::MIN as f64 { i64::MIN }
             else { rounded as i64 }
@@ -1279,7 +1281,7 @@ fn exec_fp_to_int(
 }
 
 /// SCVTF / UCVTF. The only difference is how the source register's bits
-/// are read; -1 is the value where the two answers diverge maximally.
+/// are read.
 fn exec_fp_from_int(
     op: FpFromIntOp, fd: u8, rn: u8, sf: bool, single: bool, fbits: u8,
     regs: &mut RegisterFile,
@@ -1382,8 +1384,8 @@ fn sign_extend_from(value: u64, top_bit: u32) -> u64 {
 
 /// SBFM / UBFM extract-and-extend. Mirrors the ARM bitfield-move algorithm
 /// for the two cases the course reaches: `imms >= immr` (extract a field
-/// from bit `immr` upward -- the `sxt*`/`uxt*`/`sbfx`/`ubfx` forms) and
-/// `imms < immr` (place a field at the high end -- the `sbfiz`/`ubfiz`
+/// from bit `immr` upward: the `sxt*`/`uxt*`/`sbfx`/`ubfx` forms) and
+/// `imms < immr` (place a field at the high end: the `sbfiz`/`ubfiz`
 /// forms). The LSL/LSR/ASR aliases never reach here; the decoder keeps them
 /// on the shifted-register path.
 fn exec_bitfield(
@@ -3086,8 +3088,8 @@ mod tests {
 
     #[test]
     fn sbcs_with_carry_set_matches_subs() {
-        // With C=1 there is no borrow, so SBCS is SUBS bit for bit --
-        // result and all four flags.
+        // With C=1 there is no borrow, so SBCS is SUBS bit for bit, in
+        // the result and all four flags.
         for (a, b) in [(10u64, 3u64), (3, 10), (0, 0), (i64::MIN as u64, 1), (u64::MAX, 1)] {
             let (mut regs, mut mem) = fresh();
             regs.write_gpr(1, true, a);
@@ -3168,7 +3170,7 @@ mod tests {
 
     #[test]
     fn sbc_w_form_borrows_inside_32_bits() {
-        // 0 - 0 - 1 at 32 bits is 0xFFFF_FFFF, zero-extended into Xd -- not
+        // 0 - 0 - 1 at 32 bits is 0xFFFF_FFFF, zero-extended into Xd, not
         // the 64-bit all-ones a width-blind NOT would produce.
         let (mut regs, mut mem) = fresh();
         regs.nzcv.c = false;
