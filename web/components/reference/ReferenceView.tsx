@@ -65,7 +65,7 @@ export function ReferenceView({
           under prefers-reduced-motion the panel appears in place, static. */}
       <div key={active} className={`${switched ? "anim-panel-in " : ""}mt-8`}>
         {active === "instructions" && (
-          <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_280px] xl:gap-11">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-11 xl:grid-cols-[minmax(0,1fr)_280px]">
             <InstructionReference instructions={instructions} />
             <AapcsRail />
           </div>
