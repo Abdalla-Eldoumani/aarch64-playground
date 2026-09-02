@@ -48,8 +48,7 @@ describe("useBreakpoint", () => {
     const { unmount, result } = renderHook(() => useBreakpoint());
     expect(result.current).toBe("md");
     unmount();
-    // No assertion needed -- if the listener weren't removed, future
-    // resize events on a stale ref would still fire and the cleanup
-    // function might leak. This proves unmount completes cleanly.
+    // No assertion: this checks only that unmount runs the resize cleanup
+    // without throwing.
   });
 });
