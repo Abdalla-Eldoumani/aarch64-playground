@@ -27,7 +27,7 @@ const ROWS: RailRow[] = [
   { range: "x9 – x15", note: "caller-saved temps", tint: "neutral" },
   { range: "x16 – x18", note: "platform · avoid", tint: "muted" },
   { range: "x19 – x28", note: "callee-saved", tint: "amber" },
-  { range: "x29 · x30", note: "fp · lr -- the frame record", tint: "amber-strong" },
+  { range: "x29 · x30", note: "fp · lr (the frame record)", tint: "amber-strong" },
   { range: "d0 – d7", note: "float args · results", tint: "cyan" },
   { range: "d8 – d15", note: "callee-saved", tint: "amber" },
   { range: "d16 – d31", note: "caller-saved float temps", tint: "neutral" },
@@ -79,13 +79,18 @@ export function AapcsRail({
         {ROWS.map((row) => (
           <li
             key={row.range}
-            className={`flex min-h-[40px] items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 ${TINT[row.tint].row}`}
+            className={`flex min-h-[40px] items-center justify-between gap-2 rounded-[var(--radius-control)] border px-3 py-1 ${TINT[row.tint].row}`}
           >
-            <span className={`font-mono text-[13px] font-medium ${TINT[row.tint].range}`}>
+            {/* The register name is the row's identity, so it never wraps; the
+                role note takes the second line instead, which the row's
+                min-height already has room for. */}
+            <span
+              className={`shrink-0 whitespace-nowrap font-mono text-[13px] font-medium ${TINT[row.tint].range}`}
+            >
               {row.range}
             </span>
             <span
-              className={`text-right font-mono text-[10px] uppercase tracking-[0.06em] ${TINT[row.tint].note}`}
+              className={`min-w-0 text-right font-mono text-[10px] uppercase leading-tight tracking-[0.06em] ${TINT[row.tint].note}`}
             >
               {row.note}
             </span>
@@ -94,11 +99,11 @@ export function AapcsRail({
       </ul>
       <p className="mt-1 font-serif text-[13px] italic leading-relaxed text-[var(--text-secondary)]">
         Amber = the callee must preserve it. Cyan = yours to pass and receive.
-        Each <span className="font-mono not-italic">x</span> row covers its{" "}
-        <span className="font-mono not-italic">w</span> view and each{" "}
-        <span className="font-mono not-italic">d</span> row its{" "}
-        <span className="font-mono not-italic">s</span> view: two names, one
-        register, one role.
+        Each <span className="font-mono not-italic">x</span> row is one register
+        with a <span className="font-mono not-italic">w</span> view of its low
+        32 bits, and each <span className="font-mono not-italic">d</span> row is
+        one register with an{" "}
+        <span className="font-mono not-italic">s</span> view of its low 32 bits.
       </p>
     </aside>
   );
