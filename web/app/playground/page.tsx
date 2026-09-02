@@ -24,6 +24,7 @@ import {
   type EmbeddableState,
 } from "@/components/playground/EmbeddablePlayground";
 import { SiteNav } from "@/components/chrome/SiteNav";
+import { useStarCount } from "@/components/chrome/StarCount";
 // The cold-load default program is the arithmetic basics example. Import its
 // single source -- the same file the example loader serves and the corpus
 // verifier checks against fixtures -- so the default can never drift from it.
@@ -114,6 +115,9 @@ export default function Home() {
     () => false,
   );
   const chrome: EmbeddableChrome = isEmbed ? "embed" : "full";
+  // The route's server layout looked the count up and put it here; null keeps
+  // the icon-only link this bar has always rendered.
+  const stars = useStarCount();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteActions, setPaletteActions] = useState<Action[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -320,7 +324,7 @@ export default function Home() {
   return (
     <>
       <div className="flex flex-col h-dvh">
-        {!isEmbed && <SiteNav variant="slim" />}
+        {!isEmbed && <SiteNav variant="slim" stars={stars} />}
         {/* This route's single main landmark and the root skip link's target.
             The emulator component itself is a labeled section, so every page
             that composes it (hero, lessons, exercises, reference) keeps one
