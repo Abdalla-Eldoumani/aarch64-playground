@@ -307,6 +307,18 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     cExample: "Rd = (int)nearbyint(Fn); // FE_TONEAREST",
   },
   FCVTNU: { summary: "Float -> unsigned integer, ties to even. Negatives saturate to 0.", example: "fcvtnu w0, d0" },
+  FCVTZU: { summary: "Float -> unsigned integer, truncating toward zero. Negatives saturate to 0.", example: "fcvtzu w0, d0" },
+  FCVTAS: {
+    summary: "Float -> signed integer, rounding to nearest with ties AWAY from zero.",
+    details: ["The other nearest mode: 2.5 gives 3 and -2.5 gives -3, where `FCVTNS` gives 2 and -2."],
+    example: "fcvtas w0, d0",
+    cExample: "Rd = (int)round(Fn);",
+  },
+  FCVTAU: { summary: "Float -> unsigned integer, ties away from zero.", example: "fcvtau w0, d0" },
+  FCVTMS: { summary: "Float -> signed integer, rounding toward minus infinity (floor).", example: "fcvtms w0, d0", cExample: "Rd = (int)floor(Fn);" },
+  FCVTMU: { summary: "Float -> unsigned integer, floor. Negatives saturate to 0.", example: "fcvtmu w0, d0" },
+  FCVTPS: { summary: "Float -> signed integer, rounding toward plus infinity (ceiling).", example: "fcvtps w0, d0", cExample: "Rd = (int)ceil(Fn);" },
+  FCVTPU: { summary: "Float -> unsigned integer, ceiling.", example: "fcvtpu w0, d0" },
 };
 
 /** Case-insensitive lookup; condition variants collapse to B.COND. */

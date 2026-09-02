@@ -1389,6 +1389,63 @@ fmov    d2, -2.5
 fcvtnu  w3, d2              // w3 = 0: negatives saturate`,
   },
   {
+    mnemonic: "fcvtzu",
+    category: "Floating point",
+    syntax: "fcvtzu wd, dn / fcvtzu xd, sn",
+    example: `fmov    d0, 2.5
+fcvtzu  w1, d0              // w1 = 2: the fraction is cut, not rounded
+fmov    d2, -1.5
+fcvtzu  w3, d2              // w3 = 0: negatives saturate`,
+  },
+  {
+    mnemonic: "fcvtas",
+    category: "Floating point",
+    syntax: "fcvtas wd, dn / fcvtas xd, sn",
+    example: `fmov    d0, 2.5
+fcvtas  w1, d0              // w1 = 3: the tie goes away from zero
+fcvtns  w2, d0              // w2 = 2: the tie goes to the even neighbour
+fmov    d3, -2.5
+fcvtas  w4, d3              // w4 = -3: away from zero in both directions`,
+  },
+  {
+    mnemonic: "fcvtau",
+    category: "Floating point",
+    syntax: "fcvtau wd, dn / fcvtau xd, sn",
+    example: `fmov    d0, 2.5
+fcvtau  w1, d0              // w1 = 3`,
+  },
+  {
+    mnemonic: "fcvtms",
+    category: "Floating point",
+    syntax: "fcvtms wd, dn / fcvtms xd, sn",
+    example: `fmov    d0, -0.5
+fcvtms  w1, d0              // w1 = -1: floor, so it walks away from zero
+fcvtzs  w2, d0              // w2 = 0: truncation walks toward it`,
+  },
+  {
+    mnemonic: "fcvtmu",
+    category: "Floating point",
+    syntax: "fcvtmu wd, dn / fcvtmu xd, sn",
+    example: `fmov    d0, 2.5
+fcvtmu  w1, d0              // w1 = 2`,
+  },
+  {
+    mnemonic: "fcvtps",
+    category: "Floating point",
+    syntax: "fcvtps wd, dn / fcvtps xd, sn",
+    example: `fmov    d0, -0.5
+fcvtps  w1, d0              // w1 = 0: ceiling
+fmov    d2, 2.5
+fcvtps  w3, d2              // w3 = 3`,
+  },
+  {
+    mnemonic: "fcvtpu",
+    category: "Floating point",
+    syntax: "fcvtpu wd, dn / fcvtpu xd, sn",
+    example: `fmov    d0, 2.5
+fcvtpu  w1, d0              // w1 = 3`,
+  },
+  {
     mnemonic: "ucvtf",
     category: "Floating point",
     syntax: "ucvtf dd, xn / ucvtf sd, wn",
