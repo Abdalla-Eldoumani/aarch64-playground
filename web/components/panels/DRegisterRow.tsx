@@ -39,7 +39,7 @@ function formatFloat(value: number): string {
 
 /** Decimal rendering of the register's value. An S write zeroes the top
  *  32 bits, so a pattern living entirely in the low half is read as the
- *  f32 the program put there (suffixed `f`, C float style) -- the f64
+ *  f32 the program put there (suffixed `f`, C float style); the f64
  *  reading of such bits would be a meaningless denormal. Everything else
  *  reads as the double it is. */
 function decodeFp(bitsHex: string): string {
