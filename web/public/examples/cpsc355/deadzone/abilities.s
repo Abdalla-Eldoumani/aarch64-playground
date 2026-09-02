@@ -1,8 +1,6 @@
 // The two special abilities: the bomb that clears the screen and the freeze
 // that stops every enemy, both on cooldowns counted in frames.
 
-// Ability constants
-
 // Cooldowns, counted in frames. Deriving them from TARGET_FPS keeps the
 // durations here and the seconds the HUD prints tied to the same frame rate.
 BOMB_COOLDOWN = 20 * TARGET_FPS                 // 20 seconds
@@ -283,8 +281,8 @@ abilities_draw_hud:
                 bl      cursor_move
                 mov     w0, LABEL_COLOR
                 bl      set_color
-                adrp    x0, ability_hud_fmt
-                add     x0, x0, :lo12:ability_hud_fmt
+                adrp    x0, ability_hud_bomb
+                add     x0, x0, :lo12:ability_hud_bomb
                 bl      write_str
 
                 adrp    x0, bomb_cooldown
