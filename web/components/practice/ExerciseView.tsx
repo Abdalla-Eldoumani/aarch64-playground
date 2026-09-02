@@ -245,7 +245,7 @@ export function ExerciseView({
                     {!check.pass && (
                       <span className="text-[var(--danger)]">
                         {" "}
-                        -- expected {check.expected}, got {check.actual}
+                        (expected {check.expected}, got {check.actual})
                       </span>
                     )}
                   </span>
