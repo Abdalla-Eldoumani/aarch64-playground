@@ -87,6 +87,17 @@ describe("LessonArticle", () => {
     expect(precedes(editorLink, secondProse)).toBe(true);
   });
 
+  it("caps the prose measure per block and leaves the figure uncapped", () => {
+    const { container } = render(<LessonArticle lesson={fullLesson} />);
+    // The article column runs the full sheet width; the cap moved onto the
+    // reading blocks, so the figure can be wider than the paragraphs.
+    expect(container.querySelector("article")!.className).not.toContain("max-w-2xl");
+    expect(screen.getByTestId("embed").closest(".max-w-2xl")).toBeNull();
+    expect(
+      screen.getByText(/the lead paragraph appears here/i).closest(".max-w-2xl"),
+    ).not.toBeNull();
+  });
+
   it("renders prose through the real LessonMarkdown (heading id matches the toc)", () => {
     const { container } = render(<LessonArticle lesson={fullLesson} />);
     // A real heading element with the slugified id proves LessonMarkdown ran,
