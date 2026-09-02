@@ -72,7 +72,7 @@ sleep_rem:      .dword  0                       // Remaining sec
 // Display strings
 msg_title:      .string "DEADZONE"
 msg_exit:       .string "\nExiting DEADZONE...\n"
-msg_goodbye:    .string "Goodbye.\n"
+msg_goodbye:    .string "Terminal restored. Goodbye!\n"
 msg_term_fail:  .string "ERROR: stdin is not a terminal\n"
 msg_term_ok:    .string ""
 msg_wave:       .string "Wave:"
