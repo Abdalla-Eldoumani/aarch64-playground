@@ -375,14 +375,20 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "fcvt d0, s0",
     cExample: "double d = (double)f;",
   },
-  SCVTF: { summary: "Signed-int -> float (`SCVTF Dd, Xn` / `Dd, Wn` / `Sd, Wn`)." },
+  SCVTF: {
+    summary: "Signed-int -> float (`SCVTF Dd, Xn` / `Dd, Wn` / `Sd, Wn`).",
+    details: ["A third operand makes it fixed-point: `scvtf d0, x0, #2` divides by 4, so 6 gives 1.5."],
+  },
   UCVTF: {
     summary: "Unsigned integer -> float (`UCVTF Dd, Xn` / `Sd, Wn`).",
     details: ["`SCVTF` reads the same bits as signed, so the two differ on every value with the top bit set."],
     example: "ucvtf d0, x0",
     cExample: "Fd = (double)(unsigned long)Rn;",
   },
-  FCVTZS: { summary: "Float -> signed-int with truncation (`FCVTZS Wd, Dn` / `Wd, Sn`)." },
+  FCVTZS: {
+    summary: "Float -> signed-int with truncation (`FCVTZS Wd, Dn` / `Wd, Sn`).",
+    details: ["A third operand makes it fixed-point: `fcvtzs w0, d0, #2` multiplies by 4 before truncating, so 1.5 gives 6."],
+  },
   FCVTNS: {
     summary: "Float -> signed integer, rounding to nearest with ties to even.",
     details: ["Ties go to the EVEN neighbour: 2.5 gives 2 and 3.5 gives 4. `FCVTZS` truncates toward zero instead."],

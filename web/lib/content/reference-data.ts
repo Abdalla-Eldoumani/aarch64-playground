@@ -1488,17 +1488,24 @@ fcvtzs  x9, d1              // x9 = 2`,
   {
     mnemonic: "scvtf",
     category: "Floating point",
-    syntax: "scvtf dd, xn / scvtf dd, wn / scvtf sd, wn",
+    syntax: "scvtf dd, xn / scvtf dd, wn / scvtf sd, wn / scvtf dd, xn, #fbits",
     example: `mov     x9, 7
 scvtf   d16, x9             // d16 = 7.0
-fcvtzs  x10, d16            // x10 = 7: round-tripped`,
+fcvtzs  x10, d16            // x10 = 7: round-tripped
+mov     x11, 6
+scvtf   d17, x11, 2         // d17 = 1.5: the fixed-point form divides by 4`,
   },
   {
     mnemonic: "fcvtzs",
     category: "Floating point",
-    syntax: "fcvtzs xd, dn / fcvtzs wd, dn / fcvtzs wd, sn",
+    syntax: "fcvtzs xd, dn / fcvtzs wd, sn / fcvtzs xd, sn, #fbits",
     example: `fmov    d16, 1.9375         // the largest encodable mantissa
-fcvtzs  w9, d16             // w9 = 1: toward zero, never rounding`,
+fcvtzs  w9, d16             // w9 = 1: toward zero, never rounding
+fmov    d17, 1.5
+fcvtzs  w10, d17, 2         // w10 = 6: the fixed-point form scales by 4 first`,
+    gotchas: [
+      "`fbits` runs 1 to 32 for a w destination and 1 to 64 for an x one; it is stored in the word as 64 minus that.",
+    ],
   },
   {
     mnemonic: "fcvtns",
