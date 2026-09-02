@@ -37,10 +37,10 @@ export async function generateMetadata({
   if (!lesson) return { title: "lesson not found" };
 
   const description = lesson.summary ?? FALLBACK_DESCRIPTION;
-  // The title composes through the root template (%s -- cpsc 355 playground).
+  // The title composes through the root template (%s · cpsc 355 playground).
   // Open Graph and Twitter are not deep-merged across segments, so each lesson
   // restates the full composed title and its own url instead of inheriting.
-  const composedTitle = `${lesson.title} -- cpsc 355 playground`;
+  const composedTitle = `${lesson.title} · cpsc 355 playground`;
   return {
     title: lesson.title,
     description,
