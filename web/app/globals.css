@@ -566,6 +566,26 @@ body {
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
+    /* A fade at each edge says "there is more this way" without an extra
+       element inside a row whose children are all interactive, and it reads
+       the same in all three themes. The scroll padding matches the two fade
+       widths, so a control scrolled into view by a tab press lands past the
+       fade rather than under it. */
+    scroll-padding-inline: 12px 24px;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 12px,
+      #000 calc(100% - 24px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 12px,
+      #000 calc(100% - 24px),
+      transparent 100%
+    );
   }
   .header-band > *,
   .controls-band > * {
