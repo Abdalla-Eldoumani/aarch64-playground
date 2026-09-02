@@ -350,11 +350,11 @@ describe("the course toolchain", () => {
     const ctx = makeCtx({
       readVfs: () => "movq x0, 7\n",
       executables,
-      assembleSource: async () => ({ success: false, errors: ["line 1: unknown mnemonic: MOVQ"] }),
+      assembleSource: async () => ({ success: false, errors: ["line 1: unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it"] }),
     });
     const r = await dispatchCommand("gcc bad.s -o bad", ctx);
     expect(r.status).toBe("err");
-    expect(r.lines[0]).toBe("bad.s: line 1: unknown mnemonic: MOVQ");
+    expect(r.lines[0]).toBe("bad.s: line 1: unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it");
     expect(executables.size).toBe(0);
   });
 
