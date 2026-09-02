@@ -384,13 +384,20 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
             return Err(lex_err(
                 line,
                 &format!(
-                    "column {col}: non-ASCII character U+{:04X}{name} -- retype this line; \
+                    "column {col}: non-ASCII character U+{:04X}{name}. Retype this line; \
                      pasting from a PDF or web page often inserts invisible characters",
                     c as u32
                 ),
             ));
         }
-        return Err(lex_err(line, &format!("unexpected character `{}`", b as char)));
+        return Err(lex_err(
+            line,
+            &format!(
+                "unexpected character `{}` here: a line starts with a label, a \
+                 directive, or a mnemonic, and comments start with // or ;",
+                b as char
+            ),
+        ));
     }
     Ok(tokens)
 }
@@ -463,7 +470,7 @@ fn integer_error(text: &str) -> String {
     if clean.len() > 1 && clean.starts_with('0') && !radix_prefixed {
         return format!(
             "invalid integer literal `{text}`: a leading zero means octal, so only the \
-             digits 0-7 are allowed -- drop the zero for decimal, or write 0x for hex"
+             digits 0-7 are allowed. Drop the zero for decimal, or write 0x for hex"
         );
     }
     format!("invalid integer literal `{text}`")
