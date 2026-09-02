@@ -133,7 +133,7 @@ bst_msg_range:      .string "values run from 0 to 99, so every node stays two di
 bst_msg_root:       .string "the tree was empty, so %d becomes the root"
 bst_msg_sample:     .string "seven values, and the shape depends on the order they arrived in"
 bst_msg_alloc:      .string "the allocator refused a node, so nothing was inserted"
-bst_msg_start:      every descent starts at the root, and every step drops one subtree
+bst_msg_start:      .string "every descent starts at the root, and every step throws half away"
 
 bst_fmt_cmp_lt:     .string "%d is smaller than %d, so the descent goes left"
 bst_fmt_cmp_gt:     .string "%d is larger than %d, so the descent goes right"
@@ -1094,7 +1094,7 @@ bst_ask_prompt:
 
 bst_ask_range:
     // Say why and ask again. Answering 0 here would be indistinguishable
-    // from a closed stdin,
+    // from a closed stdin, and the operation was being abandoned silently.
     ldr     x0, =bst_msg_range
     mov     w1, 0
     mov     w2, 0
