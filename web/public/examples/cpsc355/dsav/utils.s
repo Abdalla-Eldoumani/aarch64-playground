@@ -15,7 +15,7 @@ newline_str:        .string "\n"
 press_enter_msg:    .string "press enter to continue"
 // The complaint always lands on one fixed line inside the frame, below
 // the body and above the footer, and the line is wiped before it is
-// written -- so retries overwrite in place instead of stacking copies
+// written, so retries overwrite in place instead of stacking copies
 // down the screen. Row 23 is the kernel's message row (ui.asm owns the
 // layout); clearing spans only the inner columns so the frame's sides
 // survive.
@@ -149,7 +149,7 @@ read_int_clear_message:
 // nobody can answer.
 //
 // A menu can read w0 alone: min is its back choice either way. A prompt
-// asking for a VALUE cannot -- min is a real answer there, and taking it
+// asking for a VALUE cannot: min is a real answer there, and taking it
 // silently committed a number nobody typed. Those callers check w1.
     .global read_int_range
 read_int_range:
