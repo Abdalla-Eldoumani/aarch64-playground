@@ -49,6 +49,30 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   ADDS: { summary: "Rd = Rn + Rm/imm, sets NZCV.", cExample: "Rd = Rn + op2; // NZCV updated" },
   SUB: { summary: "Rd = Rn - Rm/imm. No flags.", cExample: "Rd = Rn - op2;" },
   SUBS: { summary: "Rd = Rn - Rm/imm, sets NZCV (the basis of `CMP`).", cExample: "Rd = Rn - op2; // NZCV updated" },
+  CLZ: {
+    summary: "Rd = the number of leading zero bits in Rn.",
+    details: ["Of zero it is the register width (64 for X, 32 for W), not an error."],
+    example: "clz x0, x1",
+    cExample: "Rd = __builtin_clzl(Rn); // 64 for Rn == 0",
+  },
+  CLS: {
+    summary: "Rd = the number of leading bits matching the top bit, minus that bit.",
+    details: ["Of 0 and of -1 alike it is the width minus one: 63 at X width, 31 at W."],
+    example: "cls x0, x1",
+  },
+  RBIT: { summary: "Rd = Rn with its bit order reversed across the whole register.", example: "rbit x0, x1" },
+  REV: {
+    summary: "Rd = Rn with its byte order reversed (a byte-swap).",
+    details: ["The X and W forms are different encodings, not one instruction with a width bit."],
+    example: "rev x0, x1",
+    cExample: "Rd = __builtin_bswap64(Rn);",
+  },
+  REV16: { summary: "Reverse the bytes inside each 16-bit halfword of Rn.", example: "rev16 x0, x1" },
+  REV32: {
+    summary: "Reverse the bytes inside each 32-bit word of Rn. X registers only.",
+    details: ["There is no `REV32 Wd, Wn`: the W-sized byte-swap is `REV Wd, Wn`."],
+    example: "rev32 x0, x1",
+  },
   ADC: {
     summary: "Rd = Rn + Rm + C. No flags.",
     details: ["Register form only; AArch64 has no add-with-carry immediate. It follows an `ADDS` to carry one 64-bit word into the next."],

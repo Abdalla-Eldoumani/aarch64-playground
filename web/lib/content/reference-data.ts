@@ -758,6 +758,58 @@ mov     x2, 0xff
 eon     x0, x1, x2          // x0 = -1: equal inputs make xnor all-ones`,
   },
   {
+    mnemonic: "clz",
+    category: "Data processing",
+    syntax: "clz xd, xn / clz wd, wn",
+    example: `mov     x1, 0x0123456789abcdef
+clz     x0, x1              // x0 = 7
+mov     x2, 0
+clz     x3, x2              // x3 = 64: zero answers the full width`,
+  },
+  {
+    mnemonic: "cls",
+    category: "Data processing",
+    syntax: "cls xd, xn / cls wd, wn",
+    example: `mov     x1, -1
+cls     x0, x1              // x0 = 63: 64 sign bits, minus the top one
+mov     x2, 0
+cls     x3, x2              // x3 = 63 as well`,
+  },
+  {
+    mnemonic: "rbit",
+    category: "Data processing",
+    syntax: "rbit xd, xn / rbit wd, wn",
+    example: `mov     w1, 0x01234567
+rbit    w0, w1              // w0 = 0xe6a2c480`,
+  },
+  {
+    mnemonic: "rev",
+    category: "Data processing",
+    syntax: "rev xd, xn / rev wd, wn",
+    example: `mov     x1, 0x0123456789abcdef
+rev     x0, x1              // x0 = 0xefcdab8967452301`,
+    gotchas: [
+      "the x and w forms are separate encodings. `rev w0, w1` swaps four bytes; `rev x0, x1` swaps eight.",
+    ],
+  },
+  {
+    mnemonic: "rev16",
+    category: "Data processing",
+    syntax: "rev16 xd, xn / rev16 wd, wn",
+    example: `mov     x1, 0x0123456789abcdef
+rev16   x0, x1              // x0 = 0x23016745ab89efcd`,
+  },
+  {
+    mnemonic: "rev32",
+    category: "Data processing",
+    syntax: "rev32 xd, xn",
+    example: `mov     x1, 0x0123456789abcdef
+rev32   x0, x1              // x0 = 0x67452301efcdab89`,
+    gotchas: [
+      "there is no `rev32 wd, wn`. the 32-bit byte-swap is `rev wd, wn`, which shares this opcode at the other width.",
+    ],
+  },
+  {
     mnemonic: "lsl",
     category: "Data processing",
     syntax: "lsl xd, xn, #imm",
