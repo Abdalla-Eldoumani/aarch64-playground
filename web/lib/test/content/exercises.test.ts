@@ -86,16 +86,15 @@ describe("loadAllExercises", () => {
 
   it("returns an empty list for an empty or absent directory", () => {
     makeDir();
-    // An existing but empty directory: nothing to load.
     expect(loadAllExercises(dir)).toEqual([]);
     // An absent directory must not crash the build before the content is authored.
     expect(loadAllExercises(path.join(dir, "does-not-exist"))).toEqual([]);
   });
 });
 
-// The index projection is the reason the practice payload is small: any field
-// added to the row without a reader, or dropped while the index still reads
-// it, is a regression these tests catch before the flight payload grows.
+// The index projection is the reason the practice payload is small: a field
+// added to the row with no reader, or dropped while the index still reads it,
+// is caught here before it reaches the client.
 describe("loadExerciseIndex", () => {
   it("carries every field the index renders and no other", () => {
     makeDir();
