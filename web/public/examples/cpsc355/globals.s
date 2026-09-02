@@ -25,9 +25,9 @@ main:
         mov     fp, sp
 
         ldr     x0, =x_m
-        ldr     x_r, [x0]
+        ldr     x_r, [x0]               // x = 5
         ldr     x0, =y_m
-        ldr     y_r, [x0]
+        ldr     y_r, [x0]               // y = 3
 
         mul     prod_r, x_r, y_r        // product = 15
 
