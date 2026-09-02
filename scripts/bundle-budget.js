@@ -48,7 +48,7 @@ const ROUTES = [
 ];
 
 // The same compression @size-limit/file applies, so the two tools' numbers
-// are comparable rather than merely similar.
+// match.
 function brotliBytes(file) {
   return zlib.brotliCompressSync(fs.readFileSync(file), {
     params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 },
@@ -112,7 +112,7 @@ function main() {
     console.log(`\n  ${route.name}`);
     if (over > 0) {
       failed = true;
-      console.log(`  Budget has exceeded by ${format(over)}`);
+      console.log(`  Budget exceeded by ${format(over)}`);
     }
     console.log(`  Size limit: ${format(route.limit)}`);
     console.log(`  Size:       ${format(total)} across ${files} chunks, brotlied`);
