@@ -25,7 +25,7 @@ pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 /// sprintf(buf, fmt, ...) -> the characters written, not counting the
 /// terminator. x0 is the buffer and x1 the format, so the varargs start
-/// at x2 -- the same shift fprintf makes for its stream. The buffer's
+/// at x2, the same shift fprintf makes for its stream. The buffer's
 /// size is the caller's problem, exactly as in C.
 pub fn sprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let buf = ctx.regs.read_gpr(0, true);
@@ -65,8 +65,9 @@ fn write_c_string(ctx: &mut HostContext<'_>, buf: u64, bytes: &[u8]) -> Result<(
 
 /// The printf engine with the destination left to the caller: read the
 /// format at `fmt_ptr`, walk the varargs starting at GP register
-/// `first_gp` (1 for printf -- x0 is the format; 2 for fprintf -- x0 is
-/// the stream and x1 the format), and hand back the formatted bytes.
+/// `first_gp` (1 for printf, where x0 is the format; 2 for fprintf,
+/// where x0 is the stream and x1 the format), and hand back the
+/// formatted bytes.
 /// `what` names the format string in fault messages.
 pub(crate) fn format_into(
     ctx: &mut HostContext<'_>,
@@ -265,7 +266,7 @@ fn parse_spec(
     }
     // Length modifier. The fetch slot is the same 64-bit register either
     // way, but the WIDTH read out of it must follow C: plain `%d` is an
-    // int and consumes w-register bits only -- glibc on the course
+    // int and consumes w-register bits only: glibc on the course
     // machine prints 85 for a `.word`, not the neighbor's bytes.
     while *i < chars.len() && matches!(chars[*i], 'l' | 'h' | 'z' | 'j' | 't') {
         match chars[*i] {
@@ -387,8 +388,7 @@ fn format_conversion(
             })?;
             // C's %s precision is a maximum BYTE count. Truncate the raw
             // bytes (not the decoded String): `String::truncate` panics when
-            // the cut lands mid-UTF-8-char, so `%.1s` on a multi-byte string
-            // used to abort the whole wasm instance.
+            // the cut lands mid-UTF-8-char, which aborts the wasm instance.
             let shown: &[u8] = match spec.precision {
                 Some(p) if p < bytes.len() => &bytes[..p],
                 _ => &bytes,
@@ -426,8 +426,8 @@ fn format_conversion(
         'a' | 'A' => {
             // Real glibc formats hex floats. Echoing the specifier
             // literally also left its argument unconsumed, silently
-            // shifting every later conversion of the same class -- worse
-            // than stopping.
+            // shifting every later conversion of the same class, which is
+            // worse than stopping.
             return Err(EmuError::RuntimeError {
                 message: format!(
                     "printf %{conv} is not supported by this emulator; format the value with %f"
@@ -484,7 +484,7 @@ fn format_scientific(value: f64, precision: usize, plus: bool, space: bool) -> S
     }
 }
 
-/// `%g`: C's rule -- with P significant digits, use `%e` when the
+/// `%g`: C's rule. With P significant digits, use `%e` when the
 /// exponent is below -4 or at least P, else `%f`, and strip trailing
 /// zeros (and a bare trailing point) either way.
 fn format_general(value: f64, sig: usize, plus: bool, space: bool) -> String {
@@ -747,7 +747,7 @@ mod tests {
         assert_eq!(n, 6, "the return value must not shrink to the truncation");
         assert_eq!(&bytes[..4], b"12-\0");
         assert_eq!(bytes[4], 0xEE);
-        // Size 0 writes nothing at all -- not even a terminator.
+        // Size 0 writes nothing at all, not even a terminator.
         let (bytes, n) = call(0);
         assert_eq!(n, 6);
         assert_eq!(bytes[0], 0xEE);
@@ -780,9 +780,8 @@ mod tests {
     #[test]
     fn h_and_hh_truncate_the_way_glibc_does() {
         // 65541 is 0x10005: as a short it is 5, as a signed char it is 5,
-        // as an int it stays 65541. The modifier loop used to record only
-        // `l`, so all three printed 65541 on a machine where aarch64 glibc
-        // prints "5 5 65541".
+        // as an int it stays 65541. A modifier loop that records only `l`
+        // prints 65541 three times where aarch64 glibc prints "5 5 65541".
         let (s, _) = call("%hd %hhd %d", |regs, _| {
             regs.write_gpr(1, true, 65541);
             regs.write_gpr(2, true, 65541);
@@ -822,8 +821,8 @@ mod tests {
     #[test]
     fn one_call_cannot_stage_megabytes() {
         // MAX_FIELD_WIDTH clamps one conversion; a 64 KiB format stuffed
-        // with wide conversions used to stage ~45 MB in the transient
-        // buffer before any wall saw it. The per-call bound must trip.
+        // with wide conversions stages ~45 MB in the transient buffer
+        // before the cumulative wall sees it. The per-call bound must trip.
         let fmt = "%4096d".repeat(300);
         let err = try_call(&fmt, |_, _| {}).unwrap_err();
         assert!(
@@ -970,8 +969,8 @@ mod tests {
 
     #[test]
     fn percent_s_precision_does_not_panic_on_multibyte() {
-        // `%.1s` on a multi-byte UTF-8 string used to hit String::truncate
-        // mid-char and panic the wasm instance. Precision counts bytes (C
+        // `%.1s` on a multi-byte UTF-8 string hits String::truncate
+        // mid-char and panics the wasm instance. Precision counts bytes (C
         // semantics), so it must truncate the raw bytes, not the decoded
         // String.
         let (s, _) = call("[%.1s]", |regs, mem| {
@@ -1121,7 +1120,7 @@ mod tests {
 
     #[test]
     fn printf_long_modifier_accepted() {
-        // `%ld` should behave the same as `%d` since we read 64-bit regs.
+        // `%ld` and `%d` agree on a value that fits 32 bits.
         let (s, _) = call("%ld", |regs, _| {
             regs.write_gpr(1, true, 123);
         });
