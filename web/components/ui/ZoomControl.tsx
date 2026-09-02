@@ -12,8 +12,8 @@ export interface ZoomControlProps {
 }
 
 /**
- * Tiny zoom control: `-`, percentage, `+`, reset. Each button is a
- * 28x28 touch target so coarse pointers can hit them too.
+ * Tiny zoom control: `-`, percentage, `+`, reset. Each button is 24x24,
+ * sized for the panel header rather than for a coarse pointer.
  */
 export function ZoomControl({
   scale,
