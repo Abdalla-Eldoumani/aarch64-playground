@@ -20,13 +20,13 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "cpsc 355 playground",
-    title: "404 -- cpsc 355 playground",
+    title: "404 · cpsc 355 playground",
     description: "The page you were looking for doesn't exist.",
     images: [SHARE_CARD_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "404 -- cpsc 355 playground",
+    title: "404 · cpsc 355 playground",
     description: "The page you were looking for doesn't exist.",
     images: [SHARE_CARD_IMAGE],
   },
