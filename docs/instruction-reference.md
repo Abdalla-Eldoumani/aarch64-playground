@@ -154,6 +154,10 @@ Every scalar instruction takes both course views of the register file: the S for
 | `FMUL`   | `FMUL Dd, Dn, Dm` / `FMUL Sd, Sn, Sm` |                                     |
 | `FDIV`   | `FDIV Dd, Dn, Dm` / `FDIV Sd, Sn, Sm` |                                     |
 | `FNMUL`  | `FNMUL Dd, Dn, Dm` / `FNMUL Sd, Sn, Sm` | `Fd = -(Fn * Fm)`. The sign flips after the multiply, so `fnmul` of `0.0` and `3.0` is `-0.0`, which `fmul` alone never produces. |
+| `FMADD`  | `FMADD Dd, Dn, Dm, Da` / `FMADD Sd, Sn, Sm, Sa` | Fused multiply-add: `Fd = Fa + Fn * Fm`. The accumulator is the LAST operand and it is the addend, not a source of the product. Fused means one rounding, so it is not the same as `FMUL` then `FADD`. |
+| `FMSUB`  | same shape                        | `Fd = Fa - Fn * Fm` (the product is subtracted FROM the accumulator). |
+| `FNMADD` | same shape                        | `Fd = -Fa - Fn * Fm`. |
+| `FNMSUB` | same shape                        | `Fd = -Fa + Fn * Fm`. |
 | `FNEG`   | `FNEG Dd, Dn` / `FNEG Sd, Sn`     | Flip the sign: `Fd = -Fn`.              |
 | `FABS`   | `FABS Dd, Dn` / `FABS Sd, Sn`     | Absolute value: clears the sign bit.    |
 | `FSQRT`  | `FSQRT Dd, Dn` / `FSQRT Sd, Sn`   | Square root. A negative operand gives NaN, not a fault. |

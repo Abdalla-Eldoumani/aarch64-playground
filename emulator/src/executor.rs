@@ -351,6 +351,9 @@ pub fn execute(
         Instruction::FpFromInt { op, fd, rn, sf, single, fbits } => {
             exec_fp_from_int(*op, *fd, *rn, *sf, *single, *fbits, regs)
         }
+        Instruction::FpMulAdd { op, fd, fn_, fm, fa, single } => {
+            exec_fp_mul_add(*op, *fd, *fn_, *fm, *fa, *single, regs)
+        }
         Instruction::FpCvt { fd, fn_, widen } => {
             if *widen {
                 // FCVT Dd, Sn: every f32 is exactly representable as f64.
@@ -1045,6 +1048,40 @@ fn exec_fp_binary(
             FpBinOp::Fnmul => -(a * b),
         };
         regs.write_fpr_f64(fd, result);
+    }
+    Ok(ExecResult::Advance)
+}
+
+/// FMADD / FMSUB / FNMADD / FNMSUB. Fused: one rounding, not two, which
+/// is why this goes through `mul_add` and not `a * b + c`. Single
+/// precision computes IN f32, the same rule `exec_fp_binary` follows.
+fn exec_fp_mul_add(
+    op: FpMulAddOp, fd: u8, fn_: u8, fm: u8, fa: u8, single: bool,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    // The ARM pseudocode negates the product's first source and the
+    // addend, never the result, which is what makes the sign of an
+    // exactly cancelling FNMADD a positive zero.
+    let (neg_n, neg_a) = match op {
+        FpMulAddOp::Fmadd => (false, false),
+        FpMulAddOp::Fmsub => (true, false),
+        FpMulAddOp::Fnmadd => (true, true),
+        FpMulAddOp::Fnmsub => (false, true),
+    };
+    if single {
+        let n = regs.read_fpr_f32(fn_);
+        let m = regs.read_fpr_f32(fm);
+        let a = regs.read_fpr_f32(fa);
+        let n = if neg_n { -n } else { n };
+        let a = if neg_a { -a } else { a };
+        regs.write_fpr_f32(fd, n.mul_add(m, a));
+    } else {
+        let n = regs.read_fpr_f64(fn_);
+        let m = regs.read_fpr_f64(fm);
+        let a = regs.read_fpr_f64(fa);
+        let n = if neg_n { -n } else { n };
+        let a = if neg_a { -a } else { a };
+        regs.write_fpr_f64(fd, n.mul_add(m, a));
     }
     Ok(ExecResult::Advance)
 }

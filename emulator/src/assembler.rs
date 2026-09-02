@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::decoder::{
-    MemSize, FP_BINARY_OPS, FP_FROM_INT_OPS, FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS,
+    MemSize, FP_BINARY_OPS, FP_FROM_INT_OPS, FP_MUL_ADD_OPS, FP_TO_INT_OPS, FP_UNARY_OPS,
+    LDST_EXTENDS,
 };
 use crate::errors::EmuError;
 use crate::registers::{reg_alias, Condition, CONDITIONS};
@@ -162,6 +163,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
+    "FMADD", "FMSUB", "FNMADD", "FNMSUB",
     "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
     // pc-relative address formation
     "ADR", "ADRP",
@@ -299,6 +301,10 @@ fn encode_line(
         "FMUL" => encode_fp_binary(&ops, "fmul", line_num),
         "FDIV" => encode_fp_binary(&ops, "fdiv", line_num),
         "FNMUL" => encode_fp_binary(&ops, "fnmul", line_num),
+        "FMADD" => encode_fp_mul_add(&ops, "fmadd", line_num),
+        "FMSUB" => encode_fp_mul_add(&ops, "fmsub", line_num),
+        "FNMADD" => encode_fp_mul_add(&ops, "fnmadd", line_num),
+        "FNMSUB" => encode_fp_mul_add(&ops, "fnmsub", line_num),
         "FMOV" => encode_fmov(&ops, line_num),
         "FNEG" => encode_fp_unary(&ops, "fneg", line_num),
         "FABS" => encode_fp_unary(&ops, "fabs", line_num),
@@ -1506,6 +1512,32 @@ fn require_same_fp_width(name: &str, widths: &[char], ln: usize) -> Result<char,
 /// `name` is both the display name in the diagnostics and the key into
 /// `FP_BINARY_OPS`, so the dispatch arm names the operation once and the
 /// opcode comes from the shared row rather than a number spelled beside it.
+/// FMADD / FMSUB / FNMADD / FNMSUB Fd, Fn, Fm, Fa. `name` keys into
+/// `FP_MUL_ADD_OPS`. The accumulator is the LAST operand and lands in
+/// bits 14:10, which is what makes the operand order worth its own test.
+fn encode_fp_mul_add(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
+    let Some((_, o1, o0, _)) = FP_MUL_ADD_OPS.iter().find(|(mn, _, _, _)| *mn == name) else {
+        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+    };
+    if ops.len() != 4 {
+        return asm_err(ln, &format!("{name} requires 4 operands: {name} fd, fn, fm, fa"));
+    }
+    let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let (fm, wm) = parse_fp_register(ops[2], ln)?;
+    let (fa, wa) = parse_fp_register(ops[3], ln)?;
+    let width = require_same_fp_width(name, &[wd, wn, wm, wa], ln)?;
+    // 3-source: 0_0_0_11111_ftype_o1_Rm_o0_Ra_Rn_Rd
+    Ok(0x1F00_0000
+        | fp_ftype(width)
+        | (u32::from(*o1) << 21)
+        | ((fm as u32) << 16)
+        | (u32::from(*o0) << 15)
+        | ((fa as u32) << 10)
+        | ((fn_ as u32) << 5)
+        | (fd as u32))
+}
+
 fn encode_fp_binary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
     let Some((_, opcode, _)) = FP_BINARY_OPS.iter().find(|(mn, _, _)| *mn == name) else {
         return asm_err(ln, &format!("unknown mnemonic: {name}"));
@@ -4099,6 +4131,92 @@ svc 0").unwrap();
         assert_eq!(cpu.regs.read_fpr_bits(8), 0x8000_0000_0000_0000);
         assert_eq!(cpu.regs.read_fpr_bits(10), 0x0000_0000_0000_0000);
         assert_eq!(cpu.regs.read_fpr_bits(13), 0xC0C0_0000);
+    }
+
+    #[test]
+    fn fused_multiply_add_takes_the_accumulator_last() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("fmadd d0, d1, d2, d3", 0x1F42_0C20u32),
+            ("fmsub d0, d1, d2, d3", 0x1F42_8C20),
+            ("fnmadd d0, d1, d2, d3", 0x1F62_0C20),
+            ("fnmsub d0, d1, d2, d3", 0x1F62_8C20),
+            ("fmadd s0, s1, s2, s3", 0x1F02_0C20),
+            ("fmsub s0, s1, s2, s3", 0x1F02_8C20),
+            ("fnmadd s0, s1, s2, s3", 0x1F22_0C20),
+            ("fnmsub s0, s1, s2, s3", 0x1F22_8C20),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let source = r#"
+            FMOV D1, 3.0
+            FMOV D2, 4.0
+            FMOV D3, 10.0
+            FMADD D4, D1, D2, D3
+            FMSUB D5, D1, D2, D3
+            FNMADD D6, D1, D2, D3
+            FNMSUB D7, D1, D2, D3
+            FMOV D8, 2.0
+            FMOV D9, 3.0
+            FMOV D10, -6.0
+            FMOV D11, 6.0
+            FMADD D12, D8, D9, D10
+            FMSUB D13, D8, D9, D11
+            FNMADD D14, D8, D9, D10
+            FNMSUB D15, D8, D9, D11
+            FMOV S16, 3.0
+            FMOV S17, 4.0
+            FMOV S18, 10.0
+            FMADD S19, S16, S17, S18
+            FNMADD S20, S16, S17, S18
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(60).unwrap();
+        // d3 + d1*d2 = 22, NOT d1 + d2*d3 = 43 and NOT (d1+d2)*d3 = 70.
+        assert_eq!(cpu.regs.read_fpr_bits(4), 0x4036_0000_0000_0000);
+        // The sharp pair: Ra - Rn*Rm is -2, Rn*Rm - Ra is +2, and both
+        // are plausible readings of "fmsub".
+        assert_eq!(cpu.regs.read_fpr_bits(5), 0xC000_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(6), 0xC036_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(7), 0x4000_0000_0000_0000);
+        // An exactly cancelling product is +0.0 on the hardware for all
+        // four, including the two that negate the accumulator.
+        for fd in [12u8, 13, 14, 15] {
+            assert_eq!(cpu.regs.read_fpr_bits(fd), 0, "d{fd}");
+        }
+        assert_eq!(cpu.regs.read_fpr_bits(19), 0x41B0_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(20), 0xC1B0_0000);
+    }
+
+    #[test]
+    fn fused_multiply_add_rounds_once() {
+        use crate::cpu::Cpu;
+        // csarm's fp_fusion probe: x = 1 + 2^-52, c = -(1 + 2^-51).
+        // Fused, x*x + c is 2^-104 exactly; rounding the product first
+        // gives +0.0. Any implementation spelled `n * m + a` prints the
+        // second answer.
+        let source = r#"
+            MOVZ X0, #1
+            MOVK X0, #0x3FF0, LSL #48
+            FMOV D1, X0
+            MOVZ X2, #2
+            MOVK X2, #0xBFF0, LSL #48
+            FMOV D3, X2
+            FMADD D4, D1, D1, D3
+            FMUL D5, D1, D1
+            FADD D6, D5, D3
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        assert_eq!(cpu.regs.read_fpr_bits(4), 0x3970_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(6), 0x0000_0000_0000_0000);
     }
 
     #[test]

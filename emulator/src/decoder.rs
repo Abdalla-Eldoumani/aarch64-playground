@@ -243,6 +243,24 @@ pub const FP_BINARY_OPS: &[(&str, u8, FpBinOp)] = &[
     ("fnmul", 0b1000, FpBinOp::Fnmul),
 ];
 
+/// Fused multiply-add variant. `Fa` is the ADDEND in every one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpMulAddOp {
+    Fmadd,
+    Fmsub,
+    Fnmadd,
+    Fnmsub,
+}
+
+/// The FP 3-source rows: mnemonic, o1 (bit 21), o0 (bit 15), operation.
+/// Read in both directions, like `FP_BINARY_OPS`.
+pub const FP_MUL_ADD_OPS: &[(&str, u8, u8, FpMulAddOp)] = &[
+    ("fmadd", 0, 0, FpMulAddOp::Fmadd),
+    ("fmsub", 0, 1, FpMulAddOp::Fmsub),
+    ("fnmadd", 1, 0, FpMulAddOp::Fnmadd),
+    ("fnmsub", 1, 1, FpMulAddOp::Fnmsub),
+];
+
 /// The FP one-source rows that share `FpUnary`: mnemonic, the 6-bit opcode
 /// field, and the operation. FMOV-register and FCVT live in the same opcode
 /// space but stay out of the table: FMOV has its own instruction variant
@@ -606,6 +624,16 @@ pub enum Instruction {
         single: bool,
         fbits: u8,
     },
+    /// FMADD / FMSUB / FNMADD / FNMSUB: fused multiply-add. `fa` is the
+    /// ADDEND and is the LAST operand in source order, not the first.
+    FpMulAdd {
+        op: FpMulAddOp,
+        fd: u8,
+        fn_: u8,
+        fm: u8,
+        fa: u8,
+        single: bool,
+    },
     /// FCVT: precision convert. `widen` = FCVT Dd, Sn (exact); otherwise
     /// FCVT Sd, Dn (rounds to nearest single).
     FpCvt {
@@ -901,6 +929,32 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     //   Encoding: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
     // ftype picks the scalar width: 00 = single (S), 01 = double (D) --
     // the two views the course uses. Half precision (11) stays unhandled.
+
+    // FP data-processing 3-source (the FMADD family) sits at bits[28:24]
+    // = 11111, one above the class every other scalar FP form uses, so it
+    // is taken before the guard below rejects it.
+    if bits(instr, 28, 24) == 0b11111 && bits(instr, 31, 29) == 0 {
+        let ftype = bits(instr, 23, 22);
+        if ftype != 0b00 && ftype != 0b01 {
+            return Err(EmuError::UnknownInstruction(instr));
+        }
+        let o1 = bit(instr, 21) as u8;
+        let o0 = bit(instr, 15) as u8;
+        let Some((_, _, _, op)) = FP_MUL_ADD_OPS
+            .iter()
+            .find(|(_, a, b, _)| *a == o1 && *b == o0)
+        else {
+            return Err(EmuError::UnknownInstruction(instr));
+        };
+        return Ok(Instruction::FpMulAdd {
+            op: *op,
+            fd: bits(instr, 4, 0) as u8,
+            fn_: bits(instr, 9, 5) as u8,
+            fm: bits(instr, 20, 16) as u8,
+            fa: bits(instr, 14, 10) as u8,
+            single: ftype == 0b00,
+        });
+    }
 
     let bits_28_24 = bits(instr, 28, 24);
     if bits_28_24 != 0b11110 {
