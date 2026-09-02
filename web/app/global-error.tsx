@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { bundleToMarkdown } from "@/lib/playground/diagnostic-bundle";
+import { useEffect, useState } from "react";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 
 /**
@@ -55,26 +54,43 @@ export default function GlobalError({
 }) {
   const [copyState, setCopyState] = useState<"idle" | "ok" | "error">("idle");
 
-  const buildReport = (): string => {
-    // In production Next replaces the message with a generic string and hands
-    // the real one to the server logs under `digest`, so the digest is the only
-    // way a student's report can be matched to a log line.
-    const detail = error.digest
-      ? `${error.message} (digest ${error.digest})`
-      : error.message;
-    const markdown = bundleToMarkdown({
-      // The autosaved buffer is the one piece of the student's work an error
-      // page can read; an unreadable or absent autosave reports as empty.
-      source: loadAutoSavedBuffer() ?? "",
-      error: detail,
+  // The report is the whole bundle format, and this boundary needs it only
+  // when the button is pressed, so the builder arrives through a dynamic
+  // import: reaching it statically put the format in the script list of every
+  // document, including the landing's. It is built as soon as the chunk lands
+  // rather than inside the handler, so the clipboard write still happens in
+  // the same task as the press.
+  const [report, setReport] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void import("@/lib/playground/bundle-markdown").then(({ bundleToMarkdown }) => {
+      if (!live) return;
+      // In production Next replaces the message with a generic string and
+      // hands the real one to the server logs under `digest`, so the digest is
+      // the only way a student's report can be matched to a log line.
+      const detail = error.digest
+        ? `${error.message} (digest ${error.digest})`
+        : error.message;
+      const markdown = bundleToMarkdown({
+        // The autosaved buffer is the one piece of the student's work an error
+        // page can read; an unreadable or absent autosave reports as empty
+        // rather than failing the copy.
+        source: loadAutoSavedBuffer() ?? "",
+        error: detail,
+      });
+      setReport(`${markdown}**route:** \`${window.location.pathname}\`\n`);
     });
-    const route = typeof window === "undefined" ? "" : window.location.pathname;
-    return `${markdown}**route:** \`${route}\`\n`;
-  };
+    return () => {
+      live = false;
+    };
+  }, [error]);
 
   const onCopy = async () => {
+    // Nothing to hand over until the builder's chunk lands, a beat after
+    // mount; the button says so by staying disabled until then.
+    if (report === null) return;
     try {
-      await navigator.clipboard.writeText(buildReport());
+      await navigator.clipboard.writeText(report);
       setCopyState("ok");
       setTimeout(() => setCopyState("idle"), 1500);
     } catch {
@@ -207,6 +223,7 @@ export default function GlobalError({
             <button
               type="button"
               onClick={onCopy}
+              disabled={report === null}
               style={{
                 ...BUTTON_BASE,
                 border: `1px solid ${BORDER}`,
