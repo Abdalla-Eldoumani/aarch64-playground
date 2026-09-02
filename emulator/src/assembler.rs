@@ -45,7 +45,7 @@ pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
                 return asm_err(
                     *line_num,
                     &format!(
-                        "label `{name}` is already defined -- give each label a \
+                        "label `{name}` is already defined. Give each label a \
                          unique name (labels are file-wide, not per-function)"
                     ),
                 );
@@ -386,7 +386,7 @@ fn encode_line(
         "NOP" => Ok(crate::decoder::NOP_WORD),
         "SVC" => encode_svc(&ops, line_num),
 
-        _ => asm_err(line_num, &format!("unknown mnemonic: {mn}")),
+        _ => asm_err(line_num, &format!("unknown mnemonic `{mn}`: {UNKNOWN_MNEMONIC_HINT}")),
     }
 }
 
@@ -450,7 +450,13 @@ fn parse_register(s: &str, line_num: usize) -> Result<(u8, bool), EmuError> {
         .parse()
         .map_err(|_| asm_error(line_num, &format!("invalid register: {s}")))?;
     if num > 30 {
-        return asm_err(line_num, &format!("register index out of range: {s}"));
+        return asm_err(
+            line_num,
+            &format!(
+                "`{s}` is not a register: the general-purpose registers are x0 through \
+                 x30 (or w0 through w30), plus xzr/wzr and sp"
+            ),
+        );
     }
     Ok((num, sf))
 }
@@ -470,15 +476,40 @@ fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError> {
 
     let val: u64 = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
         u64::from_str_radix(hex, 16)
-            .map_err(|_| asm_error(line_num, &format!("invalid hex immediate: {s}")))?
+            .map_err(|_| {
+                asm_error(
+                    line_num,
+                    &format!(
+                        "`{s}` is not a valid hex number: hex literals are 0x followed \
+                         by hex digits"
+                    ),
+                )
+            })?
     } else if let Some(bin) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
         // Binary immediates (`#0b101010`) are a documented course form; the
         // lexer already accepts them, so the legacy encoder must too.
         u64::from_str_radix(bin, 2)
-            .map_err(|_| asm_error(line_num, &format!("invalid binary immediate: {s}")))?
+            .map_err(|_| {
+                asm_error(
+                    line_num,
+                    &format!(
+                        "`{s}` is not a valid binary number: binary literals are 0b \
+                         followed by 0s and 1s"
+                    ),
+                )
+            })?
     } else {
         s.parse()
-            .map_err(|_| asm_error(line_num, &format!("invalid immediate: {s}")))?
+            .map_err(|_| {
+                asm_error(
+                    line_num,
+                    &format!(
+                        "`{s}` is not a number the assembler can read here: write \
+                         decimal as 42, hex as 0x2a, binary as 0b101010, and a \
+                         character as 'a'"
+                    ),
+                )
+            })?
     };
 
     Ok(if negative { -(val as i64) } else { val as i64 })
@@ -532,7 +563,32 @@ fn parse_char_body(body: &str, line_num: usize) -> Result<i64, EmuError> {
 fn parse_condition(s: &str, line_num: usize) -> Result<u8, EmuError> {
     match condition_bits(&s.trim().to_uppercase()) {
         Some(bits) => Ok(bits),
-        None => asm_err(line_num, &format!("unknown condition: {s}")),
+        None => asm_err(
+            line_num,
+            &format!(
+                "unknown condition code `{s}`: the codes are {}",
+                condition_code_list()
+            ),
+        ),
+    }
+}
+
+/// The condition spellings, read off `CONDITIONS` rather than written out,
+/// so a row added to the table cannot leave the message behind.
+fn condition_code_list() -> String {
+    let names: Vec<String> = CONDITIONS
+        .iter()
+        .map(|(primary, aliases, _)| {
+            std::iter::once(*primary)
+                .chain(aliases.iter().copied())
+                .map(str::to_lowercase)
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .collect();
+    match names.split_last() {
+        Some((last, rest)) => format!("{}, and {last}", rest.join(", ")),
+        None => String::new(),
     }
 }
 
@@ -564,6 +620,25 @@ fn bcond_condition(mn: &str) -> Option<u8> {
     }
     condition_bits(mn.strip_prefix('B')?)
 }
+
+/// The tail every unknown-mnemonic complaint carries. A name the
+/// dispatch has no arm for is either a typo or an instruction the
+/// playground does not implement, and the student cannot tell which.
+const UNKNOWN_MNEMONIC_HINT: &str =
+    "check the spelling, or look it up in the instruction reference to see \
+     whether the playground implements it";
+
+/// The tail every missing-label complaint carries. A label line that lost
+/// its `:` reads as an instruction here, so it is indistinguishable from a
+/// misspelling without saying both.
+const NO_SUCH_LABEL_HINT: &str =
+    "check the spelling, and check that the label line ends with a `:`";
+
+/// A selector the dispatch cannot produce reached an encoder. No source
+/// text causes it, so naming the selector helps nobody; reporting it does.
+const INTERNAL_ASSEMBLER_BUG: &str =
+    "the playground hit an internal assembler error on this line. This is a \
+     bug: press 'copy diagnostic bundle' and open an issue with what it copies";
 
 fn asm_err<T>(line_num: usize, msg: &str) -> Result<T, EmuError> {
     Err(asm_error(line_num, msg))
@@ -1338,8 +1413,8 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
             // The dispatch passes only 0/1/2; anything else is a crate
             // bug, and on wasm a panic costs the whole worker where an
             // error is one calm halt.
-            other => {
-                return asm_err(ln, &format!("internal: unknown shift selector {other}"));
+            _ => {
+                return asm_err(ln, INTERNAL_ASSEMBLER_BUG);
             }
         };
 
@@ -1356,8 +1431,8 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
         0 => 0b001000, // LSLV
         1 => 0b001001, // LSRV
         2 => 0b001010, // ASRV
-        other => {
-            return asm_err(ln, &format!("internal: unknown shift selector {other}"));
+        _ => {
+            return asm_err(ln, INTERNAL_ASSEMBLER_BUG);
         }
     };
     Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
@@ -1436,7 +1511,7 @@ fn encode_mul_div(ops: &[&str], variant: u8, ln: usize) -> Result<u32, EmuError>
             Ok((sf_bit << 31) | (0b0011010110 << 21) | ((rm as u32) << 16)
                 | (0b000011 << 10) | ((rn as u32) << 5) | (rd as u32))
         }
-        other => asm_err(ln, &format!("internal: unknown multiply selector {other}")),
+        _ => asm_err(ln, INTERNAL_ASSEMBLER_BUG),
     }
 }
 
@@ -1646,7 +1721,13 @@ fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
         .parse()
         .map_err(|_| asm_error(ln, &format!("bad FP register: {s}")))?;
     if idx > 31 {
-        return asm_err(ln, &format!("FP register index out of range: {idx}"));
+        return asm_err(
+            ln,
+            &format!(
+                "`{s}` is not a floating-point register: the fp registers are d0 \
+                 through d31 and s0 through s31"
+            ),
+        );
     }
     Ok((idx, prefix))
 }
@@ -1682,7 +1763,7 @@ fn require_same_fp_width(name: &str, widths: &[char], ln: usize) -> Result<char,
 /// bits 14:10, which is what makes the operand order worth its own test.
 fn encode_fp_mul_add(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
     let Some((_, o1, o0, _)) = FP_MUL_ADD_OPS.iter().find(|(mn, _, _, _)| *mn == name) else {
-        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+        return asm_err(ln, &format!("unknown mnemonic `{name}`: {UNKNOWN_MNEMONIC_HINT}"));
     };
     if ops.len() != 4 {
         return asm_err(ln, &format!("{name} requires 4 operands: {name} fd, fn, fm, fa"));
@@ -1725,7 +1806,7 @@ fn encode_fcsel(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
 
 fn encode_fp_binary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
     let Some((_, opcode, _)) = FP_BINARY_OPS.iter().find(|(mn, _, _)| *mn == name) else {
-        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+        return asm_err(ln, &format!("unknown mnemonic `{name}`: {UNKNOWN_MNEMONIC_HINT}"));
     };
     let opcode = u32::from(*opcode);
     if ops.len() != 3 {
@@ -1848,7 +1929,7 @@ fn encode_fmov_general(
 /// the key into `FP_UNARY_OPS`.
 fn encode_fp_unary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
     let Some((_, opcode, _)) = FP_UNARY_OPS.iter().find(|(mn, _, _)| *mn == name) else {
-        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+        return asm_err(ln, &format!("unknown mnemonic `{name}`: {UNKNOWN_MNEMONIC_HINT}"));
     };
     let opcode = u32::from(*opcode);
     if ops.len() != 2 {
@@ -1899,7 +1980,7 @@ fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u32, EmuError
 fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
     let Some((_, rmode, opcode, _)) = FP_FROM_INT_OPS.iter().find(|(mn, _, _, _)| *mn == name)
     else {
-        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+        return asm_err(ln, &format!("unknown mnemonic `{name}`: {UNKNOWN_MNEMONIC_HINT}"));
     };
     if ops.len() != 2 && ops.len() != 3 {
         return asm_err(
@@ -1975,7 +2056,7 @@ fn fixed_point_scale(
 fn encode_fp_cvt_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
     let Some((_, rmode, opcode, _)) = FP_TO_INT_OPS.iter().find(|(mn, _, _, _)| *mn == name)
     else {
-        return asm_err(ln, &format!("unknown mnemonic: {name}"));
+        return asm_err(ln, &format!("unknown mnemonic `{name}`: {UNKNOWN_MNEMONIC_HINT}"));
     };
     if ops.len() != 2 && ops.len() != 3 {
         return asm_err(
@@ -2579,7 +2660,7 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
         if parts.len() > 2 {
             return asm_err(
                 ln,
-                "unexpected third operand in the address -- the immediate form is [Xn, #imm]",
+                "unexpected third operand in the address: the immediate form is [Xn, #imm]",
             );
         }
         let offset = parse_immediate(parts[1].text(s), ln)?;
@@ -2812,7 +2893,7 @@ fn encode_adr(
         *labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| asm_error(ln, &format!("undefined label: {target}")))?
+            .ok_or_else(|| asm_error(ln, &format!("no label named `{target}` in this program: {NO_SUCH_LABEL_HINT}")))?
     };
 
     let imm: i64 = if adrp {
@@ -2848,7 +2929,7 @@ fn encode_branch_imm(
         let addr = labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| asm_error(ln, &format!("undefined label: {target}")))?;
+            .ok_or_else(|| asm_error(ln, &format!("no label named `{target}` in this program: {NO_SUCH_LABEL_HINT}")))?;
         *addr as i64 - pc as i64
     };
 
@@ -2878,7 +2959,7 @@ fn encode_bcond(
         let addr = labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| asm_error(ln, &format!("undefined label: {target}")))?;
+            .ok_or_else(|| asm_error(ln, &format!("no label named `{target}` in this program: {NO_SUCH_LABEL_HINT}")))?;
         *addr as i64 - pc as i64
     };
 
@@ -2971,7 +3052,9 @@ fn check_branch_reach(
         return Err(EmuError::AssemblyError {
             line: ln,
             message: format!(
-                "{mnemonic} target is out of reach ({} bytes away; this branch reaches {} bytes each way) -- branch to a nearer label, or load the address and use br",
+                "{mnemonic} target is out of reach ({} bytes away; this branch reaches \
+                 {} bytes each way). Branch to a nearer label, or load the address and \
+                 use br",
                 offset_instrs * 4,
                 hi * 4
             ),
@@ -2995,7 +3078,7 @@ fn resolve_branch_target(
         let addr = labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| asm_error(ln, &format!("undefined label: {target}")))?;
+            .ok_or_else(|| asm_error(ln, &format!("no label named `{target}` in this program: {NO_SUCH_LABEL_HINT}")))?;
         Ok(*addr as i64 - pc as i64)
     }
 }
@@ -5831,6 +5914,30 @@ svc 0").unwrap();
             }
             other => panic!("expected PreprocError at line 2, got {other:?}"),
         }
+    }
+
+    // -- register names the encoder turns away --
+
+    #[test]
+    fn a_register_number_past_the_file_names_the_register_file() {
+        // The web layer picks its register teaching block off this wording,
+        // so a reworded message there silently stops explaining itself.
+        let labels: HashMap<String, u64> = HashMap::new();
+        let msg = match encode_line("ldr x1, [x99, #8]", 0, &labels, 1) {
+            Err(EmuError::AssemblyError { message, .. }) => message,
+            other => panic!("expected an assembly error, got {other:?}"),
+        };
+        assert!(msg.contains("is not a register"), "message was: {msg}");
+        assert!(msg.contains("x0 through x30"), "message was: {msg}");
+
+        let msg = match encode_line("fadd d0, d1, d99", 0, &labels, 1) {
+            Err(EmuError::AssemblyError { message, .. }) => message,
+            other => panic!("expected an assembly error, got {other:?}"),
+        };
+        assert!(
+            msg.contains("is not a floating-point register"),
+            "message was: {msg}"
+        );
     }
 
     // -- the supported-mnemonic list --
