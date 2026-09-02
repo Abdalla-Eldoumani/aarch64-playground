@@ -555,7 +555,7 @@ describe("gdb-lite edges", () => {
     expect(pc.lines).toEqual(["$pc = 0x0000000000400008"]);
   });
 
-  it("gdb p uppercases operands are normalized to the lowercase register", async () => {
+  it("gdb p normalizes an uppercase operand to the lowercase register", async () => {
     const ctx = makeCtx({ readRegister: (n) => (n === "x0" ? 1n : null) });
     const r = await dispatchCommand("gdb p $X0", ctx);
     expect(r.status).toBe("ok");
