@@ -16,7 +16,10 @@ reference).
 | Star count beside the nav's github link (server-read, hourly; hidden on a failed lookup or a zero count) | `web/lib/content/github.ts`, `web/components/chrome/SiteNav.tsx`, `MobileNavDrawer.tsx` |
 | Skip-to-content link (first focusable; every route renders one `<main id="main">`) | `web/app/layout.tsx`, `.skip-link` in `web/app/globals.css` |
 | 404 and fault pages (route error boundary, root boundary, copyable report) | `web/app/not-found.tsx`, `web/components/chrome/NotFound.tsx`, `web/app/error.tsx`, `web/app/global-error.tsx` |
-| Shared embeddable emulator | `web/components/playground/EmbeddablePlayground.tsx` |
+| Shared embeddable emulator (owns the one `useEmulator()` hub; the landing hero, lessons and exercises mount it) | `web/components/playground/EmbeddablePlayground.tsx` |
+| Full playground chrome, reached through `next/dynamic` so the landing never ships the debugger | `web/components/playground/FullChromeSurface.tsx` |
+| Embed control band (run, step, back, reset, plus check on an exercise) | `web/components/playground/EmbedLayout.tsx` |
+| Static program view (the landing hero's read-only listing, so `/` loads no editor code) | `web/components/playground/StaticCodeView.tsx`, `web/components/landing/Hero.tsx` |
 | Lessons (`/learn`) | `web/app/(site)/learn/`, `web/components/learn/LessonIndex.tsx`, `LessonArticle.tsx`, `LessonMarkdown.tsx`, `web/lib/content/lessons.ts` |
 | Exercises (`/practice`) | `web/app/(site)/practice/`, `web/components/practice/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/content/exercises.ts`, `web/lib/content/practice-topics.ts` (the code/theory split and the topic order) |
 | Interactive question sets (quiz, fill-in-the-blank, mental trace; graded in the page) | `web/components/practice/InteractiveExerciseView.tsx`, `QuizBlock.tsx`, `BlanksBlock.tsx`, `PredictionBlock.tsx`, `FeedbackAlert.tsx` |
@@ -30,12 +33,14 @@ reference).
 | AAPCS64 register-file rail (with the fp convention) | `web/components/diagrams/AapcsRail.tsx` |
 | Link preview card (og/twitter image) | `web/lib/content/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
 | Content schemas + author JSON | `web/lib/content/lesson-schema.ts`, `exercise-schema.ts`, `web/content/` |
+| Index projections (the rows the index pages need, with bodies, prompts and starters dropped before they cross to the client) | `web/lib/content/lesson-schema.ts::LessonIndexRow`, `exercise-schema.ts::ExerciseIndexRow`, `lessons.ts::loadLessonIndex`, `exercises.ts::loadExerciseIndex` |
 
 ## Editor & assembly
 
 | Feature | Lives in |
 | --- | --- |
 | Monaco editor with three themes | `web/components/playground/Editor.tsx` |
+| Lazy editor (module-scope `next/dynamic`, so only an editable surface pulls Monaco) | `web/components/playground/lazy-editor.tsx` |
 | Vendored editor runtime (editor-only entry + its worker, same-origin, lazy chunk) | `web/components/playground/Editor.tsx::loadMonaco`, the `monaco-editor` dependency in `web/package.json`, `web/types/monaco-edcore.d.ts` |
 | Mobile fallback editor (textarea) | `web/components/playground/Editor.tsx::FallbackEditor` |
 | Source formatter (`Ctrl+Shift+F`) | `web/lib/asm/asm-formatter.ts` |
@@ -54,7 +59,7 @@ reference).
 | Replay scrubber (visual seek) | `web/components/playground/ReplayScrubber.tsx`, `web/lib/emulator/replay.ts` |
 | Named save states (session-scoped) | `web/lib/emulator/use-emulator.ts`, `web/components/panels/SavesPanel.tsx` |
 | Persistent bookmarks (across reloads) | `web/lib/playground/named-saves.ts`, `web/lib/hooks/use-named-saves.ts` |
-| Diagnostic bundle (clipboard + URL) | `web/components/playground/DiagnosticBundle.tsx`, `web/lib/playground/diagnostic-bundle.ts` |
+| Diagnostic bundle (clipboard + URL; the markdown builder is split from the lz-string codec so the error boundaries load only the builder) | `web/components/playground/DiagnosticBundle.tsx`, `web/lib/playground/bundle-markdown.ts`, `web/lib/playground/diagnostic-bundle.ts` |
 | External calls while stepping (the call named, the call-site line held, the disassembly anchored on the `bl`) | `emulator/src/lib.rs::host_call_context`, `web/lib/emulator/use-emulator.ts::externalCall`, `web/components/panels/DecodeStrip.tsx`, `web/components/playground/Editor.tsx`, `web/components/panels/InstructionView.tsx` |
 
 ## Panels & state
