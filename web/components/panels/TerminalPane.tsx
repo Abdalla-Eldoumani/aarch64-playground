@@ -208,7 +208,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
         console.warn("terminal command failed:", err);
         const name = line.split(/\s+/)[0] ?? line;
         writeLines([
-          `${name}: the command failed unexpectedly -- try again, or press reset`,
+          `${name}: the command failed. run it again, or press reset to start over`,
         ]);
       } finally {
         writePrompt();
@@ -248,7 +248,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     fitRef.current = fit;
     onRegisterIORef.current?.(terminalIORef.current);
 
-    term.writeln("cpsc 355 playground -- terminal. type 'help' for commands.");
+    term.writeln("cpsc 355 playground terminal. type 'help' for commands.");
     term.write(PROMPT);
 
     // Keep the cursor's visible position in sync with the input state.

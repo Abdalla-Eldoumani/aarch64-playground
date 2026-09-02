@@ -184,7 +184,7 @@ describe("TerminalPane", () => {
     instances[0].dataCb!("cat a.txt\r");
     await vi.waitFor(() => {
       const output = instances[0].writes.join("");
-      expect(output).toContain("cat: the command failed unexpectedly");
+      expect(output).toContain("cat: the command failed. run it again");
       // The internal wording must not reach the student.
       expect(output).not.toContain("recursive use");
       // The prompt came back.
