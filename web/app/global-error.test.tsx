@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import GlobalError from "./global-error";
 
 // The root-layout error boundary. It renders its own document (the Next
@@ -18,6 +18,18 @@ function faulted(message: string, digest?: string): Error & { digest?: string } 
   const error = new Error(message) as Error & { digest?: string };
   if (digest) error.digest = digest;
   return error;
+}
+
+// The report is built when the markdown builder's chunk lands, so the copy
+// button is inert for a beat after mount. Every copy case waits for it.
+async function reportReady() {
+  await waitFor(() => {
+    expect(
+      screen
+        .getByRole("button", { name: "copy error details" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+  });
 }
 
 describe("global error page", () => {
@@ -53,6 +65,7 @@ describe("global error page", () => {
       value: { writeText },
     });
     render(<GlobalError error={faulted("layout blew up", "def456")} reset={() => {}} />);
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();
@@ -73,6 +86,7 @@ describe("global error page", () => {
       value: { writeText: vi.fn().mockRejectedValue(new Error("blocked")) },
     });
     render(<GlobalError error={faulted("boom")} reset={() => {}} />);
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();
