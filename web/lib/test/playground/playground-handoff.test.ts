@@ -11,6 +11,7 @@ import {
   decodeLaunch,
   fetchExample,
   legacyModeArgsFor,
+  loadBundleDecoder,
   modeArgsFor,
   parseVfsFixture,
   resolveBoot,
@@ -18,7 +19,7 @@ import {
 } from "@/lib/playground/playground-handoff";
 import { validateFileName } from "@/lib/playground/file-map";
 import { buildShareHash } from "@/lib/playground/share";
-import { encodeBundle } from "@/lib/playground/diagnostic-bundle";
+import { decodeBundle, encodeBundle } from "@/lib/playground/diagnostic-bundle";
 import {
   MAX_ARGS_CHARS,
   MAX_SOURCE_BYTES,
@@ -40,7 +41,7 @@ const BUNDLE_QUERY = `?bundle=${encodeBundle({
 
 describe("resolveBoot", () => {
   it("prefers a bundle deep-link over everything", () => {
-    const boot = resolveBoot(BUNDLE_QUERY, SHARE_HASH, "saved", "default");
+    const boot = resolveBoot(BUNDLE_QUERY, SHARE_HASH, "saved", "default", decodeBundle);
     expect(boot.source).toBe("mov x1, 9");
     expect(boot.args).toBe("x");
     expect(boot.stdin).toBe("y\n");
@@ -71,13 +72,29 @@ describe("resolveBoot", () => {
   });
 });
 
+describe("loadBundleDecoder", () => {
+  it("fetches nothing for a URL that carries no bundle", async () => {
+    expect(await loadBundleDecoder("")).toBeUndefined();
+    expect(await loadBundleDecoder("?example=basics&run=terminal")).toBeUndefined();
+  });
+
+  it("hands back a working decoder when a bundle is present", async () => {
+    const decode = await loadBundleDecoder(BUNDLE_QUERY);
+    expect(decode).not.toBeUndefined();
+    const query = new URLSearchParams(BUNDLE_QUERY.slice(1));
+    const read = decode!(query.get("bundle"));
+    if (read.kind !== "ok") throw new Error("expected a decoded bundle");
+    expect(read.bundle.source).toBe("mov x1, 9");
+  });
+});
+
 describe("resolveHandoff", () => {
   it("returns nothing when the boot already consumed the payload (hard load)", () => {
     expect(
       resolveHandoff({ fromShare: true, fromBundle: false }, "", SHARE_HASH),
     ).toBeNull();
     expect(
-      resolveHandoff({ fromShare: false, fromBundle: true }, BUNDLE_QUERY, ""),
+      resolveHandoff({ fromShare: false, fromBundle: true }, BUNDLE_QUERY, "", decodeBundle),
     ).toBeNull();
   });
 
@@ -101,6 +118,7 @@ describe("resolveHandoff", () => {
       { fromShare: false, fromBundle: false },
       BUNDLE_QUERY,
       SHARE_HASH,
+      decodeBundle,
     );
     if (decision?.kind !== "bundle") throw new Error("expected bundle");
     expect(decision.payload.source).toBe("mov x1, 9");
@@ -339,7 +357,13 @@ describe("EXAMPLE_INPUTS manifest", () => {
 
   describe("bundle failure verdicts", () => {
     it("boot falls back and carries the bundle error", () => {
-      const boot = resolveBoot("?bundle=not-a-payload", "", "saved buffer", "default");
+      const boot = resolveBoot(
+        "?bundle=not-a-payload",
+        "",
+        "saved buffer",
+        "default",
+        decodeBundle,
+      );
       expect(boot.source).toBe("saved buffer");
       expect(boot.fromBundle).toBe(false);
       expect(boot.bundleError).toBe("corrupt");
@@ -347,13 +371,15 @@ describe("EXAMPLE_INPUTS manifest", () => {
 
     it("handoff reports a bundle failure the boot did not already report", () => {
       const boot = { fromShare: false, fromBundle: false };
-      const decision = resolveHandoff(boot, "?bundle=not-a-payload", "");
+      const decision = resolveHandoff(boot, "?bundle=not-a-payload", "", decodeBundle);
       expect(decision).toEqual({ kind: "bundle-error", reason: "corrupt" });
     });
 
     it("handoff stays quiet when the boot already reported the bundle failure", () => {
       const boot = { fromShare: false, fromBundle: false, bundleError: "corrupt" as const };
-      expect(resolveHandoff(boot, "?bundle=not-a-payload", "")).toBeNull();
+      expect(
+        resolveHandoff(boot, "?bundle=not-a-payload", "", decodeBundle),
+      ).toBeNull();
     });
   });
 });
