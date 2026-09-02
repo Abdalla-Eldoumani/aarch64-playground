@@ -82,10 +82,11 @@ copies a 16-byte struct through a `q` register, and the FP file here is
 64-bit scalar by design. The `-O2` tier is an ignored coverage
 map (`-- --ignored` runs it), not a gate; it passes 48 of 50 against a
 recorded floor of 48, the second gap being `14_float_single`, which gcc
-zeroes with `movi v0.2s, #0`. A pending program is not counted as passing: it is
-kept out of the failure list because its gap is already recorded, and out
-of the passing count because it never ran. One that starts assembling
-turns its tier red, so the fix gets recorded instead of absorbed.
+zeroes with `movi v0.2s, #0`. A pending program is not counted as
+passing: it is kept out of the failure list because its gap is already
+recorded, and out of the passing count because it never ran. One that
+starts assembling turns its tier red, so a fix gets recorded instead of
+passing unnoticed.
 
 Adding a program and regenerating the references needs a cross
 compiler and qemu-user; [`emulator/tests/c-corpus/README.md`](../emulator/tests/c-corpus/README.md)
