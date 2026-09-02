@@ -1,4 +1,4 @@
-// ansi.asm - ANSI escape sequence helpers
+// ansi.s - ANSI escape sequence helpers
 // screen clearing, cursor movement, colors and attributes
 
 define(fp, x29)
@@ -63,6 +63,8 @@ fmt_color:              .string "\x1b[%dm"
     .text
     .balign 4
 
+// the whole set; dsav uses clear_screen, move_cursor, hide/show_cursor
+
 // ansi_clear_screen() - clear everything and home the cursor
     .global ansi_clear_screen
 ansi_clear_screen:
@@ -116,7 +118,6 @@ ansi_move_cursor:
     ldp     fp, lr, [sp], 16
     ret
 
-// ansi_hide_cursor()
     .global ansi_hide_cursor
 ansi_hide_cursor:
     stp     fp, lr, [sp, -16]!
@@ -128,7 +129,6 @@ ansi_hide_cursor:
     ldp     fp, lr, [sp], 16
     ret
 
-// ansi_show_cursor()
     .global ansi_show_cursor
 ansi_show_cursor:
     stp     fp, lr, [sp, -16]!
