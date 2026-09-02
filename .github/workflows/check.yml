@@ -5,8 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # The weekly run is what notices rot with no PR open: a new dependency
-  # advisory (the audit gate below), a toolchain fetch breaking, a registry
+  # The weekly run catches what breaks with no PR open: a new dependency
+  # advisory (the audit gate below), a toolchain fetch failing, a registry
   # moving. Same cadence as the bounds workflow.
   schedule:
     - cron: "0 6 * * 1"
@@ -31,9 +31,9 @@ env:
   NODE_VERSION: "24"
   RUST_TOOLCHAIN: "1.96.0"
 
-# The graph is shaped around one fact: every web job needs the wasm
-# bundles, so the job that produces them does nothing else and finishes in
-# under a minute, and everything downstream fans out in parallel behind it.
+# Every web job needs the wasm bundles, so the job that produces them does
+# nothing else and finishes in under a minute; everything downstream fans
+# out in parallel behind it.
 # cargo test runs beside it rather than in front of it.
 jobs:
   wasm:
@@ -288,7 +288,7 @@ jobs:
         run: npm run build
 
       # size-limit sums whatever its globs match, and an empty match sums to
-      # zero and passes -- a renamed chunk would un-measure itself silently.
+      # zero and passes: a renamed chunk would un-measure itself silently.
       # Assert the named lazy chunks exist before trusting the budgets.
       - name: assert budget globs match real chunks
         working-directory: web
@@ -343,11 +343,12 @@ jobs:
       - name: vitest
         working-directory: web
         env:
+          # A flag, not the shard index: it only tells vitest to defer the floors.
           VITEST_SHARD: "1"
         run: npm test -- --coverage --reporter=blob --reporter=default --shard=${{ matrix.shard }}/3
 
       # .vitest-reports is a dot-directory, which upload-artifact skips
-      # unless told otherwise -- without the flag this uploads nothing.
+      # unless told otherwise; without the flag this uploads nothing.
       - name: upload blob report
         uses: actions/upload-artifact@v7
         with:
