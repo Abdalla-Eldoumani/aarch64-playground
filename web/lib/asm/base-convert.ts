@@ -2,7 +2,7 @@
  * Pure number-base conversions for the base converter widget. The canonical
  * value is always the raw bit pattern, held as an unsigned BigInt in
  * [0, 2^width): two's complement is a reading of that pattern, not a second
- * value, and it only means anything at a declared width -- which is why every
+ * value, and it only means anything at a declared width, which is why every
  * function here takes one. BigInt throughout because 64-bit patterns exceed
  * Number's safe range.
  */
@@ -92,8 +92,8 @@ function bitsNeeded(value: bigint): number {
 
 /**
  * Parse user text in one representation into the canonical bit pattern.
- * Never throws: bad input comes back as a calm, specific message the widget
- * shows inline. Re-parsing any format* output round-trips exactly.
+ * Never throws: bad input comes back as a message the widget shows inline.
+ * Re-parsing any format* output round-trips exactly.
  */
 export function parseRep(rep: Rep, text: string, width: Width): ParseOutcome {
   const trimmed = text.trim();
