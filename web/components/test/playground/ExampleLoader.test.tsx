@@ -79,8 +79,8 @@ describe("ExampleLoader", () => {
   it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
-    // 14 kept programs + the two stage fillers + the six playable extras
-    // under Miscellaneous.
+    // 14 course programs, 2 stage fillers, and the 6 playable extras under
+    // Miscellaneous.
     expect(labels.length).toBe(22);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
