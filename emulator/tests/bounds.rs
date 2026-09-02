@@ -41,7 +41,7 @@ fn svc(imm16: u16) -> u32 {
 }
 
 // The full end-to-end runaway wall executes the real ~10M-step ceiling,
-// which takes ~60s in a debug build -- too slow for the default `cargo test`
+// which takes ~60s in a debug build, too slow for the default `cargo test`
 // gate. It is kept as an on-demand proof; run it explicitly with
 // `cargo test --test bounds -- --ignored`. The fast boundary proof (the
 // ceiling fires exactly at MAX_TOTAL_STEPS) lives in the cpu unit tests
