@@ -1,11 +1,11 @@
 {
-  "title": "Predict: Subroutine State and Linkage",
+  "title": "Predict: subroutines",
   "slug": "predict-subroutines",
   "order": 61,
   "topic": "subroutines",
   "difficulty": "challenge",
   "variant": "prediction",
-  "prompt": "Act as the CPU. Trace the register states and stack allocations that a subroutine call sets up.",
+  "prompt": "The register states and stack allocations a subroutine call sets up.",
   "predictions": [
     {
       "code": "// the bl below sits at address 0x400040\nbl swap\nadd w0, w0, 1",
