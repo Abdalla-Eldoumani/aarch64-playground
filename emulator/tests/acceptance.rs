@@ -2,11 +2,11 @@
 //! of syntactically valid course assembly, asserting concrete registers,
 //! stdout, and exit codes. Every program is authored to the course style
 //! (lowercase mnemonics, m4 aliases, AAPCS64 prologue/epilogue where the
-//! function needs one, idiomatic addressing and syscalls) and is original
-//! -- none reproduces course archive text.
+//! function needs one, idiomatic addressing and syscalls) and is original:
+//! none reproduces course archive text.
 //!
-//! The matrix is the proof that the assembler + emulator accept and
-//! correctly execute every valid form: m4 aliases, the prologue/epilogue,
+//! The matrix covers every valid form the assembler and emulator have to
+//! accept and execute: m4 aliases, the prologue/epilogue,
 //! all four sections, every addressing mode, the literal pool, the hosted
 //! runtime and raw syscalls, sign/zero extension, 16-byte alignment, the
 //! frame pointer, and floating point. Each program exercises a real
@@ -181,7 +181,7 @@ main:
 #[test]
 fn addressing_modes() {
     // base+imm, base+reg, base+reg LSL, base+32-bit reg SXTW and UXTW
-    // (array indexing), pre-index, and post-index -- all against one word
+    // (array indexing), pre-index, and post-index, all against one word
     // array, accumulating into w19.
     let src = r#"
 .data
@@ -729,7 +729,7 @@ fn unknown_symbol_in_data_slot_reports_symbol_and_line() {
 }
 
 // ---------------------------------------------------------------------------
-// 17. .skip sized by an equate (the reserved-buffer assignment shape)
+// 14. .skip sized by an equate (the reserved-buffer assignment shape)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -774,7 +774,7 @@ fn skip_with_undefined_symbol_reports_it() {
 }
 
 // ---------------------------------------------------------------------------
-// 16. struct-field addressing off the frame pointer (equate offsets)
+// 15. struct-field addressing off the frame pointer (equate offsets)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -843,14 +843,14 @@ main:
 }
 
 // ---------------------------------------------------------------------------
-// 14. rand / srand / time (the random-array assignment idiom)
+// 16. rand / srand / time (the random-array assignment idiom)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn seeded_random_draws_are_reproducible() {
     // The classic setup: srand(time(0)), then draws masked into a range.
     // The emulator's time() is a fixed timestamp, so the sequence is the
-    // same on every run -- assert that by running the program twice.
+    // same on every run; assert that by running the program twice.
     let src = r#"
 define(fp, x29)
 define(lr, x30)
@@ -898,7 +898,7 @@ draw_loop:
 }
 
 // ---------------------------------------------------------------------------
-// 15. atoi over argv (how assignment programs read numeric arguments)
+// 17. atoi over argv (how assignment programs read numeric arguments)
 // ---------------------------------------------------------------------------
 
 #[test]
