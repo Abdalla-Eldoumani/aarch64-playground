@@ -88,14 +88,14 @@ describe("progress bundle export", () => {
     markSolved("loops");
     markSolved("stack-frames");
     expect(buildProgressBundle()).toEqual({
-      version: 2,
+      version: 1,
       solved: ["loops", "stack-frames"],
       answers: {},
     });
   });
 
   it("exports an empty bundle when nothing is solved", () => {
-    expect(buildProgressBundle()).toEqual({ version: 2, solved: [], answers: {} });
+    expect(buildProgressBundle()).toEqual({ version: 1, solved: [], answers: {} });
   });
 });
 
@@ -156,7 +156,7 @@ describe("progress bundle import", () => {
   const rejected: { name: string; raw: unknown; error: string }[] = [
     {
       name: "a version this build does not know",
-      raw: { version: 3, solved: ["loops"] },
+      raw: { version: 2, solved: ["loops"] },
       error: "that progress file has an unrecognized version",
     },
     {
@@ -226,15 +226,18 @@ describe("progress bundle answers", () => {
     saveAnswer("flags-quiz", { kind: "quiz", answers: [1, null] });
 
     const bundle = buildProgressBundle();
+    // Optional on the type so a file written without answers still imports;
+    // an export always writes the key, even when the map is empty.
+    const answers = bundle.answers ?? {};
 
     expect(bundle.solved).toEqual(["loops"]);
-    expect(bundle.answers.loops).toMatchObject({ kind: "write", source: "mov x0, 1\nret" });
-    expect(bundle.answers["flags-quiz"]).toMatchObject({ kind: "quiz", answers: [1, null] });
+    expect(answers.loops).toMatchObject({ kind: "write", source: "mov x0, 1\nret" });
+    expect(answers["flags-quiz"]).toMatchObject({ kind: "quiz", answers: [1, null] });
   });
 
   it("fills a slot that is empty on this device", () => {
     const result = importProgressBundle({
-      version: 2,
+      version: 1,
       solved: [],
       answers: {
         loops: { version: 1, kind: "write", source: "from the file", updatedAt: 100 },
@@ -250,7 +253,7 @@ describe("progress bundle answers", () => {
     putAnswer("older-here", { version: 1, kind: "write", source: "mine", updatedAt: 10 });
 
     const result = importProgressBundle({
-      version: 2,
+      version: 1,
       solved: [],
       answers: {
         "newer-here": { version: 1, kind: "write", source: "theirs", updatedAt: 100 },
@@ -265,7 +268,7 @@ describe("progress bundle answers", () => {
 
   it("skips a malformed answer and lands the rest of the file", () => {
     const result = importProgressBundle({
-      version: 2,
+      version: 1,
       solved: ["loops"],
       answers: {
         good: { version: 1, kind: "write", source: "ret", updatedAt: 1 },
@@ -284,7 +287,7 @@ describe("progress bundle answers", () => {
 
   it("skips an answer past the character cap", () => {
     const result = importProgressBundle({
-      version: 2,
+      version: 1,
       solved: [],
       answers: {
         huge: {
@@ -309,7 +312,7 @@ describe("progress bundle answers", () => {
 
   it("refuses a file whose answers section is not a map", () => {
     markSolved("untouched");
-    expect(importProgressBundle({ version: 2, solved: [], answers: ["loops"] })).toEqual({
+    expect(importProgressBundle({ version: 1, solved: [], answers: ["loops"] })).toEqual({
       ok: false,
       error: "that progress file has a malformed answers section",
     });
@@ -321,7 +324,7 @@ describe("progress bundle answers", () => {
     for (let i = 0; i < 257; i++) {
       answers[`e${i}`] = { version: 1, kind: "write", source: "ret", updatedAt: 1 };
     }
-    expect(importProgressBundle({ version: 2, solved: [], answers })).toEqual({
+    expect(importProgressBundle({ version: 1, solved: [], answers })).toEqual({
       ok: false,
       error: "that progress file lists too many exercises (max 256)",
     });

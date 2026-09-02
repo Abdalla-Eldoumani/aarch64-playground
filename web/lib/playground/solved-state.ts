@@ -97,13 +97,15 @@ export function subscribeSolved(callback: () => void): () => void {
 
 /**
  * The exported shape: versioned so a later format can be told apart.
- * Version 2 added `answers`; a version 1 file (ticks only) still imports,
- * so a student's older export keeps working.
+ * `answers` arrived after the ticks and stays an OPTIONAL key at the same
+ * version rather than a version bump, so the file travels both ways: a
+ * build that predates the answers ignores the key, and a file written
+ * without one still imports here.
  */
 export interface ProgressBundle {
-  version: 2;
+  version: 1;
   solved: string[];
-  answers: Record<string, StoredAnswer>;
+  answers?: Record<string, StoredAnswer>;
 }
 
 export type ProgressImportResult =
@@ -120,7 +122,7 @@ const MAX_SLUG_CHARS = 64;
 
 /** The current solved set and saved work as a downloadable bundle. An empty one is valid. */
 export function buildProgressBundle(): ProgressBundle {
-  return { version: 2, solved: getSolvedSlugs(), answers: readAllAnswers() };
+  return { version: 1, solved: getSolvedSlugs(), answers: readAllAnswers() };
 }
 
 /**
@@ -162,8 +164,7 @@ export function importProgressBundle(raw: unknown): ProgressImportResult {
     return { ok: false, error: "that file is not a progress export" };
   }
   const bundle = raw as { version?: unknown; solved?: unknown; answers?: unknown };
-  // Version 1 predates saved answers and carries only ticks.
-  if (bundle.version !== 1 && bundle.version !== 2) {
+  if (bundle.version !== 1) {
     return { ok: false, error: "that progress file has an unrecognized version" };
   }
   if (!Array.isArray(bundle.solved)) {
@@ -192,8 +193,8 @@ export function importProgressBundle(raw: unknown): ProgressImportResult {
     }
     incoming.push(slug);
   }
-  // The answers map is optional (version 1 has none), but a present one has
-  // to be a map: only its individual entries are allowed to be skipped.
+  // The answers map is optional (a file written before them has none), but a
+  // present one has to be a map: only its entries are allowed to be skipped.
   let answers: Record<string, unknown> = {};
   if (bundle.answers !== undefined) {
     if (bundle.answers == null || typeof bundle.answers !== "object" || Array.isArray(bundle.answers)) {

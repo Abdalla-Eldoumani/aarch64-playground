@@ -245,7 +245,7 @@ describe("ExerciseIndex progress row", () => {
     expect(captured.names).toEqual(["aarch64-playground-progress.json"]);
     const text = await captured.blobs[0].text();
     expect(JSON.parse(text)).toEqual({
-      version: 2,
+      version: 1,
       solved: ["solved-one", "another"],
       answers: {},
     });
@@ -271,7 +271,7 @@ describe("ExerciseIndex progress row", () => {
     const { container } = render(<ExerciseIndex exercises={exercises} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const bundle = JSON.stringify({
-      version: 2,
+      version: 1,
       solved: ["solved-one"],
       answers: {
         "solved-one": { version: 1, kind: "write", source: "from the file", updatedAt: 9 },
