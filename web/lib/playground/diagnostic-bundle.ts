@@ -1,10 +1,10 @@
 /**
- * Diagnostic-bundle helpers. A bundle captures a snapshot of what the
- * student's run looks like right now -- source, stdin/argv, output,
- * register state, last 64 stack bytes, last error -- and serializes it
- * as a `?bundle=<lz>` deep-link query, so the recipient can re-open the same
- * scenario in the playground with a single click. The markdown form of the
- * same snapshot lives in bundle-markdown.ts, which needs no compressor.
+ * Diagnostic-bundle helpers. A bundle captures a snapshot of what the student's
+ * run looks like right now (source, stdin/argv, output, register state, last 64
+ * stack bytes, last error) and serializes it as a `?bundle=<lz>` deep-link
+ * query, so the recipient can re-open the same scenario in the playground with
+ * a single click. The markdown form of the same snapshot lives in
+ * bundle-markdown.ts, which needs no compressor.
  */
 
 import LZString from "lz-string";
@@ -52,10 +52,10 @@ function isOptionalNumberOrNull(v: unknown): v is number | null | undefined {
 }
 
 /**
- * Strict shape validation on a decoded bundle. We only accept fields we
- * know how to render, of the types we expect. An attacker controlling
- * a `?bundle=` URL cannot smuggle non-string `args` or `stdin` past
- * this gate to confuse downstream code paths.
+ * Strict shape validation on a decoded bundle. Only fields this code renders
+ * are accepted, in the types it expects. An attacker controlling a `?bundle=`
+ * URL cannot smuggle non-string `args` or `stdin` past this gate to confuse
+ * downstream code paths.
  */
 function isValidBundle(b: unknown): b is DiagnosticBundle {
   if (b == null || typeof b !== "object") return false;
@@ -78,10 +78,10 @@ function isValidBundle(b: unknown): b is DiagnosticBundle {
 }
 
 /**
- * The four outcomes of reading a `?bundle=` query, mirroring
- * `ShareReadResult`. Collapsing them into null let a truncated bundle link
- * silently boot the default buffer, with an absent banner as the only
- * signal; the page now surfaces corrupt / too-large as a notice.
+ * The four outcomes of reading a `?bundle=` query, mirroring `ShareReadResult`.
+ * Collapsing them into null lets a truncated bundle link boot the default
+ * buffer with an absent banner as the only signal, so the page surfaces corrupt
+ * / too-large as a notice.
  */
 export type BundleReadResult =
   | { kind: "none" }
@@ -92,9 +92,8 @@ export type BundleReadResult =
 /**
  * Decode a `?bundle=...` query value into a discriminated verdict: absent
  * (`none`), decoded and shape-valid (`ok`), oversized (`too-large`), or
- * anything else -- bad encoding, malformed JSON, a future version, a failed
- * shape check (`corrupt`). Keeps the playground's deep-link bootstrap
- * defensive against URL-borne attacks.
+ * anything else (bad encoding, malformed JSON, a future version, a failed shape
+ * check): `corrupt`.
  */
 export function decodeBundle(value: string | null): BundleReadResult {
   if (!value) return { kind: "none" };
