@@ -47,7 +47,7 @@ export function FeedbackAlert({
         </strong>
       </div>
       <p className="mt-1 text-[var(--text-secondary)]">
-        {isCorrect ? explanation : (hint ?? "Review the concepts and try again.")}
+        {isCorrect ? explanation : (hint ?? "That is not it. Re-read the question and check each option against what the instruction actually does.")}
       </p>
     </div>
   );

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadAllExercises, loadExercise } from "@/lib/content/exercises";
+import { loadAllExercises, loadExercise, loadExerciseIndex } from "@/lib/content/exercises";
 
 // A fresh temp fixtures directory per test, cleaned up afterward, so the loader
 // is driven against controlled files and never the real content directory.
@@ -86,9 +86,61 @@ describe("loadAllExercises", () => {
 
   it("returns an empty list for an empty or absent directory", () => {
     makeDir();
-    // An existing but empty directory: nothing to load.
     expect(loadAllExercises(dir)).toEqual([]);
     // An absent directory must not crash the build before the content is authored.
     expect(loadAllExercises(path.join(dir, "does-not-exist"))).toEqual([]);
+  });
+});
+
+// The index projection is the reason the practice payload is small: a field
+// added to the row with no reader, or dropped while the index still reads it,
+// is caught here before it reaches the client.
+describe("loadExerciseIndex", () => {
+  it("carries every field the index renders and no other", () => {
+    makeDir();
+    write("a.json", exerciseJson({ slug: "first", order: 1, topic: "stack", difficulty: "core" }));
+    expect(Object.keys(loadExerciseIndex(dir)[0]).sort()).toEqual([
+      "blurb",
+      "difficulty",
+      "order",
+      "slug",
+      "title",
+      "topic",
+      "variant",
+    ]);
+  });
+
+  it("drops the prompt, starter, and acceptance from every row", () => {
+    makeDir();
+    write("a.json", exerciseJson({ slug: "first", order: 1 }));
+    write("b.json", exerciseJson({ slug: "second", order: 2 }));
+    for (const row of loadExerciseIndex(dir)) {
+      expect(row).not.toHaveProperty("prompt");
+      expect(row).not.toHaveProperty("starter");
+      expect(row).not.toHaveProperty("acceptance");
+    }
+  });
+
+  it("derives the blurb from the prompt's first non-empty line, markers stripped", () => {
+    makeDir();
+    write("a.json", exerciseJson({ slug: "first", prompt: "\n\n# Sum the first n\nrest" }));
+    expect(loadExerciseIndex(dir)[0].blurb).toBe("Sum the first n");
+  });
+
+  it("clips a long blurb to 140 characters plus an ellipsis", () => {
+    makeDir();
+    write("a.json", exerciseJson({ slug: "first", prompt: "x".repeat(200) }));
+    const { blurb } = loadExerciseIndex(dir)[0];
+    expect(blurb).toHaveLength(143);
+    expect(blurb.endsWith("...")).toBe(true);
+  });
+
+  it("keeps the same order and count as loadAllExercises", () => {
+    makeDir();
+    write("a.json", exerciseJson({ slug: "second", order: 2 }));
+    write("b.json", exerciseJson({ slug: "first", order: 1 }));
+    expect(loadExerciseIndex(dir).map((row) => row.slug)).toEqual(
+      loadAllExercises(dir).map((exercise) => exercise.slug),
+    );
   });
 });

@@ -1,12 +1,10 @@
 /**
- * Diagnostic-bundle helpers. A bundle captures a snapshot of what the
- * student's run looks like right now -- source, stdin/argv, output,
- * register state, last 64 stack bytes, last error -- and serializes it
- * two ways:
- *
- *   - markdown, for pasting into a bug report or course forum, and
- *   - a `?bundle=<lz>` deep-link query, so the recipient can re-open the
- *     same scenario in the playground with a single click.
+ * Diagnostic-bundle helpers. A bundle captures a snapshot of what the student's
+ * run looks like right now (source, stdin/argv, output, register state, last 64
+ * stack bytes, last error) and serializes it as a `?bundle=<lz>` deep-link
+ * query, so the recipient can re-open the same scenario in the playground with
+ * a single click. The markdown form of the same snapshot lives in
+ * bundle-markdown.ts, which needs no compressor.
  */
 
 import LZString from "lz-string";
@@ -30,84 +28,19 @@ export interface DiagnosticBundle {
 
 const BUNDLE_VERSION = 1;
 
-/**
- * Build a markdown bundle for the clipboard. The trailing share link is
- * optional -- when an origin is provided the helper appends it so the
- * bundle is fully self-contained.
- */
-export function bundleToMarkdown(bundle: DiagnosticBundle, originUrl?: string): string {
-  const lines: string[] = [];
-  lines.push("# diagnostic bundle");
-  lines.push("");
-  lines.push("```asm");
-  lines.push(bundle.source.replace(/\r\n/g, "\n").trimEnd());
-  lines.push("```");
-  lines.push("");
-  if (bundle.args) {
-    lines.push(`**args:** \`${bundle.args}\``);
-    lines.push("");
-  }
-  if (bundle.stdin) {
-    lines.push("**stdin:**");
-    lines.push("```");
-    lines.push(bundle.stdin.trimEnd());
-    lines.push("```");
-    lines.push("");
-  }
-  if (bundle.stdout) {
-    lines.push("**stdout:**");
-    lines.push("```");
-    lines.push(bundle.stdout.trimEnd());
-    lines.push("```");
-    lines.push("");
-  }
-  if (bundle.stderr) {
-    lines.push("**stderr:**");
-    lines.push("```");
-    lines.push(bundle.stderr.trimEnd());
-    lines.push("```");
-    lines.push("");
-  }
-  if (bundle.exitCode != null) {
-    lines.push(`**exit code:** ${bundle.exitCode}`);
-    lines.push("");
-  }
-  if (bundle.error) {
-    lines.push(`**last error:** ${bundle.error}`);
-    lines.push("");
-  }
-  if (bundle.pc || bundle.sp || (bundle.registers && bundle.registers.length > 0)) {
-    lines.push("**registers:**");
-    lines.push("```");
-    if (bundle.pc) lines.push(`pc = ${bundle.pc}`);
-    if (bundle.sp) lines.push(`sp = ${bundle.sp}`);
-    if (bundle.registers) {
-      bundle.registers.forEach((v, i) => {
-        lines.push(`x${i.toString().padStart(2, "0")} = ${v}`);
-      });
-    }
-    lines.push("```");
-    lines.push("");
-  }
-  if (bundle.stackBytes) {
-    lines.push("**last 64 stack bytes (top of stack first):**");
-    lines.push("```");
-    lines.push(bundle.stackBytes);
-    lines.push("```");
-    lines.push("");
-  }
-  if (originUrl) {
-    const link = `${originUrl}?bundle=${encodeBundle(bundle)}`;
-    lines.push(`[open in the playground](${link})`);
-    lines.push("");
-  }
-  return lines.join("\n");
-}
-
 /** lz-string compress for the `?bundle=...` query parameter. */
 export function encodeBundle(bundle: DiagnosticBundle): string {
   const payload = { v: BUNDLE_VERSION, b: bundle };
   return LZString.compressToEncodedURIComponent(JSON.stringify(payload));
+}
+
+/**
+ * The `?bundle=` deep link that reopens this scenario, for the markdown
+ * report to carry. It lives beside the codec rather than beside the report,
+ * because the link IS the compressor's output.
+ */
+export function bundleShareUrl(originUrl: string, bundle: DiagnosticBundle): string {
+  return `${originUrl}?bundle=${encodeBundle(bundle)}`;
 }
 
 function isOptionalString(v: unknown): v is string | undefined {
@@ -119,10 +52,10 @@ function isOptionalNumberOrNull(v: unknown): v is number | null | undefined {
 }
 
 /**
- * Strict shape validation on a decoded bundle. We only accept fields we
- * know how to render, of the types we expect. An attacker controlling
- * a `?bundle=` URL cannot smuggle non-string `args` or `stdin` past
- * this gate to confuse downstream code paths.
+ * Strict shape validation on a decoded bundle. Only fields this code renders
+ * are accepted, in the types it expects. An attacker controlling a `?bundle=`
+ * URL cannot smuggle non-string `args` or `stdin` past this gate to confuse
+ * downstream code paths.
  */
 function isValidBundle(b: unknown): b is DiagnosticBundle {
   if (b == null || typeof b !== "object") return false;
@@ -145,10 +78,10 @@ function isValidBundle(b: unknown): b is DiagnosticBundle {
 }
 
 /**
- * The four outcomes of reading a `?bundle=` query, mirroring
- * `ShareReadResult`. Collapsing them into null let a truncated bundle link
- * silently boot the default buffer, with an absent banner as the only
- * signal; the page now surfaces corrupt / too-large as a notice.
+ * The four outcomes of reading a `?bundle=` query, mirroring `ShareReadResult`.
+ * Collapsing them into null lets a truncated bundle link boot the default
+ * buffer with an absent banner as the only signal, so the page surfaces corrupt
+ * / too-large as a notice.
  */
 export type BundleReadResult =
   | { kind: "none" }
@@ -159,9 +92,8 @@ export type BundleReadResult =
 /**
  * Decode a `?bundle=...` query value into a discriminated verdict: absent
  * (`none`), decoded and shape-valid (`ok`), oversized (`too-large`), or
- * anything else -- bad encoding, malformed JSON, a future version, a failed
- * shape check (`corrupt`). Keeps the playground's deep-link bootstrap
- * defensive against URL-borne attacks.
+ * anything else (bad encoding, malformed JSON, a future version, a failed shape
+ * check): `corrupt`.
  */
 export function decodeBundle(value: string | null): BundleReadResult {
   if (!value) return { kind: "none" };

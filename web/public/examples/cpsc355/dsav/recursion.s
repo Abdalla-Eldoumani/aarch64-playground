@@ -1,11 +1,9 @@
-// recursion_viz.asm - towers of hanoi, with the call stack drawn beside it
+// recursion.s - towers of hanoi, with the call stack drawn beside it
 //
-// The solver is genuinely recursive: rec_hanoi calls itself, and the frame
-// the assembler pushes for that call is the frame the side panel draws. So
-// the panel is not an illustration of recursion, it is a readout of the
-// processor stack itself, growing as the calls go down and unwinding as
-// they return. Watching the move counter arrive at 2^n - 1 is the other
-// half of the lesson.
+// rec_hanoi calls itself, and the frame
+// the assembler pushes for that call is the frame the side panel draws. The
+// panel mirrors that frame, growing as the calls go down and unwinding as
+// they return. The move counter arrives at 2^n - 1.
 
 define(fp, x29)
 define(lr, x30)
@@ -418,7 +416,7 @@ rec_pegs_out:
     ldp     fp, lr, [sp], 80
     ret
 
-// rec_draw_stack() - the frames the processor is actually holding, the
+// rec_draw_stack() - the frames the solver is holding, the
 // deepest one first because that is the call currently running
 rec_draw_stack:
     stp     fp, lr, [sp, -96]!
@@ -1124,8 +1122,8 @@ rec_menu_loop:
     mov     w0, 0
     mov     w1, 5
     bl      read_int_range
-    mov     w19, w0                         // printf hands back a count, so
-    bl      ansi_hide_cursor                // the choice has to be parked here
+    mov     w19, w0                         // ansi_hide_cursor calls printf,
+    bl      ansi_hide_cursor                // which overwrites w0
 
     cmp     w19, 0
     b.eq    rec_menu_exit

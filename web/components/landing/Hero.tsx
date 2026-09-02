@@ -12,8 +12,8 @@ import { HERO_PROGRAM } from "@/lib/content/landing-content";
  * embeddable runs in a package frame (pin stubs on the rails, a live-die-view
  * header band) and autoplays the tiny hero program so the registers flash and
  * the pc marker advances on load. The embed supplies its own loading beat and
- * reduced-motion fallback inherently, so the hero adds no competing motion;
- * it only frames it. The primary action deep-links into the full playground.
+ * reduced-motion fallback, so the hero adds no competing motion; it only frames
+ * it. The primary action deep-links into the full playground.
  */
 export function Hero() {
   return (
@@ -28,8 +28,8 @@ export function Hero() {
           </span>
           <h1
             id="hero-heading"
-            // Steps toward the display size on desktop so the landing opens
-            // with a confident voice; phones keep the tighter scale.
+            // Steps toward the display size on desktop so the headline holds
+            // the width on a desktop viewport; phones keep the tighter scale.
             className="font-sans text-4xl font-bold leading-[1.05] tracking-[-0.02em] text-[var(--text-primary)] sm:text-5xl lg:text-6xl lg:tracking-[-0.03em]"
           >
             Look inside the machine
@@ -98,6 +98,13 @@ export function Hero() {
               // its line into the embed console during the autoplay.
               autoplaySteps={10}
               readOnly
+              // A demonstration needs no editing surface, so the hero draws
+              // its program with the static view: the code is in the server
+              // HTML and the landing never loads the editor at all.
+              staticEditor
+              // The autoplay walk was built for a two-button frame.
+              showStep={false}
+              showBack={false}
             />
           </div>
         </div>

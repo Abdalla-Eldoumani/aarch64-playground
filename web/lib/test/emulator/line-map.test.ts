@@ -58,7 +58,7 @@ describe("pcToSourceLineFromMap", () => {
     const map = parseLineMap(COMPLEX_FLAT);
     expect(pcToSourceLineFromMap(CODE_BASE, map)).toBe(14);
     // A high editor line resolves correctly with the data/define lines
-    // skipped -- the exact drift the fix targets.
+    // skipped.
     expect(pcToSourceLineFromMap(CODE_BASE + 0x40, map)).toBe(34);
   });
 
@@ -95,9 +95,8 @@ describe("lineToAddrFromMap", () => {
   });
 });
 
-// Duplicate-entry semantics: repeated instruction addresses and several
-// mapped lines after a gap. The maps must stay deterministic so the
-// current-line marker and breakpoints cannot flap between candidates.
+// The maps must stay deterministic so the current-line marker and breakpoints
+// cannot flap between candidates.
 
 describe("line map duplicate and gap handling", () => {
   it("keeps the last line seen for a repeated instruction address", () => {

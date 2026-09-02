@@ -28,10 +28,10 @@ describe("CodeBlock", () => {
     expect(html).toContain("var(--syntax-label)"); // main:
   });
 
-  it("colors every mnemonic the reference newly showcases", () => {
+  it("colors every mnemonic the reference lists", () => {
     // multiply-add, sign/zero-extend, sign-extending loads, pc-relative,
-    // compare-and-branch, and the floating-point set now color as keywords
-    // instead of rendering as plain text alongside add / ldr.
+    // compare-and-branch, and the floating-point set color as keywords, like
+    // add and ldr.
     const ADDED = [
       "madd", "msub", "sxtb", "sxth", "sxtw", "uxtb", "uxth",
       "ldrsb", "ldrsh", "ldrsw", "adr", "adrp",

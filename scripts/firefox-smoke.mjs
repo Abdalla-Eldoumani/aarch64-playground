@@ -1,5 +1,5 @@
-// Firefox smoke test: verifies the playground loads, security headers
-// are applied, the WASM emulator instantiates, and the editor renders.
+// Firefox smoke test: verifies the playground loads, the security headers
+// are present, the editor renders, and the page logs no errors.
 // Catches engine-specific regressions Chromium-only Playwright misses.
 //
 //   node scripts/firefox-smoke.mjs                  # default http://localhost:3000
@@ -56,6 +56,8 @@ if (!hasEditor) {
   exit = 1;
 }
 
+// Reported, not asserted: a headless profile may never register the
+// worker, so a zero here is not a regression signal.
 const swCount = await page.evaluate(async () => {
   if (!navigator.serviceWorker) return 0;
   for (let i = 0; i < 30; i++) {

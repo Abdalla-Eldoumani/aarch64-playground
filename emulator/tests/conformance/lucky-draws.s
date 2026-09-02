@@ -1,5 +1,5 @@
 // lucky-draws.s - seeded pseudo-random draws
-// seeds the c generator with time(0), then prints three draws bounded
+// Seeds the C library generator with time(0), then prints three draws bounded
 // into 1..49 with the divide-multiply-subtract remainder idiom. the
 // emulator's time() is a fixed stamp, so the sequence is identical on
 // every run and the expected output can be asserted exactly.

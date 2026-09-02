@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import GlobalError from "./global-error";
 
 // The root-layout error boundary. It renders its own document (the Next
 // contract) with inline literal colors, because the layout that installs
-// globals.css and the fonts is the thing that failed -- so the assertions here
-// pin the register text, the reset wiring, and the copy report rather than any
+// globals.css and the fonts is the thing that failed, so the assertions pin
+// the register text, the reset wiring, and the copy report rather than any
 // class name. jsdom accepts the nested <html>/<body> React renders.
 
 afterEach(() => {
@@ -20,6 +20,18 @@ function faulted(message: string, digest?: string): Error & { digest?: string } 
   return error;
 }
 
+// The report is built when the markdown builder's chunk lands, so the copy
+// button is inert for a beat after mount. Every copy case waits for it.
+async function reportReady() {
+  await waitFor(() => {
+    expect(
+      screen
+        .getByRole("button", { name: "copy error details" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+  });
+}
+
 describe("global error page", () => {
   it("announces the fault in the same register as the 404", () => {
     render(<GlobalError error={faulted("boom")} reset={() => {}} />);
@@ -28,7 +40,7 @@ describe("global error page", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("something broke");
     expect(screen.getByText(/hit an error before the page could load/)).toBeTruthy();
     expect(
-      screen.getByText("brk #0 -- execution stopped before this page finished"),
+      screen.getByText("brk #0 · execution stopped before this page finished"),
     ).toBeTruthy();
   });
 
@@ -53,6 +65,7 @@ describe("global error page", () => {
       value: { writeText },
     });
     render(<GlobalError error={faulted("layout blew up", "def456")} reset={() => {}} />);
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();
@@ -73,6 +86,7 @@ describe("global error page", () => {
       value: { writeText: vi.fn().mockRejectedValue(new Error("blocked")) },
     });
     render(<GlobalError error={faulted("boom")} reset={() => {}} />);
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();

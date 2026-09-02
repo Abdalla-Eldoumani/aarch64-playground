@@ -9,7 +9,7 @@ const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 /// Hard ceiling on how many 4 KiB pages a single program may have mapped
 /// at once. A store that would map a NEW page beyond this cap faults with
 /// `MemoryFault { access: Write }` instead of allocating, so a runaway
-/// allocation -- a memory bomb, or unbounded recursion growing the stack --
+/// allocation (a memory bomb, or unbounded recursion growing the stack)
 /// aborts calmly rather than growing the wasm heap until the tab dies.
 ///
 /// 8192 pages is 32 MiB of live program memory: enough to back the full
@@ -27,12 +27,12 @@ pub const MAX_MAPPED_PAGES: usize = 8192;
 
 /// Upper bound on how many `(addr, len)` ranges the dirty log holds
 /// between drains. The log is a hint for the UI's changed-byte tint, not
-/// machine state, so it is allowed to be approximate -- but it used to be
-/// unbounded AND copied into every snapshot frame, which turned a
-/// buffer-filling loop into quadratic time and hundreds of MiB (a 24 MB
-/// memset run died on a 417 MB allocation). Sequential writes coalesce
-/// into the previous range, so a whole-buffer fill costs one entry; past
-/// the cap further ranges widen the last entry instead of appending.
+/// machine state, so it is allowed to be approximate. Unbounded, and
+/// copied into every snapshot frame, it turns a buffer-filling loop into
+/// quadratic time: a 24 MB memset died on a 417 MB allocation.
+/// Sequential writes coalesce into the previous range, so a whole-buffer
+/// fill costs one entry; past the cap further ranges widen the last entry
+/// instead of appending.
 const MAX_DIRTY_RANGES: usize = 4096;
 
 /// Sparse page-based memory.
@@ -51,9 +51,9 @@ const MAX_DIRTY_RANGES: usize = 4096;
 pub struct Memory {
     /// Page buffers behind `Rc` so a snapshot clone shares them instead of
     /// copying every live page. A write goes through `Rc::make_mut`, which
-    /// copies only the one page a still-referenced frame is holding -- the
-    /// step-back ring used to deep-clone the whole address space per step
-    /// (~33x the cost of running the instruction).
+    /// copies only the one page a still-referenced frame is holding.
+    /// Deep-cloning the whole address space per step costs about 33x the
+    /// price of running the instruction.
     pages: HashMap<u64, Rc<Vec<u8>>>,
     /// Zeroed page buffers recycled by `clear()`. Never freed: dropping
     /// 4 KiB buffers under wasm32's bundled `dlmalloc` can corrupt its
@@ -67,7 +67,7 @@ pub struct Memory {
 impl Clone for Memory {
     /// Snapshots need the live pages, never the recycle pool: cloning the
     /// pool would copy megabytes of zeroed buffers into every step-back
-    /// frame. The dirty log is left behind for the same reason -- it
+    /// frame. The dirty log is left behind for the same reason: it
     /// belongs to the UI's next drain, not to the machine state a frame
     /// restores.
     fn clone(&self) -> Self {
@@ -97,7 +97,7 @@ impl Memory {
 
     /// Drain the dirty-write buffer accumulated since the last call.
     /// Returns `(addr, len)` ranges in write order (adjacent writes are
-    /// merged; duplicates and overlap are still normal -- the consumer
+    /// merged; duplicates and overlap are still normal: the consumer
     /// dedupes if it cares).
     pub fn take_dirty(&mut self) -> Vec<(u64, usize)> {
         std::mem::take(&mut self.dirty)
@@ -171,15 +171,15 @@ impl Memory {
     /// Unmap every page, parking the zeroed buffers in the recycle pool.
     ///
     /// The buffers are recycled rather than dropped to keep the dlmalloc
-    /// workaround (see `free`) closed, while `mapped_page_count()` -- the
-    /// `MAX_MAPPED_PAGES` budget -- returns to zero. Without the unmap,
+    /// workaround (see `free`) closed, while `mapped_page_count()` (the
+    /// `MAX_MAPPED_PAGES` budget) returns to zero. Without the unmap,
     /// a program that hit the page cap left the budget exhausted forever
     /// and the NEXT program was blamed for it: reset never gave the pages
     /// back.
     pub fn clear(&mut self) {
         let Self { pages, free, .. } = self;
         for (_, page) in pages.drain() {
-            // A page a snapshot frame still shares cannot be recycled --
+            // A page a snapshot frame still shares cannot be recycled:
             // zeroing it would rewrite that frame's memory. Those are
             // dropped and the frame keeps the only reference.
             if let Ok(mut page) = Rc::try_unwrap(page) {
@@ -531,9 +531,9 @@ mod tests {
 
     #[test]
     fn read_bytes_refuses_a_length_past_the_page_budget() {
-        // A giant length used to reach Vec::with_capacity (a wasm32
-        // capacity-overflow panic past 2^31) or wedge the worker for
-        // minutes on a HashMap walk.
+        // A giant length reaching Vec::with_capacity is a wasm32
+        // capacity-overflow panic past 2^31, and a giant HashMap walk
+        // wedges the worker for minutes.
         let mem = Memory::new();
         assert!(mem.read_bytes(0, MAX_MAPPED_PAGES * 4096).is_ok());
         assert!(mem.read_bytes(0, MAX_MAPPED_PAGES * 4096 + 1).is_err());
@@ -607,9 +607,9 @@ mod tests {
 
     #[test]
     fn a_buffer_fill_records_one_dirty_range() {
-        // A whole-buffer fill used to append one entry per byte, and every
-        // snapshot frame copied the whole log: 12 fills of a 64 KiB buffer
-        // built a 12 MB log and took 0.4 s of pure bookkeeping.
+        // One entry per byte, copied into every snapshot frame: 12 fills
+        // of a 64 KiB buffer build a 12 MB log and take 0.4 s of pure
+        // bookkeeping.
         let mut mem = Memory::new();
         for i in 0..40_000u64 {
             mem.write_u8(0x1000 + i, 0xAB).unwrap();
@@ -639,7 +639,7 @@ mod tests {
     #[test]
     fn a_clone_leaves_the_dirty_log_behind() {
         // The log belongs to the UI's next drain, not to the machine state
-        // a snapshot restores; carrying it made every frame pay for it.
+        // a snapshot restores; carrying it makes every frame pay for it.
         let mut mem = Memory::new();
         mem.write_u32(0x1000, 7).unwrap();
         let frame = mem.clone();

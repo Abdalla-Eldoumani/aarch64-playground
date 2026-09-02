@@ -1,5 +1,5 @@
 {
-  "title": "Quiz: Memory & Stack - Fundamentals",
+  "title": "Quiz: memory and the stack",
   "slug": "quiz-basic-frame-stack",
   "order": 52,
   "topic": "memory",
@@ -40,7 +40,7 @@
         "Page aligned (4096 bytes)"
       ],
       "correctAnswer": 2,
-      "explanation": "The address in sp must be quadword aligned, meaning evenly divisible by 16. A memory access made through a misaligned sp aborts the program with a bus error, so the alignment is not just a convention.",
+      "explanation": "The address in sp must be quadword aligned, meaning evenly divisible by 16. A memory access made through a misaligned sp aborts the program with a bus error.",
       "hint": "Think about the size required to store a pair of 64-bit registers."
     },
     {

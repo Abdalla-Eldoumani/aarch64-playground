@@ -1,11 +1,11 @@
 {
-  "title": "Fill in the Blank: Array and Struct Syntax",
+  "title": "Fill in the blank: arrays and structures",
   "slug": "blanks-arrays",
   "order": 50,
   "topic": "arrays",
   "difficulty": "core",
   "variant": "blanks",
-  "prompt": "Fill in the missing mnemonics, extend options, and offsets that reach array elements and struct fields in memory.",
+  "prompt": "Fill in the missing mnemonics, extend options, and offsets that reach array elements and struct fields.",
   "blanks": [
     {
       "prompt": "An array of .dword values starts at the label nums. Give the number of bytes between one element and the next, in decimal.",

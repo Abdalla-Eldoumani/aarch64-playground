@@ -52,16 +52,15 @@ describe("SiteFooter", () => {
 
   it("carries the merged credibility content: engine note and the open-source line", () => {
     render(<SiteFooter />);
-    // The footer is the single home for the facts the landing's credibility band
-    // used to restate: how the emulator is built, and that it is open source.
+    // The footer is the single home for two facts: how the emulator is built,
+    // and that it is open source.
     expect(screen.getByText(CREDIBILITY.engineNote)).toBeTruthy();
     expect(screen.getByText(/open source · free to use and study/i)).toBeTruthy();
   });
 
   it("links the repository and the license exactly once each", () => {
     render(<SiteFooter />);
-    // The merged footer deduplicates what the footer and the old landing band
-    // both carried; a second repo or license link is a regression.
+    // A second repository or license link is a regression.
     const links = screen.getAllByRole("link");
     expect(links.filter((l) => l.getAttribute("href") === REPO_URL)).toHaveLength(1);
     expect(links.filter((l) => l.getAttribute("href") === LICENSE_URL)).toHaveLength(1);

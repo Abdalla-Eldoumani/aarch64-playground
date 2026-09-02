@@ -132,10 +132,10 @@ describe("validateFileName", () => {
     // The decoy still concatenates, and resolveLine labels everything inside
     // it main.asm, so its errors point the student at the wrong buffer.
     expect(validateFileName("main.asm", files)).toBe(
-      "main.asm is the editor's own buffer -- pick another name",
+      "main.asm is the editor's own buffer; pick another name",
     );
     expect(validateFileName("MAIN.S", files)).toBe(
-      "main.asm is the editor's own buffer -- pick another name",
+      "main.asm is the editor's own buffer; pick another name",
     );
   });
 

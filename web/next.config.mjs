@@ -9,13 +9,11 @@ const nextConfig = {
     // the cold-load default program can be sourced from the single
     // basics.s fixture instead of a duplicated literal.
     config.module.rules.push({ resourceQuery: /raw/, type: "asset/source" });
-    // xterm's runtime is one 330 kB module, so Next's own splitting pulls it
-    // out of the terminal pane's lazy chunk and into a chunk named after a
-    // hash of its path -- unreadable, and it moves with the package layout,
-    // which is how the one bundle budget aimed at that hash ended up
-    // measuring a chunk nobody meant. Naming the group makes the runtime
-    // globbable by name, the way the monaco lane already is. Async only:
-    // xterm never reaches an initial chunk.
+    // xterm's runtime is one 330 kB module, so Next's own splitting names its
+    // chunk after a hash of its path, which moves with the package layout and
+    // takes any bundle budget aimed at that hash with it. Naming the group
+    // makes the runtime globbable by name, the way the monaco lane already
+    // is. Async only: xterm never reaches an initial chunk.
     const groups = config.optimization?.splitChunks?.cacheGroups;
     if (groups) {
       groups.xterm = {

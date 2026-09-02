@@ -7,7 +7,7 @@
  * < 10 KB) with generous headroom.
  */
 
-/** 1 MB cap on pasted / imported / dropped source. */
+/** 1 MiB cap on pasted / imported / dropped source. */
 export const MAX_SOURCE_BYTES = 1 * 1024 * 1024;
 /**
  * 4 MiB cap on raw VFS payloads (terminal upload + console upload).
@@ -18,9 +18,9 @@ export const MAX_SOURCE_BYTES = 1 * 1024 * 1024;
 export const MAX_VFS_BYTES = 4 * 1024 * 1024;
 /** 1000-character cap on command-line arguments. */
 export const MAX_ARGS_CHARS = 1000;
-/** 100 KB cap on a single stdin submission. */
+/** 100 KiB cap on a single stdin submission. */
 export const MAX_STDIN_BYTES = 100 * 1024;
-/** 1 MB cap on bookmark JSON imports. */
+/** 1 MiB cap on bookmark JSON imports. */
 export const MAX_BOOKMARK_JSON_BYTES = 1 * 1024 * 1024;
 /**
  * Files a `.json` workspace bundle may carry (main.asm plus helpers). The
@@ -28,19 +28,18 @@ export const MAX_BOOKMARK_JSON_BYTES = 1 * 1024 * 1024;
  * without letting a hand-written bundle open a hundred tabs.
  */
 export const MAX_WORKSPACE_FILES = 32;
-/** Maximum decompressed size of a `?bundle=` deep link (1 MB). */
+/** Maximum decompressed size of a `?bundle=` deep link (1 MiB). */
 export const MAX_BUNDLE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
-/** Maximum decompressed size of a `#p2=` share hash (1 MB). */
+/** Maximum decompressed size of a `#p2=` share hash (1 MiB). */
 export const MAX_SHARE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
 /**
- * 12 KB cap on a raw (still-compressed) URL-borne fragment: the `#p2=` /
- * `#p=` share hash and the `?bundle=` deep link. lz-string output grows
- * QUADRATICALLY in fragment length for a crafted payload (measured:
- * fragment ~ 3 * sqrt(chars-out), so a 30 KB fragment inflated to ~100M
- * chars / ~200 MB), which a raw-length cap alone cannot bound linearly.
- * At 12 KB the worst case is ~16M chars (~33 MB transient), freed the
- * moment the post-decode 1 MB ceiling rejects it -- a hiccup, not a
- * tab-killer. Legitimate course programs compress to well under 4 KB.
+ * 12 KB cap on a raw (still-compressed) URL-borne fragment: the `#p2=` / `#p=`
+ * share hash and the `?bundle=` deep link. lz-string output grows QUADRATICALLY
+ * in fragment length for a crafted payload (measured: fragment ~ 3 *
+ * sqrt(chars-out), so a 30 KB fragment inflated to ~100M chars / ~200 MB),
+ * which a raw-length cap alone cannot bound linearly. At 12 KB the worst case
+ * is ~16M chars (~33 MB transient), freed the moment the post-decode 1 MiB
+ * ceiling rejects it. Legitimate course programs compress to well under 4 KB.
  */
 export const MAX_SHARE_HASH_BYTES = 12 * 1024;
 
@@ -62,7 +61,7 @@ export function checkUploadSize(
 ): string | null {
   if (bytes <= cap) return null;
   const limitMb = (cap / (1024 * 1024)).toFixed(0);
-  return `${label} too large (max ${limitMb} MB)`;
+  return `${label} too large: the limit is ${limitMb} MiB`;
 }
 
 /**
@@ -72,7 +71,7 @@ export function checkUploadSize(
 export function validateSource(text: string): string | null {
   if (byteLength(text) <= MAX_SOURCE_BYTES) return null;
   const limitMb = (MAX_SOURCE_BYTES / (1024 * 1024)).toFixed(0);
-  return `source too large (max ${limitMb} MB)`;
+  return `source too large: the limit is ${limitMb} MiB`;
 }
 
 /**
@@ -92,5 +91,5 @@ export function validateArgs(text: string): string | null {
 export function validateStdin(text: string): string | null {
   if (byteLength(text) <= MAX_STDIN_BYTES) return null;
   const limitKb = (MAX_STDIN_BYTES / 1024).toFixed(0);
-  return `stdin too large (max ${limitKb} KB)`;
+  return `stdin too large: the limit is ${limitKb} KiB`;
 }

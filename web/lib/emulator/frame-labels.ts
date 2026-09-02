@@ -32,6 +32,8 @@ export function parseFrameSlots(source: string): StackSlot[] {
     const body = match[2];
     const value = parseIntLiteral(body);
     if (value === null) continue;
+    // Above 512 the assignment is a program constant, not a frame slot:
+    // course frames stay well under it.
     if (value <= 0 || value > 512) continue;
     slots.push({ offset: value, name });
   }

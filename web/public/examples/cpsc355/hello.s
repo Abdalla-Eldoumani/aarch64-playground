@@ -1,7 +1,7 @@
-// io_ex1_hello.asm
+// hello.s
 // Write a message to stdout using the write system call.
 //
-// Compile: m4 io_ex1_hello.asm > io_ex1_hello.s && gcc io_ex1_hello.s -o io_ex1_hello
+// Compile: m4 hello.s > hello.gen.s && gcc hello.gen.s -o hello
 // Output:  Hello from a system call!
 
 define(fp, x29)
@@ -9,7 +9,7 @@ define(lr, x30)
 
         .text
 msg:    .string "Hello from a system call!\n"
-msg_len = . - msg - 1
+msg_len = . - msg - 1           // -1 drops the .string NUL
 
         .balign 4
         .global main

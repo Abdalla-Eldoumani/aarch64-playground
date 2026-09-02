@@ -19,10 +19,9 @@ function subscribe(callback: () => void): () => void {
 
 /**
  * One-line status strip that appears at the top of the page when the
- * browser reports offline. Renders nothing when online so it stays
- * out of the way during normal use. The service worker keeps the app
- * shell + examples cached and the emulator runs fully in the browser,
- * so the playground keeps working offline.
+ * browser reports offline. Renders nothing when online. The service
+ * worker keeps the app shell + examples cached and the emulator runs
+ * fully in the browser, so the playground keeps working offline.
  */
 export function OfflineBadge() {
   // Default to online for the SSR snapshot so hydration matches the
@@ -35,7 +34,7 @@ export function OfflineBadge() {
       aria-live="polite"
       className="px-3 py-1 text-[11px] text-center bg-[var(--bg-sunken)] border-b border-[var(--border)] text-[var(--text-secondary)]"
     >
-      offline -- the playground runs fully in your browser and keeps working from cached files.
+      offline: the playground runs fully in your browser and keeps working from cached files
     </div>
   );
 }

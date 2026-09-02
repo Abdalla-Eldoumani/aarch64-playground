@@ -10,7 +10,7 @@ import Link from "next/link";
 // shows the ring token. Layout (margins, self-alignment) comes through
 // className so each caller places it without forking the style.
 const CLASS =
-  "inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] " +
+  "inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] whitespace-nowrap " +
   "border border-[color-mix(in_srgb,var(--cyan)_60%,transparent)] px-3 " +
   "text-[var(--cyan)] [font:var(--type-small)] outline-none transition-colors " +
   "hover:bg-[color-mix(in_srgb,var(--cyan)_8%,transparent)] focus-visible:[box-shadow:var(--ring)]";

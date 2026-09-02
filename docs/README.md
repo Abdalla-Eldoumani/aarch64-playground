@@ -31,12 +31,13 @@ PR flow.
 Project docs describe the codebase as it is: getting-started, ARCHITECTURE,
 CONTRIBUTING, TESTING, DEPLOY, and security.
 
-Page-feeding docs are the source for content the site renders, so editing one
-changes the live site: instruction-reference feeds the `/reference` tables,
-cpsc355-style-guide feeds the calling-convention guide and the pitfalls
-catalog, authoring-content documents the lesson and exercise JSON format, and
-terminal is the terminal-pane command reference. features.md is an index into
-the source tree, not a rendered page.
+One doc feeds a page: instruction-reference is read by the web and Rust test
+suites, which fail when the `/reference` tables drift from it, so editing it
+changes what the site is allowed to ship. The rest are reference docs no code
+reads: cpsc355-style-guide is the course voice the guide and the pitfalls
+catalog are written to, authoring-content documents the lesson and exercise
+JSON format, terminal is the terminal-pane command reference, and features.md
+is an index into the source tree.
 
 ## Test coverage
 

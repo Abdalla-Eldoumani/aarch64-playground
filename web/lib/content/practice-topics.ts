@@ -44,22 +44,20 @@ export function practiceSide(exercise: Pick<Exercise, "variant">): PracticeSide 
 /**
  * Topics in course order, with the label the index prints. A topic missing
  * from this table still renders (its id is the label) and sorts after
- * every listed one, so a new exercise file never disappears; it just asks
- * for a row here.
+ * every listed one, so a new exercise file never disappears; add a row here
+ * to place it.
  */
 export const PRACTICE_TOPICS: readonly { id: string; label: string }[] = [
   { id: "architecture", label: "system architecture" },
   { id: "binary-logic", label: "binary logic" },
   { id: "binary-arithmetic", label: "binary arithmetic" },
   { id: "armv8", label: "armv8 basics" },
-  { id: "arithmetic", label: "arithmetic" },
   { id: "branching", label: "branching" },
   { id: "loops", label: "loops" },
   { id: "bitwise", label: "bitwise" },
   { id: "arrays", label: "arrays" },
   { id: "strings", label: "strings" },
   { id: "memory", label: "memory and the stack" },
-  { id: "tracing", label: "tracing" },
   { id: "functions", label: "functions" },
   { id: "subroutines", label: "subroutines" },
   { id: "io", label: "input and output" },

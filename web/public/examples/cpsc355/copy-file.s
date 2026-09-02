@@ -1,7 +1,7 @@
-// io_ex5_copy_file.asm
+// copy-file.s
 // Copy "source.txt" to "dest.txt" using openat, read, write, close.
 //
-// Compile: m4 io_ex5_copy_file.asm > io_ex5_copy_file.s && gcc io_ex5_copy_file.s -o io_ex5_copy_file
+// Compile: m4 copy-file.s > copy-file.gen.s && gcc copy-file.gen.s -o copy-file
 // Setup:   echo "This is the source file." > source.txt
 // Output:  Copy complete.
 // Verify:  cat dest.txt
@@ -33,7 +33,7 @@ main:   stp     fp, lr, [sp, alloc]!
         ldr     x1, =src_name
         mov     w2, 0                   // O_RDONLY
         mov     w3, 0
-        mov     x8, 56
+        mov     x8, 56                  // openat
         svc     0
         cmp     w0, 0
         b.lt    err_src
@@ -44,7 +44,7 @@ main:   stp     fp, lr, [sp, alloc]!
         ldr     x1, =dst_name
         mov     w2, 01101               // O_WRONLY | O_CREAT | O_TRUNC
         mov     w3, 0644
-        mov     x8, 56
+        mov     x8, 56                  // openat
         svc     0
         cmp     w0, 0
         b.lt    err_dst
@@ -55,7 +55,7 @@ copy_loop:
         mov     w0, src_fd
         add     x1, fp, buf_s
         mov     x2, buf_size
-        mov     x8, 63
+        mov     x8, 63                  // read
         svc     0
 
         cmp     x0, 0
@@ -65,7 +65,7 @@ copy_loop:
         mov     x2, x0                  // write exactly what we read
         mov     w0, dst_fd
         add     x1, fp, buf_s
-        mov     x8, 64
+        mov     x8, 64                  // write
         svc     0
 
         b       copy_loop
@@ -73,11 +73,11 @@ copy_loop:
 copy_done:
         // close both files
         mov     w0, src_fd
-        mov     x8, 57
+        mov     x8, 57                  // close
         svc     0
 
         mov     w0, dst_fd
-        mov     x8, 57
+        mov     x8, 57                  // close
         svc     0
 
         ldr     x0, =fmt_ok
@@ -92,7 +92,7 @@ err_src:
 err_dst:
         // close src before printing error
         mov     w0, src_fd
-        mov     x8, 57
+        mov     x8, 57                  // close
         svc     0
 
         ldr     x0, =fmt_err_d

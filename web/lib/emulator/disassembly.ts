@@ -12,10 +12,9 @@ export interface DecodedInstruction {
  * The instruction listing for one assembly: little-endian words read out of
  * the code region, each labelled with the source line that produced it.
  *
- * The source is stripped ONCE here. Both text lookups used to re-split the
- * source (and re-run two regexes per line) once PER INSTRUCTION, so the
- * decode cost grew with source x instructions: a dsav-sized workspace spent
- * ~1s of blocked main thread and a 1 MB one minutes.
+ * The source is stripped ONCE here. Re-splitting it per instruction grows the
+ * decode cost with source x instructions: a dsav-sized workspace blocks the
+ * main thread for about a second, a 1 MB one for minutes.
  */
 export function buildDisassembly(params: {
   base: number;

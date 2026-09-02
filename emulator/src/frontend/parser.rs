@@ -52,9 +52,8 @@ pub fn parse(source: &str) -> Result<Program, EmuError> {
 /// unknown-register error at the first use site.
 ///
 /// Expansion is bounded exactly the way m4's is. This pass runs on
-/// already-expanded text and used to have no ceiling at all, so a chain of
-/// aliases each naming the one before it materialized gigabytes before the
-/// assembler ever saw a line.
+/// already-expanded text, where a chain of aliases each naming the one
+/// before it materializes gigabytes before the assembler sees a line.
 fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), EmuError> {
     // Fast path: nothing to do for the overwhelmingly common case.
     if !text.contains(".req") {
@@ -109,8 +108,8 @@ fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), Em
             return Err(EmuError::PreprocError {
                 line: line_num,
                 message: format!(
-                    "`.req` alias expansion grew the whole source past {} MiB -- \
-                     shrink the alias body or the number of references",
+                    "`.req` alias expansion grew the whole source past {} MiB. \
+                     Shrink the alias body or the number of references",
                     super::m4::MAX_EXPANDED_TOTAL_BYTES / (1024 * 1024)
                 ),
             });
@@ -152,11 +151,10 @@ fn parse_line(
     prog: &mut Program,
     current: &mut SectionKind,
 ) -> Result<(), EmuError> {
-    // Labels can stack on one line (`a: b: c: ret`). Peeling them by
-    // recursion cost a stack frame per label, and a long enough line
-    // overflowed the wasm stack -- an unrecoverable trap that skips
-    // wasm-bindgen's borrow-guard Drop and wedges every later call. Peel
-    // them in a loop, so the depth is a loop counter instead.
+    // Labels can stack on one line (`a: b: c: ret`). Peel them in a loop,
+    // not by recursion: a stack frame per label overflows the wasm stack
+    // on a long enough line, and that trap skips wasm-bindgen's
+    // borrow-guard Drop and wedges every later call.
     let mut line_tokens = line_tokens;
     loop {
     if line_tokens.is_empty() {
@@ -251,12 +249,12 @@ fn parse_line(
         // name the habit and the fix rather than a bare "unexpected token".
         TokenKind::Hash => Err(err(
             first.line,
-            "`#` is not a comment character here -- write comments with `//` or `;`",
+            "`#` is not a comment character here. Write comments with `//` or `;`",
         )),
         other => Err(err(
             first.line,
             &format!(
-                "unexpected {} at the start of a line -- a line starts with a label, \
+                "unexpected {} at the start of a line. A line starts with a label, \
                  an instruction, or a directive",
                 crate::frontend::lexer::describe(other)
             ),
@@ -266,10 +264,9 @@ fn parse_line(
 }
 
 /// Every directive spelling `parse_directive` recognizes, aliases included.
-/// Recognized is not the same as accepted: `.equ`/`.set` are listed because
-/// the parser answers them with the teaching message that points at
-/// `NAME = expression`, which is a real answer rather than "unknown
-/// directive". `detect_hosted_mode` in lib.rs decides from this list which
+/// `.equ`/`.set` are listed but rejected: the parser answers them with the
+/// teaching message that points at `NAME = expression`, which is a real
+/// answer rather than "unknown directive". `detect_hosted_mode` in lib.rs decides from this list which
 /// programs take the hosted path, and `every_directive_reaches_an_arm`
 /// proves no entry falls through to the unknown-directive arm.
 pub const DIRECTIVES: &[&str] = &[
@@ -374,7 +371,7 @@ fn parse_directive(
             if name == ".zero" && groups.len() == 2 {
                 return Err(err(
                     line,
-                    "`.zero` takes a size only -- use `.space size, fill` to fill with a byte",
+                    "`.zero` takes a size only. Use `.space size, fill` to fill with a byte",
                 ));
             }
             let count = groups[0];
@@ -391,8 +388,8 @@ fn parse_directive(
                 if fill != 0 {
                     return Err(err(
                         line,
-                        "a symbolic size cannot take a nonzero fill -- \
-                         write the size as a plain constant",
+                        "a symbolic size cannot take a nonzero fill. \
+                         Write the size as a plain constant",
                     ));
                 }
                 prog.section_or_insert(*current).items.push(Item::ReserveExpr {
@@ -413,8 +410,8 @@ fn parse_directive(
                 if n as u64 > 1024 * 1024 {
                     return Err(err(
                         line,
-                        "the fill would outgrow the section's 1 MiB window -- \
-                         shrink the size",
+                        "the fill would outgrow the section's 1 MiB window. \
+                         Shrink the size",
                     ));
                 }
                 prog.section_or_insert(*current)
@@ -457,7 +454,23 @@ fn parse_directive(
             "`.equ`/`.set` are not supported; write `NAME = expression` instead \
              (for example `SIZE = 40`)",
         )),
-        other => Err(err(line, &format!("unknown directive `{other}`"))),
+        other => Err(err(
+            line,
+            &format!(
+                "unknown directive `{other}`: the directives the playground \
+                 recognizes are {}",
+                directive_list()
+            ),
+        )),
+    }
+}
+
+/// The directive spellings, read off `DIRECTIVES` rather than written out,
+/// so a directive added to the match cannot leave the message behind.
+fn directive_list() -> String {
+    match DIRECTIVES.split_last() {
+        Some((last, rest)) => format!("{}, and {last}", rest.join(", ")),
+        None => String::new(),
     }
 }
 
@@ -565,7 +578,7 @@ fn reject_empty_groups(
     {
         return Err(err(
             line,
-            "empty value in this list -- remove the extra comma",
+            "empty value in this list: remove the extra comma",
         ));
     }
     Ok(())
@@ -711,10 +724,9 @@ mod tests {
 
     #[test]
     fn req_alias_expansion_is_bounded_per_line_and_in_total() {
-        // The alias pass runs on already-m4-expanded text and had no
-        // ceiling at all, so a long target repeated across a line (or
-        // across many lines) materialized gigabytes before the assembler
-        // ever saw a mnemonic.
+        // The alias pass runs on already-m4-expanded text, where a long
+        // target repeated across a line (or across many lines)
+        // materializes gigabytes before the assembler sees a mnemonic.
         let target = "a".repeat(1024);
         let refs = "wide ".repeat(1000);
         let err = parse(&format!("wide .req {target}\n{refs}\n"))
@@ -1291,7 +1303,7 @@ mod tests {
         // back is never the unknown-directive fallthrough. What else it says
         // does not matter: `.equ`/`.set` answer with the teaching message,
         // which is the point of listing them. So this fails on exactly one
-        // thing -- a name in DIRECTIVES the match no longer has an arm for.
+        // thing: a name in DIRECTIVES the match no longer has an arm for.
         //
         // First pin that the probe reaches the fallthrough at all, so a
         // directive that died earlier could not pass the walk vacuously.

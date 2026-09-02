@@ -228,6 +228,54 @@ main:
     assert_eq!(cpu.exit_code(), Some(3), "w0 becomes the exit code");
 }
 
+#[test]
+fn ldrsw_post_index_sign_extends_and_advances_the_base() {
+    // The values and base deltas csarm's ldrs_writeback probe printed.
+    // -1 is what proves the sign extension survived the new decode path:
+    // a copy of the plain-load arm without the inner opc would emit an
+    // LDR and load 0x00000000ffffffff.
+    let src = r#"
+.data
+vals:   .word   -1, -2, -3
+
+.text
+.global main
+main:
+    ldr     x1, =vals
+    mov     x9, x1
+    ldrsw   x0, [x1], 4
+    ldrsw   x2, [x1], 4
+    ldrsw   x3, [x1, -4]!
+    ldrsw   x4, [x1, -4]
+    mov     w0, 0
+    ret
+"#;
+    let mut cpu = assemble(src);
+    cpu.step().expect("ldr x1, =vals steps");
+    cpu.step().expect("mov x9, x1 steps");
+    let base = cpu.regs.read_gpr(9, true);
+
+    cpu.step().expect("first ldrsw steps");
+    assert_eq!(cpu.regs.read_gpr(0, true) as i64, -1);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 4, "post-index advances the base");
+
+    cpu.step().expect("second ldrsw steps");
+    assert_eq!(cpu.regs.read_gpr(2, true) as i64, -2);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 8);
+
+    cpu.step().expect("pre-index ldrsw steps");
+    // Pre-index updates the base FIRST, so this rereads vals[1].
+    assert_eq!(cpu.regs.read_gpr(3, true) as i64, -2);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 4);
+
+    cpu.step().expect("unscaled ldrsw steps");
+    assert_eq!(cpu.regs.read_gpr(4, true) as i64, -1);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 4, "the unscaled form leaves the base alone");
+
+    let r = cpu.run_until_break(1_000).expect("run to halt");
+    assert!(r.halted);
+}
+
 // ---------------------------------------------------------------------------
 // single precision (S registers) through the full pipeline: the course
 // teaches s/d as two views of one register file, with fcvt bridging them
@@ -238,7 +286,8 @@ main:
 fn single_precision_scanf_compute_fcvt_printf_flow() {
     // scanf %f stores a 4-byte float; the program reads it into s0,
     // halves it in single precision, widens with fcvt, and prints it as
-    // the double printf expects. This is the canonical C float flow.
+    // the double printf expects. It is the flow a C `float` takes through
+    // scanf, arithmetic, and printf.
     let src = r#"
 define(fp, x29)
 define(lr, x30)
@@ -339,10 +388,108 @@ main:
 }
 
 #[test]
+fn conditional_compare_leaves_the_exact_nzcv_nibble() {
+    // csarm's cond_compare probe read the flags back one nibble at a
+    // time. The false path must write the literal in `pack`'s own bit
+    // order (N Z C V, high bit first), and the taken path must leave what
+    // a plain CMP would.
+    let src = r#"
+.text
+.global main
+main:
+    mov     w0, 9
+    cmp     w0, 1
+    ccmp    w0, 0, 0, eq
+    cmp     w0, 1
+    ccmp    w0, 0, 1, eq
+    cmp     w0, 1
+    ccmp    w0, 0, 4, eq
+    cmp     w0, 1
+    ccmp    w0, 0, 8, eq
+    cmp     w0, 1
+    ccmp    w0, 0, 15, eq
+    cmp     w0, 9
+    ccmp    w0, 9, 0, eq
+    cmp     w0, 9
+    ccmp    w0, 20, 0, eq
+    cmp     w0, 9
+    ccmp    w0, 2, 0, eq
+    mov     w0, 0
+    ret
+"#;
+    let mut cpu = assemble(src);
+    cpu.step().expect("mov w0, 9 steps");
+    // The false-path literals, then the taken path's own flags: equal
+    // (Z and C), less (N alone), greater (C alone).
+    for (want, what) in [
+        (0b0000u8, "literal 0"),
+        (0b0001, "literal 1"),
+        (0b0100, "literal 4"),
+        (0b1000, "literal 8"),
+        (0b1111, "literal 15"),
+        (0b0110, "9 == 9"),
+        (0b1000, "9 < 20"),
+        (0b0010, "9 > 2"),
+    ] {
+        cpu.step().expect("cmp steps");
+        cpu.step().expect("ccmp steps");
+        assert_eq!(cpu.regs.nzcv.pack(), want, "{what}");
+    }
+    let r = cpu.run_until_break(1_000).expect("run to halt");
+    assert!(r.halted);
+}
+
+#[test]
+fn fp_to_int_saturates_at_the_destination_width() {
+    // 5e9 fits an X destination and not a W one, which is the pair that
+    // separates a per-width clamp from a single 64-bit one. NaN answers
+    // zero in every mode, signed or not. Values from csarm's fp_to_int
+    // probe; 5e9 needs a `.double` because no FMOV immediate reaches it.
+    let src = r#"
+.rodata
+big:    .double 5e9
+huge:   .double 1e30
+
+.text
+.global main
+main:
+    ldr     d0, big
+    ldr     d1, huge
+    fcvtzu  w1, d0
+    fcvtzu  x2, d0
+    fcvtzu  w3, d1
+    fcvtzu  x4, d1
+    fcvtzs  w5, d1
+    fcvtzs  x6, d1
+    fmov    d2, 4.0
+    fneg    d2, d2
+    fsqrt   d3, d2
+    fcvtzu  w7, d3
+    fcvtzu  x9, d3
+    fcvtzs  x10, d3
+    fcvtns  w11, d3
+    fcvtnu  w12, d3
+    mov     w0, 0
+    ret
+"#;
+    let cpu = run(src);
+    assert!(cpu.regs.read_fpr_f64(3).is_nan(), "the probe's NaN source");
+    assert_eq!(cpu.regs.read_gpr(1, false), 4_294_967_295);
+    assert_eq!(cpu.regs.read_gpr(2, true), 5_000_000_000);
+    assert_eq!(cpu.regs.read_gpr(3, false), 4_294_967_295);
+    assert_eq!(cpu.regs.read_gpr(4, true), u64::MAX);
+    assert_eq!(cpu.regs.read_gpr(5, false) as i32, i32::MAX);
+    assert_eq!(cpu.regs.read_gpr(6, true) as i64, i64::MAX);
+    for reg in [7u8, 9, 10, 11, 12] {
+        assert_eq!(cpu.regs.read_gpr(reg, true), 0, "NaN converts to zero (x{reg})");
+    }
+}
+
+#[test]
 fn unterminated_string_reports_itself_at_the_opening_line() {
     // A string missing its closing quote must say exactly that, at the
-    // line where the quote opened -- never swallow following lines and
-    // blame a directive further down.
+    // line where the quote opened, never swallowing following lines and
+    // blaming a directive further down.
     let src = r#"        .text
 msg:    .string "broken
         .global main
@@ -368,7 +515,7 @@ fn add_sub_immediates_encode_exactly_as_gas_does() {
     use aarch64_emulator::assembler::assemble;
 
     let cases: [(&str, u32); 5] = [
-        // sub sp, sp, #0x1, lsl #12 -- the prologue that could not assemble
+        // sub sp, sp, #0x1, lsl #12: the prologue that could not assemble
         ("sub sp, sp, 4096", 0xd140_07ff),
         ("add x0, x1, #1, lsl #12", 0x9140_0420),
         // GAS turns a negative into the opposite operation
@@ -476,9 +623,10 @@ fn an_immediate_that_needs_more_than_a_shift_is_refused_with_the_rule() {
 }
 
 /// `parse_register` collapses sp and xzr to index 31, so these forms used
-/// to assemble and compute with ZERO instead of the stack pointer -- a
+/// to assemble and compute with ZERO instead of the stack pointer: a
 /// silent wrong answer from a plausible typo. GAS refuses every one of
-/// them ("expected an integer or zero register"), and so must we.
+/// them ("expected an integer or zero register"), and so does this
+/// encoder.
 #[test]
 fn sp_is_refused_where_the_encoding_has_no_room_for_it() {
     use aarch64_emulator::assembler::assemble;

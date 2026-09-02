@@ -1,9 +1,8 @@
 /**
- * Shell-style command-line argument parser. Splits on whitespace,
- * preserves the contents of double- or single-quoted spans, and treats
- * `\\` followed by any character as an escape (the next character is
- * inserted literally) -- except inside single quotes, where bash keeps
- * the backslash literal.
+ * Shell-style command-line argument parser. Splits on whitespace, preserves the
+ * contents of double- or single-quoted spans, and treats `\\` followed by any
+ * character as an escape (the next character is inserted literally), except
+ * inside single quotes, where bash keeps the backslash literal.
  *
  * Empty input produces an empty array. Unterminated quotes are tolerant:
  * the rest of the line is treated as the final argument's contents.

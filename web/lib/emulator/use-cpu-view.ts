@@ -51,16 +51,30 @@ export interface CpuView {
  * The register/PC/marker view and the replay history behind it. They are
  * one module because they are one set of values seen twice: a capture
  * reads exactly the refs this view maintains, and a seek writes exactly
- * the state it renders. Seeking is visual only -- it never touches the
- * CPU, so the next forward step resumes from the live PC.
+ * the state it renders. Seeking is visual only: it never touches the CPU, so
+ * the next forward step resumes from the live PC.
  */
+/**
+ * The register view before a machine exists: X0..X30 zeroed, the stack pointer
+ * at the top of the stack region, the pc at the code base. Exported because
+ * the embed's pre-engage frame paints exactly these values, so the register
+ * pane occupies its area before the hub arrives and the grid never moves under
+ * the host page.
+ */
+export const IDLE_CPU_VIEW = {
+  registers: Array<string>(31).fill("0x0000000000000000"),
+  sp: "0x0000000080000000",
+  pc: 0x400000,
+  nzcv: 0,
+};
+
 export function useCpuView(): CpuView {
   const [registers, setRegisters] = useState<string[]>(
-    () => Array(31).fill("0x0000000000000000"),
+    () => [...IDLE_CPU_VIEW.registers],
   );
-  const [sp, setSp] = useState("0x0000000080000000");
-  const [pc, setPc] = useState(0x400000);
-  const [nzcv, setNzcv] = useState(0);
+  const [sp, setSp] = useState(IDLE_CPU_VIEW.sp);
+  const [pc, setPc] = useState(IDLE_CPU_VIEW.pc);
+  const [nzcv, setNzcv] = useState(IDLE_CPU_VIEW.nzcv);
   const [changedRegs, setChangedRegs] = useState<Set<number>>(new Set());
   const [fpRegisters, setFpRegisters] = useState<string[]>([]);
   const [changedFpRegs, setChangedFpRegs] = useState<Set<number>>(new Set());
@@ -68,9 +82,6 @@ export function useCpuView(): CpuView {
   const [replayTick, setReplayTick] = useState(0);
 
   const currentLineRef = useRef<number | null>(null);
-  // Replay ring + the latest snapshot snapshot-cache so step/run callbacks
-  // can read regs/pc/nzcv without piping them through React state and
-  // racing the snapshot listener.
   const replayRingRef = useRef<ReplayRing>(new ReplayRing(128));
   const latestSnapRef = useRef<LatestSnap>({
     registers: [],
@@ -108,9 +119,8 @@ export function useCpuView(): CpuView {
     currentLineRef.current = line;
   }, []);
 
-  // Push a replay frame using the latest snapshot data + the
-  // current line. Called by step / runUntilBreak after the snapshot
-  // listener has updated currentLineRef + latestSnapRef.
+  // Called by step / runUntilBreak after the snapshot listener has updated
+  // currentLineRef + latestSnapRef.
   const pushReplayFrame = useCallback((newStepCount: number) => {
     const ln = currentLineRef.current;
     const snap = latestSnapRef.current;

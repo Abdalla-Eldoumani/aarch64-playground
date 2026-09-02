@@ -4,11 +4,11 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
 
-// The worked encodings in reference-data.ts are authored bit strings, and an
-// authored bit is a bit that can be wrong. This drives the real node-target
-// emulator over each entry's `encodedAsm`, reads the machine word it actually
-// assembled, and requires the concatenated field values to equal that word --
-// so the diagram can never teach an encoding the machine disagrees with.
+// The worked encodings in reference-data.ts are hand-authored bit strings.
+// This drives the real node-target emulator over each entry's `encodedAsm`,
+// reads the machine word it actually assembled, and requires the concatenated
+// field values to equal that word, so the diagram can never teach an encoding
+// the machine disagrees with.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
 const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");

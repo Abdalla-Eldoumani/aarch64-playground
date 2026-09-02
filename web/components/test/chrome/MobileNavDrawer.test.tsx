@@ -26,7 +26,7 @@ describe("MobileNavDrawer", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    // jsdom's fireEvent.click does NOT move focus, so focus the trigger first.
+    // jsdom's fireEvent.click does not move focus, so focus the trigger first.
     // Otherwise useFocusTrap captures <body> as the previously-focused element
     // and the focus-return assertion below would fail for the wrong reason.
     trigger.focus();
@@ -61,5 +61,13 @@ describe("MobileNavDrawer", () => {
     });
     // One anchor: the row text and the count share it.
     expect(github.textContent).toBe("source on github1.2k");
+  });
+
+  it("carries the theme control the bar drops, inside an md:hidden root", () => {
+    const { container } = render(<MobileNavDrawer />);
+    expect(container.firstElementChild?.className).toContain("md:hidden");
+    fireEvent.click(screen.getByRole("button", { name: "open navigation" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("group", { name: "theme" })).toBeTruthy();
   });
 });

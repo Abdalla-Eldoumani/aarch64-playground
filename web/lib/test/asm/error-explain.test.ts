@@ -5,12 +5,11 @@ import { explainError } from "@/lib/asm/error-explain";
 // errors arrive as the BARE inner message (the wasm boundary strips the
 // "X error at line N:" prefix and ships the line separately); runtime
 // aborts pass through Display unchanged. Testing prefixed strings gave the
-// old generic fallback false confidence -- it could never fire in
-// production.
+// old generic fallback false confidence: it could never fire in production.
 describe("explainError", () => {
   it("explains falling off the end as a missing ret", () => {
     const e = explainError(
-      "execution ran past the last instruction of the program -- main needs a `ret` (with an epilogue if it pushed one) or an exit call as its final step",
+      "execution ran past the last instruction of the program. main needs a `ret` (with an epilogue if it pushed one) or an exit call as its final step",
     );
     expect(e).not.toBeNull();
     expect(e!.fix).toContain("ret");
@@ -18,18 +17,24 @@ describe("explainError", () => {
   });
 
   it("explains unknown instructions without inventing causes", () => {
-    const e = explainError("unknown instruction: 0x00600000");
+    const e = explainError(
+      "unknown instruction 0x00600000: execution probably branched into data rather than code. Check the branch that got here, and the return address if this followed a ret",
+    );
     expect(e).not.toBeNull();
     expect(e!.what.toLowerCase()).toContain("decoder");
-    // The old block asserted an off-by-one stack write "overwrote your
-    // own code" -- a cause the common triggers never had.
+    // The common triggers never overwrite the program's own code, so the why
+    // must not claim it.
     expect(e!.why.toLowerCase()).not.toContain("junk over");
     expect(e!.why.toLowerCase()).toContain("data");
   });
 
   it("recognizes memory faults and distinguishes read from write", () => {
-    const r = explainError("memory fault: read at 0x0000000000000010");
-    const w = explainError("memory fault: write at 0x00000000ffff0000");
+    const r = explainError(
+      "memory fault: the program tried to read 0x0000000000000010, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant",
+    );
+    const w = explainError(
+      "memory fault: the program tried to write 0x00000000ffff0000, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant",
+    );
     expect(r).not.toBeNull();
     expect(w).not.toBeNull();
     expect(r!.what.toLowerCase()).toContain("read");
@@ -37,15 +42,22 @@ describe("explainError", () => {
     expect(r!.styleSection).toBe("addressing modes");
   });
 
-  it("recognizes the assembler's out-of-range register message", () => {
-    const e = explainError("register index out of range: X32");
+  it("recognizes the assembler's register-file message for both files", () => {
+    const e = explainError(
+      "`X32` is not a register: the general-purpose registers are x0 through x30 (or w0 through w30), plus xzr/wzr and sp",
+    );
     expect(e).not.toBeNull();
     expect(e!.styleSection).toBe("naming conventions");
+    const fp = explainError(
+      "`d99` is not a floating-point register: the fp registers are d0 through d31 and s0 through s31",
+    );
+    expect(fp).not.toBeNull();
+    expect(fp!.styleSection).toBe("naming conventions");
   });
 
   it("explains the sp-alignment fault via the frame rounding idiom", () => {
     const e = explainError(
-      "stopped -- sp is 0x7ffffff8, which is not a multiple of 16. On Linux every load or store through sp faults when sp is off the 16-byte boundary (a bus error on the servers); the line that broke it is above this one. Round the frame up: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`",
+      "stopped: sp is 0x7ffffff8, which is not a multiple of 16. On Linux every load or store through sp faults when sp is off the 16-byte boundary (a bus error on the servers); the line that broke it is above this one. Round the frame up: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`",
     );
     expect(e).not.toBeNull();
     expect(e!.fix).toContain("alloc = -(16 + locals) & -16");
@@ -53,7 +65,7 @@ describe("explainError", () => {
 
   it("explains a null-page access via the base register", () => {
     const e = explainError(
-      "stopped -- tried to write to address 0x0, which is not part of any program section (the servers kill this with a segmentation fault). A base register is holding a small number instead of an address: check for a `mov` where you meant `ldr xN, =label`, or an m4 alias that reuses a register a pointer is already living in (`define(i_r, w19)` after `ldr x19, =arr` overwrites the pointer)",
+      "stopped: tried to write to address 0x0, which is not part of any program section (the servers kill this with a segmentation fault). A base register is holding a small number instead of an address: check for a `mov` where you meant `ldr xN, =label`, or an m4 alias that reuses a register a pointer is already living in (`define(i_r, w19)` after `ldr x19, =arr` overwrites the pointer)",
     );
     expect(e).not.toBeNull();
     expect(e!.fix).toContain("ldr xN, =label");
@@ -61,7 +73,7 @@ describe("explainError", () => {
 
   it("explains a stack overflow via the recursion base case first", () => {
     const e = explainError(
-      "stack overflow: sp has moved more than 8 MiB below the stack base -- usually recursion with no base case, a prologue that repeats without its epilogue, or sp loaded from a register that was never set up",
+      "stack overflow: sp has moved more than 8 MiB below the stack base. Check the recursion's base case first, then check that every prologue has a matching epilogue with the same size, and that sp was never loaded from a register that had not been set up",
     );
     expect(e).not.toBeNull();
     expect(e!.fix.toLowerCase()).toContain("base case");
@@ -69,14 +81,16 @@ describe("explainError", () => {
 
   it("explains an unterminated C string via .asciz", () => {
     const e = explainError(
-      "strlen: the string at 0x600000 has no terminating zero byte within 64 KiB -- declare strings with .asciz or .string (not .ascii), and check nothing wrote over the terminator",
+      "strlen: the string at 0x600000 has no terminating zero byte within 64 KiB. Declare strings with .asciz or .string (not .ascii), and check nothing wrote over the terminator",
     );
     expect(e).not.toBeNull();
     expect(e!.fix).toContain(".asciz");
   });
 
   it("recognizes argv overflow", () => {
-    const e = explainError("argv layout would need 5000 bytes, exceeds the 4096-byte argv page");
+    const e = explainError(
+      "the arguments need 5000 bytes, more than the 4 KiB the playground reserves for argv. Shorten the args box above the editor, or pass fewer arguments",
+    );
     expect(e).not.toBeNull();
     expect(e!.styleSection).toBe("hosted runtime");
   });
@@ -87,11 +101,19 @@ describe("explainError", () => {
     expect(e!.styleSection).toBe("m4 preprocessing");
   });
 
-  it("recognizes unknown symbol in bare and prefixed shapes", () => {
-    const bare = explainError("unknown symbol `score_1_r`");
-    const prefixed = explainError("link error at line 30: unknown symbol `score_1_r`");
+  it("recognizes an undefined symbol in bare and prefixed shapes", () => {
+    const bare = explainError(
+      "`score_1_r` is not defined anywhere in this program: check the spelling against the label or the `name = value` line that defines it. m4 substitution is whole-token and case-sensitive",
+    );
+    const prefixed = explainError(
+      "link error at line 30: `score_1_r` is not defined anywhere in this program: check the spelling against the label or the `name = value` line that defines it. m4 substitution is whole-token and case-sensitive",
+    );
     expect(bare!.styleSection).toBe("naming conventions");
     expect(prefixed!.styleSection).toBe("naming conventions");
+    // The watch-expression evaluator still words it "unknown symbol".
+    expect(explainError("unknown symbol score_1_r")!.styleSection).toBe(
+      "naming conventions",
+    );
   });
 
   it("recognizes immediate-out-of-range encodings", () => {
@@ -100,7 +122,9 @@ describe("explainError", () => {
   });
 
   it("recognizes unbalanced bracket diagnostics", () => {
-    const e = explainError("unbalanced addressing bracket");
+    const e = explainError(
+      "unbalanced bracket in the address: count the `[` and `]` on this line. Pre-indexed forms end `]!`, and post-indexed forms close the `]` before the comma, as in `[x20], 8`",
+    );
     expect(e!.styleSection).toBe("addressing modes");
   });
 
@@ -155,10 +179,16 @@ describe("explainError", () => {
   });
 
   it("returns null when no tailored block exists, so the raw message renders", () => {
-    // The old generic fallback was unreachable in production and its
-    // advice was content-free; deleted, not repaired. The emulator's own
-    // wording carries the remedy in these cases.
+    // // The emulator's own wording carries the remedy in these cases, so
+    // there is no generic fallback.
     expect(explainError("nope, just nope")).toBeNull();
-    expect(explainError("empty value in this list -- remove the extra comma")).toBeNull();
+    expect(explainError("empty value in this list: remove the extra comma")).toBeNull();
+    // The directive list names `.section`, which the section-directive block
+    // would otherwise claim.
+    expect(
+      explainError(
+        "unknown directive `.wrod`: the directives the playground recognizes are .text, .data, .bss, .rodata, .section, .global, .globl, .type, .size, .balign, .align, .skip, .zero, .space, .string, .asciz, .ascii, .byte, .hword, .short, .word, .quad, .dword, .double, .float, .equ, and .set",
+      ),
+    ).toBeNull();
   });
 });

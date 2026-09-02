@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: ARMv8 Assembly - Intermediate",
+  "title": "Quiz: ARMv8 assembly",
   "slug": "quiz-inter-armv8",
   "order": 43,
   "topic": "armv8",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "Work through argument registers, instruction aliases, the frame record, integer division, condition flags, and stepping in gdb.",
+  "prompt": "Argument registers, instruction aliases, the frame record, integer division, condition flags, and stepping in gdb.",
   "questions": [
     {
       "question": "What role do registers x0 through x7 play in an AArch64 procedure call?",

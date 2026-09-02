@@ -14,6 +14,29 @@ const allHandlers = () => ({
 });
 
 describe("Controls", () => {
+  it("marks the action row as an instrument band and keeps the error out of it", () => {
+    const h = allHandlers();
+    const { container } = render(
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={true}
+        error="undefined label: mian"
+      />,
+    );
+    const band = container.querySelector(".controls-band");
+    expect(band).not.toBeNull();
+    // Every button rides the strip; the spacer it suppresses under sm carries
+    // its own class, and the alert is a sibling row, not a scrolled-away child.
+    expect(band!.querySelectorAll("button")).toHaveLength(5);
+    expect(band!.querySelector(":scope > .controls-spacer")).not.toBeNull();
+    const alert = screen.getByRole("alert");
+    expect(alert.closest(".controls-band")).toBeNull();
+    expect(alert.parentElement).toBe(band!.parentElement);
+  });
+
   it("renders the five control buttons in canonical order", () => {
     const h = allHandlers();
     render(
@@ -145,12 +168,12 @@ describe("Controls", () => {
     expect(screen.getByRole("status").textContent?.trim()).toMatch(/halted/);
   });
 
-  it("shakes once per new error while the message itself stays calm", () => {
-    // The ~200ms decaying shake is the motion spec's error cue; the calm part
-    // is the message (plain text plus a recovery hint), not the absence of
-    // motion. The class animates only outside prefers-reduced-motion, and the
-    // alert is keyed by the message so a NEW error replays the one-shot shake
-    // while a re-render of the same error does not.
+  it("shakes once per new error, and only on a new one", () => {
+    // The ~200ms decaying shake is the motion spec's error cue; the message
+    // beside it is plain text plus a recovery hint. The class animates only
+    // outside prefers-reduced-motion, and the alert is keyed by the message,
+    // so a new error replays the one-shot shake while a re-render of the same
+    // error does not.
     const h = allHandlers();
     render(
       <Controls
@@ -176,7 +199,7 @@ describe("Controls", () => {
         isRunning={false}
         isHalted={false}
         programLoaded={false}
-        error="unknown instruction: 0x12345678"
+        error="unknown instruction 0x12345678: execution probably branched into data rather than code. Check the branch that got here, and the return address if this followed a ret"
       />,
     );
     const alert = screen.getByRole("alert");
@@ -236,7 +259,7 @@ describe("Controls", () => {
   });
 
   it("keeps run live with nothing loaded when run assembles first", () => {
-    // Terminal mode: the run press IS the launch, so the button cannot be
+    // Terminal mode: the run press is itself the launch, so the button cannot be
     // the one path that still demands a separate assemble press.
     const h = allHandlers();
     render(

@@ -52,7 +52,7 @@ export interface RegisterState {
 
 /**
  * Typed wrapper around the WASM emulator module.
- * Handles dynamic import and BigInt-to-string conversion.
+ * Handles BigInt-to-string conversion and feature detection; `loadEmulator` does the dynamic import.
  */
 export class EmulatorInstance {
   private inner: WasmEmulatorInstance;
@@ -148,10 +148,10 @@ export class EmulatorInstance {
     else this.inner.push_stdin(s);
   }
 
-  /** Bytes ever written to stdout, echoes included -- the absolute
-   *  coordinate the console scrollback aligns to. Null on a wasm build
-   *  that predates the counter, which is the caller's cue to leave the
-   *  scrollback append-only. */
+  /** Bytes ever written to stdout, echoes included: the absolute
+   * coordinate the console scrollback aligns to. Null on a wasm build
+   * that predates the counter, which is the caller's cue to leave the
+   * scrollback append-only. */
   stdoutSeen(): number | null {
     return this.inner.stdout_seen?.() ?? null;
   }
@@ -208,9 +208,9 @@ export class EmulatorInstance {
   }
 
   /** The external call the current pc sits inside, or null when the pc is
-   *  one of the program's own instructions -- and null on wasm builds that
-   *  predate the export, which hides the feature. The wasm side answers in
-   *  snake_case (the StepResult convention), normalized here. */
+   * one of the program's own instructions, and null on wasm builds that
+   * predate the export, which hides the feature. The wasm side answers in
+   * snake_case (the StepResult convention), normalized here. */
   hostCallContext(): ExternalCall | null {
     const probe = (this.inner as { hostCallContext?: () => unknown }).hostCallContext;
     if (typeof probe !== "function") return null;
@@ -276,7 +276,7 @@ export class EmulatorInstance {
     return this.inner.get_changed_registers();
   }
 
-  /** The 32 FP registers (d0-d31) as "0x…" bit patterns, or [] when the
+  /** The 32 FP registers (d0-d31) as "0x..." bit patterns, or [] when the
    *  loaded WASM predates the FP surface (feature-detected, never throws). */
   getFpRegisters(): string[] {
     return this.inner.get_fp_registers?.() ?? [];
@@ -431,7 +431,7 @@ async function ensureWasmModule(): Promise<WasmModule> {
 
 /**
  * Load the WASM module and return an EmulatorInstance.
- * This is async because of the dynamic import.
+ * Async because of the dynamic import.
  */
 export async function loadEmulator(): Promise<EmulatorInstance> {
   const wasm = await ensureWasmModule();
@@ -440,10 +440,9 @@ export async function loadEmulator(): Promise<EmulatorInstance> {
 }
 
 /**
- * Hosted-mode detection routed through the Rust source of truth. The
- * TS side used to maintain a parallel regex list which drifted from the
- * Rust list; this helper makes the WASM module the only place that
- * decides. First call awaits the WASM load; subsequent calls use the
+ * Hosted-mode detection routed through the Rust source of truth. The WASM
+ * module is the only place that decides, so no TS regex list can drift from
+ * the Rust one. First call awaits the WASM load; subsequent calls use the
  * cached module so latency is just the wasm-bindgen marshalling.
  */
 export async function detectHostedMode(source: string): Promise<boolean> {

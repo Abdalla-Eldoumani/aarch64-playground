@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, type ComponentProps } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { REPO_URL, NAV_ROUTES, isActiveRoute } from "@/lib/content/site";
@@ -10,10 +11,39 @@ import { ThemeControl } from "@/components/chrome/ThemeControl";
 import { MobileNavDrawer } from "@/components/chrome/MobileNavDrawer";
 
 /**
+ * A route link that starts cold and warms on intent. `prefetch={false}` means
+ * never in the App Router, viewport and hover alike, so hover warming has to
+ * be built: swap back to the default once a pointer or the keyboard arrives
+ * and Next prefetches then. That keeps four route payloads off the landing's
+ * initial network while a reader who aims at a route still gets it warm.
+ * `onFocus` rides along because the nav is a keyboard landmark and tabbing
+ * through should warm what hovering does. The flag is `warm`, not `active`,
+ * which already means the current route in the map below.
+ */
+function HoverPrefetchLink({
+  href,
+  children,
+  ...rest
+}: ComponentProps<typeof Link>) {
+  const [warm, setWarm] = useState(false);
+  return (
+    <Link
+      href={href}
+      prefetch={warm ? null : false}
+      onMouseEnter={() => setWarm(true)}
+      onFocus={() => setWarm(true)}
+      {...rest}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/**
  * The persistent top navigation: one component, two variants driven by a prop so
- * there is no second nav to keep in sync. `full` is the content-page bar -- the
+ * there is no second nav to keep in sync. `full` is the content-page bar: the
  * wordmark carries its "playground" label and an "Open playground" call to action
- * sits in the actions cluster. `slim` is the playground bar -- no label, no CTA,
+ * sits in the actions cluster. `slim` is the playground bar: no label, no CTA,
  * and a shorter desktop height so it never steals the debugger's vertical space.
  * Both reuse the same wordmark, route data, theme control, and mobile drawer; the
  * variant only toggles the label, the CTA, and the height. Under md the routes and
@@ -58,7 +88,7 @@ export function SiteNav({
             const active = isActiveRoute(pathname, route.href);
             return (
               <li key={route.href}>
-                <Link
+                <HoverPrefetchLink
                   href={route.href}
                   aria-current={active ? "page" : undefined}
                   className={`inline-flex min-h-[44px] items-center px-3 font-sans text-[14px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
@@ -68,7 +98,7 @@ export function SiteNav({
                   }`}
                 >
                   {route.label}
-                </Link>
+                </HoverPrefetchLink>
               </li>
             );
           })}
@@ -76,10 +106,10 @@ export function SiteNav({
 
         <div className="flex items-center gap-1">
           {/* The count rides inside the same anchor so there is one 44px target
-              that widens instead of a second control beside it. Tertiary text,
-              not amber or cyan: a star count is neither the machine acting nor
-              the reader acting. The numeral is aria-hidden because the label
-              already reads it, spelled out and pluralized. */}
+              that widens instead of a second control beside it. Tertiary text:
+              a star count is not execution state and not an action. The numeral
+              is aria-hidden because the label already reads it, spelled out and
+              pluralized. */}
           <a
             href={REPO_URL}
             target="_blank"
@@ -104,7 +134,12 @@ export function SiteNav({
             )}
           </a>
 
-          <ThemeControl size="compact" />
+          {/* The bar's copy yields under md, exactly where MobileNavDrawer
+              (its root is md:hidden) starts carrying the comfortable one, so
+              one theme control is reachable at every width and never two. */}
+          <div className="hidden md:flex">
+            <ThemeControl size="compact" />
+          </div>
 
           {full ? (
             <Link

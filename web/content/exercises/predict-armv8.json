@@ -1,5 +1,5 @@
 {
-  "title": "Predict: ARMv8 Execution",
+  "title": "Predict: ARMv8 assembly",
   "slug": "predict-armv8",
   "order": 46,
   "topic": "armv8",
@@ -25,7 +25,7 @@
       "code": "mov x22, 10\nmov x23, 0\nudiv x21, x22, x23",
       "question": "What exact value does the CPU write into the destination register x21?",
       "answer": "0",
-      "explanation": "Division by zero raises no exception and no trap in AArch64. Both udiv and sdiv simply write 0 into the destination register, so the program has to check the divisor itself.",
+      "explanation": "Division by zero raises no exception and no trap in AArch64. Both udiv and sdiv write 0 into the destination register, so the program has to check the divisor itself.",
       "hint": "AArch64 has no divide-by-zero trap."
     },
     {

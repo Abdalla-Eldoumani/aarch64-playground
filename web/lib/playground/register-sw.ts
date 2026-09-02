@@ -23,8 +23,8 @@ export function registerServiceWorker(): void {
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .catch(() => {
-        // Registration failures are non-fatal -- the app still works
-        // online without the cache layer.
+        // Registration failures are non-fatal: the app still works online
+        // without the cache layer.
       });
   };
   if (document.readyState === "complete") {

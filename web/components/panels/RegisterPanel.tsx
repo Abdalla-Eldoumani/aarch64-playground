@@ -21,8 +21,7 @@ interface RegisterPanelProps {
 
 // nzcv packs N at bit 3, Z at bit 2, C at bit 1, V at bit 0 (see the
 // emulator's NzcvFlags::pack). Rendered left-to-right against `bitPos = 3 - i`
-// so each label reads its own bit, in the conventional ARM N Z C V order --
-// the prior ["V","C","Z","N"] paired every label with the wrong bit.
+// so each label reads its own bit, in the conventional ARM N Z C V order.
 const FLAG_NAMES = ["N", "Z", "C", "V"];
 
 const VIEW_KEY = "aarch64-playground:regfile-view";
@@ -75,8 +74,8 @@ export function RegisterPanel({
   nzcv,
 }: RegisterPanelProps) {
   // 16 nibbles like every other row: PC renders through the same RegisterRow
-  // as x0-x30 and SP, whose values are already 64-bit wide, so the column is
-  // sized for it and the short form only made one row disagree.
+  // as x0-x30 and SP, whose values are already 64-bit wide, so PC uses the
+  // same width as the rest of the column.
   const pcHex = formatWord64(pc);
 
   // The d-view exists only when the loaded WASM exposes FP registers.
@@ -119,7 +118,7 @@ export function RegisterPanel({
 
   // Auto-follow the executing instruction's register class: a step that
   // writes a d-register flips to the fp file, an integer-only write flips
-  // back, so a mixed program narrates itself without manual switching. The
+  // back, so a mixed program needs no manual switching. The
   // toggle still works between steps (a click just sets the view the next
   // write may move again); a step that writes both files, or none, leaves
   // the student's choice alone.
@@ -131,8 +130,11 @@ export function RegisterPanel({
 
   const zoom = useZoom("registers");
 
+  // shrink-0 + whitespace-nowrap: under flex pressure the cells collapsed far
+  // enough to wrap "x0–x30" onto two lines and push the second cell out of
+  // the group's overflow-hidden box.
   const segmentCell =
-    "px-2 py-0.5 font-mono text-[10px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10";
+    "shrink-0 whitespace-nowrap px-2 py-0.5 font-mono text-[10px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10";
 
   return (
     <div
@@ -145,7 +147,7 @@ export function RegisterPanel({
         else zoom.zoomOut();
       }}
     >
-      <div className="flex items-center justify-between mb-2 gap-2">
+      <div className="flex flex-wrap items-center justify-between mb-2 gap-x-2 gap-y-1">
         <h2 className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)]">
           regfile
         </h2>
@@ -153,7 +155,7 @@ export function RegisterPanel({
           <div
             role="group"
             aria-label="register view"
-            className="inline-flex items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)]"
+            className="inline-flex shrink-0 items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)]"
           >
             <button
               type="button"
@@ -185,7 +187,7 @@ export function RegisterPanel({
           <div
             role="group"
             aria-label="fp value format"
-            className="inline-flex items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)]"
+            className="inline-flex shrink-0 items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)]"
           >
             <button
               type="button"

@@ -17,7 +17,7 @@ const CONTROL_BYTES = /[\x00-\x1f\x7f\x80-\x9f]/g;
  * ANSI escape sequences first (a special key's CSI/SS3 sequence, or a
  * pasted colored shell transcript), then any remaining C0/C1 control
  * bytes. Tabs become single spaces so pasted token separation survives.
- * The buffer can then never hold bytes that repaint as cursor movement --
+ * The buffer can then never hold bytes that repaint as cursor movement:
  * an ESC[A smuggled into the line is invisible on screen but corrupts
  * the submitted command and scrambles the scrollback on repaint.
  */
@@ -83,7 +83,7 @@ export class TerminalInputState {
 
   /**
    * Tab completion against a candidate list (typically VFS file names).
-   * Looks at the last whitespace-separated word of the buffer; if exactly
+   * Looks at the last space-separated word of the buffer; if exactly
    * one candidate has that prefix it expands the buffer; if multiple
    * match it returns them so the caller can print the list.
    */
@@ -105,8 +105,8 @@ export class TerminalInputState {
 
   /**
    * Push the current line onto history (deduping consecutive copies),
-   * clear the buffer, and return what was submitted -- or `null` for an
-   * empty submission.
+   * clear the buffer, and return what was submitted, or `null` for an empty
+   * submission.
    */
   takeSubmission(): string | null {
     const submitted = this.buffer;

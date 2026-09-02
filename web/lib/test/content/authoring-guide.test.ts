@@ -4,10 +4,9 @@ import path from "node:path";
 import { validateLesson } from "@/lib/content/lesson-schema";
 import { validateExercise } from "@/lib/content/exercise-schema";
 
-// Vitest runs from web/, so the guide sits one level up at the repo root. This
-// guard proves the guide ships exactly one valid lesson and one valid exercise,
-// so its worked examples can never drift out of the shape the real validators
-// accept.
+// Vitest runs from web/, so the guide sits one level up at the repo root. Its
+// worked examples run through the real validators, so they cannot drift from
+// the shape those accept.
 const GUIDE = path.join(process.cwd(), "..", "docs", "authoring-content.md");
 
 /** Parse the body of every fenced ```json block, in document order. */

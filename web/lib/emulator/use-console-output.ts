@@ -67,8 +67,7 @@ export function appendBounded(prev: string, delta: string): string {
  * holds lossily-decoded text, so non-UTF-8 output (a putchar above 0x7F)
  * inflates `bytesHeld` past the raw count and the next sync can shave a
  * couple of display bytes. Raw bytes are not recoverable from the decoded
- * text, and every shipped program prints ASCII, so the model stays exact
- * where it matters and approximate where it cannot be.
+ * text, and every shipped program prints ASCII,
  */
 interface StreamPosition {
   seenBase: number;
@@ -85,9 +84,9 @@ export interface ConsoleOutput {
    * Align a stream's scrollback with the machine's cumulative display
    * counter after a snapshot's deltas have been appended. A counter that
    * ran ahead of the scrollback only re-anchors the offset (the terminal
-   * pane held the bytes, or a clear dropped them); a counter that moved
-   * BACK -- step back, a named restore -- unprints down to it, so a
-   * re-run reprints without duplicating what the undone step wrote.
+   * pane held the bytes, or a clear dropped them); a counter that moved BACK
+   * (step back, a named restore) unprints down to it, so a re-run reprints
+   * without duplicating what the undone step wrote.
    */
   syncSeen: (stream: ConsoleStream, seen: number) => void;
   /** Empty the scrollback without telling the machine: an editor assemble
@@ -107,9 +106,9 @@ export interface ConsoleOutput {
 }
 
 /**
- * The console panel's two buffers and the tap that can steal them. While
- * the terminal pane holds the tap, program stdout belongs to xterm --
- * mirroring it into the console doubled every frame.
+ * The console panel's two buffers and the tap that can steal them. While the
+ * terminal pane holds the tap, program stdout belongs to xterm; mirroring it
+ * into the console doubles every frame.
  */
 export function useConsoleOutput(
   backendRef: RefObject<EmulatorBackend | null>,
@@ -137,7 +136,7 @@ export function useConsoleOutput(
       const pos = posRef.current[stream];
       const { text, droppedBytes } = appendBoundedTracked(textRef.current[stream], delta);
       // A truncation eats the oldest text first, and the oldest text is the
-      // preserved history at the head -- those bytes never move seenBase,
+      // preserved history at the head, and those bytes never move seenBase,
       // because the machine never wrote them.
       const fromHistory = Math.min(pos.historyBytes, droppedBytes);
       pos.historyBytes -= fromHistory;
@@ -181,11 +180,10 @@ export function useConsoleOutput(
       const marked = text.startsWith(CONSOLE_TRIM_MARKER);
       const body = marked ? text.slice(CONSOLE_TRIM_MARKER.length) : text;
       // Cut in byte space, because that is the only space the machine's
-      // counter speaks, and only in the held tail -- preserved history at
-      // the head stands for zero machine bytes and is never unprinted. A
-      // cut that lands inside a multi-byte character decodes to a
-      // replacement char, which is the honest rendering of half a
-      // character and never throws.
+      // counter speaks, and only in the held tail: preserved history at the
+      // head stands for zero machine bytes and is never unprinted. A cut that
+      // lands inside a multi-byte character decodes to a replacement char,
+      // which is what half a character decodes to, and never throws.
       const encoded = encoder.encode(body);
       const floor = encoded.length - pos.bytesHeld;
       const kept = decoder.decode(encoded.slice(0, floor + target));

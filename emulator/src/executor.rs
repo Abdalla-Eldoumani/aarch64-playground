@@ -151,6 +151,28 @@ pub fn execute(
         Instruction::DpCarry { sub, set_flags, sf, rd, rn, rm } => {
             exec_dp_carry(*sub, *set_flags, *sf, *rd, *rn, *rm, regs)
         }
+        Instruction::CondCompare { sub, sf, rn, operand, cond, nzcv } => {
+            if regs.nzcv.check(*cond) {
+                let a = regs.read_gpr(*rn, *sf);
+                let b = match operand {
+                    CondCmpOperand::Reg(rm) => regs.read_gpr(*rm, *sf),
+                    CondCmpOperand::Imm(imm) => u64::from(*imm),
+                };
+                regs.nzcv = if *sub {
+                    sub_flags(a, b, a.wrapping_sub(b), *sf)
+                } else {
+                    add_flags(a, b, a.wrapping_add(b), *sf)
+                };
+            } else {
+                // The false path WRITES the literal; it does not leave the
+                // old flags in place. That difference is invisible in
+                // every short-circuit idiom and visible only when the
+                // literal forces a condition the compare would not.
+                regs.nzcv = NzcvFlags::unpack(*nzcv);
+            }
+            Ok(ExecResult::Advance)
+        }
+        Instruction::DataProc1 { op, sf, rd, rn } => exec_dp1(*op, *sf, *rd, *rn, regs),
         Instruction::VarShift { sf, rd, rn, rm, shift } => {
             // Shift amount is Rm modulo the register width (apply_shift
             // owns the modulo); truncating to u8 first keeps the low bits
@@ -205,7 +227,9 @@ pub fn execute(
         Instruction::MulAccumulate { op, sf, rd, rn, rm, ra } => {
             exec_mul_accumulate(*op, *sf, *rd, *rn, *rm, *ra, regs)
         }
-        Instruction::MulWide { op, rd, rn, rm } => exec_mul_wide(*op, *rd, *rn, *rm, regs),
+        Instruction::MulWide { op, rd, rn, rm, ra } => {
+            exec_mul_wide(*op, *rd, *rn, *rm, *ra, regs)
+        }
         Instruction::LdrSignExtended { rt, rn, offset, size, mode, sf } => {
             exec_ldrs(*rt, *rn, offset, *size, *mode, *sf, regs, mem)
         }
@@ -284,6 +308,14 @@ pub fn execute(
             regs.write_fpr_bits(*fd, v);
             Ok(ExecResult::Advance)
         }
+        Instruction::FpCondSel { fd, fn_, fm, cond, single } => {
+            // Bits, not values: the chosen source may be a NaN or a
+            // signed zero, and neither survives a compare-and-rebuild.
+            let src = if regs.nzcv.check(*cond) { *fn_ } else { *fm };
+            let v = regs.read_fpr_bits(src);
+            regs.write_fpr_bits(*fd, if *single { v & 0xFFFF_FFFF } else { v });
+            Ok(ExecResult::Advance)
+        }
         Instruction::FpScvtfFp { fd, fn_, single } => {
             // The integer bits already sit in Fn; convert at the
             // register's own width. S results are an f32 pattern in the
@@ -318,7 +350,7 @@ pub fn execute(
                     FpUnaryOp::Fneg => -v,
                     FpUnaryOp::Fabs => v.abs(),
                     // IEEE: a negative operand yields NaN, never a trap.
-                    FpUnaryOp::Fsqrt => v.sqrt(),
+                    FpUnaryOp::Fsqrt => default_nan_if_new(v.sqrt(), &[v]),
                 };
                 regs.write_fpr_f32(*fd, result);
             } else {
@@ -326,7 +358,7 @@ pub fn execute(
                 let result = match op {
                     FpUnaryOp::Fneg => -v,
                     FpUnaryOp::Fabs => v.abs(),
-                    FpUnaryOp::Fsqrt => v.sqrt(),
+                    FpUnaryOp::Fsqrt => default_nan_if_new(v.sqrt(), &[v]),
                 };
                 regs.write_fpr_f64(*fd, result);
             }
@@ -343,39 +375,14 @@ pub fn execute(
             regs.nzcv = crate::fpu::fcmp_flags(a, b);
             Ok(ExecResult::Advance)
         }
-        Instruction::FpScvtf { fd, rn, sf, single } => {
-            let raw = regs.read_gpr(*rn, *sf);
-            let int_value = if *sf { raw as i64 } else { (raw as u32 as i32) as i64 };
-            if *single {
-                regs.write_fpr_f32(*fd, int_value as f32);
-            } else {
-                regs.write_fpr_f64(*fd, int_value as f64);
-            }
-            Ok(ExecResult::Advance)
+        Instruction::FpToInt { op, rd, fn_, sf, single, fbits } => {
+            exec_fp_to_int(*op, *rd, *fn_, *sf, *single, *fbits, regs)
         }
-        Instruction::FpFcvtzs { rd, fn_, sf, single } => {
-            // Read at the instruction's width, then truncate toward zero
-            // with saturation. The f32 -> f64 widening is exact, so one
-            // f64 saturation path serves both widths.
-            let value = if *single {
-                regs.read_fpr_f32(*fn_) as f64
-            } else {
-                regs.read_fpr_f64(*fn_)
-            };
-            let truncated = value.trunc();
-            let int_value = if *sf {
-                if truncated.is_nan() { 0i64 }
-                else if truncated >= i64::MAX as f64 { i64::MAX }
-                else if truncated <= i64::MIN as f64 { i64::MIN }
-                else { truncated as i64 }
-            } else {
-                if truncated.is_nan() { 0i64 }
-                else if truncated >= i32::MAX as f64 { i32::MAX as i64 }
-                else if truncated <= i32::MIN as f64 { i32::MIN as i64 }
-                else { truncated as i32 as i64 }
-            };
-            regs.write_gpr(*rd, *sf, int_value as u64);
-            Ok(ExecResult::Advance)
+        Instruction::FpFromInt { op, fd, rn, sf, single, fbits } => {
+            exec_fp_from_int(*op, *fd, *rn, *sf, *single, *fbits, regs)
+        }
+        Instruction::FpMulAdd { op, fd, fn_, fm, fa, single } => {
+            exec_fp_mul_add(*op, *fd, *fn_, *fm, *fa, *single, regs)
         }
         Instruction::FpCvt { fd, fn_, widen } => {
             if *widen {
@@ -483,7 +490,7 @@ fn exec_dp_carry(
     sub: bool, set_flags: bool, sf: bool, rd: u8, rn: u8, rm: u8,
     regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
-    // Register 31 is ZR in all three positions -- this family has no SP form.
+    // Register 31 is ZR in all three positions: this family has no SP form.
     let operand1 = regs.read_gpr(rn, sf);
     let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
     // SBC is the same adder with Rm inverted: Rn + NOT(Rm) + C, which is
@@ -527,7 +534,7 @@ fn exec_dp_ext(
 ) -> Result<ExecResult, EmuError> {
     let mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
     // Register 31 means SP for Rn (and for Rd in the non-flag-setting
-    // ops) -- reaching SP is this form's whole purpose. Rm = 31 is XZR.
+    // ops), and reaching SP is this form's whole purpose. Rm = 31 is XZR.
     let operand1 = regs.read_gpr_or_sp(rn, sf);
     let operand2 = (extend_reg(regs.read_gpr(rm, sf), extend) << shift) & mask;
 
@@ -645,7 +652,7 @@ fn check_guest_address(addr: u64, access: crate::errors::MemAccess) -> Result<()
 
 /// AArch64 checks SP itself, never the effective address: SCTLR_EL1.SA0
 /// is set on Linux, so any load or store using SP as the base faults
-/// when SP is off the 16-byte boundary -- `ldr w0, [sp, 4]` from an
+/// when SP is off the 16-byte boundary: `ldr w0, [sp, 4]` from an
 /// aligned SP is legal, `ldr w0, [sp]` from an SP off by 8 is not.
 /// Runs before the offset math and any writeback, like the ARM
 /// pseudocode's CheckSPAlignment(). `rn >= 31` mirrors the
@@ -1036,6 +1043,102 @@ fn exec_mul_div(
     Ok(ExecResult::Advance)
 }
 
+/// What `fp_max` and its siblings need of a float, so the S and D paths
+/// run the same body instead of two copies whose NaN rules could drift.
+trait FpOperand: Copy + PartialOrd {
+    const NAN: Self;
+    const ZERO: Self;
+    fn is_nan(self) -> bool;
+    fn is_sign_negative(self) -> bool;
+}
+
+impl FpOperand for f32 {
+    const NAN: Self = f32::NAN;
+    const ZERO: Self = 0.0;
+    fn is_nan(self) -> bool {
+        f32::is_nan(self)
+    }
+    fn is_sign_negative(self) -> bool {
+        f32::is_sign_negative(self)
+    }
+}
+
+impl FpOperand for f64 {
+    const NAN: Self = f64::NAN;
+    const ZERO: Self = 0.0;
+    fn is_nan(self) -> bool {
+        f64::is_nan(self)
+    }
+    fn is_sign_negative(self) -> bool {
+        f64::is_sign_negative(self)
+    }
+}
+
+/// ARM's FPMax with FPCR.AH = 0, the state this emulator models: a NaN
+/// operand makes the result NaN, and negative zero compares LESS than
+/// positive zero whichever operand it arrives in. Rust's `max` does
+/// neither, since it returns the number when one side is NaN and its
+/// signed-zero answer is documented as unspecified, so both rules are
+/// written out here rather than delegated.
+fn fp_max<T: FpOperand>(a: T, b: T) -> T {
+    if a.is_nan() || b.is_nan() {
+        return T::NAN;
+    }
+    if a == T::ZERO && b == T::ZERO {
+        return if a.is_sign_negative() { b } else { a };
+    }
+    if a > b { a } else { b }
+}
+
+fn fp_min<T: FpOperand>(a: T, b: T) -> T {
+    if a.is_nan() || b.is_nan() {
+        return T::NAN;
+    }
+    if a == T::ZERO && b == T::ZERO {
+        return if a.is_sign_negative() { a } else { b };
+    }
+    if a < b { a } else { b }
+}
+
+/// FMAXNM / FMINNM are IEEE maxNum / minNum: a quiet NaN operand is
+/// ignored and the number wins. The signed-zero rule is FMAX's, so the
+/// numeric case delegates rather than restating it.
+fn fp_max_num<T: FpOperand>(a: T, b: T) -> T {
+    if a.is_nan() {
+        return b;
+    }
+    if b.is_nan() {
+        return a;
+    }
+    fp_max(a, b)
+}
+
+fn fp_min_num<T: FpOperand>(a: T, b: T) -> T {
+    if a.is_nan() {
+        return b;
+    }
+    if b.is_nan() {
+        return a;
+    }
+    fp_min(a, b)
+}
+
+/// Replace a NaN this operation GENERATED with the AArch64 default NaN
+/// (0x7FF8000000000000 for D, 0x7FC00000 for S), which is positive. An
+/// invalid operation on x86-64 answers with that host's own "indefinite"
+/// QNaN instead, whose sign bit is set, so `sqrt(-4.0)` and `0.0 / 0.0`
+/// reach the register file as `-nan` where the course servers print
+/// `nan`. A NaN that arrived in an OPERAND is left exactly as it is:
+/// FPCR.DN is clear here, so a quiet NaN propagates with its own sign and
+/// payload.
+fn default_nan_if_new<T: FpOperand>(result: T, sources: &[T]) -> T {
+    if result.is_nan() && !sources.iter().any(|s| s.is_nan()) {
+        T::NAN
+    } else {
+        result
+    }
+}
+
 fn exec_fp_binary(
     op: FpBinOp,
     fd: u8,
@@ -1051,22 +1154,156 @@ fn exec_fp_binary(
         let a = regs.read_fpr_f32(fn_);
         let b = regs.read_fpr_f32(fm);
         let result = match op {
-            FpBinOp::Fadd => a + b,
-            FpBinOp::Fsub => a - b,
-            FpBinOp::Fmul => a * b,
-            FpBinOp::Fdiv => a / b,
+            FpBinOp::Fadd => default_nan_if_new(a + b, &[a, b]),
+            FpBinOp::Fsub => default_nan_if_new(a - b, &[a, b]),
+            FpBinOp::Fmul => default_nan_if_new(a * b, &[a, b]),
+            FpBinOp::Fdiv => default_nan_if_new(a / b, &[a, b]),
+            // The sign flips on the PRODUCT, which is what makes
+            // fnmul of +0.0 and 3.0 a -0.0 that (-a) * b never produces.
+            // FPNeg runs after FPMul, so the product is normalized first.
+            FpBinOp::Fnmul => -default_nan_if_new(a * b, &[a, b]),
+            FpBinOp::Fmax => fp_max(a, b),
+            FpBinOp::Fmin => fp_min(a, b),
+            FpBinOp::Fmaxnm => fp_max_num(a, b),
+            FpBinOp::Fminnm => fp_min_num(a, b),
         };
         regs.write_fpr_f32(fd, result);
     } else {
         let a = regs.read_fpr_f64(fn_);
         let b = regs.read_fpr_f64(fm);
         let result = match op {
-            FpBinOp::Fadd => a + b,
-            FpBinOp::Fsub => a - b,
-            FpBinOp::Fmul => a * b,
-            FpBinOp::Fdiv => a / b,
+            FpBinOp::Fadd => default_nan_if_new(a + b, &[a, b]),
+            FpBinOp::Fsub => default_nan_if_new(a - b, &[a, b]),
+            FpBinOp::Fmul => default_nan_if_new(a * b, &[a, b]),
+            FpBinOp::Fdiv => default_nan_if_new(a / b, &[a, b]),
+            FpBinOp::Fnmul => -default_nan_if_new(a * b, &[a, b]),
+            FpBinOp::Fmax => fp_max(a, b),
+            FpBinOp::Fmin => fp_min(a, b),
+            FpBinOp::Fmaxnm => fp_max_num(a, b),
+            FpBinOp::Fminnm => fp_min_num(a, b),
         };
         regs.write_fpr_f64(fd, result);
+    }
+    Ok(ExecResult::Advance)
+}
+
+/// FMADD / FMSUB / FNMADD / FNMSUB. Fused: one rounding, not two, which
+/// is why this goes through `mul_add` and not `a * b + c`. Single
+/// precision computes IN f32, the same rule `exec_fp_binary` follows.
+fn exec_fp_mul_add(
+    op: FpMulAddOp, fd: u8, fn_: u8, fm: u8, fa: u8, single: bool,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    // The ARM pseudocode negates the product's first source and the
+    // addend, never the result, which is what makes the sign of an
+    // exactly cancelling FNMADD a positive zero.
+    let (neg_n, neg_a) = match op {
+        FpMulAddOp::Fmadd => (false, false),
+        FpMulAddOp::Fmsub => (true, false),
+        FpMulAddOp::Fnmadd => (true, true),
+        FpMulAddOp::Fnmsub => (false, true),
+    };
+    if single {
+        let n = regs.read_fpr_f32(fn_);
+        let m = regs.read_fpr_f32(fm);
+        let a = regs.read_fpr_f32(fa);
+        let n = if neg_n { -n } else { n };
+        let a = if neg_a { -a } else { a };
+        regs.write_fpr_f32(fd, default_nan_if_new(n.mul_add(m, a), &[n, m, a]));
+    } else {
+        let n = regs.read_fpr_f64(fn_);
+        let m = regs.read_fpr_f64(fm);
+        let a = regs.read_fpr_f64(fa);
+        let n = if neg_n { -n } else { n };
+        let a = if neg_a { -a } else { a };
+        regs.write_fpr_f64(fd, default_nan_if_new(n.mul_add(m, a), &[n, m, a]));
+    }
+    Ok(ExecResult::Advance)
+}
+
+/// FCVT{N,A,M,P,Z}{S,U}. Read at the instruction's width, scale by
+/// 2^fbits for the fixed-point form, round by the named mode, then
+/// saturate at the destination width. Widening f32 to f64 is exact, so
+/// one f64 path serves both source widths. No NZCV write: none of these
+/// touches the flags.
+fn exec_fp_to_int(
+    op: FpToIntOp, rd: u8, fn_: u8, sf: bool, single: bool, fbits: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let mut value = if single {
+        regs.read_fpr_f32(fn_) as f64
+    } else {
+        regs.read_fpr_f64(fn_)
+    };
+    if fbits != 0 {
+        // powi, not a shift: fbits reaches 64 and the exponent form is
+        // exact for every value the field can hold.
+        value *= 2f64.powi(i32::from(fbits));
+    }
+    let rounded = match op {
+        FpToIntOp::Ns | FpToIntOp::Nu => value.round_ties_even(),
+        FpToIntOp::As | FpToIntOp::Au => value.round(),
+        FpToIntOp::Ms | FpToIntOp::Mu => value.floor(),
+        FpToIntOp::Ps | FpToIntOp::Pu => value.ceil(),
+        FpToIntOp::Zs | FpToIntOp::Zu => value.trunc(),
+    };
+    let signed = matches!(
+        op,
+        FpToIntOp::Ns | FpToIntOp::As | FpToIntOp::Ms | FpToIntOp::Ps | FpToIntOp::Zs
+    );
+    let result: u64 = if signed {
+        let v = if rounded.is_nan() {
+            0i64
+        } else if sf {
+            // Same boundary rule as the unsigned arm: i64::MAX as f64 rounds
+            // UP to 2^63, so >= is correct.
+            if rounded >= i64::MAX as f64 { i64::MAX }
+            else if rounded <= i64::MIN as f64 { i64::MIN }
+            else { rounded as i64 }
+        } else if rounded >= i32::MAX as f64 { i32::MAX as i64 }
+        else if rounded <= i32::MIN as f64 { i32::MIN as i64 }
+        else { rounded as i32 as i64 };
+        v as u64
+    } else if rounded.is_nan() || rounded <= 0.0 {
+        // Negatives saturate to zero, not to the wrapped bit pattern.
+        0
+    } else if sf {
+        // u64::MAX as f64 rounds UP to 2^64, so >= is the correct
+        // boundary; < it, the cast is exact.
+        if rounded >= u64::MAX as f64 { u64::MAX } else { rounded as u64 }
+    } else if rounded >= u32::MAX as f64 {
+        u64::from(u32::MAX)
+    } else {
+        rounded as u32 as u64
+    };
+    regs.write_gpr(rd, sf, result);
+    Ok(ExecResult::Advance)
+}
+
+/// SCVTF / UCVTF. The only difference is how the source register's bits
+/// are read.
+fn exec_fp_from_int(
+    op: FpFromIntOp, fd: u8, rn: u8, sf: bool, single: bool, fbits: u8,
+    regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let raw = regs.read_gpr(rn, sf);
+    let mut value = match op {
+        FpFromIntOp::Scvtf => {
+            let i = if sf { raw as i64 } else { (raw as u32 as i32) as i64 };
+            i as f64
+        }
+        FpFromIntOp::Ucvtf => {
+            let u = if sf { raw } else { raw & 0xFFFF_FFFF };
+            u as f64
+        }
+    };
+    if fbits != 0 {
+        value /= 2f64.powi(i32::from(fbits));
+    }
+    if single {
+        regs.write_fpr_f32(fd, value as f32);
+    } else {
+        regs.write_fpr_f64(fd, value);
     }
     Ok(ExecResult::Advance)
 }
@@ -1147,8 +1384,8 @@ fn sign_extend_from(value: u64, top_bit: u32) -> u64 {
 
 /// SBFM / UBFM extract-and-extend. Mirrors the ARM bitfield-move algorithm
 /// for the two cases the course reaches: `imms >= immr` (extract a field
-/// from bit `immr` upward -- the `sxt*`/`uxt*`/`sbfx`/`ubfx` forms) and
-/// `imms < immr` (place a field at the high end -- the `sbfiz`/`ubfiz`
+/// from bit `immr` upward: the `sxt*`/`uxt*`/`sbfx`/`ubfx` forms) and
+/// `imms < immr` (place a field at the high end: the `sbfiz`/`ubfiz`
 /// forms). The LSL/LSR/ASR aliases never reach here; the decoder keeps them
 /// on the shifted-register path.
 fn exec_bitfield(
@@ -1216,8 +1453,48 @@ fn exec_mul_accumulate(
     Ok(ExecResult::Advance)
 }
 
+/// CLZ/CLS/RBIT/REV/REV16/REV32. Every row is width-aware: a shared
+/// 64-bit body answers 32 too high for CLZ at W width and reverses the
+/// wrong span for the byte swaps. No flags.
+fn exec_dp1(
+    op: Dp1Op, sf: bool, rd: u8, rn: u8, regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let v = regs.read_gpr(rn, sf);
+    let result = if sf {
+        match op {
+            Dp1Op::Rbit => v.reverse_bits(),
+            Dp1Op::Rev16 => ((v & 0x00FF_00FF_00FF_00FF) << 8) | ((v >> 8) & 0x00FF_00FF_00FF_00FF),
+            Dp1Op::Rev32 => {
+                let lo = u64::from((v as u32).swap_bytes());
+                let hi = u64::from(((v >> 32) as u32).swap_bytes());
+                (hi << 32) | lo
+            }
+            Dp1Op::Rev => v.swap_bytes(),
+            Dp1Op::Clz => u64::from(v.leading_zeros()),
+            // ARM's count-leading-sign-bits: the run of bits equal to the
+            // top one, minus the top one itself, so 0 and -1 both answer
+            // 63 at X width rather than 64.
+            Dp1Op::Cls => u64::from(
+                (v as i64).leading_zeros().max((!(v as i64)).leading_zeros()) - 1,
+            ),
+        }
+    } else {
+        let w = v as u32;
+        u64::from(match op {
+            Dp1Op::Rbit => w.reverse_bits(),
+            Dp1Op::Rev16 => ((w & 0x00FF_00FF) << 8) | ((w >> 8) & 0x00FF_00FF),
+            // Rev32 has no W form; the decoder cannot produce it here.
+            Dp1Op::Rev32 | Dp1Op::Rev => w.swap_bytes(),
+            Dp1Op::Clz => w.leading_zeros(),
+            Dp1Op::Cls => (w as i32).leading_zeros().max((!(w as i32)).leading_zeros()) - 1,
+        })
+    };
+    regs.write_gpr(rd, sf, result);
+    Ok(ExecResult::Advance)
+}
+
 fn exec_mul_wide(
-    op: MulWideOp, rd: u8, rn: u8, rm: u8,
+    op: MulWideOp, rd: u8, rn: u8, rm: u8, ra: u8,
     regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
     let result = match op {
@@ -1241,6 +1518,28 @@ fn exec_mul_wide(
             let a = u128::from(regs.read_gpr(rn, true));
             let b = u128::from(regs.read_gpr(rm, true));
             ((a * b) >> 64) as u64
+        }
+        // The accumulator is a full 64-bit register even though both
+        // sources are 32-bit, so it is read at X width and never masked.
+        MulWideOp::Smaddl => {
+            let a = i64::from(regs.read_gpr(rn, false) as u32 as i32);
+            let b = i64::from(regs.read_gpr(rm, false) as u32 as i32);
+            (regs.read_gpr(ra, true) as i64).wrapping_add(a * b) as u64
+        }
+        MulWideOp::Smsubl => {
+            let a = i64::from(regs.read_gpr(rn, false) as u32 as i32);
+            let b = i64::from(regs.read_gpr(rm, false) as u32 as i32);
+            (regs.read_gpr(ra, true) as i64).wrapping_sub(a * b) as u64
+        }
+        MulWideOp::Umaddl => {
+            let a = regs.read_gpr(rn, false) & 0xFFFF_FFFF;
+            let b = regs.read_gpr(rm, false) & 0xFFFF_FFFF;
+            regs.read_gpr(ra, true).wrapping_add(a * b)
+        }
+        MulWideOp::Umsubl => {
+            let a = regs.read_gpr(rn, false) & 0xFFFF_FFFF;
+            let b = regs.read_gpr(rm, false) & 0xFFFF_FFFF;
+            regs.read_gpr(ra, true).wrapping_sub(a * b)
         }
     };
     regs.write_gpr(rd, true, result);
@@ -1493,6 +1792,81 @@ mod tests {
         let instr = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: false };
         execute(&instr, &mut regs, &mut mem).unwrap();
         assert!(regs.read_fpr_f64(0).is_nan());
+    }
+
+    #[test]
+    fn an_invalid_operation_writes_the_positive_default_nan() {
+        // AArch64 generates the DEFAULT NaN for an invalid operation and it
+        // is positive, which is what the servers print as `nan` rather than
+        // `-nan`. x86-64 answers the same operations with its own
+        // "indefinite" QNaN, whose sign bit is set.
+        let (mut regs, mut mem) = fresh();
+        let d_default = 0x7FF8_0000_0000_0000u64;
+        let s_default = 0x7FC0_0000u64;
+
+        regs.write_fpr_f64(1, -4.0);
+        let sqrt_d = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: false };
+        execute(&sqrt_d, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), d_default, "fsqrt d");
+
+        regs.write_fpr_f32(1, -4.0);
+        let sqrt_s = Instruction::FpUnary { op: FpUnaryOp::Fsqrt, fd: 0, fn_: 1, single: true };
+        execute(&sqrt_s, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), s_default, "fsqrt s");
+
+        for (op, a, b, what) in [
+            (FpBinOp::Fdiv, 0.0f64, 0.0f64, "0/0"),
+            (FpBinOp::Fsub, f64::INFINITY, f64::INFINITY, "inf - inf"),
+            (FpBinOp::Fmul, 0.0f64, f64::INFINITY, "0 * inf"),
+            (FpBinOp::Fadd, f64::INFINITY, f64::NEG_INFINITY, "inf + -inf"),
+        ] {
+            regs.write_fpr_f64(1, a);
+            regs.write_fpr_f64(2, b);
+            let instr = Instruction::FpBinary { op, fd: 0, fn_: 1, fm: 2, single: false };
+            execute(&instr, &mut regs, &mut mem).unwrap();
+            assert_eq!(regs.read_fpr_bits(0), d_default, "{what}");
+
+            regs.write_fpr_f32(1, a as f32);
+            regs.write_fpr_f32(2, b as f32);
+            let instr = Instruction::FpBinary { op, fd: 0, fn_: 1, fm: 2, single: true };
+            execute(&instr, &mut regs, &mut mem).unwrap();
+            assert_eq!(regs.read_fpr_bits(0), s_default, "{what} single");
+        }
+
+        // An operand NaN is NOT regenerated: it propagates with the sign and
+        // payload it arrived with, which is what FPCR.DN = 0 means.
+        let carried = 0xFFF8_0000_0000_00FFu64;
+        regs.write_fpr_bits(1, carried);
+        regs.write_fpr_f64(2, 1.0);
+        let add = Instruction::FpBinary {
+            op: FpBinOp::Fadd, fd: 0, fn_: 1, fm: 2, single: false,
+        };
+        execute(&add, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), carried, "an operand NaN propagates");
+    }
+
+    #[test]
+    fn a_fused_multiply_add_of_an_invalid_product_writes_the_default_nan() {
+        // 0 * inf + 1 is invalid at the product, and the fused path must
+        // answer with the same positive default NaN the binary ops do.
+        let (mut regs, mut mem) = fresh();
+        regs.write_fpr_f64(1, 0.0);
+        regs.write_fpr_f64(2, f64::INFINITY);
+        regs.write_fpr_f64(3, 1.0);
+        let instr = Instruction::FpMulAdd {
+            op: FpMulAddOp::Fmadd, fd: 0, fn_: 1, fm: 2, fa: 3, single: false,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), 0x7FF8_0000_0000_0000u64, "fmadd d");
+
+        regs.write_fpr_f32(1, 0.0);
+        regs.write_fpr_f32(2, f32::INFINITY);
+        regs.write_fpr_f32(3, 1.0);
+        let instr = Instruction::FpMulAdd {
+            op: FpMulAddOp::Fmadd, fd: 0, fn_: 1, fm: 2, fa: 3, single: true,
+        };
+        execute(&instr, &mut regs, &mut mem).unwrap();
+        assert_eq!(regs.read_fpr_bits(0), 0x7FC0_0000u64, "fmadd s");
     }
 
     #[test]
@@ -2232,7 +2606,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_gpr(1, false, (-7i32) as u32 as u64);
         execute(
-            &Instruction::FpScvtf { fd: 0, rn: 1, sf: false, single: true },
+            &Instruction::FpFromInt {
+                op: FpFromIntOp::Scvtf, fd: 0, rn: 1, sf: false, single: true, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2246,7 +2622,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_fpr_f32(1, -2.7);
         execute(
-            &Instruction::FpFcvtzs { rd: 0, fn_: 1, sf: false, single: true },
+            &Instruction::FpToInt {
+                op: FpToIntOp::Zs, rd: 0, fn_: 1, sf: false, single: true, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2316,7 +2694,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_gpr(3, true, 42);
         execute(
-            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true, single: false },
+            &Instruction::FpFromInt {
+                op: FpFromIntOp::Scvtf, fd: 0, rn: 3, sf: true, single: false, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2329,7 +2709,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_gpr(3, true, (-7i64) as u64);
         execute(
-            &Instruction::FpScvtf { fd: 0, rn: 3, sf: true, single: false },
+            &Instruction::FpFromInt {
+                op: FpFromIntOp::Scvtf, fd: 0, rn: 3, sf: true, single: false, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2342,7 +2724,9 @@ mod tests {
         let (mut regs, mut mem) = fresh();
         regs.write_fpr_f64(2, 3.9);
         execute(
-            &Instruction::FpFcvtzs { rd: 0, fn_: 2, sf: true, single: false },
+            &Instruction::FpToInt {
+                op: FpToIntOp::Zs, rd: 0, fn_: 2, sf: true, single: false, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2351,7 +2735,9 @@ mod tests {
 
         regs.write_fpr_f64(2, -3.9);
         execute(
-            &Instruction::FpFcvtzs { rd: 1, fn_: 2, sf: true, single: false },
+            &Instruction::FpToInt {
+                op: FpToIntOp::Zs, rd: 1, fn_: 2, sf: true, single: false, fbits: 0,
+            },
             &mut regs,
             &mut mem,
         )
@@ -2726,8 +3112,8 @@ mod tests {
 
     #[test]
     fn sbcs_with_carry_set_matches_subs() {
-        // With C=1 there is no borrow, so SBCS is SUBS bit for bit --
-        // result and all four flags.
+        // With C=1 there is no borrow, so SBCS is SUBS bit for bit, in
+        // the result and all four flags.
         for (a, b) in [(10u64, 3u64), (3, 10), (0, 0), (i64::MIN as u64, 1), (u64::MAX, 1)] {
             let (mut regs, mut mem) = fresh();
             regs.write_gpr(1, true, a);
@@ -2808,7 +3194,7 @@ mod tests {
 
     #[test]
     fn sbc_w_form_borrows_inside_32_bits() {
-        // 0 - 0 - 1 at 32 bits is 0xFFFF_FFFF, zero-extended into Xd -- not
+        // 0 - 0 - 1 at 32 bits is 0xFFFF_FFFF, zero-extended into Xd, not
         // the 64-bit all-ones a width-blind NOT would produce.
         let (mut regs, mut mem) = fresh();
         regs.nzcv.c = false;

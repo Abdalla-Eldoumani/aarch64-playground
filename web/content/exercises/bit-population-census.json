@@ -1,11 +1,11 @@
 {
-  "title": "bit population census",
+  "title": "Bit population census",
   "slug": "bit-population-census",
   "order": 14,
   "topic": "bitwise",
   "difficulty": "core",
-  "prompt": "How many bits of `0xb7a5` are set? Count them with a loop instead of trusting anyone's arithmetic.\n\nThe classic walk: mask off the lowest bit with `and`, add it to the count, shift the value right by one, and stop when nothing is left. Every set bit takes exactly one turn through position zero.\n\n## what is checked\n\n- the count of set bits is printed on its own line\n- the program exits cleanly\n- the count comes from masking and shifting (`and`, `lsr`), not from counting on paper",
-  "starter": "// count how many bits of a value are set\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(value_r, x19)\ndefine(count_r, x20)\ndefine(bit_r, x21)\n\n        .data\nfmt:    .string \"bits set = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     value_r, =0xb7a5            // the value under census\n        mov     count_r, 0\n\n        // TODO: while value_r is not zero, mask off its lowest bit\n        // with and, add that bit to count_r, and shift value_r right\n        // by one. Every set bit passes through position zero exactly\n        // once on its way out.\n\n        ldr     x0, =fmt\n        mov     x1, count_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "How many bits of `0xb7a5` are set? Count them with a loop.\n\nThe classic walk: mask off the lowest bit with `and`, add it to the count, shift the value right by one, and stop when nothing is left. Every set bit takes exactly one turn through position zero.\n\n## what is checked\n\n- the count of set bits is printed on its own line\n- the program exits cleanly\n- the count comes from masking and shifting (`and`, `lsr`)",
+  "starter": "// count how many bits of a value are set\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(value_r, x19)\ndefine(count_r, x20)\ndefine(bit_r, x21)\n\n        .data\nfmt:    .string \"bits set = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     value_r, =0xb7a5\n        mov     count_r, 0\n\n        // TODO: while value_r is not zero, mask off its lowest bit\n        // with and, add that bit to count_r, and shift value_r right\n        // by one.\n\n        ldr     x0, =fmt\n        mov     x1, count_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
   "variant": "write",
   "acceptance": {

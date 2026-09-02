@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadAllLessons, loadLesson } from "@/lib/content/lessons";
+import { loadAllLessons, loadLesson, loadLessonIndex } from "@/lib/content/lessons";
 
 // A fresh temp fixtures directory per test, cleaned up afterward, so the loader
 // is driven against controlled files and never the real content directory.
@@ -76,5 +76,39 @@ describe("loadAllLessons", () => {
     makeDir();
     write("bad.json", "{ not valid json ");
     expect(() => loadAllLessons(dir)).toThrow(/bad\.json/);
+  });
+});
+
+// The index projection is why the learn payload is small: the bodies are
+// almost all of a lesson's weight and the index never reads a block.
+describe("loadLessonIndex", () => {
+  it("carries every field the index renders and no other", () => {
+    makeDir();
+    write("a.json", lessonJson({ slug: "first", summary: "a line", tags: ["stack"] }));
+    expect(Object.keys(loadLessonIndex(dir)[0]).sort()).toEqual([
+      "order",
+      "slug",
+      "summary",
+      "tags",
+      "title",
+    ]);
+  });
+
+  it("drops the body from every row", () => {
+    makeDir();
+    write("a.json", lessonJson({ slug: "first", order: 1 }));
+    write("b.json", lessonJson({ slug: "second", order: 2 }));
+    for (const row of loadLessonIndex(dir)) {
+      expect(row).not.toHaveProperty("body");
+    }
+  });
+
+  it("keeps the same order and count as loadAllLessons", () => {
+    makeDir();
+    write("a.json", lessonJson({ slug: "second", order: 2 }));
+    write("b.json", lessonJson({ slug: "first", order: 1 }));
+    expect(loadLessonIndex(dir).map((row) => row.slug)).toEqual(
+      loadAllLessons(dir).map((lesson) => lesson.slug),
+    );
   });
 });

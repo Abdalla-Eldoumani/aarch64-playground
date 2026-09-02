@@ -1,13 +1,12 @@
-//! End-to-end integration tests for the phase B hosted runtime. These
+//! End-to-end integration tests for the hosted runtime. These
 //! build a tiny program in memory, wire up host stubs, and drive it
 //! through `Cpu::run_until_break` to prove that printf, scanf, and the
 //! write/read/exit syscalls all produce the right output once the full
 //! pipeline runs.
 //!
-//! The cpsc 355 tutorial corpus still needs the frontend linker to
-//! resolve `bl printf` and `ldr xN, =label` automatically (phase B.13+
-//! work); these tests exercise the same machinery end-to-end with
-//! hand-built binaries so we know each layer works.
+//! The linker resolves `bl printf` and `ldr xN, =label` for source
+//! programs; these tests drive the same machinery with hand-built
+//! binaries, one layer at a time.
 
 use aarch64_emulator::cpu::{Cpu, CODE_BASE, STACK_BASE};
 use aarch64_emulator::hosted::libc;
@@ -58,7 +57,7 @@ fn load_imm64(rd: u8, value: u64, out: &mut Vec<u32>) {
 fn printf_spills_ninth_int_arg_to_stack() {
     // AAPCS64: x0 = fmt, x1..x7 = vararg ints 1..7. Beyond x7, ints
     // spill to the stack starting at SP+0, advancing 8 bytes per arg.
-    // 3 doubles all fit in d0..d2 so no fp spill happens here -- this
+    // 3 doubles all fit in d0..d2 so no fp spill happens here; this
     // test exercises the int-spill path the corpus would otherwise
     // never reach.
     let mut cpu = Cpu::new();
@@ -70,14 +69,14 @@ fn printf_spills_ninth_int_arg_to_stack() {
         cpu.mem.write_u8(data_base + i as u64, *b).unwrap();
     }
 
-    // Pre-populate the FP register file so we don't need to encode FMOV
-    // sequences in the test program.
+    // Pre-populate the FP register file so the test program needs no FMOV
+    // sequences.
     cpu.regs.write_fpr_f64(0, 1.5);
     cpu.regs.write_fpr_f64(1, 2.5);
     cpu.regs.write_fpr_f64(2, 3.5);
 
     // Spill slots for ints 8 and 9. The walker reads from SP at the
-    // call site; we leave SP at STACK_BASE so SP+0 = STACK_BASE.
+    // call site; SP stays at STACK_BASE, so SP+0 = STACK_BASE.
     let spill_base = STACK_BASE;
     cpu.mem.write_u64(spill_base, 8).unwrap();
     cpu.mem.write_u64(spill_base + 8, 9).unwrap();
@@ -242,7 +241,7 @@ fn exit_syscall_sets_exit_code() {
     load_imm64(0, 7, &mut prog);
     load_imm64(8, 93, &mut prog);
     prog.push(svc(0));
-    prog.push(svc(1)); // would halt if we got this far
+    prog.push(svc(1)); // would halt if the exit syscall let execution reach it
     cpu.load_program(&prog);
 
     let r = cpu.run_until_break(200).unwrap();
@@ -266,8 +265,7 @@ fn exit_libc_stub_halts_with_code() {
 }
 
 /// Drive the full pipeline the way `assemble_and_load` does: feed source,
-/// run until halt, collect stdout. This is the bar the cpsc 355 corpus
-/// needs to clear.
+/// run until halt, collect stdout.
 fn run_source(source: &str) -> (String, Option<i64>, bool) {
     use aarch64_emulator::frontend::pipeline::assemble_hosted;
     let mut cpu = Cpu::new();
@@ -331,10 +329,11 @@ value:
 fn hosted_pipeline_printf_via_host_stub_integration() {
     use aarch64_emulator::frontend::pipeline::assemble_hosted;
     use aarch64_emulator::hosted::printf;
-    // `bl printf` can't reach 0xFFFF_0000 from .text directly. For now
-    // we exercise the pipeline up to the point where `ldr x16, =printf`
-    // resolves, `blr x16` calls the stub, and stdout picks up the
-    // formatted string. `printf` is pre-registered in Cpu::new().
+    // `bl printf` cannot reach 0xFFFF_0000 from .text directly, so this
+    // program takes the explicit route: `ldr x16, =printf` resolves,
+    // `blr x16` calls the stub, and stdout picks up the formatted string.
+    // The trampoline that hides this is covered separately. `printf` is
+    // pre-registered in Cpu::new().
     let src = r#"
 .text
 .global main
@@ -363,7 +362,7 @@ fmt:
 #[test]
 fn bare_metal_style_svc_zero_with_x8_zero_still_halts() {
     // Regression guard: the five bare-metal examples never set x8, so the
-    // SVC #0 at the end should halt exactly as it did before phase B.
+    // SVC #0 at the end still halts.
     let mut cpu = Cpu::new();
     let mut prog = Vec::new();
     load_imm64(0, 5, &mut prog);
@@ -434,7 +433,7 @@ fn hosted_pipeline_bl_with_tab_whitespace_trampolines() {
     // against a literal space and silently left `bl\texit` untouched,
     // sending the BL at a 0xFFFF_XXXX host stub directly and crashing
     // the encoder's imm26 range check. The token form lexes tab and
-    // space identically so the trampoline now wires up correctly.
+    // space identically, so the trampoline wires up.
     let src = "\n.text\n.global main\nmain:\n    mov     x0, 11\n    bl\texit\n";
     let (_, exit_code, halted) = run_source(src);
     assert!(halted);
@@ -445,7 +444,7 @@ fn hosted_pipeline_bl_with_tab_whitespace_trampolines() {
 fn hosted_pipeline_empty_args_still_has_argv0() {
     // Linux never starts a process with argc = 0: argv[0] is the program
     // path. A program loaded without args must observe argc = 1 and a
-    // readable argv[0], exactly as it does on the course servers --
+    // readable argv[0], exactly as it does on the course servers:
     // usage-gate programs (`cmp w0, 2; b.lt error`) that dereference
     // argv[0] on the error path used to fault at address 0 here.
     use aarch64_emulator::frontend::pipeline::assemble_hosted;

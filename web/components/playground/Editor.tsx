@@ -17,11 +17,12 @@ import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playgro
 // now decides both the runtime build and the compile-time types.
 //
 // Two details of the arrangement carry their own reasons:
-//   - `edcore.main` is monaco's editor-only entry: every widget the
-//     playground uses (suggest, hover, find) and none of the bundled
-//     language services. This editor registers arm64 itself and never asks
-//     for another language, so those services -- and the extra workers
-//     they need -- would be megabytes of dead weight.
+//   - the editor-only build is two entries, `editor` for the API surface
+//     and `features/register.all` for every widget the playground uses
+//     (suggest, hover, find). Neither one pulls a bundled language
+//     service, and this editor registers arm64 itself and never asks for
+//     another language, so those services, and the extra workers they
+//     need, would be megabytes of dead weight.
 //   - the import is dynamic because monaco is a browser-only module and
 //     this component is rendered on the server too, and because the editor
 //     belongs in its own async chunk: the landing page composes this same
@@ -37,7 +38,7 @@ function loadMonaco(): Promise<void> {
     self.MonacoEnvironment = {
       getWorker: () =>
         new Worker(
-          new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url),
+          new URL("monaco-editor/editor/editor.worker.js", import.meta.url),
           // The worker name is also the bundler's chunk name, which is what
           // lets the bundle budget in package.json glob the editor's assets
           // by name instead of by a hashed webpack id that moves with any
@@ -45,9 +46,13 @@ function loadMonaco(): Promise<void> {
           { name: "monaco-worker" },
         ),
     };
-    const monaco = await import(
-      /* webpackChunkName: "monaco" */ "monaco-editor/esm/vs/editor/edcore.main.js"
-    );
+    // Registering the widgets is a pure side effect of importing them, and
+    // the API entry exports without registering anything, so both have to
+    // be asked for. They share a chunk name so the budget still measures
+    // one file, and they are ordered the way monaco's own all-in entry
+    // orders them: contributions first, the API that reads them second.
+    await import(/* webpackChunkName: "monaco" */ "monaco-editor/features/register.all");
+    const monaco = await import(/* webpackChunkName: "monaco" */ "monaco-editor/editor");
     loader.config({ monaco });
   })();
   return monacoLoad;
@@ -105,7 +110,6 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
   if (arm64Registered) return;
   arm64Registered = true;
 
-  // register ARM64 language
   monaco.languages.register({ id: "arm64" });
   // Comment tokens drive Monaco's built-in toggles: Ctrl+/ (Cmd+/) line-
   // toggles with `//`, Shift+Alt+A block-toggles with the GAS `/* */` pair
@@ -271,7 +275,7 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       const doc = lookupDoc(extended) ?? lookupDoc(word.word);
       if (!doc) return null;
       const lines: string[] = [
-        `**${word.word.toUpperCase()}** -- ${doc.summary}`,
+        `**${word.word.toLowerCase()}** · ${doc.summary}`,
       ];
       if (doc.details) {
         lines.push("", ...doc.details);
@@ -410,10 +414,10 @@ export function Editor({
   }, [onFormat]);
   const toast = useToast();
   // The vendored build has to be named to the loader BEFORE
-  // @monaco-editor/react asks for it -- an unnamed instance is exactly what
-  // sends the loader off to its CDN default -- and child effects run first,
-  // so the editor itself mounts once the chunk is in. A phone-fallback
-  // mount never requests the chunk at all.
+  // @monaco-editor/react asks for it: an unnamed instance is exactly what sends
+  // the loader off to its CDN default. Child effects run first, so the editor
+  // itself mounts once the chunk is in. A phone-fallback mount never requests
+  // the chunk at all.
   const [monacoReady, setMonacoReady] = useState(false);
   useEffect(() => {
     if (fallback) return;
@@ -423,7 +427,7 @@ export function Editor({
         if (live) setMonacoReady(true);
       },
       () => {
-        if (live) toast.error("the editor failed to load -- reload the page to try again");
+        if (live) toast.error("the editor failed to load. reload the page to try again");
       },
     );
     return () => {
@@ -439,9 +443,8 @@ export function Editor({
       const error = validateSource(next);
       if (error) {
         toast.error(error);
-        // Intentional security observability: a rejected over-cap input is
-        // surfaced to the console alongside the toast, per the input-
-        // validation policy. This is the only sanctioned console use here.
+        // A rejected over-cap input goes to the console as well as the toast,
+        // per the input-validation policy.
         console.warn(`rejected over-cap source: ${error}`);
         return;
       }
@@ -466,7 +469,7 @@ export function Editor({
 
     const decorations: Parameters<typeof editor.deltaDecorations>[1] = [];
 
-    // current line highlight -- the in-call variant is its own class, not a
+    // current line highlight: the in-call variant is its own class, not a
     // second one layered on top: both set `background` with !important, so
     // which one won would depend on the order of the rules in the block.
     if (currentLine != null) {
@@ -482,7 +485,6 @@ export function Editor({
       });
     }
 
-    // breakpoints
     for (const line of breakpoints) {
       decorations.push({
         range: new monaco.Range(line, 1, line, 1),
@@ -493,9 +495,9 @@ export function Editor({
       });
     }
 
-    // assembly errors -- the hover bubble carries both the raw message
-    // and, when the explainer recognizes the variant, a structured
-    // {what / why / fix / consult} block keyed to a style-guide section.
+    // assembly errors: the hover bubble carries both the raw message and, when
+    // the explainer recognizes the variant, a structured {what / why / fix /
+    // consult} block keyed to a style-guide section.
     for (const err of assemblyErrors) {
       const explanation = explainError(err.message);
       const md = explanation
@@ -562,10 +564,17 @@ export function Editor({
 
       // Escape blurs the editor when no internal Monaco widget is open,
       // so keyboard-only users aren't trapped inside Monaco when they
-      // hit Esc to back out of a focused control.
-      editor.addCommand(monaco.KeyCode.Escape, () => {
-        editor.getDomNode()?.blur();
-      });
+      // hit Esc to back out of a focused control. The context expression
+      // is what makes "no widget open" hold: a command registered without
+      // one outranks Monaco's own Escape bindings, which left the find
+      // widget with nothing to close it from the keyboard.
+      editor.addCommand(
+        monaco.KeyCode.Escape,
+        () => {
+          editor.getDomNode()?.blur();
+        },
+        "!findWidgetVisible",
+      );
 
       // Ctrl+Shift+F invokes the playground's source formatter (the
       // command palette uses the same handler). Mirrors VS Code's
@@ -575,7 +584,6 @@ export function Editor({
         () => onFormatRef.current?.(),
       );
 
-      // glyph margin click for breakpoints
       editor.onMouseDown((e) => {
         if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
           return;
@@ -586,10 +594,9 @@ export function Editor({
         }
       });
 
-      // On coarse pointers, the breakpoint gesture is a single tap on
-      // the glyph margin. The CSS below widens that margin to 32px so a
-      // fingertip lands reliably; no anywhere-on-line long-press, which
-      // used to fight text selection.
+      // On coarse pointers, the breakpoint gesture is a single tap on the glyph
+      // margin. The CSS below widens that margin to 32px so a fingertip lands
+      // reliably. An anywhere-on-line long-press would fight text selection.
 
       // Shrink the editor when the iOS keyboard opens so the textarea
       // doesn't sit behind the keyboard; Monaco's `automaticLayout` flag
@@ -611,22 +618,21 @@ export function Editor({
     [onToggleBreakpoint, updateDecorations, onCursorChange]
   );
 
-  // re-apply decorations when the editor or any of its inputs change
   useEffect(() => {
     updateDecorations();
   }, [currentLine, currentLineInCall, breakpoints, assemblyErrors, updateDecorations]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
-      // Cancel the drop FIRST: an early return before preventDefault let
-      // the browser's default run, and the default for a dropped file is
-      // navigating the tab to file:// -- the whole machine state gone.
+      // Cancel the drop FIRST: an early return before preventDefault let the
+      // browser's default run, and the default for a dropped file is navigating
+      // the tab to file://, which loses the whole machine state.
       e.preventDefault();
       const file = e.dataTransfer?.files?.[0];
       if (!file) return;
       if (!/\.(s|asm|txt)$/i.test(file.name)) {
         toast.error(
-          "only .s, .asm, and .txt files can be dropped here -- rename the file or paste its contents",
+          "only .s, .asm, and .txt files can be dropped here. rename the file, or paste its contents into the editor",
         );
         return;
       }
@@ -642,7 +648,7 @@ export function Editor({
         .text()
         .then((text) => handleChange(text))
         .catch(() => {
-          toast.error("could not read the dropped file -- try again or paste its contents");
+          toast.error("could not read the dropped file. drop it again, or paste its contents into the editor");
         });
     },
     [handleChange, toast],
@@ -676,6 +682,8 @@ export function Editor({
       onDrop={onDrop}
     >
       <style>{`
+        /* Injected here rather than globals.css: Monaco owns these class names,
+           so they live beside the decorations that set them. */
         .current-line-highlight { background: color-mix(in srgb, var(--amber) 14%, transparent) !important; box-shadow: inset 2px 0 0 0 var(--amber); }
         /* Inside a libc call: same amber at a lower alpha, and the solid left
            rule becomes a dashed one. Drawn as a background layer rather than
@@ -772,11 +780,11 @@ function mapSuggestion(
 }
 
 /**
- * Phone-mode editor: bare `<textarea>` plus a synced gutter strip that
- * shows line numbers, breakpoint dots, current-PC marker, and the first
- * error line. Students on iPhone SE need to be able to toggle a
- * breakpoint, see which line their error is on, and watch the PC move
- * during step -- all without Monaco's larger virtual surface.
+ * Phone-mode editor: bare `<textarea>` plus a synced gutter strip that shows
+ * line numbers, breakpoint dots, current-PC marker, and the first error line.
+ * Students on iPhone SE need to be able to toggle a breakpoint, see which line
+ * their error is on, and watch the PC move during step, all without Monaco's
+ * larger virtual surface.
  */
 // Vertical padding shared by gutter and textarea so the first line
 // of code aligns with the first gutter button. Both elements offset by
@@ -806,6 +814,15 @@ function FallbackEditor({
 }: FallbackEditorProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
+  // The textarea owns the offset, so the gutter's transform is written to the
+  // element in the frame of the scroll that caused it. The state write only
+  // decides which window of rows the next render commits; letting it drive the
+  // transform too left the numbers a frame behind the code.
+  const paintGutter = useCallback((top: number) => {
+    const gutter = gutterRef.current;
+    if (gutter) gutter.style.transform = `translateY(${FALLBACK_PAD_Y - top}px)`;
+  }, []);
   // A comment toggle changes the controlled `value`, so the DOM selection is
   // lost on the re-render. Stash the target range and reapply it after the
   // new value lands (before paint, so the caret never visibly jumps).
@@ -827,6 +844,25 @@ function FallbackEditor({
     ta.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
   });
 
+  // Follow the pc the way Monaco's revealLine does: nearest, so the buffer
+  // moves only as far as it must. Monaco gets this for free; without it the
+  // marker walks off-screen on a phone during autoplay and during any step
+  // past the visible window.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta || currentLine == null) return;
+    const top = FALLBACK_PAD_Y + (currentLine - 1) * FALLBACK_LINE_H;
+    const above = top < ta.scrollTop;
+    const below = top + FALLBACK_LINE_H > ta.scrollTop + ta.clientHeight;
+    if (!above && !below) return;
+    const next = Math.max(0, above ? top : top + FALLBACK_LINE_H - ta.clientHeight);
+    ta.scrollTop = next;
+    // The scroll event this write raises carries the new offset into state
+    // and re-picks the row window; the paint here is what keeps the numbers
+    // aligned in the meantime.
+    paintGutter(next);
+  }, [currentLine, paintGutter]);
+
   // Ctrl/Cmd + / toggles line comments on the touched lines, mirroring the
   // desktop Monaco editor's built-in commentLine. `onChange` (the parent's
   // over-cap guard) may reject a near-cap add, in which case nothing changes.
@@ -841,12 +877,11 @@ function FallbackEditor({
     onChange(next.text);
   };
 
-  // Outer wrapper carries `min-h-0 overflow-hidden` so the gutter's
-  // natural content height (lineCount * 24px, often well past the
-  // viewport on phones) cannot expand its parent and push the rest of
-  // the page off-screen. The previous version had no such guard, which
-  // made the editor pane balloon to thousands of pixels and pushed the
-  // header / Controls / tab strip out of view on iPhone portrait.
+  // Outer wrapper carries `min-h-0 overflow-hidden` so the gutter's natural
+  // content height (lineCount * 24px, often well past the viewport on phones)
+  // cannot expand its parent and push the rest of the page off-screen. Without
+  // it the pane balloons to thousands of pixels and pushes the rest of the
+  // chrome off an iPhone portrait screen.
   return (
     <div className="h-full w-full min-h-0 overflow-hidden flex bg-[var(--bg-base)]">
       <div
@@ -854,11 +889,13 @@ function FallbackEditor({
         role="presentation"
       >
         <div
+          ref={gutterRef}
           className="absolute left-0 right-0 will-change-transform"
           style={{
-            transform: `translateY(${
-              FALLBACK_PAD_Y - scrollTop + gutterFirst * FALLBACK_LINE_H
-            }px)`,
+            // Scroll and window are split across two properties so the scroll
+            // half can be written imperatively without fighting this render.
+            transform: `translateY(${FALLBACK_PAD_Y - scrollTop}px)`,
+            paddingTop: `${gutterFirst * FALLBACK_LINE_H}px`,
           }}
         >
           {Array.from({ length: gutterRows }, (_, i) => gutterFirst + i + 1).map((n) => {
@@ -916,7 +953,10 @@ function FallbackEditor({
         autoCorrect="off"
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onScroll={(e) => {
+          paintGutter(e.currentTarget.scrollTop);
+          setScrollTop(e.currentTarget.scrollTop);
+        }}
         onSelect={(e) => {
           if (!onCursorChange) return;
           const ta = e.currentTarget;

@@ -1,8 +1,9 @@
 // globals.s - multiply two values held in .data and store the product back
 // Loads x and y from the .data section, multiplies them, writes the
 // product into a third .data word, then reads that word back to show the
-// store landed in memory, and prints it. The load-compute-store cycle
-// over global storage, with no stack locals beyond the printf prologue.
+// store landed in memory, and prints it. The load-compute-store cycle over
+// global storage, with no stack locals: the frame exists only so main can
+// call printf.
 
 define(fp, x29)
 define(lr, x30)

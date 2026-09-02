@@ -17,8 +17,8 @@ import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 const LAUNCH_MODE_KEY = "aarch64-playground:terminal-program";
 
 export interface LaunchModeParams {
-  /** The args box, which the mode owns for the examples that wear a
-   *  different face per surface -- until the student edits it. */
+  /** The args box, which the mode owns for the examples that wear a different
+   *  face per surface, until the student edits it. */
   args: string;
   setArgs: (next: string) => void;
 }
@@ -95,8 +95,8 @@ export function useLaunchMode({ args, setArgs }: LaunchModeParams): LaunchModeCo
 
   // The console face used to seed `./<stem> console`; the emulator now owns
   // argv[0], so that stored box would hand the program an extra argument and
-  // land it on its usage path. Migrate that exact string -- whichever ingress
-  // restored it -- and leave every other box alone.
+  // land it on its usage path. Migrate that exact string, whichever ingress
+  // restored it, and leave every other box alone.
   useEffect(() => {
     if (args !== "" && args === legacyModeArgsFor(stem)) {
       setArgs(modeArgsFor(stem, "console") ?? "");

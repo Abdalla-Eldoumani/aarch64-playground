@@ -23,9 +23,8 @@ describe("buildSuggestions", () => {
     );
     const labels = got.map((s) => s.label);
     expect(labels).toContain("printf");
-    // Filter prefix `pr` should also include other matches; main is a
-    // valid label but should appear in the candidate set since labels
-    // are always suggested in bl contexts.
+    // labels are always suggested in a bl context, so `main` survives the
+    // `pr` prefix
     expect(labels).toContain("main");
   });
 

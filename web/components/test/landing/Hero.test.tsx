@@ -2,9 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
 // Stub the shared embeddable: record the props the hero feeds it and render a
-// light marker, so the test never instantiates Monaco / WASM. The hero's
-// contract is that it composes the embed (not forks it), so asserting the
-// props it passes is the meaningful check.
+// light marker, so the test never instantiates Monaco / WASM. The hero
+// composes the embed, so the props it passes are what there is to assert.
 const embed = vi.hoisted(() => ({
   props: null as Record<string, unknown> | null,
 }));
@@ -39,6 +38,12 @@ describe("Hero", () => {
     expect(embed.props!.chrome).toBe("embed");
     expect(embed.props!.autoplay).toBeTruthy();
     expect(embed.props!.readOnly).toBeTruthy();
+    // The hero is the one surface that draws its program without the editor,
+    // so the landing never loads Monaco.
+    expect(embed.props!.staticEditor).toBeTruthy();
+    // The walk keeps its two-button frame: no step, no back.
+    expect(embed.props!.showStep).toBe(false);
+    expect(embed.props!.showBack).toBe(false);
     // The start program is fed from the single landing-content source, not
     // inlined, so the hero and the data module can never disagree.
     expect(embed.props!.startSource).toBe(HERO_PROGRAM);

@@ -1,5 +1,5 @@
 // weekday-name.s - an argv-indexed .dword pointer table
-// seven day-name pointers live in a .data table; the day number arrives
+// Seven day-name pointers live in a .data table; the day number arrives
 // as argv[1], atoi converts it, and the name loads with the
 // pointer-array form [table, Wi, SXTW 3]. every table entry is a
 // forward reference the linker resolves to an absolute address.

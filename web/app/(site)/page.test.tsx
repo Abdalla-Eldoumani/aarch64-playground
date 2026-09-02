@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { CREDIBILITY } from "@/lib/content/site";
 
-// Stub the three sections so this test proves only the page's composition --
-// the order it stacks them in -- without pulling Monaco, the WASM worker, or the
-// shared embeddable through the live Hero. Each section has its own test; here
-// each is a lightweight marker carrying a unique data-testid.
+// Stub the three sections so this test proves only the order the page stacks
+// them in, without pulling Monaco, the WASM worker, or the shared embeddable
+// through the live Hero. Each section has its own test; here each is a
+// lightweight marker carrying a unique data-testid.
 vi.mock("@/components/landing/Hero", async () => {
   const React = await import("react");
   return { Hero: () => React.createElement("div", { "data-testid": "hero" }) };
@@ -47,10 +47,8 @@ describe("landing composition", () => {
 
   it("ships no footer of its own; the single footer comes from the layout", () => {
     render(<LandingPage />);
-    // The landing once stacked a credibility band -- repository, license, and
-    // the disclaimer again -- directly above the layout footer, reading as two
-    // footers. The footer now carries those facts, so the page must not restate
-    // any of them.
+    // The footer carries the repository, license, and disclaimer, so the page
+    // must not restate them.
     expect(screen.queryByRole("contentinfo")).toBeNull();
     expect(screen.queryByText(new RegExp(CREDIBILITY.disclaimer))).toBeNull();
   });

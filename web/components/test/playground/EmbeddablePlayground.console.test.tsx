@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 // The embed console contract: hub output must reach the student through the
-// REAL ConsolePanel inside embed chrome, so these tests stub only the heavy
+// real ConsolePanel inside embed chrome, so these tests stub only the heavy
 // neighbors (Monaco editor, register grid) and leave the console unmocked.
 // EmbeddablePlayground.test.tsx owns the control-logic coverage; this file
 // owns what the student actually sees in the console.
-vi.mock("@/components/playground/Editor", () => ({
+vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({
@@ -78,7 +78,10 @@ describe("embed console rendering", () => {
     // let a faulting run stop silently (the pitfall demos depend on the
     // failure being visible).
     useEmulatorMock.mockReturnValue(
-      makeHub({ error: "memory fault: read at 0x0000000800600008" }),
+      makeHub({
+        error:
+          "memory fault: the program tried to read 0x0000000800600008, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant",
+      }),
     );
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,

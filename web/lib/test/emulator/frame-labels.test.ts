@@ -57,8 +57,6 @@ y_s = 20 ; another local
   });
 });
 
-// Parse edge cases: the offset window (0, 512], spacing and hex variants,
-// duplicate offsets, and bodies that are not plain integer literals.
 
 describe("frame label parse edge cases", () => {
   it("keeps 512 (the cap) and drops 513 and 0", () => {

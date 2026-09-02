@@ -3,9 +3,12 @@
 /**
  * One multiple-choice question, graded locally against the validated
  * correct index. Before a wrong answer is corrected the block shows only
- * the author's hint -- never the explanation or the right option -- so a
+ * the author's hint, never the explanation or the right option, so a
  * student cannot read their way to the answer. `onAttempt` reports each
  * submission upward for the exercise-level solved state.
+ *
+ * The selection is controlled when the sheet passes `value`, so the pick
+ * can be saved and restored across reloads, and self-owned otherwise.
  */
 
 import { useState, type JSX } from "react";
@@ -18,6 +21,8 @@ export function QuizBlock({
   correctAnswer,
   explanation,
   hint,
+  value,
+  onValueChange,
   onAttempt,
 }: {
   question: string;
@@ -29,11 +34,23 @@ export function QuizBlock({
   explanation: string;
   /** Optional guidance rendered on a failed attempt. */
   hint?: string;
+  /** The selected option index when the sheet owns the pick; null for none. */
+  value?: number | null;
+  /** Fires on every pick so the sheet can persist it. */
+  onValueChange?: (value: number | null) => void;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
-  const [selected, setSelected] = useState<number | null>(null);
+  const [ownSelected, setOwnSelected] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  // `value` may legitimately be null (nothing picked), so the controlled test
+  // is against undefined, not nullish.
+  const selected = value !== undefined ? value : ownSelected;
+  const select = (next: number | null): void => {
+    setOwnSelected(next);
+    if (onValueChange) onValueChange(next);
+  };
 
   const isCorrect = selected === correctAnswer;
 
@@ -70,7 +87,7 @@ export function QuizBlock({
               key={i}
               type="button"
               disabled={submitted}
-              onClick={() => setSelected(i)}
+              onClick={() => select(i)}
               aria-pressed={isSelected}
               className={`rounded-[var(--radius-control)] border px-4 py-3 text-left text-[14px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${tone}`}
             >
@@ -89,7 +106,7 @@ export function QuizBlock({
           }}
           className="mt-6"
         >
-          Check Answer
+          check answer
         </Button>
       ) : (
         <div className="mt-6 flex flex-col items-start gap-5">
@@ -98,10 +115,10 @@ export function QuizBlock({
             <Button
               onClick={() => {
                 setSubmitted(false);
-                setSelected(null);
+                select(null);
               }}
             >
-              Try Again
+              try again
             </Button>
           )}
         </div>

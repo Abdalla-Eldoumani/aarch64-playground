@@ -4,11 +4,26 @@ import { join } from "node:path";
 import { SITE_URL } from "@/lib/content/site";
 
 // next/font/google only runs inside the Next build; stub the three loaders so
-// the layout module can be imported for its metadata export.
+// the layout module can be imported for its metadata export. They record their
+// arguments because those arguments are the font configuration, and every face
+// declared there lands in a render-blocking stylesheet on every route.
+interface FontOptions {
+  weight?: string[];
+  style?: string[];
+  display?: string;
+}
+
+type FontLoader = (options: FontOptions) => { variable: string };
+
+const { plexSans, jetBrainsMono, sourceSerif } = vi.hoisted(() => ({
+  plexSans: vi.fn<FontLoader>(() => ({ variable: "--font-sans" })),
+  jetBrainsMono: vi.fn<FontLoader>(() => ({ variable: "--font-mono" })),
+  sourceSerif: vi.fn<FontLoader>(() => ({ variable: "--font-serif" })),
+}));
 vi.mock("next/font/google", () => ({
-  IBM_Plex_Sans: () => ({ variable: "--font-sans" }),
-  JetBrains_Mono: () => ({ variable: "--font-mono" }),
-  Source_Serif_4: () => ({ variable: "--font-serif" }),
+  IBM_Plex_Sans: plexSans,
+  JetBrains_Mono: jetBrainsMono,
+  Source_Serif_4: sourceSerif,
 }));
 
 import { metadata } from "./layout";
@@ -35,11 +50,11 @@ describe("share card metadata", () => {
     expect(metadata.alternates?.canonical).toBe("/");
   });
 
-  it("composes route titles with a double hyphen, never an em dash", () => {
+  it("composes route titles with a middle dot, never an em dash", () => {
     const title = metadata.title;
     const template =
       title && typeof title === "object" && "template" in title ? title.template : null;
-    expect(template).toBe("%s -- cpsc 355 playground");
+    expect(template).toBe("%s · cpsc 355 playground");
   });
 
   it("carries a complete open graph card", () => {
@@ -81,5 +96,26 @@ describe("share card metadata", () => {
     expect(png.readUInt32BE(16)).toBe(1200);
     expect(png.readUInt32BE(20)).toBe(630);
     expect(png.byteLength).toBeLessThan(300 * 1024);
+  });
+});
+
+// A stray face costs every route: the next/font stylesheet is
+// render-blocking.
+describe("font declarations", () => {
+  it("declares the serif upright only", () => {
+    const options = sourceSerif.mock.calls[0][0];
+    expect(options.style).toBeUndefined();
+    expect(options.weight).toEqual(["400", "600"]);
+  });
+
+  it("declares all four weights for the sans and the mono", () => {
+    expect(plexSans.mock.calls[0][0].weight).toEqual(["400", "500", "600", "700"]);
+    expect(jetBrainsMono.mock.calls[0][0].weight).toEqual(["400", "500", "600", "700"]);
+  });
+
+  it("swaps every family, so no face blocks first paint", () => {
+    for (const loader of [sourceSerif, plexSans, jetBrainsMono]) {
+      expect(loader.mock.calls[0][0].display).toBe("swap");
+    }
   });
 });

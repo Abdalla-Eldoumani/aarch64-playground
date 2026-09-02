@@ -6,9 +6,9 @@ import { PITFALLS } from "@/lib/content/pitfall-data";
 
 // Every pitfall demo runs on the real node-target emulator: each fault must
 // misbehave exactly the way its card promises (that is the teaching payload),
-// and each fix must run clean. A demo that assembles but fails differently --
-// or worse, works -- would teach the wrong lesson, so the behavior itself is
-// pinned here.
+// and each fix must run clean. A demo that assembles but fails differently,
+// or does not fail at all, would teach the wrong lesson, so the behavior
+// itself is pinned here.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
 const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");
@@ -91,8 +91,7 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     const pitfall = demo("sign extension");
     const fault = runProgram(pitfall.fault, 100_000);
     expect(fault.error).toMatch(/memory fault/);
-    // A runtime fault is now a calm halt (the machine stops and the
-    // controls disable) instead of a live CPU wedged on the same error.
+    // A runtime fault halts the machine and disables the controls.
     expect(fault.halted).toBe(true);
     const fix = runProgram(pitfall.fix, 100_000);
     expect(fix.stdout).toBe("neighbor = 200\n");
@@ -133,8 +132,8 @@ describe("pitfall demos fail and recover exactly as taught", () => {
   it("misaligned call: the fault stops at the sp store, the fix prints the line", () => {
     const pitfall = demo("misaligned stack at a call");
     // SA0 faults every sp-based access while sp is off the boundary, so
-    // the store to the local -- not the later bl -- is where linux (and
-    // now the playground) stops this program.
+    // the store to the local, not the later bl, is where linux and the
+    // playground stop this program.
     const fault = runProgram(pitfall.fault, 100_000);
     expect(fault.stdout).toBe("");
     expect(fault.halted).toBe(true);

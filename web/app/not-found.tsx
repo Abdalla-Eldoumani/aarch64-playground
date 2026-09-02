@@ -9,9 +9,9 @@ export const metadata: Metadata = {
   title: "404",
   description: "The page you were looking for doesn't exist.",
   // The 404 answers for every unmatched path, so it has no address of its own:
-  // no place in the index, and no canonical. `alternates: null` is load-bearing
-  // -- alternates are inherited from the root layout, so without it every
-  // unmatched path advertised the site root as its canonical address.
+  // no place in the index, and no canonical. `alternates: null` is
+  // load-bearing: alternates are inherited from the root layout, so without it
+  // every unmatched path advertises the site root as its canonical address.
   robots: { index: false },
   alternates: null,
   // Open Graph and Twitter are not deep-merged across segments, so the 404
@@ -20,13 +20,13 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "cpsc 355 playground",
-    title: "404 -- cpsc 355 playground",
+    title: "404 · cpsc 355 playground",
     description: "The page you were looking for doesn't exist.",
     images: [SHARE_CARD_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "404 -- cpsc 355 playground",
+    title: "404 · cpsc 355 playground",
     description: "The page you were looking for doesn't exist.",
     images: [SHARE_CARD_IMAGE],
   },

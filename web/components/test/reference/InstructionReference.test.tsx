@@ -132,6 +132,33 @@ describe("InstructionReference", () => {
     expect(document.activeElement).toBe(input);
   });
 
+  it("focuses the filter when / is pressed anywhere else on the page", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    const detail = screen.getByLabelText("instruction detail");
+    fireEvent.keyDown(detail, { key: "/" });
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("leaves / alone while an editable target has the keyboard", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i) as HTMLInputElement;
+    const typing = document.createElement("textarea");
+    document.body.appendChild(typing);
+    typing.focus();
+    fireEvent.keyDown(typing, { key: "/" });
+    expect(document.activeElement).toBe(typing);
+    expect(document.activeElement).not.toBe(input);
+    typing.remove();
+  });
+
+  it("advertises the / shortcut on the filter itself, not in the placeholder", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i) as HTMLInputElement;
+    expect(input.placeholder).toBe("filter mnemonics");
+    expect(input.getAttribute("aria-keyshortcuts")).toBe("/");
+  });
+
   it("clears the filter when Escape is pressed", () => {
     render(<InstructionReference instructions={FIXTURE} />);
     const input = screen.getByLabelText(/filter/i) as HTMLInputElement;

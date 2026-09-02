@@ -71,8 +71,8 @@ describe("named-saves", () => {
   });
 
   it("importBundle names a structurally wrong payload instead of counting zeros", () => {
-    // The flat {added: 0, skipped: 0} let the panel green-check a
-    // rejection; wrong shape is its own outcome now.
+    // {added: 0, skipped: 0} reads as a clean import, so a wrong shape gets
+    // its own outcome.
     expect(importBundle({ wrong: true })).toEqual({ ok: false, reason: "not-a-bundle" });
     expect(importBundle(null)).toEqual({ ok: false, reason: "not-a-bundle" });
     expect(importBundle("nope")).toEqual({ ok: false, reason: "not-a-bundle" });

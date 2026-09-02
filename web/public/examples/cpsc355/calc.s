@@ -1,5 +1,5 @@
-// calc -- a pocket scientific calculator: a terminal device, or a line
-// calculator on plain stdio. https://github.com/Abdalla-Eldoumani/calc
+// calc: a pocket scientific calculator, as a terminal device or as a
+// line calculator on plain stdio. https://github.com/Abdalla-Eldoumani/calc
 //
 // run: make, then ./calculator for the device or ./calculator console for
 // the line calculator. In the playground: assemble, then run, with the
@@ -43,7 +43,7 @@ O_NONBLOCK = 0x800
 // keypress lands on the next repaint instead of the one after it.
 POLL_NS = 16000000
 
-// A typed key stays lit for this many polls -- about a tenth of a
+// A typed key stays lit for this many polls, about a tenth of a
 // second, long enough to see and short enough not to smear.
 FLASH_POLLS = 6
 
@@ -212,7 +212,7 @@ main_quit:
         ret
 
 // ------------------------------------------------------------------ //
-// console mode -- the line calculator                                  //
+// console mode: the line calculator                                    //
 //                                                                      //
 // The same expression engine EXPR mode runs, driven from cooked stdio.  //
 // Nothing on this path touches termios or fcntl and nothing on it       //
@@ -520,19 +520,20 @@ set_raw_mode:
 
         ldr     x0, =termios_orig
         ldr     x1, =termios_raw
-        mov     x2, 60
+        mov     x2, 60                  // sizeof(struct termios) on aarch64 Linux
         bl      copy_bytes
 
         // Clearing ICANON and ECHO is what hands the program every
         // keystroke as it happens and stops the terminal printing them
         // into the middle of the drawn device.
         ldr     x0, =termios_raw
-        ldr     w1, [x0, 12]
+        ldr     w1, [x0, 12]            // c_lflag sits 12 bytes into termios
         mov     w2, ICANON
         orr     w2, w2, ECHO
         bic     w1, w1, w2
         str     w1, [x0, 12]
 
+        // VMIN = 1, VTIME = 0
         mov     w1, 1
         strb    w1, [x0, 17]
         mov     w1, 0
@@ -605,8 +606,8 @@ poll_sleep:
 // ------------------------------------------------------------------ //
 // buffer helpers                                                       //
 //                                                                      //
-// The four below are the only functions in the file without a frame:    //
-// each is a leaf with no call inside it to protect one from.            //
+// The helpers below are leaves with no call inside them, so none of    //
+// them takes a frame.                                                  //
 // ------------------------------------------------------------------ //
 
 // copy_bytes: x2 bytes from x0 to x1, leaving x1 past the last one.
@@ -685,7 +686,7 @@ str_len_done:
         ret
 
 // emit_goto: append the cursor address for row w1, column w2. Addressing
-// each changed cell is what makes the repaint local -- nothing clears
+// each changed cell is what makes the repaint local; nothing clears
 // the screen after the opening draw.
 emit_goto:
         stp     fp, lr, [sp, -16]!
@@ -748,7 +749,6 @@ draw_static:
         mov     x2, chassis_len
         bl      emit_bytes
 
-        // The one word on the device that is not a key.
         mov     w1, BRAND_ROW
         mov     w2, LCD_COL
         bl      emit_goto
@@ -813,8 +813,8 @@ repaint_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// paint_display: the three rows inside the bezel -- the lamp strip, the
-// working line, and the reading.
+// paint_display: the three rows inside the bezel, namely the lamp strip,
+// the working line, and the reading.
 paint_display:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -851,7 +851,7 @@ paint_indicators:
         bl      emit_spaces
 
         // The M lamp answers the only question memory raises: is there
-        // anything in it? The staging cursor has to be parked first --
+        // anything in it? The staging cursor has to be parked first:
         // memory_is_set answers in x0, which is where the cursor lives.
         mov     x21, x0
         bl      memory_is_set
@@ -943,8 +943,8 @@ emit_err_lamp_text:
 
 // paint_entry_line: the working line. In immediate mode it grows into a
 // running record of the chain ("12 + 5"); in expression mode it is the
-// expression itself. Either way it is what you typed, kept dim so the
-// reading below stays the loud thing on the device.
+// expression itself. Either way it is what you typed, kept dim so the reading
+// below reads first.
 paint_entry_line:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -1191,7 +1191,7 @@ paint_dirty_keys_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// paint_key: one cap, at key index w1. A cap has three looks -- resting
+// paint_key: one cap, at key index w1. A cap has three looks, resting
 // in its own colour, lit amber for the moment after you type it, and
 // held under the cyan navigation highlight.
 paint_key:
@@ -1250,7 +1250,7 @@ paint_key_face:
         ret
 
 // key_colour: the resting colour for the action in w9. Colour carries
-// the same grouping the layout does -- white for what you enter, amber
+// the same grouping the layout does: white for what you enter, amber
 // for what combines it, red for what throws it away, cyan for the
 // functions.
 key_colour:
@@ -1698,8 +1698,8 @@ key_press_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// clear_entry: C. It takes back what you are typing and nothing else --
-// the pending operator and the running total survive.
+// clear_entry: C. It takes back what you are typing and nothing else: the
+// pending operator and the running total survive.
 clear_entry:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -1732,7 +1732,7 @@ clear_entry_done:
         ret
 
 // clear_all: AC. The whole calculation goes; memory and the tape stay,
-// because memory belongs to MC and the tape is a record, not a state.
+// memory is cleared by MC, and the tape is a log.
 clear_all:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -1902,7 +1902,7 @@ memory_is_set:
         ret
 
 // ------------------------------------------------------------------ //
-// immediate mode -- a pocket calculator that chains                    //
+// immediate mode: a pocket calculator that chains                      //
 // ------------------------------------------------------------------ //
 
 imm_key:
@@ -2018,9 +2018,9 @@ line_prepare_done:
         ret
 
 // seg_text: copy the current operand's text into operand_txt and return
-// its length. The operand is whatever the last operator left behind --
-// the digits being typed, the segment already on the line, or the stored
-// reading when the line has nothing after the operator yet.
+// its length. The operand is whatever the last operator left behind: the
+// digits being typed, the segment already on the line, or the stored reading
+// when the line has nothing after the operator yet.
 seg_text:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -2218,8 +2218,7 @@ imm_dot_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// imm_sign: +/- flips the sign of whatever the display is showing -- the
-// digits being typed if there are any, otherwise the stored value.
+// imm_sign: +/- flips the sign of whatever the display is showing.
 imm_sign:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -2378,6 +2377,7 @@ imm_binop:
         cbnz    w9, imm_binop_value
         ldr     x9, =line_len
         ldr     w10, [x9]
+        // an operator on the line is three columns wide (op_txt)
         cmp     w10, 3
         b.lt    imm_binop_swap
         sub     w10, w10, 3
@@ -2565,7 +2565,7 @@ imm_unary_done:
 
 // imm_percent: the convention a pocket calculator ships. After + or -,
 // a percent is a percent OF the running total, so 200 + 10 % is 220.
-// After * or / -- and with nothing pending at all -- it is a plain
+// After * or / (and with nothing pending at all) it is a plain
 // divide by a hundred, so 200 * 10 % is 20 and 50 % on its own is 0.5.
 imm_percent:
         stp     fp, lr, [sp, -16]!
@@ -2641,7 +2641,7 @@ imm_pi:
         ret
 
 // ------------------------------------------------------------------ //
-// expression mode -- precedence and parentheses                        //
+// expression mode: precedence and parentheses                          //
 // ------------------------------------------------------------------ //
 
 expr_key:
@@ -2687,7 +2687,7 @@ expr_key_done:
         ret
 
 // expr_prepare: typing after an evaluated expression starts the next
-// one. An operator is the exception -- it carries the answer forward, so
+// one. An operator is the exception: it carries the answer forward, so
 // you can keep working from what you just got.
 expr_prepare:
         stp     fp, lr, [sp, -16]!
@@ -2827,7 +2827,7 @@ parse_expr:
         ldr     w10, [x9]
         add     w10, w10, 1
         str     w10, [x9]
-        cmp     w10, 32
+        cmp     w10, 32                 // 32 nested parentheses is well past anything the 40-character cap can hold
         b.gt    parse_expr_too_deep
 
         bl      parse_term
@@ -2874,7 +2874,7 @@ parse_expr_done:
         ret
 
 // parse_term: multiplication and division, binding tighter than the
-// additive level above -- which is the whole of why 2+3*4 is 14.
+// additive level above, which is the whole of why 2+3*4 is 14.
 parse_term:
         stp     fp, lr, [sp, parse_alloc]!
         mov     fp, sp
@@ -2976,10 +2976,9 @@ parse_power_plain:
         ldp     fp, lr, [sp], parse_dealloc
         ret
 
-// parse_postfix: percent after a value divides it by a hundred, and
-// leaves a note that it did. parse_expr reads the note: a term that is
-// nothing but a percent, sitting to the right of + or -, is a percent OF
-// the left operand rather than a bare hundredth.
+// parse_postfix: percent after a value divides it by a hundred and records
+// that it did. parse_expr uses that record: to the right of + or -, a term
+// that is only a percent means a percent of the left operand.
 parse_postfix:
         stp     fp, lr, [sp, parse_alloc]!
         mov     fp, sp
@@ -3412,7 +3411,7 @@ check_positive_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// check_result: the two ways a value stops being displayable -- it is
+// check_result: the two ways a value stops being displayable. Either it is
 // not a number at all, or it has run past the hundred-decade window the
 // display can address.
 check_result:
@@ -3439,8 +3438,8 @@ check_result_done:
         ldp     fp, lr, [sp], 16
         ret
 
-// current_value: what the display is showing right now, as a double --
-// the digits being typed if there are any, otherwise the stored value.
+// current_value: what the display is showing right now, as a double: the
+// digits being typed if there are any, otherwise the stored value.
 current_value:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -3851,8 +3850,8 @@ tape_from_segment:
         ldp     fp, lr, [sp], 16
         ret
 
-// push_tape: newest first. Three slots is enough to see the shape of
-// what you have been doing without turning the chassis into a log file.
+// push_tape: newest first. Three slots is what fits between the display and
+// the keys.
 push_tape:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -3963,7 +3962,7 @@ quit_flag:      .word 0
 parse_err:      .word 0
 parse_depth:    .word 0
 tape_count:     .word 0
-sel_key:        .word 35
+sel_key:        .word 35        // the highlight starts on 0
 flash_key:      .word -1
 flash_ticks:    .word 0
 dirty_flags:    .word 0
@@ -4115,6 +4114,7 @@ post_sqr:   .string ")^2"
 KEYWORD_COUNT = 8
 
 keyword_tab:
+        // .skip pads each entry to 16 bytes so the scan can index by shift
         .dword  kw_sqrt
         .byte   ACT_SQRT
         .skip   7
@@ -4204,7 +4204,7 @@ txt_rad:     .string "rad"
 usage_txt: .ascii "usage: calculator [console]\n"
 usage_txt_len = . - usage_txt
 banner_txt:
-        .ascii "calc -- scientific calculator\n"
+        .ascii "calc: scientific calculator\n"
         .ascii "type an expression, deg or rad for the trig mode, q to quit\n"
 banner_txt_len = . - banner_txt
 prompt_txt: .ascii "calc> "

@@ -127,7 +127,7 @@ export function ImportExport({
             else onImport(target, result.files[0].body);
           })
           .catch(() => {
-            toast.error("could not read that file -- try picking it again");
+            toast.error("could not read that file. pick it again");
           });
         return;
       }
@@ -149,10 +149,8 @@ export function ImportExport({
             const contentError = validateSource(f.body);
             if (contentError) {
               toast.error(`${f.name}: ${contentError}`);
-              // Intentional security observability: a rejected over-cap
-              // import is surfaced to the console alongside the toast, per
-              // the input-validation policy. This is the only sanctioned
-              // console use here.
+              // A rejected over-cap import goes to the console as well as the
+              // toast, per the input-validation policy.
               console.warn(`rejected over-cap source import: ${contentError}`);
               return;
             }
@@ -164,9 +162,9 @@ export function ImportExport({
           }
         })
         .catch(() => {
-          // A moved or unreadable file rejects file.text(); without this
-          // the rejection was silent and the student saw nothing at all.
-          toast.error("could not read the files -- try picking them again");
+          // A moved or unreadable file rejects file.text(); without it the
+          // rejection is silent.
+          toast.error("could not read those files. pick them again");
         });
     },
     [onImport, onImportMany, target, toast],
@@ -177,6 +175,7 @@ export function ImportExport({
       <input
         ref={fileRef}
         type="file"
+        data-import-input=""
         accept=".s,.asm,.txt,.json"
         multiple
         onChange={onFile}

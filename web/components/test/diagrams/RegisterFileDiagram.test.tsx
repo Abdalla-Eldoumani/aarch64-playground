@@ -13,7 +13,7 @@ describe("RegisterFileDiagram", () => {
   it("renders representative cells across every ABI role band", () => {
     render(<RegisterFileDiagram />);
     // argument area, a caller-saved temporary, a callee-saved register, then
-    // the fp / lr aliases and sp -- one from each color family. The footer
+    // the fp / lr aliases and sp: one from each color family. The footer
     // prose also names registers, so allow more than one match.
     expect(screen.getAllByText("x0").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("x9").length).toBeGreaterThanOrEqual(1);

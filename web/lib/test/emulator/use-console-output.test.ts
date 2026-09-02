@@ -11,9 +11,9 @@ import {
 // The console scrollback's absolute-coordinate model: the machine counts
 // display BYTES from the start of the session, the scrollback holds a
 // bounded tail of them, and syncSeen keeps the two aligned in both
-// directions -- forward when bytes went somewhere else (the terminal pane,
-// a cleared console), backward when a step back or a restored save undid
-// what was printed. Every expected byte count here is derived by hand.
+// directions: forward when bytes went somewhere else (the terminal pane, a
+// cleared console), backward when a step back or a restored save undid what
+// was printed. Every expected byte count here is derived by hand.
 
 afterEach(cleanup);
 
@@ -50,9 +50,9 @@ describe("appendBoundedTracked", () => {
   });
 
   it("never truncates into the marker a previous trim left behind", () => {
-    // The marker is web text standing for zero machine bytes: counting its
-    // 30 chars against the cap used to shave the marker itself in half and
-    // prefix a second one.
+    // The marker is web text standing for zero machine bytes: counting its 30
+    // chars against the cap would shave the marker in half and prefix a
+    // second one.
     const body = "a".repeat(MAX_CONSOLE_CHARS - 10);
     const { text, droppedBytes } = appendBoundedTracked(
       CONSOLE_TRIM_MARKER + body,

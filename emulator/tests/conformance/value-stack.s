@@ -1,5 +1,5 @@
 // value-stack.s - a bounded value stack over an equate-sized buffer
-// the buffer is reserved in .bss with .skip STACKSIZE * 4, the top
+// The buffer is reserved in .bss with .skip STACKSIZE * 4, the top
 // index lives in .data, and push guards the capacity before storing
 // with the word-array form [base, Wi, SXTW 2]. later assignments build
 // small data structures around a reserved buffer exactly this way.

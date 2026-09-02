@@ -1,4 +1,4 @@
-// display.asm - box drawing and centered text
+// display.s - box drawing and centered text
 
 define(fp, x29)
 define(lr, x30)
@@ -36,6 +36,7 @@ char_space:         .string " "
     .text
     .balign 4
 
+// standalone box drawing; the dsav screens draw through ui.s instead
 // draw_box(w0 = row, w1 = col, w2 = width, w3 = height, w4 = style)
 // style: 0 = single line, 1 = double line
     .global draw_box
@@ -257,7 +258,7 @@ print_centered:
     bl      strlen
     mov     w21, w0                         // string length
 
-    // a string wider than the field gets no padding, not a 2^31 run
+    // a string wider than the field gets no padding: the subtraction would go negative
     subs    w0, w20, w21
     b.pl    print_centered_have_pad
     mov     w0, 0

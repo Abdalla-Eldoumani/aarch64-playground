@@ -4,15 +4,13 @@
  * The map crosses the worker boundary as a flat `[addr, line, addr, line,
  * ...]` number array (see `Emulator::get_line_map` in the Rust crate,
  * sourced from `LinkedImage.line_map`). The current-line marker, the
- * disassembly text, and breakpoint placement all key off this map instead
- * of counting non-label source-text lines -- the old heuristic
- * double-counted m4 `define()` lines and `.data`/directive lines and so
- * drifted on complex programs.
+ * disassembly text, and breakpoint placement all key off this map instead of
+ * counting non-label source-text lines, which double-counts m4 `define()` and
+ * directive lines and drifts on complex programs.
  *
- * Everything here is defensive: a malformed or empty array parses to an
- * empty map, and the lookups return null on a miss, so the caller falls
- * back to the legacy line-count path rather than throwing in render or
- * indexing an array by an unchecked offset.
+ * A malformed or empty array parses to an empty map, and the lookups return
+ * null on a miss, so the caller falls back to the legacy line-count path
+ * rather than throwing in render or indexing an array by an unchecked offset.
  */
 
 export interface LineMap {
@@ -68,10 +66,9 @@ export function pcToSourceLineFromMap(pc: number, map: LineMap): number | null {
 
 /**
  * Instruction address for an editor line: the instruction at that line,
- * or the next instruction at a line at/after it -- so a breakpoint set on
- * a label, a blank line, or a comment lands on the following real
- * instruction. Null when nothing is at or after the line, or the map is
- * empty.
+ * or the next instruction at a line at/after it, so a breakpoint set on a
+ * label, a blank line, or a comment lands on the following real instruction.
+ * Null when nothing is at or after the line, or the map is empty.
  */
 export function lineToAddrFromMap(line: number, map: LineMap): number | null {
   const exact = map.lineToAddr.get(line);

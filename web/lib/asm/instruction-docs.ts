@@ -13,7 +13,7 @@ export interface InstructionDoc {
   example?: string;
   /** Optional one-line C equivalent for students translating between
    *  asm and C. Operand names are placeholders (`Rd`, `Rn`, `op2`,
-   *  `off`, etc.) -- the hover surfaces this verbatim. */
+   *  `off`, etc.); the hover surfaces this verbatim. */
   cExample?: string;
   /** True when the mnemonic exists in ARMv8 but this emulator doesn't
    *  implement it; hover shows "not implemented" instead. */
@@ -49,6 +49,59 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   ADDS: { summary: "Rd = Rn + Rm/imm, sets NZCV.", cExample: "Rd = Rn + op2; // NZCV updated" },
   SUB: { summary: "Rd = Rn - Rm/imm. No flags.", cExample: "Rd = Rn - op2;" },
   SUBS: { summary: "Rd = Rn - Rm/imm, sets NZCV (the basis of `CMP`).", cExample: "Rd = Rn - op2; // NZCV updated" },
+  CCMP: {
+    summary: "Compare only when cond holds; otherwise write the literal flags.",
+    details: [
+      "The taken path sets NZCV from `Rn - Rm` exactly as `CMP` does.",
+      "The other path WRITES the 4-bit literal (`N Z C V`, high bit first), it does not leave the old flags alone.",
+      "GCC builds `&&` and `||` chains out of these instead of branching.",
+    ],
+    example: "ccmp w1, 2, 0, eq",
+    cExample: "// a == 1 && b == 2, without a branch",
+  },
+  CCMN: {
+    summary: "The `CMN` form of `CCMP`: the taken path sets NZCV from Rn + Rm.",
+    example: "ccmn w1, 3, 0, eq",
+  },
+  SMADDL: {
+    summary: "Xd = Xa + Wn * Wm, the 32x32 product widened as signed.",
+    details: ["The accumulator is a full 64-bit register; only the two sources are 32-bit.", "`SMULL` is this with `Xa = XZR`."],
+    example: "smaddl x0, w1, w2, x3",
+    cExample: "Xd = Xa + (long)Wn * (long)Wm;",
+  },
+  SMSUBL: { summary: "Xd = Xa - Wn * Wm, signed and widening.", example: "smsubl x0, w1, w2, x3" },
+  UMADDL: { summary: "Xd = Xa + Wn * Wm, the sources read unsigned.", example: "umaddl x0, w1, w2, x3" },
+  UMSUBL: { summary: "Xd = Xa - Wn * Wm, the sources read unsigned.", example: "umsubl x0, w1, w2, x3" },
+  SMNEGL: {
+    summary: "Xd = -(Wn * Wm), signed and widening.",
+    details: ["Alias for `SMSUBL Xd, Wn, Wm, XZR`."],
+    example: "smnegl x0, w1, w2",
+  },
+  UMNEGL: { summary: "Xd = -(Wn * Wm) with the sources read unsigned, wrapping at 64 bits.", example: "umnegl x0, w1, w2" },
+  CLZ: {
+    summary: "Rd = the number of leading zero bits in Rn.",
+    details: ["Of zero it is the register width (64 for X, 32 for W), not an error."],
+    example: "clz x0, x1",
+    cExample: "Rd = __builtin_clzl(Rn); // 64 for Rn == 0",
+  },
+  CLS: {
+    summary: "Rd = the number of leading bits matching the top bit, minus that bit.",
+    details: ["Of 0 and of -1 alike it is the width minus one: 63 at X width, 31 at W."],
+    example: "cls x0, x1",
+  },
+  RBIT: { summary: "Rd = Rn with its bit order reversed across the whole register.", example: "rbit x0, x1" },
+  REV: {
+    summary: "Rd = Rn with its byte order reversed (a byte-swap).",
+    details: ["The X and W forms are different encodings, not one instruction with a width bit."],
+    example: "rev x0, x1",
+    cExample: "Rd = __builtin_bswap64(Rn);",
+  },
+  REV16: { summary: "Reverse the bytes inside each 16-bit halfword of Rn.", example: "rev16 x0, x1" },
+  REV32: {
+    summary: "Reverse the bytes inside each 32-bit word of Rn. X registers only.",
+    details: ["There is no `REV32 Wd, Wn`: the W-sized byte-swap is `REV Wd, Wn`."],
+    example: "rev32 x0, x1",
+  },
   ADC: {
     summary: "Rd = Rn + Rm + C. No flags.",
     details: ["Register form only; AArch64 has no add-with-carry immediate. It follows an `ADDS` to carry one 64-bit word into the next."],
@@ -90,14 +143,42 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "bfi w19, w20, #8, #4",
     cExample: "Rd = (Rd & ~(mask << lsb)) | ((Rn & mask) << lsb);",
   },
+  BFXIL: {
+    summary: "Bitfield extract and insert low: the field lands at bit 0 of Rd, the rest of Rd survives.",
+    details: ["Same `immr`/`imms` as `UBFX`; the difference is that `UBFX` zeroes everything outside the field and `BFXIL` leaves it."],
+    example: "bfxil x0, x1, #8, #8",
+    cExample: "Rd = (Rd & ~mask) | ((Rn >> lsb) & mask);",
+  },
+  UBFIZ: {
+    summary: "Unsigned bitfield insert in zeros: the low `width` bits of Rn land at `lsb`, the rest of Rd is zeroed.",
+    details: ["The inverse shape of `UBFX`. It is a plain write, not a merge: nothing of the old Rd survives."],
+    example: "ubfiz x2, x1, #2, #32",
+    cExample: "Rd = (unsigned long)(Rn & mask) << lsb;",
+  },
+  SBFIZ: {
+    summary: "Signed bitfield insert: the same placement, sign-extended from the field's top bit.",
+    example: "sbfiz x0, x1, #2, #30",
+    cExample: "Rd = (long)(Rn & mask) << lsb; // sign filled above the field",
+  },
   SXTB: { summary: "Sign-extend a byte to Wd/Xd (alias for `SBFM`).", example: "sxtb w0, w1", cExample: "Rd = (signed char)Rn;" },
   SXTH: { summary: "Sign-extend a halfword to Wd/Xd.", example: "sxth w0, w1", cExample: "Rd = (short)Rn;" },
   SXTW: { summary: "Sign-extend a word to 64-bit Xd.", example: "sxtw x0, w1", cExample: "Xd = (long)(int)Wn;" },
   UXTB: { summary: "Zero-extend a byte into Wd (alias for `UBFM`).", example: "uxtb w0, w1", cExample: "Rd = (unsigned char)Rn;" },
   UXTH: { summary: "Zero-extend a halfword into Wd.", example: "uxth w0, w1", cExample: "Rd = (unsigned short)Rn;" },
+  UXTW: {
+    summary: "Zero-extend a word into Xd.",
+    details: ["GAS assembles it as `MOV Wd, Wn`: a W-register write clears the top half, so no separate bitfield word is needed. The counterpart of `SXTW`."],
+    example: "uxtw x0, w1",
+    cExample: "Xd = (unsigned long)(unsigned int)Wn;",
+  },
   MUL: { summary: "Rd = Rn * Rm. Low bits only.", cExample: "Rd = Rn * Rm;" },
   MADD: { summary: "Rd = Ra + Rn * Rm.", cExample: "Rd = Ra + Rn * Rm;" },
   MSUB: { summary: "Rd = Ra - Rn * Rm.", cExample: "Rd = Ra - Rn * Rm;" },
+  MNEG: {
+    summary: "Rd = -(Rn * Rm). Alias for `MSUB Rd, Rn, Rm, ZR`.",
+    example: "mneg x0, x1, x2",
+    cExample: "Rd = -(Rn * Rm);",
+  },
   SMULL: { summary: "Xd = Wn * Wm, the exact 64-bit product of two signed 32-bit values.", example: "smull x0, w1, w2", cExample: "long d = (long)a * b;" },
   UMULL: { summary: "Xd = Wn * Wm, the exact 64-bit product of two unsigned 32-bit values.", example: "umull x0, w1, w2", cExample: "unsigned long d = (unsigned long)a * b;" },
   SMULH: { summary: "Xd = the top 64 bits of the signed 128-bit product Xn * Xm.", example: "smulh x0, x1, x2", cExample: "Rd = (long)(((__int128)a * b) >> 64);" },
@@ -107,6 +188,17 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   NEG: { summary: "Rd = -Rn (alias for `SUB Rd, ZR, Rn`).", cExample: "Rd = -Rn;" },
   NEGS: { summary: "Rd = -Rn and sets NZCV (alias for `SUBS Rd, ZR, Rn`).", example: "negs x0, x1", cExample: "Rd = -Rn; // flags from 0 - Rn" },
   MVN: { summary: "Rd = ~Rn (alias for `ORN Rd, ZR, Rn`).", cExample: "Rd = ~Rn;" },
+  ORN: {
+    summary: "Rd = Rn | ~Rm. Logical OR with the second source inverted.",
+    details: ["`MVN Rd, Rm` is this instruction with `XZR` as Rn."],
+    example: "orn x0, x1, x2",
+    cExample: "Rd = Rn | ~Rm;",
+  },
+  EON: {
+    summary: "Rd = Rn ^ ~Rm, which is XNOR.",
+    example: "eon x0, x1, x2",
+    cExample: "Rd = ~(Rn ^ Rm);",
+  },
   CMP: { summary: "`SUBS ZR, Rn, op2`. Sets NZCV, discards result.", cExample: "// (Rn - op2) sets NZCV" },
   CMN: { summary: "`ADDS ZR, Rn, op2`. Sets NZCV.", cExample: "// (Rn + op2) sets NZCV" },
   TST: { summary: "`ANDS ZR, Rn, op2`. Sets NZCV; accepts bitmask immediates.", cExample: "// (Rn & op2) sets NZCV" },
@@ -115,6 +207,10 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   CSINV: { summary: "Rd = cond ? Rn : ~Rm.", example: "csinv x0, x1, x2, eq", cExample: "Rd = cond ? Rn : ~Rm;" },
   CSNEG: { summary: "Rd = cond ? Rn : -Rm. How gcc spells abs().", example: "csneg x0, x1, x2, pl", cExample: "Rd = cond ? Rn : -Rm;" },
   CSET: { summary: "Rd = cond ? 1 : 0 (pseudo for `CSINC Rd, ZR, ZR, cond-inv`).", cExample: "Rd = cond ? 1 : 0;" },
+  CSETM: { summary: "Rd = cond ? all-ones : 0 (pseudo for `CSINV Rd, ZR, ZR, cond-inv`).", example: "csetm w0, eq", cExample: "Rd = cond ? -1 : 0;" },
+  CINC: { summary: "Rd = cond ? Rn+1 : Rn.", example: "cinc w2, w1, eq", cExample: "Rd = cond ? Rn + 1 : Rn;" },
+  CINV: { summary: "Rd = cond ? ~Rn : Rn.", example: "cinv x0, x1, ne", cExample: "Rd = cond ? ~Rn : Rn;" },
+  CNEG: { summary: "Rd = cond ? -Rn : Rn.", example: "cneg x0, x1, lt", cExample: "Rd = cond ? -Rn : Rn;" },
   LDR: {
     summary: "Load from memory. Picks 32-vs-64 bit based on Wt/Xt.",
     details: [
@@ -129,9 +225,21 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   STRB: { summary: "Store low byte of Wt.", cExample: "*(unsigned char*)(Rn + off) = (unsigned char)Rd;" },
   LDRH: { summary: "Load halfword into Wt.", cExample: "Rd = *(unsigned short*)(Rn + off);" },
   STRH: { summary: "Store low halfword of Wt.", cExample: "*(unsigned short*)(Rn + off) = (unsigned short)Rd;" },
-  LDRSB: { summary: "Load byte, sign-extend to Wt or Xt.", cExample: "Rd = *(signed char*)(Rn + off);" },
-  LDRSH: { summary: "Load halfword, sign-extend to Wt or Xt.", cExample: "Rd = *(short*)(Rn + off);" },
-  LDRSW: { summary: "Load word, sign-extend to Xt.", cExample: "Rd = *(int*)(Rn + off);" },
+  LDRSB: {
+    summary: "Load byte, sign-extend to Wt or Xt.",
+    details: ["Takes the same pre/post-index writeback and unscaled negative offsets as `LDR`."],
+    cExample: "Rd = *(signed char*)(Rn + off);",
+  },
+  LDRSH: {
+    summary: "Load halfword, sign-extend to Wt or Xt.",
+    details: ["Takes the same pre/post-index writeback and unscaled negative offsets as `LDR`."],
+    cExample: "Rd = *(short*)(Rn + off);",
+  },
+  LDRSW: {
+    summary: "Load word, sign-extend to Xt.",
+    details: ["Takes the same pre/post-index writeback and unscaled negative offsets as `LDR`. GCC walks an int array with `ldrsw x0, [x1], 4`."],
+    cExample: "Rd = *(int*)(Rn + off);",
+  },
   LDP: {
     summary: "Load pair: `LDP Xt1, Xt2, [Xn, #imm]`, or the FP file with D/S registers.",
     details: ["Offset is scaled by register size (8 for X and D, 4 for W and S)."],
@@ -139,7 +247,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   },
   STP: { summary: "Store pair; mirrors LDP (D/S pairs reach the FP file).", cExample: "*(long*)(Rn + off) = Rt1; *(long*)(Rn + off + 8) = Rt2;" },
   ADR: {
-    summary: "Pc-relative byte address of a label into Xd.",
+    summary: "PC-relative byte address of a label into Xd.",
     example: "adr x0, label",
     cExample: "Rd = &label;",
   },
@@ -190,6 +298,45 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   FSUB: { summary: "Fd = Fn - Fm (S or D form)." },
   FMUL: { summary: "Fd = Fn * Fm (S or D form)." },
   FDIV: { summary: "Fd = Fn / Fm (S or D form)." },
+  FNMUL: {
+    summary: "Fd = -(Fn * Fm): the sign flips AFTER the multiply.",
+    details: ["Not the same as negating an operand: `fnmul` of `+0.0` and `3.0` is `-0.0`."],
+    example: "fnmul d0, d1, d2",
+    cExample: "Fd = -(Fn * Fm);",
+  },
+  FMADD: {
+    summary: "Fused multiply-add: Fd = Fa + Fn * Fm. The accumulator is the LAST operand.",
+    details: [
+      "Fused means one rounding, so it is not `fmul` followed by `fadd`.",
+      "`fmadd d4, d1, d2, d3` is `d3 + d1*d2`, never `d1 + d2*d3`.",
+    ],
+    example: "fmadd d0, d1, d2, d3",
+    cExample: "Fd = fma(Fn, Fm, Fa);",
+  },
+  FMSUB: { summary: "Fd = Fa - Fn * Fm (the product is subtracted FROM the accumulator).", example: "fmsub d0, d1, d2, d3", cExample: "Fd = fma(-Fn, Fm, Fa);" },
+  FNMADD: { summary: "Fd = -Fa - Fn * Fm.", example: "fnmadd d0, d1, d2, d3", cExample: "Fd = -fma(Fn, Fm, Fa);" },
+  FNMSUB: { summary: "Fd = -Fa + Fn * Fm.", example: "fnmsub d0, d1, d2, d3", cExample: "Fd = fma(Fn, Fm, -Fa);" },
+  FMAX: {
+    summary: "Fd = the larger of Fn and Fm (S or D form).",
+    details: ["A NaN operand makes the result NaN; `FMAXNM` ignores it instead.", "`fmax(+0.0, -0.0)` is `+0.0` in either operand order."],
+    example: "fmax d0, d1, d2",
+  },
+  FMIN: {
+    summary: "Fd = the smaller of Fn and Fm (S or D form).",
+    details: ["Same NaN rule as `FMAX`; `fmin(+0.0, -0.0)` is `-0.0`."],
+    example: "fmin d0, d1, d2",
+  },
+  FMAXNM: {
+    summary: "IEEE maxNum: a NaN operand is ignored and the number wins.",
+    details: ["This is what C's `fmax()` compiles to; `FMAX` propagates the NaN."],
+    example: "fmaxnm d0, d1, d2",
+    cExample: "Fd = fmax(Fn, Fm);",
+  },
+  FMINNM: {
+    summary: "IEEE minNum: a NaN operand is ignored and the number wins.",
+    example: "fminnm d0, d1, d2",
+    cExample: "Fd = fmin(Fn, Fm);",
+  },
   FNEG: {
     summary: "Fd = -Fn (flips the sign bit; S or D form).",
     example: "fneg d16, d16",
@@ -206,6 +353,15 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "fsqrt d1, d0",
     cExample: "Dd = sqrt(Dn);",
   },
+  FCSEL: {
+    summary: "Fd = cond ? Fn : Fm. The integer `CSEL` for the FP file.",
+    details: [
+      "The flags come from an earlier `FCMP` or `CMP`; `FCSEL` sets none of its own.",
+      "The chosen register's bits are copied, so a NaN or a `-0.0` arrives untouched.",
+    ],
+    example: "fcsel d0, d1, d2, lt",
+    cExample: "Fd = cond ? Fn : Fm;",
+  },
   FCMP: {
     summary: "Set NZCV from Fn vs Fm (S or D form).",
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
@@ -219,8 +375,39 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "fcvt d0, s0",
     cExample: "double d = (double)f;",
   },
-  SCVTF: { summary: "Signed-int -> float (`SCVTF Dd, Xn` / `Dd, Wn` / `Sd, Wn`)." },
-  FCVTZS: { summary: "Float -> signed-int with truncation (`FCVTZS Wd, Dn` / `Wd, Sn`)." },
+  SCVTF: {
+    summary: "Signed-int -> float (`SCVTF Dd, Xn` / `Dd, Wn` / `Sd, Wn`).",
+    details: ["A third operand makes it fixed-point: `scvtf d0, x0, #2` divides by 4, so 6 gives 1.5."],
+  },
+  UCVTF: {
+    summary: "Unsigned integer -> float (`UCVTF Dd, Xn` / `Sd, Wn`).",
+    details: ["`SCVTF` reads the same bits as signed, so the two differ on every value with the top bit set."],
+    example: "ucvtf d0, x0",
+    cExample: "Fd = (double)(unsigned long)Rn;",
+  },
+  FCVTZS: {
+    summary: "Float -> signed-int with truncation (`FCVTZS Wd, Dn` / `Wd, Sn`).",
+    details: ["A third operand makes it fixed-point: `fcvtzs w0, d0, #2` multiplies by 4 before truncating, so 1.5 gives 6."],
+  },
+  FCVTNS: {
+    summary: "Float -> signed integer, rounding to nearest with ties to even.",
+    details: ["Ties go to the EVEN neighbour: 2.5 gives 2 and 3.5 gives 4. `FCVTZS` truncates toward zero instead."],
+    example: "fcvtns w0, d0",
+    cExample: "Rd = (int)nearbyint(Fn); // FE_TONEAREST",
+  },
+  FCVTNU: { summary: "Float -> unsigned integer, ties to even. Negatives saturate to 0.", example: "fcvtnu w0, d0" },
+  FCVTZU: { summary: "Float -> unsigned integer, truncating toward zero. Negatives saturate to 0.", example: "fcvtzu w0, d0" },
+  FCVTAS: {
+    summary: "Float -> signed integer, rounding to nearest with ties AWAY from zero.",
+    details: ["The other nearest mode: 2.5 gives 3 and -2.5 gives -3, where `FCVTNS` gives 2 and -2."],
+    example: "fcvtas w0, d0",
+    cExample: "Rd = (int)round(Fn);",
+  },
+  FCVTAU: { summary: "Float -> unsigned integer, ties away from zero.", example: "fcvtau w0, d0" },
+  FCVTMS: { summary: "Float -> signed integer, rounding toward minus infinity (floor).", example: "fcvtms w0, d0", cExample: "Rd = (int)floor(Fn);" },
+  FCVTMU: { summary: "Float -> unsigned integer, floor. Negatives saturate to 0.", example: "fcvtmu w0, d0" },
+  FCVTPS: { summary: "Float -> signed integer, rounding toward plus infinity (ceiling).", example: "fcvtps w0, d0", cExample: "Rd = (int)ceil(Fn);" },
+  FCVTPU: { summary: "Float -> unsigned integer, ceiling.", example: "fcvtpu w0, d0" },
 };
 
 /** Case-insensitive lookup; condition variants collapse to B.COND. */

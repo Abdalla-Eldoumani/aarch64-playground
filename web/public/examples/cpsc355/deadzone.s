@@ -2,17 +2,16 @@
 // upgrade to pick between them, a Titan at wave 10.  Full project at
 // https://github.com/Abdalla-Eldoumani/deadzone
 //
-// how to run: press assemble, then run -- the game takes over the terminal
+// how to run: press assemble, then run. The game takes over the terminal
 // pane and grabs the keyboard.  Or from the term tab:  ./program
 //
 // how to play: any key past the title, w/s picks a menu item, enter starts.
 // wasd moves and the gun aims itself; space bombs, f freezes, 1/2/3 take an
 // upgrade, p pauses, q quits, r restarts.  Scores persist in data/deadzone.sav.
 
-// game_state stays in w19 for the whole run. player_died deliberately leaves
-// it set on the way out of check_player_enemy_collision instead of restoring
-// x19, which is how the game-over state survives the return; both collision
-// checks spill their death flag to the stack rather than touch w19.
+// game_state stays in w19 for the whole run. player_died skips the x19
+// restore so the game-over state survives the return, and both collision
+// checks spill their death flag to the stack instead of using w19.
 define(game_state, w19)
 define(frame_count, w22)
 define(key_pressed, w23)
@@ -74,7 +73,7 @@ sleep_rem:      .dword  0                       // Remaining sec
 msg_title:      .string "DEADZONE"
 msg_exit:       .string "\nExiting DEADZONE...\n"
 msg_goodbye:    .string "Terminal restored. Goodbye!\n"
-msg_term_fail:  .string "ERROR: Terminal init failed (no TTY?)\n"
+msg_term_fail:  .string "ERROR: stdin is not a terminal\n"
 msg_term_ok:    .string ""
 msg_wave:       .string "Wave:"
 msg_level:      .string "Lv:"
@@ -103,12 +102,12 @@ msg_space:      .string "  "
 
 // Pause overlay strings
 msg_pause:      .string "PAUSED"
-msg_pause_hint: .string "p to resume, q to quit"
+msg_pause_hint: .string "Press P to resume, Q to quit"
 
 // Main menu strings
 msg_menu_title: .string "DEADZONE"
 msg_menu_sub:   .string "Terminal Survivor"
-msg_menu_ver:   .string "v1.0 - ARMv8 Assembly"
+msg_menu_ver:   .string "ARMv8 assembly"
 msg_menu_start: .string "START GAME"
 msg_menu_scores: .string "HIGH SCORES"
 msg_menu_quit:  .string "QUIT"
@@ -116,15 +115,15 @@ msg_menu_arrow: .string "> "
 msg_menu_nav:   .string "W/S or Arrows to select, Enter to confirm"
 msg_menu_back:  .string "Press ESC or Q to return"
 
-// Intro screen ASCII art logo (simplified block letters, 66 chars wide)
+// Intro logo, four rows of 62 columns each
 intro_logo_1:   .string "######  #####    ###    ######  ######  #####   ##   ##  ##### "
 intro_logo_2:   .string "##   ## ##      ## ##   ##   ##    ##  ##   ##  ###  ##  ##    "
 intro_logo_3:   .string "##   ## ####   #######  ##   ##   ##   ##   ##  ## ####  ####  "
 intro_logo_4:   .string "######  #####  ##   ##  ######   ####   #####   ##   ##  ##### "
 
 // Intro subtitle and prompt
-msg_intro_subtitle: .string ">>> TERMINAL SURVIVOR <<<"
-msg_intro_anykey:   .string "- Press any key to continue -"
+msg_intro_subtitle: .string "TERMINAL SURVIVOR"
+msg_intro_anykey:   .string "Press any key to continue"
 
 // Bell character for sound
 bell_char:      .string "\007"
@@ -143,30 +142,30 @@ main:
                 str     x23, [sp, 48]
 
                 // Initialize terminal (raw mode)
-                bl      terminal_init           // Set up terminal
-                cmp     x0, 0                   // Check result
-                b.lt    main_term_failed        // Exit if failed
+                bl      terminal_init
+                cmp     x0, 0
+                b.lt    main_term_failed
 
                 // Print success message
                 adrp    x0, msg_term_ok         // Success message
                 add     x0, x0, :lo12:msg_term_ok
-                bl      printf                  // Print it
+                bl      printf
                 b       main_continue
 
 main_term_failed:
                 // Print failure message
                 adrp    x0, msg_term_fail       // Failure message
                 add     x0, x0, :lo12:msg_term_fail
-                bl      printf                  // Print it
-                b       main_exit_error         // Exit with error
+                bl      printf
+                b       main_exit_error
 
 main_continue:
 
                 // Initialize save system (load high scores)
-                bl      save_init               // Load saved data
+                bl      save_init
 
                 // Initialize input
-                bl      input_init              // Set up input
+                bl      input_init
 
                 // Start at intro screen
                 mov     game_state, STATE_INTRO
@@ -191,24 +190,21 @@ main_continue:
 
 // Main game loop
 game_loop:
-                // Check if we should quit
                 cmp     game_state, STATE_QUIT
                 b.eq    main_exit               // Exit if quit state
 
                 // Poll for input
-                bl      input_poll              // Get key (non-blocking)
+                bl      input_poll
                 mov     key_pressed, w0
 
-                // Check intro state first
                 cmp     game_state, STATE_INTRO
                 b.eq    game_loop_intro
 
-                // Check menu state
                 cmp     game_state, STATE_MENU
                 b.eq    game_loop_menu
 
                 // Handle input (only for playing states)
-                bl      handle_input            // Process key
+                bl      handle_input
 
                 // Quitting takes effect here rather than at the top of the
                 // next pass, or the loop paints one more frame of the play
@@ -216,73 +212,61 @@ game_loop:
                 cmp     game_state, STATE_QUIT
                 b.eq    main_exit
 
-                // Check game over state
                 cmp     game_state, STATE_GAMEOVER
                 b.eq    game_loop_gameover
 
-                // Check level up state
                 cmp     game_state, STATE_LEVELUP
                 b.eq    game_loop_levelup
 
-                // Check paused state
                 cmp     game_state, STATE_PAUSED
                 b.eq    game_loop_paused
 
                 // Update game state
-                bl      update_game             // Update logic
-                bl      effects_update          // Update visual effects
+                bl      update_game
+                bl      effects_update
                 bl      abilities_update        // Update ability cooldowns
                 bl      wave_splash_update      // Announce a wave that changed
-                bl      achievements_update     // Update achievement notifications
-                bl      achievements_check      // Check for new achievements
+                bl      achievements_update
+                bl      achievements_check
 
                 // Check if level up occurred during update
                 bl      player_check_levelup
                 cbz     w0, game_loop_render    // No level up
 
-                // Level up! Generate upgrade choices and switch state
-                bl      play_bell               // Sound effect
+                // Offer three upgrades and hold the loop until one is taken
+                bl      play_bell
                 bl      upgrades_generate_choices
                 bl      screen_invalidate       // Menu covers the field
                 mov     game_state, STATE_LEVELUP
 
 game_loop_render:
-                // Render frame
-                bl      draw_screen             // Draw screen
-                bl      effects_draw            // Draw particles and effects
-                bl      achievements_draw       // Draw achievement notifications
+                bl      draw_screen
+                bl      effects_draw
+                bl      achievements_draw
 
-                // Increment frame counter
                 add     frame_count, frame_count, 1
 
-                // Frame timing - sleep for remaining time
-                bl      frame_delay             // Sleep to maintain FPS
+                bl      frame_delay
 
-                // Continue loop
                 b       game_loop
 
 game_loop_gameover:
-                // In game over state, draw game over screen
                 bl      draw_gameover_screen
 
-                // Handle R for restart
                 cmp     key_pressed, 'r'
                 b.eq    game_restart
                 cmp     key_pressed, 'R'
                 b.eq    game_restart
 
-                // Handle M for menu
                 cmp     key_pressed, 'm'
                 b.eq    game_return_menu
                 cmp     key_pressed, 'M'
                 b.eq    game_return_menu
 
-                // Frame delay and continue
                 bl      frame_delay
                 b       game_loop
 
 game_return_menu:
-                // Reset menu selection and return to menu
                 adrp    x0, menu_selection
                 add     x0, x0, :lo12:menu_selection
                 str     wzr, [x0]
@@ -309,10 +293,8 @@ game_restart:
 
 // Intro state
 game_loop_intro:
-                // Draw intro screen with animation
                 bl      draw_intro_screen
 
-                // Increment intro frame
                 adrp    x0, intro_frame
                 add     x0, x0, :lo12:intro_frame
                 ldr     w1, [x0]
@@ -320,10 +302,9 @@ game_loop_intro:
                 str     w1, [x0]
 
                 // After animation complete, wait for key press
-                cmp     w1, 120                 // Animation done?
+                cmp     w1, 120                  // Four seconds of reveal at 30 fps
                 b.lt    intro_continue          // Not yet, keep animating
 
-                // Animation complete - wait for any key to continue
                 cmp     key_pressed, KEY_NONE
                 b.eq    intro_wait              // No key, keep waiting
 
@@ -331,35 +312,30 @@ game_loop_intro:
                 b       intro_finish
 
 intro_wait:
-                // Just wait, don't increment frame counter anymore
+                // Hold the last frame; the counter stops here
                 bl      frame_delay
                 b       game_loop
 
 intro_continue:
-                // Still animating
                 bl      frame_delay
                 b       game_loop
 
 intro_finish:
-                // Reset intro frame for next time
                 adrp    x0, intro_frame
                 add     x0, x0, :lo12:intro_frame
                 str     wzr, [x0]
 
-                // Transition to menu
                 bl      screen_invalidate       // Whole screen changes here
                 mov     game_state, STATE_MENU
                 b       game_loop
 
 // Menu state
 game_loop_menu:
-                // Check if showing high scores screen
                 adrp    x0, show_hs_screen
                 add     x0, x0, :lo12:show_hs_screen
                 ldr     w0, [x0]
                 cbnz    w0, menu_show_highscores
 
-                // Draw main menu
                 bl      draw_menu
 
                 // Handle menu navigation
@@ -371,6 +347,7 @@ game_loop_menu:
                 b.eq    menu_down
                 cmp     key_pressed, KEY_ARROW_DOWN
                 b.eq    menu_down
+                // Both LF and CR, so a terminal that sends either still selects
                 cmp     key_pressed, KEY_ENTER
                 b.eq    menu_select
                 cmp     key_pressed, KEY_CR
@@ -405,7 +382,6 @@ menu_input_done:
                 b       game_loop
 
 menu_select:
-                // Get current selection
                 adrp    x0, menu_selection
                 add     x0, x0, :lo12:menu_selection
                 ldr     w0, [x0]
@@ -437,7 +413,6 @@ menu_start_game:
                 b       game_loop
 
 menu_view_scores:
-                // Set flag to show high scores
                 adrp    x0, show_hs_screen
                 add     x0, x0, :lo12:show_hs_screen
                 mov     w1, 1
@@ -457,14 +432,12 @@ menu_quit:
                 b       game_loop
 
 menu_back_to_menu:
-                // Clear high scores flag
                 adrp    x0, show_hs_screen
                 add     x0, x0, :lo12:show_hs_screen
                 str     wzr, [x0]
                 b       menu_input_done
 
 menu_show_highscores:
-                // Draw high scores screen
                 bl      draw_highscores_screen
 
                 // Handle back input
@@ -480,7 +453,7 @@ menu_show_highscores:
 
 game_loop_levelup:
                 // In level up state, draw upgrade menu and wait for choice
-                bl      draw_screen             // Draw game screen (background)
+                bl      draw_screen             // The field stays visible under the menu
                 bl      upgrades_draw_menu      // Draw upgrade menu on top
 
                 // Handle upgrade selection (1, 2, 3)
@@ -542,23 +515,23 @@ main_exit:
                 // The frame buffer is done with; these go straight out
                 bl      screen_end              // Park the cursor, drop colour
 
-                adrp    x0, msg_exit            // Exit message
+                adrp    x0, msg_exit
                 add     x0, x0, :lo12:msg_exit
-                bl      write_str_raw           // Print message
+                bl      write_str_raw
 
                 // Restore terminal
-                bl      terminal_restore        // Restore settings
+                bl      terminal_restore
 
                 // Print goodbye
-                adrp    x0, msg_goodbye         // Goodbye message
+                adrp    x0, msg_goodbye
                 add     x0, x0, :lo12:msg_goodbye
-                bl      write_str_raw           // Print message
+                bl      write_str_raw
 
-                mov     w0, 0                   // Return code 0
+                mov     w0, 0
                 b       main_cleanup
 
 main_exit_error:
-                mov     w0, 1                   // Return code 1
+                mov     w0, 1
 
 main_cleanup:
                 ldr     x23, [sp, 48]
@@ -572,15 +545,12 @@ handle_input:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Check for no key
                 cmp     key_pressed, KEY_NONE
                 b.eq    handle_input_done       // No key pressed
 
-                // Check ESC
-                cmp     key_pressed, KEY_ESC    // Escape?
+                cmp     key_pressed, KEY_ESC
                 b.eq    handle_quit
 
-                // Check Q for quit
                 cmp     key_pressed, KEY_Q
                 b.eq    handle_quit
 
@@ -594,7 +564,6 @@ handle_input:
                 cmp     game_state, STATE_PAUSED
                 b.eq    handle_input_done
 
-                // Check movement keys
                 cmp     key_pressed, KEY_W
                 b.eq    handle_up
                 cmp     key_pressed, KEY_S
@@ -611,7 +580,7 @@ handle_input:
                 b       handle_input_done
 
 handle_quit:
-                mov     game_state, STATE_QUIT  // Set quit state
+                mov     game_state, STATE_QUIT
                 b       handle_input_done
 
 handle_pause:
@@ -655,22 +624,16 @@ update_game:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Update player (invincibility countdown)
                 bl      player_update
 
-                // Update enemies (movement, spawning)
                 bl      enemies_update
 
-                // Update projectiles (auto-fire, movement, collision)
                 bl      projectiles_update
 
-                // Update boss
                 bl      boss_update
 
-                // Check player-enemy collisions
                 bl      check_player_enemy_collision
 
-                // Check player-boss collision
                 bl      check_player_boss_collision
 
                 ldp     fp, lr, [sp], 16
@@ -682,27 +645,23 @@ check_player_enemy_collision:
                 mov     fp, sp
                 str     x19, [sp, 16]
 
-                // Get player position
                 bl      player_get_x
                 mov     w19, w0
                 bl      player_get_y
                 mov     w1, w0                  // Y in w1
                 mov     w0, w19                 // X in w0
 
-                // Check collision with enemies
                 bl      enemies_check_collision
                 cmp     w0, -1
                 b.eq    no_player_collision
 
-                // Player hit an enemy - take damage
-                mov     w0, 5                   // 5 damage (balanced)
+                mov     w0, 5                   // Survivable: 20 touches at full health
                 bl      player_damage
                 str     w0, [sp, 24]            // Save death status to stack (not w19, that's game_state!)
-                bl      play_bell               // Sound effect for damage
+                bl      play_bell
                 mov     w0, 2                   // Intensity level 2
-                bl      effects_trigger_shake   // Screen shake effect!
+                bl      effects_trigger_shake
 
-                // Check if player died
                 ldr     w0, [sp, 24]            // Restore death status from stack
                 cbnz    w0, player_died
 
@@ -712,12 +671,12 @@ no_player_collision:
                 ret
 
 player_died:
-                // Game over sound - double bell for emphasis
+                // Two bells, so a death is not mistaken for a hit
                 bl      play_bell
                 bl      play_bell
 
                 // Save game stats and check for high score
-                // Need to get score (kills * 10 for now), wave, kills, level
+                // save_end_game takes score, wave, kills, level in w0-w3
                 bl      player_get_kills
                 mov     w19, w0                 // Save kills (also use as score)
                 mov     w0, w19
@@ -739,7 +698,7 @@ player_died:
 
                 bl      screen_invalidate       // Whole screen changes here
                 mov     game_state, STATE_GAMEOVER
-                // NOTE: Don't restore x19 here - we WANT game_state to stay as STATE_GAMEOVER
+                // x19 is not restored: game_state has to stay STATE_GAMEOVER
                 ldp     fp, lr, [sp], 32
                 ret
 
@@ -749,27 +708,23 @@ check_player_boss_collision:
                 mov     fp, sp
                 str     x19, [sp, 16]
 
-                // Get player position
                 bl      player_get_x
                 mov     w19, w0
                 bl      player_get_y
                 mov     w1, w0
                 mov     w0, w19
 
-                // Check collision with boss
                 bl      boss_check_collision
                 cbz     w0, no_boss_collision
 
-                // Player hit boss - take more damage!
                 mov     w0, 20                  // 20 damage from boss
                 bl      player_damage
                 str     w0, [sp, 24]            // Save death status to stack (not w19, that's game_state!)
                 bl      play_bell
-                bl      play_bell               // Extra bell for boss hit
+                bl      play_bell
                 mov     w0, 3                   // Higher intensity shake
                 bl      effects_trigger_shake
 
-                // Check if player died (reuse existing code flow)
                 ldr     w0, [sp, 24]            // Restore death status from stack
                 cbnz    w0, player_died
 
@@ -786,16 +741,13 @@ draw_screen:
                 // Marquee, arena walls, rubble, and the empty status bar
                 bl      draw_frame_chrome
 
-                // Draw enemies first (so player appears on top)
+                // Enemies first, so the player stays on top
                 bl      enemies_draw
 
-                // Draw boss (if active)
                 bl      boss_draw
 
-                // Draw projectiles
                 bl      projectiles_draw
 
-                // Draw player
                 bl      player_draw
 
                 // Numbers and gauges go on last, over the blanked bar
@@ -810,8 +762,8 @@ draw_screen:
                 ret
 
 // draw_frame_chrome - Marquee, arena walls and floor, and the status band
-// Whole-row fills: the field costs a few hundred steps instead of the twelve
-// hundred single-character writes the sequential version needed.
+// Whole-row fills: about three hundred steps for the field instead of twelve
+// hundred single-character writes.
 draw_frame_chrome:
                 stp     fp, lr, [sp, -32]!
                 mov     fp, sp
@@ -919,7 +871,7 @@ draw_border_row:
                 ret
 
 // draw_status_bar - The bottom band: health gauge and the three counters
-// Row ROW_BAR_ABILITIES belongs to abilities.asm, which draws the two
+// Row ROW_BAR_ABILITIES belongs to abilities.s, which draws the two
 // charge gauges in the same idiom.
 draw_status_bar:
                 stp     fp, lr, [sp, -32]!
@@ -1091,7 +1043,7 @@ draw_wave_splash:
                 ldr     w0, [x0]
                 cbz     w0, draw_wave_splash_done
 
-                mov     w0, 30                  // Box across the middle rows
+                mov     w0, 30                  // 20x5 box centred on rows 8..12
                 mov     w1, 8
                 mov     w2, 20
                 mov     w3, 5
@@ -1129,8 +1081,7 @@ frame_delay:
                 // the one place the staged frame goes out to the terminal.
                 bl      screen_flush
 
-                // Simple fixed delay for now
-                // Future: calculate actual sleep based on elapsed time
+                // A fixed sleep, so a slow frame pushes the whole loop late
                 adrp    x0, sleep_req           // Sleep request struct
                 add     x0, x0, :lo12:sleep_req
                 adrp    x1, sleep_rem           // Remainder struct
@@ -1189,7 +1140,6 @@ draw_gameover_screen:
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
 
-                // Clear screen
                 bl      screen_clear
                 bl      cursor_home
 
@@ -1214,7 +1164,6 @@ draw_gameover_screen:
                 add     x0, x0, :lo12:msg_go_title
                 bl      write_str
 
-                // Draw final score
                 mov     w0, 20
                 mov     w1, 6
                 bl      cursor_move
@@ -1235,7 +1184,6 @@ draw_gameover_screen:
                 mul     w0, w0, w1              // Score = kills * 10
                 bl      write_num
 
-                // Draw wave reached
                 mov     w0, 20
                 mov     w1, 7
                 bl      cursor_move
@@ -1253,7 +1201,6 @@ draw_gameover_screen:
                 bl      enemies_get_wave
                 bl      write_num
 
-                // Draw kills
                 mov     w0, 20
                 mov     w1, 8
                 bl      cursor_move
@@ -1271,7 +1218,6 @@ draw_gameover_screen:
                 mov     w0, w19                 // Kills we saved earlier
                 bl      write_num
 
-                // Draw level
                 mov     w0, 20
                 mov     w1, 9
                 bl      cursor_move
@@ -1289,7 +1235,6 @@ draw_gameover_screen:
                 bl      player_get_level
                 bl      write_num
 
-                // Draw high scores title
                 mov     w0, 34
                 mov     w1, 12
                 bl      cursor_move
@@ -1301,21 +1246,20 @@ draw_gameover_screen:
                 add     x0, x0, :lo12:msg_hs_title
                 bl      write_str
 
-                // Draw top 5 high scores
                 mov     w20, 0                  // Score index
 
 draw_hs_loop:
                 cmp     w20, 5
                 b.ge    draw_hs_done
 
-                // Get high score entry - use x22 to avoid corruption
+                // x22 holds the entry across the write_num and set_color calls
                 mov     w0, w20
                 bl      save_get_high_score
                 cbz     x0, draw_hs_next        // No entry
 
                 mov     x22, x0                 // Save entry pointer in x22
 
-                // Check if score is 0 (empty)
+                // Score 0 means an unused slot
                 ldr     w0, [x22, HS_SCORE]
                 cbz     w0, draw_hs_next
 
@@ -1326,7 +1270,6 @@ draw_hs_loop:
                 ldr     w19, [x22, HS_KILLS]    // w19 = kills (temp)
                 str     w19, [sp, 52]           // Save kills to stack
 
-                // Position cursor
                 mov     w0, 22
                 add     w1, w20, 14             // Row 14, 15, 16, 17, 18
                 bl      cursor_move
@@ -1334,7 +1277,6 @@ draw_hs_loop:
                 mov     w0, COLOR_WHITE
                 bl      set_color
 
-                // Draw rank number
                 add     w0, w20, 1
                 bl      write_num
 
@@ -1342,7 +1284,6 @@ draw_hs_loop:
                 add     x0, x0, :lo12:msg_dot
                 bl      write_str
 
-                // Draw score
                 mov     w0, COLOR_BRIGHT_YELLOW
                 bl      set_color
 
@@ -1353,7 +1294,6 @@ draw_hs_loop:
                 add     x0, x0, :lo12:msg_space
                 bl      write_str
 
-                // Draw wave
                 mov     w0, COLOR_CYAN
                 bl      set_color
 
@@ -1368,7 +1308,6 @@ draw_hs_loop:
                 add     x0, x0, :lo12:msg_space
                 bl      write_str
 
-                // Draw kills
                 mov     w0, COLOR_GREEN
                 bl      set_color
 
@@ -1384,7 +1323,6 @@ draw_hs_next:
                 b       draw_hs_loop
 
 draw_hs_done:
-                // Draw instructions
                 mov     w0, 20
                 mov     w1, 21
                 bl      cursor_move
@@ -1410,7 +1348,6 @@ draw_intro_screen:
                 stp     x19, x20, [sp, 16]
                 str     x21, [sp, 32]
 
-                // Clear screen
                 bl      screen_clear
 
                 // Get intro frame
@@ -1418,8 +1355,7 @@ draw_intro_screen:
                 add     x19, x19, :lo12:intro_frame
                 ldr     w19, [x19]              // w19 = frame counter
 
-                // Calculate characters to show (reveal animation)
-                // Total chars in logo = ~280, reveal over 90 frames
+                // Three glyphs a frame across the four 66-column lines
                 mov     w20, w19
                 mov     w21, 3
                 mul     w20, w20, w21           // chars_to_show = frame * 3
@@ -1428,8 +1364,6 @@ draw_intro_screen:
                 mov     w21, w19
                 and     w21, w21, 0x1F          // Cycle every 32 frames
 
-                // Draw the ASCII art logo line by line
-                // Line 1
                 mov     w0, 7
                 mov     w1, 5
                 bl      cursor_move
@@ -1439,7 +1373,6 @@ draw_intro_screen:
                 mov     w1, 0                   // Line offset
                 bl      intro_draw_logo_line1
 
-                // Line 2
                 mov     w0, 7
                 mov     w1, 6
                 bl      cursor_move
@@ -1451,7 +1384,6 @@ draw_intro_screen:
                 mov     w1, 66                  // Line offset
                 bl      intro_draw_logo_line2
 
-                // Line 3
                 mov     w0, 7
                 mov     w1, 7
                 bl      cursor_move
@@ -1463,7 +1395,6 @@ draw_intro_screen:
                 mov     w1, 132
                 bl      intro_draw_logo_line3
 
-                // Line 4
                 mov     w0, 7
                 mov     w1, 8
                 bl      cursor_move
@@ -1509,7 +1440,7 @@ intro_no_subtitle:
                 ldp     fp, lr, [sp], 48
                 ret
 
-// Helper: Set intro color based on frame (color wave)
+// intro_set_color - Cycle red, yellow and dim red every 32 frames
 intro_set_color:
                 and     w0, w0, 0x1F
                 cmp     w0, 8
@@ -1533,7 +1464,6 @@ intro_color_dim:
 intro_do_color:
                 b       set_color
 
-// Draw logo lines (simplified block letters)
 intro_draw_logo_line1:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
@@ -1588,7 +1518,6 @@ draw_menu:
                 mov     fp, sp
                 str     x19, [sp, 16]
 
-                // Clear screen
                 bl      screen_clear
                 bl      cursor_home
 
@@ -1598,7 +1527,6 @@ draw_menu:
                 mov     w0, ROW_BAR_BOTTOM - 1
                 bl      draw_border_row
 
-                // Draw title "DEADZONE"
                 mov     w0, 36                  // Center position
                 mov     w1, 4
                 bl      cursor_move
@@ -1610,7 +1538,6 @@ draw_menu:
                 add     x0, x0, :lo12:msg_menu_title
                 bl      write_str
 
-                // Draw subtitle
                 mov     w0, 32
                 mov     w1, 5
                 bl      cursor_move
@@ -1622,7 +1549,6 @@ draw_menu:
                 add     x0, x0, :lo12:msg_menu_sub
                 bl      write_str
 
-                // Draw version
                 mov     w0, 29
                 mov     w1, 6
                 bl      cursor_move
@@ -1634,13 +1560,10 @@ draw_menu:
                 add     x0, x0, :lo12:msg_menu_ver
                 bl      write_str
 
-                // Get current selection
                 adrp    x19, menu_selection
                 add     x19, x19, :lo12:menu_selection
                 ldr     w19, [x19]
 
-                // Draw menu options
-                // Option 0: START GAME
                 mov     w0, 32
                 mov     w1, 10
                 bl      cursor_move
@@ -1669,7 +1592,6 @@ menu_draw_start:
                 add     x0, x0, :lo12:msg_menu_start
                 bl      write_str
 
-                // Option 1: HIGH SCORES
                 mov     w0, 32
                 mov     w1, 12
                 bl      cursor_move
@@ -1698,7 +1620,6 @@ menu_draw_scores:
                 add     x0, x0, :lo12:msg_menu_scores
                 bl      write_str
 
-                // Option 2: QUIT
                 mov     w0, 32
                 mov     w1, 14
                 bl      cursor_move
@@ -1727,7 +1648,6 @@ menu_draw_quit:
                 add     x0, x0, :lo12:msg_menu_quit
                 bl      write_str
 
-                // Draw navigation hint
                 mov     w0, 19
                 mov     w1, 20
                 bl      cursor_move
@@ -1752,11 +1672,9 @@ draw_highscores_screen:
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
 
-                // Clear screen
                 bl      screen_clear
                 bl      cursor_home
 
-                // Draw title
                 mov     w0, 34
                 mov     w1, 3
                 bl      cursor_move
@@ -1768,30 +1686,28 @@ draw_highscores_screen:
                 add     x0, x0, :lo12:msg_hs_title
                 bl      write_str
 
-                // Draw high scores
                 mov     w20, 0                  // Score index
 
 draw_menu_hs_loop:
                 cmp     w20, 5
                 b.ge    draw_menu_hs_done
 
-                // Get high score entry - store pointer in x22 (safer)
+                // x22 holds the entry across the calls below
                 mov     w0, w20
                 bl      save_get_high_score
                 cbz     x0, draw_menu_hs_next
 
                 mov     x22, x0                 // Save entry pointer in x22
 
-                // Check if score is 0 (empty)
+                // Score 0 means an unused slot
                 ldr     w0, [x22, HS_SCORE]
                 cbz     w0, draw_menu_hs_next
 
-                // Store score and wave on stack for safety
+                // write_num and set_color clobber the low registers
                 ldr     w21, [x22, HS_SCORE]    // w21 = score
                 ldrh    w19, [x22, HS_WAVE]     // w19 = wave (temp save)
                 str     w19, [sp, 48]           // Save wave to stack
 
-                // Position cursor
                 mov     w0, 20
                 add     w1, w20, 6              // Row 6, 7, 8, 9, 10
                 bl      cursor_move
@@ -1799,7 +1715,6 @@ draw_menu_hs_loop:
                 mov     w0, COLOR_WHITE
                 bl      set_color
 
-                // Draw rank number
                 add     w0, w20, 1
                 bl      write_num
 
@@ -1807,7 +1722,6 @@ draw_menu_hs_loop:
                 add     x0, x0, :lo12:msg_dot
                 bl      write_str
 
-                // Draw score (from saved w21)
                 mov     w0, COLOR_BRIGHT_YELLOW
                 bl      set_color
 
@@ -1818,7 +1732,6 @@ draw_menu_hs_loop:
                 add     x0, x0, :lo12:msg_space
                 bl      write_str
 
-                // Draw wave
                 mov     w0, COLOR_CYAN
                 bl      set_color
 
@@ -1833,7 +1746,6 @@ draw_menu_hs_loop:
                 add     x0, x0, :lo12:msg_space
                 bl      write_str
 
-                // Draw kills - reload pointer from x22
                 mov     w0, COLOR_GREEN
                 bl      set_color
 
@@ -1848,7 +1760,6 @@ draw_menu_hs_loop:
                 add     x0, x0, :lo12:msg_space
                 bl      write_str
 
-                // Draw level - reload from x22
                 mov     w0, COLOR_MAGENTA
                 bl      set_color
 
@@ -1864,7 +1775,6 @@ draw_menu_hs_next:
                 b       draw_menu_hs_loop
 
 draw_menu_hs_done:
-                // Check if no scores
                 mov     w0, 0
                 bl      save_get_high_score
                 cbz     x0, draw_no_scores
@@ -1884,7 +1794,6 @@ draw_no_scores:
                 bl      write_str
 
 draw_hs_back_msg:
-                // Draw back instruction
                 mov     w0, 24
                 mov     w1, 20
                 bl      cursor_move

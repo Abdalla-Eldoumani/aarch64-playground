@@ -7,7 +7,7 @@ import { isDeadInstance } from "@/lib/worker/dead-instance";
  * module because the worker entry cannot be imported under vitest (it calls
  * `self.addEventListener` at module scope and pulls in the generated wasm
  * glue by a literal relative URL the bundler pins), and this rule is
- * expensive to get wrong in EITHER direction -- too eager and a student
+ * expensive to get wrong in EITHER direction: too eager and a student
  * loses their registers, console and VFS to a typo; too shy and one trap
  * wedges the playground until a page reload.
  */
@@ -31,8 +31,8 @@ describe("worker fatal-error classification", () => {
     // These arrive through the same catch. Dropping the instance for one
     // of them would throw away the session on an ordinary mistake.
     for (const message of [
-      "assembly error at line 3: unknown mnemonic: MOVE",
-      "link error at line 0: no entry point -- define `main:`",
+      "assembly error at line 3: unknown mnemonic `MOVE`: check the spelling",
+      "link error at line 0: no entry point. Define `main:`",
       "preprocess error at line 1: malformed m4 define",
       "immediate out of range (0-4095)",
       "emulator not initialized; send `init` first",

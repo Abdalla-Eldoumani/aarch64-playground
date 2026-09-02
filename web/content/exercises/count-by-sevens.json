@@ -1,10 +1,10 @@
 {
-  "title": "count by sevens",
+  "title": "Count by sevens",
   "slug": "count-by-sevens",
   "order": 7,
   "topic": "loops",
   "difficulty": "intro",
-  "prompt": "Print every multiple of seven from 7 up to and including 70, one per line.\n\nThe starter holds the first multiple and the limit in callee-saved registers. Write the loop: print, step by seven, and keep going while the counter has not passed the limit. Since `printf` is a function call, it is free to clobber the caller-saved registers; that is exactly why the loop state lives in `x19` and `x20`.\n\n## what is checked\n\n- ten lines, `7` through `70`\n- the program exits cleanly\n- a comparison drives the loop",
+  "prompt": "Print every multiple of seven from 7 up to and including 70, one per line.\n\nThe starter holds the first multiple and the limit in callee-saved registers. Write the loop: print, step by seven, and keep going while the counter has not passed the limit. Since `printf` is a function call, it is free to clobber the caller-saved registers; that is why the loop state lives in `x19` and `x20`.\n\n## what is checked\n\n- ten lines, `7` through `70`\n- the program exits cleanly\n- a comparison drives the loop",
   "starter": "// print every multiple of seven from 7 up to 70\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(i_r, x19)\ndefine(limit_r, x20)\n\n        .data\nfmt:    .string \"%lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     i_r, 7                      // first multiple\n        mov     limit_r, 70                 // last multiple to print\n\n        // TODO: loop while i_r is at most limit_r, printing i_r\n        // each time and stepping it by seven. printf clobbers the\n        // caller-saved registers, so keep the loop state in the\n        // aliased callee-saved ones above.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
   "variant": "write",

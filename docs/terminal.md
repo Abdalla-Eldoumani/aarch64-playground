@@ -11,14 +11,14 @@ fits the task.
 
 | Command | Effect |
 | --- | --- |
-| `./program [args]` | Re-assemble the editor workspace (main.asm plus every file in the strip) with `args` and run it live in the pane. |
-| `./name [args]` | Run an executable built with `gcc` (see the toolchain below). |
-| `./program < file` | Either form, with the named VFS file fed to stdin. The file is the WHOLE input: stdin closes after it, so a read-until-EOF loop finishes instead of waiting. |
-| `./program > file` | Either form, with stdout captured into the named VFS file. |
+| `./program [args]` | Re-assemble the editor workspace (main.asm plus every file in the strip) with `args` and run it live in the pane. Here `program` is a literal name, not a placeholder: it always means the editor's own buffer. |
+| `./name [args]` | Run an executable built with `gcc` under whatever name you gave it (see the toolchain below). |
+| `./name < file` | Either form, with the named VFS file fed to stdin. The file is the whole input: stdin closes after it, so a read-until-EOF loop finishes instead of waiting. |
+| `./name > file` | Either form, with stdout captured into the named VFS file. |
 
 A run prints the program's exit status when it finishes; a program that
 stops without exiting (a fault, the step budget) prints
-`[no exit -- the program did not finish]` instead of a made-up code. A
+`[no exit: the program did not finish]` instead of a made-up code. A
 compiled executable named `program` takes precedence over the editor-source
 alias, matching a real shell's lookup.
 
@@ -33,7 +33,7 @@ follows the terminal modes a real tty would apply:
   receives the whole line when you press enter.
 - A program that puts the terminal in raw mode (termios, like the snake
   game, the calculator, or deadzone) receives every byte as typed, with
-  no echo -- it draws its own screen.
+  no echo: it draws its own screen.
 - Ctrl+C stops the program and returns the prompt.
 
 Terminal-first examples (snake, the data structures visualizer, calc,
@@ -73,7 +73,7 @@ gcc lab5.s -o lab5        # assemble
 `gcc` rejects `.asm` inputs and points you at the `m4` pass first, exactly
 like the real toolchain would choke on unexpanded macros. A failed
 assemble prints the assembler's own error with its line number in the
-terminal, and leaves the editor's error markers alone -- the build belongs
+terminal, and leaves the editor's error markers alone: the build belongs
 to the terminal's file, not whatever the editor happens to show. Other gcc
 flags are accepted and ignored; there is no C compiler here, only the
 assembler. Executables live for the session and are re-assembled on each

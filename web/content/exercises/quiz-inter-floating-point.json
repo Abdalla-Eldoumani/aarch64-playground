@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Floating Point Instructions - Intermediate",
+  "title": "Quiz: floating point",
   "slug": "quiz-inter-floating-point",
   "order": 68,
   "topic": "floating-point",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "This set covers single and double precision registers, which ones a subroutine has to preserve, conversions between the two formats, and the rules for arithmetic, argument passing, and comparison.",
+  "prompt": "Single and double precision registers, which ones a subroutine has to preserve, conversions between the two formats, and the rules for arithmetic, argument passing, and comparison.",
   "questions": [
     {
       "question": "What can go wrong when fcvt s0, d0 executes?",

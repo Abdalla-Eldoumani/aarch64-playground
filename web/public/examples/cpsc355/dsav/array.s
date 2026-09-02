@@ -1,8 +1,8 @@
-// array_viz.asm - ten cells in a row, and what an index actually costs
+// array.s - ten cells in a row, and what an index costs
 //
 // The strip is the whole structure: ten words of memory, repainted from
 // those same ten words every frame. Nothing links and nothing shifts,
-// which is the lesson - reaching cell i is one multiply and one load
+// reaching cell i is one multiply and one load
 // whether i is 0 or 9, and writing a cell leaves its neighbours alone.
 
 define(fp, x29)
@@ -10,7 +10,7 @@ define(lr, x30)
 
     array_capacity = 10
 
-// Role numbers mirror the UI_ROLE_* set in ui.asm. They are repeated so
+// Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated so
 // this file also assembles on its own, the way the web build feeds it.
     ARRAY_ROLE_TEXT  = 0
     ARRAY_ROLE_DIM   = 1
@@ -742,7 +742,7 @@ array_ask_loop:
     mov     w0, ARRAY_ROW_NOTE
     mov     w1, 2
     mov     w2, 78
-    bl      array_blank                     // no complaint outlives the fix
+    bl      array_blank                     // a good value clears the note row
     mov     w0, w24
     mov     w1, 1
     b       array_ask_done

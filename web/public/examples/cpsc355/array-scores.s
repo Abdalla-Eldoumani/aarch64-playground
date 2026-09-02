@@ -30,7 +30,7 @@ fmt_avg:        .string "Average: %d\n"
 
 main:
         stp     fp, lr, [sp, alloc]!        // Allocate 32 bytes, save fp/lr
-        mov     fp, sp                      // Set frame pointer
+        mov     fp, sp
 
         ldr     x0, =fmt_prompt
         mov     w1, 1                       // "Enter score 1: "
@@ -79,14 +79,14 @@ main:
         // Compute average
         add     sum_r, score1_r, score2_r   // sum = s1 + s2
         add     sum_r, sum_r, score3_r      // sum += s3
-        mov     w24, 3
-        sdiv    avg_r, sum_r, w24           // avg = sum / 3
+        mov     w24, 3                      // w24 holds the divisor; sdiv takes no immediate
+        sdiv    avg_r, sum_r, w24           // integer divide, so 85.0 prints as 85
 
         // Print average
         ldr     x0, =fmt_avg
         mov     w1, avg_r
         bl      printf
 
-        mov     w0, 0                       // return 0
+        mov     w0, 0
         ldp     fp, lr, [sp], dealloc       // Restore fp/lr, free frame
         ret

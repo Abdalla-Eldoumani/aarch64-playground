@@ -62,7 +62,7 @@ pub const REG_ALIASES: &[(&str, u8, bool)] = &[
 ];
 
 /// Resolve a register alias spelling, case-insensitively. `None` means the
-/// text is not an alias -- the caller falls back to the `xN`/`wN` form.
+/// text is not an alias: the caller falls back to the `xN`/`wN` form.
 pub fn reg_alias(name: &str) -> Option<(u8, bool)> {
     REG_ALIASES
         .iter()
@@ -174,6 +174,18 @@ impl NzcvFlags {
         ((self.n as u8) << 3) | ((self.z as u8) << 2) | ((self.c as u8) << 1) | (self.v as u8)
     }
 
+    /// Unpack a 4-bit value written as N=bit3, Z=bit2, C=bit1, V=bit0:
+    /// the same layout `pack` produces, and the one CCMP's and CCMN's
+    /// `#nzcv` literal carries.
+    pub fn unpack(bits: u8) -> Self {
+        Self {
+            n: bits & 0b1000 != 0,
+            z: bits & 0b0100 != 0,
+            c: bits & 0b0010 != 0,
+            v: bits & 0b0001 != 0,
+        }
+    }
+
     /// Evaluate a condition code against the current flags.
     pub fn check(&self, cond: Condition) -> bool {
         match cond {
@@ -200,7 +212,7 @@ impl NzcvFlags {
 ///
 /// Contains X0-X30, SP, PC, and the NZCV condition flags.
 /// W-register access (32-bit) is handled by the `sf` parameter on
-/// read/write methods -- internally everything is stored as 64-bit.
+/// read/write methods: internally everything is stored as 64-bit.
 #[derive(Debug, Clone)]
 pub struct RegisterFile {
     gpr: [u64; 31],
@@ -359,7 +371,6 @@ mod tests {
     fn w_register_truncates() {
         let mut rf = RegisterFile::new();
         rf.write_gpr(0, true, 0xFFFF_FFFF_1234_5678);
-        // reading as W0 should mask upper 32 bits
         assert_eq!(rf.read_gpr(0, false), 0x1234_5678);
     }
 
@@ -368,7 +379,6 @@ mod tests {
         let mut rf = RegisterFile::new();
         rf.write_gpr(0, true, 0xFFFF_FFFF_FFFF_FFFF);
         rf.write_gpr(0, false, 0x42);
-        // full 64-bit read should show only lower 32 bits
         assert_eq!(rf.read_gpr(0, true), 0x42);
     }
 
@@ -385,6 +395,17 @@ mod tests {
     fn nzcv_pack() {
         let flags = NzcvFlags { n: true, z: false, c: true, v: false };
         assert_eq!(flags.pack(), 0b1010);
+    }
+
+    #[test]
+    fn nzcv_unpack_is_the_inverse_of_pack() {
+        // CCMP's literal path writes this nibble straight into the flags,
+        // so the two directions of the same four bits cannot drift.
+        for bits in 0..16u8 {
+            assert_eq!(NzcvFlags::unpack(bits).pack(), bits);
+        }
+        let f = NzcvFlags::unpack(0b0100);
+        assert!(f.z && !f.n && !f.c && !f.v, "bit 2 is Z");
     }
 
     #[test]

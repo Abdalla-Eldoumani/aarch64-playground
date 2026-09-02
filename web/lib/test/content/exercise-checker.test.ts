@@ -168,7 +168,7 @@ describe("checkExercise aggregation", () => {
       "    add x0, x0, 1\n",
     );
     expect(result.pass).toBe(false);
-    expect(result.summary).toContain("3 of 3");
+    expect(result.summary).toBe("0 of 3 checks passing");
     expect(result.results[0].expected).toBe("120");
     expect(result.results[0].actual).toBe("5");
   });

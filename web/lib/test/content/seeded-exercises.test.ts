@@ -68,7 +68,7 @@ describe("seeded exercises validate", () => {
   // The no-answer-key rule holds for the emulator-backed variants: a coding
   // exercise is graded by running the student's program, never by comparing
   // against a stored solution, so its JSON must not carry one. The interactive
-  // variants (quiz, prediction, blanks) are the deliberate exception -- they
+  // variants (quiz, prediction, blanks) are the deliberate exception: they
   // grade entirely client-side against author-declared answers the schema
   // validates, so their files carry those answers by design.
   it("coding exercises carry no reference-solution or answer key", () => {
@@ -285,7 +285,7 @@ describe("the checker passes a correct solution and fails an incorrect one end t
 // pairs above. They live ONLY here, for the same reason those do: the shipped
 // JSON carries no answer key and the checker grades by running the student's
 // program. Each is authored in the course style, and each settles two questions
-// at once -- the declared acceptance is reachable by a real program, and the
+// at once: the declared acceptance is reachable by a real program, and the
 // shipped starter does not already reach it.
 const REFERENCE_SOLUTIONS: Record<string, string> = {
   "warm-up-the-registers": `// combine three values into one result and print it
@@ -340,8 +340,8 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     a_r, 5                      // first addend
-        mov     b_r, 7                      // second addend
+        mov     a_r, 5
+        mov     b_r, 7
         add     total_r, a_r, b_r
         lsl     total_r, total_r, 3         // times eight is three shifts left
 
@@ -369,7 +369,7 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     value_r, -42                // starts out negative
+        mov     value_r, -42
 
         cmp     value_r, 0
         b.ge    keep
@@ -436,8 +436,8 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     a_r, 123                    // contender one
-        mov     b_r, 87                     // contender two
+        mov     a_r, 123
+        mov     b_r, 87
         mov     winner_r, a_r
         cmp     b_r, winner_r
         b.le    settled
@@ -644,7 +644,7 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     n_r, 9317                   // the number to reverse
+        mov     n_r, 9317
         mov     rev_r, 0
         mov     ten_r, 10
 
@@ -683,7 +683,7 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        ldr     value_r, =0xb7a5            // the value under census
+        ldr     value_r, =0xb7a5
         mov     count_r, 0
 
 loop:
@@ -760,7 +760,7 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        ldr     base_r, =scores             // base address of the array
+        ldr     base_r, =scores
         ldr     x9, =n_scores
         ldr     n_r, [x9]                   // element count
         mov     sum_r, 0
@@ -1072,7 +1072,7 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     x0, 10                      // the argument
+        mov     x0, 10
         bl      fact
 
         mov     x1, x0
@@ -1109,7 +1109,7 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     total_r, 100                // the running total
+        mov     total_r, 100
 
         mov     x0, 20
         bl      double_it                   // bonus = 40
@@ -1254,7 +1254,7 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     value_r, 99                 // the number to broadcast
+        mov     value_r, 99
         mov     bit_r, 7                    // start from the top bit
 
 loop:

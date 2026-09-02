@@ -15,7 +15,6 @@ count_m:.word   0                       // static local: lives in .data
 fmt:    .string "Call %d: count = %d\n"
 
 // increment() -> w0
-// Loads count from .data, increments, stores back, returns new value
         .balign 4
         .global increment
 increment:
@@ -25,7 +24,7 @@ increment:
         ldr     x9, =count_m           // address of count
         ldr     w10, [x9]              // w10 = count
         add     w10, w10, 1            // count++
-        str     w10, [x9]              // store back
+        str     w10, [x9]
         mov     w0, w10                // return count
 
         ldp     fp, lr, [sp], 16
@@ -52,5 +51,7 @@ loop:
 test:   cmp     i_r, 3
         b.le    loop
 
+        // main returns printf's byte count, not 0: the exit status is not
+        // part of what this example demonstrates.
         ldp     fp, lr, [sp], 16
         ret

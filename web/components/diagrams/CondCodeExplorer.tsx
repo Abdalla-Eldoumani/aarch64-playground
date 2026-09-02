@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * The condition-code explorer for the b.cond reference entry. Ten chips --
- * the course's condition codes grouped either-sign / signed / unsigned -- and
+ * The condition-code explorer for the b.cond reference entry. Ten chips:
+ * the course's condition codes grouped either-sign / signed / unsigned, and
  * a detail card that answers, for the picked code: the question it asks after
  * `cmp a, b`, the exact flag formula, why that formula answers the question,
  * and the C reading. Below, a live compare: the student types the two
@@ -10,11 +10,10 @@
  * dimmed, then the taken / falls-through verdict. Picking a code and typing
  * operands is the user acting (cyan); the computed flags and the verdict are
  * the machine acting (amber). The flag math is computeIntFlags from
- * lib/emulator/flag-math -- the same NZCV rules the executor applies -- and
+ * lib/emulator/flag-math (the same NZCV rules the executor applies), and
  * operands are fixed at the 32-bit w registers; the width story lives in the
- * FlagEffect panel on the flag-setting entries. Token-only, keyboard
- * accessible (native buttons and inputs), reduced-motion safe (discrete state
- * swaps, no animation).
+ * FlagEffect panel on the flag-setting entries. Native buttons and inputs; no
+ * animation, so reduced motion needs no fallback.
  */
 
 import { useId, useState, type JSX } from "react";
@@ -77,7 +76,7 @@ export const COND_CODES: CondCode[] = [
     group: "signed",
     question: "is the left value below the right, reading both as signed?",
     formula: "n ≠ v",
-    why: "a - b comes out negative (n set) when the left is smaller -- unless the subtraction overflowed and flipped the sign, which v records. n disagreeing with v means genuinely below.",
+    why: "a - b comes out negative (n set) when the left is smaller, unless the subtraction overflowed and flipped the sign, which v records. n disagreeing with v means genuinely below.",
     c: "if (a < b)",
     counterpart: "b.lo asks the same question in the unsigned reading; after the same cmp the two can disagree.",
     reads: ["n", "v"],
@@ -127,7 +126,7 @@ export const COND_CODES: CondCode[] = [
     formula: "c = 0",
     why: "an unsigned subtraction that needs a borrow clears c, and needing a borrow is exactly what below means. lo is also spelled cc (carry clear).",
     c: "if (a < b)",
-    counterpart: "b.lt asks the same question in the signed reading; with the defaults here lt fires and lo does not -- the bits of -1 read as the largest unsigned value.",
+    counterpart: "b.lt asks the same question in the signed reading; with the defaults here lt fires and lo does not, because the bits of -1 read as the largest unsigned value.",
     reads: ["c"],
     taken: (f) => !f.c,
     defaults: ["-1", "1"],
@@ -242,8 +241,8 @@ export function CondCodeExplorer({
         <p className="[font:var(--type-small)] text-[var(--text-secondary)]">
           after a compare, every condition code is a question about the four
           flags it left behind. eq and ne read the same either way; the other
-          eight come in signed / unsigned pairs -- pick by how the program
-          means the bits, not by what looks familiar.
+          eight come in signed / unsigned pairs; pick by how the program
+          means the bits.
         </p>
       </header>
 
@@ -373,7 +372,7 @@ export function CondCodeExplorer({
       )}
 
       <p className="[font:var(--type-small)] text-[var(--text-tertiary)]">
-        eq and ne also answer after adds, subs, ands, and tst -- any
+        eq and ne also answer after adds, subs, ands, and tst: any
         instruction that sets the flags, not just cmp.
       </p>
     </section>

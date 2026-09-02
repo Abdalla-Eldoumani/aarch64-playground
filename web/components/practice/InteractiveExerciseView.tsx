@@ -7,15 +7,21 @@
  * counts first-time-correct questions and marks the exercise solved (the
  * same solved-state store the index badges read) once every question has
  * been answered correctly.
+ *
+ * The answers themselves are held here rather than in the blocks, so they
+ * can be saved per slug and restored on a later visit. Restoring happens
+ * after mount: reading storage during the first render would put a value in
+ * the DOM the server render could not have, and hydration would flag it.
  */
 
-import { useState, type JSX } from "react";
+import { useCallback, useEffect, useReducer, useState, type JSX } from "react";
 import type {
   BlanksExercise,
   PredictionExercise,
   QuizExercise,
 } from "@/lib/content/exercise-schema";
 import { markSolved } from "@/lib/playground/solved-state";
+import { readAnswer, saveAnswer } from "@/lib/playground/exercise-answers";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { Kicker } from "@/components/ui/Kicker";
 import { QuizBlock } from "@/components/practice/QuizBlock";
@@ -40,6 +46,36 @@ function questionCount(exercise: InteractiveExercise): number {
   }
 }
 
+/**
+ * The answers in flight for this sheet. One field is live per variant: the
+ * quiz picks option indices, the other two collect typed text.
+ */
+interface AnswerDraft {
+  picks: (number | null)[];
+  typed: string[];
+}
+
+const EMPTY_DRAFT: AnswerDraft = { picks: [], typed: [] };
+
+/**
+ * A reducer rather than two useState pairs, because the restore below has to
+ * run in an effect (storage cannot be read during the first render without
+ * diverging from the server's) and a dispatch is what React 19's
+ * set-state-in-effect check allows there. Every edit arrives already built,
+ * so the reducer itself stays a merge.
+ */
+function draftReducer(prev: AnswerDraft, edit: Partial<AnswerDraft>): AnswerDraft {
+  return { ...prev, ...edit };
+}
+
+/** A copy of `values` with `index` set, padded with `filler` where short. */
+function withAt<T>(values: T[], index: number, value: T, filler: T): T[] {
+  const next = values.slice();
+  while (next.length <= index) next.push(filler);
+  next[index] = value;
+  return next;
+}
+
 export function InteractiveExerciseView({
   exercise,
   sheetNumber = "5.x",
@@ -50,6 +86,43 @@ export function InteractiveExerciseView({
 }): JSX.Element {
   const total = questionCount(exercise);
   const [correct, setCorrect] = useState<ReadonlySet<number>>(new Set());
+  const [draft, editDraft] = useReducer(draftReducer, EMPTY_DRAFT);
+  const { slug, variant } = exercise;
+
+  useEffect(() => {
+    const saved = readAnswer(slug);
+    if (!saved) return;
+    // A record whose kind does not match this variant is left alone; the
+    // slice trims to the questions this build renders, so a set that lost a
+    // question does not carry a stranded answer back into the store.
+    if (variant === "quiz" && saved.kind === "quiz") {
+      editDraft({ picks: saved.answers.slice(0, total) });
+    }
+    if (variant === "blanks" && saved.kind === "blanks") {
+      editDraft({ typed: saved.answers.slice(0, total) });
+    }
+    if (variant === "prediction" && saved.kind === "predict") {
+      editDraft({ typed: saved.answers.slice(0, total) });
+    }
+  }, [slug, variant, total]);
+
+  const pickAt = useCallback(
+    (index: number, value: number | null): void => {
+      const picks = withAt(draft.picks, index, value, null);
+      editDraft({ picks });
+      saveAnswer(slug, { kind: "quiz", answers: picks });
+    },
+    [draft.picks, slug],
+  );
+
+  const typeAt = useCallback(
+    (index: number, value: string): void => {
+      const typed = withAt(draft.typed, index, value, "");
+      editDraft({ typed });
+      saveAnswer(slug, { kind: variant === "blanks" ? "blanks" : "predict", answers: typed });
+    },
+    [draft.typed, slug, variant],
+  );
 
   // A block locks once answered correctly, so a correct index never leaves
   // the set; when the last one lands the exercise is solved for the index.
@@ -82,6 +155,8 @@ export function InteractiveExerciseView({
           <QuizBlock
             key={index}
             {...question}
+            value={draft.picks[index] ?? null}
+            onValueChange={(value) => pickAt(index, value)}
             onAttempt={(isCorrect) => handleAttempt(index, isCorrect)}
           />
         ))}
@@ -90,6 +165,8 @@ export function InteractiveExerciseView({
           <PredictionBlock
             key={index}
             {...question}
+            value={draft.typed[index] ?? ""}
+            onValueChange={(value) => typeAt(index, value)}
             onAttempt={(isCorrect) => handleAttempt(index, isCorrect)}
           />
         ))}
@@ -98,6 +175,8 @@ export function InteractiveExerciseView({
           <BlanksBlock
             key={index}
             {...question}
+            value={draft.typed[index] ?? ""}
+            onValueChange={(value) => typeAt(index, value)}
             onAttempt={(isCorrect) => handleAttempt(index, isCorrect)}
           />
         ))}

@@ -1,20 +1,17 @@
-// queue_viz.asm - eight slots in a ring, walked by two indices
+// queue.s - eight slots in a ring, walked by two indices
 //
-// The strip is the buffer as it really sits in memory, slot 0 through
+// The strip is the buffer as it sits in memory, slot 0 through
 // slot 7, and front and rear are drawn as what they are: two numbers
-// pointing into it. That is the only way the wrap shows. A queue drawn
-// front-first always looks like a list, and the moment the rear passes
-// slot 7 and lands back on slot 0 the picture stops being true.
+// pointing into it. A queue drawn front-first hides the wrap: once the rear
+// passes slot 7 and lands on slot 0, the picture no longer matches memory.
 //
-// queue_get_data / queue_get_front / queue_get_rear / queue_get_count
-// read the state out for the c++ build.
 
 define(fp, x29)
 define(lr, x30)
 
     queue_max_size = 8
 
-// Role numbers mirror the UI_ROLE_* set in ui.asm. They are repeated so
+// Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated so
 // this file also assembles on its own, the way the web build feeds it.
     QUEUE_ROLE_TEXT  = 0
     QUEUE_ROLE_DIM   = 1
@@ -745,7 +742,7 @@ queue_ask_loop:
     mov     w0, QUEUE_ROW_NOTE
     mov     w1, 2
     mov     w2, 78
-    bl      queue_blank                     // no complaint outlives the fix
+    bl      queue_blank                     // a good value clears the note row
     mov     w0, w23
     mov     w1, 1
     b       queue_ask_done
@@ -819,7 +816,7 @@ queue_enqueue_interactive:
     mov     w0, 750
     bl      queue_pause
 
-    // the wrap is the whole point of a circular buffer, so it gets said
+    // say so when the rear lands on a lower slot than it left
     cmp     w22, w21
     b.gt    queue_enq_settle
 
@@ -1064,8 +1061,7 @@ queue_clear_interactive:
     ret
 
 // queue_enqueue(w0 = value) -> w0 = 1 on success, 0 when the buffer is
-// full. No calls, so scratch registers are all it needs and no caller
-// state is at risk.
+// full. No calls, so no callee-saved register has to be spilled.
     .global queue_enqueue
 queue_enqueue:
     stp     fp, lr, [sp, -16]!
@@ -1227,7 +1223,7 @@ queue_clear:
     ldp     fp, lr, [sp], 16
     ret
 
-// accessors for the c++ build: read the state without touching it
+// accessors: read the state without touching it
 
 // queue_get_data() -> x0 = address of the buffer
     .global queue_get_data

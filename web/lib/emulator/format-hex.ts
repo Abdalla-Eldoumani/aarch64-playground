@@ -1,6 +1,6 @@
 /**
- * Machine values as the hex text the panels and the terminal print --
- * parse-address.ts read backwards.
+ * Machine values as the hex text the panels and the terminal print;
+ * parse-address.ts reads it back.
  *
  * Three shapes cover every readout: a 64-bit word (registers, sp/fp, a
  * stack slot, the pc in a diagnostic), a 32-bit word (an address column,
@@ -31,7 +31,7 @@ export function formatWord32(value: number): string {
   return "0x" + bits.toString(16).padStart(8, "0");
 }
 
-/** Two nibbles, no prefix -- hex dumps print bytes in runs, not one by one. */
+/** Two nibbles, no prefix: hex dumps print bytes in runs, not one by one. */
 export function formatByte(value: number): string {
   return (value & 0xff).toString(16).padStart(2, "0");
 }

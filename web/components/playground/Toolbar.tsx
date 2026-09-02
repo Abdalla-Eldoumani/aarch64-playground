@@ -43,11 +43,9 @@ function GroupLabel({ children }: { children: ReactNode }) {
 
 /**
  * The playground's labeled toolbar: one "tools" group (share, diagnostic
- * bundle, guided tour, theme, source, and the command-palette opener) that
- * replaces the former unlabeled "..." overflow drawer, so every action has a
- * visible, named home and discovery never depends on a memorized shortcut.
- * The run controls (Assemble / Run / Step / Back / Reset) keep their dedicated
- * bottom bar, matching the reference layout.
+ * bundle, guided tour, theme, source, and the command-palette opener), so
+ * every action is visible and named. The run controls (Assemble / Run / Step /
+ * Back / Reset) keep their dedicated bottom bar.
  */
 export function Toolbar({
   onShare,

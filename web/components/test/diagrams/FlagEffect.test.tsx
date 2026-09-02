@@ -42,7 +42,7 @@ describe("FlagEffect", () => {
     expect(screen.getByLabelText("x9")).toBeTruthy();
   });
 
-  it("shows a calm hint instead of verdicts on a non-number", () => {
+  it("shows the input hint instead of verdicts on a non-number", () => {
     render(<FlagEffect mnemonic="cmp" />);
     fireEvent.change(screen.getByLabelText("w9"), {
       target: { value: "ten" },

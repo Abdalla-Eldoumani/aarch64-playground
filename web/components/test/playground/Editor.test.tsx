@@ -35,6 +35,20 @@ function gutterLines(): number[] {
     .map((b) => Number(/^line (\d+)/.exec(b.getAttribute("aria-label") ?? "")?.[1]));
 }
 
+/** jsdom gives every element a zero scrollTop and clientHeight, and a plain
+ *  `value` descriptor is not writable, and the reveal has to write. */
+function makeScrollable(el: HTMLElement, clientHeight: number): void {
+  let top = 0;
+  Object.defineProperty(el, "scrollTop", {
+    configurable: true,
+    get: () => top,
+    set: (next: number) => {
+      top = next;
+    },
+  });
+  Object.defineProperty(el, "clientHeight", { configurable: true, value: clientHeight });
+}
+
 function scrollTo(pixels: number): void {
   const textarea = screen.getByLabelText("assembly source");
   Object.defineProperty(textarea, "scrollTop", { configurable: true, value: pixels });
@@ -75,6 +89,45 @@ describe("Editor fallback gutter", () => {
     // A screenful below the scroll position is drawn too, so a flick does
     // not expose a blank strip.
     expect(lines[lines.length - 1]).toBeGreaterThanOrEqual(1_040);
+  });
+
+  it("reveals the pc line by the nearest scroll, and leaves a visible one alone", () => {
+    narrowViewport();
+    const program = Array.from({ length: 200 }, (_, i) => `  mov x0, ${i}`).join("\n");
+    const { rerender } = render(
+      <Editor
+        value={program}
+        onChange={() => {}}
+        currentLine={null}
+        breakpoints={new Set<number>()}
+        onToggleBreakpoint={() => {}}
+        assemblyErrors={[]}
+      />,
+    );
+    const textarea = screen.getByLabelText("assembly source");
+    makeScrollable(textarea, 240);
+
+    const withLine = (line: number) =>
+      rerender(
+        <Editor
+          value={program}
+          onChange={() => {}}
+          currentLine={line}
+          breakpoints={new Set<number>()}
+          onToggleBreakpoint={() => {}}
+          assemblyErrors={[]}
+        />,
+      );
+
+    // Line 60 starts at 12 + 59*24 = 1428 and ends at 1452; the nearest
+    // scroll that brings its bottom into a 240px window is 1212. Centring
+    // would land on 1308.
+    withLine(60);
+    expect(textarea.scrollTop).toBe(1212);
+
+    // Line 59 is already inside the window, so the buffer must not move.
+    withLine(59);
+    expect(textarea.scrollTop).toBe(1212);
   });
 
   it("keeps breakpoint labels on the lines the window actually shows", () => {

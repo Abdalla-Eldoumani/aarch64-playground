@@ -7,9 +7,9 @@ import {
   type MemRead,
 } from "@/lib/emulator/watch-expr";
 
-// A seeded read returns "unmapped" on a miss -- the production contract:
-// the mapped verdict gates the bytes, so a missing address is a definite
-// fault, never a zero-filled success.
+// A seeded read returns "unmapped" on a miss, matching production: the mapped
+// verdict gates the bytes, so a missing address is a definite fault, never a
+// zero-filled success.
 function memory(seed: Record<string, bigint>): (addr: bigint, size: number) => MemRead {
   return (addr) => {
     const key = `0x${addr.toString(16)}`;
@@ -80,8 +80,8 @@ describe("watch expressions", () => {
   });
 
   it("resolves a frame-slot array against fp, never as an absolute address", () => {
-    // score1_s = 16 is an OFFSET from fp. Dereferencing it as an address
-    // read absolute 0x10, which zero-filled -- the debugger's core lie.
+    // score1_s = 16 is an OFFSET from fp. Dereferenced as an address it reads
+    // absolute 0x10, which zero-fills.
     const r = ok(evaluateWatch("score1_s[0]", baseCtx));
     expect(r.display).toBe("0x0000000000000042"); // fp + 16 + 0*8
   });
@@ -98,8 +98,7 @@ describe("watch expressions", () => {
 });
 
 // Edge cases: the parser promises a descriptive error for anything outside
-// the narrow grammar, and faults surface as errors rather than throws. Each
-// case builds only the context it needs.
+// the narrow grammar, and faults surface as errors rather than throws.
 
 describe("watch expression edge cases", () => {
   it("reports empty and whitespace-only expressions", () => {

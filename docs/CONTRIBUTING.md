@@ -30,7 +30,7 @@ Open <http://localhost:3000>. If "loading emulator..." persists, check the brows
 - `emulator/`: Rust crate, no browser deps in the core. Compiles to WASM via wasm-pack.
 - `web/`: Next.js 16 + React 19 app. Imports the WASM module the crate produces.
 - `docs/`: this directory. Design rationale lives here and in `ARCHITECTURE.md`; skim the relevant doc before changing an unfamiliar area.
-- `scripts/`: build and audit helpers (`vercel-build.sh`, `verify-corpus.js`, `check-headers.js`, `audit-deps.js`, `firefox-smoke.mjs`, `wasm-watch.mjs`).
+- `scripts/`: build and audit helpers (`vercel-build.sh`, `verify-corpus.js`, `check-headers.js`, `audit-deps.js`, `bundle-budget.js`, `firefox-smoke.mjs`, `wasm-watch.mjs`).
 - `tools/`: course helper utilities that are not part of the app or its build (nothing here ships, runs in CI, or is imported by `web/` or `emulator/`).
 
 ### Inside `web/`
@@ -38,7 +38,7 @@ Open <http://localhost:3000>. If "loading emulator..." persists, check the brows
 Components and client logic are grouped by domain so a change lands in an
 obvious place and a newcomer can navigate by directory name alone:
 
-- `web/components/` -- one React component per file, grouped by surface:
+- `web/components/`: one React component per file, grouped by surface:
   - `ui/` shared primitives and brand marks (Button, Select, Tabs, Kicker, ...)
   - `chrome/` the site shell (nav, footer, drawer, theme control, PWA bits)
   - `landing/` the home page (hero, feature catalog, die floorplan)
@@ -47,7 +47,7 @@ obvious place and a newcomer can navigate by directory name alone:
   - `playground/` the emulator surface shell (embeddable playground, editor, controls, dialogs)
   - `panels/` the right-tab machine views (registers, memory, stack, console, terminal, watches, converter, saves)
   - `test/` every component test, mirroring the groups above (`test/panels/RegisterPanel.test.tsx`)
-- `web/lib/` -- client logic, kebab-case one-purpose modules, grouped the same way:
+- `web/lib/`: client logic, kebab-case one-purpose modules, grouped the same way:
   - `emulator/` talking to the machine (the state hub, backends, replay, decode fields)
   - `asm/` the assembly-language surface (completion, formatting, hover docs, error explaining)
   - `content/` authored lessons, exercises, reference and pitfall data, schemas, site metadata
@@ -59,9 +59,9 @@ obvious place and a newcomer can navigate by directory name alone:
 
 ### Naming conventions
 
-- Component files are `PascalCase.tsx`, matching the exported component --
-  the React and Next.js community standard, so a file name is the symbol
-  you import.
+- Component files are `PascalCase.tsx`, matching the exported component,
+  which is the React and Next.js community standard, so a file name is the
+  symbol you import.
 - A component's `Props` interface is exported alongside it even when
   nothing imports it yet: the export is the component's public shape, and
   keeping the convention uniform beats auditing which ones happen to have
@@ -125,7 +125,7 @@ By opening a pull request you agree that your contribution is licensed under AGP
 
 1. **Decoder**: in [`emulator/src/decoder.rs`](../emulator/src/decoder.rs), add a branch that recognizes the bit pattern and returns the `Instruction` variant. Test-drive it with a hand-encoded word.
 2. **Executor**: in [`emulator/src/executor.rs`](../emulator/src/executor.rs), add the semantics. Route NZCV through the `add_flags` / `sub_flags` / `logic_flags` / `add_with_carry` helpers at the top of the same file (a carry-in instruction needs `add_with_carry`: the add and sub helpers assume a fixed carry-in and give the wrong C); FP arithmetic goes through `fpu.rs`; faults return the right `EmuError`.
-3. **Assembler**: in [`emulator/src/assembler.rs`](../emulator/src/assembler.rs), add the mnemonic to the `match` in `encode_line` and implement the encoder (register vs. immediate forms, shifts, the usual ARM64 quirks). Text-only CPSC 355 source flows through [`emulator/src/frontend/pipeline.rs`](../emulator/src/frontend/pipeline.rs) via `lower_operands` into the same backend.
+3. **Assembler**: in [`emulator/src/assembler.rs`](../emulator/src/assembler.rs), add the mnemonic to `SUPPORTED_MNEMONICS` and to the `match` in `encode_line`, then implement the encoder (register vs. immediate forms, shifts, the usual ARM64 quirks). Text-only CPSC 355 source flows through [`emulator/src/frontend/pipeline.rs`](../emulator/src/frontend/pipeline.rs) via `lower_operands` into the same backend.
 4. **Tests**: each file has a `#[cfg(test)] mod tests`. Add a round-trip test (assemble, run, assert state). If gcc emits the instruction, the C corpus (`tests/c_corpus.rs` over `tests/c-corpus/`) is the natural end-to-end home; `tests/hosted_end_to_end.rs` covers hand-built cases.
 5. **Docs**: append the mnemonic to [`docs/instruction-reference.md`](instruction-reference.md), and add its hover card in `web/lib/asm/instruction-docs.ts` with the matching `/reference` entry in `web/lib/content/reference-data.ts` (kept in sync by the reference-encoding test and `emulator/tests/reference_consistency.rs`). For hosted-runtime instructions, also update [`docs/cpsc355-style-guide.md`](cpsc355-style-guide.md).
 
@@ -135,8 +135,8 @@ Logic (`web/lib/`) is separate from React components (`web/components/`). Write 
 
 1. **Pure module**: `web/lib/<group>/<feature>.ts` with types and pure functions, plus its test at `web/lib/test/<group>/<feature>.test.ts` (happy path + edge cases). Tests run in jsdom with plain DOM assertions; `@testing-library/jest-dom` is not installed.
 2. **Hook** (if it holds React state): `web/lib/hooks/use-<feature>.ts`. For localStorage-backed state, copy the `useSyncExternalStore` shape from `use-named-saves.ts` so cross-tab sync works.
-3. **Component**: `web/components/<group>/<Feature>.tsx`, marked `"use client"` if it uses hooks or browser APIs. Lazy-load heavy components (anything pulling Monaco or xterm) via `next/dynamic` with `ssr: false`.
-4. **Wire in**: `web/components/playground/EmbeddablePlayground.tsx` orchestrates the emulator surface (`web/app/playground/page.tsx` mounts it); render into one of its existing panel slots so the resizable and mobile layouts pick it up.
+3. **Component**: `web/components/<group>/<Feature>.tsx`, marked `"use client"` if it uses hooks or browser APIs. Lazy-load heavy components (anything pulling Monaco or xterm) via `next/dynamic` with `ssr: false`, and keep the `dynamic()` call at module scope in a file of its own (`lazy-editor.tsx`, `lazy-panels.tsx`): a call re-evaluated on each render hands React a new component type and remounts the component, losing its state.
+4. **Wire in**: `web/components/playground/EmbeddablePlayground.tsx` orchestrates the emulator surface (`web/app/playground/page.tsx` mounts it) and hands the full playground's own chrome to `FullChromeSurface.tsx`, which loads dynamically so the landing hero never ships it. Render into one of their existing panel slots so the resizable and mobile layouts pick it up.
 5. **Docs**: add a row to `docs/features.md`, and the README if it adds a deep-link param or shortcut.
 
 If the feature accepts external input (URL params, uploads, paste), add a validator in the same PR. See [`security.md`](security.md).

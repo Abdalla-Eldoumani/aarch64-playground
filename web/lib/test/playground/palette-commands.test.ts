@@ -36,9 +36,8 @@ function row(actions: Action[], id: string): Action {
   return found!;
 }
 
-// The whole table, in order, written out by hand: a row that disappears (or
-// arrives) is a change to what the student can find, not an implementation
-// detail.
+// The whole table, in order, written out by hand: a row that disappears or
+// arrives changes what the student can find.
 const EVERY_ID = [
   "assemble",
   "step",
@@ -140,7 +139,7 @@ describe("the descriptions that carry the reason", () => {
       makeDeps({ programLoaded: false, canStepBack: false }),
     );
     expect(row(actions, "step").description).toBe("(no program; assemble first)");
-    expect(row(actions, "step-back").description).toBe("(no snapshots; run a step first)");
+    expect(row(actions, "step-back").description).toBe("(nothing to undo; take a step first)");
     expect(row(actions, "run").description).toBe("(no program; assemble first)");
   });
 
@@ -148,18 +147,18 @@ describe("the descriptions that carry the reason", () => {
     const actions = buildPaletteCommands(makeDeps());
     expect(row(actions, "step").description).toBe("execute one instruction");
     expect(row(actions, "step-back").description).toBe(
-      "undo the last instruction from the snapshot ring",
+      "undo the last instruction",
     );
     expect(row(actions, "run").description).toBe("run until halt or breakpoint");
   });
 
-  it("names the terminal pane when run lands there", () => {
+  it("names the terminal tab when run lands there", () => {
     const loaded = buildPaletteCommands(makeDeps({ launchable: true }));
-    expect(row(loaded, "run").description).toBe("hand the terminal pane to this program");
+    expect(row(loaded, "run").description).toBe("run this program in the terminal tab");
     // Nothing assembled yet: in terminal mode run IS the launch, so it says so
     // rather than sending the student to assemble first.
     const cold = buildPaletteCommands(makeDeps({ launchable: true, programLoaded: false }));
-    expect(row(cold, "run").description).toBe("assemble, then hand the terminal pane over");
+    expect(row(cold, "run").description).toBe("assemble, then run it in the terminal tab");
   });
 });
 
@@ -220,9 +219,7 @@ describe("the rows that act on the buffer", () => {
     expect(blobs).toHaveLength(2);
     expect(blobs[0].type).toBe("text/plain;charset=utf-8");
     expect(await blobs[0].text()).toBe(SOURCE);
-    // The object URL is released as soon as the click is dispatched.
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
-    // The anchor does not stay in the document.
     expect(document.querySelector("a")).toBeNull();
   });
 
@@ -239,7 +236,7 @@ describe("the rows that act on the buffer", () => {
   it("clicks the playground's own file input rather than opening a picker of its own", () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".s,.asm,.txt";
+    input.setAttribute("data-import-input", "");
     document.body.appendChild(input);
     const click = vi.spyOn(input, "click").mockImplementation(() => {});
     row(buildPaletteCommands(makeDeps()), "import-file").run();

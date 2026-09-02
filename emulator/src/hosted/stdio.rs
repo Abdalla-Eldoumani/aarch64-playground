@@ -1,19 +1,18 @@
 //! FILE*-level stdio over the VFS: fopen, fprintf, fclose.
 //!
-//! A FILE* here is an opaque handle -- `FILE_HANDLE_BASE + fd * 16` --
-//! a pure function of the descriptor open_vfs hands out, so no new
+//! A FILE* here is an opaque handle (`FILE_HANDLE_BASE + fd * 16`), a
+//! pure function of the descriptor open_vfs hands out, so no new
 //! machine state exists and snapshots/step-back restore streams for
-//! free. The handle page sits above the host-stub table and below
-//! nothing mappable, so it can never collide with a section, the heap,
-//! the argv page, or the stack; a program that dereferences a FILE*
-//! faults calmly on the unmapped page, the honest analog of poking
-//! glibc's opaque struct.
+//! free. The handle page sits above the host-stub table, past the last
+//! address any section, the heap, the argv page or the stack can reach;
+//! a program that dereferences a FILE* faults on the unmapped page, the
+//! same as dereferencing glibc's opaque FILE struct.
 //!
 //! Course usage (assignment 4 shape): `fopen("assign4.log", "w")`, the
 //! FILE* moved between registers, `fprintf(FILE*, fmt, ...)` per cell,
 //! one `fclose` at the end. fprintf reuses the printf engine with the
 //! vararg cursor starting at x2 (x0 = stream, x1 = format), and the
-//! bytes route through the same fd path -- and the same VFS caps -- as
+//! bytes route through the same fd path (and the same VFS caps) as
 //! the write syscall.
 
 use crate::errors::EmuError;
@@ -33,8 +32,8 @@ const FILE_HANDLE_STRIDE: u64 = 16;
 /// FILE* handle.
 ///
 /// glibc's `stdout` names a word that HOLDS a FILE*, not the FILE*
-/// itself -- gcc-compiled code does `adrp`/`add` to the symbol and then
-/// `ldr`s the handle out of memory -- so the three linker symbols have to
+/// itself (gcc-compiled code does `adrp`/`add` to the symbol and then
+/// `ldr`s the handle out of memory), so the three linker symbols have to
 /// address real memory for `ldr x0, =stdout` + `ldr x0, [x0]` to answer
 /// what it answers on the course servers.
 ///
@@ -45,19 +44,32 @@ pub const STDIO_GLOBALS_BASE: u64 = 0x0080_1000;
 
 /// The word `__ctype_b_loc` returns the address OF: it holds a pointer
 /// to the character-class table. Same page as the stream handles because
-/// it is the same kind of thing -- a libc global the loader writes once
+/// it is the same kind of thing: a libc global the loader writes once
 /// and the program only ever loads through.
 pub const CTYPE_B_PTR: u64 = STDIO_GLOBALS_BASE + 24;
 /// First entry (index -128) of the character-class table. 768 bytes of
 /// the page, ending well short of its 4 KiB.
 pub const CTYPE_B_TABLE: u64 = STDIO_GLOBALS_BASE + 32;
+/// The word `__ctype_toupper_loc` returns the address OF, and its
+/// lowercase twin. Same page as the stream handles and the class-table
+/// pointer, just past that table's 768 bytes.
+pub const CTYPE_TOUPPER_PTR: u64 = STDIO_GLOBALS_BASE + 800;
+pub const CTYPE_TOLOWER_PTR: u64 = STDIO_GLOBALS_BASE + 808;
+/// The conversion tables live on the NEXT page: two 384-entry int32
+/// arrays are 3072 bytes and the first globals page is already spoken
+/// for by the stream words and the character-class table. Still far
+/// below `heap::HEAP_BASE`, and the page above argv's is otherwise
+/// unclaimed.
+pub const CTYPE_CONV_BASE: u64 = STDIO_GLOBALS_BASE + 4096;
+pub const CTYPE_TOUPPER_TABLE: u64 = CTYPE_CONV_BASE;
+pub const CTYPE_TOLOWER_TABLE: u64 = CTYPE_CONV_BASE + 1536;
 
 fn handle_of(fd: u32) -> u64 {
     FILE_HANDLE_BASE + fd as u64 * FILE_HANDLE_STRIDE
 }
 
-/// Write the `stdin`/`stdout`/`stderr` words and the character-class
-/// table `__ctype_b_loc` points into. The loader calls this on every
+/// Write the `stdin`/`stdout`/`stderr` words and the three ctype tables
+/// the `__ctype_*_loc` pointers address. The loader calls this on every
 /// hosted load, beside the argv page, and `Cpu::new`/`Cpu::reset` call it
 /// too so the fixed layout is there before any program is.
 pub fn write_stdio_globals(mem: &mut Memory) -> Result<(), EmuError> {
@@ -72,12 +84,27 @@ pub fn write_stdio_globals(mem: &mut Memory) -> Result<(), EmuError> {
     for (i, bits) in crate::hosted::ctype::table().iter().enumerate() {
         mem.write_u16(CTYPE_B_TABLE + (i as u64) * 2, *bits)?;
     }
+    mem.map_page(CTYPE_CONV_BASE);
+    mem.write_u64(
+        CTYPE_TOUPPER_PTR,
+        CTYPE_TOUPPER_TABLE + crate::hosted::ctype::TABLE_ZERO_OFFSET_I32,
+    )?;
+    mem.write_u64(
+        CTYPE_TOLOWER_PTR,
+        CTYPE_TOLOWER_TABLE + crate::hosted::ctype::TABLE_ZERO_OFFSET_I32,
+    )?;
+    for (i, v) in crate::hosted::ctype::conversion_table(true).iter().enumerate() {
+        mem.write_u32(CTYPE_TOUPPER_TABLE + (i as u64) * 4, *v as u32)?;
+    }
+    for (i, v) in crate::hosted::ctype::conversion_table(false).iter().enumerate() {
+        mem.write_u32(CTYPE_TOLOWER_TABLE + (i as u64) * 4, *v as u32)?;
+    }
     Ok(())
 }
 
 /// Decode a handle back to its descriptor. Valid only when the value
 /// sits in the handle range on its stride AND the descriptor is live in
-/// the fd table -- a closed stream decodes to None, so fclose-twice and
+/// the fd table: a closed stream decodes to None, so fclose-twice and
 /// use-after-close answer like glibc's EOF instead of writing somewhere.
 fn fd_of(ctx: &HostContext<'_>, handle: u64) -> Option<u32> {
     if handle < FILE_HANDLE_BASE {
@@ -130,7 +157,7 @@ pub fn fopen(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 /// fprintf(stream, fmt, ...) -> chars written, -1 on a refused write.
 /// A value that never came from fopen is a calm halt naming the fix,
-/// like free() on a wild pointer -- there is no stream to write to and
+/// like free() on a wild pointer: there is no stream to write to and
 /// silently dropping the output would hide the bug.
 pub fn fprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let handle = ctx.regs.read_gpr(0, true);
@@ -147,8 +174,7 @@ pub fn fprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 /// fputs(s, stream) -> the byte count on success, EOF (-1) on a refused
 /// write. The string goes out as it stands: no terminator, and no
-/// newline added (that is puts, and mixing the two up is a classic bug
-/// this must not paper over).
+/// newline added (puts adds one; fputs does not).
 pub fn fputs(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let str_ptr = ctx.regs.read_gpr(0, true);
     let handle = ctx.regs.read_gpr(1, true);
@@ -252,13 +278,13 @@ fn take_line_from_file(ctx: &mut HostContext<'_>, fd: u32, limit: usize) -> Vec<
     line
 }
 
-/// The calm halt a value that never came from fopen earns, naming the
-/// call that was handed it.
+/// The halt for a value that never came from fopen, naming the call
+/// that was handed it.
 fn not_a_stream(call: &str, handle: u64) -> EmuError {
     EmuError::RuntimeError {
         message: format!(
             "{call} was given 0x{handle:x}, which is not a stream fopen \
-             returned -- check the fopen return value for NULL (x0 == 0) \
+             returned. Check the fopen return value for NULL (x0 == 0) \
              before using it, and keep the FILE* in a callee-saved register"
         ),
     }

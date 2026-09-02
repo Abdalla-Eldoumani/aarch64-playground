@@ -161,14 +161,14 @@ export function SavesPanel({
             const text = await file.text();
             const parsed = JSON.parse(text);
             const result = namedSaves.importBundle(parsed);
-            // Three real outcomes; the flat count used to green-check a
-            // structurally wrong file as "imported 0 added, 0 skipped".
+            // Three real outcomes: a flat count would green-check a
+            // structurally wrong file.
             if (!result.ok) {
-              toast.error("that file isn't a bookmark bundle (expected version 1 with a saves list)");
+              toast.error("that file is not a bookmark bundle (expected version 1 with a saves list)");
             } else if (!result.stored) {
               toast.error("import failed: browser storage is full or blocked");
             } else if (result.added === 0 && result.skipped > 0) {
-              toast.error(`no bookmarks imported -- all ${result.skipped} entries were invalid or already exist`);
+              toast.error(`no bookmarks imported: all ${result.skipped} entries were invalid or already saved`);
             } else {
               toast.show(`imported ${result.added} added, ${result.skipped} skipped`);
             }
@@ -195,7 +195,7 @@ export function SavesPanel({
           // An overwrite that failed to store keeps rendering the stale
           // record; without the toast that reads as a successful update.
           if (!stored) {
-            toast.error("bookmark not saved: browser storage is full or blocked -- export json to keep it, or delete old bookmarks");
+            toast.error("bookmark not saved: browser storage is full or blocked. export json to keep this one, or delete old bookmarks");
             return;
           }
           setBookmarkName("");
@@ -228,7 +228,7 @@ export function SavesPanel({
             key={s.name}
             className="flex items-center justify-between gap-2 font-mono"
           >
-            <span className="text-[var(--text-primary)] truncate" title={`step ${s.stepCount} -- ${s.savedAt}`}>
+            <span className="text-[var(--text-primary)] truncate" title={`step ${s.stepCount} · saved ${s.savedAt}`}>
               {s.name}
             </span>
             <div className="flex items-center gap-1">
@@ -258,11 +258,10 @@ export function SavesPanel({
                       stdin: s.stdin,
                       stepCount: s.stepCount,
                     });
-                    // Report what actually happened: a failed assemble
-                    // used to green-toast "restored", and the saved count
-                    // was reported even when the walk stopped early.
+                    // Report what actually happened: a failed assemble and a
+                    // short walk each need their own message.
                     if (!verdict.success) {
-                      toast.error(`${s.name} no longer assembles -- fix the source, then bookmark again`);
+                      toast.error(`${s.name} no longer assembles. fix the source, then bookmark it again`);
                     } else if (verdict.stepped < s.stepCount) {
                       toast.show(`restored ${s.name} (stopped at step ${verdict.stepped} of ${s.stepCount})`);
                     } else {

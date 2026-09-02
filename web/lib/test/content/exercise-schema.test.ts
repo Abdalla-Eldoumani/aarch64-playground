@@ -7,7 +7,7 @@ function validExercise() {
     title: "Sum Two Numbers",
     slug: "sum-two-numbers",
     order: 1,
-    topic: "arithmetic",
+    topic: "armv8",
     difficulty: "core",
     prompt: "## task\nAdd the two arguments and leave the sum in x0.",
     starter: "mov x0, 0\n",
@@ -54,7 +54,7 @@ describe("validateExercise (valid)", () => {
     expect(exercise.title).toBe("Sum Two Numbers");
     expect(exercise.slug).toBe("sum-two-numbers");
     expect(exercise.order).toBe(1);
-    expect(exercise.topic).toBe("arithmetic");
+    expect(exercise.topic).toBe("armv8");
     expect(exercise.difficulty).toBe("core");
     expect(exercise.args).toBe("2 3");
     expect(exercise.stdin).toBe("");

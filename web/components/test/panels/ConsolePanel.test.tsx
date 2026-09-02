@@ -53,8 +53,8 @@ describe("ConsolePanel stdin validation", () => {
     const { pushStdin, input } = setup();
     fireEvent.change(input, { target: { value: "42" } });
     fireEvent.submit(input.closest("form")!);
-    // Typed at a prompt, so the machine echoes it into the transcript --
-    // a redirect would go through the same call without the flag.
+    // Typed at a prompt, so the machine echoes it into the transcript; a
+    // redirect goes through the same call without the flag.
     expect(pushStdin).toHaveBeenCalledWith("42\n", true);
     expect(input.value).toBe("");
   });
@@ -91,7 +91,7 @@ describe("ConsolePanel stdin validation", () => {
 
 describe("ConsolePanel vfs upload", () => {
   function uploadInput() {
-    return screen.getByLabelText("Upload file to virtual filesystem") as HTMLInputElement;
+    return screen.getByLabelText("upload a file for the program to read") as HTMLInputElement;
   }
 
   it("registers an uploaded file into the vfs with its bytes", async () => {
@@ -141,7 +141,7 @@ describe("ConsolePanel controls and state", () => {
     const { input } = setup({ blocked: true });
     expect(screen.getByRole("status").textContent).toBe("waiting for input");
     expect(input.placeholder).toBe(
-      "program is waiting for input... (ctrl-d = end of input)",
+      "the program is waiting for input. type a line and press enter, or press Ctrl+D to close the input",
     );
   });
 
@@ -181,6 +181,19 @@ describe("ConsolePanel controls and state", () => {
     );
     expect(screen.getByText(/hello/)).toBeTruthy();
     expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
+  });
+
+  it("swaps the idle hint to touch copy on a coarse pointer", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("coarse"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    setup({});
+    expect(screen.getByText(/Tap step or run under the editor/)).toBeTruthy();
+    expect(screen.queryByText(/Step with F10/)).toBeNull();
+    vi.unstubAllGlobals();
   });
 
   it("lists registered vfs files", () => {
@@ -238,7 +251,7 @@ describe("ConsolePanel output a terminal session produced", () => {
     expect(screen.getByText("exit 0")).toBeTruthy();
   });
 
-  it("leaves stderr whole -- the pane never showed it", () => {
+  it("leaves stderr whole because the pane never showed it", () => {
     setup({
       stdout: "[2J frame",
       stderr: "warning: no such file\n",

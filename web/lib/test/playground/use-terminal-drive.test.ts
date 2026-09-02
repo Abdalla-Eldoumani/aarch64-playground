@@ -406,7 +406,7 @@ describe("forwarding keystrokes", () => {
     const { io, end } = await withSession(machine);
     foregroundOf(io).pushInput("x".repeat(MAX_STDIN_BYTES + 1));
     expect(machine.pushStdin).not.toHaveBeenCalled();
-    expect(io.write).toHaveBeenCalledWith("\r\n[stdin too large (max 100 KB)]\r\n");
+    expect(io.write).toHaveBeenCalledWith("\r\n[stdin too large: the limit is 100 KiB]\r\n");
     await end();
   });
 
@@ -416,6 +416,7 @@ describe("forwarding keystrokes", () => {
     // The machine parks on a read: running stops, blocked rises.
     machine.isRunning = false;
     machine.blocked = true;
+    // longer than one poll interval, so the drive has seen the parked read
     await new Promise((r) => setTimeout(r, 80));
     expect(machine.run).toHaveBeenCalledTimes(1);
     machine.blocked = false;
@@ -456,7 +457,8 @@ describe("standing down", () => {
     const { session } = await startSession(machine);
     let exit: number | null = 7;
     await act(async () => {
-      machine.error = "memory fault: read at 0x0000000000000000";
+      machine.error =
+        "memory fault: the program tried to read 0x0000000000000000, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant";
       exit = await session;
     });
     expect(exit).toBeNull();

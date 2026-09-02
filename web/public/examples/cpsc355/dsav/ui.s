@@ -1,4 +1,4 @@
-// ui.asm - the screen kernel every module draws through
+// ui.s - the screen every module draws through
 //
 // One frame, one title bar, one footer, one way to draw a panel. A
 // module says what it wants ("a panel called Heap here", "this run is
@@ -6,8 +6,8 @@
 // changes shape from this file alone.
 //
 // The canvas is a fixed 80x24: the frame is rows 1 and 24, the title bar
-// row 2, rules on rows 3 and 21, the footer row 22, and the message row
-// 23 that utils.asm writes input complaints into. Modules own rows 4-20.
+// row 2, rules on rows 3 and 21, the footer row 22, and the message row 23
+// that utils.s writes input complaints into. Modules own rows 4-20.
 
 define(fp, x29)
 define(lr, x30)
@@ -30,8 +30,8 @@ define(lr, x30)
     .data
     .balign 8
 
-// Rounded corners read softer than the square set the first version
-// used, and the light weight keeps the data the loudest thing on screen.
+// Rounded corners and a light weight keep the data the loudest thing on
+// screen.
 ui_tl:              .string "\xe2\x95\xad"   // rounded top-left
 ui_tr:              .string "\xe2\x95\xae"   // rounded top-right
 ui_bl:              .string "\xe2\x95\xb0"   // rounded bottom-left
@@ -50,8 +50,7 @@ ui_nl:              .string "\n"
 ui_fmt_at:          .string "\x1b[%d;%dH"
 ui_fmt_str:         .string "%s"
 
-// Complexity card labels: the reason a reader trusts what they just
-// watched. Every algorithm screen carries one.
+// Complexity card labels. Every algorithm screen carries one.
 ui_lbl_best:        .string "best"
 ui_lbl_avg:         .string "avg"
 ui_lbl_worst:       .string "worst"
@@ -127,8 +126,8 @@ ui_cols_done:
 // ui_num(x0 = dest, w1 = value, w2 = minimum width) -> w0 = characters
 // written, not counting the terminator.
 // The hosted runtime gives us printf but no sprintf, so a value that has to
-// end up in a buffer rather than on the screen -- a badge label, a growing
-// order strip -- is converted here. Right-aligned, padded with spaces to
+// end up in a buffer rather than on the screen (a badge label, a growing
+// order strip) is converted here. Right-aligned, padded with spaces to
 // the width, and always terminated.
     .global ui_num
 ui_num:
@@ -323,9 +322,8 @@ ui_screen_bars:
     ldp     fp, lr, [sp], 32
     ret
 
-// ui_tagline() - what the program is, set right on the title bar. Only
-// the home screen wears it; every other screen keeps the bar for its own
-// name.
+// ui_tagline() - what the program is, set right on the title bar. Only the
+// home screen shows it; every other screen keeps the bar for its own name.
     .global ui_tagline
 ui_tagline:
     stp     fp, lr, [sp, -32]!
@@ -538,8 +536,7 @@ ui_text:
 
 // ui_complexity(w0 = row, w1 = col, x2 = best, x3 = avg, x4 = worst,
 //               x5 = space)
-// The card that turns a pretty animation into a lesson: what the run
-// the student just watched costs, in the three cases and in memory.
+// What the run just watched costs, in the three cases and in memory.
     .global ui_complexity
 ui_complexity:
     stp     fp, lr, [sp, -80]!
@@ -637,7 +634,7 @@ ui_clear_body_done:
     ret
 
 // ui_prompt(w0 = row, w1 = col, x2 = label) - a label plus the input
-// caret, positioned so utils.asm's reader picks up from here. The cursor
+// caret, positioned so utils.s's reader picks up from here. The cursor
 // comes back for this one moment: every other screen hides it, and a
 // student typing wants to see where the characters land.
     .global ui_prompt

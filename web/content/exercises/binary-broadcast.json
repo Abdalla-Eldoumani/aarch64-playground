@@ -1,11 +1,11 @@
 {
-  "title": "binary broadcast",
+  "title": "Binary broadcast",
   "slug": "binary-broadcast",
   "order": 13,
   "topic": "bitwise",
   "difficulty": "core",
-  "prompt": "Print `99` the way the machine sees it: eight binary digits, `01100011`.\n\nThere is no `%b` in printf, so build the broadcast yourself. For each bit position from 7 down to 0, shift the value right by that many places, mask everything but the lowest bit with `and`, and print the surviving digit. One newline at the end.\n\n## what is checked\n\n- the eight binary digits on one line\n- the program exits cleanly\n- each digit is extracted with shifts and masks (`lsr` and `and`, no preformatted string)",
-  "starter": "// print the eight-bit binary form of a value\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(value_r, x19)\ndefine(bit_r, x20)\ndefine(digit_r, x21)\n\n        .data\nfmt_bit:    .string \"%lld\"\nfmt_nl:     .string \"\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     value_r, 99                 // the number to broadcast\n        mov     bit_r, 7                    // start from the top bit\n\n        // TODO: for each bit position from 7 down to 0, shift value_r\n        // right by that many places, mask with and to keep just the\n        // lowest bit, and print it with fmt_bit. Print fmt_nl once at\n        // the end.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Print `99` the way the machine sees it: eight binary digits, `01100011`.\n\nThere is no `%b` in printf, so print the digits one at a time. For each bit position from 7 down to 0, shift the value right by that many places, mask everything but the lowest bit with `and`, and print the surviving digit. One newline at the end.\n\n## what is checked\n\n- the eight binary digits on one line\n- the program exits cleanly\n- each digit is extracted with shifts and masks (`lsr` and `and`, no preformatted string)",
+  "starter": "// print the eight-bit binary form of a value\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(value_r, x19)\ndefine(bit_r, x20)\ndefine(digit_r, x21)\n\n        .data\nfmt_bit:    .string \"%lld\"\nfmt_nl:     .string \"\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     value_r, 99                 // the value to print in binary\n        mov     bit_r, 7                    // start from the top bit\n\n        // TODO: for each bit position from 7 down to 0, shift value_r\n        // right by that many places, mask with and to keep just the\n        // lowest bit, and print it with fmt_bit. Print fmt_nl once at\n        // the end.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
   "variant": "write",
   "acceptance": {

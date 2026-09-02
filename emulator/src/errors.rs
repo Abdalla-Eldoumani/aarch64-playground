@@ -77,24 +77,40 @@ impl fmt::Display for EmuError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownInstruction(word) => {
-                write!(f, "unknown instruction: 0x{word:08x}")
+                write!(
+                    f,
+                    "unknown instruction 0x{word:08x}: execution probably branched \
+                     into data rather than code. Check the branch that got here, \
+                     and the return address if this followed a ret"
+                )
             }
             Self::MemoryFault { address, access } => {
                 let kind = match access {
                     MemAccess::Read => "read",
                     MemAccess::Write => "write",
                 };
-                write!(f, "memory fault: {kind} at 0x{address:016x}")
+                write!(
+                    f,
+                    "memory fault: the program tried to {kind} 0x{address:016x}, which \
+                     no section covers. The base register is holding a value that is \
+                     not an address, usually because a `mov` was written where \
+                     `ldr xN, =label` was meant"
+                )
             }
             Self::UnalignedAccess { address, required } => {
                 write!(
                     f,
-                    "unaligned access at 0x{address:016x} (requires {required}-byte alignment)"
+                    "unaligned access at 0x{address:016x}: this instruction needs an \
+                     address that is a multiple of {required}. Check the offset added \
+                     to the base register"
                 )
             }
             Self::StackOverflow => write!(
                 f,
-                "stack overflow: sp has moved more than 8 MiB below the stack base -- usually recursion with no base case, a prologue that repeats without its epilogue, or sp loaded from a register that was never set up"
+                "stack overflow: sp has moved more than 8 MiB below the stack base. \
+                 Check the recursion's base case first, then check that every prologue \
+                 has a matching epilogue with the same size, and that sp was never \
+                 loaded from a register that had not been set up"
             ),
             Self::AssemblyError { line, message } => {
                 write!(f, "assembly error at line {line}: {message}")
@@ -109,7 +125,12 @@ impl fmt::Display for EmuError {
                 write!(f, "link error at line {line}: {message}")
             }
             Self::ArgvTooLarge { bytes } => {
-                write!(f, "argv layout would need {bytes} bytes, exceeds the 4096-byte argv page")
+                write!(
+                    f,
+                    "the arguments need {bytes} bytes, more than the 4 KiB the \
+                     playground reserves for argv. Shorten the args box above the \
+                     editor, or pass fewer arguments"
+                )
             }
             Self::NullPointerAccess { address, access } => {
                 let kind = match access {
@@ -118,7 +139,7 @@ impl fmt::Display for EmuError {
                 };
                 write!(
                     f,
-                    "stopped -- tried to {kind} address 0x{address:x}, which is not part of \
+                    "stopped: tried to {kind} address 0x{address:x}, which is not part of \
                      any program section (the servers kill this with a segmentation fault). \
                      A base register is holding a small number instead of an address: check \
                      for a `mov` where you meant `ldr xN, =label`, or an m4 alias that \
@@ -130,7 +151,7 @@ impl fmt::Display for EmuError {
                 if *at_call {
                     write!(
                         f,
-                        "stopped -- sp is 0x{sp:x} at this call, which is not a multiple of \
+                        "stopped: sp is 0x{sp:x} at this call, which is not a multiple of \
                          16. AAPCS64 requires sp on a 16-byte boundary at every bl, and on \
                          Linux the routine you called faults the first time it touches the \
                          stack (a bus error on the servers). Round the frame up: \
@@ -140,7 +161,7 @@ impl fmt::Display for EmuError {
                 } else {
                     write!(
                         f,
-                        "stopped -- sp is 0x{sp:x}, which is not a multiple of 16. On Linux \
+                        "stopped: sp is 0x{sp:x}, which is not a multiple of 16. On Linux \
                          every load or store through sp faults when sp is off the 16-byte \
                          boundary (a bus error on the servers); the line that broke it is \
                          above this one. Round the frame up: `sub sp, sp, 32` instead of \

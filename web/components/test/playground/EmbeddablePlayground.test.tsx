@@ -8,7 +8,7 @@ import { createRef } from "react";
 // chrome gating), not the children. The reduced embed/checker chrome renders
 // only these three plus the minimal control set, so they keep the heavy full
 // layout out of these unit tests.
-vi.mock("@/components/playground/Editor", () => ({
+vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({
@@ -22,8 +22,8 @@ vi.mock("@/components/panels/ConsolePanel", () => ({
 vi.mock("@/components/playground/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
 }));
-// Capture the tutorial's props so tests can drive onLoadSnippet -- the
-// snippet handoff contract -- without walking the real tour UI.
+// Capture the tutorial's props so tests can drive onLoadSnippet, the snippet
+// handoff contract, without walking the real tour UI.
 const tutorialProps = vi.hoisted(() => ({
   current: null as null | {
     onLoadSnippet: (
@@ -40,8 +40,8 @@ vi.mock("@/components/playground/TutorialRunner", () => ({
     return <div data-testid="tutorial-runner" />;
   },
 }));
-// Capture the terminal's props so tests can exercise buildTerminalContext --
-// the run-wait contract behind `./program` -- without booting a real xterm.
+// Capture the terminal's props so tests can exercise buildTerminalContext, the
+// run-wait contract behind `./program`, without booting a real xterm.
 const terminalProps = vi.hoisted(() => ({
   current: null as null | {
     buildContext: () => {
@@ -87,7 +87,19 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // The idle-engage cases stub globals jsdom does not provide; leaving one in
+  // place would change what every later case sees.
+  vi.unstubAllGlobals();
 });
+
+// The full-chrome surface is reached through dynamic(), so it mounts a beat
+// after the shell does. Awaiting the same import settles it before a case
+// reads the surface's own markup.
+async function fullChromeMounted() {
+  await act(async () => {
+    await import("@/components/playground/FullChromeSurface");
+  });
+}
 
 describe("EmbeddablePlayground", () => {
   it("is driveable through an imperative handle once engaged", () => {
@@ -128,6 +140,61 @@ describe("EmbeddablePlayground", () => {
     expect(screen.queryByTestId("editor")).toBeNull();
 
     engage(container);
+    expect(useEmulatorMock).toHaveBeenCalled();
+    expect(screen.getByTestId("editor")).toBeTruthy();
+  });
+
+  it("routes the observer's engage through an idle slot, once", () => {
+    // jsdom supplies neither of these, so both are stubbed: the observer to
+    // drive the only engage path that defers, and the idle queue to hold the
+    // callback rather than run it.
+    let intersect: () => void = () => {};
+    class ObserverStub {
+      readonly root = null;
+      readonly rootMargin = "";
+      readonly thresholds: readonly number[] = [];
+      constructor(callback: IntersectionObserverCallback) {
+        intersect = () => {
+          callback(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          );
+        };
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    }
+    let runIdle: () => void = () => {};
+    let idleOptions: IdleRequestOptions | undefined;
+    const requestIdle = vi.fn(
+      (callback: IdleRequestCallback, options?: IdleRequestOptions) => {
+        runIdle = () => callback({ didTimeout: false, timeRemaining: () => 0 });
+        idleOptions = options;
+        return 7;
+      },
+    );
+    vi.stubGlobal("IntersectionObserver", ObserverStub);
+    vi.stubGlobal("requestIdleCallback", requestIdle);
+    vi.stubGlobal("cancelIdleCallback", vi.fn());
+
+    render(<EmbeddablePlayground chrome="embed" />);
+    expect(useEmulatorMock).not.toHaveBeenCalled();
+
+    // Two intersections, one queued engage: the observer reports every change.
+    act(() => {
+      intersect();
+      intersect();
+    });
+    expect(requestIdle).toHaveBeenCalledTimes(1);
+    expect(idleOptions).toEqual({ timeout: 1200 });
+    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("editor")).toBeNull();
+
+    act(() => runIdle());
     expect(useEmulatorMock).toHaveBeenCalled();
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
@@ -180,15 +247,68 @@ describe("EmbeddablePlayground", () => {
     expect(state.exitCode).toBe(0);
   });
 
-  it("renders only a minimal control set in embed chrome", () => {
+  it("renders the embed control set: run, step, back, reset, and no assemble or check", () => {
     const { container } = render(<EmbeddablePlayground chrome="embed" />);
     engage(container);
     expect(screen.getByLabelText("run")).toBeTruthy();
+    expect(screen.getByLabelText("step")).toBeTruthy();
+    expect(screen.getByLabelText("back")).toBeTruthy();
     expect(screen.getByLabelText("reset")).toBeTruthy();
-    // Full-only controls (assemble / step / back) belong to the full chrome.
+    // Assemble stays full-only: the embed's run and step assemble first.
     expect(screen.queryByLabelText("assemble")).toBeNull();
-    expect(screen.queryByLabelText("step")).toBeNull();
+    // Check belongs to checker chrome.
     expect(screen.queryByLabelText("check")).toBeNull();
+  });
+
+  it("drops step and back when the host opts out", () => {
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" showStep={false} showBack={false} />,
+    );
+    engage(container);
+    expect(screen.getByLabelText("run")).toBeTruthy();
+    expect(screen.getByLabelText("reset")).toBeTruthy();
+    expect(screen.queryByLabelText("step")).toBeNull();
+    expect(screen.queryByLabelText("back")).toBeNull();
+  });
+
+  it("embed Step assembles the current source before advancing", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    fireEvent.click(screen.getByLabelText("step"));
+    await waitFor(() => expect(hub.step).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
+    // A bare step over empty memory executes nothing the student wrote.
+    expect(vi.mocked(hub.assemble).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(hub.step).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("embed Step restarts a halted program instead of standing still", async () => {
+    const hub: Hub = makeHub({
+      instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
+      isHalted: true,
+    });
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
+    );
+    engage(container);
+    const step = screen.getByLabelText("step");
+    // The button stays live on a finished program: step means run it again
+    // from the first instruction, the same reading run takes.
+    expect(step.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(step);
+    await waitFor(() => expect(hub.step).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(hub.assemble).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(hub.step).mock.invocationCallOrder[0],
+    );
   });
 
   it("checker Check runs the current source to completion, then reports the post-run snapshot", async () => {
@@ -223,7 +343,7 @@ describe("EmbeddablePlayground", () => {
     engage(container);
     fireEvent.click(screen.getByLabelText("check"));
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledTimes(1));
-    // The old unconditional callback graded the stale machine, ticking
+    // An unconditional callback would grade the stale machine, ticking
     // structural checks green against source that never built.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(hub.run).not.toHaveBeenCalled();
@@ -400,7 +520,7 @@ describe("EmbeddablePlayground", () => {
     );
   });
 
-  it("renders the calm fault treatment when the hub fails to load", () => {
+  it("renders the load-failure message when the hub fails to load", () => {
     useEmulatorMock.mockReturnValue(
       makeHub({ isLoaded: false, loadError: "wasm exploded" }),
     );
@@ -421,7 +541,7 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
   });
 
-  it("gates the full-chrome execution controls on the hub's loaded flag", () => {
+  it("gates the full-chrome execution controls on the hub's loaded flag", async () => {
     // The real Controls renders in full chrome; run/step/back must follow
     // programLoaded even when the snapshot ring says stepping back is
     // possible (a stale canStepBack cannot outvote a missing program).
@@ -429,6 +549,7 @@ describe("EmbeddablePlayground", () => {
       makeHub({ programLoaded: false, canStepBack: true }),
     );
     const { unmount } = render(<EmbeddablePlayground chrome="full" />);
+    await fullChromeMounted();
     for (const name of [/^run/, /^step/, /^back/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
@@ -547,6 +668,7 @@ describe("program delivery from recents and the tutorial", () => {
         startSource={"// working buffer\nret"}
       />,
     );
+    await fullChromeMounted();
     // A handoff carrying stdin and VFS seeds displaces the buffer into
     // recents. The stdin seed must not survive the recall; the VFS file
     // stays, because full chrome treats the VFS as the student's home
@@ -680,10 +802,10 @@ describe("terminal context", () => {
   it("runProgram reports the post-run stdout and exit code, not the pre-run state", async () => {
     // Mirror the real useEmulator: run() flips isRunning through React state,
     // so the hub object the wait loop reads through emuRef only advances when
-    // a render commits. The stub keeps that latency -- `phase` moves inside
-    // run(), but no hub carries the new value until the next rerender -- which
-    // is exactly what makes a check-before-sleep loop exit on the pre-run
-    // false and report stale stdout and exit code.
+    // a render commits. The stub keeps that latency: `phase` moves inside
+    // run(), but no hub carries the new value until the next rerender, which
+    // is what makes a check-before-sleep loop exit on the pre-run false and
+    // report stale stdout and exit code.
     let phase: "idle" | "running" | "done" = "idle";
     const assemble = vi.fn(async () => true);
     const run = vi.fn(() => {
@@ -710,7 +832,7 @@ describe("terminal context", () => {
     const pending = context.runProgram(["./program"]).then((r) => {
       result = r;
     });
-    // Flush the awaited assemble so run() fires; the running hub has NOT
+    // Flush the awaited assemble so run() fires; the running hub has not
     // committed yet, so a loop that checks before sleeping would bail here.
     await act(async () => {
       await new Promise<void>((r) => setTimeout(r, 0));
@@ -754,7 +876,7 @@ describe("autoplay", () => {
     // Mirror the real useEmulator: a fresh hub object every render (its memo
     // deps include the changing registers/pc) while the assemble/step spies
     // persist. A referentially stable hub would pass even if `emu` were
-    // re-added to the autoplay effect's deps -- the freeze regression this
+    // re-added to the autoplay effect's deps, the freeze regression this
     // guards: keying on `emu` clears the interval on the first re-render and the
     // once-per-engage guard then strands the walk (step fires 0-1 times).
     useEmulatorMock.mockImplementation(() => ({ ...makeHub(), assemble, step }));
@@ -771,8 +893,11 @@ describe("autoplay", () => {
     const { container, rerender } = render(view());
     // The global matchMedia stub reports not-reduced, so the walk runs.
     engage(container);
-    // Flush the awaited assemble so the step interval registers.
+    // Drive the walk's idle wait (jsdom has no requestIdleCallback, so it
+    // sits on the setTimeout fallback), then flush the awaited assemble so
+    // the step interval registers.
     await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
       await Promise.resolve();
     });
     // Drive the per-step re-renders that hand useEmulator a new identity. The
@@ -793,6 +918,47 @@ describe("autoplay", () => {
     expect(assemble).toHaveBeenCalledTimes(1);
     expect(assemble).toHaveBeenCalledWith("mov x0, #1", []);
     expect(step).toHaveBeenCalledTimes(3);
+  });
+
+  it("waits for an idle slot before the first assemble", async () => {
+    let runIdle: () => void = () => {};
+    let idleOptions: IdleRequestOptions | undefined;
+    const requestIdle = vi.fn(
+      (callback: IdleRequestCallback, options?: IdleRequestOptions) => {
+        runIdle = () => callback({ didTimeout: false, timeRemaining: () => 0 });
+        idleOptions = options;
+        return 11;
+      },
+    );
+    vi.stubGlobal("requestIdleCallback", requestIdle);
+    vi.stubGlobal("cancelIdleCallback", vi.fn());
+    const assemble = vi.fn().mockResolvedValue(true);
+    const step = vi.fn();
+    useEmulatorMock.mockImplementation(() => ({ ...makeHub(), assemble, step }));
+    const { container } = render(
+      <EmbeddablePlayground
+        chrome="embed"
+        autoplay
+        autoplaySteps={3}
+        startSource="mov x0, #1"
+      />,
+    );
+    engage(container);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    // The walk is parked in the idle queue: nothing has reached the machine,
+    // and the timeout is what keeps a busy thread from stranding it there.
+    expect(assemble).not.toHaveBeenCalled();
+    expect(requestIdle).toHaveBeenCalledTimes(1);
+    expect(idleOptions).toEqual({ timeout: 1200 });
+
+    await act(async () => {
+      runIdle();
+      await Promise.resolve();
+    });
+    expect(assemble).toHaveBeenCalledTimes(1);
+    expect(assemble).toHaveBeenCalledWith("mov x0, #1", []);
   });
 
   it("does nothing under prefers-reduced-motion: reduce", async () => {

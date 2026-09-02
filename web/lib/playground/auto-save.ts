@@ -53,9 +53,9 @@ export function useAutoSave(value: string, enabled: boolean = true): void {
 
 /**
  * Stored entries are untrusted: another tab, an older build, or a hand-edited
- * localStorage can hold anything. A wrong-shaped element used to reach the
- * recents list, where a missing body loads an empty program and a non-string
- * name renders as whatever it is.
+ * localStorage can hold anything. A wrong-shaped element reaches the recents
+ * list, where a missing body loads an empty program and a non-string name
+ * renders as whatever it is.
  */
 function isValidRecent(v: unknown): v is RecentEntry {
   if (v == null || typeof v !== "object") return false;

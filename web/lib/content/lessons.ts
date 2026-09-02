@@ -14,7 +14,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { validateLesson, type Lesson } from "@/lib/content/lesson-schema";
+import {
+  validateLesson,
+  type Lesson,
+  type LessonIndexRow,
+} from "@/lib/content/lesson-schema";
 import { compareByOrder } from "@/lib/content/content-order";
 
 /** The real content directory, resolved against the build's cwd (web/). */
@@ -66,6 +70,22 @@ export function loadAllLessons(dir: string = DEFAULT_DIR): Lesson[] {
 
   // Stable sort keeps the filename order for lessons that share an `order`.
   return lessons.sort(compareByOrder);
+}
+
+/**
+ * Every validated lesson narrowed to the index row: same order, same count,
+ * same validation, with `body` dropped before it can reach the client
+ * payload. The index never reads a block, and the bodies are almost all of
+ * what the lessons weigh.
+ */
+export function loadLessonIndex(dir: string = DEFAULT_DIR): LessonIndexRow[] {
+  return loadAllLessons(dir).map((lesson) => ({
+    title: lesson.title,
+    slug: lesson.slug,
+    order: lesson.order,
+    summary: lesson.summary,
+    tags: lesson.tags,
+  }));
 }
 
 /** Find a single validated lesson by slug, or `undefined` when none matches. */

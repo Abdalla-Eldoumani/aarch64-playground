@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Subroutines - Fundamentals",
+  "title": "Quiz: subroutines",
   "slug": "quiz-basic-subroutines",
   "order": 57,
   "topic": "subroutines",
   "difficulty": "intro",
   "variant": "quiz",
-  "prompt": "Work through open and closed subroutines, the argument and result registers, and how `bl` and `ret` carry the return address.",
+  "prompt": "Open and closed subroutines, the argument and result registers, and how `bl` and `ret` carry the return address.",
   "questions": [
     {
       "question": "What is the primary advantage of using an open (inline) subroutine?",
@@ -65,7 +65,7 @@
       ],
       "correctAnswer": 1,
       "explanation": "A closed subroutine is stored once as a separate sequence of instructions. When the program needs it, control is transferred to that one copy and then returns to the caller, so the instructions are not duplicated at every call site.",
-      "hint": "Think about whether the subroutine's instructions are copied into the caller or stored in one separate location."
+      "hint": "One form costs code size and the other costs a branch. Which is which?"
     },
     {
       "question": "When a bl instruction calls a subroutine, what happens to the return address?",

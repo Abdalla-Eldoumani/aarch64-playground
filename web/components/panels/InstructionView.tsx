@@ -7,26 +7,21 @@ interface InstructionViewProps {
   instructions: DecodedInstruction[];
   pc: number;
   /** When the program is running, the current-instruction row breathes its
-   *  amber PC marker. Default off; the page wires `running={emu.isRunning}`
-   *  during the composition pass. */
+   *  amber PC marker. Default off; the page wires `running={emu.isRunning}`. */
   running?: boolean;
   /**
    * Row to mark and follow instead of the pc. Set to the call site while the
    * pc is inside a hosted libc call: the pc is then a trampoline word or a
-   * synthetic stub, so the listing had nothing to mark and the window parked
-   * at the top for all three steps. The `bl` row stays marked instead.
+   * synthetic stub, so the listing has nothing to mark and the window would
+   * park at the top for all three steps. The `bl` row stays marked instead.
    */
   anchorPc?: number | null;
 }
 
 /**
- * Rows rendered at once. The table is a plain DOM table, so a large
- * workspace (the linker's 1 MiB .text window allows 262,144 instructions)
- * would ask the browser for a quarter-million rows on every assemble and
- * again on every step. Beyond this many the view becomes a window that
- * follows the program counter in fixed blocks -- fixed, so the rows only
- * shift when execution crosses a boundary rather than scrolling under the
- * reader on every step.
+ * Rows rendered at once. A 1 MiB .text window allows 262,144 instructions; past
+ * this count the view becomes a fixed block that follows the pc, so rows shift
+ * only when execution crosses a boundary.
  */
 export const INSTRUCTION_WINDOW = 512;
 

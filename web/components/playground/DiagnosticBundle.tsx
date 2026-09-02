@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { bundleToMarkdown } from "@/lib/playground/bundle-markdown";
 import {
-  bundleToMarkdown,
+  bundleShareUrl,
   type DiagnosticBundle as DiagnosticBundleData,
 } from "@/lib/playground/diagnostic-bundle";
 
@@ -22,9 +23,13 @@ export function DiagnosticBundle({ build }: DiagnosticBundleProps) {
 
   const onClick = async () => {
     try {
+      const snapshot = build();
       const origin =
         typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : undefined;
-      const md = bundleToMarkdown(build(), origin);
+      const md = bundleToMarkdown(
+        snapshot,
+        origin ? bundleShareUrl(origin, snapshot) : undefined,
+      );
       await navigator.clipboard.writeText(md);
       setStatus("ok");
       setTimeout(() => setStatus("idle"), 1500);

@@ -29,11 +29,23 @@ Metadata plus an ordered list of content blocks.
 
 Metadata:
 
-- `title`: the heading, a non-empty string.
+- `title`: the heading, a non-empty string, in sentence case. Capitalize
+  the first word and any proper noun or identifier that carries its own
+  spelling (AArch64, ARMv8, `printf`, `.data`, `x19`), and nothing else.
+  No trailing period, and no "in ARMv8 AArch64 Assembly" suffix: every
+  page here is that, and the suffix pushes the words that tell one lesson
+  from another off the end of an index card.
 - `slug`: url-safe kebab-case, matching the file name.
 - `order`: the index sorts by this; a number or string.
-- `summary`: optional one-line blurb for the index card.
-- `tags`: optional list of strings for the index filter.
+- `summary`: optional one-line blurb for the index card. Say what the
+  reader will be able to do, not that the lesson covers a topic.
+- `tags`: optional list of strings for the index filter. A tag is
+  lowercase, written with spaces rather than dashes, and names a concept
+  a reader would search for instead of restating the title. The shipped
+  lessons use twelve between them: branching, conditionals, format
+  strings, frame pointer, immediates, loops, post-test loop, pre-test
+  loop, printing, registers, stack, variables. Reuse one of those unless
+  the lesson teaches something none of them names.
 
 `body` is an ordered, non-empty list of blocks. Each block's `type` selects
 its remaining fields:
@@ -88,13 +100,13 @@ main:
 
 ```json
 {
-  "title": "adding two registers",
+  "title": "Adding two registers",
   "slug": "adding-two-registers",
   "order": 2,
   "summary": "Load two values, add them with the add instruction, and print the result.",
   "tags": [
     "registers",
-    "arithmetic"
+    "immediates"
   ],
   "body": [
     {
@@ -127,7 +139,12 @@ interactive question set graded in the page.
 
 Fields every variant carries:
 
-- `title`: the heading, a non-empty string.
+- `title`: the heading, a non-empty string, in the same sentence case as
+  a lesson title, and with no difficulty word in it: `difficulty` carries
+  the tier and the index prints it as its own chip. The page's metadata
+  title composes the two as `<title> (<difficulty>)`, so the three sets of
+  a theory family still get three distinct browser tabs and share cards
+  while the heading on the page stays bare.
 - `slug`: url-safe kebab-case, matching the file name.
 - `order`: the index sorts by this; a number or string. The sheet runs
   every coding exercise first (1 to 27 today) and then every theory set
@@ -135,12 +152,15 @@ Fields every variant carries:
   side. Nothing checks that two files share a number, so look before you
   pick.
 - `topic`: optional string; the practice page groups exercises under it.
-  The topics, their order on the page, and their printed labels live in
-  `web/lib/content/practice-topics.ts`; a topic missing from that table
-  still renders (its id is the label) but sorts after every listed one, so
-  a new topic wants a row there.
+  The sixteen topics, their order on the page, and their printed labels
+  live in `web/lib/content/practice-topics.ts`; a topic missing from that
+  table still renders (its id is the label) but sorts after every listed
+  one, so a new topic wants a row there.
 - `difficulty`: optional, one of `intro`, `core`, or `challenge`.
-- `prompt`: the task description, Markdown.
+- `prompt`: the task description, Markdown. Open with the task itself: what
+  the starter gives the reader, and what the program has to do. A sentence
+  that only sets a mood should become a hint ("One pass over the array is
+  enough") or go.
 - `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
   or `blanks`. The variant decides where the exercise appears: `write` and
   `identify-bug` sit in the coding column of the practice page, the other
@@ -178,14 +198,16 @@ a coding exercise's file carries no answer key.
 ### interactive variants
 
 The interactive variants skip the editor and grade entirely in the page, so
-their files declare the expected answers (that is by design and only applies
-to these variants; coding exercises still never store one). They ship in
-families named `quiz-basic-<family>`, `quiz-inter-<family>`, and
-`quiz-advance-<family>` (titled "Quiz: <Topic> - Fundamentals",
-"- Intermediate", and "- Advanced"), `blanks-<family>` ("Fill in the Blank:
-..."), and `predict-<family>` ("Predict: ..."). The family is the shared
-part of the five slugs and is usually the `topic` id, but it does not have
-to be: the memory-and-stack sets are the `frame-stack` family under the
+their files declare the expected answers (coding exercises still store none).
+They ship in families named `quiz-basic-<family>`, `quiz-inter-<family>`, and
+`quiz-advance-<family>` (all three titled "Quiz: <subject>"),
+`blanks-<family>` ("Fill in the blank: <subject>"), and
+`predict-<family>` ("Predict: <subject>"). Every set on one topic uses
+the same subject name, so a reader scanning the theory column sees three
+kinds of practice on one subject rather than three names for one topic.
+The family is the shared part of a topic's slugs (five where a prediction
+set exists, four otherwise) and is usually the `topic` id, but it does not
+have to be: the memory-and-stack sets are the `frame-stack` family under the
 `memory` topic, and a slug never changes once shipped, so pick the family
 name once. Each carries one question list in place of
 `starter`/`acceptance`:
@@ -248,10 +270,10 @@ Saved as `web/content/exercises/subtract-two-numbers.json`:
 
 ```json
 {
-  "title": "subtract two numbers",
+  "title": "Subtract two numbers",
   "slug": "subtract-two-numbers",
   "order": 2,
-  "topic": "arithmetic",
+  "topic": "armv8",
   "difficulty": "intro",
   "prompt": "The starter loads two values, `a` and `b`. Subtract `b` from `a` so the difference ends up in `a`, then let the program print it.\n\n## what is checked\n\n- the printed line reads `diff = 12`\n- the program exits cleanly\n- the difference is computed, not written in as a constant",
   "starter": "// subtract b from a and print the difference\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"diff = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 20\n        mov     b, 8\n\n        // TODO: subtract b from a, leaving the result in a\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",

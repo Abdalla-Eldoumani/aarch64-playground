@@ -30,9 +30,9 @@ export interface ShareOptions {
 }
 
 /**
- * The four distinct outcomes of reading a location hash. Collapsing the
- * failure kinds into null made a truncated link silently boot the default
- * buffer -- an absent banner was the only signal.
+ * The four distinct outcomes of reading a location hash. Collapsing the failure
+ * kinds into null made a truncated link silently boot the default buffer, with
+ * an absent banner as the only signal.
  */
 export type ShareReadResult =
   | { kind: "none" }
@@ -54,11 +54,10 @@ function sourceChecksum(source: string): string {
 
 /**
  * Encode the editor state as a shareable URL hash. lz-string's
- * `compressToEncodedURIComponent` keeps the payload safe inside a
- * `#p2=...` fragment and survives copy-paste through chat apps. The
- * v2 prefix carries the full state JSON; the older `#p=` form carrying
- * just the source string is still decoded by `readShareHash` so links
- * shared before this change keep working.
+ * `compressToEncodedURIComponent` keeps the payload safe inside a `#p2=...`
+ * fragment and survives copy-paste through chat apps. The v2 prefix carries the
+ * full state JSON; the older `#p=` form carrying just the source string is
+ * still decoded by `readShareHash` so older `#p=` links keep working.
  */
 export function buildShareHash(state: ShareState): string {
   const json = JSON.stringify({ ...state, h: sourceChecksum(state.source) });
@@ -67,12 +66,12 @@ export function buildShareHash(state: ShareState): string {
 
 /**
  * The compressed payload length of a built hash, against the cap
- * `readShareHash` enforces on the way back in. The sender's browser is the
- * only place this can be caught: a link built over the cap copies, pastes,
- * and opens to "that share link is too large", with the sender none the
- * wiser. A real multi-file workspace clears 12 KB easily -- the 12-file
- * data-structures example compresses to ~86,000 characters -- so the
- * dialog checks before it offers the link.
+ * `readShareHash` enforces on the way back in. The sender's browser is the only
+ * place this can be caught: a link built over the cap copies, pastes, and opens
+ * to "that share link is too large", with the sender none the wiser. A real
+ * multi-file workspace clears 12 KB easily: the 17-file data-structures example
+ * compresses to ~86,000 characters. So the dialog checks before it offers the
+ * link.
  */
 export function shareHashSize(hash: string): { chars: number; max: number } {
   const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
@@ -119,9 +118,10 @@ export function readShareHash(hash: string): ShareReadResult {
       if (parsed == null || typeof parsed !== "object") return { kind: "corrupt" };
       const o = parsed as Record<string, unknown>;
       if (typeof o.source !== "string") return { kind: "corrupt" };
-      // Checksum (v2 links carry one): a mangled fragment can decode to a
-      // VALID payload with a different program; 17 of 68 one-character
-      // substitutions did in the audit. Old links without it still load.
+      // Checksum (v2 links carry one): a mangled fragment can decode to a VALID
+      // payload with a different program; 17 of 68 one-character substitutions
+      // produced a valid payload with different source. Old links without it
+      // still load.
       if (typeof o.h === "string" && o.h !== sourceChecksum(o.source)) {
         return { kind: "corrupt" };
       }
@@ -144,12 +144,12 @@ export function readShareHash(hash: string): ShareReadResult {
           name: f.name.trim(),
           body: f.body,
         }));
-        // A hostile NAME is not a mangle, so the whole link is refused
-        // rather than loaded minus its helpers: a newline in one writes its
-        // own assembly lines into the `// ---- name ----` marker
-        // combineSources builds, and the linker reads them as program text.
-        // A wrong-SHAPED files array stays tolerated above -- that is an old
-        // or partial serialization, and nothing hostile survives it.
+        // A hostile NAME is not a mangle, so the whole link is refused rather
+        // than loaded minus its helpers: a newline in one writes its own
+        // assembly lines into the `// ---- name ----` marker combineSources
+        // builds, and the linker reads them as program text. A wrong-SHAPED
+        // files array stays tolerated above: that is an old or partial
+        // serialization, and nothing hostile survives it.
         if (files.some((f, i) => validateFileName(f.name, files, i) !== null)) {
           return { kind: "corrupt" };
         }

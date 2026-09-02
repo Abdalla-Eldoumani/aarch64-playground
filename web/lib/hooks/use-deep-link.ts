@@ -1,6 +1,9 @@
 "use client";
 
-import { decodeBundle, type DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
+import type {
+  BundleReadResult,
+  DiagnosticBundle,
+} from "@/lib/playground/diagnostic-bundle";
 import type { LaunchMode } from "@/lib/playground/playground-handoff";
 import type { Theme } from "@/lib/hooks/use-theme";
 
@@ -9,7 +12,7 @@ export interface DeepLink {
   theme?: Theme;
   /** Which surface `?example=`'s program runs in, overriding that
    *  example's own default for this load only. Absent means the default,
-   *  so every `?example=` link ever shared keeps its exact meaning. */
+   *  so an older `?example=` link resolves the same way it always did. */
   run?: LaunchMode;
   embed: boolean;
   /** Decoded `?bundle=<lz>` payload, when present and well-formed. */
@@ -20,11 +23,21 @@ export interface DeepLink {
 }
 
 /**
+ * The bundle codec's read, taken as an argument rather than imported.
+ * Decoding is what pulls lz-string in, and the landing hero reaches this
+ * module through EmbeddablePlayground -> useLaunchMode -> playground-handoff
+ * without ever decoding a bundle; only the playground route supplies one.
+ */
+export type BundleDecoder = (value: string | null) => BundleReadResult;
+
+/**
  * Parse the URL query string into a deep-link record. Pure so that
  * tests don't need a window. Unknown values for typed params are
- * dropped (treated as undefined) rather than passing through.
+ * dropped (treated as undefined) rather than passing through. With no
+ * decoder supplied a `?bundle=` is left undecoded, so `bundle` and
+ * `bundleError` stay absent.
  */
-export function parseDeepLink(search: string): DeepLink {
+export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink {
   const trimmed = search.startsWith("?") ? search.slice(1) : search;
   const params = new URLSearchParams(trimmed);
   const result: DeepLink = { embed: false };
@@ -37,18 +50,17 @@ export function parseDeepLink(search: string): DeepLink {
     result.theme = theme;
   }
 
-  // Same drop-unknown discipline as theme: `?run=1`, `?run=interactive`,
-  // and `?run=` are dropped rather than defaulted, so a typo falls back
-  // to the example's own default instead of guessing at a surface.
+  // Drop unknown values the way theme does: a typo falls back to the
+  // example's own default instead of guessing at a surface.
   const run = params.get("run");
   if (run === "terminal" || run === "console") result.run = run;
 
   result.embed = params.get("embed") === "1";
 
-  const bundle = decodeBundle(params.get("bundle"));
-  if (bundle.kind === "ok") {
+  const bundle = decode?.(params.get("bundle"));
+  if (bundle?.kind === "ok") {
     result.bundle = bundle.bundle;
-  } else if (bundle.kind === "corrupt" || bundle.kind === "too-large") {
+  } else if (bundle?.kind === "corrupt" || bundle?.kind === "too-large") {
     result.bundleError = bundle.kind;
   }
 
@@ -59,8 +71,8 @@ export function parseDeepLink(search: string): DeepLink {
  * Legacy example stems (the old course-labeled file names) mapped to the
  * renamed clean stems. A `?example=` link shared before the corpus was
  * renamed still resolves: the resolver translates the old stem to the new
- * one before fetching. This is a fixed allow-list -- only these known
- * stems are translated; everything else passes through untouched.
+ * one before fetching. This is a fixed allow-list: only these stems are
+ * translated.
  */
 export const LEGACY_EXAMPLE_ALIASES: Record<string, string> = {
   week03_exercise: "basics",

@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Memory Addressing - Intermediate",
+  "title": "Quiz: memory and the stack",
   "slug": "quiz-inter-frame-stack",
   "order": 53,
   "topic": "memory",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "Apply your knowledge of AArch64 addressing modes, local variables, and alignment mechanics.",
+  "prompt": "Addressing modes, locals reached by frame-pointer offset, and the 16-byte alignment sp has to keep.",
   "questions": [
     {
       "question": "What is the key difference between pre-indexed and post-indexed addressing modes?",

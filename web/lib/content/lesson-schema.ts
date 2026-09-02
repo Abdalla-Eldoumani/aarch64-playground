@@ -33,6 +33,24 @@ export interface Lesson {
   body: LessonBlock[];
 }
 
+/**
+ * The row shape the learn index renders: exactly the five fields
+ * LessonIndex reads, and nothing else. `body` is the rest of a Lesson and it
+ * is 53 KB of the 55 KB the authored set serializes to, never read by the
+ * index and never rendered by it, and it would otherwise cross the
+ * server-to-client boundary on every visit. The type lives here rather than
+ * beside the loader because the loader is server-only: a client component
+ * naming that module is one dropped `type` keyword away from a confusing
+ * build failure.
+ */
+export interface LessonIndexRow {
+  title: string;
+  slug: string;
+  order: number | string;
+  summary?: string;
+  tags?: string[];
+}
+
 /** Discriminated validation result: a typed lesson or a clear error. */
 export type LessonResult = { ok: true; lesson: Lesson } | { ok: false; error: string };
 

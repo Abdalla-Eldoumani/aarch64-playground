@@ -21,13 +21,11 @@ export interface RegisterRowProps {
  * right-aligned line under the name and alias instead of painting into the
  * neighboring column; `title` keeps the full value one hover away. On a
  * write the row plays the `anim-reg-flash` keyframe: the amber write bar
- * strikes in wide and settles into the static 2px edge, a latch closing
- * rather than a background wash, so the register file keeps its terminal
- * voice. The keyframe lives inside a `prefers-reduced-motion:
- * no-preference` block, so under reduced motion the row is static and the
- * bar plus the value's `--changed` ink are the indicators. The alias stays
- * on `--text-secondary` at full opacity so it clears WCAG AA (not a faded
- * label).
+ * strikes in wide and settles into the static 2px edge. The keyframe lives
+ * inside a `prefers-reduced-motion: no-preference` block, so under reduced
+ * motion the row is static and the bar plus the value's `--changed` ink are
+ * the indicators. The alias stays on `--text-secondary` at full opacity so
+ * it clears WCAG AA.
  */
 export function RegisterRow({ name, alias, value, changed = false }: RegisterRowProps) {
   return (

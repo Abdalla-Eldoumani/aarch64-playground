@@ -10,12 +10,12 @@ interface ReplayScrubberProps {
 }
 
 /**
- * Slider + play button above the RegisterPanel that lets a student
- * scrub through the last N captured frames. Renders nothing when
- * there are fewer than two frames -- the panel is empty until the
- * student steps a couple of times. Visual-only: scrubbing applies
- * the captured frame to React state without touching the underlying
- * CPU; the next forward `step` resumes from the live PC.
+ * Slider + play button above the RegisterPanel that lets a student scrub
+ * through the last N captured frames. Renders nothing when there are fewer than
+ * two frames, so the panel is empty until the student steps a couple of times.
+ * Visual-only: scrubbing applies the captured frame to React state without
+ * touching the underlying CPU; the next forward `step` resumes from the live
+ * PC.
  */
 export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberProps) {
   const [playing, setPlaying] = useState(false);
@@ -34,10 +34,9 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
     return idx;
   }, [frames, currentStep]);
 
-  // Stop the playback timer if the frame set shrinks under us
-  // (assemble / reset clears the ring). The pin clears whether or not
-  // playback is running -- gating it on the timer left a scrubbed
-  // position stuck across reset.
+  // Stop the playback timer if the frame set shrinks under us (assemble / reset
+  // clears the ring). The pin clears whether or not playback is running; gating
+  // it on the timer left a scrubbed position stuck across reset.
   useEffect(() => {
     if (frames.length < 2) {
       if (playTimerRef.current) {

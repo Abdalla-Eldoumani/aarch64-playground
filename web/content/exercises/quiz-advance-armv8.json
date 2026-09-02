@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: ARMv8 Assembly - Advanced",
+  "title": "Quiz: ARMv8 assembly",
   "slug": "quiz-advance-armv8",
   "order": 44,
   "topic": "armv8",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Work through loop conversion, exception levels, the program counter, multiply-accumulate, and integer division by zero in AArch64.",
+  "prompt": "Convert a loop by hand, then account for exception levels, the program counter, multiply-accumulate, and integer division by zero.",
   "questions": [
     {
       "question": "When a C while loop (pre-test) is hand-translated to AArch64, why is the branch at the top of the loop usually written with the complement of the C condition?",

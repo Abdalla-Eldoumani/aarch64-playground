@@ -152,10 +152,9 @@ export function useEmulator(): EmulatorState {
     haltedRef.current = snap.halted;
     setBlocked(snap.blocked);
     // A halted machine wants nothing: the emulator only ever SETS raw mode
-    // (a termios call) and never clears it on exit, so a finished arcade
-    // program left the flag up and kept stealing the terminal pane from the
-    // next program -- and the console's blocked jump stood down for a read
-    // no terminal session was there to answer.
+    // (a termios call) and never clears it on exit, // A halted machine wants
+    // nothing: the emulator only ever SETS raw mode and never clears it on
+    // exit, so the flag would otherwise outlive the program that set it.
     const wantsTerm = snap.wantsTerminal && !snap.halted;
     wantsTerminalRef.current = wantsTerm;
     setWantsTerminal(wantsTerm);
@@ -177,9 +176,6 @@ export function useEmulator(): EmulatorState {
     // of counting non-label source lines (which double-counts data/macro
     // lines and drifts on complex programs). Fall back to the legacy
     // line-count path only when the map is empty (bare-metal, already 1:1).
-    // No program, no marker: snapshots that arrive while the machine is
-    // empty (boot heartbeats, reset, a failed assemble) must not resurrect
-    // a stale line through the previous program's map.
     // An external call is a PAUSED-state affordance. A run passes through
     // one on every printf, so honoring it mid-run would strobe the card and
     // drag the marker back to the call site on every heartbeat; the pc the
@@ -187,12 +183,15 @@ export function useEmulator(): EmulatorState {
     const call = (!runningRef.current && snap.externalCall) || null;
     setExternalCall(call);
     const map = lineMapRef.current;
+    // No program, no marker: snapshots that arrive while the machine is
+    // empty (boot heartbeats, reset, a failed assemble) must not resurrect
+    // a stale line through the previous program's map.
     if (!programLoadedRef.current) {
       markCurrentLine(null);
     } else if (call) {
       // Inside a libc call the pc is a trampoline word or a synthetic stub;
       // the line the student is on is the `bl` that got there (null when the
-      // map cannot name it, which reads as "no line" exactly as before).
+      // map cannot name it, which reads as "no line").
       markCurrentLine(call.callSiteLine);
     } else if (!isEmptyLineMap(map)) {
       markCurrentLine(pcToSourceLineFromMap(pcNum, map));
@@ -206,9 +205,7 @@ export function useEmulator(): EmulatorState {
     // panel + replay scrubber can highlight changed cells without
     // forcing a full memory cache invalidation.
     if (snap.dirtyAddrs && snap.dirtyAddrs.length > 0) {
-      // The flat array is `[addr, len, addr, len, ...]`. Stash as
-      // pairs; the consumer (replay scrubber + memory panel) reads
-      // them out via `dirtyAddrs` on the hook return.
+      // The flat array is `[addr, len, addr, len, ...]`.
       const pairs: Array<[number, number]> = [];
       for (let i = 0; i + 1 < snap.dirtyAddrs.length; i += 2) {
         pairs.push([snap.dirtyAddrs[i], snap.dirtyAddrs[i + 1]]);
@@ -338,8 +335,8 @@ export function useEmulator(): EmulatorState {
         .then(async ({ result }): Promise<AssembleOutcome> => {
           if (!result.success) {
             // A non-positive line means "no line available" (a few linker
-            // errors); Monaco clamps a 0 range to line 1, which painted
-            // the error onto an innocent first line.
+            // errors); Monaco clamps a 0 range to line 1, which paints the
+            // error onto an unrelated first line.
             const errorLine =
               result.error_line != null && result.error_line > 0 ? result.error_line : null;
             if (surfaceErrors) {
@@ -359,8 +356,8 @@ export function useEmulator(): EmulatorState {
           const base = await backend.codeBase();
           // Fetch the authoritative line map alongside codeBase (mirroring
           // the existing codeBase round-trip), parse it into addr<->line
-          // lookups, and key the disassembly text -- and, via the ref, the
-          // marker and breakpoints -- off it for this assembly.
+          // lookups, and key the disassembly text off it for this assembly,
+          // along with the marker and breakpoints through the ref.
           const flatMap = await backend.lineMap();
           const map = parseLineMap(flatMap);
           lineMapRef.current = map;
@@ -378,9 +375,8 @@ export function useEmulator(): EmulatorState {
             ? pcToSourceLineFromMap(entryPc, map)
             : pcToSourceLine((entryPc - base) / 4, source);
           markCurrentLine(entryLine);
-          // One bulk read for the whole code region: the per-instruction
-          // loop used to make instruction_count sequential worker
-          // round-trips on every assemble.
+          // One bulk read for the whole code region: a per-instruction loop
+          // costs instruction_count worker round-trips per assemble.
           const codeBytes =
             result.instruction_count > 0
               ? await backend.getMemory(base, result.instruction_count * 4)
@@ -424,9 +420,9 @@ export function useEmulator(): EmulatorState {
   );
 
   // The terminal's gcc/as path: same machine bookkeeping, but the verdict
-  // comes back directly (no stale state reads) and nothing is written to
-  // the editor's error markers -- the terminal's error belongs to the
-  // terminal's file, not the source the editor happens to show.
+  // comes back directly (no stale state reads) and nothing is written to the
+  // editor's error markers: the terminal's error belongs to the terminal's
+  // file, not the source the editor happens to show.
   const assembleForTool = useCallback(
     (source: string, args: string[] = []): Promise<AssembleOutcome> =>
       assembleWith(source, args, false),
@@ -536,7 +532,7 @@ export function useEmulator(): EmulatorState {
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
           else if (runResult.step_limit_reached) {
             setError(
-              `paused after ${total.toLocaleString()} steps without finishing -- ` +
+              `paused after ${total.toLocaleString()} steps without finishing. ` +
                 "press run to continue, or check for a loop whose exit condition never becomes true",
             );
           }
@@ -599,12 +595,11 @@ export function useEmulator(): EmulatorState {
       // whitespace split: a bookmarked `"hello world"` is one argv entry
       // everywhere else, so the restore must not split it into two.
       const argList = params.args ? parseArgs(params.args) : [];
-      // One assemble path for every program delivery: the direct
-      // backend.assemble call this used to make skipped the line-map
-      // refresh, hosted-mode detection, the instruction decode, and the
-      // entry marker -- so the debugger kept describing the PREVIOUS
-      // program (both link at CODE_BASE, so stale lookups hit rather
-      // than miss).
+      // One assemble path for every program delivery: a direct
+      // backend.assemble call would skip the line-map refresh, hosted-mode
+      // detection, the instruction decode, and the entry marker, leaving the
+      // debugger describing the PREVIOUS program (both link at CODE_BASE, so
+      // stale lookups hit rather than miss).
       const outcome = await assembleWith(params.source, argList, true);
       if (!outcome.success) return { success: false, stepped: 0 };
       if (params.stdin) {

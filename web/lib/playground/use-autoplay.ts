@@ -23,7 +23,7 @@ export interface AutoplayParams {
   steps: number;
   /** The hub is live: nothing can assemble before this. */
   machineLoaded: boolean;
-  /** The hub as a ref, never as a render value -- see the effect below. */
+  /** The hub as a ref, never as a render value; see the effect below. */
   machine: RefObject<AutoplayMachine>;
   source: string;
   args: string;
@@ -32,10 +32,10 @@ export interface AutoplayParams {
 }
 
 /**
- * The landing hero's hands-off walk: once the hub is loaded, assemble the
- * start program and step it a bounded number of times on a timer so the
- * registers flash and the pc marker advances with no user action. Runs at
- * most once per engage, and stands down entirely under
+ * The landing hero's hands-off walk: once the hub is loaded and the thread has
+ * an idle slot, assemble the start program and step it a bounded number of
+ * times on a timer so the registers flash and the pc marker advances with no
+ * user action. Runs at most once per engage, and stands down entirely under
  * prefers-reduced-motion.
  */
 export function useAutoplay({
@@ -57,6 +57,8 @@ export function useAutoplay({
 
     const walkSteps = Math.max(0, Math.min(steps, AUTOPLAY_MAX_STEPS));
     let timer: ReturnType<typeof setInterval> | null = null;
+    let idleHandle: number | null = null;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
 
     const walk = async () => {
@@ -78,10 +80,31 @@ export function useAutoplay({
         }
       }, AUTOPLAY_STEP_MS);
     };
-    void walk();
+    // One idle slot before the first assemble. The walk starts the moment the
+    // hub loads, which on the landing is inside the LCP window: the assemble
+    // instantiates the wasm and the first steps re-render the whole register
+    // file. The timeout bounds the wait so a busy thread cannot leave the hero
+    // looking dead. hasAutoplayedRef is already set above, so a re-render
+    // during the wait cannot queue a second walk.
+    const start = () => {
+      if (!cancelled) void walk();
+    };
+    if (typeof requestIdleCallback === "function") {
+      idleHandle = requestIdleCallback(start, { timeout: 1200 });
+    } else {
+      idleTimer = setTimeout(start, 0);
+    }
 
     return () => {
       cancelled = true;
+      if (idleHandle !== null && typeof cancelIdleCallback === "function") {
+        cancelIdleCallback(idleHandle);
+        idleHandle = null;
+      }
+      if (idleTimer !== null) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
       if (timer) {
         clearInterval(timer);
         timer = null;
@@ -89,10 +112,10 @@ export function useAutoplay({
     };
     // Keyed STRICTLY on [machineLoaded, enabled]: useEmulator returns a NEW
     // object after every step (its memo deps include the changing
-    // registers/pc), so keying on anything that moves with it would re-run
-    // this effect after the first step, the cleanup would clear the timer,
-    // and the once-per-engage guard would then block any restart -- the hero
-    // would step once and freeze.
+    // registers/pc), so keying on anything that moves with it would re-run this
+    // effect after the first step, the cleanup would clear the timer, and the
+    // once-per-engage guard would then block any restart, and the hero would
+    // step once and freeze.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [machineLoaded, enabled]);
 }

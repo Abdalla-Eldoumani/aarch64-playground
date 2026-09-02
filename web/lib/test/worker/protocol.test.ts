@@ -4,9 +4,8 @@ import { emptyStateSnapshot } from "@/lib/worker/protocol";
 describe("emptyStateSnapshot", () => {
   test("carries the full 31-register file so the cold panel never collapses to SP/PC", () => {
     const snap = emptyStateSnapshot();
-    // The regression this guards: a worker init snapshot with an empty
-    // registers array wrote over the hook's 31-zero default, so the cold
-    // register panel rendered only the hardcoded SP and PC rows.
+    // An init snapshot with an empty registers array overwrites the hook's
+    // 31-zero default.
     expect(snap.registers).toHaveLength(31);
     expect(snap.registers.every((r) => r === "0x0000000000000000")).toBe(true);
   });
@@ -14,8 +13,8 @@ describe("emptyStateSnapshot", () => {
   test("reports the reset stack pointer and the code-base program counter", () => {
     const snap = emptyStateSnapshot();
     expect(snap.sp).toBe("0x0000000080000000");
-    // The honest entry pc, the same value the panel shows right after a
-    // successful assemble, not a bare 0x0.
+    // The entry pc, the same value the panel shows right after a successful
+    // assemble.
     expect(snap.pc).toBe("0x0000000000400000");
   });
 

@@ -21,6 +21,7 @@ import {
   validateSource,
 } from "@/lib/playground/upload-guard";
 import type { ImportTarget } from "@/lib/hooks/use-import-target";
+import { buildPaletteCommands, type PaletteDeps } from "@/lib/playground/palette-commands";
 
 const TARGET: ImportTarget = { kind: "main" };
 
@@ -187,9 +188,9 @@ describe("ImportExport export path", () => {
 });
 
 describe("ImportExport workspace bundle", () => {
-  // The share link is the only other carrier for a multi-file program, and
-  // it dies well before a real one fits in a URL fragment; before this the
-  // export buttons all closed over the main buffer alone.
+  // The share link is the only other carrier for a multi-file program, and a
+  // real workspace exceeds the fragment cap, so the bundle is the export that
+  // carries the helpers.
   const FILES = [
     { name: "util.s", body: "// util\n" },
     { name: "sort.s", body: "// sort\n" },
@@ -325,5 +326,40 @@ describe("ImportExport workspace bundle", () => {
       expect(toastError).toHaveBeenCalledWith("that .json file is not a workspace bundle"),
     );
     expect(onImportMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("ImportExport and the command palette", () => {
+  const noop = () => {};
+  const paletteDeps: PaletteDeps = {
+    blocked: false,
+    programLoaded: true,
+    canStepBack: true,
+    launchable: false,
+    source: "",
+    assemble: noop,
+    step: noop,
+    stepBack: noop,
+    run: noop,
+    pause: noop,
+    reset: noop,
+    launchInteractive: noop,
+    formatSource: noop,
+    openShare: noop,
+    openShortcuts: noop,
+    openTour: noop,
+    openConverter: noop,
+    toggleTheme: noop,
+  };
+
+  it("is the input the palette's import row finds and clicks", () => {
+    const { fileInput } = setup();
+    const click = vi.spyOn(fileInput, "click").mockImplementation(() => {});
+
+    const row = buildPaletteCommands(paletteDeps).find((a) => a.id === "import-file");
+    expect(row).toBeTruthy();
+    row!.run();
+
+    expect(click).toHaveBeenCalledTimes(1);
   });
 });

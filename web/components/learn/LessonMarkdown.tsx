@@ -204,8 +204,7 @@ const components: Components = {
 };
 
 /**
- * Render trusted-after-sanitization author Markdown. The single author-Markdown
- * entry point for the site: prose blocks and callout bodies both call this.
+ * Render trusted-after-sanitization author Markdown.
  */
 export function LessonMarkdown({
   markdown,

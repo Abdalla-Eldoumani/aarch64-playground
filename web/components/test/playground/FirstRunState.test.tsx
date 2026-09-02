@@ -10,7 +10,7 @@ describe("FirstRunState", () => {
     const region = screen.getByLabelText("no program assembled");
     const text = region.textContent ?? "";
     expect(text.toLowerCase()).toContain("aarch64");
-    expect(text).toContain("Assemble");
+    expect(text).toContain("assemble");
   });
 
   it("offers Assemble as the first move when wired", () => {

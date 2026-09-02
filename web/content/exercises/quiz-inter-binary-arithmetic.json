@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Binary Arithmetic - Intermediate",
+  "title": "Quiz: binary arithmetic",
   "slug": "quiz-inter-binary-arithmetic",
   "order": 38,
   "topic": "binary-arithmetic",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "Work through fixed-width modular arithmetic, the carry out of the most significant bit, the flags behind the signed and unsigned branch conditions, and the shift-and-add multiplication algorithm.",
+  "prompt": "How fixed-width arithmetic wraps, what a carry out of the most significant bit means, which flags the signed and unsigned branch conditions read, and how shift-and-add multiplication works.",
   "questions": [
     {
       "question": "Arithmetic in an N-bit register wraps modulo M. For a 4-bit register, what is M?",

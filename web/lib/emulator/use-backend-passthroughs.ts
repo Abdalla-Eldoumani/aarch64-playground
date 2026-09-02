@@ -23,11 +23,11 @@ export interface BackendPassthroughs {
 /**
  * The parts of the hook's surface that are only the backend with a
  * null guard in front: stdin, the VFS, saved machine states, and the
- * tool queries. They keep no state of their own -- every result they
- * produce reaches React through the snapshot listener -- so they are
- * grouped rather than scattered through the hub. Anything that has to
- * touch hub state (loadState reopening the program gate, clearConsole
- * emptying the scrollback) belongs to its own cluster instead.
+ * tool queries. They keep no state of their own (every result reaches React
+ * through the snapshot listener), so they are grouped rather than scattered
+ * through the hub. Anything that has to touch hub state (loadState reopening
+ * the program gate, clearConsole emptying the scrollback) belongs to its own
+ * cluster instead.
  */
 export function useBackendPassthroughs(
   backendRef: RefObject<EmulatorBackend | null>,

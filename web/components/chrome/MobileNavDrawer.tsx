@@ -14,11 +14,10 @@ import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
  * The collapsed mobile navigation: a hamburger trigger that opens an accessible
  * slide-in drawer of the site routes plus the theme control. Hidden at md and up
  * (the wide layout shows the routes inline), so the root carries `md:hidden`.
- * Focus management, Tab cycling, Escape, and focus-return all come from the shared
- * useFocusTrap hook rather than a hand-rolled trap.
+ * Focus trapping, Escape, and focus return come from the shared useFocusTrap hook.
  *
  * `stars` arrives from SiteNav, which only has it on the server-rendered mounts;
- * without it the source row reads exactly as it always has.
+ * without it the source row shows no count.
  */
 export function MobileNavDrawer({ stars = null }: { stars?: number | null }) {
   const pathname = usePathname();
@@ -31,6 +30,8 @@ export function MobileNavDrawer({ stars = null }: { stars?: number | null }) {
 
   return (
     <div className="md:hidden">
+      {/* Trigger above the panel so the close button stays hittable over the
+          overlay. */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

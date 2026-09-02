@@ -27,17 +27,17 @@ describe("DecodeStrip", () => {
     ].join("\n");
     render(<DecodeStrip source={source} currentLine={4} />);
     const text = screen.getByLabelText("current instruction").textContent ?? "";
-    expect(text).toContain("score1_r=w19");
+    expect(text).toContain("(score1_r = w19)");
   });
 
-  it("shows the calm prompt when no line is active", () => {
+  it("shows the step prompt when no line is active", () => {
     render(<DecodeStrip source="    mov x0, 1\n" currentLine={null} />);
     const text = screen.getByLabelText("current instruction").textContent ?? "";
     expect(text.toLowerCase()).toContain("step the program");
   });
 
   it("renders the field row for the encoding and lights the destination", () => {
-    // movz x19, 42 -- verified machine word from the emulator's disassembly.
+    // movz x19, 42: machine word taken from the emulator's disassembly.
     render(
       <DecodeStrip source="main:\n    mov x19, 42\n" currentLine={2} encodingHex="0xd2800553" />,
     );
@@ -50,6 +50,24 @@ describe("DecodeStrip", () => {
     expect(text).toContain("42");
     // The header shows the raw hex.
     expect(screen.getByText("0xd2800553")).toBeTruthy();
+  });
+
+  it("keeps a bit string on one line and floors its cell to its own width", () => {
+    // Same movz x19, 42 word: Rd is the five bits 10011.
+    render(
+      <DecodeStrip source="main:
+    mov x19, 42
+" currentLine={2} encodingHex="0xd2800553" />,
+    );
+    const row = screen.getByRole("img", { name: /instruction encoding/ });
+    const value = Array.from(row.querySelectorAll("span")).find(
+      (span) => span.textContent === "10011",
+    );
+    expect(value).toBeTruthy();
+    expect(value!.className).toContain("whitespace-nowrap");
+    expect(value!.className).not.toContain("break-all");
+    // The cell floors on its own content rather than on a computed advance.
+    expect(value!.parentElement!.className).toContain("min-w-max");
   });
 
   it("renders no field row before the program is assembled", () => {
@@ -74,7 +92,7 @@ describe("DecodeStrip external-call card", () => {
     );
     const text = screen.getByLabelText("current instruction").textContent ?? "";
     expect(text).toContain("printf");
-    expect(text).toContain("external call -- handled by the runtime");
+    expect(text).toContain("external call · handled by the runtime");
     expect(text).toContain(
       "printf runs inside the interpreter, not in your program; it finishes and returns on a later step",
     );

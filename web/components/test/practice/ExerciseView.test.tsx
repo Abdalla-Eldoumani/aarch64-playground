@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { forwardRef, useImperativeHandle, type Ref } from "react";
+import { act, forwardRef, useEffect, useImperativeHandle, type Ref } from "react";
 import type { Exercise } from "@/lib/content/exercise-schema";
 import type { CheckResult } from "@/lib/content/exercise-checker";
 import { checkExercise } from "@/lib/content/exercise-checker";
@@ -19,7 +19,9 @@ import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 // Shared between the embed mock and the assertions: the snapshot the embed
 // hands the checker, and the live source its getSource() returns. vi.hoisted so
 // they exist when the (hoisted) mock factory runs.
-const { MOCK_SNAPSHOT, MOCK_SOURCE } = vi.hoisted(() => ({
+const { MOCK_SNAPSHOT, MOCK_SOURCE, TYPED_SOURCE, LOADED } = vi.hoisted(() => ({
+  TYPED_SOURCE: "// what the student typed\n        mov     x0, 7",
+  LOADED: [] as string[],
   MOCK_SNAPSHOT: {
     registers: Array.from({ length: 31 }, () => "0x0000000000000000"),
     sp: "0x0000000000000000",
@@ -47,10 +49,26 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
       startArgs?: string;
       startStdin?: string;
       onCheck?: (snapshot: unknown) => void;
+      onSourceChange?: (source: string) => void;
     },
-    ref: Ref<{ getSource: () => string }>,
+    ref: Ref<{ getSource: () => string; loadSource: (source: string) => void }>,
   ) {
-    useImperativeHandle(ref, () => ({ getSource: () => MOCK_SOURCE }), []);
+    useImperativeHandle(
+      ref,
+      () => ({
+        getSource: () => MOCK_SOURCE,
+        loadSource: (source: string) => {
+          LOADED.push(source);
+        },
+      }),
+      [],
+    );
+    // The real embed echoes its buffer once on mount, before any edit.
+    const echo = props.onSourceChange;
+    const start = props.startSource ?? "";
+    useEffect(() => {
+      echo?.(start);
+    }, [echo, start]);
     return (
       <div
         data-testid="embed"
@@ -61,6 +79,9 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
       >
         <button type="button" onClick={() => props.onCheck?.(MOCK_SNAPSHOT)}>
           check
+        </button>
+        <button type="button" onClick={() => props.onSourceChange?.(TYPED_SOURCE)}>
+          type
         </button>
       </div>
     );
@@ -78,7 +99,25 @@ const markSolvedMock = vi.mocked(markSolved);
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
+  window.localStorage.clear();
+  LOADED.length = 0;
 });
+
+const ANSWER_KEY = (slug: string) => `aarch64-playground:practice:answer:${slug}`;
+
+/** The raw stored record, so a test can assert the stamp as well as the work. */
+function storedAnswer(slug: string): { kind: string; source?: string; updatedAt: number } | null {
+  const raw = window.localStorage.getItem(ANSWER_KEY(slug));
+  return raw === null ? null : JSON.parse(raw);
+}
+
+function saveSource(slug: string, source: string, updatedAt: number): void {
+  window.localStorage.setItem(
+    ANSWER_KEY(slug),
+    JSON.stringify({ version: 1, kind: "write", source, updatedAt }),
+  );
+}
 
 const writeExercise: Exercise = {
   title: "Write Exercise",
@@ -124,7 +163,7 @@ const failResult: CheckResult = {
     },
   ],
   structural: [{ assertion: { kind: "forbids-literal", value: 55 }, pass: false }],
-  summary: "1 of 2 checks failed",
+  summary: "1 of 2 checks passing",
 };
 
 describe("ExerciseView", () => {
@@ -139,9 +178,9 @@ describe("ExerciseView", () => {
     render(<ExerciseView exercise={writeExercise} />);
     const criteria = screen.getByRole("region", { name: /specification/i });
     const text = criteria.textContent ?? "";
-    expect(text).toContain("leaves the expected value in x0");
-    expect(text).toContain("exits with the expected code");
-    expect(text).toContain("prints the expected output");
+    expect(text).toContain("leaves the right value in x0");
+    expect(text).toContain("exits with the right code");
+    expect(text).toContain("prints the right output");
     expect(text).toContain("uses b.lt");
     expect(text).toContain("computes the result (does not hardcode it)");
     // The expected register value and the expected stdout must never appear.
@@ -212,9 +251,11 @@ describe("ExerciseView", () => {
     fireEvent.click(screen.getByRole("button", { name: /check/i }));
 
     const status = screen.getByRole("status");
-    expect(status.textContent).toContain("leaves the expected value in x0");
+    expect(status.textContent).toContain("leaves the right value in x0");
     expect(status.textContent).toContain("expected 55, got 42");
-    expect(status.textContent).toContain("computes the result (does not hardcode it)");
+    expect(status.textContent).toContain(
+      "computes the result (does not hardcode it): the value 55 appears literally in your source",
+    );
     expect(markSolvedMock).not.toHaveBeenCalled();
   });
 
@@ -231,5 +272,110 @@ describe("ExerciseView", () => {
     // Dropped: no stdin forwarded, but the starter source still is.
     expect(embed.getAttribute("data-startstdin")).toBeNull();
     expect(embed.getAttribute("data-startsource")).toBe("// starter program\nret");
+  });
+});
+
+describe("ExerciseView saved answers", () => {
+  const MY_WORK = "// my work\n        ret";
+
+  it("opens with the answer saved for this slug", () => {
+    saveSource("write-exercise", MY_WORK, 5);
+    render(<ExerciseView exercise={writeExercise} />);
+    expect(screen.getByTestId("embed").getAttribute("data-startsource")).toBe(MY_WORK);
+  });
+
+  it("opens with the starter when nothing is saved", () => {
+    render(<ExerciseView exercise={writeExercise} />);
+    expect(screen.getByTestId("embed").getAttribute("data-startsource")).toBe(
+      writeExercise.starter,
+    );
+  });
+
+  it("opens with the starter when the stored answer is malformed", () => {
+    window.localStorage.setItem(ANSWER_KEY("write-exercise"), "{not json");
+    render(<ExerciseView exercise={writeExercise} />);
+    expect(screen.getByTestId("embed").getAttribute("data-startsource")).toBe(
+      writeExercise.starter,
+    );
+  });
+
+  it("saves an edited buffer once the debounce elapses", () => {
+    vi.useFakeTimers();
+    render(<ExerciseView exercise={writeExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "type" }));
+    expect(storedAnswer("write-exercise")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(storedAnswer("write-exercise")).toMatchObject({
+      kind: "write",
+      source: TYPED_SOURCE,
+    });
+  });
+
+  it("flushes a pending edit when the sheet unmounts", () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<ExerciseView exercise={writeExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "type" }));
+    unmount();
+
+    expect(storedAnswer("write-exercise")).toMatchObject({ source: TYPED_SOURCE });
+  });
+
+  it("leaves the saved answer alone when the embed echoes it back on mount", () => {
+    saveSource("write-exercise", MY_WORK, 5);
+    vi.useFakeTimers();
+    render(<ExerciseView exercise={writeExercise} />);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    // Same stamp: opening an exercise must not make the local copy look
+    // newer than an import that really is.
+    expect(storedAnswer("write-exercise")?.updatedAt).toBe(5);
+  });
+
+  it("stores nothing for a buffer that is still the starter", () => {
+    vi.useFakeTimers();
+    render(<ExerciseView exercise={writeExercise} />);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(storedAnswer("write-exercise")).toBeNull();
+  });
+
+  it("restore starter loads the starter and forgets the saved answer", () => {
+    saveSource("write-exercise", MY_WORK, 5);
+    vi.useFakeTimers();
+    render(<ExerciseView exercise={writeExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "type" }));
+    fireEvent.click(screen.getByRole("button", { name: "restore starter" }));
+
+    expect(LOADED).toEqual([writeExercise.starter]);
+    expect(storedAnswer("write-exercise")).toBeNull();
+
+    // The edit pending when restore was pressed must not write itself back.
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(storedAnswer("write-exercise")).toBeNull();
+  });
+
+  it("keeps each slug's answer separate", () => {
+    vi.useFakeTimers();
+    const { unmount } = render(<ExerciseView exercise={writeExercise} />);
+    fireEvent.click(screen.getByRole("button", { name: "type" }));
+    unmount();
+
+    render(<ExerciseView exercise={bugExercise} />);
+    expect(screen.getByTestId("embed").getAttribute("data-startsource")).toBe(
+      bugExercise.starter,
+    );
+    expect(storedAnswer("bug-exercise")).toBeNull();
   });
 });

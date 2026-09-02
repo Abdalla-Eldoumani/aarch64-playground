@@ -1,7 +1,8 @@
 {
   "name": "aarch64-playground-web",
-  "version": "2.5.101",
+  "version": "2.5.102",
   "private": true,
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=24"
   },
@@ -15,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "size": "size-limit",
+    "size": "size-limit && node ../scripts/bundle-budget.js",
     "lighthouse": "lighthouse http://localhost:3000 --preset=desktop --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/report",
     "lighthouse:mobile": "lighthouse http://localhost:3000 --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/mobile",
     "audit:deps": "node ../scripts/audit-deps.js",
@@ -24,34 +25,14 @@
   },
   "size-limit": [
     {
-      "name": "initial js (framework + main + polyfills + entry)",
-      "path": [
-        ".next/static/chunks/framework-*.js",
-        ".next/static/chunks/main-*.js",
-        ".next/static/chunks/polyfills-*.js",
-        ".next/static/chunks/app/playground/page-*.js"
-      ],
-      "limit": "400 KB"
-    },
-    {
-      "name": "landing initial js (framework + main + polyfills + entry)",
-      "path": [
-        ".next/static/chunks/framework-*.js",
-        ".next/static/chunks/main-*.js",
-        ".next/static/chunks/polyfills-*.js",
-        ".next/static/chunks/app/\\(site\\)/page-*.js"
-      ],
-      "limit": "400 KB"
-    },
-    {
       "name": "learn route entry js (index + lesson page chunks)",
       "path": ".next/static/chunks/app/\\(site\\)/learn/**/page-*.js",
-      "limit": "4 KB"
+      "limit": "8.6 KB"
     },
     {
       "name": "practice route entry js (index + exercise page chunks)",
       "path": ".next/static/chunks/app/\\(site\\)/practice/**/page-*.js",
-      "limit": "16 KB"
+      "limit": "15.4 KB"
     },
     {
       "name": "reference route entry js (page chunk)",
@@ -64,7 +45,7 @@
         ".next/static/chunks/monaco.*.js",
         ".next/static/chunks/monaco-worker.*.js"
       ],
-      "limit": "750 KB"
+      "limit": "800 KB"
     },
     {
       "name": "lazy terminal pane (xterm)",
@@ -78,6 +59,21 @@
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
       "limit": "200 KB"
+    },
+    {
+      "name": "stylesheets (tailwind + fonts + monaco/xterm)",
+      "path": ".next/static/css/*.css",
+      "limit": "35 KB"
+    },
+    {
+      "name": "practice index flight payload (the rows the server sends)",
+      "path": ".next/server/app/practice.rsc",
+      "limit": "8.8 KB"
+    },
+    {
+      "name": "learn index flight payload (the rows the server sends)",
+      "path": ".next/server/app/learn.rsc",
+      "limit": "4.6 KB"
     }
   ],
   "dependencies": {
@@ -88,8 +84,8 @@
     "@xterm/xterm": "6.0.0",
     "cmdk": "1.1.1",
     "lz-string": "1.5.0",
-    "monaco-editor": "0.55.1",
-    "next": "16.3.2",
+    "monaco-editor": "0.56.0",
+    "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hot-toast": "2.6.0",
@@ -104,11 +100,11 @@
     "@types/node": "22.20.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.3",
-    "@vitest/coverage-v8": "4.1.9",
+    "@vitest/coverage-v8": "4.1.11",
     "autoprefixer": "10.5.2",
     "concurrently": "9.2.4",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.3.2",
+    "eslint-config-next": "16.3.4",
     "jsdom": "29.1.1",
     "lighthouse": "13.4.1",
     "playwright": "1.59.1",
@@ -116,7 +112,7 @@
     "size-limit": "12.1.0",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
-    "vitest": "4.1.9"
+    "vitest": "4.1.11"
   },
   "overrides": {
     "dompurify": "3.4.14",

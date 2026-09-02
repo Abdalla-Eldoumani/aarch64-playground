@@ -19,7 +19,7 @@ main:
     // Initialising the Loop variable (i)
     mov x20, 1
 
-    // Going straight to the loop body (KEY DIFFERENCE)
+    // Going straight to the loop body: this is what makes the loop post-test
 
 loopbody:
     ldr x0, =string2        // loading the format string

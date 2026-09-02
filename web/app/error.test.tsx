@@ -1,12 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ErrorPage from "./error";
 
-// The route error boundary: it wears the 404's fault-card register, its retry
-// button calls the reset prop Next hands it, and the copy action puts a small
-// markdown report (the autosaved program plus the error and its digest) on the
-// clipboard. Colocated beside the route file it pins, like the other app/
-// route tests (layout, sitemap, the two page tests).
+// Pins the route error boundary: the fault-card register, the retry prop, and
+// the copied markdown report.
 
 afterEach(() => {
   cleanup();
@@ -20,6 +17,18 @@ function faulted(message: string, digest?: string): Error & { digest?: string } 
   return error;
 }
 
+// The report is built when the markdown builder's chunk lands, so the copy
+// button is inert for a beat after mount. Every copy case waits for it.
+async function reportReady() {
+  await waitFor(() => {
+    expect(
+      screen
+        .getByRole("button", { name: "copy error details" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+  });
+}
+
 describe("route error page", () => {
   it("announces the fault in the 404's register", () => {
     render(<ErrorPage error={faulted("boom")} reset={() => {}} />);
@@ -28,7 +37,7 @@ describe("route error page", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("something broke");
     expect(screen.getByText(/hit an error while rendering this page/)).toBeTruthy();
     expect(
-      screen.getByText("brk #0 -- execution stopped before this page finished"),
+      screen.getByText("brk #0 · execution stopped before this page finished"),
     ).toBeTruthy();
   });
 
@@ -62,6 +71,7 @@ describe("route error page", () => {
     render(
       <ErrorPage error={faulted("cannot read x of undefined", "abc123")} reset={() => {}} />,
     );
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();
@@ -83,6 +93,7 @@ describe("route error page", () => {
       value: { writeText },
     });
     render(<ErrorPage error={faulted("boom")} reset={() => {}} />);
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();
@@ -97,6 +108,7 @@ describe("route error page", () => {
       value: { writeText: vi.fn().mockRejectedValue(new Error("blocked")) },
     });
     render(<ErrorPage error={faulted("boom")} reset={() => {}} />);
+    await reportReady();
     fireEvent.click(screen.getByRole("button", { name: "copy error details" }));
     await act(async () => {
       await Promise.resolve();

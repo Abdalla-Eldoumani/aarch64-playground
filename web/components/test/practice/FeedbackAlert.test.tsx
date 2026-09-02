@@ -21,7 +21,11 @@ describe("FeedbackAlert", () => {
 
   it("falls back to a generic retry line when a failed attempt has no hint", () => {
     render(<FeedbackAlert isCorrect={false} explanation="Secret." />);
-    expect(screen.getByText("Review the concepts and try again.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "That is not it. Re-read the question and check each option against what the instruction actually does.",
+      ),
+    ).toBeTruthy();
   });
 
   it("announces itself as a status region", () => {

@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { bundleToMarkdown } from "@/lib/playground/diagnostic-bundle";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 
 /**
@@ -10,9 +9,8 @@ import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
  * rule naming the fault by its hex address, the serif head, a mono gloss in the
  * decode strip's voice, and the two ways out (retry, or back to the
  * playground). A student who hits this can hand over a small markdown report
- * with one click -- the autosaved program plus the error itself, which is
- * everything an error page can honestly know. There is no emulator here to
- * snapshot, so the report carries no machine state.
+ * with one click: the autosaved program plus the error itself. There is no
+ * emulator here to snapshot, so the report carries no machine state.
  *
  * This boundary sits above the (site) layout, so it supplies the route's own
  * <main id="main"> for the root layout's skip link.
@@ -26,28 +24,43 @@ export default function Error({
 }) {
   const [copyState, setCopyState] = useState<"idle" | "ok" | "error">("idle");
 
-  const buildReport = (): string => {
-    // In production Next replaces the message with a generic string and hands
-    // the real one to the server logs under `digest`, so the digest is the only
-    // way a student's report can be matched to a log line. Include it whenever
-    // it is there.
-    const detail = error.digest
-      ? `${error.message} (digest ${error.digest})`
-      : error.message;
-    const markdown = bundleToMarkdown({
-      // The autosaved buffer is the one piece of the student's work an error
-      // page can read; an unreadable or absent autosave reports as empty
-      // rather than failing the copy.
-      source: loadAutoSavedBuffer() ?? "",
-      error: detail,
+  // The report is the whole bundle format, and this boundary needs it only
+  // when the button is pressed, so the builder arrives through a dynamic
+  // import: reaching it statically put the format in the script list of every
+  // document, including the landing's. It is built as soon as the chunk lands
+  // rather than inside the handler, so the clipboard write still happens in
+  // the same task as the press.
+  const [report, setReport] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void import("@/lib/playground/bundle-markdown").then(({ bundleToMarkdown }) => {
+      if (!live) return;
+      // In production Next replaces the message with a generic string and
+      // hands the real one to the server logs under `digest`, so the digest is
+      // the only way a student's report can be matched to a log line.
+      const detail = error.digest
+        ? `${error.message} (digest ${error.digest})`
+        : error.message;
+      const markdown = bundleToMarkdown({
+        // The autosaved buffer is the one piece of the student's work an error
+        // page can read; an unreadable or absent autosave reports as empty
+        // rather than failing the copy.
+        source: loadAutoSavedBuffer() ?? "",
+        error: detail,
+      });
+      setReport(`${markdown}**route:** \`${window.location.pathname}\`\n`);
     });
-    const route = typeof window === "undefined" ? "" : window.location.pathname;
-    return `${markdown}**route:** \`${route}\`\n`;
-  };
+    return () => {
+      live = false;
+    };
+  }, [error]);
 
   const onCopy = async () => {
+    // Nothing to hand over until the builder's chunk lands, a beat after
+    // mount; the button says so by staying disabled until then.
+    if (report === null) return;
     try {
-      await navigator.clipboard.writeText(buildReport());
+      await navigator.clipboard.writeText(report);
       setCopyState("ok");
       setTimeout(() => setCopyState("idle"), 1500);
     } catch {
@@ -84,7 +97,7 @@ export default function Error({
       </p>
 
       <p className="rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">
-        brk #0 -- execution stopped before this page finished
+        brk #0 · execution stopped before this page finished
       </p>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
@@ -104,6 +117,7 @@ export default function Error({
         <button
           type="button"
           onClick={onCopy}
+          disabled={report === null}
           className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-5 font-mono text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
         >
           {copyLabel}

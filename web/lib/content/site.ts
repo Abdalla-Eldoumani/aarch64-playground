@@ -5,7 +5,7 @@
 export const SITE_URL = "https://aarch64-playground.com";
 export const REPO_URL = "https://github.com/Abdalla-Eldoumani/aarch64-playground";
 
-// The cover messengers unfurl. Open Graph and Twitter cards do not deep-merge
+// The preview image messaging apps show. Open Graph and Twitter cards do not deep-merge
 // across route segments, so every restated card pulls this one image; the url
 // stays relative and resolves through metadataBase to the production origin.
 export const SHARE_CARD_IMAGE = {
@@ -15,9 +15,9 @@ export const SHARE_CARD_IMAGE = {
   alt: "cpsc 355 playground: the debugger mid-step, with the current instruction and a changed register highlighted",
 } as const;
 
-// Credibility: the facts the footer states, kept here so the copy has one
-// source. The license link is derived from REPO_URL so the repository address
-// has one source too.
+// The facts the footer states, kept here so the copy has one source. The
+// license link is derived from REPO_URL so the repository address has one
+// source too.
 export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
 export const LICENSE_LABEL = "AGPL-3.0";
 

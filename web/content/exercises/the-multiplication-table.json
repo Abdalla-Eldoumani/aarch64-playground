@@ -1,10 +1,10 @@
 {
-  "title": "the multiplication table",
+  "title": "The multiplication table",
   "slug": "the-multiplication-table",
   "order": 8,
   "topic": "loops",
   "difficulty": "core",
-  "prompt": "Print the four-by-four multiplication table, rows of `row * col` padded into neat columns.\n\nThis is the nested-loop kata: an outer loop over rows, an inner loop over columns, a `mul` in the middle, and a newline after each row. The cell format `%4lld` right-aligns every product into a four-character column so the table lines up.\n\nOne trap worth meeting on purpose: `printf` may scribble on the scratch registers, so both counters belong in the aliased callee-saved registers, not in `x9`.\n\n## what is checked\n\n- four rows of four aligned products\n- the program exits cleanly\n- the products come from `mul` inside the loops",
+  "prompt": "Print the four-by-four multiplication table, rows of `row * col` padded into neat columns.\n\nThe shape is two nested loops: an outer loop over rows, an inner loop over columns, a `mul` in the middle, and a newline after each row. The cell format `%4lld` right-aligns every product into a four-character column so the table lines up.\n\n`printf` may overwrite the scratch registers, so both counters belong in the aliased callee-saved registers, not in `x9`.\n\n## what is checked\n\n- four rows of four aligned products\n- the program exits cleanly\n- the products come from `mul` inside the loops",
   "starter": "// print a four-by-four multiplication table\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(row_r, x19)\ndefine(col_r, x20)\ndefine(cell_r, x21)\n\n        .data\nfmt_cell:   .string \"%4lld\"\nfmt_nl:     .string \"\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // TODO: two nested loops, rows and columns each running 1 to\n        // 4. Print row * col with fmt_cell for every column, then\n        // print fmt_nl at the end of each row. Keep both counters in\n        // the aliased callee-saved registers: printf owns the scratch\n        // ones while it runs.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
   "variant": "write",

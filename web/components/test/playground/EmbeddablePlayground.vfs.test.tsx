@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 
-vi.mock("@/components/playground/Editor", () => ({
+vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({
@@ -22,8 +22,8 @@ vi.mock("@/components/playground/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
 }));
 
-// Capture the terminal context so the tests can drive writeVfs/deleteVfs --
-// the staged write paths -- without an xterm.
+// Capture the terminal context so the tests can drive writeVfs and deleteVfs,
+// the staged write paths, without an xterm.
 const terminalProps = vi.hoisted(() => ({
   current: null as null | {
     buildContext: () => {
@@ -236,7 +236,7 @@ describe("the terminal toolchain and the working set", () => {
     const hub: Hub = makeHub({
       assembleForTool: vi.fn().mockResolvedValue({
         success: false,
-        error: "unknown mnemonic: MOVQ",
+        error: "unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it",
         errorLine: 3,
       }),
     });
@@ -253,7 +253,7 @@ describe("the terminal toolchain and the working set", () => {
     });
     expect(verdict).toEqual({
       success: false,
-      errors: ["line 3: unknown mnemonic: MOVQ"],
+      errors: ["line 3: unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it"],
     });
     expect(hub.assemble).not.toHaveBeenCalled();
   });

@@ -2,7 +2,7 @@
 //! execution sandbox can never hang or exhaust the tab: a
 //! runaway loop hits the cumulative step ceiling and a runaway allocation
 //! hits the mapped-page cap, both aborting as a CALM halt that carries a
-//! plain-language message through the result `error` field -- never a
+//! plain-language message through the result `error` field, never a
 //! silent stop, never a raw panic. A normal program stays well under both
 //! walls and finishes unaffected.
 //!
@@ -41,7 +41,7 @@ fn svc(imm16: u16) -> u32 {
 }
 
 // The full end-to-end runaway wall executes the real ~10M-step ceiling,
-// which takes ~60s in a debug build -- too slow for the default `cargo test`
+// which takes ~60s in a debug build, too slow for the default `cargo test`
 // gate. It is kept as an on-demand proof; run it explicitly with
 // `cargo test --test bounds -- --ignored`. The fast boundary proof (the
 // ceiling fires exactly at MAX_TOTAL_STEPS) lives in the cpu unit tests
@@ -50,7 +50,7 @@ fn svc(imm16: u16) -> u32 {
 #[ignore = "runs the real ~10M-step wall (~60s); run with --ignored"]
 fn runaway_loop_aborts_calmly_within_the_step_ceiling() {
     let mut cpu = Cpu::new();
-    // `b .` -- branch to self, an unconditional infinite loop. Driven with a
+    // `b .`, a branch to self and so an infinite loop. Driven with a
     // step budget just above the ceiling so the runaway wall (not max_steps)
     // is what stops it. This runs the real ~10M-step wall end to end,
     // proving a runaway program terminates rather than hanging the tab.
@@ -79,6 +79,8 @@ fn memory_bomb_aborts_calmly_within_the_page_cap() {
     // a handful of new-page writes to walk across the cap.
     let baseline = cpu.mem.mapped_page_count();
     let filler_base = 0x1000_0000u64;
+    // Four pages of headroom: enough for the store loop to walk across the
+    // cap, few enough that the run stays fast.
     for i in 0..(MAX_MAPPED_PAGES - baseline - 4) {
         cpu.mem.map_page(filler_base + (i as u64) * 4096);
     }
@@ -162,7 +164,7 @@ fn a_buffer_filling_loop_keeps_the_dirty_log_bounded() {
 #[test]
 fn a_large_virtual_filesystem_stops_the_snapshot_ring() {
     // Guest pages are shared copy-on-write, so a frame costs almost
-    // nothing to take -- but the virtual files, the queued stdin and the
+    // nothing to take, but the virtual files, the queued stdin and the
     // open-file paths are copied whole, once per step. 100k steps with a
     // 1 MiB virtual file took 51 s against 73 ms with none. Past the side
     // budget the ring stops recording, the same trade a raw-mode program
@@ -200,7 +202,7 @@ main:
 #[test]
 fn an_open_loop_cannot_grow_the_descriptor_table() {
     // Re-opening one existing file left an fd entry per call, each holding
-    // its own copy of the path -- 200 opens of a 60 KiB path held 11 MiB,
+    // its own copy of the path: 200 opens of a 60 KiB path held 11 MiB,
     // cloned again into every snapshot frame. Past the wall openat answers
     // -1 (EMFILE) and the program keeps running.
     let src = r#"
@@ -246,7 +248,7 @@ open_loop:
 
 // The bulk-work wall end to end spends the real ~10M-step ceiling on
 // `memset` bytes (~160 MB of guest writes), which is minutes in a debug
-// build -- the same trade as the runaway-loop proof above, so it is kept
+// build, the same trade as the runaway-loop proof above, so it is kept
 // on demand: `cargo test --test bounds -- --ignored`. The fast proof that
 // bulk bytes are charged at all lives in the cpu unit tests
 // (`bulk_stub_work_is_charged_against_the_step_budget`).
@@ -275,7 +277,7 @@ fn a_bulk_fill_loop_halts_calmly_at_the_step_ceiling() {
 fn normal_program_runs_to_halt_unaffected() {
     let mut cpu = Cpu::new();
     // A real counted loop: x0 = 5; while (x0 != 0) x0 -= 1; then halt. Tens
-    // of steps -- far below the ceiling -- so it finishes on its own with no
+    // of steps (far below the ceiling), so it finishes on its own with no
     // abort message.
     cpu.load_program(&[
         movz(0, 5, 0),      // mov  x0, #5

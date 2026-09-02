@@ -1,5 +1,5 @@
 // The multi-file workspace contract at the component boundary: every
-// combined-string line the MACHINE reports is numbered against the workspace
+// combined-string line the machine reports is numbered against the workspace
 // that was assembled, the gutter's own lines are re-anchored when a buffer
 // changes length, the decode strip sees the whole concatenation, tab names
 // cannot collide with each other or with main.asm, and a foreground terminal
@@ -18,7 +18,7 @@ const editorProps = vi.hoisted(() => ({
     assemblyErrors: Array<{ line: number; message: string }>;
   },
 }));
-vi.mock("@/components/playground/Editor", () => ({
+vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: (props: NonNullable<typeof editorProps.current>) => {
     editorProps.current = props;
     return <div data-testid="editor" />;
@@ -149,6 +149,15 @@ afterEach(() => {
   terminalProps.current = null;
 });
 
+// The full-chrome surface is reached through dynamic(), so it mounts a beat
+// after the shell does. Awaiting the same import settles it before a case
+// reads the surface's own markup.
+async function fullChromeMounted() {
+  await act(async () => {
+    await import("@/components/playground/FullChromeSurface");
+  });
+}
+
 describe("multi-file line translation", () => {
   it("keeps the current-line marker in the file the machine assembled", async () => {
     seedFiles();
@@ -159,6 +168,7 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
+    await fullChromeMounted();
     await act(async () => {
       ref.current!.assemble();
     });
@@ -167,8 +177,9 @@ describe("multi-file line translation", () => {
     expect(editorProps.current!.currentLine).toBeNull();
 
     // Typing five more lines into main.asm re-numbers the combined string.
-    // Resolving line 14 against the LIVE buffers put the marker on main.asm
-    // line 14 -- the dot changed FILES because the student typed.
+    // Resolving line 14 against the live buffers would put the marker on
+    // main.asm line 14, moving the dot to another file because the student
+    // typed.
     act(() => {
       ref.current!.loadSource(`${MAIN}\nmov x2, 1\nmov x2, 2\nmov x2, 3\nmov x2, 4\nmov x2, 5`);
     });
@@ -215,6 +226,7 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
+    await fullChromeMounted();
 
     // Click into util.s, then set a breakpoint on its line 3.
     fireEvent.click(screen.getByText("util.s"));
@@ -247,6 +259,7 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground chrome="full" startSource={MAIN} />,
     );
     engage(container);
+    await fullChromeMounted();
 
     fireEvent.click(screen.getByLabelText("remove util.s"));
 
@@ -272,7 +285,7 @@ describe("the decode strip in a multi-file workspace", () => {
 
     const props = decodeProps.current!;
     expect(props.currentLine).toBe(UTIL_COMBINED_LINE);
-    // Handed main.asm alone, line 14 indexed past its end and the gloss fell
+    // Handed main.asm alone, line 14 indexes past its end and the gloss falls
     // to its placeholder for every pc inside a helper.
     expect(props.source.split("\n")[UTIL_COMBINED_LINE - 1]).toBe(UTIL_LINE_3);
   });
@@ -290,7 +303,7 @@ describe("helper file names", () => {
     fireEvent.click(screen.getByLabelText("add file"));
 
     expect(toastError).toHaveBeenCalledWith(
-      "main.asm is the editor's own buffer -- pick another name",
+      "main.asm is the editor's own buffer; pick another name",
     );
     expect(screen.queryByLabelText("remove main.asm")).toBeNull();
   });
@@ -333,8 +346,8 @@ describe("boot stdin seeds", () => {
       <EmbeddablePlayground chrome="full" startSource={MAIN} startStdin={"42\n"} />,
     );
     engage(container);
-    // A program that reads input must BLOCK at the read and pull the student
-    // to the console; the seed re-fed itself after every assemble instead.
+    // A program that reads input must block at the read and pull the student
+    // to the console; a seed would re-feed itself after every assemble.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
@@ -372,10 +385,10 @@ describe("terminal stdin and output bounds", () => {
       result = await terminal.buildContext().runSource("mov x0, 1\nret\n", ["./prog"], huge);
     });
     // `./prog < bigfile` is one command that could hand the machine the whole
-    // 4 MiB VFS cap in a single push. The message is the literal the student
-    // reads: asserting it against validateStdin(huge) would have passed just
-    // as happily on a guard that returned null and pushed the megabyte.
-    expect(result!.stderr).toBe("stdin too large (max 100 KB)");
+    // 4 MiB VFS cap in a single push. The message is asserted as a literal:
+    // comparing against validateStdin(huge) would also pass if the guard
+    // returned null.
+    expect(result!.stderr).toBe("stdin too large: the limit is 100 KiB");
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
 
@@ -392,8 +405,8 @@ describe("terminal stdin and output bounds", () => {
     await act(async () => {
       result = await terminal.buildContext().runSource("mov x0, 1\nret\n", ["./prog"]);
     });
-    // The tool assemble deliberately leaves the console alone now, so the
-    // terminal must not replay what the editor already printed.
+    // The tool assemble leaves the console alone, so the terminal must not
+    // replay what the editor already printed.
     expect(result!.stdout).toBe("");
   });
 });
@@ -430,7 +443,7 @@ describe("a foreground terminal session under an assemble", () => {
     expect(blockedHub.run).toHaveBeenCalledTimes(1);
 
     // Pressing Assemble drops the loaded flag while the backend works. The
-    // drive's resume latch used to fire into that window and set the freshly
+    // drive's resume latch must not fire into that window and set the freshly
     // assembled program running with no user action.
     const reassembling: Hub = makeHub({
       programLoaded: false,

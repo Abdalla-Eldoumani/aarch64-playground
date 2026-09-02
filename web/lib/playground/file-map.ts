@@ -75,13 +75,12 @@ const MAIN_NAMES = /^main\.(asm|s)$/i;
 const MAX_FILE_NAME_CHARS = 64;
 
 /**
- * The characters a file name may use: it must start with a letter or a
- * digit, then letters, digits, dot, dash, and underscore. Everything else
- * is refused, which is what keeps a name out of `combineSources`'s
- * `// ---- name ----` marker as anything but a comment -- a name carrying a
- * newline wrote its own assembly lines into the program the linker saw.
- * Excluding the slash also rules out `../` traversal wherever a name
- * reaches a fetch path.
+ * The characters a file name may use: it must start with a letter or a digit,
+ * then letters, digits, dot, dash, and underscore. Everything else is refused,
+ * which is what keeps a name out of `combineSources`'s `// ---- name ----`
+ * marker as anything but a comment: a name carrying a newline wrote its own
+ * assembly lines into the program the linker saw. Excluding the slash also
+ * rules out `../` traversal wherever a name reaches a fetch path.
  */
 const FILE_NAME_SHAPE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -118,7 +117,7 @@ export function validateFileName(
   const shape = fileNameShapeError(trimmed);
   if (shape) return shape;
   if (MAIN_NAMES.test(trimmed)) {
-    return "main.asm is the editor's own buffer -- pick another name";
+    return "main.asm is the editor's own buffer; pick another name";
   }
   const clash = files.some((f, i) => i !== exceptIndex && f.name === trimmed);
   if (clash) return `a file named ${trimmed} is already open`;

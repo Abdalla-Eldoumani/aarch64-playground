@@ -104,7 +104,7 @@ pub enum ExtendType {
 
 /// The extend/shift keywords a load/store register-offset address accepts:
 /// the spelling, its 3-bit `option` field, and whether the index register
-/// must be an X (the ARM width rule -- UXTW/SXTW take a Wm, the rest take
+/// must be an X (the ARM width rule: UXTW/SXTW take a Wm, the rest take
 /// an Xm). `lsl` and `uxtx` share option 0b011 because they mean the same
 /// thing for a 64-bit index; `lsl` is listed first so a lookup by option
 /// spells it the way GAS disassembles it.
@@ -114,7 +114,7 @@ pub enum ExtendType {
 /// (byte and halfword extends included) and skips the width check entirely,
 /// because GAS assembles `add x0, x1, x2, sxtw` to the same word as the
 /// `w2` spelling and refusing it would reject source the course toolchain
-/// accepts. The two sets are not the same set and must not be merged.
+/// accepts. The two tables carry different rows and must stay separate.
 pub const LDST_EXTENDS: &[(&str, u8, bool)] = &[
     ("lsl", 0b011, true),
     ("uxtw", 0b010, false),
@@ -208,7 +208,46 @@ pub enum MulWideOp {
     Umull,
     Smulh,
     Umulh,
+    Smaddl,
+    Smsubl,
+    Umaddl,
+    Umsubl,
 }
+
+/// The second operand of a conditional compare: a register, or the
+/// 5-bit unsigned immediate the `#imm` form carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CondCmpOperand {
+    Reg(u8),
+    Imm(u8),
+}
+
+/// Data-processing 1-source operation: the bit and byte reversals plus
+/// the two leading-bit counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dp1Op {
+    Rbit,
+    Rev16,
+    Rev32,
+    Rev,
+    Clz,
+    Cls,
+}
+
+/// The data-processing 1-source rows: mnemonic, the 6-bit opcode, the
+/// register width the row requires (None when it has both), and the
+/// operation. `rev` at W width and `rev32` at X width share opcode
+/// 000010, so the encoder keys on (mnemonic, sf) and the decoder on
+/// (opcode, sf); neither direction can pick a row from the opcode alone.
+pub const DP1_OPS: &[(&str, u8, Option<bool>, Dp1Op)] = &[
+    ("rbit", 0b000000, None, Dp1Op::Rbit),
+    ("rev16", 0b000001, None, Dp1Op::Rev16),
+    ("rev32", 0b000010, Some(true), Dp1Op::Rev32),
+    ("rev", 0b000010, Some(false), Dp1Op::Rev),
+    ("rev", 0b000011, Some(true), Dp1Op::Rev),
+    ("clz", 0b000100, None, Dp1Op::Clz),
+    ("cls", 0b000101, None, Dp1Op::Cls),
+];
 
 /// Floating-point binary operation. The instruction's `single` flag picks
 /// the S (f32) or D (f64) form.
@@ -218,6 +257,11 @@ pub enum FpBinOp {
     Fsub,
     Fmul,
     Fdiv,
+    Fnmul,
+    Fmax,
+    Fmin,
+    Fmaxnm,
+    Fminnm,
 }
 
 /// Floating-point one-source operation (FP data-processing 1-source space,
@@ -239,6 +283,29 @@ pub const FP_BINARY_OPS: &[(&str, u8, FpBinOp)] = &[
     ("fsub", 0b0011, FpBinOp::Fsub),
     ("fmul", 0b0000, FpBinOp::Fmul),
     ("fdiv", 0b0001, FpBinOp::Fdiv),
+    ("fnmul", 0b1000, FpBinOp::Fnmul),
+    ("fmax", 0b0100, FpBinOp::Fmax),
+    ("fmin", 0b0101, FpBinOp::Fmin),
+    ("fmaxnm", 0b0110, FpBinOp::Fmaxnm),
+    ("fminnm", 0b0111, FpBinOp::Fminnm),
+];
+
+/// Fused multiply-add variant. `Fa` is the ADDEND in every one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpMulAddOp {
+    Fmadd,
+    Fmsub,
+    Fnmadd,
+    Fnmsub,
+}
+
+/// The FP 3-source rows: mnemonic, o1 (bit 21), o0 (bit 15), operation.
+/// Read in both directions, like `FP_BINARY_OPS`.
+pub const FP_MUL_ADD_OPS: &[(&str, u8, u8, FpMulAddOp)] = &[
+    ("fmadd", 0, 0, FpMulAddOp::Fmadd),
+    ("fmsub", 0, 1, FpMulAddOp::Fmsub),
+    ("fnmadd", 1, 0, FpMulAddOp::Fnmadd),
+    ("fnmsub", 1, 1, FpMulAddOp::Fnmsub),
 ];
 
 /// The FP one-source rows that share `FpUnary`: mnemonic, the 6-bit opcode
@@ -250,6 +317,42 @@ pub const FP_UNARY_OPS: &[(&str, u8, FpUnaryOp)] = &[
     ("fabs", 0b000001, FpUnaryOp::Fabs),
     ("fneg", 0b000010, FpUnaryOp::Fneg),
     ("fsqrt", 0b000011, FpUnaryOp::Fsqrt),
+];
+
+/// FP-to-integer rounding mode and signedness. The letter pairs read the
+/// way the mnemonics do: N nearest-ties-even, A nearest-ties-away, M
+/// toward minus infinity, P toward plus infinity, Z toward zero; the
+/// trailing S/U picks a signed or unsigned result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpToIntOp { Ns, Nu, As, Au, Ms, Mu, Ps, Pu, Zs, Zu }
+
+/// Integer-to-FP direction: SCVTF reads the source signed, UCVTF unsigned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpFromIntOp { Scvtf, Ucvtf }
+
+/// The rmode:opcode rows of the FP/integer conversion class
+/// (sf 0 0 11110 ftype 1 rmode(2) opcode(3) 000000 Rn Rd).
+/// `encode_fp_cvt_int` reads the pair out of here and `decode_fp_group`
+/// reads the operation back, so the two directions cannot drift.
+/// FMOV's rmode 00 / opcode 110 and 111 stay out: FMOV has its own
+/// variant and its own width-pairing rule.
+pub const FP_TO_INT_OPS: &[(&str, u8, u8, FpToIntOp)] = &[
+    ("fcvtns", 0b00, 0b000, FpToIntOp::Ns),
+    ("fcvtnu", 0b00, 0b001, FpToIntOp::Nu),
+    ("fcvtas", 0b00, 0b100, FpToIntOp::As),
+    ("fcvtau", 0b00, 0b101, FpToIntOp::Au),
+    ("fcvtps", 0b01, 0b000, FpToIntOp::Ps),
+    ("fcvtpu", 0b01, 0b001, FpToIntOp::Pu),
+    ("fcvtms", 0b10, 0b000, FpToIntOp::Ms),
+    ("fcvtmu", 0b10, 0b001, FpToIntOp::Mu),
+    ("fcvtzs", 0b11, 0b000, FpToIntOp::Zs),
+    ("fcvtzu", 0b11, 0b001, FpToIntOp::Zu),
+];
+
+/// The two integer-to-FP rows of the same class.
+pub const FP_FROM_INT_OPS: &[(&str, u8, u8, FpFromIntOp)] = &[
+    ("scvtf", 0b00, 0b010, FpFromIntOp::Scvtf),
+    ("ucvtf", 0b00, 0b011, FpFromIntOp::Ucvtf),
 ];
 
 /// Bitfield-move variant. `Sbfm` sign-extends the extracted field; `Ubfm`
@@ -291,6 +394,25 @@ pub enum Instruction {
         shift: ShiftType,
         amount: u8,
     },
+    /// CCMP / CCMN: compare only when `cond` holds, otherwise write the
+    /// literal flags. `sub` is CCMP. `nzcv` is the 4-bit literal in
+    /// `NzcvFlags::pack`'s layout (N=bit3, Z=bit2, C=bit1, V=bit0).
+    CondCompare {
+        sub: bool,
+        sf: bool,
+        rn: u8,
+        operand: CondCmpOperand,
+        cond: Condition,
+        nzcv: u8,
+    },
+    /// CLZ/CLS/RBIT/REV/REV16/REV32: one source, one destination, no
+    /// flags. `sf` is the operand width both registers share.
+    DataProc1 {
+        op: Dp1Op,
+        sf: bool,
+        rd: u8,
+        rn: u8,
+    },
     /// LSLV/LSRV/ASRV/RORV: shift Rn left/right by the amount in Rm,
     /// modulo the register width (the dp2 register-shift family).
     VarShift {
@@ -300,7 +422,7 @@ pub enum Instruction {
         rm: u8,
         shift: ShiftType,
     },
-    /// ADD/SUB/ADDS/SUBS with EXTENDED register operand (bit 21 = 1) --
+    /// ADD/SUB/ADDS/SUBS with EXTENDED register operand (bit 21 = 1):
     /// the only register form that reaches SP: Rn = 31 reads SP, and
     /// Rd = 31 writes SP for the non-flag-setting ops. Rm = 31 stays XZR.
     DpRegExt {
@@ -475,6 +597,9 @@ pub enum Instruction {
         rd: u8,
         rn: u8,
         rm: u8,
+        /// `ra` is 31 for SMULL/UMULL/SMULH/UMULH, whose Ra field the
+        /// aliases and the architecture both fix at XZR.
+        ra: u8,
     },
     /// LDRSB / LDRSH / LDRSW: sign-extending loads. `sf` selects the
     /// target register width (Xt when true, Wt when false; LDRSW only
@@ -496,8 +621,18 @@ pub enum Instruction {
         fm: u8,
         single: bool,
     },
+    /// FCSEL Fd, Fn, Fm, cond: the integer CSEL for the FP file. The
+    /// chosen register's BITS are copied, so a NaN or a signed zero
+    /// arrives untouched; the S form keeps only the low 32.
+    FpCondSel {
+        fd: u8,
+        fn_: u8,
+        fm: u8,
+        cond: Condition,
+        single: bool,
+    },
     /// FMOV Fd, #imm (8-bit VFP immediate, already expanded to the full
-    /// IEEE 754 bit pattern -- f32 bits for the S form, f64 for D -- so
+    /// IEEE 754 bit pattern: f32 bits for the S form, f64 for D, so
     /// the executor just writes it).
     FpMoveImm {
         fd: u8,
@@ -542,20 +677,37 @@ pub enum Instruction {
         fn_: u8,
         single: bool,
     },
-    /// SCVTF Fd, Rn: signed int (W or X) to float. `sf` picks Xn vs Wn;
-    /// `single` picks Sd vs Dd.
-    FpScvtf {
+    /// FCVT{N,A,M,P,Z}{S,U} Rd, Fn: float to integer at a named rounding
+    /// mode. `sf` picks Xd vs Wd, `single` picks Sn vs Dn. `fbits` is 0
+    /// for the integer form and 1..=64 for the fixed-point form
+    /// (`fcvtzs x1, s15, #2`), where the source is read as value * 2^fbits
+    /// before rounding.
+    FpToInt {
+        op: FpToIntOp,
+        rd: u8,
+        fn_: u8,
+        sf: bool,
+        single: bool,
+        fbits: u8,
+    },
+    /// SCVTF / UCVTF Fd, Rn: integer to float, the source read signed or
+    /// unsigned. `fbits` carries the fixed-point scale, 0 for the plain form.
+    FpFromInt {
+        op: FpFromIntOp,
         fd: u8,
         rn: u8,
         sf: bool,
         single: bool,
+        fbits: u8,
     },
-    /// FCVTZS Rd, Fn: float to signed int (W or X), round-toward-zero.
-    /// `sf` picks Xd vs Wd; `single` picks Sn vs Dn.
-    FpFcvtzs {
-        rd: u8,
+    /// FMADD / FMSUB / FNMADD / FNMSUB: fused multiply-add. `fa` is the
+    /// ADDEND and is the LAST operand in source order, not the first.
+    FpMulAdd {
+        op: FpMulAddOp,
+        fd: u8,
         fn_: u8,
-        sf: bool,
+        fm: u8,
+        fa: u8,
         single: bool,
     },
     /// FCVT: precision convert. `widen` = FCVT Dd, Sn (exact); otherwise
@@ -704,7 +856,7 @@ pub fn encode_bitmask_imm(value: u64, sf: bool) -> Option<(bool, u8, u8)> {
     // Reject trivial patterns the ARM spec excludes.
     let trimmed = if sf { value } else { value & 0xFFFF_FFFF };
     if !sf && value != trimmed {
-        // Upper 32 bits set in a 32-bit instruction -- not encodable.
+        // Upper 32 bits set in a 32-bit instruction: not encodable.
         return None;
     }
     if trimmed == 0 {
@@ -826,13 +978,13 @@ pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
     let op0 = bits(instr, 28, 25);
 
     match op0 {
-        // data processing -- immediate
+        // data processing: immediate
         0b1000 | 0b1001 => decode_dp_imm_group(instr),
         // branches, exception, system
         0b1010 | 0b1011 => decode_branch_group(instr),
         // loads and stores
         0b0100 | 0b0110 | 0b1100 | 0b1110 => decode_ldst_group(instr),
-        // data processing -- register
+        // data processing: register
         0b0101 | 0b1101 => decode_dp_reg_group(instr),
         // scalar FP (and SIMD, which we do not implement)
         0b0111 | 0b1111 => decode_fp_group(instr),
@@ -851,8 +1003,34 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     //   Encoding: sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
     // SCVTF (Xn/Wn -> float):
     //   Encoding: sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
-    // ftype picks the scalar width: 00 = single (S), 01 = double (D) --
+    // ftype picks the scalar width: 00 = single (S), 01 = double (D),
     // the two views the course uses. Half precision (11) stays unhandled.
+
+    // FP data-processing 3-source (the FMADD family) sits at bits[28:24]
+    // = 11111, one above the class every other scalar FP form uses, so it
+    // is taken before the guard below rejects it.
+    if bits(instr, 28, 24) == 0b11111 && bits(instr, 31, 29) == 0 {
+        let ftype = bits(instr, 23, 22);
+        if ftype != 0b00 && ftype != 0b01 {
+            return Err(EmuError::UnknownInstruction(instr));
+        }
+        let o1 = bit(instr, 21) as u8;
+        let o0 = bit(instr, 15) as u8;
+        let Some((_, _, _, op)) = FP_MUL_ADD_OPS
+            .iter()
+            .find(|(_, a, b, _)| *a == o1 && *b == o0)
+        else {
+            return Err(EmuError::UnknownInstruction(instr));
+        };
+        return Ok(Instruction::FpMulAdd {
+            op: *op,
+            fd: bits(instr, 4, 0) as u8,
+            fn_: bits(instr, 9, 5) as u8,
+            fm: bits(instr, 20, 16) as u8,
+            fa: bits(instr, 14, 10) as u8,
+            single: ftype == 0b00,
+        });
+    }
 
     let bits_28_24 = bits(instr, 28, 24);
     if bits_28_24 != 0b11110 {
@@ -863,13 +1041,48 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         return Err(EmuError::UnknownInstruction(instr));
     }
     let single = ftype == 0b00;
-    if bit(instr, 21) != 1 {
-        return Err(EmuError::UnknownInstruction(instr));
-    }
+    let bit21 = bit(instr, 21);
 
     let rn = bits(instr, 9, 5) as u8;
     let rd = bits(instr, 4, 0) as u8;
     let rm = bits(instr, 20, 16) as u8;
+
+    // FP <-> integer conversion, both forms: rmode in 20:19, opcode in
+    // 18:16. Bit 21 = 1 is the integer form, whose bits 15:10 are fixed
+    // zero; bit 21 = 0 is the fixed-point one, where a 6-bit scale field
+    // replaces them and holds 64 minus fbits. The rows come from the
+    // shared tables so the encoder and this cannot drift.
+    //
+    // This is the ONLY branch that may run with bit 21 = 0. The
+    // FMOV-immediate test below reads bits 12:10, which a fixed-point
+    // scale ending in 100 would satisfy, so every other branch stays
+    // behind the gate that follows.
+    let fbits = if bit21 == 1 {
+        (bits(instr, 15, 10) == 0).then_some(0u8)
+    } else {
+        Some((64 - bits(instr, 15, 10)) as u8)
+    };
+    if let Some(fbits) = fbits {
+        let rmode = bits(instr, 20, 19) as u8;
+        let opcode = bits(instr, 18, 16) as u8;
+        let sf = bit(instr, 31) == 1;
+        if let Some((_, _, _, op)) = FP_TO_INT_OPS
+            .iter()
+            .find(|(_, r, o, _)| *r == rmode && *o == opcode)
+        {
+            return Ok(Instruction::FpToInt { op: *op, rd, fn_: rn, sf, single, fbits });
+        }
+        if let Some((_, _, _, op)) = FP_FROM_INT_OPS
+            .iter()
+            .find(|(_, r, o, _)| *r == rmode && *o == opcode)
+        {
+            return Ok(Instruction::FpFromInt { op: *op, fd: rd, rn, sf, single, fbits });
+        }
+    }
+
+    if bit21 != 1 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
 
     // FP data-processing 2-source: bits[15:10] = opcode | 10
     if bits(instr, 11, 10) == 0b10 {
@@ -881,10 +1094,18 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         return Ok(Instruction::FpBinary { op: *op, fd: rd, fn_: rn, fm: rm, single });
     }
 
+    // FCSEL: bits 11:10 = 11. The 01 neighbour is FCCMP/FCCMPE, which is
+    // out of scope and must keep falling through to the reject at the
+    // bottom rather than being folded in here.
+    if bits(instr, 11, 10) == 0b11 {
+        let cond = Condition::from_u8(bits(instr, 15, 12) as u8)?;
+        return Ok(Instruction::FpCondSel { fd: rd, fn_: rn, fm: rm, cond, single });
+    }
+
     // FP data-processing 1-source: opcode in bits 20:15, bits 14:10 = 10000.
     // FMOV keeps its dedicated variant; FABS/FNEG/FSQRT share FpUnary. FCVT's
-    // opcode is 0001‖dest-type: the ftype names the SOURCE width, so only
-    // the cross-width pairs are valid encodings.
+    // opcode is 0001 followed by dest-type: the ftype names the SOURCE
+    // width, so only the cross-width pairs are valid encodings.
     if bits(instr, 14, 10) == 0b10000 {
         let opcode = bits(instr, 20, 15);
         if let Some((_, _, op)) = FP_UNARY_OPS.iter().find(|(_, code, _)| u32::from(*code) == opcode)
@@ -926,18 +1147,6 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         return Ok(Instruction::FpCompare { fn_: rn, fm: rm, single });
     }
 
-    // FCVTZS (float -> signed int): sf_0_0_11110_ftype_1_11_000_000000_Rn_Rd
-    if bits(instr, 20, 10) == 0b11000_000000 {
-        let sf = bit(instr, 31) == 1;
-        return Ok(Instruction::FpFcvtzs { rd, fn_: rn, sf, single });
-    }
-
-    // SCVTF (signed int -> float): sf_0_0_11110_ftype_1_00_010_000000_Rn_Rd
-    if bits(instr, 20, 10) == 0b00010_000000 {
-        let sf = bit(instr, 31) == 1;
-        return Ok(Instruction::FpScvtf { fd: rd, rn, sf, single });
-    }
-
     // FMOV between the register files: rmode 00, opcode 110 (FP -> GP) or
     // 111 (GP -> FP), bits 15:10 zero. Only the matched-width pairs are
     // valid encodings (w<->s when sf=0/ftype=S, x<->d when sf=1/ftype=D).
@@ -960,7 +1169,7 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 // ---------------------------------------------------------------------------
-// data processing -- immediate group
+// data processing: immediate group
 // ---------------------------------------------------------------------------
 
 fn decode_dp_imm_group(instr: u32) -> Result<Instruction, EmuError> {
@@ -1138,8 +1347,8 @@ fn decode_bitfield(instr: u32) -> Result<Instruction, EmuError> {
 
     // The 32-bit form requires N == 0 with both fields inside the register
     // (immr/imms < 32); the 64-bit form requires N == 1. Anything else is
-    // a reserved encoding: without this check `reg_size - immr` underflowed
-    // on crafted words and fabricated a shift instead of rejecting.
+    // a reserved encoding: without this check `reg_size - immr` underflows
+    // on a crafted word and fabricates a shift instead of rejecting.
     if sf != n || (!sf && (immr >= 32 || imms >= 32)) {
         return Err(EmuError::UnknownInstruction(instr));
     }
@@ -1308,7 +1517,7 @@ fn decode_ldst_group(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 fn decode_ldr_literal(instr: u32) -> Result<Instruction, EmuError> {
-    // opc:01_011_0_00 -- bit 30 selects width (0 = W, 1 = X).
+    // opc:01_011_0_00; bit 30 selects width (0 = W, 1 = X).
     let sf = bit(instr, 30) == 1;
     let imm19 = bits(instr, 23, 5);
     let rt = bits(instr, 4, 0) as u8;
@@ -1338,8 +1547,8 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
 
     if v == 1 {
         // SIMD&FP pair: opc 00 = S, 01 = D; 10 (Q registers) is not
-        // implemented. Before this gate an FP pair fell into the general
-        // decode below and ran as a 32-bit GP pair with a halved offset.
+        // implemented. Without this gate an FP pair falls into the general
+        // decode below and runs as a 32-bit GP pair with a halved offset.
         let single = match opc {
             0b00 => true,
             0b01 => false,
@@ -1504,7 +1713,7 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
                 _ => return Err(EmuError::UnknownInstruction(instr)),
             };
             // S=1 means "scale the index by the access size", so the shift
-            // is log2 of that width -- read off the shared byte count
+            // is log2 of that width, read off the shared byte count
             // rather than re-spelled as a second size table.
             let shift_amount = if s == 1 {
                 size.bytes().trailing_zeros() as u8
@@ -1547,12 +1756,30 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
             };
         }
 
-        // The sign-extending 9-bit-immediate forms (LDURS*, LDRS* with
-        // pre/post writeback) stay unsupported: reject them here so they
-        // cannot fall through and misdecode as a plain LDR/STR of the
+        // The sign-extending imm9 forms: LDURS* (idx 00) and LDRS* with
+        // pre/post writeback. They must be taken here, before the LdStOp
+        // selection below, or they misdecode as a plain LDR/STR of the
         // wrong direction and width.
         if opc >= 0b10 {
-            return Err(EmuError::UnknownInstruction(instr));
+            // size=X is reserved in this space (it is the prefetch
+            // encoding), the same rule the register-offset arm applies.
+            if matches!(size, MemSize::X) {
+                return Err(EmuError::UnknownInstruction(instr));
+            }
+            let mode = match idx_type {
+                0b00 => IndexMode::SignedOffset,
+                0b01 => IndexMode::PostIndex,
+                0b11 => IndexMode::PreIndex,
+                _ => return Err(EmuError::UnknownInstruction(instr)),
+            };
+            return Ok(Instruction::LdrSignExtended {
+                rt,
+                rn,
+                offset: LdStOffset::Immediate(sign_extend(bits(instr, 20, 12), 9)),
+                size,
+                mode,
+                sf: opc == 0b10, // 10 = Xt, 11 = Wt
+            });
         }
         let op = if opc == 0b01 { LdStOp::Ldr } else { LdStOp::Str };
 
@@ -1583,7 +1810,7 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 // ---------------------------------------------------------------------------
-// data processing -- register group
+// data processing: register group
 // ---------------------------------------------------------------------------
 
 fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
@@ -1600,13 +1827,17 @@ fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
         (0, 1) => decode_add_sub_reg(instr),
         (1, 1) => decode_dp3(instr),
         (1, 0) => {
-            // add/sub with carry vs conditional select vs dp2, by bits [23:21]
+            // add/sub with carry vs conditional compare vs conditional
+            // select vs dp2, by bits [23:21]
             // add/sub (with carry): bits[23:21] = 000, bits[15:10] = 000000
+            // conditional compare:  bits[23:21] = 010
             // conditional select:   bits[23:21] = 100
             // dp2:                  bits[23:21] = 110
             let sub = bits(instr, 23, 21);
             if sub == 0b000 && bits(instr, 15, 10) == 0 {
                 decode_add_sub_carry(instr)
+            } else if sub == 0b010 {
+                decode_cond_compare(instr)
             } else if sub == 0b100 {
                 decode_cond_select(instr)
             } else {
@@ -1620,7 +1851,7 @@ fn decode_dp_reg_group(instr: u32) -> Result<Instruction, EmuError> {
 fn decode_add_sub_reg(instr: u32) -> Result<Instruction, EmuError> {
     // Bit 21 splits the register family: 0 is the shifted form (register
     // 31 reads as XZR), 1 is the extended form (register 31 is SP). The
-    // two must not be conflated -- executing `add x0, sp, x1` as shifted
+    // two must not be conflated: executing `add x0, sp, x1` as shifted
     // silently computes with 0.
     if bit(instr, 21) == 1 {
         return decode_add_sub_ext(instr);
@@ -1740,6 +1971,27 @@ fn decode_logical_reg(instr: u32) -> Result<Instruction, EmuError> {
     })
 }
 
+/// CCMP / CCMN: sf op S=1 11010010 imm5|Rm cond(4) imm o2=0 Rn o3=0 nzcv.
+/// Bit 11 picks the immediate form; bits 10 and 4 are reserved zero.
+fn decode_cond_compare(instr: u32) -> Result<Instruction, EmuError> {
+    if bit(instr, 29) != 1 || bit(instr, 10) != 0 || bit(instr, 4) != 0 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    let field = bits(instr, 20, 16) as u8;
+    Ok(Instruction::CondCompare {
+        sub: bit(instr, 30) == 1,
+        sf: bit(instr, 31) == 1,
+        rn: bits(instr, 9, 5) as u8,
+        operand: if bit(instr, 11) == 1 {
+            CondCmpOperand::Imm(field)
+        } else {
+            CondCmpOperand::Reg(field)
+        },
+        cond: Condition::from_u8(bits(instr, 15, 12) as u8)?,
+        nzcv: bits(instr, 3, 0) as u8,
+    })
+}
+
 fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
     // Bit 30 is the op field (0 = CSEL/CSINC, 1 = CSINV/CSNEG); bit 10
@@ -1774,11 +2026,28 @@ fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
 
 fn decode_dp2(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
-    // Bit 30 set marks the 1-source data-processing group (rev/rev32/rbit/
-    // clz), which shares this decode entry. Without this guard a `.word`-
-    // crafted rev32 fell through to the 2-source table and ran as udiv.
+    // Bit 30 set marks the 1-source data-processing group, which shares
+    // this decode entry. Its rows come from the shared table, keyed on
+    // (opcode, sf) because rev at W width and rev32 at X width collide on
+    // opcode 000010. Without this branch a `.word`-crafted rev32 falls
+    // through to the 2-source table and runs as udiv.
     if bit(instr, 30) != 0 {
-        return Err(EmuError::UnknownInstruction(instr));
+        if bit(instr, 29) != 0 || bits(instr, 20, 16) != 0 {
+            return Err(EmuError::UnknownInstruction(instr));
+        }
+        let opcode = bits(instr, 15, 10) as u8;
+        let Some((_, _, _, op)) = DP1_OPS
+            .iter()
+            .find(|(_, code, needs_sf, _)| *code == opcode && needs_sf.is_none_or(|want| want == sf))
+        else {
+            return Err(EmuError::UnknownInstruction(instr));
+        };
+        return Ok(Instruction::DataProc1 {
+            op: *op,
+            sf,
+            rd: bits(instr, 4, 0) as u8,
+            rn: bits(instr, 9, 5) as u8,
+        });
     }
     let s = bit(instr, 29);
     let opcode = bits(instr, 15, 10);
@@ -1855,20 +2124,25 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
         });
     }
 
-    // SMULL/UMULL are SMADDL/UMADDL with Ra=XZR; SMULH/UMULH fix the Ra
-    // field at 11111. The accumulate forms proper (Ra != XZR) stay
-    // undecoded: gcc emits only the aliases, and half-implementing the
-    // accumulate would be a silent wrong answer waiting to happen.
-    if sf && o0 == 0 && ra == 31 {
-        let op = match op31 {
-            0b001 => Some(MulWideOp::Smull),
-            0b101 => Some(MulWideOp::Umull),
-            0b010 => Some(MulWideOp::Smulh),
-            0b110 => Some(MulWideOp::Umulh),
+    // SMULL/UMULL are SMADDL/UMADDL with Ra=XZR and stay on their own
+    // rows so the disassembly reads the way GAS writes it. SMULH/UMULH
+    // keep the `ra == 31` requirement because their Ra field is
+    // architecturally fixed; the widening rows do not, since Ra is the
+    // accumulator there.
+    if sf {
+        let op = match (op31, o0, ra == 31) {
+            (0b001, 0, true) => Some(MulWideOp::Smull),
+            (0b101, 0, true) => Some(MulWideOp::Umull),
+            (0b010, 0, true) => Some(MulWideOp::Smulh),
+            (0b110, 0, true) => Some(MulWideOp::Umulh),
+            (0b001, 0, false) => Some(MulWideOp::Smaddl),
+            (0b001, 1, _) => Some(MulWideOp::Smsubl),
+            (0b101, 0, false) => Some(MulWideOp::Umaddl),
+            (0b101, 1, _) => Some(MulWideOp::Umsubl),
             _ => None,
         };
         if let Some(op) = op {
-            return Ok(Instruction::MulWide { op, rd, rn, rm });
+            return Ok(Instruction::MulWide { op, rd, rn, rm, ra });
         }
     }
 
@@ -1882,8 +2156,8 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
 #[cfg(test)]
 mod tests {
     // Binary literals here group digits by instruction field (sf/opcode/imm/rn/rd)
-    // rather than by nibble, and zero-valued fields stay written out -- both
-    // deliberate, so the encodings read like the architecture manual.
+    // rather than by nibble, and zero-valued fields stay written out. Both
+    // are deliberate, so the encodings read like the architecture manual.
     #![allow(clippy::unusual_byte_groupings, clippy::identity_op)]
     use super::*;
 
@@ -1901,13 +2175,8 @@ mod tests {
     #[test]
     fn bitmask_alternating_bits() {
         // 0x5555... = alternating 01 pattern. Element size 2, 1 one, rotated by 0.
-        // N=0, immr=0, imms=0b000000 -> len=0 doesn't work...
-        // Actually for element size 2: len=1, so ~imms needs bit1 set.
-        // imms = 0b0000_00, NOT = 0b111111, highest bit at 5 -> len=5? No.
-        // Let me think again. The element size encoding:
-        // N=0: look at highest set bit of NOT(imms[5:0])
-        // For element size 2 (len=1): NOT(imms) must have bit 1 as highest.
-        // So imms = 0b111100 -> NOT = 0b000011 -> highest bit = 1 -> len=1 -> esize=2
+        // Element size 2 needs len=1, so NOT(imms) must top out at bit 1:
+        // imms = 0b111100 -> NOT = 0b000011 -> len=1 -> esize=2.
         // s = imms & 1 = 0 -> 1 one, r = immr & 1
         // With immr=0: element = 0b01, replicated = 0x5555...
         let val = decode_bitmask_imm(false, 0, 0b111100, true).unwrap();
@@ -2386,17 +2655,46 @@ mod tests {
             }
             other => panic!("expected LdrSignExtended, got {other:?}"),
         }
-        // The unsupported sign-extending writeback forms reject instead of
-        // misdecoding: 0x38C00421 = ldrsb w1, [x1], #0 (post-index).
-        assert!(decode(0x38C0_0421).is_err());
+        // The writeback forms take the same arm rather than falling
+        // through to a plain LDR/STR: 0x38C00421 = ldrsb w1, [x1], #0.
+        match decode(0x38C0_0421).unwrap() {
+            Instruction::LdrSignExtended { rt, rn, size, sf, mode, .. } => {
+                assert_eq!((rt, rn), (1, 1));
+                assert_eq!(size, MemSize::B);
+                assert!(!sf);
+                assert_eq!(mode, IndexMode::PostIndex);
+            }
+            other => panic!("expected LdrSignExtended, got {other:?}"),
+        }
+        // size=X stays reserved in this space: it is the prefetch encoding.
+        assert!(decode(0xF8C0_0421).is_err());
     }
 
     #[test]
-    fn unsupported_dp1_source_words_are_rejected() {
-        // rev/rev32 (DP 1-source, bit 30 set) are not implemented and the
-        // assembler never emits them; a hand-crafted .word must reject,
-        // not silently run as udiv/sdiv. The cond-select op=1 family
-        // (csinv/csneg) decodes now, so those words are supported.
+    fn dp1_source_words_decode_by_opcode_and_width() {
+        // Bit 30 set is the DP 1-source group. The opcode alone does not
+        // name the row: 000010 is rev32 at X width and rev at W width, so
+        // a decoder keying on the opcode runs one as the other.
+        assert!(
+            matches!(
+                decode(0xDAC0_0800),
+                Ok(Instruction::DataProc1 { op: Dp1Op::Rev32, sf: true, .. })
+            ),
+            "rev32 x0,x0"
+        );
+        assert!(
+            matches!(
+                decode(0x5AC0_0800),
+                Ok(Instruction::DataProc1 { op: Dp1Op::Rev, sf: false, .. })
+            ),
+            "rev w0,w0"
+        );
+        // Rows outside the table, the S bit, and a nonzero Rm field are
+        // all reserved and must reject rather than run as something else.
+        assert!(decode(0xDAC0_1800).is_err(), "opcode 000110 is not a row");
+        assert!(decode(0xFAC0_1020).is_err(), "the S bit is reserved here");
+        assert!(decode(0xDAC1_1020).is_err(), "Rm must be zero");
+        // The cond-select op=1 family (csinv/csneg) shares the group.
         assert!(
             matches!(decode(0x5A80_0000), Ok(Instruction::CondSel { op: CondSelOp::Csinv, .. })),
             "csinv w0,w0,w0,eq decodes"
@@ -2405,8 +2703,6 @@ mod tests {
             matches!(decode(0xDA80_0400), Ok(Instruction::CondSel { op: CondSelOp::Csneg, .. })),
             "csneg x0,x0,x0,eq decodes"
         );
-        assert!(decode(0xDAC0_0800).is_err(), "rev32 x0,x0");
-        assert!(decode(0x5AC0_0800).is_err(), "dp2 group with the op bit set");
         // sanity: the older forms still decode.
         assert!(decode(0x1A80_0000).is_ok(), "csel w0,w0,w0,eq");
         assert!(decode(0x1AC0_0800).is_ok(), "udiv w0,w0,w0");
@@ -2415,8 +2711,9 @@ mod tests {
     #[test]
     fn reserved_32bit_bitfield_encodings_are_rejected() {
         // sf=0 with immr/imms >= 32 (or N != sf) is reserved; the LSL-alias
-        // arm used to compute reg_size - immr and underflow. Both words are
-        // from the audit: immr=33/imms=32 and immr=46/imms=45.
+        // arm computes reg_size - immr and underflows without the guard.
+        // Both words are reserved encodings: immr=33/imms=32 and
+        // immr=46/imms=45.
         assert!(decode(0x5321_8000).is_err());
         assert!(decode(0x536E_B400).is_err());
         // N=1 with sf=0 is reserved even with small fields.
@@ -2692,7 +2989,7 @@ mod tests {
 
     #[test]
     fn decode_adc_with_zero_register_operand() {
-        // ADC X0, X1, XZR = 0x9A1F0020 -- register 31 is ZR here, never SP.
+        // ADC X0, X1, XZR = 0x9A1F0020: register 31 is ZR here, never SP.
         let decoded = decode(0x9A1F_0020).unwrap();
         assert_eq!(
             decoded,

@@ -125,7 +125,7 @@ describe("TerminalPane", () => {
   });
 
   it("keeps special-key escape sequences out of the command line", async () => {
-    // Real xterm fires onKey AND onData for the same keypress with the
+    // Real xterm fires both onKey and onData for the same keypress, with the
     // identical string; ArrowUp arrives as the 3-character "\x1b[A". The
     // data path must not treat it as a paste: the sequence is invisible
     // on screen but corrupts the submitted command.
@@ -184,7 +184,7 @@ describe("TerminalPane", () => {
     instances[0].dataCb!("cat a.txt\r");
     await vi.waitFor(() => {
       const output = instances[0].writes.join("");
-      expect(output).toContain("cat: the command failed unexpectedly");
+      expect(output).toContain("cat: the command failed. run it again");
       // The internal wording must not reach the student.
       expect(output).not.toContain("recursive use");
       // The prompt came back.

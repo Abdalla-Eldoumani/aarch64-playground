@@ -90,8 +90,8 @@ describe("ShareDialog", () => {
 
 describe("ShareDialog over the fragment cap", () => {
   // A real multi-file workspace does not fit in a URL fragment: the
-  // receiver's 12 KB wall rejects it. The dialog used to hand the sender a
-  // copyable link anyway, so the failure surfaced on the recipient's screen.
+  // receiver's 12 KB wall rejects it. Offering the link anyway moves the
+  // failure to the recipient's screen.
   const BIG: ShareState = {
     source: "mov x0, 1\nret\n",
     files: Array.from({ length: 12 }, (_, i) => ({

@@ -19,6 +19,8 @@ export function BlanksBlock({
   blanks,
   explanation,
   hint,
+  value,
+  onValueChange,
   onAttempt,
 }: {
   prompt: string;
@@ -30,12 +32,23 @@ export function BlanksBlock({
   explanation: string;
   /** Optional guidance rendered on a failed attempt. */
   hint?: string;
+  /** The typed answer when the sheet owns it, so it survives a reload. */
+  value?: string;
+  /** Fires on every keystroke so the sheet can persist it. */
+  onValueChange?: (value: string) => void;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
-  const [inputVal, setInputVal] = useState("");
+  const [ownValue, setOwnValue] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const inputId = useId();
+
+  // Controlled when the sheet passes `value`, self-owned otherwise.
+  const inputVal = value !== undefined ? value : ownValue;
+  const setInputVal = (next: string): void => {
+    setOwnValue(next);
+    if (onValueChange) onValueChange(next);
+  };
 
   const parts = code.split("___");
   const isCorrect = blanks.some(
@@ -82,14 +95,14 @@ export function BlanksBlock({
               if (onAttempt) onAttempt(isCorrect);
             }}
           >
-            Check Answer
+            check answer
           </Button>
         ) : (
           <div className="flex w-full flex-col items-start gap-5">
             <FeedbackAlert
               isCorrect={isCorrect}
               explanation={explanation}
-              hint={hint ?? "Check your syntax carefully and try again."}
+              hint={hint ?? "Check the spelling and the operand order against the instruction reference."}
             />
             {!isCorrect && (
               <Button
@@ -98,7 +111,7 @@ export function BlanksBlock({
                   setInputVal("");
                 }}
               >
-                Try Again
+                try again
               </Button>
             )}
           </div>

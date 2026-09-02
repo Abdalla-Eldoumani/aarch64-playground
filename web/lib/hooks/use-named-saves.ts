@@ -36,6 +36,8 @@ function subscribe(callback: () => void): () => void {
     refreshCache();
     callback();
   };
+  // The module-scope snapshot was taken at import time; refresh it when the
+  // first consumer subscribes.
   if (listenerCount === 0) refreshCache();
   listenerCount++;
   window.addEventListener("storage", onStorage);
@@ -67,7 +69,7 @@ export interface NamedSavesApi {
 
 /**
  * React hook over the localStorage-backed named-saves store. Re-renders
- * any consumer when a save is added, removed, or imported -- including
+ * any consumer when a save is added, removed, or imported, including
  * cross-tab updates via the native `storage` event.
  */
 export function useNamedSaves(): NamedSavesApi {

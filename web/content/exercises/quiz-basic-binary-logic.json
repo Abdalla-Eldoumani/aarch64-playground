@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Binary Logic & Numbers - Fundamentals",
+  "title": "Quiz: binary logic",
   "slug": "quiz-basic-binary-logic",
   "order": 32,
   "topic": "binary-logic",
   "difficulty": "intro",
   "variant": "quiz",
-  "prompt": "Work through two's complement negation, the sign bit, how many bits one hexadecimal digit carries, what a logical shift left does to a value, and the instruction that complements a register.",
+  "prompt": "Two's complement negation, the sign bit, how many bits one hexadecimal digit carries, what a logical shift left does to a value, and the instruction that complements a register.",
   "questions": [
     {
       "question": "How is a positive integer negated in two's complement representation?",
@@ -52,7 +52,7 @@
         "bic"
       ],
       "correctAnswer": 1,
-      "explanation": "mvn xd, xm writes the complement of xm into xd, and it assembles as orn xd, xzr, xm. bic xd, xn, xm clears in xn the bits that are set in xm, and eon xd, xn, xm exclusive-ORs xn with the complement of xm, so both are two-source operations; mvn is the one-source form, and there is no scalar not mnemonic.",
+      "explanation": "mvn xd, xm writes the complement of xm into xd, and it assembles as orn xd, xzr, xm. bic xd, xn, xm clears in xn the bits that are set in xm, and eon xd, xn, xm exclusive-ORs xn with the complement of xm, so both need two sources. mvn is the one-source form, and there is no scalar not mnemonic.",
       "hint": "It stands for 'move NOT'."
     },
     {

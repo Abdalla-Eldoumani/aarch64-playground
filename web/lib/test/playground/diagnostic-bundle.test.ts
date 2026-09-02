@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import LZString from "lz-string";
 import {
-  bundleToMarkdown,
+  bundleShareUrl,
   decodeBundle,
   encodeBundle,
   type DiagnosticBundle,
@@ -24,38 +24,6 @@ const sample: DiagnosticBundle = {
   stackBytes: "00 00 00 00 00 00 00 00",
   error: null,
 };
-
-describe("diagnostic-bundle markdown", () => {
-  it("includes every populated section", () => {
-    const md = bundleToMarkdown(sample);
-    expect(md).toContain("# diagnostic bundle");
-    expect(md).toContain("```asm");
-    expect(md).toContain("mov x0, 5");
-    expect(md).toContain("**args:** `./prog hello world`");
-    expect(md).toContain("**stdin:**");
-    expect(md).toContain("**stdout:**");
-    expect(md).toContain("**exit code:** 0");
-    expect(md).toContain("pc = 0x0000000000400008");
-    expect(md).toContain("**last 64 stack bytes");
-  });
-
-  it("skips empty optional sections so reports stay short", () => {
-    const minimal: DiagnosticBundle = { source: "ret\n" };
-    const md = bundleToMarkdown(minimal);
-    expect(md).not.toContain("**args:**");
-    expect(md).not.toContain("**stdin:**");
-    expect(md).not.toContain("**stdout:**");
-    expect(md).not.toContain("**stderr:**");
-    expect(md).not.toContain("exit code");
-    expect(md).not.toContain("last error");
-    expect(md).not.toContain("registers:");
-  });
-
-  it("appends a playground link when an origin is provided", () => {
-    const md = bundleToMarkdown(sample, "https://example.com/path");
-    expect(md).toMatch(/\(https:\/\/example\.com\/path\?bundle=[^)]+\)/);
-  });
-});
 
 describe("diagnostic-bundle round-trip", () => {
   it("encodeBundle / decodeBundle restores the original payload", () => {
@@ -112,5 +80,14 @@ describe("diagnostic-bundle round-trip", () => {
     expect(decoded.kind).toBe("ok");
     if (decoded.kind !== "ok") throw new Error("expected ok");
     expect(decoded.bundle.source).toBe("");
+  });
+});
+
+describe("diagnostic-bundle share url", () => {
+  it("carries the scenario itself, so the link round-trips", () => {
+    const url = bundleShareUrl("https://example.com/path", sample);
+    expect(url.startsWith("https://example.com/path?bundle=")).toBe(true);
+    const decoded = decodeBundle(url.slice(url.indexOf("?bundle=") + 8));
+    expect(decoded).toEqual({ kind: "ok", bundle: sample });
   });
 });

@@ -18,7 +18,7 @@ describe("computeIntFlags", () => {
     bits: 32 | 64;
     flags: { n: boolean; z: boolean; c: boolean; v: boolean };
   }> = [
-    // cmp -1, 1: signed below, unsigned above -- the b.lt vs b.lo split.
+    // cmp -1, 1: signed below, unsigned above, the b.lt vs b.lo split.
     { name: "cmp -1 vs 1", op: "sub", a: -1n, b: 1n, bits: 32, flags: { n: true, z: false, c: true, v: false } },
     // cmp 3, 5: borrow happens, so C clears and both lt and lo would fire.
     { name: "cmp 3 vs 5", op: "sub", a: 3n, b: 5n, bits: 32, flags: { n: true, z: false, c: false, v: false } },

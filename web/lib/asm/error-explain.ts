@@ -24,7 +24,7 @@ export type StyleSection =
 export interface ErrorExplanation {
   /** What the emulator saw, in two short sentences max. */
   what: string;
-  /** Why it failed -- the underlying cause in plain language. */
+  /** Why it failed: the underlying cause in plain language. */
   why: string;
   /** A specific, actionable fix the student can apply right now. */
   fix: string;
@@ -55,7 +55,7 @@ export function explainError(message: string): ErrorExplanation | null {
   if (lower.startsWith("unknown instruction")) {
     return {
       what: "The emulator's decoder did not recognize this 32-bit word as any AArch64 instruction it implements.",
-      why: "Execution usually got here by branching somewhere that holds data, not code -- a branch to a data label, a wrong jump-table entry, or a return address that was overwritten on the stack. (An instruction from an extension the playground does not implement reports this too.)",
+      why: "Execution usually got here by branching somewhere that holds data, not code: a branch to a data label, a wrong jump-table entry, or a return address that was overwritten on the stack. (An instruction from an extension the playground does not implement reports this too.)",
       fix: "Check where the shown address falls: if it is in .data/.rodata, find the branch that took you there; if it is in .text, compare the mnemonic against the instruction reference.",
       styleSection: "general",
     };
@@ -65,21 +65,24 @@ export function explainError(message: string): ErrorExplanation | null {
     return {
       what: `The CPU tried to ${isWrite ? "write to" : "read from"} an address that is not mapped (no .text/.data/.rodata/.bss/.stack page covers it).`,
       why: "Most often a base register holds an offset rather than an address, or `ldr xN, =label` was forgotten so the register stays at 0.",
-      fix: "Watch the base register in the watch panel. If it's a small number (0..255), you wrote `mov` where you meant `ldr =`; if it's near 0xFFFF_0000, you tried to call a host stub directly without the BL trampoline (the linker handles that automatically for `bl printf` and friends).",
+      fix: "Watch the base register in the watch panel. If it is a small number (0..255), you wrote `mov` where you meant `ldr =`; if it is near 0xFFFF_0000, you tried to call a host stub directly without the BL trampoline (the linker handles that automatically for `bl printf` and friends).",
       styleSection: "addressing modes",
     };
   }
-  if (lower.includes("register index out of range")) {
+  if (
+    lower.includes("is not a register") ||
+    lower.includes("is not a floating-point register")
+  ) {
     return {
       what: "An instruction referenced a register index outside 0..30.",
       why: "Almost always a typo (W32 instead of W3, X31 instead of XZR or SP) or a stale operand left over from refactoring.",
-      fix: "Re-read the operand and verify the register class -- general-purpose registers are X0-X30 plus XZR/SP; the FPU set is D0-D31 / S0-S31. The assembler accepts both upper and lower case.",
+      fix: "Re-read the operand and check the register class: general-purpose registers are x0-x30 plus xzr and sp; the FPU set is d0-d31 and s0-s31. The assembler accepts both upper and lower case.",
       styleSection: "naming conventions",
     };
   }
   if (lower.includes("not a multiple of 16")) {
     return {
-      what: "A load or store used sp as its base -- or a libc call ran -- while sp was off the 16-byte boundary.",
+      what: "A load or store used sp as its base (or a libc call ran) while sp was off the 16-byte boundary.",
       why: "Linux turns on the AArch64 stack-alignment check (SA0): every sp-based access faults with a bus error when sp is not a multiple of 16, and AAPCS64 requires the boundary at every bl. The playground stops exactly where the course servers do.",
       fix: "Round the frame to a 16 multiple: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`. The line that broke the boundary is the sp adjustment above the fault.",
       styleSection: "general",
@@ -88,14 +91,14 @@ export function explainError(message: string): ErrorExplanation | null {
   if (lower.includes("not part of any program section")) {
     return {
       what: "A load or store landed in the first page of the address space, which no program owns.",
-      why: "The base register held a small number instead of an address -- the servers kill this with a segmentation fault. A `mov` where `ldr xN, =label` was meant, or an m4 register alias that reuses a register a pointer already lives in, are the usual causes.",
+      why: "The base register held a small number instead of an address. The course servers kill this with a segmentation fault. A `mov` where `ldr xN, =label` was meant, or an m4 register alias that reuses a register a pointer already lives in, are the usual causes.",
       fix: "Check how the base register was loaded: addresses come from `ldr xN, =label`. If an m4 define names the same register a pointer occupies (`define(i_r, w19)` after `ldr x19, =arr`), rename the alias to a free register.",
       styleSection: "addressing modes",
     };
   }
   if (lower.startsWith("stack overflow")) {
     return {
-      what: "SP moved more than 8 MiB below the stack base (0x80000000, growing down) -- far past any legitimate frame chain.",
+      what: "sp moved more than 8 MiB below the stack base (0x80000000, growing down), far past any legitimate frame chain.",
       why: "Recursion with no reachable base case is the usual cause; a prologue that repeats without its epilogue, or sp loaded from a register that was never set up, gets here too.",
       fix: "Check the recursion's stopping condition first (does the base case compare the right register?). Then check that every prologue has a matching epilogue with the same dealloc.",
       styleSection: "general",
@@ -109,11 +112,11 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "naming conventions",
     };
   }
-  if (lower.startsWith("argv layout")) {
+  if (lower.includes("the playground reserves for argv")) {
     return {
       what: "The argv pointer table plus the string pool would exceed the single 4 KiB page reserved at 0x00800000.",
       why: "Either too many args (each one needs an 8-byte pointer slot plus the string body and a NUL), or one very large arg.",
-      fix: "Trim the args field above the editor. The cap is per-page and the playground's argv area is intentionally small to keep the emulator footprint predictable.",
+      fix: "Trim the args field above the editor, or pass fewer arguments.",
       styleSection: "hosted runtime",
     };
   }
@@ -130,7 +133,11 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "m4 preprocessing",
     };
   }
-  if (detail.includes("unknown symbol") || detail.includes("undefined symbol")) {
+  if (
+    detail.includes("is not defined anywhere in this program") ||
+    detail.includes("unknown symbol") ||
+    detail.includes("undefined symbol")
+  ) {
     return {
       what: "A label or alias used in this expression is not defined anywhere in the source.",
       why: "Either a typo (the alias was defined as `score1_r` but used as `score_1_r`) or a section ordering issue where a forward reference points at code never reached by the assembler.",
@@ -162,17 +169,23 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "general",
     };
   }
+  // The unknown-directive message names the whole set the parser accepts,
+  // so there is nothing to add; it is caught here only because that list
+  // contains `.section` and would otherwise fall into the block below.
+  if (detail.includes("unknown directive")) {
+    return null;
+  }
   if (detail.includes("unsupported section")) {
     return {
       what: "A .section directive names a section the playground does not lay out (only .text/.data/.rodata/.bss have addresses here).",
       why: "gcc -S output carries linker-metadata sections like `.note.GNU-stack` or `.init_array` that only matter to a real ELF linker; the dot-separated name means the message may show just the first word of it.",
-      fix: "If the line is compiler metadata (`.note.GNU-stack`, `.init_array`, `.comment`), delete the line -- nothing references it. If you meant program data, use the plain `.data` or `.rodata` directive.",
+      fix: "If the line is compiler metadata (`.note.GNU-stack`, `.init_array`, `.comment`), delete it: nothing references it. If you meant program data, use the plain `.data` or `.rodata` directive.",
       styleSection: "section directives",
     };
   }
   if (detail.includes("section") && detail.includes("directive")) {
     return {
-      what: "A section directive was used in a position the parser doesn't accept.",
+      what: "A section directive was used in a position the assembler does not accept.",
       why: "The playground recognizes only the section directives the course uses (.text, .data, .rodata, .bss, .section). Other forms surface as unknown directives.",
       fix: "If you see a `.section .data.rel.ro,...` or similar, replace it with the plain `.data` (or `.rodata`) variant from the style guide.",
       styleSection: "section directives",
@@ -196,7 +209,7 @@ export function explainError(message: string): ErrorExplanation | null {
   }
   if (detail.includes("converts between widths")) {
     return {
-      what: "fcvt was given two registers of the same width, but its whole job is changing width.",
+      what: "fcvt was given two registers of the same width; it only encodes a change of width.",
       why: "fcvt is the S<->D precision converter: one operand names the source width, the other the destination. Same-width fcvt has no encoding.",
       fix: "For a same-width copy use `fmov d0, d1` (or `fmov s0, s1`). To change precision, pair one S with one D: `fcvt d0, s1` widens, `fcvt s0, d1` narrows.",
       styleSection: "general",

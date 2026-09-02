@@ -1,5 +1,5 @@
 {
-  "title": "Fill in the Blank: Memory Addressing Syntax",
+  "title": "Fill in the blank: memory and the stack",
   "slug": "blanks-frame-stack",
   "order": 55,
   "topic": "memory",
@@ -32,7 +32,7 @@
         "!"
       ],
       "explanation": "The ! after the closing bracket selects the pre-indexed form. x20 becomes x20 + 10 first, and the load reads from that updated address.",
-      "hint": "The exclamation mark marks the pre-indexed form."
+      "hint": "The exclamation mark selects the pre-indexed form."
     },
     {
       "prompt": "Load a 32-bit value using post-indexed addressing, moving x28 forward by 8 bytes after the load.",
@@ -71,7 +71,7 @@
       "hint": "Short for request."
     },
     {
-      "prompt": "Ensure the following machine instruction is properly 4-byte aligned.",
+      "prompt": "Align the following machine instruction on a 4-byte boundary.",
       "code": ".___ 4",
       "blanks": [
         "balign"
@@ -86,10 +86,10 @@
         "-16"
       ],
       "explanation": "ANDing with -16 clears the low four bits, so -20 becomes -32 and sp stays 16-byte aligned. The assembler folds the whole expression into one constant before the instruction is encoded.",
-      "hint": "You need to AND the value with negative sixteen."
+      "hint": "AND the value with negative sixteen."
     },
     {
-      "prompt": "Set the frame pointer as a stable anchor at the beginning of a subroutine.",
+      "prompt": "Set the frame pointer at the beginning of a subroutine.",
       "code": "mov ___, sp",
       "blanks": [
         "x29",

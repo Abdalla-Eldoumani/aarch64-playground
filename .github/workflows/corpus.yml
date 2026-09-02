@@ -2,8 +2,8 @@ name: corpus
 
 # Rebuilds the C corpus with a cross compiler and qemu-user and fails
 # when the rebuilt programs behave differently from the tracked
-# references (stdout or exit code), so a toolchain change announces
-# itself instead of rotting silently. Assembly text is expected to
+# references (stdout or exit code), so a toolchain change fails this
+# run instead of going unnoticed. Assembly text is expected to
 # differ (the references were recorded with the course server's own
 # gcc) and is reported, never failed on. The per-PR gate never runs
 # this: the ordinary corpus test replays the tracked files with no

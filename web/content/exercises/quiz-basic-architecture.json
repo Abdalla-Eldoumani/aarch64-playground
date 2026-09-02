@@ -1,5 +1,5 @@
 {
-  "title": "Quiz: System Architecture - Fundamentals",
+  "title": "Quiz: system architecture",
   "slug": "quiz-basic-architecture",
   "order": 28,
   "topic": "architecture",
@@ -16,7 +16,7 @@
         "Input devices, output devices, and secondary storage"
       ],
       "correctAnswer": 2,
-      "explanation": "A CPU is built from a control unit that directs the fetch-execute cycle and tells the other parts what to do, an arithmetic logic unit that performs the arithmetic and bitwise operations, and registers that hold the operands and results while the work happens. The system buses, main memory, and peripherals sit outside the CPU.",
+      "explanation": "A CPU is built from a control unit that directs the fetch-execute cycle, an arithmetic logic unit that performs the arithmetic and bitwise operations, and registers that hold the operands and results while the work happens. The system buses, main memory, and peripherals sit outside the CPU.",
       "hint": "Think about what directs the work, what does the arithmetic, and what holds the values in between."
     },
     {

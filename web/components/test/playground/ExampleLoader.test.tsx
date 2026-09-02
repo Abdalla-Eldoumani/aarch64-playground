@@ -23,7 +23,7 @@ const STAGES = [
 
 /** Open the custom select and return its listbox. */
 function openList(): HTMLElement {
-  fireEvent.click(screen.getByRole("combobox", { name: "Load example program" }));
+  fireEvent.click(screen.getByRole("combobox", { name: "load an example program" }));
   return screen.getByRole("listbox");
 }
 
@@ -68,7 +68,7 @@ describe("ExampleLoader", () => {
     expect(optionLabels(listbox).length).toBeGreaterThanOrEqual(headers.length);
   });
 
-  it("seeds the two previously-empty stages with the filler programs", () => {
+  it("seeds the two stages that carry only filler programs", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
 
@@ -79,20 +79,20 @@ describe("ExampleLoader", () => {
   it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
-    // 14 kept programs + the two stage fillers + the six playable extras
-    // under Miscellaneous.
+    // 14 course programs, 2 stage fillers, and the 6 playable extras under
+    // Miscellaneous.
     expect(labels.length).toBe(22);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
     expect(labels).toContain("arithmetic");
     expect(labels).toContain("copy file");
-    expect(labels).toContain("triangle area (single)");
+    expect(labels).toContain("triangle area (single precision)");
     expect(labels).toContain("snake");
     expect(labels).toContain("data structures visualizer");
-    expect(labels).toContain("calc (short for calculator)");
-    expect(labels).toContain("temp-convert");
-    expect(labels).toContain("two-sum");
+    expect(labels).toContain("calculator");
+    expect(labels).toContain("temperature converter");
+    expect(labels).toContain("two sum");
     expect(labels).toContain("deadzone");
   });
 

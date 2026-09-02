@@ -5,8 +5,7 @@
  * returns the field layout (label, bit width, the actual bits, and a decoded
  * meaning for the register fields), plus which field the instruction writes
  * so the strip can light the destination amber. Unrecognized words fall back
- * to a single unsplit field, so the strip never lies about structure it does
- * not know.
+ * to a single unsplit field rather than a guessed layout.
  *
  * Every layout is validated in decode-fields.test.ts by re-concatenating the
  * sliced bits and comparing against machine words produced by the real
@@ -77,6 +76,43 @@ const COND_NAMES = [
   "hi", "ls", "ge", "lt", "gt", "le", "al", "nv",
 ];
 
+/** Scalar FP register name for an ftype field: 01 is D, 00 is S. */
+function freg(ftype: number, index: number): string {
+  return `${ftype === 1 ? "d" : "s"}${index}`;
+}
+
+/** The FP 3-source rows, indexed by (o1 << 1) | o0 as the encoding splits them. */
+const FP_MUL_ADD_NAMES = ["fmadd", "fmsub", "fnmadd", "fnmsub"];
+
+/**
+ * The FP/integer conversion rows, keyed "rmode,opcode". Half of each
+ * mnemonic lives in each field, so the strip only reads as an
+ * instruction when the two are joined.
+ */
+const FP_CVT_NAMES: Record<string, string> = {
+  "0,0": "fcvtns", "0,1": "fcvtnu", "0,2": "scvtf", "0,3": "ucvtf",
+  "0,4": "fcvtas", "0,5": "fcvtau",
+  // FMOV between the register files shares the class and its field split.
+  "0,6": "fmov (fp to gp)", "0,7": "fmov (gp to fp)",
+  "1,0": "fcvtps", "1,1": "fcvtpu",
+  "2,0": "fcvtms", "2,1": "fcvtmu",
+  "3,0": "fcvtzs", "3,1": "fcvtzu",
+};
+
+/**
+ * The data-processing 1-source rows, keyed "opcode,sf": rev at W width
+ * and rev32 at X width share opcode 000010, so the width belongs in the
+ * key.
+ */
+const DP1_NAMES: Record<string, string> = {
+  "0,0": "rbit", "0,1": "rbit",
+  "1,0": "rev16", "1,1": "rev16",
+  "2,0": "rev", "2,1": "rev32",
+  "3,1": "rev",
+  "4,0": "clz", "4,1": "clz",
+  "5,0": "cls", "5,1": "cls",
+};
+
 /** Slice a machine word into its encoding fields. Never throws. */
 export function decodeFields(word: number): DecodedWord {
   const w = word >>> 0;
@@ -132,6 +168,42 @@ export function decodeFields(word: number): DecodedWord {
         { label: "Rd", hi: 4, lo: 0, kind: "register", meaning: (x) => xreg(sf, bits(x, 4, 0)) },
       ],
       "Rd",
+    );
+  }
+
+  // Conditional compare: sf op S 11010010 imm5|Rm cond(4) imm o2 Rn o3 nzcv.
+  // Bit 11 picks the immediate form; the instruction writes flags, not a
+  // register, so nothing is marked as the destination.
+  if (bits(w, 28, 21) === 0b11010010) {
+    const isImm = bits(w, 11, 11) === 1;
+    return slice(
+      w,
+      [
+        { label: "sf", hi: 31, lo: 31, kind: "opcode" },
+        { label: "op", hi: 30, lo: 30, kind: "opcode", meaning: (x) => (bits(x, 30, 30) ? "ccmp" : "ccmn") },
+        { label: "S", hi: 29, lo: 29, kind: "opcode" },
+        { label: "11010010", hi: 28, lo: 21, kind: "opcode" },
+        {
+          label: "Rm/imm5",
+          hi: 20,
+          lo: 16,
+          kind: isImm ? "immediate" : "register",
+          meaning: (x) => (isImm ? `${bits(x, 20, 16)}` : xreg(sf, bits(x, 20, 16))),
+        },
+        { label: "cond", hi: 15, lo: 12, kind: "opcode", meaning: (x) => COND_NAMES[bits(x, 15, 12)] },
+        { label: "imm", hi: 11, lo: 11, kind: "opcode", meaning: () => (isImm ? "immediate form" : "register form") },
+        { label: "o2", hi: 10, lo: 10, kind: "opcode" },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => xreg(sf, bits(x, 9, 5)) },
+        { label: "o3", hi: 4, lo: 4, kind: "opcode" },
+        {
+          label: "nzcv",
+          hi: 3,
+          lo: 0,
+          kind: "immediate",
+          meaning: (x) => `flags when the condition fails: ${bitString(x, 3, 0)}`,
+        },
+      ],
+      null,
     );
   }
 
@@ -262,6 +334,155 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
+  // Data-processing 1-source (clz/cls/rbit/rev/rev16/rev32): sf 1 S
+  // 11010110 00000 opcode(6) Rn Rd. Bit 30 is what separates it from the
+  // 2-source group above, and the opcode alone does not name the row:
+  // 000010 is rev at W width and rev32 at X.
+  if (bits(w, 28, 21) === 0b11010110 && bits(w, 30, 30) === 1) {
+    return slice(
+      w,
+      [
+        { label: "sf", hi: 31, lo: 31, kind: "opcode" },
+        { label: "1", hi: 30, lo: 30, kind: "opcode" },
+        { label: "S", hi: 29, lo: 29, kind: "opcode" },
+        { label: "11010110", hi: 28, lo: 21, kind: "opcode" },
+        { label: "00000", hi: 20, lo: 16, kind: "opcode" },
+        {
+          label: "opcode",
+          hi: 15,
+          lo: 10,
+          kind: "opcode",
+          meaning: (x) => DP1_NAMES[`${bits(x, 15, 10)},${sf}`] ?? "reserved",
+        },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => xreg(sf, bits(x, 9, 5)) },
+        { label: "Rd", hi: 4, lo: 0, kind: "register", meaning: (x) => xreg(sf, bits(x, 4, 0)) },
+      ],
+      "Rd",
+    );
+  }
+
+  // FP data-processing 3-source (the fmadd family): M 0 S 11111 ftype o1
+  // Rm o0 Ra Rn Rd. Ra is the ADDEND, and it is the last operand written,
+  // which is exactly what the strip is here to show.
+  if (bits(w, 31, 29) === 0 && bits(w, 28, 24) === 0b11111) {
+    const ftype = bits(w, 23, 22);
+    return slice(
+      w,
+      [
+        { label: "000", hi: 31, lo: 29, kind: "opcode" },
+        { label: "11111", hi: 28, lo: 24, kind: "opcode" },
+        { label: "ftype", hi: 23, lo: 22, kind: "opcode", meaning: () => (ftype === 1 ? "double" : "single") },
+        { label: "o1", hi: 21, lo: 21, kind: "opcode" },
+        { label: "Rm", hi: 20, lo: 16, kind: "register", meaning: (x) => freg(ftype, bits(x, 20, 16)) },
+        {
+          label: "o0",
+          hi: 15,
+          lo: 15,
+          kind: "opcode",
+          meaning: (x) => FP_MUL_ADD_NAMES[(bits(x, 21, 21) << 1) | bits(x, 15, 15)],
+        },
+        { label: "Ra", hi: 14, lo: 10, kind: "register", meaning: (x) => freg(ftype, bits(x, 14, 10)) },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => freg(ftype, bits(x, 9, 5)) },
+        { label: "Rd", hi: 4, lo: 0, kind: "register", meaning: (x) => freg(ftype, bits(x, 4, 0)) },
+      ],
+      "Rd",
+    );
+  }
+
+  // FP conditional select: 000 11110 ftype 1 Rm cond(4) 11 Rn Rd. Bits
+  // 11:10 are what separate it from the 2-source group (10), FCMP (00)
+  // and FCCMP (01).
+  if (
+    bits(w, 31, 29) === 0 &&
+    bits(w, 28, 24) === 0b11110 &&
+    bits(w, 21, 21) === 1 &&
+    bits(w, 11, 10) === 0b11
+  ) {
+    const ftype = bits(w, 23, 22);
+    return slice(
+      w,
+      [
+        { label: "000", hi: 31, lo: 29, kind: "opcode" },
+        { label: "11110", hi: 28, lo: 24, kind: "opcode" },
+        { label: "ftype", hi: 23, lo: 22, kind: "opcode", meaning: () => (ftype === 1 ? "double" : "single") },
+        { label: "1", hi: 21, lo: 21, kind: "opcode" },
+        { label: "Rm", hi: 20, lo: 16, kind: "register", meaning: (x) => freg(ftype, bits(x, 20, 16)) },
+        { label: "cond", hi: 15, lo: 12, kind: "opcode", meaning: (x) => COND_NAMES[bits(x, 15, 12)] },
+        { label: "11", hi: 11, lo: 10, kind: "opcode" },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => freg(ftype, bits(x, 9, 5)) },
+        { label: "Rd", hi: 4, lo: 0, kind: "register", meaning: (x) => freg(ftype, bits(x, 4, 0)) },
+      ],
+      "Rd",
+    );
+  }
+
+  // FP <-> integer conversion: sf 00 11110 ftype bit21 rmode(2) opcode(3)
+  // ... Rn Rd. Bit 21 = 1 is the integer form, whose bits 15:10 are fixed
+  // zero; bit 21 = 0 is the fixed-point one, where a 6-bit scale replaces
+  // them and holds 64 minus fbits.
+  if (
+    bits(w, 30, 29) === 0 &&
+    bits(w, 28, 24) === 0b11110 &&
+    (bits(w, 21, 21) === 0 || bits(w, 15, 10) === 0)
+  ) {
+    const ftype = bits(w, 23, 22);
+    const fixed = bits(w, 21, 21) === 0;
+    const rmode = bits(w, 20, 19);
+    const opcode = bits(w, 18, 16);
+    // scvtf and ucvtf read a general register and write an FP one; every
+    // other row of the class goes the other way.
+    const toFp = opcode === 0b010 || opcode === 0b011;
+    const tail: FieldSpec = fixed
+      ? {
+          label: "scale",
+          hi: 15,
+          lo: 10,
+          kind: "immediate",
+          meaning: (x) => `#${64 - bits(x, 15, 10)} fraction bits`,
+        }
+      : { label: "000000", hi: 15, lo: 10, kind: "opcode" };
+    return slice(
+      w,
+      [
+        { label: "sf", hi: 31, lo: 31, kind: "opcode" },
+        { label: "00", hi: 30, lo: 29, kind: "opcode" },
+        { label: "11110", hi: 28, lo: 24, kind: "opcode" },
+        { label: "ftype", hi: 23, lo: 22, kind: "opcode", meaning: () => (ftype === 1 ? "double" : "single") },
+        {
+          label: fixed ? "0" : "1",
+          hi: 21,
+          lo: 21,
+          kind: "opcode",
+          meaning: () => (fixed ? "fixed-point form" : "integer form"),
+        },
+        { label: "rmode", hi: 20, lo: 19, kind: "opcode" },
+        {
+          label: "opcode",
+          hi: 18,
+          lo: 16,
+          kind: "opcode",
+          meaning: () => FP_CVT_NAMES[`${rmode},${opcode}`] ?? "reserved",
+        },
+        tail,
+        {
+          label: "Rn",
+          hi: 9,
+          lo: 5,
+          kind: "register",
+          meaning: (x) => (toFp ? xreg(sf, bits(x, 9, 5)) : freg(ftype, bits(x, 9, 5))),
+        },
+        {
+          label: "Rd",
+          hi: 4,
+          lo: 0,
+          kind: "register",
+          meaning: (x) => (toFp ? freg(ftype, bits(x, 4, 0)) : xreg(sf, bits(x, 4, 0))),
+        },
+      ],
+      "Rd",
+    );
+  }
+
   // Load/store register pair: opc(2) 101 V 0 mode(3) L imm7 Rt2 Rn Rt.
   if (bits(w, 29, 27) === 0b101 && bits(w, 25, 25) === 0) {
     const load = bits(w, 22, 22) === 1;
@@ -308,8 +529,7 @@ export function decodeFields(word: number): DecodedWord {
     }
     // Bit 21 splits the 00 family: 1 with idx bits 10 means REGISTER
     // offset (Rm + option + S), everything else is the 9-bit-immediate
-    // pre/post-index form. Slicing register-offset words through the
-    // imm9 layout fabricated an immediate and hid the index register.
+    // pre/post-index form.
     if (bits(w, 21, 21) === 1 && bits(w, 11, 10) === 0b10) {
       const optionNames: Record<number, string> = {
         0b010: "uxtw",
@@ -478,7 +698,7 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
-  // Fallback: one unsplit word, so the strip stays truthful for anything
-  // outside the mapped classes (FP data processing, system ops, data words).
+  // // Fallback: one unsplit word for anything outside the mapped classes (FP
+  // data processing, system ops, data words).
   return slice(w, [{ label: "word", hi: 31, lo: 0, kind: "opcode" }], null);
 }

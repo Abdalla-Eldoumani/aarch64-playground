@@ -37,20 +37,13 @@ particle_pool:  .skip   MAX_PARTICLES * PARTICLE_SIZE
                 .balign 8
 dmgnum_pool:    .skip   MAX_DAMAGE_NUMS * DMGNUM_SIZE
 
-// Particle count (for quick checks)
 particle_count: .word   0
 
 // Screen shake state
-shake_intensity: .word  0                       // Current shake level (0-3)
+shake_intensity: .word  0                       // Cells of jitter; callers pass 2, 3, 8 and 15
 shake_timer:    .word   0                       // Frames remaining
 shake_offset_x: .word   0                       // Current X offset
 shake_offset_y: .word   0                       // Current Y offset
-
-// Effect colors by enemy type
-effect_color_zombie: .word COLOR_GREEN
-effect_color_runner: .word COLOR_CYAN
-effect_color_tank:   .word COLOR_RED
-effect_color_boss:   .word COLOR_BRIGHT_YELLOW
 
                 .text
                 .balign 4
@@ -132,16 +125,13 @@ effects_update_particles:
 update_particle_loop:
                 cbz     w0, update_particles_done
 
-                // Check if particle is active (life > 0)
                 ldrb    w1, [x19, PARTICLE_LIFE]
                 cbz     w1, update_particle_next
 
-                // Decrement life
                 sub     w1, w1, 1
                 strb    w1, [x19, PARTICLE_LIFE]
                 cbz     w1, update_particle_next  // Just died, skip movement
 
-                // Update position based on velocity
                 ldrsb   w2, [x19, PARTICLE_VX]    // Signed velocity X
                 ldrsb   w3, [x19, PARTICLE_VY]    // Signed velocity Y
                 ldrsh   w4, [x19, PARTICLE_X]     // Current X
@@ -160,13 +150,11 @@ update_particle_loop:
                 cmp     w5, PLAY_BOTTOM
                 b.gt    particle_kill
 
-                // Position is valid, store it
                 strh    w4, [x19, PARTICLE_X]
                 strh    w5, [x19, PARTICLE_Y]
                 b       update_particle_next
 
 particle_kill:
-                // Kill particle by setting life to 0
                 strb    wzr, [x19, PARTICLE_LIFE]
 
 update_particle_next:
@@ -193,15 +181,13 @@ effects_update_dmgnums:
 update_dmgnum_loop:
                 cbz     w0, update_dmgnums_done
 
-                // Check if active (life > 0)
                 ldrb    w1, [x19, DMGNUM_LIFE]
                 cbz     w1, update_dmgnum_next
 
-                // Decrement life
                 sub     w1, w1, 1
                 strb    w1, [x19, DMGNUM_LIFE]
 
-                // Float upward every 3 frames
+                // Float upward every fourth frame
                 and     w2, w1, 3
                 cbnz    w2, update_dmgnum_next
 
@@ -241,7 +227,7 @@ effects_update_shake:
 
                 // Random X offset: -intensity to +intensity
                 add     w0, w2, 1
-                add     w0, w0, w0                // Range = intensity * 2 + 1
+                add     w0, w0, w0                // Range = intensity * 2 + 2
                 bl      random_range
                 sub     w0, w0, w2                // Center around 0
                 adrp    x1, shake_offset_x
@@ -299,15 +285,12 @@ effects_draw_particles:
 draw_particle_loop:
                 cbz     w20, draw_particles_done
 
-                // Check if active
                 ldrb    w0, [x19, PARTICLE_LIFE]
                 cbz     w0, draw_particle_next
 
-                // Get position
                 ldrsh   w0, [x19, PARTICLE_X]
                 ldrsh   w1, [x19, PARTICLE_Y]
 
-                // Bounds check
                 cmp     w0, PLAY_LEFT
                 b.lt    draw_particle_next
                 cmp     w0, PLAY_RIGHT
@@ -326,20 +309,19 @@ draw_particle_loop:
                 b.gt    particle_bright
                 cmp     w0, 4
                 b.gt    particle_dim
-                mov     w0, COLOR_BRIGHT_BLACK    // Very dim
+                mov     w0, COLOR_BRIGHT_BLACK
                 b       particle_set_color
 
 particle_bright:
-                mov     w0, COLOR_BRIGHT_YELLOW   // Bright
+                mov     w0, COLOR_BRIGHT_YELLOW
                 b       particle_set_color
 
 particle_dim:
-                mov     w0, COLOR_YELLOW          // Medium
+                mov     w0, COLOR_YELLOW
 
 particle_set_color:
                 bl      set_color
 
-                // Draw character
                 ldrb    w0, [x19, PARTICLE_CHAR]
                 bl      write_char
 
@@ -368,15 +350,12 @@ effects_draw_dmgnums:
 draw_dmgnum_loop:
                 cbz     w20, draw_dmgnums_done
 
-                // Check if active
                 ldrb    w0, [x19, DMGNUM_LIFE]
                 cbz     w0, draw_dmgnum_next
 
-                // Get position
                 ldrsh   w0, [x19, DMGNUM_X]
                 ldrsh   w1, [x19, DMGNUM_Y]
 
-                // Bounds check
                 cmp     w1, PLAY_TOP
                 b.lt    draw_dmgnum_next
                 cmp     w1, PLAY_BOTTOM
@@ -391,20 +370,19 @@ draw_dmgnum_loop:
                 b.gt    dmgnum_bright
                 cmp     w0, 6
                 b.gt    dmgnum_yellow
-                mov     w0, COLOR_RED             // Fading
+                mov     w0, COLOR_RED
                 b       dmgnum_set_color
 
 dmgnum_bright:
-                mov     w0, COLOR_BRIGHT_WHITE    // Fresh
+                mov     w0, COLOR_BRIGHT_WHITE
                 b       dmgnum_set_color
 
 dmgnum_yellow:
-                mov     w0, COLOR_BRIGHT_YELLOW   // Medium
+                mov     w0, COLOR_BRIGHT_YELLOW
 
 dmgnum_set_color:
                 bl      set_color
 
-                // Draw damage value
                 ldrh    w0, [x19, DMGNUM_VALUE]
                 bl      write_num
 
@@ -430,7 +408,6 @@ effects_cursor_move:
                 mov     w19, w0
                 mov     w20, w1
 
-                // Add shake offset
                 adrp    x0, shake_offset_x
                 add     x0, x0, :lo12:shake_offset_x
                 ldr     w2, [x0]                  // X offset
@@ -456,7 +433,6 @@ effects_cursor_move:
                 cmp     w20, w0
                 csel    w20, w0, w20, gt
 
-                // Call actual cursor_move
                 mov     w0, w19
                 mov     w1, w20
                 bl      cursor_move
@@ -478,7 +454,6 @@ effects_spawn_explosion:
                 mov     w20, w1
                 mov     w21, w2                   // Save type
 
-                // Spawn 6-8 particles
                 mov     w0, 3
                 bl      random_range
                 add     w22, w0, 6                // 6-8 particles
@@ -490,7 +465,6 @@ spawn_explosion_loop:
                 bl      effects_find_free_particle
                 cbz     x0, spawn_explosion_done
 
-                // Set position
                 strh    w19, [x0, PARTICLE_X]
                 strh    w20, [x0, PARTICLE_Y]
 
@@ -503,7 +477,7 @@ spawn_explosion_loop:
                 ldp     x0, x1, [sp], 16
 
                 // Velocity lookup (simple 8-direction)
-                // 0=up, 1=up-right, 2=right, etc.
+                // Clockwise from up
                 adrp    x4, velocity_table_x
                 add     x4, x4, :lo12:velocity_table_x
                 ldrsb   w5, [x4, w3, sxtw]        // VX
@@ -514,11 +488,9 @@ spawn_explosion_loop:
                 strb    w5, [x0, PARTICLE_VX]
                 strb    w6, [x0, PARTICLE_VY]
 
-                // Set life
                 mov     w1, PARTICLE_MAX_LIFE
                 strb    w1, [x0, PARTICLE_LIFE]
 
-                // Random character
                 stp     x0, x1, [sp, -16]!
                 mov     w0, 8
                 bl      random_range
@@ -543,7 +515,7 @@ spawn_explosion_done:
                 .data
 velocity_table_x: .byte  0,  1,  1,  1,  0, -1, -1, -1
 velocity_table_y: .byte -1, -1,  0,  1,  1,  1,  0, -1
-// Quote and backtick numeric for the same m4 reason as PARTICLE_CHARS.
+// Quote and backtick as numbers: m4 would eat them as quote characters.
 particle_chars_data: .byte '*', '.', '+', 'o', 'x', 0x27, 0x60, ','
 
                 .text
@@ -595,19 +567,16 @@ find_dmgnum_slot:
                 b       find_dmgnum_slot
 
 found_dmgnum_slot:
-                // Set position (slightly above hit point)
-                sub     w19, w19, 1               // Offset left a bit
+                // One column left of the hit, so the glyph is not covered
+                sub     w19, w19, 1
                 strh    w19, [x0, DMGNUM_X]
                 strh    w20, [x0, DMGNUM_Y]
 
-                // Set damage value
                 strh    w2, [x0, DMGNUM_VALUE]
 
-                // Set life
                 mov     w1, DMGNUM_MAX_LIFE
                 strb    w1, [x0, DMGNUM_LIFE]
 
-                // Set color (white for now)
                 mov     w1, COLOR_BRIGHT_WHITE
                 strb    w1, [x0, DMGNUM_COLOR]
 
@@ -617,16 +586,14 @@ spawn_dmgnum_done:
                 ret
 
 // effects_trigger_shake - Trigger screen shake effect
-// Parameters: w0 = intensity (1-3)
+// Parameters: w0 = intensity in cells (2 on a touch, 15 on a bomb)
                 .global effects_trigger_shake
 effects_trigger_shake:
                 adrp    x1, shake_intensity
                 add     x1, x1, :lo12:shake_intensity
 
-                // Set intensity
                 str     w0, [x1]
 
-                // Set timer
                 mov     w2, SHAKE_DURATION
                 str     w2, [x1, 4]
 

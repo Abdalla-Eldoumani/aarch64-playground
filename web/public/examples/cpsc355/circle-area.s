@@ -10,7 +10,7 @@ alloc = -(16 + 16) & -16
 dealloc = -alloc
 
         .data
-pi_m:   .double 0r3.14159265358979
+pi_m:   .double 0r3.14159265358979      // 0r prefix: GAS syntax for a real literal
 
         .text
 fmt_scan:   .string "%d"
@@ -35,7 +35,6 @@ main:
         // Convert radius to double
         scvtf   d1, radius_r            // d1 = (double)radius
 
-        // Load pi
         ldr     x9, =pi_m
         ldr     d0, [x9]               // d0 = pi
 
@@ -43,10 +42,7 @@ main:
         fmul    d2, d1, d1              // d2 = r * r
         fmul    d0, d0, d2              // d0 = pi * r^2
 
-        // Print (d0 already has the result)
-        fmov    d8, d0
         ldr     x0, =fmt_out
-        fmov    d0, d8 
         bl      printf
 
         mov     w0, 0

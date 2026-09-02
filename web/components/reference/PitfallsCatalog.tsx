@@ -12,15 +12,15 @@ import { PITFALLS } from "@/lib/content/pitfall-data";
  * snippets (read-only CodeBlock, token accents, never color alone) and gains
  * the run-it-live affordance: "run the fault" seeds the complete faulty
  * program into the one shared EmbeddablePlayground and the student watches it
- * actually misbehave -- a printed misalignment, a ret that chases its own
- * tail, a wild-address fault, a wrong sum -- then "run the fix" swaps in the
+ * misbehave (a printed misalignment, a ret that chases its own tail, a
+ * wild-address fault, a wrong sum), then "run the fix" swaps in the
  * corrected program. All content comes from lib/pitfall-data (scanned by the
  * course-style guard, behavior pinned on the emulator by its playground
  * test). One embed exists at a time, mounted on demand and dynamically
- * imported, so browsing the catalog stays light and opening a demo never
- * spins up five workers. The fixed-height frame mounts only with the embed,
- * so a closed card costs no space and an open one never shifts layout.
- * Token-only and reduced-motion safe (discrete state, no animation).
+ * imported, so browsing the catalog loads no emulator and only one demo is
+ * ever mounted. The fixed-height frame mounts only with the embed, so a
+ * closed card costs no space and an open one never shifts layout. Discrete
+ * state, no animation.
  */
 
 // The emulator surface loads only when a demo is opened; the catalog page
@@ -122,7 +122,7 @@ export function PitfallsCatalog({
                 {/* Fixed frame so the editor loading never shifts the page;
                     key remounts the embed when the variant switches, which
                     resets the machine for the other program. */}
-                <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+                <div className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px]">
                   <EmbeddablePlayground
                     key={`${index}-${openHere.variant}`}
                     chrome="embed"

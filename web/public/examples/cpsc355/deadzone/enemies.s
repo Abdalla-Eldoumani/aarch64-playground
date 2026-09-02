@@ -11,7 +11,6 @@ ENEMY_HEALTH = 6                                // Health (1 byte)
 ENEMY_SPEED = 7                                 // Movement speed (1 byte)
 ENEMY_TIMER = 8                                 // Move timer (1 byte)
 ENEMY_XP_VALUE = 9                              // XP when killed (1 byte)
-ENEMY_PADDING = 10                              // Padding (6 bytes)
 ENEMY_STRUCT_SIZE = 16                          // Total struct size
 
 // Enemy types
@@ -29,7 +28,7 @@ ZOMBIE_CHAR = 'z'                               // Display character
 
 // Runner (fast)
 RUNNER_HEALTH = 1                               // Dies in 1 hit
-RUNNER_SPEED = 4                                // Move every 4 frames (balanced)
+RUNNER_SPEED = 4                                // Move every 4 frames, twice the zombie's pace
 RUNNER_XP = 15                                  // 15 XP when killed
 RUNNER_CHAR = 'r'                               // Display character
 
@@ -40,7 +39,7 @@ TANK_XP = 50                                    // 50 XP when killed
 TANK_CHAR = 'Z'                                 // Display character
 
 // Spawn settings
-SPAWN_TIMER_INIT = 60                           // Frames between spawns (~2 sec)
+SPAWN_TIMER_INIT = 60                           // Two seconds at TARGET_FPS
 SPAWN_TIMER_MIN = 15                            // Minimum spawn delay
 ENEMIES_PER_WAVE = 5                            // Base enemies per wave
 
@@ -82,7 +81,6 @@ enemies_init_loop:
                 b       enemies_init_loop
 
 enemies_init_done:
-                // Reset counters
                 adrp    x0, enemy_count
                 add     x0, x0, :lo12:enemy_count
                 mov     w1, 0
@@ -160,8 +158,8 @@ random_range:
                 str     x19, [sp, 16]
 
                 mov     w19, w0                 // Save max
-                bl      random_next             // Get random
-                udiv    w1, w0, w19             // Divide by max
+                bl      random_next
+                udiv    w1, w0, w19
                 msub    w0, w1, w19, w0         // Remainder = random mod max
 
                 ldr     x19, [sp, 16]
@@ -200,12 +198,10 @@ enemies_spawn_one:
 
                 mov     w19, w0
 
-                // Find empty slot
                 bl      enemies_find_slot
                 cbz     x0, spawn_fail
                 mov     x20, x0
 
-                // Set active and type
                 mov     w0, 1
                 strb    w0, [x20, ENEMY_ACTIVE]
                 strb    w19, [x20, ENEMY_TYPE]
@@ -215,7 +211,6 @@ enemies_spawn_one:
                 bl      random_range
                 mov     w21, w0                 // Save edge choice
 
-                // Generate position based on edge
                 cmp     w21, 0
                 b.eq    spawn_top
                 cmp     w21, 1
@@ -268,7 +263,6 @@ spawn_right:
                 strh    w0, [x20, ENEMY_Y]
 
 spawn_set_stats:
-                // Set stats based on type
                 cmp     w19, ENEMY_TYPE_ZOMBIE
                 b.eq    spawn_zombie_stats
                 cmp     w19, ENEMY_TYPE_RUNNER
@@ -310,7 +304,6 @@ spawn_tank_stats:
                 strb    w0, [x20, ENEMY_XP_VALUE]
 
 spawn_success:
-                // Increment enemy count
                 adrp    x0, enemy_count
                 add     x0, x0, :lo12:enemy_count
                 ldr     w1, [x0]
@@ -343,21 +336,17 @@ enemies_spawn_at:
                 mov     w20, w1
                 mov     w21, w2                 // Save type
 
-                // Find empty slot
                 bl      enemies_find_slot
                 cbz     x0, spawn_at_fail
                 mov     x22, x0
 
-                // Set active and type
                 mov     w0, 1
                 strb    w0, [x22, ENEMY_ACTIVE]
                 strb    w21, [x22, ENEMY_TYPE]
 
-                // Set position
                 strh    w19, [x22, ENEMY_X]
                 strh    w20, [x22, ENEMY_Y]
 
-                // Set stats based on type
                 cmp     w21, ENEMY_TYPE_ZOMBIE
                 b.eq    spawn_at_zombie
                 cmp     w21, ENEMY_TYPE_RUNNER
@@ -399,7 +388,6 @@ spawn_at_tank:
                 strb    w0, [x22, ENEMY_XP_VALUE]
 
 spawn_at_success:
-                // Increment enemy count
                 adrp    x0, enemy_count
                 add     x0, x0, :lo12:enemy_count
                 ldr     w1, [x0]
@@ -431,13 +419,11 @@ enemies_update:
                 bl      abilities_is_frozen
                 cbnz    w0, enemies_spawn_only
 
-                // Get player position
                 bl      player_get_x
                 mov     w22, w0
                 bl      player_get_y
                 mov     w23, w0
 
-                // Iterate through enemy pool
                 adrp    x19, enemy_pool
                 add     x19, x19, :lo12:enemy_pool
                 mov     w20, MAX_ENEMIES
@@ -445,21 +431,17 @@ enemies_update:
 update_loop:
                 cbz     w20, update_done
 
-                // Check if enemy is active
                 ldrb    w0, [x19, ENEMY_ACTIVE]
                 cbz     w0, update_next
 
-                // Increment timer
                 ldrb    w0, [x19, ENEMY_TIMER]
                 add     w0, w0, 1
                 strb    w0, [x19, ENEMY_TIMER]
 
-                // Check if time to move
                 ldrb    w1, [x19, ENEMY_SPEED]
                 cmp     w0, w1
                 b.lt    update_next             // Not time to move yet
 
-                // Reset timer
                 mov     w0, 0
                 strb    w0, [x19, ENEMY_TIMER]
 
@@ -467,11 +449,9 @@ update_loop:
                 ldrsh   w24, [x19, ENEMY_X]     // Enemy X
                 ldrsh   w21, [x19, ENEMY_Y]     // Enemy Y
 
-                // Calculate direction
                 mov     w0, 0                   // dx
                 mov     w1, 0                   // dy
 
-                // X direction
                 cmp     w24, w22
                 b.eq    update_check_y
                 b.lt    update_move_right
@@ -490,7 +470,6 @@ update_move_down:
                 add     w1, w1, 1               // Move down
 
 update_apply_move:
-                // Apply movement
                 add     w24, w24, w0
                 add     w21, w21, w1
                 strh    w24, [x19, ENEMY_X]
@@ -502,10 +481,9 @@ update_next:
                 b       update_loop
 
 enemies_spawn_only:
-                // Skip to spawning when enemies are frozen
+                // Frozen: nothing moves, but the wave keeps arriving
 
 update_done:
-                // Handle spawning
                 bl      enemies_try_spawn
 
                 ldp     x23, x24, [sp, 48]
@@ -519,7 +497,6 @@ enemies_try_spawn:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Decrement spawn timer
                 adrp    x0, spawn_timer
                 add     x0, x0, :lo12:spawn_timer
                 ldr     w1, [x0]
@@ -533,7 +510,7 @@ enemies_try_spawn:
                 ldr     w2, [x0]
 
                 mov     w1, SPAWN_TIMER_INIT
-                sub     w1, w1, w2, lsl 1       // Reduce by wave*2 (balanced)
+                sub     w1, w1, w2, lsl 1       // Two frames sooner per wave, down to SPAWN_TIMER_MIN
                 cmp     w1, SPAWN_TIMER_MIN
                 b.ge    try_spawn_set_timer
                 mov     w1, SPAWN_TIMER_MIN
@@ -587,7 +564,6 @@ enemies_draw:
                 stp     x19, x20, [sp, 16]
                 str     x21, [sp, 32]
 
-                // Iterate through enemy pool
                 adrp    x19, enemy_pool
                 add     x19, x19, :lo12:enemy_pool
                 mov     w20, MAX_ENEMIES
@@ -595,18 +571,14 @@ enemies_draw:
 draw_loop:
                 cbz     w20, draw_done
 
-                // Check if enemy is active
                 ldrb    w0, [x19, ENEMY_ACTIVE]
                 cbz     w0, draw_next
 
-                // Get position
                 ldrsh   w0, [x19, ENEMY_X]
                 ldrsh   w1, [x19, ENEMY_Y]
 
-                // Move cursor
                 bl      cursor_move
 
-                // Set color based on type
                 ldrb    w21, [x19, ENEMY_TYPE]
                 cmp     w21, ENEMY_TYPE_ZOMBIE
                 b.eq    draw_zombie_color
@@ -617,7 +589,7 @@ draw_loop:
                 b       draw_zombie_color       // Default
 
 draw_zombie_color:
-                // The tiers run up the heat scale: dull red, hot red, molten
+                // Dull red, bright red, yellow: harder enemies read hotter
                 mov     w0, COLOR_RED
                 bl      set_color
                 mov     w0, ZOMBIE_CHAR
@@ -660,11 +632,9 @@ enemies_check_collision:
                 mov     w19, w0
                 mov     w20, w1
 
-                // Every live projectile runs this scan every frame, so it pays
-                // to stop as soon as the pool cannot hold another live enemy.
-                // enemy_count is kept in step with ENEMY_ACTIVE at every spawn,
-                // kill and bomb, so once that many active slots have been seen
-                // the rest of the pool is empty.
+                // enemy_count tracks ENEMY_ACTIVE at every spawn, kill and
+                // bomb, so the scan can stop once it has seen that many live
+                // slots.
                 adrp    x3, enemy_count
                 add     x3, x3, :lo12:enemy_count
                 ldr     w3, [x3]                // Live enemies remaining
@@ -696,7 +666,6 @@ collision_loop:
                 cmp     w2, w20
                 b.ne    collision_seen
 
-                // Hit!
                 mov     w0, w1
                 b       collision_done
 

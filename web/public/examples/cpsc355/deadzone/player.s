@@ -11,7 +11,7 @@ PLAYER_LEVEL = 12                               // Current level (2 bytes)
 PLAYER_SPEED = 14                               // Movement speed (1 byte)
 PLAYER_IFRAMES = 15                             // Invincibility frames (1 byte)
 PLAYER_KILLS = 16                               // Kill count (4 bytes)
-PLAYER_STRUCT_SIZE = 24                         // Total struct size (padded)
+PLAYER_STRUCT_SIZE = 24                         // 20 bytes of fields, rounded to an 8-byte multiple
 
 // Player constants
 PLAYER_DEFAULT_HP = 100                         // Starting health
@@ -24,23 +24,23 @@ HURT_FLASH_FRAMES = 3                           // Red frames on the way in
 PLAY_LEFT = 1                                   // Left boundary (after border)
 PLAY_RIGHT = SCREEN_WIDTH - 2                   // Right boundary (before border)
 PLAY_TOP = 2                                    // Top boundary (after title and top border)
-PLAY_BOTTOM = SCREEN_HEIGHT - 7                 // Bottom boundary (before bottom border)
+PLAY_BOTTOM = ROW_FIELD_LAST                    // Last playable row, above the status bar
 
                 .data
 
 // Player data structure (24 bytes)
                 .balign 8
 player_data:
-                .hword  0                       // PLAYER_X: X position
-                .hword  0                       // PLAYER_Y: Y position
-                .byte   0                       // PLAYER_HEALTH: Current HP
-                .byte   0                       // PLAYER_MAX_HP: Max HP
-                .byte   0, 0                    // Padding
-                .word   0                       // PLAYER_XP: Experience points
                 .hword  0                       // PLAYER_LEVEL: Level
-                .byte   0                       // PLAYER_SPEED: Movement speed
-                .byte   0                       // PLAYER_IFRAMES: Invincibility
+                .hword  0
+                .byte   0
+                .byte   0
+                .byte   0, 0
                 .word   0                       // PLAYER_KILLS: Kill count
+                .hword  0
+                .byte   0
+                .byte   0
+                .word   0
 
 // Level up pending flag (checked by main loop)
 level_up_pending: .word  0                      // 1 if level up needs handling
@@ -53,9 +53,8 @@ level_up_pending: .word  0                      // 1 if level up needs handling
                 .global player_init
 player_init:
                 stp     fp, lr, [sp, -16]!
-                mov     fp, sp                  // Establish frame
+                mov     fp, sp
 
-                // Get player data address
                 adrp    x0, player_data
                 add     x0, x0, :lo12:player_data
 
@@ -68,15 +67,13 @@ player_init:
                 lsr     w1, w1, 1               // Y = height / 2
                 strh    w1, [x0, PLAYER_Y]
 
-                // Set health
                 mov     w1, PLAYER_DEFAULT_HP
                 strb    w1, [x0, PLAYER_HEALTH]
                 strb    w1, [x0, PLAYER_MAX_HP]
 
-                // Set initial stats
                 mov     w1, 0
                 str     w1, [x0, PLAYER_XP]     // XP = 0
-                strh    w1, [x0, PLAYER_LEVEL]  // Level = 0 (will be 1 after first update)
+                strh    w1, [x0, PLAYER_LEVEL]  // Level 0 until the first 50 XP
                 mov     w1, PLAYER_DEFAULT_SPEED
                 strb    w1, [x0, PLAYER_SPEED]
                 mov     w1, 0
@@ -92,7 +89,7 @@ player_init:
 player_get_x:
                 adrp    x0, player_data
                 add     x0, x0, :lo12:player_data
-                ldrsh   w0, [x0, PLAYER_X]      // Load signed halfword
+                ldrsh   w0, [x0, PLAYER_X]
                 ret
 
 // player_get_y - Get player Y position
@@ -101,7 +98,7 @@ player_get_x:
 player_get_y:
                 adrp    x0, player_data
                 add     x0, x0, :lo12:player_data
-                ldrsh   w0, [x0, PLAYER_Y]      // Load signed halfword
+                ldrsh   w0, [x0, PLAYER_Y]
                 ret
 
 // player_get_health - Get player current health
@@ -162,31 +159,25 @@ player_move:
                 mov     w19, w0                 // Save dx
                 mov     w20, w1                 // Save dy
 
-                // Get player data address
                 adrp    x0, player_data
                 add     x0, x0, :lo12:player_data
 
-                // Load current position
                 ldrsh   w1, [x0, PLAYER_X]      // Current X
                 ldrsh   w2, [x0, PLAYER_Y]      // Current Y
 
-                // Calculate new position
                 add     w1, w1, w19             // New X = X + dx
                 add     w2, w2, w20             // New Y = Y + dy
 
-                // Check X bounds
                 cmp     w1, PLAY_LEFT
                 b.lt    player_move_blocked
                 cmp     w1, PLAY_RIGHT
                 b.gt    player_move_blocked
 
-                // Check Y bounds
                 cmp     w2, PLAY_TOP
                 b.lt    player_move_blocked
                 cmp     w2, PLAY_BOTTOM
                 b.gt    player_move_blocked
 
-                // Update position
                 strh    w1, [x0, PLAYER_X]
                 strh    w2, [x0, PLAYER_Y]
 
@@ -197,7 +188,7 @@ player_move_blocked:
                 mov     w0, 0                   // Return blocked
 
 player_move_done:
-                ldp     x19, x20, [sp, 16]      // Restore
+                ldp     x19, x20, [sp, 16]
                 ldp     fp, lr, [sp], 32
                 ret
 
@@ -209,34 +200,27 @@ player_damage:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Get player data address
                 adrp    x1, player_data
                 add     x1, x1, :lo12:player_data
 
-                // Check invincibility frames
                 ldrb    w2, [x1, PLAYER_IFRAMES]
                 cbnz    w2, player_damage_immune
 
-                // Apply damage
                 ldrb    w2, [x1, PLAYER_HEALTH]
                 subs    w2, w2, w0              // health -= damage
-                b.le    player_damage_dead      // Branch if health <= 0
+                b.le    player_damage_dead
 
-                // Store new health
                 strb    w2, [x1, PLAYER_HEALTH]
 
-                // Notify achievement system of damage
                 bl      achievements_on_damage
 
-                // Trigger screen shake
                 mov     w0, 8                   // Shake intensity
                 bl      effects_trigger_shake
 
-                // Get player data address again (may have been clobbered)
+                // The two calls above clobber x1
                 adrp    x1, player_data
                 add     x1, x1, :lo12:player_data
 
-                // Set invincibility frames
                 mov     w2, PLAYER_IFRAMES_TOTAL
                 strb    w2, [x1, PLAYER_IFRAMES]
 
@@ -249,7 +233,7 @@ player_damage_immune:
 
 player_damage_dead:
                 mov     w2, 0
-                strb    w2, [x1, PLAYER_HEALTH] // Set health to 0
+                strb    w2, [x1, PLAYER_HEALTH]
                 mov     w0, 1                   // Return dead
 
 player_damage_done:
@@ -264,18 +248,14 @@ player_add_xp:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Get player data address
                 adrp    x1, player_data
                 add     x1, x1, :lo12:player_data
 
-                // Add XP
                 ldr     w2, [x1, PLAYER_XP]
                 add     w2, w2, w0
                 str     w2, [x1, PLAYER_XP]
 
                 // Check for level up: (level+1) * 50 XP per level
-                // Level 1: 50, Level 2: 100, Level 3: 150, etc.
-                // Simple scaling that allows faster early progression
                 ldrh    w3, [x1, PLAYER_LEVEL]
                 add     w4, w3, 1               // Next level
                 mov     w5, 50
@@ -284,19 +264,15 @@ player_add_xp:
                 cmp     w2, w4
                 b.lt    player_no_levelup
 
-                // Level up!
                 add     w3, w3, 1
                 strh    w3, [x1, PLAYER_LEVEL]
 
-                // Increase max HP by 10
                 ldrb    w4, [x1, PLAYER_MAX_HP]
                 add     w4, w4, 10
                 strb    w4, [x1, PLAYER_MAX_HP]
 
-                // Restore health to max
                 strb    w4, [x1, PLAYER_HEALTH]
 
-                // Set level up pending flag
                 adrp    x4, level_up_pending
                 add     x4, x4, :lo12:level_up_pending
                 mov     w5, 1
@@ -329,11 +305,9 @@ player_update:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Get player data address
                 adrp    x0, player_data
                 add     x0, x0, :lo12:player_data
 
-                // Decrement invincibility frames if > 0
                 ldrb    w1, [x0, PLAYER_IFRAMES]
                 cbz     w1, player_update_done
                 sub     w1, w1, 1
@@ -350,15 +324,12 @@ player_draw:
                 mov     fp, sp
                 str     x19, [sp, 16]
 
-                // Get player data address
                 adrp    x19, player_data
                 add     x19, x19, :lo12:player_data
 
-                // Get position
                 ldrsh   w0, [x19, PLAYER_X]
                 ldrsh   w1, [x19, PLAYER_Y]
 
-                // Move cursor to player position
                 bl      cursor_move
 
                 // A hit reads as one red frame, then the invincibility window
@@ -378,12 +349,11 @@ player_draw_strobe:
                 b       player_draw_color
 
 player_draw_normal:
-                mov     w0, COLOR_BRIGHT_WHITE  // Normal color
+                mov     w0, COLOR_BRIGHT_WHITE
 
 player_draw_color:
                 bl      set_color
 
-                // Draw player character
                 mov     w0, PLAYER_CHAR
                 bl      write_char
 
@@ -408,10 +378,9 @@ player_is_alive:
 player_check_levelup:
                 adrp    x0, level_up_pending
                 add     x0, x0, :lo12:level_up_pending
-                ldr     w1, [x0]                // Get current value
-                cbz     w1, levelup_not_pending // If 0, return 0
+                ldr     w1, [x0]
+                cbz     w1, levelup_not_pending
 
-                // Clear the flag and return 1
                 mov     w2, 0
                 str     w2, [x0]
                 mov     w0, 1

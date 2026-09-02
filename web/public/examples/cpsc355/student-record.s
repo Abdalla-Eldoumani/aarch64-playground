@@ -8,7 +8,7 @@ define(lr, x30)
 stu_name  = 16          // char name[20], 20 bytes
 stu_id    = 36          // int id, 4 bytes (16 + 20 = 36)
 stu_grade = 40          // char grade, 1 byte (16 + 24 = 40)
-stu_size  = 28          // total struct: 28 bytes (with 3 trailing padding)
+// total struct: 28 bytes (with 3 trailing padding)
 
 alloc = -(16 + 32) & -16       // -48
 dealloc = -alloc
@@ -46,13 +46,13 @@ main:
 
         // Set grade = 'A'
         mov     w19, 'A'
-        strb    w19, [fp, stu_grade]        // store single byte
+        strb    w19, [fp, stu_grade]
 
         // Print everything
         ldr     x0, =fmt_out
         add     x1, fp, stu_name           // name: pass address (char array)
         ldr     w2, [fp, stu_id]            // id: pass value (int)
-        ldrb    w3, [fp, stu_grade]         // grade: pass value (char, 1 byte)
+        ldrb    w3, [fp, stu_grade]         // grade: pass value (char)
         bl      printf
 
         mov     w0, 0

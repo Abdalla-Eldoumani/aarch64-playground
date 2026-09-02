@@ -11,7 +11,7 @@ import {
 import { validateArgs } from "@/lib/playground/upload-guard";
 
 export interface ArgsInputProps {
-  /** The current source -- used to key the per-program persistence. */
+  /** The current source, which keys the per-program persistence. */
   source: string;
   /** Raw text from the input. Parent calls `parseArgs` before passing to assemble. */
   value: string;
@@ -47,9 +47,8 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
     const error = validateArgs(next);
     if (error) {
       toast.error(error);
-      // Intentional security observability: a rejected over-cap input is
-      // surfaced to the console alongside the toast, per the input-
-      // validation policy. This is the only sanctioned console use here.
+      // A rejected over-cap input goes to the console as well as the toast, per
+      // the input-validation policy.
       console.warn(`rejected over-cap args: ${error}`);
       return;
     }
@@ -67,8 +66,8 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
-  // Persist as the user types, but with a tiny debounce so we aren't
-  // hitting localStorage on every keystroke.
+  // Persist as the user types, but debounced so a keystroke does not reach
+  // localStorage.
   useEffect(() => {
     const id = setTimeout(() => saveFor(source, value), 250);
     return () => clearTimeout(id);

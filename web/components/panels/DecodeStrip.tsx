@@ -5,7 +5,7 @@ import { describeLine, extractAliases } from "@/lib/asm/explain-line";
 import { decodeFields } from "@/lib/emulator/decode-fields";
 
 export interface DecodeStripProps {
-  /** Full source text -- needed to extract the line the CPU is on. */
+  /** Full source text, so the line the CPU is on can be extracted. */
   source: string;
   /** 1-based line of the most recently executed (or about-to-execute) instruction, or null. */
   currentLine: number | null;
@@ -17,7 +17,7 @@ export interface DecodeStripProps {
    * Set while the pc sits inside a hosted libc call: the strip drops the
    * field row and the gloss (the word under the pc is a trampoline or a
    * synthetic stub, neither of which is anything the student wrote) and
-   * explains where execution is instead. `waiting` is the blocked variant --
+   * explains where execution is instead. `waiting` is the blocked variant:
    * the call is parked on a read.
    */
   externalCall?: { name: string; waiting: boolean } | null;
@@ -30,11 +30,10 @@ export interface DecodeStripProps {
 }
 
 /**
- * The live decode strip: the flagship panel that renders the instruction
- * under the program counter as its actual 32-bit encoding, sliced into
- * labeled field boxes, with the plain-language gloss underneath. The
- * destination field (the register the machine is about to write) reads
- * amber -- the machine acting -- and the whole field row re-latches on every
+ * The live decode strip: renders the instruction under the program counter as
+ * its actual 32-bit encoding, sliced into labeled field boxes, with the
+ * plain-language gloss underneath. The destination field (the register the machine is about to write) reads
+ * amber (the machine acting), and the whole field row re-latches on every
  * step (`anim-decode-latch`, static under reduced motion). Field layouts
  * come from lib/decode-fields, which is pinned to the real assembler by its
  * tests; unrecognized words render as one unsplit box so the strip never
@@ -95,7 +94,7 @@ export function DecodeStrip({
             {externalCall.name}
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--amber)]">
-            external call -- handled by the runtime
+            external call · handled by the runtime
           </span>
           <span className="font-mono text-[12px] leading-[1.6] text-[var(--text-secondary)] break-words">
             {externalCall.waiting
@@ -119,7 +118,7 @@ export function DecodeStrip({
             return (
               <div
                 key={`${field.label}-${index}`}
-                className={`anim-decode-latch flex min-w-0 flex-col items-center border py-1 ${
+                className={`anim-decode-latch flex min-w-max flex-col items-center border py-1 ${
                   dest
                     ? "border-[var(--amber)] z-10"
                     : "border-[var(--border)]"
@@ -127,7 +126,9 @@ export function DecodeStrip({
                 style={{
                   flexGrow: field.bits,
                   // Floor per field so 1-bit boxes keep their labels legible;
-                  // the row scrolls horizontally when floors overflow.
+                  // min-w-max above is the harder floor, so a cell can never be
+                  // squeezed under its own bit string. The row scrolls
+                  // horizontally when the floors overflow.
                   flexBasis: `${Math.max(34, field.bits * 8)}px`,
                   backgroundColor: dest
                     ? "color-mix(in srgb, var(--amber) 8%, transparent)"
@@ -142,7 +143,7 @@ export function DecodeStrip({
                   {field.label}
                 </span>
                 <span
-                  className={`px-1 font-mono text-[12px] font-medium tabular-nums break-all ${
+                  className={`px-1 font-mono text-[12px] font-medium tabular-nums whitespace-nowrap ${
                     dest
                       ? "text-[var(--amber)]"
                       : field.kind === "register"
@@ -178,9 +179,11 @@ export function DecodeStrip({
         // the gloss: the strip is machine state, and it pulses with the same
         // --changed tint as a written register. Under prefers-reduced-motion
         // the class is inert and the updated text alone carries the change.
+        // inline-block so the flash layer measures this box; an inline span
+        // would hand it the line box instead.
         <span
           key={currentLine}
-          className="anim-reg-flash -mx-1 rounded-[var(--radius-control)] px-1 font-mono text-[13px] leading-[1.6] text-[var(--text-primary)] break-words"
+          className="anim-reg-flash -mx-1 inline-block rounded-[var(--radius-control)] px-1 font-mono text-[13px] leading-[1.6] text-[var(--text-primary)] break-words"
         >
           {gloss}
         </span>

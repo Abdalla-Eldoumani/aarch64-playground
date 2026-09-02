@@ -35,6 +35,8 @@ export function useLayoutPersistence(
       }
     }
     setSizes(fallback);
+    // `fallback` is out of the deps on purpose: a new array identity must not
+    // overwrite a loaded layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bp]);
 

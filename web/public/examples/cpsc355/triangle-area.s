@@ -1,7 +1,7 @@
 // FP Example: Triangle Area in single precision
 // Read base and height as ints, compute area = 0.5 * b * h in floats.
 //
-// Compile: m4 triangle-area.asm > triangle-area.s && gcc triangle-area.s -o triangle-area
+// Compile: m4 triangle-area.s > triangle-area.gen.s && gcc triangle-area.gen.s -o triangle-area
 // The s registers are the float view of the FP file: s0 and d0 overlap.
 
 define(fp, x29)
@@ -54,6 +54,6 @@ main:
         ldr     x0, =fmt_out
         bl      printf
 
-        mov     x0, 0
+        mov     w0, 0
         ldp     fp, lr, [sp], dealloc
         ret

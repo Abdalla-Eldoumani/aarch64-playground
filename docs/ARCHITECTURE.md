@@ -40,6 +40,18 @@ lib/terminal/           xterm shell engine     lib/worker/           worker boun
 lib/wasm/, lib/wasm-node/  generated wasm-pack output (gitignored)
 ```
 
+One component is the emulator surface everywhere it appears:
+`components/playground/EmbeddablePlayground.tsx` backs the playground, the
+landing hero, the lessons, and the exercises. It owns the single
+`useEmulator()` hub, and that hub crosses one component boundary, into
+`FullChromeSurface`, which `next/dynamic` loads only where the full debugger
+renders. The editor is dynamic for the same reason (`lazy-editor.tsx`), so
+the landing ships no Monaco at all: its hero draws the program with
+`StaticCodeView`. `lib/content` sends the index pages a projection of each
+lesson and exercise (`LessonIndexRow`, `ExerciseIndexRow`) instead of the
+whole file, keeping bodies, prompts, starters, and acceptance criteria off
+the wire.
+
 Emulator modules:
 
 ```
@@ -84,8 +96,8 @@ everything else compiles and tests on native.
 6. After each call the backend emits a `StateSnapshot` (see State sync);
    React applies it in one shot.
 
-Cardinal rule: state lives in Rust. React reads slices through getters
-after every mutation and never mirrors CPU state.
+State lives in Rust. React reads slices through getters after every
+mutation and never mirrors CPU state.
 
 ## Frontend pipeline (hosted CPSC 355 source)
 
@@ -116,12 +128,14 @@ SUBS/ADDS/ANDS against XZR, NEG/MVN to SUB/ORN against XZR, CSET to
 CSINC, LSL/LSR/ASR immediates to UBFM/SBFM); CBZ/CBNZ and TBZ/TBNZ are
 first-class. This keeps the executor to canonical encodings only.
 
-The dispatch itself stays a match on the mnemonic, roughly ninety arms
-long, on purpose. Each arm carries the constants that mnemonic needs
-(opcode bits, an operand-count rule, the flag-setting variant), and a
-match whose arms carry constants reads better than a table of function
-pointers: the encoder for any instruction is one grep away, and the
-compiler still checks it.
+The dispatch itself stays a match on the mnemonic, 131 arms long, on
+purpose. Conditional branches never reach it: both spellings of every
+condition resolve through the shared condition table before the match, so
+131 arms cover all 165 supported mnemonics. Each arm carries the constants
+that mnemonic needs (opcode bits, an operand-count rule, the flag-setting
+variant), and a match whose arms carry constants reads better than a table
+of function pointers: the encoder for any instruction is one grep away, and
+the compiler still checks it.
 
 ## Shared fact tables
 
@@ -218,7 +232,7 @@ A hosted call costs three steps on addresses the program does not hold: the
 two words of the trampoline, then the synthetic stub. The `hostCallContext`
 export reports which call a paused pc sits inside and recovers the call site
 from LR-4 for all three, so the stepping UI can name the call and hold its
-marker on the `bl`. The recovery has to be dynamic -- one trampoline serves
+marker on the `bl`. The recovery has to be dynamic: one trampoline serves
 every call site of the same function, so nothing static can say which
 `printf` line a pc belongs to.
 
@@ -237,8 +251,8 @@ hold no matter how the source arrived:
   copy-on-write, so the peak is the live cap plus whatever those frames
   still hold of pages the program has since rewritten.
 
-Each abort is a calm halt with a plain-language message in the result
-`error` field, never a panic.
+Each abort halts with a plain-language message in the result `error`
+field, never a panic.
 
 ## Snapshots and save states
 
@@ -248,7 +262,7 @@ next_fd, rand_state, term, heap, strtok_save, stdout_seen, stderr_seen }`
 before each `step()`; `step_back()` pops the
 newest frame. Recording stops, and the history clears, in raw mode,
 while the host pauses the ring, and once the state a frame copies whole
-outgrows `MAX_SNAPSHOT_SIDE_BYTES` -- so step-back never leaps over an
+outgrows `MAX_SNAPSHOT_SIDE_BYTES`, so step-back never leaps over an
 unrecorded stretch. The stdout and stderr buffers are not rolled back, but
 the `stdout_seen` / `stderr_seen` counters beside them are, so the host
 trims its transcript back to what the restored frame had shown. Named save
@@ -306,8 +320,8 @@ Both hosts drive the same chunked run loop,
 [`web/lib/emulator/run-loop.ts`](../web/lib/emulator/run-loop.ts): it runs
 the program in 10,000-step chunks, yields after each one, and reads the
 pause flag and the machine generation right after every yield. Each host
-supplies only what is genuinely its own -- how a chunk's wasm record is
-coerced, where a mid-run snapshot goes, and how often one is emitted.
+supplies only its own part: how a chunk's wasm record is coerced, where a
+mid-run snapshot goes, and how often one is emitted.
 
 ## Security gates
 
@@ -364,7 +378,9 @@ contexts (except localhost), and browsers without
    for a route, `global-error.tsx` when the root layout itself fails. Both
    wear the 404's fault-card register, offer a retry, and copy a small
    markdown report (message, digest, route, autosaved source) built with
-   `bundleToMarkdown`. Neither holds emulator state.
+   `bundleToMarkdown`, imported on demand from
+   `lib/playground/bundle-markdown.ts` so neither boundary pulls in the
+   `?bundle=` codec's compression library. Neither holds emulator state.
 
 Rust panics route through `console_error_panic_hook` so the message is
 readable in the browser console.

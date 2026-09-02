@@ -33,7 +33,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         // panel: the terminal stays mounted across tab switches, so a tab
         // round trip cannot remount its boundary.
         <div role="alert" className="p-3 font-mono text-xs text-[var(--text-secondary)]">
-          the {this.props.label} view hit an error -- reload the page to
+          the {this.props.label} view hit an error. reload the page to
           restore it; the rest of the playground keeps working
         </div>
       );

@@ -1,7 +1,10 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+  // lib/ is scanned because the shared syntax highlighter keeps its class map
+  // there (lib/asm/highlight-arm64.ts); without the glob its arbitrary
+  // `--syntax-*` color utilities are never generated and code renders unlit.
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
   theme: {
     extend: {
       fontFamily: {

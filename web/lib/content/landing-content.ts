@@ -8,16 +8,16 @@ import { NAV_ROUTES } from "@/lib/content/site";
 export interface Feature {
   /** Short headline for the capability. */
   title: string;
-  /** One-line, truthful description of what it does today. */
+  /** One-line description of what it does today. */
   description: string;
   /** Optional short mono glyph (a mnemonic or symbol), rendered as text. */
   glyph?: string;
 }
 
-// Ordered roughly most-to-least headline. Every entry is truthful to what
-// ships, and every entry tells a student something they could not learn by
-// glancing at the screen -- the visible chrome (themes, the args box, the
-// embedded lesson machines) speaks for itself.
+// Ordered roughly most-to-least headline. Every entry names something that
+// ships and that a student could not learn by glancing at the screen; the
+// visible chrome (themes, the args box, the embedded lesson machines) speaks
+// for itself.
 export const FEATURES: Feature[] = [
   {
     title: "Hand-written interpreter",
@@ -52,7 +52,7 @@ export const FEATURES: Feature[] = [
   {
     title: "Bounded sandbox",
     description:
-      "A runaway loop or memory bomb halts calmly with a plain explanation instead of freezing the tab.",
+      "A runaway loop or a program that allocates without limit halts cleanly with a plain explanation instead of freezing the tab.",
     glyph: "[]",
   },
 ];
@@ -72,7 +72,7 @@ export interface RouteRegister {
 // Reference all take their href from NAV_ROUTES so every route address has one
 // source and cannot drift. The playground row finds its entry by label, so the
 // filter and the primary row read the same canonical href. Each row carries an
-// x-register-style label, rendered later as a register file (not generic cards).
+// x-register-style label, rendered later as a register file.
 const PLAYGROUND_HREF =
   NAV_ROUTES.find((route) => route.label === "Playground")?.href ?? "/playground";
 
@@ -91,9 +91,9 @@ export const ROUTE_REGISTERS: RouteRegister[] = [
 
 // A tiny original CPSC 355-style snippet for the live hero: a short register
 // walk with decimal immediates, then one line printed through the bare write
-// system call. No libc, so it still assembles instantly and steps fast, while
-// the autoplay walk reaches the svc and real stdout appears in the embed
-// console with no user action. It follows the in-repo convention (m4 define
+// system call. No libc, so it assembles and steps fast, while the autoplay
+// walk reaches the svc and real stdout appears in the embed console with no
+// user action. It follows the in-repo convention (m4 define
 // aliases, .text/.global main, the stp/ldp frame prologue and epilogue);
 // it is not copied from any course file.
 export const HERO_PROGRAM = `// build a small value, print a line with the write syscall, return the value
@@ -102,7 +102,7 @@ define(total, x20)
 
         .text
 msg:    .string "hello from the playground\\n"
-msg_len = . - msg - 1
+msg_len = . - msg - 1                   // length without the NUL
 
         .balign 4
         .global main

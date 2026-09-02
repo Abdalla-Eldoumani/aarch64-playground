@@ -403,7 +403,7 @@ main:
         mov     fp, sp
 
         ldr     x0, =msg
-        bl      printf          // lr = the next line; printf rides it back
+        bl      printf          // lr = the next line, where printf returns
 
         mov     w0, 0
         ldp     fp, lr, [sp], 16
@@ -458,7 +458,7 @@ triple:
 const runSvc = `// svc 0 dispatches on x8: 64 is write(fd, buf, count)
         .data
 msg:    .string "written by the raw syscall\\n"
-len = . - msg - 1
+len = . - msg - 1               // length without the NUL
 
         .text
         .balign 4
@@ -542,7 +542,7 @@ sub     x10, x9, 8          // x10 = 42`,
     category: "Data processing",
     syntax: "subs xd, xn, xm / subs xd, xn, #imm",
     example: `mov     w9, 3
-subs    w10, w9, 5          // w10 = -2 and n is set: the branch fuel`,
+subs    w10, w9, 5          // w10 = -2 and n is set: b.lt reads that flag`,
   },
   {
     mnemonic: "adc",
@@ -555,8 +555,8 @@ mov     x12, 1
 mov     x13, 2
 adc     x14, x12, x13       // high sum = 1 + 2 + carry = 4`,
     gotchas: [
-      "Register form only: there is no add-with-carry immediate in AArch64.",
-      "The carry-in is whatever NZCV holds, so the flag-setting instruction that produces it has to be the one right before.",
+      "register form only: there is no add-with-carry immediate in AArch64.",
+      "the carry-in is whatever NZCV holds, so the flag-setting instruction that produces it has to be the one right before.",
     ],
   },
   {
@@ -579,7 +579,7 @@ mov     x12, 1
 mov     x13, 0
 sbc     x14, x12, x13       // high half = 1 - 0 - 1 = 0`,
     gotchas: [
-      "The carry is the not-borrow: c set means the previous subtraction did NOT borrow, so nothing extra comes off.",
+      "the carry is the not-borrow: c set means the previous subtraction did not borrow, so nothing extra comes off.",
     ],
   },
   {
@@ -616,6 +616,14 @@ madd    x12, x9, x10, x11   // x12 = 100 + 6 * 7 = 142`,
 mov     x10, 7
 mov     x11, 100
 msub    x12, x9, x10, x11   // x12 = 100 - 6 * 7 = 58`,
+  },
+  {
+    mnemonic: "mneg",
+    category: "Data processing",
+    syntax: "mneg xd, xn, xm",
+    example: `mov     x1, 7
+mov     x2, 6
+mneg    x3, x1, x2          // x3 = -42`,
   },
   {
     mnemonic: "negs",
@@ -657,12 +665,67 @@ mov     x10, 2
 umulh   x11, x9, x10        // x11 = 1: the carry out of bit 63`,
   },
   {
+    mnemonic: "smaddl",
+    category: "Data processing",
+    syntax: "smaddl xd, wn, wm, xa",
+    example: `mov     w1, -3
+mov     w2, 5
+mov     x3, 100
+smaddl  x4, w1, w2, x3      // x4 = 85: 100 + (-15)`,
+    gotchas: [
+      "the accumulator is a full 64-bit register; only the two sources are 32-bit. `smaddl x4, w1, w2, x9` with x9 = 0x100000001 keeps the top half.",
+    ],
+  },
+  {
+    mnemonic: "smsubl",
+    category: "Data processing",
+    syntax: "smsubl xd, wn, wm, xa",
+    example: `mov     w1, -3
+mov     w2, 5
+mov     x3, 100
+smsubl  x5, w1, w2, x3      // x5 = 115: 100 - (-15)`,
+  },
+  {
+    mnemonic: "umaddl",
+    category: "Data processing",
+    syntax: "umaddl xd, wn, wm, xa",
+    example: `mov     w1, -3
+mov     w2, 5
+mov     x3, 100
+umaddl  x6, w1, w2, x3      // x6 = 0x500000055: w1 read as 0xfffffffd`,
+  },
+  {
+    mnemonic: "umsubl",
+    category: "Data processing",
+    syntax: "umsubl xd, wn, wm, xa",
+    example: `mov     w1, -3
+mov     w2, 5
+mov     x3, 100
+umsubl  x7, w1, w2, x3      // x7 = 0xfffffffb00000073`,
+  },
+  {
+    mnemonic: "smnegl",
+    category: "Data processing",
+    syntax: "smnegl xd, wn, wm",
+    example: `mov     w1, -3
+mov     w2, 5
+smnegl  x8, w1, w2          // x8 = 15`,
+  },
+  {
+    mnemonic: "umnegl",
+    category: "Data processing",
+    syntax: "umnegl xd, wn, wm",
+    example: `mov     w1, -3
+mov     w2, 5
+umnegl  x9, w1, w2          // x9 = 0xfffffffb0000000f`,
+  },
+  {
     mnemonic: "udiv",
     category: "Data processing",
     syntax: "udiv xd, xn, xm",
     example: `mov     x9, 42
 mov     x10, 5
-udiv    x11, x9, x10        // x11 = 8: the remainder is simply gone`,
+udiv    x11, x9, x10        // x11 = 8: the remainder is discarded`,
     gotchas: [
       "a zero divisor writes zero instead of trapping, so guard the divisor yourself when zero is possible.",
       "no remainder comes back; recover it with `msub xr, xq, xm, xn` after the divide.",
@@ -734,6 +797,79 @@ bic     w11, w9, w10        // clear w10's bits out of w9: w11 = 0xf0`,
     ],
   },
   {
+    mnemonic: "orn",
+    category: "Data processing",
+    syntax: "orn xd, xn, xm",
+    example: `mov     x1, 0
+mov     x2, 0xff
+orn     x0, x1, x2          // x0 = 0xffffffffffffff00`,
+  },
+  {
+    mnemonic: "eon",
+    category: "Data processing",
+    syntax: "eon xd, xn, xm",
+    example: `mov     x1, 0xff
+mov     x2, 0xff
+eon     x0, x1, x2          // x0 = -1: equal inputs make xnor all-ones`,
+  },
+  {
+    mnemonic: "clz",
+    category: "Data processing",
+    syntax: "clz xd, xn / clz wd, wn",
+    example: `movz    w1, 0x4567
+movk    w1, 0x0123, lsl 16  // w1 = 0x01234567
+clz     w0, w1              // w0 = 7
+mov     x2, 0
+clz     x3, x2              // x3 = 64: zero answers the full width`,
+  },
+  {
+    mnemonic: "cls",
+    category: "Data processing",
+    syntax: "cls xd, xn / cls wd, wn",
+    example: `mov     x1, -1
+cls     x0, x1              // x0 = 63: 64 sign bits, minus the top one
+mov     x2, 0
+cls     x3, x2              // x3 = 63 as well`,
+  },
+  {
+    mnemonic: "rbit",
+    category: "Data processing",
+    syntax: "rbit xd, xn / rbit wd, wn",
+    example: `movz    w1, 0x4567
+movk    w1, 0x0123, lsl 16  // w1 = 0x01234567
+rbit    w0, w1              // w0 = 0xe6a2c480`,
+  },
+  {
+    mnemonic: "rev",
+    category: "Data processing",
+    syntax: "rev xd, xn / rev wd, wn",
+    example: `movz    w1, 0x4567
+movk    w1, 0x0123, lsl 16  // w1 = 0x01234567
+rev     w0, w1              // w0 = 0x67452301`,
+    gotchas: [
+      "the x and w forms are separate encodings. `rev w0, w1` swaps four bytes; `rev x0, x1` swaps eight.",
+    ],
+  },
+  {
+    mnemonic: "rev16",
+    category: "Data processing",
+    syntax: "rev16 xd, xn / rev16 wd, wn",
+    example: `movz    w1, 0x4567
+movk    w1, 0x0123, lsl 16  // w1 = 0x01234567
+rev16   w0, w1              // w0 = 0x23016745`,
+  },
+  {
+    mnemonic: "rev32",
+    category: "Data processing",
+    syntax: "rev32 xd, xn",
+    example: `mov     x1, 0xff
+rev32   x0, x1              // x0 = 0xff000000
+rev     x2, x1              // x2 = 0xff00000000000000: the same opcode, the other width`,
+    gotchas: [
+      "there is no `rev32 wd, wn`. the 32-bit byte-swap is `rev wd, wn`, which shares this opcode at the other width.",
+    ],
+  },
+  {
     mnemonic: "lsl",
     category: "Data processing",
     syntax: "lsl xd, xn, #imm",
@@ -753,7 +889,7 @@ lsr     w10, w9, 4          // w10 = 3: unsigned divide by 16`,
     syntax: "asr xd, xn, #imm",
     example: `mov     w9, 32
 neg     w9, w9              // w9 = -32
-asr     w10, w9, 2          // w10 = -8: the sign bit rides along`,
+asr     w10, w9, 2          // w10 = -8: asr copies the sign bit down`,
   },
   {
     mnemonic: "ror",
@@ -808,6 +944,14 @@ lsl     w9, w9, 8           // w9 = 0x123400
 uxth    w10, w9             // low halfword only: w10 = 0x3400`,
   },
   {
+    mnemonic: "uxtw",
+    category: "Data processing",
+    syntax: "uxtw xd, wn",
+    example: `mov     x1, -1
+uxtw    x2, w1              // x2 = 0xffffffff
+sxtw    x3, w1              // x3 = -1: sxtw carries the sign, uxtw does not`,
+  },
+  {
     mnemonic: "ubfx",
     category: "Data processing",
     syntax: "ubfx xd, xn, #lsb, #width",
@@ -834,6 +978,35 @@ bfi     w9, w10, 4, 4       // merge at bit 4: w9 = 0xffc0`,
     encoding: encBfm,
     encodedAsm: "bfi w19, w20, 8, 4",
   },
+  {
+    mnemonic: "bfxil",
+    category: "Data processing",
+    syntax: "bfxil xd, xn, #lsb, #width",
+    example: `mov     x0, -1              // every bit set
+movz    x1, 0xab00
+bfxil   x0, x1, 8, 8        // x0 = 0xffffffffffffffab: only the low byte changed
+ubfx    x2, x1, 8, 8        // x2 = 0xab: the same field, everything else zeroed`,
+    gotchas: [
+      "`bfxil` reads its destination. unlike `ubfx` it is a merge, so whatever was in xd outside the field is still there.",
+    ],
+  },
+  {
+    mnemonic: "ubfiz",
+    category: "Data processing",
+    syntax: "ubfiz xd, xn, #lsb, #width",
+    example: `mov     x1, 2               // field 0b10
+ubfiz   x2, x1, 4, 2        // x2 = 0x20: two bits, placed at bit 4, zeros above`,
+  },
+  {
+    mnemonic: "sbfiz",
+    category: "Data processing",
+    syntax: "sbfiz xd, xn, #lsb, #width",
+    example: `mov     x1, 2               // field 0b10, top bit set
+sbfiz   x2, x1, 4, 2        // x2 = 0xffffffffffffffe0: the sign fills upward`,
+    gotchas: [
+      "the sign comes from the top bit of the field, not of the source register: `sbfiz x2, x1, 4, 2` on 2 sign-extends because bit 1 of 2 is set.",
+    ],
+  },
 
   // compare and test
   {
@@ -842,7 +1015,7 @@ bfi     w9, w10, 4, 4       // merge at bit 4: w9 = 0xffc0`,
     syntax: "cmp xn, xm / cmp xn, #imm",
     example: `mov     w9, 3
 cmp     w9, 5               // flags say: less
-cset    w10, lt             // the verdict, captured: w10 = 1`,
+cset    w10, lt             // w10 = 1: cset writes 1 when lt holds`,
   },
   {
     mnemonic: "cmn",
@@ -860,6 +1033,30 @@ cset    w10, eq             // w10 = 1: w9 was -1`,
     example: `mov     w9, 6
 tst     w9, 1               // bit 0 clear, so z is set
 cset    w10, eq             // w10 = 1: 6 is even`,
+  },
+  {
+    mnemonic: "ccmp",
+    category: "Compare and test",
+    syntax: "ccmp xn, xm, #nzcv, cond / ccmp xn, #imm5, #nzcv, cond",
+    example: `mov     w0, 1
+mov     w1, 2
+cmp     w0, 1
+ccmp    w1, 2, 0, eq        // the first test held, so compare again
+cset    w2, eq              // w2 = 1: a == 1 && b == 2, no branch taken`,
+    gotchas: [
+      "the untaken path writes the literal into nzcv, it does not leave the old flags. a literal with z set makes a later `cset eq` fire even though the operands differ.",
+      "the immediate second operand is 0 to 31 unsigned, and #nzcv is 0 to 15.",
+    ],
+  },
+  {
+    mnemonic: "ccmn",
+    category: "Compare and test",
+    syntax: "ccmn xn, xm, #nzcv, cond / ccmn xn, #imm5, #nzcv, cond",
+    example: `mov     w0, 7
+mov     w1, -3
+cmp     w0, 7
+ccmn    w1, 3, 0, eq        // -3 + 3 = 0, so z is set
+cset    w2, eq              // w2 = 1`,
   },
 
   // conditional select
@@ -905,6 +1102,50 @@ cmp     w9, 0
 cset    w10, gt             // w10 = 1: 5 is positive`,
   },
 
+  {
+    mnemonic: "csetm",
+    category: "Conditional select",
+    syntax: "csetm xd, cond",
+    example: `mov     w1, 5
+cmp     w1, 5
+csetm   w4, eq              // condition true:  w4 = 0xffffffff
+cmp     w1, 4
+csetm   w5, eq              // condition false: w5 = 0`,
+  },
+  {
+    mnemonic: "cinc",
+    category: "Conditional select",
+    syntax: "cinc xd, xn, cond",
+    example: `mov     w1, 5
+cmp     w1, 5
+cinc    w2, w1, eq          // condition true:  w2 = 6
+cmp     w1, 4
+cinc    w3, w1, eq          // condition false: w3 = 5, not 6`,
+    gotchas: [
+      "the encoded condition is the inverse of the one you write, which is why `al` and `nv` are refused: neither has an invertible spelling.",
+    ],
+  },
+  {
+    mnemonic: "cinv",
+    category: "Conditional select",
+    syntax: "cinv xd, xn, cond",
+    example: `mov     w1, 5
+cmp     w1, 5
+cinv    w4, w1, eq          // condition true:  w4 = 0xfffffffa
+cmp     w1, 4
+cinv    w5, w1, eq          // condition false: w5 = 5`,
+  },
+  {
+    mnemonic: "cneg",
+    category: "Conditional select",
+    syntax: "cneg xd, xn, cond",
+    example: `mov     x6, 7
+mov     w1, 5
+cmp     w1, 5
+cneg    x7, x6, eq          // condition true:  x7 = -7
+cmp     w1, 4
+cneg    x8, x6, eq          // condition false: x8 = 7`,
+  },
   // memory: examples carve an aligned scratch slot below sp and put it back,
   // so every one runs clean inside the playground's wrapped main.
   {
@@ -998,7 +1239,7 @@ ldp     x11, x12, [sp], 16  // pop it back: x11 = 1, x12 = 2`,
   {
     mnemonic: "ldrsb",
     category: "Memory",
-    syntax: "ldrsb wt, [xn, #imm] / ldrsb xt, [xn, #imm]",
+    syntax: "ldrsb wt, [xn, #imm] / [xn, #imm]! / [xn], #imm",
     example: `sub     sp, sp, 16
 mov     w9, 0x80            // as a signed byte: -128
 strb    w9, [sp, 8]
@@ -1008,7 +1249,7 @@ add     sp, sp, 16`,
   {
     mnemonic: "ldrsh",
     category: "Memory",
-    syntax: "ldrsh wt, [xn, #imm] / ldrsh xt, [xn, #imm]",
+    syntax: "ldrsh wt, [xn, #imm] / [xn, #imm]! / [xn], #imm",
     example: `sub     sp, sp, 16
 mov     w9, 0x8000          // as a signed halfword: -32768
 strh    w9, [sp, 8]
@@ -1018,13 +1259,16 @@ add     sp, sp, 16`,
   {
     mnemonic: "ldrsw",
     category: "Memory",
-    syntax: "ldrsw xt, [xn, #imm]",
+    syntax: "ldrsw xt, [xn, #imm] / [xn, #imm]! / [xn], #imm",
     example: `sub     sp, sp, 16
 mov     w9, 1
 neg     w9, w9              // -1 as an int
 str     w9, [sp, 8]
 ldrsw   x10, [sp, 8]        // x10 = -1 across all 64 bits
 add     sp, sp, 16`,
+    gotchas: [
+      "post-index (`ldrsw x0, [x1], 4`) loads from the old base and then advances it; pre-index (`[x1, 4]!`) advances first. gcc walks int arrays with the post-index form.",
+    ],
   },
 
   // pc-relative addressing
@@ -1039,7 +1283,7 @@ add     sp, sp, 16`,
     category: "PC-relative addressing",
     syntax: "adrp xd, label",
     gotchas: [
-      "this lands on the 4 kib page base, not the symbol; add the low 12 bits with `:lo12:` to reach the exact address.",
+      "this lands on the 4 KiB page base, not the symbol; add the low 12 bits with `:lo12:` to reach the exact address.",
     ],
     runnable: runAdrp,
   },
@@ -1187,7 +1431,7 @@ fcvtzs  x9, d18             // x9 = 4: the fraction is cut, not rounded`,
     category: "Floating point",
     syntax: "fneg dd, dn / fneg sd, sn",
     example: `fmov    d16, 2.0
-fneg    d16, d16            // d16 = -2.0: just the sign bit flips
+fneg    d16, d16            // d16 = -2.0: only the sign bit changes
 fcvtzs  x9, d16             // x9 = -2`,
     gotchas: [
       "the alternating-sign series idiom: `fneg sign, sign` each pass flips a running +1/-1 factor without a branch.",
@@ -1249,17 +1493,214 @@ fcvtzs  x9, d1              // x9 = 2`,
   {
     mnemonic: "scvtf",
     category: "Floating point",
-    syntax: "scvtf dd, xn / scvtf dd, wn / scvtf sd, wn",
+    syntax: "scvtf dd, xn / scvtf dd, wn / scvtf sd, wn / scvtf dd, xn, #fbits",
     example: `mov     x9, 7
 scvtf   d16, x9             // d16 = 7.0
-fcvtzs  x10, d16            // x10 = 7: round-tripped`,
+fcvtzs  x10, d16            // x10 = 7: round-tripped
+mov     x11, 6
+scvtf   d17, x11, 2         // d17 = 1.5: the fixed-point form divides by 4`,
   },
   {
     mnemonic: "fcvtzs",
     category: "Floating point",
-    syntax: "fcvtzs xd, dn / fcvtzs wd, dn / fcvtzs wd, sn",
+    syntax: "fcvtzs xd, dn / fcvtzs wd, sn / fcvtzs xd, sn, #fbits",
     example: `fmov    d16, 1.9375         // the largest encodable mantissa
-fcvtzs  w9, d16             // w9 = 1: toward zero, never rounding`,
+fcvtzs  w9, d16             // w9 = 1: toward zero, never rounding
+fmov    d17, 1.5
+fcvtzs  w10, d17, 2         // w10 = 6: the fixed-point form scales by 4 first`,
+    gotchas: [
+      "`fbits` runs 1 to 32 for a w destination and 1 to 64 for an x one; it is stored in the word as 64 minus that.",
+    ],
+  },
+  {
+    mnemonic: "fcvtns",
+    category: "Floating point",
+    syntax: "fcvtns wd, dn / fcvtns xd, sn",
+    example: `fmov    d0, 2.5
+fcvtns  w1, d0              // w1 = 2: the tie goes to the even neighbor
+fcvtzs  w2, d0              // w2 = 2 as well, but by truncation
+fmov    d3, 3.5
+fcvtns  w4, d3              // w4 = 4: ties to even lands upward here`,
+  },
+  {
+    mnemonic: "fcvtnu",
+    category: "Floating point",
+    syntax: "fcvtnu wd, dn / fcvtnu xd, sn",
+    example: `fmov    d0, 2.5
+fcvtnu  w1, d0              // w1 = 2
+fmov    d2, -2.5
+fcvtnu  w3, d2              // w3 = 0: negatives saturate`,
+  },
+  {
+    mnemonic: "fcvtzu",
+    category: "Floating point",
+    syntax: "fcvtzu wd, dn / fcvtzu xd, sn",
+    example: `fmov    d0, 2.5
+fcvtzu  w1, d0              // w1 = 2: the fraction is cut, not rounded
+fmov    d2, -1.5
+fcvtzu  w3, d2              // w3 = 0: negatives saturate`,
+  },
+  {
+    mnemonic: "fcvtas",
+    category: "Floating point",
+    syntax: "fcvtas wd, dn / fcvtas xd, sn",
+    example: `fmov    d0, 2.5
+fcvtas  w1, d0              // w1 = 3: the tie goes away from zero
+fcvtns  w2, d0              // w2 = 2: the tie goes to the even neighbour
+fmov    d3, -2.5
+fcvtas  w4, d3              // w4 = -3: away from zero in both directions`,
+  },
+  {
+    mnemonic: "fcvtau",
+    category: "Floating point",
+    syntax: "fcvtau wd, dn / fcvtau xd, sn",
+    example: `fmov    d0, 2.5
+fcvtau  w1, d0              // w1 = 3`,
+  },
+  {
+    mnemonic: "fcvtms",
+    category: "Floating point",
+    syntax: "fcvtms wd, dn / fcvtms xd, sn",
+    example: `fmov    d0, -0.5
+fcvtms  w1, d0              // w1 = -1: floor, so it walks away from zero
+fcvtzs  w2, d0              // w2 = 0: truncation walks toward it`,
+  },
+  {
+    mnemonic: "fcvtmu",
+    category: "Floating point",
+    syntax: "fcvtmu wd, dn / fcvtmu xd, sn",
+    example: `fmov    d0, 2.5
+fcvtmu  w1, d0              // w1 = 2`,
+  },
+  {
+    mnemonic: "fcvtps",
+    category: "Floating point",
+    syntax: "fcvtps wd, dn / fcvtps xd, sn",
+    example: `fmov    d0, -0.5
+fcvtps  w1, d0              // w1 = 0: ceiling
+fmov    d2, 2.5
+fcvtps  w3, d2              // w3 = 3`,
+  },
+  {
+    mnemonic: "fcvtpu",
+    category: "Floating point",
+    syntax: "fcvtpu wd, dn / fcvtpu xd, sn",
+    example: `fmov    d0, 2.5
+fcvtpu  w1, d0              // w1 = 3`,
+  },
+  {
+    mnemonic: "ucvtf",
+    category: "Floating point",
+    syntax: "ucvtf dd, xn / ucvtf sd, wn",
+    example: `mov     x0, -1
+scvtf   d0, x0              // d0 = -1.0
+ucvtf   d1, x0              // d1 = 1.8446744073709552e19: the same bits, read unsigned`,
+  },
+  {
+    mnemonic: "fcsel",
+    category: "Floating point",
+    syntax: "fcsel dd, dn, dm, cond / fcsel sd, sn, sm, cond",
+    example: `fmov    d1, 1.5
+fmov    d2, 2.5
+mov     w0, 5
+cmp     w0, 5
+fcsel   d3, d1, d2, eq      // d3 = 1.5: the condition held
+cmp     w0, 4
+fcsel   d4, d1, d2, eq      // d4 = 2.5: it did not
+fcvtzs  x9, d3              // x9 = 1`,
+    gotchas: [
+      "the flags come from an earlier `fcmp` or `cmp`. `fcsel` reads nzcv and never writes it.",
+    ],
+  },
+  {
+    mnemonic: "fmax",
+    category: "Floating point",
+    syntax: "fmax dd, dn, dm / fmax sd, sn, sm",
+    example: `fmov    d1, 3.0
+fmov    d2, 5.0
+fmax    d3, d1, d2          // d3 = 5.0
+fcvtzs  x9, d3              // x9 = 5`,
+    gotchas: [
+      "a nan operand makes the result nan. for the c `fmax()` behaviour, where the number wins, use `fmaxnm`.",
+    ],
+  },
+  {
+    mnemonic: "fmin",
+    category: "Floating point",
+    syntax: "fmin dd, dn, dm / fmin sd, sn, sm",
+    example: `fmov    d1, 3.0
+fmov    d2, 5.0
+fmin    d4, d1, d2          // d4 = 3.0
+fcvtzs  x9, d4              // x9 = 3`,
+  },
+  {
+    mnemonic: "fmaxnm",
+    category: "Floating point",
+    syntax: "fmaxnm dd, dn, dm / fmaxnm sd, sn, sm",
+    example: `fmov    d1, 4.0
+fneg    d1, d1
+fsqrt   d1, d1              // d1 = nan
+fmov    d2, 5.0
+fmaxnm  d3, d1, d2          // d3 = 5.0: the nan is ignored
+fmax    d4, d1, d2          // d4 = nan
+fcvtzs  x9, d3              // x9 = 5`,
+  },
+  {
+    mnemonic: "fminnm",
+    category: "Floating point",
+    syntax: "fminnm dd, dn, dm / fminnm sd, sn, sm",
+    example: `fmov    d1, 3.0
+fmov    d2, 5.0
+fminnm  d3, d1, d2          // d3 = 3.0
+fcvtzs  x9, d3              // x9 = 3`,
+  },
+  {
+    mnemonic: "fnmul",
+    category: "Floating point",
+    syntax: "fnmul dd, dn, dm / fnmul sd, sn, sm",
+    example: `fmov    d1, 2.0
+fmov    d2, 3.0
+fnmul   d3, d1, d2          // d3 = -6.0`,
+  },
+  {
+    mnemonic: "fmadd",
+    category: "Floating point",
+    syntax: "fmadd dd, dn, dm, da",
+    example: `fmov    d1, 3.0
+fmov    d2, 4.0
+fmov    d3, 10.0
+fmadd   d4, d1, d2, d3      // d4 = 22.0: d3 + d1*d2, not d1 + d2*d3`,
+    gotchas: [
+      "the accumulator is the last operand, and it is the addend. reading it as the first product source gives 43 instead of 22.",
+      "fused: the product is not rounded before the add, so `fmadd` and `fmul` plus `fadd` can differ in the last bit.",
+    ],
+  },
+  {
+    mnemonic: "fmsub",
+    category: "Floating point",
+    syntax: "fmsub dd, dn, dm, da",
+    example: `fmov    d1, 3.0
+fmov    d2, 4.0
+fmov    d3, 10.0
+fmsub   d5, d1, d2, d3      // d5 = -2.0: d3 - d1*d2, not d1*d2 - d3`,
+  },
+  {
+    mnemonic: "fnmadd",
+    category: "Floating point",
+    syntax: "fnmadd dd, dn, dm, da",
+    example: `fmov    d1, 3.0
+fmov    d2, 4.0
+fmov    d3, 10.0
+fnmadd  d6, d1, d2, d3      // d6 = -22.0`,
+  },
+  {
+    mnemonic: "fnmsub",
+    category: "Floating point",
+    syntax: "fnmsub dd, dn, dm, da",
+    example: `fmov    d1, 3.0
+fmov    d2, 4.0
+fmov    d3, 10.0
+fnmsub  d7, d1, d2, d3      // d7 = 2.0`,
   },
 ];
 

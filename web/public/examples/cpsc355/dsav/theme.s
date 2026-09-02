@@ -1,10 +1,8 @@
-// theme.asm - the colour palette, by role rather than by name
+// theme.s - the colour palette, indexed by role
 //
 // One 256-colour palette drives every screen. Modules ask for a role
 // ("this cell is being compared") and never for a colour, so the whole
-// program restyles from this file alone. The values track the same
-// palette the c++ and rust versions use, so the three look like one
-// project.
+// program restyles from this file alone.
 
 define(fp, x29)
 define(lr, x30)
@@ -12,8 +10,8 @@ define(lr, x30)
     .data
     .balign 8
 
-// Foreground escapes, \x1b[38;5;Nm. Roles, in the order a reader meets
-// them: chrome first, then the meanings a running algorithm paints.
+// Foreground escapes, \x1b[38;5;Nm. Roles: chrome first, then the states a
+// running algorithm paints.
 th_fg_text:         .string "\x1b[38;5;189m"   // body text
 th_fg_dim:          .string "\x1b[38;5;146m"   // secondary text, units
 th_fg_faint:        .string "\x1b[38;5;243m"   // borders, rules, hints
@@ -38,9 +36,9 @@ th_reset:           .string "\x1b[0m"
 th_bold:            .string "\x1b[1m"
 th_dim_attr:        .string "\x1b[2m"
 
-// Role -> escape, indexed by the TH_* constants below. Keeping the
-// table here means a module can pick a role at runtime (a cell's state
-// is data, not a branch).
+// Role -> escape, indexed by the UI_ROLE_* constants in ui.s. Keeping the
+// table here means a module can pick a role at runtime so a cell's state
+// picks a colour without a branch.
     .balign 8
 th_fg_table:
     .dword th_fg_text, th_fg_dim, th_fg_faint, th_fg_accent, th_fg_key

@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { ToastHost, useToast } from "@/components/ui/Toast";
 
 afterEach(() => {
@@ -7,13 +7,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-beforeEach(() => {
-  // react-hot-toast keeps a module-level queue; clear it between
-  // tests so each case sees a clean slate.
-  // We re-import the module cache via dynamic import in each test
-  // would be heavier; simpler is to just ignore the carry-over and
-  // rely on text matching for the most-recent toast.
-});
+// react-hot-toast keeps a module-level queue; these tests match on the most
+// recent message rather than resetting it.
 
 function Trigger() {
   const t = useToast();

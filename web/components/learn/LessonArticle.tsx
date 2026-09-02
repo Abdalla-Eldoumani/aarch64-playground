@@ -26,10 +26,6 @@ import { validateStdin } from "@/lib/playground/upload-guard";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
 
-/**
- * The author stdin only when it is present and within the stdin cap; otherwise
- * undefined, so an oversize input is dropped rather than seeded into the embed.
- */
 function safeStdin(stdin: string | undefined): string | undefined {
   if (stdin === undefined) return undefined;
   return validateStdin(stdin) === null ? stdin : undefined;
@@ -45,7 +41,7 @@ export function LessonArticle({
   lesson: Lesson;
   /** Datasheet coordinate for this lesson, e.g. "4.3" (position in the
    *  sorted order); drives the kicker, the numbered TOC, and the figure
-   *  captions. Purely presentational -- the lesson schema is untouched. */
+   *  captions. Purely presentational: the lesson schema is untouched. */
   sheetNumber?: string;
 }): JSX.Element {
   const toc = extractToc(lesson);
@@ -60,7 +56,7 @@ export function LessonArticle({
   const firstProseIndex = lesson.body.findIndex((b) => b.type === "prose");
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-12 lg:flex-row-reverse lg:items-start lg:gap-12">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-12 lg:max-w-7xl lg:flex-row-reverse lg:items-start lg:gap-12">
       <nav
         aria-label="On this page"
         className="lg:sticky lg:top-24 lg:h-fit lg:w-56 lg:shrink-0"
@@ -94,7 +90,7 @@ export function LessonArticle({
         </details>
       </nav>
 
-      <article className="w-full min-w-0 max-w-2xl">
+      <article className="w-full min-w-0">
         <DocRule section={`sheet ${sheetNumber} · ${lesson.slug}`} context="learn" className="mb-6" />
         <Kicker number={sheetNumber} title={lesson.title} className="mb-4" />
         <h1 className="mb-8 font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
@@ -109,8 +105,8 @@ export function LessonArticle({
                   key={index}
                   className={
                     index === firstProseIndex
-                      ? "[&_p:first-of-type]:[font:var(--type-lead)]"
-                      : undefined
+                      ? "max-w-2xl [&_p:first-of-type]:[font:var(--type-lead)]"
+                      : "max-w-2xl"
                   }
                 >
                   <LessonMarkdown markdown={block.markdown} />
@@ -121,7 +117,7 @@ export function LessonArticle({
               // render without the hand-off (the emulator can't open them).
               const openable = block.language === "asm";
               return (
-                <div key={index} className="my-6">
+                <div key={index} className="my-6 max-w-2xl">
                   <CodeBlock
                     code={block.source}
                     language={block.language === "asm" ? "arm64" : block.language}
@@ -137,7 +133,7 @@ export function LessonArticle({
             }
             case "callout":
               return (
-                <div key={index} className="my-6">
+                <div key={index} className="my-6 max-w-2xl">
                   <Callout type={block.variant}>
                     <LessonMarkdown markdown={block.markdown} />
                   </Callout>
@@ -146,11 +142,10 @@ export function LessonArticle({
             case "editor":
               return (
                 <div key={index} className="my-6">
-                  {/* Fixed frame at every breakpoint (no shift as the editor
-                      loads); the embed's container-driven layout gives the
-                      editor the full prose measure above a registers |
-                      console split. */}
-                  <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+                  {/* Fixed frame per breakpoint (no shift as the editor loads);
+                      at lg the figure takes the whole article column, so the
+                      editor sits beside the registers. */}
+                  <div className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px] lg:h-[680px]">
                     <EmbeddablePlayground
                       chrome="embed"
                       startSource={block.starter}
@@ -163,7 +158,7 @@ export function LessonArticle({
                     <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                       figure {sheetNumber}.{editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
-                        runnable -- step it and watch the registers
+                        runnable: step it and watch the registers
                       </span>
                     </span>
                     <OpenInPlayground

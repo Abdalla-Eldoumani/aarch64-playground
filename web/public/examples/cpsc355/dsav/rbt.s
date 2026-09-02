@@ -1,11 +1,10 @@
-// rbt_viz.asm - a red-black tree, and the repair work that keeps it short
+// rbt.s - a red-black tree, and the repair work that keeps it short
 //
 // A search tree only stays fast while it stays shallow, and nothing in a
 // plain insert makes it stay shallow. This one pays a small, bounded
 // price on every insert instead: recolour, and rotate at most twice. The
 // three cases of that repair are the whole idea, so the insert screen
-// stops on each one, paints the family it is looking at, and says in
-// plain words what it is about to do and why.
+// stops on each one, paints the family it is looking at, and names the case.
 //
 // The rules, in the order they matter: the root is black; a red node
 // never has a red child; every path from a node down to a nil leaf passes
@@ -28,7 +27,7 @@ define(lr, x30)
     RB_BLACK = 0
     RB_RED   = 1
 
-// Role numbers mirror the UI_ROLE_* set in ui.asm. They are repeated here
+// Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated here
 // so this file also assembles on its own, the way the web build feeds it.
     RB_ROLE_TEXT   = 0
     RB_ROLE_DIM    = 1
@@ -59,7 +58,7 @@ rb_node_count:      .word 0
 rb_hl_role:         .word 0, 0, 0, 0
 rb_order_len:       .word 0
 rb_delay:           .word 600               // milliseconds between beats
-rb_narrate:         .word 0                 // is anyone watching the repair?
+rb_narrate:         .word 0                 // 1 while the insert screen narrates the repair
 rb_fix_steps:       .word 0                 // cases the last repair fired
 
 rb_cell:            .skip 8                 // one value, formatted
@@ -506,7 +505,7 @@ rb_insert:
 
     mov     x19, x0
     mov     w20, w1
-    mov     w26, 0                       // nothing is inserted until it is
+    mov     w26, 0                       // set to 1 once the node is linked in
 
     mov     w0, w20
     bl      rb_create_node
@@ -1688,7 +1687,7 @@ rb_render_tree:
     bl      rb_draw
 
     mov     w0, RB_TOP_ROW
-    mov     w1, RB_TOP_COL - 7
+    mov     w1, RB_TOP_COL - 7          // 7 columns left of the root, the width of the root label
     mov     w2, RB_ROLE_KEY
     ldr     x3, =rb_lbl_root
     bl      ui_text
@@ -2183,7 +2182,7 @@ rb_menu_draw:
     ldr     x2, =rb_opt_0
     bl      rb_menu_line
 
-    // how much tree there is, so the menu is never a dead end
+    // node count and height, so the menu says what is loaded
     mov     w0, 15
     mov     w1, 12
     bl      ui_at
@@ -2541,8 +2540,8 @@ rb_search_int_done:
     ldp     fp, lr, [sp], 80
     ret
 
-// rb_delete_interactive() - find the node, say what its colour costs, and
-// hand the work to the delete that knows how to pay it
+// rb_delete_interactive() - find the node, say what its colour costs, then
+// call rb_delete
 rb_delete_interactive:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
@@ -3001,8 +3000,8 @@ rb_rule_line_done:
     ldp     fp, lr, [sp], 48
     ret
 
-// rb_verify_interactive() - the five rules, each measured against the
-// tree that is actually in memory rather than asserted about it
+// rb_verify_interactive() - the five rules, each measured against the tree in
+// memory
 rb_verify_interactive:
     stp     fp, lr, [sp, -64]!
     mov     fp, sp

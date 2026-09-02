@@ -1,6 +1,6 @@
 //! The libm subset a numeric cpsc 355 program reaches for. Every stub
 //! takes its double argument in `d0` (`pow` and `fmod` take a second in
-//! `d1`) and returns its result in `d0` -- the AAPCS64 floating-point
+//! `d1`) and returns its result in `d0`: the AAPCS64 floating-point
 //! convention `atof` already follows.
 //!
 //! The bodies are Rust's f64 intrinsics, which are the IEEE-754

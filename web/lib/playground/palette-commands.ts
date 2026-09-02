@@ -84,8 +84,8 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
       description: deps.blocked
         ? "(waiting for stdin; feed the console first)"
         : deps.canStepBack
-          ? "undo the last instruction from the snapshot ring"
-          : "(no snapshots; run a step first)",
+          ? "undo the last instruction"
+          : "(nothing to undo; take a step first)",
       shortcut: "Shift+F10",
       run: () => {
         if (!deps.blocked) deps.stepBack();
@@ -103,8 +103,8 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
         ? "(waiting for stdin; feed the console first)"
         : deps.launchable
           ? deps.programLoaded
-            ? "hand the terminal pane to this program"
-            : "assemble, then hand the terminal pane over"
+            ? "run this program in the terminal tab"
+            : "assemble, then run it in the terminal tab"
           : deps.programLoaded
             ? "run until halt or breakpoint"
             : "(no program; assemble first)",
@@ -116,9 +116,8 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "launch-terminal",
       label: "Start in the terminal",
-      // Always present, with the description carrying the reason it
-      // would do nothing -- a row that only sometimes exists is
-      // unfindable by the student who saw it once.
+      // Always present, with the description carrying the reason it would do
+      // nothing.
       description: deps.launchable
         ? "assemble and run with the terminal pane"
         : "(this program runs in the console)",
@@ -129,7 +128,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "pause",
       label: "Pause",
-      description: "stop the run loop",
+      description: "stop a run that is in progress",
       shortcut: "F5",
       run: () => deps.pause(),
     },
@@ -183,8 +182,10 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
       label: "Import file",
       description: "open the file picker and load assembly into the active buffer",
       run: () => {
+        // ImportExport marks its hidden picker with this attribute; matching on
+        // the accept list instead let the two drift and the row find no input.
         const el = document.querySelector<HTMLInputElement>(
-          'input[type="file"][accept=".s,.asm,.txt"]',
+          'input[type="file"][data-import-input]',
         );
         el?.click();
       },

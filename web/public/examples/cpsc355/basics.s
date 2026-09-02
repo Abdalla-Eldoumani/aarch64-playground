@@ -1,5 +1,5 @@
-// basics.asm - Demonstrate all arithmetic operations
-// Compile: m4 basics.asm > basics.s && gcc basics.s -o basics && ./basics
+// basics.s - the five arithmetic operations
+// Compile: m4 basics.s > basics.gen.s && gcc basics.gen.s -o basics && ./basics
 
 define(a, x19)
 define(b, x20)
@@ -49,7 +49,7 @@ main:
             mov     x3, result
             bl      printf
 
-            udiv    result, a, b            // result = 47 / 5 = 9
+            udiv    result, a, b            // udiv, not sdiv: these operands are known non-negative
 
             ldr     x0, =div_fmt
             mov     x1, a

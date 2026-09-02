@@ -1,21 +1,15 @@
 {
-  "title": "Printing Hello World in ARMv8 AArch64 Assembly",
+  "title": "Printing a string with printf",
   "slug": "printing-strings-hello-world",
-  "order": 4,
-  "summary": "A guided walkthrough of printing a string using Assembly Aarch64.",
+  "order": 3,
+  "summary": "How to store a string in .data, load its address, and hand it to printf.",
   "tags": [
-    "Printing in Assembly"
+    "printing"
   ],
   "body": [
     {
-        "type": "callout",
-        "variant": "note",
-        "markdown": "The Assembly language discussed in this lesson refers specifically to ARMv8 AArch64 Assembly."
-
-    },
-    {
       "type": "prose",
-      "markdown": "\nIn this lesson, we will cover the concepts behind printing a string to standard output using the low-level programming language Assembly. Printing to standard output in a low-level programming language is not as straightforward as using a print statement in a high-level programming language. \n\nA high-level programming language provides built-in functions that allow programmers to easily display information on the standard output stream. The code below demonstrates this process in the C programming language using the `printf` function."
+      "markdown": "\nThis lesson prints a string to standard output in Assembly, which takes more work than a print statement in a high-level language. \n\nA high-level programming language provides built-in functions that allow programmers to easily display information on the standard output stream. The code below demonstrates this process in the C programming language using the `printf` function."
     },
     {
         "type": "code",
@@ -24,15 +18,15 @@
     },
     {
         "type": "prose",
-        "markdown": "The above code outputs the value passed to the printf function to the standard output stream. In this example, the string `\"Hello, World!\"` is passed as an argument to printf, causing it to be displayed on the screen. \n\n\nHowever, printing in Assembly is not as simple. Several additional steps must be performed before data can be displayed on the standard output. This page will explore these steps and provide an understanding of how printing is achieved in ARMv8 Assembly."
+        "markdown": "The above code outputs the value passed to the printf function to the standard output stream. In this example, the string `\"Hello, World!\"` is passed as an argument to printf, causing it to be displayed on the screen. \n\n\nHowever, printing in Assembly is not as simple. Several additional steps must be performed before data can be displayed on the standard output."
     },
     {
         "type": "prose",
-        "markdown": "## The Big Picture\n\nPrinting in Assembly can be achieved by calling the C `printf` function. To display output on the standard output stream, the following steps must be performed:\n\n1. Store the string to a variable.\n2. Load the variable's address into the appropriate registers.\n3. Pass the address as an argument and calling the `printf` function."    
+        "markdown": "## The big picture\n\nPrinting in Assembly can be achieved by calling the C `printf` function. To display output on the standard output stream, the following steps must be performed:\n\n1. Store the string to a variable.\n2. Load the variable's address into the appropriate registers.\n3. Pass the address as an argument and call the `printf` function."    
     },
     {
         "type": "prose",
-        "markdown": "## Storing the String\n\nThe first step in printing a string in Assembly is to store the string in a variable. This is done by using the `.data` directive to define a data section in the Assembly code. The string is then stored in a variable using the `.string` directive. The following code demonstrates this process:"
+        "markdown": "## Storing the string\n\nThe first step in printing a string in Assembly is to store the string in a variable. This is done by using the `.data` directive to define a data section in the Assembly code. The string is then stored in a variable using the `.string` directive. The following code demonstrates this process:"
     },
     {
         "type": "code",
@@ -40,11 +34,11 @@
         "source": "    .data \n    message: .string \"Hello, World!\\n\""    },
     {
         "type": "prose",
-        "markdown": "In the above code, the string `\"Hello, World!\\n\"` is stored in a variable named `message`. The `.string` directive specifies that the data being stored is a string."
+        "markdown": "In the above code, the string `\"Hello, World!\\n\"` is stored in a variable named `message`. The `.string` directive writes the characters followed by a null byte, which is how `printf` knows where the text ends."
     },
     {
         "type": "prose",
-        "markdown": "## Loading the Variable's Address \n\nThe next step in printing a string in Assembly is to load the variable's address into the appropriate registers. This is done using the `ldr` instruction, which loads the address of the variable into a register. The following code demonstrates this process:"
+        "markdown": "## Loading the address\n\nThe next step in printing a string in Assembly is to load the variable's address into the appropriate registers. This is done using the `ldr` instruction, which loads the address of the variable into a register. The following code demonstrates this process:"
     },
     {
         "type": "code",
@@ -53,11 +47,11 @@
     },
     {
         "type": "prose",
-        "markdown": "In the above code, the address of the `message` variable is loaded into register `x0` using the `ldr` instruction. "
+        "markdown": "The address goes in `x0` because `x0` is the first argument register, which is where `printf` looks for the format string. "
     },
     {
         "type": "prose",
-        "markdown": "## Calling the `printf` Function\n\nThe final step in printing a string in Assembly is to call the `printf` function. This is done using the `bl` instruction. The following code demonstrates this process:"
+        "markdown": "## Calling printf\n\nThe final step in printing a string in Assembly is to call the `printf` function. This is done using the `bl` instruction. The following code demonstrates this process:"
     },
     {
         "type": "code",
@@ -70,12 +64,12 @@
     },
     {
         "type": "prose",
-        "markdown": "## Putting it All Together\n\nThe following code demonstrates the complete process of printing a string in Assembly:"
+        "markdown": "## The whole program\n\nThe following code demonstrates the complete process of printing a string in Assembly:"
     },
     {
         "type": "editor",
         "language": "asm",
-        "starter": "    .data\n    message:    .string  \"Hello, World!\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // This is the program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // printf(message)\n    ldr     x0, =message            // Load address of message\n    bl      printf                  // Call printf\n\n    // This is the program epilogue\n    mov     x0, 0                   // End the program by returning 0.\n    ldp     x29, x30, [sp], 16\n    ret"    
+        "starter": "    .data\n    message:    .string  \"Hello, World!\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // printf(message)\n    ldr     x0, =message\n    bl      printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"    
     }
   ]
 }

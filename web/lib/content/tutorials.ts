@@ -3,12 +3,12 @@
  *  check the runner can verify against the live CPU state.
  *
  *  Sources are kept in `/examples/cpsc355/` so a tutorial loads the same
- *  file the student gets from the example loader -- no parallel copies. */
+ *  file the student gets from the example loader, with no parallel copies. */
 
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 export interface ExpectedRegister {
-  /** Register name -- "w0".."w30", "x0".."x30", "sp", "pc". */
+  /** Register name: "w0".."w30", "x0".."x30", "sp", "pc". */
   reg: string;
   /** Decimal integer the register should hold when the step is verified. */
   value: number;
@@ -43,9 +43,9 @@ export interface Tutorial {
 export const TUTORIALS: Tutorial[] = [
   {
     id: "arithmetic",
-    title: "arithmetic operations",
+    title: "Arithmetic operations",
     summary:
-      "Walk through ADD, SUB, MUL, UDIV, and remainder via SUB+MUL using the basics example.",
+      "Walk through add, sub, mul, udiv, and remainder via sub+mul using the basics example.",
     sourcePath: "/examples/cpsc355/basics.s",
     steps: [
       {
@@ -59,14 +59,14 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Add, subtract, multiply",
         body:
-          "Each `bl printf` formats one line of output. Step through ADD, SUB, MUL and watch x21 (result) update to 52, 42, then 235.",
+          "Each `bl printf` formats one line of output. Step through add, sub, mul and watch x21 (result) update to 52, 42, then 235.",
         highlight: { start: 28, end: 51 },
         watchReg: "x21",
       },
       {
         title: "Division and remainder",
         body:
-          "AArch64 has UDIV but no integer remainder; the program computes `a - (a / b) * b`. After the final printf, x21 should hold 2 (the remainder of 47 / 5).",
+          "AArch64 has udiv but no integer remainder; the program computes `a - (a / b) * b`. After the final printf, x21 should hold 2 (the remainder of 47 / 5).",
         highlight: { start: 52, end: 75 },
         expect: { reg: "x21", value: 2, note: "47 % 5 = 2" },
       },
@@ -74,7 +74,7 @@ export const TUTORIALS: Tutorial[] = [
   },
   {
     id: "stack-frames",
-    title: "stack frames and scanf",
+    title: "Stack frames and scanf",
     summary:
       "Allocate locals on the stack, scan three integer scores, average them, and tear down the frame.",
     sourcePath: "/examples/cpsc355/array-scores.s",
@@ -103,21 +103,21 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Compute the average",
         body:
-          "After loading w19/w20/w21 with the three scores, sum them in w22 and divide by 3 with SDIV. Verify w23 (avg_r) holds 85 -- (85+92+78)/3 = 85.",
+          "After loading w19/w20/w21 with the three scores, sum them in w22 and divide by 3 with sdiv. Verify w23 (avg_r) holds 85, because (85+92+78)/3 = 85.",
         highlight: { start: 79, end: 83 },
         expect: { reg: "w23", value: 85, note: "average rounds toward 0" },
       },
       {
         title: "Frame epilogue",
         body:
-          "`ldp fp, lr, [sp], dealloc` is the mirror of the prologue: restore both registers AND release the 32-byte frame in one post-indexed load. RET then jumps to lr, which the loader pre-set to a halt sentinel.",
+          "`ldp fp, lr, [sp], dealloc` is the mirror of the prologue: restore both registers and release the 32-byte frame in one post-indexed load. ret then jumps to lr, which the loader set to a halt address before main started.",
         highlight: { start: 90, end: 92 },
       },
     ],
   },
   {
     id: "records-and-arrays",
-    title: "records on the stack",
+    title: "Records on the stack",
     summary:
       "Lay out a Student record (name + id + grade) with explicit offsets, fill it via scanf, set a byte field, and printf the record.",
     sourcePath: "/examples/cpsc355/student-record.s",
@@ -145,7 +145,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Set grade = 'A' as a single byte",
         body:
-          "`mov w19, 'A'` puts ASCII 65 in w19; `strb w19, [fp, stu_grade]` stores ONE byte at offset 40. After this step, w19 should be 65.",
+          "`mov w19, 'A'` puts ASCII 65 in w19; `strb w19, [fp, stu_grade]` stores one byte at offset 40. After this step, w19 should be 65.",
         highlight: { start: 47, end: 49 },
         expect: { reg: "w19", value: 65, note: "ASCII 'A' is 65" },
       },
@@ -159,7 +159,7 @@ export const TUTORIALS: Tutorial[] = [
   },
   {
     id: "find-max",
-    title: "arrays and a find_max function",
+    title: "Arrays and a find_max function",
     summary:
       "Fill a 10-int array, scan it with a leaf function, return the largest value.",
     sourcePath: "/examples/cpsc355/find-max.s",
@@ -186,7 +186,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Verify the result",
         body:
-          "After find_max returns, w20 holds the max. The final printf formats it. Step past the printf and check w0 in the register panel -- it should be 70.",
+          "After find_max returns, w20 holds the max. The final printf formats it. Step past the printf and check w0 in the register panel: it should be 70.",
         highlight: { start: 89, end: 96 },
         expect: { reg: "w0", value: 70, note: "max of arr is 70" },
       },
@@ -194,7 +194,7 @@ export const TUTORIALS: Tutorial[] = [
   },
   {
     id: "static-vs-argv",
-    title: "static locals and argv",
+    title: "Static locals and argv",
     summary:
       "Compare a function with a static counter (file-scope state) against main's argv (per-invocation state).",
     sourcePath: "/examples/cpsc355/static-counter.s",
@@ -202,7 +202,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Static counter in .data",
         body:
-          "`count_m: .word 0` reserves a 4-byte word in `.data`. Every call to `increment` reads it, adds 1, and writes it back -- the value persists across calls.",
+          "`count_m: .word 0` reserves a 4-byte word in `.data`. Every call to `increment` reads it, adds 1, and writes it back, so the value persists across calls.",
         highlight: { start: 11, end: 14 },
         watchReg: "x9",
       },
@@ -215,7 +215,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Calling increment three times",
         body:
-          "main loops i_r from 1 to 3, calling increment each time. Step through the third call -- the counter in memory should reach 3.",
+          "main loops i_r from 1 to 3, calling increment each time. Step through the third call: the counter in memory should reach 3.",
         highlight: { start: 36, end: 56 },
         expect: { reg: "w0", value: 3, note: "third return value" },
       },
@@ -227,18 +227,18 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Loop over argv",
         body:
-          "The loop indexes argv with `[argv_r, i_r, SXTW 3]` -- 8-byte stride because each pointer is a u64. printf %s prints the C string the pointer points at.",
+          "The loop indexes argv with `[argv_r, i_r, sxtw 3]`: an 8-byte stride, because each pointer is 64 bits. printf %s prints the C string the pointer points at.",
       },
       {
         title: "Static vs argv",
         body:
-          "Take a moment: where does each function get its data from? increment from a single fixed address in .data; main from a pointer table the loader laid out at 0x00800000.",
+          "Where does each function get its data? increment from a single fixed address in .data; main from a pointer table the loader laid out at 0x00800000.",
       },
     ],
   },
   {
     id: "floating-point",
-    title: "floating-point and the area of a circle",
+    title: "Floating point and the area of a circle",
     summary: "Read an integer radius, convert to double, compute pi*r*r, printf with %f.",
     sourcePath: "/examples/cpsc355/circle-area.s",
     stdin: "5\n",
@@ -252,7 +252,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Convert int to double",
         body:
-          "`scvtf d1, w19` is signed-int to floating-point: it produces 5.0 in d1. Watch d1 in the register panel after this step (FP registers may live in their own panel).",
+          "`scvtf d1, w19` is signed-int to floating-point: it produces 5.0 in d1. Watch d1 in the register panel after this step.",
         highlight: { start: 35, end: 36 },
       },
       {
@@ -271,41 +271,41 @@ export const TUTORIALS: Tutorial[] = [
   },
   {
     id: "syscalls",
-    title: "raw Linux syscalls",
+    title: "Raw Linux syscalls",
     summary:
       "Use write (64), read (63), and exit (93) directly via SVC, without going through libc.",
     sourcePath: "/examples/cpsc355/echo.s",
     stdin: "hi there\n",
     steps: [
       {
-        title: "write the prompt",
+        title: "Write the prompt",
         body:
           "`x8 = 64; svc 0` is the write syscall. x0 is the fd (1 for stdout), x1 is the buffer, x2 is the byte count. The prompt is written before scanf so the user knows what to type.",
         highlight: { start: 27, end: 33 },
       },
       {
-        title: "read into a stack buffer",
+        title: "Read into a stack buffer",
         body:
           "`x8 = 63; svc 0` is read. With fd 0 (stdin), x1 = buffer, x2 = max bytes, the runtime returns the byte count in x0. `mov n_read_r, x0` saves it.",
         highlight: { start: 35, end: 41 },
         watchReg: "x19",
       },
       {
-        title: "null-terminate before printf",
+        title: "Null-terminate before printf",
         body:
           "`strb wzr, [x9, n_read_r]` writes a NUL at index n_read_r so printf %s knows where the string ends. Without this step, printf would walk off the end of the buffer.",
         highlight: { start: 43, end: 45 },
       },
       {
-        title: "printf the buffer",
+        title: "Print the buffer",
         body:
-          "Now we go through the libc trampoline -- printf is a host stub at 0xFFFF_*. The `bl printf` instruction is rewritten by the linker to jump through a per-host trampoline so the imm26 offset stays in range.",
+          "This call goes through the libc trampoline: printf is a host stub at 0xFFFF_*. The `bl printf` instruction is rewritten by the linker to jump through a per-host trampoline so the imm26 offset stays in range.",
         highlight: { start: 47, end: 50 },
       },
       {
-        title: "exit cleanly",
+        title: "Exit cleanly",
         body:
-          "The function returns via the standard epilogue. The loader stashed a `__main_return` sentinel in lr so the final `ret` halts the CPU and stamps w0 (which we set to 0) as the exit code.",
+          "The function returns via the standard epilogue. The loader stashed a `__main_return` sentinel in lr so the final `ret` halts the CPU and stamps w0 (set to 0 above) as the exit code.",
         highlight: { start: 52, end: 54 },
         expect: { reg: "w0", value: 0, note: "exit code 0" },
       },

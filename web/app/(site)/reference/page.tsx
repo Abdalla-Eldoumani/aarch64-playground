@@ -17,14 +17,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "cpsc 355 playground",
-    title: "reference -- cpsc 355 playground",
+    title: "reference · cpsc 355 playground",
     description: DESCRIPTION,
     url: "/reference",
     images: [SHARE_CARD_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "reference -- cpsc 355 playground",
+    title: "reference · cpsc 355 playground",
     description: DESCRIPTION,
     images: [SHARE_CARD_IMAGE],
   },
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
 // guide and catalog keep their own inner measure.
 export default function ReferencePage() {
   return (
-    <section className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
+    <section className="mx-auto w-full max-w-screen-xl px-6 py-10 sm:py-14">
       <DocRule section="sheet 06 · reference" context="cpsc 355 study aid" className="mb-8" />
       <Kicker number="06" title="reference" className="mb-5" />
       <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">

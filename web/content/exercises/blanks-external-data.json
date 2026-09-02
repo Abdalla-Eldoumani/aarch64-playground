@@ -1,5 +1,5 @@
 {
-  "title": "Fill in the Blank: External Data",
+  "title": "Fill in the blank: external data",
   "slug": "blanks-external-data",
   "order": 65,
   "topic": "external-data",
@@ -32,7 +32,7 @@
         "c"
       ],
       "explanation": "The letter after the slash selects the print format, and c shows the value as a character next to its numeric code. $w19 is gdb's name for the 32-bit view of x19.",
-      "hint": "The format letter is the first letter of character."
+      "hint": "The format letter is the first letter of the word character."
     },
     {
       "prompt": "Make the label myvar_m visible to other files that are assembled separately and linked together.",

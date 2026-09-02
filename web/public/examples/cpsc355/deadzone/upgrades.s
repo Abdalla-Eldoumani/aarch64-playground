@@ -23,14 +23,13 @@ FIRE_RATE_BONUS = 2
 BASE_DAMAGE = 1
 DAMAGE_BONUS = 1
 
-// Projectile speed: base 2, -1 per 2 levels (faster = lower)
+// Projectile speed: base 3 frames per move, -1 every two levels, floor 1
 BASE_PROJ_SPEED = 3
 PROJ_SPEED_BONUS = 1
 
 // Max health: +20 per level
 HEALTH_BONUS = 20
 
-// Move speed: base handled in player, not implemented yet
 MOVE_SPEED_BONUS = 1
 
 // Multi-shot: +1 projectile per level
@@ -55,14 +54,6 @@ upgrade_name_proj_speed:  .string "Bullet Speed+"
 upgrade_name_max_health:  .string "Max Health+"
 upgrade_name_move_speed:  .string "Move Speed+"
 upgrade_name_multi_shot:  .string "Multi-Shot+"
-
-// Upgrade descriptions
-upgrade_desc_fire_rate:   .string "Shoot faster"
-upgrade_desc_damage:      .string "Deal more damage"
-upgrade_desc_proj_speed:  .string "Bullets fly faster"
-upgrade_desc_max_health:  .string "Increase max HP by 20"
-upgrade_desc_move_speed:  .string "Move faster"
-upgrade_desc_multi_shot:  .string "Fire extra bullet"
 
 // Level up UI strings
 msg_levelup_title:  .string "LEVEL UP"
@@ -112,7 +103,6 @@ upgrades_generate_choices:
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
 
-                // Get offered upgrades array address
                 adrp    x19, offered_upgrades
                 add     x19, x19, :lo12:offered_upgrades
 
@@ -128,12 +118,10 @@ generate_choice_loop:
 try_random_upgrade:
                 cbz     w21, use_any_upgrade    // Fallback if too many attempts
 
-                // Get random upgrade type
                 mov     w0, UPGRADE_COUNT
                 bl      random_range
                 mov     w22, w0                 // Save chosen type
 
-                // Check if already maxed
                 adrp    x0, upgrade_levels
                 add     x0, x0, :lo12:upgrade_levels
                 ldrb    w1, [x0, w22, uxtw]
@@ -155,7 +143,6 @@ try_random_upgrade:
                 b.eq    try_another
 
 upgrade_valid:
-                // Store this choice
                 str     w22, [x19, w20, uxtw 2]
                 add     w20, w20, 1
                 b       generate_choice_loop
@@ -186,31 +173,28 @@ upgrades_apply:
                 mov     fp, sp
                 str     x19, [sp, 16]
 
-                // Get the upgrade type from offered list
                 adrp    x1, offered_upgrades
                 add     x1, x1, :lo12:offered_upgrades
                 ldr     w19, [x1, w0, uxtw 2]   // w19 = upgrade type
 
-                // Increment upgrade level
                 adrp    x0, upgrade_levels
                 add     x0, x0, :lo12:upgrade_levels
                 ldrb    w1, [x0, w19, uxtw]
                 add     w1, w1, 1
                 cmp     w1, MAX_UPGRADE_LEVEL
                 b.le    apply_store_level
-                mov     w1, MAX_UPGRADE_LEVEL   // Cap at max
+                mov     w1, MAX_UPGRADE_LEVEL
 
 apply_store_level:
                 strb    w1, [x0, w19, uxtw]
 
-                // Apply special effects for certain upgrades
+                // Max health is the only one that changes state outside this file
                 cmp     w19, UPGRADE_MAX_HEALTH
                 b.eq    apply_health_upgrade
 
                 b       apply_done
 
 apply_health_upgrade:
-                // Increase max HP and restore health
                 adrp    x0, player_data
                 add     x0, x0, :lo12:player_data
 
@@ -218,7 +202,6 @@ apply_health_upgrade:
                 add     w1, w1, HEALTH_BONUS
                 strb    w1, [x0, PLAYER_MAX_HP]
 
-                // Restore to max health
                 strb    w1, [x0, PLAYER_HEALTH]
 
 apply_done:
@@ -234,13 +217,11 @@ upgrades_get_fire_rate:
                 add     x0, x0, :lo12:upgrade_levels
                 ldrb    w0, [x0, UPGRADE_FIRE_RATE]
 
-                // Calculate: BASE - (level * BONUS)
                 mov     w1, FIRE_RATE_BONUS
                 mul     w0, w0, w1
                 mov     w1, BASE_FIRE_RATE
                 sub     w0, w1, w0
 
-                // Minimum fire rate of 2
                 cmp     w0, 2
                 b.ge    fire_rate_done
                 mov     w0, 2
@@ -255,7 +236,6 @@ upgrades_get_damage:
                 add     x0, x0, :lo12:upgrade_levels
                 ldrb    w0, [x0, UPGRADE_DAMAGE]
 
-                // Calculate: BASE + (level * BONUS)
                 mov     w1, DAMAGE_BONUS
                 mul     w0, w0, w1
                 add     w0, w0, BASE_DAMAGE
@@ -362,7 +342,6 @@ upgrades_draw_menu:
                 mov     w4, LABEL_COLOR
                 bl      fb_panel
 
-                // Draw title
                 mov     w0, 36                  // X position (centered)
                 mov     w1, LEVELUP_PANEL_Y + 1
                 bl      cursor_move
@@ -374,7 +353,6 @@ upgrades_draw_menu:
                 add     x0, x0, :lo12:msg_levelup_title
                 bl      write_str
 
-                // Draw instruction
                 mov     w0, 25
                 mov     w1, LEVELUP_PANEL_Y + 3
                 bl      cursor_move
@@ -386,11 +364,9 @@ upgrades_draw_menu:
                 add     x0, x0, :lo12:msg_levelup_choose
                 bl      write_str
 
-                // Get offered upgrades address
                 adrp    x19, offered_upgrades
                 add     x19, x19, :lo12:offered_upgrades
 
-                // Draw choice 1
                 mov     w0, LEVELUP_PANEL_X + 4
                 mov     w1, LEVELUP_PANEL_Y + 5
                 bl      cursor_move
@@ -409,11 +385,9 @@ upgrades_draw_menu:
                 bl      upgrades_get_name
                 bl      write_str
 
-                // Show level
                 mov     w0, w20
                 bl      upgrades_draw_level_indicator
 
-                // Draw choice 2
                 mov     w0, LEVELUP_PANEL_X + 4
                 mov     w1, LEVELUP_PANEL_Y + 6
                 bl      cursor_move
@@ -435,7 +409,6 @@ upgrades_draw_menu:
                 mov     w0, w20
                 bl      upgrades_draw_level_indicator
 
-                // Draw choice 3
                 mov     w0, LEVELUP_PANEL_X + 4
                 mov     w1, LEVELUP_PANEL_Y + 7
                 bl      cursor_move
@@ -482,7 +455,7 @@ upgrades_draw_level_indicator:
 
                 mov     w0, w19
                 bl      upgrades_get_level
-                add     w0, w0, 1               // Show as 1-6 instead of 0-5
+                add     w0, w0, 1               // The level this choice would reach
                 bl      write_num
 
                 adrp    x0, msg_close_paren

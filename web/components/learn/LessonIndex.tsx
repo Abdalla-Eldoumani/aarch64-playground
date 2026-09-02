@@ -3,9 +3,10 @@
 /**
  * The learn index: ruled datasheet rows ordered by metadata, with a labeled
  * search box, a tag filter, and empty + loading states. It receives
- * already-validated lessons as props from the server index page and renders
- * every row field as plain React text (auto-escaped), so there is no
- * markdown/HTML injection path here.
+ * already-validated index rows as props from the server index page
+ * (loadLessonIndex narrows each lesson to LessonIndexRow, leaving the body
+ * unread) and renders every row field as plain React text
+ * (auto-escaped), so there is no markdown/HTML injection path here.
  *
  * Each row leads with its sheet number `4.N` (the 1-based position in the
  * sorted order, stable under filtering), then the title and a quieter
@@ -14,7 +15,7 @@
 
 import { useId, useMemo, useState, type JSX } from "react";
 import Link from "next/link";
-import type { Lesson } from "@/lib/content/lesson-schema";
+import type { LessonIndexRow } from "@/lib/content/lesson-schema";
 import { compareByOrder } from "@/lib/content/content-order";
 
 const ROW_CLASS =
@@ -35,7 +36,7 @@ export function LessonIndex({
   lessons,
   loading,
 }: {
-  lessons: Lesson[];
+  lessons: LessonIndexRow[];
   loading?: boolean;
 }): JSX.Element {
   const [query, setQuery] = useState("");
@@ -95,7 +96,7 @@ export function LessonIndex({
   }
 
   if (numbered.length === 0) {
-    return <EmptyCard message="No lessons yet." />;
+    return <EmptyCard message="no lessons yet" />;
   }
 
   return (
@@ -103,14 +104,14 @@ export function LessonIndex({
       <div className="space-y-3">
         <div>
           <label htmlFor={searchId} className="sr-only">
-            Search lessons
+            search lessons
           </label>
           <input
             id={searchId}
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search lessons"
+            placeholder="search lessons"
             className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:shadow-[var(--ring)]"
           />
         </div>
@@ -132,7 +133,7 @@ export function LessonIndex({
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyCard message="No lessons match your search." />
+        <EmptyCard message="no lessons match that search" />
       ) : (
         <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
           {filtered.map(({ lesson, sheetNumber }) => (

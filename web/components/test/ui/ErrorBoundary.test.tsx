@@ -1,7 +1,7 @@
 // The boundary's whole contract: children render untouched until one throws,
 // then the fallback names the failed surface and the throw never escapes to
-// the test's own error boundary (which is how a panel crash used to unmount
-// the whole playground).
+// the test's own error boundary, which is how a panel crash would unmount
+// the whole playground.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";

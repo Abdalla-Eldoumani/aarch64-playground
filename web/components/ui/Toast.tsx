@@ -5,8 +5,8 @@ import toast, { Toaster } from "react-hot-toast";
 
 interface ToastApi {
   /** Default success notification (check-mark icon). The legacy
-   *  `useToast().show("...")` call sites lean on this -- treat it as
-   *  the "operation completed" toast. */
+   *  `useToast().show("...")` call sites use this as the "operation
+   *  completed" toast. */
   show: (message: string) => void;
   /** Explicit success toast with a check-mark icon. */
   success: (message: string) => void;
@@ -17,10 +17,8 @@ interface ToastApi {
 }
 
 /**
- * Mounts the global `<Toaster />` and renders children. Kept as a
- * named "ToastHost" so the layout import doesn't change. The actual
- * toast queue + animation now lives in react-hot-toast; this wrapper
- * just provides the scope.
+ * Mounts the global `<Toaster />` and renders children. The queue and the
+ * animation are react-hot-toast's.
  */
 export function ToastHost({ children }: { children: ReactNode }) {
   return (
@@ -41,6 +39,7 @@ export function ToastHost({ children }: { children: ReactNode }) {
             fontSize: "12px",
             padding: "8px 12px",
             borderRadius: "6px",
+            // react-hot-toast measures this inline, so it cannot read --shadow-overlay.
             boxShadow: "0 4px 14px rgb(0 0 0 / 0.35)",
           },
           success: {
@@ -63,10 +62,8 @@ export function ToastHost({ children }: { children: ReactNode }) {
 }
 
 /**
- * Hook returning the toast API. Backwards-compatible with the old
- * `{ show }` shape; new call sites should prefer the explicit
- * `success` / `error` / `info` methods so the right icon and dwell
- * time render.
+ * Hook returning the toast API. Prefer `success` / `error` / `info`: each
+ * carries its own icon and dwell time.
  */
 export function useToast(): ToastApi {
   return useMemo<ToastApi>(

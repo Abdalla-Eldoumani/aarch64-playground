@@ -1,9 +1,9 @@
-// hash_viz.asm - open-addressed hash table with linear probing
+// hash.s - open-addressed hash table with linear probing
 //
 // Thirteen buckets, listed on the left and laid out flat on the strip
-// below, so the walk a collision forces is visible as a walk. A key that
-// did not land in its own bucket says where it came from, which is the
-// only honest way to show what probing costs.
+// below, so the walk a collision forces is visible as a walk. A key that did
+// not land in its own bucket says where it came from, so the probe's cost is
+// on screen.
 //
 // Deleting writes a tombstone rather than clearing the slot: a cleared
 // slot would cut every probe path that once passed through it, and the
@@ -21,7 +21,7 @@ define(lr, x30)
     HASH_USED = 1
     HASH_TOMB = 2
 
-// Role numbers mirror ui.asm's UI_ROLE_* set. They are repeated here so
+// Role numbers mirror ui.s's UI_ROLE_* set. They are repeated here so
 // this file also assembles on its own, the way the web build feeds it.
     HASH_ROLE_TEXT  = 0
     HASH_ROLE_DIM   = 1
@@ -467,8 +467,8 @@ hash_state_of:
     ret
 
 // hash_find(w0 = key) -> w0 = slot holding it, or -1
-// The silent probe. Insert uses it to refuse a duplicate before it has
-// drawn anything.
+// The probe with nothing drawn. Insert uses it to refuse a duplicate before
+// drawing.
 hash_find:
     ldr     x1, =hash_keys
     ldr     x2, =hash_state

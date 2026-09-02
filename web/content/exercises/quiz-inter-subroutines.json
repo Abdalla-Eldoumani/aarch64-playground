@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Subroutines - Intermediate",
+  "title": "Quiz: subroutines",
   "slug": "quiz-inter-subroutines",
   "order": 58,
   "topic": "subroutines",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "Work through the AArch64 procedure call convention: the link register, the frame record chain, saved registers, argument passing, and indirect results.",
+  "prompt": "Follow a call through the AArch64 procedure call convention: the link register, the frame record chain, saved registers, argument passing, and indirect results.",
   "questions": [
     {
       "question": "When a bl instruction executes, what value is placed in the link register (x30)?",

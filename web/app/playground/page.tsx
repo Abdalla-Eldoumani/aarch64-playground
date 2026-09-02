@@ -6,6 +6,7 @@ import type { ShareState } from "@/lib/playground/share";
 import { parseDeepLink } from "@/lib/hooks/use-deep-link";
 import {
   fetchExample,
+  loadBundleDecoder,
   resolveBoot,
   resolveHandoff,
   type HandoffPayload,
@@ -23,9 +24,10 @@ import {
   type EmbeddableState,
 } from "@/components/playground/EmbeddablePlayground";
 import { SiteNav } from "@/components/chrome/SiteNav";
+import { useStarCount } from "@/components/chrome/StarCount";
 // The cold-load default program is the arithmetic basics example. Import its
-// single source -- the same file the example loader serves and the corpus
-// verifier checks against fixtures -- so the default can never drift from it.
+// single source (the same file the example loader serves and the corpus
+// verifier checks against fixtures) so the default can never drift from it.
 import DEFAULT_SOURCE from "@/public/examples/cpsc355/basics.s?raw";
 
 // The three page-level modals mount only when opened. The emulator surface
@@ -44,22 +46,24 @@ const ShareDialog = dynamic(
 );
 
 const SHORTCUTS: Shortcut[] = [
-  { keys: "F6", description: "assemble" },
+  { keys: "F6", description: "assemble (Ctrl+Enter does the same)" },
   { keys: "F10", description: "step" },
-  { keys: "Shift+F10", description: "step back (up to 128 frames)" },
+  { keys: "Shift+F10", description: "step back (up to 128 instructions)" },
   { keys: "F5", description: "run / pause" },
   { keys: "Shift+F5", description: "reset" },
   { keys: "Ctrl+K", description: "open command palette" },
-  { keys: "Ctrl+S", description: "your buffer is auto-saved continuously" },
+  { keys: "Ctrl+Shift+F", description: "format the source" },
+  { keys: "Ctrl+S", description: "nothing to save: the buffer is written continuously" },
   { keys: "Ctrl+/", description: "toggle line comment" },
   { keys: "Shift+Alt+A", description: "toggle block comment" },
+  { keys: "Ctrl+Wheel", description: "zoom the panel under the pointer" },
   { keys: "?", description: "show this help" },
 ];
 
-// `?embed=1` is a client-only URL flag. Reading it through
-// useSyncExternalStore keeps the first hydration render matching the server
-// (chrome="full") and switches to embed afterwards without a mismatch -- and
-// without a setState-in-effect.
+// `?embed=1` is a client-only URL flag. Reading it through useSyncExternalStore
+// keeps the first hydration render matching the server (chrome="full") and
+// switches to embed afterwards without a mismatch, and without a
+// setState-in-effect.
 function subscribeEmbedParam(): () => void {
   return () => {};
 }
@@ -111,6 +115,9 @@ export default function Home() {
     () => false,
   );
   const chrome: EmbeddableChrome = isEmbed ? "embed" : "full";
+  // The route's server layout looked the count up and put it here; null keeps
+  // the icon-only link this bar has always rendered.
+  const stars = useStarCount();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteActions, setPaletteActions] = useState<Action[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -169,47 +176,52 @@ export default function Home() {
       // is already looking at a settled page rather than racing the boot.
       timers.push(setTimeout(() => playgroundRef.current?.notifyError(message), 1500));
     };
-    // A share link that failed to decode fell back to the autosave; say
-    // so -- the only signal used to be the ABSENCE of the share banner.
+    // A share link that failed to decode fell back to the autosave, and only
+    // the absent share banner would say so.
     if (boot.shareError) {
       toastSoon(
         boot.shareError === "too-large"
-          ? "that share link is too large to load -- showing your own buffer instead"
-          : "that share link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
+          ? "that share link is too large to load, so your own buffer is still here"
+          : "that share link is damaged, usually a partial copy. your own buffer is still here; ask the sender for the link again",
       );
     }
-    if (boot.bundleError) {
-      toastSoon(
-        boot.bundleError === "too-large"
-          ? "that diagnostic-bundle link is too large to load -- showing your own buffer instead"
-          : "that diagnostic-bundle link is damaged (often a partial copy) -- showing your own buffer instead; ask for the link again",
-      );
-    }
-    const handoff = resolveHandoff(boot, window.location.search, window.location.hash);
-    if (handoff?.kind === "share-error") {
-      toastSoon(
-        handoff.reason === "too-large"
-          ? "that share link is too large to load"
-          : "that share link is damaged (often a partial copy) -- ask for the link again",
-      );
-    } else if (handoff?.kind === "bundle-error") {
-      toastSoon(
-        handoff.reason === "too-large"
-          ? "that diagnostic-bundle link is too large to load"
-          : "that diagnostic-bundle link is damaged (often a partial copy) -- ask for the link again",
-      );
-    } else if (handoff?.kind === "example") {
-      // fetchExample's failures are already student-readable ("invalid
-      // example name", "failed to load example: 404"); swallowing them
-      // shipped the wrong buffer to a whole class off one typo'd link.
-      void fetchExample(handoff.stem)
-        .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, dl.run)))
-        .catch((e: unknown) => {
-          toastSoon(e instanceof Error ? e.message : "could not load that example");
-        });
-    } else if (handoff) {
-      playgroundRef.current?.loadProgram(handoff.payload);
-    }
+    // A bundle failure is reported by the delivery pass below, not here: the
+    // boot render has no decoder, so a hard `?bundle=` load is reported here
+    // instead. The bundle decoder is fetched only for a URL that carries one,
+    // so the delivery runs a beat behind this effect. Pinned before the await:
+    // the URL can change under a deferred pass, and this one must deliver the
+    // URL it was started for or the change handler below delivers the new one a
+    // second time.
+    const bootSearch = window.location.search;
+    const bootHash = window.location.hash;
+    void (async () => {
+      const decode = await loadBundleDecoder(bootSearch);
+      const handoff = resolveHandoff(boot, bootSearch, bootHash, decode);
+      if (handoff?.kind === "share-error") {
+        toastSoon(
+          handoff.reason === "too-large"
+            ? "that share link is too large to load"
+            : "that share link is damaged, usually a partial copy. ask the sender for the link again",
+        );
+      } else if (handoff?.kind === "bundle-error") {
+        toastSoon(
+          handoff.reason === "too-large"
+            ? "that diagnostic-bundle link is too large to load, so your own buffer is still here"
+            : "that diagnostic-bundle link is damaged, usually a partial copy. your own buffer is still here; ask the sender for the link again",
+        );
+      } else if (handoff?.kind === "example") {
+        // fetchExample's failures are already student-readable ("invalid
+        // example name", "failed to load example: 404"); swallowing them
+        // shipped the wrong buffer to a whole class off one typo'd link.
+        void fetchExample(handoff.stem)
+          .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, dl.run)))
+          .catch((e: unknown) => {
+            toastSoon(e instanceof Error ? e.message : "could not load that example");
+          });
+      } else if (handoff) {
+        playgroundRef.current?.loadProgram(handoff.payload);
+      }
+    })();
     deliveredUrlRef.current = window.location.search + window.location.hash;
 
     // A URL that changes without remounting this page (the back button, or a
@@ -220,29 +232,35 @@ export default function Home() {
       const url = window.location.search + window.location.hash;
       if (url === deliveredUrlRef.current) return;
       deliveredUrlRef.current = url;
-      const next = resolveHandoff(
-        { fromShare: false, fromBundle: false },
-        window.location.search,
-        window.location.hash,
-      );
-      if (next?.kind === "share-error" || next?.kind === "bundle-error") {
-        toastSoon(
-          next.reason === "too-large"
-            ? "that link is too large to load"
-            : "that link is damaged (often a partial copy) -- ask for it again",
+      const search = window.location.search;
+      const hash = window.location.hash;
+      void (async () => {
+        const decode = await loadBundleDecoder(search);
+        const next = resolveHandoff(
+          { fromShare: false, fromBundle: false },
+          search,
+          hash,
+          decode,
         );
-      } else if (next?.kind === "example") {
-        // The run override rides the URL, so this pass re-reads it from
-        // the URL it is delivering, not from the mount-time parse.
-        const run = parseDeepLink(window.location.search).run;
-        void fetchExample(next.stem)
-          .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, run)))
-          .catch((e: unknown) => {
-            toastSoon(e instanceof Error ? e.message : "could not load that example");
-          });
-      } else if (next) {
-        playgroundRef.current?.loadProgram(next.payload);
-      }
+        if (next?.kind === "share-error" || next?.kind === "bundle-error") {
+          toastSoon(
+            next.reason === "too-large"
+              ? "that link is too large to load"
+              : "that link is damaged, usually a partial copy. ask the sender for it again",
+          );
+        } else if (next?.kind === "example") {
+          // The run override rides the URL, so this pass re-reads it from
+          // the URL it is delivering, not from the mount-time parse.
+          const run = parseDeepLink(search).run;
+          void fetchExample(next.stem)
+            .then((payload) => playgroundRef.current?.loadProgram(withRun(payload, run)))
+            .catch((e: unknown) => {
+              toastSoon(e instanceof Error ? e.message : "could not load that example");
+            });
+        } else if (next) {
+          playgroundRef.current?.loadProgram(next.payload);
+        }
+      })();
     };
     window.addEventListener("hashchange", onUrlChange);
     window.addEventListener("popstate", onUrlChange);
@@ -256,8 +274,8 @@ export default function Home() {
   // Global shortcuts, single owner. Every execution key delegates to the
   // component through the imperative handle; palette / help toggle page state.
   // Controls renders the same actions as visible buttons but no longer binds
-  // keys, so a keypress fires exactly once -- and embed chrome, which omits
-  // Controls, still gets the shortcuts from here.
+  // keys, so a keypress fires exactly once. Embed chrome, which omits Controls,
+  // still gets the shortcuts from here.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -305,11 +323,11 @@ export default function Home() {
   return (
     <>
       <div className="flex flex-col h-dvh">
-        {!isEmbed && <SiteNav variant="slim" />}
+        {!isEmbed && <SiteNav variant="slim" stars={stars} />}
         {/* This route's single main landmark and the root skip link's target.
             The emulator component itself is a labeled section, so every page
             that composes it (hero, lessons, exercises, reference) keeps one
-            main -- its own -- and this route still has one of its own. */}
+            main of its own, and this route has one too. */}
         <main id="main" tabIndex={-1} className="flex-1 min-h-0 flex flex-col">
           <EmbeddablePlayground
             ref={playgroundRef}

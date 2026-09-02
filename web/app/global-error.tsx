@@ -1,14 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { bundleToMarkdown } from "@/lib/playground/diagnostic-bundle";
+import { useEffect, useState } from "react";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 
 /**
  * The last resort: the error boundary for the root layout itself. Per the Next
  * contract it replaces the whole document, so it renders its own <html> and
- * <body> -- and because the root layout never ran, none of what the layout
- * installs is available here: no globals.css custom properties, no next/font
+ * <body>. Because the root layout never ran, none of what the layout installs
+ * is available here: no globals.css custom properties, no next/font
  * variables, no theme attribute on <html>.
  *
  * So this file is the one documented exception to the "colors come from tokens"
@@ -17,10 +16,9 @@ import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
  * on a page whose stylesheet may not have loaded. When a token moves in
  * globals.css, move it here too. Fonts fall back to generic stacks for the
  * same reason. It wears the same fault-card register as the 404 and the route
- * error page, in the same voice, with the same three ways out.
+ * error page.
  */
 
-// Dark-theme literals, mirroring the :root block of app/globals.css.
 const BG_BASE = "#0B0C10";
 const BG_SUNKEN = "#0F1116";
 const BG_ELEVATED = "#212630";
@@ -56,26 +54,43 @@ export default function GlobalError({
 }) {
   const [copyState, setCopyState] = useState<"idle" | "ok" | "error">("idle");
 
-  const buildReport = (): string => {
-    // In production Next replaces the message with a generic string and hands
-    // the real one to the server logs under `digest`, so the digest is the only
-    // way a student's report can be matched to a log line.
-    const detail = error.digest
-      ? `${error.message} (digest ${error.digest})`
-      : error.message;
-    const markdown = bundleToMarkdown({
-      // The autosaved buffer is the one piece of the student's work an error
-      // page can read; an unreadable or absent autosave reports as empty.
-      source: loadAutoSavedBuffer() ?? "",
-      error: detail,
+  // The report is the whole bundle format, and this boundary needs it only
+  // when the button is pressed, so the builder arrives through a dynamic
+  // import: reaching it statically put the format in the script list of every
+  // document, including the landing's. It is built as soon as the chunk lands
+  // rather than inside the handler, so the clipboard write still happens in
+  // the same task as the press.
+  const [report, setReport] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void import("@/lib/playground/bundle-markdown").then(({ bundleToMarkdown }) => {
+      if (!live) return;
+      // In production Next replaces the message with a generic string and
+      // hands the real one to the server logs under `digest`, so the digest is
+      // the only way a student's report can be matched to a log line.
+      const detail = error.digest
+        ? `${error.message} (digest ${error.digest})`
+        : error.message;
+      const markdown = bundleToMarkdown({
+        // The autosaved buffer is the one piece of the student's work an error
+        // page can read; an unreadable or absent autosave reports as empty
+        // rather than failing the copy.
+        source: loadAutoSavedBuffer() ?? "",
+        error: detail,
+      });
+      setReport(`${markdown}**route:** \`${window.location.pathname}\`\n`);
     });
-    const route = typeof window === "undefined" ? "" : window.location.pathname;
-    return `${markdown}**route:** \`${route}\`\n`;
-  };
+    return () => {
+      live = false;
+    };
+  }, [error]);
 
   const onCopy = async () => {
+    // Nothing to hand over until the builder's chunk lands, a beat after
+    // mount; the button says so by staying disabled until then.
+    if (report === null) return;
     try {
-      await navigator.clipboard.writeText(buildReport());
+      await navigator.clipboard.writeText(report);
       setCopyState("ok");
       setTimeout(() => setCopyState("idle"), 1500);
     } catch {
@@ -162,7 +177,7 @@ export default function GlobalError({
               color: TEXT_SECONDARY,
             }}
           >
-            brk #0 -- execution stopped before this page finished
+            brk #0 · execution stopped before this page finished
           </p>
 
           <div
@@ -208,6 +223,7 @@ export default function GlobalError({
             <button
               type="button"
               onClick={onCopy}
+              disabled={report === null}
               style={{
                 ...BUTTON_BASE,
                 border: `1px solid ${BORDER}`,

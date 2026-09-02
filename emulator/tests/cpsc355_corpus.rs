@@ -1,4 +1,4 @@
-//! Integration test: the cpsc 355 tutorial corpus assembles and runs.
+//! Integration test: the CPSC 355 tutorial corpus assembles and runs.
 //!
 //! Two gates: every listed file parses to a `Program`, and every file
 //! present links through the hosted pipeline and runs to a halt (or a
@@ -85,7 +85,7 @@ fn tutorial_corpus_parses() {
 
 #[test]
 #[ignore = "requires the local cpsc355-kb corpus; run with --ignored"]
-fn tutorial_corpus_pipeline_status() {
+fn every_present_tutorial_links_and_runs() {
     // Runs each tutorial file through the full hosted pipeline and
     // reports how far it gets: link success (pipeline can assemble +
     // load it) and run success (the program halts without error within
@@ -127,7 +127,7 @@ fn tutorial_corpus_pipeline_status() {
                         run_ok += 1;
                     }
                     Ok(_r) if cpu.is_blocked() => {
-                        // scanf stalled waiting for stdin -- expected for
+                        // scanf stalled waiting for stdin, expected for
                         // interactive tutorials, still counts as linking.
                         println!("RUN WAIT: {rel} (paused for stdin)");
                         run_ok += 1;

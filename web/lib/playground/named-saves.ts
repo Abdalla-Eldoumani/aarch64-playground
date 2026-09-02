@@ -6,10 +6,9 @@
  * source + args + stdin + step count. Restore re-assembles the source
  * and steps the live CPU forward to `stepCount`.
  *
- * The Rust snapshot ring still holds the in-memory CPU state for
- * step-back; bookmarks are intentionally a different mechanism so
- * they survive page reloads, can be exported / imported, and don't
- * grow as large as raw register + memory dumps.
+ * The Rust snapshot ring still holds the in-memory CPU state for step-back;
+ * bookmarks are a different mechanism so they survive page reloads, can be
+ * exported / imported, and don't grow as large as raw register + memory dumps.
  */
 
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
@@ -45,9 +44,9 @@ function readAll(): NamedSave[] {
 }
 
 function writeAll(saves: NamedSave[]): boolean {
-  // Quota / private mode: report it. Swallowing the failure let an
-  // overwrite render the STALE record as if the update landed -- and a
-  // write that never happened must not announce a change either.
+  // Quota / private mode: report it. Swallowing the failure let an overwrite
+  // render the STALE record as if the update landed. A write that never
+  // happened must not announce a change either.
   if (!safeSetItem(STORAGE_KEY, JSON.stringify(saves))) return false;
   window.dispatchEvent(new CustomEvent(SAVES_CHANGED_EVENT));
   return true;
@@ -109,9 +108,9 @@ export type ImportResult =
   | { ok: true; added: number; skipped: number; stored: boolean };
 
 /**
- * Validate + merge a foreign bundle. Existing names take precedence
- * (no clobber). A structurally wrong payload is a distinct outcome, not
- * a zero count -- the flat counts let the panel green-check a rejection.
+ * Validate + merge a foreign bundle. Existing names take precedence (no
+ * clobber). A structurally wrong payload is a distinct outcome, not a zero
+ * count; the flat counts let the panel green-check a rejection.
  */
 export function importBundle(bundle: unknown): ImportResult {
   if (

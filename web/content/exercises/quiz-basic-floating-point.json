@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Floating Point - Fundamentals",
+  "title": "Quiz: floating point",
   "slug": "quiz-basic-floating-point",
   "order": 67,
   "topic": "floating-point",
   "difficulty": "intro",
   "variant": "quiz",
-  "prompt": "Work through the single and double precision register views, the directives that place floating-point values in memory, the operand rules the arithmetic instructions follow, and the gdb format that reads a register as a number.",
+  "prompt": "How the single and double precision views of one register differ, which directives place floating-point values in memory, what operands the arithmetic instructions accept, and the gdb format that reads a register as a number.",
   "questions": [
     {
       "question": "A double precision value sits in a d register. How many bits wide is that register?",

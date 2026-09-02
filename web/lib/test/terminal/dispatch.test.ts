@@ -350,11 +350,11 @@ describe("the course toolchain", () => {
     const ctx = makeCtx({
       readVfs: () => "movq x0, 7\n",
       executables,
-      assembleSource: async () => ({ success: false, errors: ["line 1: unknown mnemonic: MOVQ"] }),
+      assembleSource: async () => ({ success: false, errors: ["line 1: unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it"] }),
     });
     const r = await dispatchCommand("gcc bad.s -o bad", ctx);
     expect(r.status).toBe("err");
-    expect(r.lines[0]).toBe("bad.s: line 1: unknown mnemonic: MOVQ");
+    expect(r.lines[0]).toBe("bad.s: line 1: unknown mnemonic `MOVQ`: check the spelling, or look it up in the instruction reference to see whether the playground implements it");
     expect(executables.size).toBe(0);
   });
 
@@ -555,7 +555,7 @@ describe("gdb-lite edges", () => {
     expect(pc.lines).toEqual(["$pc = 0x0000000000400008"]);
   });
 
-  it("gdb p uppercases operands are normalized to the lowercase register", async () => {
+  it("gdb p normalizes an uppercase operand to the lowercase register", async () => {
     const ctx = makeCtx({ readRegister: (n) => (n === "x0" ? 1n : null) });
     const r = await dispatchCommand("gdb p $X0", ctx);
     expect(r.status).toBe("ok");

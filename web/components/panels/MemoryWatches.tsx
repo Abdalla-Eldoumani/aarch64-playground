@@ -40,8 +40,6 @@ function persist(entries: MemoryWatch[]): void {
   safeSetItem(STORE_KEY, JSON.stringify(entries));
 }
 
-/** Strict address parse: `0x...` is hex, bare digits are decimal, anything
- *  else is rejected so a typo never silently reads the wrong bytes. */
 function hexRow(bytes: Uint8Array): string {
   return Array.from(bytes).map(formatByte).join(" ");
 }
@@ -70,6 +68,8 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
   useEffect(() => persist(watches), [watches]);
 
   const add = useCallback(() => {
+    // Strict address parse: `0x...` is hex, bare digits are decimal, anything
+    // else is rejected so a typo never silently reads the wrong bytes.
     const parsed = parseAddress(addr);
     if (parsed == null) {
       setAddError("address must be hex (0x...) or decimal");
@@ -81,7 +81,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
     }
     setAddError(null);
     const entry: MemoryWatch = {
-      // A fallback NAME, not the padded address readout beside it: the short
+      // A fallback name, not the padded address readout beside it: the short
       // form echoes what the student typed, and padding it would print the
       // same string twice on one row.
       label: label.trim() || `0x${parsed.toString(16)}`,

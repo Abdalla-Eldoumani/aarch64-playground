@@ -45,7 +45,7 @@ describe("FpRegisterFileDiagram", () => {
     const { container } = render(<FpRegisterFileDiagram />);
     const html = container.innerHTML;
     expect(html).toContain("var(--cyan)"); // d0-d7, arguments & result
-    expect(html).toContain("var(--amber)"); // d8-d15, preserved with a catch
+    expect(html).toContain("var(--amber)"); // d8-d15, callee-saved for the d-sized value only
     expect(html).toContain("var(--border-strong)"); // d16-d31, temporaries
     expect(html).not.toContain("var(--danger)");
   });

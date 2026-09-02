@@ -4,12 +4,11 @@
  * payload, kept in one data module so the course-style guard
  * (course-style.test.ts) can raw-scan it and the behavioral test
  * (pitfall-data.playground.test.ts) can assemble and run every program on the
- * real emulator -- each fault misbehaves observably (a printed misalignment,
- * a run that never comes home, a wild-address fault, a wrong sum,
- * a value a callee scratched away) and each
- * fix demonstrably lands. The wrong/right snippets are the compact card
- * illustrations; fault/fix are complete course-style programs for the
- * run-it-live embed.
+ * real emulator: each fault misbehaves observably (a printed misalignment,
+ * a run that never returns, a wild-address fault, a wrong sum,
+ * a value a callee scratched away) and each fix runs clean. The wrong/right
+ * snippets are the compact card illustrations; fault/fix are complete
+ * course-style programs for the run-it-live embed.
  */
 
 export interface Pitfall {
@@ -45,7 +44,7 @@ export const PITFALLS: Pitfall[] = [
         ldp     fp, lr, [sp], 16
         ret`,
     watch:
-      "the fault stops at the bl: sp is 8 off the boundary there, and linux faults a call like that inside printf -- the playground stops at the call with the same diagnosis, so nothing prints. the fix prints 0.",
+      "the fault stops at the bl: sp is 8 off the boundary there, and Linux faults a call like that inside printf. the playground stops at the same call with the same diagnosis, so nothing prints. the fix prints 0.",
     fault: `// the fault: an 8-byte push leaves sp off the 16-byte boundary
 define(fp, x29)
 define(lr, x30)
@@ -104,7 +103,7 @@ main:
         ldp     fp, lr, [sp], 16
         ret`,
     watch:
-      "the fault prints once, then ret chases its own tail: the run gives up mid-loop and no exit code ever arrives. the fix comes home with exit 0.",
+      "the fault prints once, then ret jumps back into greet because lr still points there: the run spins until the step budget stops it, and no exit code ever arrives. the fix exits 0.",
     fault: `// the fault: greet never saves lr, then calls printf
 define(fp, x29)
 define(lr, x30)
@@ -248,7 +247,7 @@ sum:
         b       sum
 done:`,
     watch:
-      "the fault sums 10014 because i = 5 sneaks in and drags whatever lives past the array with it. the fix stops at index 4 and prints 15.",
+      "the fault sums 10014 because i = 5 still runs and adds the word stored past the array. the fix stops at index 4 and prints 15.",
     fault: `// the fault: b.gt keeps i = 5 in a five-element loop
 define(fp, x29)
 define(lr, x30)
@@ -336,7 +335,7 @@ done:
         bl      printf
         add     sp, sp, 32`,
     watch:
-      "the fault takes 24 bytes and stops at the first store through sp: an off-boundary sp is a bus error on linux, here included, before anything prints. the fix sizes the frame with the alloc formula and prints 0.",
+      "the fault takes 24 bytes and stops at the first store through sp: an off-boundary sp is a bus error on Linux, and here too, before anything prints. the fix sizes the frame with the alloc formula and prints 0.",
     fault: `// the fault: 24 bytes of locals taken without rounding to 16
 define(fp, x29)
 define(lr, x30)
@@ -357,7 +356,7 @@ main:
         and     x10, x10, 15
         ldr     x0, =fmt
         mov     x1, x10
-        bl      printf                  // sp & 15 = 8 at this call
+        bl      printf                  // never reached: the store above already faulted
         add     sp, sp, 24
         mov     w0, 0
         ldp     fp, lr, [sp], 16
@@ -404,7 +403,7 @@ main:
         mov     x1, x19
         ldr     x19, [fp, 16]`,
     watch:
-      "the fault prints sum = 1: announce scratched x9, exactly as a callee may. this emulator's printf happens to leave x9 alone; real printf makes no such promise. the fix rides the sum in x19 and prints 42.",
+      "the fault prints sum = 1: announce scratched x9, exactly as a callee may. this emulator's printf happens to leave x9 alone; real printf makes no such promise. the fix keeps the sum in x19 and prints 42.",
     fault: `// the fault: the sum lives in x9, and the routine it calls uses x9 too
 define(fp, x29)
 define(lr, x30)
@@ -439,7 +438,7 @@ announce:                               // x9 is caller-saved: free scratch here
         ldp     fp, lr, [sp], 16
         ret
 `,
-    fix: `// the fix: the sum rides in callee-saved x19, which main saves and restores
+    fix: `// the fix: the sum lives in callee-saved x19, which main saves and restores
 define(fp, x29)
 define(lr, x30)
 
@@ -492,7 +491,7 @@ announce:                               // unchanged: x9 is its scratch
         bl      printf
         add     sp, sp, 16`,
     watch:
-      "the fault stops at the very first store through sp: 8 off the boundary is a bus error on linux, so the local never even gets written and the call is never reached. the fix rounds 8 up to 16 and prints n = 7, sp & 15 = 0.",
+      "the fault stops at the very first store through sp: 8 off the boundary is a bus error on Linux, so the local never even gets written and the call is never reached. the fix rounds 8 up to 16 and prints n = 7, sp & 15 = 0.",
     fault: `// the fault: 8 bytes for one local leaves sp off the boundary at the call
 define(fp, x29)
 define(lr, x30)
@@ -508,12 +507,12 @@ main:
         mov     fp, sp
         sub     sp, sp, 8               // the fault: 8 is not a 16 multiple
         mov     x9, 7
-        str     x9, [sp]                // the local itself works fine
+        str     x9, [sp]                // the fault: a store through an off-boundary sp
         ldr     x1, [sp]
         mov     x2, sp
         and     x2, x2, 15              // the bits sp must keep clear at a call
         ldr     x0, =fmt
-        bl      printf                  // real hardware faults inside this call
+        bl      printf                  // never reached: the store above already faulted
         add     sp, sp, 8
         mov     w0, 0
         ldp     fp, lr, [sp], 16

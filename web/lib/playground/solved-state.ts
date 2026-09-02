@@ -11,15 +11,20 @@
  * view writes to it when a check passes. The index also exports the set as
  * a versioned json file and imports one back: a browser that evicts
  * script-writable storage (Safari does, after seven days without a visit)
- * takes the set with it, and that file is the only way back.
- *
- * A same-tab CustomEvent plus the
- * native cross-tab "storage" event keep every open instance in sync (the
- * "storage" event fires only in OTHER tabs, so the same-tab event is what
- * updates the tab that did the writing).
+ * takes the set with it, and that file is the only way back. The same file
+ * carries the answers from exercise-answers.ts, because the work a student
+ * typed is lost to that eviction exactly as the ticks are.
  */
 
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import {
+  MAX_ANSWER_CHARS,
+  putAnswer,
+  readAllAnswers,
+  readAnswer,
+  validateAnswer,
+  type StoredAnswer,
+} from "@/lib/playground/exercise-answers";
 
 const SOLVED_KEY = "aarch64-playground:practice:solved";
 /** Same-tab change signal; the native "storage" event covers other tabs only. */
@@ -90,14 +95,21 @@ export function subscribeSolved(callback: () => void): () => void {
   };
 }
 
-/** The exported shape: versioned so a later format can be told apart. */
+/**
+ * The exported shape: versioned so a later format can be told apart.
+ * `answers` arrived after the ticks and stays an OPTIONAL key at the same
+ * version rather than a version bump, so the file travels both ways: a
+ * build that predates the answers ignores the key, and a file written
+ * without one still imports here.
+ */
 export interface ProgressBundle {
   version: 1;
   solved: string[];
+  answers?: Record<string, StoredAnswer>;
 }
 
 export type ProgressImportResult =
-  | { ok: true; added: number; total: number }
+  | { ok: true; added: number; total: number; answersAdded: number }
   | { ok: false; error: string };
 
 /**
@@ -108,9 +120,31 @@ export type ProgressImportResult =
 const MAX_BUNDLE_ENTRIES = 256;
 const MAX_SLUG_CHARS = 64;
 
-/** The current solved set as a downloadable bundle. An empty set is valid. */
+/** The current solved set and saved work as a downloadable bundle. An empty one is valid. */
 export function buildProgressBundle(): ProgressBundle {
-  return { version: 1, solved: getSolvedSlugs() };
+  return { version: 1, solved: getSolvedSlugs(), answers: readAllAnswers() };
+}
+
+/**
+ * Merge the bundle's answers into the store and return how many landed.
+ * An answer fills an empty slot, and replaces a local one only when the
+ * file's copy is strictly newer: a student who imports an old export onto
+ * the device they have been working on keeps the work in front of them.
+ * A single bad entry is skipped rather than failing the file, since the
+ * ticks and the other answers are still worth landing.
+ */
+function mergeAnswers(raw: Record<string, unknown>): number {
+  let added = 0;
+  for (const [slug, entry] of Object.entries(raw)) {
+    if (slug.length === 0 || slug.length > MAX_SLUG_CHARS) continue;
+    const answer = validateAnswer(entry);
+    if (!answer) continue;
+    if (JSON.stringify(answer).length > MAX_ANSWER_CHARS) continue;
+    const local = readAnswer(slug);
+    if (local && local.updatedAt >= answer.updatedAt) continue;
+    if (putAnswer(slug, answer)) added += 1;
+  }
+  return added;
 }
 
 /**
@@ -121,14 +155,15 @@ export function buildProgressBundle(): ProgressBundle {
  * survives a round trip through an older build.
  *
  * A malformed bundle fails closed with a student-facing reason and writes
- * nothing at all -- a partial import would leave the student unable to say
- * what actually landed.
+ * nothing at all; a partial import would leave the student unable to say what
+ * actually landed. The answers ride along under the same rule, except that a
+ * single unreadable answer is skipped rather than voiding the whole file.
  */
 export function importProgressBundle(raw: unknown): ProgressImportResult {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, error: "that file is not a progress export" };
   }
-  const bundle = raw as { version?: unknown; solved?: unknown };
+  const bundle = raw as { version?: unknown; solved?: unknown; answers?: unknown };
   if (bundle.version !== 1) {
     return { ok: false, error: "that progress file has an unrecognized version" };
   }
@@ -158,6 +193,21 @@ export function importProgressBundle(raw: unknown): ProgressImportResult {
     }
     incoming.push(slug);
   }
+  // The answers map is optional (a file written before them has none), but a
+  // present one has to be a map: only its entries are allowed to be skipped.
+  let answers: Record<string, unknown> = {};
+  if (bundle.answers !== undefined) {
+    if (bundle.answers == null || typeof bundle.answers !== "object" || Array.isArray(bundle.answers)) {
+      return { ok: false, error: "that progress file has a malformed answers section" };
+    }
+    answers = bundle.answers as Record<string, unknown>;
+    if (Object.keys(answers).length > MAX_BUNDLE_ENTRIES) {
+      return {
+        ok: false,
+        error: `that progress file lists too many exercises (max ${MAX_BUNDLE_ENTRIES})`,
+      };
+    }
+  }
   const merged = getSolvedSlugs();
   const seen = new Set(merged);
   let added = 0;
@@ -170,5 +220,5 @@ export function importProgressBundle(raw: unknown): ProgressImportResult {
   // Nothing new means nothing to persist and nothing to announce, the same
   // way a repeated markSolved is a no-op.
   if (added > 0) writeSolved(merged);
-  return { ok: true, added, total: merged.length };
+  return { ok: true, added, total: merged.length, answersAdded: mergeAnswers(answers) };
 }

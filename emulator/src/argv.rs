@@ -5,8 +5,8 @@
 //! above `.bss` and below the stack so the student's working area
 //! (stack, heap-style scratch in `.bss`) stays untouched.
 //!
-//! The loader owns argv[0]: on Linux argc is never 0 -- argv[0] is the
-//! program path -- so every load gets `DEFAULT_ARGV0` prepended and the
+//! The loader owns argv[0]: on Linux argc is never 0 (argv[0] is the
+//! program path), so every load gets `DEFAULT_ARGV0` prepended and the
 //! caller's slice is argv[1..], the arguments after the program name.
 //! A program that gates on `cmp w0, 3` or prints argv[0] behaves here
 //! exactly as it does on the course servers.
@@ -43,7 +43,7 @@ pub const DEFAULT_ARGV0: &str = "./program";
 
 /// Write the pointer table and string pool at `ARGV_BASE` and set the
 /// AAPCS64 entry registers (`w0 = argc`, `x1 = argv`). Caller is the
-/// program loader; `args` is argv[1..] -- an empty slice still produces
+/// program loader; `args` is argv[1..]: an empty slice still produces
 /// argc = 1 with argv[0] = `DEFAULT_ARGV0`, the Linux invariant.
 pub fn setup_argv(
     regs: &mut RegisterFile,
@@ -144,11 +144,19 @@ mod tests {
     fn rejects_payload_over_one_page() {
         let mut regs = RegisterFile::new();
         let mut mem = Memory::new();
-        // 4 args, each just under 1 KiB -- pointer table is 40 bytes,
+        // 4 args, each just under 1 KiB: pointer table is 40 bytes,
         // strings push past 4 KiB total.
         let big = "x".repeat(1024);
         let args: Vec<&str> = vec![&big, &big, &big, &big];
         let err = setup_argv(&mut regs, &mut mem, &args).unwrap_err();
+        // The args box is the only thing a student can shorten, and the web
+        // layer keys its teaching block off this wording.
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("the playground reserves for argv"),
+            "message was: {rendered}"
+        );
+        assert!(rendered.contains("args box"), "message was: {rendered}");
         match err {
             EmuError::ArgvTooLarge { bytes } => {
                 assert!(bytes > ARGV_MAX_BYTES);

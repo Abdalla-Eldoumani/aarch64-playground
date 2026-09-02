@@ -190,7 +190,7 @@ export function InstructionReference({
   );
 
   // On mount, bring the fragment-named instruction's index item into view.
-  // Scroll only -- selection itself comes from the fragment store above.
+  // Scroll only: selection comes from the fragment store above.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const raw = window.location.hash.replace(/^#/, "");
@@ -202,8 +202,8 @@ export function InstructionReference({
   }, [instructions]);
 
   // A click pins the selection via `picked` and writes the fragment with
-  // replaceState, which fires no hashchange. A later hashchange -- browser
-  // back/forward or a manual `#...` edit -- must win, so clear `picked` and let
+  // replaceState, which fires no hashchange. A later hashchange (browser
+  // back/forward, or a manual `#...` edit) must win, so clear `picked` and let
   // the fragment store drive the selection again. Cold load and cross-tab open
   // already select from the fragment because `picked` starts null.
   useEffect(() => {
@@ -211,6 +211,31 @@ export function InstructionReference({
     const onHashChange = () => setPicked(null);
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // The filter advertises `/` with aria-keyshortcuts, so the key has to reach
+  // it from anywhere on the page rather than only from the index. An editable
+  // target keeps its slash: the shortcut must never eat a typed character.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    function onSlash(event: DocumentEventMap["keydown"]) {
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      inputRef.current?.focus();
+    }
+    document.addEventListener("keydown", onSlash);
+    return () => document.removeEventListener("keydown", onSlash);
   }, []);
 
   function openInstruction(mnemonic: string) {
@@ -242,10 +267,6 @@ export function InstructionReference({
 
   function onIndexKeyDown(event: KeyboardEvent<HTMLElement>) {
     switch (event.key) {
-      case "/":
-        event.preventDefault();
-        inputRef.current?.focus();
-        break;
       case "Escape":
         event.preventDefault();
         setFilter("");
@@ -273,7 +294,7 @@ export function InstructionReference({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)]">
+    <div className="grid gap-6 lg:grid-cols-[minmax(15rem,17rem)_minmax(0,1fr)]">
       <div className="flex flex-col gap-3 lg:sticky lg:top-24 lg:h-fit lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
         <label
           htmlFor={filterId}
@@ -281,16 +302,28 @@ export function InstructionReference({
         >
           filter
         </label>
-        <input
-          ref={inputRef}
-          id={filterId}
-          type="text"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          onKeyDown={onFilterKeyDown}
-          placeholder="filter mnemonics (press / to focus)"
-          className="block min-h-[44px] w-full rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] px-3 font-mono text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus-visible:border-[var(--focus)] focus-visible:[box-shadow:var(--ring)]"
-        />
+        {/* The shortcut rides as a key cap inside the field instead of a
+            sentence in the placeholder: the affordance stays legible at any
+            column width, and aria-keyshortcuts carries it to AT. */}
+        <div className="relative">
+          <input
+            ref={inputRef}
+            id={filterId}
+            type="text"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            onKeyDown={onFilterKeyDown}
+            placeholder="filter mnemonics"
+            aria-keyshortcuts="/"
+            className="block min-h-[44px] w-full rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] py-0 pl-3 pr-9 font-mono text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus-visible:border-[var(--focus)] focus-visible:[box-shadow:var(--ring)]"
+          />
+          <kbd
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-[var(--radius-control)] border border-[var(--border)] px-1.5 py-[2px] font-mono text-[10px] leading-none text-[var(--text-tertiary)]"
+          >
+            /
+          </kbd>
+        </div>
 
         <nav
           aria-label="instruction index"
@@ -413,7 +446,7 @@ export function InstructionReference({
             {benchFor === current.mnemonic ? (
               // Fixed frame so the editor loading never shifts the page; the
               // embed carries the exact payload the deep link would.
-              <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+              <div className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px]">
                 <EmbeddablePlayground
                   key={current.mnemonic}
                   chrome="embed"

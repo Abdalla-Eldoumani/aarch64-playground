@@ -105,8 +105,7 @@ QUOTED_SPAN = re.compile(r'"(?:[^"\\]|\\.)*"')
 
 # Programs whose runtime behaviour under qemu-user differs from real
 # hardware. Their tracked references come from the real machine and stay;
-# regen under qemu skips the run comparison and says so, instead of
-# crying drift every week.
+# regen under qemu skips the run comparison and says so.
 QEMU_DIVERGES = {
     "45_misaligned_sp": "real hardware dies with SIGBUS before any output; "
                         "qemu-user tolerates the misaligned sp and runs on",

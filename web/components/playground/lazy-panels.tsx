@@ -46,9 +46,9 @@ export const SavesPanel = dynamic(
   { ssr: false },
 );
 export const TerminalPane = dynamic(
-  // Named so the bundle budget in package.json can glob xterm's chunk by
-  // name; a hashed webpack id moves with any change to the module graph,
-  // and the budget that used to point at one silently measured nothing.
+  // Named so the bundle budget in package.json can glob xterm's chunk by name;
+  // a hashed webpack id moves with any change to the module graph, and a budget
+  // pointed at a hashed id measures nothing.
   () =>
     import(/* webpackChunkName: "terminal" */ "@/components/panels/TerminalPane").then(
       (m) => m.TerminalPane,

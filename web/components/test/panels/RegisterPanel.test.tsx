@@ -56,7 +56,7 @@ describe("RegisterPanel", () => {
   it("labels each NZCV flag with its own bit, in N Z C V order", () => {
     // nzcv packs N at bit 3, Z bit 2, C bit 1, V bit 0. 0b1010 = N set,
     // Z clear, C set, V clear. A set flag renders bold-amber, an unset one
-    // recedes to the tertiary token, so the label must sit over its OWN bit.
+    // recedes to the tertiary token, so each label must sit over its own bit.
     render(
       <RegisterPanel
         registers={registers}

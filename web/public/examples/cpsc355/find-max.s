@@ -4,10 +4,8 @@
 
 define(fp, x29)
 define(lr, x30)
-// w22, not w19 -- main keeps the array base in x19, and W-form writes
-// zero-extend to the full X register, so aliasing the loop counter to
-// w19 would silently destroy the base address as soon as the counter
-// is initialized.
+// w22, not w19: main keeps the array base in x19, and a W-form write
+// zero-extends over the whole X register.
 define(i_r, w22)
 
 .data
@@ -21,7 +19,7 @@ arr:    .skip 40                        // 10 ints
 .text
 
 // find_max(x0 = arr base, w1 = n) -> w0 = max value
-// Leaf function: uses only scratch registers
+// Uses only scratch registers, so no callee-saved register needs spilling
         .balign 4
         .global find_max
 find_max:

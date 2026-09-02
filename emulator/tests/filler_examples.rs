@@ -1,5 +1,5 @@
 //! Example-picker regression: the authored programs served by the web
-//! example loader -- the "Data and memory" and "Stack and locals" stage
+//! example loader: the "Data and memory" and "Stack and locals" stage
 //! fillers against their fixtures, plus the interactive extras through
 //! scripted sessions: the real-time programs (the snake game, the pocket
 //! calculator, the multi-file deadzone survivor) keyed one press per
@@ -10,9 +10,8 @@
 //! The calculator, the instrument and the two-sum visualizer each carry a
 //! second face: `console` in argv[1] answers in plain text instead of
 //! drawing. Each has its own case here, and each of those asserts the
-//! output holds no escape byte at all -- that is the whole promise of the
-//! plain face, and a single stray `\x1b` breaks it for the student who
-//! picked console over the terminal pane.
+//! output holds no escape byte at all: one stray `\x1b` reaches the
+//! student who picked console over the terminal pane as a control code.
 //!
 //! These are the same `.s` files the web example loader serves over HTTP,
 //! read straight from `web/public/examples/cpsc355/` (not a copy) so the
@@ -72,7 +71,7 @@ fn run_example(src_rel: &str, stdin: Option<&str>) -> (String, Option<i64>) {
 /// Drive a cooked-mode program from one scripted stdin push: load it with
 /// `args` as its argv, run to halt, and step over the pauses a paced
 /// program takes. Returns stdout, the exit code, and how many times the
-/// program slept -- the sleep count is what proves an animation paced
+/// program slept; the sleep count is what proves an animation paced
 /// itself rather than dumping every frame at once.
 ///
 /// The source is passed in rather than read here because the multi-file
@@ -109,9 +108,9 @@ fn run_cooked_session(
     (stdout, cpu.exit_code(), sleeps)
 }
 
-/// The console face's whole promise: plain text. One escape byte in the
-/// stream and the student who chose the console instead of the terminal
-/// pane reads control codes, so the count is asserted rather than eyeballed.
+/// The console face writes plain text. One escape byte in the stream and
+/// the student who chose the console instead of the terminal pane reads
+/// control codes.
 fn assert_plain_text(label: &str, stdout: &str) {
     let escapes = stdout.bytes().filter(|b| *b == 0x1b).count();
     assert_eq!(
@@ -164,6 +163,8 @@ fn snake_arcade_plays_a_timed_session_and_exits_cleanly() {
         }
         let _ = cpu.take_pending_sleep_ns();
         boundaries += 1;
+        // one press per two boundaries: the game drains stdin every frame,
+        // so a press on every boundary would arrive mid-drain
         if boundaries.is_multiple_of(2) {
             if let Some(tok) = tokens.next() {
                 cpu.push_stdin(tok.as_bytes());
@@ -224,6 +225,8 @@ fn calc_device_plays_a_timed_session_and_exits_cleanly() {
         let _ = cpu.take_pending_sleep_ns();
         raw_rose |= cpu.term.raw_mode;
         boundaries += 1;
+        // one press per two boundaries: the program drains stdin every
+        // frame, so a press on every boundary would arrive mid-drain
         if boundaries.is_multiple_of(2) {
             if let Some(tok) = tokens.next() {
                 if *tok == "C" {
@@ -293,8 +296,9 @@ fn calc_console_face_answers_typed_lines_in_plain_text() {
 /// Every asserted string is a run the program writes without a colour
 /// escape in the middle of it. The screens are painted cell by cell with
 /// cursor moves and role colours, so a line that reads as one row on
-/// screen is often several writes in the stream; picking the contiguous
-/// runs is what keeps this a behavior check and not a paint-order check.
+/// screen is often several writes in the stream; the assertions below
+/// pick the contiguous runs, so they check behavior rather than paint
+/// order.
 #[test]
 fn two_sum_visualizer_walks_the_menus_and_traces_a_preset() {
     let (stdout, exit, sleeps) = run_cooked_session(
@@ -377,7 +381,7 @@ fn two_sum_console_face_solves_a_typed_array_in_plain_text() {
 ///
 /// The prompt is a labelled rule with a `> ` caret under it, and the
 /// instrument under that is a bulb `(*)` on three scales filled to where
-/// the reading landed -- the fill is what changes per reading, so it is
+/// the reading landed; the fill is what changes per reading, so it is
 /// asserted as a run rather than as a whole row (the row carries colour
 /// escapes between its segments).
 #[test]
@@ -507,7 +511,7 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
 
 /// The multi-file survivor game, combined exactly the way the files strip
 /// joins it (main first, each helper behind a `// ---- name ----` boundary,
-/// in the loader manifest's order -- constants first, because a module's
+/// in the loader manifest's order, constants first, because a module's
 /// equates only resolve below their definition). Raw mode and real time
 /// like the snake game, so a pre-pushed fixture never survives the
 /// per-frame drain: the presses are scheduled against the frame clock
@@ -657,9 +661,9 @@ fn shipped_examples_only_use_conversions_the_runtime_implements() {
             // Only a NUL-terminated string literal can be a format: the
             // hosted printf takes a pointer and reads to the terminator.
             // A `%` in a comment ("rand() % max"), in a `msub`, or inside
-            // a bare `.ascii` byte run is not one -- calc paints its key
+            // a bare `.ascii` byte run is not one (calc paints its key
             // grid out of one such run, five columns per cap, written by
-            // length and never handed to a formatter -- and flagging any
+            // length and never handed to a formatter), and flagging any
             // of them would make this gate cry wolf.
             let Some(open) = line.find('"') else { continue };
             let trimmed = line.trim_start();
@@ -713,7 +717,7 @@ fn shipped_examples_only_use_conversions_the_runtime_implements() {
                 }
                 if !CONVERSIONS.contains(bytes[j] as char) {
                     offenders.push(format!(
-                        "{}:{}: `%{}` -- {}",
+                        "{}:{}: `%{}`: {}",
                         rel,
                         n + 1,
                         bytes[j] as char,

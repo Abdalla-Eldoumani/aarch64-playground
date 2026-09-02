@@ -72,6 +72,19 @@ export function ConsolePanel({
   const [stdinValue, setStdinValue] = useState("");
   const toast = useToast();
 
+  // Pointer-aware, not viewport-aware: a laptop with a touchscreen still has
+  // keys, and a phone with a bluetooth keyboard is still a phone. The server
+  // renders the keyboard copy and the effect swaps it after mount.
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const query = window.matchMedia("(pointer: coarse)");
+    const sync = () => setCoarsePointer(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
   // Auto-scroll on new output unless the user has scrolled up.
   useEffect(() => {
     const el = scrollRef.current;
@@ -88,16 +101,15 @@ export function ConsolePanel({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // A terminal session owns the program's input; the disabled box is the
-    // visible half of that, this is the half a stray submit cannot pass.
+    // A terminal session owns the program's input. The box is disabled; this
+    // guard catches a submit that reaches the handler anyway.
     if (ownedByTerminal) return;
     // Validate the stdin ingress before it reaches the emulator as data.
     const error = validateStdin(stdinValue);
     if (error) {
       toast.error(error);
-      // Intentional security observability: a rejected over-cap input is
-      // surfaced to the console alongside the toast, per the input-
-      // validation policy. This is the only sanctioned console use here.
+      // The toast can be missed; the console line is the record of a
+      // rejected over-cap input.
       console.warn(`rejected over-cap stdin: ${error}`);
       return;
     }
@@ -111,7 +123,7 @@ export function ConsolePanel({
 
   // Output from before a terminal session took over; the session's own
   // bytes belong to the pane. stderr is never routed there, so it renders
-  // whole -- this scrollback is the only surface that ever shows it.
+  // whole: this scrollback is the only surface that ever shows it.
   const shownStdout =
     terminalOwnedFrom == null ? stdout : stdout.slice(0, terminalOwnedFrom);
 
@@ -164,7 +176,7 @@ export function ConsolePanel({
               type="file"
               className="hidden"
               onChange={handleFile}
-              aria-label="Upload file to virtual filesystem"
+              aria-label="upload a file for the program to read"
             />
           </label>
           <button
@@ -194,7 +206,9 @@ export function ConsolePanel({
               Output prints here as your program runs.
             </p>
             <p className="font-sans text-[11px] text-[var(--text-secondary)]">
-              Step with F10, run with F5, or feed stdin from the box below.
+              {coarsePointer
+                ? "Tap step or run under the editor, or feed stdin from the box below."
+                : "Step with F10, run with F5, or feed stdin from the box below."}
             </p>
           </div>
         )}
@@ -223,9 +237,9 @@ export function ConsolePanel({
           }}
           placeholder={
             ownedByTerminal
-              ? "this program reads from the terminal tab -- type there"
+              ? "this program reads from the terminal tab; type there"
               : blocked
-                ? "program is waiting for input... (ctrl-d = end of input)"
+                ? "the program is waiting for input. type a line and press enter, or press Ctrl+D to close the input"
                 : "stdin"
           }
           disabled={ownedByTerminal}

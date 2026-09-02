@@ -9,6 +9,7 @@ MAX_HIGH_SCORES = 5                             // Number of high scores to keep
 // High score structure (16 bytes)
 HS_SCORE = 0                                    // Score (4 bytes)
 HS_WAVE = 4                                     // Wave reached (2 bytes)
+// Offset 6 is not 4-byte aligned; the word loads here are unaligned by design
 HS_KILLS = 6                                    // Kill count (4 bytes)
 HS_LEVEL = 10                                   // Player level (2 bytes)
 HS_PADDING = 12                                 // Padding (4 bytes)
@@ -17,7 +18,6 @@ HS_SIZE = 16                                    // Total size
 // Statistics structure (32 bytes)
 STAT_GAMES = 0                                  // Total games played (4 bytes)
 STAT_KILLS = 4                                  // Total kills (4 bytes)
-STAT_TIME = 8                                   // Total time in seconds (4 bytes)
 STAT_BEST_WAVE = 12                             // Highest wave reached (4 bytes)
 STAT_BEST_LEVEL = 16                            // Highest level reached (4 bytes)
 STAT_BEST_KILLS = 20                            // Most kills in one game (4 bytes)
@@ -58,19 +58,19 @@ high_scores:    .skip   MAX_HIGH_SCORES * HS_SIZE
 game_stats:
 stat_games:     .word   0                       // Total games played
 stat_kills:     .word   0                       // Total kills
-stat_time:      .word   0                       // Total time (seconds)
 stat_best_wave: .word   0                       // Highest wave
 stat_best_level: .word  0                       // Highest level
 stat_best_kills: .word  0                       // Most kills in one game
-// The bitmask lives in what used to be stats padding, so it rides along with
-// the block save_load/save_write already copy. Version 1 files read back zero.
+// The bitmask sits in the stats block's trailing padding, so it rides along
+// with the copy save_load and save_write already do. Older files read back
+// zero.
 achievements:   .word   0                       // Unlocked achievements bitmask
                 .skip   4                       // Padding
 
 // Current game stats (for end-of-game saving)
                 .balign 4
 current_score:  .word   0                       // Score this game
-save_wave:      .word   0                       // Wave reached (renamed to avoid conflict)
+save_wave:      .word   0                       // Wave reached this game
 save_kills:     .word   0                       // Kills this game
 save_level:     .word   0                       // Level reached
 
@@ -122,7 +122,6 @@ save_load:
                 mov     x8, SYS_OPENAT
                 svc     0
 
-                // Check if open succeeded
                 cmp     x0, 0
                 b.lt    save_load_fail
                 mov     x19, x0
@@ -135,12 +134,11 @@ save_load:
                 mov     x8, SYS_READ
                 svc     0
 
-                // Close file
                 mov     x0, x19
                 mov     x8, SYS_CLOSE
                 svc     0
 
-                // Verify magic number (SAVE_MAGIC = 0x44414544 "DEAD")
+                // Verify magic number 0x44414544, "DEAD" little-endian
                 adrp    x0, file_buffer
                 add     x0, x0, :lo12:file_buffer
                 ldr     w1, [x0]
@@ -149,7 +147,6 @@ save_load:
                 cmp     w1, w2
                 b.ne    save_load_fail
 
-                // Verify version
                 ldr     w1, [x0, 4]
                 cmp     w1, SAVE_VERSION
                 b.ne    save_load_fail
@@ -210,11 +207,9 @@ save_write:
                 movk    w1, 0x4441, lsl 16      // Upper 16 bits
                 str     w1, [x0]
 
-                // Write version
                 mov     w1, SAVE_VERSION
                 str     w1, [x0, 4]
 
-                // Copy high scores to buffer
                 add     x1, x0, SAVE_SCORES_OFFSET
                 adrp    x2, high_scores
                 add     x2, x2, :lo12:high_scores
@@ -265,7 +260,6 @@ save_write_file:
                 mov     x8, SYS_WRITE
                 svc     0
 
-                // Close file
                 mov     x0, x19
                 mov     x8, SYS_CLOSE
                 svc     0
@@ -281,7 +275,7 @@ save_write_done:
                 ldp     fp, lr, [sp], 32
                 ret
 
-// save_start_game - Call at game start to track time
+// save_start_game - Clear this run's stats and count the game
                 .global save_start_game
 save_start_game:
                 stp     fp, lr, [sp, -16]!
@@ -316,13 +310,11 @@ save_end_game:
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
 
-                // Save parameters
                 mov     w19, w0
                 mov     w20, w1
                 mov     w21, w2
                 mov     w22, w3
 
-                // Store current game stats
                 adrp    x0, current_score
                 add     x0, x0, :lo12:current_score
                 str     w19, [x0]
@@ -346,7 +338,6 @@ save_end_game:
                 str     w20, [x0]
 
 end_game_check_level:
-                // Update best level if higher
                 adrp    x0, stat_best_level
                 add     x0, x0, :lo12:stat_best_level
                 ldr     w1, [x0]
@@ -372,7 +363,6 @@ end_game_add_score:
                 bl      save_add_high_score
                 mov     w19, w0
 
-                // Save to file
                 bl      save_write
 
                 mov     w0, w19                 // Return rank
@@ -392,7 +382,6 @@ save_add_high_score:
                 stp     x21, x22, [sp, 32]
                 stp     x23, x24, [sp, 48]
 
-                // Save parameters
                 mov     w19, w0
                 mov     w20, w1
                 mov     w21, w2
@@ -407,13 +396,11 @@ find_position:
                 cmp     w24, MAX_HIGH_SCORES
                 b.ge    no_high_score           // Didn't qualify
 
-                // Compare with score at this position
                 mov     w0, HS_SIZE
                 mul     w0, w24, w0
                 add     x0, x23, x0, uxtw
                 ldr     w1, [x0, HS_SCORE]
 
-                // If our score > this score, insert here
                 cmp     w19, w1
                 b.gt    insert_score
 
@@ -438,7 +425,6 @@ shift_loop:
                 add     x4, x23, x2, uxtw       // Dest pointer
                 add     x5, x23, x3, uxtw       // Src pointer
 
-                // Copy 16 bytes
                 ldr     x6, [x5]
                 str     x6, [x4]
                 ldr     x6, [x5, 8]
@@ -458,7 +444,6 @@ do_insert:
                 str     w21, [x0, HS_KILLS]
                 strh    w22, [x0, HS_LEVEL]
 
-                // Return rank (1-based)
                 add     w0, w24, 1
                 b       add_score_done
 
@@ -521,7 +506,7 @@ ach_survive_frames: .word 0                     // Frames played this run
 ach_banner:     .string "*** ACHIEVEMENT UNLOCKED ***"
 ach_first_kill: .string "First Blood"
 ach_wave5:      .string "Getting Started"
-ach_wave10:     .string "Survivor"
+ach_wave10:     .string "Tenth Wave"
 ach_wave20:     .string "Veteran"
 ach_kills100:   .string "Centurion"
 ach_boss:       .string "Boss Slayer"
@@ -536,25 +521,21 @@ achievements_init:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Reset pending achievements
                 adrp    x0, ach_pending
                 add     x0, x0, :lo12:ach_pending
                 mov     w1, 0
                 str     w1, [x0]
 
-                // Reset no damage tracker
                 adrp    x0, ach_wave_nodmg
                 add     x0, x0, :lo12:ach_wave_nodmg
                 mov     w1, 1
                 str     w1, [x0]
 
-                // Reset notification timer
                 adrp    x0, ach_notify_timer
                 add     x0, x0, :lo12:ach_notify_timer
                 mov     w1, 0
                 str     w1, [x0]
 
-                // Reset survival counter
                 adrp    x0, ach_survive_frames
                 add     x0, x0, :lo12:ach_survive_frames
                 str     w1, [x0]
@@ -569,14 +550,12 @@ achievements_unlock:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Check if already unlocked
                 adrp    x1, achievements
                 add     x1, x1, :lo12:achievements
                 ldr     w2, [x1]
                 and     w3, w2, w0
                 cbnz    w3, ach_already_unlocked
 
-                // Unlock achievement
                 orr     w2, w2, w0
                 str     w2, [x1]
 
@@ -592,7 +571,6 @@ achievements_unlock:
                 mov     w2, ACH_NOTIFY_FRAMES
                 str     w2, [x1]
 
-                // Play sound
                 bl      play_bell
                 bl      play_bell
 
@@ -609,7 +587,6 @@ achievements_check:
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
 
-                // Get current stats
                 bl      player_get_kills
                 mov     w19, w0                 // Current kills
 
@@ -675,7 +652,6 @@ achievements_on_boss_kill:
 // achievements_on_damage - Call when player takes damage
                 .global achievements_on_damage
 achievements_on_damage:
-                // Mark that player took damage this wave
                 adrp    x0, ach_wave_nodmg
                 add     x0, x0, :lo12:ach_wave_nodmg
                 mov     w1, 0
@@ -721,7 +697,6 @@ achievements_update:
                 add     w1, w1, 1
                 str     w1, [x0]
 
-                // Decrement notification timer
                 adrp    x0, ach_notify_timer
                 add     x0, x0, :lo12:ach_notify_timer
                 ldr     w1, [x0]
@@ -747,33 +722,28 @@ achievements_draw:
                 mov     fp, sp
                 str     x19, [sp, 16]
 
-                // Check if notification active
                 adrp    x0, ach_notify_timer
                 add     x0, x0, :lo12:ach_notify_timer
                 ldr     w1, [x0]
                 cbz     w1, ach_draw_done
 
-                // Get pending achievement
                 adrp    x0, ach_pending
                 add     x0, x0, :lo12:ach_pending
                 ldr     w19, [x0]
                 cbz     w19, ach_draw_done
 
-                // Draw notification box at top center
+                // Two centred lines near the top of the field
                 mov     w0, SCREEN_WIDTH / 2 - 15
                 mov     w1, 3
                 bl      cursor_move
 
-                // Yellow background effect
                 mov     w0, COLOR_BRIGHT_YELLOW
                 bl      set_color
 
-                // Draw banner
                 adrp    x0, ach_banner
                 add     x0, x0, :lo12:ach_banner
                 bl      write_str
 
-                // Draw achievement name on next line
                 mov     w0, SCREEN_WIDTH / 2 - 10
                 mov     w1, 4
                 bl      cursor_move

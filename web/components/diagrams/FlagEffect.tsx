@@ -4,14 +4,13 @@
  * Interactive NZCV panel for the flag-setting reference entries. The student
  * types the two operand values the instruction would see and the panel shows
  * the arithmetic the machine performs, the four flags it leaves behind, and
- * which conditional branches those flags would take -- signed and unsigned
+ * which conditional branches those flags would take, signed and unsigned
  * side by side, because reading `b.lt` where `b.lo` was needed is the classic
- * slip. The flag math comes from lib/emulator/flag-math -- the same NZCV rules
+ * slip. The flag math comes from lib/emulator/flag-math, the same NZCV rules
  * the emulator's executor applies; no emulator round trip. Inputs and the
  * width toggle are the user acting (cyan); the computed flags and taken
- * branches are the machine acting (amber). Token-only, keyboard accessible
- * (native inputs and buttons), reduced-motion safe (discrete state swaps,
- * no animation).
+ * branches are the machine acting (amber). Native inputs and buttons; no
+ * animation, so reduced motion needs no fallback.
  */
 
 import { useId, useMemo, useState, type JSX } from "react";
@@ -323,7 +322,7 @@ export function FlagEffect({
                   {regA} reads as{" "}
                   {signedReading(parsed.a & ((1n << BigInt(bits)) - 1n), bits).toString()}{" "}
                   signed · {(parsed.a & ((1n << BigInt(bits)) - 1n)).toString()}{" "}
-                  unsigned -- same bits, two readings
+                  unsigned (same bits, two readings)
                 </p>
                 <p className="text-[var(--text-tertiary)]">
                   {config.discards
@@ -334,7 +333,7 @@ export function FlagEffect({
             ) : (
               <p>
                 {unordered
-                  ? "unordered: one side is nan, so c and v are set -- branches that read v misfire here."
+                  ? "unordered: one side is nan, so c and v are set. branches that read v misfire here."
                   : parsed.kind === "float"
                     ? outcome.flags.z
                       ? `${regA} equals ${regB}`
@@ -408,7 +407,7 @@ export function FlagEffect({
           href={condHref}
           className="inline-flex min-h-[44px] items-center gap-1 self-start font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]"
         >
-          what each of these conditions really asks -- see b.cond{" "}
+          what each of these conditions really asks: see b.cond{" "}
           <span aria-hidden="true">{"→"}</span>
         </a>
       )}

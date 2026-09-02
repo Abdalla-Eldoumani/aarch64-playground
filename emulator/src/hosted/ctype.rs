@@ -1,8 +1,8 @@
 //! The C-locale character classification glibc exposes twice: as the
 //! `is*`/`to*` functions a `bl isdigit` reaches, and as the lookup table
 //! behind them. gcc lowers the `<ctype.h>` MACROS to
-//! `(*__ctype_b_loc())[c] & mask`, so a program compiled from C -- and
-//! any student copying that idiom into assembly -- never calls `isdigit`
+//! `(*__ctype_b_loc())[c] & mask`, so a program compiled from C (and
+//! any student copying that idiom into assembly) never calls `isdigit`
 //! at all; it calls `__ctype_b_loc` once and indexes the table. Both
 //! spellings answer from `class_of` here, so they can never disagree.
 //!
@@ -30,8 +30,8 @@ pub const IS_PUNCT: u16 = 0x0004;
 pub const IS_ALNUM: u16 = 0x0008;
 
 /// Lowest index the hosted table answers for. glibc's table starts at
-/// -128 so a plain `char` -- signed on some ports, and EOF on every one
-/// of them -- can index it without a cast.
+/// -128 so a plain `char` (signed on some ports, and EOF on every one
+/// of them) can index it without a cast.
 pub const TABLE_FIRST_INDEX: i32 = -128;
 /// Highest index the hosted table answers for: `unsigned char` max.
 pub const TABLE_LAST_INDEX: i32 = 255;
@@ -41,12 +41,15 @@ pub const TABLE_ENTRIES: usize = (TABLE_LAST_INDEX - TABLE_FIRST_INDEX + 1) as u
 /// `__ctype_b_loc` hands back aims HERE, not at the start, because the
 /// caller indexes it with a signed value.
 pub const TABLE_ZERO_OFFSET: u64 = ((-TABLE_FIRST_INDEX) as u64) * 2;
+/// The same offset for the two CONVERSION tables, whose entries are
+/// 4-byte signed ints instead of the class table's 2-byte masks.
+pub const TABLE_ZERO_OFFSET_I32: u64 = ((-TABLE_FIRST_INDEX) as u64) * 4;
 
 /// C's EOF, the one negative index every program really passes.
 const EOF: i32 = -1;
 
 /// The class bits of one byte in the C locale. Bytes above 0x7F belong
-/// to no class there -- the "C" locale is ASCII and nothing else, which
+/// to no class there: the "C" locale is ASCII and nothing else, which
 /// is what the course servers run under.
 fn class_of_byte(c: u8) -> u16 {
     if !c.is_ascii() {
@@ -136,16 +139,43 @@ pub fn isspace(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     class_stub(ctx, IS_SPACE)
 }
 
-/// toupper(c) / tolower(c): the 26 letters shift case and every other
-/// value -- EOF included -- passes through unchanged, exactly what
-/// glibc's conversion tables hold in the C locale.
+/// The case rule at table index `c`: the 26 letters shift case and every
+/// other value passes through. The negative half mirrors the high half
+/// the way `class_of` does, so index -2 and index 254 name the same byte
+/// and both answer 254; EOF is glibc's one carve-out and answers -1, so
+/// `toupper(getchar())` still ends a loop. Single source of truth for
+/// both the conversion tables and the `toupper`/`tolower` stubs, which
+/// glibc keeps in step.
+pub fn convert_byte(c: i32, to_upper: bool) -> i32 {
+    if c == EOF || !(TABLE_FIRST_INDEX..=TABLE_LAST_INDEX).contains(&c) {
+        return c;
+    }
+    let b = (c & 0xFF) as u8;
+    if to_upper && b.is_ascii_lowercase() {
+        i32::from(b - 32)
+    } else if !to_upper && b.is_ascii_uppercase() {
+        i32::from(b + 32)
+    } else {
+        i32::from(b)
+    }
+}
+
+/// The 384-entry conversion table glibc's `toupper`/`tolower` macros
+/// index, index `TABLE_FIRST_INDEX` first. Entries are 4 bytes signed,
+/// unlike the class table's 2, and they come from `convert_byte` so the
+/// function and the table cannot disagree.
+pub fn conversion_table(to_upper: bool) -> [i32; TABLE_ENTRIES] {
+    let mut out = [0i32; TABLE_ENTRIES];
+    for (i, entry) in out.iter_mut().enumerate() {
+        *entry = convert_byte(i as i32 + TABLE_FIRST_INDEX, to_upper);
+    }
+    out
+}
+
+/// toupper(c) / tolower(c), answering from the same rule the table holds.
 fn convert_stub(ctx: &mut HostContext<'_>, to_upper: bool) -> Result<HostOutcome, EmuError> {
     let c = ctx.regs.read_gpr(0, false) as u32 as i32;
-    let converted = match u8::try_from(c) {
-        Ok(b) if to_upper && b.is_ascii_lowercase() => c - 32,
-        Ok(b) if !to_upper && b.is_ascii_uppercase() => c + 32,
-        _ => c,
-    };
+    let converted = convert_byte(c, to_upper);
     ctx.regs.write_gpr(0, true, converted as i64 as u64);
     Ok(HostOutcome::Continue)
 }
@@ -165,6 +195,21 @@ pub fn tolower(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 pub fn ctype_b_loc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     ctx.regs
         .write_gpr(0, true, crate::hosted::stdio::CTYPE_B_PTR);
+    Ok(HostOutcome::Continue)
+}
+
+/// `__ctype_toupper_loc()` -> the address of the word holding the
+/// uppercase table pointer, the same shape `ctype_b_loc` answers with
+/// for the class table.
+pub fn ctype_toupper_loc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    ctx.regs
+        .write_gpr(0, true, crate::hosted::stdio::CTYPE_TOUPPER_PTR);
+    Ok(HostOutcome::Continue)
+}
+
+pub fn ctype_tolower_loc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    ctx.regs
+        .write_gpr(0, true, crate::hosted::stdio::CTYPE_TOLOWER_PTR);
     Ok(HostOutcome::Continue)
 }
 
@@ -316,6 +361,100 @@ mod tests {
         assert!(
             end < crate::hosted::stdio::STDIO_GLOBALS_BASE + 4096,
             "the table overran its page"
+        );
+    }
+
+    #[test]
+    fn conversion_tables_mirror_the_negative_half_and_keep_eof() {
+        // csarm's ctype_tables probe read all 384 entries of both tables.
+        // The negative half mirrors the unsigned view of the same byte
+        // (index -5 answers 251), and EOF is the one carve-out.
+        let up = conversion_table(true);
+        let down = conversion_table(false);
+        let at = |t: &[i32; TABLE_ENTRIES], c: i32| t[(c - TABLE_FIRST_INDEX) as usize];
+        assert_eq!(at(&up, 'a' as i32), 'A' as i32);
+        assert_eq!(at(&up, 'A' as i32), 'A' as i32);
+        assert_eq!(at(&up, '5' as i32), '5' as i32);
+        assert_eq!(at(&down, 'A' as i32), 'a' as i32);
+        assert_eq!(at(&down, 'a' as i32), 'a' as i32);
+        assert_eq!(at(&up, -1), -1, "EOF passes through");
+        assert_eq!(at(&down, -1), -1);
+        assert_eq!(at(&up, -128), 128);
+        assert_eq!(at(&down, -128), 128);
+        assert_eq!(at(&up, -5), 251);
+        assert_eq!(at(&down, -2), 254);
+        assert_eq!(at(&up, 200), 200);
+        assert_eq!(at(&up, 255), 255);
+        assert_eq!(TABLE_ZERO_OFFSET_I32, 512);
+    }
+
+    #[test]
+    fn the_conversion_stubs_answer_what_the_tables_hold() {
+        // glibc keeps the function and the macro in step over the whole
+        // index range, and the probe's whole-range check confirmed it.
+        let mut h = Host::new();
+        let up = conversion_table(true);
+        let down = conversion_table(false);
+        for c in TABLE_FIRST_INDEX..=TABLE_LAST_INDEX {
+            let i = (c - TABLE_FIRST_INDEX) as usize;
+            assert_eq!(h.call(toupper, i64::from(c)), i64::from(up[i]), "toupper({c})");
+            assert_eq!(h.call(tolower, i64::from(c)), i64::from(down[i]), "tolower({c})");
+        }
+    }
+
+    #[test]
+    fn the_loader_writes_conversion_tables_the_guest_can_index() {
+        let mut mem = Memory::new();
+        crate::hosted::stdio::write_stdio_globals(&mut mem).unwrap();
+        for (ptr, base, to_upper) in [
+            (
+                crate::hosted::stdio::CTYPE_TOUPPER_PTR,
+                crate::hosted::stdio::CTYPE_TOUPPER_TABLE,
+                true,
+            ),
+            (
+                crate::hosted::stdio::CTYPE_TOLOWER_PTR,
+                crate::hosted::stdio::CTYPE_TOLOWER_TABLE,
+                false,
+            ),
+        ] {
+            let table = mem.read_u64(ptr).unwrap();
+            assert_eq!(
+                table,
+                base + TABLE_ZERO_OFFSET_I32,
+                "the stored pointer must aim at index 0, not at the start"
+            );
+            let entry = |c: i64| mem.read_u32((table as i64 + c * 4) as u64).unwrap() as i32;
+            let want = conversion_table(to_upper);
+            for c in [-128i64, -5, -1, 0, 'A' as i64, 'a' as i64, '5' as i64, 255] {
+                assert_eq!(entry(c), want[(c as i32 - TABLE_FIRST_INDEX) as usize], "index {c}");
+            }
+        }
+        // Both tables stay inside the single page the loader mapped for
+        // them: 384 entries of 4 bytes each, twice, is 3072 of its 4096.
+        let end = crate::hosted::stdio::CTYPE_TOLOWER_TABLE + (TABLE_ENTRIES as u64) * 4;
+        assert!(
+            end < crate::hosted::stdio::CTYPE_CONV_BASE + 4096,
+            "the conversion tables overran their page"
+        );
+    }
+
+    #[test]
+    fn ctype_conversion_loc_answers_the_pointer_word_not_the_table() {
+        let mut h = Host::new();
+        ctype_toupper_loc(&mut h.ctx()).unwrap();
+        assert_eq!(
+            h.regs.read_gpr(0, true),
+            crate::hosted::stdio::CTYPE_TOUPPER_PTR
+        );
+        assert_ne!(
+            h.regs.read_gpr(0, true),
+            crate::hosted::stdio::CTYPE_TOUPPER_TABLE + TABLE_ZERO_OFFSET_I32
+        );
+        ctype_tolower_loc(&mut h.ctx()).unwrap();
+        assert_eq!(
+            h.regs.read_gpr(0, true),
+            crate::hosted::stdio::CTYPE_TOLOWER_PTR
         );
     }
 

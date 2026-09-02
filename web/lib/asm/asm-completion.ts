@@ -79,7 +79,7 @@ function instructionSuggestions(): Suggestion[] {
 
 // Nothing adjacent to the `([^)]*)` body may itself match whitespace, or the
 // two overlap and an unclosed `define(` backtracks O(n^2) over the run
-// between them -- and this runs on the main thread on every keystroke. A
+// between them, and this runs on the main thread on every keystroke. A
 // `\s*` after the comma cost 3.5s on 64k spaces; `[^)]*` already absorbs
 // that whitespace and the body is trimmed below.
 const DEFINE_RE = /\bdefine\s*\(\s*([A-Za-z_][\w]*)\s*,([^)]*)\)/g;
@@ -111,8 +111,7 @@ function labelSuggestions(source: string): Suggestion[] {
 }
 
 function isInOperandContext(line: string): boolean {
-  // We're in operand context if the line contains a mnemonic followed
-  // by whitespace before the cursor: e.g. `  mov ` or `  ldr w0, [`.
+  // e.g. `  mov ` or `  ldr w0, [`.
   return /^\s*[A-Za-z_.][\w.]*\s+\S*$/.test(line) || /^\s*[A-Za-z_.][\w.]*\s+/.test(line);
 }
 
@@ -125,13 +124,12 @@ function isBranchContext(line: string): boolean {
 }
 
 function isDirectiveContext(line: string): boolean {
-  // The cursor sits inside a token starting with `.` at this column.
   return /^\s*\.\w*$/.test(line);
 }
 
 function isMnemonicStartContext(line: string): boolean {
   // First non-blank token in the line (no whitespace yet after the
-  // current word) -- we're typing the mnemonic.
+  // current word): we're typing the mnemonic.
   return /^\s*[A-Za-z_][\w.]*$/.test(line) && !line.trimStart().startsWith(".");
 }
 
@@ -187,8 +185,7 @@ export function buildSuggestions(c: CompletionContext): Suggestion[] {
 }
 
 function isOperandContextOnly(line: string): boolean {
-  // True when there's already a mnemonic followed by whitespace and we
-  // aren't in a branch (those handled separately).
+  // Branch context is handled separately.
   if (!isInOperandContext(line)) return false;
   if (isBranchContext(line)) return false;
   return true;

@@ -1,11 +1,11 @@
 {
-  "title": "Predict: Bitwise Mechanics",
+  "title": "Predict: binary logic",
   "slug": "predict-binary-logic",
   "order": 36,
   "topic": "binary-logic",
   "difficulty": "challenge",
   "variant": "prediction",
-  "prompt": "Act as the CPU. Trace each shift, mask, and sign-extension snippet and give the exact value it leaves in the destination register.",
+  "prompt": "For each shift, mask, and sign-extension snippet, give the exact value left in the destination register.",
   "predictions": [
     {
       "code": "mov w20, 5\nlsl w19, w20, 3",

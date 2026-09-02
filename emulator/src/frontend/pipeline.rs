@@ -46,8 +46,8 @@ pub struct LinkedImage {
     /// Authoritative address -> editor-source-line map. For every
     /// `.text` instruction emitted at `pc`, this holds `(pc,
     /// original_line)` where `original_line` is the 1-based EDITOR
-    /// (pre-m4) line. m4 keeps line numbers aligned -- `define()` lines
-    /// expand to empty lines -- so `original_line` is the line the
+    /// (pre-m4) line. m4 keeps line numbers aligned (`define()` lines
+    /// expand to empty lines), so `original_line` is the line the
     /// student actually wrote. The debugger marker, the disassembly
     /// text, and breakpoint placement key off this instead of counting
     /// non-label source lines (which double-counts data/macro/directive
@@ -76,8 +76,8 @@ type PoolKey = (String, Option<u64>);
 /// recent definition above it, and a use above every definition takes the
 /// first one (both verified against aarch64-linux-gnu-as). Two files
 /// concatenated into one workspace can each write `len = . - msg` against
-/// their own string, and the linker used to keep only the first value and
-/// hand it to both files' uses. Labels stay file-wide, as they are in GAS.
+/// their own string. A single stored value would be handed to both files'
+/// uses. Labels stay file-wide, as they are in GAS.
 type EquateDefs = HashMap<String, Vec<(usize, u64)>>;
 
 /// The value `name` holds at 1-based source `line`. Equates resolve
@@ -107,10 +107,9 @@ fn symbol_at(
 }
 
 /// Record one resolved equate definition. The flat table keeps the FIRST
-/// value so that everything reading it as a plain map -- the membership
-/// test in `looks_like_expression`, `LinkedImage.symbols`, the legacy
-/// encoder's label lookup -- sees exactly what it saw before positional
-/// resolution existed.
+/// value so that every reader that treats it as a plain map
+/// (`looks_like_expression`'s membership test, `LinkedImage.symbols`, the
+/// legacy encoder's label lookup) sees one value per name.
 fn record_equate(
     name: &str,
     line: usize,
@@ -182,14 +181,14 @@ struct Layout {
     /// resolution `symbol_at` does.
     equates: EquateDefs,
     /// First-definition lines, for duplicate-label errors that name both
-    /// sites. GAS rejects a redefined label; accepting it here made the
-    /// last definition win silently, so branches jumped to the wrong copy.
+    /// sites. GAS rejects a redefined label; accepting one lets the last
+    /// definition win silently, so branches jump to the wrong copy.
     label_lines: HashMap<String, usize>,
     /// Each label's offset within its own section. GAS resolves a defined
     /// label used as an instruction immediate (`ldr x19, [fp, a_local]`,
     /// `add x1, fp, a_local`, `cmp x0, a_local`) to this section-relative
-    /// value at assembly time, with no relocation -- verified against
-    /// aarch64 GAS on the course servers. The absolute address in `symbols`
+    /// value at assembly time, with no relocation (verified against
+    /// aarch64 GAS on the course servers). The absolute address in `symbols`
     /// stays the answer everywhere else (branches, `ldr =`, adr, .quad).
     label_offsets: HashMap<String, u64>,
     /// `.skip <expr>` byte counts, resolved during the placement walk and
@@ -235,7 +234,7 @@ struct Emission {
 /// collect `name = expr` assignments with the address where they
 /// appear so the linker can evaluate `. - msg - 1` and similar bodies
 /// in the right place. Assignments that resolve against the symbols
-/// seen so far fold immediately -- `.skip STACKSIZE * 4` needs its
+/// seen so far fold immediately: `.skip STACKSIZE * 4` needs its
 /// equate during this very walk; the rest wait for pass 1c's rounds.
 /// Reserve sizes resolved here are kept for pass 2, which must walk
 /// the identical layout.
@@ -266,8 +265,8 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
                             message: format!(
-                                "label `{name}` is already defined on line {first} -- \
-                                 give each label a unique name (labels are file-wide, \
+                                "label `{name}` is already defined on line {first}. \
+                                 Give each label a unique name (labels are file-wide, \
                                  not per-function)"
                             ),
                         });
@@ -277,7 +276,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                             line: *original_line,
                             message: format!(
                                 "label `{name}` collides with the `{name} = ...` \
-                                 constant defined earlier -- rename one of them"
+                                 constant defined earlier; rename one of them"
                             ),
                         });
                     }
@@ -302,7 +301,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                             line: *original_line,
                             message: format!(
                                 "`{name} = ...` collides with the label `{name}:` \
-                                 on line {first} -- rename one of them"
+                                 on line {first}; rename one of them"
                             ),
                         });
                     }
@@ -333,7 +332,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                             line: *original_line,
                             message: format!(
                                 "this instruction lands at a misaligned address: {} byte(s) of \
-                                 data sit in .text above it -- move the data to .data or \
+                                 data sit in .text above it. Move the data to .data or \
                                  .rodata, or add `.balign 4` between the data and the code",
                                 offset % 4
                             ),
@@ -375,7 +374,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                     line: last_line,
                     message: format!(
                         "{} has grown past its 1 MiB window ({} bytes so far) and would \
-                         overlap the next section's addresses -- shrink the data or .skip \
+                         overlap the next section's addresses. Shrink the data or .skip \
                          reservations (check any size equate for a typo)",
                         section.kind.name(),
                         offset
@@ -404,6 +403,8 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
 /// `.` address. Do multiple rounds since later assignments can depend
 /// on earlier ones or on labels defined later in the same section.
 fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
+    // Sixteen rounds: each round resolves at least one more equate, and no
+    // course file chains that many.
     for _ in 0..16 {
         let mut changed = false;
         let mut remaining: Vec<(String, String, u64, usize)> = Vec::new();
@@ -412,13 +413,13 @@ fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
             // (defined after it) must not vanish silently. Checked against
             // `label_lines` rather than the folded-symbol table, because a
             // name bound by an earlier equate is no longer a reason to
-            // skip this definition -- each one has its own value.
+            // skip this definition: each one has its own value.
             if let Some(first) = layout.label_lines.get(name) {
                 return Err(EmuError::AssemblyError {
                     line: *line,
                     message: format!(
                         "`{name} = ...` collides with the label `{name}:` \
-                         on line {first} -- rename one of them"
+                         on line {first}; rename one of them"
                     ),
                 });
             }
@@ -443,11 +444,11 @@ fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
         }
     }
 
-    // Whatever is still pending is permanently broken -- a typo'd symbol,
+    // Whatever is still pending is permanently broken: a typo'd symbol,
     // a division by zero, a cycle. Re-run the evaluation WITHOUT the
     // `.ok()` so its own error (which names the cause at the assignment's
-    // line) surfaces; silently dropping it used to blame the innocent USE
-    // site with "invalid immediate".
+    // line) surfaces. Dropping it silently blames the USE site with
+    // "invalid immediate".
     if let Some((_, body, here, line)) = layout.assignments.first() {
         let tokens = lex(body, *line)?;
         evaluate(
@@ -463,8 +464,8 @@ fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
     // Pin each equate's flat-table value to its FIRST definition by SOURCE
     // line. The flat table is what every non-positional reader gets
     // (`LinkedImage.symbols`, the legacy encoder's label lookup), and the
-    // passes above fill it in walk order -- which is section order, not
-    // source order -- so a redefined name could otherwise land there with
+    // passes above fill it in walk order (which is section order, not
+    // source order), so a redefined name could otherwise land there with
     // whichever definition the linker happened to reach first.
     for (name, defs) in &layout.equates {
         if let Some((_, value)) = defs.iter().min_by_key(|(line, _)| *line) {
@@ -480,8 +481,8 @@ fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
 /// because direct BL cannot reach the 0xFFFF_0000 host-stub range.
 /// Keyed by operand text plus, for a `.`-relative expression, the
 /// address of the LDR itself. `ldr x0, =. + 8` is a different constant
-/// at every site, so sharing one slot by text handed the second site
-/// the first one's value -- and `.` used to resolve to 0 outright.
+/// at every site, so sharing one slot by text hands the second site the
+/// first one's value.
 fn size_literal_pool(prog: &Program, layout: &mut Layout) -> Result<Pool, EmuError> {
     let mut pool_slots: HashMap<PoolKey, u64> = HashMap::new();
     let mut pool_values: Vec<u64> = Vec::new();
@@ -554,8 +555,8 @@ fn size_literal_pool(prog: &Program, layout: &mut Layout) -> Result<Pool, EmuErr
     // `+ 8` (not `+ 7`): always leave a gap of at least 4 bytes between
     // the last real instruction and the first trampoline, so sequential
     // fall-through can be told apart from a `bl printf` arriving at a
-    // trampoline. With plain 8-alignment an 8-aligned .text fell straight
-    // into the first trampoline and silently called that libc function.
+    // trampoline. With plain 8-alignment an 8-aligned .text falls straight
+    // into the first trampoline and calls that libc function.
     let tramp_base = CODE_BASE + ((layout.text_len + 8) & !7);
     let tramp_bytes = (host_trampolines.len() as u64) * 8;
     let pool_base = tramp_base + tramp_bytes;
@@ -570,7 +571,7 @@ fn size_literal_pool(prog: &Program, layout: &mut Layout) -> Result<Pool, EmuErr
             line: 0,
             message: format!(
                 ".text plus its literal pool and libc trampolines reaches {} bytes, past \
-                 the 1 MiB code window -- shrink .text or reduce the `ldr xN, =...` \
+                 the 1 MiB code window. Shrink .text, or reduce the `ldr xN, =...` \
                  constants and libc calls",
                 image_end - CODE_BASE
             ),
@@ -695,15 +696,15 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                     // Pass 1d (literal pool + trampolines) only scans
                     // .text, so an instruction landing anywhere else has
                     // no pool slot and no trampoline: `ldr xN, =sym`
-                    // panicked on a missing key and `bl printf` truncated
-                    // its offset into a garbage branch. On the course
+                    // would panic on a missing key and `bl printf` would
+                    // truncate its offset into a garbage branch. On the course
                     // toolchain code outside .text faults at runtime;
                     // here we say what is missing while the line is known.
                     if section.kind != SectionKind::Text {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
                             message: format!(
-                                "instruction in the {} section -- add a `.text` \
+                                "instruction in the {} section. Add a `.text` \
                                  directive above your code",
                                 section.kind.name()
                             ),
@@ -714,8 +715,8 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         // GAS encodes `ldr reg, label` as one LDR
                         // (literal), and the servers' linker resolves it
                         // because ld packs the sections a few KB apart.
-                        // Here .data and .bss sit 2-3 MiB from .text --
-                        // past imm19's 1 MiB reach -- so the linker
+                        // Here .data and .bss sit 2-3 MiB from .text,
+                        // past imm19's 1 MiB reach, so the linker
                         // lowers it to two words: the label's address
                         // arrives from the literal pool (a real LDR
                         // (literal), always in reach), then an ordinary
@@ -744,7 +745,10 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                             .ok_or_else(|| EmuError::LinkError {
                                 line: *original_line,
                                 message: format!(
-                                    "no literal pool slot for `{label_text}`"
+                                    "`{label_text}` could not be placed in the \
+                                     literal pool: the pool only covers code in \
+                                     `.text`, so move this instruction under a \
+                                     `.text` directive"
                                 ),
                             })?;
                         let slot_addr = pool_base + slot;
@@ -772,7 +776,12 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         let slot = *pool_slots.get(&(target_text.clone(), here)).ok_or_else(
                             || EmuError::LinkError {
                                 line: *original_line,
-                                message: format!("no literal pool slot for `{target_text}`"),
+                                message: format!(
+                                    "`{target_text}` could not be placed in the \
+                                     literal pool: the pool only covers code in \
+                                     `.text`, so move this instruction under a \
+                                     `.text` directive"
+                                ),
                             },
                         )?;
                         let slot_addr = pool_base + slot;
@@ -783,8 +792,7 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         // trampoline so the out-of-range synthetic host
                         // address becomes reachable. Operating on the
                         // tokens directly handles tab whitespace and
-                        // any trailing token noise that the old raw-
-                        // string path could not.
+                        // trailing token noise.
                         let mut tokens_owned = tokens.clone();
                         redirect_bl_to_trampoline_tokens(&mut tokens_owned, tramp_addr);
                         let raw = expanded_lines
@@ -795,15 +803,18 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         if stripped.is_empty() {
                             return Err(EmuError::AssemblyError {
                                 line: *original_line,
-                                message: "empty instruction line".into(),
+                                message: "nothing to assemble on this line: a \
+                                          label needs a `:` after it, and an \
+                                          instruction needs a mnemonic"
+                                    .into(),
                             });
                         }
                         // Resolve aliases and constant expressions into
                         // plain numeric literals so the legacy encoder
                         // sees `[sp, -32]!` instead of `[sp, alloc]!`.
                         let line_text = if let Some(name) = extract_bl_target(&tokens_owned) {
-                            // `bl label+addend` used to silently drop the
-                            // addend and branch to the bare symbol. There is
+                            // `bl label+addend` would drop the addend and
+                            // branch to the bare symbol. There is
                             // no encoding for it here, so reject rather than
                             // mislead. A plain `bl label` is exactly 2 tokens.
                             if tokens_owned.len() > 2 {
@@ -876,12 +887,12 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
         writes.push((addr, value.to_le_bytes().to_vec()));
     }
 
-    // A program that produced no instructions "assembled" and then died on
-    // step 1 with `unknown instruction: 0x00000000`; real ld rejects it.
+    // A program with no instructions would assemble and then die on step 1
+    // with `unknown instruction 0x00000000`; real ld rejects it.
     if instruction_count == 0 {
         return Err(EmuError::LinkError {
             line: 0,
-            message: "the program has no instructions -- if a comment or a \
+            message: "the program has no instructions. If a comment or a \
                       missing .text swallowed your code, put it back under \
                       `.text`"
                 .into(),
@@ -900,11 +911,11 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
 /// `.global main`).
 fn resolve_entry_point(prog: &Program, layout: &Layout) -> Result<u64, EmuError> {
     // An entry point has to be a LABEL. `main = 5` also lands in `symbols`,
-    // and taking it started execution at address 5 with no diagnostic.
+    // and taking it would start execution at address 5 with no diagnostic.
     let main_is_label = layout.label_lines.contains_key("main");
     let start_is_label = layout.label_lines.contains_key("_start");
 
-    // `.global main` with no `main:` silently fell back to CODE_BASE;
+    // `.global main` with no `main:` would fall back to CODE_BASE;
     // real ld reports the undefined reference. It is only an error when
     // nothing else can be the entry point, though: ld links a program that
     // declares the global out of habit and enters at `_start`, because an
@@ -912,26 +923,27 @@ fn resolve_entry_point(prog: &Program, layout: &Layout) -> Result<u64, EmuError>
     if prog.globals.contains("main") && !main_is_label && !start_is_label {
         return Err(EmuError::LinkError {
             line: 0,
-            message: "no `main:` label found -- `.global main` was declared \
-                      and execution starts at `main`"
+            message: "no `main:` label found. `.global main` is declared, so \
+                      execution is meant to start at `main`: add a `main:` label \
+                      above the first instruction, or remove the `.global main` \
+                      line if this file is a helper"
                 .into(),
         });
     }
-    // A file with neither entry symbol used to run from the top of
+    // A file with neither entry symbol would run from the top of
     // .text, which turns a helpers-only file into a confusing crash.
     // Real ld refuses to link it; so do we.
     if !main_is_label && !start_is_label {
         return Err(EmuError::LinkError {
             line: 0,
-            message: "no entry point -- define `main:` (declared `.global main`) \
+            message: "no entry point. Define `main:` (declared `.global main`) \
                       or `_start:`. A file holding only helper functions runs as \
                       part of a program whose other file has `main`"
                 .into(),
         });
     }
-    // `_start`-only programs used to fall back to CODE_BASE, which runs
-    // whatever helper happens to sit at the top of .text instead of the
-    // program the student wrote.
+    // Falling back to CODE_BASE would run whatever helper happens to sit
+    // at the top of .text instead of the program the student wrote.
     Ok(if main_is_label {
         layout.symbols["main"]
     } else {
@@ -1039,9 +1051,9 @@ fn parse_ldr_dest(reg: &str) -> Option<LdrDest> {
 }
 
 /// Render a token slice back to source text. Every `TokenKind` gets an
-/// arm on purpose: the old catch-all silently dropped whole tokens, so
-/// `ldr x0, =.Lmsg` (a DirectiveIdent) produced an empty operand and two
-/// different operands could collapse onto the same literal-pool key. The
+/// arm on purpose: a catch-all arm drops whole tokens, so `ldr x0, =.Lmsg`
+/// (a DirectiveIdent) then produces an empty operand and two different
+/// operands collapse onto one literal-pool key. The
 /// match stays exhaustive so a new token kind is a compile error here
 /// instead of a silent hole.
 fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
@@ -1050,7 +1062,7 @@ fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
         match &t.kind {
             TokenKind::Ident(s) => out.push_str(s),
             // Dotted local labels (`ldr x0, =.Lmsg`) ride through like any
-            // other symbol; dropping them left an empty operand.
+            // other symbol; dropping them leaves an empty operand.
             TokenKind::DirectiveIdent(s) => out.push_str(s),
             TokenKind::IntLit(v) => out.push_str(&format!("{v}")),
             TokenKind::FloatLit(v) => out.push_str(&format!("{v}")),
@@ -1135,7 +1147,7 @@ fn resolve_ldr_eq_target(
     // Lex the operand fragment, evaluate as an expression with the full
     // symbol table. `here` is the address of the LDR that asked for this
     // slot, which is what GAS resolves `.` to inside an `=expr` operand.
-    // Passing 0 unconditionally made `ldr x0, =. + 8` load 8.
+    // Passing 0 unconditionally makes `ldr x0, =. + 8` load 8.
     let tokens = lex(text, line)?;
     let value = evaluate(
         &tokens,
@@ -1144,6 +1156,37 @@ fn resolve_ldr_eq_target(
         line,
     )?;
     Ok(value as u64)
+}
+
+/// Resolve a relocatable expression operand (a bare symbol, or a symbol
+/// plus or minus a constant: `msg+8`, `.LC0 + 19`, `end-start`) to an
+/// absolute address. Same evaluator `resolve_ldr_eq_target` uses, so the
+/// `=expr` form and the `adrp`/`:lo12:` forms cannot disagree about what
+/// an expression means.
+fn resolve_relocatable_operand(
+    text: &str,
+    symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
+    here: u64,
+    line: usize,
+) -> Result<u64, EmuError> {
+    let tokens = lex(text, line)?;
+    let value = evaluate(
+        &tokens,
+        &|name| symbol_at(name, line, symbols, equates),
+        here as i64,
+        line,
+    )?;
+    Ok(value as u64)
+}
+
+/// True when an operand is a plain label name with no expression around
+/// it. Bare labels keep the ADR/ADRP bypass, so their encoding stays
+/// byte-identical to GAS's; anything else is resolved here.
+fn is_bare_identifier(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '$')
 }
 
 /// Evaluate an assignment body at a specific point in the section walk,
@@ -1170,8 +1213,8 @@ fn try_evaluate_at(
 /// How deep `[`...`]` nesting may go before an operand is refused.
 /// `rewrite_operand` and `rewrite_operand_list` call each other once per
 /// bracket level, so `[[[[...]]]]` recurses without bound. A wasm stack
-/// overflow is unrecoverable -- the trap skips wasm-bindgen's borrow-guard
-/// Drop and every later call fails on the stuck borrow flag -- so depth is
+/// overflow is unrecoverable (the trap skips wasm-bindgen's borrow-guard
+/// Drop and every later call fails on the stuck borrow flag), so depth is
 /// counted and refused long before the stack is at risk. This mirrors
 /// `expr::MAX_EXPR_DEPTH`, which guards the same hazard on the expression
 /// side. Real addressing modes nest one level.
@@ -1201,14 +1244,26 @@ fn lower_operands(
         return Ok(mnemonic.to_string());
     }
     // Branches want to see a label name, not an evaluated offset; leave
-    // the tail alone for them. ADR/ADRP likewise carry a label the encoder
-    // resolves against the absolute symbol table (and `:lo12:` operands are
-    // handled per-operand below).
-    if is_branch_mnemonic(mnemonic)
-        || mnemonic.eq_ignore_ascii_case("adr")
-        || mnemonic.eq_ignore_ascii_case("adrp")
-    {
+    // the tail alone for them.
+    if is_branch_mnemonic(mnemonic) {
         return Ok(format!("{mnemonic} {tail}"));
+    }
+    // ADR/ADRP likewise carry a label the encoder resolves against the
+    // absolute symbol table, but only when the operand IS a bare label.
+    // `adrp x0, .LC0+19` is a relocatable expression, and the addend has
+    // to fold in before the page split, so it is resolved here and handed
+    // to the encoder as a number. (`:lo12:` operands are handled
+    // per-operand below.)
+    if mnemonic.eq_ignore_ascii_case("adr") || mnemonic.eq_ignore_ascii_case("adrp") {
+        let Some((head, last)) = tail.rsplit_once(',') else {
+            return Ok(format!("{mnemonic} {tail}"));
+        };
+        let last = last.trim();
+        if is_bare_identifier(last) {
+            return Ok(format!("{mnemonic} {tail}"));
+        }
+        let value = resolve_relocatable_operand(last, symbols, equates, pc, ln)?;
+        return Ok(format!("{mnemonic} {head}, {value}"));
     }
     let rewritten = rewrite_operand_list(tail, pc, symbols, equates, label_offsets, ln, 0)?;
     Ok(format!("{mnemonic} {rewritten}"))
@@ -1218,10 +1273,10 @@ fn is_branch_mnemonic(mn: &str) -> bool {
     let lower = mn.to_ascii_lowercase();
     // Unconditional and link branches, conditional branches (both the
     // `b.cond` and dotless `bcond` spellings), CBZ/CBNZ and TBZ/TBNZ
-    // families; all take a label in their last operand slot. Missing the
-    // dotless spellings here once rewrote `bne loop` to a section offset
-    // that encode_bcond then took as a pc-relative displacement, so the
-    // branch landed at pc + (loop - .text base) with no error.
+    // families; all take a label in their last operand slot. A missing
+    // dotless spelling rewrites `bne loop` to a section offset that
+    // encode_bcond then reads as a pc-relative displacement, so the branch
+    // lands at pc + (loop - .text base) with no error.
     matches!(lower.as_str(), "b" | "bl" | "cbz" | "cbnz" | "tbz" | "tbnz")
         || lower.starts_with("b.")
         || is_dotless_bcond(&lower)
@@ -1302,22 +1357,35 @@ fn rewrite_operand(
         .or_else(|| trimmed.strip_prefix(":LO12:"))
     {
         let name = sym.trim();
-        match symbols.get(name) {
-            Some(addr) => return Ok(format!("{}", addr & 0xFFF)),
-            None => {
-                return Err(EmuError::AssemblyError {
+        if is_bare_identifier(name) {
+            return match symbols.get(name) {
+                Some(addr) => Ok(format!("{}", addr & 0xFFF)),
+                None => Err(EmuError::AssemblyError {
                     line: ln,
-                    message: format!("unknown symbol in :lo12: `{name}`"),
-                })
-            }
+                    message: format!(
+                        "`{name}` is not defined anywhere in this program: check the \
+                         spelling against the label or the `name = value` line that \
+                         defines it. m4 substitution is whole-token and case-sensitive"
+                    ),
+                }),
+            };
         }
+        // A relocatable expression, not just a bare symbol: gcc writes
+        // `:lo12:.LC0+19` when it addresses the middle of an object. The
+        // addend folds into the address BEFORE the low-12 mask, which is
+        // the whole reason this cannot be a lookup plus an add.
+        let value = resolve_relocatable_operand(name, symbols, equates, pc, ln)?;
+        return Ok(format!("{}", value & 0xFFF));
     }
     // Bracketed operand [Xn, <expr>] or [Xn, <expr>]!: rewrite the inside
     // recursively and preserve the trailing characters (whitespace, !).
     if trimmed.starts_with('[') {
         let close = find_matching_bracket(trimmed).ok_or_else(|| EmuError::AssemblyError {
             line: ln,
-            message: "unbalanced addressing bracket".into(),
+            message: "unbalanced bracket in the address: count the `[` and `]` on \
+                      this line. Pre-indexed forms end `]!`, and post-indexed forms \
+                      close the `]` before the comma, as in `[x20], 8`"
+                .into(),
         })?;
         let inside = &trimmed[1..close];
         let trailer = &trimmed[close..];
@@ -1404,7 +1472,7 @@ fn is_register_or_shift_keyword(s: &str) -> bool {
         }
     }
     // The bare-name registers come from the shared alias table; the tail is
-    // this recognizer's own -- shift and extend keywords are operands here,
+    // this recognizer's own: shift and extend keywords are operands here,
     // not registers.
     if crate::registers::reg_alias(&lower).is_some() {
         return true;
@@ -1420,9 +1488,9 @@ fn is_register_or_shift_keyword(s: &str) -> bool {
 /// Evaluate an operand body that looked like an expression. `Ok(None)`
 /// means "not an integer expression, hand the text to the encoder" (float
 /// immediates, shift-modifier operands); a genuine broken expression
-/// propagates its own diagnosis -- swallowing it into the encoder's
-/// "invalid immediate" hid `unknown symbol \`SZIE\`` behind a message about
-/// immediate ranges when a macro name was typo'd.
+/// propagates its own diagnosis: swallowing it into the encoder's
+/// "invalid immediate" hides `unknown symbol \`SZIE\`` behind a message
+/// about immediate ranges when a macro name is typo'd.
 fn try_evaluate_operand(
     body: &str,
     pc: u64,
@@ -1451,7 +1519,7 @@ fn try_evaluate_operand(
     // A defined label names its section-relative offset here, the way GAS
     // resolves a label inside an instruction's immediate field (no
     // relocation exists for those bits, so GAS folds the symbol's raw
-    // section offset -- verified against the course servers). Equates and
+    // section offset, verified against the course servers). Equates and
     // everything else keep their absolute values from `symbol_at`.
     match evaluate(
         &tokens,
@@ -1584,9 +1652,8 @@ mod tests {
     #[test]
     fn every_label_taking_mnemonic_is_recognised_as_a_branch() {
         // A conditional-branch spelling the recognizer misses gets its label
-        // rewritten to a section offset, which encodes as a wrong-target
-        // branch with no error; this walks the whole set so the gap class
-        // cannot reopen.
+        // rewritten to a section offset and encodes as a wrong-target branch
+        // with no error, so walk the whole set.
         for mn in ["b", "bl", "cbz", "cbnz", "tbz", "tbnz"] {
             assert!(is_branch_mnemonic(mn), "{mn}");
         }
@@ -1609,8 +1676,8 @@ mod tests {
 
     #[test]
     fn strip_leading_labels_keeps_literal_semicolons() {
-        // The tail stripper once cut at the first `;` unconditionally,
-        // truncating a character-literal operand mid-quote.
+        // An unconditional cut at the first `;` truncates a
+        // character-literal operand mid-quote.
         assert_eq!(strip_leading_labels("mov w3, ';'"), "mov w3, ';'");
         assert_eq!(strip_leading_labels("here: mov w3, ';' ; a comment"), "mov w3, ';'");
         assert_eq!(strip_leading_labels(".string \"a;b\" // trailing"), ".string \"a;b\"");
@@ -1618,7 +1685,7 @@ mod tests {
 
     #[test]
     fn stringify_carries_every_token_kind() {
-        // The old catch-all dropped FloatLit, StringLit, brackets, braces,
+        // A catch-all arm drops FloatLit, StringLit, brackets, braces,
         // `:` and `=` without a word, so two different operands could
         // collapse onto one literal-pool key. Round-tripping through the
         // lexer proves nothing is lost.
@@ -1746,9 +1813,8 @@ mod tests {
         // Regression baseline: the old string-based version handles a
         // plain space-separated `bl printf` but silently leaves
         // `bl\tprintf` unrewritten because it does
-        // `strip_prefix("bl ")` against a literal space. Pinning the
-        // bug here so any future revival of the string form is forced
-        // to confront it.
+        // `strip_prefix("bl ")` against a literal space. Pinned here so a
+        // revival of the string form fails this test.
         use super::redirect_bl_to_trampoline;
         let tramp = tramp_with_printf();
         assert_eq!(

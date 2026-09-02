@@ -37,10 +37,10 @@ export async function generateMetadata({
   if (!lesson) return { title: "lesson not found" };
 
   const description = lesson.summary ?? FALLBACK_DESCRIPTION;
-  // The title composes through the root template (%s -- cpsc 355 playground).
+  // The title composes through the root template (%s · cpsc 355 playground).
   // Open Graph and Twitter are not deep-merged across segments, so each lesson
   // restates the full composed title and its own url instead of inheriting.
-  const composedTitle = `${lesson.title} -- cpsc 355 playground`;
+  const composedTitle = `${lesson.title} · cpsc 355 playground`;
   return {
     title: lesson.title,
     description,
@@ -71,11 +71,10 @@ export default async function LessonPage({
   const lesson = loadLesson(slug);
   if (!lesson) notFound();
   // The sheet coordinate is the lesson's 1-based position in the sorted
-  // order -- presentation only, derived at build time, schema untouched.
+  // order. It is presentation only and derived at build time.
   const position = loadAllLessons().findIndex((entry) => entry.slug === lesson.slug);
-  // Structured data, built at build time from the validated lesson: a
-  // LearningResource so the lesson reads as course material rather than a
-  // generic page, and the breadcrumb trail the reader walked to reach it.
+  // A LearningResource so the lesson reads as course material, plus the
+  // breadcrumb trail to it.
   const learningResourceJsonLd = {
     "@context": "https://schema.org",
     "@type": "LearningResource",

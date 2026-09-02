@@ -20,7 +20,6 @@ describe("formatAsm", () => {
     const input = `main:\n  mov w0, 0  // return value\n  ret\n`;
     const got = formatAsm(input);
     expect(got).toContain("// return value");
-    // The comment should appear after the operands.
     const line = got.split("\n").find((l) => l.includes("mov"))!;
     expect(line.indexOf("//")).toBeGreaterThan(line.indexOf("mov"));
   });
@@ -76,7 +75,7 @@ describe("formatAsm", () => {
     expect(got).toBe(`// just a comment\n;; another\n`);
   });
 
-  it("gaps stacked labels sharing a line", () => {
+  it("pads stacked labels sharing a line", () => {
     expect(formatAsm("a: b: mov x0, x1\n")).toBe("a:    b: mov     x0, x1\n");
     expect(formatAsm("a: b: c:\n")).toBe("a:    b:    c:\n");
   });
@@ -93,7 +92,7 @@ describe("formatAsm", () => {
     expect(elapsed).toBeLessThan(1_000);
   });
 
-  it("costs no more than linearly in the number of stacked labels", () => {
+  it("scales linearly with the number of stacked labels", () => {
     const timeFor = (labels: number) => {
       const started = performance.now();
       formatAsm("a:".repeat(labels));

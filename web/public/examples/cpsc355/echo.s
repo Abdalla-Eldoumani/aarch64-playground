@@ -1,7 +1,7 @@
-// io_ex2_echo.asm
+// echo.s
 // Read a line from stdin using svc, then print it using printf.
 //
-// Compile: m4 io_ex2_echo.asm > io_ex2_echo.s && gcc io_ex2_echo.s -o io_ex2_echo
+// Compile: m4 echo.s > echo.gen.s && gcc echo.gen.s -o echo
 //
 // Example:
 //   Enter text: Hello world
@@ -30,7 +30,7 @@ main:   stp     fp, lr, [sp, alloc]!
         // implicit NUL must not be written or printf below picks it up.
         mov     w0, 1                   // fd = 1 (stdout)
         ldr     x1, =prompt
-        mov     x2, 12                  // prompt length (no NUL)
+        mov     x2, 12                  // hand-counted: edit prompt and this changes too
         mov     x8, 64                  // syscall number for write
         svc     0
 
@@ -46,7 +46,6 @@ main:   stp     fp, lr, [sp, alloc]!
         add     x9, fp, buf_s
         strb    wzr, [x9, n_read_r]
 
-        // Print what we read
         ldr     x0, =fmt
         add     x1, fp, buf_s
         bl      printf

@@ -28,7 +28,7 @@ vi.mock("@/components/ui/Toast", () => ({
 }));
 
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
-import type { Exercise, WriteExercise } from "@/lib/content/exercise-schema";
+import type { ExerciseIndexRow } from "@/lib/content/exercise-schema";
 import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 
 const SOLVED_KEY = "aarch64-playground:practice:solved";
@@ -47,37 +47,37 @@ afterEach(() => {
   delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
 });
 
-function makeExercise(over: Partial<WriteExercise>): Exercise {
+// The index takes the narrowed row, so the fixture is a row: the blurb
+// arrives already derived from the server rather than computed here.
+function makeRow(over: Partial<ExerciseIndexRow>): ExerciseIndexRow {
   return {
     title: "Sample",
     slug: "sample",
     order: 1,
-    prompt: "# do the thing",
-    starter: "",
     variant: "write",
-    acceptance: { results: [{ kind: "register", reg: "x0", equals: 0 }] },
+    blurb: "do the thing",
     ...over,
   };
 }
 
 // order 2 then 1, so a correct render proves the order-sort; distinct topics and
 // difficulties drive the filter tests; "solved-one" is the mocked-solved slug.
-const exercises: Exercise[] = [
-  makeExercise({
+const exercises: ExerciseIndexRow[] = [
+  makeRow({
     title: "Beta Exercise",
     slug: "unsolved-two",
     order: 2,
     topic: "stack",
     difficulty: "core",
-    prompt: "# work with the stack",
+    blurb: "work with the stack",
   }),
-  makeExercise({
+  makeRow({
     title: "Alpha Exercise",
     slug: "solved-one",
     order: 1,
     topic: "registers",
     difficulty: "intro",
-    prompt: "# work with registers",
+    blurb: "work with registers",
   }),
 ];
 
@@ -94,7 +94,7 @@ describe("ExerciseIndex", () => {
 
   it("filters by the search query (title and topic) with an accessible search name", () => {
     render(<ExerciseIndex exercises={exercises} />);
-    const input = screen.getByLabelText("Search exercises");
+    const input = screen.getByLabelText("search exercises");
     fireEvent.change(input, { target: { value: "Alpha" } });
     expect(screen.getByText("Alpha Exercise")).toBeTruthy();
     expect(screen.queryByText("Beta Exercise")).toBeNull();
@@ -104,26 +104,23 @@ describe("ExerciseIndex", () => {
   });
 
   it("splits coding exercises and theory sets into two columns, grouped by topic in course order", () => {
-    const quiz: Exercise = {
+    const quiz: ExerciseIndexRow = {
       title: "Loop Quiz",
       slug: "loop-quiz",
       order: 3,
       topic: "loops",
       difficulty: "intro",
-      prompt: "# check what you know",
       variant: "quiz",
-      questions: [
-        { question: "q", options: ["a", "b"], correctAnswer: 0, explanation: "because" },
-      ],
+      blurb: "check what you know",
     };
-    const arithmetic = makeExercise({
+    const listedTopic = makeRow({
       title: "Gamma Exercise",
       slug: "gamma",
       order: 4,
-      topic: "arithmetic",
-      prompt: "# add things",
+      topic: "bitwise",
+      blurb: "flip some bits",
     });
-    render(<ExerciseIndex exercises={[...exercises, quiz, arithmetic]} />);
+    render(<ExerciseIndex exercises={[...exercises, quiz, listedTopic]} />);
 
     const code = screen.getByRole("region", { name: "Coding exercises" });
     const theory = screen.getByRole("region", { name: "Theory sets" });
@@ -132,13 +129,35 @@ describe("ExerciseIndex", () => {
     expect(within(theory).getByText("Loop Quiz")).toBeTruthy();
     expect(within(theory).getByRole("heading", { name: /^loops/ })).toBeTruthy();
 
-    // A listed topic (arithmetic) groups ahead of unlisted ones, which keep
+    // A listed topic (bitwise) groups ahead of unlisted ones, which keep
     // their id as the label and sort after the table.
     const groupNames = within(code)
       .getAllByRole("heading", { level: 3 })
       .map((heading) => (heading.textContent ?? "").replace(/·.*$/, "").trim());
-    expect(groupNames).toEqual(["arithmetic", "registers", "stack"]);
+    expect(groupNames).toEqual(["bitwise", "registers", "stack"]);
     expect(screen.queryByRole("button", { name: "registers" })).toBeNull();
+  });
+
+  // The blurb comes from the server. Nothing else in the suite would notice
+  // if it arrived empty, because every other assertion matches on a title or
+  // a topic.
+  it("renders the server-derived blurb verbatim", () => {
+    render(<ExerciseIndex exercises={exercises} />);
+    expect(screen.getByText("work with the stack")).toBeTruthy();
+    expect(screen.getByText("work with registers")).toBeTruthy();
+  });
+
+  it("matches the search query against the blurb", () => {
+    const rows = [
+      makeRow({ title: "Alpha", slug: "alpha", order: 1, blurb: "tail-call elimination" }),
+      makeRow({ title: "Beta", slug: "beta", order: 2, blurb: "unrelated" }),
+    ];
+    render(<ExerciseIndex exercises={rows} />);
+    fireEvent.change(screen.getByLabelText("search exercises"), {
+      target: { value: "elimination" },
+    });
+    expect(screen.getByText("Alpha")).toBeTruthy();
+    expect(screen.queryByText("Beta")).toBeNull();
   });
 
   it("filters by a selected difficulty chip", () => {
@@ -152,16 +171,16 @@ describe("ExerciseIndex", () => {
 
   it("renders the empty state when there are no exercises", () => {
     const { container } = render(<ExerciseIndex exercises={[]} />);
-    expect(screen.getByText("No exercises yet.")).toBeTruthy();
+    expect(screen.getByText("no exercises yet")).toBeTruthy();
     expect(container.querySelector('a[href^="/practice/"]')).toBeNull();
   });
 
   it("renders the no-match state when the query matches nothing", () => {
     render(<ExerciseIndex exercises={exercises} />);
-    fireEvent.change(screen.getByLabelText("Search exercises"), {
+    fireEvent.change(screen.getByLabelText("search exercises"), {
       target: { value: "zzznomatch" },
     });
-    expect(screen.getByText("No exercises match your search.")).toBeTruthy();
+    expect(screen.getByText("no exercises match that search")).toBeTruthy();
   });
 
   it("renders the loading skeleton instead of the list", () => {
@@ -225,7 +244,47 @@ describe("ExerciseIndex progress row", () => {
 
     expect(captured.names).toEqual(["aarch64-playground-progress.json"]);
     const text = await captured.blobs[0].text();
-    expect(JSON.parse(text)).toEqual({ version: 1, solved: ["solved-one", "another"] });
+    expect(JSON.parse(text)).toEqual({
+      version: 1,
+      solved: ["solved-one", "another"],
+      answers: {},
+    });
+  });
+
+  it("carries the saved answers in the downloaded file", async () => {
+    window.localStorage.setItem(
+      "aarch64-playground:practice:answer:solved-one",
+      JSON.stringify({ version: 1, kind: "write", source: "my work", updatedAt: 7 }),
+    );
+    const captured = captureDownload();
+    render(<ExerciseIndex exercises={exercises} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "export solved progress" }));
+
+    const bundle = JSON.parse(await captured.blobs[0].text()) as {
+      answers: Record<string, { source: string }>;
+    };
+    expect(bundle.answers["solved-one"].source).toBe("my work");
+  });
+
+  it("counts the imported answers in the toast", async () => {
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const bundle = JSON.stringify({
+      version: 1,
+      solved: ["solved-one"],
+      answers: {
+        "solved-one": { version: 1, kind: "write", source: "from the file", updatedAt: 9 },
+      },
+    });
+
+    fireEvent.change(fileInput, {
+      target: { files: [new File([bundle], "progress.json", { type: "application/json" })] },
+    });
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("imported 1 solved exercise and 1 saved answer"),
+    );
   });
 
   it("opens the file picker when import is clicked", () => {

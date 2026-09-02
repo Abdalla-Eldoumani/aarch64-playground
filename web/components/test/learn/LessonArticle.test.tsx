@@ -16,7 +16,7 @@ import type { Lesson } from "@/lib/content/lesson-schema";
 // Stub the shared embeddable with a light marker that echoes the props the
 // article feeds it, so the test never instantiates Monaco or the WASM worker.
 // React omits an undefined attribute, so a dropped (oversize) stdin shows up as
-// a missing data-startstdin -- exactly the boundary this test guards.
+// a missing data-startstdin, which is the boundary this test guards.
 vi.mock("@/components/playground/EmbeddablePlayground", () => ({
   EmbeddablePlayground: (props: {
     chrome?: string;
@@ -85,6 +85,17 @@ describe("LessonArticle", () => {
     expect(precedes(noteLabel, embed)).toBe(true);
     expect(precedes(embed, editorLink)).toBe(true);
     expect(precedes(editorLink, secondProse)).toBe(true);
+  });
+
+  it("caps the prose measure per block and leaves the figure uncapped", () => {
+    const { container } = render(<LessonArticle lesson={fullLesson} />);
+    // The article column runs the full sheet width and the cap sits on the
+    // reading blocks, so the figure can be wider than the paragraphs.
+    expect(container.querySelector("article")!.className).not.toContain("max-w-2xl");
+    expect(screen.getByTestId("embed").closest(".max-w-2xl")).toBeNull();
+    expect(
+      screen.getByText(/the lead paragraph appears here/i).closest(".max-w-2xl"),
+    ).not.toBeNull();
   });
 
   it("renders prose through the real LessonMarkdown (heading id matches the toc)", () => {

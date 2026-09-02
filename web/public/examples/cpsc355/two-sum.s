@@ -1,4 +1,4 @@
-// two_sum_viz.asm -- the two-sum problem in ARMv8 AArch64 assembly:
+// two-sum.s solves the two-sum problem in ARMv8 AArch64 assembly:
 // an animated visualizer, and the same two algorithms as plain text.
 // Project: https://github.com/Abdalla-Eldoumani/twosum-arm
 //
@@ -116,7 +116,7 @@ app_sub:        .string "two-sum, traced in ARMv8 assembly"
 ui_dot:         .string "  ·  "
 
 // Screen names for the title bar, and the same words again as menu
-// entries where they fit -- one string, both places.
+// entries where they fit: one string, both places.
 nm_home:        .string "home"
 nm_presets:     .string "presets"
 nm_preset:      .string "preset"
@@ -135,7 +135,7 @@ grp_input:      .string "INPUT"
 grp_run:        .string "RUN"
 grp_presets:    .string "PRESETS"
 
-// One line of context each, so the menu teaches before a key is spent.
+// One line of context under each menu entry.
 sub_preset:     .string "six arrays and targets worth watching"
 sub_array:      .string "type your own, 1 to 10 values"
 sub_target:     .string "the sum a pair has to make"
@@ -207,8 +207,7 @@ prompt_speed:   .string "animation delay in ms (100 to 3000): "
 prompt_choose:  .string "choose "
 prompt_cont:    .string "press enter to continue"
 
-// The standing line on row 22: what this screen expects, and one
-// thing worth knowing about it.
+// The standing line on row 22: what this screen expects, and one hint.
 hint_home:      .string "type a number and press enter  ·  new here?  1, then 7"
 hint_presets:   .string "1 to 6 loads a preset  ·  0 keeps what you have"
 hint_manual:    .string "values run from -99 to 999  ·  that is what a cell has room for"
@@ -232,14 +231,13 @@ err_range:      .string "%d is out of range.  enter a value from %d to %d."
 phase_brute:    .string "check every pair (i, j) with i < j"
 phase_hash:     .string "for each i, look up target - arr[i]"
 
-// The card that turns a pretty animation into a lesson: what the run
-// costs in the three cases and in memory. Labels dim, the three time
-// bounds in the roles the cells use for settled, working, and worst.
+// Cost card: what the run costs in the three cases and in memory. Labels
+// dim, the three time bounds in the roles the cells use for settled,
+// working, and worst.
 cx_brute:       .string "\x1b[38;5;146mbest \x1b[38;5;157mO(1)   \x1b[38;5;146mavg \x1b[38;5;223mO(n^2)   \x1b[38;5;146mworst \x1b[38;5;211mO(n^2)   \x1b[38;5;146mspace \x1b[38;5;111mO(1)\x1b[0m"
 cx_hash:        .string "\x1b[38;5;146mbest \x1b[38;5;157mO(n)   \x1b[38;5;146mavg \x1b[38;5;223mO(n)     \x1b[38;5;146mworst \x1b[38;5;211mO(n^2)   \x1b[38;5;146mspace \x1b[38;5;111mO(n)\x1b[0m"
 
-// Panel rules. The name rides in the rule the way a titled box would
-// carry it, and each one is 74 columns so it stops short of the frame.
+// Panel rules. Each is 74 columns, so it stops short of the frame.
 sec_array:      .string "── array ─────────────────────────────────────────────────────────────────"
 sec_hash:       .string "── hash table  ·  slot = val & 0x0F, then probe forward ──────────────────"
 sec_trace:      .string "── trace ─────────────────────────────────────────────────────────────────"
@@ -269,8 +267,7 @@ narr_hs_result:      .string "result: arr[%d] (%d) + arr[%d] (%d) = %d.  probes:
 stats_bf_fmt:   .string "\x1b[38;5;146mcomparisons \x1b[38;5;189m%-3d\x1b[38;5;146m of \x1b[38;5;189m%-3d\x1b[38;5;146m  worst case n(n-1)/2\x1b[0m"
 stats_hs_fmt:   .string "\x1b[38;5;146mprobes \x1b[38;5;189m%-4d\x1b[38;5;146m  inserts \x1b[38;5;189m%-4d\x1b[0m"
 
-// State block on the home screen -- three lines (array, target,
-// speed) instead of one cramped line. Shows the actual array values.
+// State block on the home screen: array, target, and speed, one line each.
 state_lbl_arr:  .string "array:   "
 state_lbl_tgt:  .string "target:  "
 state_lbl_spd:  .string "speed:   "
@@ -295,8 +292,8 @@ splash_box_m:   .string "│         TWO-SUM, TRACED          │"
 splash_box_b:   .string "╰──────────────────────────────────╯"
 splash_l1:      .string "walk two-sum step by step in aarch64 assembly."
 splash_l2:      .string "brute force O(n^2) and hash set O(n), side by side,"
-splash_l3:      .string "with colour, carets, and a narration panel."
-splash_l4:      .string "6 presets, manual input, adjustable speed.  MIT licensed."
+splash_l3:      .string "with colour and a narration panel."
+splash_l4:      .string "6 presets, manual input, adjustable speed."
 
 fmt_int:        .string "%d"
 fmt_token:      .string "%15s"
@@ -310,11 +307,11 @@ caret_s:        .string "^"
 lbl_i_s:        .string "i"
 lbl_j_s:        .string "j"
 
-// The console path. Started by "./two_sum_viz console", it runs the
-// same two algorithms over the same input and prints plain lines --
-// no cursor moves, no colour, nothing a pipe or a log would mangle.
+// The console path. Started by "./two_sum_viz console", it runs the same two
+// algorithms over the same input and prints plain lines: no cursor moves, no
+// colour, nothing a pipe or a log would mangle.
 arg_console:    .string "console"
-con_line_1:     .string "two-sum -- brute force O(n^2) and hash set O(n)\n"
+con_line_1:     .string "two-sum: brute force O(n^2) and hash set O(n)\n"
 con_line_2:     .string "type an array and a target; each solver prints the pair it finds.\n"
 con_bf_found:   .string "brute force:  arr[%d] (%d) + arr[%d] (%d) = %d   comparisons: %d\n"
 con_bf_none:    .string "brute force:  no pair sums to %d   comparisons: %d\n"
@@ -340,8 +337,8 @@ anim_delay:     .skip 4
 tok_buf:        .skip 32
 
 // 1 once the console path has taken over. The three helpers that
-// paint a prompt or a complaint read it and stay in plain text, so
-// the same hardened reader serves both paths.
+// paint a prompt or a complaint read it and stay in plain text, so the same
+// reader serves both paths.
 console_mode:   .skip 4
 
 // Where the live prompt sits and what it says, so a rejected answer
@@ -483,10 +480,9 @@ ica_no:
 
 
 // console_main is the whole program without the screen: two lines of
-// banner, the same prompts the visualizer asks (same reader, same
-// bounds, same complaints), then both algorithms over the same input,
-// one labelled line each. Nothing here emits an escape byte, so the
-// output survives a pipe, a log, or a plain console pane.
+// banner, the same prompts the visualizer asks, through the same reader, then
+// both algorithms over the same input, one labelled line each. Nothing here
+// emits an escape byte, so the output survives a pipe.
 //
 // Output: w0 = exit code
 console_main:
@@ -655,10 +651,10 @@ cbf_done:
 
 // chs_lookup walks the table from val's slot until it meets val or an
 // empty slot, and hands back where it stopped. The running probe
-// count goes in and comes back out, so the lookup walk and the insert
-// walk add up to one honest number. ARRAY_MAX is below HASH_SIZE, so
-// an empty slot always exists and the walk always terminates. Leaf
-// function, no calls, so it needs no frame.
+// count goes in and comes back out, so the lookup walk and the insert walk
+// add up to one total. ARRAY_MAX is below HASH_SIZE, so an empty slot always
+// exists and the walk always terminates. Leaf function, no calls, so it needs
+// no frame.
 //
 // Input:  w0 = val
 //         w1 = probes so far
@@ -762,8 +758,8 @@ chs_outer:
 chs_insert:
         // No match yet. Record (val, i) unless val is already in the
         // table, in which case the index sitting there is the earlier
-        // one and it stays -- the rule the visualizer follows too, so
-        // a repeated value names the same index on both paths.
+        // one and it stays; The visualizer follows the same rule, so a
+        // repeated value names the same index on both paths.
         mov     w0, w23
         mov     w1, w25
         bl      chs_lookup
@@ -800,8 +796,8 @@ chs_done:
 // draw_splash paints a one-time welcome screen on startup: the
 // frame, a boxed title, four lines of description, and the hint to
 // press enter.  It blocks on the user's keypress and returns so
-// main_loop can take over.  Running it again would look fine, but we
-// only call it once -- on menu returns the home screen stands alone.
+// main_loop can take over. Called once, at startup: menu returns land on the
+// home screen.
 draw_splash:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -864,9 +860,7 @@ draw_splash:
 
 
 // draw_legend_bf and draw_legend_hs paint the colour key on the
-// message row of a run screen.  The escapes that fill each swatch are
-// baked into the string itself, so one printf renders the whole key
-// and the swatches are the same fills the cells get.
+// message row of a run screen.
 draw_legend_bf:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -982,8 +976,7 @@ draw_main_menu:
 
 
 // menu_entry draws one menu line: the number in its own colour, the
-// name, then the quiet blurb that says what the thing is before a
-// keystroke is spent on it.
+// name, then the blurb saying what the entry does.
 //
 // Input:  w0 = row, x1 = number, x2 = name, x3 = blurb
 menu_entry:
@@ -1141,8 +1134,8 @@ draw_tagline:
         ret
 
 
-// draw_footer writes the standing line under the bottom rule: what
-// the screen expects next, and one thing worth knowing about it.
+// draw_footer writes the standing line under the bottom rule: what the screen
+// expects next, and one hint.
 //
 // Input:  x0 = hint text
 draw_footer:
@@ -1169,11 +1162,9 @@ draw_footer:
 
 
 // draw_state_block paints a three-line summary of current state at
-// rows 17 / 18 / 19 -- array contents, target, animation speed. The
+// rows 17 / 18 / 19 (array contents, target, animation speed). The
 // labels are dim and the values plain, so the block reads as a
-// readout rather than competing with the menu entries. The array is
-// printed element by element with commas, so the user sees exactly
-// what got loaded (from a preset or from manual entry).
+// readout rather than competing with the menu entries.
 draw_state_block:
         stp     fp, lr, [sp, -32]!
         mov     fp, sp
@@ -1601,10 +1592,10 @@ er_done:
 //   row 10  label row      "   i          j"
 //
 // Modes:
-//   0  normal  -- cell i is the element in hand, cell j the one being
-//                 compared against it, carets rendered
-//   1  match   -- both i and j settled, no carets
-//   2  dim all -- every cell faint, used for the "no pair" state
+//   0  normal:  cell i is the element in hand, cell j the one being
+//               compared against it, carets rendered
+//   1  match:   both i and j settled, no carets
+//   2  dim all: every cell faint, used for the "no pair" state
 //
 // Rows 9 and 10 are blanked on every entry so carets from the
 // previous frame do not linger when i / j advance.
@@ -1632,7 +1623,6 @@ draw_array:
         ldr     x0, =fmt_blank_row
         bl      printf
 
-        // Panel rule.
         mov     w0, 6
         mov     w1, 4
         mov     w2, UI_ROLE_FAINT
@@ -1735,7 +1725,7 @@ da_val_print:
         b       da_val_loop
 da_val_done:
 
-        // Carets and labels -- only in normal mode.
+        // Carets and labels, only in normal mode.
         ldr     w9, [fp, 24]
         cbnz    w9, da_ptr_skip
 
@@ -1934,8 +1924,8 @@ dh_done:
 
 
 // clear_trace_area draws the "TRACE" header on row 18 and blanks the
-// two narration rows below it (19, 20). Called before each frame's
-// narration is printed so that previous text is wiped first.
+// two narration rows below it (19, 20). Called before each frame's narration
+// goes down.
 clear_trace_area:
         stp     fp, lr, [sp, -32]!
         mov     fp, sp
@@ -2078,7 +2068,7 @@ run_brute_force:
 
         bl      draw_legend_bf
 
-        // Intro frame: array with no highlights, intro narration.
+        // Intro frame, before any comparison.
         bl      clear_trace_area
         mov     w0, 19
         mov     w1, 6
@@ -2411,7 +2401,6 @@ hs_probe_loop:
         cmp     w10, w26
         b.eq    hs_probe_hit
 
-        // Collision: announce, advance, frame.
         bl      clear_trace_area
         mov     w0, 19
         mov     w1, 6
@@ -2517,7 +2506,7 @@ rh_ins_scan:
         cmp     w10, w25
         b.eq    rh_ins_dup
 
-        // Somebody else is here: announce, advance, frame.
+        // Somebody else is in this slot.
         bl      clear_trace_area
         mov     w0, 19
         mov     w1, 6
@@ -2829,8 +2818,7 @@ th_bold_on:
 
 
 // ui_text is the one way a screen writes a line: park the cursor,
-// take the role, print, and hand the colour back. Almost every draw
-// in the file goes through it.
+// take the role, print, and hand the colour back.
 //
 // Input:  w0 = row, w1 = col, w2 = role, x3 = text
 ui_text:
@@ -3193,8 +3181,8 @@ cib_done:
 
 
 // wait_enter prints the press-enter prompt on the prompt row and
-// blocks until the user hits enter. Every screen that pauses -- an
-// input handler that just saved, a run that just finished -- ends
+// blocks until the user hits enter. Every screen that pauses (an
+// input handler that just saved, a run that just finished) ends
 // here, so the pause is always in the same place.
 wait_enter:
         stp     fp, lr, [sp, -16]!

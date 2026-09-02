@@ -1,6 +1,6 @@
 // The shell's view of the machine: what `./program`, `gcc`, and gdb-lite
 // actually do to the hub. The contracts pinned here are the ones the module's
-// comments name -- argv[0] belongs to the emulator, the home directory is
+// comments name: argv[0] belongs to the emulator, the home directory is
 // re-seeded after every tool assemble, output is reported as the DELTA over
 // the editor's scrollback, a `< file` redirect gets the same stdin cap as
 // every other ingress, and a run waits for the machine to actually stop.
@@ -175,7 +175,7 @@ describe("a `< file` redirect", () => {
     const result = await ctx.runProgram(["./program"], "x".repeat(MAX_STDIN_BYTES + 1));
     expect(result).toEqual({
       stdout: "",
-      stderr: "stdin too large (max 100 KB)",
+      stderr: "stdin too large: the limit is 100 KiB",
       exitCode: null,
     });
     expect(hub.pushStdin).not.toHaveBeenCalled();

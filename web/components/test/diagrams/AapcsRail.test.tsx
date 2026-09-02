@@ -10,15 +10,15 @@ afterEach(() => {
 });
 
 // Every row group of the rail: range on the left, role note on the right.
-// The integer and float callee-saved rows share one note on purpose: the
-// role is one story across both files.
+// The integer and float callee-saved rows share one note: the role is the
+// same in both files.
 const ROWS: Array<[string, string]> = [
   ["x0 – x7", "arguments · results"],
   ["x8", "indirect result"],
   ["x9 – x15", "caller-saved temps"],
   ["x16 – x18", "platform · avoid"],
   ["x19 – x28", "callee-saved"],
-  ["x29 · x30", "fp · lr -- the frame record"],
+  ["x29 · x30", "fp · lr (the frame record)"],
   ["d0 – d7", "float args · results"],
   ["d8 – d15", "callee-saved"],
   ["d16 – d31", "caller-saved float temps"],
@@ -39,12 +39,22 @@ describe("AapcsRail", () => {
     }
   });
 
-  it("keeps the amber/cyan legend under the rail, with the two-views note", () => {
+  it("keeps the amber/cyan legend under the rail, with the one-register note", () => {
     render(<AapcsRail />);
     expect(
       screen.getByText(/Amber = the callee must preserve it/),
     ).toBeTruthy();
-    expect(screen.getByText(/two names, one register, one role/)).toBeTruthy();
+    expect(screen.getByText(/row is one register with a/)).toBeTruthy();
+  });
+
+  it("never wraps a register name, only its role note", () => {
+    render(<AapcsRail />);
+    const name = screen.getByText("x29 · x30");
+    expect(name.className).toContain("shrink-0");
+    expect(name.className).toContain("whitespace-nowrap");
+    const note = screen.getByText("fp · lr (the frame record)");
+    expect(note.className).toContain("leading-tight");
+    expect(note.className).not.toContain("whitespace-nowrap");
   });
 
   it("tints the argument rows cyan and the callee-saved rows amber", () => {
@@ -52,7 +62,7 @@ describe("AapcsRail", () => {
     expect(screen.getByText("x0 – x7").className).toContain("var(--cyan)");
     expect(screen.getByText("x19 – x28").className).toContain("var(--amber)");
     expect(screen.getByText("x29 · x30").className).toContain("var(--amber)");
-    // The platform rows read at 60% opacity: theirs to avoid, not to style up.
+    // The platform rows read at 60% opacity: they are the ones to avoid.
     expect(screen.getByText("x16 – x18").closest("li")?.className).toContain(
       "opacity-60",
     );

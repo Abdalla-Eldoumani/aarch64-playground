@@ -4,7 +4,7 @@
 //! of the trampoline that reaches the 0xFFFF_0000 stub range, then the stub
 //! address itself. Stepping through them used to leave the marker nowhere
 //! and the decode strip showing a synthetic address. `host_call_context`
-//! answers for all three -- which libc function, and the call site the `bl`
+//! answers for all three: which libc function, and the call site the `bl`
 //! came from, recovered from LR at run time because ONE trampoline serves
 //! every call site of the same function.
 //!
@@ -115,8 +115,8 @@ struct Observation {
 }
 
 /// Step the program to its halt, recording every pc where the context
-/// answers. Nothing else in the run is allowed to answer, so the recorded
-/// sequence is the whole in-call story.
+/// answers. Nothing else in the run answers, so the recorded sequence is
+/// every in-call step.
 fn observe_in_call_pcs(cpu: &mut Cpu, image: &LinkedImage) -> Vec<Observation> {
     let map = flat_line_map(image);
     let mut seen = Vec::new();

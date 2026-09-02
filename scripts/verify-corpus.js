@@ -1,6 +1,7 @@
 // Runs each hosted cpsc 355 example with a matching `.stdin` / `.stdout`
 // fixture pair under `web/public/examples/cpsc355/fixtures/` through the
-// WASM emulator and asserts stdout, exit code, and post-run VFS state.
+// WASM emulator and asserts stdout, exit code, and post-run VFS state,
+// then assembles every shipped example as a second gate.
 //
 // Usage: node scripts/verify-corpus.js
 
@@ -41,8 +42,7 @@ function parseArgsLine(input) {
 
 // Feed optional stdin / argv / vfs inputs, run until halt or exit, then
 // return stdout + exit code + the post-run state of every VFS file the
-// program may have created. Every cpsc 355 example with a fixture pair
-// under fixtures/ runs through here.
+// program may have created.
 function runHosted(file, stdin, args, vfsIn) {
   const src = fs.readFileSync(file, "utf8");
   const emu = new wasm.Emulator();
@@ -199,5 +199,83 @@ function findSource(root, stem) {
   return null;
 }
 
+// ---------------------------------------------------------------------
+// Assembly gate.
+//
+// The fixture pass above only reaches a stem that records a `.stdout` or
+// `.vfsout.json`, so the terminal examples and every helper module behind
+// `dsav` and `deadzone` are invisible to it. A comment-trimming pass once
+// stripped `.string` directives and whole data definitions out of those
+// modules and nothing here noticed, because nothing here ever assembled
+// them. Every shipped example must at least assemble.
+
+// EXAMPLE_FILES lives in TypeScript and node cannot require that, so the
+// table is parsed out of the real source rather than copied by hand: a
+// duplicate list would drift the first time a helper module is added or
+// reordered, and for `deadzone` the paste order is load-bearing.
+function readExampleFiles(tsPath) {
+  const src = fs.readFileSync(tsPath, "utf8").replace(/^\s*\/\/.*$/gm, "");
+  const table = src.match(/export const EXAMPLE_FILES[^{]*\{([\s\S]*?)\r?\n\};/);
+  if (!table) throw new Error(`could not find EXAMPLE_FILES in ${tsPath}`);
+  const out = {};
+  const entry = /([\w-]+)\s*:\s*\[([^\]]*)\]/g;
+  let m;
+  while ((m = entry.exec(table[1])) !== null) {
+    out[m[1]] = (m[2].match(/"[^"]+"/g) || []).map((q) => q.slice(1, -1));
+  }
+  return out;
+}
+
+// Mirrors combineSources in web/lib/playground/file-map.ts: main stays
+// byte-for-byte first so line numbers still point at the editor buffer,
+// then each helper behind its `// ---- name ----` boundary comment.
+function combineSources(main, extras) {
+  if (extras.length === 0) return main;
+  const parts = [main];
+  for (const f of extras) {
+    parts.push(`// ---- ${f.name} ----`);
+    parts.push(f.body);
+  }
+  return parts.join("\n");
+}
+
+// is-prime.s ships as a leaf function with no entry point on purpose; its
+// own header says to assemble it beside a caller, and no such caller is a
+// shipped file. Naming it here rather than inferring "has no main" keeps a
+// main that goes missing from any other example a hard failure.
+const LEAF_ONLY = {
+  "is-prime": "leaf function, no entry point; no caller ships with it",
+};
+
+console.log(`\n=== assembly gate ===`);
+const exampleFiles = readExampleFiles(
+  path.join(__dirname, "..", "web", "lib", "playground", "playground-handoff.ts"),
+);
+let assembleFailed = false;
+for (const file of fs.readdirSync(hostedRoot).sort()) {
+  if (!file.endsWith(".s")) continue;
+  const stem = file.slice(0, -2);
+  if (LEAF_ONLY[stem]) {
+    console.log(`  SKIP ${stem}: ${LEAF_ONLY[stem]}`);
+    continue;
+  }
+  const helpers = (exampleFiles[stem] || []).map((name) => ({
+    name,
+    body: fs.readFileSync(path.join(hostedRoot, stem, name), "utf8"),
+  }));
+  const label = helpers.length > 0 ? `${stem} (+${helpers.length} files)` : stem;
+  const src = combineSources(fs.readFileSync(path.join(hostedRoot, file), "utf8"), helpers);
+  // argv[0] only. Nothing needs its real `.args` to assemble: the examples
+  // that take a run mode branch on argv while running, not while linking.
+  const asm = new wasm.Emulator().assemble_and_load_with_args(src, [`./${stem}`]);
+  if (!asm.success) {
+    const at = asm.error_line != null ? ` at line ${asm.error_line}` : "";
+    console.log(`  FAIL ${label}: ${asm.error}${at}`);
+    assembleFailed = true;
+    break; // the first broken example is the one to fix
+  }
+  console.log(`  OK ${label}`);
+}
+
 console.log(`\n--- ${passed}/${passed + failed} targets passed ---`);
-if (failed > 0) process.exit(1);
+if (failed > 0 || assembleFailed) process.exit(1);
