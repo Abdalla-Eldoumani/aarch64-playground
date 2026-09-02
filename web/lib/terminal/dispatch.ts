@@ -339,7 +339,7 @@ export async function dispatchCommand(
     }
     if (result.stderr) lines.push(...result.stderr.split("\n").map((l) => `stderr: ${l}`));
     if (result.exitCode != null) lines.push(`[exit ${result.exitCode}]`);
-    else lines.push("[no exit -- the program did not finish]");
+    else lines.push("[no exit: the program did not finish]");
     return {
       status: result.exitCode === 0 ? "ok" : "err",
       lines,
