@@ -223,7 +223,9 @@ export function checkExercise(
     results.filter((check) => !check.pass).length +
     structural.filter((check) => !check.pass).length;
   const pass = failed === 0;
-  const summary = pass ? "all checks passed" : `${failed} of ${total} checks failed`;
+  const summary = pass
+    ? "all checks passed"
+    : `${total - failed} of ${total} checks passing`;
 
   return { pass, results, structural, summary };
 }
