@@ -13,7 +13,7 @@
       "blanks": [
         "bl"
       ],
-      "explanation": "bl branches to the label and writes the address of the following instruction into x30, the link register. That saved return address is what lets one copy of the code serve every call site instead of being pasted into each one, which is what makes it a closed subroutine.",
+      "explanation": "bl branches to the label and writes the address of the following instruction into x30, the link register. That saved return address lets one copy of the code serve every call site instead of being pasted into each one, which is what makes it a closed subroutine.",
       "hint": "Branch with Link."
     },
     {
@@ -51,7 +51,7 @@
         "x19"
       ],
       "explanation": "x19 through x28 are callee-saved: a subroutine that writes one of them must restore the caller's value before it returns, so a value left there survives a call. x0 through x15 make no such promise and can come back changed.",
-      "hint": "Not an argument register and not a temporary; it is the first of the ten a subroutine has to restore."
+      "hint": "Not an argument register and not a temporary; it is the first of the ten registers a subroutine has to restore."
     }
   ]
 }
