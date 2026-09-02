@@ -101,7 +101,7 @@ fn macro_hygiene(source: &str, expanded: &m4::Expanded, warnings: &mut Vec<LintW
                 line: *line,
                 message: format!(
                     "the macro name `{name}` is also a register or instruction \
-                     name -- every later use of `{name}` becomes `{body}`; \
+                     name: every later use of `{name}` becomes `{body}`; \
                      rename the macro (for example `{name}_r`)"
                 ),
             });
@@ -170,7 +170,7 @@ fn scan_line_for_hygiene(
                         line,
                         message: format!(
                             "`{ident}` is defined as a macro ({body}) and also \
-                             appears in this {} -- m4 replaces it here exactly \
+                             appears in this {}. m4 replaces it here exactly \
                              as the university servers do, so the program \
                              prints `{body}` instead; rename the macro (for \
                              example `{ident}_r`)",
@@ -183,7 +183,7 @@ fn scan_line_for_hygiene(
                         message: format!(
                             "m4 treats `#` as a comment start, here and on the \
                              university servers, so `{ident}` will NOT expand \
-                             and the assembler will reject the line -- use an \
+                             and the assembler will reject the line. Use an \
                              equate (`{ident} = {body}`) instead of a define, \
                              or drop the `#`"
                         ),
@@ -194,7 +194,7 @@ fn scan_line_for_hygiene(
                         message: format!(
                             "`{ident}(` reads as an m4 macro CALL on the \
                              university servers, which consumes the text in the \
-                             parentheses -- put a space before `(` or rename the \
+                             parentheses. Put a space before `(`, or rename the \
                              macro"
                         ),
                     });
@@ -389,8 +389,8 @@ fn analyze_segment(
                 warnings.push(LintWarning {
                     line,
                     message: format!(
-                        "`{name}` still holds {} bytes of stack at this ret -- \
-                         restore it first, for example `ldp x29, x30, [sp], {}` \
+                        "`{name}` still holds {} bytes of stack at this ret. \
+                         Restore it first, for example `ldp x29, x30, [sp], {}` \
                          (or `add sp, sp, {}`)",
                         -delta, -delta, -delta
                     ),
@@ -413,7 +413,7 @@ fn analyze_segment(
                     line,
                     message: format!(
                         "this pushes {bytes} bytes, which is not a multiple of \
-                         16 -- sp must stay 16-byte aligned, so round the frame \
+                         16. sp must stay 16-byte aligned, so round the frame \
                          up (`stp x29, x30, [sp, -16]!`, `sub sp, sp, 32`, ...)"
                     ),
                 });
@@ -427,8 +427,8 @@ fn analyze_segment(
                 warnings.push(LintWarning {
                     line,
                     message: format!(
-                        "this pops {bytes} bytes that `{name}` never pushed -- \
-                         add `stp x29, x30, [sp, -16]!` at the top of `{name}`, \
+                        "this pops {bytes} bytes that `{name}` never pushed. \
+                         Add `stp x29, x30, [sp, -16]!` at the top of `{name}`, \
                          or remove the `ldp`"
                     ),
                 });
