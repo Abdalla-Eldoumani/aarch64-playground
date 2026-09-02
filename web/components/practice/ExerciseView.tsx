@@ -202,7 +202,7 @@ export function ExerciseView({
         {/* Fixed frame at every breakpoint (no shift as the editor loads); the
             embed's container-driven layout gives the editor the full column
             measure above a registers | console split. */}
-        <div className="flex h-[440px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px] lg:h-[640px] xl:h-[720px]">
+        <div className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px] lg:h-[640px] xl:h-[720px]">
           <EmbeddablePlayground
             ref={embedRef}
             chrome="checker"
