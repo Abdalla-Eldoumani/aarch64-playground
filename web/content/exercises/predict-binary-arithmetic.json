@@ -1,11 +1,11 @@
 {
-  "title": "Predict: Arithmetic Execution",
+  "title": "Predict: binary arithmetic",
   "slug": "predict-binary-arithmetic",
   "order": 41,
   "topic": "binary-arithmetic",
   "difficulty": "challenge",
   "variant": "prediction",
-  "prompt": "Act as the CPU. Trace fixed-width wraparound, carry propagation across a pair of adds, and a signed widening multiply.",
+  "prompt": "Fixed-width wraparound, carry propagation across a pair of adds, and a signed widening multiply.",
   "predictions": [
     {
       "code": "mov w20, -1\nadd w20, w20, 2",
