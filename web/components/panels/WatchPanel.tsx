@@ -32,8 +32,8 @@ export interface WatchPanelProps {
   frameSlots: StackSlot[];
   getMemory: (addr: number, len: number) => Uint8Array;
   /** Mapped verdict for a range: true/false once known, null while the
-   *  async fetch is in flight. Defaults to "always mapped" so mounts
-   *  without the surface keep the old zero-fill behavior. */
+   *  async fetch is in flight. Defaults to "always mapped" so a mount
+   *  without the surface still reads bytes. */
   getMemoryMapped?: (addr: number, len: number) => boolean | null;
   labelAddresses?: Record<string, number>;
 }
@@ -75,8 +75,8 @@ export function WatchPanel({
         if (addr < 0n || addr > 0xFFFFFFFFFFFFFFFFn) return "unmapped";
         const addrNum = Number(addr & 0xFFFFFFFFn);
         // The mapped verdict must gate the bytes: get_memory_range
-        // deliberately zero-fills unmapped reads for the hex dump, so a
-        // null dereference used to render as a confident 0x0.
+        // deliberately zero-fills unmapped reads for the hex dump, so without
+        // it a null dereference renders as 0x0.
         const mapped = getMemoryMapped(addrNum, size);
         if (mapped === null) return "pending";
         if (!mapped) return "unmapped";
