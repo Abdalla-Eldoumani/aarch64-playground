@@ -591,6 +591,19 @@ body {
   .controls-band > * {
     flex-shrink: 0;
   }
+  /* Spacers the width of each fade, so the first and last controls can scroll
+     clear of it: without them the last control sits under the end fade at
+     maximum scroll and its focus ring is dimmed. */
+  .header-band::before,
+  .controls-band::before {
+    content: "";
+    flex: 0 0 12px;
+  }
+  .header-band::after,
+  .controls-band::after {
+    content: "";
+    flex: 0 0 24px;
+  }
   /* The spacer pushes the status chips right on a wide row; inside a scrolling
      strip it would only add empty scroll width, and its neighbours (the step
      counter and the halted chip) are already hidden under sm. */
