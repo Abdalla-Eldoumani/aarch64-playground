@@ -148,6 +148,9 @@ export type EmbeddablePlaygroundProps = {
   /** Check only applies in checker chrome. */
   showCheck?: boolean;
   onStateChange?: (state: EmbeddableState) => void;
+  /** Every editor buffer value, including the first. The practice checker
+   *  persists the student's work from here; nothing else listens. */
+  onSourceChange?: (source: string) => void;
   /** Checker Check button; the evaluation itself lands in a later milestone. */
   onCheck?: (state: EmbeddableState) => void;
   // Page-chrome hooks: the host renders these modals and owns the theme;
@@ -211,6 +214,7 @@ function EmbeddableCore({
   showBack = true,
   showCheck = true,
   onStateChange,
+  onSourceChange,
   onCheck,
   onOpenCommandPalette,
   onOpenShortcutsHelp,
@@ -517,6 +521,7 @@ function EmbeddableCore({
   const argsRef = useRef(argsText);
   const cursorRef = useRef(cursor);
   const onStateChangeRef = useRef(onStateChange);
+  const onSourceChangeRef = useRef(onSourceChange);
   const assembleRef = useRef(assembleWithHistory);
   const loadProgramRef = useRef(loadProgram);
   const buildCommandsRef = useRef(buildCommands);
@@ -527,10 +532,19 @@ function EmbeddableCore({
     argsRef.current = argsText;
     cursorRef.current = cursor;
     onStateChangeRef.current = onStateChange;
+    onSourceChangeRef.current = onSourceChange;
     assembleRef.current = assembleWithHistory;
     loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
-  }, [emu, source, extraFiles, argsText, cursor, onStateChange, assembleWithHistory, loadProgram, buildCommands]);
+  }, [emu, source, extraFiles, argsText, cursor, onStateChange, onSourceChange, assembleWithHistory, loadProgram, buildCommands]);
+
+  // The buffer itself, which onStateChange deliberately does not mirror (its
+  // ten fields are the machine's outcome, not the editor's). Fires on mount
+  // too, so a host that persists the buffer sees the value it started from
+  // and can tell an untouched program from an edited one.
+  useEffect(() => {
+    onSourceChangeRef.current?.(source);
+  }, [source]);
 
   // A static view that is not read-only is a caller mistake: there is no input
   // path to honour, so the program would silently be uneditable.
