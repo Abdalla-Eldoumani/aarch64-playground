@@ -263,6 +263,27 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   FMSUB: { summary: "Fd = Fa - Fn * Fm (the product is subtracted FROM the accumulator).", example: "fmsub d0, d1, d2, d3", cExample: "Fd = fma(-Fn, Fm, Fa);" },
   FNMADD: { summary: "Fd = -Fa - Fn * Fm.", example: "fnmadd d0, d1, d2, d3", cExample: "Fd = -fma(Fn, Fm, Fa);" },
   FNMSUB: { summary: "Fd = -Fa + Fn * Fm.", example: "fnmsub d0, d1, d2, d3", cExample: "Fd = fma(Fn, Fm, -Fa);" },
+  FMAX: {
+    summary: "Fd = the larger of Fn and Fm (S or D form).",
+    details: ["A NaN operand makes the result NaN; `FMAXNM` ignores it instead.", "`fmax(+0.0, -0.0)` is `+0.0` in either operand order."],
+    example: "fmax d0, d1, d2",
+  },
+  FMIN: {
+    summary: "Fd = the smaller of Fn and Fm (S or D form).",
+    details: ["Same NaN rule as `FMAX`; `fmin(+0.0, -0.0)` is `-0.0`."],
+    example: "fmin d0, d1, d2",
+  },
+  FMAXNM: {
+    summary: "IEEE maxNum: a NaN operand is ignored and the number wins.",
+    details: ["This is what C's `fmax()` compiles to; `FMAX` propagates the NaN."],
+    example: "fmaxnm d0, d1, d2",
+    cExample: "Fd = fmax(Fn, Fm);",
+  },
+  FMINNM: {
+    summary: "IEEE minNum: a NaN operand is ignored and the number wins.",
+    example: "fminnm d0, d1, d2",
+    cExample: "Fd = fmin(Fn, Fm);",
+  },
   FNEG: {
     summary: "Fd = -Fn (flips the sign bit; S or D form).",
     example: "fneg d16, d16",

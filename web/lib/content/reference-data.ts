@@ -1454,6 +1454,48 @@ scvtf   d0, x0              // d0 = -1.0
 ucvtf   d1, x0              // d1 = 1.8446744073709552e19: the same bits, read unsigned`,
   },
   {
+    mnemonic: "fmax",
+    category: "Floating point",
+    syntax: "fmax dd, dn, dm / fmax sd, sn, sm",
+    example: `fmov    d1, 3.0
+fmov    d2, 5.0
+fmax    d3, d1, d2          // d3 = 5.0
+fcvtzs  x9, d3              // x9 = 5`,
+    gotchas: [
+      "a nan operand makes the result nan. for the c `fmax()` behaviour, where the number wins, use `fmaxnm`.",
+    ],
+  },
+  {
+    mnemonic: "fmin",
+    category: "Floating point",
+    syntax: "fmin dd, dn, dm / fmin sd, sn, sm",
+    example: `fmov    d1, 3.0
+fmov    d2, 5.0
+fmin    d4, d1, d2          // d4 = 3.0
+fcvtzs  x9, d4              // x9 = 3`,
+  },
+  {
+    mnemonic: "fmaxnm",
+    category: "Floating point",
+    syntax: "fmaxnm dd, dn, dm / fmaxnm sd, sn, sm",
+    example: `fmov    d1, 4.0
+fneg    d1, d1
+fsqrt   d1, d1              // d1 = nan
+fmov    d2, 5.0
+fmaxnm  d3, d1, d2          // d3 = 5.0: the nan is ignored
+fmax    d4, d1, d2          // d4 = nan
+fcvtzs  x9, d3              // x9 = 5`,
+  },
+  {
+    mnemonic: "fminnm",
+    category: "Floating point",
+    syntax: "fminnm dd, dn, dm / fminnm sd, sn, sm",
+    example: `fmov    d1, 3.0
+fmov    d2, 5.0
+fminnm  d3, d1, d2          // d3 = 3.0
+fcvtzs  x9, d3              // x9 = 3`,
+  },
+  {
     mnemonic: "fnmul",
     category: "Floating point",
     syntax: "fnmul dd, dn, dm / fnmul sd, sn, sm",
