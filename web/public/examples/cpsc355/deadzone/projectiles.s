@@ -16,20 +16,12 @@ PROJ_STRUCT_SIZE = 16                           // Total struct size
 
 // Projectile types
 PROJ_TYPE_BULLET = 1                            // Basic bullet
-PROJ_TYPE_ARROW = 2                             // Arrow (piercing)
-PROJ_TYPE_MAGIC = 3                             // Magic bolt (area)
 
 // Projectile stats
-BULLET_DAMAGE = 1                               // Damage per hit
-BULLET_SPEED = 2                                // Move every 2 frames (fast)
-BULLET_CHAR = '-'                               // Horizontal bullet
-BULLET_CHAR_V = '|'                             // Vertical bullet
-BULLET_CHAR_D = '\\'                            // Diagonal bullet
-BULLET_CHAR_D2 = '/'                            // Other diagonal
 
 // Weapon settings
 FIRE_RATE = 10                                  // Frames between shots
-MAX_PROJECTILES = 50                            // Maximum projectiles
+// Maximum projectiles
 
                 .data
 
@@ -109,12 +101,10 @@ projectiles_fire:
                 mov     w21, w0                 // Save target X
                 mov     w22, w1                 // Save target Y
 
-                // Find empty slot
                 bl      projectiles_find_slot
                 cbz     x0, proj_fire_fail
                 mov     x19, x0
 
-                // Get player position
                 bl      player_get_x
                 mov     w20, w0
                 bl      player_get_y
@@ -130,32 +120,32 @@ projectiles_fire:
                 cmp     w0, 0
                 b.eq    proj_dx_zero
                 b.lt    proj_dx_neg
-                mov     w0, 1                   // dx = 1
+                mov     w0, 1
                 b       proj_calc_dy
 proj_dx_neg:
-                mov     w0, -1                  // dx = -1
+                mov     w0, -1
                 b       proj_calc_dy
 proj_dx_zero:
-                mov     w0, 0                   // dx = 0
+                mov     w0, 0
 
 proj_calc_dy:
-                strh    w0, [x19, PROJ_DX]      // Store dx
+                strh    w0, [x19, PROJ_DX]
 
                 bl      player_get_y
                 sub     w1, w22, w0             // target_y - player_y
                 cmp     w1, 0
                 b.eq    proj_dy_zero
                 b.lt    proj_dy_neg
-                mov     w1, 1                   // dy = 1
+                mov     w1, 1
                 b       proj_store_dy
 proj_dy_neg:
-                mov     w1, -1                  // dy = -1
+                mov     w1, -1
                 b       proj_store_dy
 proj_dy_zero:
-                mov     w1, 0                   // dy = 0
+                mov     w1, 0
 
 proj_store_dy:
-                strh    w1, [x19, PROJ_DY]      // Store dy
+                strh    w1, [x19, PROJ_DY]
 
                 // If both dx and dy are 0, don't fire
                 ldrsh   w0, [x19, PROJ_DX]
@@ -163,15 +153,12 @@ proj_store_dy:
                 orr     w0, w0, w1
                 cbz     w0, proj_fire_fail_cleanup
 
-                // Set projectile properties
                 mov     w0, 1
                 strb    w0, [x19, PROJ_ACTIVE]
 
-                // Get damage from upgrades
                 bl      upgrades_get_damage
                 strb    w0, [x19, PROJ_DAMAGE]
 
-                // Get speed from upgrades
                 bl      upgrades_get_proj_speed
                 strb    w0, [x19, PROJ_SPEED]
 
@@ -180,7 +167,6 @@ proj_store_dy:
                 mov     w0, PROJ_TYPE_BULLET
                 strb    w0, [x19, PROJ_TYPE]
 
-                // Increment count
                 adrp    x0, proj_count
                 add     x0, x0, :lo12:proj_count
                 ldr     w1, [x0]
@@ -213,7 +199,6 @@ find_nearest_enemy:
                 stp     x21, x22, [sp, 32]
                 stp     x23, x24, [sp, 48]
 
-                // Get player position
                 bl      player_get_x
                 mov     w19, w0
                 bl      player_get_y
@@ -225,7 +210,6 @@ find_nearest_enemy:
                 mov     w23, 0                  // Best enemy Y
                 mov     w24, 0                  // Found flag
 
-                // Iterate through enemy pool
                 adrp    x0, enemy_pool
                 add     x0, x0, :lo12:enemy_pool
                 mov     w1, MAX_ENEMIES
@@ -233,11 +217,9 @@ find_nearest_enemy:
 find_enemy_loop:
                 cbz     w1, find_enemy_done
 
-                // Check if active
                 ldrb    w2, [x0, ENEMY_ACTIVE]
                 cbz     w2, find_enemy_next
 
-                // Get enemy position
                 ldrsh   w2, [x0, ENEMY_X]       // Enemy X
                 ldrsh   w3, [x0, ENEMY_Y]       // Enemy Y
 
@@ -254,15 +236,13 @@ find_abs_dx_done:
 find_abs_dy_done:
                 add     w4, w4, w5              // distance = |dx| + |dy|
 
-                // Check if better
                 cmp     w4, w21
                 b.ge    find_enemy_next
 
-                // New best enemy
-                mov     w21, w4                 // Best distance
-                mov     w22, w2                 // Best X
-                mov     w23, w3                 // Best Y
-                mov     w24, 1                  // Found
+                mov     w21, w4
+                mov     w22, w2
+                mov     w23, w3
+                mov     w24, 1
 
 find_enemy_next:
                 add     x0, x0, ENEMY_STRUCT_SIZE
@@ -270,9 +250,9 @@ find_enemy_next:
                 b       find_enemy_loop
 
 find_enemy_done:
-                mov     w0, w22                 // Return X
-                mov     w1, w23                 // Return Y
-                mov     w2, w24                 // Return found flag
+                mov     w0, w22
+                mov     w1, w23
+                mov     w2, w24
 
                 ldp     x23, x24, [sp, 48]
                 ldp     x21, x22, [sp, 32]
@@ -290,10 +270,8 @@ projectiles_update:
                 stp     x23, x24, [sp, 48]
                 str     x25, [sp, 64]
 
-                // Handle auto-fire
                 bl      projectiles_try_fire
 
-                // Iterate through projectile pool
                 adrp    x19, projectile_pool
                 add     x19, x19, :lo12:projectile_pool
                 mov     w20, MAX_PROJECTILES
@@ -301,37 +279,30 @@ projectiles_update:
 proj_update_loop:
                 cbz     w20, proj_update_done
 
-                // Check if active
                 ldrb    w0, [x19, PROJ_ACTIVE]
                 cbz     w0, proj_update_next
 
-                // Increment timer
                 ldrb    w0, [x19, PROJ_TIMER]
                 add     w0, w0, 1
                 strb    w0, [x19, PROJ_TIMER]
 
-                // Check if time to move
                 ldrb    w1, [x19, PROJ_SPEED]
                 cmp     w0, w1
                 b.lt    proj_check_collision
 
-                // Reset timer and move
                 mov     w0, 0
                 strb    w0, [x19, PROJ_TIMER]
 
-                // Load position and velocity
                 ldrsh   w21, [x19, PROJ_X]
                 ldrsh   w22, [x19, PROJ_Y]
                 ldrsh   w23, [x19, PROJ_DX]
                 ldrsh   w24, [x19, PROJ_DY]
 
-                // Update position
                 add     w21, w21, w23
                 add     w22, w22, w24
                 strh    w21, [x19, PROJ_X]
                 strh    w22, [x19, PROJ_Y]
 
-                // Check bounds
                 cmp     w21, PLAY_LEFT
                 b.lt    proj_deactivate
                 cmp     w21, PLAY_RIGHT
@@ -342,7 +313,6 @@ proj_update_loop:
                 b.gt    proj_deactivate
 
 proj_check_collision:
-                // Get projectile position
                 ldrsh   w0, [x19, PROJ_X]
                 ldrsh   w1, [x19, PROJ_Y]
                 mov     w23, w0
@@ -352,7 +322,6 @@ proj_check_collision:
                 bl      boss_check_collision
                 cbz     w0, proj_check_enemies  // No boss hit, check enemies
 
-                // Hit the boss!
                 ldrb    w22, [x19, PROJ_DAMAGE] // Get projectile damage
 
                 // Spawn floating damage number
@@ -361,7 +330,6 @@ proj_check_collision:
                 mov     w2, w22                 // Damage value
                 bl      effects_spawn_damage_num
 
-                // Damage the boss
                 mov     w0, w22
                 bl      boss_damage
 
@@ -371,14 +339,14 @@ proj_check_collision:
                 // Boss died! Spawn big explosion
                 mov     w0, w23
                 mov     w1, w24
-                mov     w2, 99                  // Special type for boss explosion
+                mov     w2, 99                  // effects_spawn_explosion ignores the type; kept distinct for readers
                 bl      effects_spawn_explosion
 
                 // Trigger boss kill achievement
                 bl      achievements_on_boss_kill
 
-                // Award XP for boss kill (value returned from boss_damage)
-                mov     w0, 100                 // Boss XP reward
+                // Fixed 100 XP, not the TITAN_XP boss_damage returned
+                mov     w0, 100
                 bl      player_add_xp
 
                 // Increment kill count
@@ -387,17 +355,14 @@ proj_check_collision:
                 b       proj_deactivate
 
 proj_check_enemies:
-                // Check collision with enemies
-                mov     w0, w23                 // Restore X
-                mov     w1, w24                 // Restore Y
+                mov     w0, w23
+                mov     w1, w24
                 bl      enemies_check_collision
                 cmp     w0, -1
                 b.eq    proj_update_next
 
-                // Hit an enemy!
                 mov     w21, w0                 // Save enemy slot
 
-                // Get projectile damage
                 ldrb    w22, [x19, PROJ_DAMAGE]
 
                 // Spawn floating damage number
@@ -406,7 +371,6 @@ proj_check_enemies:
                 mov     w2, w22                 // Damage value
                 bl      effects_spawn_damage_num
 
-                // Damage the enemy
                 mov     w0, w21
                 mov     w1, w22
                 bl      enemy_damage
@@ -418,20 +382,16 @@ proj_check_enemies:
                 // Save XP value before calling effects (w0 will be clobbered)
                 mov     w25, w0                 // w25 = XP value
 
-                // Enemy died - spawn explosion effect!
                 mov     w0, w23
                 mov     w1, w24
-                mov     w2, 0                   // Enemy type (could get from slot)
+                mov     w2, 0                   // Ordinary explosion
                 bl      effects_spawn_explosion
 
-                // Enemy died - add XP to player
                 mov     w0, w25                 // Restore XP value
                 bl      player_add_xp
 
-                // Increment player kill count
                 bl      player_add_kill
 
-                // Deactivate projectile after hit
                 b       proj_deactivate
 
 proj_update_next:
@@ -440,11 +400,9 @@ proj_update_next:
                 b       proj_update_loop
 
 proj_deactivate:
-                // Deactivate this projectile
                 mov     w0, 0
                 strb    w0, [x19, PROJ_ACTIVE]
 
-                // Decrement count
                 adrp    x0, proj_count
                 add     x0, x0, :lo12:proj_count
                 ldr     w1, [x0]
@@ -468,7 +426,6 @@ projectiles_try_fire:
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
 
-                // Decrement fire timer
                 adrp    x0, fire_timer
                 add     x0, x0, :lo12:fire_timer
                 ldr     w1, [x0]
@@ -478,20 +435,16 @@ projectiles_try_fire:
                 b       try_fire_done
 
 try_fire_ready:
-                // Find nearest enemy
                 bl      find_nearest_enemy
                 cbz     w2, try_fire_done       // No enemies
 
-                // Save target position
                 mov     w19, w0                 // Target X
                 mov     w20, w1                 // Target Y
 
-                // Fire main projectile
                 mov     w0, w19
                 mov     w1, w20
                 bl      projectiles_fire
 
-                // Check for multi-shot upgrade
                 bl      upgrades_get_multi_shot
                 cbz     w0, try_fire_reset      // No extra shots
 
@@ -538,7 +491,6 @@ projectiles_draw:
                 stp     x19, x20, [sp, 16]
                 stp     x21, x22, [sp, 32]
 
-                // Iterate through projectile pool
                 adrp    x19, projectile_pool
                 add     x19, x19, :lo12:projectile_pool
                 mov     w20, MAX_PROJECTILES
@@ -546,18 +498,14 @@ projectiles_draw:
 proj_draw_loop:
                 cbz     w20, proj_draw_done
 
-                // Check if active
                 ldrb    w0, [x19, PROJ_ACTIVE]
                 cbz     w0, proj_draw_next
 
-                // Get position
                 ldrsh   w0, [x19, PROJ_X]
                 ldrsh   w1, [x19, PROJ_Y]
 
-                // Move cursor
                 bl      cursor_move
 
-                // Set color (bright white for bullets)
                 mov     w0, COLOR_BRIGHT_WHITE
                 bl      set_color
 
@@ -565,29 +513,26 @@ proj_draw_loop:
                 ldrsh   w21, [x19, PROJ_DX]
                 ldrsh   w22, [x19, PROJ_DY]
 
-                // Horizontal movement
                 cbz     w22, proj_char_horiz
-                // Vertical movement
                 cbz     w21, proj_char_vert
-                // Diagonal movement
                 cmp     w21, w22
                 b.eq    proj_char_diag1
                 b       proj_char_diag2
 
 proj_char_horiz:
-                mov     w0, BULLET_CHAR         // '-'
+                mov     w0, BULLET_CHAR
                 b       proj_draw_char
 
 proj_char_vert:
-                mov     w0, BULLET_CHAR_V       // '|'
+                mov     w0, BULLET_CHAR_V
                 b       proj_draw_char
 
 proj_char_diag1:
-                mov     w0, BULLET_CHAR_D       // '\'
+                mov     w0, BULLET_CHAR_D
                 b       proj_draw_char
 
 proj_char_diag2:
-                mov     w0, BULLET_CHAR_D2      // '/'
+                mov     w0, BULLET_CHAR_D2
 
 proj_draw_char:
                 bl      write_char
@@ -612,54 +557,46 @@ enemy_damage:
                 mov     fp, sp
                 str     x19, [sp, 16]
 
-                // Get enemy slot pointer
                 adrp    x2, enemy_pool
                 add     x2, x2, :lo12:enemy_pool
                 mov     w3, ENEMY_STRUCT_SIZE
                 mul     w3, w0, w3
                 add     x19, x2, x3             // x19 = enemy pointer
 
-                // Get current health
                 ldrb    w2, [x19, ENEMY_HEALTH]
-                subs    w2, w2, w1              // health -= damage
+                subs    w2, w2, w1
 
                 b.le    enemy_killed
 
-                // Still alive
                 strb    w2, [x19, ENEMY_HEALTH]
-                mov     w0, 0                   // Return 0 (alive)
+                mov     w0, 0
                 b       enemy_damage_done
 
 enemy_killed:
                 // Get XP value before killing
                 ldrb    w0, [x19, ENEMY_XP_VALUE]
 
-                // Deactivate enemy
                 mov     w1, 0
                 strb    w1, [x19, ENEMY_ACTIVE]
 
-                // Decrement enemy count
                 adrp    x1, enemy_count
                 add     x1, x1, :lo12:enemy_count
                 ldr     w2, [x1]
                 sub     w2, w2, 1
                 str     w2, [x1]
 
-                // Increment wave kills
                 adrp    x1, wave_kills
                 add     x1, x1, :lo12:wave_kills
                 ldr     w2, [x1]
                 add     w2, w2, 1
                 str     w2, [x1]
 
-                // Check for wave completion
                 adrp    x1, wave_target
                 add     x1, x1, :lo12:wave_target
                 ldr     w3, [x1]
                 cmp     w2, w3
                 b.lt    enemy_damage_done
 
-                // Wave complete!
                 // Trigger wave complete achievement check
                 bl      achievements_on_wave_complete
 
@@ -673,13 +610,11 @@ enemy_killed:
                 mov     w0, w2
                 bl      boss_check_spawn
 
-                // Reset wave kills
                 adrp    x1, wave_kills
                 add     x1, x1, :lo12:wave_kills
                 mov     w2, 0
                 str     w2, [x1]
 
-                // Increase wave target
                 adrp    x1, wave_target
                 add     x1, x1, :lo12:wave_target
                 ldr     w2, [x1]
