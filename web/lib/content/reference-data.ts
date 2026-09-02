@@ -734,6 +734,22 @@ bic     w11, w9, w10        // clear w10's bits out of w9: w11 = 0xf0`,
     ],
   },
   {
+    mnemonic: "orn",
+    category: "Data processing",
+    syntax: "orn xd, xn, xm",
+    example: `mov     x1, 0
+mov     x2, 0xff
+orn     x0, x1, x2          // x0 = 0xffffffffffffff00`,
+  },
+  {
+    mnemonic: "eon",
+    category: "Data processing",
+    syntax: "eon xd, xn, xm",
+    example: `mov     x1, 0xff
+mov     x2, 0xff
+eon     x0, x1, x2          // x0 = -1: equal inputs make xnor all-ones`,
+  },
+  {
     mnemonic: "lsl",
     category: "Data processing",
     syntax: "lsl xd, xn, #imm",

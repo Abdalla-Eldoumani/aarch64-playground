@@ -124,6 +124,17 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   NEG: { summary: "Rd = -Rn (alias for `SUB Rd, ZR, Rn`).", cExample: "Rd = -Rn;" },
   NEGS: { summary: "Rd = -Rn and sets NZCV (alias for `SUBS Rd, ZR, Rn`).", example: "negs x0, x1", cExample: "Rd = -Rn; // flags from 0 - Rn" },
   MVN: { summary: "Rd = ~Rn (alias for `ORN Rd, ZR, Rn`).", cExample: "Rd = ~Rn;" },
+  ORN: {
+    summary: "Rd = Rn | ~Rm. Logical OR with the second source inverted.",
+    details: ["`MVN Rd, Rm` is this instruction with `XZR` as Rn."],
+    example: "orn x0, x1, x2",
+    cExample: "Rd = Rn | ~Rm;",
+  },
+  EON: {
+    summary: "Rd = Rn ^ ~Rm, which is XNOR.",
+    example: "eon x0, x1, x2",
+    cExample: "Rd = ~(Rn ^ Rm);",
+  },
   CMP: { summary: "`SUBS ZR, Rn, op2`. Sets NZCV, discards result.", cExample: "// (Rn - op2) sets NZCV" },
   CMN: { summary: "`ADDS ZR, Rn, op2`. Sets NZCV.", cExample: "// (Rn + op2) sets NZCV" },
   TST: { summary: "`ANDS ZR, Rn, op2`. Sets NZCV; accepts bitmask immediates.", cExample: "// (Rn & op2) sets NZCV" },
