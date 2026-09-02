@@ -1,8 +1,8 @@
 {
-  "title": "Post-test Loops in Assembly",
+  "title": "Post-test loops",
   "slug": "post-test-loop",
   "order": 9,
-  "summary": "A lesson that covers the implementation of a post-test loop in Assembly language, including its structure and usage.",
+  "summary": "How to build a do-while loop, where the body always runs at least once.",
   "tags": [
     "loops",
     "post-test loop"
