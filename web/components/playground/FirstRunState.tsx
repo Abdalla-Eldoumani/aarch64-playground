@@ -11,11 +11,11 @@ export interface FirstRunStateProps {
 }
 
 /**
- * The designed cold-load / no-program-assembled state. Instead of a blank dense
- * IDE, a short serif lead names the surface and a plain line says what to press,
- * anchored by the brand block cursor (amber = the machine acting; it blinks via
- * the cursor-blink motion token and holds solid under prefers-reduced-motion).
- * Kept self-contained so the landing hero can reuse the same composition.
+ * The designed cold-load / no-program-assembled state. A short serif lead names
+ * the surface and a plain line says what to press, anchored by the brand block
+ * cursor (amber = the machine acting; it blinks via the cursor-blink motion
+ * token and holds solid under prefers-reduced-motion). Kept self-contained so
+ * the landing hero can reuse the same composition.
  */
 export function FirstRunState({ onAssemble }: FirstRunStateProps) {
   return (
