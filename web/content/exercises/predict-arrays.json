@@ -1,11 +1,11 @@
 {
-  "title": "Predict: Array Memory Tracing",
+  "title": "Predict: arrays and structures",
   "slug": "predict-arrays",
   "order": 51,
   "topic": "arrays",
   "difficulty": "challenge",
   "variant": "prediction",
-  "prompt": "Act as the CPU. Work out the block sizes and the byte offsets that map C array declarations onto AArch64 memory operands.",
+  "prompt": "Block sizes and byte offsets: how a C array declaration maps onto an AArch64 memory operand.",
   "predictions": [
     {
       "code": "// C: int ia[5];\n\n        .bss\n        .balign 4\nia:     .skip N",
