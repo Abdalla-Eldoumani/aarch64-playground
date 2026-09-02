@@ -4,9 +4,9 @@
  * The practice index: two columns of ruled datasheet rows, coding exercises
  * on the left and theory sets on the right, each grouped by topic in course
  * order (lib/content/practice-topics owns both the split and the order). A
- * shared search box and difficulty filter sit above both columns; a
- * solved/unsolved indicator, empty and loading states, and the progress row
- * complete it. It receives already-validated index rows as props from the
+ * shared search box and difficulty filter sit above both columns, plus a
+ * solved indicator, empty and loading states, and the progress row. It
+ * receives already-validated index rows as props from the
  * server index page (loadExerciseIndex narrows each exercise to the seven
  * fields below, blurb included) and renders every row field as plain React
  * text (auto-escaped), so there is no markdown/HTML injection path here.
