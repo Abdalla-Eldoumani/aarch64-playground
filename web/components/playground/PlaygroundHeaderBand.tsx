@@ -29,8 +29,8 @@ export interface PlaygroundHeaderBandProps {
   recent: { entries: RecentEntry[]; clear: () => void };
   args: string;
   onArgsChange: (next: string) => void;
-  /** Null for every program that has no real answer to the console-or-terminal
-   *  question, which is the band every hand-written buffer sees. */
+  /** Null when the program has no console-or-terminal choice to make, which is
+   *  every hand-written buffer. */
   runMode: {
     mode: LaunchMode;
     onChange: (next: LaunchMode) => void;
@@ -48,7 +48,7 @@ export interface PlaygroundHeaderBandProps {
 /**
  * The full playground's top row: program in (examples, import, recents),
  * program arguments, the run-mode switch, and the tools group. It holds no
- * state of its own -- every control reports to the shell, which owns the
+ * state of its own: every control reports to the shell, which owns the
  * workspace and the machine.
  */
 export function PlaygroundHeaderBand({
