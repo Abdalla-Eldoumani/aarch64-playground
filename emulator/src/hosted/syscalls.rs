@@ -108,7 +108,7 @@ pub fn dispatch(number: u64, ctx: &mut HostContext<'_>) -> Result<HostOutcome, E
         SYS_GETRANDOM => sys_getrandom(ctx),
         _ => Err(EmuError::RuntimeError {
             message: format!(
-                "syscall {number} (x8) is not supported -- this emulator implements \
+                "syscall {number} (x8) is not supported. This emulator implements \
                  fcntl(25), ioctl(29), openat(56), close(57), lseek(62), read(63), \
                  write(64), exit(93/94), nanosleep(101), clock_gettime(113), and \
                  getrandom(278); use `mov x8, 93` then `svc 0` to exit"
