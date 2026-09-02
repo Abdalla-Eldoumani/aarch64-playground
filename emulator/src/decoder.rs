@@ -219,6 +219,10 @@ pub enum FpBinOp {
     Fmul,
     Fdiv,
     Fnmul,
+    Fmax,
+    Fmin,
+    Fmaxnm,
+    Fminnm,
 }
 
 /// Floating-point one-source operation (FP data-processing 1-source space,
@@ -241,6 +245,10 @@ pub const FP_BINARY_OPS: &[(&str, u8, FpBinOp)] = &[
     ("fmul", 0b0000, FpBinOp::Fmul),
     ("fdiv", 0b0001, FpBinOp::Fdiv),
     ("fnmul", 0b1000, FpBinOp::Fnmul),
+    ("fmax", 0b0100, FpBinOp::Fmax),
+    ("fmin", 0b0101, FpBinOp::Fmin),
+    ("fmaxnm", 0b0110, FpBinOp::Fmaxnm),
+    ("fminnm", 0b0111, FpBinOp::Fminnm),
 ];
 
 /// Fused multiply-add variant. `Fa` is the ADDEND in every one of them.

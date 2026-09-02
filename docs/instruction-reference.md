@@ -160,6 +160,10 @@ The `FCVT` conversion family names its rounding mode in the mnemonic: `N` neares
 | `FMSUB`  | same shape                        | `Fd = Fa - Fn * Fm` (the product is subtracted FROM the accumulator). |
 | `FNMADD` | same shape                        | `Fd = -Fa - Fn * Fm`. |
 | `FNMSUB` | same shape                        | `Fd = -Fa + Fn * Fm`. |
+| `FMAX`   | `FMAX Dd, Dn, Dm` / S form         | Larger of the two. A NaN operand makes the result NaN. |
+| `FMIN`   | `FMIN Dd, Dn, Dm` / S form         | Smaller of the two, same NaN rule.      |
+| `FMAXNM` | `FMAXNM Dd, Dn, Dm` / S form       | IEEE `maxNum`: a NaN operand is ignored and the number wins. This is the one C's `fmax()` compiles to. |
+| `FMINNM` | `FMINNM Dd, Dn, Dm` / S form       | IEEE `minNum`, same rule.               |
 | `FNEG`   | `FNEG Dd, Dn` / `FNEG Sd, Sn`     | Flip the sign: `Fd = -Fn`.              |
 | `FABS`   | `FABS Dd, Dn` / `FABS Sd, Sn`     | Absolute value: clears the sign bit.    |
 | `FSQRT`  | `FSQRT Dd, Dn` / `FSQRT Sd, Sn`   | Square root. A negative operand gives NaN, not a fault. |

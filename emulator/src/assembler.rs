@@ -163,6 +163,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
+    "FMAX", "FMIN", "FMAXNM", "FMINNM",
     "FMADD", "FMSUB", "FNMADD", "FNMSUB",
     "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
     // the rest of the float-to-integer rounding modes
@@ -303,6 +304,10 @@ fn encode_line(
         "FMUL" => encode_fp_binary(&ops, "fmul", line_num),
         "FDIV" => encode_fp_binary(&ops, "fdiv", line_num),
         "FNMUL" => encode_fp_binary(&ops, "fnmul", line_num),
+        "FMAX" => encode_fp_binary(&ops, "fmax", line_num),
+        "FMIN" => encode_fp_binary(&ops, "fmin", line_num),
+        "FMAXNM" => encode_fp_binary(&ops, "fmaxnm", line_num),
+        "FMINNM" => encode_fp_binary(&ops, "fminnm", line_num),
         "FMADD" => encode_fp_mul_add(&ops, "fmadd", line_num),
         "FMSUB" => encode_fp_mul_add(&ops, "fmsub", line_num),
         "FNMADD" => encode_fp_mul_add(&ops, "fnmadd", line_num),
@@ -4190,6 +4195,90 @@ svc 0").unwrap();
         assert_eq!(cpu.regs.read_fpr_bits(8), 0x8000_0000_0000_0000);
         assert_eq!(cpu.regs.read_fpr_bits(10), 0x0000_0000_0000_0000);
         assert_eq!(cpu.regs.read_fpr_bits(13), 0xC0C0_0000);
+    }
+
+    #[test]
+    fn fp_max_and_min_split_on_nan_and_signed_zero() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("fmax d0, d1, d2", 0x1E62_4820u32),
+            ("fmin d0, d1, d2", 0x1E62_5820),
+            ("fmaxnm d0, d1, d2", 0x1E62_6820),
+            ("fminnm d0, d1, d2", 0x1E62_7820),
+            ("fmax s0, s1, s2", 0x1E22_4820),
+            ("fmin s0, s1, s2", 0x1E22_5820),
+            ("fmaxnm s0, s1, s2", 0x1E22_6820),
+            ("fminnm s0, s1, s2", 0x1E22_7820),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let source = r#"
+            FMOV D1, 3.0
+            FMOV D2, 5.0
+            FMAX D3, D1, D2
+            FMIN D4, D1, D2
+            FMOV D20, 4.0
+            FNEG D20, D20
+            FSQRT D0, D20
+            FMAX D5, D0, D2
+            FMAXNM D6, D0, D2
+            FMIN D7, D0, D2
+            FMINNM D8, D0, D2
+            FMAXNM D9, D2, D0
+            FMINNM D10, D2, D0
+            FMOV D11, XZR
+            FNEG D12, D11
+            FMAX D13, D11, D12
+            FMIN D14, D11, D12
+            FMAX D15, D12, D11
+            FMIN D16, D12, D11
+            FMAXNM D17, D11, D12
+            FMINNM D18, D11, D12
+            FMOV S21, 4.0
+            FNEG S21, S21
+            FSQRT S22, S21
+            FMOV S23, 5.0
+            FMAX S24, S22, S23
+            FMAXNM S25, S22, S23
+            FMIN S26, S22, S23
+            FMINNM S27, S22, S23
+            FMOV S28, WZR
+            FNEG S29, S28
+            FMAX S30, S28, S29
+            FMIN S31, S28, S29
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(60).unwrap();
+        let bits = |r: u8| cpu.regs.read_fpr_bits(r);
+        assert_eq!(bits(3), 0x4014_0000_0000_0000, "fmax of 3 and 5");
+        assert_eq!(bits(4), 0x4008_0000_0000_0000, "fmin of 3 and 5");
+        // The split: FMAX propagates the NaN, FMAXNM ignores it and takes
+        // the number, in either operand order.
+        assert_eq!(bits(5), 0x7FF8_0000_0000_0000);
+        assert_eq!(bits(6), 0x4014_0000_0000_0000);
+        assert_eq!(bits(7), 0x7FF8_0000_0000_0000);
+        assert_eq!(bits(8), 0x4014_0000_0000_0000);
+        assert_eq!(bits(9), 0x4014_0000_0000_0000);
+        assert_eq!(bits(10), 0x4014_0000_0000_0000);
+        // Negative zero compares less than positive zero, and the operand
+        // order does not decide it: bits, never values, say so.
+        assert_eq!(bits(13), 0x0000_0000_0000_0000);
+        assert_eq!(bits(14), 0x8000_0000_0000_0000);
+        assert_eq!(bits(15), 0x0000_0000_0000_0000);
+        assert_eq!(bits(16), 0x8000_0000_0000_0000);
+        assert_eq!(bits(17), 0x0000_0000_0000_0000);
+        assert_eq!(bits(18), 0x8000_0000_0000_0000);
+        // The S repeat: a 64-bit NaN here would mean the f64 arm ran.
+        assert_eq!(bits(24), 0x7FC0_0000);
+        assert_eq!(bits(25), 0x40A0_0000);
+        assert_eq!(bits(26), 0x7FC0_0000);
+        assert_eq!(bits(27), 0x40A0_0000);
+        assert_eq!(bits(30), 0x0000_0000);
+        assert_eq!(bits(31), 0x8000_0000);
     }
 
     #[test]

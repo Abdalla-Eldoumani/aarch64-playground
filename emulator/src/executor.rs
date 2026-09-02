@@ -1013,6 +1013,86 @@ fn exec_mul_div(
     Ok(ExecResult::Advance)
 }
 
+/// What `fp_max` and its siblings need of a float, so the S and D paths
+/// run the same body instead of two copies whose NaN rules could drift.
+trait FpOperand: Copy + PartialOrd {
+    const NAN: Self;
+    const ZERO: Self;
+    fn is_nan(self) -> bool;
+    fn is_sign_negative(self) -> bool;
+}
+
+impl FpOperand for f32 {
+    const NAN: Self = f32::NAN;
+    const ZERO: Self = 0.0;
+    fn is_nan(self) -> bool {
+        f32::is_nan(self)
+    }
+    fn is_sign_negative(self) -> bool {
+        f32::is_sign_negative(self)
+    }
+}
+
+impl FpOperand for f64 {
+    const NAN: Self = f64::NAN;
+    const ZERO: Self = 0.0;
+    fn is_nan(self) -> bool {
+        f64::is_nan(self)
+    }
+    fn is_sign_negative(self) -> bool {
+        f64::is_sign_negative(self)
+    }
+}
+
+/// ARM's FPMax with FPCR.AH = 0, the state this emulator models: a NaN
+/// operand makes the result NaN, and negative zero compares LESS than
+/// positive zero whichever operand it arrives in. Rust's `max` does
+/// neither, since it returns the number when one side is NaN and its
+/// signed-zero answer is documented as unspecified, so both rules are
+/// written out here rather than delegated.
+fn fp_max<T: FpOperand>(a: T, b: T) -> T {
+    if a.is_nan() || b.is_nan() {
+        return T::NAN;
+    }
+    if a == T::ZERO && b == T::ZERO {
+        return if a.is_sign_negative() { b } else { a };
+    }
+    if a > b { a } else { b }
+}
+
+fn fp_min<T: FpOperand>(a: T, b: T) -> T {
+    if a.is_nan() || b.is_nan() {
+        return T::NAN;
+    }
+    if a == T::ZERO && b == T::ZERO {
+        return if a.is_sign_negative() { a } else { b };
+    }
+    if a < b { a } else { b }
+}
+
+/// FMAXNM / FMINNM are IEEE maxNum / minNum: a quiet NaN operand is
+/// ignored and the number wins. The signed-zero rule is FMAX's, so the
+/// numeric case delegates rather than restating it.
+fn fp_max_num<T: FpOperand>(a: T, b: T) -> T {
+    if a.is_nan() {
+        return b;
+    }
+    if b.is_nan() {
+        return a;
+    }
+    fp_max(a, b)
+}
+
+fn fp_min_num<T: FpOperand>(a: T, b: T) -> T {
+    if a.is_nan() {
+        return b;
+    }
+    if b.is_nan() {
+        return a;
+    }
+    fp_min(a, b)
+}
+
 fn exec_fp_binary(
     op: FpBinOp,
     fd: u8,
@@ -1035,6 +1115,10 @@ fn exec_fp_binary(
             // The sign flips on the PRODUCT, which is what makes
             // fnmul of +0.0 and 3.0 a -0.0 that (-a) * b never produces.
             FpBinOp::Fnmul => -(a * b),
+            FpBinOp::Fmax => fp_max(a, b),
+            FpBinOp::Fmin => fp_min(a, b),
+            FpBinOp::Fmaxnm => fp_max_num(a, b),
+            FpBinOp::Fminnm => fp_min_num(a, b),
         };
         regs.write_fpr_f32(fd, result);
     } else {
@@ -1046,6 +1130,10 @@ fn exec_fp_binary(
             FpBinOp::Fmul => a * b,
             FpBinOp::Fdiv => a / b,
             FpBinOp::Fnmul => -(a * b),
+            FpBinOp::Fmax => fp_max(a, b),
+            FpBinOp::Fmin => fp_min(a, b),
+            FpBinOp::Fmaxnm => fp_max_num(a, b),
+            FpBinOp::Fminnm => fp_min_num(a, b),
         };
         regs.write_fpr_f64(fd, result);
     }
