@@ -109,8 +109,8 @@ fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), Em
             return Err(EmuError::PreprocError {
                 line: line_num,
                 message: format!(
-                    "`.req` alias expansion grew the whole source past {} MiB -- \
-                     shrink the alias body or the number of references",
+                    "`.req` alias expansion grew the whole source past {} MiB. \
+                     Shrink the alias body or the number of references",
                     super::m4::MAX_EXPANDED_TOTAL_BYTES / (1024 * 1024)
                 ),
             });
@@ -251,12 +251,12 @@ fn parse_line(
         // name the habit and the fix rather than a bare "unexpected token".
         TokenKind::Hash => Err(err(
             first.line,
-            "`#` is not a comment character here -- write comments with `//` or `;`",
+            "`#` is not a comment character here. Write comments with `//` or `;`",
         )),
         other => Err(err(
             first.line,
             &format!(
-                "unexpected {} at the start of a line -- a line starts with a label, \
+                "unexpected {} at the start of a line. A line starts with a label, \
                  an instruction, or a directive",
                 crate::frontend::lexer::describe(other)
             ),
@@ -374,7 +374,7 @@ fn parse_directive(
             if name == ".zero" && groups.len() == 2 {
                 return Err(err(
                     line,
-                    "`.zero` takes a size only -- use `.space size, fill` to fill with a byte",
+                    "`.zero` takes a size only. Use `.space size, fill` to fill with a byte",
                 ));
             }
             let count = groups[0];
@@ -391,8 +391,8 @@ fn parse_directive(
                 if fill != 0 {
                     return Err(err(
                         line,
-                        "a symbolic size cannot take a nonzero fill -- \
-                         write the size as a plain constant",
+                        "a symbolic size cannot take a nonzero fill. \
+                         Write the size as a plain constant",
                     ));
                 }
                 prog.section_or_insert(*current).items.push(Item::ReserveExpr {
@@ -413,8 +413,8 @@ fn parse_directive(
                 if n as u64 > 1024 * 1024 {
                     return Err(err(
                         line,
-                        "the fill would outgrow the section's 1 MiB window -- \
-                         shrink the size",
+                        "the fill would outgrow the section's 1 MiB window. \
+                         Shrink the size",
                     ));
                 }
                 prog.section_or_insert(*current)
@@ -457,7 +457,23 @@ fn parse_directive(
             "`.equ`/`.set` are not supported; write `NAME = expression` instead \
              (for example `SIZE = 40`)",
         )),
-        other => Err(err(line, &format!("unknown directive `{other}`"))),
+        other => Err(err(
+            line,
+            &format!(
+                "unknown directive `{other}`: the directives the playground \
+                 recognizes are {}",
+                directive_list()
+            ),
+        )),
+    }
+}
+
+/// The directive spellings, read off `DIRECTIVES` rather than written out,
+/// so a directive added to the match cannot leave the message behind.
+fn directive_list() -> String {
+    match DIRECTIVES.split_last() {
+        Some((last, rest)) => format!("{}, and {last}", rest.join(", ")),
+        None => String::new(),
     }
 }
 
@@ -565,7 +581,7 @@ fn reject_empty_groups(
     {
         return Err(err(
             line,
-            "empty value in this list -- remove the extra comma",
+            "empty value in this list: remove the extra comma",
         ));
     }
     Ok(())
