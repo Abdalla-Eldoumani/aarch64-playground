@@ -716,8 +716,8 @@ main:
       }
 
       expect(emu.take_stdout()).toBe("first\nsecond\n");
-      // Three in-call pcs per call -- two trampoline words, then the stub --
-      // and each resolves to the line its own `bl` sits on.
+      // Three in-call pcs per call (two trampoline words, then the stub),
+      // each resolving to the line its own `bl` sits on.
       expect(seen.map((o) => `${o.name}:${o.line}`)).toEqual([
         "printf:16",
         "printf:16",
