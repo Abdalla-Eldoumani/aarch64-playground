@@ -27,7 +27,7 @@ export function extractAliases(source: string): Record<string, string> {
 
 /**
  * One-line plain-English explanation of a single source line. Returns null for
- * blank, comment-only, and label-only lines so callers can fall back to a calm
+ * blank, comment-only, and label-only lines so callers can fall back to a
  * prompt. Optionally inlines m4 alias resolutions into the operand list.
  */
 export function describeLine(
@@ -54,9 +54,8 @@ export function describeLine(
   if (doc.notImplemented) {
     return `${mnemonic.toLowerCase()}: not implemented in this emulator`;
   }
-  // Only the substitutions are named. Annotating the whole operand list and
-  // labelling it "aliases" swept the untouched literals in with them, so
-  // `mov b, 5` claimed `5` was an alias.
+  // Only the substitutions are named. Annotating the whole operand list would
+  // claim the untouched literals are aliases too.
   const detail = aliases ? aliasPairs(operands, aliases) : "";
   return `${mnemonic.toLowerCase()} ${operands}${detail} · ${doc.summary}`;
 }
