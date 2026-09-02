@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { loadAllExercises } from "@/lib/content/exercises";
+import { loadExerciseIndex } from "@/lib/content/exercises";
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
@@ -34,7 +34,10 @@ export const metadata: Metadata = {
 // the already-validated, order-sorted exercises are handed to the client index as
 // plain data, so no client component ever imports the loader.
 export default function PracticePage() {
-  const exercises = loadAllExercises();
+  // Narrowed before it crosses the boundary: the index renders seven fields,
+  // and a full exercise also carries the prompt, starter, acceptance, and
+  // question sets that only the detail route reads.
+  const exercises = loadExerciseIndex();
   return (
     <section className="mx-auto w-full max-w-5xl px-6 py-10 sm:py-14">
       <DocRule section="sheet 05 · practice" context="cpsc 355 study aid" className="mb-8" />
