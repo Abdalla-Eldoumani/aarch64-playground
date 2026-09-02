@@ -161,8 +161,8 @@ export function SavesPanel({
             const text = await file.text();
             const parsed = JSON.parse(text);
             const result = namedSaves.importBundle(parsed);
-            // Three real outcomes; the flat count used to green-check a
-            // structurally wrong file as "imported 0 added, 0 skipped".
+            // Three real outcomes: a flat count would green-check a
+            // structurally wrong file.
             if (!result.ok) {
               toast.error("that file is not a bookmark bundle (expected version 1 with a saves list)");
             } else if (!result.stored) {
@@ -258,9 +258,8 @@ export function SavesPanel({
                       stdin: s.stdin,
                       stepCount: s.stepCount,
                     });
-                    // Report what actually happened: a failed assemble
-                    // used to green-toast "restored", and the saved count
-                    // was reported even when the walk stopped early.
+                    // Report what actually happened: a failed assemble and a
+                    // short walk each need their own message.
                     if (!verdict.success) {
                       toast.error(`${s.name} no longer assembles. fix the source, then bookmark it again`);
                     } else if (verdict.stepped < s.stepCount) {
