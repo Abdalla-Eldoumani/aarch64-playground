@@ -17,11 +17,9 @@ import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/content/site";
 const fontSerif = Source_Serif_4({
   subsets: ["latin"],
   weight: ["400", "600"],
-  // Upright only. The drawn italic had exactly two consumers in the repo, the
-  // lesson caption and the aapcs note, both route-scoped and both small
-  // secondary type, while this declaration put twelve @font-face rules and
-  // four woff2 files into the render-blocking font stylesheet on every route,
-  // the landing included. Those two keep `italic` and take the browser's
+  // Upright only: the drawn italic costs twelve @font-face rules and four
+  // woff2 files in the render-blocking stylesheet on every route, for two
+  // small captions. Those two keep `italic` and take the browser's
   // synthesized oblique.
   display: "swap",
   variable: "--font-serif",
@@ -134,11 +132,9 @@ export default function RootLayout({
         {/* Set data-theme from the saved preference BEFORE first paint, so a
             light or high-contrast user does not see a flash of the default
             dark theme every load. With nothing saved the OS preference
-            decides: an OS-light first visitor used to get a dark first paint
-            that only healed after hydration. Nothing is persisted here -- the
-            choice is still the student's to make; use-theme writes on mount.
-            Static, code-authored script (no user input); the CSP permits
-            inline scripts. Kept in lockstep with the
+            decides. Nothing is persisted here: use-theme writes the choice
+            on mount. Static, code-authored script (no user input); the CSP
+            permits inline scripts. Kept in lockstep with the
             "aarch64-playground:theme" key in lib/hooks/use-theme. */}
         <script
           dangerouslySetInnerHTML={{
