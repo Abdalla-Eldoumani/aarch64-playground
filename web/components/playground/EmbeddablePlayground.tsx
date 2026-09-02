@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { useEmulator } from "@/lib/emulator/use-emulator";
+import { IDLE_CPU_VIEW } from "@/lib/emulator/use-cpu-view";
 import { useBreakpoint } from "@/lib/hooks/use-breakpoint";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
@@ -192,6 +193,12 @@ export type EmbeddablePlaygroundProps = {
 function joinClasses(...parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ");
 }
+
+// Frozen empties for the pre-engage panes, at module scope so the pre-engage
+// render hands the panels the same objects every time and never remounts them
+// on a parent re-render.
+const NO_CHANGED_REGS: Set<number> = new Set();
+const NO_VFS_FILES: string[] = [];
 
 // One naming rule for every recents entry: the program's first comment
 // line, or a timestamped snippet label when it has none.
@@ -1472,12 +1479,26 @@ export const EmbeddablePlayground = forwardRef<
   EmbeddablePlaygroundHandle,
   EmbeddablePlaygroundProps
 >(function EmbeddablePlayground(props, ref) {
-  const { chrome, startSource, startArgs, className, staticEditor } = props;
+  const {
+    chrome,
+    startSource,
+    startArgs,
+    className,
+    staticEditor,
+    showRun = true,
+    showReset = true,
+    showStep = true,
+    showBack = true,
+    showCheck = true,
+  } = props;
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Full chrome is the primary in-viewport content, so it engages on mount,
   // preserving the loading -> ready flow. Embed/checker defer to the lazy
   // trigger effect below so a multi-embed page does not spin up N workers.
   const [engaged, setEngaged] = useState(() => chrome === "full");
+  // A click, a tap, a key, or focus is a user asking for the machine now, and
+  // so is a press on any pre-engage control.
+  const engage = useCallback(() => setEngaged(true), []);
 
   const innerHandleRef = useRef<EmbeddablePlaygroundHandle | null>(null);
   const pendingRef = useRef<Array<(handle: EmbeddablePlaygroundHandle) => void>>([]);
@@ -1514,9 +1535,6 @@ export const EmbeddablePlayground = forwardRef<
     const node = wrapperRef.current;
     if (!node) return;
 
-    // A click, a tap, a key, or focus is a user asking for the machine now, so
-    // those still engage on the spot.
-    const engageNow = () => setEngaged(true);
     // Coming into view is not a user asking. On the landing the observer fires
     // the moment the tree hydrates, and mounting the core plus its module
     // worker in that same commit lands inside the hydration long task; one
@@ -1528,9 +1546,9 @@ export const EmbeddablePlayground = forwardRef<
       // The observer reports every intersection change, not just the first.
       if (idleHandle !== null || idleTimer !== null) return;
       if (typeof requestIdleCallback === "function") {
-        idleHandle = requestIdleCallback(engageNow, { timeout: 1200 });
+        idleHandle = requestIdleCallback(engage, { timeout: 1200 });
       } else {
-        idleTimer = setTimeout(engageNow, 0);
+        idleTimer = setTimeout(engage, 0);
       }
     };
     let observer: IntersectionObserver | null = null;
@@ -1540,10 +1558,10 @@ export const EmbeddablePlayground = forwardRef<
       });
       observer.observe(node);
     }
-    node.addEventListener("mousedown", engageNow, { once: true });
-    node.addEventListener("touchstart", engageNow, { once: true });
-    node.addEventListener("keydown", engageNow, { once: true });
-    node.addEventListener("focusin", engageNow, { once: true });
+    node.addEventListener("mousedown", engage, { once: true });
+    node.addEventListener("touchstart", engage, { once: true });
+    node.addEventListener("keydown", engage, { once: true });
+    node.addEventListener("focusin", engage, { once: true });
     return () => {
       observer?.disconnect();
       // A callback that survives the unmount would setEngaged on a gone tree.
@@ -1551,12 +1569,12 @@ export const EmbeddablePlayground = forwardRef<
         cancelIdleCallback(idleHandle);
       }
       if (idleTimer !== null) clearTimeout(idleTimer);
-      node.removeEventListener("mousedown", engageNow);
-      node.removeEventListener("touchstart", engageNow);
-      node.removeEventListener("keydown", engageNow);
-      node.removeEventListener("focusin", engageNow);
+      node.removeEventListener("mousedown", engage);
+      node.removeEventListener("touchstart", engage);
+      node.removeEventListener("keydown", engage);
+      node.removeEventListener("focusin", engage);
     };
-  }, [engaged]);
+  }, [engaged, engage]);
 
   useImperativeHandle(
     ref,
@@ -1594,19 +1612,65 @@ export const EmbeddablePlayground = forwardRef<
     >
       {engaged ? (
         <EmbeddableCore {...props} registerHandle={registerHandle} />
-      ) : staticEditor && startSource !== undefined ? (
-        // A static-editor embed can draw its whole editor pane before the hub
-        // exists: the program is a prop, so the code text is in the server HTML
-        // and is the host page's largest element rather than a placeholder a
-        // client-side chain has to replace. Every other configuration keeps
-        // the loading beat.
-        <div className="flex flex-1 min-h-0 flex-col">
-          <StaticCodeView value={startSource} currentLine={null} />
-        </div>
       ) : (
-        <div className="flex flex-1 min-h-0 items-center justify-center text-[var(--text-secondary)] text-sm">
-          loading editor...
-        </div>
+        // Only embed and checker reach this branch (full chrome engages on
+        // mount), and it paints the SAME grid the engaged render paints: the
+        // program in the editor area, both panes in their initial state, the
+        // control band below. Withholding them moved the host page's layout
+        // the moment the hub arrived. A static-editor embed draws its real
+        // program here, so the code text is in the server HTML and is the
+        // host page's largest element rather than a placeholder a client-side
+        // chain has to replace; every other configuration keeps the loading
+        // beat inside the editor area. The controls engage rather than
+        // no-op, the way the wrapper's own listeners do.
+        <EmbedLayout
+          showRun={showRun}
+          showReset={showReset}
+          showStep={showStep}
+          showBack={showBack}
+          showCheck={chrome === "checker" && showCheck}
+          isRunning={false}
+          canStep
+          canStepBack={false}
+          error={null}
+          onRun={engage}
+          onReset={engage}
+          onStep={engage}
+          onStepBack={engage}
+          onCheck={engage}
+          editor={
+            staticEditor && startSource !== undefined ? (
+              <StaticCodeView value={startSource} currentLine={null} />
+            ) : (
+              <div className="flex flex-1 min-h-0 items-center justify-center text-[var(--text-secondary)] text-sm">
+                loading editor...
+              </div>
+            )
+          }
+          registers={
+            <RegisterPanel
+              registers={IDLE_CPU_VIEW.registers}
+              changedRegs={NO_CHANGED_REGS}
+              sp={IDLE_CPU_VIEW.sp}
+              pc={IDLE_CPU_VIEW.pc}
+              nzcv={IDLE_CPU_VIEW.nzcv}
+            />
+          }
+          console={
+            <ConsolePanel
+              stdout=""
+              stderr=""
+              blocked={false}
+              exitCode={null}
+              vfsFiles={NO_VFS_FILES}
+              pushStdin={engage}
+              echoStdin={chrome !== "checker"}
+              closeStdin={engage}
+              uploadVfsFile={engage}
+              clearConsole={engage}
+            />
+          }
+        />
       )}
     </div>
   );
