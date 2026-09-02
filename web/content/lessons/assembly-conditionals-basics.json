@@ -4,8 +4,8 @@
   "order": 7,
   "summary": "Learn how to implement if-else logic using cmp and conditional branch instructions in ARMv8 AArch64 Assembly.",
   "tags": [
-    "Conditionals",
-    "Branching"
+    "conditionals",
+    "branching"
   ],
   "body": [
     {
