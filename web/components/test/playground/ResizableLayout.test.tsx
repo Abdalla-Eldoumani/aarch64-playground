@@ -2,7 +2,7 @@
 // away: the four-pane arrangement (an outer horizontal split, a vertical
 // split inside each column), which slot each child lands in, the three
 // localStorage keys the breakpoint prop derives, and the size mapping in
-// both directions -- a persisted array becomes the panes' default sizes, and
+// both directions: a persisted array becomes the panes' default sizes, and
 // a finished drag is written back by panel id, with a missing id keeping the
 // size it already had rather than collapsing the pane to zero.
 import { afterEach, describe, expect, it, vi } from "vitest";
