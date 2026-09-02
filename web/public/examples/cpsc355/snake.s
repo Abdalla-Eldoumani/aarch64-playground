@@ -3,7 +3,7 @@
 // The full project (build files, releases, history) lives at
 //   https://github.com/Abdalla-Eldoumani/snake-game
 //
-// how to run: press assemble, then run -- the game takes over the
+// how to run: press assemble, then run. The game takes over the
 // terminal pane and grabs the keyboard. Or run it the course way
 // from the term tab:  ./program
 //
