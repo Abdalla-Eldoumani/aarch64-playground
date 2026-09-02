@@ -52,7 +52,7 @@ export const FEATURES: Feature[] = [
   {
     title: "Bounded sandbox",
     description:
-      "A runaway loop or memory bomb halts calmly with a plain explanation instead of freezing the tab.",
+      "A runaway loop or a program that allocates without limit halts cleanly with a plain explanation instead of freezing the tab.",
     glyph: "[]",
   },
 ];
