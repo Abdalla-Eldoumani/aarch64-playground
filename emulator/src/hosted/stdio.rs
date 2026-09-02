@@ -51,13 +51,26 @@ pub const CTYPE_B_PTR: u64 = STDIO_GLOBALS_BASE + 24;
 /// First entry (index -128) of the character-class table. 768 bytes of
 /// the page, ending well short of its 4 KiB.
 pub const CTYPE_B_TABLE: u64 = STDIO_GLOBALS_BASE + 32;
+/// The word `__ctype_toupper_loc` returns the address OF, and its
+/// lowercase twin. Same page as the stream handles and the class-table
+/// pointer, just past that table's 768 bytes.
+pub const CTYPE_TOUPPER_PTR: u64 = STDIO_GLOBALS_BASE + 800;
+pub const CTYPE_TOLOWER_PTR: u64 = STDIO_GLOBALS_BASE + 808;
+/// The conversion tables live on the NEXT page: two 384-entry int32
+/// arrays are 3072 bytes and the first globals page is already spoken
+/// for by the stream words and the character-class table. Still far
+/// below `heap::HEAP_BASE`, and the page above argv's is otherwise
+/// unclaimed.
+pub const CTYPE_CONV_BASE: u64 = STDIO_GLOBALS_BASE + 4096;
+pub const CTYPE_TOUPPER_TABLE: u64 = CTYPE_CONV_BASE;
+pub const CTYPE_TOLOWER_TABLE: u64 = CTYPE_CONV_BASE + 1536;
 
 fn handle_of(fd: u32) -> u64 {
     FILE_HANDLE_BASE + fd as u64 * FILE_HANDLE_STRIDE
 }
 
-/// Write the `stdin`/`stdout`/`stderr` words and the character-class
-/// table `__ctype_b_loc` points into. The loader calls this on every
+/// Write the `stdin`/`stdout`/`stderr` words and the three ctype tables
+/// the `__ctype_*_loc` pointers address. The loader calls this on every
 /// hosted load, beside the argv page, and `Cpu::new`/`Cpu::reset` call it
 /// too so the fixed layout is there before any program is.
 pub fn write_stdio_globals(mem: &mut Memory) -> Result<(), EmuError> {
@@ -71,6 +84,21 @@ pub fn write_stdio_globals(mem: &mut Memory) -> Result<(), EmuError> {
     mem.write_u64(CTYPE_B_PTR, CTYPE_B_TABLE + crate::hosted::ctype::TABLE_ZERO_OFFSET)?;
     for (i, bits) in crate::hosted::ctype::table().iter().enumerate() {
         mem.write_u16(CTYPE_B_TABLE + (i as u64) * 2, *bits)?;
+    }
+    mem.map_page(CTYPE_CONV_BASE);
+    mem.write_u64(
+        CTYPE_TOUPPER_PTR,
+        CTYPE_TOUPPER_TABLE + crate::hosted::ctype::TABLE_ZERO_OFFSET_I32,
+    )?;
+    mem.write_u64(
+        CTYPE_TOLOWER_PTR,
+        CTYPE_TOLOWER_TABLE + crate::hosted::ctype::TABLE_ZERO_OFFSET_I32,
+    )?;
+    for (i, v) in crate::hosted::ctype::conversion_table(true).iter().enumerate() {
+        mem.write_u32(CTYPE_TOUPPER_TABLE + (i as u64) * 4, *v as u32)?;
+    }
+    for (i, v) in crate::hosted::ctype::conversion_table(false).iter().enumerate() {
+        mem.write_u32(CTYPE_TOLOWER_TABLE + (i as u64) * 4, *v as u32)?;
     }
     Ok(())
 }

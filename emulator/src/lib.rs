@@ -35,6 +35,7 @@ pub const HOSTED_LIBC_NAMES: &[&str] = &[
     "malloc", "calloc", "realloc", "free", "usleep", "fflush",
     // character classes
     "isdigit", "isalpha", "isspace", "toupper", "tolower", "__ctype_b_loc",
+    "__ctype_toupper_loc", "__ctype_tolower_loc",
     // FILE*-level stdio
     "fopen", "fprintf", "fgets", "fputs", "fclose",
     // libm

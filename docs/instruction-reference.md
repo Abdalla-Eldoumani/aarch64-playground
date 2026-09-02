@@ -260,7 +260,7 @@ Pre-registered and available without setup:
 | `memset` / `memcpy` / `memcmp` / `memmove` | Standard libc semantics; `memmove` is overlap-safe in both directions. |
 | `strtol`                       | glibc's grammar: whitespace, sign, base 0 inferring `0x`/leading-zero/decimal, `endptr` writeback, LONG_MIN/LONG_MAX clamp on overflow. |
 | `abs` / `labs`                 | Wrap at the minimum value, like the hardware. |
-| `isdigit` / `isalpha` / `isspace` / `toupper` / `tolower` | C locale. The is* stubs return glibc's mask bit (nonzero, not 1), and the `__ctype_b_loc` table the macros index is hosted too. |
+| `isdigit` / `isalpha` / `isspace` / `toupper` / `tolower` | C locale. The is* stubs return glibc's mask bit (nonzero, not 1), and the three tables the macros index (`__ctype_b_loc`, `__ctype_toupper_loc`, `__ctype_tolower_loc`) are hosted too, so GCC output that never calls the function still works. |
 | `calloc` / `realloc`           | glibc's edges: `calloc` zeroes and refuses an overflowing product; `realloc` is malloc for NULL, free for size 0, in place when the block already fits. |
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |

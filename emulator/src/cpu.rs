@@ -452,8 +452,9 @@ impl Cpu {
         cpu.host.register("free", crate::hosted::heap::free);
         cpu.host.register("usleep", crate::hosted::libc::usleep);
         cpu.host.register("fflush", crate::hosted::libc::fflush);
-        // The C-locale character classes, both ways a program reaches
-        // them: the functions, and the table __ctype_b_loc points into.
+        // The C-locale character classes and case conversions, both ways
+        // a program reaches them: the functions, and the three tables the
+        // __ctype_*_loc pointers address.
         cpu.host.register("isdigit", crate::hosted::ctype::isdigit);
         cpu.host.register("isalpha", crate::hosted::ctype::isalpha);
         cpu.host.register("isspace", crate::hosted::ctype::isspace);
@@ -461,6 +462,10 @@ impl Cpu {
         cpu.host.register("tolower", crate::hosted::ctype::tolower);
         cpu.host
             .register("__ctype_b_loc", crate::hosted::ctype::ctype_b_loc);
+        cpu.host
+            .register("__ctype_toupper_loc", crate::hosted::ctype::ctype_toupper_loc);
+        cpu.host
+            .register("__ctype_tolower_loc", crate::hosted::ctype::ctype_tolower_loc);
         // FILE*-level stdio over the VFS; the handle scheme lives in
         // hosted/stdio.rs.
         cpu.host.register("fopen", crate::hosted::stdio::fopen);

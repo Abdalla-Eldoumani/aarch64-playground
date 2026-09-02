@@ -292,3 +292,63 @@ at_eof:
     cpu.close_stdin();
     assert_eq!(run(&mut cpu), "alpha\nbeta\neof\n");
 }
+
+#[test]
+fn ctype_conversion_tables_answer_like_the_functions() {
+    // The mirror of the class-table case above, for the two conversion
+    // tables gcc lowers the `toupper`/`tolower` macros to. The byte
+    // offsets are the ones 42_libc_map.O2.s uses: 388 is 4 * 'a' and 260
+    // is 4 * 'A'. Values from csarm's ctype_tables probe.
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "%d %d %d %d %d %d\n"
+
+        .text
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+
+        bl      __ctype_toupper_loc
+        ldr     x1, [x0]
+        ldr     w2, [x1, 388]
+        ldr     w3, [x1, 260]
+        ldr     w4, [x1, 212]
+        mov     x19, x2
+        bl      __ctype_tolower_loc
+        ldr     x5, [x0]
+        ldr     w6, [x5, 260]
+        mov     x7, -1
+        ldr     w8, [x5, x7, lsl 2]
+        mov     w20, w8
+
+        mov     w0, 'a'
+        bl      toupper
+
+        ldr     x1, =fmt
+        mov     x9, x0
+        mov     x0, x1
+        mov     w1, w19
+        mov     w2, w3
+        mov     w3, w4
+        mov     w4, w6
+        mov     w5, w20
+        mov     w6, w9
+        bl      printf
+
+        ldp     x19, x20, [sp, 16]
+        mov     w0, 0
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+    let mut cpu = load(src);
+    // toupper['a'] toupper['A'] toupper['5'] tolower['A'] tolower[-1]
+    // toupper('a'). The negative index is the row that fails when the
+    // pointer aims at the table's start instead of at index 0, and the
+    // last column is the function answering what the table holds.
+    assert_eq!(run(&mut cpu), "65 65 53 97 -1 65\n");
+}
