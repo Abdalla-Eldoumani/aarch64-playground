@@ -178,9 +178,11 @@ export function DecodeStrip({
         // the gloss: the strip is machine state, and it pulses with the same
         // --changed tint as a written register. Under prefers-reduced-motion
         // the class is inert and the updated text alone carries the change.
+        // inline-block so the flash layer measures this box; an inline span
+        // would hand it the line box instead.
         <span
           key={currentLine}
-          className="anim-reg-flash -mx-1 rounded-[var(--radius-control)] px-1 font-mono text-[13px] leading-[1.6] text-[var(--text-primary)] break-words"
+          className="anim-reg-flash -mx-1 inline-block rounded-[var(--radius-control)] px-1 font-mono text-[13px] leading-[1.6] text-[var(--text-primary)] break-words"
         >
           {gloss}
         </span>
