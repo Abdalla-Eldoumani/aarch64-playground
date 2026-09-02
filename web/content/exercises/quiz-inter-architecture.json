@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: System Architecture - Intermediate",
+  "title": "Quiz: system architecture",
   "slug": "quiz-inter-architecture",
   "order": 29,
   "topic": "architecture",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "Work through the machine model behind AArch64 assembly: where code and data live, which instructions are allowed to touch memory, what the system bus carries, and the registers that track execution.",
+  "prompt": "The machine model behind AArch64 assembly: where code and data live, which instructions are allowed to touch memory, what the system bus carries, and the registers that track execution.",
   "questions": [
     {
       "question": "Which of the following describes a key characteristic of a von Neumann architecture compared to a Harvard architecture?",
