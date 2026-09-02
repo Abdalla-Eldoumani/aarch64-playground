@@ -30,7 +30,7 @@ Open <http://localhost:3000>. If "loading emulator..." persists, check the brows
 - `emulator/`: Rust crate, no browser deps in the core. Compiles to WASM via wasm-pack.
 - `web/`: Next.js 16 + React 19 app. Imports the WASM module the crate produces.
 - `docs/`: this directory. Design rationale lives here and in `ARCHITECTURE.md`; skim the relevant doc before changing an unfamiliar area.
-- `scripts/`: build and audit helpers (`vercel-build.sh`, `verify-corpus.js`, `check-headers.js`, `audit-deps.js`, `firefox-smoke.mjs`, `wasm-watch.mjs`).
+- `scripts/`: build and audit helpers (`vercel-build.sh`, `verify-corpus.js`, `check-headers.js`, `audit-deps.js`, `bundle-budget.js`, `firefox-smoke.mjs`, `wasm-watch.mjs`).
 - `tools/`: course helper utilities that are not part of the app or its build (nothing here ships, runs in CI, or is imported by `web/` or `emulator/`).
 
 ### Inside `web/`
@@ -38,7 +38,7 @@ Open <http://localhost:3000>. If "loading emulator..." persists, check the brows
 Components and client logic are grouped by domain so a change lands in an
 obvious place and a newcomer can navigate by directory name alone:
 
-- `web/components/` -- one React component per file, grouped by surface:
+- `web/components/`: one React component per file, grouped by surface:
   - `ui/` shared primitives and brand marks (Button, Select, Tabs, Kicker, ...)
   - `chrome/` the site shell (nav, footer, drawer, theme control, PWA bits)
   - `landing/` the home page (hero, feature catalog, die floorplan)
@@ -47,7 +47,7 @@ obvious place and a newcomer can navigate by directory name alone:
   - `playground/` the emulator surface shell (embeddable playground, editor, controls, dialogs)
   - `panels/` the right-tab machine views (registers, memory, stack, console, terminal, watches, converter, saves)
   - `test/` every component test, mirroring the groups above (`test/panels/RegisterPanel.test.tsx`)
-- `web/lib/` -- client logic, kebab-case one-purpose modules, grouped the same way:
+- `web/lib/`: client logic, kebab-case one-purpose modules, grouped the same way:
   - `emulator/` talking to the machine (the state hub, backends, replay, decode fields)
   - `asm/` the assembly-language surface (completion, formatting, hover docs, error explaining)
   - `content/` authored lessons, exercises, reference and pitfall data, schemas, site metadata
@@ -59,9 +59,9 @@ obvious place and a newcomer can navigate by directory name alone:
 
 ### Naming conventions
 
-- Component files are `PascalCase.tsx`, matching the exported component --
-  the React and Next.js community standard, so a file name is the symbol
-  you import.
+- Component files are `PascalCase.tsx`, matching the exported component,
+  which is the React and Next.js community standard, so a file name is the
+  symbol you import.
 - A component's `Props` interface is exported alongside it even when
   nothing imports it yet: the export is the component's public shape, and
   keeping the convention uniform beats auditing which ones happen to have
