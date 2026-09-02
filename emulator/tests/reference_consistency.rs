@@ -4,13 +4,13 @@
 //! `docs/instruction-reference.md` is the canonical public list of every
 //! mnemonic the playground assembles. This test parses that document's
 //! instruction tables and compares the documented mnemonics against
-//! `assembler::SUPPORTED_MNEMONICS`. If the two diverge -- a
+//! `assembler::SUPPORTED_MNEMONICS`. If the two diverge (a
 //! decoder/assembler change adds or drops a mnemonic without a matching doc
-//! edit, or the reference lists something the assembler rejects -- the test
+//! edit, or the reference lists something the assembler rejects) the test
 //! fails and prints the symmetric difference so the reconciliation is
 //! obvious.
 //!
-//! The supported list is no longer transcribed here. It is the assembler's
+//! The supported list is not transcribed here. It is the assembler's
 //! own const, declared directly above the `encode_line` dispatch it
 //! describes, and an assembler unit test probes every entry through that
 //! dispatch. So the document and the dispatch cannot drift silently: a new
@@ -129,7 +129,7 @@ fn documented_set_matches_supported_set() {
     let documented = documented_mnemonics(&markdown);
     assert!(
         !documented.is_empty(),
-        "parsed no mnemonics from {} -- has the instruction-table format changed?",
+        "parsed no mnemonics from {}; has the instruction-table format changed?",
         path.display()
     );
 
