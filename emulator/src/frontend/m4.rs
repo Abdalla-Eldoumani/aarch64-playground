@@ -1,6 +1,6 @@
 //! m4 preprocessing for cpsc 355 source. Supports a narrow subset:
 //!
-//!   * define(NAME, BODY) -- whole-token substitution of NAME with BODY
+//!   * define(NAME, BODY): whole-token substitution of NAME with BODY
 //!     anywhere it appears later in the source. Use for register aliases
 //!     (`define(score1_r, w19)`), not for numeric values.
 //!   * NAME = EXPRESSION at top level. Recorded separately and left in the
@@ -60,11 +60,11 @@ pub struct Expanded {
     /// text so it can pin each one to the right section/offset.
     pub assignments: HashMap<String, String>,
     /// Every `define()`/`undefine()` in source order: `(1-based line, name,
-    /// body)` with `None` for an undefine. `defines` collapses a name that
-    /// is redefined onto its LAST body, which is the wrong answer for
-    /// anything that reports a binding against a source line -- a warning
-    /// about `define(size, w19)` quoted `w21` because a later stretch of
-    /// the file rebound the name. Readers that care about a line walk
+    /// body)` with `None` for an undefine. `defines` collapses a redefined
+    /// name onto its LAST body, which is the wrong answer for anything
+    /// that reports a binding against a source line: a warning about
+    /// `define(size, w19)` would quote `w21` when a later stretch of the
+    /// file rebinds the name. Readers that care about a line walk
     /// these instead, through `define_body_at`.
     pub define_events: Vec<(usize, String, Option<String>)>,
     /// Names whose bindings are windowed (redefined or undefined) rather
@@ -139,8 +139,8 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         }
         // The line got past both define gates (the keyword and the paren)
         // but failed to parse: it is a broken define, not an instruction.
-        // Passing it through blamed the student for an unknown mnemonic
-        // spelled DEFINE(FP,.
+        // Passing it through blames the student for an unknown mnemonic
+        // spelled `DEFINE(FP,`.
         if is_attempted_define(trimmed) {
             return Err(EmuError::PreprocError {
                 line: line_num,
@@ -200,13 +200,13 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
 
     // Pass 2: substitute `define()` aliases only. Assignment aliases are
     // left untouched so the parser sees `name = expr` verbatim. GNU m4 is
-    // strictly sequential -- a define binds only the text below it, and a
+    // strictly sequential: a define binds only the text below it, and a
     // forward reference stays unexpanded (and then fails to assemble,
-    // exactly as it does on the course servers) -- so `current` starts
+    // exactly as it does on the course servers), so `current` starts
     // empty and picks every binding up (and drops it on undefine) as the
-    // walk passes its line. The whole-file map used to serve forward
-    // references here; no real program used them, and honoring them made
-    // code work in the playground that the servers reject.
+    // walk passes its line. A whole-file map would serve forward
+    // references here, which makes code work in the playground that the
+    // servers reject.
     let mut events = define_events.iter().peekable();
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
@@ -284,7 +284,7 @@ fn expand_recursively(
 
 /// One expansion round with the per-line byte cap applied DURING the
 /// substitution. Materializing the whole result and measuring it
-/// afterwards let a chain that multiplies its input every round allocate
+/// afterwards lets a chain that multiplies its input every round allocate
 /// the full expansion first: a body that reaches 10^11 bytes needs ~100 GB
 /// before the cap can fire, which on wasm32 is an allocation abort, not an
 /// error message. The ceiling never drops below the input, so a line that
@@ -306,7 +306,7 @@ fn substitute_bounded(
 
 /// One token-boundary substitution pass over a line, refusing to build
 /// more than `limit` bytes. `None` means the cap was reached; the caller
-/// owns the message. String and char literals are copied verbatim -- this
+/// owns the message. String and char literals are copied verbatim: this
 /// is the parser's `.req` alias pass, and GAS never rewrites literals
 /// (docs/instruction-reference.md pins that). The m4 expander calls
 /// `substitute_once_gnu` instead, which follows GNU m4's text-level rules.
@@ -320,7 +320,7 @@ pub(crate) fn substitute_once(
 
 /// GNU m4's view of a line: double quotes, single quotes, and backslashes
 /// are plain punctuation (m4's own quotes are backtick/quote), so macro
-/// names expand INSIDE string and char literals -- `define(seconds, x22)`
+/// names expand INSIDE string and char literals: `define(seconds, x22)`
 /// rewrites `.string "%d seconds"` into `"%d x22"`, and the `n` in a
 /// `"\n"` below `define(n, w19)` becomes `"\w19"`. A `#` starts an m4
 /// comment: the rest of the line is copied verbatim, unexpanded. All
@@ -476,8 +476,8 @@ fn strip_block_comments(source: &str) -> Result<String, EmuError> {
         out.push(b);
         i += 1;
     }
-    // An unclosed block swallowed everything after it while keeping the
-    // line count intact, so the build reported SUCCESS on a program
+    // An unclosed block swallows everything after it while keeping the
+    // line count intact, so the build reports SUCCESS on a program
     // reduced to nothing. gcc/as reject with the opening line; so do we.
     if in_block {
         return Err(EmuError::PreprocError {
@@ -856,12 +856,12 @@ mod tests {
 
     #[test]
     fn the_line_cap_fires_before_the_expansion_is_materialized() {
-        // The cap used to be a length test on the finished string, so the
-        // full expansion had to be built first. One round can multiply its
-        // input by the body length: this line is 200_000 bytes of a
-        // 4 KiB body, roughly 800 MB, and the 10^11-byte cases students
-        // reach by accident would need ~100 GB -- an allocation abort on
-        // wasm32, not an error message.
+        // A length test on the finished string would build the full
+        // expansion first. One round can multiply its input by the body
+        // length: this line is 200_000 bytes of a 4 KiB body, roughly
+        // 800 MB, and the 10^11-byte cases students reach by accident
+        // would need ~100 GB, an allocation abort on wasm32, not an error
+        // message.
         let body = "z".repeat(4096);
         let refs = "big ".repeat(200_000);
         let src = format!("define(big, {body})\n{refs}\n");
@@ -896,8 +896,8 @@ mod tests {
     #[test]
     fn a_comment_inside_a_define_body_is_named_as_the_cause() {
         // Comments are stripped before defines are parsed, so `;` inside
-        // the parens cut the line off and the error claimed the closing
-        // `)` was missing while it sat right there in the editor.
+        // the parens cuts the line off and the error would claim the
+        // closing `)` is missing while it sits right there in the editor.
         for (src, marker) in [
             ("define(NL, 10 ; newline)\n", ";"),
             ("define(NL, 10 // newline)\n", "//"),
@@ -971,7 +971,7 @@ mod tests {
     fn forward_reference_stays_unexpanded_like_gnu_m4() {
         // GNU m4 binds sequentially: a use above the define keeps the
         // bare name (and then fails to assemble, exactly as it does on
-        // the course servers). The whole-file convenience made programs
+        // the course servers). A whole-file binding would make programs
         // work here that the servers reject.
         let r = exp("mov x0, fp\ndefine(fp, x29)\nmov x1, fp\n");
         assert_eq!(r.text, "mov x0, fp\n\nmov x1, x29");
@@ -1038,7 +1038,7 @@ mod tests {
     fn string_above_the_define_keeps_its_text() {
         // Sequential binding is what keeps the week-8 shape intact: the
         // `\n` in a string ABOVE define(n, w19) stays, while the same
-        // escape below it is rewritten -- m4 knows nothing of GAS
+        // escape below it is rewritten: m4 knows nothing of GAS
         // escapes, so the `n` in `\n` is an ordinary identifier.
         let r = exp(".string \"b\\n\"\ndefine(n, w19)\n.string \"c\\n\"\n");
         assert_eq!(r.text, ".string \"b\\n\"\n\n.string \"c\\w19\"");
@@ -1046,7 +1046,7 @@ mod tests {
 
     #[test]
     fn hash_starts_an_m4_comment_that_passes_through_verbatim() {
-        // GNU m4 copies `#` to end of line unexpanded -- the reason the
+        // GNU m4 copies `#` to end of line unexpanded: the reason the
         // course style writes bare immediates, never `#alloc`.
         let r = exp("define(alloc, 16)\nsub sp, sp, alloc\nsub sp, sp, #alloc\n");
         assert_eq!(r.text, "\nsub sp, sp, 16\nsub sp, sp, #alloc");
@@ -1061,8 +1061,8 @@ mod tests {
     #[test]
     fn non_ascii_in_string_literal_round_trips_verbatim() {
         // Widening bytes >= 0x80 through `as char` re-encodes them as two
-        // bytes, so every non-ASCII byte doubled per round and expansion
-        // never reached a fixed point. One accented char must round-trip.
+        // bytes, so every non-ASCII byte doubles per round and expansion
+        // never reaches a fixed point. One accented char must round-trip.
         let r = exp(".string \"caf\u{e9}\"\n");
         assert_eq!(r.text, ".string \"caf\u{e9}\"");
     }
@@ -1086,8 +1086,8 @@ mod tests {
 
     #[test]
     fn unterminated_block_comment_fails_naming_its_opening_line() {
-        // The unclosed block used to swallow the rest of the file while
-        // keeping line numbers aligned, so assemble reported SUCCESS on a
+        // An unclosed block swallows the rest of the file while keeping
+        // line numbers aligned, so assemble would report SUCCESS on a
         // program reduced to nothing (or missing its ret).
         let err = expand("main:\n    mov x0, 1\n/*  mov x1, 2\n    ret\n").unwrap_err();
         match err {
