@@ -14,7 +14,7 @@
       "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)"    },
     {
       "type": "prose",
-      "markdown": "Printing integers and other data types in assembly is slightly more involved than printing a string; however, the process remains straightforward once the underlying steps are understood. In this lesson, we will examine how to print integers and other data types in the low-level Assembly programming language."
+      "markdown": "Printing an integer takes one step more than printing a string: the format string names a type, and the value goes in the next argument register."
     },
     {
       "type": "prose",
@@ -27,7 +27,7 @@
     },
     {
       "type": "prose",
-      "markdown": "The format specifier informs `printf` how the provided data should be interpreted and displayed. A similar approach is used when printing data types in Assembly, where the programmer must provide the correct format specifier and pass the corresponding value accordingly to the `printf` function."
+      "markdown": "The format specifier informs `printf` how the provided data should be interpreted and displayed. Assembly works the same way: give `printf` the right format specifier and put the value in the right register."
     },
     {
       "type": "prose",
@@ -63,17 +63,17 @@
     {
       "type": "code",
       "language": "asm",
-      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    // calling printf to print the integer value.\n    ..\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    // calling printf to print the character value.\n    ..\n\n    // program epilogue"
+      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    ldr x0, =format1\n    ..\n\n    ldr x0, =format2\n    ..\n\n    // program epilogue"
     }, 
     {
       "type": "prose",
-      "markdown": "In the code above, the address of the format strings for the integer (`format1`) and character (`format2`) are loaded into the register `x0`. Each format string is loaded into `x0` before its corresponding `printf` call because the integer and character are printed using different format strings. This explains why the code contains two separate `ldr` instructions."
+      "markdown": "In the code above, the address of the format strings for the integer (`format1`) and character (`format2`) are loaded into the register `x0`. Each format string is loaded into `x0` before its corresponding `printf` call because the integer and character are printed using different format strings. "
 
     },
     {
       "type": "callout",
       "variant": "note",
-      "markdown": "The format string is always loaded into the first argument register (`x0`) before calling `printf`, regardless of the data type being printed. This is because `printf` expects the format string to be passed as its first argument.\n\n The corresponding values are then passed to the subsequent argument registers (`x1`, `x2`, etc.). If the format string contains multiple format specifiers, the corresponding values must be passed in the order they appear in the format string.\n\nHowever, not all data types are passed through the general-purpose `x` or `w` registers. Some data types, such as floating-point values, use dedicated floating-point registers instead. For example, printing a `float` or `double` value requires passing the value through the appropriate `s` or `d` register. Make sure that values are stored and passed using the correct register type that matches the corresponding format specifier, as using the wrong register can cause unintended behaviour."
+      "markdown": "The format string is always loaded into the first argument register (`x0`) before calling `printf`, regardless of the data type being printed. This is because `printf` expects the format string to be passed as its first argument.\n\n The corresponding values are then passed to the subsequent argument registers (`x1`, `x2`, etc.). If the format string contains multiple format specifiers, the corresponding values must be passed in the order they appear in the format string.\n\nHowever, not all data types are passed through the general-purpose `x` or `w` registers. Some data types, such as floating-point values, use dedicated floating-point registers instead. For example, printing a `float` or `double` value requires passing the value through the appropriate `s` or `d` register. Match the register class to the format specifier: the wrong class prints garbage."
 
     },
     {
@@ -83,11 +83,11 @@
     {
       "type": "code",
       "language": "asm",
-      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    mov x1, 67\n    // calling printf to print the integer value.\n    ..\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    mov x1, 'L'\n    // calling printf to print the character value.\n    ..\n\n    // program epilogue"
+      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    ldr x0, =format1\n    mov x1, 67\n    ..\n\n    ldr x0, =format2\n    mov x1, 'L'\n    ..\n\n    // program epilogue"
     },
     {
       "type": "prose",
-      "markdown": "In the code above, the integer value `67` and the character `L` are placed in `x1` before their respective `printf` call.\nThis ensures that the correct values are passed to the corresponding format specifiers in the format strings.\n"
+      "markdown": "In the code above, the integer value `67` and the character `L` are placed in `x1` before their respective `printf` call.\n"
     },
     {
       "type": "prose",
@@ -96,16 +96,16 @@
     {
       "type": "code",
       "language": "asm",
-      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    mov x1, 67\n    // calling printf to print the integer value.\n    bl printf\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    mov x1, 'L'\n    // calling printf to print the character value.\n    bl printf\n    ..\n\n    // program epilogue"
+      "source": "// Pseudo-ops and directives\nmain:\n    // Program prologue\n    ..\n    ldr x0, =format1\n    mov x1, 67\n    bl printf\n\n    ldr x0, =format2\n    mov x1, 'L'\n    bl printf\n    ..\n\n    // program epilogue"
     },
     {
       "type": "prose",
-      "markdown": "The code above calls the `printf` function to print the format string along with the corresponding values passed through the argument registers."
+      "markdown": " "
     },
     {
       "type": "callout",
       "variant": "note",
-      "markdown": "In Assembly, you can call any function using the `bl` instruction. To call a function, you can use the `bl` instruction followed by the function name."
+      "markdown": "In Assembly you call any function with `bl` followed by the function name."
     },
     {
       "type": "prose",
@@ -114,7 +114,7 @@
     {
       "type" : "editor",
       "language": "asm",
-      "starter": "    .data\n    // Format string for printing an integer\n    format1:   .string  \"Integer: %d\\n\"\n    // Format string for printing a character\n    format2:   .string  \"Character: %c\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Loading the format string (format1) into x0 for printing an integer.\n    ldr x0, =format1\n    // passing the integer value to be printed to next argument register.\n    mov x1, 67\n    // calling printf to print the integer value.\n    bl printf\n\n    // Loading the format string (format2) into x0 for printing a character.\n    ldr x0, =format2\n    // passing the character value to be printed to next argument register.\n    mov x1, 'L'\n    // calling printf to print the character value.\n    bl printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"   
+      "starter": "    .data\n    // Format string for printing an integer\n    format1:   .string  \"Integer: %d\\n\"\n    // Format string for printing a character\n    format2:   .string  \"Character: %c\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // x0 holds the format string\n    ldr x0, =format1\n    // x1 holds the value it formats\n    mov x1, 67\n    bl printf\n\n    ldr x0, =format2\n    mov x1, 'L'\n    bl printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"   
     }
 
   ]
