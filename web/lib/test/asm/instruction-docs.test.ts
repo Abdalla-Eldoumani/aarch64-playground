@@ -33,10 +33,10 @@ describe("lookupDoc", () => {
 });
 
 // The hover-card list must cover every mnemonic the canonical reference
-// documents. This mirrors the Rust drift guard (emulator/tests/
-// reference_consistency.rs) on the web side: it parses the same instruction
-// tables out of docs/instruction-reference.md and asserts lookupDoc resolves
-// each, so the doc and the Monaco hover cards never drift apart. Parsing is
+// documents. The web half of the Rust drift guard (emulator/tests/
+// reference_consistency.rs): it parses the same instruction tables out of
+// docs/instruction-reference.md and asserts lookupDoc resolves each, so the
+// doc and the Monaco hover cards never drift apart. Parsing is
 // self-contained here (no import from the Rust side).
 
 // The 4-bit AArch64 condition codes the reference documents for the
