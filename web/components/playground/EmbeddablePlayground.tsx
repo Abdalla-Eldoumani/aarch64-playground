@@ -1446,24 +1446,47 @@ export const EmbeddablePlayground = forwardRef<
     const node = wrapperRef.current;
     if (!node) return;
 
-    const engage = () => setEngaged(true);
+    // A click, a tap, a key, or focus is a user asking for the machine now, so
+    // those still engage on the spot.
+    const engageNow = () => setEngaged(true);
+    // Coming into view is not a user asking. On the landing the observer fires
+    // the moment the tree hydrates, and mounting the core plus its module
+    // worker in that same commit lands inside the hydration long task; one
+    // idle slot moves it clear, and the timeout bounds the wait so a busy
+    // thread cannot leave the hero dead.
+    let idleHandle: number | null = null;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const engageWhenIdle = () => {
+      // The observer reports every intersection change, not just the first.
+      if (idleHandle !== null || idleTimer !== null) return;
+      if (typeof requestIdleCallback === "function") {
+        idleHandle = requestIdleCallback(engageNow, { timeout: 1200 });
+      } else {
+        idleTimer = setTimeout(engageNow, 0);
+      }
+    };
     let observer: IntersectionObserver | null = null;
     if (typeof IntersectionObserver !== "undefined") {
       observer = new IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) engage();
+        if (entries.some((entry) => entry.isIntersecting)) engageWhenIdle();
       });
       observer.observe(node);
     }
-    node.addEventListener("mousedown", engage, { once: true });
-    node.addEventListener("touchstart", engage, { once: true });
-    node.addEventListener("keydown", engage, { once: true });
-    node.addEventListener("focusin", engage, { once: true });
+    node.addEventListener("mousedown", engageNow, { once: true });
+    node.addEventListener("touchstart", engageNow, { once: true });
+    node.addEventListener("keydown", engageNow, { once: true });
+    node.addEventListener("focusin", engageNow, { once: true });
     return () => {
       observer?.disconnect();
-      node.removeEventListener("mousedown", engage);
-      node.removeEventListener("touchstart", engage);
-      node.removeEventListener("keydown", engage);
-      node.removeEventListener("focusin", engage);
+      // A callback that survives the unmount would setEngaged on a gone tree.
+      if (idleHandle !== null && typeof cancelIdleCallback === "function") {
+        cancelIdleCallback(idleHandle);
+      }
+      if (idleTimer !== null) clearTimeout(idleTimer);
+      node.removeEventListener("mousedown", engageNow);
+      node.removeEventListener("touchstart", engageNow);
+      node.removeEventListener("keydown", engageNow);
+      node.removeEventListener("focusin", engageNow);
     };
   }, [engaged]);
 
