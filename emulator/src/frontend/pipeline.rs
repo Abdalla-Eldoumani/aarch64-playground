@@ -266,8 +266,8 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
                             message: format!(
-                                "label `{name}` is already defined on line {first} -- \
-                                 give each label a unique name (labels are file-wide, \
+                                "label `{name}` is already defined on line {first}. \
+                                 Give each label a unique name (labels are file-wide, \
                                  not per-function)"
                             ),
                         });
@@ -277,7 +277,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                             line: *original_line,
                             message: format!(
                                 "label `{name}` collides with the `{name} = ...` \
-                                 constant defined earlier -- rename one of them"
+                                 constant defined earlier; rename one of them"
                             ),
                         });
                     }
@@ -302,7 +302,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                             line: *original_line,
                             message: format!(
                                 "`{name} = ...` collides with the label `{name}:` \
-                                 on line {first} -- rename one of them"
+                                 on line {first}; rename one of them"
                             ),
                         });
                     }
@@ -333,7 +333,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                             line: *original_line,
                             message: format!(
                                 "this instruction lands at a misaligned address: {} byte(s) of \
-                                 data sit in .text above it -- move the data to .data or \
+                                 data sit in .text above it. Move the data to .data or \
                                  .rodata, or add `.balign 4` between the data and the code",
                                 offset % 4
                             ),
@@ -375,7 +375,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                     line: last_line,
                     message: format!(
                         "{} has grown past its 1 MiB window ({} bytes so far) and would \
-                         overlap the next section's addresses -- shrink the data or .skip \
+                         overlap the next section's addresses. Shrink the data or .skip \
                          reservations (check any size equate for a typo)",
                         section.kind.name(),
                         offset
@@ -418,7 +418,7 @@ fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
                     line: *line,
                     message: format!(
                         "`{name} = ...` collides with the label `{name}:` \
-                         on line {first} -- rename one of them"
+                         on line {first}; rename one of them"
                     ),
                 });
             }
@@ -570,7 +570,7 @@ fn size_literal_pool(prog: &Program, layout: &mut Layout) -> Result<Pool, EmuErr
             line: 0,
             message: format!(
                 ".text plus its literal pool and libc trampolines reaches {} bytes, past \
-                 the 1 MiB code window -- shrink .text or reduce the `ldr xN, =...` \
+                 the 1 MiB code window. Shrink .text, or reduce the `ldr xN, =...` \
                  constants and libc calls",
                 image_end - CODE_BASE
             ),
@@ -703,7 +703,7 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
                             message: format!(
-                                "instruction in the {} section -- add a `.text` \
+                                "instruction in the {} section. Add a `.text` \
                                  directive above your code",
                                 section.kind.name()
                             ),
@@ -744,7 +744,10 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                             .ok_or_else(|| EmuError::LinkError {
                                 line: *original_line,
                                 message: format!(
-                                    "no literal pool slot for `{label_text}`"
+                                    "`{label_text}` could not be placed in the \
+                                     literal pool: the pool only covers code in \
+                                     `.text`, so move this instruction under a \
+                                     `.text` directive"
                                 ),
                             })?;
                         let slot_addr = pool_base + slot;
@@ -772,7 +775,12 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         let slot = *pool_slots.get(&(target_text.clone(), here)).ok_or_else(
                             || EmuError::LinkError {
                                 line: *original_line,
-                                message: format!("no literal pool slot for `{target_text}`"),
+                                message: format!(
+                                    "`{target_text}` could not be placed in the \
+                                     literal pool: the pool only covers code in \
+                                     `.text`, so move this instruction under a \
+                                     `.text` directive"
+                                ),
                             },
                         )?;
                         let slot_addr = pool_base + slot;
@@ -795,7 +803,10 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         if stripped.is_empty() {
                             return Err(EmuError::AssemblyError {
                                 line: *original_line,
-                                message: "empty instruction line".into(),
+                                message: "nothing to assemble on this line: a \
+                                          label needs a `:` after it, and an \
+                                          instruction needs a mnemonic"
+                                    .into(),
                             });
                         }
                         // Resolve aliases and constant expressions into
@@ -877,11 +888,11 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
     }
 
     // A program that produced no instructions "assembled" and then died on
-    // step 1 with `unknown instruction: 0x00000000`; real ld rejects it.
+    // step 1 with `unknown instruction 0x00000000`; real ld rejects it.
     if instruction_count == 0 {
         return Err(EmuError::LinkError {
             line: 0,
-            message: "the program has no instructions -- if a comment or a \
+            message: "the program has no instructions. If a comment or a \
                       missing .text swallowed your code, put it back under \
                       `.text`"
                 .into(),
@@ -912,8 +923,10 @@ fn resolve_entry_point(prog: &Program, layout: &Layout) -> Result<u64, EmuError>
     if prog.globals.contains("main") && !main_is_label && !start_is_label {
         return Err(EmuError::LinkError {
             line: 0,
-            message: "no `main:` label found -- `.global main` was declared \
-                      and execution starts at `main`"
+            message: "no `main:` label found. `.global main` is declared, so \
+                      execution is meant to start at `main`: add a `main:` label \
+                      above the first instruction, or remove the `.global main` \
+                      line if this file is a helper"
                 .into(),
         });
     }
@@ -923,7 +936,7 @@ fn resolve_entry_point(prog: &Program, layout: &Layout) -> Result<u64, EmuError>
     if !main_is_label && !start_is_label {
         return Err(EmuError::LinkError {
             line: 0,
-            message: "no entry point -- define `main:` (declared `.global main`) \
+            message: "no entry point. Define `main:` (declared `.global main`) \
                       or `_start:`. A file holding only helper functions runs as \
                       part of a program whose other file has `main`"
                 .into(),
@@ -1350,7 +1363,11 @@ fn rewrite_operand(
                 Some(addr) => Ok(format!("{}", addr & 0xFFF)),
                 None => Err(EmuError::AssemblyError {
                     line: ln,
-                    message: format!("unknown symbol in :lo12: `{name}`"),
+                    message: format!(
+                        "`{name}` is not defined anywhere in this program: check the \
+                         spelling against the label or the `name = value` line that \
+                         defines it. m4 substitution is whole-token and case-sensitive"
+                    ),
                 }),
             };
         }
@@ -1366,7 +1383,10 @@ fn rewrite_operand(
     if trimmed.starts_with('[') {
         let close = find_matching_bracket(trimmed).ok_or_else(|| EmuError::AssemblyError {
             line: ln,
-            message: "unbalanced addressing bracket".into(),
+            message: "unbalanced bracket in the address: count the `[` and `]` on \
+                      this line. Pre-indexed forms end `]!`, and post-indexed forms \
+                      close the `]` before the comma, as in `[x20], 8`"
+                .into(),
         })?;
         let inside = &trimmed[1..close];
         let trailer = &trimmed[close..];
