@@ -1,13 +1,12 @@
-// heap_viz.asm - binary min-heap, drawn as a tree and as the array it
-// really is
+// heap.s - binary min-heap, drawn as a tree and as an array
 //
 // The tree on the top half and the strip on the bottom half are painted
-// from the same fifteen words. A sift moves a value in both at once,
-// which is the whole point: the picture a student draws on paper and the
-// memory the machine keeps are one object addressed two ways.
+// from the same fifteen words. A sift moves a value in both at once: the
+// picture drawn on paper and the memory the machine keeps are one object
+// addressed two ways.
 //
-// heap_sort_array is the silent twin of all this - the same sift, no
-// screen, so the sorting module can borrow it.
+// heap_sort_array runs the same sift with nothing drawn, so the sorting
+// module can borrow it.
 
 define(fp, x29)
 define(lr, x30)
@@ -17,7 +16,7 @@ define(lr, x30)
 
     heap_capacity = 15
 
-// Role numbers mirror ui.asm's UI_ROLE_* set. They are repeated here so
+// Role numbers mirror ui.s's UI_ROLE_* set. They are repeated here so
 // this file also assembles on its own, the way the web build feeds it.
     HEAP_ROLE_TEXT  = 0
     HEAP_ROLE_DIM   = 1
@@ -467,7 +466,7 @@ heap_role_rest:
     ret
 
 // heap_property_holds() -> w0 = 1 when no child is smaller than its
-// parent. Checked live every frame, so the caption cannot lie.
+// parent. Checked every frame, so the badge matches the array.
 heap_property_holds:
     ldr     x1, =heap_count
     ldr     w2, [x1]
@@ -1242,7 +1241,7 @@ heap_peek_done:
     ret
 
 // heap_build_interactive() - scatter random values, then sink every
-// parent from the bottom up. The point is the cost: n/2 sinks, O(n).
+// parent from the bottom up. n/2 sinks, so building costs O(n).
 heap_build_interactive:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
@@ -1257,7 +1256,7 @@ heap_build_interactive:
     ldr     x5, =heap_o1
     bl      heap_frame
 
-    mov     w20, 12                         // a full four levels, minus a few
+    mov     w20, 12                         // twelve of the fifteen slots, so the last level is short
     ldr     x0, =heap_count
     str     w20, [x0]
 
@@ -1452,8 +1451,8 @@ heap_sort_done:
     ret
 
 // heap_sink_max(x0 = base, w1 = heap size, w2 = slot to sink)
-// The silent sift-down: no calls, so caller-saved temporaries are all it
-// needs.
+// The sift-down with nothing drawn: no calls, so scratch registers are
+// enough.
 heap_sink_max:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
