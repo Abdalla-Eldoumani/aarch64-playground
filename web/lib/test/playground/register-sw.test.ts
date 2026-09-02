@@ -58,7 +58,6 @@ describe("registerServiceWorker", () => {
     const register = vi.fn().mockResolvedValue({});
     setNavigator({ serviceWorker: { register } });
     setSecureContext(true);
-    // a complete document registers immediately instead of waiting for the load event
     Object.defineProperty(document, "readyState", {
       value: "complete",
       configurable: true,
@@ -71,7 +70,6 @@ describe("registerServiceWorker", () => {
     const register = vi.fn().mockRejectedValue(new Error("nope"));
     setNavigator({ serviceWorker: { register } });
     setSecureContext(true);
-    // a complete document registers immediately instead of waiting for the load event
     Object.defineProperty(document, "readyState", {
       value: "complete",
       configurable: true,
