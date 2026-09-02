@@ -5,9 +5,7 @@
   "summary": "A lesson on how to print integer and other data types.",
   "tags": [
     "printing",
-    "printing integers",
-    "printing other data types",
-    "printing character"
+    "format strings"
   ],
   "body": [
     {
