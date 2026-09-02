@@ -1187,8 +1187,8 @@ search_type_values:
     mov     w19, w0
 
     // The strip reveals only what has actually been typed. Committing the
-    // requested size up front left the PREVIOUS array's values on screen --
-    // greyed, but perfectly legible, and counted -- while the prompt was
+    // requested size up front left the PREVIOUS array's values on screen,
+    // greyed but perfectly legible, and counted, while the prompt was
     // still asking for a[0].
     ldr     x0, =search_size
     str     wzr, [x0]
