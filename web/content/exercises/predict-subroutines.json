@@ -5,7 +5,7 @@
   "topic": "subroutines",
   "difficulty": "challenge",
   "variant": "prediction",
-  "prompt": "The register states and stack allocations a subroutine call sets up.",
+  "prompt": "Trace the register states and stack allocations a subroutine call sets up.",
   "predictions": [
     {
       "code": "// the bl below sits at address 0x400040\nbl swap\nadd w0, w0, 1",
@@ -33,7 +33,7 @@
       "question": "This structure is far too wide to come back in the result registers, so the caller passes a hidden pointer to the space that receives it. Which register carries that pointer? Write the register name, for example x0.",
       "answer": "x8",
       "explanation": "An integer structure larger than 16 bytes does not fit in the result registers x0 and x1, so it is returned indirectly. The calling code reserves the memory, puts its address in x8, and the subroutine writes the result through that pointer instead of returning a value in x0.",
-      "hint": "The convention reserves one register just for the indirect result location, and it sits right after the eight argument registers."
+      "hint": "The convention reserves one register for the indirect result location, and it sits after the eight argument registers."
     }
   ]
 }
