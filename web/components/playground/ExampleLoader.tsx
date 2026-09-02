@@ -66,7 +66,7 @@ const GROUPS: ExampleGroup[] = [
     label: "Floating point",
     items: [
       { name: "circle area", stem: "circle-area" },
-      { name: "triangle area (single)", stem: "triangle-area" },
+      { name: "triangle area (single precision)", stem: "triangle-area" },
     ],
   },
   {
@@ -84,9 +84,9 @@ const GROUPS: ExampleGroup[] = [
     items: [
       { name: "snake", stem: "snake" },
       { name: "data structures visualizer", stem: "dsav" },
-      { name: "calc (short for calculator)", stem: "calc" },
-      { name: "temp-convert", stem: "temp-convert" },
-      { name: "two-sum", stem: "two-sum" },
+      { name: "calculator", stem: "calc" },
+      { name: "temperature converter", stem: "temp-convert" },
+      { name: "two sum", stem: "two-sum" },
       { name: "deadzone", stem: "deadzone" },
     ],
   },
@@ -122,7 +122,7 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
     <div className="flex items-center gap-2">
       <Select
         placeholder="load example..."
-        ariaLabel="Load example program"
+        ariaLabel="load an example program"
         onSelect={(stem) => void handleSelect(stem)}
         groups={GROUPS.map((group) => ({
           label: group.label,

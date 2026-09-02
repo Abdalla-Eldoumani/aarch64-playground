@@ -23,7 +23,7 @@ const STAGES = [
 
 /** Open the custom select and return its listbox. */
 function openList(): HTMLElement {
-  fireEvent.click(screen.getByRole("combobox", { name: "Load example program" }));
+  fireEvent.click(screen.getByRole("combobox", { name: "load an example program" }));
   return screen.getByRole("listbox");
 }
 
@@ -87,12 +87,12 @@ describe("ExampleLoader", () => {
     }
     expect(labels).toContain("arithmetic");
     expect(labels).toContain("copy file");
-    expect(labels).toContain("triangle area (single)");
+    expect(labels).toContain("triangle area (single precision)");
     expect(labels).toContain("snake");
     expect(labels).toContain("data structures visualizer");
-    expect(labels).toContain("calc (short for calculator)");
-    expect(labels).toContain("temp-convert");
-    expect(labels).toContain("two-sum");
+    expect(labels).toContain("calculator");
+    expect(labels).toContain("temperature converter");
+    expect(labels).toContain("two sum");
     expect(labels).toContain("deadzone");
   });
 
