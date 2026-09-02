@@ -51,8 +51,8 @@ export interface CpuView {
  * The register/PC/marker view and the replay history behind it. They are
  * one module because they are one set of values seen twice: a capture
  * reads exactly the refs this view maintains, and a seek writes exactly
- * the state it renders. Seeking is visual only -- it never touches the
- * CPU, so the next forward step resumes from the live PC.
+ * the state it renders. Seeking is visual only: it never touches the CPU, so
+ * the next forward step resumes from the live PC.
  */
 export function useCpuView(): CpuView {
   const [registers, setRegisters] = useState<string[]>(
@@ -68,9 +68,6 @@ export function useCpuView(): CpuView {
   const [replayTick, setReplayTick] = useState(0);
 
   const currentLineRef = useRef<number | null>(null);
-  // Replay ring + the latest snapshot snapshot-cache so step/run callbacks
-  // can read regs/pc/nzcv without piping them through React state and
-  // racing the snapshot listener.
   const replayRingRef = useRef<ReplayRing>(new ReplayRing(128));
   const latestSnapRef = useRef<LatestSnap>({
     registers: [],
@@ -108,9 +105,8 @@ export function useCpuView(): CpuView {
     currentLineRef.current = line;
   }, []);
 
-  // Push a replay frame using the latest snapshot data + the
-  // current line. Called by step / runUntilBreak after the snapshot
-  // listener has updated currentLineRef + latestSnapRef.
+  // Called by step / runUntilBreak after the snapshot listener has updated
+  // currentLineRef + latestSnapRef.
   const pushReplayFrame = useCallback((newStepCount: number) => {
     const ln = currentLineRef.current;
     const snap = latestSnapRef.current;
