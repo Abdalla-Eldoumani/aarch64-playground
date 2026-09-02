@@ -4,8 +4,8 @@
  * The learn index: ruled datasheet rows ordered by metadata, with a labeled
  * search box, a tag filter, and empty + loading states. It receives
  * already-validated index rows as props from the server index page
- * (loadLessonIndex narrows each lesson to the five fields below, leaving the
- * unread body behind) and renders every row field as plain React text
+ * (loadLessonIndex narrows each lesson to LessonIndexRow, leaving the body
+ * unread) and renders every row field as plain React text
  * (auto-escaped), so there is no markdown/HTML injection path here.
  *
  * Each row leads with its sheet number `4.N` (the 1-based position in the
