@@ -22,10 +22,10 @@ export interface MultiFileTabsProps {
 }
 
 /**
- * Tab strip for multi-file assembly. The main editor holds `main.asm`;
- * this strip manages any number of extra source files the linker will
- * concatenate with main before assembling. Useful for the week 11/12
- * tutorials that split `bl` callers and callees across files.
+ * Tab strip for multi-file assembly. The main editor holds `main.asm`; this
+ * strip manages any number of extra source files the linker will concatenate
+ * with main before assembling. The tutorials that split `bl` callers and
+ * callees across files need it.
  */
 export function MultiFileTabs({
   files,
