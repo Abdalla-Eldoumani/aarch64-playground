@@ -77,7 +77,7 @@ export const COND_CODES: CondCode[] = [
     group: "signed",
     question: "is the left value below the right, reading both as signed?",
     formula: "n ≠ v",
-    why: "a - b comes out negative (n set) when the left is smaller -- unless the subtraction overflowed and flipped the sign, which v records. n disagreeing with v means genuinely below.",
+    why: "a - b comes out negative (n set) when the left is smaller, unless the subtraction overflowed and flipped the sign, which v records. n disagreeing with v means genuinely below.",
     c: "if (a < b)",
     counterpart: "b.lo asks the same question in the unsigned reading; after the same cmp the two can disagree.",
     reads: ["n", "v"],
@@ -127,7 +127,7 @@ export const COND_CODES: CondCode[] = [
     formula: "c = 0",
     why: "an unsigned subtraction that needs a borrow clears c, and needing a borrow is exactly what below means. lo is also spelled cc (carry clear).",
     c: "if (a < b)",
-    counterpart: "b.lt asks the same question in the signed reading; with the defaults here lt fires and lo does not -- the bits of -1 read as the largest unsigned value.",
+    counterpart: "b.lt asks the same question in the signed reading; with the defaults here lt fires and lo does not, because the bits of -1 read as the largest unsigned value.",
     reads: ["c"],
     taken: (f) => !f.c,
     defaults: ["-1", "1"],
@@ -242,7 +242,7 @@ export function CondCodeExplorer({
         <p className="[font:var(--type-small)] text-[var(--text-secondary)]">
           after a compare, every condition code is a question about the four
           flags it left behind. eq and ne read the same either way; the other
-          eight come in signed / unsigned pairs -- pick by how the program
+          eight come in signed / unsigned pairs; pick by how the program
           means the bits, not by what looks familiar.
         </p>
       </header>
@@ -373,7 +373,7 @@ export function CondCodeExplorer({
       )}
 
       <p className="[font:var(--type-small)] text-[var(--text-tertiary)]">
-        eq and ne also answer after adds, subs, ands, and tst -- any
+        eq and ne also answer after adds, subs, ands, and tst: any
         instruction that sets the flags, not just cmp.
       </p>
     </section>
