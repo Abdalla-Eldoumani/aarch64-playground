@@ -185,9 +185,9 @@ The `FCVT` conversion family names its rounding mode in the mnemonic: `N` neares
 | `FCMP`   | `FCMP Dn, Dm` / `FCMP Sn, Sm`     | Updates NZCV. Unordered sets C and V.   |
 | `FCMPE`  | same                              | The signaling form; here it sets the same flags (the emulator raises no FP exceptions). |
 | `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). |
-| `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Sd, Wn` / `SCVTF Sd, Sn` / `SCVTF Dd, Dn` | Signed integer to float. The FP-source forms convert integer bits already sitting in the register (how gcc converts an int it loaded with `ldr s31, [...]`). |
+| `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Sd, Wn` / `SCVTF Dd, Xn, #fbits` / `SCVTF Sd, Sn` / `SCVTF Dd, Dn` | Signed integer to float. The FP-source forms convert integer bits already sitting in the register (how gcc converts an int it loaded with `ldr s31, [...]`). The three-operand form is the fixed-point one: it divides by `2^fbits`, so `scvtf d0, x0, #2` on `6` gives `1.5`. `fbits` runs 1 to 32 for a W source and 1 to 64 for an X one. |
 | `UCVTF`  | `UCVTF Dd, Xn` / `UCVTF Sd, Wn` (and the other width pairs) | Unsigned integer to float. `SCVTF` reads the same bits as signed, so the two differ on any value with the top bit set. |
-| `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` / `FCVTZS Wd, Sn` | Truncate float to signed integer. |
+| `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Sn` / `FCVTZS Xd, Sn, #fbits` | Truncate float to signed integer. The three-operand form is the fixed-point one: it multiplies by `2^fbits` before truncating, so `fcvtzs w0, d0, #2` on `1.5` gives `6`. `fbits` runs 1 to 32 for a W destination and 1 to 64 for an X one. `SCVTF` takes the same third operand and divides instead. |
 | `FCVTNS` | `FCVTNS Wd, Dn` / `FCVTNS Xd, Sn` (and the other two width pairs) | Float to signed integer, round to nearest with ties to even. `2.5` and `3.5` both land on the even neighbour (2 and 4), unlike `FCVTZS`, which truncates toward zero. |
 | `FCVTNU` | same shapes                       | The unsigned form. A negative input saturates to 0. |
 | `FCVTZU` | `FCVTZU Wd, Dn` / `FCVTZU Xd, Sn` (and the other two width pairs) | The unsigned form of `FCVTZS`: truncate toward zero. Negatives saturate to 0. |

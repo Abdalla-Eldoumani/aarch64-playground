@@ -1901,8 +1901,11 @@ fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, Em
     else {
         return asm_err(ln, &format!("unknown mnemonic: {name}"));
     };
-    if ops.len() != 2 {
-        return asm_err(ln, &format!("{name} requires 2 operands: {name} fd, rn"));
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(
+            ln,
+            &format!("{name} requires 2 operands, or 3 with a fixed-point scale ({name} fd, rn, #fbits)"),
+        );
     }
     let (fd, wd) = parse_fp_register(ops[0], ln)?;
     // The source is either a general register (the usual course form) or
@@ -1916,22 +1919,54 @@ fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, Em
                 &format!("{name} takes a general-register source ({name} fd, xn / {name} fd, wn)"),
             );
         }
+        if ops.len() == 3 {
+            return asm_err(ln, "the fixed-point form takes a general-register source");
+        }
         let width = require_same_fp_width(name, &[wd, wn], ln)?;
         let sz: u32 = if width == 'D' { 1 << 22 } else { 0 };
         return Ok(0x5E21_D800 | sz | ((fn_ as u32) << 5) | (fd as u32));
     }
     let (rn, sf) = parse_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
-    // sf_0_0_11110_ftype_1_rmode_opcode_000000_Rn_Rd, the same class the
-    // float-to-integer direction uses.
+    let scale = fixed_point_scale(ops.get(2), sf, name, ln)?;
+    // sf_0_0_11110_ftype_bit21_rmode_opcode_scale(6)_Rn_Rd, the same class
+    // the float-to-integer direction uses. Bit 21 is 1 for the plain
+    // integer form and 0 for the fixed-point one, whose scale field
+    // replaces the zeros.
     Ok((sf_bit << 31)
         | 0x1E00_0000
         | fp_ftype(wd)
-        | (1 << 21)
+        | (if scale.is_some() { 0 } else { 1 << 21 })
         | (u32::from(*rmode) << 19)
         | (u32::from(*opcode) << 16)
+        | (scale.unwrap_or(0) << 10)
         | ((rn as u32) << 5)
         | (fd as u32))
+}
+
+/// The `#fbits` operand shared by both directions of the conversion
+/// class. `None` means the plain integer form; `Some(scale)` is the
+/// field, which the architecture stores as 64 minus fbits. fbits runs
+/// 1 to 32 against a W register and 1 to 64 against an X one, because
+/// the fraction has to fit inside the integer operand.
+fn fixed_point_scale(
+    operand: Option<&&str>, sf: bool, name: &str, ln: usize,
+) -> Result<Option<u32>, EmuError> {
+    let Some(text) = operand else {
+        return Ok(None);
+    };
+    let fbits = parse_immediate(text, ln)?;
+    let max = if sf { 64 } else { 32 };
+    if !(1..=max).contains(&fbits) {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} takes a fixed-point scale of 1 to {max} for a {} register",
+                if sf { "64-bit" } else { "32-bit" }
+            ),
+        );
+    }
+    Ok(Some(64 - fbits as u32))
 }
 
 /// FCVT{N,Z}{S,U} Rd, Fn. `name` is the key into `FP_TO_INT_OPS`, so the
@@ -1942,20 +1977,25 @@ fn encode_fp_cvt_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuErro
     else {
         return asm_err(ln, &format!("unknown mnemonic: {name}"));
     };
-    if ops.len() != 2 {
-        return asm_err(ln, &format!("{name} requires 2 operands: {name} rd, fn"));
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(
+            ln,
+            &format!("{name} requires 2 operands, or 3 with a fixed-point scale ({name} rd, fn, #fbits)"),
+        );
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let (fn_, wn) = parse_fp_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
-    // sf_0_0_11110_ftype_1_rmode_opcode_000000_Rn_Rd. Bit 21 is what
+    let scale = fixed_point_scale(ops.get(2), sf, name, ln)?;
+    // sf_0_0_11110_ftype_bit21_rmode_opcode_scale(6)_Rn_Rd. Bit 21 is what
     // separates the integer form from the fixed-point one.
     Ok((sf_bit << 31)
         | 0x1E00_0000
         | fp_ftype(wn)
-        | (1 << 21)
+        | (if scale.is_some() { 0 } else { 1 << 21 })
         | (u32::from(*rmode) << 19)
         | (u32::from(*opcode) << 16)
+        | (scale.unwrap_or(0) << 10)
         | ((fn_ as u32) << 5)
         | (rd as u32))
 }
@@ -5187,6 +5227,97 @@ svc 0").unwrap();
         assert_eq!(cpu.regs.read_fpr_bits(4), 0x4F80_0000);
         assert_eq!(cpu.regs.read_fpr_bits(5), 0x5F80_0000);
         assert_eq!(cpu.regs.read_fpr_bits(7), 0x43E0_0000_0000_0000);
+    }
+
+    #[test]
+    fn fixed_point_conversions_scale_by_two_to_the_fbits() {
+        use crate::cpu::Cpu;
+        use crate::decoder::{decode, FpFromIntOp, FpToIntOp, Instruction};
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("fcvtzs x1, s15, #2", 0x9E18_F9E1u32),
+            ("fcvtzs w1, d0, #3", 0x1E58_F401),
+            ("fcvtzu w1, d0, #3", 0x1E59_F401),
+            ("scvtf d0, x1, #4", 0x9E42_F020),
+            ("fcvtzs w0, d0, #32", 0x1E58_8000),
+            ("fcvtzs x0, d0, #64", 0x9E58_0000),
+            ("fcvtzs x0, d0, #2", 0x9E58_F800),
+            ("fcvtzu x0, d0, #2", 0x9E59_F800),
+            ("fcvtzu w0, s0, #5", 0x1E19_EC00),
+            ("scvtf d0, w0, #2", 0x1E42_F800),
+            ("ucvtf d0, x0, #4", 0x9E43_F000),
+            ("ucvtf s0, w0, #6", 0x1E03_E800),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        // The two forms must not collapse onto each other: the same
+        // mnemonic decodes with fbits 3 here and fbits 0 below.
+        match decode(0x1E58_F401).unwrap() {
+            Instruction::FpToInt {
+                op: FpToIntOp::Zs, rd: 1, fn_: 0, sf: false, single: false, fbits: 3,
+            } => {}
+            other => panic!("expected a fixed-point FpToInt, got {other:?}"),
+        }
+        match decode(0x1E78_0001).unwrap() {
+            Instruction::FpToInt { fbits: 0, .. } => {}
+            other => panic!("expected the integer FpToInt, got {other:?}"),
+        }
+        match decode(0x9E42_F020).unwrap() {
+            Instruction::FpFromInt {
+                op: FpFromIntOp::Scvtf, fd: 0, rn: 1, sf: true, single: false, fbits: 4,
+            } => {}
+            other => panic!("expected a fixed-point FpFromInt, got {other:?}"),
+        }
+        for src in ["fcvtzs w0, d0, #33", "fcvtzs x0, d0, #0", "fcvtzs x0, d0, #65"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("fixed-point scale"), "{src}: {err}");
+        }
+        let source = r#"
+            FMOV D0, 1.5
+            FCVTZS W1, D0, #2
+            FCVTZS W2, D0
+            FCVTZS W3, D0, #3
+            FMOV D4, -1.5
+            FCVTZS W5, D4, #2
+            FCVTZU W6, D0, #2
+            FCVTZU W7, D4, #2
+            FCVTZS X8, D0, #2
+            FMOV S9, 1.5
+            FCVTZS X10, S9, #2
+            FMOV D11, 0.5
+            FCVTZS W12, D11, #32
+            FCVTZS X13, D11, #64
+            MOV X14, #6
+            SCVTF D15, X14, #2
+            SCVTF D16, X14
+            MOV X17, #24
+            SCVTF D18, X17, #4
+            MOV X19, #-1
+            UCVTF D20, X19, #4
+            MOV W21, #-6
+            SCVTF D22, W21, #2
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(60).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, false), 6, "1.5 * 4, truncated");
+        assert_eq!(cpu.regs.read_gpr(2, false), 1, "the integer form is unchanged");
+        assert_eq!(cpu.regs.read_gpr(3, false), 12);
+        assert_eq!(cpu.regs.read_gpr(5, false) as i32, -6);
+        assert_eq!(cpu.regs.read_gpr(6, false), 6);
+        assert_eq!(cpu.regs.read_gpr(7, false), 0, "negatives still saturate");
+        assert_eq!(cpu.regs.read_gpr(8, true), 6);
+        assert_eq!(cpu.regs.read_gpr(10, true), 6, "the S source form gcc emits");
+        // The scale can push a small value past the destination width.
+        assert_eq!(cpu.regs.read_gpr(12, false) as i32, i32::MAX);
+        assert_eq!(cpu.regs.read_gpr(13, true) as i64, i64::MAX);
+        assert_eq!(cpu.regs.read_fpr_bits(15), 0x3FF8_0000_0000_0000, "6 / 4");
+        assert_eq!(cpu.regs.read_fpr_bits(16), 0x4018_0000_0000_0000, "6 with no scale");
+        assert_eq!(cpu.regs.read_fpr_bits(18), 0x3FF8_0000_0000_0000, "24 / 16");
+        assert_eq!(cpu.regs.read_fpr_bits(20), 0x43B0_0000_0000_0000, "(2^64 - 1) / 16");
+        assert_eq!(cpu.regs.read_fpr_bits(22), 0xBFF8_0000_0000_0000, "-6 / 4");
     }
 
     #[test]

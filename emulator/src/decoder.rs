@@ -1041,13 +1041,48 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         return Err(EmuError::UnknownInstruction(instr));
     }
     let single = ftype == 0b00;
-    if bit(instr, 21) != 1 {
-        return Err(EmuError::UnknownInstruction(instr));
-    }
+    let bit21 = bit(instr, 21);
 
     let rn = bits(instr, 9, 5) as u8;
     let rd = bits(instr, 4, 0) as u8;
     let rm = bits(instr, 20, 16) as u8;
+
+    // FP <-> integer conversion, both forms: rmode in 20:19, opcode in
+    // 18:16. Bit 21 = 1 is the integer form, whose bits 15:10 are fixed
+    // zero; bit 21 = 0 is the fixed-point one, where a 6-bit scale field
+    // replaces them and holds 64 minus fbits. The rows come from the
+    // shared tables so the encoder and this cannot drift.
+    //
+    // This is the ONLY branch that may run with bit 21 = 0. The
+    // FMOV-immediate test below reads bits 12:10, which a fixed-point
+    // scale ending in 100 would satisfy, so every other branch stays
+    // behind the gate that follows.
+    let fbits = if bit21 == 1 {
+        (bits(instr, 15, 10) == 0).then_some(0u8)
+    } else {
+        Some((64 - bits(instr, 15, 10)) as u8)
+    };
+    if let Some(fbits) = fbits {
+        let rmode = bits(instr, 20, 19) as u8;
+        let opcode = bits(instr, 18, 16) as u8;
+        let sf = bit(instr, 31) == 1;
+        if let Some((_, _, _, op)) = FP_TO_INT_OPS
+            .iter()
+            .find(|(_, r, o, _)| *r == rmode && *o == opcode)
+        {
+            return Ok(Instruction::FpToInt { op: *op, rd, fn_: rn, sf, single, fbits });
+        }
+        if let Some((_, _, _, op)) = FP_FROM_INT_OPS
+            .iter()
+            .find(|(_, r, o, _)| *r == rmode && *o == opcode)
+        {
+            return Ok(Instruction::FpFromInt { op: *op, fd: rd, rn, sf, single, fbits });
+        }
+    }
+
+    if bit21 != 1 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
 
     // FP data-processing 2-source: bits[15:10] = opcode | 10
     if bits(instr, 11, 10) == 0b10 {
@@ -1110,27 +1145,6 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     // no FP exceptions, so both set the same flags.
     if bits(instr, 15, 10) == 0b001000 && matches!(bits(instr, 4, 0), 0b00000 | 0b10000) {
         return Ok(Instruction::FpCompare { fn_: rn, fm: rm, single });
-    }
-
-    // FP <-> integer conversion: rmode in 20:19, opcode in 18:16, and
-    // bits 15:10 zero for the integer form. The rows come from the shared
-    // tables so the encoder and this cannot drift.
-    if bits(instr, 15, 10) == 0 {
-        let rmode = bits(instr, 20, 19) as u8;
-        let opcode = bits(instr, 18, 16) as u8;
-        let sf = bit(instr, 31) == 1;
-        if let Some((_, _, _, op)) = FP_TO_INT_OPS
-            .iter()
-            .find(|(_, r, o, _)| *r == rmode && *o == opcode)
-        {
-            return Ok(Instruction::FpToInt { op: *op, rd, fn_: rn, sf, single, fbits: 0 });
-        }
-        if let Some((_, _, _, op)) = FP_FROM_INT_OPS
-            .iter()
-            .find(|(_, r, o, _)| *r == rmode && *o == opcode)
-        {
-            return Ok(Instruction::FpFromInt { op: *op, fd: rd, rn, sf, single, fbits: 0 });
-        }
     }
 
     // FMOV between the register files: rmode 00, opcode 110 (FP -> GP) or
