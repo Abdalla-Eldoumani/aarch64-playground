@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { loadAllLessons } from "@/lib/content/lessons";
+import { loadLessonIndex } from "@/lib/content/lessons";
 import { LessonIndex } from "@/components/learn/LessonIndex";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
@@ -34,7 +34,9 @@ export const metadata: Metadata = {
 // the already-validated, order-sorted lessons are handed to the client index as
 // plain data, so no client component ever imports the loader.
 export default function LearnPage() {
-  const lessons = loadAllLessons();
+  // Narrowed before it crosses the boundary: the index renders five fields,
+  // and the lesson bodies it never reads are almost all of the weight.
+  const lessons = loadLessonIndex();
   return (
     <section className="mx-auto w-full max-w-2xl px-6 py-10 sm:py-14">
       <DocRule section="sheet 04 · learn" context="cpsc 355 study aid" className="mb-8" />
