@@ -53,8 +53,8 @@ describe("ConsolePanel stdin validation", () => {
     const { pushStdin, input } = setup();
     fireEvent.change(input, { target: { value: "42" } });
     fireEvent.submit(input.closest("form")!);
-    // Typed at a prompt, so the machine echoes it into the transcript --
-    // a redirect would go through the same call without the flag.
+    // Typed at a prompt, so the machine echoes it into the transcript; a
+    // redirect goes through the same call without the flag.
     expect(pushStdin).toHaveBeenCalledWith("42\n", true);
     expect(input.value).toBe("");
   });
