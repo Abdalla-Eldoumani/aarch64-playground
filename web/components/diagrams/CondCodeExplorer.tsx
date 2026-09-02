@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The condition-code explorer for the b.cond reference entry. Ten chips --
+ * The condition-code explorer for the b.cond reference entry. Ten chips:
  * the course's condition codes grouped either-sign / signed / unsigned -- and
  * a detail card that answers, for the picked code: the question it asks after
  * `cmp a, b`, the exact flag formula, why that formula answers the question,
@@ -10,11 +10,10 @@
  * dimmed, then the taken / falls-through verdict. Picking a code and typing
  * operands is the user acting (cyan); the computed flags and the verdict are
  * the machine acting (amber). The flag math is computeIntFlags from
- * lib/emulator/flag-math -- the same NZCV rules the executor applies -- and
+ * lib/emulator/flag-math (the same NZCV rules the executor applies), and
  * operands are fixed at the 32-bit w registers; the width story lives in the
- * FlagEffect panel on the flag-setting entries. Token-only, keyboard
- * accessible (native buttons and inputs), reduced-motion safe (discrete state
- * swaps, no animation).
+ * FlagEffect panel on the flag-setting entries. Native buttons and inputs; no
+ * animation, so reduced motion needs no fallback.
  */
 
 import { useId, useState, type JSX } from "react";
@@ -243,7 +242,7 @@ export function CondCodeExplorer({
           after a compare, every condition code is a question about the four
           flags it left behind. eq and ne read the same either way; the other
           eight come in signed / unsigned pairs; pick by how the program
-          means the bits, not by what looks familiar.
+          means the bits.
         </p>
       </header>
 
