@@ -35,7 +35,7 @@ export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
   const lines = value.replace(/\n$/, "").split("\n");
   const activeRef = useRef<HTMLSpanElement>(null);
 
-  // Follow the pc the way the editor did. `block: "nearest"` scrolls only when
+  // Follow the pc the way the editor does. `block: "nearest"` scrolls only when
   // the line is actually out of view, so a program that fits never jumps.
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: "nearest" });
