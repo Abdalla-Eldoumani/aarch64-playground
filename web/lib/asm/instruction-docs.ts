@@ -154,6 +154,10 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   CSINV: { summary: "Rd = cond ? Rn : ~Rm.", example: "csinv x0, x1, x2, eq", cExample: "Rd = cond ? Rn : ~Rm;" },
   CSNEG: { summary: "Rd = cond ? Rn : -Rm. How gcc spells abs().", example: "csneg x0, x1, x2, pl", cExample: "Rd = cond ? Rn : -Rm;" },
   CSET: { summary: "Rd = cond ? 1 : 0 (pseudo for `CSINC Rd, ZR, ZR, cond-inv`).", cExample: "Rd = cond ? 1 : 0;" },
+  CSETM: { summary: "Rd = cond ? all-ones : 0 (pseudo for `CSINV Rd, ZR, ZR, cond-inv`).", example: "csetm w0, eq", cExample: "Rd = cond ? -1 : 0;" },
+  CINC: { summary: "Rd = cond ? Rn+1 : Rn.", example: "cinc w2, w1, eq", cExample: "Rd = cond ? Rn + 1 : Rn;" },
+  CINV: { summary: "Rd = cond ? ~Rn : Rn.", example: "cinv x0, x1, ne", cExample: "Rd = cond ? ~Rn : Rn;" },
+  CNEG: { summary: "Rd = cond ? -Rn : Rn.", example: "cneg x0, x1, lt", cExample: "Rd = cond ? -Rn : Rn;" },
   LDR: {
     summary: "Load from memory. Picks 32-vs-64 bit based on Wt/Xt.",
     details: [

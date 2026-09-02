@@ -969,6 +969,50 @@ cset    w10, gt             // w10 = 1: 5 is positive`,
   // memory: examples carve an aligned scratch slot below sp and put it back,
   // so every one runs clean inside the playground's wrapped main.
   {
+    mnemonic: "csetm",
+    category: "Conditional select",
+    syntax: "csetm xd, cond",
+    example: `mov     w1, 5
+cmp     w1, 5
+csetm   w4, eq              // condition true:  w4 = 0xffffffff
+cmp     w1, 4
+csetm   w5, eq              // condition false: w5 = 0`,
+  },
+  {
+    mnemonic: "cinc",
+    category: "Conditional select",
+    syntax: "cinc xd, xn, cond",
+    example: `mov     w1, 5
+cmp     w1, 5
+cinc    w2, w1, eq          // condition true:  w2 = 6
+cmp     w1, 4
+cinc    w3, w1, eq          // condition false: w3 = 5, not 6`,
+    gotchas: [
+      "the encoded condition is the INVERSE of the one you write, which is why `al` and `nv` are refused: neither has an invertible spelling.",
+    ],
+  },
+  {
+    mnemonic: "cinv",
+    category: "Conditional select",
+    syntax: "cinv xd, xn, cond",
+    example: `mov     w1, 5
+cmp     w1, 5
+cinv    w4, w1, eq          // condition true:  w4 = 0xfffffffa
+cmp     w1, 4
+cinv    w5, w1, eq          // condition false: w5 = 5`,
+  },
+  {
+    mnemonic: "cneg",
+    category: "Conditional select",
+    syntax: "cneg xd, xn, cond",
+    example: `mov     x6, 7
+mov     w1, 5
+cmp     w1, 5
+cneg    x7, x6, eq          // condition true:  x7 = -7
+cmp     w1, 4
+cneg    x8, x6, eq          // condition false: x8 = 7`,
+  },
+  {
     mnemonic: "ldr",
     category: "Memory",
     syntax: "ldr xt, [xn] / [xn, #imm] / [xn, #imm]! / [xn], #imm",
