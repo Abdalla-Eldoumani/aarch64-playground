@@ -43,7 +43,7 @@ export interface QuizQuestion {
   options: string[];
   correctAnswer: number;
   explanation: string;
-  /** Optional nudges to guide the user before an attempt. */
+  /** Optional hint, shown before an attempt. */
   hint?: string;
 }
 
@@ -66,9 +66,8 @@ export interface BlanksQuestion {
 }
 
 /**
- * Core fields shared by EVERY exercise variant. These properties govern
- * how the exercise is indexed, routed, and initially rendered before
- * variant-specific UI logic takes over.
+ * Fields shared by every variant: what the index, the route, and the first
+ * render read.
  */
 export interface BaseExercise {
   title: string;
@@ -85,9 +84,8 @@ export interface BaseExercise {
 }
 
 /**
- * The original, WASM-backed coding variant. Strictly requires a starter code
- * block and acceptance criteria to evaluate the student's program against
- * the live AArch64 emulator.
+ * The coding variant: a starter block plus acceptance criteria, checked by
+ * running the student's program on the emulator.
  */
 export interface WriteExercise extends BaseExercise {
   variant: "write" | "identify-bug";
@@ -101,8 +99,7 @@ export interface WriteExercise extends BaseExercise {
 }
 
 /**
- * A strictly client-side interactive variant. Bypasses the emulator entirely
- * in favor of an isolated multiple-choice block.
+ * Multiple choice, graded on the page. The emulator is not used.
  */
 export interface QuizExercise extends BaseExercise {
   variant: "quiz";
@@ -128,21 +125,20 @@ export interface BlanksExercise extends BaseExercise {
 }
 
 /**
- * The discriminated union: TypeScript narrows this to a specific layout
- * and strict requirement set based on the `variant` discriminator.
+ * The four variants, discriminated by `variant`.
  */
 export type Exercise = WriteExercise | QuizExercise | PredictionExercise | BlanksExercise;
 
 /**
- * The row shape the practice index actually renders: exactly the seven fields
+ * The row shape the practice index renders: exactly the seven fields
  * ExerciseIndex reads, and nothing else. A full Exercise also carries the
  * prompt, the starter source, the acceptance criteria, the questions, the
  * predictions, the blanks, the args, and the stdin, roughly 232 KB across the
- * authored set, every byte of which used to cross the server-to-client
- * boundary so one short blurb could be derived during the client render.
- * The type lives here rather than beside the loader because the loader is
- * server-only: a client component naming that module is one dropped `type`
- * keyword away from a confusing build failure.
+ * authored set, every byte of which would otherwise cross the
+ * server-to-client boundary so one short blurb could be derived during the
+ * client render. The type lives here rather than beside the loader because
+ * the loader is server-only: a client component naming that module is one
+ * dropped `type` keyword away from a confusing build failure.
  */
 export interface ExerciseIndexRow {
   title: string;
