@@ -1029,6 +1029,9 @@ fn exec_fp_binary(
             FpBinOp::Fsub => a - b,
             FpBinOp::Fmul => a * b,
             FpBinOp::Fdiv => a / b,
+            // The sign flips on the PRODUCT, which is what makes
+            // fnmul of +0.0 and 3.0 a -0.0 that (-a) * b never produces.
+            FpBinOp::Fnmul => -(a * b),
         };
         regs.write_fpr_f32(fd, result);
     } else {
@@ -1039,6 +1042,7 @@ fn exec_fp_binary(
             FpBinOp::Fsub => a - b,
             FpBinOp::Fmul => a * b,
             FpBinOp::Fdiv => a / b,
+            FpBinOp::Fnmul => -(a * b),
         };
         regs.write_fpr_f64(fd, result);
     }

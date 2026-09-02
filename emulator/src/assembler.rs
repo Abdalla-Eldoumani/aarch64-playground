@@ -161,7 +161,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
-    "FADD", "FSUB", "FMUL", "FDIV", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
+    "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
     "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
     // pc-relative address formation
     "ADR", "ADRP",
@@ -298,6 +298,7 @@ fn encode_line(
         "FSUB" => encode_fp_binary(&ops, "fsub", line_num),
         "FMUL" => encode_fp_binary(&ops, "fmul", line_num),
         "FDIV" => encode_fp_binary(&ops, "fdiv", line_num),
+        "FNMUL" => encode_fp_binary(&ops, "fnmul", line_num),
         "FMOV" => encode_fmov(&ops, line_num),
         "FNEG" => encode_fp_unary(&ops, "fneg", line_num),
         "FABS" => encode_fp_unary(&ops, "fabs", line_num),
@@ -4060,6 +4061,44 @@ svc 0").unwrap();
                 }
             }
         }
+    }
+
+    #[test]
+    fn fnmul_negates_after_the_multiply_including_zero() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("fnmul d0, d1, d2", 0x1E62_8820u32),
+            ("fnmul s0, s1, s2", 0x1E22_8820),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let source = r#"
+            FMOV D1, 2.0
+            FMOV D2, 3.0
+            FNMUL D3, D1, D2
+            FMOV D4, -2.0
+            FNMUL D5, D4, D2
+            FMOV D6, XZR
+            FNMUL D8, D6, D2
+            FMOV D9, -3.0
+            FNMUL D10, D6, D9
+            FMOV S11, 2.0
+            FMOV S12, 3.0
+            FNMUL S13, S11, S12
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        assert_eq!(cpu.regs.read_fpr_bits(3), 0xC018_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(5), 0x4018_0000_0000_0000);
+        // The sign of a zero is the only thing that separates -(a*b) from
+        // (-a)*b, so assert BITS, not the value.
+        assert_eq!(cpu.regs.read_fpr_bits(8), 0x8000_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(10), 0x0000_0000_0000_0000);
+        assert_eq!(cpu.regs.read_fpr_bits(13), 0xC0C0_0000);
     }
 
     #[test]

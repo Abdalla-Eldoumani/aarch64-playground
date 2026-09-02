@@ -218,6 +218,7 @@ pub enum FpBinOp {
     Fsub,
     Fmul,
     Fdiv,
+    Fnmul,
 }
 
 /// Floating-point one-source operation (FP data-processing 1-source space,
@@ -239,6 +240,7 @@ pub const FP_BINARY_OPS: &[(&str, u8, FpBinOp)] = &[
     ("fsub", 0b0011, FpBinOp::Fsub),
     ("fmul", 0b0000, FpBinOp::Fmul),
     ("fdiv", 0b0001, FpBinOp::Fdiv),
+    ("fnmul", 0b1000, FpBinOp::Fnmul),
 ];
 
 /// The FP one-source rows that share `FpUnary`: mnemonic, the 6-bit opcode
