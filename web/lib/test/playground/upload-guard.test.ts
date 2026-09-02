@@ -27,12 +27,12 @@ describe("upload-guard", () => {
   test("returns a labeled error string when over the cap", () => {
     const msg = checkUploadSize(MAX_SOURCE_BYTES + 1, MAX_SOURCE_BYTES, "source file");
     expect(msg).toMatch(/source file/);
-    expect(msg).toMatch(/1 MB/);
+    expect(msg).toMatch(/1 MiB/);
   });
 
   test("error string interpolates the cap in MB rounded to integer", () => {
-    expect(checkUploadSize(2_000_000_000, 1_048_576, "x")).toBe("x too large (max 1 MB)");
-    expect(checkUploadSize(2_000_000_000, MAX_VFS_BYTES, "y")).toBe("y too large (max 4 MB)");
+    expect(checkUploadSize(2_000_000_000, 1_048_576, "x")).toBe("x too large: the limit is 1 MiB");
+    expect(checkUploadSize(2_000_000_000, MAX_VFS_BYTES, "y")).toBe("y too large: the limit is 4 MiB");
   });
 });
 
@@ -70,7 +70,7 @@ describe("validateSource", () => {
   test("rejects source one byte over the cap", () => {
     const msg = validateSource("x".repeat(MAX_SOURCE_BYTES + 1));
     expect(msg).toMatch(/source/);
-    expect(msg).toMatch(/1 MB/);
+    expect(msg).toMatch(/1 MiB/);
   });
 
   test("counts bytes, not characters (multibyte content)", () => {
@@ -117,7 +117,7 @@ describe("validateStdin", () => {
   test("rejects stdin one byte over the cap", () => {
     const msg = validateStdin("x".repeat(MAX_STDIN_BYTES + 1));
     expect(msg).toMatch(/stdin/);
-    expect(msg).toMatch(/100 KB/);
+    expect(msg).toMatch(/100 KiB/);
   });
 
   test("counts bytes, not characters (multibyte content)", () => {
@@ -152,7 +152,7 @@ describe("checkUploadSize at the remaining production caps", () => {
       null,
     );
     expect(checkUploadSize(MAX_BOOKMARK_JSON_BYTES + 1, MAX_BOOKMARK_JSON_BYTES, "bookmark file")).toBe(
-      "bookmark file too large (max 1 MB)",
+      "bookmark file too large: the limit is 1 MiB",
     );
   });
 });
