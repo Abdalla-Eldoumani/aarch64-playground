@@ -935,7 +935,7 @@ describe("the args box a mode-args example runs with", () => {
     expect(runModeGroup()).toBeNull();
   });
 
-  it("assembles with whatever the box holds, exactly as before", async () => {
+  it("assembles with whatever the box holds", async () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
