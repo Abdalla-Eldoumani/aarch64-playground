@@ -536,7 +536,7 @@ export function useEmulator(): EmulatorState {
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
           else if (runResult.step_limit_reached) {
             setError(
-              `paused after ${total.toLocaleString()} steps without finishing -- ` +
+              `paused after ${total.toLocaleString()} steps without finishing. ` +
                 "press run to continue, or check for a loop whose exit condition never becomes true",
             );
           }
