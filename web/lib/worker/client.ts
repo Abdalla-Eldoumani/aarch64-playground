@@ -26,7 +26,6 @@ export class WorkerClient {
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
   private listeners = new Set<SnapshotListener>();
-  private initialized = false;
 
   constructor(worker: Worker) {
     this.worker = worker;
@@ -69,12 +68,7 @@ export class WorkerClient {
   }
 
   async init(): Promise<StateSnapshot> {
-    if (this.initialized) {
-      return this.send<StateSnapshot>({ id: 0, kind: "init" });
-    }
-    const snap = await this.send<StateSnapshot>({ id: 0, kind: "init" });
-    this.initialized = true;
-    return snap;
+    return this.send<StateSnapshot>({ id: 0, kind: "init" });
   }
 
   assemble(
