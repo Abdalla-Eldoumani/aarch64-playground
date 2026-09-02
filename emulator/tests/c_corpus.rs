@@ -253,7 +253,7 @@ fn corpus_at_o2_coverage_map() {
     for f in &failures {
         println!("  {f}");
     }
-    // Measured 2026-09-02, after tier 2. Every remaining gap is a v
+    // Measured 2026-09-02 against the -O2 tier. Every remaining gap is a v
     // register: 13_float_double copies a 16-byte struct through q0 and
     // 14_float_single zeroes a float with `movi v0.2s, #0`. Both are on
     // the pending lists, so nothing here fails to assemble for a reason
