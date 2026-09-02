@@ -1,7 +1,7 @@
 {
   "title": "Printing integers and characters",
   "slug": "printing-other-data-types",
-  "order": 5,
+  "order": 4,
   "summary": "How format specifiers such as %d and %c decide what printf does with an argument.",
   "tags": [
     "printing",
