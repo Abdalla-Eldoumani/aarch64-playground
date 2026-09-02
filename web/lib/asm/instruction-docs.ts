@@ -264,6 +264,13 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   },
   SCVTF: { summary: "Signed-int -> float (`SCVTF Dd, Xn` / `Dd, Wn` / `Sd, Wn`)." },
   FCVTZS: { summary: "Float -> signed-int with truncation (`FCVTZS Wd, Dn` / `Wd, Sn`)." },
+  FCVTNS: {
+    summary: "Float -> signed integer, rounding to nearest with ties to even.",
+    details: ["Ties go to the EVEN neighbour: 2.5 gives 2 and 3.5 gives 4. `FCVTZS` truncates toward zero instead."],
+    example: "fcvtns w0, d0",
+    cExample: "Rd = (int)nearbyint(Fn); // FE_TONEAREST",
+  },
+  FCVTNU: { summary: "Float -> unsigned integer, ties to even. Negatives saturate to 0.", example: "fcvtnu w0, d0" },
 };
 
 /** Case-insensitive lookup; condition variants collapse to B.COND. */

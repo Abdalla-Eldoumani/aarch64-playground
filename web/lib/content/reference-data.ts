@@ -1366,6 +1366,25 @@ fcvtzs  x10, d16            // x10 = 7: round-tripped`,
     example: `fmov    d16, 1.9375         // the largest encodable mantissa
 fcvtzs  w9, d16             // w9 = 1: toward zero, never rounding`,
   },
+  {
+    mnemonic: "fcvtns",
+    category: "Floating point",
+    syntax: "fcvtns wd, dn / fcvtns xd, sn",
+    example: `fmov    d0, 2.5
+fcvtns  w1, d0              // w1 = 2: the tie goes to the even neighbour
+fcvtzs  w2, d0              // w2 = 2 as well, but by truncation
+fmov    d3, 3.5
+fcvtns  w4, d3              // w4 = 4: ties to even lands upward here`,
+  },
+  {
+    mnemonic: "fcvtnu",
+    category: "Floating point",
+    syntax: "fcvtnu wd, dn / fcvtnu xd, sn",
+    example: `fmov    d0, 2.5
+fcvtnu  w1, d0              // w1 = 2
+fmov    d2, -2.5
+fcvtnu  w3, d2              // w3 = 0: negatives saturate`,
+  },
 ];
 
 export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map(
