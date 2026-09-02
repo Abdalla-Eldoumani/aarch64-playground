@@ -13,8 +13,9 @@ use crate::registers::{reg_alias, Condition, CONDITIONS};
 /// from cpsc 355 source expand before the single-pass encoder sees them.
 /// The expansion is line-aligned with the input, so encoder errors still
 /// carry the original (pre-expansion) line number. Expression-level
-/// numeric substitutions in operands still need the full new pipeline --
-/// that integration lands once the linker can encode from token slices.
+/// numeric substitutions in operands are the hosted pipeline's job;
+/// `frontend::pipeline::lower_operands` folds them before this encoder
+/// sees the line.
 pub fn assemble(source: &str) -> Result<Vec<u32>, EmuError> {
     let expanded = crate::frontend::m4::expand(source)?;
     assemble_expanded(&expanded.text)
@@ -39,8 +40,8 @@ pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
             if name.is_empty() {
                 return asm_err(*line_num, "empty label");
             }
-            // GAS rejects a redefined label; a silent last-wins insert sent
-            // branches to whichever copy came later.
+            // GAS rejects a redefined label; a last-wins insert sends
+            // branches to whichever copy comes later.
             if labels.contains_key(&name) {
                 return asm_err(
                     *line_num,
@@ -79,9 +80,9 @@ pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
 }
 
 /// Split a leading `name:` label off a line. GAS lets a label and an
-/// instruction share a line (`loop: subs x0, x0, 1`); the two-pass encoder
-/// only recognized a label when it was the WHOLE line, so the same-line
-/// idiom reached `encode_line` with `loop:` read as the mnemonic. The legacy
+/// instruction share a line (`loop: subs x0, x0, 1`). Recognizing a label
+/// only when it is the WHOLE line sends the same-line idiom to
+/// `encode_line` with `loop:` read as the mnemonic. The legacy
 /// (non-hosted) grammar has no other leading-colon construct, so a leading
 /// identifier immediately followed by `:` is unambiguously a label.
 fn split_label(trimmed: &str) -> (Option<&str>, &str) {
@@ -539,6 +540,9 @@ fn parse_char_body(body: &str, line_num: usize) -> Result<i64, EmuError> {
         b'"' => b'"' as i64,
         b'\'' => b'\'' as i64,
         b'x' | b'X' => {
+            // Two digits exactly here, unlike the lexer's greedy GAS walk:
+            // this path only sees legacy bare-metal source, where no course
+            // file writes a one- or three-digit escape.
             if bytes.len() != 4 {
                 return Err(asm_error(line_num, "\\xNN char literal needs two hex digits"));
             }
@@ -635,7 +639,8 @@ const NO_SUCH_LABEL_HINT: &str =
     "check the spelling, and check that the label line ends with a `:`";
 
 /// A selector the dispatch cannot produce reached an encoder. No source
-/// text causes it, so naming the selector helps nobody; reporting it does.
+/// text can cause it, so the message asks for a bug report rather than
+/// naming the selector.
 const INTERNAL_ASSEMBLER_BUG: &str =
     "the playground hit an internal assembler error on this line. This is a \
      bug: press 'copy diagnostic bundle' and open an issue with what it copies";
@@ -691,9 +696,9 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         }
         // MOVN: encode any value whose width-masked inverse fits a single
         // 16-bit shifted halfword. GAS encodes `mov w0, #0xffffffff` and
-        // `mov x0, #-1` this way; the old path only tried MOVN for negative
-        // literals and only unshifted, so the positive hex form (and shifted
-        // inverses like 0xffff0000) were wrongly rejected.
+        // `mov x0, #-1` this way. Trying MOVN for negative literals only,
+        // and only unshifted, rejects the positive hex form and shifted
+        // inverses like 0xffff0000.
         {
             let width_mask: u64 = if sf { u64::MAX } else { 0xFFFF_FFFF };
             let inv = !(imm as u64) & width_mask;
@@ -710,8 +715,8 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         }
         // Last resort, and the one GAS reaches for: any constant that is a
         // valid repeating bitmask pattern lowers to `ORR Rd, ZR, #imm`.
-        // Without it `mov x0, 0x5555555555555555` -- a mask a student
-        // writes by hand -- was refused even though one instruction covers
+        // Without it `mov x0, 0x5555555555555555` (a mask a student
+        // writes by hand) is refused even though one instruction covers
         // it. MOVZ/MOVN stay ahead of it so the common small constants keep
         // the encoding GAS picks for them.
         if let Ok(word) = encode_log_imm_fields(31, rd, imm as u64, sf, 0b01, ln) {
@@ -765,8 +770,8 @@ fn encode_movzk(ops: &[&str], opc: u8, ln: usize) -> Result<u32, EmuError> {
                 _ => return asm_err(ln, "MOVZ/MOVK shift must be 0, 16, 32, or 48"),
             };
         } else {
-            // Silently dropping a non-LSL third operand left hw = 0, so
-            // `movk x0, #0xdead, #16` overwrote the LOW halfword with no
+            // Dropping a non-LSL third operand leaves hw = 0, so
+            // `movk x0, #0xdead, #16` overwrites the LOW halfword with no
             // message. GAS rejects anything that is not spelled lsl.
             return asm_err(
                 ln,
@@ -876,7 +881,7 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
 
     // Does operand 3 name an immediate rather than a register? A leading
     // `-` counts: GAS accepts `sub sp, sp, -16` and re-spells it as an add,
-    // and refusing it here reported "expected a register here".
+    // and refusing it here reports "expected a register here".
     let op3_is_imm = op3.starts_with('#')
         || op3.starts_with('\'')
         || op3.starts_with('-')
@@ -885,7 +890,7 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
     // `add x0, x1, w2, sxtw #2` is the EXTENDED register form, whose last
     // operand is an extend keyword rather than a shift. It has to be
     // recognized before parse_shift_modifier, which only speaks
-    // lsl/lsr/asr/ror and reported "expected a shift modifier" for the
+    // lsl/lsr/asr/ror and reports "expected a shift modifier" for the
     // widening index every array subscript in the course uses.
     let extend = if ops.len() == 4 && !op3_is_imm {
         parse_extend_modifier(ops[3])
@@ -911,7 +916,7 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
         }
         // A negative immediate is the opposite operation, which is what the
         // course toolchain emits: `sub x0, x1, -16` assembles as an add.
-        // ADDS/SUBS stay exact -- the hardware computes x - (-n) as x + n,
+        // ADDS/SUBS stay exact: the hardware computes x - (-n) as x + n,
         // carry included.
         let (op_bit, magnitude) = if raw < 0 {
             (1 - op_bit, raw.unsigned_abs())
@@ -919,8 +924,8 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
             (op_bit, raw as u64)
         };
         // Bit 22 shifts the 12-bit field left by 12. GAS reaches for it
-        // silently on an exact multiple of 4096, so `sub sp, sp, 4096` -- a
-        // valid course prologue -- encodes instead of being refused.
+        // silently on an exact multiple of 4096, so `sub sp, sp, 4096` (a
+        // valid course prologue) encodes instead of being refused.
         let (imm12, shift12) = if explicit_lsl12 {
             if magnitude > 4095 {
                 return asm_err(ln, "with lsl #12 the immediate must be 0-4095");
@@ -946,8 +951,8 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
     // parse_register collapses SP and XZR to index 31, but the hardware
     // separates them by encoding: the shifted form (bit 21 = 0) reads
     // register 31 as XZR, and only the EXTENDED form (bit 21 = 1) reaches
-    // SP. Route SP operands to the extended encoding -- emitting shifted
-    // for `add x0, sp, x1` silently computed with 0 -- and reject the
+    // SP. Route SP operands to the extended encoding (emitting shifted
+    // for `add x0, sp, x1` computes with 0) and reject the
     // placements no encoding covers, exactly as GAS does.
     let rd_is_sp = is_sp_name(ops[0]);
     let rn_is_sp = is_sp_name(ops[1]);
@@ -1008,7 +1013,7 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
 /// Encode `ADC/ADCS/SBC/SBCS Rd, Rn, Rm`: sf_op_S_11010000_Rm_000000_Rn_Rd.
 /// The family carries the NZCV carry bit into the adder, which is how
 /// multi-precision arithmetic chains one word to the next. It is
-/// register-only -- A64 has no add-with-carry immediate -- so an immediate
+/// register-only (A64 has no add-with-carry immediate), so an immediate
 /// third operand is named rather than reported as "expected a register".
 fn encode_carry(ops: &[&str], sub: bool, set_flags: bool, ln: usize) -> Result<u32, EmuError> {
     let name = match (sub, set_flags) {
@@ -1056,7 +1061,7 @@ fn encode_carry(ops: &[&str], sub: bool, set_flags: bool, ln: usize) -> Result<u
 
 /// Refuse `sp` anywhere in an instruction whose encoding has no room for
 /// it. `parse_register` collapses SP and XZR to index 31, so a stray `sp`
-/// in a logical, shift, multiply or divide silently computed with ZERO --
+/// in a logical, shift, multiply or divide silently computes with ZERO,
 /// a wrong answer with no diagnostic. The add/sub path already routes SP
 /// to the extended encoding; these forms have no such encoding, and GAS
 /// rejects them outright ("expected an integer or zero register").
@@ -1116,7 +1121,7 @@ fn encode_cmp(ops: &[&str], op_bit: u8, ln: usize) -> Result<u32, EmuError> {
     // the alias instead (`cmp w1, -1` assembles as `cmn w1, 1`), and
     // sentinel tests like top == -1 rely on that. Flip the same way, going
     // through parse_immediate so `#-0x10` and `#-0b10000` flip exactly
-    // like `#-16` (a bare parse::<i64> only understood decimal).
+    // like `#-16` (a bare parse::<i64> reads decimal only).
     let imm_body = ops[1].trim();
     if imm_body.starts_with('#')
         || imm_body.starts_with('\'')
@@ -1383,8 +1388,8 @@ fn encode_shift(ops: &[&str], shift_type: u8, ln: usize) -> Result<u32, EmuError
     if op3.starts_with('#') || op3.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         // Validate the full-width value BEFORE narrowing: `as u8` wraps
         // mod 256, and the UBFM field math below wraps again, so an
-        // out-of-range amount used to assemble silently into a different
-        // instruction (`lsl x0, x1, #64` became `lsr x0, x1, #3`). GAS
+        // out-of-range amount assembles into a different instruction
+        // (`lsl x0, x1, #64` becomes `lsr x0, x1, #3`). GAS
         // rejects anything outside the register width.
         let raw = parse_immediate(op3, ln)?;
         if !(0..reg_size as i64).contains(&raw) {
@@ -1605,7 +1610,7 @@ fn encode_dp1(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
         .find(|(mn, _, needs_sf, _)| *mn == name && needs_sf.is_none_or(|want| want == sf))
     else {
         // rev32 is the only row without a counterpart at the other width,
-        // so this is always about it.
+        // so a missing row is always rev32.
         return asm_err(
             ln,
             &format!(
@@ -1755,9 +1760,6 @@ fn require_same_fp_width(name: &str, widths: &[char], ln: usize) -> Result<char,
     Ok(first)
 }
 
-/// `name` is both the display name in the diagnostics and the key into
-/// `FP_BINARY_OPS`, so the dispatch arm names the operation once and the
-/// opcode comes from the shared row rather than a number spelled beside it.
 /// FMADD / FMSUB / FNMADD / FNMSUB Fd, Fn, Fm, Fa. `name` keys into
 /// `FP_MUL_ADD_OPS`. The accumulator is the LAST operand and lands in
 /// bits 14:10, which is what makes the operand order worth its own test.
@@ -1804,6 +1806,9 @@ fn encode_fcsel(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         | (fd as u32))
 }
 
+/// `name` is both the display name in the diagnostics and the key into
+/// `FP_BINARY_OPS`, so the dispatch arm names the operation once and the
+/// opcode comes from the shared row rather than a number spelled beside it.
 fn encode_fp_binary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
     let Some((_, opcode, _)) = FP_BINARY_OPS.iter().find(|(mn, _, _)| *mn == name) else {
         return asm_err(ln, &format!("unknown mnemonic `{name}`: {UNKNOWN_MNEMONIC_HINT}"));
@@ -1956,7 +1961,7 @@ fn encode_fcvt(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
             "fcvt converts between widths: one operand must be an S register and the other a D register (use fmov to copy at the same width)",
         );
     }
-    // 1-source with opcode 0b0001‖dest-type; ftype = source width.
+    // 1-source with opcode 0b0001 followed by dest-type; ftype = source width.
     let opcode: u32 = if wd == 'D' { 0b000101 } else { 0b000100 };
     Ok(0x1E20_4000 | fp_ftype(wn) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
@@ -2113,7 +2118,7 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
                 // as 00/01/10 and no sign-extending load has a 64-bit
                 // access size. Named explicitly so the shared MemSize
                 // mapping, which does answer for 11, cannot silently
-                // scale by 8 -- and as an error, not a panic, because on
+                // scale by 8, and as an error, not a panic, because on
                 // wasm a panic costs the whole worker.
                 return asm_err(ln, "internal: LDRS* never carries the 64-bit size field");
             }
@@ -2172,7 +2177,7 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
             option,
             shift_amount,
         } => {
-            // LDRSB/LDRSH/LDRSW register offset -- the array-indexing form
+            // LDRSB/LDRSH/LDRSW register offset: the array-indexing form
             // (`ldrsb w0, [x1, x2]`). Same S-bit rule as plain LDR/STR:
             // the only legal written amounts are 0 and log2(access bytes).
             let s_bit: u32 = match shift_amount {
@@ -2283,7 +2288,7 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
             // LDR/STR register. Encoding:
             //   size | 111 0 00 | V=0 | load(2b) | 1 | Rm | option(3) | S | 10 | Rn | Rt
             // The S bit means "scale the index by the access size", so the
-            // only legal written amounts are 0 and log2(access bytes) --
+            // only legal written amounts are 0 and log2(access bytes),
             // exactly what GAS enforces. `size` is that log2.
             let s_bit: u32 = match shift_amount {
                 None | Some(0) => 0,
@@ -2340,8 +2345,8 @@ enum AddressingMode {
         option: u8,
         /// The written `#<amount>`, if any. The encoder decides the S
         /// (scale) bit from the VALUE against the access size; riding it
-        /// on mere presence turned `lsl #0` into an 8x offset and
-        /// silently rescaled wrong amounts.
+        /// on mere presence turns `lsl #0` into an 8x offset and rescales
+        /// wrong amounts.
         shift_amount: Option<i64>,
     },
 }
@@ -2420,7 +2425,7 @@ impl Seg {
     }
 
     /// The tokens lying inside this segment. Segment boundaries always
-    /// fall on token boundaries -- a comma edge or a bracket edge -- so
+    /// fall on token boundaries (a comma edge or a bracket edge), so
     /// this never splits a token in half.
     fn toks<'a>(&self, toks: &'a [Tok]) -> &'a [Tok] {
         let lo = toks.partition_point(|t| t.start < self.lo);
@@ -2454,8 +2459,8 @@ fn classify_word(word: &str) -> TokKind {
 }
 
 /// Split an address operand into tokens. Total by construction: nothing
-/// is rejected here, so tokenizing can never introduce a rejection the
-/// old string parser did not have. Whitespace separates words and is
+/// is rejected here, so tokenizing introduces no rejection of its own.
+/// Whitespace separates words and is
 /// otherwise dropped; the segment slices keep it, because the leaf
 /// parsers trim for themselves.
 fn tokenize_address(s: &str) -> Vec<Tok> {
@@ -2483,9 +2488,8 @@ fn tokenize_address(s: &str) -> Vec<Tok> {
 }
 
 /// The comma-separated segments of `src[lo..hi)`, at most `limit` of
-/// them. Mirrors `str::splitn`, which is what the old parser reached for:
-/// the last segment keeps any commas past the limit, and no segment is
-/// trimmed.
+/// them. Mirrors `str::splitn`: the last segment keeps any commas past
+/// the limit, and no segment is trimmed.
 fn comma_segments(toks: &[Tok], lo: usize, hi: usize, limit: usize) -> Vec<Seg> {
     let mut segments: Vec<Seg> = Vec::new();
     let mut start = lo;
@@ -2580,13 +2584,11 @@ fn split_extend_keyword(s: &str) -> (&str, &str) {
 /// The operand is tokenized first and the form is chosen by matching on
 /// the token shape: where the brackets, the commas and the writeback `!`
 /// fall, and whether the offset segment names a register. The parser it
-/// replaced discriminated by string shape instead -- `ends_with('!')`,
-/// then `starts_with('[')`, then `find(']')` with a non-empty tail, then
-/// `looks_like_register` on a `splitn` piece -- an order that was
-/// load-bearing and written down nowhere. A form checked too late was
-/// not rejected there: it was re-read as a different form, because
-/// whatever the register test turned away went straight to
-/// `parse_immediate`. That produces a wrong ENCODING, not an error.
+/// replaced discriminated by string shape instead, which makes the order
+/// of the tests load-bearing: a form checked too late is not rejected, it
+/// is re-read as a different form, because whatever the register test
+/// turns away goes straight to `parse_immediate`. That produces a wrong
+/// encoding, not an error.
 ///
 /// Every leaf parse still runs on the raw source slice of its segment,
 /// so the rejections read exactly as they did before.
@@ -2625,7 +2627,7 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
     let (inner_lo, inner_hi) = (toks[0].end, toks[close].start);
 
     // `[Xn], #imm` -> post-index. GAS requires the comma, and so do we:
-    // `[x0] #8` used to slide through as post-index and assemble a
+    // `[x0] #8` would slide through as post-index and assemble a
     // spelling the servers reject.
     if let Some(first_after) = toks.get(close + 1) {
         let (rn, _) = parse_register(s[inner_lo..inner_hi].trim(), ln)?;
@@ -2643,8 +2645,8 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
 
     // `[Xn]`, `[Xn, #imm]`, `[Xn, Xm, ...]`. The offset segment decides:
     // one register token and nothing else is the register-offset form.
-    // Everything else -- a `#imm`, a bare number, a `d1`, an empty
-    // piece -- is the immediate form and reports through
+    // Everything else (a `#imm`, a bare number, a `d1`, an empty
+    // piece) is the immediate form and reports through
     // `parse_immediate`, which is where those complaints came from
     // before and still do.
     let parts = comma_segments(&toks, inner_lo, inner_hi, 3);
@@ -2655,8 +2657,8 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
     }
     let (rn, _) = parse_register(parts[0].text(s), ln)?;
     if parts.len() > 1 {
-        // The old splitn shape silently DROPPED anything past the second
-        // comma, so `[x0, #8, #9]` encoded as `[x0, #8]` with no message.
+        // A plain splitn DROPS anything past the second comma, so
+        // `[x0, #8, #9]` encodes as `[x0, #8]` with no message.
         if parts.len() > 2 {
             return asm_err(
                 ln,
@@ -2763,9 +2765,9 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     }
     let (rt, sf) = parse_register(ops[0], ln)?;
     let (rt2, sf2) = parse_register(ops[1], ln)?;
-    // GAS rejects a mixed-width pair; accepting one took the width (and
+    // GAS rejects a mixed-width pair; accepting one takes the width (and
     // the address scale) from the first register only, so both slots
-    // reloaded garbage with no message.
+    // reload garbage with no message.
     if sf != sf2 {
         return asm_err(
             ln,
@@ -2794,8 +2796,8 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     }
     // Range-check the full-width quotient BEFORE narrowing: an `as i8`
     // cast wraps mod 256, so an out-of-range offset whose wrapped value
-    // landed back in [-64, 63] used to encode a silently wrong frame
-    // offset (a 20x20 table's -1616 moved SP up by 432).
+    // lands back in [-64, 63] encodes a wrong frame offset (a 20x20
+    // table's -1616 moves SP up by 432).
     let quotient = offset_val / scale;
     if !(-64..=63).contains(&quotient) {
         return asm_err(
@@ -4207,8 +4209,8 @@ mod tests {
 
     #[test]
     fn out_of_range_shift_amounts_are_rejected_not_rewritten() {
-        // Each of these used to assemble silently into a DIFFERENT
-        // instruction through u8 wrap + field overflow; GAS rejects all.
+        // Each of these assembles into a DIFFERENT instruction through
+        // u8 wrap plus field overflow; GAS rejects all.
         for src in [
             "LSL X0, X1, #64",
             "LSL W0, W1, #32",
@@ -4233,9 +4235,8 @@ mod tests {
 
     #[test]
     fn register_form_shifts_assemble_and_execute() {
-        // The LSLV/LSRV/ASRV encoders existed but the decoder could not
-        // read them back: `lsl x0, x1, x2` assembled fine then died
-        // mid-run with a raw hex word.
+        // Both directions have to agree: an encoder-only LSLV assembles
+        // fine and then dies mid-run with a raw hex word.
         let source = r#"
             MOV X1, #5
             MOV X2, #3
@@ -4277,8 +4278,8 @@ mod tests {
 
     #[test]
     fn sp_register_arithmetic_executes_with_sp_semantics() {
-        // `add x0, sp, x1` read rn=31 as XZR before the extended form
-        // existed: x0 became 16 and the frame maths silently collapsed.
+        // Read as the shifted form, `add x0, sp, x1` takes rn=31 as XZR:
+        // x0 becomes 16 and the frame maths collapses.
         let source = r#"
             MOV X2, SP
             MOV X1, #16
@@ -4392,7 +4393,7 @@ mod tests {
     fn logical_immediates_mask_to_the_register_width() {
         // GAS accepts `and w0, w1, #-2` as #0xfffffffe (31 ones, one zero);
         // 0x0A7D_F820 read off the A64 logical-immediate tables: sf=0,
-        // opc=00, N=0, immr=63&31->31? -- verified against gcc output.
+        // opc=00, N=0, immr=31, imms=61, verified against gcc output.
         let w = assemble("AND W0, W1, #-2").unwrap()[0];
         assert_eq!(w, assemble("AND W0, W1, #0xFFFFFFFE").unwrap()[0]);
         // The evaluator's ~1 spelling arrives here as -2 as well.
@@ -4414,8 +4415,9 @@ mod tests {
 
     #[test]
     fn same_line_label_and_instruction_assemble() {
-        // GAS lets a label share a line with an instruction; the two-pass
-        // encoder used to read `loop:` as the mnemonic. The same-line form
+        // GAS lets a label share a line with an instruction; an encoder
+        // that recognizes a label only on its own line reads `loop:` as
+        // the mnemonic. The same-line form
         // must assemble identically to the own-line form and resolve the
         // branch target correctly.
         let same = assemble("mov x0, 5
@@ -4434,8 +4436,8 @@ svc 0").unwrap();
     #[test]
     fn mov_encodes_positive_all_ones_as_movn() {
         // GAS encodes `mov w0, #0xffffffff` as MOVN w0, #0 (0x12800000) and
-        // `mov x0, #-1` as MOVN x0, #0 (0x92800000). The old path only tried
-        // MOVN for negative literals, rejecting the positive hex form.
+        // `mov x0, #-1` as MOVN x0, #0 (0x92800000). Trying MOVN for
+        // negative literals only rejects the positive hex form.
         assert_eq!(assemble("mov w0, #0xffffffff").unwrap()[0], 0x1280_0000);
         assert_eq!(assemble("mov x0, #-1").unwrap()[0], 0x9280_0000);
         // 0xfffffffe fits MOVN but not MOVZ (both halves nonzero): the
@@ -4448,8 +4450,8 @@ svc 0").unwrap();
 
     #[test]
     fn movk_with_a_non_lsl_shift_is_rejected() {
-        // A dropped third operand left hw = 0: `movk x0, #0xDEAD, #16`
-        // destroyed the low halfword the movz just placed, silently.
+        // A dropped third operand leaves hw = 0: `movk x0, #0xDEAD, #16`
+        // then destroys the low halfword the movz just placed.
         let err = assemble("MOVK X0, #0xDEAD, #16").unwrap_err();
         assert!(err.to_string().contains("lsl"), "was: {err}");
         assert!(assemble("MOVK X0, #0xDEAD, LSR #16").is_err());
@@ -4460,8 +4462,8 @@ svc 0").unwrap();
 
     #[test]
     fn register_offset_scale_follows_the_written_amount() {
-        // The S bit used to ride on the mere PRESENCE of an amount, so
-        // `lsl #0` scaled by 8 and every wrong amount silently rescaled.
+        // Riding the S bit on the mere PRESENCE of an amount scales
+        // `lsl #0` by 8 and rescales every wrong amount.
         assert_eq!(assemble("LDR X0, [X1, X2]").unwrap()[0], 0xF862_6820);
         assert_eq!(assemble("LDR X0, [X1, X2, LSL #0]").unwrap()[0], 0xF862_6820);
         assert_eq!(assemble("LDR X0, [X1, X2, LSL #3]").unwrap()[0], 0xF862_7820);
@@ -4478,8 +4480,8 @@ svc 0").unwrap();
 
     #[test]
     fn mixed_width_pairs_are_rejected() {
-        // GAS rejects these; accepting them stored the wrong width and
-        // both registers reloaded garbage.
+        // GAS rejects these; accepting them stores the wrong width and
+        // both registers reload garbage.
         let err = assemble("STP X0, W1, [SP, #0]").unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("same width"), "was: {msg}");
@@ -4593,8 +4595,8 @@ svc 0").unwrap();
 
     #[test]
     fn char_literal_semicolon_is_not_a_comment() {
-        // The comment stripper once cut the line at the `;`, leaving a
-        // dangling quote and an invalid-immediate error.
+        // A literal-blind comment stripper cuts the line at the `;`,
+        // leaving a dangling quote and an invalid-immediate error.
         let code = assemble("MOV W1, ';'").unwrap();
         let reference = assemble("MOV W1, #59").unwrap();
         assert_eq!(code, reference);
@@ -4691,9 +4693,8 @@ svc 0").unwrap();
 
     #[test]
     fn fp_op_tables_round_trip_at_both_widths() {
-        // One walk over both shared row tables, in place of the four
-        // hand-written round trips that covered fadd, fneg, fabs and fsqrt
-        // and left fsub, fmul and fdiv with no round trip at all.
+        // One walk over both shared row tables, so no row goes without a
+        // round trip.
         for (mnemonic, _, expected) in crate::decoder::FP_BINARY_OPS {
             for (letter, single) in [('d', false), ('s', true)] {
                 let src = format!("{mnemonic} {letter}0, {letter}1, {letter}2");
@@ -5946,8 +5947,8 @@ svc 0").unwrap();
     fn supported_mnemonics_all_reach_an_arm() {
         // Probe the dispatch at the layer it lives on: hand `encode_line` the
         // bare mnemonic with no operands at all. What comes back does not
-        // matter -- an operand-count complaint, or an encoding for the forms
-        // that take no operands -- because only the fallthrough produces
+        // matter (an operand-count complaint, or an encoding for the forms
+        // that take no operands) because only the fallthrough produces
         // "unknown mnemonic". So this fails on exactly one thing: an entry
         // here that the match no longer has an arm for.
         let labels: HashMap<String, u64> = HashMap::new();
@@ -6121,7 +6122,7 @@ svc 0").unwrap();
     fn tokenizer_classifies_the_operand_words() {
         // The three word kinds are the whole grammar: a register name, a
         // number-ish word, and anything else. Whitespace and casing move
-        // the spans, never the kinds -- which is why the shape match can
+        // the spans, never the kinds, which is why the shape match can
         // be spelled once and cover every spelling.
         for spelling in ["[x0, w2, sxtw #2]", "[x0,w2,sxtw #2]", "[ X0 , W2 , SXTW #2 ]"] {
             assert_eq!(
@@ -6140,7 +6141,7 @@ svc 0").unwrap();
             vec!["LBracket:[", "Reg:sp", "Comma:,", "Imm:#-8", "RBracket:]", "Bang:!"]
         );
         // `d1` is not a general register, so it is a Keyword and lands on
-        // the immediate path -- exactly where `[x0, d1]`'s complaint
+        // the immediate path, exactly where `[x0, d1]`'s complaint
         // comes from.
         assert_eq!(tokens_of("d1"), vec!["Keyword:d1"]);
         assert_eq!(tokens_of("x99"), vec!["Reg:x99"]);
@@ -6151,9 +6152,9 @@ svc 0").unwrap();
 
     #[test]
     fn comma_segments_match_splitn() {
-        // The segments are what the leaf parsers used to receive from
-        // `splitn`, untrimmed and with the limit's overflow left on the
-        // last piece. Drift here is a silently different parse.
+        // The segments are what the leaf parsers receive: untrimmed, with
+        // the limit's overflow left on the last piece. Drift here is a
+        // silently different parse.
         for (src, limit) in [("x0, x1, lsl #3, junk", 3), ("x0, #8", 2), ("x0", 3), ("", 2)] {
             let toks = tokenize_address(src);
             let got: Vec<&str> = comma_segments(&toks, 0, src.len(), limit)
