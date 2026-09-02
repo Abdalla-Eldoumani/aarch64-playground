@@ -5,8 +5,8 @@
  * loader's section bases, the heap window, the stack band, and the host-stub
  * range are described in exactly one place: a panel that hardcoded them
  * would keep labelling addresses after the Rust constants moved. This module
- * holds the shape and the lookup only -- no wasm import, so it stays a pure
- * helper the panels and their tests can use directly.
+ * holds the shape and the lookup only, with no wasm import, so it stays a
+ * pure helper the panels and their tests can use directly.
  *
  * Bands are half-open `[start, end)`: `end` is the first address that is NOT
  * in the region, which is how the Rust side builds them (base + window).
