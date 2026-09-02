@@ -2,7 +2,7 @@
   "title": "Warm up the registers",
   "slug": "warm-up-the-registers",
   "order": 1,
-  "topic": "arithmetic",
+  "topic": "armv8",
   "difficulty": "intro",
   "prompt": "Three values are waiting in registers: `a`, `b`, and `c`. Compute `(a + b) - c` and print it.\n\nThe starter loads the three values and prints whatever the result register holds, so all that is missing is the arithmetic in the middle. Two instructions are enough.\n\n## what is checked\n\n- the combined result is printed on its own line\n- the program exits cleanly\n- the subtraction actually happens (no writing the answer in directly)",
   "starter": "// combine three values into one result and print it\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(c_r, x21)\ndefine(result_r, x22)\n\n        .data\nfmt:    .string \"result = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, 15                     // first value\n        mov     b_r, 27                     // second value\n        mov     c_r, 9                      // the deduction\n        mov     result_r, 0                 // replace this placeholder\n\n        // TODO: compute (a + b) - c into result_r\n\n        ldr     x0, =fmt\n        mov     x1, result_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
