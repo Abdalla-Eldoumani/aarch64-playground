@@ -129,7 +129,7 @@ graph_lbl_next:     .string "\xe2\x96\xb8"  // marks the end that leaves next
 
 graph_title:        .string "graph  ·  breadth first and depth first"
 graph_foot_menu:    .string "one graph, two walks: a queue spreads out, a stack dives in"
-graph_foot_run:     watch the frontier: which end empties next is the difference
+graph_foot_run:     .string "watch the frontier: which end empties next is the whole difference"
 graph_foot_pick:    .string "0 cancels and returns to the graph menu"
 
 graph_panel_map:    .string "graph"
@@ -1351,7 +1351,8 @@ graph_cut_out:
 
 // graph_traverse(w0 = 0 breadth first, 1 depth first)
 // One loop runs both walks. The queue hands back its oldest entry and the
-// stack its newest,
+// stack its newest, and that single choice is the whole of the difference
+// the student is here to see.
 graph_traverse:
     stp     fp, lr, [sp, -96]!
     mov     fp, sp
