@@ -40,12 +40,18 @@ export async function generateMetadata({
   const description = exercise.topic
     ? `A practice exercise on ${exercise.topic}, checked by running your program against expected behavior.`
     : FALLBACK_DESCRIPTION;
+  // Three theory sets in a family share one title, so the tab and share-card
+  // title carries the difficulty that tells them apart; the page h1 keeps the
+  // bare content title.
+  const pageTitle = exercise.difficulty
+    ? `${exercise.title} (${exercise.difficulty})`
+    : exercise.title;
   // The title composes through the root template (%s -- cpsc 355 playground).
   // Open Graph and Twitter are not deep-merged across segments, so each exercise
   // restates the full composed title and its own url instead of inheriting.
-  const composedTitle = `${exercise.title} -- cpsc 355 playground`;
+  const composedTitle = `${pageTitle} -- cpsc 355 playground`;
   return {
-    title: exercise.title,
+    title: pageTitle,
     description,
     alternates: { canonical: `/practice/${slug}` },
     openGraph: {
