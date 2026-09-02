@@ -618,6 +618,14 @@ mov     x11, 100
 msub    x12, x9, x10, x11   // x12 = 100 - 6 * 7 = 58`,
   },
   {
+    mnemonic: "mneg",
+    category: "Data processing",
+    syntax: "mneg xd, xn, xm",
+    example: `mov     x1, 7
+mov     x2, 6
+mneg    x3, x1, x2          // x3 = -42`,
+  },
+  {
     mnemonic: "negs",
     category: "Data processing",
     syntax: "negs xd, xm",

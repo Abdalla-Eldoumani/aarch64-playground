@@ -115,6 +115,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   MUL: { summary: "Rd = Rn * Rm. Low bits only.", cExample: "Rd = Rn * Rm;" },
   MADD: { summary: "Rd = Ra + Rn * Rm.", cExample: "Rd = Ra + Rn * Rm;" },
   MSUB: { summary: "Rd = Ra - Rn * Rm.", cExample: "Rd = Ra - Rn * Rm;" },
+  MNEG: {
+    summary: "Rd = -(Rn * Rm). Alias for `MSUB Rd, Rn, Rm, ZR`.",
+    example: "mneg x0, x1, x2",
+    cExample: "Rd = -(Rn * Rm);",
+  },
   SMULL: { summary: "Xd = Wn * Wm, the exact 64-bit product of two signed 32-bit values.", example: "smull x0, w1, w2", cExample: "long d = (long)a * b;" },
   UMULL: { summary: "Xd = Wn * Wm, the exact 64-bit product of two unsigned 32-bit values.", example: "umull x0, w1, w2", cExample: "unsigned long d = (unsigned long)a * b;" },
   SMULH: { summary: "Xd = the top 64 bits of the signed 128-bit product Xn * Xm.", example: "smulh x0, x1, x2", cExample: "Rd = (long)(((__int128)a * b) >> 64);" },
