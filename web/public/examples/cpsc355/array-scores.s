@@ -45,7 +45,7 @@ main:
         bl      printf
 
         ldr     x0, =fmt_input
-        add     x1, fp, score2_s
+        add     x1, fp, score2_s            // x1 = address of score2 on stack
         bl      scanf
 
         ldr     x0, =fmt_prompt
@@ -53,12 +53,12 @@ main:
         bl      printf
 
         ldr     x0, =fmt_input
-        add     x1, fp, score3_s
+        add     x1, fp, score3_s            // x1 = address of score3 on stack
         bl      scanf
 
-        ldr     score1_r, [fp, score1_s]
-        ldr     score2_r, [fp, score2_s]
-        ldr     score3_r, [fp, score3_s]
+        ldr     score1_r, [fp, score1_s]    // w19 = score1
+        ldr     score2_r, [fp, score2_s]    // w20 = score2
+        ldr     score3_r, [fp, score3_s]    // w21 = score3
 
         // Print each score
         ldr     x0, =fmt_score
@@ -77,8 +77,8 @@ main:
         bl      printf
 
         // Compute average
-        add     sum_r, score1_r, score2_r
-        add     sum_r, sum_r, score3_r
+        add     sum_r, score1_r, score2_r   // sum = s1 + s2
+        add     sum_r, sum_r, score3_r      // sum += s3
         mov     w24, 3                      // w24 holds the divisor; sdiv takes no immediate
         sdiv    avg_r, sum_r, w24           // integer divide, so 85.0 prints as 85
 
