@@ -162,7 +162,7 @@ export function LessonArticle({
                     <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                       figure {sheetNumber}.{editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
-                        runnable -- step it and watch the registers
+                        runnable: step it and watch the registers
                       </span>
                     </span>
                     <OpenInPlayground
