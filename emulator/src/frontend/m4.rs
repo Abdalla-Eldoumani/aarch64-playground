@@ -145,7 +145,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             return Err(EmuError::PreprocError {
                 line: line_num,
                 message: format!(
-                    "malformed m4 define: {} -- write `define(NAME, body)`",
+                    "malformed m4 define: {}. Write it as `define(NAME, body)`",
                     diagnose_define(trimmed, raw.trim())
                 ),
             });
@@ -233,7 +233,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             return Err(EmuError::PreprocError {
                 line: line_num,
                 message: format!(
-                    "m4 expansion grew the whole source past {} MiB -- a macro body \
+                    "m4 expansion grew the whole source past {} MiB. A macro body \
                      repeated across many lines can blow up the output; shrink the \
                      macro or the number of references",
                     MAX_EXPANDED_TOTAL_BYTES / (1024 * 1024)
@@ -570,7 +570,7 @@ fn diagnose_define(trimmed: &str, raw: &str) -> String {
         if let Some(marker) = comment_inside_define_body(raw) {
             return format!(
                 "the `{marker}` comment inside the body ends the line before the \
-                 closing `)` -- move the comment after the `)`"
+                 closing `)`. Move the comment after the `)`"
             );
         }
         return "the closing `)` is missing".to_string();
