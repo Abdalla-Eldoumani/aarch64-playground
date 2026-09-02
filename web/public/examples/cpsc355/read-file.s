@@ -1,8 +1,8 @@
-// io_ex4_read_file.asm
+// read-file.s
 // Open "input.txt", read its contents, print them with printf.
 // Uses a read loop to handle files larger than the buffer.
 //
-// Compile: m4 io_ex4_read_file.asm > io_ex4_read_file.s && gcc io_ex4_read_file.s -o io_ex4_read_file
+// Compile: m4 read-file.s > read-file.gen.s && gcc read-file.gen.s -o read-file
 // Setup:   echo "Hello from a file!" > input.txt
 // Output:  Hello from a file!
 
@@ -31,7 +31,7 @@ main:   stp     fp, lr, [sp, alloc]!
         ldr     x1, =fname
         mov     w2, 0                   // O_RDONLY
         mov     w3, 0
-        mov     x8, 56
+        mov     x8, 56                  // openat
         svc     0
 
         cmp     w0, 0
@@ -43,7 +43,7 @@ read_loop:
         mov     w0, fd_r
         add     x1, fp, buf_s
         mov     x2, buf_size - 1        // leave room for null
-        mov     x8, 63
+        mov     x8, 63                  // read
         svc     0
         mov     n_read_r, x0
 
@@ -60,9 +60,8 @@ read_loop:
         b       read_loop
 
 read_done:
-        // close
         mov     w0, fd_r
-        mov     x8, 57
+        mov     x8, 57                  // close
         svc     0
         b       done
 
