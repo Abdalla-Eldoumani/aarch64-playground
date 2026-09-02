@@ -23,7 +23,7 @@ main:   stp     fp, lr, [sp, -16]!
         mov     argc_r, w0
         mov     argv_r, x1
 
-        mov     i_r, 0                 // i = 0
+        mov     i_r, 0
         b       test
 
 top:
