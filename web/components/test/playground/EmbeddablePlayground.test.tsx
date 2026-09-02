@@ -92,6 +92,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// The full-chrome surface is reached through dynamic(), so it mounts a beat
+// after the shell does. Awaiting the same import settles it before a case
+// reads the surface's own markup.
+async function fullChromeMounted() {
+  await act(async () => {
+    await import("@/components/playground/FullChromeSurface");
+  });
+}
+
 describe("EmbeddablePlayground", () => {
   it("is driveable through an imperative handle once engaged", () => {
     const hub: Hub = makeHub();
@@ -532,7 +541,7 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
   });
 
-  it("gates the full-chrome execution controls on the hub's loaded flag", () => {
+  it("gates the full-chrome execution controls on the hub's loaded flag", async () => {
     // The real Controls renders in full chrome; run/step/back must follow
     // programLoaded even when the snapshot ring says stepping back is
     // possible (a stale canStepBack cannot outvote a missing program).
@@ -540,6 +549,7 @@ describe("EmbeddablePlayground", () => {
       makeHub({ programLoaded: false, canStepBack: true }),
     );
     const { unmount } = render(<EmbeddablePlayground chrome="full" />);
+    await fullChromeMounted();
     for (const name of [/^run/, /^step/, /^back/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
@@ -658,6 +668,7 @@ describe("program delivery from recents and the tutorial", () => {
         startSource={"// working buffer\nret"}
       />,
     );
+    await fullChromeMounted();
     // A handoff carrying stdin and VFS seeds displaces the buffer into
     // recents. The stdin seed must not survive the recall; the VFS file
     // stays, because full chrome treats the VFS as the student's home

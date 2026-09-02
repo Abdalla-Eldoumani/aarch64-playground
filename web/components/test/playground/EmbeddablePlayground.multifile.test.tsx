@@ -149,6 +149,15 @@ afterEach(() => {
   terminalProps.current = null;
 });
 
+// The full-chrome surface is reached through dynamic(), so it mounts a beat
+// after the shell does. Awaiting the same import settles it before a case
+// reads the surface's own markup.
+async function fullChromeMounted() {
+  await act(async () => {
+    await import("@/components/playground/FullChromeSurface");
+  });
+}
+
 describe("multi-file line translation", () => {
   it("keeps the current-line marker in the file the machine assembled", async () => {
     seedFiles();
@@ -159,6 +168,7 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
+    await fullChromeMounted();
     await act(async () => {
       ref.current!.assemble();
     });
@@ -216,6 +226,7 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
+    await fullChromeMounted();
 
     // Click into util.s, then set a breakpoint on its line 3.
     fireEvent.click(screen.getByText("util.s"));
@@ -248,6 +259,7 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground chrome="full" startSource={MAIN} />,
     );
     engage(container);
+    await fullChromeMounted();
 
     fireEvent.click(screen.getByLabelText("remove util.s"));
 

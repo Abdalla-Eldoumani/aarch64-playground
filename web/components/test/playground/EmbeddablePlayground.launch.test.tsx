@@ -164,10 +164,20 @@ afterEach(() => {
   terminalProps.current = null;
 });
 
+// The full-chrome surface is reached through dynamic(), so it mounts a beat
+// after the shell does. Awaiting the same import settles it before a case
+// reads the surface's own markup.
+async function fullChromeMounted() {
+  await act(async () => {
+    await import("@/components/playground/FullChromeSurface");
+  });
+}
+
 describe("the run-mode control's presence", () => {
-  it("appears for an interactive example, at that example's default", () => {
+  it("appears for an interactive example, at that example's default", async () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
+    await fullChromeMounted();
     expect(runModeGroup()).toBeNull();
 
     act(() => {
@@ -181,9 +191,10 @@ describe("the run-mode control's presence", () => {
     ).toBe("true");
   });
 
-  it("shows terminal preselected for a default-terminal example", () => {
+  it("shows terminal preselected for a default-terminal example", async () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
+    await fullChromeMounted();
     act(() => {
       ref.current!.loadProgram({
         source: SOURCE,
@@ -206,9 +217,10 @@ describe("the run-mode control's presence", () => {
     expect(runModeGroup()).toBeNull();
   });
 
-  it("disappears when a text-only swap replaces the interactive program", () => {
+  it("disappears when a text-only swap replaces the interactive program", async () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
+    await fullChromeMounted();
     act(() => {
       ref.current!.loadProgram({ source: SOURCE, stem: "snake", label: "snake" });
     });
