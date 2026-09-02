@@ -127,7 +127,7 @@ export function ImportExport({
             else onImport(target, result.files[0].body);
           })
           .catch(() => {
-            toast.error("could not read that file -- try picking it again");
+            toast.error("could not read that file. pick it again");
           });
         return;
       }
@@ -166,7 +166,7 @@ export function ImportExport({
         .catch(() => {
           // A moved or unreadable file rejects file.text(); without this
           // the rejection was silent and the student saw nothing at all.
-          toast.error("could not read the files -- try picking them again");
+          toast.error("could not read those files. pick them again");
         });
     },
     [onImport, onImportMany, target, toast],
