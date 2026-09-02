@@ -127,9 +127,8 @@ export interface StepResultPayload {
   error: string | null;
   /**
    * Editor line of the instruction a runtime error names, resolved by the
-   * wasm side through the authoritative line map (call site via LR-4 for
-   * faults inside host stubs). Absent on success and on wasm builds that
-   * predate the field.
+   * wasm side through the line map (call site via LR-4 for faults inside host
+   * stubs). Absent on success and on wasm builds that predate the field.
    */
   error_line?: number | null;
   outcome: string;
@@ -146,16 +145,16 @@ export interface RunResultPayload {
   error_line?: number | null;
   /**
    * True when the run stopped only because it exhausted the caller's step
-   * budget: not halted, not blocked, no breakpoint, no error. Without this
-   * flag a budget stop was indistinguishable from a clean finish and an
-   * infinite loop stopped silently.
+   * budget: not halted, not blocked, no breakpoint, no error. Without it a
+   * budget stop is indistinguishable from a clean finish and an infinite loop
+   * stops silently.
    */
   step_limit_reached?: boolean;
   /**
    * True when a reset/assemble/state-restore landed mid-run and this
    * result describes a machine that no longer exists. The hub discards
-   * it: acting on it painted `unknown instruction: 0x00000000` right
-   * after the student pressed Reset.
+   * it: acting on it paints `unknown instruction: 0x00000000` right after the
+   * student presses Reset.
    */
   cancelled?: boolean;
   /**
@@ -168,11 +167,11 @@ export interface RunResultPayload {
 
 /**
  * The external call a paused program counter sits inside. A hosted call
- * (`bl printf`) costs three steps on addresses the student never wrote --
- * two trampoline words and the synthetic stub -- so the wasm side names the
- * callee and recovers the call site from LR-4 for all three. Null whenever
- * the pc is an instruction the program itself holds, and absent on wasm
- * builds that predate the export.
+ * (`bl printf`) costs three steps on addresses the student never wrote (two
+ * trampoline words and the synthetic stub), so the wasm side names the callee
+ * and recovers the call site from LR-4 for all three. Null whenever the pc is
+ * an instruction the program itself holds, and absent on wasm builds that
+ * predate the export.
  */
 export interface ExternalCall {
   /** The libc function being called ("printf", "scanf", ...). */
@@ -209,11 +208,11 @@ export interface StateSnapshot {
   stdoutDelta: string;
   stderrDelta: string;
   /**
-   * Bytes the machine has ever written to stdout, echoed input included --
-   * an absolute coordinate the console scrollback aligns itself to. Step
-   * back and a named restore roll it back to the frame's value, which is
-   * how the web unprints what an undone step wrote. Undefined on wasm
-   * builds that predate the counters, which hides the whole mechanism.
+   * Bytes the machine has ever written to stdout, echoed input included: an
+   * absolute count the console scrollback aligns to. Step back and a named
+   * restore roll it back to the frame's value, which is how the web unprints
+   * what an undone step wrote. Undefined on wasm builds that predate the
+   * counters, which hides the feature.
    */
   stdoutSeen?: number;
   /** The same counter for stderr (see `stdoutSeen`). */
@@ -233,9 +232,11 @@ export interface StateSnapshot {
    * `hostCallContext`, which is how the UI hides the feature.
    */
   externalCall?: ExternalCall | null;
-  /// `(addr, len)` pairs of memory ranges written since the previous
-  /// snapshot. Drives memory-cell diff highlighting in the replay
-  /// scrubber. Flat array of `[addr, len, addr, len, ...]`.
+  /**
+   * `(addr, len)` pairs of memory ranges written since the previous
+   * snapshot. Drives memory-cell diff highlighting in the replay scrubber.
+   * Flat array of `[addr, len, addr, len, ...]`.
+   */
   dirtyAddrs: number[];
 }
 
@@ -246,13 +247,13 @@ export interface StateSnapshot {
  * instruction will land. Both backends return this before the first
  * assemble, so the cold register panel shows the full register file (not
  * just SP/PC) and the worker and main-thread paths agree byte for byte.
- * A single source of truth here keeps the two from drifting apart.
  */
 export function emptyStateSnapshot(frame = 0): StateSnapshot {
   return {
     frame,
     registers: Array(31).fill("0x0000000000000000"),
     fpRegisters: [],
+    // sp and pc mirror the Rust memory map's stack top and code base.
     sp: "0x0000000080000000",
     pc: "0x0000000000400000",
     nzcv: 0,
