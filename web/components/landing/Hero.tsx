@@ -98,6 +98,10 @@ export function Hero() {
               // its line into the embed console during the autoplay.
               autoplaySteps={10}
               readOnly
+              // A demonstration needs no editing surface, so the hero draws
+              // its program with the static view: the code is in the server
+              // HTML and the landing never loads the editor at all.
+              staticEditor
               // The hero is a demonstration, not a debugger: it keeps the
               // two-button frame the autoplay walk was designed around.
               showStep={false}
