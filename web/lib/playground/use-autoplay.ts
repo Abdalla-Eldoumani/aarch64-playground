@@ -23,7 +23,7 @@ export interface AutoplayParams {
   steps: number;
   /** The hub is live: nothing can assemble before this. */
   machineLoaded: boolean;
-  /** The hub as a ref, never as a render value -- see the effect below. */
+  /** The hub as a ref, never as a render value; see the effect below. */
   machine: RefObject<AutoplayMachine>;
   source: string;
   args: string;
@@ -112,10 +112,10 @@ export function useAutoplay({
     };
     // Keyed STRICTLY on [machineLoaded, enabled]: useEmulator returns a NEW
     // object after every step (its memo deps include the changing
-    // registers/pc), so keying on anything that moves with it would re-run
-    // this effect after the first step, the cleanup would clear the timer,
-    // and the once-per-engage guard would then block any restart -- the hero
-    // would step once and freeze.
+    // registers/pc), so keying on anything that moves with it would re-run this
+    // effect after the first step, the cleanup would clear the timer, and the
+    // once-per-engage guard would then block any restart, and the hero would
+    // step once and freeze.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [machineLoaded, enabled]);
 }
