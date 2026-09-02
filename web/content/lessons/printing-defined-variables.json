@@ -1,7 +1,7 @@
 {
   "title": "Printing a variable from .data",
   "slug": "printing-defined-variables",
-  "order": 6,
+  "order": 5,
   "summary": "How to load a value out of .data with two ldr instructions and print it.",
   "tags": [
     "printing",
