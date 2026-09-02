@@ -11,7 +11,7 @@ const DESCRIPTION =
 
 export const metadata: Metadata = {
   // The landing answers for the site root, so its title is the bare site name
-  // rather than the "%s -- cpsc 355 playground" template the content routes
+  // rather than the "%s · cpsc 355 playground" template the content routes
   // compose. Open Graph and Twitter are not deep-merged across segments, so the
   // home card is restated here with the canonical "/" url.
   title: { absolute: "cpsc 355 playground" },
