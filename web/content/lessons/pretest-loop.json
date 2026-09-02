@@ -1,8 +1,8 @@
 {
-  "title": "Pre-test Loops in Assembly",
+  "title": "Pre-test loops",
   "slug": "pretest-loop",
   "order": 8,
-  "summary": "A lesson that covers the implementation of a pre-test loop in Assembly language, including its structure and usage.",
+  "summary": "How to build a for or while loop, where the condition is checked before every pass.",
   "tags": [
     "loops",
     "pre-test loop"
