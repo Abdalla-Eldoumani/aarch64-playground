@@ -228,6 +228,54 @@ main:
     assert_eq!(cpu.exit_code(), Some(3), "w0 becomes the exit code");
 }
 
+#[test]
+fn ldrsw_post_index_sign_extends_and_advances_the_base() {
+    // The values and base deltas csarm's ldrs_writeback probe printed.
+    // -1 is what proves the sign extension survived the new decode path:
+    // a copy of the plain-load arm without the inner opc would emit an
+    // LDR and load 0x00000000ffffffff.
+    let src = r#"
+.data
+vals:   .word   -1, -2, -3
+
+.text
+.global main
+main:
+    ldr     x1, =vals
+    mov     x9, x1
+    ldrsw   x0, [x1], 4
+    ldrsw   x2, [x1], 4
+    ldrsw   x3, [x1, -4]!
+    ldrsw   x4, [x1, -4]
+    mov     w0, 0
+    ret
+"#;
+    let mut cpu = assemble(src);
+    cpu.step().expect("ldr x1, =vals steps");
+    cpu.step().expect("mov x9, x1 steps");
+    let base = cpu.regs.read_gpr(9, true);
+
+    cpu.step().expect("first ldrsw steps");
+    assert_eq!(cpu.regs.read_gpr(0, true) as i64, -1);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 4, "post-index advances the base");
+
+    cpu.step().expect("second ldrsw steps");
+    assert_eq!(cpu.regs.read_gpr(2, true) as i64, -2);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 8);
+
+    cpu.step().expect("pre-index ldrsw steps");
+    // Pre-index updates the base FIRST, so this rereads vals[1].
+    assert_eq!(cpu.regs.read_gpr(3, true) as i64, -2);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 4);
+
+    cpu.step().expect("unscaled ldrsw steps");
+    assert_eq!(cpu.regs.read_gpr(4, true) as i64, -1);
+    assert_eq!(cpu.regs.read_gpr(1, true), base + 4, "the unscaled form leaves the base alone");
+
+    let r = cpu.run_until_break(1_000).expect("run to halt");
+    assert!(r.halted);
+}
+
 // ---------------------------------------------------------------------------
 // single precision (S registers) through the full pipeline: the course
 // teaches s/d as two views of one register file, with fcvt bridging them

@@ -1788,10 +1788,10 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
     }
     let addr_str: String = ops[1..].join(",");
     let am = parse_addressing_mode(addr_str.trim(), ln)?;
-    let (name, unsigned_load, extend) = match size {
-        0b00 => ("ldrsb", "ldrb", "sxtb"),
-        0b01 => ("ldrsh", "ldrh", "sxth"),
-        _ => ("ldrsw", "ldr", "sxtw"),
+    let name = match size {
+        0b00 => "ldrsb",
+        0b01 => "ldrsh",
+        _ => "ldrsw",
     };
     // opc=10 for Xt target, opc=11 for Wt target.
     let inner_opc: u32 = if target_is_x { 0b10 } else { 0b11 };
@@ -1812,23 +1812,24 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
                 return asm_err(ln, "internal: LDRS* never carries the 64-bit size field");
             }
             let scale = u64::from(MemSize::from_size_field(size).bytes());
-            // Two distinct rejections, named separately: one message that
-            // asserted "must be positive and aligned" blamed alignment for
-            // ldrsb, whose scale of 1 makes alignment impossible to violate.
-            if offset_val < 0 {
+            if offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
+                // Same conversion the plain loads take: GAS silently emits
+                // the unscaled LDURS* encoding for a negative or unaligned
+                // offset rather than refusing it.
+                if (-256..=255).contains(&offset_val) {
+                    return Ok(((size as u32) << 30)
+                        | (0b111000 << 24)
+                        | (inner_opc << 22)
+                        | (((offset_val as u32) & 0x1FF) << 12)
+                        | ((rn as u32) << 5)
+                        | (rt as u32));
+                }
                 return asm_err(
                     ln,
                     &format!(
-                        "{name} takes only a non-negative offset here; load unsigned and \
-                         sign-extend instead ({unsigned_load} then {extend}), or index from a \
-                         lower base address"
+                        "the {name} offset {offset_val} must be scaled and non-negative, or \
+                         within [-256, 255] for the unscaled form"
                     ),
-                );
-            }
-            if !(offset_val as u64).is_multiple_of(scale) {
-                return asm_err(
-                    ln,
-                    &format!("the {name} offset {offset_val} must be a multiple of {scale}"),
                 );
             }
             let imm12 = (offset_val as u64 / scale) as u32;
@@ -1845,13 +1846,20 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
                 | ((rn as u32) << 5)
                 | (rt as u32))
         }
-        AddressingMode::Immediate { .. } => asm_err(
-            ln,
-            &format!(
-                "{name} has no pre/post-index form here; adjust the base with add/sub and use \
-                 the plain [xN, offset] form"
-            ),
-        ),
+        AddressingMode::Immediate { rn, offset, mode } => {
+            let offset_val = offset.unwrap_or(0);
+            if !(-256..=255).contains(&offset_val) {
+                return asm_err(ln, "pre/post-index offset must be in [-256, 255]");
+            }
+            let idx = if matches!(mode, IndexMode::PreIndex) { 0b11u32 } else { 0b01 };
+            Ok(((size as u32) << 30)
+                | (0b111000 << 24)
+                | (inner_opc << 22)
+                | (((offset_val as u32) & 0x1FF) << 12)
+                | (idx << 10)
+                | ((rn as u32) << 5)
+                | (rt as u32))
+        }
         AddressingMode::RegOffset {
             rn,
             rm,
@@ -3739,18 +3747,18 @@ mod tests {
     }
 
     #[test]
-    fn ldrs_offset_rejections_name_the_actual_cause() {
-        // A negative offset must not be blamed on alignment (ldrsb has
-        // scale 1; alignment cannot apply).
-        let err = assemble("LDRSB W0, [X1, #-1]").unwrap_err();
+    fn ldrs_negative_and_unaligned_offsets_ride_the_unscaled_form() {
+        // A negative or misaligned offset takes the unscaled (LDURS*)
+        // encoding rather than being refused, exactly as GAS does.
+        assert_eq!(assemble("LDRSB W0, [X1, #-1]").unwrap()[0], 0x38DF_F020);
+        assert_eq!(assemble("LDRSH W0, [X1, #3]").unwrap()[0], 0x78C0_3020);
+        // Past the unscaled reach the message names the range, and does
+        // not blame alignment (ldrsb has scale 1; alignment cannot apply).
+        let err = assemble("LDRSH W0, [X1, #-257]").unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("ldrsb"), "was: {msg}");
-        assert!(msg.contains("sxtb"), "was: {msg}");
+        assert!(msg.contains("ldrsh"), "was: {msg}");
+        assert!(msg.contains("[-256, 255]"), "was: {msg}");
         assert!(!msg.contains("align"), "was: {msg}");
-        // A misaligned positive offset names the offset and the multiple.
-        let err = assemble("LDRSH W0, [X1, #3]").unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("multiple of 2"), "was: {msg}");
         // Zero stays accepted.
         assert!(assemble("LDRSB W0, [X1]").is_ok());
         assert!(assemble("LDRSB W0, [X1, #0]").is_ok());
@@ -4014,6 +4022,45 @@ svc 0").unwrap();
     }
 
     // -- sign-extending loads --
+
+    #[test]
+    fn sign_extending_loads_take_the_imm9_writeback_forms() {
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("ldrsw x0, [x1], #4", 0xB880_4420u32),
+            ("ldrsw x0, [x1, #-4]!", 0xB89F_CC20),
+            ("ldrsw x0, [x1, #-4]", 0xB89F_C020),
+            ("ldrsw x0, [x1], #255", 0xB88F_F420),
+            ("ldrsw x0, [x1, #-256]!", 0xB890_0C20),
+            ("ldrsb x0, [x1], #1", 0x3880_1420),
+            ("ldrsb w0, [x1], #1", 0x38C0_1420),
+            ("ldrsb x0, [x1, #1]!", 0x3880_1C20),
+            ("ldrsb w0, [x1, #-1]!", 0x38DF_FC20),
+            ("ldrsb x0, [x1, #-1]", 0x389F_F020),
+            ("ldrsb w0, [x1, #-1]", 0x38DF_F020),
+            ("ldrsh x0, [x1], #2", 0x7880_2420),
+            ("ldrsh w0, [x1, #2]!", 0x78C0_2C20),
+            ("ldrsh x0, [x1, #2]!", 0x7880_2C20),
+            ("ldrsh w0, [x1], #2", 0x78C0_2420),
+            ("ldrsh x0, [x1, #-2]", 0x789F_E020),
+            ("ldrsh w0, [x1, #-2]", 0x78DF_E020),
+        ] {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert_eq!(word, want, "{src}");
+            // The word has to survive the round trip as a sign-extending
+            // load, not as a plain LDR/STR of the wrong width.
+            match crate::decoder::decode(word).unwrap() {
+                crate::decoder::Instruction::LdrSignExtended { .. } => {}
+                other => panic!("{src} decoded to {other:?}"),
+            }
+        }
+        for src in ["ldrsw x0, [x1], #256", "ldrsw x0, [x1, #-257]!"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("[-256, 255]"), "{src}: {err}");
+        }
+        let err = encode_line("ldrsw x0, [x1, #-257]", 0, &labels, 1).unwrap_err().to_string();
+        assert!(err.contains("[-256, 255]"), "{err}");
+    }
 
     #[test]
     fn assemble_ldrsb_xt_round_trips() {

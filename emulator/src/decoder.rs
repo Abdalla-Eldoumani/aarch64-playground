@@ -1658,12 +1658,30 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
             };
         }
 
-        // The sign-extending 9-bit-immediate forms (LDURS*, LDRS* with
-        // pre/post writeback) stay unsupported: reject them here so they
-        // cannot fall through and misdecode as a plain LDR/STR of the
+        // The sign-extending imm9 forms: LDURS* (idx 00) and LDRS* with
+        // pre/post writeback. They must be taken here, before the LdStOp
+        // selection below, or they misdecode as a plain LDR/STR of the
         // wrong direction and width.
         if opc >= 0b10 {
-            return Err(EmuError::UnknownInstruction(instr));
+            // size=X is reserved in this space (it is the prefetch
+            // encoding), the same rule the register-offset arm applies.
+            if matches!(size, MemSize::X) {
+                return Err(EmuError::UnknownInstruction(instr));
+            }
+            let mode = match idx_type {
+                0b00 => IndexMode::SignedOffset,
+                0b01 => IndexMode::PostIndex,
+                0b11 => IndexMode::PreIndex,
+                _ => return Err(EmuError::UnknownInstruction(instr)),
+            };
+            return Ok(Instruction::LdrSignExtended {
+                rt,
+                rn,
+                offset: LdStOffset::Immediate(sign_extend(bits(instr, 20, 12), 9)),
+                size,
+                mode,
+                sf: opc == 0b10, // 10 = Xt, 11 = Wt
+            });
         }
         let op = if opc == 0b01 { LdStOp::Ldr } else { LdStOp::Str };
 
@@ -2497,9 +2515,19 @@ mod tests {
             }
             other => panic!("expected LdrSignExtended, got {other:?}"),
         }
-        // The unsupported sign-extending writeback forms reject instead of
-        // misdecoding: 0x38C00421 = ldrsb w1, [x1], #0 (post-index).
-        assert!(decode(0x38C0_0421).is_err());
+        // The writeback forms take the same arm rather than falling
+        // through to a plain LDR/STR: 0x38C00421 = ldrsb w1, [x1], #0.
+        match decode(0x38C0_0421).unwrap() {
+            Instruction::LdrSignExtended { rt, rn, size, sf, mode, .. } => {
+                assert_eq!((rt, rn), (1, 1));
+                assert_eq!(size, MemSize::B);
+                assert!(!sf);
+                assert_eq!(mode, IndexMode::PostIndex);
+            }
+            other => panic!("expected LdrSignExtended, got {other:?}"),
+        }
+        // size=X stays reserved in this space: it is the prefetch encoding.
+        assert!(decode(0xF8C0_0421).is_err());
     }
 
     #[test]
