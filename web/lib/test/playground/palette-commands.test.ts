@@ -236,7 +236,7 @@ describe("the rows that act on the buffer", () => {
   it("clicks the playground's own file input rather than opening a picker of its own", () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".s,.asm,.txt";
+    input.setAttribute("data-import-input", "");
     document.body.appendChild(input);
     const click = vi.spyOn(input, "click").mockImplementation(() => {});
     row(buildPaletteCommands(makeDeps()), "import-file").run();

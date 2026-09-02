@@ -21,6 +21,7 @@ import {
   validateSource,
 } from "@/lib/playground/upload-guard";
 import type { ImportTarget } from "@/lib/hooks/use-import-target";
+import { buildPaletteCommands, type PaletteDeps } from "@/lib/playground/palette-commands";
 
 const TARGET: ImportTarget = { kind: "main" };
 
@@ -325,5 +326,40 @@ describe("ImportExport workspace bundle", () => {
       expect(toastError).toHaveBeenCalledWith("that .json file is not a workspace bundle"),
     );
     expect(onImportMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("ImportExport and the command palette", () => {
+  const noop = () => {};
+  const paletteDeps: PaletteDeps = {
+    blocked: false,
+    programLoaded: true,
+    canStepBack: true,
+    launchable: false,
+    source: "",
+    assemble: noop,
+    step: noop,
+    stepBack: noop,
+    run: noop,
+    pause: noop,
+    reset: noop,
+    launchInteractive: noop,
+    formatSource: noop,
+    openShare: noop,
+    openShortcuts: noop,
+    openTour: noop,
+    openConverter: noop,
+    toggleTheme: noop,
+  };
+
+  it("is the input the palette's import row finds and clicks", () => {
+    const { fileInput } = setup();
+    const click = vi.spyOn(fileInput, "click").mockImplementation(() => {});
+
+    const row = buildPaletteCommands(paletteDeps).find((a) => a.id === "import-file");
+    expect(row).toBeTruthy();
+    row!.run();
+
+    expect(click).toHaveBeenCalledTimes(1);
   });
 });

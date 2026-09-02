@@ -116,9 +116,8 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "launch-terminal",
       label: "Start in the terminal",
-      // Always present, with the description carrying the reason it
-      // would do nothing -- a row that only sometimes exists is
-      // unfindable by the student who saw it once.
+      // Always present, with the description carrying the reason it would do
+      // nothing.
       description: deps.launchable
         ? "assemble and run with the terminal pane"
         : "(this program runs in the console)",
@@ -183,8 +182,10 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
       label: "Import file",
       description: "open the file picker and load assembly into the active buffer",
       run: () => {
+        // ImportExport marks its hidden picker with this attribute; matching on
+        // the accept list instead let the two drift and the row find no input.
         const el = document.querySelector<HTMLInputElement>(
-          'input[type="file"][accept=".s,.asm,.txt"]',
+          'input[type="file"][data-import-input]',
         );
         el?.click();
       },

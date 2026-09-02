@@ -175,6 +175,7 @@ export function ImportExport({
       <input
         ref={fileRef}
         type="file"
+        data-import-input=""
         accept=".s,.asm,.txt,.json"
         multiple
         onChange={onFile}
