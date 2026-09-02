@@ -1,8 +1,8 @@
 {
-  "title": "Printing Variables in ARMv8 AArch64 Assembly",
+  "title": "Printing a variable from .data",
   "slug": "printing-defined-variables",
   "order": 6,
-  "summary": "Learn how to print defined variables in ARMv8 AArch64 Assembly.",
+  "summary": "How to load a value out of .data with two ldr instructions and print it.",
   "tags": [
     "printing",
     "variables"
