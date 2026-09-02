@@ -190,7 +190,7 @@ pub fn free(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 fn wild_pointer(addr: u64, why: &str, call: &str) -> EmuError {
     EmuError::RuntimeError {
         message: format!(
-            "{call}(0x{addr:x}): {why} -- {call} takes exactly the pointer a \
+            "{call}(0x{addr:x}): {why}. {call} takes exactly the pointer a \
              malloc returned, once"
         ),
     }
