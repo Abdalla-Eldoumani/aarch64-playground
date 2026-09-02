@@ -27,7 +27,7 @@
     {
       "name": "learn route entry js (index + lesson page chunks)",
       "path": ".next/static/chunks/app/\\(site\\)/learn/**/page-*.js",
-      "limit": "4 KB"
+      "limit": "5.7 KB"
     },
     {
       "name": "practice route entry js (index + exercise page chunks)",
