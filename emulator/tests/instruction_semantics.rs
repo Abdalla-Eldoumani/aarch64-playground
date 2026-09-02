@@ -387,6 +387,52 @@ main:
 }
 
 #[test]
+fn fp_to_int_saturates_at_the_destination_width() {
+    // 5e9 fits an X destination and not a W one, which is the pair that
+    // separates a per-width clamp from a single 64-bit one. NaN answers
+    // zero in every mode, signed or not. Values from csarm's fp_to_int
+    // probe; 5e9 needs a `.double` because no FMOV immediate reaches it.
+    let src = r#"
+.rodata
+big:    .double 5e9
+huge:   .double 1e30
+
+.text
+.global main
+main:
+    ldr     d0, big
+    ldr     d1, huge
+    fcvtzu  w1, d0
+    fcvtzu  x2, d0
+    fcvtzu  w3, d1
+    fcvtzu  x4, d1
+    fcvtzs  w5, d1
+    fcvtzs  x6, d1
+    fmov    d2, 4.0
+    fneg    d2, d2
+    fsqrt   d3, d2
+    fcvtzu  w7, d3
+    fcvtzu  x9, d3
+    fcvtzs  x10, d3
+    fcvtns  w11, d3
+    fcvtnu  w12, d3
+    mov     w0, 0
+    ret
+"#;
+    let cpu = run(src);
+    assert!(cpu.regs.read_fpr_f64(3).is_nan(), "the probe's NaN source");
+    assert_eq!(cpu.regs.read_gpr(1, false), 4_294_967_295);
+    assert_eq!(cpu.regs.read_gpr(2, true), 5_000_000_000);
+    assert_eq!(cpu.regs.read_gpr(3, false), 4_294_967_295);
+    assert_eq!(cpu.regs.read_gpr(4, true), u64::MAX);
+    assert_eq!(cpu.regs.read_gpr(5, false) as i32, i32::MAX);
+    assert_eq!(cpu.regs.read_gpr(6, true) as i64, i64::MAX);
+    for reg in [7u8, 9, 10, 11, 12] {
+        assert_eq!(cpu.regs.read_gpr(reg, true), 0, "NaN converts to zero (x{reg})");
+    }
+}
+
+#[test]
 fn unterminated_string_reports_itself_at_the_opening_line() {
     // A string missing its closing quote must say exactly that, at the
     // line where the quote opened -- never swallow following lines and

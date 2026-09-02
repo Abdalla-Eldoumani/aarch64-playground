@@ -146,6 +146,8 @@ The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` giv
 
 Every scalar instruction takes both course views of the register file: the S form (single precision, a C `float`, the register's low 32 bits) and the D form (double precision, a C `double`). Widths never mix inside one instruction; `FCVT` converts between them. Single-precision arithmetic rounds in single precision, exactly like the hardware, and an S write zeroes the upper half of the register.
 
+The `FCVT` conversion family names its rounding mode in the mnemonic: `N` nearest with ties to even, `A` nearest with ties away from zero, `M` toward minus infinity, `P` toward plus infinity, `Z` toward zero. The trailing `S`/`U` picks a signed or unsigned result.
+
 | Mnemonic | Form                              | Notes                                   |
 | -------- | --------------------------------- | --------------------------------------- |
 | `FMOV`   | `FMOV Dd, Dn` / `FMOV Dd, Xn` / `FMOV Xd, Dn` / `FMOV Dd, #imm` (and the S/W forms of each) | Bit-for-bit copy: within the FP file, or between the files (`fmov d0, x0` pairs x with d and w with s; no conversion happens). The immediate form takes an 8-bit float immediate (`fmov d9, 5.0`, `fmov s1, 0.5`): a small power-of-two multiple of 1.0-1.9375, so 0.5, 1.0, 2.0, 5.0, 9.0 work and 0.0 or 100.0 do not (load those from a `.double` / `.float`). |
@@ -169,6 +171,13 @@ Every scalar instruction takes both course views of the register file: the S for
 | `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Dn` / `FCVTZS Wd, Sn` | Truncate float to signed integer. |
 | `FCVTNS` | `FCVTNS Wd, Dn` / `FCVTNS Xd, Sn` (and the other two width pairs) | Float to signed integer, round to nearest with ties to even. `2.5` and `3.5` both land on the even neighbour (2 and 4), unlike `FCVTZS`, which truncates toward zero. |
 | `FCVTNU` | same shapes                       | The unsigned form. A negative input saturates to 0. |
+| `FCVTZU` | `FCVTZU Wd, Dn` / `FCVTZU Xd, Sn` (and the other two width pairs) | The unsigned form of `FCVTZS`: truncate toward zero. Negatives saturate to 0. |
+| `FCVTAS` | same shapes                       | Round to nearest with ties AWAY from zero: `2.5` gives 3, `-2.5` gives -3. |
+| `FCVTAU` | same shapes                       | The unsigned ties-away form. |
+| `FCVTMS` | same shapes                       | Round toward minus infinity (floor): `-0.5` gives -1. |
+| `FCVTMU` | same shapes                       | The unsigned floor form; a negative input saturates to 0. |
+| `FCVTPS` | same shapes                       | Round toward plus infinity (ceiling): `-0.5` gives 0. |
+| `FCVTPU` | same shapes                       | The unsigned ceiling form. |
 
 ## Directives
 

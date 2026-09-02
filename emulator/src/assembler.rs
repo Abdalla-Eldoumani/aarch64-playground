@@ -165,6 +165,8 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
     "FMADD", "FMSUB", "FNMADD", "FNMSUB",
     "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
+    // the rest of the float-to-integer rounding modes
+    "FCVTZU", "FCVTAS", "FCVTAU", "FCVTMS", "FCVTMU", "FCVTPS", "FCVTPU",
     // pc-relative address formation
     "ADR", "ADRP",
     // branches
@@ -317,6 +319,13 @@ fn encode_line(
         "FCVTZS" => encode_fp_cvt_int(&ops, "fcvtzs", line_num),
         "FCVTNS" => encode_fp_cvt_int(&ops, "fcvtns", line_num),
         "FCVTNU" => encode_fp_cvt_int(&ops, "fcvtnu", line_num),
+        "FCVTZU" => encode_fp_cvt_int(&ops, "fcvtzu", line_num),
+        "FCVTAS" => encode_fp_cvt_int(&ops, "fcvtas", line_num),
+        "FCVTAU" => encode_fp_cvt_int(&ops, "fcvtau", line_num),
+        "FCVTMS" => encode_fp_cvt_int(&ops, "fcvtms", line_num),
+        "FCVTMU" => encode_fp_cvt_int(&ops, "fcvtmu", line_num),
+        "FCVTPS" => encode_fp_cvt_int(&ops, "fcvtps", line_num),
+        "FCVTPU" => encode_fp_cvt_int(&ops, "fcvtpu", line_num),
         "LDP" => encode_ldst_pair(&ops, 1, line_num),
         "STP" => encode_ldst_pair(&ops, 0, line_num),
 
@@ -4453,6 +4462,84 @@ svc 0").unwrap();
         assert_eq!(cpu.regs.read_gpr(9, false), 4);
         assert_eq!(cpu.regs.read_gpr(11, false) as i32, -2);
         assert_eq!(cpu.regs.read_gpr(12, false) as i32, -1);
+    }
+
+    #[test]
+    fn fp_to_int_covers_every_rounding_mode() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("fcvtzu w0, d0", 0x1E79_0000u32),
+            ("fcvtzu x0, s0", 0x9E39_0000),
+            ("fcvtas w0, d0", 0x1E64_0000),
+            ("fcvtas x0, s0", 0x9E24_0000),
+            ("fcvtau w0, d0", 0x1E65_0000),
+            ("fcvtms w0, d0", 0x1E70_0000),
+            ("fcvtmu w0, d0", 0x1E71_0000),
+            ("fcvtps w0, d0", 0x1E68_0000),
+            ("fcvtpu w0, d0", 0x1E69_0000),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        // -0.5 is the value where the five modes disagree most, and it is
+        // the one a copy-pasted arm gets wrong quietly: nearest gives 0,
+        // ties-away and floor give -1, ceiling and truncate give 0.
+        let source = r#"
+            FMOV D0, 2.5
+            FMOV D1, -2.5
+            FMOV D2, 3.5
+            FMOV D3, -0.5
+            FMOV D4, -1.5
+            FCVTNS W0, D0
+            FCVTAS W1, D0
+            FCVTMS W2, D0
+            FCVTPS W3, D0
+            FCVTZS W4, D0
+            FCVTNS W5, D1
+            FCVTAS W6, D1
+            FCVTMS W7, D1
+            FCVTPS W8, D1
+            FCVTZS W9, D1
+            FCVTNS W10, D2
+            FCVTAS W11, D2
+            FCVTMS W12, D2
+            FCVTPS W13, D2
+            FCVTZS W14, D2
+            FCVTNS W15, D3
+            FCVTAS W16, D3
+            FCVTMS W17, D3
+            FCVTPS W18, D3
+            FCVTZS W19, D3
+            FCVTNU W20, D0
+            FCVTAU W21, D0
+            FCVTMU W22, D0
+            FCVTPU W23, D0
+            FCVTZU W24, D0
+            FCVTZU W25, D4
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(60).unwrap();
+        // Rows recorded on the course server, one per (value, mode) pair.
+        //   value    ns   as   ms   ps   zs
+        //    2.5      2    3    2    3    2
+        //   -2.5     -2   -3   -3   -2   -2
+        //    3.5      4    4    3    4    3
+        //   -0.5      0   -1   -1    0    0
+        let signed = [
+            2i32, 3, 2, 3, 2, -2, -3, -3, -2, -2, 4, 4, 3, 4, 3, 0, -1, -1, 0, 0,
+        ];
+        for (reg, want) in signed.iter().enumerate() {
+            assert_eq!(cpu.regs.read_gpr(reg as u8, false) as i32, *want, "w{reg}");
+        }
+        // The unsigned modes round the same way on a positive value.
+        for (reg, want) in [(20u8, 2u64), (21, 3), (22, 2), (23, 3), (24, 2)] {
+            assert_eq!(cpu.regs.read_gpr(reg, false), want, "w{reg}");
+        }
+        // A negative source saturates to zero rather than wrapping.
+        assert_eq!(cpu.regs.read_gpr(25, false), 0);
     }
 
     #[test]
