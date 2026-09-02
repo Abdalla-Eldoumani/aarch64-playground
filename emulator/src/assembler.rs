@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::decoder::{
-    MemSize, FP_BINARY_OPS, FP_FROM_INT_OPS, FP_MUL_ADD_OPS, FP_TO_INT_OPS, FP_UNARY_OPS,
-    LDST_EXTENDS,
+    MemSize, DP1_OPS, FP_BINARY_OPS, FP_FROM_INT_OPS, FP_MUL_ADD_OPS, FP_TO_INT_OPS,
+    FP_UNARY_OPS, LDST_EXTENDS,
 };
 use crate::errors::EmuError;
 use crate::registers::{reg_alias, Condition, CONDITIONS};
@@ -156,6 +156,8 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UXTW",
     // bitfield extract / insert
     "UBFX", "SBFX", "BFI", "BFXIL", "UBFIZ", "SBFIZ",
+    // bit and byte reversal, leading-bit counts
+    "CLZ", "CLS", "RBIT", "REV", "REV16", "REV32",
     // multiply / divide
     "MUL", "UDIV", "SDIV", "MADD", "MSUB", "MNEG", "NEG", "NEGS",
     "SMULL", "UMULL", "SMULH", "UMULH",
@@ -272,6 +274,14 @@ fn encode_line(
         "BFXIL" => encode_bitfield_alias(&ops, "BFXIL", 0b01, BitfieldForm::Extract, line_num),
         "UBFIZ" => encode_bitfield_alias(&ops, "UBFIZ", 0b10, BitfieldForm::Insert,  line_num),
         "SBFIZ" => encode_bitfield_alias(&ops, "SBFIZ", 0b00, BitfieldForm::Insert,  line_num),
+
+        // -- bit and byte reversal, leading-bit counts --
+        "CLZ" => encode_dp1(&ops, "clz", line_num),
+        "CLS" => encode_dp1(&ops, "cls", line_num),
+        "RBIT" => encode_dp1(&ops, "rbit", line_num),
+        "REV" => encode_dp1(&ops, "rev", line_num),
+        "REV16" => encode_dp1(&ops, "rev16", line_num),
+        "REV32" => encode_dp1(&ops, "rev32", line_num),
 
         // -- multiply / divide --
         "MUL" => encode_mul_div(&ops, 0, line_num),
@@ -1439,6 +1449,42 @@ fn encode_mul_accumulate(ops: &[&str], subtract: bool, ln: usize) -> Result<u32,
         | ((rm as u32) << 16)
         | (o0 << 15)
         | ((ra as u32) << 10)
+        | ((rn as u32) << 5)
+        | (rd as u32))
+}
+
+/// CLZ / CLS / RBIT / REV / REV16 / REV32 Rd, Rn. `name` keys into
+/// `DP1_OPS` together with the destination width, because `rev` at W
+/// width and `rev32` at X width share one opcode.
+fn encode_dp1(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, &format!("{name} requires 2 operands: {name} rd, rn"));
+    }
+    reject_sp_operands(ops, ln, name)?;
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, rn_sf) = parse_register(ops[1], ln)?;
+    if sf != rn_sf {
+        return asm_err(ln, &format!("{name} needs both registers at the same width"));
+    }
+    let Some((_, opcode, _, _)) = DP1_OPS
+        .iter()
+        .find(|(mn, _, needs_sf, _)| *mn == name && needs_sf.is_none_or(|want| want == sf))
+    else {
+        // rev32 is the only row without a counterpart at the other width,
+        // so this is always about it.
+        return asm_err(
+            ln,
+            &format!(
+                "{name} has no {} form: the 32-bit byte-swap is rev wd, wn",
+                if sf { "X" } else { "W" }
+            ),
+        );
+    };
+    let sf_bit = if sf { 1u32 } else { 0 };
+    // sf_1_S=0_11010110_00000_opcode(6)_Rn_Rd
+    Ok((sf_bit << 31)
+        | (0b1011010110 << 21)
+        | (u32::from(*opcode) << 10)
         | ((rn as u32) << 5)
         | (rd as u32))
 }
@@ -3537,6 +3583,106 @@ mod tests {
         assert_eq!(cpu.regs.read_gpr(6, true), (1u64 << 62) - 1);
         // umull treats w1 (0xFFFF_FFFD) as unsigned.
         assert_eq!(cpu.regs.read_gpr(7, true), 0xFFFF_FFFDu64 * 5);
+    }
+
+    #[test]
+    fn data_processing_one_source_widths_do_not_collide() {
+        use crate::cpu::Cpu;
+        use crate::decoder::{decode, Dp1Op, Instruction};
+        let labels = HashMap::new();
+        for (src, want, op, sf) in [
+            ("clz x0, x1", 0xDAC0_1020u32, Dp1Op::Clz, true),
+            ("clz w0, w1", 0x5AC0_1020, Dp1Op::Clz, false),
+            ("cls x0, x1", 0xDAC0_1420, Dp1Op::Cls, true),
+            ("cls w0, w1", 0x5AC0_1420, Dp1Op::Cls, false),
+            ("rbit x0, x1", 0xDAC0_0020, Dp1Op::Rbit, true),
+            ("rbit w0, w1", 0x5AC0_0020, Dp1Op::Rbit, false),
+            ("rev x0, x1", 0xDAC0_0C20, Dp1Op::Rev, true),
+            ("rev w0, w1", 0x5AC0_0820, Dp1Op::Rev, false),
+            ("rev16 x0, x1", 0xDAC0_0420, Dp1Op::Rev16, true),
+            ("rev16 w0, w1", 0x5AC0_0420, Dp1Op::Rev16, false),
+            ("rev32 x0, x1", 0xDAC0_0820, Dp1Op::Rev32, true),
+        ] {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert_eq!(word, want, "{src}");
+            // rev at W width and rev32 at X width share opcode 000010, so
+            // the decode direction has to be pinned too.
+            match decode(word).unwrap() {
+                Instruction::DataProc1 { op: got, sf: got_sf, rd: 0, rn: 1 } => {
+                    assert_eq!((got, got_sf), (op, sf), "{src}");
+                }
+                other => panic!("{src} decoded to {other:?}"),
+            }
+        }
+        let err = encode_line("rev32 w0, w1", 0, &labels, 1).unwrap_err().to_string();
+        assert!(err.contains("no W form"), "{err}");
+        let source = r#"
+            MOVZ X1, #0xCDEF
+            MOVK X1, #0x89AB, LSL #16
+            MOVK X1, #0x4567, LSL #32
+            MOVK X1, #0x0123, LSL #48
+            MOVZ W2, #0x4567
+            MOVK W2, #0x0123, LSL #16
+            REV X3, X1
+            REV32 X4, X1
+            REV16 X5, X1
+            REV W6, W2
+            REV16 W7, W2
+            RBIT X8, X1
+            RBIT W9, W2
+            CLZ X10, X1
+            CLZ W11, W2
+            CLS X12, X1
+            CLS W13, W2
+            MOV X14, XZR
+            CLZ X15, X14
+            CLZ W16, W14
+            CLS X17, X14
+            CLS W18, W14
+            MOV X19, #-1
+            CLS X20, X19
+            CLS W21, W19
+            MOVZ X22, #0xFF
+            REV X23, X22
+            REV16 X24, X22
+            REV32 X25, X22
+            REV W26, W22
+            REV16 W27, W22
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(60).unwrap();
+        let x = |r: u8| cpu.regs.read_gpr(r, true);
+        let w = |r: u8| cpu.regs.read_gpr(r, false);
+        // The collision, on one input: rev walks all eight bytes, rev32
+        // only the four inside each word.
+        assert_eq!(x(3), 0xEFCD_AB89_6745_2301);
+        assert_eq!(x(4), 0x6745_2301_EFCD_AB89);
+        assert_eq!(x(5), 0x2301_6745_AB89_EFCD);
+        assert_eq!(w(6), 0x6745_2301);
+        assert_eq!(w(7), 0x2301_6745);
+        assert_eq!(x(8), 0xF7B3_D591_E6A2_C480);
+        assert_eq!(w(9), 0xE6A2_C480);
+        assert_eq!(x(10), 7);
+        assert_eq!(w(11), 7);
+        assert_eq!(x(12), 6);
+        assert_eq!(w(13), 6);
+        // Zero is the boundary a shared 64-bit body gets wrong at W width.
+        assert_eq!(x(15), 64);
+        assert_eq!(w(16), 32);
+        // CLS of 0 and of -1 both answer width minus one, never the width.
+        assert_eq!(x(17), 63);
+        assert_eq!(w(18), 31);
+        assert_eq!(x(20), 63);
+        assert_eq!(w(21), 31);
+        // 0xFF is the input where the three byte reversals disagree.
+        assert_eq!(x(23), 0xFF00_0000_0000_0000);
+        assert_eq!(x(24), 0x0000_0000_0000_FF00);
+        assert_eq!(x(25), 0x0000_0000_FF00_0000);
+        assert_eq!(w(26), 0xFF00_0000);
+        assert_eq!(w(27), 0x0000_FF00);
     }
 
     #[test]

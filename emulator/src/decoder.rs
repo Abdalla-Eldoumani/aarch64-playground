@@ -210,6 +210,33 @@ pub enum MulWideOp {
     Umulh,
 }
 
+/// Data-processing 1-source operation: the bit and byte reversals plus
+/// the two leading-bit counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dp1Op {
+    Rbit,
+    Rev16,
+    Rev32,
+    Rev,
+    Clz,
+    Cls,
+}
+
+/// The data-processing 1-source rows: mnemonic, the 6-bit opcode, the
+/// register width the row requires (None when it has both), and the
+/// operation. `rev` at W width and `rev32` at X width share opcode
+/// 000010, so the encoder keys on (mnemonic, sf) and the decoder on
+/// (opcode, sf); neither direction can pick a row from the opcode alone.
+pub const DP1_OPS: &[(&str, u8, Option<bool>, Dp1Op)] = &[
+    ("rbit", 0b000000, None, Dp1Op::Rbit),
+    ("rev16", 0b000001, None, Dp1Op::Rev16),
+    ("rev32", 0b000010, Some(true), Dp1Op::Rev32),
+    ("rev", 0b000010, Some(false), Dp1Op::Rev),
+    ("rev", 0b000011, Some(true), Dp1Op::Rev),
+    ("clz", 0b000100, None, Dp1Op::Clz),
+    ("cls", 0b000101, None, Dp1Op::Cls),
+];
+
 /// Floating-point binary operation. The instruction's `single` flag picks
 /// the S (f32) or D (f64) form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -354,6 +381,14 @@ pub enum Instruction {
         rm: u8,
         shift: ShiftType,
         amount: u8,
+    },
+    /// CLZ/CLS/RBIT/REV/REV16/REV32: one source, one destination, no
+    /// flags. `sf` is the operand width both registers share.
+    DataProc1 {
+        op: Dp1Op,
+        sf: bool,
+        rd: u8,
+        rn: u8,
     },
     /// LSLV/LSRV/ASRV/RORV: shift Rn left/right by the amount in Rm,
     /// modulo the register width (the dp2 register-shift family).
@@ -1929,11 +1964,28 @@ fn decode_cond_select(instr: u32) -> Result<Instruction, EmuError> {
 
 fn decode_dp2(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
-    // Bit 30 set marks the 1-source data-processing group (rev/rev32/rbit/
-    // clz), which shares this decode entry. Without this guard a `.word`-
-    // crafted rev32 fell through to the 2-source table and ran as udiv.
+    // Bit 30 set marks the 1-source data-processing group, which shares
+    // this decode entry. Its rows come from the shared table, keyed on
+    // (opcode, sf) because rev at W width and rev32 at X width collide on
+    // opcode 000010. Without this branch a `.word`-crafted rev32 fell
+    // through to the 2-source table and ran as udiv.
     if bit(instr, 30) != 0 {
-        return Err(EmuError::UnknownInstruction(instr));
+        if bit(instr, 29) != 0 || bits(instr, 20, 16) != 0 {
+            return Err(EmuError::UnknownInstruction(instr));
+        }
+        let opcode = bits(instr, 15, 10) as u8;
+        let Some((_, _, _, op)) = DP1_OPS
+            .iter()
+            .find(|(_, code, needs_sf, _)| *code == opcode && needs_sf.is_none_or(|want| want == sf))
+        else {
+            return Err(EmuError::UnknownInstruction(instr));
+        };
+        return Ok(Instruction::DataProc1 {
+            op: *op,
+            sf,
+            rd: bits(instr, 4, 0) as u8,
+            rn: bits(instr, 9, 5) as u8,
+        });
     }
     let s = bit(instr, 29);
     let opcode = bits(instr, 15, 10);
@@ -2557,11 +2609,30 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_dp1_source_words_are_rejected() {
-        // rev/rev32 (DP 1-source, bit 30 set) are not implemented and the
-        // assembler never emits them; a hand-crafted .word must reject,
-        // not silently run as udiv/sdiv. The cond-select op=1 family
-        // (csinv/csneg) decodes now, so those words are supported.
+    fn dp1_source_words_decode_by_opcode_and_width() {
+        // Bit 30 set is the DP 1-source group. The opcode alone does not
+        // name the row: 000010 is rev32 at X width and rev at W width, so
+        // a decoder keying on the opcode runs one as the other.
+        assert!(
+            matches!(
+                decode(0xDAC0_0800),
+                Ok(Instruction::DataProc1 { op: Dp1Op::Rev32, sf: true, .. })
+            ),
+            "rev32 x0,x0"
+        );
+        assert!(
+            matches!(
+                decode(0x5AC0_0800),
+                Ok(Instruction::DataProc1 { op: Dp1Op::Rev, sf: false, .. })
+            ),
+            "rev w0,w0"
+        );
+        // Rows outside the table, the S bit, and a nonzero Rm field are
+        // all reserved and must reject rather than run as something else.
+        assert!(decode(0xDAC0_1800).is_err(), "opcode 000110 is not a row");
+        assert!(decode(0xFAC0_1020).is_err(), "the S bit is reserved here");
+        assert!(decode(0xDAC1_1020).is_err(), "Rm must be zero");
+        // The cond-select op=1 family (csinv/csneg) shares the group.
         assert!(
             matches!(decode(0x5A80_0000), Ok(Instruction::CondSel { op: CondSelOp::Csinv, .. })),
             "csinv w0,w0,w0,eq decodes"
@@ -2570,8 +2641,6 @@ mod tests {
             matches!(decode(0xDA80_0400), Ok(Instruction::CondSel { op: CondSelOp::Csneg, .. })),
             "csneg x0,x0,x0,eq decodes"
         );
-        assert!(decode(0xDAC0_0800).is_err(), "rev32 x0,x0");
-        assert!(decode(0x5AC0_0800).is_err(), "dp2 group with the op bit set");
         // sanity: the older forms still decode.
         assert!(decode(0x1A80_0000).is_ok(), "csel w0,w0,w0,eq");
         assert!(decode(0x1AC0_0800).is_ok(), "udiv w0,w0,w0");

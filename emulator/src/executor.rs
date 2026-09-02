@@ -151,6 +151,7 @@ pub fn execute(
         Instruction::DpCarry { sub, set_flags, sf, rd, rn, rm } => {
             exec_dp_carry(*sub, *set_flags, *sf, *rd, *rn, *rm, regs)
         }
+        Instruction::DataProc1 { op, sf, rd, rn } => exec_dp1(*op, *sf, *rd, *rn, regs),
         Instruction::VarShift { sf, rd, rn, rm, shift } => {
             // Shift amount is Rm modulo the register width (apply_shift
             // owns the modulo); truncating to u8 first keeps the low bits
@@ -1407,6 +1408,46 @@ fn exec_mul_accumulate(
     let result = match op {
         MulAccumulateOp::Madd => c.wrapping_add(product) & mask,
         MulAccumulateOp::Msub => c.wrapping_sub(product) & mask,
+    };
+    regs.write_gpr(rd, sf, result);
+    Ok(ExecResult::Advance)
+}
+
+/// CLZ/CLS/RBIT/REV/REV16/REV32. Every row is width-aware: a shared
+/// 64-bit body answers 32 too high for CLZ at W width and reverses the
+/// wrong span for the byte swaps. No flags.
+fn exec_dp1(
+    op: Dp1Op, sf: bool, rd: u8, rn: u8, regs: &mut RegisterFile,
+) -> Result<ExecResult, EmuError> {
+    let v = regs.read_gpr(rn, sf);
+    let result = if sf {
+        match op {
+            Dp1Op::Rbit => v.reverse_bits(),
+            Dp1Op::Rev16 => ((v & 0x00FF_00FF_00FF_00FF) << 8) | ((v >> 8) & 0x00FF_00FF_00FF_00FF),
+            Dp1Op::Rev32 => {
+                let lo = u64::from((v as u32).swap_bytes());
+                let hi = u64::from(((v >> 32) as u32).swap_bytes());
+                (hi << 32) | lo
+            }
+            Dp1Op::Rev => v.swap_bytes(),
+            Dp1Op::Clz => u64::from(v.leading_zeros()),
+            // ARM's count-leading-sign-bits: the run of bits equal to the
+            // top one, minus the top one itself, so 0 and -1 both answer
+            // 63 at X width rather than 64.
+            Dp1Op::Cls => u64::from(
+                (v as i64).leading_zeros().max((!(v as i64)).leading_zeros()) - 1,
+            ),
+        }
+    } else {
+        let w = v as u32;
+        u64::from(match op {
+            Dp1Op::Rbit => w.reverse_bits(),
+            Dp1Op::Rev16 => ((w & 0x00FF_00FF) << 8) | ((w >> 8) & 0x00FF_00FF),
+            // Rev32 has no W form; the decoder cannot produce it here.
+            Dp1Op::Rev32 | Dp1Op::Rev => w.swap_bytes(),
+            Dp1Op::Clz => w.leading_zeros(),
+            Dp1Op::Cls => (w as i32).leading_zeros().max((!(w as i32)).leading_zeros()) - 1,
+        })
     };
     regs.write_gpr(rd, sf, result);
     Ok(ExecResult::Advance)

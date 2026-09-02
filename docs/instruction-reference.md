@@ -40,6 +40,12 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `BIC`    | `BIC Xd, Xn, Xm` (`, LSL #k` optional) | Bit clear: `Xd = Xn & ~Xm`. Register form only; AArch64 has no BIC-immediate. |
 | `ORN`    | `ORN Xd, Xn, Xm` (`, LSL #k` optional) | Logical OR with the second source inverted: `Xd = Xn \| ~Xm`. `MVN Xd, Xm` is `ORN Xd, XZR, Xm`. |
 | `EON`    | `EON Xd, Xn, Xm` (`, LSL #k` optional) | Exclusive OR with the second source inverted: `Xd = Xn ^ ~Xm`, which is XNOR. |
+| `CLZ`    | `CLZ Xd, Xn` / `CLZ Wd, Wn`      | Count leading zeros. Of zero it is the register width (64 or 32), not an error. |
+| `CLS`    | `CLS Xd, Xn` / `CLS Wd, Wn`      | Count leading sign bits: the run of bits matching the top one, minus that bit. Of 0 and of -1 alike it is the width minus one (63 or 31). |
+| `RBIT`   | `RBIT Xd, Xn` / `RBIT Wd, Wn`    | Reverse the bit order across the whole register. |
+| `REV`    | `REV Xd, Xn` / `REV Wd, Wn`      | Reverse the byte order across the register (a byte-swap). The X and W forms are different encodings, not one instruction with a width bit. |
+| `REV16`  | `REV16 Xd, Xn` / `REV16 Wd, Wn`  | Reverse the bytes inside each 16-bit halfword. |
+| `REV32`  | `REV32 Xd, Xn`                   | Reverse the bytes inside each 32-bit word. X registers only; the W-sized byte-swap is `REV Wd, Wn`. |
 | `LSL`    | `LSL Xd, Xn, #imm` / `LSL Xd, Xn, Xm` | Logical shift left by an immediate (0 to width-1) or by a register, modulo the width. |
 | `LSR`    | `LSR Xd, Xn, #imm` / `LSR Xd, Xn, Xm` | Logical shift right, immediate or register amount. |
 | `ASR`    | `ASR Xd, Xn, #imm` / `ASR Xd, Xn, Xm` | Arithmetic shift right, immediate or register amount. |
