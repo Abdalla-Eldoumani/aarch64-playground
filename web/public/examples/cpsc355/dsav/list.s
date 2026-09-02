@@ -1,10 +1,9 @@
-// linkedlist_viz.asm - a singly linked list, drawn as the chain of
-// pointers it really is
+// list.s - a singly linked list, drawn as a chain of pointers
 //
 // Almost every operation here is the same walk: start at head, follow
 // next, stop when the pointer runs out. Insert at the front is the one
-// that never walks, and showing both in the same picture is the reason
-// this module earns a screen: the shape is identical, the cost is not.
+// that never walks, and both are drawn in the same picture: the shape is
+// identical and the cost is not.
 
 define(fp, x29)
 define(lr, x30)
@@ -14,7 +13,7 @@ define(lr, x30)
     LIST_NODE_NEXT = 8
     LIST_NODE_SIZE = 16
 
-// Role numbers mirror the UI_ROLE_* set in ui.asm. They are repeated here
+// Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated here
 // so this file also assembles on its own, the way the web build feeds it.
     LIST_ROLE_TEXT  = 0
     LIST_ROLE_DIM   = 1
@@ -186,7 +185,7 @@ list_menu_clear:
     b       list_menu_loop
 
 list_menu_exit:
-    bl      list_free_all                   // nothing outlives the module
+    bl      list_free_all                   // free every node before leaving
     ldp     fp, lr, [sp], 16
     ret
 
@@ -691,7 +690,7 @@ list_ask:
     mov     w19, w0
     mov     w20, w1
 
-    cbz     w20, list_ask_stop              // stdin closed: walk out quietly
+    cbz     w20, list_ask_stop              // stdin closed: return with no value
 
     cmp     w19, -99
     b.lt    list_ask_range
@@ -863,7 +862,7 @@ list_front_done:
     ret
 
 // list_insert_back_interactive() - the same insert, one walk more
-// expensive, and the walk is the whole point
+// expensive
 list_insert_back_interactive:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
@@ -1133,8 +1132,8 @@ list_delete_done:
     ldp     fp, lr, [sp], 80
     ret
 
-// list_search_interactive() - the walk with nothing hidden: one node a
-// beat, and a count of how many had to be read
+// list_search_interactive() - one node a beat, and a count of how many had to
+// be read
 list_search_interactive:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
