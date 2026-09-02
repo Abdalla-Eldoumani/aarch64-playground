@@ -47,7 +47,7 @@ describe("upload-guard caps", () => {
     expect(MAX_SHARE_HASH_BYTES).toBe(12 * 1024);
   });
 
-  test("caps are sane and ordered for the cpsc 355 corpus", () => {
+  test("caps are positive and ordered for the cpsc 355 corpus", () => {
     expect(MAX_SOURCE_BYTES).toBeGreaterThan(0);
     expect(MAX_VFS_BYTES).toBeGreaterThan(MAX_SOURCE_BYTES);
     expect(MAX_BOOKMARK_JSON_BYTES).toBeGreaterThan(0);
