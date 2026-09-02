@@ -134,13 +134,13 @@ update_particle_loop:
                 strb    w1, [x19, PARTICLE_LIFE]
                 cbz     w1, update_particle_next  // Just died, skip movement
 
-                ldrsb   w2, [x19, PARTICLE_VX]
-                ldrsb   w3, [x19, PARTICLE_VY]
-                ldrsh   w4, [x19, PARTICLE_X]
-                ldrsh   w5, [x19, PARTICLE_Y]
+                ldrsb   w2, [x19, PARTICLE_VX]    // Signed velocity X
+                ldrsb   w3, [x19, PARTICLE_VY]    // Signed velocity Y
+                ldrsh   w4, [x19, PARTICLE_X]     // Current X
+                ldrsh   w5, [x19, PARTICLE_Y]     // Current Y
 
-                add     w4, w4, w2
-                add     w5, w5, w3
+                add     w4, w4, w2                // X += VX
+                add     w5, w5, w3                // Y += VY
 
                 // Kill particle if out of bounds
                 cmp     w4, PLAY_LEFT
@@ -458,7 +458,7 @@ effects_spawn_explosion:
 
                 mov     w0, 3
                 bl      random_range
-                add     w22, w0, 6
+                add     w22, w0, 6                // 6-8 particles
 
 spawn_explosion_loop:
                 cbz     w22, spawn_explosion_done
