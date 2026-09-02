@@ -3,10 +3,10 @@ import type { JSX } from "react";
 /**
  * The reference page's AAPCS64 register-file rail: a narrow stacked column of
  * bordered rows mapping the register file to its ABI roles, tinted by the
- * site's two-pole logic -- cyan for the registers that are yours to pass and
+ * site's two-pole logic: cyan for the registers that are yours to pass and
  * receive, amber for the ones the callee must preserve, a 60% fade for the
- * platform registers to leave alone. Purely presentational: the seven rows
- * ARE the content (the full AAPCS64 role map), so they live here rather than
+ * platform registers to leave alone. Purely presentational: the nine rows
+ * are the content (the full AAPCS64 role map), so they live here rather than
  * in a data module, and nothing reads live debugger state. Token-only, so all
  * three themes resolve from the same markup.
  */
