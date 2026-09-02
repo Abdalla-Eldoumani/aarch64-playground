@@ -72,8 +72,7 @@ function classifyCode(code: string): CodeShape {
     return { kind: "assignment", text: trimmed };
   }
   // Label: `name:` possibly followed by an instruction or directive on the
-  // same line. The `.` stop mirrors the directive test above, which the
-  // per-label re-classification used to apply to every remainder.
+  // same line. The `.` stop mirrors the directive test above.
   const labels: string[] = [];
   let consumed = 0;
   LABEL_PREFIX_RE.lastIndex = 0;
@@ -105,9 +104,9 @@ function classifyCode(code: string): CodeShape {
 const REGISTER_RE = /\b(X[0-9]|X[12][0-9]|X30|W[0-9]|W[12][0-9]|W30|SP|XZR|WZR|FP|LR|D[0-9]|D[12][0-9]|D3[01])\b/g;
 
 // Names the source defines (labels, m4 defines, `.req` aliases, and
-// `name = expr` assignments). A label or alias shaped like a register --
-// `LR:`, `SP`, `D0` -- must keep its exact case, so it is excluded from
-// register lowercasing.
+// `name = expr` assignments). A label or alias shaped like a register (`LR:`,
+// `SP`, `D0`) must keep its exact case, so it is excluded from register
+// lowercasing.
 function collectDefinedSymbols(source: string): Set<string> {
   const names = new Set<string>();
   for (const raw of source.split("\n")) {
@@ -137,8 +136,6 @@ function formatInstruction(mnemonic: string, operands: string, defined: Set<stri
 
 function attachComment(code: string, comment: string | null): string {
   if (comment == null) return code;
-  // Normalise the comment marker spacing: strip leading whitespace
-  // from the comment fragment and decide on the gap to the code.
   const trimmedComment = comment.trim();
   if (code.length === 0) return trimmedComment;
   const targetColumn = Math.max(COMMENT_COLUMN, code.length + 1);
@@ -193,7 +190,7 @@ export function formatAsm(source: string, defined?: Set<string>): string {
     const { code, comment } = splitOffComment(raw);
     const cls = classifyCode(code);
     if (cls.kind === "blank") {
-      // Pure comment line -- leave the original whitespace + comment.
+      // Pure comment line: leave the original whitespace and comment.
       out.push(comment ?? "");
       continue;
     }
