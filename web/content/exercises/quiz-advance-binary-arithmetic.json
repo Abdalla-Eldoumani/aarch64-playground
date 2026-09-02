@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: Binary Arithmetic - Advanced",
+  "title": "Quiz: binary arithmetic",
   "slug": "quiz-advance-binary-arithmetic",
   "order": 39,
   "topic": "binary-arithmetic",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Work through extended-precision carry chains, the shift-and-add multiplication algorithm, and the flag rules behind signed comparison.",
+  "prompt": "Extended-precision carry chains, the shift-and-add multiplication algorithm, and the flag rules behind signed comparison.",
   "questions": [
     {
       "question": "A 192-bit value is held in three 64-bit registers. Two such values are added low word first. Which instruction sequence is correct for the low, middle, and high words?",
