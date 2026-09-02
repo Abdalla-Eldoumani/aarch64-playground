@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "size": "size-limit",
+    "size": "size-limit && node ../scripts/bundle-budget.js",
     "lighthouse": "lighthouse http://localhost:3000 --preset=desktop --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/report",
     "lighthouse:mobile": "lighthouse http://localhost:3000 --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/mobile",
     "audit:deps": "node ../scripts/audit-deps.js",
@@ -23,26 +23,6 @@
     "smoke:firefox": "node ../scripts/firefox-smoke.mjs"
   },
   "size-limit": [
-    {
-      "name": "initial js (framework + main + polyfills + entry)",
-      "path": [
-        ".next/static/chunks/framework-*.js",
-        ".next/static/chunks/main-*.js",
-        ".next/static/chunks/polyfills-*.js",
-        ".next/static/chunks/app/playground/page-*.js"
-      ],
-      "limit": "400 KB"
-    },
-    {
-      "name": "landing initial js (framework + main + polyfills + entry)",
-      "path": [
-        ".next/static/chunks/framework-*.js",
-        ".next/static/chunks/main-*.js",
-        ".next/static/chunks/polyfills-*.js",
-        ".next/static/chunks/app/\\(site\\)/page-*.js"
-      ],
-      "limit": "400 KB"
-    },
     {
       "name": "learn route entry js (index + lesson page chunks)",
       "path": ".next/static/chunks/app/\\(site\\)/learn/**/page-*.js",
@@ -78,6 +58,11 @@
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
       "limit": "200 KB"
+    },
+    {
+      "name": "stylesheets (tailwind + fonts + monaco/xterm)",
+      "path": ".next/static/css/*.css",
+      "limit": "35 KB"
     }
   ],
   "dependencies": {
