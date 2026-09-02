@@ -154,7 +154,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // bitfield extract / insert
     "UBFX", "SBFX", "BFI", "BFXIL", "UBFIZ", "SBFIZ",
     // multiply / divide
-    "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG", "NEGS",
+    "MUL", "UDIV", "SDIV", "MADD", "MSUB", "MNEG", "NEG", "NEGS",
     "SMULL", "UMULL", "SMULH", "UMULH",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
@@ -271,6 +271,7 @@ fn encode_line(
         "SDIV" => encode_mul_div(&ops, 2, line_num),
         "MADD" => encode_mul_accumulate(&ops, false, line_num),
         "MSUB" => encode_mul_accumulate(&ops, true, line_num),
+        "MNEG" => encode_mneg(&ops, line_num),
         "SMULL" => encode_mul_wide(&ops, 0b001, true, line_num),
         "UMULL" => encode_mul_wide(&ops, 0b101, true, line_num),
         "SMULH" => encode_mul_wide(&ops, 0b010, false, line_num),
@@ -1403,6 +1404,19 @@ fn encode_mul_wide(ops: &[&str], op31: u32, widening: bool, ln: usize) -> Result
         | (0b11111 << 10)
         | ((rn as u32) << 5)
         | (rd as u32))
+}
+
+/// Encode `MNEG Rd, Rn, Rm` as `MSUB Rd, Rn, Rm, ZR`. The zero register
+/// matches the destination's width the same way `encode_neg` picks it,
+/// so a W destination gets WZR and an X one XZR.
+fn encode_mneg(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 3 {
+        return asm_err(ln, "MNEG requires 3 operands");
+    }
+    reject_sp_operands(ops, ln, "MNEG")?;
+    let (_, sf) = parse_register(ops[0], ln)?;
+    let zr = if sf { "XZR" } else { "WZR" };
+    encode_mul_accumulate(&[ops[0], ops[1], ops[2], zr], true, ln)
 }
 
 fn encode_neg(ops: &[&str], set_flags: bool, ln: usize) -> Result<u32, EmuError> {
@@ -3176,6 +3190,47 @@ mod tests {
         // 0x3F80_0000 is 1.0f32; the S round trip stays 32-bit clean.
         assert_eq!(cpu.regs.read_gpr(5, true), 0x3F80_0000);
         assert_eq!(cpu.regs.read_fpr_bits(4), 0x3F80_0000);
+    }
+
+    #[test]
+    fn mneg_is_msub_against_the_zero_register() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("mneg x0, x1, x2", 0x9B02_FC20u32),
+            ("mneg w0, w1, w2", 0x1B02_FC20),
+            ("msub x0, x1, x2, xzr", 0x9B02_FC20),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        let source = r#"
+            MOV X1, #7
+            MOV X2, #6
+            MNEG X3, X1, X2
+            MOVN W4, #2
+            MOV W5, #5
+            MNEG W6, W4, W5
+            MOV X7, #1
+            MOVK X7, #0x8000, LSL #48
+            MNEG X8, X7, X7
+            MSUB X9, X7, X7, XZR
+            MOVZ W10, #0x4000, LSL #16
+            MOV W11, #4
+            MNEG W12, W10, W11
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(40).unwrap();
+        assert_eq!(cpu.regs.read_gpr(3, true) as i64, -42);
+        // two negatives: the W path must mask to 32 bits, not sign-leak
+        assert_eq!(cpu.regs.read_gpr(6, false), 15);
+        // wraps, never saturates, and is byte-identical to the MSUB it aliases
+        assert_eq!(cpu.regs.read_gpr(8, true), 0xFFFF_FFFF_FFFF_FFFF);
+        assert_eq!(cpu.regs.read_gpr(9, true), cpu.regs.read_gpr(8, true));
+        // 0x4000_0000 * 4 is 2^32, so the W result is zero, not a saturation
+        assert_eq!(cpu.regs.read_gpr(12, false), 0);
     }
 
     #[test]
