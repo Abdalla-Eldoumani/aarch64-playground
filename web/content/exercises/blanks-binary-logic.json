@@ -1,11 +1,11 @@
 {
-  "title": "Fill in the Blank: Binary Logic",
+  "title": "Fill in the blank: binary logic",
   "slug": "blanks-binary-logic",
   "order": 35,
   "topic": "binary-logic",
   "difficulty": "core",
   "variant": "blanks",
-  "prompt": "Fill in the missing mnemonic so each line performs the bitwise or shift operation described.",
+  "prompt": "Fill in the missing mnemonic on each line so it performs the bitwise or shift operation described.",
   "blanks": [
     {
       "prompt": "Shift the bits in x20 left by 3 so the value in x19 is x20 multiplied by 8.",
