@@ -101,10 +101,10 @@ const PROGRESS_LINK_CLASS =
   "inline-flex min-h-[24px] items-center rounded-[var(--radius-control)] px-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
 
 /**
- * Export / import for the solved set. The ticks live only in this browser's
- * localStorage, which Safari evicts after seven days without a visit, so
- * this small file is the only way progress leaves the device or comes back.
- * Importing merges, never replaces.
+ * Export / import for the solved set and the answers saved beside it. Both
+ * live only in this browser's localStorage, which Safari evicts after seven
+ * days without a visit, so this small file is the only way progress leaves
+ * the device or comes back. Importing merges, never replaces.
  */
 function ProgressRow(): JSX.Element {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -153,12 +153,23 @@ function ProgressRow(): JSX.Element {
             toast.error(result.error);
             return;
           }
-          if (result.added === 0) {
+          if (result.added === 0 && result.answersAdded === 0) {
             toast.info("nothing new to import");
             return;
           }
-          const noun = result.added === 1 ? "exercise" : "exercises";
-          toast.success(`imported ${result.added} solved ${noun}`);
+          // Both halves are counted: a file can carry work for exercises
+          // already ticked here, and reporting only the ticks would read as
+          // "nothing happened" after the answers landed.
+          const parts: string[] = [];
+          if (result.added > 0) {
+            parts.push(`${result.added} solved ${result.added === 1 ? "exercise" : "exercises"}`);
+          }
+          if (result.answersAdded > 0) {
+            parts.push(
+              `${result.answersAdded} saved ${result.answersAdded === 1 ? "answer" : "answers"}`,
+            );
+          }
+          toast.success(`imported ${parts.join(" and ")}`);
         })
         .catch(() => {
           toast.error("could not read that file. pick it again");

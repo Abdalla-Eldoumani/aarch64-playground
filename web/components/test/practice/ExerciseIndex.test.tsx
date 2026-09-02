@@ -244,7 +244,47 @@ describe("ExerciseIndex progress row", () => {
 
     expect(captured.names).toEqual(["aarch64-playground-progress.json"]);
     const text = await captured.blobs[0].text();
-    expect(JSON.parse(text)).toEqual({ version: 1, solved: ["solved-one", "another"] });
+    expect(JSON.parse(text)).toEqual({
+      version: 2,
+      solved: ["solved-one", "another"],
+      answers: {},
+    });
+  });
+
+  it("carries the saved answers in the downloaded file", async () => {
+    window.localStorage.setItem(
+      "aarch64-playground:practice:answer:solved-one",
+      JSON.stringify({ version: 1, kind: "write", source: "my work", updatedAt: 7 }),
+    );
+    const captured = captureDownload();
+    render(<ExerciseIndex exercises={exercises} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "export solved progress" }));
+
+    const bundle = JSON.parse(await captured.blobs[0].text()) as {
+      answers: Record<string, { source: string }>;
+    };
+    expect(bundle.answers["solved-one"].source).toBe("my work");
+  });
+
+  it("counts the imported answers in the toast", async () => {
+    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const bundle = JSON.stringify({
+      version: 2,
+      solved: ["solved-one"],
+      answers: {
+        "solved-one": { version: 1, kind: "write", source: "from the file", updatedAt: 9 },
+      },
+    });
+
+    fireEvent.change(fileInput, {
+      target: { files: [new File([bundle], "progress.json", { type: "application/json" })] },
+    });
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("imported 1 solved exercise and 1 saved answer"),
+    );
   });
 
   it("opens the file picker when import is clicked", () => {
