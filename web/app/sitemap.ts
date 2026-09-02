@@ -5,11 +5,8 @@ import { loadAllExercises } from "@/lib/content/exercises";
 
 // The landing owns the site root as its own top-priority entry; every nav route
 // (the playground plus the content routes) follows from the single NAV_ROUTES
-// source so the indexed set never drifts from the nav. NAV_ROUTES no longer
-// contains "/", so the home entry is not duplicated. Absolute URLs are resolved
-// against SITE_URL. The root changes most often and ranks highest; the nav
-// routes update less and sit just below it; the individual lessons and
-// exercises sit below those.
+// source so the indexed set never drifts from the nav. Absolute URLs are
+// resolved against SITE_URL.
 //
 // The slugs come from the same build-time loaders the pages themselves use, so
 // dropping a lesson or exercise JSON file adds its page AND its sitemap entry
