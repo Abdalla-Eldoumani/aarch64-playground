@@ -118,7 +118,7 @@ export function StackAlignment({
         >
           {aligned
             ? "aligned"
-            : "misaligned -- a bl from here faults on real hardware"}
+            : "misaligned: a bl from here faults on real hardware"}
         </span>
       </p>
 
