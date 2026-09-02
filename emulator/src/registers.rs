@@ -62,7 +62,7 @@ pub const REG_ALIASES: &[(&str, u8, bool)] = &[
 ];
 
 /// Resolve a register alias spelling, case-insensitively. `None` means the
-/// text is not an alias -- the caller falls back to the `xN`/`wN` form.
+/// text is not an alias: the caller falls back to the `xN`/`wN` form.
 pub fn reg_alias(name: &str) -> Option<(u8, bool)> {
     REG_ALIASES
         .iter()
@@ -212,7 +212,7 @@ impl NzcvFlags {
 ///
 /// Contains X0-X30, SP, PC, and the NZCV condition flags.
 /// W-register access (32-bit) is handled by the `sf` parameter on
-/// read/write methods -- internally everything is stored as 64-bit.
+/// read/write methods: internally everything is stored as 64-bit.
 #[derive(Debug, Clone)]
 pub struct RegisterFile {
     gpr: [u64; 31],
@@ -371,7 +371,6 @@ mod tests {
     fn w_register_truncates() {
         let mut rf = RegisterFile::new();
         rf.write_gpr(0, true, 0xFFFF_FFFF_1234_5678);
-        // reading as W0 should mask upper 32 bits
         assert_eq!(rf.read_gpr(0, false), 0x1234_5678);
     }
 
@@ -380,7 +379,6 @@ mod tests {
         let mut rf = RegisterFile::new();
         rf.write_gpr(0, true, 0xFFFF_FFFF_FFFF_FFFF);
         rf.write_gpr(0, false, 0x42);
-        // full 64-bit read should show only lower 32 bits
         assert_eq!(rf.read_gpr(0, true), 0x42);
     }
 
