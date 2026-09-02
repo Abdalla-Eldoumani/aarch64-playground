@@ -5,7 +5,7 @@
   "summary": "How a function claims a stack frame, saves fp and lr, and reaches its locals by offset.",
   "tags": [
     "stack",
-    "frame-pointer"
+    "frame pointer"
   ],
   "body": [
     {
