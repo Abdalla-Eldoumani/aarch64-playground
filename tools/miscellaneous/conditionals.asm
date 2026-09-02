@@ -22,24 +22,22 @@ main:
     // immediately following the conditional branch.
 
     ldr     x0, =fmt2           // Load the address of the "XY" string
-    bl      printf              // Call printf
-    b       end                 // Branch to the label `end`
+    bl      printf
+    b       end
 
     // Branching to the label `end` is necessary here.
     // Otherwise, execution would continue into the code under the `greaterThan`
     // label and execute the if block after completing the else block.
 
-greaterThan:                    // `greaterThan` is a label
+greaterThan:
     ldr     x0, =fmt1           // Load the address of the "XX" string
-    bl      printf              // Call printf
+    bl      printf
 
     // Branching to the label `end` is not necessary here because execution
     // naturally continues to the instruction immediately following this block,
     // which is the `end` label.
 
-end:                            // `end` is a label
-
-    // Code block after the if-else construct
+end:
 
     // This is the program epilogue
     mov     x0, 0               // End the program by returning 0.
