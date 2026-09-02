@@ -6,10 +6,10 @@ import type { EmulatorState } from "@/lib/emulator/use-emulator";
  * suite.
  *
  * Typed against the real EmulatorState rather than a loose record, because a
- * loose record hides exactly the mistakes a fake exists to catch: a loose
- * record lets a suite miss fpRegisters, externalCall, or memoryRegions, so the
- * d-register view, the external-call card, and the memory jump list render
- * their fallback branch, and a typo in an override name never fails.
+ * loose record hides exactly the mistakes a fake exists to catch: a suite can
+ * miss fpRegisters, externalCall, or memoryRegions, so the d-register view, the
+ * external-call card, and the memory jump list render their fallback branch,
+ * and a typo in an override name never fails.
  *
  * The defaults describe a loaded machine with nothing assembled and nothing
  * run. Where a field gates a whole view, the default is the one that leaves
