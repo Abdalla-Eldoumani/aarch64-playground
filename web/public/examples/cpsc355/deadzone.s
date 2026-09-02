@@ -469,21 +469,21 @@ game_loop_levelup:
                 b       game_loop
 
 select_upgrade_1:
-                mov     w0, 0
+                mov     w0, 0                   // Choice 0
                 bl      upgrades_apply
                 bl      screen_invalidate       // Menu comes back off
                 mov     game_state, STATE_PLAYING
                 b       game_loop_render
 
 select_upgrade_2:
-                mov     w0, 1
+                mov     w0, 1                   // Choice 1
                 bl      upgrades_apply
                 bl      screen_invalidate       // Menu comes back off
                 mov     game_state, STATE_PLAYING
                 b       game_loop_render
 
 select_upgrade_3:
-                mov     w0, 2
+                mov     w0, 2                   // Choice 2
                 bl      upgrades_apply
                 bl      screen_invalidate       // Menu comes back off
                 mov     game_state, STATE_PLAYING
@@ -593,26 +593,26 @@ handle_pause:
                 b       handle_input_done       //   on the frame that began it
 
 handle_up:
-                mov     w0, 0
-                mov     w1, -1
+                mov     w0, 0                   // dx = 0
+                mov     w1, -1                  // dy = -1 (up)
                 bl      player_move
                 b       handle_input_done
 
 handle_down:
-                mov     w0, 0
-                mov     w1, 1
+                mov     w0, 0                   // dx = 0
+                mov     w1, 1                   // dy = 1 (down)
                 bl      player_move
                 b       handle_input_done
 
 handle_left:
-                mov     w0, -1
-                mov     w1, 0
+                mov     w0, -1                  // dx = -1 (left)
+                mov     w1, 0                   // dy = 0
                 bl      player_move
                 b       handle_input_done
 
 handle_right:
-                mov     w0, 1
-                mov     w1, 0
+                mov     w0, 1                   // dx = 1 (right)
+                mov     w1, 0                   // dy = 0
                 bl      player_move
 
 handle_input_done:
@@ -1153,8 +1153,8 @@ draw_gameover_screen:
                 mov     w2, COLOR_RED
                 bl      fb_fill_row
 
-                mov     w0, 35
-                mov     w1, 3
+                mov     w0, 35                  // X position
+                mov     w1, 3                   // Y position
                 bl      cursor_move
 
                 mov     w0, COLOR_BRIGHT_RED
@@ -1265,9 +1265,9 @@ draw_hs_loop:
 
                 // Save values to stack before any function calls
                 ldr     w21, [x22, HS_SCORE]    // w21 = score
-                ldrh    w19, [x22, HS_WAVE]
+                ldrh    w19, [x22, HS_WAVE]     // w19 = wave (temp)
                 str     w19, [sp, 48]           // Save wave to stack
-                ldr     w19, [x22, HS_KILLS]
+                ldr     w19, [x22, HS_KILLS]    // w19 = kills (temp)
                 str     w19, [sp, 52]           // Save kills to stack
 
                 mov     w0, 22
@@ -1367,21 +1367,21 @@ draw_intro_screen:
                 mov     w0, 7
                 mov     w1, 5
                 bl      cursor_move
-                mov     w0, w19
+                mov     w0, w19                 // Frame for color
                 bl      intro_set_color
-                mov     w0, w20
-                mov     w1, 0
+                mov     w0, w20                 // Max chars
+                mov     w1, 0                   // Line offset
                 bl      intro_draw_logo_line1
 
                 mov     w0, 7
                 mov     w1, 6
                 bl      cursor_move
                 mov     w0, w19
-                add     w0, w0, 4
+                add     w0, w0, 4               // Offset color
                 bl      intro_set_color
                 mov     w0, w20
-                sub     w0, w0, 66
-                mov     w1, 66
+                sub     w0, w0, 66              // Subtract previous line
+                mov     w1, 66                  // Line offset
                 bl      intro_draw_logo_line2
 
                 mov     w0, 7
@@ -1705,7 +1705,7 @@ draw_menu_hs_loop:
 
                 // write_num and set_color clobber the low registers
                 ldr     w21, [x22, HS_SCORE]    // w21 = score
-                ldrh    w19, [x22, HS_WAVE]
+                ldrh    w19, [x22, HS_WAVE]     // w19 = wave (temp save)
                 str     w19, [sp, 48]           // Save wave to stack
 
                 mov     w0, 20
