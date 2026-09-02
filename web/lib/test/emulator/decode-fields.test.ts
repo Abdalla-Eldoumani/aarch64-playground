@@ -100,9 +100,8 @@ describe("decodeFields", () => {
   });
 
   it("slices a register-offset load into Rm/option/S, never a fabricated imm9", () => {
-    // The strip used to route this word through the pre/post-index
-    // layout: a fabricated imm9 box, a `0` box showing 1, and no sign of
-    // the index register anywhere.
+    // Routed through the pre/post-index layout, this word shows a fabricated
+    // imm9 box, a `0` box reading 1, and no index register at all.
     const [word] = assembleWords(
       "        .text\n        .global main\nmain:\n        ldr     w0, [x1, x2, lsl 2]\n        ret\n",
     );
