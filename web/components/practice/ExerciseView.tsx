@@ -150,7 +150,7 @@ export function ExerciseView({
   const passingCount = allChecks.filter((check) => check.pass).length;
 
   return (
-    <article className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-12 lg:grid lg:grid-cols-[420px_minmax(0,1fr)] lg:items-start lg:gap-12">
+    <article className="mx-auto w-full max-w-screen-xl px-6 py-10 sm:py-12 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start lg:gap-12">
       {/* Statement column */}
       <div className="flex flex-col gap-5">
         <Kicker number={sheetNumber} title="exercise" />
@@ -202,7 +202,7 @@ export function ExerciseView({
         {/* Fixed frame at every breakpoint (no shift as the editor loads); the
             embed's container-driven layout gives the editor the full column
             measure above a registers | console split. */}
-        <div className="flex h-[560px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+        <div className="flex h-[440px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px] lg:h-[640px] xl:h-[720px]">
           <EmbeddablePlayground
             ref={embedRef}
             chrome="checker"
