@@ -5,7 +5,7 @@
   "topic": "architecture",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "RISC against CISC machine code, where `m4` expansion fits into the build, and how a load/store machine moves data between memory and the register file.",
+  "prompt": "RISC versus CISC machine code, where `m4` expansion fits into the build, and how a load/store machine moves data between memory and the register file.",
   "questions": [
     {
       "question": "Compared with AArch64, why is a CISC instruction stream harder for a processor to decode?",
