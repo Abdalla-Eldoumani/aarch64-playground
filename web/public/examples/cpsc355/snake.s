@@ -273,7 +273,7 @@ draw_animated_logo_frame:
     // Wrap around when reaching end
     cmp     w1, 56
     b.lt    anim_no_wrap
-    mov     w1, -4
+    mov     w1, -4                 // Reset to start
 anim_no_wrap:
     str     w1, [x0]
 
@@ -1087,7 +1087,7 @@ init_obstacles:
     mov     fp, sp
 
     ldr     x19, =obstacle_positions
-    mov     w20, 0
+    mov     w20, 0  // Obstacle counter
 
 init_obstacle_loop:
     cmp     w20, NUM_OBSTACLES
@@ -1783,6 +1783,7 @@ place_food:
     mul     w3, w3, w2
     sub     w1, w1, w3
     
+    // If w1 == 0 (20% chance), make it golden food
     ldr     x0, =food_type
     cmp     w1, 0
     mov     w2, FOOD_GOLDEN
@@ -1871,6 +1872,7 @@ try_spawn_powerup:
     mul     w3, w3, w2
     sub     w1, w1, w3
 
+    // Only spawn if w1 == 0 (10% chance)
     cbnz    w1, spawn_powerup_done
 
     bl      spawn_powerup
@@ -1893,7 +1895,7 @@ spawn_powerup:
 
     ldr     x0, =random_buffer
     ldrb    w1, [x0]
-    and     w1, w1, 1
+    and     w1, w1, 1  // 0 or 1
 
     ldr     x0, =powerup_type
     cmp     w1, 0
@@ -2010,7 +2012,7 @@ shrink_snake:
     sub     w1, w1, SHRINK_AMOUNT
     cmp     w1, INITIAL_SNAKE_LENGTH
     mov     w2, INITIAL_SNAKE_LENGTH
-    csel    w1, w2, w1, lt
+    csel    w1, w2, w1, lt  // Use INITIAL_SNAKE_LENGTH if < INITIAL_SNAKE_LENGTH
 
     str     w1, [x0]
 
@@ -2555,12 +2557,12 @@ skip_combo_indicator:
     ldr     x0, =powerup_timer
     ldr     w0, [x0]
     mov     w1, 5
-    udiv    w0, w0, w1
+    udiv    w0, w0, w1          // w0 = timer / 5 (approximate seconds)
     add     w0, w0, 1          // Add 1 to avoid showing 0 while active
 
     ldr     x1, =slowmo_timer_buffer
     bl      int_to_string
-    mov     x2, x0
+    mov     x2, x0              // x2 = length from int_to_string
 
     mov     x0, STDOUT_FILENO
     ldr     x1, =slowmo_timer_buffer
@@ -2941,7 +2943,7 @@ play_death_flash:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
 
-    mov     w19, 3
+    mov     w19, 3  // Flash 3 times
 
 flash_loop:
     cbz     w19, flash_done
@@ -2976,7 +2978,7 @@ flash_loop:
     ldr     x0, =sleep_time
     mov     x1, 0
     str     x1, [x0]
-    movz    x1, 0xF080, lsl 0
+    movz    x1, 0xF080, lsl 0    // 50ms in nanoseconds
     movk    x1, 0x02FA, lsl 16
     str     x1, [x0, 8]
     mov     x8, SYS_NANOSLEEP
@@ -3249,7 +3251,7 @@ build_multilevel_file_format:
     bl      copy_string_to_buffer
     
     // Add Level 1 score - use maximum of current and backup
-    mov     w0, w21
+    mov     w0, w21               // w0 = current Level 1 score
     ldr     x25, =level1_backup
     ldr     w25, [x25]            // w25 = backup Level 1 score
     cmp     w0, w25
@@ -3270,7 +3272,7 @@ build_multilevel_file_format:
     bl      copy_string_to_buffer
 
     // Add Level 2 score - use maximum of current and backup
-    mov     w0, w22
+    mov     w0, w22               // w0 = current Level 2 score
     ldr     x25, =level2_backup
     ldr     w25, [x25]            // w25 = backup Level 2 score
     cmp     w0, w25
@@ -3291,7 +3293,7 @@ build_multilevel_file_format:
     bl      copy_string_to_buffer
 
     // Add Level 3 score - use maximum of current and backup
-    mov     w0, w23
+    mov     w0, w23               // w0 = current Level 3 score
     ldr     x25, =level3_backup
     ldr     w25, [x25]            // w25 = backup Level 3 score
     cmp     w0, w25
@@ -3312,7 +3314,7 @@ build_multilevel_file_format:
     bl      copy_string_to_buffer
 
     // Add Level 4 score - use maximum of current and backup
-    mov     w0, w24
+    mov     w0, w24               // w0 = current Level 4 score
     ldr     x25, =level4_backup
     ldr     w25, [x25]            // w25 = backup Level 4 score
     cmp     w0, w25
@@ -3375,6 +3377,7 @@ build_multilevel_file_format:
     // Null terminate
     strb    wzr, [x19]
     
+    // Return length in x0
     mov     x0, x20
     
     ldp     x19, x20, [sp, 16]
@@ -3389,7 +3392,7 @@ copy_string_to_buffer:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
     
-    mov     w2, 0
+    mov     w2, 0  // Counter
     
 copy_loop:
     cmp     w2, w1
@@ -3412,15 +3415,15 @@ find_string_in_buffer:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
     
-    mov     x3, x19
+    mov     x3, x19  // Current search position
     
 find_loop:
     ldrb    w4, [x3]
     cbz     w4, find_not_found  // End of buffer
     
-    mov     x5, x3
-    mov     x6, x1
-    mov     w7, 0
+    mov     x5, x3   // Position to compare
+    mov     x6, x1   // String to find
+    mov     w7, 0   // Counter
     
 find_compare_loop:
     cmp     w7, w2
@@ -3439,11 +3442,11 @@ find_next_char:
     b       find_loop
     
 find_found:
-    mov     x0, x3
+    mov     x0, x3  // Return pointer to found string
     b       find_done
     
 find_not_found:
-    mov     x0, 0
+    mov     x0, 0  // Return null
     
 find_done:
     ldp     fp, lr, [sp], 16
@@ -3478,7 +3481,7 @@ preserve_all_levels_from_file:
     cmp     x0, 0
     b.lt    preserve_all_done  // File doesn't exist, nothing to preserve
 
-    mov     x19, x0
+    mov     x19, x0  // Save file descriptor
 
     mov     x0, x19
     ldr     x1, =high_score_buffer
@@ -3660,20 +3663,20 @@ check_and_update_records:
 
     // Save all high scores before any operations
     ldr     x0, =high_score_level1
-    ldr     w22, [x0]
+    ldr     w22, [x0]  // Save Level 1
     ldr     x0, =high_score_level2
-    ldr     w23, [x0]
+    ldr     w23, [x0]  // Save Level 2
     // Also save Level 2 to backup location
     ldr     x0, =level2_backup
-    str     w23, [x0]
+    str     w23, [x0]  // Store Level 2 in backup
     ldr     x0, =high_score_level3
-    ldr     w24, [x0]
+    ldr     w24, [x0]  // Save Level 3
     ldr     x0, =high_score_level4
-    ldr     w25, [x0]
+    ldr     w25, [x0]  // Save Level 4
     ldr     x0, =high_score_level5
-    ldr     w26, [x0]
+    ldr     w26, [x0]  // Save Level 5
     ldr     x0, =high_score_level6
-    ldr     w27, [x0]
+    ldr     w27, [x0]  // Save Level 6
 
     ldr     x0, =score
     ldr     w19, [x0]  // w19 = current score
@@ -3722,7 +3725,7 @@ check_level6_record:
     b       compare_and_update
 
 compare_and_update:
-    ldr     w21, [x20]
+    ldr     w21, [x20]  // w21 = current high score for this level
     cmp     w19, w21
     b.le    check_records_done
     
@@ -3774,7 +3777,7 @@ verify_backup_level6:
     b       do_backup_verify
 
 do_backup_verify:
-    ldr     w0, [x0]
+    ldr     w0, [x0]            // w0 = backup value from file
     cmp     w19, w0
     b.le    check_records_done
 
@@ -4144,7 +4147,7 @@ compare_string:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
     
-    mov     x3, x19
+    mov     x3, x19  // Current buffer position
     mov     x4, 0   // Counter
     
 compare_loop:
