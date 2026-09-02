@@ -1475,7 +1475,7 @@ fn exec_dp1(
 }
 
 fn exec_mul_wide(
-    op: MulWideOp, rd: u8, rn: u8, rm: u8, _ra: u8,
+    op: MulWideOp, rd: u8, rn: u8, rm: u8, ra: u8,
     regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
     let result = match op {
@@ -1499,6 +1499,28 @@ fn exec_mul_wide(
             let a = u128::from(regs.read_gpr(rn, true));
             let b = u128::from(regs.read_gpr(rm, true));
             ((a * b) >> 64) as u64
+        }
+        // The accumulator is a full 64-bit register even though both
+        // sources are 32-bit, so it is read at X width and never masked.
+        MulWideOp::Smaddl => {
+            let a = i64::from(regs.read_gpr(rn, false) as u32 as i32);
+            let b = i64::from(regs.read_gpr(rm, false) as u32 as i32);
+            (regs.read_gpr(ra, true) as i64).wrapping_add(a * b) as u64
+        }
+        MulWideOp::Smsubl => {
+            let a = i64::from(regs.read_gpr(rn, false) as u32 as i32);
+            let b = i64::from(regs.read_gpr(rm, false) as u32 as i32);
+            (regs.read_gpr(ra, true) as i64).wrapping_sub(a * b) as u64
+        }
+        MulWideOp::Umaddl => {
+            let a = regs.read_gpr(rn, false) & 0xFFFF_FFFF;
+            let b = regs.read_gpr(rm, false) & 0xFFFF_FFFF;
+            regs.read_gpr(ra, true).wrapping_add(a * b)
+        }
+        MulWideOp::Umsubl => {
+            let a = regs.read_gpr(rn, false) & 0xFFFF_FFFF;
+            let b = regs.read_gpr(rm, false) & 0xFFFF_FFFF;
+            regs.read_gpr(ra, true).wrapping_sub(a * b)
         }
     };
     regs.write_gpr(rd, true, result);

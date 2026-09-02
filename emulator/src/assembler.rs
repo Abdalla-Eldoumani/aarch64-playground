@@ -161,6 +161,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // multiply / divide
     "MUL", "UDIV", "SDIV", "MADD", "MSUB", "MNEG", "NEG", "NEGS",
     "SMULL", "UMULL", "SMULH", "UMULH",
+    "SMADDL", "SMSUBL", "UMADDL", "UMSUBL", "SMNEGL", "UMNEGL",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
     // floating-point
@@ -292,10 +293,16 @@ fn encode_line(
         "MADD" => encode_mul_accumulate(&ops, false, line_num),
         "MSUB" => encode_mul_accumulate(&ops, true, line_num),
         "MNEG" => encode_mneg(&ops, line_num),
-        "SMULL" => encode_mul_wide(&ops, 0b001, true, line_num),
-        "UMULL" => encode_mul_wide(&ops, 0b101, true, line_num),
-        "SMULH" => encode_mul_wide(&ops, 0b010, false, line_num),
-        "UMULH" => encode_mul_wide(&ops, 0b110, false, line_num),
+        "SMULL" => encode_mul_wide(&ops, 0b001, true, 0, false, line_num),
+        "UMULL" => encode_mul_wide(&ops, 0b101, true, 0, false, line_num),
+        "SMULH" => encode_mul_wide(&ops, 0b010, false, 0, false, line_num),
+        "UMULH" => encode_mul_wide(&ops, 0b110, false, 0, false, line_num),
+        "SMADDL" => encode_mul_wide(&ops, 0b001, true, 0, true, line_num),
+        "SMSUBL" => encode_mul_wide(&ops, 0b001, true, 1, true, line_num),
+        "UMADDL" => encode_mul_wide(&ops, 0b101, true, 0, true, line_num),
+        "UMSUBL" => encode_mul_wide(&ops, 0b101, true, 1, true, line_num),
+        "SMNEGL" => encode_mneg_wide(&ops, 0b001, line_num),
+        "UMNEGL" => encode_mneg_wide(&ops, 0b101, line_num),
         "NEG" => encode_neg(&ops, false, line_num),
         "NEGS" => encode_neg(&ops, true, line_num),
 
@@ -1541,13 +1548,28 @@ fn encode_dp1(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError> {
         | (rd as u32))
 }
 
-fn encode_mul_wide(ops: &[&str], op31: u32, widening: bool, ln: usize) -> Result<u32, EmuError> {
+fn encode_mul_wide(
+    ops: &[&str], op31: u32, widening: bool, o0: u32, accumulates: bool, ln: usize,
+) -> Result<u32, EmuError> {
     // SMULL/UMULL Xd, Wn, Wm  (the SMADDL/UMADDL alias with Ra=XZR)
     // SMULH/UMULH Xd, Xn, Xm  (the top 64 bits of the 128-bit product)
-    if ops.len() != 3 {
-        return asm_err(ln, "SMULL/UMULL/SMULH/UMULH require 3 operands");
+    // SMADDL/SMSUBL/UMADDL/UMSUBL Xd, Wn, Wm, Xa (the accumulate forms)
+    let names = if accumulates {
+        "SMADDL/SMSUBL/UMADDL/UMSUBL"
+    } else {
+        "SMULL/UMULL/SMULH/UMULH"
+    };
+    if ops.len() != if accumulates { 4 } else { 3 } {
+        return asm_err(
+            ln,
+            &if accumulates {
+                format!("{names} require 4 operands: Xd, Wn, Wm, Xa")
+            } else {
+                format!("{names} require 3 operands")
+            },
+        );
     }
-    reject_sp_operands(ops, ln, "SMULL/UMULL/SMULH/UMULH")?;
+    reject_sp_operands(ops, ln, names)?;
     let (rd, rd_x) = parse_register(ops[0], ln)?;
     let (rn, rn_x) = parse_register(ops[1], ln)?;
     let (rm, rm_x) = parse_register(ops[2], ln)?;
@@ -1560,13 +1582,32 @@ fn encode_mul_wide(ops: &[&str], op31: u32, widening: bool, ln: usize) -> Result
     if !widening && (!rn_x || !rm_x) {
         return asm_err(ln, "SMULH/UMULH take X source registers");
     }
+    let ra = if accumulates {
+        let (ra, ra_x) = parse_register(ops[3], ln)?;
+        if !ra_x {
+            return asm_err(ln, "the accumulator must be an X register (the product is 64-bit)");
+        }
+        ra
+    } else {
+        31
+    };
     Ok((1 << 31)
         | (0b11011 << 24)
         | (op31 << 21)
         | ((rm as u32) << 16)
-        | (0b11111 << 10)
+        | (o0 << 15)
+        | ((ra as u32) << 10)
         | ((rn as u32) << 5)
         | (rd as u32))
+}
+
+/// SMNEGL / UMNEGL Xd, Wn, Wm: the `Ra = XZR` subtract forms, the same
+/// shape `encode_mneg` uses against MSUB.
+fn encode_mneg_wide(ops: &[&str], op31: u32, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 3 {
+        return asm_err(ln, "SMNEGL/UMNEGL require 3 operands: Xd, Wn, Wm");
+    }
+    encode_mul_wide(&[ops[0], ops[1], ops[2], "XZR"], op31, true, 1, true, ln)
 }
 
 /// Encode `MNEG Rd, Rn, Rm` as `MSUB Rd, Rn, Rm, ZR`. The zero register
@@ -3824,6 +3865,88 @@ mod tests {
         assert_eq!(x(25), 0x0000_0000_FF00_0000);
         assert_eq!(w(26), 0xFF00_0000);
         assert_eq!(w(27), 0x0000_FF00);
+    }
+
+    #[test]
+    fn widening_multiply_accumulate_uses_the_full_64_bit_accumulator() {
+        use crate::cpu::Cpu;
+        use crate::decoder::{decode, Instruction, MulWideOp};
+        let labels = HashMap::new();
+        for (src, want, op, ra) in [
+            ("smaddl x0, w1, w2, x3", 0x9B22_0C20u32, MulWideOp::Smaddl, 3u8),
+            ("smsubl x0, w1, w2, x3", 0x9B22_8C20, MulWideOp::Smsubl, 3),
+            ("umaddl x0, w1, w2, x3", 0x9BA2_0C20, MulWideOp::Umaddl, 3),
+            ("umsubl x0, w1, w2, x3", 0x9BA2_8C20, MulWideOp::Umsubl, 3),
+            ("smnegl x0, w1, w2", 0x9B22_FC20, MulWideOp::Smsubl, 31),
+            ("umnegl x0, w1, w2", 0x9BA2_FC20, MulWideOp::Umsubl, 31),
+        ] {
+            let word = encode_line(src, 0, &labels, 1).unwrap();
+            assert_eq!(word, want, "{src}");
+            match decode(word).unwrap() {
+                Instruction::MulWide { op: got, rd: 0, rn: 1, rm: 2, ra: got_ra } => {
+                    assert_eq!((got, got_ra), (op, ra), "{src}");
+                }
+                other => panic!("{src} decoded to {other:?}"),
+            }
+        }
+        for src in ["smaddl x0, x1, x2, x3", "smaddl w0, w1, w2, w3", "smaddl x0, w1, w2, w3"] {
+            let err = encode_line(src, 0, &labels, 1).unwrap_err().to_string();
+            assert!(err.contains("register"), "{src}: {err}");
+        }
+        let source = r#"
+            MOV W1, #-3
+            MOV W2, #5
+            MOV X3, #100
+            SMADDL X4, W1, W2, X3
+            SMSUBL X5, W1, W2, X3
+            UMADDL X6, W1, W2, X3
+            UMSUBL X7, W1, W2, X3
+            SMNEGL X8, W1, W2
+            UMNEGL X9, W1, W2
+            SMULL X10, W1, W2
+            SMADDL X11, W1, W2, XZR
+            SMSUBL X12, W1, W2, XZR
+            MOVZ X13, #1
+            MOVK X13, #1, LSL #32
+            MOV W14, #2
+            MOV W15, #3
+            SMADDL X16, W14, W15, X13
+            UMADDL X17, W14, W15, X13
+            SMSUBL X18, W14, W15, X13
+            MOVZ W19, #0xFFFF
+            MOVK W19, #0x7FFF, LSL #16
+            SMADDL X20, W19, W19, XZR
+            MOVZ W21, #0x8000, LSL #16
+            SMADDL X22, W21, W21, XZR
+            MOV W23, #-1
+            UMADDL X24, W23, W23, XZR
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(60).unwrap();
+        let x = |r: u8| cpu.regs.read_gpr(r, true);
+        assert_eq!(x(4) as i64, 85);
+        assert_eq!(x(5) as i64, 115);
+        // The signed and unsigned pairs diverge on -3, so neither can be
+        // the other's path in disguise.
+        assert_eq!(x(6), 0x0000_0005_0000_0055);
+        assert_eq!(x(7), 0xFFFF_FFFB_0000_0073);
+        assert_eq!(x(8) as i64, 15);
+        assert_eq!(x(9), 0xFFFF_FFFB_0000_000F);
+        // The aliases against their canonical zero-accumulator forms.
+        assert_eq!(x(10) as i64, -15);
+        assert_eq!(x(11) as i64, -15);
+        assert_eq!(x(12) as i64, 15);
+        // The accumulator is 64-bit even though the sources are 32: a
+        // truncating one answers 7 here instead of 0x1_0000_0007.
+        assert_eq!(x(16), 0x0000_0001_0000_0007);
+        assert_eq!(x(17), 0x0000_0001_0000_0007);
+        assert_eq!(x(18), 0x0000_0000_FFFF_FFFB);
+        assert_eq!(x(20), 0x3FFF_FFFF_0000_0001);
+        assert_eq!(x(22), 0x4000_0000_0000_0000);
+        assert_eq!(x(24), 0xFFFF_FFFE_0000_0001);
     }
 
     #[test]

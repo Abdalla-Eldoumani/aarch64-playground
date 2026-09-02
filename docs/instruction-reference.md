@@ -28,6 +28,12 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `UMULL`  | `UMULL Xd, Wn, Wm`               | Widening multiply, unsigned.             |
 | `SMULH`  | `SMULH Xd, Xn, Xm`               | The top 64 bits of the signed 128-bit product. |
 | `UMULH`  | `UMULH Xd, Xn, Xm`               | The top 64 bits of the unsigned 128-bit product. |
+| `SMADDL` | `SMADDL Xd, Wn, Wm, Xa`          | Widening multiply-add: `Xd = Xa + Wn * Wm`, the 32x32 product taken as signed. The accumulator is a full 64-bit register. `SMULL` is this with `Xa = XZR`. |
+| `SMSUBL` | `SMSUBL Xd, Wn, Wm, Xa`          | `Xd = Xa - Wn * Wm`, signed.            |
+| `UMADDL` | `UMADDL Xd, Wn, Wm, Xa`          | The unsigned form of `SMADDL`.          |
+| `UMSUBL` | `UMSUBL Xd, Wn, Wm, Xa`          | The unsigned form of `SMSUBL`.          |
+| `SMNEGL` | `SMNEGL Xd, Wn, Wm`              | `Xd = -(Wn * Wm)`, signed and widening. Alias for `SMSUBL Xd, Wn, Wm, XZR`. |
+| `UMNEGL` | `UMNEGL Xd, Wn, Wm`              | The unsigned form.                      |
 | `UDIV`   | `UDIV Xd, Xn, Xm`                | Unsigned divide, zero on divide-by-zero. |
 | `SDIV`   | `SDIV Xd, Xn, Xm`                | Signed divide.                           |
 | `NEG`    | `NEG Xd, Xm`                     | Alias for `SUB Xd, XZR, Xm`.             |

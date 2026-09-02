@@ -208,6 +208,10 @@ pub enum MulWideOp {
     Umull,
     Smulh,
     Umulh,
+    Smaddl,
+    Smsubl,
+    Umaddl,
+    Umsubl,
 }
 
 /// The second operand of a conditional compare: a register, or the
@@ -2106,16 +2110,21 @@ fn decode_dp3(instr: u32) -> Result<Instruction, EmuError> {
         });
     }
 
-    // SMULL/UMULL are SMADDL/UMADDL with Ra=XZR; SMULH/UMULH fix the Ra
-    // field at 11111. The accumulate forms proper (Ra != XZR) stay
-    // undecoded: gcc emits only the aliases, and half-implementing the
-    // accumulate would be a silent wrong answer waiting to happen.
-    if sf && o0 == 0 && ra == 31 {
-        let op = match op31 {
-            0b001 => Some(MulWideOp::Smull),
-            0b101 => Some(MulWideOp::Umull),
-            0b010 => Some(MulWideOp::Smulh),
-            0b110 => Some(MulWideOp::Umulh),
+    // SMULL/UMULL are SMADDL/UMADDL with Ra=XZR and stay on their own
+    // rows so the disassembly reads the way GAS writes it. SMULH/UMULH
+    // keep the `ra == 31` requirement because their Ra field is
+    // architecturally fixed; the widening rows do not, since Ra is the
+    // accumulator there.
+    if sf {
+        let op = match (op31, o0, ra == 31) {
+            (0b001, 0, true) => Some(MulWideOp::Smull),
+            (0b101, 0, true) => Some(MulWideOp::Umull),
+            (0b010, 0, true) => Some(MulWideOp::Smulh),
+            (0b110, 0, true) => Some(MulWideOp::Umulh),
+            (0b001, 0, false) => Some(MulWideOp::Smaddl),
+            (0b001, 1, _) => Some(MulWideOp::Smsubl),
+            (0b101, 0, false) => Some(MulWideOp::Umaddl),
+            (0b101, 1, _) => Some(MulWideOp::Umsubl),
             _ => None,
         };
         if let Some(op) = op {
