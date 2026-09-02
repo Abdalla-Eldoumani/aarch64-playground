@@ -1,8 +1,8 @@
 //! The C-locale character classification glibc exposes twice: as the
 //! `is*`/`to*` functions a `bl isdigit` reaches, and as the lookup table
 //! behind them. gcc lowers the `<ctype.h>` MACROS to
-//! `(*__ctype_b_loc())[c] & mask`, so a program compiled from C -- and
-//! any student copying that idiom into assembly -- never calls `isdigit`
+//! `(*__ctype_b_loc())[c] & mask`, so a program compiled from C (and
+//! any student copying that idiom into assembly) never calls `isdigit`
 //! at all; it calls `__ctype_b_loc` once and indexes the table. Both
 //! spellings answer from `class_of` here, so they can never disagree.
 //!
@@ -30,8 +30,8 @@ pub const IS_PUNCT: u16 = 0x0004;
 pub const IS_ALNUM: u16 = 0x0008;
 
 /// Lowest index the hosted table answers for. glibc's table starts at
-/// -128 so a plain `char` -- signed on some ports, and EOF on every one
-/// of them -- can index it without a cast.
+/// -128 so a plain `char` (signed on some ports, and EOF on every one
+/// of them) can index it without a cast.
 pub const TABLE_FIRST_INDEX: i32 = -128;
 /// Highest index the hosted table answers for: `unsigned char` max.
 pub const TABLE_LAST_INDEX: i32 = 255;
@@ -49,7 +49,7 @@ pub const TABLE_ZERO_OFFSET_I32: u64 = ((-TABLE_FIRST_INDEX) as u64) * 4;
 const EOF: i32 = -1;
 
 /// The class bits of one byte in the C locale. Bytes above 0x7F belong
-/// to no class there -- the "C" locale is ASCII and nothing else, which
+/// to no class there: the "C" locale is ASCII and nothing else, which
 /// is what the course servers run under.
 fn class_of_byte(c: u8) -> u16 {
     if !c.is_ascii() {
@@ -145,7 +145,7 @@ pub fn isspace(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 /// and both answer 254; EOF is glibc's one carve-out and answers -1, so
 /// `toupper(getchar())` still ends a loop. Single source of truth for
 /// both the conversion tables and the `toupper`/`tolower` stubs, which
-/// glibc keeps in step and the course servers print in step.
+/// glibc keeps in step.
 pub fn convert_byte(c: i32, to_upper: bool) -> i32 {
     if c == EOF || !(TABLE_FIRST_INDEX..=TABLE_LAST_INDEX).contains(&c) {
         return c;
