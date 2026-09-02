@@ -4,8 +4,8 @@
   "order": 6,
   "summary": "Learn how to print defined variables in ARMv8 AArch64 Assembly.",
   "tags": [
-    "Printing Variables",
-    "Printing"
+    "printing",
+    "variables"
   ],
   "body": [
     {
