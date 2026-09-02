@@ -44,6 +44,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `UBFX`   | `UBFX Xd, Xn, #lsb, #width`      | Unsigned bitfield extract: pulls `width` bits starting at `lsb` down to bit 0, zeros the rest. Alias for `UBFM`. |
 | `SBFX`   | `SBFX Xd, Xn, #lsb, #width`      | Signed bitfield extract: the same field, sign-extended from its top bit instead of zeroed. Alias for `SBFM`. |
 | `BFI`    | `BFI Xd, Xn, #lsb, #width`       | Bitfield insert: drops the low `width` bits of `Xn` into `Xd` at `lsb`; every other `Xd` bit survives. Alias for `BFM`. |
+| `BFXIL`  | `BFXIL Xd, Xn, #lsb, #width`     | Bitfield extract and insert low: pulls `width` bits from `lsb` in `Xn` down to bit 0 of `Xd` and leaves every other `Xd` bit alone. Same field math as `UBFX`, which zeroes the rest instead. Alias for `BFM`. |
 | `SXTB`   | `SXTB Xd, Wn` / `SXTB Wd, Wn`    | Sign-extend a byte. Alias for `SBFM`.    |
 | `SXTH`   | `SXTH Xd, Wn` / `SXTH Wd, Wn`    | Sign-extend a halfword.                  |
 | `SXTW`   | `SXTW Xd, Wn`                    | Sign-extend a word to 64 bits.           |

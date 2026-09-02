@@ -152,7 +152,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // sign / zero extension
     "SXTB", "SXTH", "SXTW", "UXTB", "UXTH",
     // bitfield extract / insert
-    "UBFX", "SBFX", "BFI",
+    "UBFX", "SBFX", "BFI", "BFXIL",
     // multiply / divide
     "MUL", "UDIV", "SDIV", "MADD", "MSUB", "NEG", "NEGS",
     "SMULL", "UMULL", "SMULH", "UMULH",
@@ -259,6 +259,7 @@ fn encode_line(
         "UBFX" => encode_bitfield_alias(&ops, "UBFX", 0b10, BitfieldForm::Extract, line_num),
         "SBFX" => encode_bitfield_alias(&ops, "SBFX", 0b00, BitfieldForm::Extract, line_num),
         "BFI"  => encode_bitfield_alias(&ops, "BFI",  0b01, BitfieldForm::Insert,  line_num),
+        "BFXIL" => encode_bitfield_alias(&ops, "BFXIL", 0b01, BitfieldForm::Extract, line_num),
 
         // -- multiply / divide --
         "MUL" => encode_mul_div(&ops, 0, line_num),
@@ -4274,6 +4275,34 @@ svc 0").unwrap();
             }
             other => panic!("expected Bitfield, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn bfxil_keeps_the_destination_bits_ubfx_would_clear() {
+        use crate::cpu::Cpu;
+        let labels = HashMap::new();
+        for (src, want) in [
+            ("bfxil x0, x1, #8, #8", 0xB348_3C20u32),
+            ("bfxil w0, w1, #4, #4", 0x3304_1C20),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+        // Same immr/imms, same source, same field: the only difference is
+        // whether the destination's other 56 bits survive.
+        let source = r#"
+            MOV X0, #-1
+            MOVZ X1, #0xAB00
+            BFXIL X0, X1, #8, #8
+            MOV X2, #-1
+            UBFX X2, X1, #8, #8
+            SVC #0
+        "#;
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(20).unwrap();
+        assert_eq!(cpu.regs.read_gpr(0, true), 0xFFFF_FFFF_FFFF_FFAB);
+        assert_eq!(cpu.regs.read_gpr(2, true), 0x0000_0000_0000_00AB);
     }
 
     #[test]
