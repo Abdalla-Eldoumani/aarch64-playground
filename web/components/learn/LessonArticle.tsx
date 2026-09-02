@@ -149,7 +149,7 @@ export function LessonArticle({
                   {/* Fixed frame per breakpoint (no shift as the editor loads);
                       at lg the figure takes the whole article column, so the
                       editor sits beside the registers. */}
-                  <div className="flex h-[420px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px] lg:h-[680px]">
+                  <div className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px] lg:h-[680px]">
                     <EmbeddablePlayground
                       chrome="embed"
                       startSource={block.starter}
