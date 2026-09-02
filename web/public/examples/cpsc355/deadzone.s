@@ -2,7 +2,7 @@
 // upgrade to pick between them, a Titan at wave 10.  Full project at
 // https://github.com/Abdalla-Eldoumani/deadzone
 //
-// how to run: press assemble, then run -- the game takes over the terminal
+// how to run: press assemble, then run. The game takes over the terminal
 // pane and grabs the keyboard.  Or from the term tab:  ./program
 //
 // how to play: any key past the title, w/s picks a menu item, enter starts.
