@@ -122,7 +122,12 @@ editor; nothing is sent to a server.
   the right, each grouped by topic in the order the course meets them.
   Which exercises you have solved is kept in this browser alone, so the
   **progress** row under the columns exports that record as a small
-  `.json` file and imports one back, on this device or another.
+  `.json` file and imports one back, on this device or another. What you
+  typed is kept too: an exercise reopens with the program you left in the
+  editor and a theory set reopens with the answers you gave, and both
+  travel in that same progress file. The **restore starter** control under
+  a coding exercise puts the author's starting program back and forgets
+  what you had saved.
 - **Reference** (`/reference`): the supported instruction set, with a
   worked encoding diagram per instruction and an interactive NZCV panel
   on the flag-setters, filtered by a box that `/` jumps into from
