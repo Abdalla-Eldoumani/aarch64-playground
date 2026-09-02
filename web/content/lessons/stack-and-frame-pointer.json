@@ -1,5 +1,5 @@
 {
-  "title": "the stack and the frame pointer",
+  "title": "The stack and the frame pointer",
   "slug": "stack-and-frame-pointer",
   "order": 2,
   "summary": "How a function claims a stack frame, saves fp and lr, and reaches its locals by offset.",
