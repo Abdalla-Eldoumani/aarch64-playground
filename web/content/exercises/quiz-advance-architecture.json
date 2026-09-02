@@ -1,11 +1,11 @@
 {
-  "title": "Quiz: System Architecture - Advanced",
+  "title": "Quiz: system architecture",
   "slug": "quiz-advance-architecture",
   "order": 30,
   "topic": "architecture",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Work through how RISC and CISC machine code differ, how `m4` expansion fits into the build, and how a load/store machine moves data between memory and the register file.",
+  "prompt": "RISC against CISC machine code, where `m4` expansion fits into the build, and how a load/store machine moves data between memory and the register file.",
   "questions": [
     {
       "question": "Compared with AArch64, why is a CISC instruction stream harder for a processor to decode?",
