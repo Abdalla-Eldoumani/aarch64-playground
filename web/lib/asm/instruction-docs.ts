@@ -233,6 +233,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   FSUB: { summary: "Fd = Fn - Fm (S or D form)." },
   FMUL: { summary: "Fd = Fn * Fm (S or D form)." },
   FDIV: { summary: "Fd = Fn / Fm (S or D form)." },
+  FNMUL: {
+    summary: "Fd = -(Fn * Fm): the sign flips AFTER the multiply.",
+    details: ["Not the same as negating an operand: `fnmul` of `+0.0` and `3.0` is `-0.0`."],
+    example: "fnmul d0, d1, d2",
+    cExample: "Fd = -(Fn * Fm);",
+  },
   FNEG: {
     summary: "Fd = -Fn (flips the sign bit; S or D form).",
     example: "fneg d16, d16",
