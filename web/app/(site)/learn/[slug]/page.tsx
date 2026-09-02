@@ -71,11 +71,10 @@ export default async function LessonPage({
   const lesson = loadLesson(slug);
   if (!lesson) notFound();
   // The sheet coordinate is the lesson's 1-based position in the sorted
-  // order -- presentation only, derived at build time, schema untouched.
+  // order. It is presentation only and derived at build time.
   const position = loadAllLessons().findIndex((entry) => entry.slug === lesson.slug);
-  // Structured data, built at build time from the validated lesson: a
-  // LearningResource so the lesson reads as course material rather than a
-  // generic page, and the breadcrumb trail the reader walked to reach it.
+  // A LearningResource so the lesson reads as course material, plus the
+  // breadcrumb trail to it.
   const learningResourceJsonLd = {
     "@context": "https://schema.org",
     "@type": "LearningResource",
