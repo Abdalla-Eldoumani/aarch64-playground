@@ -1,7 +1,7 @@
 {
   "title": "Conditionals with cmp and b.cond",
   "slug": "assembly-conditionals-basics",
-  "order": 7,
+  "order": 6,
   "summary": "How cmp sets the condition flags and how b.cond reads them to build if-else.",
   "tags": [
     "conditionals",
