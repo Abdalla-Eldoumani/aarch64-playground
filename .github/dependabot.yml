@@ -12,3 +12,5 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # The root manifest is not listed: its `next` entry exists only for Vercel's
+  # framework detection, and its `postcss` override moves with web/'s.
