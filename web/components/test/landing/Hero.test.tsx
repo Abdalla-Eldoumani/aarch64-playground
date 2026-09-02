@@ -38,6 +38,9 @@ describe("Hero", () => {
     expect(embed.props!.chrome).toBe("embed");
     expect(embed.props!.autoplay).toBeTruthy();
     expect(embed.props!.readOnly).toBeTruthy();
+    // The hero is the one surface that draws its program without the editor,
+    // so the landing never loads Monaco.
+    expect(embed.props!.staticEditor).toBeTruthy();
     // The walk keeps its two-button frame: no step, no back.
     expect(embed.props!.showStep).toBe(false);
     expect(embed.props!.showBack).toBe(false);
