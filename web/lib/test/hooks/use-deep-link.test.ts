@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import LZString from "lz-string";
 import { buildDeepLinkQuery, parseDeepLink, resolveExampleStem } from "@/lib/hooks/use-deep-link";
+// parseDeepLink no longer imports the decoder -- that edge is what put
+// lz-string on the landing -- so every bundle case hands it in.
+import { decodeBundle } from "@/lib/playground/diagnostic-bundle";
 import { MAX_SHARE_HASH_BYTES } from "@/lib/playground/upload-guard";
 
 afterEach(() => {
@@ -82,15 +85,23 @@ describe("parseDeepLink", () => {
       args: "demo",
       exitCode: 9,
     });
-    const dl = parseDeepLink(`?bundle=${encoded}`);
+    const dl = parseDeepLink(`?bundle=${encoded}`, decodeBundle);
     expect(dl.bundle).not.toBeUndefined();
     expect(dl.bundle!.source).toContain("mov x0, 9");
     expect(dl.bundle!.args).toBe("demo");
     expect(dl.bundle!.exitCode).toBe(9);
   });
 
+  test("leaves ?bundle= undecoded when no decoder is supplied", async () => {
+    const { encodeBundle } = await import("@/lib/playground/diagnostic-bundle");
+    const encoded = encodeBundle({ source: "ret" });
+    const dl = parseDeepLink(`?bundle=${encoded}`);
+    expect(dl.bundle).toBeUndefined();
+    expect(dl.bundleError).toBeUndefined();
+  });
+
   test("malformed ?bundle reports a corrupt bundle error", () => {
-    const dl = parseDeepLink("?bundle=not-a-payload");
+    const dl = parseDeepLink("?bundle=not-a-payload", decodeBundle);
     expect(dl.bundle).toBeUndefined();
     expect(dl.bundleError).toBe("corrupt");
   });
@@ -98,7 +109,7 @@ describe("parseDeepLink", () => {
   test("an oversized ?bundle= payload falls back to no bundle before decompressing", () => {
     const spy = vi.spyOn(LZString, "decompressFromEncodedURIComponent");
     const oversized = "a".repeat(MAX_SHARE_HASH_BYTES + 1);
-    const dl = parseDeepLink(`?bundle=${oversized}`);
+    const dl = parseDeepLink(`?bundle=${oversized}`, decodeBundle);
     expect(dl.bundle).toBeUndefined();
     expect(dl.bundleError).toBe("too-large");
     // The decompression-bomb guard rejects the raw fragment before lz-string
@@ -177,7 +188,7 @@ describe("parseDeepLink typed-param guards", () => {
     const future = LZString.compressToEncodedURIComponent(
       JSON.stringify({ v: 99, b: { source: "ret" } }),
     );
-    const dl = parseDeepLink(`?bundle=${future}`);
+    const dl = parseDeepLink(`?bundle=${future}`, decodeBundle);
     expect(dl.bundle).toBeUndefined();
     expect(dl.bundleError).toBe("corrupt");
   });
@@ -185,7 +196,7 @@ describe("parseDeepLink typed-param guards", () => {
   test("a bundle combines with the other params in one query", async () => {
     const { encodeBundle } = await import("@/lib/playground/diagnostic-bundle");
     const encoded = encodeBundle({ source: "ret\n" });
-    const dl = parseDeepLink(`?example=basics&embed=1&bundle=${encoded}`);
+    const dl = parseDeepLink(`?example=basics&embed=1&bundle=${encoded}`, decodeBundle);
     expect(dl.example).toBe("basics");
     expect(dl.embed).toBe(true);
     expect(dl.bundle!.source).toBe("ret\n");
