@@ -846,6 +846,23 @@ ubfx    x2, x1, 8, 8        // x2 = 0xab: the same field, everything else zeroed
       "`bfxil` reads its destination. unlike `ubfx` it is a merge, so whatever was in xd outside the field is still there.",
     ],
   },
+  {
+    mnemonic: "ubfiz",
+    category: "Data processing",
+    syntax: "ubfiz xd, xn, #lsb, #width",
+    example: `mov     x1, 2               // field 0b10
+ubfiz   x2, x1, 4, 2        // x2 = 0x20: two bits, placed at bit 4, zeros above`,
+  },
+  {
+    mnemonic: "sbfiz",
+    category: "Data processing",
+    syntax: "sbfiz xd, xn, #lsb, #width",
+    example: `mov     x1, 2               // field 0b10, top bit set
+sbfiz   x2, x1, 4, 2        // x2 = 0xffffffffffffffe0: the sign fills upward`,
+    gotchas: [
+      "the sign comes from the top bit of the FIELD, not of the source register: `sbfiz x2, x1, 4, 2` on 2 sign-extends because bit 1 of 2 is set.",
+    ],
+  },
 
   // compare and test
   {

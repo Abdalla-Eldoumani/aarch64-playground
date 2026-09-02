@@ -96,6 +96,17 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     example: "bfxil x0, x1, #8, #8",
     cExample: "Rd = (Rd & ~mask) | ((Rn >> lsb) & mask);",
   },
+  UBFIZ: {
+    summary: "Unsigned bitfield insert in zeros: the low `width` bits of Rn land at `lsb`, the rest of Rd is zeroed.",
+    details: ["The inverse shape of `UBFX`. It is a plain write, not a merge: nothing of the old Rd survives."],
+    example: "ubfiz x2, x1, #2, #32",
+    cExample: "Rd = (unsigned long)(Rn & mask) << lsb;",
+  },
+  SBFIZ: {
+    summary: "Signed bitfield insert: the same placement, sign-extended from the field's top bit.",
+    example: "sbfiz x0, x1, #2, #30",
+    cExample: "Rd = (long)(Rn & mask) << lsb; // sign filled above the field",
+  },
   SXTB: { summary: "Sign-extend a byte to Wd/Xd (alias for `SBFM`).", example: "sxtb w0, w1", cExample: "Rd = (signed char)Rn;" },
   SXTH: { summary: "Sign-extend a halfword to Wd/Xd.", example: "sxth w0, w1", cExample: "Rd = (short)Rn;" },
   SXTW: { summary: "Sign-extend a word to 64-bit Xd.", example: "sxtw x0, w1", cExample: "Xd = (long)(int)Wn;" },
