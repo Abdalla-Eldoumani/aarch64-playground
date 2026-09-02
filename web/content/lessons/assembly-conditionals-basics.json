@@ -15,7 +15,7 @@
     },
     {
       "type": "prose",
-      "markdown": "Every program, from simple scripts to complex operating systems, must make decisions. Whether determining if a user entered the correct password, checking whether a value exceeds a limit, or choosing between different execution paths, conditional logic is a fundamental part of programming. In high-level languages, these decisions are hidden behind convenient constructs such as `if` and `else` statements, allowing programmers to control program behaviour with minimal effort. However, implementing the same decision-making process in ARMv8 AArch64 Assembly is not as simple."
+      "markdown": "Every program has to make decisions. In high-level languages a decision is written with `if` and `else`. ARMv8 AArch64 Assembly has no such construct."
     },
     {
       "type": "prose",
@@ -32,7 +32,7 @@
     },
     {
       "type": "prose",
-      "markdown": "At the Assembly level, the processor does not understand high-level abstractions such as `if` and `else`. Instead, conditional behaviour is created by directly controlling the flow of execution through comparisons, condition codes, and branch instructions. This lesson explores how ARMv8 AArch64 Assembly implements conditional logic and reveals the low-level mechanisms that allow programs to make decisions."
+      "markdown": "At the Assembly level, the processor does not understand high-level abstractions such as `if` and `else`. Instead, conditional behaviour is created by directly controlling the flow of execution through comparisons, condition codes, and branch instructions."
     },
     {
       "type": "prose",
@@ -49,7 +49,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## More about cmp and b.cond\n\nThe `cmp` instruction is the compare instruction. It compares the contents of two registers, or the contents of a register with an immediate value, and serves as the foundation for conditional logic in Assembly.\n\nComparing two values is essentially a way of checking whether a particular condition is met. However, the `cmp` instruction only performs the comparison; it does not take any action based on the result.\n\nInstead, the comparison updates the condition flags in the background. These flags record information about the result of the comparison.\n\nInstructions that use a condition code, such as `b.cond`, examine these condition flags. If the specified condition code (`cond`) is met, `b.cond` branches to the specified label. Otherwise, execution continues with the instruction immediately following `b.cond`."
+      "markdown": "## More about cmp and b.cond\n\nThe `cmp` instruction is the compare instruction. It compares the contents of two registers, or the contents of a register with an immediate value, \n\n`cmp` performs the comparison and takes no action on the result.\n\nInstead it updates the condition flags, which record whether the result was zero, negative, carried, or overflowed.\n\nInstructions that use a condition code, such as `b.cond`, examine these condition flags. If the specified condition code (`cond`) is met, `b.cond` branches to the specified label. Otherwise, execution continues with the instruction immediately following `b.cond`."
     },
     {
       "type": "prose",
@@ -58,7 +58,7 @@
     {
       "type": "code",
       "language": "asm",
-      "source": "    // Pseudo-ops and directives\n    ..\nmain:\n    // Program prologue\n    ..\n    mov     x19, 6              // int a = 6;\n    mov     x20, 7              // int b = 7;\n\n    cmp     x19, x20            // Compare a and b: if (a > b)\n    b.gt    greaterThan         // Jump to `greaterThan` if the condition code is met\n\n    // else block\n    // If the condition code is not met, execution continues with the instruction\n    // immediately following the conditional branch.\n\n    ldr     x0, =fmt2           // Load the address of the \"XY\" string\n    bl      printf              // Call printf\n    b       end                 // Branch to the label `end`\n\n    // Branching to the label `end` is necessary here.\n    // Otherwise, execution would continue into the code under the `greaterThan`\n    // label and execute the if block after completing the else block.\n\ngreaterThan:                    // `greaterThan` is a label\n    ldr     x0, =fmt1           // Load the address of the \"XX\" string\n    bl      printf              // Call printf\n\n    // Branching to the label `end` is not necessary here because execution\n    // naturally continues to the instruction immediately following this block,\n    // which is the `end` label.\n\nend:                            // `end` is a label\n\n    // Code block after the if-else construct\n    ..\n    // Program epilogue"
+      "source": "    // Pseudo-ops and directives\n    ..\nmain:\n    // Program prologue\n    ..\n    mov     x19, 6              // int a = 6;\n    mov     x20, 7              // int b = 7;\n\n    cmp     x19, x20            // Compare a and b: if (a > b)\n    b.gt    greaterThan         // Jump to `greaterThan` if the condition code is met\n\n    // else block\n    // If the condition code is not met, execution continues with the instruction\n    // immediately following the conditional branch.\n\n    ldr     x0, =fmt2           // Load the address of the \"XY\" string\n    bl      printf\n    b       end\n\n    // without this branch, execution falls into the if block below\n\ngreaterThan:\n    ldr     x0, =fmt1           // Load the address of the \"XX\" string\n    bl      printf\n\nend:\n\n    // Code block after the if-else construct\n    ..\n    // Program epilogue"
     },
     {
       "type": "prose",
@@ -71,7 +71,7 @@
     {
       "type": "editor",
       "language": "asm",
-      "starter": "    .data\n    fmt1:   .string \"XX\\n\"\n    fmt2:   .string \"XY\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // This is the program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    mov     x19, 6              // int a = 6;\n    mov     x20, 7              // int b = 7;\n\n    cmp     x19, x20            // Compare a and b: if (a > b)\n    b.gt    greaterThan         // Jump to `greaterThan` if the condition code is met\n\n    // else block\n    // If the condition code is not met, execution continues with the instruction\n    // immediately following the conditional branch.\n\n    ldr     x0, =fmt2           // Load the address of the \"XY\" string\n    bl      printf              // Call printf\n    b       end                 // Branch to the label `end`\n\n    // Branching to the label `end` is necessary here.\n    // Otherwise, execution would continue into the code under the `greaterThan`\n    // label and execute the if block after completing the else block.\n\ngreaterThan:                    // `greaterThan` is a label\n    ldr     x0, =fmt1           // Load the address of the \"XX\" string\n    bl      printf              // Call printf\n\n    // Branching to the label `end` is not necessary here because execution\n    // naturally continues to the instruction immediately following this block,\n    // which is the `end` label.\n\nend:                            // `end` is a label\n\n    // Code block after the if-else construct\n\n    // This is the program epilogue\n    mov     x0, 0               // End the program by returning 0.\n    ldp     x29, x30, [sp], 16\n    ret"
+      "starter": "    .data\n    fmt1:   .string \"XX\\n\"\n    fmt2:   .string \"XY\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    mov     x19, 6              // int a = 6;\n    mov     x20, 7              // int b = 7;\n\n    cmp     x19, x20            // Compare a and b: if (a > b)\n    b.gt    greaterThan         // Jump to `greaterThan` if the condition code is met\n\n    // else block\n    // If the condition code is not met, execution continues with the instruction\n    // immediately following the conditional branch.\n\n    ldr     x0, =fmt2           // Load the address of the \"XY\" string\n    bl      printf\n    b       end\n\n    // without this branch, execution falls into the if block below\n\ngreaterThan:\n    ldr     x0, =fmt1           // Load the address of the \"XX\" string\n    bl      printf\n\nend:\n\n    // Code block after the if-else construct\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
     }
   ]
 }
