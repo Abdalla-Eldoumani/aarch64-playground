@@ -52,12 +52,12 @@ import { resolveLine } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 
 /**
- * The single shared emulator surface. The full playground, the landing
- * hero, the /learn lessons, and the /practice exercises all compose this
- * one component (EMBEDDABLE_COMPONENT.md): it OWNS the single
- * `useEmulator()` hub and renders every panel internally, so the hub's
- * ~30 fields never cross a component boundary. The chrome prop selects
- * the configuration; the full playground is the maximal one.
+ * The single shared emulator surface. The full playground, the landing hero,
+ * the /learn lessons, and the /practice exercises all compose this one
+ * component: it OWNS the single `useEmulator()` hub and renders every panel
+ * internally, so the hub's ~30 fields never cross a component boundary. The
+ * chrome prop selects the configuration; the full playground is the maximal
+ * one.
  */
 export type EmbeddableChrome = "full" | "embed" | "checker";
 
@@ -104,11 +104,11 @@ export type EmbeddablePlaygroundHandle = {
   /** The command Action[] built inside the component so a host-rendered
    *  palette has no duplicate logic. */
   getCommands(): Action[];
-  /** Surface a host-page failure (bad share link, failed example fetch)
-   *  through this component's toast instance. The page entry's own
-   *  react-hot-toast binding is a separate module instance in the
-   *  production chunk graph, so toasts dispatched there never reach the
-   *  mounted Toaster; this component's binding provably does. */
+  /** Surface a host-page failure (bad share link, failed example fetch) through
+   *  this component's toast instance. The page entry's own react-hot-toast
+   *  binding is a separate module instance in the production chunk graph, so
+   *  toasts dispatched there never reach the mounted Toaster; this component's
+   *  binding reaches it. */
   notifyError(message: string): void;
 };
 
@@ -123,7 +123,7 @@ export type EmbeddablePlaygroundProps = {
   startCursor?: { line: number; column: number };
   /** The host knows a program arrived from a share link; drives the banner. */
   fromShare?: boolean;
-  /** Hero = non-editable taste; lessons / exercises editable. */
+  /** Hero = read-only; lessons and exercises editable. */
   readOnly?: boolean;
   /**
    * Embed/checker chrome only: render the program through StaticCodeView
@@ -236,8 +236,8 @@ function EmbeddableCore({
   }, []);
   const [source, setSource] = useState(startSource ?? "");
   // Advisory pre-assembly lint: frame-balance and m4-hygiene warnings,
-  // refreshed shortly after the student stops typing. Warnings, never
-  // errors -- assembling stays available regardless.
+  // refreshed shortly after the student stops typing. Warnings, never errors:
+  // assembling stays available regardless.
   const [lintWarnings, setLintWarnings] = useState<
     Array<{ line: number; message: string }>
   >([]);
@@ -248,11 +248,11 @@ function EmbeddableCore({
   const [extraFiles, setExtraFiles, filesBackup] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
   // The workspace as the machine last saw it. Every combined-string line the
-  // MACHINE produces -- the current-line marker, assembly errors, a runtime
-  // fault's line -- is numbered against this, not against whatever the
-  // student has typed since. Resolving those against the live buffers made
-  // the marker change FILES on an unrelated edit, and let an error land in
-  // the wrong tab while its own assemble was still in flight.
+  // MACHINE produces (the current-line marker, assembly errors, a runtime
+  // fault's line) is numbered against this, not against whatever the student
+  // has typed since. Resolving those against the live buffers made the marker
+  // change FILES on an unrelated edit, and let an error land in the wrong tab
+  // while its own assemble was still in flight.
   const [assembledLayout, setAssembledLayout] = useState<{
     main: string;
     extras: SourceFile[];
@@ -342,12 +342,12 @@ function EmbeddableCore({
       if (chrome === "full" && prev.trim().length > 0 && prev !== payload.source) {
         recent.push(nameForRecents(prev), prev);
       }
-      // A fresh program starts on a fresh machine: registers, memory,
-      // console, exit code, stdin queue, and VFS all clear. Breakpoints
-      // too -- reset deliberately keeps them for the SAME program, but a
-      // different program must not inherit another's gutter dots and CPU
-      // addresses (when the new program is shorter, those addresses were
-      // unreachable by any click and only a reload recovered).
+      // A fresh program starts on a fresh machine: registers, memory, console,
+      // exit code, stdin queue, and VFS all clear. Breakpoints too: reset keeps
+      // them for the SAME program, but a different program must not inherit
+      // another's gutter dots and CPU addresses (when the new program is
+      // shorter, those addresses were unreachable by any click and only a
+      // reload recovered).
       emuRef.current.clearAllBreakpoints();
       emuRef.current.reset();
       // The payload's stdin and fixtures become this program's seeds. Which
@@ -436,8 +436,8 @@ function EmbeddableCore({
 
   // Step has the same cold-start problem Run has: a bare step would advance
   // over empty memory. Same gate, so the first press assembles, re-seeds, and
-  // then advances one word -- and a step on a finished program restarts it
-  // from the top, exactly as Run does.
+  // then advances one word. A step on a finished program restarts it from the
+  // top, exactly as Run does.
   const stepEmbed = useCallback(async () => {
     if (
       emu.instructions.length === 0 ||
@@ -553,8 +553,8 @@ function EmbeddableCore({
     }
   }, [chrome, emu, emu.isLoaded, startStdin]);
 
-  // Autoplay: the landing hero's hands-off walk. The hub reaches it as
-  // emuRef, never as a render value -- the reason is in the hook.
+  // Autoplay: the landing hero's hands-off walk. The hub reaches it as emuRef,
+  // never as a render value; the reason is in the hook.
   useAutoplay({
     enabled: Boolean(autoplay),
     steps: autoplaySteps,
@@ -611,7 +611,7 @@ function EmbeddableCore({
   );
 
   // The checker's Check must evaluate a snapshot that matches the CURRENT
-  // source, not whatever the last Run left behind -- otherwise a stale snapshot
+  // source, not whatever the last Run left behind. Otherwise a stale snapshot
   // can PASS on code the student already edited away, or every result fails on
   // zeroed pre-run state before any Run. Reuse runEmbed's assemble-if-stale
   // guard (the shared lastRunSourceRef): when nothing has run yet or the source
@@ -685,6 +685,8 @@ function EmbeddableCore({
 
 
 
+  // 400ms: long enough that a typing burst lints once, short enough that a
+  // paused student sees warnings.
   useEffect(() => {
     const handle = window.setTimeout(() => {
       void emuRef.current
