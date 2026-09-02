@@ -13,21 +13,18 @@ import { StackAlignment } from "@/components/diagrams/StackAlignment";
  * RegisterFileDiagram; 02 covers the floating-point file (d0-d7 arguments,
  * d8-d15 callee-saved low halves, d16-d31 temporaries) over its sibling
  * FpRegisterFileDiagram; 03 is the frame record, stepped live by FrameWalk
- * -- code, registers, and frame bands per step -- teaching the course frame
+ * (code, registers, and frame bands per step), teaching the course frame
  * shape: the saved fp/lr pair at the frame base where fp points, locals
  * above it at positive offsets like [fp, 16]; 04 is 16-byte alignment, with
  * the hands-on StackAlignment probe. All prose flows through the single
  * sanitizing LessonMarkdown (no second renderer, no raw-HTML injection
  * path), and register tokens are written as inline code so LessonMarkdown
  * attaches the same role summaries that power the hover-define, keeping the
- * guide, the hover cards, and the diagrams on one story. The prose is
- * original, summarized from the course style guide in plain words.
- * Token-only and reduced-motion safe.
+ * guide, the hover cards, and the diagrams on one story.
  */
 
-// Original prose, authored from the course style guide. Each block is built as
-// newline-joined lines so register/instruction tokens can stay inline code
-// (back-ticked) for the hover-define without colliding with a template literal.
+// Each block is newline-joined so back-ticked tokens keep the hover-define
+// without colliding with a template literal.
 const leadMarkdown = [
   "The procedure call standard for AArch64 (AAPCS64) is the contract between a routine and the routines it calls: which registers carry arguments, which survive a call, and how the stack is kept. Following it is what lets your code call a routine like `printf` and return cleanly.",
 ].join("\n");
