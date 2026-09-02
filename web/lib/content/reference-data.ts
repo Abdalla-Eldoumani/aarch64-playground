@@ -555,8 +555,8 @@ mov     x12, 1
 mov     x13, 2
 adc     x14, x12, x13       // high sum = 1 + 2 + carry = 4`,
     gotchas: [
-      "Register form only: there is no add-with-carry immediate in AArch64.",
-      "The carry-in is whatever NZCV holds, so the flag-setting instruction that produces it has to be the one right before.",
+      "register form only: there is no add-with-carry immediate in AArch64.",
+      "the carry-in is whatever NZCV holds, so the flag-setting instruction that produces it has to be the one right before.",
     ],
   },
   {
@@ -579,7 +579,7 @@ mov     x12, 1
 mov     x13, 0
 sbc     x14, x12, x13       // high half = 1 - 0 - 1 = 0`,
     gotchas: [
-      "The carry is the not-borrow: c set means the previous subtraction did NOT borrow, so nothing extra comes off.",
+      "the carry is the not-borrow: c set means the previous subtraction did NOT borrow, so nothing extra comes off.",
     ],
   },
   {
@@ -1147,7 +1147,7 @@ add     sp, sp, 16`,
     category: "PC-relative addressing",
     syntax: "adrp xd, label",
     gotchas: [
-      "this lands on the 4 kib page base, not the symbol; add the low 12 bits with `:lo12:` to reach the exact address.",
+      "this lands on the 4 KiB page base, not the symbol; add the low 12 bits with `:lo12:` to reach the exact address.",
     ],
     runnable: runAdrp,
   },
