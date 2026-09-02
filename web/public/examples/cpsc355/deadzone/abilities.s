@@ -2,8 +2,6 @@
 // that stops every enemy, both on cooldowns counted in frames.
 
 // Ability constants
-ABILITY_BOMB = 1                                // Screen clear bomb
-ABILITY_FREEZE = 2                              // Freeze enemies
 
 // Cooldowns, counted in frames. Deriving them from TARGET_FPS keeps the
 // durations here and the seconds the HUD prints tied to the same frame rate.
@@ -30,7 +28,7 @@ freeze_timer:   .word   0                       // Frames remaining in freeze
 
 // Strings for HUD display
                 .balign 4
-ability_hud_fmt: .string "BOMB"
+ability_hud_bomb: .string "BOMB"
 ability_hud_ready: .string "READY"
 ability_hud_freeze_key: .string "FREEZE"
 ability_hud_active: .string "ACTIVE"
@@ -79,7 +77,6 @@ abilities_update:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Update bomb cooldown
                 adrp    x0, bomb_cooldown
                 add     x0, x0, :lo12:bomb_cooldown
                 ldr     w1, [x0]
@@ -88,7 +85,6 @@ abilities_update:
                 str     w1, [x0]
 
 ability_update_freeze_cd:
-                // Update freeze cooldown
                 adrp    x0, freeze_cooldown
                 add     x0, x0, :lo12:freeze_cooldown
                 ldr     w1, [x0]
@@ -97,20 +93,17 @@ ability_update_freeze_cd:
                 str     w1, [x0]
 
 ability_update_freeze_timer:
-                // Update freeze effect timer
                 adrp    x0, freeze_active
                 add     x0, x0, :lo12:freeze_active
                 ldr     w1, [x0]
                 cbz     w1, abilities_update_done
 
-                // Freeze is active, decrement timer
                 adrp    x0, freeze_timer
                 add     x0, x0, :lo12:freeze_timer
                 ldr     w1, [x0]
                 sub     w1, w1, 1
                 str     w1, [x0]
 
-                // Check if freeze ended
                 cbnz    w1, abilities_update_done
 
                 // Freeze ended
@@ -133,14 +126,12 @@ abilities_check_input:
 
                 mov     w19, w0
 
-                // Check for bomb (spacebar)
                 cmp     w19, KEY_BOMB
                 b.ne    check_freeze_key
                 bl      abilities_use_bomb
                 b       abilities_input_done
 
 check_freeze_key:
-                // Check for freeze (F)
                 cmp     w19, KEY_FREEZE
                 b.ne    abilities_input_done
                 bl      abilities_use_freeze
@@ -151,7 +142,7 @@ abilities_input_done:
                 ret
 
 // abilities_use_bomb - Activate screen clear bomb
-// Kills all enemies on screen with massive explosion
+// Kills every active enemy and spawns an explosion at each
                 .global abilities_use_bomb
 abilities_use_bomb:
                 stp     fp, lr, [sp, -64]!
@@ -160,13 +151,11 @@ abilities_use_bomb:
                 stp     x21, x22, [sp, 32]
                 str     x23, [sp, 48]
 
-                // Check cooldown
                 adrp    x0, bomb_cooldown
                 add     x0, x0, :lo12:bomb_cooldown
                 ldr     w1, [x0]
                 cbnz    w1, bomb_not_ready
 
-                // Bomb is ready! Trigger screen shake
                 mov     w0, 15                  // Strong shake
                 bl      effects_trigger_shake
 
@@ -179,32 +168,28 @@ abilities_use_bomb:
 bomb_kill_loop:
                 cbz     w20, bomb_kill_done
 
-                // Check if enemy is active
                 ldrb    w0, [x19, ENEMY_ACTIVE]
                 cbz     w0, bomb_next_enemy
 
-                // Get enemy position for explosion
                 ldrsh   w22, [x19, ENEMY_X]
                 ldrsh   w23, [x19, ENEMY_Y]
 
-                // Spawn explosion at enemy location
                 mov     w0, w22
                 mov     w1, w23
                 mov     w2, 0                   // Type for normal explosion
                 bl      effects_spawn_explosion
 
-                // Kill the enemy (deactivate)
                 mov     w0, 0
                 strb    w0, [x19, ENEMY_ACTIVE]
 
-                // Increment kill count
+                // Count it for the wave
                 add     w21, w21, 1
 
                 // Award XP (small amount per enemy)
                 mov     w0, 5
                 bl      player_add_xp
 
-                // Add to kill counter
+                // Count it for the player
                 bl      player_add_kill
 
 bomb_next_enemy:
@@ -213,26 +198,22 @@ bomb_next_enemy:
                 b       bomb_kill_loop
 
 bomb_kill_done:
-                // Update enemy count to 0
                 adrp    x0, enemy_count
                 add     x0, x0, :lo12:enemy_count
                 mov     w1, 0
                 str     w1, [x0]
 
-                // Add kills to wave kills
                 adrp    x0, wave_kills
                 add     x0, x0, :lo12:wave_kills
                 ldr     w1, [x0]
                 add     w1, w1, w21
                 str     w1, [x0]
 
-                // Set cooldown
                 adrp    x0, bomb_cooldown
                 add     x0, x0, :lo12:bomb_cooldown
                 mov     w1, BOMB_COOLDOWN
                 str     w1, [x0]
 
-                // Play sound (bell)
                 bl      play_bell
 
 bomb_not_ready:
@@ -249,35 +230,29 @@ abilities_use_freeze:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
 
-                // Check cooldown
                 adrp    x0, freeze_cooldown
                 add     x0, x0, :lo12:freeze_cooldown
                 ldr     w1, [x0]
                 cbnz    w1, freeze_not_ready
 
-                // Check if already active
                 adrp    x0, freeze_active
                 add     x0, x0, :lo12:freeze_active
                 ldr     w1, [x0]
                 cbnz    w1, freeze_not_ready
 
-                // Activate freeze!
                 mov     w1, 1
                 str     w1, [x0]
 
-                // Set freeze timer
                 adrp    x0, freeze_timer
                 add     x0, x0, :lo12:freeze_timer
                 mov     w1, FREEZE_DURATION
                 str     w1, [x0]
 
-                // Set cooldown
                 adrp    x0, freeze_cooldown
                 add     x0, x0, :lo12:freeze_cooldown
                 mov     w1, FREEZE_COOLDOWN
                 str     w1, [x0]
 
-                // Play sound (bell)
                 bl      play_bell
 
 freeze_not_ready:
