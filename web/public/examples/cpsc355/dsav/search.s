@@ -1,4 +1,4 @@
-// search_viz.asm - four ways to look for a value, told as one lesson
+// search.s - four ways to look for a value
 //
 // Linear reads every cell in order. Binary halves the window and never
 // looks at a value to decide where to look next. Jump strides by the
@@ -18,7 +18,7 @@ define(lr, x30)
     search_col_first = 6                // column the first cell starts in
     search_pitch = 7                    // columns from one cell to the next
 
-    // body rows: the kernel owns everything outside 4 to 20
+    // body rows: ui.s owns everything outside 4 to 20
     search_row_cells = 5
     search_row_ruler = 6
     search_row_mark = 7
@@ -32,7 +32,7 @@ define(lr, x30)
     search_row_lesson = 18
     search_row_cost = 20
 
-    // what a cell is, which is all the colour it needs
+    // cell states; the colour follows from the state
     search_st_live = 0                  // not read yet
     search_st_win = 1                   // still inside the live window
     search_st_out = 2                   // read and discarded
@@ -70,13 +70,12 @@ search_size:        .word 0                 // values in use
 search_delay:       .word 220               // ms one compare holds
 search_target:      .word 0
 search_probes:      .word 0                 // compares this run has made
-search_active:      .word 0                 // is a run under way?
-search_ready:       .word 0                 // sample array laid in yet?
+search_active:      .word 0                 // 1 while a run is under way
+search_ready:       .word 0                 // 1 once the sample array is loaded
 
 // What a first visit finds already loaded. The values ascend with uneven
-// gaps, and that is the point: a search for 67 costs interpolation one
-// guess and binary four halvings, which is the lesson the arithmetic line
-// is there to show.
+// gaps, a search for 67 costs interpolation one
+// guess and binary four halvings,
     .balign 4
 search_seed:        .word 4, 11, 19, 28, 35, 46, 67, 73, 81, 94
 
@@ -213,7 +212,7 @@ search_say_typing:   .string "a[%d] is waiting for a value, 0 to 999"
 search_say_stored:   .string "%d values stored, so a search for any of them is a guaranteed hit"
 search_say_random:   .string "%d random values, so a hit is luck; type your own to be certain"
 search_say_inorder:  .string "%d values in order: binary, jump and interpolation can all run"
-search_say_jumbled:  .string "%d values out of order: only linear search is honest here"
+search_say_jumbled:  %d values out of order: only linear search will work here
 
 search_form_linear:  .string "every cell, left to right, and the array need not be in any order"
 search_form_binary:  .string "mid = (low + high) / 2      the values never enter the arithmetic"
@@ -413,8 +412,7 @@ search_blank:
     ret
 
 // search_hold(w0 = halvings of the step delay) - flush, then wait. A
-// compare holds the full delay, a move half of it, so the eye learns
-// which frames are decisions.
+// compare holds the full delay, a move half of it,
 search_hold:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
@@ -427,7 +425,7 @@ search_hold:
     ldr     x0, =search_delay
     ldr     w0, [x0]
     lsr     w0, w0, w19
-    cmp     w0, 15                          // below this nothing reads
+    cmp     w0, 15                          // below 15 ms the frames blur together
     b.ge    .Lsearch_hold_wait
     mov     w0, 15
 .Lsearch_hold_wait:
@@ -796,7 +794,7 @@ search_swatch:
     ldp     fp, lr, [sp], 64
     ret
 
-// search_legend() - what each colour means, in the colour it means it
+// search_legend() - what each colour means, drawn in that colour
 search_legend:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
@@ -1031,7 +1029,7 @@ search_ask:
     bl      ui_footer
 
     // the speed question is 50 characters, so the panel is sized to hold
-    // it with room to spare rather than the other way round
+    // it with room to spare
     mov     w0, 8
     mov     w1, 10
     mov     w2, 60
@@ -1187,9 +1185,8 @@ search_type_values:
     mov     w19, w0
 
     // The strip reveals only what has actually been typed. Committing the
-    // requested size up front left the PREVIOUS array's values on screen,
-    // greyed but perfectly legible, and counted, while the prompt was
-    // still asking for a[0].
+    // requested size up front would leave the previous array's values on
+    // screen and counted while the prompt still asked for a[0].
     ldr     x0, =search_size
     str     wzr, [x0]
     ldr     x21, =search_array
@@ -1246,8 +1243,7 @@ search_type_values:
 
     // A cell is three columns wide, so the value has to stay inside it.
     // Refuse an answer that does not fit and ask for the same cell again:
-    // clamping it silently stored a different number than the one that was
-    // typed, and the search that followed then reported it missing.
+    // clamping would store a different number than the one typed.
     cmp     w22, 0
     b.lt    .Lsearch_type_loop
     cmp     w22, 999
@@ -1374,7 +1370,7 @@ search_sort_screen:
 //             x4 = worst, x5 = space, w6 = 1 when the values must ascend)
 //   -> w0 = target, w1 = 1 to run, 0 to go back
 // One place for everything the four searches share: the empty check, the
-// full state reset, the sort binary and its two relatives depend on, the
+// full state reset, the sort that binary, jump and interpolation need, the
 // chrome, and the target prompt.
 search_open:
     stp     fp, lr, [sp, -80]!
@@ -1407,7 +1403,7 @@ search_open:
 .Lsearch_open_reset:
     bl      search_reset
 
-    mov     w26, 0                          // did the run have to sort?
+    mov     w26, 0                          // 1 when the run had to sort first
     cbz     w25, .Lsearch_open_chrome
     bl      search_check_if_sorted
     cbnz    w0, .Lsearch_open_chrome
@@ -2052,8 +2048,8 @@ search_run_jump:
     ret
 
 // search_run_interp() - the same window as binary search, but the probe
-// comes from the values at its ends rather than from the middle. Watch
-// the arithmetic line next to binary search: this is the whole lesson.
+// comes from the values at its ends rather than from the middle. The
+// arithmetic line shows where each probe came from.
 search_run_interp:
     stp     fp, lr, [sp, -96]!
     mov     fp, sp
