@@ -24,13 +24,13 @@ is_prime:
         b.eq    not_prime
 
         // Trial division from 3, step 2
-        mov     w9, w0
+        mov     w9, w0                  // w9 = n
         mov     w10, 3                  // w10 = divisor
         b       prime_test
 
 prime_loop:
         // Check if n % divisor == 0
-        sdiv    w11, w9, w10
+        sdiv    w11, w9, w10            // quotient
         msub    w11, w11, w10, w9       // remainder = n - (n / d) * d
         cbz     w11, not_prime          // divisible, not prime
 
