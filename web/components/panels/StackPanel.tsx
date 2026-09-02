@@ -12,14 +12,14 @@ interface StackPanelProps {
   frameSlots?: StackSlot[];
 }
 
+// The band's exclusive end, where a reset machine parks sp.
 const STACK_BASE = 0x80000000;
 const ROWS_TO_SHOW = 16;
 
 export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelProps) {
-  // `|| STACK_BASE` treated a genuinely-zero SP (broken prologue, x29
-  // never set) as unparseable and asserted a fresh untouched stack while
-  // the register panel showed SP = 0 -- the one anomaly this panel exists
-  // to show.
+  // A genuinely-zero SP (broken prologue, x29 never set) is real state, not
+  // a parse failure: `|| STACK_BASE` would hide the one anomaly this panel
+  // exists to show.
   const parsedSp = parseInt(sp, 16);
   const spVal = Number.isNaN(parsedSp) ? STACK_BASE : parsedSp;
   const bytesToShow = ROWS_TO_SHOW * 8;
