@@ -105,7 +105,7 @@
     "concurrently": "9.2.4",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",
-    "jsdom": "29.1.1",
+    "jsdom": "30.0.1",
     "lighthouse": "13.4.1",
     "playwright": "1.59.1",
     "postcss": "8.5.23",
