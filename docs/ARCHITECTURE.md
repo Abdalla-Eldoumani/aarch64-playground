@@ -49,7 +49,11 @@ landing hero, the lessons, and the exercises. It owns the single
 `FullChromeSurface`, which `next/dynamic` loads only where the full debugger
 renders. The editor is dynamic for the same reason (`lazy-editor.tsx`), so
 the landing ships no Monaco at all: its hero draws the program with
-`StaticCodeView`. `lib/content` sends the index pages a projection of each
+`StaticCodeView`. Both lazy surfaces await `document.fonts.ready` beside
+their chunk import (capped at three seconds by
+`components/playground/fonts-settled.ts`), so the web-font swap lands while
+the loading beat is still up instead of re-wrapping the header band and
+moving the editor section after it mounts. `lib/content` sends the index pages a projection of each
 lesson and exercise (`LessonIndexRow`, `ExerciseIndexRow`) instead of the
 whole file, keeping bodies, prompts, starters, and acceptance criteria off
 the wire.
@@ -349,9 +353,13 @@ reaches React, the editor, or the emulator (full caps in
   `?embed` honored only when it is exactly `1`.
 
 Security headers (CSP, HSTS, COOP, X-Frame-Options DENY, Referrer-Policy,
-Permissions-Policy) are defined in both
-[`web/proxy.ts`](../web/proxy.ts) and `vercel.json`, kept in
-lockstep so they hold under `next start`, in dev, and on Vercel. The CSP
+Permissions-Policy) come from the `headers()` function in
+[`web/next.config.mjs`](../web/next.config.mjs), which applies them to every
+route but `/_next/static`, `/_next/image`, `/sw.js`,
+`/manifest.webmanifest`, and `/icons/`. They hold under `next dev` and
+`next start`, and on Vercel they compile into the routes manifest with no
+function in the path. `vercel.json` carries the identical set as the
+deploy-time copy, kept in lockstep. The CSP
 allow-lists the Vercel analytics and speed-insights endpoints.
 `vercel.json` additionally sets immutable cache headers for
 `/_next/static/`, `/icons/`, and `*.wasm`, and serves `/sw.js` as
