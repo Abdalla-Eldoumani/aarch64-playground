@@ -33,8 +33,12 @@ describe("fetchStarCount", () => {
 
     // The whole init object is pinned, so an Authorization header cannot be
     // added by accident: this call is anonymous on purpose.
+    // The query string carries the deploy's commit (or "local") so each
+    // deploy gets its own build-cache key; the path itself is pinned.
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.github.com/repos/Abdalla-Eldoumani/aarch64-playground",
+      expect.stringMatching(
+        /^https:\/\/api\.github\.com\/repos\/Abdalla-Eldoumani\/aarch64-playground\?deploy=[\w-]+$/,
+      ),
       {
         headers: { Accept: "application/vnd.github+json" },
         cache: "force-cache",
