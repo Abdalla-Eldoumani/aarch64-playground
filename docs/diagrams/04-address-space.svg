@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" role="img" aria-labelledby="t">
+<title id="t">Where a program lives while it runs</title>
+<defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#EEF0F3" stroke-width="1"/></pattern><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#14161A"/></marker><marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#81520C"/></marker><marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0E7490"/></marker></defs>
+<rect width="1200" height="700" fill="#FCFCFD"/>
+<rect width="1200" height="700" fill="url(#grid)"/>
+<path d="M 14 24 L 14 14 L 24 14" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 1186 24 L 1186 14 L 1176 14" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 14 676 L 14 686 L 24 686" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 1186 676 L 1186 686 L 1176 686" fill="none" stroke="#8A929C" stroke-width="1"/>
+<text x="40" y="46" font-size="11" fill="#81520C" font-weight="600" text-anchor="start" letter-spacing="2">04 · ADDRESS SPACE</text>
+<text x="40" y="72" font-size="20" fill="#14161A" font-weight="600" text-anchor="start">Where a program lives while it runs</text>
+<line x1="40" y1="88" x2="1160" y2="88" stroke="#C9CED6" stroke-width="1"/>
+<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · sheet 4/4</text>
+<rect x="40" y="120" width="150" height="46" fill="#F6EBD3" stroke="#81520C"/>
+<text x="115.0" y="147.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">host stubs</text>
+<text x="204" y="132" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0xFFFF_1000</text>
+<text x="204" y="162" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0xFFFF_0000</text>
+<text x="310" y="147.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">256 slots × 16 B: bl printf lands here and dispatches into Rust</text>
+<text x="115.0" y="180" font-size="12" fill="#8A929C" font-weight="400" text-anchor="middle">· · ·</text>
+<rect x="40" y="188" width="150" height="46" fill="#F4F5F7" stroke="#565E68"/>
+<text x="115.0" y="215.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">stack</text>
+<text x="204" y="200" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x8000_0000</text>
+<text x="204" y="230" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x7F80_0000</text>
+<text x="310" y="215.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">8 MiB, grows down from STACK_BASE; matches the course servers' ulimit -s</text>
+<text x="115.0" y="248" font-size="12" fill="#8A929C" font-weight="400" text-anchor="middle">· · ·</text>
+<rect x="40" y="256" width="150" height="46" fill="#F4F5F7" stroke="#565E68"/>
+<text x="115.0" y="283.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">heap</text>
+<text x="204" y="268" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0190_0000</text>
+<text x="204" y="298" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0090_0000</text>
+<text x="310" y="283.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">16 MiB window for malloc/calloc/realloc; allocator state lives host-side</text>
+<text x="115.0" y="316" font-size="12" fill="#8A929C" font-weight="400" text-anchor="middle">· · ·</text>
+<rect x="40" y="324" width="150" height="46" fill="#F4F5F7" stroke="#565E68"/>
+<text x="115.0" y="351.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">argv</text>
+<text x="204" y="336" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0080_1000</text>
+<text x="204" y="366" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0080_0000</text>
+<text x="310" y="351.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">argv table and string pool; argv[0] is ./program</text>
+<rect x="40" y="370" width="150" height="46" fill="#FFFFFF" stroke="#14161A"/>
+<text x="115.0" y="397.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">.bss</text>
+<text x="204" y="382" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0080_0000</text>
+<text x="204" y="412" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0070_0000</text>
+<text x="310" y="397.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">1 MiB window</text>
+<rect x="40" y="416" width="150" height="46" fill="#FFFFFF" stroke="#14161A"/>
+<text x="115.0" y="443.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">.data</text>
+<text x="204" y="428" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0070_0000</text>
+<text x="204" y="458" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0060_0000</text>
+<text x="310" y="443.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">1 MiB window</text>
+<rect x="40" y="462" width="150" height="46" fill="#FFFFFF" stroke="#14161A"/>
+<text x="115.0" y="489.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">.rodata</text>
+<text x="204" y="474" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0060_0000</text>
+<text x="204" y="504" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0050_0000</text>
+<text x="310" y="489.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">1 MiB window</text>
+<rect x="40" y="508" width="150" height="46" fill="#FFFFFF" stroke="#14161A"/>
+<text x="115.0" y="535.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">.text</text>
+<text x="204" y="520" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0050_0000</text>
+<text x="204" y="550" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0040_0000</text>
+<text x="310" y="535.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">1 MiB window; entry at main, LR seeded with __main_return</text>
+<rect x="40" y="554" width="150" height="46" fill="#FFFFFF" stroke="#14161A"/>
+<text x="115.0" y="581.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">null page</text>
+<text x="204" y="566" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0000_1000</text>
+<text x="204" y="596" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0000_0000</text>
+<text x="310" y="581.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">never mapped: a load or store here faults like Linux (SIGSEGV)</text>
+<text x="40" y="626" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Memory is a sparse map of 4 KiB pages keyed by page base: the first write to a page maps it, and a page a snapshot frame</text>
+<text x="40" y="642" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">still shares is copied on write. Unaligned loads and stores succeed, as on Linux userspace; a misaligned sp at a libc call is a bus error.</text>
+<text x="40" y="658" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">The memory panel reads this map through the memoryMap export, so its jump list cannot drift from the constants the loader uses.</text>
+</svg>
