@@ -177,7 +177,8 @@ Run `node scripts/audit-deps.js` from the repo root any time; it exits non-zero
 on any moderate-or-higher advisory, stricter than CI needs but quieter than
 `npm audit`'s "any" threshold. `node scripts/check-headers.js` GETs the
 deployed origin and asserts every header above is present; run it after any
-deploy or `vercel.json` change.
+deploy and after any header change in `web/next.config.mjs` or
+`vercel.json`.
 
 ## Reporting
 
