@@ -54,8 +54,8 @@ the in-page editor renders blank. Production and `next start` never include
 `'unsafe-eval'`: `web/next.config.mjs` gates it on
 `process.env.NODE_ENV === "development"` at config evaluation, and
 `vercel.json` (production-only) omits it, so the deployed policy keeps the
-`eval`-based XSS surface closed. Exercise the editor under `npm run dev`, where the dev-only
-allowance applies, not against production.
+`eval`-based XSS surface closed. Exercise the editor under `npm run dev`,
+where the dev-only allowance applies, not against production.
 
 The script and style policies also carry `'unsafe-inline'`: Next.js emits
 inline bootstrap scripts and inline styles without a nonce pipeline, and
