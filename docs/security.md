@@ -31,7 +31,8 @@ it to every route except `/_next/static`, `/_next/image`, `/sw.js`,
 `next dev` and `next start`, and on Vercel they compile into the routes
 manifest, where the platform attaches them with no function in the path.
 `vercel.json` carries the identical set as the deploy-time copy, kept in
-lockstep.
+lockstep; its catch-all block also reaches the excluded asset paths, so on
+Vercel every response carries them.
 
 | Header | Value | Why |
 | --- | --- | --- |
