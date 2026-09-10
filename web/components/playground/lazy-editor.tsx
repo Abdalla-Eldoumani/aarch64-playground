@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { fontsSettled } from "@/components/playground/fonts-settled";
 
 /**
  * The editor, reached lazily. Monaco (and the loader that fetches its runtime)
@@ -12,9 +13,16 @@ import dynamic from "next/dynamic";
  * Its own module, and module scope inside it, for the reason lazy-panels.tsx
  * gives: a dynamic() call re-evaluated per render hands React a new component
  * type and remounts the editor, losing the cursor and the undo stack.
+ *
+ * The web fonts are awaited beside the chunk: Monaco measures one glyph's
+ * advance at creation and lays its whole grid on it, so an editor created in
+ * the fallback face keeps the wrong column width after the swap.
  */
 export const Editor = dynamic(
-  () => import("@/components/playground/Editor").then((m) => m.Editor),
+  () =>
+    Promise.all([import("@/components/playground/Editor"), fontsSettled()]).then(
+      ([m]) => m.Editor,
+    ),
   {
     ssr: false,
     // The same beat the shell shows before it engages, so a surface that

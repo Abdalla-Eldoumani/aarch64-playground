@@ -31,14 +31,19 @@ import {
   type SourceFile,
 } from "@/components/playground/MultiFileTabs";
 import { useSourceFiles } from "@/lib/hooks/use-source-files";
+import { fontsSettled } from "@/components/playground/fonts-settled";
 // The playground's own half of this shell, and everything only it renders:
 // dynamic, so the landing hero (which mounts the same component in embed
 // chrome) never ships the full debugger.
+// The chunk and the web fonts are awaited together: mounting in the fallback
+// face and taking the swap afterwards re-wraps the header band and moves the
+// editor section (fonts-settled.ts has the measurement).
 const FullChromeSurface = dynamic(
   () =>
-    import("@/components/playground/FullChromeSurface").then(
-      (m) => m.FullChromeSurface,
-    ),
+    Promise.all([
+      import("@/components/playground/FullChromeSurface"),
+      fontsSettled(),
+    ]).then(([m]) => m.FullChromeSurface),
   {
     ssr: false,
     loading: () => (
