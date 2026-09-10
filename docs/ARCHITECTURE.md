@@ -54,7 +54,8 @@ their chunk import (capped at three seconds by
 `components/playground/fonts-settled.ts`), so the web-font swap lands while
 the loading beat is still up instead of re-wrapping the header band and
 moving the editor section after it mounts. `lib/content` sends the index
-pages a projection of each lesson and exercise (`LessonIndexRow`, `ExerciseIndexRow`) instead of the
+pages a projection of each lesson and exercise (`LessonIndexRow`,
+`ExerciseIndexRow`) instead of the
 whole file, keeping bodies, prompts, starters, and acceptance criteria off
 the wire.
 
