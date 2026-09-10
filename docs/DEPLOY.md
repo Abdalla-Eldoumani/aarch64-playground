@@ -44,7 +44,7 @@ their own hosts and carry `X-Robots-Tag: noindex`.
 - `Content-Type: application/wasm` on `.wasm`, and `text/plain; charset=utf-8` on `/examples/*.s`.
 - Security headers on every route: `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cross-Origin-Opener-Policy: same-origin`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
 
-The CSP is `default-src 'self'` with scripts from self plus Vercel analytics (the editor is vendored and served same-origin, so there is no third-party script CDN), workers from self and `blob:`, and no framing or objects. See [`security.md`](security.md) for the full policy and rationale; `proxy.ts` keeps the same headers in lockstep for `next start` and dev, and `web/proxy.test.ts` fails the suite if the two files drift.
+The CSP is `default-src 'self'` with scripts from self plus Vercel analytics (the editor is vendored and served same-origin, so there is no third-party script CDN), workers from self and `blob:`, and no framing or objects. See [`security.md`](security.md) for the full policy and rationale. The identical set is declared by the `headers()` function in `web/next.config.mjs`, so it also holds under `next dev` and `next start`; on Vercel those config headers compile into the routes manifest and are attached with no function in the path. `web/next.config.test.ts` fails the suite if the two sets drift.
 
 ## Troubleshooting
 
