@@ -33,8 +33,8 @@ export const metadata: Metadata = {
 };
 
 export default async function NotFoundPage() {
-  // Same hourly-revalidated lookup the content layout does; the 404 wears the
-  // same nav, so it carries the same count.
+  // Same build-time lookup the content layout does; the 404 wears the same
+  // nav, so it carries the same count.
   const stars = await fetchStarCount();
 
   return (

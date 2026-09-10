@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="540" viewBox="0 0 1200 540" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" role="img" aria-labelledby="t">
+<title id="t">One surface, two threads, no server</title>
+<defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#EEF0F3" stroke-width="1"/></pattern><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#14161A"/></marker><marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#81520C"/></marker><marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0E7490"/></marker></defs>
+<rect width="1200" height="540" fill="#FCFCFD"/>
+<rect width="1200" height="540" fill="url(#grid)"/>
+<path d="M 14 24 L 14 14 L 24 14" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 1186 24 L 1186 14 L 1176 14" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 14 516 L 14 526 L 24 526" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 1186 516 L 1186 526 L 1176 526" fill="none" stroke="#8A929C" stroke-width="1"/>
+<text x="40" y="46" font-size="11" fill="#81520C" font-weight="600" text-anchor="start" letter-spacing="2">01 · SYSTEM MAP</text>
+<text x="40" y="72" font-size="20" fill="#14161A" font-weight="600" text-anchor="start">One surface, two threads, no server</text>
+<line x1="40" y1="88" x2="1160" y2="88" stroke="#C9CED6" stroke-width="1"/>
+<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · sheet 1/4</text>
+<rect x="40" y="112" width="760" height="340" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="50" y="128" font-size="10.5" fill="#565E68" font-weight="600" text-anchor="start" letter-spacing="1">BROWSER TAB · MAIN THREAD</text>
+<rect x="830" y="112" width="330" height="340" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="840" y="128" font-size="10.5" fill="#565E68" font-weight="600" text-anchor="start" letter-spacing="1">WEB WORKER</text>
+<rect x="60" y="250" width="120" height="60" fill="#DDF1F5" stroke="#0E7490" stroke-width="1"/>
+<text x="120.0" y="277.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Student</text>
+<text x="120.0" y="292.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">source, args</text>
+<rect x="212" y="250" width="168" height="60" fill="#FFFFFF" stroke="#14161A" stroke-width="1"/>
+<text x="296.0" y="277.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Next.js routes</text>
+<text x="296.0" y="292.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">learn, practice,</text>
+<text x="296" y="322" font-size="10" fill="#8A929C" font-weight="400" text-anchor="middle">reference, playground</text>
+<rect x="412" y="250" width="190" height="60" fill="#FFFFFF" stroke="#14161A" stroke-width="1"/>
+<text x="507.0" y="277.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">EmbeddablePlayground</text>
+<text x="507.0" y="292.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">one component, four homes</text>
+<rect x="634" y="250" width="148" height="60" fill="#F6EBD3" stroke="#81520C" stroke-width="1"/>
+<text x="708.0" y="277.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">useEmulator()</text>
+<text x="708.0" y="292.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">the state hub</text>
+<rect x="622" y="132" width="172" height="68" fill="#FFFFFF" stroke="#14161A" stroke-width="1"/>
+<text x="708.0" y="163.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Panels</text>
+<text x="708.0" y="178.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">registers, memory,</text>
+<text x="708" y="190" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">stack, console, terminal</text>
+<rect x="412" y="380" width="190" height="52" fill="#F4F5F7" stroke="#565E68" stroke-width="1"/>
+<text x="507.0" y="403.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Browser storage</text>
+<text x="507.0" y="418.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">autosave, saves, files</text>
+<rect x="850" y="250" width="130" height="60" fill="#FFFFFF" stroke="#14161A" stroke-width="1"/>
+<text x="915.0" y="277.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">WorkerClient</text>
+<text x="915.0" y="292.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">typed protocol</text>
+<rect x="1002" y="250" width="140" height="60" fill="#FFFFFF" stroke="#14161A" stroke-width="1"/>
+<text x="1072.0" y="277.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">emulator.worker</text>
+<text x="1072.0" y="292.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">owns the instance</text>
+<rect x="850" y="380" width="292" height="52" fill="#F6EBD3" stroke="#81520C" stroke-width="1"/>
+<text x="996.0" y="403.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">aarch64-emulator (Rust, wasm)</text>
+<text x="996.0" y="418.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">registers, memory, decoder, executor</text>
+<path d="M 180 280 L 212 280" fill="none" stroke="#0E7490" stroke-width="1.25" marker-end="url(#arrow-cyan)"/>
+<path d="M 380 280 L 412 280" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
+<path d="M 602 280 L 634 280" fill="none" stroke="#0E7490" stroke-width="1.25" marker-end="url(#arrow-cyan)"/>
+<text x="618" y="238" font-size="10.5" fill="#0E7490" font-weight="400" text-anchor="middle">assemble, step, run</text>
+<path d="M 708 250 L 708 200" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
+<text x="716" y="230" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="start">snapshot fan-out</text>
+<path d="M 507 310 L 507 380" fill="none" stroke="#14161A" stroke-width="1.25" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<text x="515" y="350" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="start">save / restore</text>
+<path d="M 782 272 L 850 272" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
+<text x="816" y="262" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="middle">request</text>
+<path d="M 850 292 L 782 292" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
+<text x="816" y="322" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">StateSnapshot</text>
+<path d="M 980 280 L 1002 280" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
+<path d="M 1072 310 L 1072 380" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
+<text x="1080" y="350" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="start">wasm-bindgen</text>
+<text x="40" y="480" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Every panel is a view over the last StateSnapshot the hub fanned out; no panel talks to the machine.</text>
+<text x="40" y="496" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">State lives in Rust and React never mirrors it. Without a Worker the same hub drives a MainThreadBackend in process.</text>
+<rect x="40" y="513" width="14" height="10" fill="#DDF1F5" stroke="#0E7490"/>
+<text x="60" y="522" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="start">student acting</text>
+<rect x="184" y="513" width="14" height="10" fill="#F6EBD3" stroke="#81520C"/>
+<text x="204" y="522" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="start">the machine acting</text>
+<rect x="356" y="513" width="14" height="10" fill="#FFFFFF" stroke="#14161A"/>
+<text x="376" y="522" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="start">code path</text>
+<rect x="465" y="513" width="14" height="10" fill="#F4F5F7" stroke="#565E68"/>
+<text x="485" y="522" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="start">persisted</text>
+</svg>

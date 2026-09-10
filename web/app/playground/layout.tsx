@@ -29,10 +29,10 @@ export const metadata: Metadata = {
 };
 
 // The playground page is a client component and cannot export metadata, so this
-// server layout carries the route's metadata. It also runs the same hourly
-// revalidated star lookup the content layout runs, so the slim bar wears the
-// count the full bar wears; a failed lookup is null and the nav falls back to
-// the icon-only link.
+// server layout carries the route's metadata. It also runs the same build-time
+// star lookup the content layout runs, so the slim bar wears the count the
+// full bar wears; a failed lookup is null and the nav falls back to the
+// icon-only link.
 export default async function PlaygroundLayout({
   children,
 }: {

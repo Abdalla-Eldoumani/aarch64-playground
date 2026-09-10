@@ -1,6 +1,6 @@
 // Pins the star-count lookup's fail-closed contract: only a trustworthy count
 // reaches the nav, every other outcome is null (the icon-only fallback), the
-// request stays unauthenticated and hourly-revalidated, and nothing is logged.
+// request stays unauthenticated and build-time cached, and nothing is logged.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchStarCount, formatStarCount } from "@/lib/content/github";
@@ -23,7 +23,7 @@ describe("fetchStarCount", () => {
     expect(await fetchStarCount()).toBe(214);
   });
 
-  it("asks the public repo endpoint with the github media type and an hourly revalidation", async () => {
+  it("asks the public repo endpoint with the github media type and a build-time cache", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(okWith({ stargazers_count: 214 }));
@@ -37,12 +37,15 @@ describe("fetchStarCount", () => {
       "https://api.github.com/repos/Abdalla-Eldoumani/aarch64-playground",
       {
         headers: { Accept: "application/vnd.github+json" },
-        next: { revalidate: 3600 },
+        cache: "force-cache",
         // The timeout keeps a hanging GitHub from stalling a prerender; the
         // instance itself is fresh per call, so pin the shape, not identity.
         signal: expect.any(AbortSignal),
       },
     );
+    // No revalidation interval: one would turn every route that renders the
+    // nav into an ISR page, so the count is read once per build instead.
+    expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("next");
   });
 
   it("returns null when the api answers 404", async () => {

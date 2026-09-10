@@ -1,5 +1,59 @@
+// The security headers docs/security.md promises. Declared here, the
+// framework applies them under `next dev` and `next start`, and on Vercel
+// they compile into the routes manifest and are attached by the platform with
+// no function in the path. A proxy.ts used to set the same headers, but on
+// Vercel a proxy runs as a Node function in front of every page request, which
+// put a function invocation on every visit to a fully static site.
+// vercel.json carries the identical set as the deploy-time copy;
+// next.config.test.ts fails the suite if the two drift.
+export const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "Content-Security-Policy":
+    "default-src 'self'; " +
+    // 'unsafe-eval' is only needed by the Next.js dev runtime (React Refresh
+    // evaluates modules with eval). Production must never ship it, because it
+    // reopens the eval-based XSS the CSP exists to close, so it is gated on
+    // NODE_ENV at the moment this config is evaluated: "development" under
+    // `next dev`, "production" under `next build` and `next start`.
+    "script-src 'self' " +
+    (process.env.NODE_ENV === "development" ? "'unsafe-eval' " : "") +
+    "'wasm-unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "font-src 'self' data:; " +
+    "img-src 'self' data: blob:; " +
+    "connect-src 'self' https://vitals.vercel-insights.com https://va.vercel-scripts.com; " +
+    "worker-src 'self' blob:; " +
+    "child-src 'self' blob:; " +
+    "frame-ancestors 'none'; " +
+    "base-uri 'self'; " +
+    "form-action 'self'; " +
+    "object-src 'none'; " +
+    "manifest-src 'self'; " +
+    "upgrade-insecure-requests",
+};
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  headers() {
+    return [
+      {
+        // Every route except Next's own static assets and the PWA manifest,
+        // service worker, and icons, which carry their own cache headers and
+        // need no CSP.
+        source:
+          "/:path((?!_next/static|_next/image|sw\\.js|manifest\\.webmanifest|icons/).*)",
+        headers: Object.entries(SECURITY_HEADERS).map(([key, value]) => ({
+          key,
+          value,
+        })),
+      },
+    ];
+  },
   // webpack handles our wasm module via `asyncWebAssembly`. Next 16 defaults
   // to Turbopack; the npm `dev`/`build` scripts pass `--webpack` explicitly
   // to opt back in until Turbopack's async-wasm support is stable for us.
