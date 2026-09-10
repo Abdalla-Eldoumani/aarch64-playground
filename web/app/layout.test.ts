@@ -126,9 +126,9 @@ describe("font declarations", () => {
     expect(fonts.declared.mono!.weight).toEqual(["400", "500", "600", "700"]);
   });
 
-  it("swaps every family, so no face blocks first paint", () => {
+  it("loads every family as optional, so a late face never re-lays the page out", () => {
     for (const options of [fonts.declared.serif, fonts.declared.sans, fonts.declared.mono]) {
-      expect(options!.display).toBe("swap");
+      expect(options!.display).toBe("optional");
     }
   });
 });
