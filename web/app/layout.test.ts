@@ -113,13 +113,9 @@ describe("font declarations", () => {
     expect(jetBrainsMono.mock.calls[0][0].weight).toEqual(["400", "500", "600", "700"]);
   });
 
-  it("loads every family as optional, so a late face can never move the layout", () => {
-    // "swap" re-lays the page out when the webfont lands; the size-adjusted
-    // fallbacks wrap and reflow differently, which the field measured as a
-    // 0.34 layout shift on the playground. "optional" still never blocks
-    // first paint past the short block period.
+  it("swaps every family, so no face blocks first paint", () => {
     for (const loader of [sourceSerif, plexSans, jetBrainsMono]) {
-      expect(loader.mock.calls[0][0].display).toBe("optional");
+      expect(loader.mock.calls[0][0].display).toBe("swap");
     }
   });
 });
