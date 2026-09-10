@@ -29,7 +29,7 @@ The security headers are defined by the `headers()` function in
 it to every route except `/_next/static`, `/_next/image`, `/sw.js`,
 `/manifest.webmanifest`, and `/icons/`. Declared in the config they hold under
 `next dev` and `next start`, and on Vercel they compile into the routes
-manifest and are attached by the platform with no function in the path.
+manifest, where the platform attaches them with no function in the path.
 `vercel.json` carries the identical set as the deploy-time copy, kept in
 lockstep.
 
