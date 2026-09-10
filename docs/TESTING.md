@@ -164,9 +164,9 @@ does not need:
   (`--shard=n/3`), every test file running exactly once across them.
 - **coverage**: merges the shards' blob reports (vitest writes them under
   `web/.vitest/blob/`, which the shard jobs upload and this job downloads)
-  and enforces the coverage
-  floors in `web/vitest.config.ts` on the whole-suite numbers, so a suite
-  that passes locally can still fail CI if coverage drops below them.
+  and enforces the coverage floors in `web/vitest.config.ts` on the
+  whole-suite numbers, so a suite that passes locally can still fail CI if
+  coverage drops below them.
 
 Each job maps to a local command above. The shards set `VITEST_SHARD` so
 the floors are judged once on the merged report rather than against a
