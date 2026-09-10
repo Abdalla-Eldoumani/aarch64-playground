@@ -31,6 +31,11 @@ PR flow.
 Project docs describe the codebase as it is: getting-started, ARCHITECTURE,
 CONTRIBUTING, TESTING, DEPLOY, and security.
 
+`diagrams/` holds the four architecture sheets ARCHITECTURE.md embeds (system
+map, assemble pipeline, run loop, address space). They are hand-written SVGs
+with no external resources; the numbers on them come from the constants in
+`emulator/src`, so a change to a base address or a bound updates the sheet too.
+
 One doc feeds a page: instruction-reference is read by the web and Rust test
 suites, which fail when the `/reference` tables drift from it, so editing it
 changes what the site is allowed to ship. The rest are reference docs no code

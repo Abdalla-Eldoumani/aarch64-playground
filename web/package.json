@@ -101,7 +101,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "@vitest/coverage-v8": "4.1.11",
-    "autoprefixer": "10.5.2",
+    "autoprefixer": "10.5.4",
     "concurrently": "9.2.4",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",

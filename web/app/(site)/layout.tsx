@@ -14,8 +14,9 @@ export default async function SiteLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Server-side and revalidated hourly, so the nav's star count costs the
-  // visitor nothing and renders null (icon only) whenever the lookup fails.
+  // Read once at build time and baked into the static page, so the nav's star
+  // count costs the visitor nothing and renders null (icon only) whenever the
+  // lookup fails. It refreshes on each deploy.
   const stars = await fetchStarCount();
 
   return (

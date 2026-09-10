@@ -12,6 +12,28 @@
       "has": [{ "type": "host", "value": "aarch64-playground.vercel.app" }],
       "destination": "https://aarch64-playground.com/$1",
       "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "aarch64-playground-git-main-zpicy69s-projects.vercel.app"
+        }
+      ],
+      "destination": "https://aarch64-playground.com/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "aarch64-playground-zpicy69s-projects.vercel.app"
+        }
+      ],
+      "destination": "https://aarch64-playground.com/$1",
+      "permanent": true
     }
   ],
   "headers": [
