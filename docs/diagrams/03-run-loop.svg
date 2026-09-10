@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" role="img" aria-labelledby="t">
+<title id="t">One press of Run, in chunks the tab never feels</title>
+<defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#EEF0F3" stroke-width="1"/></pattern><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#14161A"/></marker><marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#81520C"/></marker><marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0E7490"/></marker></defs>
+<rect width="1200" height="620" fill="#FCFCFD"/>
+<rect width="1200" height="620" fill="url(#grid)"/>
+<path d="M 14 24 L 14 14 L 24 14" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 1186 24 L 1186 14 L 1176 14" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 14 596 L 14 606 L 24 606" fill="none" stroke="#8A929C" stroke-width="1"/>
+<path d="M 1186 596 L 1186 606 L 1176 606" fill="none" stroke="#8A929C" stroke-width="1"/>
+<text x="40" y="46" font-size="11" fill="#81520C" font-weight="600" text-anchor="start" letter-spacing="2">03 · RUN</text>
+<text x="40" y="72" font-size="20" fill="#14161A" font-weight="600" text-anchor="start">One press of Run, in chunks the tab never feels</text>
+<line x1="40" y1="88" x2="1160" y2="88" stroke="#C9CED6" stroke-width="1"/>
+<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · sheet 3/4</text>
+<rect x="38" y="112" width="144" height="34" fill="#DDF1F5" stroke="#0E7490" stroke-width="1"/>
+<text x="110.0" y="133.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Student</text>
+<line x1="110" y1="146" x2="110" y2="548" stroke="#C9CED6" stroke-width="1" stroke-dasharray="5 4"/>
+<rect x="278" y="112" width="144" height="34" fill="#F6EBD3" stroke="#81520C" stroke-width="1"/>
+<text x="350.0" y="133.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">useEmulator()</text>
+<line x1="350" y1="146" x2="350" y2="548" stroke="#C9CED6" stroke-width="1" stroke-dasharray="5 4"/>
+<rect x="528" y="112" width="144" height="34" fill="#FFFFFF" stroke="#14161A" stroke-width="1"/>
+<text x="600.0" y="133.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">WorkerClient</text>
+<line x1="600" y1="146" x2="600" y2="548" stroke="#C9CED6" stroke-width="1" stroke-dasharray="5 4"/>
+<rect x="778" y="112" width="144" height="34" fill="#FFFFFF" stroke="#14161A" stroke-width="1"/>
+<text x="850.0" y="133.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">emulator.worker</text>
+<line x1="850" y1="146" x2="850" y2="548" stroke="#C9CED6" stroke-width="1" stroke-dasharray="5 4"/>
+<rect x="1018" y="112" width="144" height="34" fill="#F6EBD3" stroke="#81520C" stroke-width="1"/>
+<text x="1090.0" y="133.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Cpu (wasm)</text>
+<line x1="1090" y1="146" x2="1090" y2="548" stroke="#C9CED6" stroke-width="1" stroke-dasharray="5 4"/>
+<path d="M 110 180 L 350 180" fill="none" stroke="#0E7490" stroke-width="1.25" marker-end="url(#arrow-cyan)"/>
+<text x="230.0" y="174" font-size="10.5" fill="#0E7490" font-weight="400" text-anchor="middle">click Run</text>
+<path d="M 350 210 L 600 210" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
+<text x="475.0" y="204" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="middle">runUntilBreak()</text>
+<path d="M 600 240 L 850 240" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
+<text x="725.0" y="234" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="middle">postMessage {type: run}</text>
+<rect x="740" y="262" width="430" height="152" fill="none" stroke="#81520C" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="748" y="278" font-size="10" fill="#81520C" font-weight="600" text-anchor="start">LOOP · run-loop.ts, shared with the main-thread backend</text>
+<path d="M 850 304 L 1090 304" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
+<text x="970.0" y="298" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">run a chunk of 10,000 steps</text>
+<path d="M 1090 340 L 850 340" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
+<text x="970.0" y="354" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">StepOutcome</text>
+<text x="970" y="368" font-size="10" fill="#565E68" font-weight="400" text-anchor="middle">Advance, Halted, WaitingForInput, Sleeping, Exited</text>
+<text x="955" y="392" font-size="10" fill="#565E68" font-weight="400" text-anchor="middle">yield to the event loop; re-read the pause flag</text>
+<text x="955" y="406" font-size="10" fill="#565E68" font-weight="400" text-anchor="middle">and the machine generation before the next chunk</text>
+<path d="M 850 432 L 600 432" fill="none" stroke="#81520C" stroke-width="1.25" stroke-dasharray="5 4" marker-end="url(#arrow-amber)"/>
+<text x="725.0" y="426" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">heartbeat StateSnapshot, at most one per 50 ms</text>
+<path d="M 600 452 L 350 452" fill="none" stroke="#81520C" stroke-width="1.25" stroke-dasharray="5 4" marker-end="url(#arrow-amber)"/>
+<text x="475.0" y="446" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">onSnapshot(snapshot)</text>
+<text x="350" y="472" font-size="10" fill="#565E68" font-weight="400" text-anchor="middle">panels re-render from the snapshot: registers,</text>
+<text x="350" y="486" font-size="10" fill="#565E68" font-weight="400" text-anchor="middle">changedRegs, dirtyAddrs, stdoutDelta, pc</text>
+<path d="M 850 506 L 600 506" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
+<text x="725.0" y="500" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="middle">done: breakpoint, halt, blocked read, sleep budget, or step wall</text>
+<path d="M 600 526 L 350 526" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
+<text x="475.0" y="520" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">final StateSnapshot</text>
+<path d="M 350 544 L 110 544" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
+<text x="230.0" y="538" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">console, markers, panels settle</text>
+<text x="40" y="580" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Bounds hold inside the machine, whatever the source: 10,000,000 cumulative steps, 8,192 mapped pages (32 MiB), 4 MiB of output.</text>
+<text x="40" y="596" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">A step-back ring keeps 128 frames before each step; a WaitingForInput outcome parks the loop until stdin arrives.</text>
+</svg>
