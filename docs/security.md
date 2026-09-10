@@ -5,10 +5,10 @@ your tab. The gates below exist because the playground accepts URL-borne
 input (share hashes, diagnostic-bundle deep links, query params) and file
 uploads (source files, VFS payloads, bookmark JSON), all untrusted. There
 are no API routes and no server actions: nothing you type, upload, or run ever
-leaves the tab. The server's whole job is rendering the pages, and the one
-outbound call it makes during that render reads the repository's public star
-count from the GitHub REST API, cached for an hour and carrying no visitor
-data.
+leaves the tab. Every route is a static file rendered at build time, and the
+one outbound call that render makes reads the repository's public star count
+from the GitHub REST API: it runs once per build, carries no visitor data, and
+no visitor request ever reaches it.
 
 ## Threat model in two claims
 
@@ -24,9 +24,14 @@ data.
 
 ### HTTP response headers
 
-The security headers are defined in both `vercel.json` (deploy-time) and
-`web/proxy.ts` (framework-level, so they also hold under `next start` and
-dev), kept in lockstep.
+The security headers are defined by the `headers()` function in
+`web/next.config.mjs`, which exports the set as `SECURITY_HEADERS` and applies
+it to every route except `/_next/static`, `/_next/image`, `/sw.js`,
+`/manifest.webmanifest`, and `/icons/`. Declared in the config they hold under
+`next dev` and `next start`, and on Vercel they compile into the routes
+manifest and are attached by the platform with no function in the path.
+`vercel.json` carries the identical set as the deploy-time copy, kept in
+lockstep.
 
 | Header | Value | Why |
 | --- | --- | --- |
@@ -46,8 +51,9 @@ The script policy allows `'wasm-unsafe-eval'` so the emulator can instantiate
 its WebAssembly. It allows `'unsafe-eval'` only in development, where the
 Next.js dev runtime (React Refresh) evaluates modules with `eval`; without it
 the in-page editor renders blank. Production and `next start` never include
-`'unsafe-eval'`: `web/proxy.ts` gates it behind `NODE_ENV`, and `vercel.json`
-(production-only) omits it, so the deployed policy keeps the `eval`-based XSS
+`'unsafe-eval'`: `web/next.config.mjs` gates it on
+`process.env.NODE_ENV === "development"` at config evaluation, and
+`vercel.json` (production-only) omits it, so the deployed policy keeps the `eval`-based XSS
 surface closed. Exercise the editor under `npm run dev`, where the dev-only
 allowance applies, not against production.
 
@@ -124,8 +130,8 @@ tests.
   `cdn.jsdelivr.net`, which was the one third-party script-trust boundary; the
   CSP no longer allows that host anywhere). Google Fonts are self-hosted via
   `next/font/google`, so no font CDN connection happens at runtime either. The
-  parity between `vercel.json` and `web/proxy.ts` is pinned by
-  `web/proxy.test.ts`.
+  parity between `vercel.json` and `web/next.config.mjs` is pinned by
+  `web/next.config.test.ts`.
 - No SharedArrayBuffer, so we need no COEP and the strict cross-origin
   isolation it requires. The worker copies bytes through `postMessage`.
 - The site sits behind Vercel's firewall: the platform's automatic DDoS
