@@ -53,8 +53,8 @@ the landing ships no Monaco at all: its hero draws the program with
 their chunk import (capped at three seconds by
 `components/playground/fonts-settled.ts`), so the web-font swap lands while
 the loading beat is still up instead of re-wrapping the header band and
-moving the editor section after it mounts. `lib/content` sends the index pages a projection of each
-lesson and exercise (`LessonIndexRow`, `ExerciseIndexRow`) instead of the
+moving the editor section after it mounts. `lib/content` sends the index
+pages a projection of each lesson and exercise (`LessonIndexRow`, `ExerciseIndexRow`) instead of the
 whole file, keeping bodies, prompts, starters, and acceptance criteria off
 the wire.
 
@@ -359,8 +359,8 @@ route but `/_next/static`, `/_next/image`, `/sw.js`,
 `/manifest.webmanifest`, and `/icons/`. They hold under `next dev` and
 `next start`, and on Vercel they compile into the routes manifest with no
 function in the path. `vercel.json` carries the identical set as the
-deploy-time copy, kept in lockstep. The CSP
-allow-lists the Vercel analytics and speed-insights endpoints.
+deploy-time copy, kept in lockstep. The CSP allow-lists the Vercel
+analytics and speed-insights endpoints.
 `vercel.json` additionally sets immutable cache headers for
 `/_next/static/`, `/icons/`, and `*.wasm`, and serves `/sw.js` as
 `max-age=0, must-revalidate` so worker updates land immediately.
