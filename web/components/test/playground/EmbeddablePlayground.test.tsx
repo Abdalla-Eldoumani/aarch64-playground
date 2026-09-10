@@ -828,36 +828,47 @@ describe("terminal context", () => {
     await waitFor(() => expect(terminalProps.current).not.toBeNull());
 
     const context = terminalProps.current!.buildContext();
-    let result: { stdout: string; stderr: string; exitCode: number } | null = null;
-    const pending = context.runProgram(["./program"]).then((r) => {
-      result = r;
-    });
-    // Flush the awaited assemble so run() fires; the running hub has not
-    // committed yet, so a loop that checks before sleeping would bail here.
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    });
-    expect(run).toHaveBeenCalledTimes(1);
+    // Fake timers from here: the poll sleeps 16 ms between reads of the hub,
+    // and with real timers a loaded machine could let that sleep elapse
+    // before the running hub was committed, which read as the very bug this
+    // test guards. Advancing the clock by hand pins the order.
+    vi.useFakeTimers();
+    try {
+      let result: { stdout: string; stderr: string; exitCode: number } | null = null;
+      const pending = context.runProgram(["./program"]).then((r) => {
+        result = r;
+      });
+      // Flush the awaited assemble so run() fires; the running hub has not
+      // committed yet, so a loop that checks before sleeping would bail here.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(run).toHaveBeenCalledTimes(1);
 
-    // Commit the running hub and give the poll a beat: the command must still
-    // be waiting on the live run, not already resolved with pre-run state.
-    rerender(view());
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 30));
-    });
-    expect(result).toBeNull();
+      // Commit the running hub, then let the poll take two reads: the command
+      // must still be waiting on the live run, not already resolved with
+      // pre-run state.
+      rerender(view());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(32);
+      });
+      expect(result).toBeNull();
 
-    // Commit the halted hub; the next poll observes it and reports its output.
-    phase = "done";
-    rerender(view());
-    await act(async () => {
-      await pending;
-    });
-    expect(result).toEqual({
-      stdout: "Hello from a system call!\n",
-      stderr: "",
-      exitCode: 3,
-    });
+      // Commit the halted hub; the next poll observes it and reports its output.
+      phase = "done";
+      rerender(view());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(16);
+        await pending;
+      });
+      expect(result).toEqual({
+        stdout: "Hello from a system call!\n",
+        stderr: "",
+        exitCode: 3,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

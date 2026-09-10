@@ -198,7 +198,10 @@ describe("readShareHash decompression-bomb guard", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("stops an UNDER-cap bomb at the output ceiling", () => {
+  // Building the bomb compresses two million characters, which takes a few
+  // seconds on a loaded machine; the default 5 s budget was hit under the
+  // full suite, so this one case carries its own.
+  it("stops an UNDER-cap bomb at the output ceiling", { timeout: 30_000 }, () => {
     // lz-string output grows quadratically in fragment length: this fragment is
     // a few KB (inside the raw cap) but inflates past the 1 MB output ceiling.
     // A 30 KB raw cap admits fragments that inflate to ~200 MB.
