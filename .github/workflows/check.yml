@@ -347,13 +347,14 @@ jobs:
           VITEST_SHARD: "1"
         run: npm test -- --coverage --reporter=blob --reporter=default --shard=${{ matrix.shard }}/3
 
-      # .vitest-reports is a dot-directory, which upload-artifact skips
+      # .vitest/blob is where vitest 5 writes the blob (vitest 4 used
+      # .vitest-reports). It is a dot-directory, which upload-artifact skips
       # unless told otherwise; without the flag this uploads nothing.
       - name: upload blob report
         uses: actions/upload-artifact@v7
         with:
           name: blob-report-${{ matrix.shard }}
-          path: web/.vitest-reports/
+          path: web/.vitest/blob/
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: error
@@ -390,7 +391,7 @@ jobs:
         with:
           pattern: blob-report-*
           merge-multiple: true
-          path: web/.vitest-reports
+          path: web/.vitest/blob
 
       # Only reached when every shard passed (a failing shard fails its own
       # job and skips this one); merges the blobs into the one whole-suite
