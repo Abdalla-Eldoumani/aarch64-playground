@@ -14,6 +14,15 @@ import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/content/site";
 // or document rules appear. Each font is pinned to a CSS variable so
 // component-level utility classes can pull the right family without a
 // Tailwind config rewrite.
+//
+// display "optional", not "swap": a swap re-lays the page out when the
+// webfont lands, and the size-adjusted fallbacks are close but not identical,
+// so a lesson's prose reflows on a slow first visit. With "optional" the
+// browser uses the webfont when it is there at first paint (the preloads put
+// it there on all but a cold load over a slow link) and otherwise keeps the
+// fallback for that document. The playground surface and the editor also
+// wait for document.fonts.ready before mounting (fonts-settled.ts), so the
+// two together leave nothing to swap under a mounted surface.
 const fontSerif = Source_Serif_4({
   subsets: ["latin"],
   weight: ["400", "600"],
@@ -21,19 +30,19 @@ const fontSerif = Source_Serif_4({
   // woff2 files in the render-blocking stylesheet on every route, for two
   // small captions. Those two keep `italic` and take the browser's
   // synthesized oblique.
-  display: "swap",
+  display: "optional",
   variable: "--font-serif",
 });
 const fontSans = IBM_Plex_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  display: "swap",
+  display: "optional",
   variable: "--font-sans",
 });
 const fontMono = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  display: "swap",
+  display: "optional",
   variable: "--font-mono",
 });
 
