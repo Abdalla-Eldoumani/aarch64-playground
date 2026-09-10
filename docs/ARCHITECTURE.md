@@ -6,6 +6,8 @@ landing page plus the `/playground` debugger and the `/learn`,
 A hand-written Rust AArch64 interpreter, compiled to WASM, does the work
 in the browser tab.
 
+![System map: the student's page composes EmbeddablePlayground, whose useEmulator hub fans StateSnapshots out to the panels and talks to the Rust interpreter through a Web Worker](diagrams/01-system-map.svg)
+
 ## Monorepo shape
 
 Two workspaces:
@@ -101,6 +103,8 @@ mutation and never mirrors CPU state.
 
 ## Frontend pipeline (hosted CPSC 355 source)
 
+![Assemble pipeline: editor buffers pass through m4, the lexer, the parser, section grouping and the linker; the assembler encodes each line into a LinkedImage the CPU loads, and the line map carries addresses back to Monaco markers](diagrams/02-assemble-pipeline.svg)
+
 ```
 source
   -> m4.rs      expand define(NAME, BODY); record name=expr per offset
@@ -176,6 +180,8 @@ D forms in f64, with `fcvt` converting between the two views; compares
 dispatch through `fpu.rs` on execution.
 
 ## Memory model
+
+![Address space: .text at 0x0040_0000, .rodata, .data and .bss in 1 MiB windows, argv at 0x0080_0000, a 16 MiB heap at 0x0090_0000, an 8 MiB stack below 0x8000_0000, and the host stubs at 0xFFFF_0000](diagrams/04-address-space.svg)
 
 `HashMap<u64, Rc<Vec<u8>>>` keyed by 4 KiB page base; the first write to
 an address auto-maps its page, and a write to a page a snapshot frame
@@ -301,6 +307,8 @@ and a miss kicks off an async fetch that bumps a tick to re-render once
 bytes arrive.
 
 ## Worker layer
+
+![Run sequence: a click reaches the hub, the worker runs the program in 10,000-step chunks, heartbeat snapshots flow back at most every 50 ms, and the final snapshot settles the panels](diagrams/03-run-loop.svg)
 
 The WASM module runs in a Web Worker by default so tight run loops do not
 freeze the UI. The boundary is four files in

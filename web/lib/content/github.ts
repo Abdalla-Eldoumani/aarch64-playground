@@ -22,9 +22,13 @@ export async function fetchStarCount(): Promise<number | null> {
   try {
     const response = await fetch(STARS_ENDPOINT, {
       headers: { Accept: "application/vnd.github+json" },
-      // An hour: a stale star count is harmless, and the unauthenticated rate limit is
-      // per requesting ip, so visitors must not each spend a request.
-      next: { revalidate: 3600 },
+      // Read once per build and baked into the prerendered pages, so every
+      // route stays a static file and no visitor request ever reaches this
+      // call. A stale count is harmless: it refreshes on the next deploy, and
+      // dependabot's weekly bumps deploy at least that often. A revalidate
+      // interval here would turn every route that renders the nav into an
+      // ISR page regenerated on the server.
+      cache: "force-cache",
       // A hanging GitHub must never stall a prerender: this fetch runs inside
       // the build of every content route, and the catch below already renders
       // the icon-only fallback on a timeout.

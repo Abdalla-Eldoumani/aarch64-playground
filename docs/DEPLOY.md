@@ -26,10 +26,13 @@ The `--webpack` flag is required: the `next.config` webpack hook (the `?raw` sou
 
 ## Redirects
 
-`vercel.json` carries one: a request whose host is the `vercel.app`
-deployment domain gets a permanent (308) redirect to the same path on
-`aarch64-playground.com`, so links, shares, and search results settle on one
-origin.
+`vercel.json` carries three, one per production alias Vercel assigns
+(`aarch64-playground.vercel.app`, the `git-main` branch alias, and the
+team-scoped project alias): a request whose host is one of them gets a
+permanent (308) redirect to the same path on `aarch64-playground.com`, so
+links, shares, and search results settle on one origin. `www` redirects to the
+apex through the domain settings, not `vercel.json`. Preview deployments keep
+their own hosts and carry `X-Robots-Tag: noindex`.
 
 ## Headers
 
