@@ -53,8 +53,8 @@ Next.js dev runtime (React Refresh) evaluates modules with `eval`; without it
 the in-page editor renders blank. Production and `next start` never include
 `'unsafe-eval'`: `web/next.config.mjs` gates it on
 `process.env.NODE_ENV === "development"` at config evaluation, and
-`vercel.json` (production-only) omits it, so the deployed policy keeps the `eval`-based XSS
-surface closed. Exercise the editor under `npm run dev`, where the dev-only
+`vercel.json` (production-only) omits it, so the deployed policy keeps the
+`eval`-based XSS surface closed. Exercise the editor under `npm run dev`, where the dev-only
 allowance applies, not against production.
 
 The script and style policies also carry `'unsafe-inline'`: Next.js emits
@@ -177,8 +177,7 @@ Run `node scripts/audit-deps.js` from the repo root any time; it exits non-zero
 on any moderate-or-higher advisory, stricter than CI needs but quieter than
 `npm audit`'s "any" threshold. `node scripts/check-headers.js` GETs the
 deployed origin and asserts every header above is present; run it after any
-deploy and after any header change in `web/next.config.mjs` or
-`vercel.json`.
+deploy and after any header change in `web/next.config.mjs` or `vercel.json`.
 
 ## Reporting
 
