@@ -12,7 +12,7 @@
  * behaviour it had before the wait.
  */
 export function fontsSettled(limitMs = 3000): Promise<void> {
-  if (typeof document === "undefined" || !document.fonts) return Promise.resolve();
+  if (typeof document === "undefined" || !document.fonts?.ready) return Promise.resolve();
   return new Promise((resolve) => {
     const timer = setTimeout(resolve, limitMs);
     document.fonts.ready.then(
