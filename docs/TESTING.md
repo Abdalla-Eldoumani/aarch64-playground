@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,043 Rust tests (the lib target, twenty-one integration suites, and the doc tests), 2,086 web tests across 181 files, and 16 example fixtures. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,045 Rust tests (824 of them unit tests on the lib target, the rest spread over twenty-one integration suites; there are no doc tests), 2,149 web tests across 183 files, and 16 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
 
 ## Rust
 
@@ -51,7 +51,7 @@ npx vitest run lib/test/playground/          # every test in one group
 npx vitest run -t "share hash"               # tests whose name matches
 ```
 
-Tests live under a `test/` tree beside the code they cover, mirroring the source groups (`web/lib/test/<group>/<feature>.test.ts`, `web/components/test/<group>/<Component>.test.tsx`); contract tests with no single subject file (seeded content, course style, authoring rules) sit in `web/lib/test/content/`. Two placements sit outside that tree, both because the subject does: App Router tests live beside their route file as `web/app/**/*.test.ts(x)`, and `web/proxy.test.ts` lives beside `web/proxy.ts` at the web root (the vitest `include` carries a `*.test.ts` entry for it). [`CONTRIBUTING.md`](CONTRIBUTING.md#naming-conventions) has the reasoning. The runner wires [`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs `window.matchMedia` (jsdom lacks it). Use plain DOM assertions; `@testing-library/jest-dom` is not installed.
+Tests live under a `test/` tree beside the code they cover, mirroring the source groups (`web/lib/test/<group>/<feature>.test.ts`, `web/components/test/<group>/<Component>.test.tsx`); contract tests with no single subject file (seeded content, course style, authoring rules) sit in `web/lib/test/content/`. Two placements sit outside that tree, both because the subject does: App Router tests live beside their route file as `web/app/**/*.test.ts(x)`, and `web/next.config.test.ts` lives beside `web/next.config.mjs` at the web root (the vitest `include` carries a `*.test.ts` entry for it). [`CONTRIBUTING.md`](CONTRIBUTING.md#naming-conventions) has the reasoning. The runner wires [`web/vitest.setup.ts`](../web/vitest.setup.ts), which stubs `window.matchMedia` (jsdom lacks it). Use plain DOM assertions; `@testing-library/jest-dom` is not installed.
 
 ## End-to-end corpus
 
@@ -162,9 +162,11 @@ does not need:
 - **web-build**: `npm run build` and `npm run size`.
 - **web-test**: `npm test -- --coverage` split into three shards
   (`--shard=n/3`), every test file running exactly once across them.
-- **coverage**: merges the shards' blob reports and enforces the coverage
-  floors in `web/vitest.config.ts` on the whole-suite numbers, so a suite
-  that passes locally can still fail CI if coverage drops below them.
+- **coverage**: merges the shards' blob reports (vitest writes them under
+  `web/.vitest/blob/`, which the shard jobs upload and this job downloads)
+  and enforces the coverage floors in `web/vitest.config.mts` on the
+  whole-suite numbers, so a suite that passes locally can still fail CI if
+  coverage drops below them.
 
 Each job maps to a local command above. The shards set `VITEST_SHARD` so
 the floors are judged once on the merged report rather than against a

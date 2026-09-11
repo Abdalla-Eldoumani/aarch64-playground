@@ -1,10 +1,12 @@
 import { defineConfig } from "vitest/config";
-import path from "node:path";
 
+// An .mts file: Vite's native config loader reads ESM syntax from a plain
+// .ts file as CommonJS and warns on every run, and web/package.json carries no
+// "type": "module" because Next's config and scripts sit beside it.
 export default defineConfig({
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./"),
+      "@": import.meta.dirname,
     },
   },
   test: {
@@ -17,7 +19,7 @@ export default defineConfig({
       "app/**/*.test.ts",
       "app/**/*.test.tsx",
       "components/**/*.test.tsx",
-      // Root-adjacent subjects (proxy.ts) keep their test beside them.
+      // Root-adjacent subjects (next.config.mjs) keep their test beside them.
       "*.test.ts",
     ],
     // WASM bindings and monaco are browser-only; tests never import them.
@@ -30,7 +32,7 @@ export default defineConfig({
         "**/*.d.ts",
         "lib/wasm/**",
         "lib/wasm-node/**",
-        "vitest.config.ts",
+        "vitest.config.mts",
         "vitest.setup.ts",
       ],
       // A floor so coverage cannot silently regress. Set a few points below

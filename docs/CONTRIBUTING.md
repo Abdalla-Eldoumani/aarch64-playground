@@ -80,10 +80,10 @@ obvious place and a newcomer can navigate by directory name alone:
     their tests colocated as `web/app/**/*.test.ts(x)`, because the router
     fixes where the subject file sits and there is no group to mirror it
     into.
-  - `web/proxy.test.ts` sits beside `web/proxy.ts` at the web root, because
-    the proxy is a root-level framework hook and its test also reads
-    `../vercel.json` to hold the two header sets in lockstep; the vitest
-    `include` in `web/vitest.config.ts` carries a `*.test.ts` entry so the
+  - `web/next.config.test.ts` sits beside `web/next.config.mjs` at the web
+    root, because the config is a root-level framework file and its test also
+    reads `../vercel.json` to hold the two header sets in lockstep; the vitest
+    `include` in `web/vitest.config.mts` carries a `*.test.ts` entry so the
     runner still finds it.
 
 ## Day-to-day

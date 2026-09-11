@@ -1,6 +1,6 @@
 {
   "name": "aarch64-playground-web",
-  "version": "2.5.102",
+  "version": "2.5.103",
   "private": true,
   "license": "AGPL-3.0-only",
   "engines": {
@@ -97,22 +97,22 @@
   "devDependencies": {
     "@size-limit/file": "12.1.0",
     "@testing-library/react": "16.3.2",
-    "@types/node": "22.20.0",
+    "@types/node": "24.13.4",
     "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.3",
-    "@vitest/coverage-v8": "4.1.11",
-    "autoprefixer": "10.5.2",
+    "@types/react-dom": "19.2.7",
+    "@vitest/coverage-v8": "5.0.0",
+    "autoprefixer": "10.5.4",
     "concurrently": "9.2.4",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",
-    "jsdom": "29.1.1",
+    "jsdom": "30.0.1",
     "lighthouse": "13.4.1",
     "playwright": "1.59.1",
     "postcss": "8.5.23",
     "size-limit": "12.1.0",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
-    "vitest": "4.1.11"
+    "vitest": "5.0.0"
   },
   "overrides": {
     "dompurify": "3.4.14",

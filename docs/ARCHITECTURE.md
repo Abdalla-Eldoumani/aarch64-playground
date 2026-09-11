@@ -6,6 +6,8 @@ landing page plus the `/playground` debugger and the `/learn`,
 A hand-written Rust AArch64 interpreter, compiled to WASM, does the work
 in the browser tab.
 
+![System map: the student's page composes EmbeddablePlayground, whose useEmulator hub fans StateSnapshots out to the panels and talks to the Rust interpreter through a Web Worker](diagrams/01-system-map.svg)
+
 ## Monorepo shape
 
 Two workspaces:
@@ -47,10 +49,14 @@ landing hero, the lessons, and the exercises. It owns the single
 `FullChromeSurface`, which `next/dynamic` loads only where the full debugger
 renders. The editor is dynamic for the same reason (`lazy-editor.tsx`), so
 the landing ships no Monaco at all: its hero draws the program with
-`StaticCodeView`. `lib/content` sends the index pages a projection of each
-lesson and exercise (`LessonIndexRow`, `ExerciseIndexRow`) instead of the
-whole file, keeping bodies, prompts, starters, and acceptance criteria off
-the wire.
+`StaticCodeView`. Both lazy surfaces await `document.fonts.ready` beside
+their chunk import (capped at three seconds by
+`components/playground/fonts-settled.ts`), so the web-font swap lands while
+the loading beat is still up instead of re-wrapping the header band and
+moving the editor section after it mounts. `lib/content` sends the index
+pages a projection of each lesson and exercise (`LessonIndexRow`,
+`ExerciseIndexRow`) instead of the whole file, keeping bodies, prompts,
+starters, and acceptance criteria off the wire.
 
 Emulator modules:
 
@@ -100,6 +106,8 @@ State lives in Rust. React reads slices through getters after every
 mutation and never mirrors CPU state.
 
 ## Frontend pipeline (hosted CPSC 355 source)
+
+![Assemble pipeline: editor buffers pass through m4, the lexer, the parser, section grouping and the linker; the assembler encodes each line into a LinkedImage the CPU loads, and the line map carries addresses back to Monaco markers](diagrams/02-assemble-pipeline.svg)
 
 ```
 source
@@ -176,6 +184,8 @@ D forms in f64, with `fcvt` converting between the two views; compares
 dispatch through `fpu.rs` on execution.
 
 ## Memory model
+
+![Address space: .text at 0x0040_0000, .rodata, .data and .bss in 1 MiB windows, argv at 0x0080_0000, a 16 MiB heap at 0x0090_0000, an 8 MiB stack below 0x8000_0000, and the host stubs at 0xFFFF_0000](diagrams/04-address-space.svg)
 
 `HashMap<u64, Rc<Vec<u8>>>` keyed by 4 KiB page base; the first write to
 an address auto-maps its page, and a write to a page a snapshot frame
@@ -302,6 +312,8 @@ bytes arrive.
 
 ## Worker layer
 
+![Run sequence: a click reaches the hub, the worker runs the program in 10,000-step chunks, heartbeat snapshots flow back at most every 50 ms, and the final snapshot settles the panels](diagrams/03-run-loop.svg)
+
 The WASM module runs in a Web Worker by default so tight run loops do not
 freeze the UI. The boundary is four files in
 [`web/lib/worker/`](../web/lib/worker/): `protocol.ts` (message types),
@@ -341,10 +353,15 @@ reaches React, the editor, or the emulator (full caps in
   `?embed` honored only when it is exactly `1`.
 
 Security headers (CSP, HSTS, COOP, X-Frame-Options DENY, Referrer-Policy,
-Permissions-Policy) are defined in both
-[`web/proxy.ts`](../web/proxy.ts) and `vercel.json`, kept in
-lockstep so they hold under `next start`, in dev, and on Vercel. The CSP
-allow-lists the Vercel analytics and speed-insights endpoints.
+Permissions-Policy) come from the `headers()` function in
+[`web/next.config.mjs`](../web/next.config.mjs), which applies them to every
+route but `/_next/static`, `/_next/image`, `/sw.js`,
+`/manifest.webmanifest`, and `/icons/`. They hold under `next dev` and
+`next start`, and on Vercel they compile into the routes manifest with no
+function in the path. `vercel.json` carries the identical set as the
+deploy-time copy, kept in lockstep (its catch-all block also reaches the
+excluded asset paths). The CSP allow-lists the Vercel analytics and
+speed-insights endpoints.
 `vercel.json` additionally sets immutable cache headers for
 `/_next/static/`, `/icons/`, and `*.wasm`, and serves `/sw.js` as
 `max-age=0, must-revalidate` so worker updates land immediately.

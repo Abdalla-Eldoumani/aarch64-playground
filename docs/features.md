@@ -13,7 +13,7 @@ reference).
 | Hero, feature catalog, routes | `web/components/landing/Hero.tsx`, `FeatureCatalog.tsx`, `web/components/diagrams/RoutesRegisterFile.tsx` |
 | Landing data (features, routes, hero program) | `web/lib/content/landing-content.ts` |
 | Routes, nav, footer | `web/lib/content/site.ts`, `web/components/chrome/SiteNav.tsx`, `SiteFooter.tsx` |
-| Star count beside the nav's github link (server-read, hourly; hidden on a failed lookup or a zero count) | `web/lib/content/github.ts`, `web/components/chrome/SiteNav.tsx`, `MobileNavDrawer.tsx` |
+| Star count beside the nav's github link (read once per build and baked into the prerendered HTML; hidden on a failed lookup or a zero count) | `web/lib/content/github.ts`, `web/components/chrome/SiteNav.tsx`, `MobileNavDrawer.tsx` |
 | Skip-to-content link (first focusable; every route renders one `<main id="main">`) | `web/app/layout.tsx`, `.skip-link` in `web/app/globals.css` |
 | 404 and fault pages (route error boundary, root boundary, copyable report) | `web/app/not-found.tsx`, `web/components/chrome/NotFound.tsx`, `web/app/error.tsx`, `web/app/global-error.tsx` |
 | Shared embeddable emulator (owns the one `useEmulator()` hub; the landing hero, lessons and exercises mount it) | `web/components/playground/EmbeddablePlayground.tsx` |
@@ -40,7 +40,7 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | Monaco editor with three themes | `web/components/playground/Editor.tsx` |
-| Lazy editor (module-scope `next/dynamic`, so only an editable surface pulls Monaco) | `web/components/playground/lazy-editor.tsx` |
+| Lazy editor (module-scope `next/dynamic`, so only an editable surface pulls Monaco; the chunk import waits on the web fonts so the swap cannot move the editor after it mounts) | `web/components/playground/lazy-editor.tsx`, `fonts-settled.ts` |
 | Vendored editor runtime (editor-only entry + its worker, same-origin, lazy chunk) | `web/components/playground/Editor.tsx::loadMonaco`, the `monaco-editor` dependency in `web/package.json`, `web/types/monaco-edcore.d.ts` |
 | Mobile fallback editor (textarea) | `web/components/playground/Editor.tsx::FallbackEditor` |
 | Source formatter (`Ctrl+Shift+F`) | `web/lib/asm/asm-formatter.ts` |
@@ -163,4 +163,4 @@ reference).
 | Upload size caps | `web/lib/playground/upload-guard.ts` |
 | Bundle / share validators | `web/lib/playground/diagnostic-bundle.ts`, `web/lib/playground/share.ts` |
 | Bookmark validator | `web/lib/playground/named-saves.ts::isValidSave` |
-| Response headers (CSP, COOP, ...) | `web/proxy.ts`, `vercel.json` |
+| Response headers (CSP, COOP, ...) | `web/next.config.mjs::SECURITY_HEADERS`, `vercel.json` |

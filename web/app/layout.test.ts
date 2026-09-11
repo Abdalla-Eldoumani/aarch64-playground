@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { SITE_URL } from "@/lib/content/site";
 
 // next/font/google only runs inside the Next build; stub the three loaders so
-// the layout module can be imported for its metadata export. They record their
-// arguments because those arguments are the font configuration, and every face
-// declared there lands in a render-blocking stylesheet on every route.
+// the layout module can be imported for its metadata export. Each stub keeps
+// the options it was called with, because those options are the font
+// configuration, and every face declared there lands in a render-blocking
+// stylesheet on every route. The options are kept in a plain record rather
+// than read back from mock call history: the loaders run once, at import,
+// and vitest clears every mock's history before each test.
 interface FontOptions {
   weight?: string[];
   style?: string[];
@@ -15,15 +18,25 @@ interface FontOptions {
 
 type FontLoader = (options: FontOptions) => { variable: string };
 
-const { plexSans, jetBrainsMono, sourceSerif } = vi.hoisted(() => ({
-  plexSans: vi.fn<FontLoader>(() => ({ variable: "--font-sans" })),
-  jetBrainsMono: vi.fn<FontLoader>(() => ({ variable: "--font-mono" })),
-  sourceSerif: vi.fn<FontLoader>(() => ({ variable: "--font-serif" })),
-}));
+const fonts = vi.hoisted(() => {
+  const declared: { sans?: FontOptions; mono?: FontOptions; serif?: FontOptions } = {};
+  const loader =
+    (name: keyof typeof declared, variable: string): FontLoader =>
+    (options) => {
+      declared[name] = options;
+      return { variable };
+    };
+  return {
+    declared,
+    plexSans: loader("sans", "--font-sans"),
+    jetBrainsMono: loader("mono", "--font-mono"),
+    sourceSerif: loader("serif", "--font-serif"),
+  };
+});
 vi.mock("next/font/google", () => ({
-  IBM_Plex_Sans: plexSans,
-  JetBrains_Mono: jetBrainsMono,
-  Source_Serif_4: sourceSerif,
+  IBM_Plex_Sans: fonts.plexSans,
+  JetBrains_Mono: fonts.jetBrainsMono,
+  Source_Serif_4: fonts.sourceSerif,
 }));
 
 import { metadata } from "./layout";
@@ -103,19 +116,19 @@ describe("share card metadata", () => {
 // render-blocking.
 describe("font declarations", () => {
   it("declares the serif upright only", () => {
-    const options = sourceSerif.mock.calls[0][0];
+    const options = fonts.declared.serif!;
     expect(options.style).toBeUndefined();
     expect(options.weight).toEqual(["400", "600"]);
   });
 
   it("declares all four weights for the sans and the mono", () => {
-    expect(plexSans.mock.calls[0][0].weight).toEqual(["400", "500", "600", "700"]);
-    expect(jetBrainsMono.mock.calls[0][0].weight).toEqual(["400", "500", "600", "700"]);
+    expect(fonts.declared.sans!.weight).toEqual(["400", "500", "600", "700"]);
+    expect(fonts.declared.mono!.weight).toEqual(["400", "500", "600", "700"]);
   });
 
   it("swaps every family, so no face blocks first paint", () => {
-    for (const loader of [sourceSerif, plexSans, jetBrainsMono]) {
-      expect(loader.mock.calls[0][0].display).toBe("swap");
+    for (const options of [fonts.declared.serif, fonts.declared.sans, fonts.declared.mono]) {
+      expect(options!.display).toBe("swap");
     }
   });
 });
