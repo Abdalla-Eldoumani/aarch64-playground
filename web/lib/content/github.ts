@@ -12,6 +12,14 @@ const STARS_ENDPOINT = `https://api.github.com/repos/${REPO_URL.replace(
   "",
 )}`;
 
+// The build-time fetch cache lives in .next/cache, which Vercel restores from
+// one build to the next, and a force-cached response is kept for a year. On
+// its own that would freeze the count at the first build. The deploy's commit
+// is put in the query string, which GitHub ignores, so every deploy has its
+// own cache key and reads the count afresh; a local build has no commit and
+// keys on "local".
+const STARS_URL = `${STARS_ENDPOINT}?deploy=${process.env.VERCEL_GIT_COMMIT_SHA ?? "local"}`;
+
 /**
  * Server-only: the current stargazer count, or null when the count cannot be
  * trusted. Null covers a non-ok response, a thrown request, a payload without a
@@ -20,14 +28,14 @@ const STARS_ENDPOINT = `https://api.github.com/repos/${REPO_URL.replace(
  */
 export async function fetchStarCount(): Promise<number | null> {
   try {
-    const response = await fetch(STARS_ENDPOINT, {
+    const response = await fetch(STARS_URL, {
       headers: { Accept: "application/vnd.github+json" },
       // Read once per build and baked into the prerendered pages, so every
       // route stays a static file and no visitor request ever reaches this
-      // call. A stale count is harmless: it refreshes on the next deploy, and
-      // dependabot's weekly bumps deploy at least that often. A revalidate
-      // interval here would turn every route that renders the nav into an
-      // ISR page regenerated on the server.
+      // call. A stale count is harmless: it refreshes on the next deploy (the
+      // cache key above), and dependabot's weekly bumps deploy at least that
+      // often. A revalidate interval here would turn every route that renders
+      // the nav into an ISR page regenerated on the server.
       cache: "force-cache",
       // A hanging GitHub must never stall a prerender: this fetch runs inside
       // the build of every content route, and the catch below already renders
