@@ -15,12 +15,17 @@ const FPRS = Array.from({ length: 32 }, () => "0x0000000000000000");
 const ZERO_VEC = "0x00000000000000000000000000000000";
 const VECS = Array.from({ length: 32 }, () => ZERO_VEC);
 
-/** The vector file with v0 replaced, so the panel sees one register move. */
-function vecsWith(bits: string): string[] {
+/** The vector file with one register replaced, so the panel sees it move. */
+function vecsWith(bits: string, index = 0): string[] {
   const next = [...VECS];
-  next[0] = bits;
+  next[index] = bits;
   return next;
 }
+
+// The pc points at the NEXT instruction once a step lands, so every spelling
+// fixture steps from line 1 to line 2 and the panel has to read line 1.
+const INS_THEN_MOV = "        ins     v2.d[0], x1\n        mov     x9, sp\n";
+const FMOV_THEN_MOVI = "        fmov    d0, x1\n        movi    v1.4s, 0x7f\n";
 
 function panel(props: {
   vectorRegisters?: string[];
@@ -124,26 +129,44 @@ describe("RegisterPanel auto-switch across three views", () => {
   });
 
   it("follows a v/q spelling even when nothing above bit 63 moved", () => {
-    const { rerender } = render(panel({}));
+    // ins v2.d[0], x1 executed; the pc has already moved on to the mov.
+    const { rerender } = render(panel({ source: INS_THEN_MOV, currentLine: 1 }));
     rerender(
       panel({
-        vectorRegisters: vecsWith("0x0000000000000000000000000000002a"),
-        changedFpRegs: new Set([0]),
-        source: "        ins     v0.d[0], x1\n",
-        currentLine: 1,
+        vectorRegisters: vecsWith("0x0000000000000000000000000000002a", 2),
+        changedFpRegs: new Set([2]),
+        source: INS_THEN_MOV,
+        currentLine: 2,
       }),
     );
-    expect(screen.getByText("v0 (q0)")).toBeTruthy();
+    expect(screen.getByText("v2 (q2)")).toBeTruthy();
+  });
+
+  it("reads the line that executed, not the one the pc moved to", () => {
+    // fmov d0, x1 executed; the movi the pc now sits on has not run, and
+    // reading it would send a plain fp write to the vector view.
+    const { rerender } = render(panel({ source: FMOV_THEN_MOVI, currentLine: 1 }));
+    rerender(
+      panel({
+        vectorRegisters: vecsWith("0x0000000000000000400c000000000000"),
+        changedFpRegs: new Set([0]),
+        source: FMOV_THEN_MOVI,
+        currentLine: 2,
+      }),
+    );
+    expect(screen.getByText("D0")).toBeTruthy();
+    expect(screen.queryByText("v0 (q0)")).toBeNull();
   });
 
   it("reads a comment as no destination at all", () => {
-    const { rerender } = render(panel({}));
+    const source = "        // load v0 later\n        fmov    d0, x1\n";
+    const { rerender } = render(panel({ source, currentLine: 1 }));
     rerender(
       panel({
         vectorRegisters: vecsWith("0x0000000000000000000000000000002a"),
         changedFpRegs: new Set([0]),
-        source: "        // load v0 later\n",
-        currentLine: 1,
+        source,
+        currentLine: 2,
       }),
     );
     expect(screen.getByText("D0")).toBeTruthy();
