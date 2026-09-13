@@ -32,6 +32,9 @@ export interface EmulatorState {
   /** d0-d31 as raw IEEE-754 bit patterns ("0x..."); [] until the loaded WASM
    *  ships the FP surface, which is the UI's cue to hide the d-view. */
   fpRegisters: string[];
+  /** v0-v31 as "0x" + 32 hex digits; [] until the loaded WASM ships the vector
+   *  surface, which is the UI's cue to hide the v-view. */
+  vectorRegisters: string[];
   sp: string;
   pc: number;
   nzcv: number;

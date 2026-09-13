@@ -640,6 +640,9 @@ export function FullChromeSurface({
             changedRegs={emu.changedRegs}
             fpRegisters={emu.fpRegisters}
             changedFpRegs={emu.changedFpRegs}
+            vectorRegisters={emu.vectorRegisters}
+            source={decodeSource}
+            currentLine={emu.currentLine}
             sp={emu.sp}
             pc={emu.pc}
             nzcv={emu.nzcv}

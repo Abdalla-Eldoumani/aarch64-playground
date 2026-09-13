@@ -38,7 +38,7 @@ describe("RegisterPanel d-register view", () => {
     expect(screen.getByText("D0")).toBeTruthy();
     expect(screen.getByText("D31")).toBeTruthy();
     expect(screen.queryByText("X0")).toBeNull();
-    expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("1");
+    expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("d");
   });
 
   it("keeps the regfile switch at full size when the panel is narrow", () => {
@@ -56,14 +56,30 @@ describe("RegisterPanel d-register view", () => {
     expect(group.parentElement?.className).toContain("gap-y-1");
   });
 
-  it("offers the dec/hex toggle only inside the d-view", () => {
+  it("gives each view its own dec/hex toggle, under its own key", () => {
     renderPanel();
+    // The x-view's toggle is the integer one; the d-view's keeps the key it
+    // shipped with, so a returning student's choice survives the split.
+    expect(screen.getByRole("group", { name: "integer value format" })).toBeTruthy();
     expect(screen.queryByRole("group", { name: "fp value format" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "dec" }));
+    expect(window.localStorage.getItem("aarch64-playground:regfile-x-dec")).toBe("1");
+    // The signed reading leads, the unsigned one rides beneath it; every
+    // register in this fixture holds zero, SP and PC excepted (both addresses,
+    // both still hex).
+    expect(screen.getAllByText("0 u")).toHaveLength(31);
+
     fireEvent.click(screen.getByRole("button", { name: "d0–d31" }));
-    const toggle = screen.getByRole("group", { name: "fp value format" });
-    expect(toggle).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "integer value format" })).toBeNull();
+    expect(screen.getByRole("group", { name: "fp value format" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "hex" }));
     expect(window.localStorage.getItem("aarch64-playground:regfile-fp-hex")).toBe("1");
+  });
+
+  it("lands a returning student back on the file the two-view flag stored", () => {
+    window.localStorage.setItem("aarch64-playground:regfile-view", "1");
+    renderPanel();
+    expect(screen.getByText("D0")).toBeTruthy();
   });
 });
 

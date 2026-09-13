@@ -17,6 +17,7 @@ export interface ReplayFrame {
   registers: string[];
   sp: string;
   fpRegisters: string[];
+  vectorRegisters: string[];
   pc: number;
   nzcv: number;
   changedRegs: number[];

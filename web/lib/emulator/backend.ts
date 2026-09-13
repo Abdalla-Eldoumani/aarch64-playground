@@ -312,6 +312,7 @@ class MainThreadBackend implements EmulatorBackend {
       frame: this.frame,
       registers: regs.gpr,
       fpRegisters: this.emu.getFpRegisters(),
+      vectorRegisters: this.emu.getVectorRegisters(),
       sp: regs.sp,
       pc: regs.pc,
       nzcv: regs.nzcv,

@@ -11,6 +11,7 @@ function frame(stepCount: number): ReplayFrame {
     registers: Array(31).fill("0x0"),
     sp: "0x0000000080000000",
     fpRegisters: [],
+    vectorRegisters: [],
     pc: 0x400000 + stepCount * 4,
     nzcv: 0,
     changedRegs: [],
