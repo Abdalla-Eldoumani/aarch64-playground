@@ -22,7 +22,9 @@ export default defineConfig({
       // Root-adjacent subjects (next.config.mjs) keep their test beside them.
       "*.test.ts",
     ],
-    // WASM bindings and monaco are browser-only; tests never import them.
+    // The generated bundles carry no tests of their own; the seven suites
+    // that load the node bundle reach it through createRequire, not the
+    // include list.
     exclude: ["node_modules/**", "lib/wasm/**", "lib/wasm-node/**"],
     coverage: {
       provider: "v8",
