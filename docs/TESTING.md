@@ -88,6 +88,11 @@ replays every implemented line, so a form that encodes correctly but
 moves the wrong bytes still fails. Neither fixture is ever hand-edited;
 both are regenerated from the probe.
 
+The two counts move together as families land. Today `simd.rs` holds 314
+lines to their word and rejects 1,891, with 3 literal loads checked
+through the hosted pipeline instead, and `simd_behaviour.rs` replays 936
+rows.
+
 ## The C corpus
 
 Fifty small C programs compiled by gcc, whose assembly is replayed
@@ -101,18 +106,17 @@ branch. It runs inside the ordinary Rust suite with no toolchain at all:
 cargo test --manifest-path emulator/Cargo.toml --test c_corpus
 ```
 
-At `-O0` the corpus is a gate and all 50 programs match; the pending
-list is empty there. The `-O2` tier is an ignored coverage map
-(`-- --ignored` runs it), not a gate; it passes 48 of 50 against a
-recorded floor of 48. Both gaps are `MOVI`, which is not implemented
-yet: `13_float_double` zeroes its struct with `movi d31, #0` once the
-optimizer drops the `q` copies its `-O0` tier makes, and
-`14_float_single` zeroes a float with `movi v0.2s, #0`. A pending
-program is not counted as
-passing: it is kept out of the failure list because its gap is already
-recorded, and out of the passing count because it never ran. One that
-starts assembling turns its tier red, so a fix gets recorded instead of
-passing unnoticed.
+At `-O0` the corpus is a gate and all 50 programs match. The `-O2` tier
+is an ignored coverage map (`-- --ignored` runs it), not a gate; it
+passes 50 of 50 against a recorded floor of 50, the last two gaps having
+closed when the vector immediates landed (`13_float_double` zeroes its
+struct with `movi d31, #0` once the optimizer drops the `q` copies its
+`-O0` tier makes, and `14_float_single` zeroes a float with
+`movi v0.2s, #0`). Both pending lists are empty. A pending program is
+not counted as passing: it is kept out of the failure list because its
+gap is already recorded, and out of the passing count because it never
+ran. One that starts assembling turns its tier red, so a fix gets
+recorded instead of passing unnoticed.
 
 Adding a program and regenerating the references needs a cross
 compiler and qemu-user; [`emulator/tests/c-corpus/README.md`](../emulator/tests/c-corpus/README.md)
