@@ -89,9 +89,9 @@ moves the wrong bytes still fails. Neither fixture is ever hand-edited;
 both are regenerated from the probe.
 
 The two counts move together as families land. Today `simd.rs` holds
-1,261 lines to their word and rejects 944, with 3 literal loads checked
+1,391 lines to their word and rejects 814, with 3 literal loads checked
 through the hosted pipeline instead, and `simd_behaviour.rs` replays
-3,777 rows.
+4,167 rows.
 
 ## The C corpus
 

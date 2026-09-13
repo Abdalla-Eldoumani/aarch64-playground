@@ -69,6 +69,13 @@ const WIDEN_SHIFT: &[&str] = &[
     "uxtl2", "xtn", "xtn2",
 ];
 
+/// The permutes and the table lookups: the family that moves lanes
+/// around without computing on them. The by-element multiplies are not
+/// here because their mnemonics are already in INTEGER and WIDEN_SHIFT:
+/// a lane in the last operand changes the encoding, not the name.
+const PERMUTE: &[&str] =
+    &["ext", "tbl", "tbx", "trn1", "trn2", "uzp1", "uzp2", "zip1", "zip2"];
+
 /// Whether this suite replays a line. Everything else implemented (the
 /// SIMD-scalar SCVTF) is left to `simd.rs` until its own feature lands.
 fn is_replayed(line: &InventoryLine) -> bool {
@@ -77,7 +84,8 @@ fn is_replayed(line: &InventoryLine) -> bool {
         && (MEMORY.contains(&line.mnemonic())
             || MOVES.contains(&line.mnemonic())
             || INTEGER.contains(&line.mnemonic())
-            || WIDEN_SHIFT.contains(&line.mnemonic()))
+            || WIDEN_SHIFT.contains(&line.mnemonic())
+            || PERMUTE.contains(&line.mnemonic()))
 }
 
 /// Where the mapped buffer's base sits: page-aligned (so SP-based forms

@@ -362,6 +362,22 @@ pub fn execute(
             exec_simd_copy(*op, *esize, *q, *index, *index2, *rn, *rd, regs);
             Ok(ExecResult::Advance)
         }
+        Instruction::SimdPermute { op, esize, q, rm, rn, rd } => {
+            exec_simd_permute(*op, *esize, *q, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdExt { q, index, rm, rn, rd } => {
+            exec_simd_ext(*q, *index, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdTableLookup { extend, q, len, rm, rn, rd } => {
+            exec_simd_table_lookup(*extend, *q, *len, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdByElement { op, esize, q, scalar, index, rm, rn, rd } => {
+            exec_simd_by_element(*op, *esize, *q, *scalar, *index, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
         Instruction::FpUnary { op, fd, fn_, single } => {
             if *single {
                 let v = regs.read_fpr_f32(*fn_);
@@ -1848,23 +1864,11 @@ fn simd_diff_lane(op: SimdDiffOp, a: i128, b: i128, d: u64, esize: u8) -> u64 {
     }
 }
 
-#[allow(clippy::too_many_arguments)] // one argument per encoding field
-fn exec_simd_three_diff(
-    op: SimdDiffOp,
-    esize: u8,
-    upper: bool,
-    scalar: bool,
-    rm: u8,
-    rn: u8,
-    rd: u8,
-    regs: &mut RegisterFile,
-) {
-    let row = simd_diff_row(op);
-    let wide = esize * 2;
-    // The S/U pair of every widening row differ in nothing but how the
-    // narrow operands are extended; the narrowing rows extend nothing,
-    // because both their operands already arrive at the wide width.
-    let signed = matches!(
+/// How a three-different row extends its narrow operands. The S/U pair
+/// of every widening row differ in nothing else; the narrowing rows
+/// extend nothing, because both their operands already arrive wide.
+fn simd_diff_signed(op: SimdDiffOp) -> bool {
+    matches!(
         op,
         SimdDiffOp::Saddl
             | SimdDiffOp::Saddw
@@ -1878,7 +1882,23 @@ fn exec_simd_three_diff(
             | SimdDiffOp::Sqdmlal
             | SimdDiffOp::Sqdmlsl
             | SimdDiffOp::Sqdmull
-    );
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_three_diff(
+    op: SimdDiffOp,
+    esize: u8,
+    upper: bool,
+    scalar: bool,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_diff_row(op);
+    let wide = esize * 2;
+    let signed = simd_diff_signed(op);
     let extend = |lane: u64| -> i128 {
         if signed {
             i128::from(lane_signed(lane, esize))
@@ -2093,6 +2113,151 @@ fn exec_simd_across(
         }
     };
     regs.write_fpr_scalar(rd, width, value);
+}
+
+/// ZIP/UZP/TRN: one destination lane per rule, read out of the two
+/// sources laid end to end. Nothing here is arithmetic, so the lanes
+/// move as bit patterns whatever their width.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_permute(
+    op: SimdPermuteOp,
+    esize: u8,
+    q: bool,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if q { 16 } else { 8 };
+    let n = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let m = read_lanes(regs.read_fpr_q(rm), esize, bytes);
+    let count = n.len();
+    let half = count / 2;
+    let pairs: Vec<u64> = n.iter().chain(m.iter()).copied().collect();
+    let out: Vec<u64> = (0..count)
+        .map(|i| match op {
+            // The ZIPs interleave one half of each source.
+            SimdPermuteOp::Zip1 => {
+                if i % 2 == 0 { n[i / 2] } else { m[i / 2] }
+            }
+            SimdPermuteOp::Zip2 => {
+                if i % 2 == 0 { n[half + i / 2] } else { m[half + i / 2] }
+            }
+            // The UZPs take every other lane of the two concatenated.
+            SimdPermuteOp::Uzp1 => pairs[i * 2],
+            SimdPermuteOp::Uzp2 => pairs[i * 2 + 1],
+            // The TRNs take the even (or odd) lanes of both.
+            SimdPermuteOp::Trn1 => {
+                if i % 2 == 0 { n[i] } else { m[i - 1] }
+            }
+            SimdPermuteOp::Trn2 => {
+                if i % 2 == 0 { n[i + 1] } else { m[i] }
+            }
+        })
+        .collect();
+    regs.write_fpr_q(rd, pack_lanes(&out, esize));
+}
+
+/// EXT: a byte window into Vn:Vm starting `index` bytes in. The 8b form
+/// concatenates the low halves, so its window can only reach 15 bytes.
+fn exec_simd_ext(q: bool, index: u8, rm: u8, rn: u8, rd: u8, regs: &mut RegisterFile) {
+    let bytes = if q { 16usize } else { 8 };
+    let n = regs.read_fpr_q(rn).to_le_bytes();
+    let m = regs.read_fpr_q(rm).to_le_bytes();
+    let source: Vec<u8> = n[..bytes].iter().chain(m[..bytes].iter()).copied().collect();
+    let mut out = [0u8; 16];
+    for (i, slot) in out[..bytes].iter_mut().enumerate() {
+        *slot = source[usize::from(index) + i];
+    }
+    regs.write_fpr_q(rd, u128::from_le_bytes(out));
+}
+
+/// TBL and TBX: every byte of Vm indexes a byte table made of `len`
+/// registers from Vn on, wrapping past v31. An index past the table
+/// answers zero for TBL and leaves the destination byte for TBX.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_table_lookup(
+    extend: bool,
+    q: bool,
+    len: u8,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if q { 16usize } else { 8 };
+    let mut table: Vec<u8> = Vec::with_capacity(usize::from(len) * 16);
+    for step in 0..u32::from(len) {
+        let reg = ((u32::from(rn) + step) % 32) as u8;
+        table.extend_from_slice(&regs.read_fpr_q(reg).to_le_bytes());
+    }
+    let indices = regs.read_fpr_q(rm).to_le_bytes();
+    let held = regs.read_fpr_q(rd).to_le_bytes();
+    let mut out = [0u8; 16];
+    for (i, slot) in out[..bytes].iter_mut().enumerate() {
+        *slot = match table.get(usize::from(indices[i])) {
+            Some(byte) => *byte,
+            None if extend => held[i],
+            None => 0,
+        };
+    }
+    regs.write_fpr_q(rd, u128::from_le_bytes(out));
+}
+
+/// The by-element multiplies. One lane of Vm stands in for the whole
+/// second source, so the arithmetic is the three-same and
+/// three-different lane functions unchanged, with that lane broadcast.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_by_element(
+    op: SimdElemOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    index: u8,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_elem_row(op);
+    let element = read_lanes(regs.read_fpr_q(rm), esize, 16)[usize::from(index)];
+    match row.kind {
+        SimdElemKind::Same(same) => {
+            let bytes = if scalar { esize } else if q { 16 } else { 8 };
+            let n = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+            let d = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+            let out: Vec<u64> = (0..n.len())
+                .map(|i| simd_same_lane(same, n[i], element, d[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+        SimdElemKind::Long(diff) => {
+            let wide = esize * 2;
+            let signed = simd_diff_signed(diff);
+            let extend = |lane: u64| -> i128 {
+                if signed {
+                    i128::from(lane_signed(lane, esize))
+                } else {
+                    i128::from(lane)
+                }
+            };
+            if scalar {
+                let n = read_lanes(regs.read_fpr_q(rn), esize, esize)[0];
+                let d = read_lanes(regs.read_fpr_q(rd), wide, wide)[0];
+                let out = simd_diff_lane(diff, extend(n), extend(element), d, esize);
+                regs.write_fpr_scalar(rd, wide, out);
+                return;
+            }
+            // Q is the `2` suffix here, exactly as in the three-different
+            // class: it names the half of Vn the narrow lanes come from.
+            let n = read_half_lanes(regs.read_fpr_q(rn), esize, q);
+            let held = read_lanes(regs.read_fpr_q(rd), wide, 16);
+            let out: Vec<u64> = (0..n.len())
+                .map(|i| simd_diff_lane(diff, extend(n[i]), extend(element), held[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+    }
 }
 
 fn exec_fp_binary(

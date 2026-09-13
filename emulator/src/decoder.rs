@@ -1245,6 +1245,162 @@ pub fn shift_imm_field(esize: u8, amount: u8, right: bool) -> u8 {
     }
 }
 
+/// The permute class: ZIP, UZP and TRN, which shuffle two sources into
+/// one destination of the same arrangement. One row per 3-bit opcode at
+/// bits 14:12.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdPermuteOp {
+    Uzp1,
+    Trn1,
+    Zip1,
+    Uzp2,
+    Trn2,
+    Zip2,
+}
+
+/// (op, mnemonic, opcode at bits 14:12).
+pub const SIMD_PERMUTE: &[(SimdPermuteOp, &str, u8)] = &[
+    (SimdPermuteOp::Uzp1, "uzp1", 0b001),
+    (SimdPermuteOp::Trn1, "trn1", 0b010),
+    (SimdPermuteOp::Zip1, "zip1", 0b011),
+    (SimdPermuteOp::Uzp2, "uzp2", 0b101),
+    (SimdPermuteOp::Trn2, "trn2", 0b110),
+    (SimdPermuteOp::Zip2, "zip2", 0b111),
+];
+
+pub fn simd_permute_by_bits(opcode: u8) -> Option<SimdPermuteOp> {
+    SIMD_PERMUTE.iter().find(|(_, _, code)| *code == opcode).map(|(op, _, _)| *op)
+}
+
+pub fn simd_permute_by_name(name: &str) -> Option<(SimdPermuteOp, u8)> {
+    SIMD_PERMUTE
+        .iter()
+        .find(|(_, row_name, _)| *row_name == name)
+        .map(|(op, _, code)| (*op, *code))
+}
+
+pub fn simd_permute_name(op: SimdPermuteOp) -> &'static str {
+    SIMD_PERMUTE
+        .iter()
+        .find(|(row_op, _, _)| *row_op == op)
+        .map(|(_, name, _)| *name)
+        .expect("every permute op has a row")
+}
+
+/// Which lane arithmetic a by-element row runs. The element-indexed
+/// multiplies are the three-same and three-different rows over again
+/// with one lane of Vm standing in for the whole second source, so each
+/// row names the op whose lane function it borrows rather than carrying
+/// a second copy of the arithmetic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdElemKind {
+    /// Lanes of the source's own width: `simd_same_lane`.
+    Same(SimdSameOp),
+    /// Lanes of twice the source width: `simd_diff_lane`, Long shape.
+    Long(SimdDiffOp),
+}
+
+/// The by-element rows, keyed the way the other classes are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdElemOp {
+    Mul,
+    Mla,
+    Mls,
+    Sqdmulh,
+    Sqrdmulh,
+    Smull,
+    Umull,
+    Smlal,
+    Umlal,
+    Smlsl,
+    Umlsl,
+    Sqdmull,
+    Sqdmlal,
+    Sqdmlsl,
+}
+
+pub struct SimdElemRow {
+    pub op: SimdElemOp,
+    pub kind: SimdElemKind,
+    pub name: &'static str,
+    pub u: bool,
+    /// The 4-bit opcode at bits 15:12.
+    pub opcode: u8,
+    /// Lane widths of Vn (and of the indexed element), h and s only.
+    pub lanes: LaneMask,
+    /// Whether the row has a SIMD-scalar form.
+    pub scalar: bool,
+}
+
+const fn row_elem(
+    op: SimdElemOp,
+    kind: SimdElemKind,
+    name: &'static str,
+    u: bool,
+    opcode: u8,
+    scalar: bool,
+) -> SimdElemRow {
+    SimdElemRow { op, kind, name, u, opcode, lanes: LANE_HS, scalar }
+}
+
+/// The by-element table, ordered by opcode. Every row takes an h or an s
+/// element, which is why the lane mask is the same on all of them: the
+/// index packs into H:L:M for an h lane (leaving Rm four bits, v0..v15)
+/// and into H:L for an s one.
+pub const SIMD_BY_ELEMENT: &[SimdElemRow] = &[
+    row_elem(SimdElemOp::Mla, SimdElemKind::Same(SimdSameOp::Mla), "mla", true, 0b0000, false),
+    row_elem(SimdElemOp::Smlal, SimdElemKind::Long(SimdDiffOp::Smlal), "smlal", false, 0b0010, false),
+    row_elem(SimdElemOp::Umlal, SimdElemKind::Long(SimdDiffOp::Umlal), "umlal", true, 0b0010, false),
+    row_elem(SimdElemOp::Sqdmlal, SimdElemKind::Long(SimdDiffOp::Sqdmlal), "sqdmlal", false, 0b0011, true),
+    row_elem(SimdElemOp::Mls, SimdElemKind::Same(SimdSameOp::Mls), "mls", true, 0b0100, false),
+    row_elem(SimdElemOp::Smlsl, SimdElemKind::Long(SimdDiffOp::Smlsl), "smlsl", false, 0b0110, false),
+    row_elem(SimdElemOp::Umlsl, SimdElemKind::Long(SimdDiffOp::Umlsl), "umlsl", true, 0b0110, false),
+    row_elem(SimdElemOp::Sqdmlsl, SimdElemKind::Long(SimdDiffOp::Sqdmlsl), "sqdmlsl", false, 0b0111, true),
+    row_elem(SimdElemOp::Mul, SimdElemKind::Same(SimdSameOp::Mul), "mul", false, 0b1000, false),
+    row_elem(SimdElemOp::Smull, SimdElemKind::Long(SimdDiffOp::Smull), "smull", false, 0b1010, false),
+    row_elem(SimdElemOp::Umull, SimdElemKind::Long(SimdDiffOp::Umull), "umull", true, 0b1010, false),
+    row_elem(SimdElemOp::Sqdmull, SimdElemKind::Long(SimdDiffOp::Sqdmull), "sqdmull", false, 0b1011, true),
+    row_elem(SimdElemOp::Sqdmulh, SimdElemKind::Same(SimdSameOp::Sqdmulh), "sqdmulh", false, 0b1100, true),
+    row_elem(SimdElemOp::Sqrdmulh, SimdElemKind::Same(SimdSameOp::Sqrdmulh), "sqrdmulh", false, 0b1101, true),
+];
+
+pub fn simd_elem_by_bits(u: bool, opcode: u8) -> Option<&'static SimdElemRow> {
+    SIMD_BY_ELEMENT.iter().find(|row| row.u == u && row.opcode == opcode)
+}
+
+pub fn simd_elem_by_name(name: &str) -> Option<&'static SimdElemRow> {
+    SIMD_BY_ELEMENT.iter().find(|row| row.name == name)
+}
+
+pub fn simd_elem_row(op: SimdElemOp) -> &'static SimdElemRow {
+    SIMD_BY_ELEMENT
+        .iter()
+        .find(|row| row.op == op)
+        .expect("every by-element op has a row")
+}
+
+/// The Rm and the element index a by-element word carries, from the
+/// four-bit Rm field and the L, M and H bits. An h element spends M as
+/// the index's low bit, which is what caps its register at v15; an s
+/// element spends M as Rm's high bit instead.
+pub fn simd_elem_index(esize: u8, rm4: u8, l: u8, m: u8, h: u8) -> (u8, u8) {
+    if esize == 2 {
+        (rm4, (h << 2) | (l << 1) | m)
+    } else {
+        ((m << 4) | rm4, (h << 1) | l)
+    }
+}
+
+/// The inverse: the L, M and H bits an element index packs into, beside
+/// the four-bit Rm field. The caller has already range-checked both.
+pub fn simd_elem_bits(esize: u8, rm: u8, index: u8) -> (u8, u8, u8, u8) {
+    if esize == 2 {
+        (rm & 0xf, (index >> 1) & 1, index & 1, (index >> 2) & 1)
+    } else {
+        (rm & 0xf, index & 1, (rm >> 4) & 1, (index >> 1) & 1)
+    }
+}
+
 /// Which reading of the Advanced SIMD copy group an encoding carries.
 /// DUP, INS, UMOV and SMOV share one word shape and differ only in imm4.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1671,6 +1827,55 @@ pub enum Instruction {
         /// Source lane width in bytes.
         esize: u8,
         q: bool,
+        rn: u8,
+        rd: u8,
+    },
+    /// ZIP1/ZIP2, UZP1/UZP2, TRN1/TRN2: two sources of one arrangement
+    /// shuffled into a destination of the same one.
+    SimdPermute {
+        op: SimdPermuteOp,
+        esize: u8,
+        q: bool,
+        rm: u8,
+        rn: u8,
+        rd: u8,
+    },
+    /// EXT: Vn and Vm concatenated, `index` bytes in, for as many bytes
+    /// as the arrangement holds. The 8b form uses the low halves.
+    SimdExt {
+        q: bool,
+        /// The byte position the window starts at, imm4.
+        index: u8,
+        rm: u8,
+        rn: u8,
+        rd: u8,
+    },
+    /// TBL and TBX: each byte of Vm indexes a byte table made of `len`
+    /// consecutive registers starting at Vn (wrapping past v31). TBL
+    /// answers zero for an index past the table, TBX leaves the
+    /// destination byte alone, which is the whole difference.
+    SimdTableLookup {
+        /// TBX rather than TBL.
+        extend: bool,
+        q: bool,
+        /// Table registers, 1 to 4.
+        len: u8,
+        rm: u8,
+        rn: u8,
+        rd: u8,
+    },
+    /// The Advanced SIMD by-element multiplies: one lane of Vm against
+    /// every lane of Vn. `esize` is the width of that element and of
+    /// Vn's lanes; the long rows write lanes of twice it.
+    SimdByElement {
+        op: SimdElemOp,
+        esize: u8,
+        /// Q: the 128-bit arrangement, and the `2` suffix on the long
+        /// rows, where it names the half of Vn that is read.
+        q: bool,
+        scalar: bool,
+        index: u8,
+        rm: u8,
         rn: u8,
         rd: u8,
     },
@@ -2187,6 +2392,87 @@ fn decode_advanced_simd(instr: u32) -> Option<Instruction> {
             return None;
         }
         return Some(Instruction::SimdAcross { op: row.op, esize, q, rn, rd });
+    }
+
+    // By element: 0 Q U 01111 size L M Rm opcode H 0 Rn Rd, with the
+    // SIMD-scalar class 01 U 11111 size L M Rm opcode H 0 Rn Rd. Bit 10
+    // clear is what separates it from the shift-by-immediate and
+    // modified-immediate groups it shares its top bits with; a (U,
+    // opcode) pair the table does not carry is a floating-point row.
+    let scalar_by_element = instr & 0xDF00_0400 == 0x5F00_0000;
+    if instr & 0x9F00_0400 == 0x0F00_0000 || scalar_by_element {
+        let row = simd_elem_by_bits(op, bits(instr, 15, 12) as u8)?;
+        let esize = size_esize(bits(instr, 23, 22) as u8);
+        if !lane_allowed(row.lanes, esize) || (scalar_by_element && !row.scalar) {
+            return None;
+        }
+        let (rm, index) = simd_elem_index(
+            esize,
+            bits(instr, 19, 16) as u8,
+            bit(instr, 21) as u8,
+            bit(instr, 20) as u8,
+            bit(instr, 11) as u8,
+        );
+        return Some(Instruction::SimdByElement {
+            op: row.op,
+            esize,
+            q: q && !scalar_by_element,
+            scalar: scalar_by_element,
+            index,
+            rm,
+            rn,
+            rd,
+        });
+    }
+
+    // EXT: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd. The 8B form concatenates the
+    // two LOW halves, 16 bytes in all, so an index of 8 or more is reserved
+    // (imm4<3> must be 0 when Q is 0) and refusing it here is what keeps the
+    // executor's window inside the 16 bytes it built.
+    if instr & 0xBFE0_8400 == 0x2E00_0000 {
+        let index = bits(instr, 14, 11) as u8;
+        if !q && index >= 8 {
+            return None;
+        }
+        return Some(Instruction::SimdExt {
+            q,
+            index,
+            rm: bits(instr, 20, 16) as u8,
+            rn,
+            rd,
+        });
+    }
+
+    // TBL/TBX: 0 Q 001110 000 Rm 0 len op 00 Rn Rd.
+    if instr & 0xBFE0_8C00 == 0x0E00_0000 {
+        return Some(Instruction::SimdTableLookup {
+            extend: bit(instr, 12) == 1,
+            q,
+            len: bits(instr, 14, 13) as u8 + 1,
+            rm: bits(instr, 20, 16) as u8,
+            rn,
+            rd,
+        });
+    }
+
+    // Permute: 0 Q 001110 size 0 Rm 0 opcode 10 Rn Rd. Bit 21 clear is
+    // what holds it apart from the three-register and misc classes.
+    if instr & 0xBF20_8C00 == 0x0E00_0800 {
+        let permute = simd_permute_by_bits(bits(instr, 14, 12) as u8)?;
+        let esize = size_esize(bits(instr, 23, 22) as u8);
+        // No permute is spelled 1d: a single 64-bit lane would shuffle
+        // nothing, and GAS refuses the arrangement.
+        if esize == 8 && !q {
+            return None;
+        }
+        return Some(Instruction::SimdPermute {
+            op: permute,
+            esize,
+            q,
+            rm: bits(instr, 20, 16) as u8,
+            rn,
+            rd,
+        });
     }
 
     // The copy group: 0 Q op 01110000 imm5 0 imm4 1 Rn Rd for the vector
@@ -3003,6 +3289,56 @@ pub fn format(instr: &Instruction) -> Option<String> {
             let dest = element_letter(if row.widen { esize * 2 } else { *esize });
             let source = Arrangement { esize: *esize, q: *q }.suffix();
             Some(format!("{} {dest}{rd}, v{rn}.{source}", row.name))
+        }
+        Instruction::SimdPermute { op, esize, q, rm, rn, rd } => {
+            let t = Arrangement { esize: *esize, q: *q }.suffix();
+            let name = simd_permute_name(*op);
+            Some(format!("{name} v{rd}.{t}, v{rn}.{t}, v{rm}.{t}"))
+        }
+        Instruction::SimdExt { q, index, rm, rn, rd } => {
+            let t = if *q { "16b" } else { "8b" };
+            Some(format!("ext v{rd}.{t}, v{rn}.{t}, v{rm}.{t}, #{index}"))
+        }
+        Instruction::SimdTableLookup { extend, q, len, rm, rn, rd } => {
+            let name = if *extend { "tbx" } else { "tbl" };
+            let t = if *q { "16b" } else { "8b" };
+            // GAS prints a table of more than one register as a range,
+            // and the range wraps past v31 exactly as the table does.
+            let table = if *len == 1 {
+                format!("{{v{rn}.16b}}")
+            } else {
+                let last = (u32::from(*rn) + u32::from(*len) - 1) % 32;
+                format!("{{v{rn}.16b-v{last}.16b}}")
+            };
+            Some(format!("{name} v{rd}.{t}, {table}, v{rm}.{t}"))
+        }
+        Instruction::SimdByElement { op, esize, q, scalar, index, rm, rn, rd } => {
+            let row = simd_elem_row(*op);
+            let elem = element_letter(*esize);
+            let name = row.name;
+            match row.kind {
+                SimdElemKind::Same(_) if *scalar => {
+                    Some(format!("{name} {elem}{rd}, {elem}{rn}, v{rm}.{elem}[{index}]"))
+                }
+                SimdElemKind::Same(_) => {
+                    let t = Arrangement { esize: *esize, q: *q }.suffix();
+                    Some(format!("{name} v{rd}.{t}, v{rn}.{t}, v{rm}.{elem}[{index}]"))
+                }
+                // The scalar long form writes twice what it reads, the
+                // way the three-different scalar rows do.
+                SimdElemKind::Long(_) if *scalar => {
+                    let wide = element_letter(esize * 2);
+                    Some(format!("{name} {wide}{rd}, {elem}{rn}, v{rm}.{elem}[{index}]"))
+                }
+                SimdElemKind::Long(_) => {
+                    let two = if *q { "2" } else { "" };
+                    let narrow = Arrangement { esize: *esize, q: *q }.suffix();
+                    let wide = Arrangement { esize: esize * 2, q: true }.suffix();
+                    Some(format!(
+                        "{name}{two} v{rd}.{wide}, v{rn}.{narrow}, v{rm}.{elem}[{index}]"
+                    ))
+                }
+            }
         }
         Instruction::SimdCopy { op, esize, q, index, index2, rn, rd } => {
             let elem = element_letter(*esize);
@@ -4313,6 +4649,17 @@ mod tests {
         assert!(decode(0x536E_B400).is_err());
         // N=1 with sf=0 is reserved even with small fields.
         assert!(decode(0x5340_0C41).is_err());
+    }
+
+    #[test]
+    fn reserved_ext_8b_index_is_rejected() {
+        // ext v3.8b, v7.8b, v21.8b, #11: imm4<3> set with Q=0 is reserved,
+        // and the executor's 16-byte window would run past its end.
+        assert!(decode(0x2E15_58E3).is_err());
+        assert!(decode(0x2E15_78E3).is_err());
+        // #7 is the last valid 8B index and #11 is fine with Q=1.
+        assert!(decode(0x2E15_38E3).is_ok());
+        assert!(decode(0x6E15_58E3).is_ok());
     }
 
     #[test]
