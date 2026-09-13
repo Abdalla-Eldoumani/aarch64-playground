@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use crate::decoder::{
     element_letter, lane_allowed, shift_imm_field, simd_across_by_name, simd_diff_by_name,
-    simd_imm_form, simd_logical_by_name, simd_logical_name, simd_misc_by_name, simd_same_by_name,
-    simd_shift_by_name, size_field, MemSize, SimdDiffShape, SimdImmForm, SimdImmOp,
+    simd_elem_bits, simd_elem_by_name, simd_imm_form, simd_logical_by_name, simd_logical_name,
+    simd_misc_by_name, simd_permute_by_name, simd_same_by_name,
+    simd_shift_by_name, size_field, MemSize, SimdDiffShape, SimdElemKind, SimdImmForm, SimdImmOp,
     SimdLogicalOp, SimdMiscShape, SimdShiftRow, SimdShiftShape, DP1_OPS, FP_BINARY_OPS,
     FP_FROM_INT_OPS, FP_MUL_ADD_OPS,
     FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS,
@@ -212,6 +213,9 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "SQSHRUN2", "SQRSHRUN", "SQRSHRUN2",
     // advanced simd: shift by register (SQSHL and UQSHL are listed above)
     "SSHL", "USHL", "SRSHL", "URSHL", "SQRSHL", "UQRSHL",
+    // advanced simd: the permutes and the table lookups (the by-element
+    // multiplies are spellings of mnemonics already listed above)
+    "EXT", "TBL", "TBX", "ZIP1", "ZIP2", "UZP1", "UZP2", "TRN1", "TRN2",
     // the rest of the float-to-integer rounding modes
     "FCVTZU", "FCVTAS", "FCVTAU", "FCVTMS", "FCVTMU", "FCVTPS", "FCVTPU",
     // pc-relative address formation
@@ -443,6 +447,14 @@ fn encode_line(
         "UMOV" => encode_simd_lane_out(&ops, false, line_num),
         "SMOV" => encode_simd_lane_out(&ops, true, line_num),
 
+        // -- advanced simd: the permutes and the table lookups --
+        "EXT" => encode_simd_ext(&ops, line_num),
+        "TBL" => encode_simd_table(false, &ops, line_num),
+        "TBX" => encode_simd_table(true, &ops, line_num),
+        "ZIP1" | "ZIP2" | "UZP1" | "UZP2" | "TRN1" | "TRN2" => {
+            encode_simd_permute(&mn.to_ascii_lowercase(), &ops, line_num)
+        }
+
         // -- pc-relative address formation --
         "ADR" => encode_adr(&ops, false, pc, labels, line_num),
         "ADRP" => encode_adr(&ops, true, pc, labels, line_num),
@@ -495,14 +507,15 @@ fn split_mnemonic(line: &str) -> (&str, &str) {
 }
 
 fn split_operands(s: &str) -> Vec<&str> {
-    // split on commas but keep bracket groups together
+    // split on commas but keep bracket groups together. A brace group is
+    // one operand too: TBL's register list holds commas of its own.
     let mut result = Vec::new();
     let mut depth = 0;
     let mut start = 0;
     for (i, c) in s.char_indices() {
         match c {
-            '[' => depth += 1,
-            ']' => depth -= 1,
+            '[' | '{' => depth += 1,
+            ']' | '}' => depth -= 1,
             ',' if depth == 0 => {
                 result.push(s[start..i].trim());
                 start = i + 1;
@@ -2574,6 +2587,14 @@ fn encode_simd_integer(mn: &str, ops: &[&str], ln: usize) -> Result<u32, EmuErro
         return encode_simd_logical_reg(ops, op, ln);
     }
     match ops.len() {
+        // A lane in the last operand is the by-element class, an
+        // encoding of its own that every one of these mnemonics also
+        // has a whole-register form of.
+        3 if simd_elem_by_name(&name).is_some()
+            && parse_vec_operand(ops[2]).is_some_and(|reg| reg.lane.is_some()) =>
+        {
+            encode_simd_by_element(&name, ops, upper, ln)
+        }
         // A third operand spelled `#` is one of three different things:
         // the compare against zero, SHLL's fixed shift by the lane
         // width, or a shift by immediate.
@@ -2905,6 +2926,204 @@ fn encode_simd_shift_imm(
         | (u32::from(rn) << 5)
         | u32::from(rd);
     Ok(simd_shift_word(scalar, q, row.u, low))
+}
+
+/// The class header of the by-element group. Like the shift group it
+/// sits at bits 28:24 = 01111, and bit 10 clear is what tells the two
+/// apart. `l`, `m` and `h` are the three index bits.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn simd_elem_word(
+    scalar: bool,
+    q: bool,
+    u: bool,
+    esize: u8,
+    rm4: u8,
+    l: u8,
+    m: u8,
+    h: u8,
+    opcode: u8,
+    rn: u8,
+    rd: u8,
+) -> u32 {
+    let base = if scalar { 0x5F00_0000 } else { 0x0F00_0000 | ((q as u32) << 30) };
+    base | ((u as u32) << 29)
+        | (u32::from(size_field(esize)) << 22)
+        | (u32::from(l) << 21)
+        | (u32::from(m) << 20)
+        | (u32::from(rm4) << 16)
+        | (u32::from(opcode) << 12)
+        | (u32::from(h) << 11)
+        | (u32::from(rn) << 5)
+        | u32::from(rd)
+}
+
+/// The by-element multiplies: `Vd, Vn, Vm.Ts[index]`. A lane in the LAST
+/// operand is the only thing that separates these from the three-same
+/// and three-different rows they share a mnemonic with.
+fn encode_simd_by_element(
+    name: &str,
+    ops: &[&str],
+    upper: bool,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let row = simd_elem_by_name(name).expect("the caller checked the table");
+    let (m, index) = parse_vec_lane(ops[2], ln)?;
+    let esize = m.esize;
+    if !lane_allowed(row.lanes, esize) {
+        return asm_err(
+            ln,
+            &format!("{name} indexes an h or an s element, not {}", element_letter(esize)),
+        );
+    }
+    // An h element spends the M bit as the index's low bit, which leaves
+    // Rm four bits wide: v16 and up have nowhere to go.
+    if esize == 2 && m.idx > 15 {
+        return asm_err(
+            ln,
+            &format!("{name} reads an h element out of v0..v15; the index needs the bit v{} would use", m.idx),
+        );
+    }
+    let long = matches!(row.kind, SimdElemKind::Long(_));
+    let (rm4, l, mbit, h) = simd_elem_bits(esize, m.idx, index);
+    if let Some((rd, dest)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, src)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let expected = if long { esize * 2 } else { esize };
+        if !row.scalar || upper || src != esize || dest != expected {
+            return asm_err(ln, &format!("{name} has no scalar form of this width"));
+        }
+        return Ok(simd_elem_word(true, false, row.u, esize, rm4, l, mbit, h, row.opcode, rn, rd));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    // The long rows write lanes of twice the source width and spell the
+    // upper half of the source with the `2` suffix; the rest keep one
+    // arrangement throughout and have no `2` spelling at all.
+    let shaped = if long {
+        n.esize == esize && d.esize == esize * 2 && d.q && n.q == upper
+    } else {
+        !upper && n.esize == esize && d.esize == esize && n.q == d.q
+    };
+    if !shaped {
+        return asm_err(
+            ln,
+            &format!("{name} does not take these arrangements with a {} element", element_letter(esize)),
+        );
+    }
+    let q = if long { upper } else { d.q };
+    Ok(simd_elem_word(false, q, row.u, esize, rm4, l, mbit, h, row.opcode, n.idx, d.idx))
+}
+
+/// ZIP/UZP/TRN: `Vd.T, Vn.T, Vm.T`, one arrangement throughout.
+fn encode_simd_permute(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let Some((_, opcode)) = simd_permute_by_name(name) else {
+        return asm_err(ln, &format!("`{name}` is not a permute"));
+    };
+    if ops.len() != 3 {
+        return asm_err(ln, &format!("{name} takes three operands of one arrangement"));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    // No permute is spelled 1d: shuffling one 64-bit lane moves nothing.
+    if n.esize != d.esize || m.esize != d.esize || n.q != d.q || m.q != d.q || (d.esize == 8 && !d.q)
+    {
+        return asm_err(ln, &format!("{name} takes three operands of the same arrangement"));
+    }
+    Ok(0x0E00_0000
+        | ((d.q as u32) << 30)
+        | (u32::from(size_field(d.esize)) << 22)
+        | (u32::from(m.idx) << 16)
+        | (u32::from(opcode) << 12)
+        | (1 << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx))
+}
+
+/// EXT: `Vd.T, Vn.T, Vm.T, #index`, byte lanes only. The window starts
+/// `index` bytes into Vn:Vm, so it has to stay inside the concatenation.
+fn encode_simd_ext(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(ln, "ext takes three 8b or 16b operands and a byte position (ext v0.8b, v1.8b, v2.8b, #3)");
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    if d.esize != 1 || n.esize != 1 || m.esize != 1 || n.q != d.q || m.q != d.q {
+        return asm_err(ln, "ext takes three operands, all 8b or all 16b");
+    }
+    let bytes = i64::from(if d.q { 16 } else { 8 });
+    let index = parse_immediate(ops[3], ln)?;
+    if index < 0 || index >= bytes {
+        return asm_err(ln, &format!("ext starts 0 to {} bytes into the pair, not #{index}", bytes - 1));
+    }
+    Ok(0x2E00_0000
+        | ((d.q as u32) << 30)
+        | (u32::from(m.idx) << 16)
+        | ((index as u32) << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx))
+}
+
+/// `{v7.16b}`, `{v7.16b, v8.16b}` or `{v7.16b-v10.16b}`: the table one
+/// to four consecutive registers make, wrapping past v31. Answers the
+/// first register and how many there are.
+fn parse_table_list(s: &str, ln: usize) -> Result<(u8, u8), EmuError> {
+    let text = s.trim();
+    let inner = text
+        .strip_prefix('{')
+        .and_then(|body| body.strip_suffix('}'))
+        .ok_or_else(|| {
+            asm_error(ln, "a lookup table is a brace list of 1 to 4 registers ({v0.16b-v3.16b})")
+        })?;
+    let table_reg = |part: &str| -> Result<u8, EmuError> {
+        let reg = parse_vec_arrangement(part, ln)?;
+        if reg.esize != 1 || !reg.q {
+            return asm_err(ln, "every register in a lookup table is spelled 16b");
+        }
+        Ok(reg.idx)
+    };
+    let registers: Vec<u8> = if let Some((first, last)) = inner.split_once('-') {
+        let first = table_reg(first)?;
+        let last = table_reg(last)?;
+        let len = (u32::from(last) + 32 - u32::from(first)) % 32 + 1;
+        (0..len).map(|step| ((u32::from(first) + step) % 32) as u8).collect()
+    } else {
+        inner.split(',').map(table_reg).collect::<Result<Vec<u8>, EmuError>>()?
+    };
+    if registers.is_empty() || registers.len() > 4 {
+        return asm_err(ln, "a lookup table holds 1 to 4 registers");
+    }
+    if registers
+        .windows(2)
+        .any(|pair| (u32::from(pair[0]) + 1) % 32 != u32::from(pair[1]))
+    {
+        return asm_err(ln, "a lookup table's registers are consecutive, wrapping past v31");
+    }
+    Ok((registers[0], registers.len() as u8))
+}
+
+/// TBL and TBX: `Vd.T, {table}, Vm.T`. The table is always 16b whatever
+/// the destination is; TBX differs only in bit 12.
+fn encode_simd_table(extend: bool, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let name = if extend { "tbx" } else { "tbl" };
+    if ops.len() != 3 {
+        return asm_err(ln, &format!("{name} takes a destination, a brace list of 1 to 4 table registers, and an index vector"));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    if d.esize != 1 || m.esize != 1 || m.q != d.q {
+        return asm_err(ln, &format!("{name} takes 8b or 16b for both the destination and the index vector"));
+    }
+    let (rn, len) = parse_table_list(ops[1], ln)?;
+    Ok(0x0E00_0000
+        | ((d.q as u32) << 30)
+        | (u32::from(m.idx) << 16)
+        | (u32::from(len - 1) << 13)
+        | ((extend as u32) << 12)
+        | (u32::from(rn) << 5)
+        | u32::from(d.idx))
 }
 
 /// Across lanes: `Fd, Vn.T`, the whole source folded into one scalar.
