@@ -90,4 +90,43 @@ describe("useLayoutPersistence", () => {
     expect(left.result.current[0]).toEqual([85, 15]);
     expect(right.result.current[0]).toEqual([20, 80]);
   });
+  it("is not ready until the stored layout has been read", () => {
+    const seen: boolean[] = [];
+    const { result } = renderHook(() => {
+      const tuple = useLayoutPersistence("lg", [60, 40]);
+      seen.push(tuple[3]);
+      return tuple;
+    });
+    expect(seen[0]).toBe(false);
+    expect(result.current[3]).toBe(true);
+  });
+
+  it("ignores a save that arrives before the stored layout is read", () => {
+    // The panel group reports its mounted layout the moment it can measure
+    // itself, which beats this hook's load effect. That report must not be
+    // written, or a reload loses the reader's split.
+    window.localStorage.setItem(`${KEY_PREFIX}lg`, "[30,70]");
+    const { result } = renderHook(() => {
+      const tuple = useLayoutPersistence("lg", [60, 40]);
+      if (!tuple[3]) tuple[1]([60, 40]);
+      return tuple;
+    });
+    expect(window.localStorage.getItem(`${KEY_PREFIX}lg`)).toBe("[30,70]");
+    expect(result.current[0]).toEqual([30, 70]);
+  });
+
+  it("writes nothing when a pre-load save lands on an empty scope", () => {
+    renderHook(() => {
+      const tuple = useLayoutPersistence("lg", [60, 40]);
+      if (!tuple[3]) tuple[1]([99, 1]);
+      return tuple;
+    });
+    expect(window.localStorage.getItem(`${KEY_PREFIX}lg`)).toBeNull();
+  });
+
+  it("saves normally once the read has run", () => {
+    const { result } = renderHook(() => useLayoutPersistence("lg", [60, 40]));
+    act(() => result.current[1]([25, 75]));
+    expect(window.localStorage.getItem(`${KEY_PREFIX}lg`)).toBe("[25,75]");
+  });
 });
