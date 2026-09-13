@@ -1,0 +1,67 @@
+name: node setup
+description: >-
+  Checks out nothing and installs nothing new: it puts node on PATH and
+  restores web/node_modules from a cache keyed on the dependency graph
+  alone. Every web job calls this, so the install policy lives in one place.
+
+inputs:
+  node-version:
+    description: node major, the same value the calling workflow pins
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The ~/.npm tarball cache only matters on a node_modules miss, where it
+    # turns the install from a download into a link.
+    - uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+
+    # The cache key hashes the manifest and the lockfile with the project's
+    # own version fields removed. node_modules is a function of the
+    # dependency graph, and a release bump edits `version` in both files
+    # without touching that graph; hashing the raw files made every release
+    # PR run a cold `npm ci` in every web job. package.json stays in the
+    # hash because npm ci is also the manifest/lockfile sync gate: a
+    # dependency edit that skipped `npm install` must still reach a real
+    # install and fail there. `npm ci` deletes node_modules before it
+    # installs, so a near-miss restore-keys fallback buys nothing here: the
+    # key hits exactly or the install runs in full.
+    - name: dependency hash
+      id: lock
+      shell: bash
+      run: |
+        node -e '
+          const fs = require("fs");
+          const crypto = require("crypto");
+          const strip = (file) => {
+            const json = JSON.parse(fs.readFileSync(file, "utf8"));
+            delete json.version;
+            if (json.packages && json.packages[""]) delete json.packages[""].version;
+            return JSON.stringify(json);
+          };
+          const hash = crypto.createHash("sha256")
+            .update(strip("web/package.json"))
+            .update(strip("web/package-lock.json"))
+            .digest("hex");
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `hash=${hash}\n`);
+        '
+
+    - name: cache node_modules
+      id: nm
+      uses: actions/cache@v6
+      with:
+        path: web/node_modules
+        key: ${{ runner.os }}-node${{ inputs.node-version }}-nm-${{ steps.lock.outputs.hash }}
+
+    # npm ci is also the manifest/lockfile sync gate: a package.json edit
+    # with no lockfile refresh fails here on the first run after the edit,
+    # because that edit changes the packages[""] entry and so the key.
+    - name: install
+      if: steps.nm.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: web
+      run: npm ci --no-audit --no-fund
