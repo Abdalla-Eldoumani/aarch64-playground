@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,045 Rust tests (824 of them unit tests on the lib target, the rest spread over twenty-one integration suites; there are no doc tests), 2,149 web tests across 183 files, and 16 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,050 Rust tests (825 of them unit tests on the lib target, the rest spread over twenty-three integration suites; there are no doc tests), 2,149 web tests across 183 files, and 16 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
 
 ## Rust
 
@@ -63,6 +63,31 @@ node scripts/verify-corpus.js
 
 Runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout and post-run VFS state. It then assembles every shipped example, fixture or not, so a program no fixture exercises still has to build; `is-prime` is skipped there because it is a leaf function with no entry point and ships without a caller. It loads a prebuilt node-target bundle rather than building one, so build that first from `emulator/`: `wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node` (or point `WASM_DIR` at an existing build). Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
 
+## The SIMD conformance suites
+
+Two suites replay a capture taken on the course server (GNU as 2.46.1 and
+gcc 16.2.1 on csarm, 2026-09-13) rather than anything written by hand:
+
+```bash
+cargo test --manifest-path emulator/Cargo.toml --test simd
+cargo test --manifest-path emulator/Cargo.toml --test simd_behaviour
+```
+
+`emulator/tests/simd-inventory.txt` holds every Advanced SIMD form GAS
+accepts, 2,208 of them, as `spelling => 0xWORD` plus the spelling objdump
+prints back when it differs. `tests/simd.rs` requires each line whose
+family has landed to assemble to exactly that word, decode, and print
+back through `decoder::format`; each line whose mnemonic is still on
+`NOT_YET` (shared through `tests/common/mod.rs`) must be REJECTED, so the
+queue flips red the moment a family lands rather than quietly rotting.
+
+`emulator/tests/simd-behaviour.txt` is the other half: for three input
+sets, the registers and 16-byte memory chunks each line actually changed
+on the server. `tests/simd_behaviour.rs` rebuilds that machine state and
+replays every implemented line, so a form that encodes correctly but
+moves the wrong bytes still fails. Neither fixture is ever hand-edited;
+both are regenerated from the probe.
+
 ## The C corpus
 
 Fifty small C programs compiled by gcc, whose assembly is replayed
@@ -76,13 +101,14 @@ branch. It runs inside the ordinary Rust suite with no toolchain at all:
 cargo test --manifest-path emulator/Cargo.toml --test c_corpus
 ```
 
-At `-O0` the corpus is a gate and 49 of the 50 programs match. The
-fiftieth, `13_float_double`, is on the pending list at both tiers: gcc
-copies a 16-byte struct through a `q` register, and the FP file here is
-64-bit scalar by design. The `-O2` tier is an ignored coverage
-map (`-- --ignored` runs it), not a gate; it passes 48 of 50 against a
-recorded floor of 48, the second gap being `14_float_single`, which gcc
-zeroes with `movi v0.2s, #0`. A pending program is not counted as
+At `-O0` the corpus is a gate and all 50 programs match; the pending
+list is empty there. The `-O2` tier is an ignored coverage map
+(`-- --ignored` runs it), not a gate; it passes 48 of 50 against a
+recorded floor of 48. Both gaps are `MOVI`, which is not implemented
+yet: `13_float_double` zeroes its struct with `movi d31, #0` once the
+optimizer drops the `q` copies its `-O0` tier makes, and
+`14_float_single` zeroes a float with `movi v0.2s, #0`. A pending
+program is not counted as
 passing: it is kept out of the failure list because its gap is already
 recorded, and out of the passing count because it never ran. One that
 starts assembling turns its tier red, so a fix gets recorded instead of
