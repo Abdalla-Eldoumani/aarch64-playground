@@ -103,17 +103,21 @@ which is why none of them accepts `AL` or `NV`.
 
 | Mnemonic | Form                                                  | Notes                              |
 | -------- | ----------------------------------------------------- | ---------------------------------- |
-| `LDR`    | `LDR Xt, [Xn]` / `[Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | 64-bit load.              |
-| `STR`    | same                                                  | 64-bit store.                      |
+| `LDR`    | `LDR Xt, [Xn]` / `[Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` / `[Xn, Xm]` | 64-bit load. A `Bt`, `Ht`, `St`, `Dt` or `Qt` target loads 1, 2, 4, 8 or 16 bytes into the SIMD&FP file, in every one of these forms. |
+| `STR`    | same                                                  | 64-bit store. The `Bt`/`Ht` FP forms store the register's low byte or halfword. |
 | `LDRB`   | same addressing forms                                 | Byte load, zero-extends.           |
 | `STRB`   | same                                                  | Byte store.                        |
 | `LDRH`   | same                                                  | Halfword load.                     |
 | `STRH`   | same                                                  | Halfword store.                    |
-| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Wt1, Wt2, ...` / `LDP Dt1, Dt2, ...` (+ pre/post index) | Load pair, general or FP registers. X and D pairs scale by 8, W and S pairs by 4. |
+| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Wt1, Wt2, ...` / `LDP Dt1, Dt2, ...` / `LDP Qt1, Qt2, ...` (+ pre/post index) | Load pair, general or SIMD&FP registers. X and D pairs scale by 8, W and S pairs by 4, Q pairs by 16. |
 | `STP`    | same                                                  | Store pair. `stp d8, d9, [sp, -16]!` is the AAPCS64 callee-saved FP prologue. |
 | `LDRSB`  | `LDRSB Wt, [Xn, #imm]` / `LDRSB Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Byte load, sign-extended into Wt or Xt. |
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
 | `LDRSW`  | `LDRSW Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Word load, sign-extended to 64 bits. `Xt` target only, per the ARM spec. |
+| `LDUR`   | `LDUR Bt/Ht/St/Dt/Qt, [Xn, #imm]`                     | The unscaled signed-offset load, spelled out. SIMD&FP targets only; `imm` runs [-256, 255] and is never scaled. `LDR` picks this encoding on its own for a negative or unaligned offset. |
+| `STUR`   | same                                                  | The unscaled store.                |
+| `LDNP`   | `LDNP St1, St2, [Xn, #imm]` / `Dt1, Dt2` / `Qt1, Qt2` | The no-allocate pair load: a plain signed offset, no writeback. Identical here to `LDP`; on hardware it only differs in a cache hint. |
+| `STNP`   | same                                                  | The no-allocate pair store.        |
 
 Addressing modes:
 
@@ -123,7 +127,7 @@ Addressing modes:
 - **register offset**: `[Xn, Xm]` (LSL by access size) or `[Xn, Wm, SXTW #k]`
 - **register offset with extend**: `[Xn, Wm, UXTW]`, `[Xn, Xm, LSL #3]`, `[Xn, Xm, SXTX]`, etc.
 
-Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take every addressing form the plain loads do: the scaled unsigned offset, the unscaled form for a negative or unaligned offset, pre- and post-index writeback, and the register-offset forms. FP data moves (`LDR`/`STR` with a `Dt` or `St` target) accept the same immediate addressing as the integer forms: scaled offsets, negative and unaligned offsets via the unscaled encoding, and pre/post-index writeback. Register-offset addressing stays integer-only.
+Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take every addressing form the plain loads do: the scaled unsigned offset, the unscaled form for a negative or unaligned offset, pre- and post-index writeback, and the register-offset forms. So do the SIMD&FP data moves (`LDR`/`STR` with a `Bt`, `Ht`, `St`, `Dt` or `Qt` target), register offset included, with the same extend keywords and the same "scale by the access width" rule.
 
 ## PC-relative addressing
 
@@ -159,7 +163,9 @@ The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` giv
 
 ## Floating point
 
-Every scalar instruction takes both course views of the register file: the S form (single precision, a C `float`, the register's low 32 bits) and the D form (double precision, a C `double`). Widths never mix inside one instruction; `FCVT` converts between them. Single-precision arithmetic rounds in single precision, exactly like the hardware, and an S write zeroes the upper half of the register.
+The register file is 128 bits wide: 32 entries named `V0`-`V31`, or `Q0`-`Q31` when a whole one is moved. `B`, `H`, `S` and `D` are views of the low 8, 16, 32 and 64 bits of the same entry, so `d3` and `q3` are the same register at two widths. Writing a scalar view zeroes every bit above it, exactly as the hardware does: an `S` write clears bits 127:32, a `D` write clears 127:64. Loads and stores reach all five widths; the arithmetic below is scalar `S` and `D` only.
+
+Every scalar instruction takes both course views: the S form (single precision, a C `float`) and the D form (double precision, a C `double`). Widths never mix inside one instruction; `FCVT` converts between them. Single-precision arithmetic rounds in single precision, exactly like the hardware.
 
 The `FCVT` conversion family names its rounding mode in the mnemonic: `N` nearest with ties to even, `A` nearest with ties away from zero, `M` toward minus infinity, `P` toward plus infinity, `Z` toward zero. The trailing `S`/`U` picks a signed or unsigned result.
 
@@ -321,8 +327,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- SIMD: the `V`/`Q` register file and arrangement specifiers (`ldr q0, [x1]`, `movi v0.2s, #0`)
-- FP register-offset addressing (`ldr d0, [x1, x2, lsl #3]`); the integer forms take it
+- SIMD arrangement syntax (`v0.16b`, `v0.2s`) and the vector instructions that use it (`add v0.4s, v1.4s, v2.4s`, `movi v0.2s, #0`). The 128-bit register file and its loads, stores and pairs are in; the arithmetic over lanes lands in the changes that follow.
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release

@@ -44,6 +44,7 @@ pub enum MemSize {
     H,  // 2 bytes
     W,  // 4 bytes
     X,  // 8 bytes
+    Q,  // 16 bytes (SIMD&FP only)
 }
 
 impl MemSize {
@@ -51,7 +52,9 @@ impl MemSize {
     /// The assembler's offset-scaling and the decoder both come through
     /// here, so `bytes` below is the only place the bytes-per-size mapping
     /// is written down. Only the low two bits are read; there is no invalid
-    /// value to reject.
+    /// value to reject. Q never comes out of this function: the 128-bit
+    /// width is spelled by `opc<1>` beside the size field, so the SIMD&FP
+    /// load/store decode picks it explicitly.
     pub fn from_size_field(size: u8) -> Self {
         match size & 0b11 {
             0b00 => Self::B,
@@ -68,6 +71,7 @@ impl MemSize {
             Self::H => 2,
             Self::W => 4,
             Self::X => 8,
+            Self::Q => 16,
         }
     }
 }
@@ -160,7 +164,11 @@ pub enum LdStOffset {
     Register {
         rm: u8,
         extend: ExtendType,
-        shift_amount: u8,
+        /// `Some(n)` when the encoding's S bit is set: the index is
+        /// scaled by the access width and `n` is log2 of it. `None` when
+        /// S is clear. For a byte access the two spell the same shift,
+        /// so `[x0, x1]` and `[x0, x1, lsl #0]` differ only here.
+        shift_amount: Option<u8>,
     },
 }
 
@@ -486,18 +494,21 @@ pub enum Instruction {
         size: MemSize,
         mode: IndexMode,
     },
-    /// SIMD&FP LDR/STR. `size` picks D (0b11, 8B) or S (0b10, 4B) width.
-    /// Immediate addressing matches the integer forms: scaled unsigned
-    /// offsets, unscaled signed offsets (the LDUR/STUR encodings), and
-    /// pre/post-index writeback via `mode`. Register-offset stays
-    /// integer-only; the course never indexes FP data that way.
+    /// SIMD&FP LDR/STR. `size` is the register view being moved: B, H,
+    /// W (the S view), X (the D view) or Q. Addressing matches the integer
+    /// forms exactly: scaled unsigned offsets, unscaled signed offsets
+    /// (the LDUR/STUR encodings), pre/post-index writeback via `mode`, and
+    /// the register-offset form with the same extend rules.
     FpLdSt {
         load: bool,
         ft: u8,
         rn: u8,
-        offset: i64,
+        offset: LdStOffset,
         size: MemSize,
         mode: IndexMode,
+        /// The imm9 offset form with no writeback: a distinct encoding
+        /// from the scaled one and a distinct spelling, LDUR/STUR.
+        unscaled: bool,
     },
     /// LDP/STP.
     LdStPair {
@@ -509,16 +520,20 @@ pub enum Instruction {
         imm7: i16,
         mode: IndexMode,
     },
-    /// LDP/STP of the FP file (V=1): opc 00 = S pairs, 01 = D pairs.
-    /// `imm7` is the byte offset, already scaled by the register width.
+    /// LDP/STP/LDNP/STNP of the FP file (V=1): opc 00 = S pairs (size W),
+    /// 01 = D pairs (size X), 10 = Q pairs (size Q). `imm7` is the byte
+    /// offset, already scaled by the register width.
     FpLdStPair {
         op: LdStPairOp,
-        single: bool,
+        size: MemSize,
         rt: u8,
         rt2: u8,
         rn: u8,
         imm7: i16,
         mode: IndexMode,
+        /// The op2 00 encoding: LDNP/STNP, a signed offset with no
+        /// writeback whose only other difference is a cache hint.
+        no_allocate: bool,
     },
     /// B/BL (26-bit signed offset, already shifted left 2).
     BrImm {
@@ -551,6 +566,14 @@ pub enum Instruction {
         rd: u8,
         rn: u8,
         rm: u8,
+    },
+    /// LDR (literal) of a SIMD&FP register: load St, Dt or Qt from a
+    /// PC-relative offset. `size` is W (S), X (D) or Q.
+    FpLdrLiteral {
+        rt: u8,
+        /// Byte offset relative to the instruction's PC, already shifted.
+        offset: i64,
+        size: MemSize,
     },
     /// LDR (literal): load Xt or Wt from a PC-relative offset. The linker
     /// places the referenced value in a literal pool after the `.text`
@@ -1499,11 +1522,130 @@ fn decode_branch_group(instr: u32) -> Result<Instruction, EmuError> {
 // load/store group
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// SIMD&FP disassembly
+// ---------------------------------------------------------------------------
+
+/// The register-name prefix a SIMD&FP access width is spelled with.
+fn fp_reg_letter(size: MemSize) -> char {
+    match size {
+        MemSize::B => 'b',
+        MemSize::H => 'h',
+        MemSize::W => 's',
+        MemSize::X => 'd',
+        MemSize::Q => 'q',
+    }
+}
+
+/// A base register in an address: 31 is SP, never XZR.
+fn base_name(rn: u8) -> String {
+    if rn >= 31 { "sp".to_string() } else { format!("x{rn}") }
+}
+
+/// `#8`, `#-3`, in the decimal objdump prints offsets with.
+fn imm_text(offset: i64) -> String {
+    format!("#{offset}")
+}
+
+/// The address operand of a single-register load/store, GAS spelling.
+fn address_text(rn: u8, offset: &LdStOffset, mode: IndexMode) -> String {
+    let base = base_name(rn);
+    match offset {
+        LdStOffset::Immediate(imm) => match mode {
+            IndexMode::PreIndex => format!("[{base}, {}]!", imm_text(*imm)),
+            IndexMode::PostIndex => format!("[{base}], {}", imm_text(*imm)),
+            IndexMode::SignedOffset if *imm == 0 => format!("[{base}]"),
+            IndexMode::SignedOffset => format!("[{base}, {}]", imm_text(*imm)),
+        },
+        LdStOffset::Register {
+            rm,
+            extend,
+            shift_amount,
+        } => {
+            // UXTW and SXTW take a W index; LSL, UXTX and SXTX take an X.
+            let (index, keyword) = match extend {
+                ExtendType::Uxtw => (format!("w{rm}"), "uxtw"),
+                ExtendType::Sxtw => (format!("w{rm}"), "sxtw"),
+                ExtendType::Sxtx => (format!("x{rm}"), "sxtx"),
+                ExtendType::Lsl => (format!("x{rm}"), "lsl"),
+            };
+            match shift_amount {
+                // A cleared S bit on an LSL index is the bare `[Xn, Xm]`
+                // spelling; every other combination names its keyword.
+                None if matches!(extend, ExtendType::Lsl) => format!("[{base}, {index}]"),
+                None => format!("[{base}, {index}, {keyword}]"),
+                Some(n) => format!("[{base}, {index}, {keyword} #{n}]"),
+            }
+        }
+    }
+}
+
+/// GAS text for the SIMD&FP instructions this crate decodes, for the
+/// conformance suite that replays the csarm inventory. `None` for
+/// everything else: the general disassembly the UI shows is built in the
+/// web layer, and this exists to prove an encoding round-trips.
+pub fn format(instr: &Instruction) -> Option<String> {
+    match instr {
+        Instruction::FpLdSt {
+            load,
+            ft,
+            rn,
+            offset,
+            size,
+            mode,
+            unscaled,
+        } => {
+            let mnemonic = match (*load, *unscaled) {
+                (true, false) => "ldr",
+                (false, false) => "str",
+                (true, true) => "ldur",
+                (false, true) => "stur",
+            };
+            let reg = fp_reg_letter(*size);
+            Some(format!(
+                "{mnemonic} {reg}{ft}, {}",
+                address_text(*rn, offset, *mode)
+            ))
+        }
+        Instruction::FpLdStPair {
+            op,
+            size,
+            rt,
+            rt2,
+            rn,
+            imm7,
+            mode,
+            no_allocate,
+        } => {
+            let mnemonic = match (op, *no_allocate) {
+                (LdStPairOp::Ldp, false) => "ldp",
+                (LdStPairOp::Stp, false) => "stp",
+                (LdStPairOp::Ldp, true) => "ldnp",
+                (LdStPairOp::Stp, true) => "stnp",
+            };
+            let reg = fp_reg_letter(*size);
+            let address = address_text(*rn, &LdStOffset::Immediate(i64::from(*imm7)), *mode);
+            Some(format!("{mnemonic} {reg}{rt}, {reg}{rt2}, {address}"))
+        }
+        // The SIMD-scalar SCVTF: the one non-load SIMD form this crate
+        // already assembled before the widening began.
+        Instruction::FpScvtfFp { fd, fn_, single } => {
+            let reg = if *single { 's' } else { 'd' };
+            Some(format!("scvtf {reg}{fd}, {reg}{fn_}"))
+        }
+        Instruction::FpLdrLiteral { rt, offset, size } => {
+            let reg = fp_reg_letter(*size);
+            Some(format!("ldr {reg}{rt}, {}", imm_text(*offset)))
+        }
+        _ => None,
+    }
+}
+
 fn decode_ldst_group(instr: u32) -> Result<Instruction, EmuError> {
-    // LDR (literal), scalar form. Mask bit 26 to 0 so the SIMD/FP literal
-    // form (0x5C00_0000, bit 26 = 1) drops through to the regular decode
-    // path and errors there as unknown.
-    if (instr & 0xBF00_0000) == 0x1800_0000 {
+    // LDR (literal): opc(31:30) 011 V 00 in bits 29:24. Bit 26 (V) is
+    // left in the word and read below, so the SIMD&FP literal forms
+    // (0x1C/0x5C/0x9C000000) decode beside the integer ones.
+    if (instr & 0x3B00_0000) == 0x1800_0000 {
         return decode_ldr_literal(instr);
     }
 
@@ -1517,13 +1659,27 @@ fn decode_ldst_group(instr: u32) -> Result<Instruction, EmuError> {
 }
 
 fn decode_ldr_literal(instr: u32) -> Result<Instruction, EmuError> {
-    // opc:01_011_0_00; bit 30 selects width (0 = W, 1 = X).
-    let sf = bit(instr, 30) == 1;
+    // opc:011_V_00. V picks the register file; opc picks the width.
+    let opc = bits(instr, 31, 30);
     let imm19 = bits(instr, 23, 5);
     let rt = bits(instr, 4, 0) as u8;
     // imm19 is in instruction units (4 bytes each), signed.
     let offset = sign_extend(imm19, 19) * 4;
-    Ok(Instruction::LdrLiteral { sf, rt, offset })
+    if bit(instr, 26) == 1 {
+        let size = match opc {
+            0b00 => MemSize::W,
+            0b01 => MemSize::X,
+            0b10 => MemSize::Q,
+            _ => return Err(EmuError::UnknownInstruction(instr)),
+        };
+        return Ok(Instruction::FpLdrLiteral { rt, offset, size });
+    }
+    // opc 10 is LDRSW (literal) and 11 is PRFM (literal); neither is
+    // implemented, and neither may fall through as a plain LDR.
+    if opc > 0b01 {
+        return Err(EmuError::UnknownInstruction(instr));
+    }
+    Ok(Instruction::LdrLiteral { sf: opc == 0b01, rt, offset })
 }
 
 fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
@@ -1536,35 +1692,45 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
     let rn = bits(instr, 9, 5) as u8;
     let rt = bits(instr, 4, 0) as u8;
 
+    // op2 00 is the no-allocate pair (LDNP/STNP): a plain signed offset
+    // with no writeback, differing from LDP/STP only in a cache hint this
+    // interpreter has nothing to do with.
+    let no_allocate = mode_bits == 0b00;
     let mode = match mode_bits {
+        0b00 | 0b10 => IndexMode::SignedOffset,
         0b01 => IndexMode::PostIndex,
-        0b10 => IndexMode::SignedOffset,
-        0b11 => IndexMode::PreIndex,
-        _ => return Err(EmuError::UnknownInstruction(instr)),
+        _ => IndexMode::PreIndex,
     };
 
     let op = if l == 1 { LdStPairOp::Ldp } else { LdStPairOp::Stp };
 
     if v == 1 {
-        // SIMD&FP pair: opc 00 = S, 01 = D; 10 (Q registers) is not
-        // implemented. Without this gate an FP pair falls into the general
-        // decode below and runs as a 32-bit GP pair with a halved offset.
-        let single = match opc {
-            0b00 => true,
-            0b01 => false,
+        // SIMD&FP pair: opc 00 = S, 01 = D, 10 = Q. Without this gate an
+        // FP pair falls into the general decode below and runs as a
+        // 32-bit GP pair with a halved offset.
+        let size = match opc {
+            0b00 => MemSize::W,
+            0b01 => MemSize::X,
+            0b10 => MemSize::Q,
             _ => return Err(EmuError::UnknownInstruction(instr)),
         };
-        let scale = if single { 4 } else { 8 };
-        let signed_imm = sign_extend(imm7, 7) as i16 * scale;
+        let signed_imm = sign_extend(imm7, 7) as i16 * size.bytes() as i16;
         return Ok(Instruction::FpLdStPair {
             op,
-            single,
+            size,
             rt,
             rt2,
             rn,
             imm7: signed_imm,
             mode,
+            no_allocate,
         });
+    }
+
+    // The integer no-allocate pair is out of scope; it must not fall
+    // through as an ordinary LDP/STP.
+    if no_allocate {
+        return Err(EmuError::UnknownInstruction(instr));
     }
 
     let sf = opc == 0b10; // 10 = 64-bit, 00 = 32-bit
@@ -1584,56 +1750,118 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
     })
 }
 
-fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
-    let size = MemSize::from_size_field(bits(instr, 31, 30) as u8);
+/// The register-offset operand of a load/store: Rm in bits 20:16, the
+/// extend `option` in 15:13 and the scale bit S in 12. The integer and
+/// SIMD&FP paths share it because they share the rules.
+///
+/// The legal option fields are the ones the assembler can write, so the
+/// set comes from the shared table. 0b011 is spelled both `lsl` and
+/// `uxtx`; the table lists `lsl` first, so a 64-bit index decodes as Lsl
+/// the way GAS disassembles it. S=1 means "scale the index by the access
+/// size", so the shift is log2 of that width, read off the shared byte
+/// count rather than re-spelled as a second size table.
+fn decode_ldst_reg_offset(instr: u32, size: MemSize) -> Result<LdStOffset, EmuError> {
+    let rm = bits(instr, 20, 16) as u8;
+    let option = bits(instr, 15, 13);
+    let s = bit(instr, 12) as u8;
+    let extend = match LDST_EXTENDS
+        .iter()
+        .find(|(_, opt, _)| u32::from(*opt) == option)
+        .map(|(keyword, _, _)| *keyword)
+    {
+        Some("uxtw") => ExtendType::Uxtw,
+        Some("lsl") => ExtendType::Lsl,
+        Some("sxtw") => ExtendType::Sxtw,
+        Some("sxtx") => ExtendType::Sxtx,
+        _ => return Err(EmuError::UnknownInstruction(instr)),
+    };
+    let shift_amount = if s == 1 {
+        Some(size.bytes().trailing_zeros() as u8)
+    } else {
+        None
+    };
+    Ok(LdStOffset::Register { rm, extend, shift_amount })
+}
 
-    let v = bit(instr, 26);
-    if v == 1 {
-        // SIMD&FP LDR/STR. Scaled unsigned offsets, plus the imm9 family
-        // (unscaled signed offset, pre/post-index) that negative frame
-        // offsets and writeback prologues assemble into. Register-offset
-        // and the Q/H/B widths stay unsupported.
-        let opc_outer = bits(instr, 25, 24);
-        let opc_inner = bits(instr, 23, 22);
-        let rn = bits(instr, 9, 5) as u8;
-        let ft = bits(instr, 4, 0) as u8;
-        let load = opc_inner == 0b01;
-        if opc_outer == 0b01 && (opc_inner == 0b00 || opc_inner == 0b01) {
+/// SIMD&FP LDR/STR (V=1). The width is `opc<1>:size`, not `size` alone:
+/// opc<1> set with size 00 is the 128-bit Q form, which the two-bit size
+/// field cannot spell on its own. Addressing is the integer set: scaled
+/// unsigned offset, the imm9 family (unscaled LDUR/STUR plus pre- and
+/// post-index writeback), and the register offset.
+fn decode_fp_ldst_single(instr: u32, size_field: u8) -> Result<Instruction, EmuError> {
+    let opc_outer = bits(instr, 25, 24);
+    let opc_inner = bits(instr, 23, 22);
+    let rn = bits(instr, 9, 5) as u8;
+    let ft = bits(instr, 4, 0) as u8;
+    let load = opc_inner & 0b01 == 1;
+    let size = if opc_inner & 0b10 == 0 {
+        MemSize::from_size_field(size_field)
+    } else if size_field == 0b00 {
+        MemSize::Q
+    } else {
+        // opc<1> set with any other size is unallocated.
+        return Err(EmuError::UnknownInstruction(instr));
+    };
+
+    match opc_outer {
+        0b01 => {
             let imm12 = bits(instr, 21, 10);
-            let scale = size.bytes();
-            let offset = (imm12 as i64) * (scale as i64);
-            return Ok(Instruction::FpLdSt {
+            let offset = (imm12 as i64) * (size.bytes() as i64);
+            Ok(Instruction::FpLdSt {
                 load,
                 ft,
                 rn,
-                offset,
+                offset: LdStOffset::Immediate(offset),
                 size,
                 mode: IndexMode::SignedOffset,
-            });
+                unscaled: false,
+            })
         }
-        if opc_outer == 0b00
-            && (opc_inner == 0b00 || opc_inner == 0b01)
-            && bit(instr, 21) == 0
-        {
-            let imm9 = bits(instr, 20, 12);
-            let offset = sign_extend(imm9, 9);
-            let mode = match bits(instr, 11, 10) {
+        0b00 if bit(instr, 21) == 1 => {
+            if bits(instr, 11, 10) != 0b10 {
+                return Err(EmuError::UnknownInstruction(instr));
+            }
+            Ok(Instruction::FpLdSt {
+                load,
+                ft,
+                rn,
+                offset: decode_ldst_reg_offset(instr, size)?,
+                size,
+                mode: IndexMode::SignedOffset,
+                unscaled: false,
+            })
+        }
+        0b00 => {
+            let offset = sign_extend(bits(instr, 20, 12), 9);
+            let idx = bits(instr, 11, 10);
+            let mode = match idx {
                 0b00 => IndexMode::SignedOffset, // unscaled LDUR/STUR
                 0b01 => IndexMode::PostIndex,
                 0b11 => IndexMode::PreIndex,
                 _ => return Err(EmuError::UnknownInstruction(instr)),
             };
-            return Ok(Instruction::FpLdSt {
+            Ok(Instruction::FpLdSt {
                 load,
                 ft,
                 rn,
-                offset,
+                offset: LdStOffset::Immediate(offset),
                 size,
                 mode,
-            });
+                unscaled: idx == 0b00,
+            })
         }
-        return Err(EmuError::UnknownInstruction(instr));
+        _ => Err(EmuError::UnknownInstruction(instr)),
     }
+}
+
+fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
+    let size_field = bits(instr, 31, 30) as u8;
+
+    let v = bit(instr, 26);
+    if v == 1 {
+        return decode_fp_ldst_single(instr, size_field);
+    }
+    let size = MemSize::from_size_field(size_field);
 
     let opc = bits(instr, 25, 24);
     let rn = bits(instr, 9, 5) as u8;
@@ -1693,38 +1921,7 @@ fn decode_ldst_single(instr: u32) -> Result<Instruction, EmuError> {
         let idx_type = bits(instr, 11, 10);
 
         if idx_type == 0b10 {
-            // register offset: option field in bits [15:13], S in bit 12.
-            let rm = bits(instr, 20, 16) as u8;
-            let option = bits(instr, 15, 13);
-            let s = bit(instr, 12) as u8;
-            // The legal option fields are the ones the assembler can write,
-            // so the set comes from the shared table. 0b011 is spelled both
-            // `lsl` and `uxtx`; the table lists `lsl` first, so a 64-bit
-            // index decodes as Lsl the way GAS disassembles it.
-            let extend = match LDST_EXTENDS
-                .iter()
-                .find(|(_, opt, _)| u32::from(*opt) == option)
-                .map(|(keyword, _, _)| *keyword)
-            {
-                Some("uxtw") => ExtendType::Uxtw,
-                Some("lsl") => ExtendType::Lsl,
-                Some("sxtw") => ExtendType::Sxtw,
-                Some("sxtx") => ExtendType::Sxtx,
-                _ => return Err(EmuError::UnknownInstruction(instr)),
-            };
-            // S=1 means "scale the index by the access size", so the shift
-            // is log2 of that width, read off the shared byte count
-            // rather than re-spelled as a second size table.
-            let shift_amount = if s == 1 {
-                size.bytes().trailing_zeros() as u8
-            } else {
-                0
-            };
-            let offset = LdStOffset::Register {
-                rm,
-                extend,
-                shift_amount,
-            };
+            let offset = decode_ldst_reg_offset(instr, size)?;
 
             // opc 00/01 are STR/LDR; 10/11 are the sign-extending loads
             // (LDRSB/LDRSH/LDRSW with an Xt or Wt target). Keying only on
@@ -2499,7 +2696,7 @@ mod tests {
             Instruction::LdSt { offset: LdStOffset::Register { rm, extend, shift_amount }, .. } => {
                 assert_eq!(rm, 2);
                 assert_eq!(extend, ExtendType::Uxtw);
-                assert_eq!(shift_amount, 0);
+                assert_eq!(shift_amount, None);
             }
             other => panic!("unexpected: {other:?}"),
         }
@@ -2513,7 +2710,7 @@ mod tests {
             Instruction::LdSt { offset: LdStOffset::Register { rm, extend, shift_amount }, .. } => {
                 assert_eq!(rm, 2);
                 assert_eq!(extend, ExtendType::Sxtw);
-                assert_eq!(shift_amount, 3);
+                assert_eq!(shift_amount, Some(3));
             }
             other => panic!("unexpected: {other:?}"),
         }

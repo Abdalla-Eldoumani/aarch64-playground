@@ -309,6 +309,22 @@ struct AssembleResultJs {
     instruction_count: usize,
 }
 
+/// The D view of the register file, as `get_fp_registers` hands it to
+/// the UI: the low 64 bits of each entry, `0x` plus 16 hex digits.
+pub fn fp_register_strings(regs: &registers::RegisterFile) -> Vec<String> {
+    (0..32)
+        .map(|i| format!("0x{:016x}", regs.read_fpr_bits(i)))
+        .collect()
+}
+
+/// The whole register file, as `get_vector_registers` hands it to the
+/// UI: all 128 bits of each entry, `0x` plus 32 hex digits.
+pub fn vector_register_strings(regs: &registers::RegisterFile) -> Vec<String> {
+    (0..32)
+        .map(|i| format!("0x{:032x}", regs.read_fpr_q(i)))
+        .collect()
+}
+
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl Emulator {
@@ -675,12 +691,17 @@ impl Emulator {
     /// ("0x..."), so the UI can render both the decimal double and the raw bits
     /// without a lossy float round-trip at the boundary.
     pub fn get_fp_registers(&self) -> Vec<String> {
-        (0..32)
-            .map(|i| format!("0x{:016x}", self.cpu.regs.read_fpr_bits(i)))
-            .collect()
+        fp_register_strings(&self.cpu.regs)
     }
 
-    /// Indices of FP registers (0-31 for d0-d31) that changed during the last step.
+    /// The 32 SIMD&FP registers (v0-v31) at their full 128-bit width,
+    /// hex-encoded ("0x" + 32 digits). `get_fp_registers` is the low-64
+    /// view of the same file.
+    pub fn get_vector_registers(&self) -> Vec<String> {
+        vector_register_strings(&self.cpu.regs)
+    }
+
+    /// Indices of FP registers (0-31 for v0-v31) that changed during the last step.
     pub fn get_changed_fp_registers(&self) -> Vec<u8> {
         self.cpu.changed_fp_registers().to_vec()
     }
@@ -1129,5 +1150,27 @@ mod hosted_mode_tests {
         // is the desired behavior (any program with a string literal
         // is using the hosted pipeline).
         assert!(detect_hosted_mode(".rodata\nmsg: .string \".text\"\n"));
+    }
+
+    #[test]
+    fn the_two_register_views_read_the_same_file_at_two_widths() {
+        // The D view is the low 64 bits and keeps its 16-digit shape, so
+        // the panel that parses it is unaffected by the widening; the
+        // vector view is the whole 128 bits.
+        let mut regs = crate::registers::RegisterFile::new();
+        regs.write_fpr_q(1, 0x0011_2233_4455_6677_8899_aabb_ccdd_eeffu128);
+        regs.write_fpr_bits(2, 0x1234_5678_9abc_def0);
+
+        let d = crate::fp_register_strings(&regs);
+        let v = crate::vector_register_strings(&regs);
+        assert_eq!(d.len(), 32);
+        assert_eq!(v.len(), 32);
+        assert_eq!(d[0], "0x0000000000000000");
+        assert_eq!(v[0], "0x00000000000000000000000000000000");
+        assert_eq!(d[1], "0x8899aabbccddeeff");
+        assert_eq!(v[1], "0x00112233445566778899aabbccddeeff");
+        // A D write zeroes bits 127:64, so both views agree afterwards.
+        assert_eq!(d[2], "0x123456789abcdef0");
+        assert_eq!(v[2], "0x0000000000000000123456789abcdef0");
     }
 }

@@ -68,6 +68,16 @@ fn is_reserved_name(name: &str) -> bool {
             }
         }
     }
+    // The SIMD&FP file: v0-v31 and the b/h/s/d/q scalar views of it.
+    for prefix in ['v', 'b', 'h', 's', 'd', 'q'] {
+        if let Some(rest) = lower.strip_prefix(prefix) {
+            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                if let Ok(n) = rest.parse::<u32>() {
+                    return n <= 31;
+                }
+            }
+        }
+    }
     matches!(
         lower.as_str(),
         "mov" | "add" | "sub" | "mul" | "udiv" | "sdiv" | "and" | "orr" | "eor"

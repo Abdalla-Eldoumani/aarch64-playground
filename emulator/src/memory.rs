@@ -292,6 +292,23 @@ impl Memory {
         ]))
     }
 
+    /// Read a 128-bit little-endian value; see `read_u16`. Used by the
+    /// Q-width SIMD&FP loads.
+    pub fn read_u128(&self, addr: u64) -> Result<u128, EmuError> {
+        if Self::spans_page(addr, 16) {
+            let mut bytes = [0u8; 16];
+            for (i, b) in bytes.iter_mut().enumerate() {
+                *b = self.read_u8(addr.wrapping_add(i as u64))?;
+            }
+            return Ok(u128::from_le_bytes(bytes));
+        }
+        let off = Self::page_offset(addr);
+        let page = self.get_page(addr)?;
+        let mut bytes = [0u8; 16];
+        bytes.copy_from_slice(&page[off..off + 16]);
+        Ok(u128::from_le_bytes(bytes))
+    }
+
     /// Write a single byte (auto-maps the page).
     pub fn write_u8(&mut self, addr: u64, val: u8) -> Result<(), EmuError> {
         let off = Self::page_offset(addr);
@@ -347,6 +364,22 @@ impl Memory {
         let page = self.get_page_mut(addr)?;
         page[off..off + 8].copy_from_slice(&bytes);
         self.note_write(addr, 8);
+        Ok(())
+    }
+
+    /// Write a 128-bit little-endian value; see `write_u16`.
+    pub fn write_u128(&mut self, addr: u64, val: u128) -> Result<(), EmuError> {
+        if Self::spans_page(addr, 16) {
+            for (i, b) in val.to_le_bytes().iter().enumerate() {
+                self.write_u8(addr.wrapping_add(i as u64), *b)?;
+            }
+            return Ok(());
+        }
+        let off = Self::page_offset(addr);
+        let bytes = val.to_le_bytes();
+        let page = self.get_page_mut(addr)?;
+        page[off..off + 16].copy_from_slice(&bytes);
+        self.note_write(addr, 16);
         Ok(())
     }
 

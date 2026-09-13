@@ -1036,16 +1036,16 @@ enum LdrDest {
 }
 
 /// Parse the destination register of an `ldr reg, label` load. X/W use
-/// their own X view as the address holder; S/D borrow x16. Anything
-/// else (q0, xzr, sp) returns None so the caller leaves the line to the
-/// legacy encoder and its diagnostics.
+/// their own X view as the address holder; every SIMD&FP width borrows
+/// x16. Anything else (xzr, sp) returns None so the caller leaves the
+/// line to the legacy encoder and its diagnostics.
 fn parse_ldr_dest(reg: &str) -> Option<LdrDest> {
     let mut chars = reg.chars();
     let class = chars.next()?.to_ascii_lowercase();
     let idx: u8 = reg[1..].parse().ok()?;
     match class {
         'x' | 'w' if idx <= 30 => Some(LdrDest::Gpr { idx }),
-        'd' | 's' if idx <= 31 => Some(LdrDest::Fp),
+        'b' | 'h' | 's' | 'd' | 'q' if idx <= 31 => Some(LdrDest::Fp),
         _ => None,
     }
 }
@@ -1460,8 +1460,9 @@ fn is_plain_ident(s: &str) -> bool {
 
 fn is_register_or_shift_keyword(s: &str) -> bool {
     let lower = s.to_ascii_lowercase();
-    // Register prefixes followed by digits (or zr).
-    for prefix in ["x", "w", "d", "s", "q", "h", "b"] {
+    // Register prefixes followed by digits (or zr). `v` is the vector
+    // view of the same file the b/h/s/d/q names view scalar slices of.
+    for prefix in ["x", "w", "v", "d", "s", "q", "h", "b"] {
         if let Some(rest) = lower.strip_prefix(prefix) {
             if rest == "zr" {
                 return true;
