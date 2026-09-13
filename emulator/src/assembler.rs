@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use crate::decoder::{
-    element_letter, lane_allowed, simd_across_by_name, simd_imm_form, simd_logical_by_name, simd_logical_name,
-    simd_misc_by_name, simd_same_by_name, size_field, MemSize, SimdImmForm, SimdImmOp,
-    SimdLogicalOp, SimdMiscShape, DP1_OPS, FP_BINARY_OPS, FP_FROM_INT_OPS, FP_MUL_ADD_OPS,
+    element_letter, lane_allowed, shift_imm_field, simd_across_by_name, simd_diff_by_name,
+    simd_imm_form, simd_logical_by_name, simd_logical_name, simd_misc_by_name, simd_same_by_name,
+    simd_shift_by_name, size_field, MemSize, SimdDiffShape, SimdImmForm, SimdImmOp,
+    SimdLogicalOp, SimdMiscShape, SimdShiftRow, SimdShiftShape, DP1_OPS, FP_BINARY_OPS,
+    FP_FROM_INT_OPS, FP_MUL_ADD_OPS,
     FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS,
 };
 use crate::errors::EmuError;
@@ -190,6 +192,26 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "SADDLP", "UADDLP", "SADALP", "UADALP",
     "SABD", "UABD", "SABA", "UABA",
     "ABS", "NOT", "CNT", "REV64", "URECPE", "URSQRTE",
+    // advanced simd: the widening, narrowing and doubling three-different
+    // families (SMULL and UMULL already ride their general-register arms)
+    "SADDL", "SADDL2", "UADDL", "UADDL2", "SSUBL", "SSUBL2", "USUBL", "USUBL2",
+    "SMULL2", "UMULL2", "SMLAL", "SMLAL2", "UMLAL", "UMLAL2", "SMLSL", "SMLSL2",
+    "UMLSL", "UMLSL2", "SABDL", "SABDL2", "UABDL", "UABDL2", "SABAL", "SABAL2",
+    "UABAL", "UABAL2", "SADDW", "SADDW2", "UADDW", "UADDW2", "SSUBW", "SSUBW2",
+    "USUBW", "USUBW2", "ADDHN", "ADDHN2", "RADDHN", "RADDHN2", "SUBHN", "SUBHN2",
+    "RSUBHN", "RSUBHN2", "SQDMULL", "SQDMULL2", "SQDMLAL", "SQDMLAL2", "SQDMLSL",
+    "SQDMLSL2", "PMULL", "PMULL2",
+    // advanced simd: the narrowing extracts and the lengthening shift
+    "XTN", "XTN2", "SQXTN", "SQXTN2", "UQXTN", "UQXTN2", "SQXTUN", "SQXTUN2", "SHLL",
+    "SHLL2",
+    // advanced simd: shift by immediate (SXTL and UXTL are its #0 aliases)
+    "SHL", "SSHR", "USHR", "SSRA", "USRA", "SRSHR", "URSHR", "SRSRA", "URSRA", "SLI",
+    "SRI", "SQSHL", "UQSHL", "SQSHLU", "SSHLL", "SSHLL2", "USHLL", "USHLL2", "SXTL",
+    "SXTL2", "UXTL", "UXTL2", "SHRN", "SHRN2", "RSHRN", "RSHRN2", "SQSHRN", "SQSHRN2",
+    "UQSHRN", "UQSHRN2", "SQRSHRN", "SQRSHRN2", "UQRSHRN", "UQRSHRN2", "SQSHRUN",
+    "SQSHRUN2", "SQRSHRUN", "SQRSHRUN2",
+    // advanced simd: shift by register (SQSHL and UQSHL are listed above)
+    "SSHL", "USHL", "SRSHL", "URSHL", "SQRSHL", "UQRSHL",
     // the rest of the float-to-integer rounding modes
     "FCVTZU", "FCVTAS", "FCVTAU", "FCVTMS", "FCVTMU", "FCVTPS", "FCVTPU",
     // pc-relative address formation
@@ -397,6 +419,21 @@ fn encode_line(
         "SADDLP" | "UADDLP" | "SADALP" | "UADALP" => encode_simd_integer(&mn, &ops, line_num),
         "SABD" | "UABD" | "SABA" | "UABA" => encode_simd_integer(&mn, &ops, line_num),
         "ABS" | "NOT" | "CNT" | "REV64" | "URECPE" | "URSQRTE" => encode_simd_integer(&mn, &ops, line_num),
+        "SADDL" | "SADDL2" | "UADDL" | "UADDL2" | "SSUBL" | "SSUBL2" | "USUBL" | "USUBL2" => encode_simd_integer(&mn, &ops, line_num),
+        "SMULL2" | "UMULL2" | "SMLAL" | "SMLAL2" | "UMLAL" | "UMLAL2" | "SMLSL" | "SMLSL2" => encode_simd_integer(&mn, &ops, line_num),
+        "UMLSL" | "UMLSL2" | "SABDL" | "SABDL2" | "UABDL" | "UABDL2" | "SABAL" | "SABAL2" => encode_simd_integer(&mn, &ops, line_num),
+        "UABAL" | "UABAL2" | "SADDW" | "SADDW2" | "UADDW" | "UADDW2" | "SSUBW" | "SSUBW2" => encode_simd_integer(&mn, &ops, line_num),
+        "USUBW" | "USUBW2" | "ADDHN" | "ADDHN2" | "RADDHN" | "RADDHN2" | "SUBHN" | "SUBHN2" => encode_simd_integer(&mn, &ops, line_num),
+        "RSUBHN" | "RSUBHN2" | "SQDMULL" | "SQDMULL2" | "SQDMLAL" | "SQDMLAL2" | "SQDMLSL" => encode_simd_integer(&mn, &ops, line_num),
+        "SQDMLSL2" | "PMULL" | "PMULL2" => encode_simd_integer(&mn, &ops, line_num),
+        "XTN" | "XTN2" | "SQXTN" | "SQXTN2" | "UQXTN" | "UQXTN2" | "SQXTUN" | "SQXTUN2" => encode_simd_integer(&mn, &ops, line_num),
+        "SHLL" | "SHLL2" => encode_simd_integer(&mn, &ops, line_num),
+        "SHL" | "SSHR" | "USHR" | "SSRA" | "USRA" | "SRSHR" | "URSHR" | "SRSRA" | "URSRA" => encode_simd_integer(&mn, &ops, line_num),
+        "SLI" | "SRI" | "SQSHL" | "UQSHL" | "SQSHLU" | "SSHLL" | "SSHLL2" | "USHLL" => encode_simd_integer(&mn, &ops, line_num),
+        "USHLL2" | "SXTL" | "SXTL2" | "UXTL" | "UXTL2" | "SHRN" | "SHRN2" | "RSHRN" => encode_simd_integer(&mn, &ops, line_num),
+        "RSHRN2" | "SQSHRN" | "SQSHRN2" | "UQSHRN" | "UQSHRN2" | "SQRSHRN" | "SQRSHRN2" => encode_simd_integer(&mn, &ops, line_num),
+        "UQRSHRN" | "UQRSHRN2" | "SQSHRUN" | "SQSHRUN2" | "SQRSHRUN" | "SQRSHRUN2" => encode_simd_integer(&mn, &ops, line_num),
+        "SSHL" | "USHL" | "SRSHL" | "URSHL" | "SQRSHL" | "UQRSHL" => encode_simd_integer(&mn, &ops, line_num),
 
         // -- advanced simd: the vector immediates and the lane moves --
         "MOVI" => encode_simd_mod_imm(&ops, SimdImmOp::Movi, line_num),
@@ -2471,26 +2508,52 @@ fn is_simd_integer_line(mn: &str, ops: &[&str]) -> bool {
     if matches!(mn, "ORR" | "BIC" | "MOV") {
         return false;
     }
-    let name = simd_integer_name(mn);
+    let (name, _) = simd_integer_name(mn);
     let known = simd_logical_by_name(&name).is_some()
         || simd_same_by_name(&name).is_some()
         || simd_misc_by_name(&name, false).is_some()
         || simd_misc_by_name(&name, true).is_some()
-        || simd_across_by_name(&name).is_some();
+        || simd_across_by_name(&name).is_some()
+        || simd_diff_by_name(&name).is_some()
+        || simd_shift_by_name(&name).is_some()
+        || is_extend_long_alias(&name);
     known
         && ops
             .first()
             .is_some_and(|op| parse_vec_operand(op).is_some() || simd_scalar_operand(op).is_some())
 }
 
-/// The table key for a mnemonic. GAS takes `not` for the vector MVN and
-/// prints MVN back, so the two spellings share one row.
-fn simd_integer_name(mn: &str) -> String {
-    if mn.eq_ignore_ascii_case("not") {
-        "mvn".to_string()
-    } else {
-        mn.to_ascii_lowercase()
+/// SXTL and UXTL: how GAS spells the lengthening shift by #0, and how it
+/// prints that word back.
+fn is_extend_long_alias(name: &str) -> bool {
+    matches!(name, "sxtl" | "uxtl")
+}
+
+/// The table key for a mnemonic, and whether it carried the `2` suffix.
+/// GAS takes `not` for the vector MVN and prints MVN back, so the two
+/// spellings share one row. A trailing `2` is only a suffix on a
+/// mnemonic whose class has an upper-half form: `rev32` keeps its name.
+fn simd_integer_name(mn: &str) -> (String, bool) {
+    let lower = mn.to_ascii_lowercase();
+    if lower == "not" {
+        return ("mvn".to_string(), false);
     }
+    if let Some(base) = lower.strip_suffix('2') {
+        if simd_takes_upper_half(base) {
+            return (base.to_string(), true);
+        }
+    }
+    (lower, false)
+}
+
+/// Whether a mnemonic has a `2` spelling at all: the rows whose narrow
+/// operands can sit in the upper half of their register.
+fn simd_takes_upper_half(name: &str) -> bool {
+    is_extend_long_alias(name)
+        || simd_diff_by_name(name).is_some()
+        || simd_misc_by_name(name, false)
+            .is_some_and(|row| matches!(row.shape, SimdMiscShape::Narrow | SimdMiscShape::Shll))
+        || simd_shift_by_name(name).is_some_and(|row| row.shape != SimdShiftShape::Same)
 }
 
 /// The common header of the three classes: the top byte, U, and the size
@@ -2506,15 +2569,32 @@ fn simd_class_word(scalar: bool, q: bool, u: bool, size: u8, low: u32) -> u32 {
 /// two-register misc, and `addp` is three-same with three operands and
 /// the SIMD-scalar pairwise form with two.
 fn encode_simd_integer(mn: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
-    let name = simd_integer_name(mn);
+    let (name, upper) = simd_integer_name(mn);
     if let Some((op, _, _)) = simd_logical_by_name(&name) {
         return encode_simd_logical_reg(ops, op, ln);
     }
     match ops.len() {
-        3 if ops[2].trim().starts_with('#') => encode_simd_two_misc(&name, ops, true, ln),
+        // A third operand spelled `#` is one of three different things:
+        // the compare against zero, SHLL's fixed shift by the lane
+        // width, or a shift by immediate.
+        3 if ops[2].trim().starts_with('#') => {
+            if simd_misc_by_name(&name, true).is_some() {
+                encode_simd_two_misc(&name, ops, true, upper, ln)
+            } else if let Some(row) = simd_shift_by_name(&name) {
+                encode_simd_shift_imm(row, ops, upper, Some(ops[2]), ln)
+            } else {
+                encode_simd_two_misc(&name, ops, false, upper, ln)
+            }
+        }
+        3 if simd_diff_by_name(&name).is_some() => encode_simd_three_diff(&name, ops, upper, ln),
         3 => encode_simd_three_same(&name, ops, ln),
+        2 if is_extend_long_alias(&name) => {
+            let long = if name == "sxtl" { "sshll" } else { "ushll" };
+            let row = simd_shift_by_name(long).expect("the lengthening shift has a row");
+            encode_simd_shift_imm(row, ops, upper, None, ln)
+        }
         2 if simd_across_by_name(&name).is_some() => encode_simd_across(&name, ops, ln),
-        2 => encode_simd_two_misc(&name, ops, false, ln),
+        2 => encode_simd_two_misc(&name, ops, false, upper, ln),
         _ => asm_err(
             ln,
             &format!(
@@ -2582,6 +2662,7 @@ fn encode_simd_two_misc(
     name: &str,
     ops: &[&str],
     zero: bool,
+    upper: bool,
     ln: usize,
 ) -> Result<u32, EmuError> {
     let Some(row) = simd_misc_by_name(name, zero) else {
@@ -2593,11 +2674,21 @@ fn encode_simd_two_misc(
     if zero && ops[2].trim().trim_start_matches('#').trim() != "0" {
         return asm_err(ln, &format!("{name} compares against #0, nothing else"));
     }
+    let narrowing = row.shape == SimdMiscShape::Narrow;
+    let shll = row.shape == SimdMiscShape::Shll;
+    if shll != (ops.len() == 3 && !zero) {
+        return asm_err(
+            ln,
+            &format!("{name} takes {} operands", if shll { 3 } else { 2 }),
+        );
+    }
     if let Some((rd, esize)) = simd_scalar_operand(ops[0]) {
         let Some((rn, en)) = simd_scalar_operand(ops[1]) else {
             return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
         };
-        if en != esize || !lane_allowed(row.scalar, esize) {
+        // A narrowing extract reads a lane of twice what it writes.
+        let expected = if narrowing { esize * 2 } else { esize };
+        if en != expected || upper || !lane_allowed(row.scalar, esize) {
             return asm_err(
                 ln,
                 &format!("{name} has no scalar form of this width; both operands take one"),
@@ -2612,30 +2703,208 @@ fn encode_simd_two_misc(
     }
     let d = parse_vec_arrangement(ops[0], ln)?;
     let n = parse_vec_arrangement(ops[1], ln)?;
-    let widen = row.shape == SimdMiscShape::Widen;
-    let dest_esize = if widen { n.esize * 2 } else { n.esize };
-    if d.esize != dest_esize || d.q != n.q {
-        return asm_err(
-            ln,
-            &format!(
-                "{name} writes {} lanes for a {} source",
-                if widen { "twice as wide" } else { "matching" },
-                arrangement_name(&n)
-            ),
-        );
+    // The narrow side is the one the size field names, and Q is which
+    // half of the register it sits in: exactly what the `2` suffix says.
+    let (narrow, wide) = match row.shape {
+        SimdMiscShape::Narrow => (&d, &n),
+        SimdMiscShape::Shll => (&n, &d),
+        _ => (&n, &n),
+    };
+    if narrowing || shll {
+        if wide.esize != narrow.esize * 2 || !wide.q || narrow.q != upper {
+            return asm_err(
+                ln,
+                &format!(
+                    "{name} writes lanes of {} the source's width, and the `2` suffix \
+                     is what names the upper half",
+                    if narrowing { "half" } else { "twice" }
+                ),
+            );
+        }
+        if shll {
+            let want = u32::from(narrow.esize) * 8;
+            let amount = parse_immediate(ops[2], ln)?;
+            if amount != i64::from(want) {
+                return asm_err(ln, &format!("{name} shifts by exactly #{want} for this arrangement"));
+            }
+        }
+    } else {
+        let widen = row.shape == SimdMiscShape::Widen;
+        let dest_esize = if widen { n.esize * 2 } else { n.esize };
+        if d.esize != dest_esize || d.q != n.q {
+            return asm_err(
+                ln,
+                &format!(
+                    "{name} writes {} lanes for a {} source",
+                    if widen { "twice as wide" } else { "matching" },
+                    arrangement_name(&n)
+                ),
+            );
+        }
+        if !widen && n.esize == 8 && !n.q {
+            return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&n)));
+        }
     }
-    if !lane_allowed(row.lanes, n.esize) || (!widen && n.esize == 8 && !n.q) {
+    if !lane_allowed(row.lanes, narrow.esize) {
         return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&n)));
     }
     // A row that fixes its own size field says so: RBIT is spelled in
     // byte lanes but encodes size 01.
-    let size = row.size.unwrap_or_else(|| size_field(n.esize));
+    let size = row.size.unwrap_or_else(|| size_field(narrow.esize));
     let low = (1 << 21)
         | (u32::from(row.opcode) << 12)
         | (1 << 11)
         | (u32::from(n.idx) << 5)
         | u32::from(d.idx);
-    Ok(simd_class_word(false, n.q, row.u, size, low))
+    Ok(simd_class_word(false, narrow.q, row.u, size, low))
+}
+
+/// Three-different: `Vd.<2T>, Vn.T, Vm.T` and the wide and narrowing
+/// shapes beside it, with the SIMD-scalar `Fd, Fn, Fm` of the doubling
+/// multiplies. The size field names the NARROW width and Q is the `2`
+/// suffix, which selects the upper half of whichever operands are narrow.
+fn encode_simd_three_diff(name: &str, ops: &[&str], upper: bool, ln: usize) -> Result<u32, EmuError> {
+    let row = simd_diff_by_name(name).expect("the caller checked the table");
+    if let Some((rd, dest_esize)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, en)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let Some((rm, em)) = simd_scalar_operand(ops[2]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[2].trim()));
+        };
+        if upper || em != en || dest_esize != en * 2 || !lane_allowed(row.scalar, en) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width; it writes twice what it reads"),
+            );
+        }
+        let low = (1 << 21)
+            | (u32::from(rm) << 16)
+            | (u32::from(row.opcode) << 12)
+            | (u32::from(rn) << 5)
+            | u32::from(rd);
+        return Ok(simd_class_word(true, false, row.u, size_field(en), low));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    // Which operands are narrow is the shape; the narrow ones carry Q.
+    let (narrow, wide): (&VecReg, &VecReg) = match row.shape {
+        SimdDiffShape::Long => (&n, &d),
+        SimdDiffShape::Wide => (&m, &d),
+        SimdDiffShape::Narrow => (&d, &n),
+    };
+    let shaped = match row.shape {
+        SimdDiffShape::Long => n.esize == m.esize && n.q == m.q && d.q,
+        SimdDiffShape::Wide => n.esize == d.esize && n.q == d.q && d.q,
+        SimdDiffShape::Narrow => n.esize == m.esize && n.q == m.q && n.q,
+    };
+    if !shaped || wide.esize != narrow.esize * 2 || narrow.q != upper {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} pairs a {} arrangement with lanes of twice that width, and the \
+                 `2` suffix is what names the upper half of the narrow operands",
+                arrangement_name(narrow)
+            ),
+        );
+    }
+    if !lane_allowed(row.lanes, narrow.esize) {
+        return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(narrow)));
+    }
+    let low = (1 << 21)
+        | (u32::from(m.idx) << 16)
+        | (u32::from(row.opcode) << 12)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx);
+    Ok(simd_class_word(false, narrow.q, row.u, size_field(narrow.esize), low))
+}
+
+/// The class header of the shift-by-immediate group. It sits one bit
+/// above the three-register classes (bits 28:24 are 01111, not 01110)
+/// and has no size field: immh:immb carries both the lane width and the
+/// amount, which is why `simd_class_word` cannot serve it.
+fn simd_shift_word(scalar: bool, q: bool, u: bool, low: u32) -> u32 {
+    let base = if scalar { 0x5F00_0000 } else { 0x0F00_0000 | ((q as u32) << 30) };
+    base | ((u as u32) << 29) | low
+}
+
+/// Shift by immediate: `Vd.T, Vn.T, #shift`, the lengthening
+/// `Vd.<2T>, Vn.T, #shift` and the narrowing `Vd.T, Vn.<2T>, #shift`,
+/// with the SIMD-scalar forms beside them. `amount` is None for the SXTL
+/// and UXTL spellings, which are the lengthening shift by zero.
+fn encode_simd_shift_imm(
+    row: &SimdShiftRow,
+    ops: &[&str],
+    upper: bool,
+    amount: Option<&str>,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let name = row.name;
+    let shift = match amount {
+        None => 0i64,
+        Some(text) => parse_immediate(text, ln)?,
+    };
+    let (esize, q, scalar, rn, rd) = if let Some((rd, dest)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, src)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let expected = if row.shape == SimdShiftShape::Narrow { dest * 2 } else { dest };
+        if upper || src != expected || !lane_allowed(row.scalar, dest) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width"),
+            );
+        }
+        (dest, false, true, rn, rd)
+    } else {
+        let d = parse_vec_arrangement(ops[0], ln)?;
+        let n = parse_vec_arrangement(ops[1], ln)?;
+        let (narrow, wide): (&VecReg, &VecReg) = match row.shape {
+            SimdShiftShape::Same => (&d, &d),
+            SimdShiftShape::Long => (&n, &d),
+            SimdShiftShape::Narrow => (&d, &n),
+        };
+        let shaped = match row.shape {
+            SimdShiftShape::Same => {
+                // No shift is spelled 1d: a single 64-bit lane is the
+                // SIMD-scalar form, written with a d register.
+                let one_d = d.esize == 8 && !d.q;
+                d.esize == n.esize && d.q == n.q && !upper && !one_d
+            }
+            _ => wide.esize == narrow.esize * 2 && wide.q && narrow.q == upper,
+        };
+        if !shaped {
+            return asm_err(
+                ln,
+                &format!("{name} does not take these arrangements together"),
+            );
+        }
+        (narrow.esize, narrow.q, false, n.idx, d.idx)
+    };
+    if !lane_allowed(row.lanes, esize) {
+        return asm_err(ln, &format!("{name} does not take a {}-bit lane", u32::from(esize) * 8));
+    }
+    // A left shift can clear the lane and a right shift can fill it with
+    // the sign, so the two ranges are off by one from each other.
+    let bits = i64::from(u32::from(esize) * 8);
+    let ok = if row.right { shift >= 1 && shift <= bits } else { shift >= 0 && shift < bits };
+    if !ok {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} shifts by {} for a {bits}-bit lane, not #{shift}",
+                if row.right { format!("1 to {bits}") } else { format!("0 to {}", bits - 1) }
+            ),
+        );
+    }
+    let field = shift_imm_field(esize, shift as u8, row.right);
+    let low = (u32::from(field) << 16)
+        | (u32::from(row.opcode) << 11)
+        | (1 << 10)
+        | (u32::from(rn) << 5)
+        | u32::from(rd);
+    Ok(simd_shift_word(scalar, q, row.u, low))
 }
 
 /// Across lanes: `Fd, Vn.T`, the whole source folded into one scalar.

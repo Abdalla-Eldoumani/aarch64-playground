@@ -48,6 +48,27 @@ const INTEGER: &[&str] = &[
     "urecpe", "ursqrte",
 ];
 
+/// The widening, narrowing and shift families: three-different,
+/// shift-by-immediate, the narrowing two-register misc rows, and the
+/// register shifts that sit in the three-same class. Both spellings of
+/// every `2` form are here, because the suffix is part of the mnemonic
+/// the fixture keys on.
+const WIDEN_SHIFT: &[&str] = &[
+    "addhn", "addhn2", "pmull", "pmull2", "raddhn", "raddhn2", "rshrn", "rshrn2",
+    "rsubhn", "rsubhn2", "sabal", "sabal2", "sabdl", "sabdl2", "saddl", "saddl2", "saddw",
+    "saddw2", "shl", "shll", "shll2", "shrn", "shrn2", "sli", "smlal", "smlal2", "smlsl",
+    "smlsl2", "smull", "smull2", "sqdmlal", "sqdmlal2", "sqdmlsl", "sqdmlsl2", "sqdmull",
+    "sqdmull2", "sqrshl", "sqrshrn", "sqrshrn2", "sqrshrun", "sqrshrun2", "sqshl",
+    "sqshlu", "sqshrn", "sqshrn2", "sqshrun", "sqshrun2", "sqxtn", "sqxtn2", "sqxtun",
+    "sqxtun2", "sri", "srshl", "srshr", "srsra", "sshl", "sshll", "sshll2", "sshr",
+    "ssra", "ssubl", "ssubl2", "ssubw", "ssubw2", "subhn", "subhn2", "sxtl", "sxtl2",
+    "uabal", "uabal2", "uabdl", "uabdl2", "uaddl", "uaddl2", "uaddw", "uaddw2", "umlal",
+    "umlal2", "umlsl", "umlsl2", "umull", "umull2", "uqrshl", "uqrshrn", "uqrshrn2",
+    "uqshl", "uqshrn", "uqshrn2", "uqxtn", "uqxtn2", "urshl", "urshr", "ursra", "ushl",
+    "ushll", "ushll2", "ushr", "usra", "usubl", "usubl2", "usubw", "usubw2", "uxtl",
+    "uxtl2", "xtn", "xtn2",
+];
+
 /// Whether this suite replays a line. Everything else implemented (the
 /// SIMD-scalar SCVTF) is left to `simd.rs` until its own feature lands.
 fn is_replayed(line: &InventoryLine) -> bool {
@@ -55,7 +76,8 @@ fn is_replayed(line: &InventoryLine) -> bool {
         && !line.spelling.contains("_probe")
         && (MEMORY.contains(&line.mnemonic())
             || MOVES.contains(&line.mnemonic())
-            || INTEGER.contains(&line.mnemonic()))
+            || INTEGER.contains(&line.mnemonic())
+            || WIDEN_SHIFT.contains(&line.mnemonic()))
 }
 
 /// Where the mapped buffer's base sits: page-aligned (so SP-based forms

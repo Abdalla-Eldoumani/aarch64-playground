@@ -12,33 +12,17 @@
 /// list flips red the moment a family lands and stops being a claim
 /// nobody checks. Removing a name is how a family is declared done.
 pub const NOT_YET: &[&str] = &[
-    "addhn", "addhn2", "ext", "fabd", "fabs", "facge", "facgt", "fadd",
-    "faddp", "fcmeq", "fcmge", "fcmgt", "fcmle", "fcmlt", "fcvtas",
-    "fcvtau", "fcvtl", "fcvtl2", "fcvtms", "fcvtmu", "fcvtn", "fcvtn2",
-    "fcvtns", "fcvtnu", "fcvtps", "fcvtpu", "fcvtxn", "fcvtxn2",
-    "fcvtzs", "fcvtzu", "fdiv", "fmax", "fmaxnm", "fmaxnmp", "fmaxnmv",
-    "fmaxp", "fmaxv", "fmin", "fminnm", "fminnmp", "fminnmv", "fminp",
-    "fminv", "fmla", "fmls", "fmov", "fmul", "fmulx", "fneg", "frecpe",
-    "frecps", "frecpx", "frinta", "frinti", "frintm", "frintn",
-    "frintp", "frintx", "frintz", "frsqrte", "frsqrts", "fsqrt", "fsub",
-    "ld1", "ld1r", "ld2", "ld2r", "ld3", "ld3r", "ld4", "ld4r", "pmull",
-    "pmull2", "raddhn", "raddhn2", "rshrn", "rshrn2", "rsubhn",
-    "rsubhn2", "sabal", "sabal2", "sabdl", "sabdl2", "saddl", "saddl2",
-    "saddw", "saddw2", "scvtf", "shl", "shll", "shll2", "shrn", "shrn2",
-    "sli", "smlal", "smlal2", "smlsl", "smlsl2", "smull", "smull2",
-    "sqdmlal", "sqdmlal2", "sqdmlsl", "sqdmlsl2", "sqdmull", "sqdmull2",
-    "sqrshl", "sqrshrn", "sqrshrn2", "sqrshrun", "sqrshrun2", "sqshl",
-    "sqshlu", "sqshrn", "sqshrn2", "sqshrun", "sqshrun2", "sqxtn",
-    "sqxtn2", "sqxtun", "sqxtun2", "sri", "srshl", "srshr", "srsra",
-    "sshl", "sshll", "sshll2", "sshr", "ssra", "ssubl", "ssubl2",
-    "ssubw", "ssubw2", "st1", "st2", "st3", "st4", "subhn", "subhn2",
-    "sxtl", "sxtl2", "tbl", "tbx", "trn1", "trn2", "uabal", "uabal2",
-    "uabdl", "uabdl2", "uaddl", "uaddl2", "uaddw", "uaddw2", "ucvtf",
-    "umlal", "umlal2", "umlsl", "umlsl2", "umull", "umull2", "uqrshl",
-    "uqrshrn", "uqrshrn2", "uqshl", "uqshrn", "uqshrn2", "uqxtn",
-    "uqxtn2", "urshl", "urshr", "ursra", "ushl", "ushll", "ushll2",
-    "ushr", "usra", "usubl", "usubl2", "usubw", "usubw2", "uxtl",
-    "uxtl2", "uzp1", "uzp2", "xtn", "xtn2", "zip1", "zip2",
+    "ext", "fabd", "fabs", "facge", "facgt", "fadd", "faddp", "fcmeq",
+    "fcmge", "fcmgt", "fcmle", "fcmlt", "fcvtas", "fcvtau", "fcvtl",
+    "fcvtl2", "fcvtms", "fcvtmu", "fcvtn", "fcvtn2", "fcvtns", "fcvtnu",
+    "fcvtps", "fcvtpu", "fcvtxn", "fcvtxn2", "fcvtzs", "fcvtzu", "fdiv",
+    "fmax", "fmaxnm", "fmaxnmp", "fmaxnmv", "fmaxp", "fmaxv", "fmin",
+    "fminnm", "fminnmp", "fminnmv", "fminp", "fminv", "fmla", "fmls",
+    "fmov", "fmul", "fmulx", "fneg", "frecpe", "frecps", "frecpx", "frinta",
+    "frinti", "frintm", "frintn", "frintp", "frintx", "frintz", "frsqrte",
+    "frsqrts", "fsqrt", "fsub", "ld1", "ld1r", "ld2", "ld2r", "ld3", "ld3r",
+    "ld4", "ld4r", "scvtf", "st1", "st2", "st3", "st4", "tbl", "tbx",
+    "trn1", "trn2", "ucvtf", "uzp1", "uzp2", "zip1", "zip2",
 ];
 
 /// The exceptions to `NOT_YET`: spellings whose mnemonic is queued but
@@ -80,14 +64,18 @@ impl InventoryLine {
     }
 
     /// The mirror of `ALREADY_SUPPORTED`: a form of a LANDED mnemonic
-    /// that is still queued. MUL, MLA, MLS, SQDMULH and SQRDMULH each
-    /// also have a by-element form (`mul v3.4h, v7.4h, v15.h[7]`), an
-    /// encoding class of its own that lands with the rest of the
-    /// element-indexed multiplies; their three-same forms landed first.
-    /// A lane index in the LAST operand is what marks one.
+    /// that is still queued. Every multiply in the inventory also has a
+    /// by-element form (`mul v3.4h, v7.4h, v15.h[7]`), an encoding class
+    /// of its own that lands with the rest of the element-indexed
+    /// multiplies; their three-same and three-different forms landed
+    /// first. A lane index in the LAST operand is what marks one.
     pub fn queued_form(&self) -> bool {
-        matches!(self.mnemonic(), "mul" | "mla" | "mls" | "sqdmulh" | "sqrdmulh")
-            && self.spelling.rsplit(',').next().is_some_and(|last| last.contains('['))
+        matches!(
+            self.mnemonic().trim_end_matches('2'),
+            "mul" | "mla" | "mls" | "sqdmulh" | "sqrdmulh"
+                | "smull" | "umull" | "smlal" | "umlal" | "smlsl" | "umlsl"
+                | "sqdmull" | "sqdmlal" | "sqdmlsl"
+        ) && self.spelling.rsplit(',').next().is_some_and(|last| last.contains('['))
     }
 }
 

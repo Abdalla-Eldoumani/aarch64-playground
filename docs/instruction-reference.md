@@ -228,7 +228,7 @@ A whole-register write zeroes what it does not set, and a 64-bit arrangement cle
 
 ## Vector integer arithmetic
 
-Three encoding classes cover the integer lane families, and every form here is one of them: three-same (`Vd.T, Vn.T, Vm.T`, all three the same shape), two-register misc (`Vd.T, Vn.T`, plus the compares against `#0`), and across lanes (a whole vector folded into one scalar). Most also have a SIMD-scalar form, which runs the same operation on a single `B`, `H`, `S` or `D` register; where a family has one the table says so.
+Five encoding classes cover the integer lane families, and every form here is one of them: three-same (`Vd.T, Vn.T, Vm.T`, all three the same shape), two-register misc (`Vd.T, Vn.T`, plus the compares against `#0`), across lanes (a whole vector folded into one scalar), three-different (the widening and narrowing forms, whose operands are not all one width), and shift by immediate. Most also have a SIMD-scalar form, which runs the same operation on a single `B`, `H`, `S` or `D` register; where a family has one the table says so.
 
 Lane arithmetic wraps at the lane's own width unless the mnemonic says otherwise: the `SQ`/`UQ` prefixes saturate, the `H`/`RH` infixes compute in one extra bit, and the doubling multiplies keep the high half of a double-width product. A 64-bit arrangement (`8B`, `4H`, `2S`) zeroes bits 127:64 of its destination, exactly as the moves do.
 
@@ -329,6 +329,130 @@ The remaining two-register misc forms take one source and one destination of the
 | `REV64`  | `REV64 Vd.T, Vn.T` (`B`, `H`, `S` lanes) | The same inside each 64-bit container. The lane has to be narrower than the container, which is why each of the three takes a different set. |
 | `URECPE` | `URECPE Vd.T, Vn.T` (`2S` / `4S`) | The unsigned fixed-point reciprocal ESTIMATE, read out of the architecture's table rather than computed. An operand below 0.5 (top bit clear) has no representable reciprocal and answers all ones. |
 | `URSQRTE` | `URSQRTE Vd.T, Vn.T` (`2S` / `4S`) | The reciprocal square-root estimate from the same kind of table, with the cut at 0.25 (top two bits clear). |
+
+Widening, narrowing and doubling: the three-different class, where the two sources and the destination are not all the same width. The size the encoding carries is always the NARROW one. The `2` suffix is the Q bit and nothing else: it reads the narrow operands out of the UPPER half of their register (lanes 8-15 of a `16B`, 4-7 of an `8H`, 2-3 of a `4S`) and, on the narrowing rows, writes the upper half of the destination while leaving the low half exactly as it was. Without it the narrow operands come from the low half, and a narrowing result zeroes bits 127:64.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `SADDL`  | `SADDL Vd.8H, Vn.8B, Vm.8B` (and `4S`/`4H`, `2D`/`2S`) | Sign-extend both lanes to twice their width, THEN add, so the sum cannot overflow the destination. |
+| `SADDL2` | `SADDL2 Vd.8H, Vn.16B, Vm.16B` (and `4S`/`8H`, `2D`/`4S`) | The same over the upper half of the sources. Every `2` form in this table is its base form reading those lanes instead of the low ones. |
+| `UADDL`  | the same shapes                   | Zero-extend instead: the `S`/`U` pair differ in nothing else. |
+| `UADDL2` | the same shapes                   | The unsigned upper-half form.           |
+| `SSUBL`  | the same shapes                   | Extend, then subtract.                  |
+| `SSUBL2` | the same shapes                   | The upper-half form.                    |
+| `USUBL`  | the same shapes                   | The unsigned widening subtract.         |
+| `USUBL2` | the same shapes                   | The unsigned upper-half form.           |
+| `SADDW`  | `SADDW Vd.8H, Vn.8H, Vm.8B` (and `4S`/`4S`/`4H`, `2D`/`2D`/`2S`) | Only the SECOND source is narrow: it is extended and added to a first source already at the destination's width. |
+| `SADDW2` | `SADDW2 Vd.8H, Vn.8H, Vm.16B`     | The upper half of the narrow source.    |
+| `UADDW`  | the same shapes                   | Zero-extending.                         |
+| `UADDW2` | the same shapes                   | The unsigned upper-half form.           |
+| `SSUBW`  | the same shapes                   | Extend the narrow source, then subtract it. |
+| `SSUBW2` | the same shapes                   | The upper-half form.                    |
+| `USUBW`  | the same shapes                   | The unsigned widening subtract.         |
+| `USUBW2` | the same shapes                   | The unsigned upper-half form.           |
+| `SMULL2` | `SMULL2 Vd.8H, Vn.16B, Vm.16B` (and `4S`/`8H`, `2D`/`4S`) | The widening product over the upper half. Plain `SMULL` is the same mnemonic as the general-register widening multiply in [Data processing](#data-processing); a `V` first operand is what picks this reading. |
+| `UMULL2` | the same shapes                   | The unsigned one; plain `UMULL` shares its arm the same way. |
+| `SMLAL`  | `SMLAL Vd.8H, Vn.8B, Vm.8B` (and `4S`/`4H`, `2D`/`2S`) | The widening product ACCUMULATED: the destination is read as well as written. |
+| `SMLAL2` | `SMLAL2 Vd.8H, Vn.16B, Vm.16B`    | The upper-half form.                    |
+| `UMLAL`  | the same shapes                   | The unsigned accumulating product.      |
+| `UMLAL2` | the same shapes                   | The unsigned upper-half form.           |
+| `SMLSL`  | the same shapes                   | The widening product SUBTRACTED from the destination. |
+| `SMLSL2` | the same shapes                   | The upper-half form.                    |
+| `UMLSL`  | the same shapes                   | The unsigned subtracting form.          |
+| `UMLSL2` | the same shapes                   | The unsigned upper-half form.           |
+| `SABDL`  | the same shapes                   | Widening absolute difference: extend both lanes, subtract, take the magnitude, so nothing wraps the way the same-width `SABD` can. |
+| `SABDL2` | the same shapes                   | The upper-half form.                    |
+| `UABDL`  | the same shapes                   | Both lanes read unsigned.               |
+| `UABDL2` | the same shapes                   | The unsigned upper-half form.           |
+| `SABAL`  | the same shapes                   | The same difference accumulated into the destination. |
+| `SABAL2` | the same shapes                   | The upper-half form.                    |
+| `UABAL`  | the same shapes                   | The unsigned accumulating difference.   |
+| `UABAL2` | the same shapes                   | The unsigned upper-half form.           |
+| `ADDHN`  | `ADDHN Vd.8B, Vn.8H, Vm.8H` (and `4H`/`4S`, `2S`/`2D`) | Add at the SOURCE width and keep the HIGH half of each sum; the low half is discarded. The result zeroes bits 127:64. |
+| `ADDHN2` | `ADDHN2 Vd.16B, Vn.8H, Vm.8H`     | The same sums written into the UPPER half of the destination, the low half untouched. |
+| `RADDHN` | the same shapes                   | Rounding: half an ulp of the kept half (bit `esize - 1` of the sum) is added before the top half is taken. |
+| `RADDHN2` | the same shapes                  | The rounding upper-half form.           |
+| `SUBHN`  | the same shapes                   | The difference's high half.             |
+| `SUBHN2` | the same shapes                   | The upper-half form.                    |
+| `RSUBHN` | the same shapes                   | The rounding difference.                |
+| `RSUBHN2` | the same shapes                  | The rounding upper-half form.           |
+| `SQDMULL` | `SQDMULL Vd.4S, Vn.4H, Vm.4H` / `Vd.2D, Vn.2S, Vm.2S` / `SQDMULL Sd, Hn, Hm` / `SQDMULL Dd, Sn, Sm` | Doubled widening product, saturating. `H` and `S` lanes only. The one input pair that saturates is the two minimum values: `0x8000 * 0x8000` doubled lands one past the top of a word. |
+| `SQDMULL2` | `SQDMULL2 Vd.4S, Vn.8H, Vm.8H` / `Vd.2D, Vn.4S, Vm.4S` | The upper-half form; no scalar spelling, since a scalar has no halves. |
+| `SQDMLAL` | the same shapes as `SQDMULL`     | The doubled product accumulated. It saturates TWICE, once on the product and once on the sum, so a product already at the limit cannot wrap on the way in. |
+| `SQDMLAL2` | the upper-half shapes            | The upper-half accumulating form.       |
+| `SQDMLSL` | the same shapes as `SQDMULL`     | The doubled product subtracted, saturating at both steps. |
+| `SQDMLSL2` | the upper-half shapes            | The upper-half subtracting form.        |
+| `PMULL`  | `PMULL Vd.8H, Vn.8B, Vm.8B`       | Carry-less (polynomial) widening multiply of bytes: the partial products are XORed rather than added, so nothing carries between bit positions and the whole product fits the halfword. Byte lanes only. |
+| `PMULL2` | `PMULL2 Vd.8H, Vn.16B, Vm.16B`    | The same over the upper eight bytes.    |
+
+The narrowing extracts and the lengthening shift are two-register misc rows with the same `2` rule: `XTN` writes the low half of the destination and zeroes the rest, `XTN2` writes the high half and leaves the low one alone.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `XTN`    | `XTN Vd.8B, Vn.8H` (and `4H`/`4S`, `2S`/`2D`) | Truncate each lane to half its width; whatever does not fit is discarded. |
+| `XTN2`   | `XTN2 Vd.16B, Vn.8H`              | The same results in the UPPER half of the destination. |
+| `SQXTN`  | `SQXTN Vd.8B, Vn.8H` / `SQXTN Bd, Hn` (and `H`/`S`, `S`/`D`) | Signed saturating narrow: a lane past the narrow signed range clamps to it instead of losing its top bits. |
+| `SQXTN2` | `SQXTN2 Vd.16B, Vn.8H`            | The upper-half form. No `2` form has a scalar spelling. |
+| `UQXTN`  | the same shapes                   | Unsigned saturating narrow.             |
+| `UQXTN2` | the same shapes                   | The unsigned upper-half form.           |
+| `SQXTUN` | the same shapes                   | The mixed one: the source is read SIGNED and saturated into an UNSIGNED lane, so a negative source clamps at zero and a large positive one at all ones. |
+| `SQXTUN2` | the same shapes                  | The mixed upper-half form.              |
+| `SHLL`   | `SHLL Vd.8H, Vn.8B, #8` / `Vd.4S, Vn.4H, #16` / `Vd.2D, Vn.2S, #32` | Shift each lane left by exactly its own width into a lane of twice that, so the source lands in the top half of the result with zeros below it. The amount is not a choice: it has to be the source lane's width. |
+| `SHLL2`  | `SHLL2 Vd.8H, Vn.16B, #8` (and `4S`/`8H`, `2D`/`4S`) | The same over the upper half of the source. |
+
+Shift by immediate. The amount is not an operand field of its own: it is packed into `immh:immb` beside the lane width, a left shift counting UP from the width and a right shift counting DOWN from twice it. That is why a left shift takes `#0` to `#esize - 1` and a right shift `#1` to `#esize`, and why `SSHR Vd.16B, Vn.16B, #8` and `USHR Vd.2D, Vn.2D, #64` are both legal. A 64-bit lane is spelled with `D` registers, not `1D`, exactly as in the three-same group.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `SHL`    | `SHL Vd.T, Vn.T, #shift` / `SHL Dd, Dn, #shift` | Shift left, discarding what leaves the lane. `#0` is a real encoding, not an error. |
+| `SSHR`   | `SSHR Vd.T, Vn.T, #shift` / `SSHR Dd, Dn, #shift` | Arithmetic (sign-filling) shift right; at `#esize` every lane is all zeros or all ones. |
+| `USHR`   | the same shapes                   | Logical shift right; at `#esize` the lane is zero. |
+| `SSRA`   | the same shapes                   | The signed shift ACCUMULATED: `Vd = Vd + (Vn >> shift)`, wrapping at the lane. |
+| `USRA`   | the same shapes                   | The unsigned shift, accumulated.        |
+| `SRSHR`  | the same shapes                   | Rounding signed shift: `1 << (shift - 1)` is added before the shift. |
+| `URSHR`  | the same shapes                   | The unsigned rounding shift.            |
+| `SRSRA`  | the same shapes                   | The rounding signed shift, accumulated. |
+| `URSRA`  | the same shapes                   | The rounding unsigned shift, accumulated. |
+| `SLI`    | `SLI Vd.T, Vn.T, #shift` / `SLI Dd, Dn, #shift` | Shift left and INSERT: the destination's low `shift` bits survive instead of being shifted in as zeros. |
+| `SRI`    | the same shapes                   | Shift right and insert: the destination's high `shift` bits survive. It is a right shift, so `#1` to `#esize`. |
+| `SQSHL`  | `SQSHL Vd.T, Vn.T, #shift` / `SQSHL Bd, Bn, #shift` (and `H`, `S`, `D`) | Signed saturating shift left: what would leave the lane clamps to the lane's limit instead. See also the register form below, which shares the mnemonic. |
+| `UQSHL`  | the same shapes                   | Unsigned saturating shift left.         |
+| `SQSHLU` | the same shapes                   | The mixed one: the lane is read SIGNED and saturated into an UNSIGNED result, so a negative lane answers zero. |
+| `SSHLL`  | `SSHLL Vd.8H, Vn.8B, #shift` (and `4S`/`4H`, `2D`/`2S`) | Sign-extend to twice the width, THEN shift left, so nothing can leave the result lane. The amount is `#0` to `#esize - 1` of the SOURCE lane. |
+| `SSHLL2` | `SSHLL2 Vd.8H, Vn.16B, #shift`    | The same over the upper half of the source. |
+| `USHLL`  | the same shapes                   | Zero-extending.                         |
+| `USHLL2` | the same shapes                   | The unsigned upper-half form.           |
+| `SXTL`   | `SXTL Vd.8H, Vn.8B` (and `4S`/`4H`, `2D`/`2S`) | The alias for `SSHLL ..., #0`: the same word, and the spelling objdump prints back for it. Sign-extend, no shift. |
+| `SXTL2`  | `SXTL2 Vd.8H, Vn.16B`             | The upper-half form, alias of `SSHLL2 ..., #0`. |
+| `UXTL`   | the same shapes                   | The zero-extending alias of `USHLL ..., #0`. |
+| `UXTL2`  | the same shapes                   | The upper-half zero-extending alias.    |
+| `SHRN`   | `SHRN Vd.8B, Vn.8H, #shift` (and `4H`/`4S`, `2S`/`2D`) | Shift each source lane right, then truncate into a lane of half the width. `#1` to `#esize` of the DESTINATION lane. |
+| `SHRN2`  | `SHRN2 Vd.16B, Vn.8H, #shift`     | The results in the UPPER half of the destination, the low half untouched. |
+| `RSHRN`  | the same shapes                   | Rounding: half an ulp is added before the shift. |
+| `RSHRN2` | the same shapes                   | The rounding upper-half form.           |
+| `SQSHRN` | `SQSHRN Vd.8B, Vn.8H, #shift` / `SQSHRN Bd, Hn, #shift` | Signed saturating narrowing shift: the shift happens at the source width and the clamp at the destination's. |
+| `SQSHRN2` | `SQSHRN2 Vd.16B, Vn.8H, #shift`  | The upper-half form; no `2` form has a scalar spelling. |
+| `UQSHRN` | the same shapes                   | Unsigned saturating narrowing shift.    |
+| `UQSHRN2` | the same shapes                  | The unsigned upper-half form.           |
+| `SQRSHRN` | the same shapes                  | The signed rounding one: half an ulp before the shift, then the clamp. |
+| `SQRSHRN2` | the same shapes                 | The rounding upper-half form.           |
+| `UQRSHRN` | the same shapes                  | The unsigned rounding narrowing shift.  |
+| `UQRSHRN2` | the same shapes                 | The unsigned rounding upper-half form.  |
+| `SQSHRUN` | the same shapes                  | Signed source, UNSIGNED saturating result: a negative source clamps at zero. |
+| `SQSHRUN2` | the same shapes                 | The upper-half form.                    |
+| `SQRSHRUN` | the same shapes                 | The rounding mixed form.                |
+| `SQRSHRUN2` | the same shapes                | The rounding mixed upper-half form.     |
+
+Shift by register. The count comes from the LOW BYTE of each `Vm` lane, read as a signed 8-bit number: positive shifts that lane left, negative shifts it right by the magnitude. The rest of the `Vm` lane is ignored, and each lane can shift by a different amount. Only the LEFT direction can saturate.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `SSHL`   | `SSHL Vd.T, Vn.T, Vm.T` / `SSHL Dd, Dn, Dm` | Signed shift by the per-lane count; a right shift fills with the sign bit. |
+| `USHL`   | the same shapes                   | Unsigned: a right shift fills with zeros. |
+| `SRSHL`  | the same shapes                   | Rounding: on a right shift, half an ulp of the discarded bits is added first. |
+| `URSHL`  | the same shapes                   | The unsigned rounding form.             |
+| `SQRSHL` | `SQRSHL Vd.T, Vn.T, Vm.T` / `SQRSHL Bd, Bn, Bm` (and `H`, `S`, `D`) | Signed saturating rounding shift. `SQSHL` and `UQSHL` take this same register form, listed with their immediate rows above. |
+| `UQRSHL` | the same shapes                   | The unsigned saturating rounding shift. |
 
 ## Directives
 
@@ -452,7 +576,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- The rest of the vector families: the widening and narrowing arithmetic, the shifts, the element-indexed multiplies, the permutes and table lookups, floating-point lanes, and the `LD1`-`ST4` structure loads. The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, and the integer lane arithmetic above are all in; the rest lands in the changes that follow.
+- The rest of the vector families: the element-indexed multiplies, the permutes and table lookups, floating-point lanes, and the `LD1`-`ST4` structure loads. The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, and the whole of the integer lane arithmetic above (three-same, two-register misc, across lanes, the widening and narrowing forms, and the shifts) are all in; the rest lands in the changes that follow.
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
