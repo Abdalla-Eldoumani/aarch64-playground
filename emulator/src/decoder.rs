@@ -2425,11 +2425,18 @@ fn decode_advanced_simd(instr: u32) -> Option<Instruction> {
         });
     }
 
-    // EXT: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd.
+    // EXT: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd. The 8B form concatenates the
+    // two LOW halves, 16 bytes in all, so an index of 8 or more is reserved
+    // (imm4<3> must be 0 when Q is 0) and refusing it here is what keeps the
+    // executor's window inside the 16 bytes it built.
     if instr & 0xBFE0_8400 == 0x2E00_0000 {
+        let index = bits(instr, 14, 11) as u8;
+        if !q && index >= 8 {
+            return None;
+        }
         return Some(Instruction::SimdExt {
             q,
-            index: bits(instr, 14, 11) as u8,
+            index,
             rm: bits(instr, 20, 16) as u8,
             rn,
             rd,
@@ -4642,6 +4649,17 @@ mod tests {
         assert!(decode(0x536E_B400).is_err());
         // N=1 with sf=0 is reserved even with small fields.
         assert!(decode(0x5340_0C41).is_err());
+    }
+
+    #[test]
+    fn reserved_ext_8b_index_is_rejected() {
+        // ext v3.8b, v7.8b, v21.8b, #11: imm4<3> set with Q=0 is reserved,
+        // and the executor's 16-byte window would run past its end.
+        assert!(decode(0x2E15_58E3).is_err());
+        assert!(decode(0x2E15_78E3).is_err());
+        // #7 is the last valid 8B index and #11 is fine with Q=1.
+        assert!(decode(0x2E15_38E3).is_ok());
+        assert!(decode(0x6E15_58E3).is_ok());
     }
 
     #[test]
