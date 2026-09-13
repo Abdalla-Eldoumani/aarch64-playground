@@ -316,12 +316,38 @@ pub fn execute(
             regs.write_fpr_q(*rd, result & mask);
             Ok(ExecResult::Advance)
         }
-        Instruction::SimdLogicalReg { bic, q, rm, rn, rd } => {
+        Instruction::SimdLogicalReg { op, q, rm, rn, rd } => {
             let n = regs.read_fpr_q(*rn);
             let m = regs.read_fpr_q(*rm);
-            let result = if *bic { n & !m } else { n | m };
+            let d = regs.read_fpr_q(*rd);
+            // BSL, BIT and BIF pick each bit from one of two sources
+            // under a mask, so all three read the destination: BSL uses
+            // it as the mask, the other two as one of the sources with
+            // the second operand as the mask.
+            let result = match op {
+                SimdLogicalOp::And => n & m,
+                SimdLogicalOp::Bic => n & !m,
+                SimdLogicalOp::Orr => n | m,
+                SimdLogicalOp::Orn => n | !m,
+                SimdLogicalOp::Eor => n ^ m,
+                SimdLogicalOp::Bsl => (n & d) | (m & !d),
+                SimdLogicalOp::Bit => (n & m) | (d & !m),
+                SimdLogicalOp::Bif => (n & !m) | (d & m),
+            };
             let mask: u128 = if *q { u128::MAX } else { u128::from(u64::MAX) };
             regs.write_fpr_q(*rd, result & mask);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdThreeSame { op, esize, q, scalar, rm, rn, rd } => {
+            exec_simd_three_same(*op, *esize, *q, *scalar, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdTwoMisc { op, esize, q, scalar, rn, rd } => {
+            exec_simd_two_misc(*op, *esize, *q, *scalar, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdAcross { op, esize, q, rn, rd } => {
+            exec_simd_across(*op, *esize, *q, *rn, *rd, regs);
             Ok(ExecResult::Advance)
         }
         Instruction::SimdCopy { op, esize, q, index, index2, rn, rd } => {
@@ -1260,6 +1286,401 @@ fn exec_simd_copy(
             regs.write_gpr(rd, q, (((value << spare) as i64) >> spare) as u64);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// advanced simd: the integer lane families
+// ---------------------------------------------------------------------------
+//
+// Every lane operation below works at the lane's OWN width: the value is
+// masked back to `esize` bytes before it is stored, and the arithmetic
+// that gets there is explicitly wrapping or saturating. The three places
+// a wider intermediate is right are the ones the instruction defines that
+// way - the halving adds compute in one extra bit, the saturating forms
+// have to see the overflow they clamp, and the doubling multiplies take
+// the high half of a double-width product - and each says so at its arm.
+
+/// All-ones over `esize` bytes: the mask a lane result is stored under,
+/// and the value a lane compare writes when it holds.
+fn lane_mask(esize: u8) -> u64 {
+    match esize {
+        1 => 0xff,
+        2 => 0xffff,
+        4 => 0xffff_ffff,
+        _ => u64::MAX,
+    }
+}
+
+/// One lane read as a signed value.
+fn lane_signed(value: u64, esize: u8) -> i64 {
+    let spare = 64 - u32::from(esize) * 8;
+    ((value << spare) as i64) >> spare
+}
+
+/// Clamp to the signed range of `esize` bytes, then store as the lane's
+/// bit pattern. The argument is i128 because the caller has already gone
+/// past the lane's width: that overflow is the thing being clamped.
+fn sat_signed(value: i128, esize: u8) -> u64 {
+    let bits = u32::from(esize) * 8;
+    let high = (1i128 << (bits - 1)) - 1;
+    let low = -(1i128 << (bits - 1));
+    (value.clamp(low, high) as u64) & lane_mask(esize)
+}
+
+/// Clamp to the unsigned range of `esize` bytes.
+fn sat_unsigned(value: i128, esize: u8) -> u64 {
+    let high = (1i128 << (u32::from(esize) * 8)) - 1;
+    value.clamp(0, high) as u64
+}
+
+/// The lanes of a register, low lane first. `bytes` is how much of the
+/// register the arrangement covers: 8, 16, or the width of one lane for
+/// a SIMD-scalar form.
+fn read_lanes(value: u128, esize: u8, bytes: u8) -> Vec<u64> {
+    let width = u32::from(esize) * 8;
+    let mask = lane_mask(esize);
+    (0..bytes / esize)
+        .map(|lane| ((value >> (u32::from(lane) * width)) as u64) & mask)
+        .collect()
+}
+
+/// Pack lanes back into a register value. Everything above the lanes is
+/// zero, which is the write rule for both the 64-bit arrangements and
+/// the SIMD-scalar forms.
+fn pack_lanes(lanes: &[u64], esize: u8) -> u128 {
+    let width = u32::from(esize) * 8;
+    let mask = u128::from(lane_mask(esize));
+    lanes
+        .iter()
+        .enumerate()
+        .fold(0u128, |acc, (i, lane)| acc | ((u128::from(*lane) & mask) << (i as u32 * width)))
+}
+
+/// Carry-less (polynomial) multiply of two bytes: PMUL's lane operation.
+fn poly_mul(a: u64, b: u64) -> u64 {
+    (0..8).fold(0u64, |acc, bit| if (b >> bit) & 1 == 1 { acc ^ (a << bit) } else { acc })
+}
+
+/// Bits of one byte in reverse order: RBIT's lane operation.
+fn reverse_byte(byte: u64) -> u64 {
+    u64::from((byte as u8).reverse_bits())
+}
+
+/// Leading sign bits of a lane, the sign bit itself excluded, which is
+/// what CLS counts.
+fn count_leading_sign_bits(value: u64, esize: u8) -> u64 {
+    let bits = u32::from(esize) * 8;
+    let below = (1u64 << (bits - 1)) - 1;
+    let differing = ((value >> 1) ^ value) & below;
+    if differing == 0 {
+        u64::from(bits - 1)
+    } else {
+        u64::from(differing.leading_zeros() - (64 - (bits - 1)))
+    }
+}
+
+fn count_leading_zeros(value: u64, esize: u8) -> u64 {
+    let bits = u32::from(esize) * 8;
+    if value == 0 {
+        u64::from(bits)
+    } else {
+        u64::from(value.leading_zeros() - (64 - bits))
+    }
+}
+
+/// ARM's RecipEstimate over the nine leading bits of a fixed-point
+/// operand: the estimate table URECPE reads.
+fn recip_estimate(a: u32) -> u32 {
+    let a = a * 2 + 1;
+    let b = (1u32 << 19) / a;
+    b.div_ceil(2)
+}
+
+/// ARM's RecipSqrtEstimate, the same table for URSQRTE. The search for
+/// `b` is the pseudocode's own loop, kept literal rather than solved: it
+/// is what pins the boundary cases the capture checks.
+fn recip_sqrt_estimate(a: u32) -> u32 {
+    let a = if a < 256 { a * 2 + 1 } else { (((a >> 1) << 1) + 1) * 2 };
+    let mut b = 512u32;
+    while u64::from(a) * u64::from(b + 1) * u64::from(b + 1) < (1u64 << 28) {
+        b += 1;
+    }
+    b.div_ceil(2)
+}
+
+/// URECPE: an operand below 0.5 has no representable reciprocal in the
+/// fixed-point format, so the estimate saturates to all ones.
+fn unsigned_recip_estimate(operand: u32) -> u32 {
+    if operand >> 31 == 0 {
+        u32::MAX
+    } else {
+        (recip_estimate(operand >> 23) & 0x1ff) << 23
+    }
+}
+
+/// URSQRTE: the same, with the cut at 0.25.
+fn unsigned_rsqrt_estimate(operand: u32) -> u32 {
+    if operand >> 30 == 0 {
+        u32::MAX
+    } else {
+        (recip_sqrt_estimate(operand >> 23) & 0x1ff) << 23
+    }
+}
+
+/// One lane of a three-same operation. `d` is the destination lane,
+/// which only the accumulating rows (MLA, MLS, SABA, UABA) read.
+fn simd_same_lane(op: SimdSameOp, a: u64, b: u64, d: u64, esize: u8) -> u64 {
+    let mask = lane_mask(esize);
+    let sa = lane_signed(a, esize);
+    let sb = lane_signed(b, esize);
+    let bits = u32::from(esize) * 8;
+    // The absolute difference the SABD/SABA and UABD/UABA rows share.
+    let sdiff = (i128::from(sa) - i128::from(sb)).unsigned_abs() as u64;
+    let udiff = a.abs_diff(b);
+    match op {
+        SimdSameOp::Add => a.wrapping_add(b) & mask,
+        SimdSameOp::Sub => a.wrapping_sub(b) & mask,
+        SimdSameOp::Mul => a.wrapping_mul(b) & mask,
+        SimdSameOp::Mla => d.wrapping_add(a.wrapping_mul(b)) & mask,
+        SimdSameOp::Mls => d.wrapping_sub(a.wrapping_mul(b)) & mask,
+        SimdSameOp::Pmul => poly_mul(a, b) & mask,
+        SimdSameOp::Cmeq => if a == b { mask } else { 0 },
+        SimdSameOp::Cmtst => if a & b != 0 { mask } else { 0 },
+        SimdSameOp::Cmgt => if sa > sb { mask } else { 0 },
+        SimdSameOp::Cmge => if sa >= sb { mask } else { 0 },
+        SimdSameOp::Cmhi => if a > b { mask } else { 0 },
+        SimdSameOp::Cmhs => if a >= b { mask } else { 0 },
+        SimdSameOp::Smax | SimdSameOp::Smaxp => if sa >= sb { a } else { b },
+        SimdSameOp::Smin | SimdSameOp::Sminp => if sa <= sb { a } else { b },
+        SimdSameOp::Umax | SimdSameOp::Umaxp => a.max(b),
+        SimdSameOp::Umin | SimdSameOp::Uminp => a.min(b),
+        SimdSameOp::Sabd => sdiff & mask,
+        SimdSameOp::Uabd => udiff & mask,
+        SimdSameOp::Saba => d.wrapping_add(sdiff) & mask,
+        SimdSameOp::Uaba => d.wrapping_add(udiff) & mask,
+        // The halving adds and subtracts are defined in one extra bit:
+        // the sum is formed at esize+1 and the result is its bits
+        // esize:1, so the carry out is never lost.
+        SimdSameOp::Shadd => ((i128::from(sa) + i128::from(sb)) >> 1) as u64 & mask,
+        SimdSameOp::Uhadd => ((i128::from(a) + i128::from(b)) >> 1) as u64 & mask,
+        SimdSameOp::Srhadd => ((i128::from(sa) + i128::from(sb) + 1) >> 1) as u64 & mask,
+        SimdSameOp::Urhadd => ((i128::from(a) + i128::from(b) + 1) >> 1) as u64 & mask,
+        SimdSameOp::Shsub => ((i128::from(sa) - i128::from(sb)) >> 1) as u64 & mask,
+        SimdSameOp::Uhsub => ((i128::from(a) - i128::from(b)) >> 1) as u64 & mask,
+        // The saturating rows have to see the overflow to clamp it.
+        SimdSameOp::Sqadd => sat_signed(i128::from(sa) + i128::from(sb), esize),
+        SimdSameOp::Uqadd => sat_unsigned(i128::from(a) + i128::from(b), esize),
+        SimdSameOp::Sqsub => sat_signed(i128::from(sa) - i128::from(sb), esize),
+        SimdSameOp::Uqsub => sat_unsigned(i128::from(a) - i128::from(b), esize),
+        // The doubling multiplies form a double-width product on
+        // purpose and keep its high half: the only pair that saturates
+        // is the two minimum values, whose doubled product is one past
+        // the top of the lane.
+        SimdSameOp::Sqdmulh => {
+            sat_signed((2 * i128::from(sa) * i128::from(sb)) >> bits, esize)
+        }
+        SimdSameOp::Sqrdmulh => {
+            let product = 2 * i128::from(sa) * i128::from(sb) + (1i128 << (bits - 1));
+            sat_signed(product >> bits, esize)
+        }
+        SimdSameOp::Addp => a.wrapping_add(b) & mask,
+    }
+}
+
+/// Whether a three-same row reads its two sources as one concatenated
+/// vector and folds neighbouring pairs, rather than lane against lane.
+fn is_pairwise(op: SimdSameOp) -> bool {
+    matches!(
+        op,
+        SimdSameOp::Addp
+            | SimdSameOp::Smaxp
+            | SimdSameOp::Sminp
+            | SimdSameOp::Umaxp
+            | SimdSameOp::Uminp
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_three_same(
+    op: SimdSameOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if scalar { esize } else if q { 16 } else { 8 };
+    let n = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let m = read_lanes(regs.read_fpr_q(rm), esize, bytes);
+    let d = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+    let out: Vec<u64> = if is_pairwise(op) {
+        // Vn's lanes then Vm's, folded two at a time, so the low half of
+        // the destination comes from Vn and the high half from Vm.
+        let concat: Vec<u64> = n.iter().chain(m.iter()).copied().collect();
+        (0..concat.len() / 2)
+            .map(|i| simd_same_lane(op, concat[i * 2], concat[i * 2 + 1], 0, esize))
+            .collect()
+    } else {
+        (0..n.len())
+            .map(|i| simd_same_lane(op, n[i], m[i], d[i], esize))
+            .collect()
+    };
+    regs.write_fpr_q(rd, pack_lanes(&out, esize));
+}
+
+/// One lane of a two-register misc operation. `d` is the destination
+/// lane, which the two saturating accumulate rows read.
+fn simd_misc_lane(op: SimdMiscOp, a: u64, d: u64, esize: u8) -> u64 {
+    let mask = lane_mask(esize);
+    let sa = lane_signed(a, esize);
+    match op {
+        SimdMiscOp::Cnt => u64::from(a.count_ones()),
+        SimdMiscOp::Mvn => !a & mask,
+        SimdMiscOp::Rbit => reverse_byte(a),
+        SimdMiscOp::Cls => count_leading_sign_bits(a, esize),
+        SimdMiscOp::Clz => count_leading_zeros(a, esize),
+        // ABS and NEG wrap at the lane's own width, so the minimum value
+        // is its own absolute value; their saturating twins clamp it.
+        SimdMiscOp::Abs => sa.wrapping_abs() as u64 & mask,
+        SimdMiscOp::Neg => 0u64.wrapping_sub(a) & mask,
+        SimdMiscOp::Sqabs => sat_signed(i128::from(sa).abs(), esize),
+        SimdMiscOp::Sqneg => sat_signed(-i128::from(sa), esize),
+        // SUQADD accumulates an unsigned operand into a signed
+        // destination and saturates as a signed value; USQADD is the
+        // other way round.
+        SimdMiscOp::Suqadd => {
+            sat_signed(i128::from(lane_signed(d, esize)) + i128::from(a), esize)
+        }
+        SimdMiscOp::Usqadd => sat_unsigned(i128::from(d) + i128::from(sa), esize),
+        SimdMiscOp::Cmgt0 => if sa > 0 { mask } else { 0 },
+        SimdMiscOp::Cmge0 => if sa >= 0 { mask } else { 0 },
+        SimdMiscOp::Cmeq0 => if sa == 0 { mask } else { 0 },
+        SimdMiscOp::Cmle0 => if sa <= 0 { mask } else { 0 },
+        SimdMiscOp::Cmlt0 => if sa < 0 { mask } else { 0 },
+        SimdMiscOp::Urecpe => u64::from(unsigned_recip_estimate(a as u32)),
+        SimdMiscOp::Ursqrte => u64::from(unsigned_rsqrt_estimate(a as u32)),
+        // The element-reversal and pairwise-widening rows are not lane
+        // to lane, so `exec_simd_two_misc` handles them itself.
+        SimdMiscOp::Rev64
+        | SimdMiscOp::Rev32
+        | SimdMiscOp::Rev16
+        | SimdMiscOp::Saddlp
+        | SimdMiscOp::Uaddlp
+        | SimdMiscOp::Sadalp
+        | SimdMiscOp::Uadalp => unreachable!("handled by shape, not lane by lane"),
+    }
+}
+
+fn exec_simd_two_misc(
+    op: SimdMiscOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if scalar { esize } else if q { 16 } else { 8 };
+    let source = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    match op {
+        // The REV rows reverse the ORDER of elements inside a container
+        // of 64, 32 or 16 bits; the elements themselves are untouched.
+        SimdMiscOp::Rev64 | SimdMiscOp::Rev32 | SimdMiscOp::Rev16 => {
+            let container: u8 = match op {
+                SimdMiscOp::Rev64 => 8,
+                SimdMiscOp::Rev32 => 4,
+                _ => 2,
+            };
+            let out: Vec<u64> = source
+                .chunks(usize::from(container / esize))
+                .flat_map(|chunk| chunk.iter().rev().copied())
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+        // The pairwise widening adds fold neighbouring lanes into one of
+        // twice the width; the ADALP pair accumulates into what the
+        // destination already holds.
+        SimdMiscOp::Saddlp | SimdMiscOp::Uaddlp | SimdMiscOp::Sadalp | SimdMiscOp::Uadalp => {
+            let signed = matches!(op, SimdMiscOp::Saddlp | SimdMiscOp::Sadalp);
+            let accumulate = matches!(op, SimdMiscOp::Sadalp | SimdMiscOp::Uadalp);
+            let wide = esize * 2;
+            let wide_mask = lane_mask(wide);
+            let held = read_lanes(regs.read_fpr_q(rd), wide, bytes);
+            let out: Vec<u64> = (0..source.len() / 2)
+                .map(|i| {
+                    let (a, b) = (source[i * 2], source[i * 2 + 1]);
+                    let sum = if signed {
+                        (lane_signed(a, esize).wrapping_add(lane_signed(b, esize))) as u64
+                    } else {
+                        a.wrapping_add(b)
+                    };
+                    let sum = sum & wide_mask;
+                    if accumulate {
+                        held[i].wrapping_add(sum) & wide_mask
+                    } else {
+                        sum
+                    }
+                })
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        _ => {
+            let held = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+            let out: Vec<u64> = source
+                .iter()
+                .enumerate()
+                .map(|(i, lane)| simd_misc_lane(op, *lane, held[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+    }
+}
+
+fn exec_simd_across(
+    op: SimdAcrossOp,
+    esize: u8,
+    q: bool,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if q { 16 } else { 8 };
+    let lanes = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let signed = |value: &u64| i128::from(lane_signed(*value, esize));
+    let (width, value) = match op {
+        // The widening sums add at twice the lane width before they
+        // fold, so nothing is lost on the way to the destination.
+        SimdAcrossOp::Saddlv => {
+            let sum = lanes.iter().map(signed).sum::<i128>();
+            (esize * 2, sum as u64 & lane_mask(esize * 2))
+        }
+        SimdAcrossOp::Uaddlv => {
+            let sum = lanes.iter().map(|v| i128::from(*v)).sum::<i128>();
+            (esize * 2, sum as u64 & lane_mask(esize * 2))
+        }
+        SimdAcrossOp::Addv => {
+            let sum = lanes.iter().fold(0u64, |acc, v| acc.wrapping_add(*v));
+            (esize, sum & lane_mask(esize))
+        }
+        SimdAcrossOp::Smaxv => {
+            let best = lanes.iter().max_by_key(|v| lane_signed(**v, esize)).copied();
+            (esize, best.unwrap_or(0))
+        }
+        SimdAcrossOp::Sminv => {
+            let best = lanes.iter().min_by_key(|v| lane_signed(**v, esize)).copied();
+            (esize, best.unwrap_or(0))
+        }
+        SimdAcrossOp::Umaxv => (esize, lanes.iter().copied().max().unwrap_or(0)),
+        SimdAcrossOp::Uminv => (esize, lanes.iter().copied().min().unwrap_or(0)),
+        // The SIMD-scalar pairwise ADDP folds the two lanes it has.
+        SimdAcrossOp::AddpScalar => {
+            let sum = lanes.iter().fold(0u64, |acc, v| acc.wrapping_add(*v));
+            (esize, sum & lane_mask(esize))
+        }
+    };
+    regs.write_fpr_scalar(rd, width, value);
 }
 
 fn exec_fp_binary(
