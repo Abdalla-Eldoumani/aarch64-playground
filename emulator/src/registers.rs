@@ -375,11 +375,13 @@ impl RegisterFile {
             return None;
         }
         let bits = u32::from(esize_bytes) * 8;
-        let shift = u32::from(lane) * bits;
-        if shift >= 128 {
+        // lanes run 0..(128 / bits): a lane whose start fits but whose end
+        // does not (lane 8 of a 16-byte-wide byte view is fine, lane 3 of
+        // an 8-byte view is not) must read zero, not a truncated slice.
+        if u32::from(lane) >= 128 / bits {
             return None;
         }
-        Some((bits, shift))
+        Some((bits, u32::from(lane) * bits))
     }
 
     fn lane_mask(bits: u32) -> u128 {
@@ -654,5 +656,37 @@ mod tests {
         let mut rf = RegisterFile::new();
         rf.write_fpr_bits(32, 0xDEAD);
         assert_eq!(rf.read_fpr_bits(32), 0);
+    }
+
+    #[test]
+    fn scalar_writes_zero_everything_above_their_width() {
+        let mut rf = RegisterFile::new();
+        rf.write_fpr_q(3, u128::MAX);
+        rf.write_fpr_bits(3, 0x1122_3344_5566_7788);
+        assert_eq!(rf.read_fpr_q(3), 0x1122_3344_5566_7788);
+        rf.write_fpr_q(3, u128::MAX);
+        rf.write_fpr_f32(3, f32::from_bits(0xC0A0_0000));
+        assert_eq!(rf.read_fpr_q(3), 0xC0A0_0000);
+        rf.write_fpr_q(3, u128::MAX);
+        rf.write_fpr_scalar(3, 1, 0xABCD);
+        assert_eq!(rf.read_fpr_q(3), 0xCD);
+        rf.write_fpr_scalar(3, 2, 0xABCD_EF);
+        assert_eq!(rf.read_fpr_q(3), 0xCDEF);
+    }
+
+    #[test]
+    fn lane_writes_leave_the_other_lanes_alone_and_out_of_range_lanes_read_zero() {
+        let mut rf = RegisterFile::new();
+        rf.write_fpr_q(7, 0x0f0e_0d0c_0b0a_0908_0706_0504_0302_0100);
+        rf.write_fpr_lane(7, 1, 15, 0xEE);
+        rf.write_fpr_lane(7, 4, 1, 0xFFFF_FFFF_AAAA_BBBB);
+        assert_eq!(rf.read_fpr_q(7), 0xee0e_0d0c_0b0a_0908_aaaa_bbbb_0302_0100);
+        assert_eq!(rf.read_fpr_lane(7, 1, 15), 0xEE);
+        assert_eq!(rf.read_fpr_lane(7, 8, 1), 0xee0e_0d0c_0b0a_0908);
+        assert_eq!(rf.read_fpr_lane(7, 8, 2), 0);
+        assert_eq!(rf.read_fpr_lane(7, 4, 4), 0);
+        assert_eq!(rf.read_fpr_lane(7, 1, 16), 0);
+        rf.write_fpr_lane(7, 8, 2, 0x1234);
+        assert_eq!(rf.read_fpr_q(7), 0xee0e_0d0c_0b0a_0908_aaaa_bbbb_0302_0100);
     }
 }
