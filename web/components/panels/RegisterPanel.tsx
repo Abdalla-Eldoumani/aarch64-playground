@@ -23,7 +23,9 @@ interface RegisterPanelProps {
   nzcv: number;
   /** Full source text and the line the CPU is on, read only to tell a write
    *  through a v/q spelling from one through a d/s spelling: the register file
-   *  is the same, the reading the student asked for is not. */
+   *  is the same, the reading the student asked for is not. `currentLine` is
+   *  the NEXT instruction, so the panel keeps the previous snapshot's line to
+   *  read the one that actually executed. */
   source?: string;
   currentLine?: number | null;
 }
@@ -271,19 +273,33 @@ export function RegisterPanel({
 
   const [laneWidth, setLaneWidth] = usePersistedLaneWidth();
 
-  // The vector file one snapshot ago, kept by adjusting state during render
-  // (React's derive-from-props pattern). Nothing in the wasm reports which
-  // LANES a write touched, and the diff against the previous snapshot answers
-  // both that and "did anything above bit 63 move", which is what separates a
-  // v write from a d write.
-  const [vecPair, setVecPair] = useState({
+  // The previous snapshot, kept by adjusting state during render (React's
+  // derive-from-props pattern). Two things live here. The vector file, because
+  // nothing in the wasm reports which LANES a write touched, and the diff
+  // against the previous file answers both that and "did anything above bit 63
+  // move". And the line that was current before it: `currentLine` is where the
+  // pc points AFTER the step, so the instruction that produced this snapshot is
+  // the one the PREVIOUS snapshot was sitting on. Over a run that is where the
+  // run started rather than the last instruction of it, which costs nothing:
+  // the spelling is only consulted when an fp or vector register changed, and
+  // a run that touched bits 127:64 is already a v write by upperMoved.
+  const [snapPair, setSnapPair] = useState({
     cur: vectorRegisters,
     prev: vectorRegisters,
+    line: currentLine,
+    prevLine: currentLine,
   });
-  if (vecPair.cur !== vectorRegisters) {
-    setVecPair({ cur: vectorRegisters, prev: vecPair.cur });
+  if (snapPair.cur !== vectorRegisters) {
+    setSnapPair({
+      cur: vectorRegisters,
+      prev: snapPair.cur,
+      line: currentLine,
+      prevLine: snapPair.line,
+    });
   }
-  const prevVectors = vecPair.cur === vectorRegisters ? vecPair.prev : vecPair.cur;
+  const fresh = snapPair.cur === vectorRegisters;
+  const prevVectors = fresh ? snapPair.prev : snapPair.cur;
+  const executedLine = fresh ? snapPair.prevLine : snapPair.line;
 
   const changedVecRegs = useMemo(() => {
     const out = new Set<number>();
@@ -302,9 +318,9 @@ export function RegisterPanel({
   }, [changedVecRegs, prevVectors, vectorRegisters]);
 
   const vSpelledDest = useMemo(() => {
-    if (currentLine == null || !source) return false;
-    return V_SPELLED_DEST.test(source.split("\n")[currentLine - 1] ?? "");
-  }, [source, currentLine]);
+    if (executedLine == null || !source) return false;
+    return V_SPELLED_DEST.test(source.split("\n")[executedLine - 1] ?? "");
+  }, [source, executedLine]);
 
   // A v-view row flashes on either signal: the bits moved, or the machine
   // reported the write and it happened to land on the same value.
