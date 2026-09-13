@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
 use crate::decoder::{
-    simd_imm_form, MemSize, SimdImmForm, SimdImmOp, DP1_OPS, FP_BINARY_OPS, FP_FROM_INT_OPS,
-    FP_MUL_ADD_OPS, FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS,
+    element_letter, lane_allowed, simd_across_by_name, simd_imm_form, simd_logical_by_name, simd_logical_name,
+    simd_misc_by_name, simd_same_by_name, size_field, MemSize, SimdImmForm, SimdImmOp,
+    SimdLogicalOp, SimdMiscShape, DP1_OPS, FP_BINARY_OPS, FP_FROM_INT_OPS, FP_MUL_ADD_OPS,
+    FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS,
 };
 use crate::errors::EmuError;
 use crate::registers::{reg_alias, Condition, CONDITIONS};
@@ -175,6 +177,19 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // advanced simd: the vector immediates and the lane moves (the vector
     // forms of MOV, ORR, BIC and FMOV ride their existing arms)
     "MOVI", "MVNI", "DUP", "INS", "UMOV", "SMOV",
+    // advanced simd: the integer lane families (the vector forms of ADD,
+    // SUB, MUL, AND, EOR, ORN, MVN, NEG, CLS, CLZ, RBIT, REV16 and REV32
+    // ride their existing arms)
+    "MLA", "MLS", "PMUL", "BSL", "BIT", "BIF",
+    "CMEQ", "CMGE", "CMGT", "CMHI", "CMHS", "CMTST", "CMLE", "CMLT",
+    "SQADD", "UQADD", "SQSUB", "UQSUB", "SUQADD", "USQADD", "SQABS", "SQNEG",
+    "SHADD", "UHADD", "SRHADD", "URHADD", "SHSUB", "UHSUB",
+    "SQDMULH", "SQRDMULH",
+    "SMAX", "SMIN", "UMAX", "UMIN", "SMAXP", "SMINP", "UMAXP", "UMINP",
+    "SMAXV", "SMINV", "UMAXV", "UMINV", "ADDV", "SADDLV", "UADDLV", "ADDP",
+    "SADDLP", "UADDLP", "SADALP", "UADALP",
+    "SABD", "UABD", "SABA", "UABA",
+    "ABS", "NOT", "CNT", "REV64", "URECPE", "URSQRTE",
     // the rest of the float-to-integer rounding modes
     "FCVTZU", "FCVTAS", "FCVTAU", "FCVTMS", "FCVTMU", "FCVTPS", "FCVTPU",
     // pc-relative address formation
@@ -224,6 +239,13 @@ fn encode_line(
     // rather than a hand-written arm per condition.
     if let Some(cond) = bcond_condition(&mn) {
         return encode_bcond(&ops, cond, pc, labels, line_num);
+    }
+
+    // A dozen integer vector mnemonics are also general-register ones,
+    // and only the operands separate the two readings, so the sniff
+    // stands ahead of the dispatch rather than inside a dozen arms.
+    if is_simd_integer_line(&mn, &ops) {
+        return encode_simd_integer(&mn, &ops, line_num);
     }
 
     match mn.as_str() {
@@ -363,6 +385,18 @@ fn encode_line(
         "STP" => encode_ldst_pair(&ops, 0, line_num),
         "LDNP" => encode_ldst_pair_no_allocate(&ops, 1, line_num),
         "STNP" => encode_ldst_pair_no_allocate(&ops, 0, line_num),
+
+        // -- advanced simd: the integer lane families --
+        "MLA" | "MLS" | "PMUL" | "BSL" | "BIT" | "BIF" => encode_simd_integer(&mn, &ops, line_num),
+        "CMEQ" | "CMGE" | "CMGT" | "CMHI" | "CMHS" | "CMTST" | "CMLE" | "CMLT" => encode_simd_integer(&mn, &ops, line_num),
+        "SQADD" | "UQADD" | "SQSUB" | "UQSUB" | "SUQADD" | "USQADD" | "SQABS" | "SQNEG" => encode_simd_integer(&mn, &ops, line_num),
+        "SHADD" | "UHADD" | "SRHADD" | "URHADD" | "SHSUB" | "UHSUB" => encode_simd_integer(&mn, &ops, line_num),
+        "SQDMULH" | "SQRDMULH" => encode_simd_integer(&mn, &ops, line_num),
+        "SMAX" | "SMIN" | "UMAX" | "UMIN" | "SMAXP" | "SMINP" | "UMAXP" | "UMINP" => encode_simd_integer(&mn, &ops, line_num),
+        "SMAXV" | "SMINV" | "UMAXV" | "UMINV" | "ADDV" | "SADDLV" | "UADDLV" | "ADDP" => encode_simd_integer(&mn, &ops, line_num),
+        "SADDLP" | "UADDLP" | "SADALP" | "UADALP" => encode_simd_integer(&mn, &ops, line_num),
+        "SABD" | "UABD" | "SABA" | "UABA" => encode_simd_integer(&mn, &ops, line_num),
+        "ABS" | "NOT" | "CNT" | "REV64" | "URECPE" | "URSQRTE" => encode_simd_integer(&mn, &ops, line_num),
 
         // -- advanced simd: the vector immediates and the lane moves --
         "MOVI" => encode_simd_mod_imm(&ops, SimdImmOp::Movi, line_num),
@@ -2402,11 +2436,258 @@ fn encode_simd_lane_out(ops: &[&str], signed: bool, ln: usize) -> Result<u32, Em
     Ok(simd_copy_word(sf, false, false, src.imm5(), imm4, src.idx, rd))
 }
 
-/// ORR and BIC (vector, register): `Vd = Vn | Vm` and `Vd = Vn & ~Vm`.
-/// The size field is the op selector here, not an element width, so both
-/// take the byte arrangements alone.
-fn encode_simd_logical_reg(ops: &[&str], bic: bool, ln: usize) -> Result<u32, EmuError> {
-    let name = if bic { "bic" } else { "orr" };
+// ---------------------------------------------------------------------------
+// advanced simd: the integer lane families
+// ---------------------------------------------------------------------------
+
+/// A b/h/s/d register operand as the SIMD-scalar forms spell their
+/// operands, answered as (register, lane bytes). `q` is not one of them:
+/// no integer lane form names the whole 128 bits without an arrangement.
+fn simd_scalar_operand(s: &str) -> Option<(u8, u8)> {
+    let text = s.trim();
+    let esize = match FpWidth::from_prefix(text.chars().next()?)? {
+        FpWidth::B => 1,
+        FpWidth::H => 2,
+        FpWidth::S => 4,
+        FpWidth::D => 8,
+        FpWidth::Q => return None,
+    };
+    let idx: u8 = text[1..].parse().ok()?;
+    if idx > 31 {
+        return None;
+    }
+    Some((idx, esize))
+}
+
+/// Whether a line can only be the integer vector reading of its
+/// mnemonic. ADD, SUB, MUL, AND, EOR, ORN, MVN, NEG, CLS, CLZ, RBIT,
+/// REV16 and REV32 each name a general-register instruction as well, and
+/// only the operands tell the two apart: a first operand naming an
+/// arrangement (`v3.16b`) or a b/h/s/d register can be nothing else. The
+/// sniff sits ahead of the dispatch so those arms stay one line each.
+fn is_simd_integer_line(mn: &str, ops: &[&str]) -> bool {
+    // ORR, BIC and MOV keep their own sniffs: those have to reach the
+    // vector immediates and the lane moves, which are other classes.
+    if matches!(mn, "ORR" | "BIC" | "MOV") {
+        return false;
+    }
+    let name = simd_integer_name(mn);
+    let known = simd_logical_by_name(&name).is_some()
+        || simd_same_by_name(&name).is_some()
+        || simd_misc_by_name(&name, false).is_some()
+        || simd_misc_by_name(&name, true).is_some()
+        || simd_across_by_name(&name).is_some();
+    known
+        && ops
+            .first()
+            .is_some_and(|op| parse_vec_operand(op).is_some() || simd_scalar_operand(op).is_some())
+}
+
+/// The table key for a mnemonic. GAS takes `not` for the vector MVN and
+/// prints MVN back, so the two spellings share one row.
+fn simd_integer_name(mn: &str) -> String {
+    if mn.eq_ignore_ascii_case("not") {
+        "mvn".to_string()
+    } else {
+        mn.to_ascii_lowercase()
+    }
+}
+
+/// The common header of the three classes: the top byte, U, and the size
+/// field. `low` carries bits 21:0, which is where the classes differ.
+fn simd_class_word(scalar: bool, q: bool, u: bool, size: u8, low: u32) -> u32 {
+    let base = if scalar { 0x5E00_0000 } else { 0x0E00_0000 | ((q as u32) << 30) };
+    base | ((u as u32) << 29) | (u32::from(size) << 22) | low
+}
+
+/// The Advanced SIMD integer families. One entry point, because the
+/// operands rather than the mnemonic decide which class a line is in:
+/// `cmgt v3.8b, v7.8b, v21.8b` is three-same and `cmgt v3.8b, v7.8b, #0`
+/// two-register misc, and `addp` is three-same with three operands and
+/// the SIMD-scalar pairwise form with two.
+fn encode_simd_integer(mn: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let name = simd_integer_name(mn);
+    if let Some((op, _, _)) = simd_logical_by_name(&name) {
+        return encode_simd_logical_reg(ops, op, ln);
+    }
+    match ops.len() {
+        3 if ops[2].trim().starts_with('#') => encode_simd_two_misc(&name, ops, true, ln),
+        3 => encode_simd_three_same(&name, ops, ln),
+        2 if simd_across_by_name(&name).is_some() => encode_simd_across(&name, ops, ln),
+        2 => encode_simd_two_misc(&name, ops, false, ln),
+        _ => asm_err(
+            ln,
+            &format!(
+                "`{}` is a vector instruction here, and takes 2 or 3 operands \
+                 ({} v0.8b, v1.8b) or their b/h/s/d scalar forms",
+                mn.to_ascii_lowercase(),
+                mn.to_ascii_lowercase()
+            ),
+        ),
+    }
+}
+
+/// Three-same: `Vd.T, Vn.T, Vm.T`, with the SIMD-scalar `Fd, Fn, Fm`
+/// beside it. Every operand has the same shape, which is what names the
+/// size field.
+fn encode_simd_three_same(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let Some(row) = simd_same_by_name(name) else {
+        return asm_err(ln, &format!("`{name}` does not take three operands"));
+    };
+    if let Some((rd, esize)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, en)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let Some((rm, em)) = simd_scalar_operand(ops[2]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[2].trim()));
+        };
+        if en != esize || em != esize || !lane_allowed(row.scalar, esize) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width; its operands all take one"),
+            );
+        }
+        let low = (1 << 21)
+            | (u32::from(rm) << 16)
+            | (u32::from(row.opcode) << 11)
+            | (1 << 10)
+            | (u32::from(rn) << 5)
+            | u32::from(rd);
+        return Ok(simd_class_word(true, false, row.u, size_field(esize), low));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    if n.esize != d.esize || m.esize != d.esize || n.q != d.q || m.q != d.q {
+        return asm_err(ln, &format!("{name} takes three operands of the same arrangement"));
+    }
+    // No three-same form is spelled 1d: a single 64-bit lane is the
+    // SIMD-scalar form, written with a d register.
+    if !lane_allowed(row.lanes, d.esize) || (d.esize == 8 && !d.q) {
+        return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&d)));
+    }
+    let low = (1 << 21)
+        | (u32::from(m.idx) << 16)
+        | (u32::from(row.opcode) << 11)
+        | (1 << 10)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx);
+    Ok(simd_class_word(false, d.q, row.u, size_field(d.esize), low))
+}
+
+/// Two-register misc: `Vd.T, Vn.T`, the compares against zero
+/// (`Vd.T, Vn.T, #0`), and the pairwise widening adds, whose destination
+/// holds half as many lanes of twice the width.
+fn encode_simd_two_misc(
+    name: &str,
+    ops: &[&str],
+    zero: bool,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let Some(row) = simd_misc_by_name(name, zero) else {
+        return asm_err(
+            ln,
+            &format!("`{name}` has no form with these operands"),
+        );
+    };
+    if zero && ops[2].trim().trim_start_matches('#').trim() != "0" {
+        return asm_err(ln, &format!("{name} compares against #0, nothing else"));
+    }
+    if let Some((rd, esize)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, en)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        if en != esize || !lane_allowed(row.scalar, esize) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width; both operands take one"),
+            );
+        }
+        let low = (1 << 21)
+            | (u32::from(row.opcode) << 12)
+            | (1 << 11)
+            | (u32::from(rn) << 5)
+            | u32::from(rd);
+        return Ok(simd_class_word(true, false, row.u, size_field(esize), low));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let widen = row.shape == SimdMiscShape::Widen;
+    let dest_esize = if widen { n.esize * 2 } else { n.esize };
+    if d.esize != dest_esize || d.q != n.q {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} writes {} lanes for a {} source",
+                if widen { "twice as wide" } else { "matching" },
+                arrangement_name(&n)
+            ),
+        );
+    }
+    if !lane_allowed(row.lanes, n.esize) || (!widen && n.esize == 8 && !n.q) {
+        return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&n)));
+    }
+    // A row that fixes its own size field says so: RBIT is spelled in
+    // byte lanes but encodes size 01.
+    let size = row.size.unwrap_or_else(|| size_field(n.esize));
+    let low = (1 << 21)
+        | (u32::from(row.opcode) << 12)
+        | (1 << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx);
+    Ok(simd_class_word(false, n.q, row.u, size, low))
+}
+
+/// Across lanes: `Fd, Vn.T`, the whole source folded into one scalar.
+/// `addp d3, v7.2d` is the SIMD-scalar pairwise class, same shape.
+fn encode_simd_across(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let row = simd_across_by_name(name).expect("the caller checked the table");
+    let Some((rd, dest_esize)) = simd_scalar_operand(ops[0]) else {
+        return asm_err(ln, &format!("{name} writes one b, h, s or d register"));
+    };
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let expected = if row.widen { n.esize * 2 } else { n.esize };
+    if dest_esize != expected {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} folds a {} source into a {} register",
+                arrangement_name(&n),
+                element_letter(expected)
+            ),
+        );
+    }
+    // The group never folds a 64-bit arrangement of its wider lanes:
+    // that would leave one or two elements, which is what the pairwise
+    // forms are for.
+    if !lane_allowed(row.lanes, n.esize) || (n.esize >= 4 && !n.q) {
+        return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&n)));
+    }
+    let low = (1 << 21)
+        | (1 << 20)
+        | (u32::from(row.opcode) << 12)
+        | (1 << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(rd);
+    Ok(simd_class_word(row.scalar_class, n.q, row.u, size_field(n.esize), low))
+}
+
+/// The arrangement suffix a parsed operand was written with, for a
+/// diagnostic that quotes back what the line said.
+fn arrangement_name(reg: &VecReg) -> &'static str {
+    ARRANGEMENTS
+        .iter()
+        .find(|(_, esize, q)| *esize == reg.esize && *q == reg.q)
+        .map(|(name, _, _)| *name)
+        .unwrap_or("vector")
+}
+
+/// The bitwise three-same group: AND, BIC, ORR, ORN, EOR, BSL, BIT and
+/// BIF. The size field is the op selector here, not an element width, so
+/// all eight take the byte arrangements alone.
+fn encode_simd_logical_reg(ops: &[&str], op: SimdLogicalOp, ln: usize) -> Result<u32, EmuError> {
+    let name = simd_logical_name(op);
+    let (_, u, size) = simd_logical_by_name(name).expect("every logical op has a row");
     if ops.len() != 3 {
         return asm_err(ln, &format!("the vector {name} takes 3 operands: {name} v0.16b, v1.16b, v2.16b"));
     }
@@ -2419,15 +2700,12 @@ fn encode_simd_logical_reg(ops: &[&str], bic: bool, ln: usize) -> Result<u32, Em
             &format!("the vector {name} takes three matching 8b or 16b operands"),
         );
     }
-    let size: u32 = if bic { 0b01 } else { 0b10 };
-    Ok(((rd.q as u32) << 30)
-        | (0x0E << 24)
-        | (size << 22)
-        | (1 << 21)
+    let low = (1 << 21)
         | (u32::from(rm.idx) << 16)
         | (0b000111 << 10)
         | (u32::from(rn.idx) << 5)
-        | u32::from(rd.idx))
+        | u32::from(rd.idx);
+    Ok(simd_class_word(false, rd.q, u, size, low))
 }
 
 /// The two vector readings of ORR and BIC: a modified immediate
@@ -2438,7 +2716,8 @@ fn encode_vector_logical(ops: &[&str], op: SimdImmOp, ln: usize) -> Result<u32, 
     if second.starts_with('#') || second.starts_with(|c: char| c.is_ascii_digit()) {
         return encode_simd_mod_imm(ops, op, ln);
     }
-    encode_simd_logical_reg(ops, op == SimdImmOp::Bic, ln)
+    let logical = if op == SimdImmOp::Bic { SimdLogicalOp::Bic } else { SimdLogicalOp::Orr };
+    encode_simd_logical_reg(ops, logical, ln)
 }
 
 /// ORR: the general-register and bitmask-immediate forms, plus the two
@@ -2485,7 +2764,7 @@ fn encode_simd_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     let dest = parse_vec_operand(ops[0]);
     match dest {
         Some(d) if d.lane.is_some() => encode_simd_ins(ops, ln),
-        Some(_) => encode_simd_logical_reg(&[ops[0], ops[1], ops[1]], false, ln),
+        Some(_) => encode_simd_logical_reg(&[ops[0], ops[1], ops[1]], SimdLogicalOp::Orr, ln),
         // A lane source with a non-vector destination: a general
         // register takes UMOV, a b/h/s/d scalar takes DUP.
         None if parse_register(ops[0], ln).is_ok() => encode_simd_lane_out(ops, false, ln),
