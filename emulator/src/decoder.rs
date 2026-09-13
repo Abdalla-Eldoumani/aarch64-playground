@@ -649,6 +649,14 @@ pub enum SimdSameOp {
     Sqdmulh,
     Sqrdmulh,
     Addp,
+    Sshl,
+    Ushl,
+    Srshl,
+    Urshl,
+    Sqshl,
+    Uqshl,
+    Sqrshl,
+    Uqrshl,
 }
 
 pub struct SimdSameRow {
@@ -676,8 +684,8 @@ const fn row_same(
 }
 
 /// The three-same table, ordered by opcode with U inside it, the way the
-/// group is laid out. The gap at opcodes 01000..01011 is the register
-/// shift family, which lands with the rest of the shifts.
+/// group is laid out. Opcodes 01000..01011 are the register shifts,
+/// whose second source is a per-lane shift COUNT rather than a value.
 pub const SIMD_THREE_SAME: &[SimdSameRow] = &[
     row_same(SimdSameOp::Shadd, "shadd", false, 0x00, LANE_BHS, LANE_NONE),
     row_same(SimdSameOp::Uhadd, "uhadd", true, 0x00, LANE_BHS, LANE_NONE),
@@ -693,6 +701,14 @@ pub const SIMD_THREE_SAME: &[SimdSameRow] = &[
     row_same(SimdSameOp::Cmhi, "cmhi", true, 0x06, LANE_BHSD, LANE_D),
     row_same(SimdSameOp::Cmge, "cmge", false, 0x07, LANE_BHSD, LANE_D),
     row_same(SimdSameOp::Cmhs, "cmhs", true, 0x07, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Sshl, "sshl", false, 0x08, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Ushl, "ushl", true, 0x08, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Sqshl, "sqshl", false, 0x09, LANE_BHSD, LANE_BHSD),
+    row_same(SimdSameOp::Uqshl, "uqshl", true, 0x09, LANE_BHSD, LANE_BHSD),
+    row_same(SimdSameOp::Srshl, "srshl", false, 0x0a, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Urshl, "urshl", true, 0x0a, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Sqrshl, "sqrshl", false, 0x0b, LANE_BHSD, LANE_BHSD),
+    row_same(SimdSameOp::Uqrshl, "uqrshl", true, 0x0b, LANE_BHSD, LANE_BHSD),
     row_same(SimdSameOp::Smax, "smax", false, 0x0c, LANE_BHS, LANE_NONE),
     row_same(SimdSameOp::Umax, "umax", true, 0x0c, LANE_BHS, LANE_NONE),
     row_same(SimdSameOp::Smin, "smin", false, 0x0d, LANE_BHS, LANE_NONE),
@@ -759,6 +775,11 @@ pub enum SimdMiscOp {
     Cmlt0,
     Abs,
     Neg,
+    Xtn,
+    Sqxtun,
+    Shll,
+    Sqxtn,
+    Uqxtn,
     Urecpe,
     Ursqrte,
 }
@@ -773,6 +794,14 @@ pub enum SimdMiscShape {
     /// `Vd.<T doubled>, Vn.T`: the pairwise widening adds, whose
     /// destination holds half as many lanes of twice the width.
     Widen,
+    /// `Vd.T, Vn.<T doubled>`: the narrowing extracts. Q selects the
+    /// half of the destination they write, which is what the `2` suffix
+    /// on the mnemonic spells; the plain form zeroes bits 127:64.
+    Narrow,
+    /// `Vd.<T doubled>, Vn.T, #<esize>`: SHLL, which shifts each lane
+    /// left by exactly its own width into a lane of twice the width. Q
+    /// selects the half of the SOURCE it reads.
+    Shll,
 }
 
 pub struct SimdMiscRow {
@@ -831,6 +860,11 @@ pub const SIMD_TWO_MISC: &[SimdMiscRow] = &[
     row_misc(SimdMiscOp::Cmlt0, "cmlt", false, 0x0a, LANE_BHSD, LANE_D, SimdMiscShape::Zero, None),
     row_misc(SimdMiscOp::Abs, "abs", false, 0x0b, LANE_BHSD, LANE_D, SimdMiscShape::Same, None),
     row_misc(SimdMiscOp::Neg, "neg", true, 0x0b, LANE_BHSD, LANE_D, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Xtn, "xtn", false, 0x12, LANE_BHS, LANE_NONE, SimdMiscShape::Narrow, None),
+    row_misc(SimdMiscOp::Sqxtun, "sqxtun", true, 0x12, LANE_BHS, LANE_BHS, SimdMiscShape::Narrow, None),
+    row_misc(SimdMiscOp::Shll, "shll", true, 0x13, LANE_BHS, LANE_NONE, SimdMiscShape::Shll, None),
+    row_misc(SimdMiscOp::Sqxtn, "sqxtn", false, 0x14, LANE_BHS, LANE_BHS, SimdMiscShape::Narrow, None),
+    row_misc(SimdMiscOp::Uqxtn, "uqxtn", true, 0x14, LANE_BHS, LANE_BHS, SimdMiscShape::Narrow, None),
     row_misc(SimdMiscOp::Urecpe, "urecpe", false, 0x1c, LANE_S, LANE_NONE, SimdMiscShape::Same, None),
     row_misc(SimdMiscOp::Ursqrte, "ursqrte", true, 0x1c, LANE_S, LANE_NONE, SimdMiscShape::Same, None),
 ];
@@ -937,6 +971,278 @@ pub fn simd_across_row(op: SimdAcrossOp) -> &'static SimdAcrossRow {
         .iter()
         .find(|row| row.op == op)
         .expect("every across op has a row")
+}
+
+/// The three-different class: the two sources and the destination are
+/// not all the same width. One row per (U, opcode) pair at bits 15:12.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdDiffOp {
+    Saddl,
+    Uaddl,
+    Saddw,
+    Uaddw,
+    Ssubl,
+    Usubl,
+    Ssubw,
+    Usubw,
+    Addhn,
+    Raddhn,
+    Sabal,
+    Uabal,
+    Subhn,
+    Rsubhn,
+    Sabdl,
+    Uabdl,
+    Smlal,
+    Umlal,
+    Sqdmlal,
+    Smlsl,
+    Umlsl,
+    Sqdmlsl,
+    Smull,
+    Umull,
+    Sqdmull,
+    Pmull,
+}
+
+/// Which of the three widths a three-different row spells its operands
+/// in. In all three the size field names the NARROW width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdDiffShape {
+    /// `Vd.<2T>, Vn.T, Vm.T`: both sources narrow.
+    Long,
+    /// `Vd.<2T>, Vn.<2T>, Vm.T`: only the second source is narrow.
+    Wide,
+    /// `Vd.T, Vn.<2T>, Vm.<2T>`: the high-half narrowing adds.
+    Narrow,
+}
+
+pub struct SimdDiffRow {
+    pub op: SimdDiffOp,
+    pub name: &'static str,
+    pub u: bool,
+    /// The 4-bit opcode at bits 15:12.
+    pub opcode: u8,
+    /// NARROW lane widths the vector form takes.
+    pub lanes: LaneMask,
+    /// Narrow widths the SIMD-scalar form takes (`sqdmull s3, h7, h21`).
+    pub scalar: LaneMask,
+    pub shape: SimdDiffShape,
+}
+
+const fn row_diff(
+    op: SimdDiffOp,
+    name: &'static str,
+    u: bool,
+    opcode: u8,
+    lanes: LaneMask,
+    scalar: LaneMask,
+    shape: SimdDiffShape,
+) -> SimdDiffRow {
+    SimdDiffRow { op, name, u, opcode, lanes, scalar, shape }
+}
+
+/// The three-different table. The `2` suffix on a mnemonic is the Q bit
+/// and nothing else: it names the upper half of the narrow operands (and
+/// of the destination, for the narrowing rows), so each row covers both
+/// spellings.
+pub const SIMD_THREE_DIFF: &[SimdDiffRow] = &[
+    row_diff(SimdDiffOp::Saddl, "saddl", false, 0x0, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Uaddl, "uaddl", true, 0x0, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Saddw, "saddw", false, 0x1, LANE_BHS, LANE_NONE, SimdDiffShape::Wide),
+    row_diff(SimdDiffOp::Uaddw, "uaddw", true, 0x1, LANE_BHS, LANE_NONE, SimdDiffShape::Wide),
+    row_diff(SimdDiffOp::Ssubl, "ssubl", false, 0x2, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Usubl, "usubl", true, 0x2, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Ssubw, "ssubw", false, 0x3, LANE_BHS, LANE_NONE, SimdDiffShape::Wide),
+    row_diff(SimdDiffOp::Usubw, "usubw", true, 0x3, LANE_BHS, LANE_NONE, SimdDiffShape::Wide),
+    row_diff(SimdDiffOp::Addhn, "addhn", false, 0x4, LANE_BHS, LANE_NONE, SimdDiffShape::Narrow),
+    row_diff(SimdDiffOp::Raddhn, "raddhn", true, 0x4, LANE_BHS, LANE_NONE, SimdDiffShape::Narrow),
+    row_diff(SimdDiffOp::Sabal, "sabal", false, 0x5, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Uabal, "uabal", true, 0x5, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Subhn, "subhn", false, 0x6, LANE_BHS, LANE_NONE, SimdDiffShape::Narrow),
+    row_diff(SimdDiffOp::Rsubhn, "rsubhn", true, 0x6, LANE_BHS, LANE_NONE, SimdDiffShape::Narrow),
+    row_diff(SimdDiffOp::Sabdl, "sabdl", false, 0x7, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Uabdl, "uabdl", true, 0x7, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Smlal, "smlal", false, 0x8, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Umlal, "umlal", true, 0x8, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Sqdmlal, "sqdmlal", false, 0x9, LANE_HS, LANE_HS, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Smlsl, "smlsl", false, 0xa, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Umlsl, "umlsl", true, 0xa, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Sqdmlsl, "sqdmlsl", false, 0xb, LANE_HS, LANE_HS, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Smull, "smull", false, 0xc, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Umull, "umull", true, 0xc, LANE_BHS, LANE_NONE, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Sqdmull, "sqdmull", false, 0xd, LANE_HS, LANE_HS, SimdDiffShape::Long),
+    row_diff(SimdDiffOp::Pmull, "pmull", false, 0xe, LANE_B, LANE_NONE, SimdDiffShape::Long),
+];
+
+pub fn simd_diff_by_bits(u: bool, opcode: u8) -> Option<&'static SimdDiffRow> {
+    SIMD_THREE_DIFF.iter().find(|row| row.u == u && row.opcode == opcode)
+}
+
+pub fn simd_diff_by_name(name: &str) -> Option<&'static SimdDiffRow> {
+    SIMD_THREE_DIFF.iter().find(|row| row.name == name)
+}
+
+pub fn simd_diff_row(op: SimdDiffOp) -> &'static SimdDiffRow {
+    SIMD_THREE_DIFF
+        .iter()
+        .find(|row| row.op == op)
+        .expect("every three-different op has a row")
+}
+
+/// The shift-by-immediate class. One row per (U, opcode) pair at bits
+/// 15:11, with the amount packed into immh:immb rather than an operand
+/// field of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdShiftOp {
+    Sshr,
+    Ushr,
+    Ssra,
+    Usra,
+    Srshr,
+    Urshr,
+    Srsra,
+    Ursra,
+    Sri,
+    Shl,
+    Sli,
+    Sqshlu,
+    Sqshl,
+    Uqshl,
+    Shrn,
+    Sqshrun,
+    Rshrn,
+    Sqrshrun,
+    Sqshrn,
+    Uqshrn,
+    Sqrshrn,
+    Uqrshrn,
+    Sshll,
+    Ushll,
+}
+
+/// What a shift-by-immediate row's operands look like. As in the
+/// three-different class, the size the encoding carries is the NARROW
+/// one, which for `Same` is simply the lane width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdShiftShape {
+    /// `Vd.T, Vn.T, #shift`.
+    Same,
+    /// `Vd.<2T>, Vn.T, #shift`: SSHLL and USHLL, whose `#0` form GAS
+    /// spells SXTL and UXTL.
+    Long,
+    /// `Vd.T, Vn.<2T>, #shift`: the narrowing right shifts.
+    Narrow,
+}
+
+pub struct SimdShiftRow {
+    pub op: SimdShiftOp,
+    pub name: &'static str,
+    pub u: bool,
+    /// The 5-bit opcode at bits 15:11.
+    pub opcode: u8,
+    /// Narrow lane widths the vector form takes.
+    pub lanes: LaneMask,
+    /// Narrow widths the SIMD-scalar form takes.
+    pub scalar: LaneMask,
+    pub shape: SimdShiftShape,
+    /// A right shift, which is where immh:immb counts DOWN from twice
+    /// the lane width instead of up from it.
+    pub right: bool,
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per table column
+const fn row_shift(
+    op: SimdShiftOp,
+    name: &'static str,
+    u: bool,
+    opcode: u8,
+    lanes: LaneMask,
+    scalar: LaneMask,
+    shape: SimdShiftShape,
+    right: bool,
+) -> SimdShiftRow {
+    SimdShiftRow { op, name, u, opcode, lanes, scalar, shape, right }
+}
+
+pub const SIMD_SHIFT_IMM: &[SimdShiftRow] = &[
+    row_shift(SimdShiftOp::Sshr, "sshr", false, 0x00, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Ushr, "ushr", true, 0x00, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Ssra, "ssra", false, 0x02, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Usra, "usra", true, 0x02, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Srshr, "srshr", false, 0x04, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Urshr, "urshr", true, 0x04, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Srsra, "srsra", false, 0x06, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Ursra, "ursra", true, 0x06, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Sri, "sri", true, 0x08, LANE_BHSD, LANE_D, SimdShiftShape::Same, true),
+    row_shift(SimdShiftOp::Shl, "shl", false, 0x0a, LANE_BHSD, LANE_D, SimdShiftShape::Same, false),
+    row_shift(SimdShiftOp::Sli, "sli", true, 0x0a, LANE_BHSD, LANE_D, SimdShiftShape::Same, false),
+    row_shift(SimdShiftOp::Sqshlu, "sqshlu", true, 0x0c, LANE_BHSD, LANE_BHSD, SimdShiftShape::Same, false),
+    row_shift(SimdShiftOp::Sqshl, "sqshl", false, 0x0e, LANE_BHSD, LANE_BHSD, SimdShiftShape::Same, false),
+    row_shift(SimdShiftOp::Uqshl, "uqshl", true, 0x0e, LANE_BHSD, LANE_BHSD, SimdShiftShape::Same, false),
+    row_shift(SimdShiftOp::Shrn, "shrn", false, 0x10, LANE_BHS, LANE_NONE, SimdShiftShape::Narrow, true),
+    row_shift(SimdShiftOp::Sqshrun, "sqshrun", true, 0x10, LANE_BHS, LANE_BHS, SimdShiftShape::Narrow, true),
+    row_shift(SimdShiftOp::Rshrn, "rshrn", false, 0x11, LANE_BHS, LANE_NONE, SimdShiftShape::Narrow, true),
+    row_shift(SimdShiftOp::Sqrshrun, "sqrshrun", true, 0x11, LANE_BHS, LANE_BHS, SimdShiftShape::Narrow, true),
+    row_shift(SimdShiftOp::Sqshrn, "sqshrn", false, 0x12, LANE_BHS, LANE_BHS, SimdShiftShape::Narrow, true),
+    row_shift(SimdShiftOp::Uqshrn, "uqshrn", true, 0x12, LANE_BHS, LANE_BHS, SimdShiftShape::Narrow, true),
+    row_shift(SimdShiftOp::Sqrshrn, "sqrshrn", false, 0x13, LANE_BHS, LANE_BHS, SimdShiftShape::Narrow, true),
+    row_shift(SimdShiftOp::Uqrshrn, "uqrshrn", true, 0x13, LANE_BHS, LANE_BHS, SimdShiftShape::Narrow, true),
+    row_shift(SimdShiftOp::Sshll, "sshll", false, 0x14, LANE_BHS, LANE_NONE, SimdShiftShape::Long, false),
+    row_shift(SimdShiftOp::Ushll, "ushll", true, 0x14, LANE_BHS, LANE_NONE, SimdShiftShape::Long, false),
+];
+
+pub fn simd_shift_by_bits(u: bool, opcode: u8) -> Option<&'static SimdShiftRow> {
+    SIMD_SHIFT_IMM.iter().find(|row| row.u == u && row.opcode == opcode)
+}
+
+pub fn simd_shift_by_name(name: &str) -> Option<&'static SimdShiftRow> {
+    SIMD_SHIFT_IMM.iter().find(|row| row.name == name)
+}
+
+pub fn simd_shift_row(op: SimdShiftOp) -> &'static SimdShiftRow {
+    SIMD_SHIFT_IMM
+        .iter()
+        .find(|row| row.op == op)
+        .expect("every shift-immediate op has a row")
+}
+
+/// The lane width `immh` names: the position of its highest set bit.
+/// An immh of zero is the modified-immediate group, not a shift, which
+/// is what keeps the two classes apart at the same bit pattern.
+pub fn shift_imm_esize(immh: u8) -> Option<u8> {
+    match immh {
+        0b0001 => Some(1),
+        0b0010 | 0b0011 => Some(2),
+        0b0100..=0b0111 => Some(4),
+        0b1000..=0b1111 => Some(8),
+        _ => None,
+    }
+}
+
+/// The shift amount immh:immb carries. A left shift counts UP from the
+/// lane width and a right shift counts DOWN from twice it, so `shl #0`
+/// on a byte lane and `sshr #8` on one are both immh:immb 8, and
+/// `ushr #64` on a 2d lane is immh:immb 64.
+pub fn shift_imm_amount(immh: u8, immb: u8, right: bool) -> Option<u8> {
+    let bits = shift_imm_esize(immh)? * 8;
+    let packed = (immh << 3) | immb;
+    if right {
+        Some(2 * bits - packed)
+    } else {
+        Some(packed - bits)
+    }
+}
+
+/// The immh:immb field an amount packs into, the inverse of
+/// `shift_imm_amount`. The caller has already checked the range.
+pub fn shift_imm_field(esize: u8, amount: u8, right: bool) -> u8 {
+    let bits = esize * 8;
+    if right {
+        2 * bits - amount
+    } else {
+        bits + amount
+    }
 }
 
 /// Which reading of the Advanced SIMD copy group an encoding carries.
@@ -1312,6 +1618,37 @@ pub enum Instruction {
         q: bool,
         scalar: bool,
         rm: u8,
+        rn: u8,
+        rd: u8,
+    },
+    /// The Advanced SIMD three-different group: the widening adds and
+    /// subtracts, the widening multiplies and multiply-accumulates, and
+    /// the high-half narrowing adds. `esize` is always the NARROW lane
+    /// width, whichever side of the instruction that is on.
+    SimdThreeDiff {
+        op: SimdDiffOp,
+        esize: u8,
+        /// The `2` form: the narrow operands come from the upper half of
+        /// their register, and a narrowing row writes the upper half of
+        /// the destination instead of zeroing the register above its
+        /// result. It is the Q bit, and the whole meaning of the suffix.
+        upper: bool,
+        scalar: bool,
+        rm: u8,
+        rn: u8,
+        rd: u8,
+    },
+    /// The Advanced SIMD shift-by-immediate group. `esize` is the narrow
+    /// lane width (the source for SSHLL, the destination for SHRN, both
+    /// for everything else) and `shift` the amount immh:immb carried.
+    SimdShiftImm {
+        op: SimdShiftOp,
+        esize: u8,
+        /// Q: the 128-bit arrangement, and the `2` suffix on the
+        /// lengthening and narrowing rows.
+        q: bool,
+        scalar: bool,
+        shift: u8,
         rn: u8,
         rd: u8,
     },
@@ -1732,6 +2069,54 @@ fn decode_advanced_simd(instr: u32) -> Option<Instruction> {
             op: logical,
             q,
             rm: bits(instr, 20, 16) as u8,
+            rn,
+            rd,
+        });
+    }
+
+    // Three-different: 0 Q U 01110 size 1 Rm opcode 00 Rn Rd, with the
+    // SIMD-scalar class 01 U 11110 size 1 Rm opcode 00 Rn Rd. Bits 11:10
+    // are what separate it from three-same, which sets bit 10.
+    let scalar_three_diff = instr & 0xDF20_0C00 == 0x5E20_0000;
+    if instr & 0x9F20_0C00 == 0x0E20_0000 || scalar_three_diff {
+        let size = bits(instr, 23, 22) as u8;
+        let row = simd_diff_by_bits(op, bits(instr, 15, 12) as u8)?;
+        let esize = size_esize(size);
+        let mask = if scalar_three_diff { row.scalar } else { row.lanes };
+        if !lane_allowed(mask, esize) {
+            return None;
+        }
+        return Some(Instruction::SimdThreeDiff {
+            op: row.op,
+            esize,
+            upper: q && !scalar_three_diff,
+            scalar: scalar_three_diff,
+            rm: bits(instr, 20, 16) as u8,
+            rn,
+            rd,
+        });
+    }
+
+    // Shift by immediate: 0 Q U 011110 immh immb opcode 1 Rn Rd, with the
+    // SIMD-scalar class 01 U 111110 immh immb opcode 1 Rn Rd. An immh of
+    // zero is the modified-immediate group handled above, not a shift.
+    let scalar_shift = instr & 0xDF80_0400 == 0x5F00_0400;
+    if instr & 0x9F80_0400 == 0x0F00_0400 || scalar_shift {
+        let immh = bits(instr, 22, 19) as u8;
+        let immb = bits(instr, 18, 16) as u8;
+        let row = simd_shift_by_bits(op, bits(instr, 15, 11) as u8)?;
+        let esize = shift_imm_esize(immh)?;
+        let mask = if scalar_shift { row.scalar } else { row.lanes };
+        if !lane_allowed(mask, esize) {
+            return None;
+        }
+        let shift = shift_imm_amount(immh, immb, row.right)?;
+        return Some(Instruction::SimdShiftImm {
+            op: row.op,
+            esize,
+            q,
+            scalar: scalar_shift,
+            shift,
             rn,
             rd,
         });
@@ -2530,19 +2915,89 @@ pub fn format(instr: &Instruction) -> Option<String> {
         Instruction::SimdTwoMisc { op, esize, q, scalar, rn, rd } => {
             let row = simd_misc_row(*op);
             let zero = if row.shape == SimdMiscShape::Zero { ", #0" } else { "" };
+            let narrowing = row.shape == SimdMiscShape::Narrow;
             if *scalar {
                 let l = element_letter(*esize);
-                return Some(format!("{} {l}{rd}, {l}{rn}{zero}", row.name));
+                // A narrowing extract reads a lane of twice its result.
+                let source = if narrowing { element_letter(esize * 2) } else { l };
+                return Some(format!("{} {l}{rd}, {source}{rn}{zero}", row.name));
             }
-            let source = Arrangement { esize: *esize, q: *q }.suffix();
+            let narrow = Arrangement { esize: *esize, q: *q }.suffix();
+            let wide = Arrangement { esize: esize * 2, q: true }.suffix();
+            // The `2` suffix IS the Q bit for the rows that change width:
+            // it names the half of the register the narrow side lives in.
+            let two = if *q { "2" } else { "" };
+            if narrowing {
+                return Some(format!("{}{two} v{rd}.{narrow}, v{rn}.{wide}", row.name));
+            }
+            if row.shape == SimdMiscShape::Shll {
+                let amount = u32::from(*esize) * 8;
+                return Some(format!("{}{two} v{rd}.{wide}, v{rn}.{narrow}, #{amount}", row.name));
+            }
             // The pairwise widening rows halve the lane count and double
             // the width, so the destination is spelled one step up.
             let dest = if row.shape == SimdMiscShape::Widen {
                 Arrangement { esize: esize * 2, q: *q }.suffix()
             } else {
-                source
+                narrow
             };
-            Some(format!("{} v{rd}.{dest}, v{rn}.{source}{zero}", row.name))
+            Some(format!("{} v{rd}.{dest}, v{rn}.{narrow}{zero}", row.name))
+        }
+        Instruction::SimdThreeDiff { op, esize, upper, scalar, rm, rn, rd } => {
+            let row = simd_diff_row(*op);
+            if *scalar {
+                let narrow = element_letter(*esize);
+                let wide = element_letter(esize * 2);
+                return Some(format!("{} {wide}{rd}, {narrow}{rn}, {narrow}{rm}", row.name));
+            }
+            let two = if *upper { "2" } else { "" };
+            let narrow = Arrangement { esize: *esize, q: *upper }.suffix();
+            let wide = Arrangement { esize: esize * 2, q: true }.suffix();
+            let name = row.name;
+            Some(match row.shape {
+                SimdDiffShape::Long => {
+                    format!("{name}{two} v{rd}.{wide}, v{rn}.{narrow}, v{rm}.{narrow}")
+                }
+                SimdDiffShape::Wide => {
+                    format!("{name}{two} v{rd}.{wide}, v{rn}.{wide}, v{rm}.{narrow}")
+                }
+                SimdDiffShape::Narrow => {
+                    format!("{name}{two} v{rd}.{narrow}, v{rn}.{wide}, v{rm}.{wide}")
+                }
+            })
+        }
+        Instruction::SimdShiftImm { op, esize, q, scalar, shift, rn, rd } => {
+            let row = simd_shift_row(*op);
+            let name = row.name;
+            if *scalar {
+                let narrow = element_letter(*esize);
+                let source = if row.shape == SimdShiftShape::Narrow {
+                    element_letter(esize * 2)
+                } else {
+                    narrow
+                };
+                return Some(format!("{name} {narrow}{rd}, {source}{rn}, #{shift}"));
+            }
+            let two = if *q { "2" } else { "" };
+            let narrow = Arrangement { esize: *esize, q: *q }.suffix();
+            let wide = Arrangement { esize: esize * 2, q: true }.suffix();
+            Some(match row.shape {
+                SimdShiftShape::Same => {
+                    format!("{name} v{rd}.{narrow}, v{rn}.{narrow}, #{shift}")
+                }
+                // GAS spells the lengthening shift by zero SXTL / UXTL,
+                // which is the whole of what those two mnemonics are.
+                SimdShiftShape::Long if *shift == 0 => {
+                    let alias = if row.u { "uxtl" } else { "sxtl" };
+                    format!("{alias}{two} v{rd}.{wide}, v{rn}.{narrow}")
+                }
+                SimdShiftShape::Long => {
+                    format!("{name}{two} v{rd}.{wide}, v{rn}.{narrow}, #{shift}")
+                }
+                SimdShiftShape::Narrow => {
+                    format!("{name}{two} v{rd}.{narrow}, v{rn}.{wide}, #{shift}")
+                }
+            })
         }
         Instruction::SimdAcross { op, esize, q, rn, rd } => {
             let row = simd_across_row(*op);
