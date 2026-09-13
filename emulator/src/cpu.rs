@@ -272,8 +272,8 @@ pub struct Cpu {
     pub mem: Memory,
     breakpoints: HashSet<u64>,
     changed_regs: Vec<u8>,
-    /// FP registers (d0-d31) the last step wrote, tracked alongside the
-    /// integer set so the UI's d-register view can flash writes.
+    /// FP registers (v0-v31, any bit of the 128) the last step wrote,
+    /// tracked alongside the integer set so the UI's view can flash writes.
     changed_fprs: Vec<u8>,
     halted: bool,
     /// Bytes printf/puts/write(1) have emitted since the last `clear_console`.
@@ -921,7 +921,7 @@ impl Cpu {
 
     /// Detect which registers changed, against the integer and FP files as
     /// they stood before the instruction ran. The UI flashes both sets.
-    fn record_changed_registers(&mut self, gpr_before: &[u64; 32], fpr_before: &[u64; 32]) {
+    fn record_changed_registers(&mut self, gpr_before: &[u64; 32], fpr_before: &[u128; 32]) {
         let current = self.regs.snapshot();
         self.changed_regs.clear();
         for i in 0..32 {
@@ -1686,7 +1686,8 @@ impl Cpu {
         &self.changed_regs
     }
 
-    /// Indices of FP registers (d0-d31) that changed during the last step.
+    /// Indices of FP registers (v0-v31, any bit of the 128) that changed
+    /// during the last step.
     pub fn changed_fp_registers(&self) -> &[u8] {
         &self.changed_fprs
     }
