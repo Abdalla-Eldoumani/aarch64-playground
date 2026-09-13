@@ -290,6 +290,44 @@ pub fn execute(
             }
             Ok(ExecResult::Advance)
         }
+        Instruction::FpMoveLane { to_fp, rd, rn } => {
+            // The upper 64-bit lane alone: writing it leaves the low half
+            // in place, which is how a 128-bit value gets built in two
+            // moves. Reading it takes the high half, not the low one.
+            if *to_fp {
+                let v = regs.read_gpr(*rn, true);
+                regs.write_fpr_lane(*rd, 8, 1, v);
+            } else {
+                regs.write_gpr(*rd, true, regs.read_fpr_lane(*rn, 8, 1));
+            }
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdModifiedImm { op, arrangement, rd, value, .. } => {
+            // A 64-bit destination zeroes the upper half; the scalar
+            // `movi d3` form is a 64-bit one under another name.
+            let wide = arrangement.is_some_and(|a| a.q);
+            let mask: u128 = if wide { u128::MAX } else { u128::from(u64::MAX) };
+            let result = match op {
+                SimdImmOp::Movi => *value,
+                SimdImmOp::Mvni => !*value,
+                SimdImmOp::Orr => regs.read_fpr_q(*rd) | *value,
+                SimdImmOp::Bic => regs.read_fpr_q(*rd) & !*value,
+            };
+            regs.write_fpr_q(*rd, result & mask);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdLogicalReg { bic, q, rm, rn, rd } => {
+            let n = regs.read_fpr_q(*rn);
+            let m = regs.read_fpr_q(*rm);
+            let result = if *bic { n & !m } else { n | m };
+            let mask: u128 = if *q { u128::MAX } else { u128::from(u64::MAX) };
+            regs.write_fpr_q(*rd, result & mask);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdCopy { op, esize, q, index, index2, rn, rd } => {
+            exec_simd_copy(*op, *esize, *q, *index, *index2, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
         Instruction::FpUnary { op, fd, fn_, single } => {
             if *single {
                 let v = regs.read_fpr_f32(*fn_);
@@ -1173,6 +1211,54 @@ fn default_nan_if_new<T: FpOperand>(result: T, sources: &[T]) -> T {
         T::NAN
     } else {
         result
+    }
+}
+
+/// The Advanced SIMD copy group. DUP and the two lane-out forms write a
+/// whole destination, so they zero everything they do not set; INS writes
+/// one lane and leaves the rest of the register exactly as it was.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_copy(
+    op: SimdCopyOp,
+    esize: u8,
+    q: bool,
+    index: u8,
+    index2: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if q { 16 } else { 8 };
+    match op {
+        SimdCopyOp::DupGeneral => {
+            let element = regs.read_gpr(rn, esize == 8);
+            regs.write_fpr_q(rd, simd_replicate(element, esize, bytes));
+        }
+        SimdCopyOp::DupElement => {
+            let element = regs.read_fpr_lane(rn, esize, index);
+            regs.write_fpr_q(rd, simd_replicate(element, esize, bytes));
+        }
+        SimdCopyOp::DupScalar => {
+            let element = regs.read_fpr_lane(rn, esize, index);
+            regs.write_fpr_scalar(rd, esize, element);
+        }
+        SimdCopyOp::InsGeneral => {
+            let value = regs.read_gpr(rn, esize == 8);
+            regs.write_fpr_lane(rd, esize, index, value);
+        }
+        SimdCopyOp::InsElement => {
+            let value = regs.read_fpr_lane(rn, esize, index2);
+            regs.write_fpr_lane(rd, esize, index, value);
+        }
+        SimdCopyOp::Umov => {
+            let value = regs.read_fpr_lane(rn, esize, index);
+            regs.write_gpr(rd, q, value);
+        }
+        SimdCopyOp::Smov => {
+            let value = regs.read_fpr_lane(rn, esize, index);
+            let spare = 64 - u32::from(esize) * 8;
+            regs.write_gpr(rd, q, (((value << spare) as i64) >> spare) as u64);
+        }
     }
 }
 

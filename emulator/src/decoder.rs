@@ -377,6 +377,174 @@ pub enum BitfieldOp {
 }
 
 // ---------------------------------------------------------------------------
+// Advanced SIMD operand shapes
+// ---------------------------------------------------------------------------
+
+/// A vector operand's arrangement: `v3.16b` is sixteen lanes of one byte,
+/// `v3.2d` two lanes of eight. The pair (lane width, 64 or 128 bits) is
+/// all any encoding here carries; the lane count follows from it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Arrangement {
+    /// Lane width in bytes: 1, 2, 4 or 8.
+    pub esize: u8,
+    /// The 128-bit form; false is the 64-bit one, whose upper half is
+    /// zeroed by every write.
+    pub q: bool,
+}
+
+impl Arrangement {
+    /// The suffix GAS spells this arrangement with, without the dot.
+    pub fn suffix(self) -> &'static str {
+        match (self.esize, self.q) {
+            (1, false) => "8b",
+            (1, true) => "16b",
+            (2, false) => "4h",
+            (2, true) => "8h",
+            (4, false) => "2s",
+            (4, true) => "4s",
+            (8, false) => "1d",
+            _ => "2d",
+        }
+    }
+}
+
+/// The letter GAS names a lane width with (`v3.b[15]`).
+fn element_letter(esize: u8) -> char {
+    match esize {
+        1 => 'b',
+        2 => 'h',
+        4 => 's',
+        _ => 'd',
+    }
+}
+
+/// Which mnemonic one `cmode`/`op` pair of the Advanced SIMD
+/// modified-immediate group spells.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdImmOp {
+    Movi,
+    Mvni,
+    Orr,
+    Bic,
+}
+
+/// What a `cmode`/`op` pair means: the mnemonic, the element the
+/// immediate fills, and how imm8 is spread across it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SimdImmForm {
+    pub op: SimdImmOp,
+    /// Element width in bytes the immediate fills: 1, 2, 4, or 8 for the
+    /// byte-mask form.
+    pub esize: u8,
+    /// The `lsl` or `msl` amount in bits.
+    pub shift: u8,
+    /// "Shifting ones": the bits below the shifted imm8 come in as ones.
+    pub msl: bool,
+}
+
+/// Read one `cmode`/`op` pair of the modified-immediate group. This is
+/// the single table both the encoder and the decoder work from, so the
+/// two cannot disagree about what a cmode means. `None` is cmode 1111,
+/// the vector FMOV immediate, which is not implemented.
+pub fn simd_imm_form(cmode: u8, op: bool) -> Option<SimdImmForm> {
+    let logical = cmode & 1 == 1; // cmode<0> picks ORR/BIC over MOVI/MVNI
+    let shifted = |op_bit: bool| if op_bit { SimdImmOp::Mvni } else { SimdImmOp::Movi };
+    let masked = |op_bit: bool| if op_bit { SimdImmOp::Bic } else { SimdImmOp::Orr };
+    match cmode >> 1 {
+        // cmode 0xx0/0xx1: a 32-bit element, imm8 shifted by 0, 8, 16 or 24.
+        0b000..=0b011 => Some(SimdImmForm {
+            op: if logical { masked(op) } else { shifted(op) },
+            esize: 4,
+            shift: (cmode >> 1) * 8,
+            msl: false,
+        }),
+        // cmode 10x0/10x1: a 16-bit element, imm8 shifted by 0 or 8.
+        0b100 | 0b101 => Some(SimdImmForm {
+            op: if logical { masked(op) } else { shifted(op) },
+            esize: 2,
+            shift: ((cmode >> 1) & 1) * 8,
+            msl: false,
+        }),
+        // cmode 110x: a 32-bit element with the low bits shifted in as ones.
+        0b110 => Some(SimdImmForm {
+            op: shifted(op),
+            esize: 4,
+            shift: if cmode & 1 == 1 { 16 } else { 8 },
+            msl: true,
+        }),
+        // cmode 1110: a byte per lane, or with op set the 64-bit byte mask.
+        0b111 if cmode == 0b1110 => Some(SimdImmForm {
+            op: SimdImmOp::Movi,
+            esize: if op { 8 } else { 1 },
+            shift: 0,
+            msl: false,
+        }),
+        // cmode 1111 is the vector FMOV immediate, still queued.
+        _ => None,
+    }
+}
+
+/// Expand `imm8` into one element of `form`, the way AdvSIMDExpandImm
+/// does. The 8-byte element is the byte mask: each bit of imm8 becomes a
+/// whole byte of 0x00 or 0xff. Nothing is inverted here: MVNI and BIC
+/// invert the expanded immediate themselves, which is where the ARM
+/// pseudocode puts it too.
+pub fn simd_expand_imm(form: SimdImmForm, imm8: u8) -> u64 {
+    match form.esize {
+        1 => u64::from(imm8),
+        2 => u64::from((u32::from(imm8) << form.shift) as u16),
+        4 => {
+            let ones = if form.msl { (1u32 << form.shift) - 1 } else { 0 };
+            u64::from((u32::from(imm8) << form.shift) | ones)
+        }
+        _ => {
+            let mut value = 0u64;
+            for byte in 0..8 {
+                if (imm8 >> byte) & 1 == 1 {
+                    value |= 0xffu64 << (byte * 8);
+                }
+            }
+            value
+        }
+    }
+}
+
+/// Repeat `element` (of `esize` bytes) across `bytes` bytes. The result
+/// is the value a vector write puts in the register, so the 64-bit forms
+/// leave the upper half zero, exactly as the hardware does.
+pub fn simd_replicate(element: u64, esize: u8, bytes: u8) -> u128 {
+    let mut out: u128 = 0;
+    let width = u32::from(esize) * 8;
+    let mask: u128 = if width >= 128 { u128::MAX } else { (1u128 << width) - 1 };
+    for lane in 0..(bytes / esize) {
+        out |= (u128::from(element) & mask) << (u32::from(lane) * width);
+    }
+    out
+}
+
+/// Which reading of the Advanced SIMD copy group an encoding carries.
+/// DUP, INS, UMOV and SMOV share one word shape and differ only in imm4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdCopyOp {
+    /// DUP Vd.T, Rn: one general register into every lane.
+    DupGeneral,
+    /// DUP Vd.T, Vn.Ts[index]: one lane into every lane.
+    DupElement,
+    /// DUP Bd/Hd/Sd/Dd, Vn.Ts[index]: one lane into a scalar register,
+    /// everything above it zeroed. GAS prints this one as `mov`.
+    DupScalar,
+    /// INS Vd.Ts[index], Rn: one general register into one lane, the
+    /// other lanes untouched. GAS prints it as `mov`.
+    InsGeneral,
+    /// INS Vd.Ts[index], Vn.Ts[index2]: lane to lane, also printed `mov`.
+    InsElement,
+    /// UMOV Rd, Vn.Ts[index]: one lane, zero-extended into the register.
+    Umov,
+    /// SMOV Rd, Vn.Ts[index]: one lane, sign-extended.
+    Smov,
+}
+
+// ---------------------------------------------------------------------------
 // instruction enum
 // ---------------------------------------------------------------------------
 
@@ -678,6 +846,60 @@ pub enum Instruction {
         single: bool,
         rd: u8,
         rn: u8,
+    },
+    /// FMOV between an X register and the UPPER 64-bit lane of a vector
+    /// register (`fmov v3.d[1], x7`, `fmov x3, v7.d[1]`). The low lane is
+    /// left alone in the GP -> vector direction, which is the whole point
+    /// of the form: it is how a 128-bit value is assembled half at a time.
+    FpMoveLane {
+        to_fp: bool,
+        rd: u8,
+        rn: u8,
+    },
+    /// Advanced SIMD modified immediate: MOVI, MVNI, and the ORR and BIC
+    /// that take an immediate instead of a third register. `value` is the
+    /// immediate expanded and replicated across the destination's width
+    /// and NOT inverted, so MVNI and BIC invert it as they apply it;
+    /// `imm8`, `shift` and `msl` are kept because GAS prints the operand
+    /// as it was written, not as it expands.
+    SimdModifiedImm {
+        op: SimdImmOp,
+        /// The destination's shape. `None` is the scalar `movi d3, #imm64`
+        /// form, the only one that names a d register.
+        arrangement: Option<Arrangement>,
+        rd: u8,
+        value: u128,
+        imm8: u8,
+        shift: u8,
+        msl: bool,
+    },
+    /// ORR / BIC (vector, register): `Vd = Vn | Vm` and `Vd = Vn & ~Vm`
+    /// over 8 or 16 bytes. GAS prints an ORR whose two sources are the
+    /// same register as `mov Vd.T, Vn.T`.
+    SimdLogicalReg {
+        bic: bool,
+        q: bool,
+        rm: u8,
+        rn: u8,
+        rd: u8,
+    },
+    /// The Advanced SIMD copy group: DUP, INS, UMOV and SMOV share one
+    /// encoding and are told apart by imm4, with imm5 naming the element
+    /// size and the lane.
+    SimdCopy {
+        op: SimdCopyOp,
+        /// Lane width in bytes: 1, 2, 4 or 8.
+        esize: u8,
+        /// The 128-bit destination view, or an X (rather than W) general
+        /// register for UMOV and SMOV.
+        q: bool,
+        /// The destination lane for INS, the source lane for everything
+        /// else. Unread by DUP (general), which fills every lane.
+        index: u8,
+        /// INS (element) only: the lane read out of the source register.
+        index2: u8,
+        rn: u8,
+        rd: u8,
     },
     /// SCVTF (scalar, from the FP register file): the integer bits are
     /// already in Fn (gcc loads an int with `ldr s31, [...]` and converts
@@ -1015,7 +1237,113 @@ pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
     }
 }
 
+/// The Advanced SIMD forms this crate assembles, all of which land in the
+/// same top-level group as scalar FP. `None` means "not one of these",
+/// and the scalar FP decode below carries on.
+fn decode_advanced_simd(instr: u32) -> Option<Instruction> {
+    let q = bit(instr, 30) == 1;
+    let op = bit(instr, 29) == 1;
+    let rn = bits(instr, 9, 5) as u8;
+    let rd = bits(instr, 4, 0) as u8;
+
+    // Modified immediate: 0 Q op 0111100000 abc cmode 0 1 defgh Rd.
+    if instr & 0x9FF8_0400 == 0x0F00_0400 {
+        let cmode = bits(instr, 15, 12) as u8;
+        let form = simd_imm_form(cmode, op)?;
+        let imm8 = ((bits(instr, 18, 16) << 5) | bits(instr, 9, 5)) as u8;
+        // The byte-mask form is the only one that names a d register, and
+        // only when Q is clear; every other cmode names an arrangement.
+        let arrangement = if form.esize == 8 && !q {
+            None
+        } else {
+            Some(Arrangement { esize: form.esize, q })
+        };
+        let bytes = if q { 16 } else { 8 };
+        return Some(Instruction::SimdModifiedImm {
+            op: form.op,
+            arrangement,
+            rd,
+            value: simd_replicate(simd_expand_imm(form, imm8), form.esize, bytes),
+            imm8,
+            shift: form.shift,
+            msl: form.msl,
+        });
+    }
+
+    // ORR / BIC (vector, register): 0 Q 0 01110 size 1 Rm 000111 Rn Rd,
+    // where the size field picks the logical op. AND (00) and ORN (11),
+    // and every U = 1 row (EOR, BSL, BIT, BIF), are still queued.
+    if instr & 0x9F20_FC00 == 0x0E20_1C00 && !op {
+        let bic = match bits(instr, 23, 22) {
+            0b01 => true,
+            0b10 => false,
+            _ => return None,
+        };
+        return Some(Instruction::SimdLogicalReg {
+            bic,
+            q,
+            rm: bits(instr, 20, 16) as u8,
+            rn,
+            rd,
+        });
+    }
+
+    // The copy group: 0 Q op 01110000 imm5 0 imm4 1 Rn Rd for the vector
+    // destinations, 01 0 11110000 imm5 0 0000 1 Rn Rd for the scalar DUP.
+    let vector_copy = instr & 0x9FE0_8400 == 0x0E00_0400;
+    let scalar_copy = instr & 0xFFE0_8400 == 0x5E00_0400;
+    if vector_copy || scalar_copy {
+        let imm5 = bits(instr, 20, 16) as u8;
+        let imm4 = bits(instr, 14, 11) as u8;
+        // imm5's lowest set bit names the element width and the bits
+        // above it the lane; an imm5 of zero names nothing.
+        if imm5 == 0 {
+            return None;
+        }
+        let esize = 1u8 << imm5.trailing_zeros().min(3);
+        let index = imm5 >> (esize.trailing_zeros() + 1);
+        let simd_op = if scalar_copy {
+            if imm4 != 0 {
+                return None;
+            }
+            SimdCopyOp::DupScalar
+        } else if op {
+            SimdCopyOp::InsElement
+        } else {
+            match imm4 {
+                0b0000 => SimdCopyOp::DupElement,
+                0b0001 => SimdCopyOp::DupGeneral,
+                0b0011 => SimdCopyOp::InsGeneral,
+                0b0101 => SimdCopyOp::Smov,
+                0b0111 => SimdCopyOp::Umov,
+                _ => return None,
+            }
+        };
+        return Some(Instruction::SimdCopy {
+            op: simd_op,
+            esize,
+            q,
+            index,
+            index2: imm4 >> esize.trailing_zeros(),
+            rn,
+            rd,
+        });
+    }
+
+    // FMOV between an X register and the upper lane: sf 0011110 10 1 01
+    // opcode(110 out, 111 in) 000000 Rn Rd, with bits 15:10 clear.
+    match instr & 0xFFFF_FC00 {
+        0x9EAE_0000 => Some(Instruction::FpMoveLane { to_fp: false, rd, rn }),
+        0x9EAF_0000 => Some(Instruction::FpMoveLane { to_fp: true, rd, rn }),
+        _ => None,
+    }
+}
+
 fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
+    if let Some(decoded) = decode_advanced_simd(instr) {
+        return Ok(decoded);
+    }
+
     // Data-processing (1 source): FMOV (reg), FNEG, FABS, FCVT.
     //   Encoding: 0_0_0_11110_ftype_1_00_000_1_op_000_Rn_Rd  (opcode in bits 20:15)
     // Data-processing (2 source): FADD/FSUB/FMUL/FDIV.
@@ -1636,6 +1964,73 @@ pub fn format(instr: &Instruction) -> Option<String> {
         Instruction::FpLdrLiteral { rt, offset, size } => {
             let reg = fp_reg_letter(*size);
             Some(format!("ldr {reg}{rt}, {}", imm_text(*offset)))
+        }
+        Instruction::FpMoveLane { to_fp, rd, rn } => Some(if *to_fp {
+            format!("fmov v{rd}.d[1], x{rn}")
+        } else {
+            format!("fmov x{rd}, v{rn}.d[1]")
+        }),
+        Instruction::SimdModifiedImm { op, arrangement, rd, value, imm8, shift, msl } => {
+            let mnemonic = match op {
+                SimdImmOp::Movi => "movi",
+                SimdImmOp::Mvni => "mvni",
+                SimdImmOp::Orr => "orr",
+                SimdImmOp::Bic => "bic",
+            };
+            let dest = match arrangement {
+                Some(a) => format!("v{rd}.{}", a.suffix()),
+                None => format!("d{rd}"),
+            };
+            // The byte-mask forms print the immediate they expand to;
+            // every other form prints imm8 and its shift as written.
+            let byte_mask = arrangement.is_none_or(|a| a.esize == 8);
+            let imm = if byte_mask { *value as u64 } else { u64::from(*imm8) };
+            let suffix = match (byte_mask || *shift == 0, *msl) {
+                (true, _) => String::new(),
+                (false, false) => format!(", lsl #{shift}"),
+                (false, true) => format!(", msl #{shift}"),
+            };
+            Some(format!("{mnemonic} {dest}, #{imm:#x}{suffix}"))
+        }
+        Instruction::SimdLogicalReg { bic, q, rm, rn, rd } => {
+            let t = if *q { "16b" } else { "8b" };
+            // GAS prints `orr Vd.T, Vn.T, Vn.T` as the vector `mov`.
+            if !*bic && rn == rm {
+                return Some(format!("mov v{rd}.{t}, v{rn}.{t}"));
+            }
+            let mnemonic = if *bic { "bic" } else { "orr" };
+            Some(format!("{mnemonic} v{rd}.{t}, v{rn}.{t}, v{rm}.{t}"))
+        }
+        Instruction::SimdCopy { op, esize, q, index, index2, rn, rd } => {
+            let elem = element_letter(*esize);
+            let arrangement = Arrangement { esize: *esize, q: *q };
+            let gp = |wide: bool, reg: u8| format!("{}{reg}", if wide { 'x' } else { 'w' });
+            Some(match op {
+                SimdCopyOp::DupGeneral => format!(
+                    "dup v{rd}.{}, {}",
+                    arrangement.suffix(),
+                    gp(*esize == 8, *rn)
+                ),
+                SimdCopyOp::DupElement => format!(
+                    "dup v{rd}.{}, v{rn}.{elem}[{index}]",
+                    arrangement.suffix()
+                ),
+                SimdCopyOp::DupScalar => format!("mov {elem}{rd}, v{rn}.{elem}[{index}]"),
+                SimdCopyOp::InsGeneral => {
+                    format!("mov v{rd}.{elem}[{index}], {}", gp(*esize == 8, *rn))
+                }
+                SimdCopyOp::InsElement => {
+                    format!("mov v{rd}.{elem}[{index}], v{rn}.{elem}[{index2}]")
+                }
+                // UMOV of a whole-register-width lane is the general
+                // `mov`, which is the spelling GAS prints back for it.
+                SimdCopyOp::Umov => {
+                    let full = *esize == if *q { 8 } else { 4 };
+                    let mnemonic = if full { "mov" } else { "umov" };
+                    format!("{mnemonic} {}, v{rn}.{elem}[{index}]", gp(*q, *rd))
+                }
+                SimdCopyOp::Smov => format!("smov {}, v{rn}.{elem}[{index}]", gp(*q, *rd)),
+            })
         }
         _ => None,
     }

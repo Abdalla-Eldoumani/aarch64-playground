@@ -1056,9 +1056,15 @@ fn parse_ldr_dest(reg: &str) -> Option<LdrDest> {
 /// operands collapse onto one literal-pool key. The
 /// match stays exhaustive so a new token kind is a compile error here
 /// instead of a silent hole.
+///
+/// Spacing follows GAS: nothing after an opening bracket or brace and
+/// nothing before a closing one or a comma, and inside a register list
+/// nothing at all except after the commas, so `{v0.16b, v1.16b}` and the
+/// range form `{v0.16b-v3.16b}` come back out as they went in.
 fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
     let mut out = String::new();
-    for t in tokens {
+    let mut brace_depth: usize = 0;
+    for (position, t) in tokens.iter().enumerate() {
         match &t.kind {
             TokenKind::Ident(s) => out.push_str(s),
             // Dotted local labels (`ldr x0, =.Lmsg`) ride through like any
@@ -1107,7 +1113,20 @@ fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
             TokenKind::Dot => out.push('.'),
             TokenKind::Hash => out.push('#'),
         }
-        out.push(' ');
+        match &t.kind {
+            TokenKind::LBrace => brace_depth += 1,
+            TokenKind::RBrace => brace_depth = brace_depth.saturating_sub(1),
+            _ => {}
+        }
+        let opens = matches!(t.kind, TokenKind::LBracket | TokenKind::LBrace);
+        let closes_next = matches!(
+            tokens.get(position + 1).map(|n| &n.kind),
+            Some(TokenKind::RBracket) | Some(TokenKind::RBrace) | Some(TokenKind::Comma)
+        );
+        let inside_list = brace_depth > 0 && !matches!(t.kind, TokenKind::Comma);
+        if !opens && !closes_next && !inside_list {
+            out.push(' ');
+        }
     }
     out.trim().to_string()
 }
@@ -1460,6 +1479,16 @@ fn is_plain_ident(s: &str) -> bool {
 
 fn is_register_or_shift_keyword(s: &str) -> bool {
     let lower = s.to_ascii_lowercase();
+    // A vector operand carries its arrangement or its lane in the same
+    // word (`v0.16b`, `v0.b[3]`), which the lexer keeps in one token; the
+    // register name is the part before the dot.
+    if let Some((head, tail)) = lower.split_once('.') {
+        if let Some(rest) = head.strip_prefix('v') {
+            if !tail.is_empty() && !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
     // Register prefixes followed by digits (or zr). `v` is the vector
     // view of the same file the b/h/s/d/q names view scalar slices of.
     for prefix in ["x", "w", "v", "d", "s", "q", "h", "b"] {
@@ -1709,6 +1738,23 @@ mod tests {
             expected,
             "rendered as: {rendered}"
         );
+    }
+
+    #[test]
+    fn stringify_reproduces_vector_operands_and_register_lists() {
+        // The inventory spellings are the contract: whatever the encoder
+        // is handed has to read back as the text GAS accepts.
+        for text in [
+            "v0.16b",
+            "v0.b[3]",
+            "{v0.16b, v1.16b}",
+            "{v0.16b-v3.16b}",
+            "[x0, 8]",
+            "[x0, x1, lsl 3]",
+        ] {
+            let tokens = lex(text, 1).unwrap();
+            assert_eq!(stringify_tokens(&tokens), text);
+        }
     }
 
     #[test]

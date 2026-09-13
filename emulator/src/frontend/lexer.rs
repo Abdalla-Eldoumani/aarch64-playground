@@ -340,6 +340,13 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
             while i < bytes.len() && is_id_continue(bytes[i]) {
                 i += 1;
             }
+            // A vector register keeps its arrangement or its lane in the
+            // same token. Split off, `16b` would read as an integer
+            // literal and the `.` as the current-address symbol, so
+            // `v0.16b` never reached the encoder at all.
+            if let Some(end) = vector_suffix_end(bytes, &source[start..i], i) {
+                i = end;
+            }
             let text = &source[start..i];
             tokens.push(Token {
                 kind: TokenKind::Ident(text.to_string()),
@@ -407,6 +414,49 @@ fn lex_err(line: usize, message: &str) -> EmuError {
         line,
         message: message.to_string(),
     }
+}
+
+/// The arrangement and element-width suffixes a `v` register can carry.
+/// The multi-character ones start with a digit and the single-character
+/// ones with a letter, so no entry is a prefix of another.
+const VECTOR_SUFFIXES: &[&str] = &[
+    "16b", "8b", "8h", "4h", "4s", "2s", "2d", "1d", "b", "h", "s", "d",
+];
+
+/// Where a vector register's spelling ends, when `name` is a `vN` and the
+/// source continues `.<arrangement>` or `.<element>[<lane>]`. `None` for
+/// anything else, so an ordinary identifier followed by a directive
+/// (`v1` then `.byte`) lexes exactly as it always did.
+fn vector_suffix_end(bytes: &[u8], name: &str, from: usize) -> Option<usize> {
+    let index = name.strip_prefix('v').or_else(|| name.strip_prefix('V'))?;
+    if index.is_empty() || !index.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    if bytes.get(from) != Some(&b'.') {
+        return None;
+    }
+    let rest = &bytes[from + 1..];
+    let suffix = VECTOR_SUFFIXES.iter().find(|s| {
+        rest.len() >= s.len() && rest[..s.len()].eq_ignore_ascii_case(s.as_bytes())
+    })?;
+    let mut end = from + 1 + suffix.len();
+    if suffix.len() > 1 {
+        return Some(end);
+    }
+    // A bare element width is always a lane reference, and the `[n]`
+    // belongs to the register name rather than to the operand around it.
+    if bytes.get(end) != Some(&b'[') {
+        return None;
+    }
+    end += 1;
+    let first_digit = end;
+    while bytes.get(end).is_some_and(|c| c.is_ascii_digit()) {
+        end += 1;
+    }
+    if end == first_digit || bytes.get(end) != Some(&b']') {
+        return None;
+    }
+    Some(end + 1)
 }
 
 fn is_id_start(b: u8) -> bool {
@@ -953,5 +1003,67 @@ mod tests {
     fn backslash_backslash_in_string_is_one_backslash() {
         let t = lex("\"a\\\\b\"", 1).unwrap();
         assert_eq!(kinds(&t), vec![TokenKind::StringLit(b"a\\b".to_vec())]);
+    }
+    #[test]
+    fn a_vector_register_keeps_its_arrangement_and_lane() {
+        // Split apart, `16b` reads as an integer literal and the whole
+        // line dies before the encoder ever sees it.
+        let t = lex("movi v0.16b, #0", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::Ident("movi".into()),
+                TokenKind::Ident("v0.16b".into()),
+                TokenKind::Comma,
+                TokenKind::Hash,
+                TokenKind::IntLit(0),
+            ]
+        );
+        let t = lex("ins v3.b[15], w7", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::Ident("ins".into()),
+                TokenKind::Ident("v3.b[15]".into()),
+                TokenKind::Comma,
+                TokenKind::Ident("w7".into()),
+            ]
+        );
+        // A register list survives as its pieces: the braces and the
+        // range dash are their own tokens.
+        let t = lex("{v0.16b-v3.16b}", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::LBrace,
+                TokenKind::Ident("v0.16b".into()),
+                TokenKind::Minus,
+                TokenKind::Ident("v3.16b".into()),
+                TokenKind::RBrace,
+            ]
+        );
+    }
+
+    #[test]
+    fn an_ordinary_identifier_never_swallows_a_directive() {
+        // Only a `vN` name takes a suffix, and only one that spells an
+        // arrangement or a lane, so `v1` beside `.byte` is untouched.
+        let t = lex("v1 .byte 4", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::Ident("v1".into()),
+                TokenKind::DirectiveIdent(".byte".into()),
+                TokenKind::IntLit(4),
+            ]
+        );
+        let t = lex("v1.byte", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::Ident("v1".into()),
+                TokenKind::DirectiveIdent(".byte".into()),
+            ]
+        );
     }
 }
