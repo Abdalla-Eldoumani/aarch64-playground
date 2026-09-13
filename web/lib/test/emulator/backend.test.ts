@@ -29,6 +29,7 @@ function fakeEmu() {
     isHalted: () => false,
     getAllRegisters: () => ({ gpr: [], sp: "0", pc: "0", nzcv: 0 }),
     getFpRegisters: () => [],
+    getVectorRegisters: () => [],
     getChangedRegisters: () => [],
     getChangedFpRegisters: () => [],
     getExitCode: () => null,
