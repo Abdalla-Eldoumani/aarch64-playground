@@ -58,6 +58,12 @@ const INSTS: &[(&str, i64, bool)] = &[
     ("str d1, ", 8, false),
     ("ldr s1, ", 4, false),
     ("str s1, ", 4, false),
+    ("ldr h1, ", 2, false),
+    ("str h1, ", 2, false),
+    ("ldr b1, ", 1, false),
+    ("str b1, ", 1, false),
+    ("ldr q1, ", 16, false),
+    ("str q1, ", 16, false),
     ("ldp x1, x2, ", 8, true),
     ("stp x1, x2, ", 8, true),
     ("ldp w1, w2, ", 4, true),
@@ -66,6 +72,8 @@ const INSTS: &[(&str, i64, bool)] = &[
     ("stp d1, d2, ", 8, true),
     ("ldp s1, s2, ", 4, true),
     ("stp s1, s2, ", 4, true),
+    ("ldp q1, q2, ", 16, true),
+    ("stp q1, q2, ", 16, true),
 ];
 
 /// Every addressing form the parser discriminates between, `{b}` standing
