@@ -454,6 +454,48 @@ Shift by register. The count comes from the LOW BYTE of each `Vm` lane, read as 
 | `SQRSHL` | `SQRSHL Vd.T, Vn.T, Vm.T` / `SQRSHL Bd, Bn, Bm` (and `H`, `S`, `D`) | Signed saturating rounding shift. `SQSHL` and `UQSHL` take this same register form, listed with their immediate rows above. |
 | `UQRSHL` | the same shapes                   | The unsigned saturating rounding shift. |
 
+Permutes and table lookups. These move lanes rather than compute on them: nothing here saturates or wraps, and the lane width only says how big the pieces being moved are.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `EXT`    | `EXT Vd.16B, Vn.16B, Vm.16B, #index` (and `8B`) | `Vn` and `Vm` laid end to end, read from byte `#index` on for as many bytes as the arrangement holds. The `8B` form concatenates the two LOW halves, so its index stops at 7; the `16B` form's at 15. |
+| `TBL`    | `TBL Vd.16B, {Vn.16B}, Vm.16B` (and `8B`, and tables of 2, 3 or 4 registers) | Each byte of `Vm` indexes a byte table made of consecutive registers from `Vn` on. The table is always spelled `16B` whatever the destination is, the list wraps past `v31` (`{v30.16b-v1.16b}`), and an index at or past `16 x n` gives ZERO. |
+| `TBX`    | the same shapes                   | The same lookup, except an out-of-range index LEAVES the destination byte alone instead of zeroing it. That is the whole difference between the two. |
+| `ZIP1`   | `ZIP1 Vd.T, Vn.T, Vm.T` (`8B`/`16B`, `4H`/`8H`, `2S`/`4S`, `2D`) | Interleave the LOW halves of the two sources, `Vn` lane first. |
+| `ZIP2`   | the same shapes                   | The same over the UPPER halves.         |
+| `UZP1`   | the same shapes                   | Every EVEN lane of `Vn` then `Vm`, laid end to end: the de-interleave `ZIP1` undoes. |
+| `UZP2`   | the same shapes                   | Every ODD lane of the two.              |
+| `TRN1`   | the same shapes                   | The even lanes of both, alternating: `Vd[2i] = Vn[2i]`, `Vd[2i+1] = Vm[2i]`. |
+| `TRN2`   | the same shapes                   | The odd lanes of both, the other half of a 2x2 transpose. |
+
+By element. Every multiply and multiply-accumulate above also takes ONE lane of `Vm` in place of the whole second source, written `Vm.H[index]` or `Vm.S[index]`. The lane arithmetic is exactly the whole-register row's; only where the second operand comes from changes. An `H` element reads `v0`-`v15` only, because the encoding spends the register's high bit on the index.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `MUL`    | `MUL Vd.4H, Vn.4H, Vm.H[index]` (and `8H`, `2S`/`4S` with `Vm.S[index]`) | The three-same product with one lane broadcast; wraps in the lane like the register form. |
+| `MLA`    | the same shapes                   | Accumulate the product into `Vd`.       |
+| `MLS`    | the same shapes                   | Subtract the product from `Vd`.         |
+| `SMULL`  | `SMULL Vd.4S, Vn.4H, Vm.H[index]` (and `2D`/`2S` with `Vm.S[index]`) | Signed widening product into lanes of twice the source width. |
+| `SMULL2` | `SMULL2 Vd.4S, Vn.8H, Vm.H[index]` | The same reading the UPPER half of `Vn`; the `2` is the Q bit and nothing else. |
+| `UMULL`  | the same shapes as `SMULL`        | The unsigned pair: the operands are zero-extended instead of sign-extended. |
+| `UMULL2` | the same shapes as `SMULL2`       | The unsigned upper-half form.           |
+| `SMLAL`  | the same shapes as `SMULL`        | Accumulate the widened product into `Vd`. |
+| `SMLAL2` | the same shapes as `SMULL2`       | The upper-half form.                    |
+| `UMLAL`  | the same shapes                   | The unsigned accumulate.                |
+| `UMLAL2` | the same shapes                   | The unsigned upper-half accumulate.     |
+| `SMLSL`  | the same shapes                   | Subtract the widened product from `Vd`. |
+| `SMLSL2` | the same shapes                   | The upper-half form.                    |
+| `UMLSL`  | the same shapes                   | The unsigned subtract.                  |
+| `UMLSL2` | the same shapes                   | The unsigned upper-half subtract.       |
+| `SQDMULL` | `SQDMULL Vd.4S, Vn.4H, Vm.H[index]` / `SQDMULL Sd, Hn, Vm.H[index]` (and `2D`/`2S`, `Dd, Sn`) | Doubled signed widening product, saturated at the wide lane. Only the two minimum values saturate: `-32768 x -32768 x 2` is one past `0x7fffffff`. |
+| `SQDMULL2` | `SQDMULL2 Vd.4S, Vn.8H, Vm.H[index]` | The upper-half form; no `2` form has a scalar spelling. |
+| `SQDMLAL` | the same shapes as `SQDMULL`     | The doubled product saturated, then the sum with `Vd` saturated again, so a product already at the limit cannot wrap on the way in. |
+| `SQDMLAL2` | the same shapes as `SQDMULL2`   | The upper-half form.                    |
+| `SQDMLSL` | the same shapes as `SQDMULL`     | The saturating doubling subtract.       |
+| `SQDMLSL2` | the same shapes as `SQDMULL2`   | The upper-half form.                    |
+| `SQDMULH` | `SQDMULH Vd.4H, Vn.4H, Vm.H[index]` / `SQDMULH Hd, Hn, Vm.H[index]` (and `2S`/`4S`, `Sd, Sn`) | The doubled product's HIGH half, saturating only at the two minimum values. |
+| `SQRDMULH` | the same shapes                 | The rounding one: half an ulp of the kept half is added before the high half is taken. |
+
 ## Directives
 
 | Directive     | Notes                                                 |
@@ -576,7 +618,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- The rest of the vector families: the element-indexed multiplies, the permutes and table lookups, floating-point lanes, and the `LD1`-`ST4` structure loads. The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, and the whole of the integer lane arithmetic above (three-same, two-register misc, across lanes, the widening and narrowing forms, and the shifts) are all in; the rest lands in the changes that follow.
+- The rest of the vector families: floating-point lanes and the `LD1`-`ST4` structure loads. The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, and the whole of the integer lane arithmetic above (three-same, two-register misc, across lanes, the widening and narrowing forms, the shifts, the permutes and table lookups, and the element-indexed multiplies) are all in; the rest lands in the changes that follow.
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
