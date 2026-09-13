@@ -24,10 +24,21 @@ use aarch64_emulator::registers::RegisterFile;
 
 use common::{inventory, InventoryLine};
 
-/// The load/store families this PR implements. Every other implemented
-/// mnemonic (the SIMD-scalar SCVTF) is left to `simd.rs` until its own
-/// feature lands.
-const REPLAYED: &[&str] = &["ldr", "str", "ldur", "stur", "ldp", "stp", "ldnp", "stnp"];
+/// The load/store families, whose base register lives in brackets and
+/// whose rows carry memory chunks.
+const MEMORY: &[&str] = &["ldr", "str", "ldur", "stur", "ldp", "stp", "ldnp", "stnp"];
+
+/// The register-to-register families: the vector immediates and the lane
+/// moves. They touch no memory, so no row of theirs names a base.
+const MOVES: &[&str] = &["movi", "mvni", "orr", "bic", "fmov", "dup", "ins", "umov", "smov", "mov"];
+
+/// Whether this suite replays a line. Everything else implemented (the
+/// SIMD-scalar SCVTF) is left to `simd.rs` until its own feature lands.
+fn is_replayed(line: &InventoryLine) -> bool {
+    line.implemented()
+        && !line.spelling.contains("_probe")
+        && (MEMORY.contains(&line.mnemonic()) || MOVES.contains(&line.mnemonic()))
+}
 
 /// Where the mapped buffer's base sits: page-aligned (so SP-based forms
 /// clear the 16-byte SA0 rule), clear of the null-page guard, and with
@@ -77,17 +88,18 @@ fn fields(rest: &str) -> Vec<(&str, &str)> {
 }
 
 /// The base register a load/store spelling names: the first word inside
-/// the brackets.
-fn base_register(spelling: &str) -> &str {
-    let inside = spelling
-        .split_once('[')
-        .unwrap_or_else(|| panic!("no address in `{spelling}`"))
-        .1;
-    inside
-        .split(|c: char| c == ',' || c == ']')
-        .next()
-        .expect("a base register")
-        .trim()
+/// the address brackets. None for a line with no address at all, which a
+/// lane reference (`ins v3.b[15], w7`) also has to answer, since its own
+/// brackets hold a lane index rather than a register.
+fn base_register(spelling: &str) -> Option<&str> {
+    let inside = spelling.split_once(", [")?.1;
+    Some(
+        inside
+            .split(|c: char| c == ',' || c == ']')
+            .next()
+            .expect("a base register")
+            .trim(),
+    )
 }
 
 /// The input state of one set, and the machine it builds.
@@ -182,16 +194,21 @@ fn replay(line: &InventoryLine, set: &InputSet, rest: &str) -> Option<String> {
     };
 
     let mut regs = set.registers();
-    let base_name = base_register(&line.spelling);
-    let base_index: Option<u8> = if base_name == "sp" {
-        regs.write_sp(BASE);
-        None
-    } else {
-        let idx: u8 = base_name[1..]
-            .parse()
-            .unwrap_or_else(|_| panic!("odd base register `{base_name}`"));
-        regs.write_gpr(idx, true, BASE);
-        Some(idx)
+    let base_index: Option<u8> = match base_register(&line.spelling) {
+        // A register-to-register line has no address, so nothing to point
+        // at the buffer and no base to check afterwards.
+        None => None,
+        Some("sp") => {
+            regs.write_sp(BASE);
+            None
+        }
+        Some(base_name) => {
+            let idx: u8 = base_name[1..]
+                .parse()
+                .unwrap_or_else(|_| panic!("odd base register `{base_name}`"));
+            regs.write_gpr(idx, true, BASE);
+            Some(idx)
+        }
     };
 
     let start = BASE - BEFORE;
@@ -294,7 +311,7 @@ fn every_implemented_line_moves_the_bytes_csarm_moved() {
 
     for row in &rows {
         let line = &lines[row.index];
-        if !REPLAYED.contains(&line.mnemonic()) || line.spelling.contains("_probe") {
+        if !is_replayed(line) {
             skipped += 1;
             continue;
         }
