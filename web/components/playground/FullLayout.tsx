@@ -3,7 +3,12 @@
 import type { ReactNode } from "react";
 import { isAtLeast, type Breakpoint } from "@/lib/hooks/use-breakpoint";
 import { MobileLayout } from "@/components/playground/MobileLayout";
-import { ResizableLayout } from "@/components/playground/ResizableLayout";
+import {
+  DEBUG_SPLIT,
+  EDITOR_SPLIT,
+  PaneSplit,
+  ResizableLayout,
+} from "@/components/playground/ResizableLayout";
 import type { DebugPanes } from "@/components/playground/RightTabs";
 
 export interface FullLayoutProps {
@@ -22,9 +27,10 @@ export interface FullLayoutProps {
 /**
  * Which arrangement the full playground wears at this width. Three of them,
  * and the choice is the whole of this component's job: resizable splits from
- * laptop up, a fixed two-column grid at tablet, and the single-pane phone
- * layout below that. Every pane arrives as a rendered node, so the shell
- * keeps the hub and this keeps the geometry.
+ * laptop up, two fixed half-width columns at tablet (each one a vertical
+ * split of its own, under its own persistence key), and the single-pane
+ * phone layout below that. Every pane arrives as a rendered node, so the
+ * shell keeps the hub and this keeps the geometry.
  */
 export function FullLayout({
   breakpoint,
@@ -55,17 +61,23 @@ export function FullLayout({
         />
       ) : showTablet ? (
         <div className="flex flex-row h-full">
-          <div className="flex flex-col w-1/2 border-r border-[var(--border)] min-h-0">
-            <div className="flex-1 min-h-0 flex flex-col">{editor}</div>
-            <div className="h-40 border-t border-[var(--border)] overflow-auto">
-              {disassembly}
-            </div>
+          <div className="w-1/2 min-h-0 border-r border-[var(--border)]">
+            <PaneSplit
+              orientation="vertical"
+              spec={EDITOR_SPLIT}
+              storageKey={`${breakpoint}-left` as Breakpoint}
+              first={editor}
+              second={disassembly}
+            />
           </div>
-          <div className="flex flex-col w-1/2 min-h-0">
-            <div className="flex-1 min-h-0 overflow-auto border-b border-[var(--border)]">
-              {registers}
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden">{rightTabs}</div>
+          <div className="w-1/2 min-h-0">
+            <PaneSplit
+              orientation="vertical"
+              spec={DEBUG_SPLIT}
+              storageKey={`${breakpoint}-right` as Breakpoint}
+              first={registers}
+              second={rightTabs}
+            />
           </div>
         </div>
       ) : (
