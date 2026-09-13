@@ -346,6 +346,14 @@ pub fn execute(
             exec_simd_two_misc(*op, *esize, *q, *scalar, *rn, *rd, regs);
             Ok(ExecResult::Advance)
         }
+        Instruction::SimdThreeDiff { op, esize, upper, scalar, rm, rn, rd } => {
+            exec_simd_three_diff(*op, *esize, *upper, *scalar, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdShiftImm { op, esize, q, scalar, shift, rn, rd } => {
+            exec_simd_shift_imm(*op, *esize, *q, *scalar, *shift, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
         Instruction::SimdAcross { op, esize, q, rn, rd } => {
             exec_simd_across(*op, *esize, *q, *rn, *rd, regs);
             Ok(ExecResult::Advance)
@@ -1356,6 +1364,30 @@ fn pack_lanes(lanes: &[u64], esize: u8) -> u128 {
         .fold(0u128, |acc, (i, lane)| acc | ((u128::from(*lane) & mask) << (i as u32 * width)))
 }
 
+/// The half of a 128-bit source a widening or `2` form reads: the low
+/// lanes for the plain spelling, the high ones for the `2` suffix.
+fn read_half_lanes(value: u128, esize: u8, upper: bool) -> Vec<u64> {
+    let lanes = read_lanes(value, esize, 16);
+    let half = lanes.len() / 2;
+    if upper {
+        lanes[half..].to_vec()
+    } else {
+        lanes[..half].to_vec()
+    }
+}
+
+/// Write a 64-bit-wide result. The plain form fills the low half and
+/// zeroes bits 127:64; the `2` form fills the high half and leaves the
+/// low one exactly as it was, which is the whole point of the suffix.
+fn write_half(regs: &mut RegisterFile, rd: u8, upper: bool, packed: u128) {
+    if upper {
+        let low = regs.read_fpr_q(rd) & u128::from(u64::MAX);
+        regs.write_fpr_q(rd, low | (packed << 64));
+    } else {
+        regs.write_fpr_q(rd, packed);
+    }
+}
+
 /// Carry-less (polynomial) multiply of two bytes: PMUL's lane operation.
 fn poly_mul(a: u64, b: u64) -> u64 {
     (0..8).fold(0u64, |acc, bit| if (b >> bit) & 1 == 1 { acc ^ (a << bit) } else { acc })
@@ -1484,6 +1516,84 @@ fn simd_same_lane(op: SimdSameOp, a: u64, b: u64, d: u64, esize: u8) -> u64 {
             sat_signed(product >> bits, esize)
         }
         SimdSameOp::Addp => a.wrapping_add(b) & mask,
+        // The register shifts read a shift COUNT out of the second
+        // source rather than a value, so they have their own lane rule.
+        SimdSameOp::Sshl
+        | SimdSameOp::Ushl
+        | SimdSameOp::Srshl
+        | SimdSameOp::Urshl
+        | SimdSameOp::Sqshl
+        | SimdSameOp::Uqshl
+        | SimdSameOp::Sqrshl
+        | SimdSameOp::Uqrshl => simd_shift_reg_lane(op, a, b, esize),
+    }
+}
+
+/// One lane of a register shift. The count is the SIGNED low byte of the
+/// second source's lane: positive shifts left, negative right. The
+/// rounding rows add half an ulp of the discarded bits before shifting,
+/// and the saturating rows clamp a left shift that leaves the lane.
+fn simd_shift_reg_lane(op: SimdSameOp, a: u64, count: u64, esize: u8) -> u64 {
+    let bits = u32::from(esize) * 8;
+    let mask = lane_mask(esize);
+    let shift = (count & 0xff) as u8 as i8;
+    let signed = matches!(
+        op,
+        SimdSameOp::Sshl | SimdSameOp::Srshl | SimdSameOp::Sqshl | SimdSameOp::Sqrshl
+    );
+    let rounding = matches!(
+        op,
+        SimdSameOp::Srshl | SimdSameOp::Urshl | SimdSameOp::Sqrshl | SimdSameOp::Uqrshl
+    );
+    let saturating = matches!(
+        op,
+        SimdSameOp::Sqshl | SimdSameOp::Uqshl | SimdSameOp::Sqrshl | SimdSameOp::Uqrshl
+    );
+    // The shift is defined on the unbounded integer the lane holds, so
+    // the intermediate is i128: that width is the instruction's, not a
+    // convenience, and the truncation or clamp back to the lane is the
+    // last step rather than a side effect of the arithmetic.
+    let element = if signed {
+        i128::from(lane_signed(a, esize))
+    } else {
+        i128::from(a)
+    };
+    let saturate = |value: i128| {
+        if signed {
+            sat_signed(value, esize)
+        } else {
+            sat_unsigned(value, esize)
+        }
+    };
+    if shift >= 0 {
+        let s = u32::from(shift as u8);
+        if s >= bits {
+            // Every bit the lane held has left it: the truncating rows
+            // answer zero and the saturating ones the extreme the sign
+            // of the operand asks for.
+            if !saturating || element == 0 {
+                return 0;
+            }
+            return saturate(if element > 0 { i128::MAX / 2 } else { i128::MIN / 2 });
+        }
+        let value = element << s;
+        if saturating {
+            saturate(value)
+        } else {
+            (value as u64) & mask
+        }
+    } else {
+        // A right shift past the lane empties it whatever the count, so
+        // the count is capped where the answer stops changing rather
+        // than left to run the rounding constant off the intermediate.
+        let k = u32::from(shift.unsigned_abs()).min(bits + 1);
+        let base = if rounding { element + (1i128 << (k - 1)) } else { element };
+        let value = base >> k;
+        if saturating {
+            saturate(value)
+        } else {
+            (value as u64) & mask
+        }
     }
 }
 
@@ -1569,7 +1679,29 @@ fn simd_misc_lane(op: SimdMiscOp, a: u64, d: u64, esize: u8) -> u64 {
         | SimdMiscOp::Saddlp
         | SimdMiscOp::Uaddlp
         | SimdMiscOp::Sadalp
-        | SimdMiscOp::Uadalp => unreachable!("handled by shape, not lane by lane"),
+        | SimdMiscOp::Uadalp
+        | SimdMiscOp::Xtn
+        | SimdMiscOp::Sqxtn
+        | SimdMiscOp::Uqxtn
+        | SimdMiscOp::Sqxtun
+        | SimdMiscOp::Shll => unreachable!("handled by shape, not lane by lane"),
+    }
+}
+
+/// One lane of a narrowing extract. The source is twice `esize` wide, so
+/// the value can be past what the result lane holds: that overflow is
+/// exactly what the three saturating rows clamp and XTN discards.
+fn simd_narrow_lane(op: SimdMiscOp, a: u64, esize: u8) -> u64 {
+    let wide = esize * 2;
+    let signed = i128::from(lane_signed(a, wide));
+    match op {
+        SimdMiscOp::Xtn => a & lane_mask(esize),
+        SimdMiscOp::Sqxtn => sat_signed(signed, esize),
+        SimdMiscOp::Uqxtn => sat_unsigned(i128::from(a), esize),
+        // SQXTUN reads the source SIGNED and saturates it into an
+        // UNSIGNED lane, so a negative source clamps at zero.
+        SimdMiscOp::Sqxtun => sat_unsigned(signed, esize),
+        _ => unreachable!("only the narrowing extracts reach this"),
     }
 }
 
@@ -1626,6 +1758,30 @@ fn exec_simd_two_misc(
                 .collect();
             regs.write_fpr_q(rd, pack_lanes(&out, wide));
         }
+        // The narrowing extracts read lanes of twice the result's width
+        // and, in the `2` form, write the upper half of the destination
+        // rather than zeroing everything above the result.
+        SimdMiscOp::Xtn | SimdMiscOp::Sqxtn | SimdMiscOp::Uqxtn | SimdMiscOp::Sqxtun => {
+            let wide = esize * 2;
+            let read = if scalar { wide } else { 16 };
+            let lanes = read_lanes(regs.read_fpr_q(rn), wide, read);
+            let out: Vec<u64> = lanes.iter().map(|v| simd_narrow_lane(op, *v, esize)).collect();
+            if scalar {
+                regs.write_fpr_scalar(rd, esize, out[0]);
+            } else {
+                write_half(regs, rd, q, pack_lanes(&out, esize));
+            }
+        }
+        // SHLL shifts each lane left by exactly its own width into a
+        // lane of twice that, so the result is the source in the top
+        // half of every widened lane and zeros below it.
+        SimdMiscOp::Shll => {
+            let wide = esize * 2;
+            let width = u32::from(esize) * 8;
+            let lanes = read_half_lanes(regs.read_fpr_q(rn), esize, q);
+            let out: Vec<u64> = lanes.iter().map(|v| (v << width) & lane_mask(wide)).collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
         _ => {
             let held = read_lanes(regs.read_fpr_q(rd), esize, bytes);
             let out: Vec<u64> = source
@@ -1634,6 +1790,262 @@ fn exec_simd_two_misc(
                 .map(|(i, lane)| simd_misc_lane(op, *lane, held[i], esize))
                 .collect();
             regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+    }
+}
+
+/// One lane of a three-different operation, computed at the WIDE width.
+/// Both `a` and `b` arrive already at the width the instruction reads
+/// them in: the widening rows extend their narrow operands first (which
+/// is what "long" means), and the narrowing rows are handed two wide
+/// lanes and keep the top half of the answer. `d` is the destination
+/// lane, which the accumulating rows read.
+fn simd_diff_lane(op: SimdDiffOp, a: i128, b: i128, d: u64, esize: u8) -> u64 {
+    let wide = esize * 2;
+    let wide_mask = lane_mask(wide);
+    let narrow_mask = lane_mask(esize);
+    let bits = u32::from(esize) * 8;
+    let half_ulp = 1u64 << (bits - 1);
+    match op {
+        SimdDiffOp::Saddl | SimdDiffOp::Uaddl | SimdDiffOp::Saddw | SimdDiffOp::Uaddw => {
+            (a + b) as u64 & wide_mask
+        }
+        SimdDiffOp::Ssubl | SimdDiffOp::Usubl | SimdDiffOp::Ssubw | SimdDiffOp::Usubw => {
+            (a - b) as u64 & wide_mask
+        }
+        SimdDiffOp::Sabdl | SimdDiffOp::Uabdl => (a - b).unsigned_abs() as u64 & wide_mask,
+        SimdDiffOp::Sabal | SimdDiffOp::Uabal => {
+            d.wrapping_add((a - b).unsigned_abs() as u64) & wide_mask
+        }
+        SimdDiffOp::Smull | SimdDiffOp::Umull => (a * b) as u64 & wide_mask,
+        SimdDiffOp::Smlal | SimdDiffOp::Umlal => d.wrapping_add((a * b) as u64) & wide_mask,
+        SimdDiffOp::Smlsl | SimdDiffOp::Umlsl => d.wrapping_sub((a * b) as u64) & wide_mask,
+        // PMUL's carry-less product of two bytes fills the wide lane.
+        SimdDiffOp::Pmull => poly_mul(a as u64, b as u64) & wide_mask,
+        // The doubling multiplies saturate their product at the wide
+        // width; the accumulating pair then saturate the sum as well, so
+        // a product already at the limit cannot wrap on the way in.
+        SimdDiffOp::Sqdmull => sat_signed(2 * a * b, wide),
+        SimdDiffOp::Sqdmlal | SimdDiffOp::Sqdmlsl => {
+            let product = i128::from(lane_signed(sat_signed(2 * a * b, wide), wide));
+            let held = i128::from(lane_signed(d, wide));
+            let sum = if op == SimdDiffOp::Sqdmlal { held + product } else { held - product };
+            sat_signed(sum, wide)
+        }
+        // The high-half narrowing adds form the sum at the SOURCE width
+        // and keep its top half; the rounding pair add half an ulp of
+        // that half first, which is the bit just below what is kept.
+        SimdDiffOp::Addhn | SimdDiffOp::Raddhn => {
+            let sum = (a + b) as u64;
+            let sum = if op == SimdDiffOp::Raddhn { sum.wrapping_add(half_ulp) } else { sum };
+            ((sum & wide_mask) >> bits) & narrow_mask
+        }
+        SimdDiffOp::Subhn | SimdDiffOp::Rsubhn => {
+            let diff = (a - b) as u64;
+            let diff = if op == SimdDiffOp::Rsubhn { diff.wrapping_add(half_ulp) } else { diff };
+            ((diff & wide_mask) >> bits) & narrow_mask
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_three_diff(
+    op: SimdDiffOp,
+    esize: u8,
+    upper: bool,
+    scalar: bool,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_diff_row(op);
+    let wide = esize * 2;
+    // The S/U pair of every widening row differ in nothing but how the
+    // narrow operands are extended; the narrowing rows extend nothing,
+    // because both their operands already arrive at the wide width.
+    let signed = matches!(
+        op,
+        SimdDiffOp::Saddl
+            | SimdDiffOp::Saddw
+            | SimdDiffOp::Ssubl
+            | SimdDiffOp::Ssubw
+            | SimdDiffOp::Sabal
+            | SimdDiffOp::Sabdl
+            | SimdDiffOp::Smlal
+            | SimdDiffOp::Smlsl
+            | SimdDiffOp::Smull
+            | SimdDiffOp::Sqdmlal
+            | SimdDiffOp::Sqdmlsl
+            | SimdDiffOp::Sqdmull
+    );
+    let extend = |lane: u64| -> i128 {
+        if signed {
+            i128::from(lane_signed(lane, esize))
+        } else {
+            i128::from(lane)
+        }
+    };
+    if scalar {
+        let n = read_lanes(regs.read_fpr_q(rn), esize, esize)[0];
+        let m = read_lanes(regs.read_fpr_q(rm), esize, esize)[0];
+        let d = read_lanes(regs.read_fpr_q(rd), wide, wide)[0];
+        let out = simd_diff_lane(op, extend(n), extend(m), d, esize);
+        regs.write_fpr_scalar(rd, wide, out);
+        return;
+    }
+    match row.shape {
+        SimdDiffShape::Long => {
+            let n = read_half_lanes(regs.read_fpr_q(rn), esize, upper);
+            let m = read_half_lanes(regs.read_fpr_q(rm), esize, upper);
+            let held = read_lanes(regs.read_fpr_q(rd), wide, 16);
+            let out: Vec<u64> = (0..n.len())
+                .map(|i| simd_diff_lane(op, extend(n[i]), extend(m[i]), held[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        SimdDiffShape::Wide => {
+            let n = read_lanes(regs.read_fpr_q(rn), wide, 16);
+            let m = read_half_lanes(regs.read_fpr_q(rm), esize, upper);
+            let held = read_lanes(regs.read_fpr_q(rd), wide, 16);
+            let out: Vec<u64> = (0..m.len())
+                .map(|i| simd_diff_lane(op, i128::from(n[i]), extend(m[i]), held[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        SimdDiffShape::Narrow => {
+            let n = read_lanes(regs.read_fpr_q(rn), wide, 16);
+            let m = read_lanes(regs.read_fpr_q(rm), wide, 16);
+            let out: Vec<u64> = (0..n.len())
+                .map(|i| simd_diff_lane(op, i128::from(n[i]), i128::from(m[i]), 0, esize))
+                .collect();
+            write_half(regs, rd, upper, pack_lanes(&out, esize));
+        }
+    }
+}
+
+/// One lane of a shift by immediate at the lane's own width. `d` is the
+/// destination lane, which the accumulating and inserting rows read.
+fn simd_shift_same_lane(op: SimdShiftOp, a: u64, d: u64, shift: u8, esize: u8) -> u64 {
+    let mask = lane_mask(esize);
+    let s = u32::from(shift);
+    // A right shift of the whole lane width is a legal encoding
+    // (`ushr v3.2d, v7.2d, #64`), so the arithmetic runs in 128 bits
+    // where shifting a lane entirely away is defined rather than UB.
+    let signed = i128::from(lane_signed(a, esize));
+    let unsigned = i128::from(a);
+    let asr = (signed >> s) as u64;
+    let lsr = (unsigned >> s) as u64;
+    let round = |value: i128| ((value + (1i128 << (s - 1))) >> s) as u64;
+    match op {
+        SimdShiftOp::Shl => (a << s) & mask,
+        SimdShiftOp::Sshr => asr & mask,
+        SimdShiftOp::Ushr => lsr & mask,
+        SimdShiftOp::Ssra => d.wrapping_add(asr) & mask,
+        SimdShiftOp::Usra => d.wrapping_add(lsr) & mask,
+        SimdShiftOp::Srshr => round(signed) & mask,
+        SimdShiftOp::Urshr => round(unsigned) & mask,
+        SimdShiftOp::Srsra => d.wrapping_add(round(signed)) & mask,
+        SimdShiftOp::Ursra => d.wrapping_add(round(unsigned)) & mask,
+        // SLI keeps the destination's low `shift` bits and SRI its high
+        // ones: the bits the shift would have left undefined.
+        SimdShiftOp::Sli => ((a << s) | (d & ((1u64 << s) - 1))) & mask,
+        SimdShiftOp::Sri => {
+            let kept = (u128::from(mask) & !(u128::from(mask) >> s)) as u64;
+            (((u128::from(a) >> s) as u64) | (d & kept)) & mask
+        }
+        SimdShiftOp::Sqshl => sat_signed(signed << s, esize),
+        SimdShiftOp::Uqshl => sat_unsigned(unsigned << s, esize),
+        // SQSHLU reads the lane SIGNED and saturates it into an UNSIGNED
+        // one, so a negative lane clamps at zero however far it shifts.
+        SimdShiftOp::Sqshlu => sat_unsigned(signed << s, esize),
+        _ => unreachable!("the lengthening and narrowing shifts have their own lane rules"),
+    }
+}
+
+/// One lane of a narrowing right shift: the source is twice `esize`
+/// wide, and what will not fit in the result lane is where every one of
+/// these saturates.
+fn simd_shift_narrow_lane(op: SimdShiftOp, a: u64, shift: u8, esize: u8) -> u64 {
+    let wide = esize * 2;
+    let s = u32::from(shift);
+    let signed = i128::from(lane_signed(a, wide));
+    let unsigned = i128::from(a);
+    let half_ulp = 1i128 << (s - 1);
+    match op {
+        SimdShiftOp::Shrn => ((unsigned >> s) as u64) & lane_mask(esize),
+        SimdShiftOp::Rshrn => (((unsigned + half_ulp) >> s) as u64) & lane_mask(esize),
+        SimdShiftOp::Sqshrn => sat_signed(signed >> s, esize),
+        SimdShiftOp::Sqrshrn => sat_signed((signed + half_ulp) >> s, esize),
+        SimdShiftOp::Uqshrn => sat_unsigned(unsigned >> s, esize),
+        SimdShiftOp::Uqrshrn => sat_unsigned((unsigned + half_ulp) >> s, esize),
+        // The UN pair read the source signed and answer an unsigned
+        // lane, so a negative source clamps at zero.
+        SimdShiftOp::Sqshrun => sat_unsigned(signed >> s, esize),
+        SimdShiftOp::Sqrshrun => sat_unsigned((signed + half_ulp) >> s, esize),
+        _ => unreachable!("only the narrowing shifts reach this"),
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_shift_imm(
+    op: SimdShiftOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    shift: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_shift_row(op);
+    let wide = esize * 2;
+    match row.shape {
+        SimdShiftShape::Same => {
+            let bytes = if scalar {
+                esize
+            } else if q {
+                16
+            } else {
+                8
+            };
+            let source = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+            let held = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+            let out: Vec<u64> = (0..source.len())
+                .map(|i| simd_shift_same_lane(op, source[i], held[i], shift, esize))
+                .collect();
+            if scalar {
+                regs.write_fpr_scalar(rd, esize, out[0]);
+            } else {
+                regs.write_fpr_q(rd, pack_lanes(&out, esize));
+            }
+        }
+        // SSHLL and USHLL extend each lane to twice its width and then
+        // shift, so nothing can leave the result lane.
+        SimdShiftShape::Long => {
+            let signed = op == SimdShiftOp::Sshll;
+            let lanes = read_half_lanes(regs.read_fpr_q(rn), esize, q);
+            let out: Vec<u64> = lanes
+                .iter()
+                .map(|lane| {
+                    let extended = if signed { lane_signed(*lane, esize) as u64 } else { *lane };
+                    (extended << shift) & lane_mask(wide)
+                })
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        SimdShiftShape::Narrow => {
+            let read = if scalar { wide } else { 16 };
+            let lanes = read_lanes(regs.read_fpr_q(rn), wide, read);
+            let out: Vec<u64> = lanes
+                .iter()
+                .map(|lane| simd_shift_narrow_lane(op, *lane, shift, esize))
+                .collect();
+            if scalar {
+                regs.write_fpr_scalar(rd, esize, out[0]);
+            } else {
+                write_half(regs, rd, q, pack_lanes(&out, esize));
+            }
         }
     }
 }
