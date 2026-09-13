@@ -151,7 +151,9 @@ Drives Firefox through the live app to confirm CSP boots Monaco and the editor r
 does not need:
 
 - **wasm**: the web and nodejs wasm-pack builds, uploaded as an artifact
-  every other job below downloads.
+  every other job below downloads. The bundles are cached on a hash of the
+  emulator sources and the two tool pins, so a change that leaves the
+  emulator alone restores them instead of installing a toolchain.
 - **rust**: four jobs that run alongside the web jobs: `cargo test` minus
   the corpus gate, and the fifty-program corpus sliced three ways
   (`CORPUS_SHARD=i/3`, read by the test itself), every program running
@@ -160,15 +162,18 @@ does not need:
 - **corpus**: `node scripts/verify-corpus.js`.
 - **web-static**: the dependency audit, `npm run lint`, `npm run typecheck`.
 - **web-build**: `npm run build` and `npm run size`.
-- **web-test**: `npm test -- --coverage` split into three shards
-  (`--shard=n/3`), every test file running exactly once across them.
+- **web-test**: `npm test -- --coverage` split into four shards
+  (`--shard=n/4`), every test file running exactly once across them.
 - **coverage**: merges the shards' blob reports (vitest writes them under
   `web/.vitest/blob/`, which the shard jobs upload and this job downloads)
   and enforces the coverage floors in `web/vitest.config.mts` on the
   whole-suite numbers, so a suite that passes locally can still fail CI if
   coverage drops below them.
 
-Each job maps to a local command above. The shards set `VITEST_SHARD` so
+Every web job restores `web/node_modules` through one composite action
+(`.github/actions/node-setup`) keyed on the manifest and lockfile with
+their `version` fields removed, so a release bump does not cold-install
+every job. Each job maps to a local command above. The shards set `VITEST_SHARD` so
 the floors are judged once on the merged report rather than against a
 shard's partial slice; a plain local `npm test -- --coverage` still
 enforces them directly.
