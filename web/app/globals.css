@@ -494,52 +494,6 @@ body {
   box-shadow: var(--ring);
 }
 
-/* Resize-handle styling for react-resizable-panels. The `data-` attributes
-   come from the library; we widen the hit target on coarse pointers so
-   phone drags don't miss the handle. On hover/drag a centered cyan grip bar
-   marks the draggable seam (interaction = cyan). */
-[data-panel-resize-handle-enabled] {
-  background: transparent;
-  position: relative;
-}
-[data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"] {
-  width: 4px;
-}
-[data-panel-resize-handle-enabled][data-panel-group-direction="vertical"] {
-  height: 4px;
-}
-[data-panel-resize-handle-enabled]:hover,
-[data-panel-resize-handle-enabled][data-resize-handle-active="pointer"] {
-  background: var(--cyan-dim);
-}
-[data-panel-resize-handle-enabled]:hover::after,
-[data-panel-resize-handle-enabled][data-resize-handle-active="pointer"]::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--cyan);
-}
-[data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"]:hover::after,
-[data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"][data-resize-handle-active="pointer"]::after {
-  width: 2px;
-  height: 24px;
-}
-[data-panel-resize-handle-enabled][data-panel-group-direction="vertical"]:hover::after,
-[data-panel-resize-handle-enabled][data-panel-group-direction="vertical"][data-resize-handle-active="pointer"]::after {
-  width: 24px;
-  height: 2px;
-}
-@media (pointer: coarse) {
-  [data-panel-resize-handle-enabled][data-panel-group-direction="horizontal"] {
-    width: 12px;
-  }
-  [data-panel-resize-handle-enabled][data-panel-group-direction="vertical"] {
-    height: 12px;
-  }
-}
-
 /* Panel content inherits `--font-scale`; opt-in classes use it. */
 .panel-scaled {
   font-size: calc(0.75rem * var(--font-scale));
