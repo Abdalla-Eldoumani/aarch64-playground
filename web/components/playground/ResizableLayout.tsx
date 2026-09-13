@@ -116,7 +116,7 @@ export function PaneSplit({
   second,
 }: PaneSplitProps) {
   const { ids, defaults, minSizes, label } = spec;
-  const [sizes, save] = useLayoutPersistence(storageKey, defaults);
+  const [sizes, save, , ready] = useLayoutPersistence(storageKey, defaults);
   const groupRef = useGroupRef();
 
   // The library's own double-click resets a panel to its `defaultSize`, which
@@ -130,10 +130,13 @@ export function PaneSplit({
   // The stored split arrives one render late: useLayoutPersistence reads
   // localStorage in an effect, and `defaultLayout` / `defaultSize` are read
   // only at mount, so without this the group opens on the authored default
-  // and the reader's saved sizes are lost on every reload. The equality guard
-  // is load-bearing: a drag reports through onLayoutChange -> save -> new
-  // sizes -> this effect, and pushing that same layout back would loop.
+  // and the reader's saved sizes are lost on every reload. It waits on
+  // `ready` so it reconciles against the LOADED sizes, never the fallback.
+  // The equality guard is load-bearing: a drag reports through
+  // onLayoutChange -> save -> new sizes -> this effect, and pushing that same
+  // layout back would loop.
   useEffect(() => {
+    if (!ready) return;
     const handle = groupRef.current;
     if (!handle) return;
     const current = handle.getLayout();
@@ -141,7 +144,7 @@ export function PaneSplit({
       (id, i) => Math.abs((current[id] ?? 0) - (sizes[i] ?? 0)) > 0.01,
     );
     if (drifted) handle.setLayout(toLayout(sizes, ids));
-  }, [groupRef, ids, sizes]);
+  }, [groupRef, ids, ready, sizes]);
 
   const horizontal = orientation === "horizontal";
 
