@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { useLayoutPersistence } from "@/lib/hooks/use-layout-persistence";
+import type { Breakpoint } from "@/lib/hooks/use-breakpoint";
+
+// The layouts each derive a suffixed scope from their breakpoint; the hook
+// only ever sees the string.
+const scope = (name: string) => name as Breakpoint;
 
 const KEY_PREFIX = "aarch64-playground:layout:";
 
@@ -54,5 +59,35 @@ describe("useLayoutPersistence", () => {
       useLayoutPersistence("lg", [60, 40]),
     );
     expect(result.current[0]).toEqual([60, 40]);
+  });
+
+  it("keeps the tablet's two column scopes apart from the laptop's", () => {
+    window.localStorage.setItem(`${KEY_PREFIX}lg-left`, "[70,30]");
+    window.localStorage.setItem(`${KEY_PREFIX}lg-right`, "[45,55]");
+    const left = renderHook(() =>
+      useLayoutPersistence(scope("md-left"), [70, 30]),
+    );
+    const right = renderHook(() =>
+      useLayoutPersistence(scope("md-right"), [45, 55]),
+    );
+    act(() => left.result.current[1]([85, 15]));
+    act(() => right.result.current[1]([20, 80]));
+    expect(window.localStorage.getItem(`${KEY_PREFIX}md-left`)).toBe("[85,15]");
+    expect(window.localStorage.getItem(`${KEY_PREFIX}md-right`)).toBe("[20,80]");
+    expect(window.localStorage.getItem(`${KEY_PREFIX}lg-left`)).toBe("[70,30]");
+    expect(window.localStorage.getItem(`${KEY_PREFIX}lg-right`)).toBe("[45,55]");
+  });
+
+  it("reopens a tablet column on the split a previous visit stored", () => {
+    window.localStorage.setItem(`${KEY_PREFIX}md-left`, "[85,15]");
+    window.localStorage.setItem(`${KEY_PREFIX}md-right`, "[20,80]");
+    const left = renderHook(() =>
+      useLayoutPersistence(scope("md-left"), [70, 30]),
+    );
+    const right = renderHook(() =>
+      useLayoutPersistence(scope("md-right"), [45, 55]),
+    );
+    expect(left.result.current[0]).toEqual([85, 15]);
+    expect(right.result.current[0]).toEqual([20, 80]);
   });
 });
