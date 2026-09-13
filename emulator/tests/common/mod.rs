@@ -12,7 +12,7 @@
 /// list flips red the moment a family lands and stops being a claim
 /// nobody checks. Removing a name is how a family is declared done.
 pub const NOT_YET: &[&str] = &[
-    "ext", "fabd", "fabs", "facge", "facgt", "fadd", "faddp", "fcmeq",
+    "fabd", "fabs", "facge", "facgt", "fadd", "faddp", "fcmeq",
     "fcmge", "fcmgt", "fcmle", "fcmlt", "fcvtas", "fcvtau", "fcvtl",
     "fcvtl2", "fcvtms", "fcvtmu", "fcvtn", "fcvtn2", "fcvtns", "fcvtnu",
     "fcvtps", "fcvtpu", "fcvtxn", "fcvtxn2", "fcvtzs", "fcvtzu", "fdiv",
@@ -21,8 +21,7 @@ pub const NOT_YET: &[&str] = &[
     "fmov", "fmul", "fmulx", "fneg", "frecpe", "frecps", "frecpx", "frinta",
     "frinti", "frintm", "frintn", "frintp", "frintx", "frintz", "frsqrte",
     "frsqrts", "fsqrt", "fsub", "ld1", "ld1r", "ld2", "ld2r", "ld3", "ld3r",
-    "ld4", "ld4r", "scvtf", "st1", "st2", "st3", "st4", "tbl", "tbx",
-    "trn1", "trn2", "ucvtf", "uzp1", "uzp2", "zip1", "zip2",
+    "ld4", "ld4r", "scvtf", "st1", "st2", "st3", "st4", "ucvtf",
 ];
 
 /// The exceptions to `NOT_YET`: spellings whose mnemonic is queued but
@@ -58,24 +57,8 @@ impl InventoryLine {
 
     /// Whether this crate is expected to assemble the line today.
     pub fn implemented(&self) -> bool {
-        !self.queued_form()
-            && (!NOT_YET.contains(&self.mnemonic())
-                || ALREADY_SUPPORTED.contains(&self.spelling.as_str()))
-    }
-
-    /// The mirror of `ALREADY_SUPPORTED`: a form of a LANDED mnemonic
-    /// that is still queued. Every multiply in the inventory also has a
-    /// by-element form (`mul v3.4h, v7.4h, v15.h[7]`), an encoding class
-    /// of its own that lands with the rest of the element-indexed
-    /// multiplies; their three-same and three-different forms landed
-    /// first. A lane index in the LAST operand is what marks one.
-    pub fn queued_form(&self) -> bool {
-        matches!(
-            self.mnemonic().trim_end_matches('2'),
-            "mul" | "mla" | "mls" | "sqdmulh" | "sqrdmulh"
-                | "smull" | "umull" | "smlal" | "umlal" | "smlsl" | "umlsl"
-                | "sqdmull" | "sqdmlal" | "sqdmlsl"
-        ) && self.spelling.rsplit(',').next().is_some_and(|last| last.contains('['))
+        !NOT_YET.contains(&self.mnemonic())
+            || ALREADY_SUPPORTED.contains(&self.spelling.as_str())
     }
 }
 
