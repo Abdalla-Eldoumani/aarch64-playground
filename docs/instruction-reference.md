@@ -163,7 +163,7 @@ The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` giv
 
 ## Floating point
 
-The register file is 128 bits wide: 32 entries named `V0`-`V31`, or `Q0`-`Q31` when a whole one is moved. `B`, `H`, `S` and `D` are views of the low 8, 16, 32 and 64 bits of the same entry, so `d3` and `q3` are the same register at two widths. Writing a scalar view zeroes every bit above it, exactly as the hardware does: an `S` write clears bits 127:32, a `D` write clears 127:64. Loads and stores reach all five widths; the arithmetic below is scalar `S` and `D` only.
+The register file is 128 bits wide: 32 entries named `V0`-`V31`, or `Q0`-`Q31` when a whole one is moved. `B`, `H`, `S` and `D` are views of the low 8, 16, 32 and 64 bits of the same entry, so `d3` and `q3` are the same register at two widths. Writing a scalar view zeroes every bit above it, exactly as the hardware does: an `S` write clears bits 127:32, a `D` write clears 127:64. Loads and stores reach all five widths; the arithmetic below is scalar `S` and `D` only. The `V` view and its arrangements have their own section under [Vector moves and immediates](#vector-moves-and-immediates).
 
 Every scalar instruction takes both course views: the S form (single precision, a C `float`) and the D form (double precision, a C `double`). Widths never mix inside one instruction; `FCVT` converts between them. Single-precision arithmetic rounds in single precision, exactly like the hardware.
 
@@ -204,6 +204,27 @@ The `FCVT` conversion family names its rounding mode in the mnemonic: `N` neares
 | `FCVTMU` | same shapes                       | The unsigned floor form; a negative input saturates to 0. |
 | `FCVTPS` | same shapes                       | Round toward plus infinity (ceiling): `-0.5` gives 0. |
 | `FCVTPU` | same shapes                       | The unsigned ceiling form. |
+
+## Vector moves and immediates
+
+The `V` view of the register file writes an arrangement after the register name: `v3.16b` is sixteen byte lanes, `v3.8h` eight halfwords, `v3.4s` four words, `v3.2d` two doublewords, and the `8b`/`4h`/`2s`/`1d` forms are the same shapes over the low 64 bits alone, with the upper half zeroed by every write. One lane is `v3.b[15]`, `v3.h[7]`, `v3.s[3]` or `v3.d[1]`.
+
+Only the moves and immediates are here. Lane arithmetic (`add v0.4s, v1.4s, v2.4s` and the rest) is not implemented yet.
+
+A whole-register write zeroes what it does not set, and a 64-bit arrangement clears bits 127:64. A lane write is the exception: `ins`, the `mov` spellings of it, and `fmov v0.d[1], x1` leave every other lane exactly as it was.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `MOVI`   | `MOVI Vd.T, #imm8{, LSL #amount}` / `MOVI Vd.2S, #imm8, MSL #amount` / `MOVI Vd.2D, #imm64` / `MOVI Dd, #imm64` | Put an immediate in every lane. `imm8` is 0-255; `LSL` takes 0, 8, 16 or 24 for an `S` arrangement and 0 or 8 for an `H` one. `MSL` (8 or 16) shifts ones in below the byte. The `2D` and `Dd` forms take a 64-bit immediate whose every byte is `0x00` or `0xff`, which is what makes `movi d31, #0` the way gcc zeroes a double. |
+| `MVNI`   | `MVNI Vd.T, #imm8{, LSL #amount}` / `MVNI Vd.2S, #imm8, MSL #amount` | The same immediate, inverted. There is no byte or 64-bit form. |
+| `ORR`    | `ORR Vd.T, #imm8{, LSL #amount}` / `ORR Vd.T, Vn.T, Vm.T` | The vector readings of `ORR`. The immediate form ORs the immediate into the destination and takes the `H` and `S` arrangements; the register form takes `8B` or `16B`. |
+| `BIC`    | `BIC Vd.T, #imm8{, LSL #amount}` / `BIC Vd.T, Vn.T, Vm.T` | `Vd = Vd AND NOT imm` and `Vd = Vn AND NOT Vm`, the same shapes as the vector `ORR`. Unlike the general-register `BIC`, this one does have an immediate form. |
+| `MOV`    | `MOV Vd.T, Vn.T` / `MOV Vd.Ts[i], Wn` / `MOV Vd.Ts[i], Vn.Ts[j]` / `MOV Wd, Vn.S[i]` / `MOV Bd, Vn.B[i]` | The aliases GAS prints for the four below: register to register is `ORR Vd, Vn, Vn`, into a lane is `INS`, out of a full-width lane is `UMOV`, and into a scalar register is `DUP`. |
+| `DUP`    | `DUP Vd.T, Wn` / `DUP Vd.2D, Xn` / `DUP Vd.T, Vn.Ts[i]` / `DUP Bd, Vn.B[i]` | One value into every lane, from a general register or from one lane. The scalar destination (`dup b3, v7.b[15]`, printed `mov`) copies the one lane and zeroes everything above it. |
+| `INS`    | `INS Vd.Ts[i], Wn` / `INS Vd.D[i], Xn` / `INS Vd.Ts[i], Vn.Ts[j]` | Write one lane and leave the others alone. The only vector write that does. |
+| `UMOV`   | `UMOV Wd, Vn.Ts[i]` (B, H or S) / `UMOV Xd, Vn.D[i]` | One lane out into a general register, zero-extended. At the destination's own width GAS prints it `mov`. |
+| `SMOV`   | `SMOV Wd, Vn.Ts[i]` (B or H) / `SMOV Xd, Vn.Ts[i]` (B, H or S) | The same, sign-extended, so the lane has to be narrower than the register. |
+| `FMOV`   | `FMOV Vd.D[1], Xn` / `FMOV Xd, Vn.D[1]` | The upper 64-bit lane to or from an x register. The write leaves the low lane in place; it is how a 128-bit value is assembled half at a time. |
 
 ## Directives
 
@@ -327,7 +348,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- SIMD arrangement syntax (`v0.16b`, `v0.2s`) and the vector instructions that use it (`add v0.4s, v1.4s, v2.4s`, `movi v0.2s, #0`). The 128-bit register file and its loads, stores and pairs are in; the arithmetic over lanes lands in the changes that follow.
+- The vector arithmetic families (`add v0.4s, v1.4s, v2.4s`, the shifts, the comparisons, the reductions, the table lookups, and the `LD1`-`ST4` structure loads). The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and the lane moves are all in; the arithmetic over lanes lands in the changes that follow.
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
