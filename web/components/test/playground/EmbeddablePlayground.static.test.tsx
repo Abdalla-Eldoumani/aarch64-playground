@@ -5,6 +5,7 @@
 // warns in development.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 // Monaco stays stubbed (jsdom must never instantiate the editor); the static
@@ -15,6 +16,16 @@ vi.mock("@/components/playground/lazy-editor", () => ({
 }));
 vi.mock("@/components/playground/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
+  // The tablet arrangement reaches the panel library through PaneSplit;
+  // these suites want the panes it wraps, not the split itself.
+  PaneSplit: ({ first, second }: { first: ReactNode; second: ReactNode }) => (
+    <div data-testid="pane-split">
+      {first}
+      {second}
+    </div>
+  ),
+  EDITOR_SPLIT: { label: "resize editor and disassembly" },
+  DEBUG_SPLIT: { label: "resize registers and tabs" },
 }));
 
 const useEmulatorMock = vi.hoisted(() => vi.fn());
