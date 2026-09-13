@@ -219,10 +219,10 @@ pub struct RegisterFile {
     sp: u64,
     pc: u64,
     pub nzcv: NzcvFlags,
-    /// D0..D31 / S0..S31 / V0..V31 share the same 32-entry register file.
-    /// We store the low 64 bits as `u64` so `f64::from_bits` / `to_bits`
-    /// round-trip losslessly; S-form reads use only the low 32 bits.
-    fpr: [u64; 32],
+    /// V0..V31, the 128-bit SIMD&FP register file. The B/H/S/D/Q views are
+    /// the low 8/16/32/64/128 bits of the same entry, so the scalar helpers
+    /// below extract from and deposit into `u128` storage.
+    fpr: [u128; 32],
 }
 
 impl RegisterFile {
@@ -233,7 +233,7 @@ impl RegisterFile {
             sp: 0,
             pc: 0,
             nzcv: NzcvFlags::default(),
-            fpr: [0u64; 32],
+            fpr: [0u128; 32],
         }
     }
 
@@ -297,21 +297,93 @@ impl RegisterFile {
         out
     }
 
-    /// Read the raw 64-bit bit pattern of an FP register. D-register reads
-    /// use the full 64 bits; S-register reads can mask the result as u32.
+    /// Read the low 64 bits of an FP register: the D view.
     pub fn read_fpr_bits(&self, index: u8) -> u64 {
+        if index >= 32 {
+            return 0;
+        }
+        self.fpr[index as usize] as u64
+    }
+
+    /// Write the D view of an FP register. Like the hardware, a D write
+    /// zeroes bits 127:64.
+    pub fn write_fpr_bits(&mut self, index: u8, value: u64) {
+        if index >= 32 {
+            return;
+        }
+        self.fpr[index as usize] = u128::from(value);
+    }
+
+    /// Read the whole 128-bit register: the Q (and V) view.
+    pub fn read_fpr_q(&self, index: u8) -> u128 {
         if index >= 32 {
             return 0;
         }
         self.fpr[index as usize]
     }
 
-    /// Write the raw 64-bit bit pattern of an FP register.
-    pub fn write_fpr_bits(&mut self, index: u8, value: u64) {
+    /// Write the whole 128-bit register: the Q (and V) view.
+    pub fn write_fpr_q(&mut self, index: u8, value: u128) {
         if index >= 32 {
             return;
         }
         self.fpr[index as usize] = value;
+    }
+
+    /// Write a B/H/S/D scalar view (1, 2, 4 or 8 bytes). Everything above
+    /// the written width is zeroed, which is what a SIMD&FP scalar
+    /// destination does on AArch64.
+    pub fn write_fpr_scalar(&mut self, index: u8, bytes: u8, value: u64) {
+        if index >= 32 {
+            return;
+        }
+        self.fpr[index as usize] = match bytes {
+            1 => u128::from(value as u8),
+            2 => u128::from(value as u16),
+            4 => u128::from(value as u32),
+            _ => u128::from(value),
+        };
+    }
+
+    /// Read one lane of `esize_bytes` (1, 2, 4 or 8) as a zero-extended
+    /// u64. An out-of-range lane or element size reads zero.
+    pub fn read_fpr_lane(&self, index: u8, esize_bytes: u8, lane: u8) -> u64 {
+        let (bits, shift) = match Self::lane_position(index, esize_bytes, lane) {
+            Some(pos) => pos,
+            None => return 0,
+        };
+        let mask = Self::lane_mask(bits);
+        ((self.fpr[index as usize] >> shift) & mask) as u64
+    }
+
+    /// Write one lane of `esize_bytes` (1, 2, 4 or 8). Unlike a scalar
+    /// write this leaves every other bit of the register alone.
+    pub fn write_fpr_lane(&mut self, index: u8, esize_bytes: u8, lane: u8, value: u64) {
+        let (bits, shift) = match Self::lane_position(index, esize_bytes, lane) {
+            Some(pos) => pos,
+            None => return,
+        };
+        let mask = Self::lane_mask(bits);
+        let slot = &mut self.fpr[index as usize];
+        *slot = (*slot & !(mask << shift)) | ((u128::from(value) & mask) << shift);
+    }
+
+    /// Element width in bits and its bit offset inside the register, or
+    /// None when the lane does not exist.
+    fn lane_position(index: u8, esize_bytes: u8, lane: u8) -> Option<(u32, u32)> {
+        if index >= 32 || esize_bytes == 0 || esize_bytes > 8 {
+            return None;
+        }
+        let bits = u32::from(esize_bytes) * 8;
+        let shift = u32::from(lane) * bits;
+        if shift >= 128 {
+            return None;
+        }
+        Some((bits, shift))
+    }
+
+    fn lane_mask(bits: u32) -> u128 {
+        if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 }
     }
 
     /// Read an FP register as f64. The low 64 bits are interpreted as the
@@ -320,7 +392,7 @@ impl RegisterFile {
         f64::from_bits(self.read_fpr_bits(index))
     }
 
-    /// Write an FP register as f64. Upper bits are zeroed.
+    /// Write an FP register as f64. Bits 127:64 are zeroed.
     pub fn write_fpr_f64(&mut self, index: u8, value: f64) {
         self.write_fpr_bits(index, value.to_bits());
     }
@@ -334,11 +406,12 @@ impl RegisterFile {
     /// Write an FP register as f32. Like the hardware, an S write zeroes
     /// everything above the low 32 bits.
     pub fn write_fpr_f32(&mut self, index: u8, value: f32) {
-        self.write_fpr_bits(index, value.to_bits() as u64);
+        self.write_fpr_scalar(index, 4, u64::from(value.to_bits()));
     }
 
-    /// Snapshot all 32 FP registers for change detection alongside GPRs.
-    pub fn snapshot_fpr(&self) -> [u64; 32] {
+    /// Snapshot all 32 FP registers, full 128-bit width, for change
+    /// detection alongside GPRs.
+    pub fn snapshot_fpr(&self) -> [u128; 32] {
         self.fpr
     }
 }
