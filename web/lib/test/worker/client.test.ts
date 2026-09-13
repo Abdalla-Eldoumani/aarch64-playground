@@ -11,6 +11,7 @@ function makeSnapshot(): StateSnapshot {
     nzcv: 0,
     changedRegs: [],
     fpRegisters: [],
+    vectorRegisters: [],
     changedFpRegs: [],
     halted: false,
     blocked: false,
