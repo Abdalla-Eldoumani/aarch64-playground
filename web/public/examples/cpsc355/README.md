@@ -64,6 +64,20 @@ Six extra programs are served beyond the tutorial set:
   level-up, a bomb and a freeze, and a boss at wave 10; run hands it the
   terminal pane and it grabs the keyboard
 
+Six more programs demonstrate the vector (`v`) registers, a register file
+the course does not teach, so the rules for the playable extras do not
+apply to them:
+
+- `vector-upper.s`: uppercase a typed line, sixteen characters per pass
+- `vector-strlen.s`: count the characters in a typed line, sixteen bytes
+  compared at once
+- `vector-sum.s`: add sixteen ints four lanes at a time
+- `vector-dot.s`: dot product of two arrays of eight ints, four
+  multiply-accumulates per instruction
+- `vector-brighten.s`: brighten a grayscale picture with a saturating
+  add, so the bright pixels stop at white instead of wrapping
+- `vector-mean.s`: mean of eight floats, four lanes at a time
+
 ## adding one of the extras
 
 What a program clears before it joins that set:
