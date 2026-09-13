@@ -409,7 +409,7 @@ impl Arrangement {
 }
 
 /// The letter GAS names a lane width with (`v3.b[15]`).
-fn element_letter(esize: u8) -> char {
+pub fn element_letter(esize: u8) -> char {
     match esize {
         1 => 'b',
         2 => 'h',
@@ -520,6 +520,423 @@ pub fn simd_replicate(element: u64, esize: u8, bytes: u8) -> u128 {
         out |= (u128::from(element) & mask) << (u32::from(lane) * width);
     }
     out
+}
+
+// --- the integer vector classes ---
+//
+// Three-same, two-register misc and across-lanes are three encoding
+// classes, each with one table row per (U, opcode) pair naming the
+// mnemonic and the lane widths it takes. The encoder, the decoder,
+// `format` and the executor all read these rows, so a spelling, a word
+// and a semantic cannot drift apart.
+
+/// A set of lane widths, one bit per element width: bit 0 is a byte,
+/// bit 1 a halfword, bit 2 a word, bit 3 a doubleword.
+pub type LaneMask = u8;
+
+const LANE_B: LaneMask = 0b0001;
+const LANE_H: LaneMask = 0b0010;
+const LANE_S: LaneMask = 0b0100;
+const LANE_D: LaneMask = 0b1000;
+const LANE_BH: LaneMask = LANE_B | LANE_H;
+const LANE_HS: LaneMask = LANE_H | LANE_S;
+const LANE_BHS: LaneMask = LANE_BH | LANE_S;
+const LANE_BHSD: LaneMask = LANE_BHS | LANE_D;
+const LANE_NONE: LaneMask = 0;
+
+/// Whether a lane of `esize` bytes is in the mask.
+pub fn lane_allowed(mask: LaneMask, esize: u8) -> bool {
+    esize.is_power_of_two() && esize <= 8 && mask & (1 << esize.trailing_zeros()) != 0
+}
+
+/// The two-bit size field a lane width encodes as.
+pub fn size_field(esize: u8) -> u8 {
+    esize.trailing_zeros() as u8
+}
+
+/// The lane width in bytes a two-bit size field names.
+pub fn size_esize(size: u8) -> u8 {
+    1u8 << size
+}
+
+/// The eight bitwise three-same operations. They share opcode 00011 and
+/// are told apart by U and the size field, which names no lane here: all
+/// eight are spelled 8b or 16b whatever their size bits say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdLogicalOp {
+    And,
+    Bic,
+    Orr,
+    Orn,
+    Eor,
+    Bsl,
+    Bit,
+    Bif,
+}
+
+/// (op, mnemonic, U, size).
+pub const SIMD_LOGICAL: &[(SimdLogicalOp, &str, bool, u8)] = &[
+    (SimdLogicalOp::And, "and", false, 0b00),
+    (SimdLogicalOp::Bic, "bic", false, 0b01),
+    (SimdLogicalOp::Orr, "orr", false, 0b10),
+    (SimdLogicalOp::Orn, "orn", false, 0b11),
+    (SimdLogicalOp::Eor, "eor", true, 0b00),
+    (SimdLogicalOp::Bsl, "bsl", true, 0b01),
+    (SimdLogicalOp::Bit, "bit", true, 0b10),
+    (SimdLogicalOp::Bif, "bif", true, 0b11),
+];
+
+pub fn simd_logical_by_bits(u: bool, size: u8) -> Option<SimdLogicalOp> {
+    SIMD_LOGICAL
+        .iter()
+        .find(|(_, _, row_u, row_size)| *row_u == u && *row_size == size)
+        .map(|(op, _, _, _)| *op)
+}
+
+pub fn simd_logical_by_name(name: &str) -> Option<(SimdLogicalOp, bool, u8)> {
+    SIMD_LOGICAL
+        .iter()
+        .find(|(_, row_name, _, _)| *row_name == name)
+        .map(|(op, _, u, size)| (*op, *u, *size))
+}
+
+pub fn simd_logical_name(op: SimdLogicalOp) -> &'static str {
+    SIMD_LOGICAL
+        .iter()
+        .find(|(row_op, _, _, _)| *row_op == op)
+        .map(|(_, name, _, _)| *name)
+        .expect("every logical op has a row")
+}
+
+/// The arithmetic and compare half of the three-same class: one row per
+/// (U, opcode) pair at bits 15:11.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdSameOp {
+    Shadd,
+    Uhadd,
+    Sqadd,
+    Uqadd,
+    Srhadd,
+    Urhadd,
+    Shsub,
+    Uhsub,
+    Sqsub,
+    Uqsub,
+    Cmgt,
+    Cmhi,
+    Cmge,
+    Cmhs,
+    Smax,
+    Umax,
+    Smin,
+    Umin,
+    Sabd,
+    Uabd,
+    Saba,
+    Uaba,
+    Add,
+    Sub,
+    Cmtst,
+    Cmeq,
+    Mla,
+    Mls,
+    Mul,
+    Pmul,
+    Smaxp,
+    Umaxp,
+    Sminp,
+    Uminp,
+    Sqdmulh,
+    Sqrdmulh,
+    Addp,
+}
+
+pub struct SimdSameRow {
+    pub op: SimdSameOp,
+    pub name: &'static str,
+    pub u: bool,
+    /// The 5-bit opcode at bits 15:11.
+    pub opcode: u8,
+    /// Lane widths the vector form takes. A `d` lane here is always the
+    /// 2d arrangement: no three-same form is spelled 1d.
+    pub lanes: LaneMask,
+    /// Widths the SIMD-scalar form takes (`add d3, d7, d21`).
+    pub scalar: LaneMask,
+}
+
+const fn row_same(
+    op: SimdSameOp,
+    name: &'static str,
+    u: bool,
+    opcode: u8,
+    lanes: LaneMask,
+    scalar: LaneMask,
+) -> SimdSameRow {
+    SimdSameRow { op, name, u, opcode, lanes, scalar }
+}
+
+/// The three-same table, ordered by opcode with U inside it, the way the
+/// group is laid out. The gap at opcodes 01000..01011 is the register
+/// shift family, which lands with the rest of the shifts.
+pub const SIMD_THREE_SAME: &[SimdSameRow] = &[
+    row_same(SimdSameOp::Shadd, "shadd", false, 0x00, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Uhadd, "uhadd", true, 0x00, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Sqadd, "sqadd", false, 0x01, LANE_BHSD, LANE_BHSD),
+    row_same(SimdSameOp::Uqadd, "uqadd", true, 0x01, LANE_BHSD, LANE_BHSD),
+    row_same(SimdSameOp::Srhadd, "srhadd", false, 0x02, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Urhadd, "urhadd", true, 0x02, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Shsub, "shsub", false, 0x04, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Uhsub, "uhsub", true, 0x04, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Sqsub, "sqsub", false, 0x05, LANE_BHSD, LANE_BHSD),
+    row_same(SimdSameOp::Uqsub, "uqsub", true, 0x05, LANE_BHSD, LANE_BHSD),
+    row_same(SimdSameOp::Cmgt, "cmgt", false, 0x06, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Cmhi, "cmhi", true, 0x06, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Cmge, "cmge", false, 0x07, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Cmhs, "cmhs", true, 0x07, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Smax, "smax", false, 0x0c, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Umax, "umax", true, 0x0c, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Smin, "smin", false, 0x0d, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Umin, "umin", true, 0x0d, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Sabd, "sabd", false, 0x0e, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Uabd, "uabd", true, 0x0e, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Saba, "saba", false, 0x0f, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Uaba, "uaba", true, 0x0f, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Add, "add", false, 0x10, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Sub, "sub", true, 0x10, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Cmtst, "cmtst", false, 0x11, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Cmeq, "cmeq", true, 0x11, LANE_BHSD, LANE_D),
+    row_same(SimdSameOp::Mla, "mla", false, 0x12, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Mls, "mls", true, 0x12, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Mul, "mul", false, 0x13, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Pmul, "pmul", true, 0x13, LANE_B, LANE_NONE),
+    row_same(SimdSameOp::Smaxp, "smaxp", false, 0x14, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Umaxp, "umaxp", true, 0x14, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Sminp, "sminp", false, 0x15, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Uminp, "uminp", true, 0x15, LANE_BHS, LANE_NONE),
+    row_same(SimdSameOp::Sqdmulh, "sqdmulh", false, 0x16, LANE_HS, LANE_HS),
+    row_same(SimdSameOp::Sqrdmulh, "sqrdmulh", true, 0x16, LANE_HS, LANE_HS),
+    row_same(SimdSameOp::Addp, "addp", false, 0x17, LANE_BHSD, LANE_NONE),
+];
+
+pub fn simd_same_by_bits(u: bool, opcode: u8) -> Option<&'static SimdSameRow> {
+    SIMD_THREE_SAME.iter().find(|row| row.u == u && row.opcode == opcode)
+}
+
+pub fn simd_same_by_name(name: &str) -> Option<&'static SimdSameRow> {
+    SIMD_THREE_SAME.iter().find(|row| row.name == name)
+}
+
+pub fn simd_same_row(op: SimdSameOp) -> &'static SimdSameRow {
+    SIMD_THREE_SAME
+        .iter()
+        .find(|row| row.op == op)
+        .expect("every three-same op has a row")
+}
+
+/// The two-register misc class, the compares against zero included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdMiscOp {
+    Rev64,
+    Rev32,
+    Rev16,
+    Saddlp,
+    Uaddlp,
+    Suqadd,
+    Usqadd,
+    Cls,
+    Clz,
+    Cnt,
+    Mvn,
+    Rbit,
+    Sadalp,
+    Uadalp,
+    Sqabs,
+    Sqneg,
+    Cmgt0,
+    Cmge0,
+    Cmeq0,
+    Cmle0,
+    Cmlt0,
+    Abs,
+    Neg,
+    Urecpe,
+    Ursqrte,
+}
+
+/// What a two-register misc row's operands look like.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdMiscShape {
+    /// `Vd.T, Vn.T`.
+    Same,
+    /// `Vd.T, Vn.T, #0`: the compares against zero.
+    Zero,
+    /// `Vd.<T doubled>, Vn.T`: the pairwise widening adds, whose
+    /// destination holds half as many lanes of twice the width.
+    Widen,
+}
+
+pub struct SimdMiscRow {
+    pub op: SimdMiscOp,
+    pub name: &'static str,
+    pub u: bool,
+    /// The 5-bit opcode at bits 16:12.
+    pub opcode: u8,
+    /// Source lane widths the vector form takes.
+    pub lanes: LaneMask,
+    /// Widths the SIMD-scalar form takes.
+    pub scalar: LaneMask,
+    pub shape: SimdMiscShape,
+    /// The size field where the row fixes it instead of it naming the
+    /// lane. RBIT is spelled 8b/16b but encodes size 01: reading that
+    /// size as a lane width would make it a halfword operation, which it
+    /// is not.
+    pub size: Option<u8>,
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per table column
+const fn row_misc(
+    op: SimdMiscOp,
+    name: &'static str,
+    u: bool,
+    opcode: u8,
+    lanes: LaneMask,
+    scalar: LaneMask,
+    shape: SimdMiscShape,
+    size: Option<u8>,
+) -> SimdMiscRow {
+    SimdMiscRow { op, name, u, opcode, lanes, scalar, shape, size }
+}
+
+pub const SIMD_TWO_MISC: &[SimdMiscRow] = &[
+    row_misc(SimdMiscOp::Rev64, "rev64", false, 0x00, LANE_BHS, LANE_NONE, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Rev32, "rev32", true, 0x00, LANE_BH, LANE_NONE, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Rev16, "rev16", false, 0x01, LANE_B, LANE_NONE, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Saddlp, "saddlp", false, 0x02, LANE_BHS, LANE_NONE, SimdMiscShape::Widen, None),
+    row_misc(SimdMiscOp::Uaddlp, "uaddlp", true, 0x02, LANE_BHS, LANE_NONE, SimdMiscShape::Widen, None),
+    row_misc(SimdMiscOp::Suqadd, "suqadd", false, 0x03, LANE_BHSD, LANE_BHSD, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Usqadd, "usqadd", true, 0x03, LANE_BHSD, LANE_BHSD, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Cls, "cls", false, 0x04, LANE_BHS, LANE_NONE, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Clz, "clz", true, 0x04, LANE_BHS, LANE_NONE, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Cnt, "cnt", false, 0x05, LANE_B, LANE_NONE, SimdMiscShape::Same, Some(0b00)),
+    row_misc(SimdMiscOp::Mvn, "mvn", true, 0x05, LANE_B, LANE_NONE, SimdMiscShape::Same, Some(0b00)),
+    row_misc(SimdMiscOp::Rbit, "rbit", true, 0x05, LANE_B, LANE_NONE, SimdMiscShape::Same, Some(0b01)),
+    row_misc(SimdMiscOp::Sadalp, "sadalp", false, 0x06, LANE_BHS, LANE_NONE, SimdMiscShape::Widen, None),
+    row_misc(SimdMiscOp::Uadalp, "uadalp", true, 0x06, LANE_BHS, LANE_NONE, SimdMiscShape::Widen, None),
+    row_misc(SimdMiscOp::Sqabs, "sqabs", false, 0x07, LANE_BHSD, LANE_BHSD, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Sqneg, "sqneg", true, 0x07, LANE_BHSD, LANE_BHSD, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Cmgt0, "cmgt", false, 0x08, LANE_BHSD, LANE_D, SimdMiscShape::Zero, None),
+    row_misc(SimdMiscOp::Cmge0, "cmge", true, 0x08, LANE_BHSD, LANE_D, SimdMiscShape::Zero, None),
+    row_misc(SimdMiscOp::Cmeq0, "cmeq", false, 0x09, LANE_BHSD, LANE_D, SimdMiscShape::Zero, None),
+    row_misc(SimdMiscOp::Cmle0, "cmle", true, 0x09, LANE_BHSD, LANE_D, SimdMiscShape::Zero, None),
+    row_misc(SimdMiscOp::Cmlt0, "cmlt", false, 0x0a, LANE_BHSD, LANE_D, SimdMiscShape::Zero, None),
+    row_misc(SimdMiscOp::Abs, "abs", false, 0x0b, LANE_BHSD, LANE_D, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Neg, "neg", true, 0x0b, LANE_BHSD, LANE_D, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Urecpe, "urecpe", false, 0x1c, LANE_S, LANE_NONE, SimdMiscShape::Same, None),
+    row_misc(SimdMiscOp::Ursqrte, "ursqrte", true, 0x1c, LANE_S, LANE_NONE, SimdMiscShape::Same, None),
+];
+
+/// Read a two-register misc row out of the word's fields. The size takes
+/// part in the lookup because three rows share (U, opcode) and only the
+/// size tells CNT, MVN and RBIT apart.
+pub fn simd_misc_by_bits(u: bool, opcode: u8, size: u8) -> Option<&'static SimdMiscRow> {
+    SIMD_TWO_MISC.iter().find(|row| {
+        row.u == u
+            && row.opcode == opcode
+            && match row.size {
+                Some(fixed) => fixed == size,
+                None => lane_allowed(row.lanes, size_esize(size)),
+            }
+    })
+}
+
+/// Read a row by mnemonic and shape: `cmgt` names both a three-same row
+/// and a compare-against-zero row, so the caller says which it parsed.
+pub fn simd_misc_by_name(name: &str, zero: bool) -> Option<&'static SimdMiscRow> {
+    SIMD_TWO_MISC
+        .iter()
+        .find(|row| row.name == name && (row.shape == SimdMiscShape::Zero) == zero)
+}
+
+pub fn simd_misc_row(op: SimdMiscOp) -> &'static SimdMiscRow {
+    SIMD_TWO_MISC
+        .iter()
+        .find(|row| row.op == op)
+        .expect("every misc op has a row")
+}
+
+/// The across-lanes class: a whole source vector folded into one scalar.
+/// `addp d3, v7.2d` is the SIMD-scalar pairwise class, which has the same
+/// shape and the same opcode as ADDV and differs only in bit 28.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdAcrossOp {
+    Saddlv,
+    Uaddlv,
+    Smaxv,
+    Umaxv,
+    Sminv,
+    Uminv,
+    Addv,
+    AddpScalar,
+}
+
+pub struct SimdAcrossRow {
+    pub op: SimdAcrossOp,
+    pub name: &'static str,
+    pub u: bool,
+    /// The 5-bit opcode at bits 16:12.
+    pub opcode: u8,
+    /// Source lane widths. An `s` source is always 4s: the group refuses
+    /// the 64-bit arrangement of its widest lane, because folding two
+    /// lanes into one register is what the pairwise forms are for.
+    pub lanes: LaneMask,
+    /// The SIMD-scalar pairwise class rather than the vector one.
+    pub scalar_class: bool,
+    /// The destination is twice the source lane width.
+    pub widen: bool,
+}
+
+const fn row_across(
+    op: SimdAcrossOp,
+    name: &'static str,
+    u: bool,
+    opcode: u8,
+    lanes: LaneMask,
+    scalar_class: bool,
+    widen: bool,
+) -> SimdAcrossRow {
+    SimdAcrossRow { op, name, u, opcode, lanes, scalar_class, widen }
+}
+
+pub const SIMD_ACROSS: &[SimdAcrossRow] = &[
+    row_across(SimdAcrossOp::Saddlv, "saddlv", false, 0x03, LANE_BHS, false, true),
+    row_across(SimdAcrossOp::Uaddlv, "uaddlv", true, 0x03, LANE_BHS, false, true),
+    row_across(SimdAcrossOp::Smaxv, "smaxv", false, 0x0a, LANE_BHS, false, false),
+    row_across(SimdAcrossOp::Umaxv, "umaxv", true, 0x0a, LANE_BHS, false, false),
+    row_across(SimdAcrossOp::Sminv, "sminv", false, 0x1a, LANE_BHS, false, false),
+    row_across(SimdAcrossOp::Uminv, "uminv", true, 0x1a, LANE_BHS, false, false),
+    row_across(SimdAcrossOp::Addv, "addv", false, 0x1b, LANE_BHS, false, false),
+    row_across(SimdAcrossOp::AddpScalar, "addp", false, 0x1b, LANE_D, true, false),
+];
+
+pub fn simd_across_by_bits(
+    u: bool,
+    opcode: u8,
+    scalar_class: bool,
+) -> Option<&'static SimdAcrossRow> {
+    SIMD_ACROSS
+        .iter()
+        .find(|row| row.u == u && row.opcode == opcode && row.scalar_class == scalar_class)
+}
+
+pub fn simd_across_by_name(name: &str) -> Option<&'static SimdAcrossRow> {
+    SIMD_ACROSS.iter().find(|row| row.name == name)
+}
+
+pub fn simd_across_row(op: SimdAcrossOp) -> &'static SimdAcrossRow {
+    SIMD_ACROSS
+        .iter()
+        .find(|row| row.op == op)
+        .expect("every across op has a row")
 }
 
 /// Which reading of the Advanced SIMD copy group an encoding carries.
@@ -873,13 +1290,50 @@ pub enum Instruction {
         shift: u8,
         msl: bool,
     },
-    /// ORR / BIC (vector, register): `Vd = Vn | Vm` and `Vd = Vn & ~Vm`
-    /// over 8 or 16 bytes. GAS prints an ORR whose two sources are the
-    /// same register as `mov Vd.T, Vn.T`.
+    /// The bitwise three-same group over 8 or 16 bytes: AND, BIC, ORR,
+    /// ORN, EOR and the three insert-by-mask forms BSL, BIT and BIF. GAS
+    /// prints an ORR whose two sources are the same register as
+    /// `mov Vd.T, Vn.T`.
     SimdLogicalReg {
-        bic: bool,
+        op: SimdLogicalOp,
         q: bool,
         rm: u8,
+        rn: u8,
+        rd: u8,
+    },
+    /// The Advanced SIMD three-same integer group: one operation applied
+    /// lane by lane to two sources. `scalar` is the SIMD-scalar form,
+    /// which runs the same table over a single b/h/s/d lane.
+    SimdThreeSame {
+        op: SimdSameOp,
+        /// Lane width in bytes: 1, 2, 4 or 8.
+        esize: u8,
+        /// The 128-bit arrangement; meaningless when `scalar`.
+        q: bool,
+        scalar: bool,
+        rm: u8,
+        rn: u8,
+        rd: u8,
+    },
+    /// The Advanced SIMD two-register misc group and the compares
+    /// against zero: one source, one destination, lane by lane.
+    SimdTwoMisc {
+        op: SimdMiscOp,
+        /// SOURCE lane width in bytes. The pairwise widening rows write
+        /// lanes of twice this.
+        esize: u8,
+        q: bool,
+        scalar: bool,
+        rn: u8,
+        rd: u8,
+    },
+    /// The Advanced SIMD across-lanes group: the whole source folded
+    /// into one scalar destination.
+    SimdAcross {
+        op: SimdAcrossOp,
+        /// Source lane width in bytes.
+        esize: u8,
+        q: bool,
         rn: u8,
         rd: u8,
     },
@@ -1270,22 +1724,85 @@ fn decode_advanced_simd(instr: u32) -> Option<Instruction> {
         });
     }
 
-    // ORR / BIC (vector, register): 0 Q 0 01110 size 1 Rm 000111 Rn Rd,
-    // where the size field picks the logical op. AND (00) and ORN (11),
-    // and every U = 1 row (EOR, BSL, BIT, BIF), are still queued.
-    if instr & 0x9F20_FC00 == 0x0E20_1C00 && !op {
-        let bic = match bits(instr, 23, 22) {
-            0b01 => true,
-            0b10 => false,
-            _ => return None,
-        };
+    // The bitwise three-same group: 0 Q U 01110 size 1 Rm 000111 Rn Rd,
+    // where U and the size field together pick the operation.
+    if instr & 0x9F20_FC00 == 0x0E20_1C00 {
+        let logical = simd_logical_by_bits(op, bits(instr, 23, 22) as u8)?;
         return Some(Instruction::SimdLogicalReg {
-            bic,
+            op: logical,
             q,
             rm: bits(instr, 20, 16) as u8,
             rn,
             rd,
         });
+    }
+
+    // Three-same (integer): 0 Q U 01110 size 1 Rm opcode 1 Rn Rd, and the
+    // SIMD-scalar class 01 U 11110 size 1 Rm opcode 1 Rn Rd beside it.
+    // A (U, opcode) pair the table does not carry is either a register
+    // shift or a floating-point row: answering None leaves it to the
+    // scalar FP decode below and, failing that, to the unknown-instruction
+    // error.
+    let scalar_three_same = instr & 0xDF20_0400 == 0x5E20_0400;
+    if instr & 0x9F20_0400 == 0x0E20_0400 || scalar_three_same {
+        let size = bits(instr, 23, 22) as u8;
+        let row = simd_same_by_bits(op, bits(instr, 15, 11) as u8)?;
+        let esize = size_esize(size);
+        let mask = if scalar_three_same { row.scalar } else { row.lanes };
+        if !lane_allowed(mask, esize) {
+            return None;
+        }
+        return Some(Instruction::SimdThreeSame {
+            op: row.op,
+            esize,
+            q,
+            scalar: scalar_three_same,
+            rm: bits(instr, 20, 16) as u8,
+            rn,
+            rd,
+        });
+    }
+
+    // Two-register misc: 0 Q U 01110 size 10000 opcode 10 Rn Rd, with the
+    // SIMD-scalar class 01 U 11110 size 10000 opcode 10 Rn Rd.
+    let scalar_two_misc = instr & 0xDF3E_0C00 == 0x5E20_0800;
+    if instr & 0x9F3E_0C00 == 0x0E20_0800 || scalar_two_misc {
+        let size = bits(instr, 23, 22) as u8;
+        let row = simd_misc_by_bits(op, bits(instr, 16, 12) as u8, size)?;
+        // A row that fixes its own size field is spelled in byte lanes
+        // whatever that field says (RBIT), so the lane width the
+        // executor works in comes from the row, not the word.
+        let esize = if row.size.is_some() { 1 } else { size_esize(size) };
+        let mask = if scalar_two_misc { row.scalar } else { row.lanes };
+        if !lane_allowed(mask, esize) {
+            return None;
+        }
+        return Some(Instruction::SimdTwoMisc {
+            op: row.op,
+            esize,
+            q,
+            scalar: scalar_two_misc,
+            rn,
+            rd,
+        });
+    }
+
+    // Across lanes: 0 Q U 01110 size 11000 opcode 10 Rn Rd, and the
+    // SIMD-scalar pairwise class 01 U 11110 size 11000 opcode 10 Rn Rd.
+    let scalar_across = instr & 0xDF3E_0C00 == 0x5E30_0800;
+    if instr & 0x9F3E_0C00 == 0x0E30_0800 || scalar_across {
+        let size = bits(instr, 23, 22) as u8;
+        let row = simd_across_by_bits(op, bits(instr, 16, 12) as u8, scalar_across)?;
+        let esize = size_esize(size);
+        if !lane_allowed(row.lanes, esize) {
+            return None;
+        }
+        // The widest lane only ever comes in the 128-bit arrangement:
+        // `smaxv s3, v7.2s` would fold a pair, which is ADDP's job.
+        if esize == 4 && !q && !scalar_across {
+            return None;
+        }
+        return Some(Instruction::SimdAcross { op: row.op, esize, q, rn, rd });
     }
 
     // The copy group: 0 Q op 01110000 imm5 0 imm4 1 Rn Rd for the vector
@@ -1992,14 +2509,46 @@ pub fn format(instr: &Instruction) -> Option<String> {
             };
             Some(format!("{mnemonic} {dest}, #{imm:#x}{suffix}"))
         }
-        Instruction::SimdLogicalReg { bic, q, rm, rn, rd } => {
+        Instruction::SimdLogicalReg { op, q, rm, rn, rd } => {
             let t = if *q { "16b" } else { "8b" };
             // GAS prints `orr Vd.T, Vn.T, Vn.T` as the vector `mov`.
-            if !*bic && rn == rm {
+            if *op == SimdLogicalOp::Orr && rn == rm {
                 return Some(format!("mov v{rd}.{t}, v{rn}.{t}"));
             }
-            let mnemonic = if *bic { "bic" } else { "orr" };
+            let mnemonic = simd_logical_name(*op);
             Some(format!("{mnemonic} v{rd}.{t}, v{rn}.{t}, v{rm}.{t}"))
+        }
+        Instruction::SimdThreeSame { op, esize, q, scalar, rm, rn, rd } => {
+            let name = simd_same_row(*op).name;
+            if *scalar {
+                let l = element_letter(*esize);
+                return Some(format!("{name} {l}{rd}, {l}{rn}, {l}{rm}"));
+            }
+            let t = Arrangement { esize: *esize, q: *q }.suffix();
+            Some(format!("{name} v{rd}.{t}, v{rn}.{t}, v{rm}.{t}"))
+        }
+        Instruction::SimdTwoMisc { op, esize, q, scalar, rn, rd } => {
+            let row = simd_misc_row(*op);
+            let zero = if row.shape == SimdMiscShape::Zero { ", #0" } else { "" };
+            if *scalar {
+                let l = element_letter(*esize);
+                return Some(format!("{} {l}{rd}, {l}{rn}{zero}", row.name));
+            }
+            let source = Arrangement { esize: *esize, q: *q }.suffix();
+            // The pairwise widening rows halve the lane count and double
+            // the width, so the destination is spelled one step up.
+            let dest = if row.shape == SimdMiscShape::Widen {
+                Arrangement { esize: esize * 2, q: *q }.suffix()
+            } else {
+                source
+            };
+            Some(format!("{} v{rd}.{dest}, v{rn}.{source}{zero}", row.name))
+        }
+        Instruction::SimdAcross { op, esize, q, rn, rd } => {
+            let row = simd_across_row(*op);
+            let dest = element_letter(if row.widen { esize * 2 } else { *esize });
+            let source = Arrangement { esize: *esize, q: *q }.suffix();
+            Some(format!("{} {dest}{rd}, v{rn}.{source}", row.name))
         }
         Instruction::SimdCopy { op, esize, q, index, index2, rn, rd } => {
             let elem = element_letter(*esize);

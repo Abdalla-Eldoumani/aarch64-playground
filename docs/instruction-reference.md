@@ -209,7 +209,7 @@ The `FCVT` conversion family names its rounding mode in the mnemonic: `N` neares
 
 The `V` view of the register file writes an arrangement after the register name: `v3.16b` is sixteen byte lanes, `v3.8h` eight halfwords, `v3.4s` four words, `v3.2d` two doublewords, and the `8b`/`4h`/`2s`/`1d` forms are the same shapes over the low 64 bits alone, with the upper half zeroed by every write. One lane is `v3.b[15]`, `v3.h[7]`, `v3.s[3]` or `v3.d[1]`.
 
-Only the moves and immediates are here. Lane arithmetic (`add v0.4s, v1.4s, v2.4s` and the rest) is not implemented yet.
+Only the moves and immediates are here; the lane arithmetic over the same arrangements is in [Vector integer arithmetic](#vector-integer-arithmetic).
 
 A whole-register write zeroes what it does not set, and a 64-bit arrangement clears bits 127:64. A lane write is the exception: `ins`, the `mov` spellings of it, and `fmov v0.d[1], x1` leave every other lane exactly as it was.
 
@@ -225,6 +225,110 @@ A whole-register write zeroes what it does not set, and a 64-bit arrangement cle
 | `UMOV`   | `UMOV Wd, Vn.Ts[i]` (B, H or S) / `UMOV Xd, Vn.D[i]` | One lane out into a general register, zero-extended. At the destination's own width GAS prints it `mov`. |
 | `SMOV`   | `SMOV Wd, Vn.Ts[i]` (B or H) / `SMOV Xd, Vn.Ts[i]` (B, H or S) | The same, sign-extended, so the lane has to be narrower than the register. |
 | `FMOV`   | `FMOV Vd.D[1], Xn` / `FMOV Xd, Vn.D[1]` | The upper 64-bit lane to or from an x register. The write leaves the low lane in place; it is how a 128-bit value is assembled half at a time. |
+
+## Vector integer arithmetic
+
+Three encoding classes cover the integer lane families, and every form here is one of them: three-same (`Vd.T, Vn.T, Vm.T`, all three the same shape), two-register misc (`Vd.T, Vn.T`, plus the compares against `#0`), and across lanes (a whole vector folded into one scalar). Most also have a SIMD-scalar form, which runs the same operation on a single `B`, `H`, `S` or `D` register; where a family has one the table says so.
+
+Lane arithmetic wraps at the lane's own width unless the mnemonic says otherwise: the `SQ`/`UQ` prefixes saturate, the `H`/`RH` infixes compute in one extra bit, and the doubling multiplies keep the high half of a double-width product. A 64-bit arrangement (`8B`, `4H`, `2S`) zeroes bits 127:64 of its destination, exactly as the moves do.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `ADD`    | `ADD Vd.T, Vn.T, Vm.T` / `ADD Dd, Dn, Dm` | Lane by lane, wrapping. `T` is `8B`, `16B`, `4H`, `8H`, `2S`, `4S` or `2D`; a single 64-bit lane is spelled with `D` registers, not `1D`. |
+| `SUB`    | the same shapes                   | Lane by lane, wrapping.                 |
+| `MUL`    | `MUL Vd.T, Vn.T, Vm.T` (`B`, `H`, `S` lanes) | Low half of the product, wrapping. No `D` lanes and no scalar form. |
+| `MLA`    | `MLA Vd.T, Vn.T, Vm.T`            | `Vd = Vd + Vn * Vm`: the destination is read as well as written. |
+| `MLS`    | the same shapes                   | `Vd = Vd - Vn * Vm`.                    |
+| `PMUL`   | `PMUL Vd.T, Vn.T, Vm.T` (`8B` / `16B`) | Carry-less (polynomial) multiply of bytes: the partial products are XORed, not added, so there is no carry between bit positions. |
+| `AND`    | `AND Vd.T, Vn.T, Vm.T` (`8B` / `16B`) | Bit by bit over 8 or 16 bytes. The size field picks the operation for the whole bitwise group, so `8B` and `16B` are the only arrangements any of them takes. |
+| `ORR`    | `ORR Vd.T, Vn.T, Vm.T`            | See also the immediate form under [Vector moves and immediates](#vector-moves-and-immediates). |
+| `ORN`    | `ORN Vd.T, Vn.T, Vm.T`            | `Vd = Vn OR NOT Vm`.                    |
+| `EOR`    | `EOR Vd.T, Vn.T, Vm.T`            | Exclusive or.                           |
+| `BIC`    | `BIC Vd.T, Vn.T, Vm.T`            | `Vd = Vn AND NOT Vm`.                   |
+| `BSL`    | `BSL Vd.T, Vn.T, Vm.T`            | Bitwise select, and the DESTINATION is the mask: each bit takes `Vn` where `Vd` holds 1 and `Vm` where it holds 0. |
+| `BIT`    | `BIT Vd.T, Vn.T, Vm.T`            | Insert if true: the destination keeps its bit where `Vm` is 0 and takes `Vn`'s where `Vm` is 1. |
+| `BIF`    | `BIF Vd.T, Vn.T, Vm.T`            | Insert if false: the same with the mask inverted. |
+| `MVN`    | `MVN Vd.T, Vn.T` (`8B` / `16B`)   | Bitwise complement.                     |
+| `NOT`    | `NOT Vd.T, Vn.T` (`8B` / `16B`)   | The same word as `MVN`; objdump prints it back as `MVN`. |
+
+The compares write all-ones in a lane where the test holds and all-zeros where it does not, so the result feeds straight into a `BSL` mask or a `BIC`.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `CMEQ`   | `CMEQ Vd.T, Vn.T, Vm.T` / `CMEQ Vd.T, Vn.T, #0` / `CMEQ Dd, Dn, Dm` / `CMEQ Dd, Dn, #0` | Equal. Every compare here takes the `2D` arrangement and the `D` scalar as well as the narrower lanes. |
+| `CMGT`   | the same four shapes              | SIGNED greater than.                    |
+| `CMGE`   | the same four shapes              | SIGNED greater or equal.                |
+| `CMHI`   | register form only (`Vm` or `Dm`) | UNSIGNED greater than. The `S`/`U` pair to watch: `CMGT` and `CMHI` differ only in how the lane is read. |
+| `CMHS`   | register form only                | UNSIGNED greater or equal.              |
+| `CMLE`   | `#0` form only                    | Signed, against zero. There is no register form: swap the operands and use `CMGE`. |
+| `CMLT`   | `#0` form only                    | Signed, against zero; swap and use `CMGT`. |
+| `CMTST`  | `CMTST Vd.T, Vn.T, Vm.T` / `CMTST Dd, Dn, Dm` | Not a magnitude test at all: the lane holds ones when `Vn AND Vm` is non-zero. |
+
+Saturating and halving. Saturation clamps at the lane's own limits rather than wrapping, and every halving form computes the sum or difference in one extra bit before shifting, so the carry out is never lost.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `SQADD`  | `SQADD Vd.T, Vn.T, Vm.T` / `SQADD Bd, Bn, Bm` (and `H`, `S`, `D`) | Signed saturating add: clamps to the lane's signed range. |
+| `UQADD`  | the same shapes                   | Unsigned saturating add.                |
+| `SQSUB`  | the same shapes                   | Signed saturating subtract.             |
+| `UQSUB`  | the same shapes                   | Unsigned saturating subtract; a negative result clamps to zero. |
+| `SUQADD` | `SUQADD Vd.T, Vn.T` / `SUQADD Bd, Bn` (and `H`, `S`, `D`) | Accumulate an UNSIGNED source into a SIGNED destination and saturate as signed. Two operands, three inputs: the destination is read. |
+| `USQADD` | the same shapes                   | The other way round: a signed source into an unsigned destination, saturating as unsigned, so a negative source clamps at zero. |
+| `SQABS`  | `SQABS Vd.T, Vn.T` / `SQABS Bd, Bn` (and `H`, `S`, `D`) | Saturating absolute value: `sqabs` of the minimum lane value gives the maximum (`-128` becomes `127`), where plain `ABS` wraps back to `-128`. |
+| `SQNEG`  | the same shapes                   | Saturating negate, with the same edge.  |
+| `SHADD`  | `SHADD Vd.T, Vn.T, Vm.T` (`B`, `H`, `S` lanes) | Signed halving add: `(Vn + Vm) >> 1` computed at `esize + 1` bits. |
+| `UHADD`  | the same shapes                   | Unsigned halving add.                   |
+| `SRHADD` | the same shapes                   | Rounding halving add: 1 is added before the shift. |
+| `URHADD` | the same shapes                   | The unsigned rounding halving add.      |
+| `SHSUB`  | the same shapes                   | Signed halving subtract, the same extra bit. |
+| `UHSUB`  | the same shapes                   | Unsigned halving subtract.              |
+| `SQDMULH` | `SQDMULH Vd.T, Vn.T, Vm.T` (`H`, `S` lanes) / `SQDMULH Hd, Hn, Hm` / `SQDMULH Sd, Sn, Sm` | Saturating doubling multiply, high half: `(2 * Vn * Vm) >> esize`. The one input pair that saturates is the two minimum values, where `0x8000 * 0x8000` doubled lands one past the top and gives `0x7fff`. |
+| `SQRDMULH` | the same shapes                 | The rounding form: half an ulp is added before the shift. |
+
+Max, min, absolute differences, and the reductions. A pairwise form reads `Vn`'s lanes and then `Vm`'s as one long vector and folds neighbours two at a time, so the low half of the result comes from `Vn` and the high half from `Vm`.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `SMAX`   | `SMAX Vd.T, Vn.T, Vm.T` (`B`, `H`, `S` lanes) | Signed larger of each lane pair.        |
+| `SMIN`   | the same shapes                   | Signed smaller.                         |
+| `UMAX`   | the same shapes                   | Unsigned larger.                        |
+| `UMIN`   | the same shapes                   | Unsigned smaller.                       |
+| `SMAXP`  | the same shapes                   | The pairwise `SMAX`.                    |
+| `SMINP`  | the same shapes                   | The pairwise `SMIN`.                    |
+| `UMAXP`  | the same shapes                   | The pairwise `UMAX`.                    |
+| `UMINP`  | the same shapes                   | The pairwise `UMIN`.                    |
+| `SABD`   | the same shapes                   | Absolute difference, both lanes read as signed. |
+| `UABD`   | the same shapes                   | Absolute difference, both read as unsigned. |
+| `SABA`   | the same shapes                   | The signed absolute difference ACCUMULATED into the destination. |
+| `UABA`   | the same shapes                   | The unsigned one, accumulated.          |
+| `ADDP`   | `ADDP Vd.T, Vn.T, Vm.T` / `ADDP Dd, Vn.2D` | The pairwise add. The scalar form folds the two `D` lanes of one register into a `D` register. |
+| `ADDV`   | `ADDV Bd, Vn.8B` / `ADDV Bd, Vn.16B` / `ADDV Hd, Vn.4H` / `ADDV Hd, Vn.8H` / `ADDV Sd, Vn.4S` | Sum of every lane, truncated to the lane's own width. `2S` is not accepted: the widest lane only comes in the 128-bit arrangement. |
+| `SADDLV` | `SADDLV Hd, Vn.8B` / `SADDLV Sd, Vn.4H` / `SADDLV Dd, Vn.4S` (and the `16B`/`8H` forms) | Widen each lane to twice its width, THEN sum, so the total cannot overflow the source lane. The destination is the wider register. |
+| `UADDLV` | the same shapes                   | The unsigned widening sum.              |
+| `SMAXV`  | `SMAXV Bd, Vn.8B` (and the `16B`, `4H`, `8H`, `4S` forms) | Largest signed lane of the whole vector. |
+| `SMINV`  | the same shapes                   | Smallest signed lane.                   |
+| `UMAXV`  | the same shapes                   | Largest unsigned lane.                  |
+| `UMINV`  | the same shapes                   | Smallest unsigned lane.                 |
+| `SADDLP` | `SADDLP Vd.4H, Vn.8B` / `Vd.8H, Vn.16B` / `Vd.2S, Vn.4H` / `Vd.4S, Vn.8H` / `Vd.1D, Vn.2S` / `Vd.2D, Vn.4S` | Pairwise widening add: each pair of source lanes becomes one destination lane of twice the width, signed. |
+| `UADDLP` | the same shapes                   | The unsigned pairwise widening add.     |
+| `SADALP` | the same shapes                   | The same sum ACCUMULATED into what the destination already holds. |
+| `UADALP` | the same shapes                   | The unsigned accumulating form.         |
+
+The remaining two-register misc forms take one source and one destination of the same shape.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `ABS`    | `ABS Vd.T, Vn.T` / `ABS Dd, Dn`   | Absolute value, WRAPPING at the lane's width: the minimum value is its own absolute value. `SQABS` is the saturating twin. |
+| `NEG`    | `NEG Vd.T, Vn.T` / `NEG Dd, Dn`   | Negate, wrapping the same way; `SQNEG` saturates. |
+| `CLZ`    | `CLZ Vd.T, Vn.T` (`B`, `H`, `S` lanes) | Leading zeros per lane; a zero lane answers the lane's width. |
+| `CLS`    | the same shapes                   | Leading SIGN bits, the sign bit itself excluded, so a lane of all zeros or all ones answers `esize - 1`. |
+| `CNT`    | `CNT Vd.T, Vn.T` (`8B` / `16B`)   | Population count, per BYTE.             |
+| `RBIT`   | `RBIT Vd.T, Vn.T` (`8B` / `16B`)  | Bits reversed within each BYTE, not across the register. It is spelled in byte lanes but encodes size `01`, which is the one place the size field is not the lane width. |
+| `REV16`  | `REV16 Vd.T, Vn.T` (`8B` / `16B`) | Reverse the ORDER of the lanes inside each 16-bit container; the lanes themselves are untouched. |
+| `REV32`  | `REV32 Vd.T, Vn.T` (`B` and `H` lanes) | The same inside each 32-bit container.  |
+| `REV64`  | `REV64 Vd.T, Vn.T` (`B`, `H`, `S` lanes) | The same inside each 64-bit container. The lane has to be narrower than the container, which is why each of the three takes a different set. |
+| `URECPE` | `URECPE Vd.T, Vn.T` (`2S` / `4S`) | The unsigned fixed-point reciprocal ESTIMATE, read out of the architecture's table rather than computed. An operand below 0.5 (top bit clear) has no representable reciprocal and answers all ones. |
+| `URSQRTE` | `URSQRTE Vd.T, Vn.T` (`2S` / `4S`) | The reciprocal square-root estimate from the same kind of table, with the cut at 0.25 (top two bits clear). |
 
 ## Directives
 
@@ -348,7 +452,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- The vector arithmetic families (`add v0.4s, v1.4s, v2.4s`, the shifts, the comparisons, the reductions, the table lookups, and the `LD1`-`ST4` structure loads). The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and the lane moves are all in; the arithmetic over lanes lands in the changes that follow.
+- The rest of the vector families: the widening and narrowing arithmetic, the shifts, the element-indexed multiplies, the permutes and table lookups, floating-point lanes, and the `LD1`-`ST4` structure loads. The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, and the integer lane arithmetic above are all in; the rest lands in the changes that follow.
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
