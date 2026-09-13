@@ -165,6 +165,8 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "SMADDL", "SMSUBL", "UMADDL", "UMSUBL", "SMNEGL", "UMNEGL",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
+    // the unscaled and no-allocate spellings (SIMD&FP registers only)
+    "LDUR", "STUR", "LDNP", "STNP",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
     "FMAX", "FMIN", "FMAXNM", "FMINNM", "FCSEL",
@@ -317,6 +319,8 @@ fn encode_line(
         "LDRSB" => encode_ldrs(&ops, 0b00, line_num),
         "LDRSH" => encode_ldrs(&ops, 0b01, line_num),
         "LDRSW" => encode_ldrs(&ops, 0b10, line_num),
+        "LDUR" => encode_ldur_stur(&ops, 1, line_num),
+        "STUR" => encode_ldur_stur(&ops, 0, line_num),
 
         // -- floating-point --
         "FADD" => encode_fp_binary(&ops, "fadd", line_num),
@@ -354,6 +358,8 @@ fn encode_line(
         "FCVTPU" => encode_fp_cvt_int(&ops, "fcvtpu", line_num),
         "LDP" => encode_ldst_pair(&ops, 1, line_num),
         "STP" => encode_ldst_pair(&ops, 0, line_num),
+        "LDNP" => encode_ldst_pair_no_allocate(&ops, 1, line_num),
+        "STNP" => encode_ldst_pair_no_allocate(&ops, 0, line_num),
 
         // -- pc-relative address formation --
         "ADR" => encode_adr(&ops, false, pc, labels, line_num),
@@ -1714,14 +1720,103 @@ fn encode_neg(ops: &[&str], set_flags: bool, ln: usize) -> Result<u32, EmuError>
     encode_dp(&new_ops, 1, if set_flags { 1 } else { 0 }, ln)
 }
 
-fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
-    // Accept D0..D31 or S0..S31 (returns width ('D' or 'S') too).
+/// The width a `b`/`h`/`s`/`d`/`q` register name spells. The SIMD&FP
+/// register file is 128 bits wide and these five are its low
+/// 8/16/32/64/128-bit views of the same 32 entries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FpWidth {
+    B,
+    H,
+    S,
+    D,
+    Q,
+}
+
+impl FpWidth {
+    fn from_prefix(c: char) -> Option<Self> {
+        match c.to_ascii_uppercase() {
+            'B' => Some(FpWidth::B),
+            'H' => Some(FpWidth::H),
+            'S' => Some(FpWidth::S),
+            'D' => Some(FpWidth::D),
+            'Q' => Some(FpWidth::Q),
+            _ => None,
+        }
+    }
+
+    /// The register-name prefix, lowercase, as GAS spells it.
+    fn letter(self) -> char {
+        match self {
+            FpWidth::B => 'b',
+            FpWidth::H => 'h',
+            FpWidth::S => 's',
+            FpWidth::D => 'd',
+            FpWidth::Q => 'q',
+        }
+    }
+
+    /// Access width in bytes; also the unsigned-offset scale.
+    fn bytes(self) -> u64 {
+        match self {
+            FpWidth::B => 1,
+            FpWidth::H => 2,
+            FpWidth::S => 4,
+            FpWidth::D => 8,
+            FpWidth::Q => 16,
+        }
+    }
+
+    /// log2 of the access width: the one index-register scale amount a
+    /// register-offset address may write, and what the S bit means.
+    fn scale_shift(self) -> u32 {
+        self.bytes().trailing_zeros()
+    }
+
+    /// The `size` field (bits 31:30) of a SIMD&FP load/store. Q shares
+    /// size 00 with B and is told apart by `opc_high`.
+    fn size_field(self) -> u32 {
+        match self {
+            FpWidth::B | FpWidth::Q => 0b00,
+            FpWidth::H => 0b01,
+            FpWidth::S => 0b10,
+            FpWidth::D => 0b11,
+        }
+    }
+
+    /// The high bit of `opc` (bit 23) in a SIMD&FP load/store: set only
+    /// for the 128-bit Q form, which the two-bit size field cannot spell.
+    fn opc_high(self) -> u32 {
+        if matches!(self, FpWidth::Q) { 1 } else { 0 }
+    }
+
+    /// The `opc` field (bits 31:30) of a SIMD&FP load/store PAIR: 00 for
+    /// S, 01 for D, 10 for Q. B and H have no pair form.
+    fn pair_opc(self) -> Option<u32> {
+        match self {
+            FpWidth::S => Some(0b00),
+            FpWidth::D => Some(0b01),
+            FpWidth::Q => Some(0b10),
+            FpWidth::B | FpWidth::H => None,
+        }
+    }
+}
+
+/// A parsed SIMD&FP register operand: which register, and which view of
+/// it the spelling named.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FpReg {
+    idx: u8,
+    width: FpWidth,
+}
+
+fn parse_fp_register(s: &str, ln: usize) -> Result<FpReg, EmuError> {
+    // Accept b0..b31, h0..h31, s0..s31, d0..d31 and q0..q31: the five
+    // views of one 128-bit register file.
     let s = s.trim();
     let first = s.chars().next().ok_or_else(|| asm_error(ln, "empty register"))?;
-    let prefix = first.to_ascii_uppercase();
-    if prefix != 'D' && prefix != 'S' {
-        return asm_err(ln, &format!("expected D or S register, got: {s}"));
-    }
+    let Some(width) = FpWidth::from_prefix(first) else {
+        return asm_err(ln, &format!("expected a B, H, S, D or Q register, got: {s}"));
+    };
     let idx: u8 = s[1..]
         .parse()
         .map_err(|_| asm_error(ln, &format!("bad FP register: {s}")))?;
@@ -1729,25 +1824,38 @@ fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
         return asm_err(
             ln,
             &format!(
-                "`{s}` is not a floating-point register: the fp registers are d0 \
-                 through d31 and s0 through s31"
+                "`{s}` is not a floating-point register: the fp registers are \
+                 b0, h0, s0, d0 and q0 through 31"
             ),
         );
     }
-    Ok((idx, prefix))
+    Ok(FpReg { idx, width })
 }
 
 /// The ftype field (bits 23:22) for a scalar FP width: 0b01 for D, 0b00
 /// for S. Every scalar FP base opcode below is written in its S (ftype=00)
-/// form and this adds the D bit back.
-fn fp_ftype(width: char) -> u32 {
-    if width == 'D' { 0x0040_0000 } else { 0 }
+/// form and this adds the D bit back. B, H and Q have no ftype in that
+/// space: scalar FP arithmetic is S and D only, and quietly encoding a
+/// `q` operand as an S would compute the wrong answer.
+fn fp_ftype(width: FpWidth, ln: usize) -> Result<u32, EmuError> {
+    match width {
+        FpWidth::S => Ok(0),
+        FpWidth::D => Ok(0x0040_0000),
+        other => asm_err(
+            ln,
+            &format!(
+                "a {} register has no scalar floating-point form here: this \
+                 instruction takes s or d registers",
+                other.letter()
+            ),
+        ),
+    }
 }
 
 /// All operands of one FP instruction must share a width; mixing S and D
 /// silently computing in the wrong precision would be far worse than an
 /// error, so name the mnemonic and both widths.
-fn require_same_fp_width(name: &str, widths: &[char], ln: usize) -> Result<char, EmuError> {
+fn require_same_fp_width(name: &str, widths: &[FpWidth], ln: usize) -> Result<FpWidth, EmuError> {
     let first = widths[0];
     if widths.iter().any(|w| *w != first) {
         return asm_err(
@@ -1770,14 +1878,14 @@ fn encode_fp_mul_add(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuErro
     if ops.len() != 4 {
         return asm_err(ln, &format!("{name} requires 4 operands: {name} fd, fn, fm, fa"));
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
-    let (fm, wm) = parse_fp_register(ops[2], ln)?;
-    let (fa, wa) = parse_fp_register(ops[3], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[2], ln)?;
+    let FpReg { idx: fa, width: wa } = parse_fp_register(ops[3], ln)?;
     let width = require_same_fp_width(name, &[wd, wn, wm, wa], ln)?;
     // 3-source: 0_0_0_11111_ftype_o1_Rm_o0_Ra_Rn_Rd
     Ok(0x1F00_0000
-        | fp_ftype(width)
+        | fp_ftype(width, ln)?
         | (u32::from(*o1) << 21)
         | ((fm as u32) << 16)
         | (u32::from(*o0) << 15)
@@ -1793,13 +1901,13 @@ fn encode_fcsel(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 4 {
         return asm_err(ln, "fcsel requires 4 operands: fcsel fd, fn, fm, cond");
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
-    let (fm, wm) = parse_fp_register(ops[2], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[2], ln)?;
     let width = require_same_fp_width("fcsel", &[wd, wn, wm], ln)?;
     let cond = parse_condition_allowing_nv(ops[3], ln)?;
     Ok(0x1E20_0C00
-        | fp_ftype(width)
+        | fp_ftype(width, ln)?
         | ((fm as u32) << 16)
         | ((cond as u32) << 12)
         | ((fn_ as u32) << 5)
@@ -1817,13 +1925,13 @@ fn encode_fp_binary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError
     if ops.len() != 3 {
         return asm_err(ln, &format!("{name} requires 3 operands: {name} fd, fn, fm"));
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
-    let (fm, wm) = parse_fp_register(ops[2], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[2], ln)?;
     let width = require_same_fp_width(name, &[wd, wn, wm], ln)?;
     // 2-source: 0_0_0_11110_ftype_1_Rm_opcode_10_Rn_Rd
     Ok(0x1E20_0800
-        | fp_ftype(width)
+        | fp_ftype(width, ln)?
         | ((fm as u32) << 16)
         | ((opcode & 0xF) << 12)
         | ((fn_ as u32) << 5)
@@ -1840,7 +1948,7 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         if ops[0].trim().eq_ignore_ascii_case("sp") {
             return asm_err(ln, "fmov cannot target sp");
         }
-        let (fn_, wn) = parse_fp_register(ops[1], ln).map_err(|_| {
+        let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln).map_err(|_| {
             asm_error(
                 ln,
                 &format!("fmov with a general destination takes an FP source, got: {}", ops[1]),
@@ -1848,7 +1956,7 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         })?;
         return encode_fmov_general(rd, sf, wn, fn_, false, ln);
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
 
     // Immediate form: `fmov d9, 9.0` / `fmov s0, 0.5` (course style, `#`
     // optional). The operand is anything that reads as a float literal
@@ -1871,7 +1979,7 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
             .map(|c| c as u8)
             .find(|&c| crate::decoder::expand_fmov_imm8(c) == value.to_bits());
         let Some(imm8) = imm8 else {
-            let fallback = if wd == 'D' { ".double" } else { ".float" };
+            let fallback = if wd == FpWidth::D { ".double" } else { ".float" };
             return asm_err(
                 ln,
                 &format!(
@@ -1880,7 +1988,7 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
             );
         };
         // FMOV Fd, #imm: 0_0_0_11110_ftype_1_imm8_100_00000_Rd
-        return Ok(0x1E20_1000 | fp_ftype(wd) | ((imm8 as u32) << 13) | (fd as u32));
+        return Ok(0x1E20_1000 | fp_ftype(wd, ln)? | ((imm8 as u32) << 13) | (fd as u32));
     }
 
     // General source is the GP -> FP direction: `fmov d0, x0`, `fmov s0, w0`.
@@ -1891,10 +1999,10 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return encode_fmov_general(rn, sf, wd, fd, true, ln);
     }
 
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("fmov", &[wd, wn], ln)?;
     // FMOV Fd, Fn: 0_0_0_11110_ftype_1_00000_010000_Rn_Rd
-    Ok(0x1E20_4000 | fp_ftype(width) | ((fn_ as u32) << 5) | (fd as u32))
+    Ok(0x1E20_4000 | fp_ftype(width, ln)? | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 /// FMOV between the register files, either direction: raw bits, no
@@ -1904,12 +2012,13 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
 fn encode_fmov_general(
     gp: u8,
     gp_is_x: bool,
-    fp_width: char,
+    fp_width: FpWidth,
     fp: u8,
     to_fp: bool,
     ln: usize,
 ) -> Result<u32, EmuError> {
-    let widths_match = (gp_is_x && fp_width == 'D') || (!gp_is_x && fp_width == 'S');
+    let widths_match = (gp_is_x && fp_width == FpWidth::D)
+        || (!gp_is_x && fp_width == FpWidth::S);
     if !widths_match {
         return asm_err(
             ln,
@@ -1921,7 +2030,7 @@ fn encode_fmov_general(
     let (rd, rn) = if to_fp { (fp, gp) } else { (gp, fp) };
     Ok((sf_bit << 31)
         | 0x1E20_0000
-        | fp_ftype(fp_width)
+        | fp_ftype(fp_width, ln)?
         | (opcode << 16)
         | ((rn as u32) << 5)
         | (rd as u32))
@@ -1940,10 +2049,10 @@ fn encode_fp_unary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError>
     if ops.len() != 2 {
         return asm_err(ln, &format!("{name} requires 2 operands: {name} fd, fn"));
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width(name, &[wd, wn], ln)?;
-    Ok(0x1E20_4000 | fp_ftype(width) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
+    Ok(0x1E20_4000 | fp_ftype(width, ln)? | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 /// FCVT converts between the S and D views: `fcvt d0, s1` widens (exact),
@@ -1953,8 +2062,8 @@ fn encode_fcvt(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "fcvt requires 2 operands: fcvt fd, fn");
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
     if wd == wn {
         return asm_err(
             ln,
@@ -1962,22 +2071,22 @@ fn encode_fcvt(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         );
     }
     // 1-source with opcode 0b0001 followed by dest-type; ftype = source width.
-    let opcode: u32 = if wd == 'D' { 0b000101 } else { 0b000100 };
-    Ok(0x1E20_4000 | fp_ftype(wn) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
+    let opcode: u32 = if wd == FpWidth::D { 0b000101 } else { 0b000100 };
+    Ok(0x1E20_4000 | fp_ftype(wn, ln)? | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "fcmp/fcmpe requires 2 operands");
     }
-    let (fn_, wn) = parse_fp_register(ops[0], ln)?;
-    let (fm, wm) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("fcmp", &[wn, wm], ln)?;
     // FCMP Fn, Fm: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_0_0000; FCMPE sets
     // opc bit 4. The emulator raises no FP exceptions, so the two set the
     // same flags either way.
     let opc: u32 = if signaling { 0b10000 } else { 0 };
-    Ok(0x1E20_2000 | fp_ftype(width) | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc)
+    Ok(0x1E20_2000 | fp_ftype(width, ln)? | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc)
 }
 
 /// SCVTF / UCVTF Fd, Rn, plus SCVTF's SIMD-scalar spelling. `name` keys
@@ -1993,12 +2102,12 @@ fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, Em
             &format!("{name} requires 2 operands, or 3 with a fixed-point scale ({name} fd, rn, #fbits)"),
         );
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
     // The source is either a general register (the usual course form) or
     // an FP register already holding the integer bits (gcc emits
     // `ldr s31, [...]` then `scvtf s30, s31`): the SIMD-scalar encoding,
     // which exists for SCVTF only.
-    if let Ok((fn_, wn)) = parse_fp_register(ops[1], ln) {
+    if let Ok(FpReg { idx: fn_, width: wn }) = parse_fp_register(ops[1], ln) {
         if name != "scvtf" {
             return asm_err(
                 ln,
@@ -2009,7 +2118,7 @@ fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, Em
             return asm_err(ln, "the fixed-point form takes a general-register source");
         }
         let width = require_same_fp_width(name, &[wd, wn], ln)?;
-        let sz: u32 = if width == 'D' { 1 << 22 } else { 0 };
+        let sz: u32 = if width == FpWidth::D { 1 << 22 } else { 0 };
         return Ok(0x5E21_D800 | sz | ((fn_ as u32) << 5) | (fd as u32));
     }
     let (rn, sf) = parse_register(ops[1], ln)?;
@@ -2021,7 +2130,7 @@ fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, Em
     // replaces the zeros.
     Ok((sf_bit << 31)
         | 0x1E00_0000
-        | fp_ftype(wd)
+        | fp_ftype(wd, ln)?
         | (if scale.is_some() { 0 } else { 1 << 21 })
         | (u32::from(*rmode) << 19)
         | (u32::from(*opcode) << 16)
@@ -2070,14 +2179,14 @@ fn encode_fp_cvt_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuErro
         );
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
     let scale = fixed_point_scale(ops.get(2), sf, name, ln)?;
     // sf_0_0_11110_ftype_bit21_rmode_opcode_scale(6)_Rn_Rd. Bit 21 is what
     // separates the integer form from the fixed-point one.
     Ok((sf_bit << 31)
         | 0x1E00_0000
-        | fp_ftype(wn)
+        | fp_ftype(wn, ln)?
         | (if scale.is_some() { 0 } else { 1 << 21 })
         | (u32::from(*rmode) << 19)
         | (u32::from(*opcode) << 16)
@@ -2210,12 +2319,13 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
     if ops.len() < 2 {
         return asm_err(ln, "LDR/STR requires at least 2 operands");
     }
-    // FP LDR/STR: the target is a D/S register. Dispatch to the SIMD&FP
-    // encoding; this path only handles the plain integer form.
+    // FP LDR/STR: the target is a b/h/s/d/q register. Dispatch to the
+    // SIMD&FP encoding; this path only handles the plain integer form.
+    // Only bare LDR/STR carry an FP target; LDRB and friends pin `size`
+    // themselves and stay integer.
     if let Some(first_char) = ops[0].trim().chars().next() {
-        let upper = first_char.to_ascii_uppercase();
-        if matches!(upper, 'D' | 'S') && size == 0b11 {
-            return encode_ldst_fp(ops, load, ln);
+        if FpWidth::from_prefix(first_char).is_some() && size == 0b11 {
+            return encode_ldst_fp(ops, load, false, ln);
         }
     }
     let (rt, target_is_x) = parse_register(ops[0], ln)?;
@@ -2364,7 +2474,10 @@ fn looks_like_register(s: &str) -> bool {
     // register-offset address apart from an immediate one, so an
     // out-of-range index like `x99` still reads as a register and reaches
     // `parse_register` for the real complaint.
-    for prefix in ["x", "w"] {
+    // The SIMD&FP names ride the same test: a `q` operand is a register,
+    // and an address that names one has to reach `parse_register` for the
+    // real complaint instead of being silently read as an immediate.
+    for prefix in ["x", "w", "b", "h", "s", "d", "q"] {
         if let Some(rest) = lower.strip_prefix(prefix) {
             if rest == "zr" {
                 return true;
@@ -2679,22 +2792,31 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
     })
 }
 
-fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
-    // SIMD&FP LDR/STR (immediate, unsigned offset):
-    //   size[31:30] | 111 | V=1 | 01 | opc[23:22] | imm12 | Rn | Rt
-    // D uses size=0b11, opc=01 (load) or 00 (store); S uses size=0b10,
-    // same opc selection. Access scale is 8 for D, 4 for S.
-    let (rt, width) = parse_fp_register(ops[0], ln)?;
+/// SIMD&FP LDR/STR at all five widths.
+///
+/// Unsigned offset:  size | 111 | V=1 | 01 | opc | imm12 | Rn | Rt
+/// imm9 family:      size | 111 | V=1 | 00 | opc | 0 | imm9 | idx | Rn | Rt
+/// Register offset:  size | 111 | V=1 | 00 | opc | 1 | Rm | option | S | 10 | Rn | Rt
+///
+/// `opc` is `opc_high:load`, so the Q form (opc_high 1, size 00) is what
+/// tells a 128-bit access from the byte one they share a size field with.
+/// `unscaled` is set by LDUR/STUR, which spell the imm9 offset form
+/// outright and take no other addressing mode.
+fn encode_ldst_fp(ops: &[&str], load: u8, unscaled: bool, ln: usize) -> Result<u32, EmuError> {
+    let FpReg { idx: rt, width } = parse_fp_register(ops[0], ln)?;
     let addr_str: String = ops[1..].join(",");
     let am = parse_addressing_mode(addr_str.trim(), ln)?;
-    let (size, scale) = match width {
-        'D' => (0b11u32, 8u64),
-        'S' => (0b10u32, 4u64),
-        _ => return asm_err(ln, "unsupported FP LDR/STR width"),
+    let size = width.size_field();
+    let scale = width.bytes();
+    let opc: u32 = (width.opc_high() << 1) | u32::from(load);
+    let mnemonic = if unscaled {
+        if load == 1 { "LDUR" } else { "STUR" }
+    } else if load == 1 {
+        "LDR"
+    } else {
+        "STR"
     };
-    let opc: u32 = if load == 1 { 0b01 } else { 0b00 };
-    // The imm9 family shared by the unscaled-offset and writeback forms:
-    //   size | 1111 | 00 | opc | 0 | imm9 | idx | Rn | Rt
+    // The imm9 family shared by the unscaled-offset and writeback forms.
     let imm9_form = |offset_val: i64, idx: u32, rn: u8| -> Result<u32, EmuError> {
         if !(-256..=255).contains(&offset_val) {
             return asm_err(ln, "FP offset must be in [-256, 255] for this form");
@@ -2715,9 +2837,10 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
             mode: IndexMode::Unsigned,
         } => {
             let offset_val = offset.unwrap_or(0);
-            if offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
+            if unscaled || offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
                 // Same GAS conversion as the integer path: negative or
-                // unaligned offsets ride the unscaled encoding.
+                // unaligned offsets ride the unscaled encoding, and
+                // LDUR/STUR ask for it by name.
                 return imm9_form(offset_val, 0b00, rn);
             }
             let imm12 = (offset_val as u64 / scale) as u32;
@@ -2733,17 +2856,69 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
                 | (rt as u32))
         }
         AddressingMode::Immediate { rn, offset, mode } => {
+            if unscaled {
+                return asm_err(
+                    ln,
+                    &format!("{mnemonic} takes a plain [Xn, #imm] address, with no writeback"),
+                );
+            }
             let offset_val = offset.unwrap_or(0);
             let idx = if matches!(mode, IndexMode::PreIndex) { 0b11 } else { 0b01 };
             imm9_form(offset_val, idx, rn)
         }
-        AddressingMode::RegOffset { .. } => {
-            asm_err(
-                ln,
-                "FP LDR/STR register-offset is not supported; compute the address with add and use [Xn]",
-            )
+        AddressingMode::RegOffset {
+            rn,
+            rm,
+            option,
+            shift_amount,
+        } => {
+            if unscaled {
+                return asm_err(
+                    ln,
+                    &format!("{mnemonic} takes a plain [Xn, #imm] address, not a register offset"),
+                );
+            }
+            // S means "scale the index by the access size". The only
+            // amount that may be written is log2 of the access width, and
+            // a written #0 sets S for a byte access, where the two spell
+            // the same shift: GAS keeps the distinction in the word.
+            let shift = i64::from(width.scale_shift());
+            let s_bit: u32 = match shift_amount {
+                None => 0,
+                Some(a) if a == shift => 1,
+                Some(0) => 0,
+                Some(a) => {
+                    return asm_err(
+                        ln,
+                        &format!(
+                            "this {}-byte access can only scale its index register by #0 or #{shift}, got #{a}",
+                            width.bytes()
+                        ),
+                    );
+                }
+            };
+            Ok((size << 30)
+                | (0b1111 << 26)
+                | (opc << 22)
+                | (1 << 21)
+                | ((rm as u32) << 16)
+                | ((option as u32) << 13)
+                | (s_bit << 12)
+                | (0b10 << 10)
+                | ((rn as u32) << 5)
+                | (rt as u32))
         }
     }
+}
+
+/// LDUR/STUR of a SIMD&FP register: the unscaled signed-offset form
+/// spelled out. The integer LDUR/STUR are not in `SUPPORTED_MNEMONICS`,
+/// so a general-register operand is turned away by `parse_fp_register`.
+fn encode_ldur_stur(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() < 2 {
+        return asm_err(ln, "LDUR/STUR requires at least 2 operands");
+    }
+    encode_ldst_fp(ops, load, true, ln)
 }
 
 #[allow(clippy::identity_op)] // zero fields kept to document the full encoding layout
@@ -2751,12 +2926,12 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     if ops.len() < 3 {
         return asm_err(ln, "LDP/STP requires at least 3 operands");
     }
-    // An FP first operand (d8, s0) routes the pair through the SIMD&FP
-    // class, the same sniff encode_ldst does for single registers. The
-    // digit check keeps `sp` on the general path.
+    // An FP first operand (d8, s0, q1) routes the pair through the
+    // SIMD&FP class, the same sniff encode_ldst does for single
+    // registers. The digit check keeps `sp` on the general path.
     let first = ops[0].trim();
     if let Some(c) = first.chars().next() {
-        if matches!(c.to_ascii_uppercase(), 'D' | 'S')
+        if FpWidth::from_prefix(c).is_some()
             && first.len() >= 2
             && first[1..].chars().all(|d| d.is_ascii_digit())
         {
@@ -2825,14 +3000,27 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
         | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
 }
 
-/// LDP/STP of the FP file: V=1, opc 00 for S pairs (scale 4) or 01 for D
-/// pairs (scale 8). Same addressing modes and imm7 range as the general
-/// form; a callee-saved `stp d8, d9, [sp, -16]!` prologue is correct
-/// AAPCS64 and lands here.
-fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
-    let (rt, wt) = parse_fp_register(ops[0], ln)?;
-    let (rt2, wt2) = parse_fp_register(ops[1], ln)?;
+/// LDP/STP/LDNP/STNP of the FP file: V=1, opc 00 for S pairs (scale 4),
+/// 01 for D pairs (scale 8), 10 for Q pairs (scale 16). Same addressing
+/// modes and imm7 range as the general form; a callee-saved
+/// `stp d8, d9, [sp, -16]!` prologue is correct AAPCS64 and lands here.
+/// `no_allocate` is the LDNP/STNP op2 (00), a plain signed offset whose
+/// only difference is a cache hint, so it takes no writeback index.
+fn encode_ldst_pair_fp_inner(
+    ops: &[&str], load: u8, no_allocate: bool, ln: usize,
+) -> Result<u32, EmuError> {
+    let FpReg { idx: rt, width: wt } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: rt2, width: wt2 } = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("ldp/stp", &[wt, wt2], ln)?;
+    let Some(opc) = width.pair_opc() else {
+        return asm_err(
+            ln,
+            &format!(
+                "there is no {}-register pair form: ldp/stp take s, d or q registers",
+                width.letter()
+            ),
+        );
+    };
 
     let addr_str: String = ops[2..].join(",");
     let am = parse_addressing_mode(addr_str.trim(), ln)?;
@@ -2842,8 +3030,14 @@ fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuErro
             return asm_err(ln, "LDP/STP does not accept a register offset");
         }
     };
+    if no_allocate && !matches!(mode, IndexMode::Unsigned) {
+        return asm_err(
+            ln,
+            "LDNP/STNP take a plain [Xn, #imm] address, with no writeback",
+        );
+    }
 
-    let scale: i64 = if width == 'D' { 8 } else { 4 };
+    let scale = width.bytes() as i64;
     if offset_val % scale != 0 {
         return asm_err(ln, "pair offset must be aligned to register size");
     }
@@ -2861,16 +3055,33 @@ fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuErro
     }
     let imm7_enc = (quotient as u32) & 0x7F;
 
-    let opc: u32 = if width == 'D' { 0b01 } else { 0b00 };
-    let mode_bits: u32 = match mode {
-        IndexMode::PostIndex => 0b01,
-        IndexMode::Unsigned => 0b10,
-        IndexMode::PreIndex => 0b11,
+    let mode_bits: u32 = if no_allocate {
+        0b00
+    } else {
+        match mode {
+            IndexMode::PostIndex => 0b01,
+            IndexMode::Unsigned => 0b10,
+            IndexMode::PreIndex => 0b11,
+        }
     };
 
     Ok((opc << 30) | (0b101 << 27) | (1 << 26) | (mode_bits << 23)
         | ((load as u32) << 22) | (imm7_enc << 15)
         | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
+}
+
+fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    encode_ldst_pair_fp_inner(ops, load, false, ln)
+}
+
+/// LDNP/STNP, the no-allocate pair. SIMD&FP only here: the general-
+/// register spelling is not in `SUPPORTED_MNEMONICS`, so a `x0` operand
+/// is turned away by `parse_fp_register`.
+fn encode_ldst_pair_no_allocate(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() < 3 {
+        return asm_err(ln, "LDNP/STNP requires at least 3 operands");
+    }
+    encode_ldst_pair_fp_inner(ops, load, true, ln)
 }
 
 /// Encode `adr Rd, label` (byte-relative) or `adrp Rd, label` (page-
@@ -3581,15 +3792,15 @@ mod tests {
 
     #[test]
     fn fp_pairs_encode_as_the_gas_words_and_round_trip() {
-        use crate::decoder::{decode, Instruction, LdStPairOp};
+        use crate::decoder::{decode, Instruction, LdStPairOp, MemSize};
         let labels = HashMap::new();
         // The canonical callee-saved prologue word, byte-matched to GAS.
         let word = encode_line("stp d8, d9, [sp, -16]!", 0, &labels, 1).unwrap();
         assert_eq!(word, 0x6DBF_27E8);
         match decode(word).unwrap() {
-            Instruction::FpLdStPair { op, single, rt, rt2, rn, imm7, .. } => {
+            Instruction::FpLdStPair { op, size, rt, rt2, rn, imm7, .. } => {
                 assert_eq!(op, LdStPairOp::Stp);
-                assert!(!single);
+                assert_eq!(size, MemSize::X);
                 assert_eq!((rt, rt2, rn, imm7), (8, 9, 31, -16));
             }
             other => panic!("decoded to {other:?} (the V=1 pair once ran as a GP pair)"),
@@ -3609,16 +3820,22 @@ mod tests {
     }
 
     #[test]
-    fn fp_pairs_reject_mixed_widths_and_q_pairs_stay_unknown() {
-        use crate::decoder::decode;
+    fn fp_pairs_reject_mixed_widths_and_carry_the_q_form() {
+        use crate::decoder::{decode, Instruction, MemSize};
         let labels = HashMap::new();
         let err = encode_line("stp d0, s1, [sp, -16]!", 0, &labels, 1)
             .unwrap_err()
             .to_string();
         assert!(err.contains("all S or all D"), "{err}");
-        // A Q-register pair word (opc=10, V=1) stays undecoded rather than
-        // mis-running.
-        assert!(decode(0xAD00_07E0).is_err(), "q pair must not decode");
+        // A Q-register pair word (opc=10, V=1) is a real 16-byte pair.
+        assert!(matches!(
+            decode(0xAD00_07E0).unwrap(),
+            Instruction::FpLdStPair { size: MemSize::Q, .. }
+        ));
+        assert_eq!(
+            encode_line("stp q0, q1, [sp]", 0, &labels, 1).unwrap(),
+            0xAD00_07E0
+        );
     }
 
     #[test]
@@ -6150,10 +6367,12 @@ svc 0").unwrap();
             tokens_of("[sp, #-8]!"),
             vec!["LBracket:[", "Reg:sp", "Comma:,", "Imm:#-8", "RBracket:]", "Bang:!"]
         );
-        // `d1` is not a general register, so it is a Keyword and lands on
-        // the immediate path, exactly where `[x0, d1]`'s complaint
-        // comes from.
-        assert_eq!(tokens_of("d1"), vec!["Keyword:d1"]);
+        // A SIMD&FP name reads as a register too, so `[x0, d1]` reaches
+        // `parse_register` for the real complaint instead of falling onto
+        // the immediate path.
+        assert_eq!(tokens_of("d1"), vec!["Reg:d1"]);
+        assert_eq!(tokens_of("q31"), vec!["Reg:q31"]);
+        assert_eq!(tokens_of("lsl"), vec!["Keyword:lsl"]);
         assert_eq!(tokens_of("x99"), vec!["Reg:x99"]);
         assert_eq!(tokens_of("0x10"), vec!["Imm:0x10"]);
         assert_eq!(tokens_of("'a'"), vec!["Imm:'a'"]);
