@@ -8,6 +8,10 @@ export interface RegisterRowProps {
   alias?: string;
   /** Formatted value, typically hex such as "0x0000000000000001". */
   value: string;
+  /** A second reading of the same bits, shown beneath the value in tertiary
+   *  mono. The x-view's decimal mode puts the unsigned reading here beside the
+   *  signed one; omitted, the row is the single-value row it has always been. */
+  secondary?: string;
   /** When true the row plays the write flash and tints the value with
    *  `--changed`; the parent sets it for the step in which the register wrote. */
   changed?: boolean;
@@ -27,7 +31,13 @@ export interface RegisterRowProps {
  * the indicators. The alias stays on `--text-secondary` at full opacity so
  * it clears WCAG AA.
  */
-export function RegisterRow({ name, alias, value, changed = false }: RegisterRowProps) {
+export function RegisterRow({
+  name,
+  alias,
+  value,
+  secondary,
+  changed = false,
+}: RegisterRowProps) {
   return (
     <div
       // The 2px amber edge bar is the machine's write marker; the flash
@@ -45,13 +55,20 @@ export function RegisterRow({ name, alias, value, changed = false }: RegisterRow
       <span className="w-11 shrink-0 text-left font-mono text-[12px] text-[var(--text-secondary)]">
         {alias ?? ""}
       </span>
-      <span
-        title={value}
-        className={`ml-auto text-right font-mono text-[13px] tabular-nums ${
-          changed ? "text-[var(--changed)]" : "text-[var(--text-primary)]"
-        }`}
-      >
-        {value}
+      <span className="ml-auto flex min-w-0 flex-col items-end text-right">
+        <span
+          title={value}
+          className={`font-mono text-[13px] tabular-nums ${
+            changed ? "text-[var(--changed)]" : "text-[var(--text-primary)]"
+          }`}
+        >
+          {value}
+        </span>
+        {secondary ? (
+          <span className="font-mono text-[11px] tabular-nums text-[var(--text-tertiary)]">
+            {secondary}
+          </span>
+        ) : null}
       </span>
     </div>
   );
