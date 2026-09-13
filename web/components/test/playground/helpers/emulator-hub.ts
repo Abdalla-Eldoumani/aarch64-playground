@@ -30,6 +30,7 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     loadError: null,
     registers: Array(31).fill("0x0000000000000000") as string[],
     fpRegisters: [],
+    vectorRegisters: [],
     sp: "0x0000000080000000",
     pc: 0x400000,
     nzcv: 0,
