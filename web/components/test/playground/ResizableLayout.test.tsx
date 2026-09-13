@@ -29,7 +29,7 @@ const setLayoutCalls = vi.hoisted(() => [] as Layout[]);
 const groupLayouts = vi.hoisted(() => new WeakMap<Element, { layout: Layout }>());
 
 vi.mock("react-resizable-panels", async () => {
-  const { useRef } = await import("react");
+  const { useLayoutEffect, useRef } = await import("react");
   return {
     useGroupRef: () => useRef<GroupHandle | null>(null),
     Group: ({
@@ -44,34 +44,46 @@ vi.mock("react-resizable-panels", async () => {
       onLayoutChange: (l: Layout) => void;
       groupRef?: { current: GroupHandle | null };
       children: ReactNode;
-    }) => (
-      <div
-        data-group={orientation}
-        data-layout={JSON.stringify(defaultLayout)}
-        ref={(el) => {
-          if (!el) return;
-          dragHandlers.set(el, onLayoutChange);
-          let state = groupLayouts.get(el);
-          if (!state) {
-            state = { layout: { ...defaultLayout } };
-            groupLayouts.set(el, state);
-          }
-          const held = state;
-          if (groupRef) {
-            groupRef.current = {
-              getLayout: () => held.layout,
-              setLayout: (l: Layout) => {
-                setLayoutCalls.push(l);
-                held.layout = { ...l };
-                return l;
-              },
-            };
-          }
-        }}
-      >
-        {children}
-      </div>
-    ),
+    }) => {
+      // The real group reports its layout the moment it can measure itself,
+      // and on a column that gets its height a beat after first render that
+      // lands BEFORE the parent's storage read. A layout effect is the same
+      // seam: it runs ahead of every passive effect above it.
+      const reported = useRef(false);
+      useLayoutEffect(() => {
+        if (reported.current) return;
+        reported.current = true;
+        onLayoutChange(defaultLayout);
+      });
+      return (
+        <div
+          data-group={orientation}
+          data-layout={JSON.stringify(defaultLayout)}
+          ref={(el) => {
+            if (!el) return;
+            dragHandlers.set(el, onLayoutChange);
+            let state = groupLayouts.get(el);
+            if (!state) {
+              state = { layout: { ...defaultLayout } };
+              groupLayouts.set(el, state);
+            }
+            const held = state;
+            if (groupRef) {
+              groupRef.current = {
+                getLayout: () => held.layout,
+                setLayout: (l: Layout) => {
+                  setLayoutCalls.push(l);
+                  held.layout = { ...l };
+                  return l;
+                },
+              };
+            }
+          }}
+        >
+          {children}
+        </div>
+      );
+    },
     Panel: ({
       id,
       minSize,
@@ -112,10 +124,11 @@ vi.mock("react-resizable-panels", async () => {
 });
 
 import { ResizableLayout } from "@/components/playground/ResizableLayout";
+import type { Breakpoint } from "@/lib/hooks/use-breakpoint";
 
 const KEY = "aarch64-playground:layout:";
 
-function renderLayout(breakpoint: "lg" | "xl" = "lg") {
+function renderLayout(breakpoint: Breakpoint = "lg") {
   return render(
     <ResizableLayout
       breakpoint={breakpoint}
@@ -376,5 +389,31 @@ describe("ResizableLayout", () => {
     renderLayout();
     drag("panel-left", { "panel-left": 40, "panel-right": 60 });
     expect(setLayoutCalls).toEqual([]);
+  });
+  it("does not let the mount's own report overwrite a stored split", () => {
+    // The group reports its layout as soon as it can measure itself, which
+    // beats the storage read. That report is not the reader resizing
+    // anything, so it must not be written.
+    window.localStorage.setItem(`${KEY}md`, "[30,70]");
+    window.localStorage.setItem(`${KEY}md-left`, "[60,40]");
+    window.localStorage.setItem(`${KEY}md-right`, "[35,65]");
+    renderLayout("md");
+    expect(window.localStorage.getItem(`${KEY}md`)).toBe("[30,70]");
+    expect(window.localStorage.getItem(`${KEY}md-left`)).toBe("[60,40]");
+    expect(window.localStorage.getItem(`${KEY}md-right`)).toBe("[35,65]");
+    // And the stored splits still reach the mounted groups, innermost first:
+    // a child's effects flush before its parent's.
+    expect(setLayoutCalls).toEqual([
+      { "panel-editor": 60, "panel-disasm": 40 },
+      { "panel-regs": 35, "panel-tabs": 65 },
+      { "panel-left": 30, "panel-right": 70 },
+    ]);
+  });
+
+  it("writes nothing at all for a group nobody has resized", () => {
+    renderLayout();
+    expect(window.localStorage.getItem(`${KEY}lg`)).toBeNull();
+    expect(window.localStorage.getItem(`${KEY}lg-left`)).toBeNull();
+    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBeNull();
   });
 });
