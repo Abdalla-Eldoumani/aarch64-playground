@@ -11,6 +11,7 @@ export interface LatestSnap {
   registers: string[];
   sp: string;
   fpRegisters: string[];
+  vectorRegisters: string[];
   pc: number;
   nzcv: number;
   changedRegs: number[];
@@ -25,6 +26,8 @@ export interface CpuView {
   changedRegs: Set<number>;
   fpRegisters: string[];
   changedFpRegs: Set<number>;
+  /** The full 128-bit file behind the v-view; [] on a wasm build without it. */
+  vectorRegisters: string[];
   currentLine: number | null;
   currentLineRef: RefObject<number | null>;
   latestSnapRef: RefObject<LatestSnap>;
@@ -78,6 +81,7 @@ export function useCpuView(): CpuView {
   const [changedRegs, setChangedRegs] = useState<Set<number>>(new Set());
   const [fpRegisters, setFpRegisters] = useState<string[]>([]);
   const [changedFpRegs, setChangedFpRegs] = useState<Set<number>>(new Set());
+  const [vectorRegisters, setVectorRegisters] = useState<string[]>([]);
   const [currentLine, setCurrentLine] = useState<number | null>(null);
   const [replayTick, setReplayTick] = useState(0);
 
@@ -87,6 +91,7 @@ export function useCpuView(): CpuView {
     registers: [],
     sp: "0x0000000080000000",
     fpRegisters: [],
+    vectorRegisters: [],
     pc: 0,
     nzcv: 0,
     changedRegs: [],
@@ -102,10 +107,12 @@ export function useCpuView(): CpuView {
     setChangedRegs(new Set(snap.changedRegs));
     setFpRegisters(snap.fpRegisters);
     setChangedFpRegs(new Set(snap.changedFpRegs));
+    setVectorRegisters(snap.vectorRegisters);
     latestSnapRef.current = {
       registers: snap.registers,
       sp: snap.sp,
       fpRegisters: snap.fpRegisters,
+      vectorRegisters: snap.vectorRegisters,
       pc: pcNum,
       nzcv: snap.nzcv,
       changedRegs: snap.changedRegs,
@@ -129,6 +136,7 @@ export function useCpuView(): CpuView {
       registers: snap.registers,
       sp: snap.sp,
       fpRegisters: snap.fpRegisters,
+      vectorRegisters: snap.vectorRegisters,
       pc: snap.pc,
       nzcv: snap.nzcv,
       changedRegs: snap.changedRegs,
@@ -149,6 +157,7 @@ export function useCpuView(): CpuView {
     setRegisters(frame.registers);
     setSp(frame.sp);
     setFpRegisters(frame.fpRegisters);
+    setVectorRegisters(frame.vectorRegisters);
     setPc(frame.pc);
     setNzcv(frame.nzcv);
     setChangedRegs(new Set(frame.changedRegs));
@@ -166,6 +175,7 @@ export function useCpuView(): CpuView {
     changedRegs,
     fpRegisters,
     changedFpRegs,
+    vectorRegisters,
     currentLine,
     currentLineRef,
     latestSnapRef,
