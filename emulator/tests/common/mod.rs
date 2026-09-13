@@ -12,37 +12,36 @@
 /// list flips red the moment a family lands and stops being a claim
 /// nobody checks. Removing a name is how a family is declared done.
 pub const NOT_YET: &[&str] = &[
-    "abs", "add", "addhn", "addhn2", "addp", "addv", "and", "bic", "bif",
-    "bit", "bsl", "cls", "clz", "cmeq", "cmge", "cmgt", "cmhi", "cmhs",
-    "cmle", "cmlt", "cmtst", "cnt", "dup", "eor", "ext", "fabd", "fabs",
-    "facge", "facgt", "fadd", "faddp", "fcmeq", "fcmge", "fcmgt", "fcmle",
-    "fcmlt", "fcvtas", "fcvtau", "fcvtl", "fcvtl2", "fcvtms", "fcvtmu",
-    "fcvtn", "fcvtn2", "fcvtns", "fcvtnu", "fcvtps", "fcvtpu", "fcvtxn",
-    "fcvtxn2", "fcvtzs", "fcvtzu", "fdiv", "fmax", "fmaxnm", "fmaxnmp",
-    "fmaxnmv", "fmaxp", "fmaxv", "fmin", "fminnm", "fminnmp", "fminnmv",
-    "fminp", "fminv", "fmla", "fmls", "fmov", "fmul", "fmulx", "fneg",
-    "frecpe", "frecps", "frecpx", "frinta", "frinti", "frintm", "frintn",
-    "frintp", "frintx", "frintz", "frsqrte", "frsqrts", "fsqrt", "fsub",
-    "ins", "ld1", "ld1r", "ld2", "ld2r", "ld3", "ld3r", "ld4", "ld4r",
-    "mla", "mls", "mov", "movi", "mul", "mvn", "mvni", "neg", "not", "orn",
-    "orr", "pmul", "pmull", "pmull2", "raddhn", "raddhn2", "rbit", "rev16",
-    "rev32", "rev64", "rshrn", "rshrn2", "rsubhn", "rsubhn2", "saba",
-    "sabal", "sabal2", "sabd", "sabdl", "sabdl2", "sadalp", "saddl",
-    "saddl2", "saddlp", "saddlv", "saddw", "saddw2", "scvtf", "shadd",
-    "shl", "shll", "shll2", "shrn", "shrn2", "shsub", "sli", "smax",
-    "smaxp", "smaxv", "smin", "sminp", "sminv", "smlal", "smlal2", "smlsl",
-    "smlsl2", "smov", "smull", "smull2", "sqabs", "sqadd", "sqdmlal",
-    "sqdmlal2", "sqdmlsl", "sqdmlsl2", "sqdmulh", "sqdmull", "sqdmull2",
-    "sqneg", "sqrdmulh", "sqrshl", "sqrshrn", "sqrshrn2", "sqrshrun",
-    "sqrshrun2", "sqshl", "sqshlu", "sqshrn", "sqshrn2", "sqshrun",
-    "sqshrun2", "sqsub", "sqxtn", "sqxtn2", "sqxtun", "sqxtun2", "srhadd",
-    "sri", "srshl", "srshr", "srsra", "sshl", "sshll", "sshll2", "sshr",
-    "ssra", "ssubl", "ssubl2", "ssubw", "ssubw2", "st1", "st2", "st3",
-    "st4", "sub", "subhn", "subhn2", "suqadd", "sxtl", "sxtl2", "tbl",
-    "tbx", "trn1", "trn2", "uaba", "uabal", "uabal2", "uabd", "uabdl",
-    "uabdl2", "uadalp", "uaddl", "uaddl2", "uaddlp", "uaddlv", "uaddw",
-    "uaddw2", "ucvtf", "uhadd", "uhsub", "umax", "umaxp", "umaxv", "umin",
-    "uminp", "uminv", "umlal", "umlal2", "umlsl", "umlsl2", "umov",
+    "abs", "add", "addhn", "addhn2", "addp", "addv", "and", "bif", "bit",
+    "bsl", "cls", "clz", "cmeq", "cmge", "cmgt", "cmhi", "cmhs", "cmle",
+    "cmlt", "cmtst", "cnt", "eor", "ext", "fabd", "fabs", "facge", "facgt",
+    "fadd", "faddp", "fcmeq", "fcmge", "fcmgt", "fcmle", "fcmlt", "fcvtas",
+    "fcvtau", "fcvtl", "fcvtl2", "fcvtms", "fcvtmu", "fcvtn", "fcvtn2",
+    "fcvtns", "fcvtnu", "fcvtps", "fcvtpu", "fcvtxn", "fcvtxn2", "fcvtzs",
+    "fcvtzu", "fdiv", "fmax", "fmaxnm", "fmaxnmp", "fmaxnmv", "fmaxp",
+    "fmaxv", "fmin", "fminnm", "fminnmp", "fminnmv", "fminp", "fminv",
+    "fmla", "fmls", "fmov", "fmul", "fmulx", "fneg", "frecpe", "frecps",
+    "frecpx", "frinta", "frinti", "frintm", "frintn", "frintp", "frintx",
+    "frintz", "frsqrte", "frsqrts", "fsqrt", "fsub", "ld1", "ld1r", "ld2",
+    "ld2r", "ld3", "ld3r", "ld4", "ld4r", "mla", "mls", "mul", "mvn",
+    "neg", "not", "orn", "pmul", "pmull", "pmull2", "raddhn", "raddhn2",
+    "rbit", "rev16", "rev32", "rev64", "rshrn", "rshrn2", "rsubhn",
+    "rsubhn2", "saba", "sabal", "sabal2", "sabd", "sabdl", "sabdl2",
+    "sadalp", "saddl", "saddl2", "saddlp", "saddlv", "saddw", "saddw2",
+    "scvtf", "shadd", "shl", "shll", "shll2", "shrn", "shrn2", "shsub",
+    "sli", "smax", "smaxp", "smaxv", "smin", "sminp", "sminv", "smlal",
+    "smlal2", "smlsl", "smlsl2", "smull", "smull2", "sqabs", "sqadd",
+    "sqdmlal", "sqdmlal2", "sqdmlsl", "sqdmlsl2", "sqdmulh", "sqdmull",
+    "sqdmull2", "sqneg", "sqrdmulh", "sqrshl", "sqrshrn", "sqrshrn2",
+    "sqrshrun", "sqrshrun2", "sqshl", "sqshlu", "sqshrn", "sqshrn2",
+    "sqshrun", "sqshrun2", "sqsub", "sqxtn", "sqxtn2", "sqxtun", "sqxtun2",
+    "srhadd", "sri", "srshl", "srshr", "srsra", "sshl", "sshll", "sshll2",
+    "sshr", "ssra", "ssubl", "ssubl2", "ssubw", "ssubw2", "st1", "st2",
+    "st3", "st4", "sub", "subhn", "subhn2", "suqadd", "sxtl", "sxtl2",
+    "tbl", "tbx", "trn1", "trn2", "uaba", "uabal", "uabal2", "uabd",
+    "uabdl", "uabdl2", "uadalp", "uaddl", "uaddl2", "uaddlp", "uaddlv",
+    "uaddw", "uaddw2", "ucvtf", "uhadd", "uhsub", "umax", "umaxp", "umaxv",
+    "umin", "uminp", "uminv", "umlal", "umlal2", "umlsl", "umlsl2",
     "umull", "umull2", "uqadd", "uqrshl", "uqrshrn", "uqrshrn2", "uqshl",
     "uqshrn", "uqshrn2", "uqsub", "uqxtn", "uqxtn2", "urecpe", "urhadd",
     "urshl", "urshr", "ursqrte", "ursra", "ushl", "ushll", "ushll2",
@@ -51,12 +50,19 @@ pub const NOT_YET: &[&str] = &[
 ];
 
 /// The exceptions to `NOT_YET`: spellings whose mnemonic is queued but
-/// which this crate already assembles, because a scalar form of it landed
-/// earlier for another reason. Both rows here are the SIMD-scalar SCVTF
-/// gcc emits after `ldr s31, [...]`, which the FP-from-integer encoder has
-/// carried since before any of this. They are held to their inventory word
-/// like an implemented line, rather than being excused.
-pub const ALREADY_SUPPORTED: &[&str] = &["scvtf s3, s7", "scvtf d3, d7"];
+/// which this crate does assemble, because one form of the family landed
+/// on its own. The two SCVTF rows are the SIMD-scalar convert gcc emits
+/// after `ldr s31, [...]`, which the FP-from-integer encoder has carried
+/// since before any of this; the two FMOV rows move a general register to
+/// and from the upper lane, which landed with the rest of the lane moves
+/// while the vector FMOV immediate stays queued. All four are held to
+/// their inventory word like an implemented line, rather than excused.
+pub const ALREADY_SUPPORTED: &[&str] = &[
+    "scvtf s3, s7",
+    "scvtf d3, d7",
+    "fmov v3.d[1], x7",
+    "fmov x3, v7.d[1]",
+];
 
 /// One line of `simd-inventory.txt`.
 pub struct InventoryLine {
