@@ -32,12 +32,30 @@ const MEMORY: &[&str] = &["ldr", "str", "ldur", "stur", "ldp", "stp", "ldnp", "s
 /// moves. They touch no memory, so no row of theirs names a base.
 const MOVES: &[&str] = &["movi", "mvni", "orr", "bic", "fmov", "dup", "ins", "umov", "smov", "mov"];
 
+/// The integer lane families: three-same, two-register misc, across
+/// lanes and the SIMD-scalar class of each. Like MOVES they name no
+/// base, and unlike MOVES they compute rather than copy, which is what
+/// this suite is here to check.
+const INTEGER: &[&str] = &[
+    "add", "sub", "mul", "mla", "mls", "pmul", "and", "orn", "eor", "bsl", "bit", "bif",
+    "cmeq", "cmge", "cmgt", "cmhi", "cmhs", "cmtst", "cmle", "cmlt",
+    "sqadd", "uqadd", "sqsub", "uqsub", "suqadd", "usqadd", "sqabs", "sqneg",
+    "shadd", "uhadd", "srhadd", "urhadd", "shsub", "uhsub", "sqdmulh", "sqrdmulh",
+    "smax", "smin", "umax", "umin", "smaxp", "sminp", "umaxp", "uminp",
+    "smaxv", "sminv", "umaxv", "uminv", "addv", "saddlv", "uaddlv", "addp",
+    "saddlp", "uaddlp", "sadalp", "uadalp", "sabd", "uabd", "saba", "uaba",
+    "neg", "abs", "not", "mvn", "cnt", "rbit", "rev16", "rev32", "rev64", "clz", "cls",
+    "urecpe", "ursqrte",
+];
+
 /// Whether this suite replays a line. Everything else implemented (the
 /// SIMD-scalar SCVTF) is left to `simd.rs` until its own feature lands.
 fn is_replayed(line: &InventoryLine) -> bool {
     line.implemented()
         && !line.spelling.contains("_probe")
-        && (MEMORY.contains(&line.mnemonic()) || MOVES.contains(&line.mnemonic()))
+        && (MEMORY.contains(&line.mnemonic())
+            || MOVES.contains(&line.mnemonic())
+            || INTEGER.contains(&line.mnemonic()))
 }
 
 /// Where the mapped buffer's base sits: page-aligned (so SP-based forms
