@@ -90,7 +90,7 @@
     "react-dom": "19.2.8",
     "react-hot-toast": "2.6.0",
     "react-markdown": "10.1.0",
-    "react-resizable-panels": "4.12.3",
+    "react-resizable-panels": "4.12.4",
     "rehype-sanitize": "6.0.0",
     "remark-gfm": "4.0.1"
   },
