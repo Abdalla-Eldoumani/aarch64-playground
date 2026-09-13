@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
+import type { ReactNode } from "react";
 
 // The core children pull in Monaco and toast; stub them so jsdom
 // never instantiates the editor or WASM. The tests exercise
@@ -21,6 +22,16 @@ vi.mock("@/components/panels/ConsolePanel", () => ({
 // full-chrome layout is not what these unit tests exercise.
 vi.mock("@/components/playground/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
+  // The tablet arrangement reaches the panel library through PaneSplit;
+  // these suites want the panes it wraps, not the split itself.
+  PaneSplit: ({ first, second }: { first: ReactNode; second: ReactNode }) => (
+    <div data-testid="pane-split">
+      {first}
+      {second}
+    </div>
+  ),
+  EDITOR_SPLIT: { label: "resize editor and disassembly" },
+  DEBUG_SPLIT: { label: "resize registers and tabs" },
 }));
 // Capture the tutorial's props so tests can drive onLoadSnippet, the snippet
 // handoff contract, without walking the real tour UI.
