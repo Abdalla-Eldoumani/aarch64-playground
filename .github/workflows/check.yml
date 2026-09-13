@@ -291,10 +291,11 @@ jobs:
         working-directory: web
         run: npm run size
 
-  # The suite is partitioned across four runners with vitest --shard; every
-  # file runs exactly once across the union. Four rather than three because
-  # the shard is the critical path of the whole workflow and vitest splits
-  # by file count, not by cost, so the slowest shard sets the wall clock.
+  # The suite is partitioned across six runners with vitest --shard; every
+  # file runs exactly once across the union. Six because the slowest shard
+  # is the critical path of the whole workflow and vitest splits by file
+  # count, not by cost: four shards left the longest one at 80 s and the
+  # merge job waiting on it.
   # A shard cannot judge the global coverage floor from its slice, so
   # VITEST_SHARD defers the thresholds to the coverage job, which merges
   # the blob reports and enforces them once.
@@ -306,7 +307,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7
 
@@ -327,7 +328,7 @@ jobs:
         env:
           # A flag, not the shard index: it only tells vitest to defer the floors.
           VITEST_SHARD: "1"
-        run: npm test -- --coverage --reporter=blob --reporter=default --shard=${{ matrix.shard }}/4
+        run: npm test -- --coverage --reporter=blob --reporter=default --shard=${{ matrix.shard }}/6
 
       # .vitest/blob is where vitest 5 writes the blob (vitest 4 used
       # .vitest-reports). It is a dot-directory, which upload-artifact skips
