@@ -192,8 +192,8 @@ does not need:
 - **corpus**: `node scripts/verify-corpus.js`.
 - **web-static**: the dependency audit, `npm run lint`, `npm run typecheck`.
 - **web-build**: `npm run build` and `npm run size`.
-- **web-test**: `npm test -- --coverage` split into four shards
-  (`--shard=n/4`), every test file running exactly once across them.
+- **web-test**: `npm test -- --coverage` split into six shards
+  (`--shard=n/6`), every test file running exactly once across them.
 - **coverage**: merges the shards' blob reports (vitest writes them under
   `web/.vitest/blob/`, which the shard jobs upload and this job downloads)
   and enforces the coverage floors in `web/vitest.config.mts` on the
