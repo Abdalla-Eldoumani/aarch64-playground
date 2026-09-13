@@ -1739,10 +1739,10 @@ fn decode_advanced_simd(instr: u32) -> Option<Instruction> {
 
     // Three-same (integer): 0 Q U 01110 size 1 Rm opcode 1 Rn Rd, and the
     // SIMD-scalar class 01 U 11110 size 1 Rm opcode 1 Rn Rd beside it.
-    // A (U, opcode) pair the table does not carry is either a shift
-    // (feature 2b) or a floating-point row (feature 3): answering None
-    // leaves it to the scalar FP decode below and, failing that, to the
-    // unknown-instruction error.
+    // A (U, opcode) pair the table does not carry is either a register
+    // shift or a floating-point row: answering None leaves it to the
+    // scalar FP decode below and, failing that, to the unknown-instruction
+    // error.
     let scalar_three_same = instr & 0xDF20_0400 == 0x5E20_0400;
     if instr & 0x9F20_0400 == 0x0E20_0400 || scalar_three_same {
         let size = bits(instr, 23, 22) as u8;
