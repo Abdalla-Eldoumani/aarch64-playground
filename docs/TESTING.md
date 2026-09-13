@@ -88,10 +88,10 @@ replays every implemented line, so a form that encodes correctly but
 moves the wrong bytes still fails. Neither fixture is ever hand-edited;
 both are regenerated from the probe.
 
-The two counts move together as families land. Today `simd.rs` holds 314
-lines to their word and rejects 1,891, with 3 literal loads checked
-through the hosted pipeline instead, and `simd_behaviour.rs` replays 936
-rows.
+The two counts move together as families land. Today `simd.rs` holds 777
+lines to their word and rejects 1,428, with 3 literal loads checked
+through the hosted pipeline instead, and `simd_behaviour.rs` replays
+2,325 rows.
 
 ## The C corpus
 
