@@ -196,6 +196,9 @@ export interface StateSnapshot {
   registers: string[];
   /** d0-d31 as "0x…" IEEE-754 bit patterns; [] when the WASM predates FP. */
   fpRegisters: string[];
+  /** v0-v31 as "0x" + 32 hex digits (the same 128 bits q0-q31 name); [] when
+   *  the WASM predates the vector surface, which hides the v-view. */
+  vectorRegisters: string[];
   sp: string;
   pc: string;
   nzcv: number;
@@ -253,6 +256,7 @@ export function emptyStateSnapshot(frame = 0): StateSnapshot {
     frame,
     registers: Array(31).fill("0x0000000000000000"),
     fpRegisters: [],
+    vectorRegisters: [],
     // sp and pc mirror the Rust memory map's stack top and code base.
     sp: "0x0000000080000000",
     pc: "0x0000000000400000",
