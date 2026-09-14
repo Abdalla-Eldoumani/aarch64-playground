@@ -2900,7 +2900,7 @@ pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
         0b0100 | 0b0110 | 0b1100 | 0b1110 => decode_ldst_group(instr),
         // data processing: register
         0b0101 | 0b1101 => decode_dp_reg_group(instr),
-        // scalar FP (and SIMD, which we do not implement)
+        // scalar FP and the Advanced SIMD classes that share its group
         0b0111 | 0b1111 => decode_fp_group(instr),
         _ => Err(EmuError::UnknownInstruction(instr)),
     }
