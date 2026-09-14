@@ -132,7 +132,15 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
           ),
           "keyword",
         ],
-        [/\b(X[0-9]|X[12][0-9]|X30|W[0-9]|W[12][0-9]|W30|SP|XZR|WZR)\b/i, "variable"],
+        // The register file, hand-kept in step with REGISTER_RE in
+        // lib/asm/highlight-arm64.ts: the general names, the five scalar views
+        // of a SIMD&FP entry, and the vector view with its arrangement or one
+        // indexed lane. The widest alternative comes first so `v30` and `x30`
+        // do not colour as `v3` plus a stray digit.
+        [
+          /\b(?:[XW](?:30|[12][0-9]|[0-9])|SP|XZR|WZR|[BHSDQ](?:3[01]|[12][0-9]|[0-9])|V(?:3[01]|[12][0-9]|[0-9])(?:\.(?:16B|8B|8H|4H|4S|2S|2D|1D|[BHSD]\[[0-9]+\]))?)/i,
+          "variable",
+        ],
         [/#-?0x[0-9a-fA-F]+/, "number.hex"],
         [/#-?[0-9]+/, "number"],
         [/\w+:/, "type.identifier"],
