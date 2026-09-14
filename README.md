@@ -16,11 +16,11 @@ Live at <https://aarch64-playground.com>.
   views (the integer `x0`–`x30`, the floating-point `d0`–`d31`, and the
   128-bit vector `v0`–`v31` sliced into 8-, 16-, 32- or 64-bit lanes), each
   with its own decimal and raw-bit readings and the view following the
-  write; memory and stack views; a console with
-  interactive stdin and a persistent virtual filesystem; a terminal pane
-  with the course toolchain (`m4`, `gcc`, `./prog`) and a gdb-style command
-  subset; a hex/binary/decimal/two's-complement converter; share links; and
-  dark, light, and high-contrast themes.
+  write; memory and stack views; a console with interactive stdin and a
+  persistent virtual filesystem; a terminal pane with the course toolchain
+  (`m4`, `gcc`, `./prog`) and a gdb-style command subset; a
+  hex/binary/decimal/two's-complement converter; share links; and dark,
+  light, and high-contrast themes.
 - **Learn** (`/learn`): short lessons with runnable inline editors.
 - **Practice** (`/practice`): coding exercises checked by running your
   program against expected behavior (registers, exit code, stdout), never
@@ -44,15 +44,15 @@ Live at <https://aarch64-playground.com>.
   operations, and in floating point fused multiply-add, min and max,
   `fcsel`, and every float-to-integer rounding mode. The whole Advanced SIMD
   base set assembles and runs too: the 128-bit `v0`–`v31` file, the lane
-  arrangements over it, the by-element and permute forms, and the `LD1`-`LD4`
-  structure loads and stores, with six vector example programs to read. Every
-  form is held to a capture taken on the course server, both the word GNU
-  `as` produces and the bytes the instruction moves; the extension families
-  that server refuses without an architecture directive stay out, listed by
-  ARM feature name in the instruction reference. A tracked corpus of
-  fifty gcc-compiled C programs is replayed against real AArch64 server
-  outputs byte for byte: at `-O0` as a gate on every change, and at `-O2` as
-  a coverage map of the forms the optimizer emits.
+  arrangements over it, the by-element and permute forms, and the
+  `LD1`-`LD4` structure loads and stores, with six vector example programs
+  to read. Every form is held to a capture taken on the course server, both
+  the word GNU `as` produces and the bytes the instruction moves; the
+  extension families that server refuses without an architecture directive
+  stay out, listed by ARM feature name in the instruction reference. A
+  tracked corpus of fifty gcc-compiled C programs is replayed against real
+  AArch64 server outputs byte for byte: at `-O0` as a gate on every change,
+  and at `-O2` as a coverage map of the forms the optimizer emits.
 - **Fully client-side and installable**: runs offline as a PWA. The emulator
   runs in a Web Worker with a main-thread fallback, and is bounded so a
   runaway program halts cleanly instead of freezing the tab. The landing
