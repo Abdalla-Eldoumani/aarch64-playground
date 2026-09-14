@@ -21,7 +21,7 @@ const CONDITIONS = new Set([
   "VS", "VC", "HI", "LS", "GE", "LT", "GT", "LE", "AL",
 ]);
 
-// The eight category sections of the reference, in doc order.
+// The nine category sections of the reference, in doc order.
 const CATEGORIES: ReadonlySet<ReferenceCategory> = new Set([
   "Data processing",
   "Compare and test",
@@ -31,6 +31,7 @@ const CATEGORIES: ReadonlySet<ReferenceCategory> = new Set([
   "Branches",
   "System",
   "Floating point",
+  "Vector",
 ]);
 
 // Canonicalize a mnemonic: upper-case, and fold every conditional-branch
@@ -100,10 +101,7 @@ describe("reference-data matches the documented instruction set", () => {
     expect(documented.size).toBeGreaterThan(0);
   });
 
-  // Skipped until the reference change lands: the instruction reference now
-  // documents LDUR, STUR, LDNP and STNP ahead of their hover cards and
-  // reference rows, so this mirror check trips on exactly those four.
-  it.skip("covers exactly the documented set, with no drift", () => {
+  it("covers exactly the documented set, with no drift", () => {
     const reference = new Set(
       REFERENCE_INSTRUCTIONS.map((insn) => canon(insn.mnemonic)),
     );
@@ -121,10 +119,7 @@ describe("reference-data matches the documented instruction set", () => {
     ).toEqual({ documentedOnly: [], referenceOnly: [] });
   });
 
-  // Skipped until the reference change lands: the instruction reference now
-  // documents LDUR, STUR, LDNP and STNP ahead of their hover cards and
-  // reference rows, so this mirror check trips on exactly those four.
-  it.skip("resolves every documented mnemonic through lookupDoc", () => {
+  it("resolves every documented mnemonic through lookupDoc", () => {
     const missing = [...documented].filter((m) => lookupDoc(m) === undefined);
     expect(missing).toEqual([]);
   });
@@ -142,7 +137,7 @@ describe("reference-data matches the documented instruction set", () => {
     expect(canonical.length).toBe(new Set(canonical).size);
   });
 
-  it("assigns every instruction one of the eight categories", () => {
+  it("assigns every instruction one of the nine categories", () => {
     const invalid = REFERENCE_INSTRUCTIONS.filter(
       (insn) => !CATEGORIES.has(insn.category),
     ).map((insn) => insn.mnemonic);
