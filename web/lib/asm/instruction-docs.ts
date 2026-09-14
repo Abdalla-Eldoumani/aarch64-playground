@@ -676,3 +676,29 @@ export function lookupDoc(raw: string): InstructionDoc | undefined {
   if (key.startsWith("B.") && key !== "B.COND") return INSTRUCTION_DOCS["B.COND"];
   return INSTRUCTION_DOCS[key];
 }
+
+/**
+ * The card for the word an editor found at `startColumn` (1-based) of `line`.
+ *
+ * The editor's word scan treats `.` as a separator, so a conditional branch
+ * arrives as the bare condition (`eq` out of `b.eq`); this re-attaches the
+ * letter before the dot and tries that spelling first. A vector operand splits
+ * the same way, which is harmless: the word an editor hands over for a hover is
+ * the mnemonic, and every mnemonic resolves on its own.
+ *
+ * It lives here, beside the table, so the hover provider in
+ * components/playground/Editor.tsx holds no lookup rule of its own and the
+ * whole path is testable without Monaco.
+ */
+export function lookupDocAt(
+  line: string,
+  word: string,
+  startColumn: number,
+): InstructionDoc | undefined {
+  const at = startColumn - 1;
+  const dotted =
+    line[at - 1] === "." && /[A-Za-z]/.test(line[at - 2] ?? "")
+      ? `${line[at - 2]}.${word}`
+      : word;
+  return lookupDoc(dotted) ?? lookupDoc(word);
+}
