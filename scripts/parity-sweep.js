@@ -60,6 +60,11 @@ const M4_TIMEOUT_S = 30;
 const GCC_TIMEOUT_S = 300;
 const STEP_CAP = 20_000_000;
 const SSH_DEADLINE_MS = 30 * 60 * 1000;
+const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=20"];
+// One ssh call: a wipe, a nohup launch, or a poll. None of them is slow.
+const SSH_CALL_TIMEOUT_MS = 2 * 60 * 1000;
+const UPLOAD_TIMEOUT_MS = 20 * 60 * 1000;
+const DOWNLOAD_TIMEOUT_MS = 30 * 60 * 1000;
 
 // ---------------------------------------------------------------------
 // Scratch root. The sweep writes megabytes of per-program directories and
@@ -141,7 +146,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 
 // ---------------------------------------------------------------------
 // Enumeration. Every entry is {id, source, kind, program, args, stdin,
-// vfs, fixtureStem}. `kind` is console (run and compare), interactive (a
+// vfs, note}. `kind` is console (run and compare), interactive (a
 // terminal face: assembled and linked on both sides, never compared byte
 // for byte) or leaf (no entry point by design; both sides must refuse it).
 
@@ -183,7 +188,6 @@ function enumerateExamples(mods) {
       args: [],
       stdin: "",
       vfs: {},
-      fixtureStem: stem,
       note: helpers.length > 0 ? `${helpers.length} helper files` : "",
     };
     if (LEAF_ONLY[stem]) {
@@ -195,19 +199,20 @@ function enumerateExamples(mods) {
     const argsRaw = readFixture(stem, "args");
     const stdinRaw = readFixture(stem, "stdin");
     const vfsRaw = readFixture(stem, "vfs.json");
-    const expected = readFixture(stem, "stdout");
+    // The `.stdout` fixture is read for its existence only: an example that
+    // records one is a console program, and its content is verify-corpus.js's
+    // business, not this comparison's (csarm is the reference here).
+    const hasStdout = readFixture(stem, "stdout") !== null;
     if (argsRaw !== null) entry.args = parseArgsLine(argsRaw.trim());
     if (stdinRaw !== null) entry.stdin = stdinRaw;
     if (vfsRaw !== null) entry.vfs = JSON.parse(vfsRaw);
-    if (expected !== null) entry.fixtureStdout = expected;
-    if (argsRaw !== null || stdinRaw !== null || vfsRaw !== null || expected !== null) {
+    if (argsRaw !== null || stdinRaw !== null || vfsRaw !== null || hasStdout) {
       entry.kind = "console";
     } else if (CONSOLE_FACE_DRIVES[stem]) {
       entry.kind = "console";
       entry.args = ["console"];
       entry.stdin = CONSOLE_FACE_DRIVES[stem];
       entry.note = "console face, scripted session";
-      entry.noFixture = true;
     } else {
       entry.kind = "interactive";
       entry.note = entry.note || "terminal face only";
@@ -541,10 +546,19 @@ done
 echo "$count" > "$RESULTS/DONE"
 `;
 
+// Every reach for csarm goes through these two. BatchMode keeps a missing
+// key from parking on a password prompt instead of failing, and both carry
+// their own timeout: the poll loop below only checks its deadline BETWEEN
+// calls, so one stalled connection would otherwise outlive SSH_DEADLINE_MS
+// on its own.
 function ssh(command, opts = {}) {
-  return spawnSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=20", SSH_HOST, command], {
-    encoding: "utf8", ...opts,
+  return spawnSync("ssh", [...SSH_OPTS, SSH_HOST, command], {
+    encoding: "utf8", timeout: SSH_CALL_TIMEOUT_MS, ...opts,
   });
+}
+
+function scp(args, timeout) {
+  return spawnSync("scp", ["-q", ...SSH_OPTS, ...args], { encoding: "utf8", timeout });
 }
 
 function sleepMs(ms) {
@@ -559,7 +573,7 @@ function runServerSide(programs) {
   let step;
   if (REUSE_REMOTE) {
     console.log("  reusing the program tree already on csarm, refreshing the runner");
-    step = spawnSync("scp", ["-q", runnerPath, `${SSH_HOST}:~/${REMOTE_ROOT}/`], { encoding: "utf8" });
+    step = scp([runnerPath, `${SSH_HOST}:~/${REMOTE_ROOT}/`], SSH_CALL_TIMEOUT_MS);
     if (step.status !== 0) throw new Error(`runner upload failed: ${step.stderr || step.error}`);
   } else {
     // A stale tree from a previous sweep would leave orphan results, so the
@@ -571,9 +585,7 @@ function runServerSide(programs) {
     step = ssh(`mkdir -p ~/${REMOTE_ROOT} && find ~/${REMOTE_ROOT} -mindepth 1 -delete; exit 0`);
     if ((step.stderr || "").trim()) console.log("  note: remote wipe left something behind");
     console.log(`  uploading ${programs.length} program directories`);
-    step = spawnSync("scp", ["-q", "-r", programsRoot, runnerPath, `${SSH_HOST}:~/${REMOTE_ROOT}/`], {
-      encoding: "utf8", timeout: 20 * 60 * 1000,
-    });
+    step = scp(["-r", programsRoot, runnerPath, `${SSH_HOST}:~/${REMOTE_ROOT}/`], UPLOAD_TIMEOUT_MS);
     if (step.status !== 0) throw new Error(`upload failed: ${step.stderr || step.error}`);
   }
 
@@ -598,9 +610,7 @@ function runServerSide(programs) {
   console.log("  downloading results");
   fs.rmSync(serverResultsRoot, { recursive: true, force: true });
   fs.mkdirSync(scratchRoot, { recursive: true });
-  step = spawnSync("scp", ["-q", "-r", `${SSH_HOST}:~/${REMOTE_ROOT}/results`, serverResultsRoot], {
-    encoding: "utf8", timeout: 30 * 60 * 1000,
-  });
+  step = scp(["-r", `${SSH_HOST}:~/${REMOTE_ROOT}/results`, serverResultsRoot], DOWNLOAD_TIMEOUT_MS);
   if (step.status !== 0) throw new Error(`download failed: ${step.stderr || step.error}`);
   console.log(`  results in ${serverResultsRoot}`);
 }
@@ -743,9 +753,7 @@ const KNOWN_CAUSES = {
   "example-dsav":
     "GNU m4 expands a define's FIRST argument. Each of dsav's files repeats `define(fp, x29)`, so once they are pasted into one buffer the second one arrives as `define(x29, x29)` and m4 loops forever on the next `x29`. The course build runs m4 once per file, so this is a property of the single-buffer paste rather than of dsav; the playground's own m4 binds names without expanding them and is unaffected.",
   "example-snake":
-    "snake is freestanding: it defines `_start` and never defines `main`. gcc links crt1.o, which already defines `_start` and then calls `main`, so ld reports both a duplicate and a missing symbol. Build this one the way its own project does, with `as` and `ld` (or `gcc -nostartfiles`). GAS additionally warns that snake.s has no final newline.",
-  "lesson-assembly-conditionals-basics":
-    "A backtick inside a `//` comment (line 18). The playground strips comments before m4 runs, so it never sees it; GNU m4 does see it, treats it as an opening quote, and swallows the rest of the file (`ERROR: end of file in string`). The content fix is to use plain quotes in that comment.",
+    "snake is freestanding: it defines `_start` and never defines `main`. gcc links crt1.o, which already defines `_start` and then calls `main`, so ld reports both a duplicate and a missing symbol. Build this one the way its own project does, with `as` and `ld` (or `gcc -nostartfiles`).",
   "pitfall-6-fault":
     "By design, and the pitfall says so. The fault half reads x9 after a call, so it prints whatever the callee left behind: the playground's printf leaves announce's 1, glibc's leaves a stack address. Both halves demonstrate the same trap; the value is unspecified on either side.",
 };
