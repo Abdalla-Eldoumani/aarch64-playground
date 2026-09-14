@@ -1124,7 +1124,14 @@ fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
             Some(TokenKind::RBracket) | Some(TokenKind::RBrace) | Some(TokenKind::Comma)
         );
         let inside_list = brace_depth > 0 && !matches!(t.kind, TokenKind::Comma);
-        if !opens && !closes_next && !inside_list {
+        // `ld1 {v3.b}[3], [x0]`: the lane index binds to the list it
+        // follows, so no space goes between the `}` and its `[`.
+        let lane_index_next = matches!(t.kind, TokenKind::RBrace)
+            && matches!(
+                tokens.get(position + 1).map(|n| &n.kind),
+                Some(TokenKind::LBracket)
+            );
+        if !opens && !closes_next && !inside_list && !lane_index_next {
             out.push(' ');
         }
     }
@@ -1395,6 +1402,15 @@ fn rewrite_operand(
         // the whole reason this cannot be a lookup plus an add.
         let value = resolve_relocatable_operand(name, symbols, equates, pc, ln)?;
         return Ok(format!("{}", value & 0xFFF));
+    }
+    // A brace register list (`{v3.16b, v4.16b}`, the range form, and the
+    // `{v3.b}[3]` lane spelling) holds register names and a literal lane
+    // index and nothing else, so there is no expression in it to fold.
+    // It has to be recognized rather than fall through, because the `.`
+    // of an arrangement reads as the current-address symbol and the
+    // evaluator then refuses the `{`.
+    if trimmed.starts_with('{') {
+        return Ok(trimmed.to_string());
     }
     // Bracketed operand [Xn, <expr>] or [Xn, <expr>]!: rewrite the inside
     // recursively and preserve the trailing characters (whitespace, !).
