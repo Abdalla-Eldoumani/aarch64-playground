@@ -12,31 +12,8 @@
 /// list flips red the moment a family lands and stops being a claim
 /// nobody checks. Removing a name is how a family is declared done.
 pub const NOT_YET: &[&str] = &[
-    "fabd", "fabs", "facge", "facgt", "fadd", "faddp", "fcmeq",
-    "fcmge", "fcmgt", "fcmle", "fcmlt", "fcvtas", "fcvtau", "fcvtl",
-    "fcvtl2", "fcvtms", "fcvtmu", "fcvtn", "fcvtn2", "fcvtns", "fcvtnu",
-    "fcvtps", "fcvtpu", "fcvtxn", "fcvtxn2", "fcvtzs", "fcvtzu", "fdiv",
-    "fmax", "fmaxnm", "fmaxnmp", "fmaxnmv", "fmaxp", "fmaxv", "fmin",
-    "fminnm", "fminnmp", "fminnmv", "fminp", "fminv", "fmla", "fmls",
-    "fmov", "fmul", "fmulx", "fneg", "frecpe", "frecps", "frecpx", "frinta",
-    "frinti", "frintm", "frintn", "frintp", "frintx", "frintz", "frsqrte",
-    "frsqrts", "fsqrt", "fsub", "ld1", "ld1r", "ld2", "ld2r", "ld3", "ld3r",
-    "ld4", "ld4r", "scvtf", "st1", "st2", "st3", "st4", "ucvtf",
-];
-
-/// The exceptions to `NOT_YET`: spellings whose mnemonic is queued but
-/// which this crate does assemble, because one form of the family landed
-/// on its own. The two SCVTF rows are the SIMD-scalar convert gcc emits
-/// after `ldr s31, [...]`, which the FP-from-integer encoder has carried
-/// since before any of this; the two FMOV rows move a general register to
-/// and from the upper lane, which landed with the rest of the lane moves
-/// while the vector FMOV immediate stays queued. All four are held to
-/// their inventory word like an implemented line, rather than excused.
-pub const ALREADY_SUPPORTED: &[&str] = &[
-    "scvtf s3, s7",
-    "scvtf d3, d7",
-    "fmov v3.d[1], x7",
-    "fmov x3, v7.d[1]",
+    "ld1", "ld1r", "ld2", "ld2r", "ld3", "ld3r", "ld4", "ld4r",
+    "st1", "st2", "st3", "st4",
 ];
 
 /// One line of `simd-inventory.txt`.
@@ -58,7 +35,6 @@ impl InventoryLine {
     /// Whether this crate is expected to assemble the line today.
     pub fn implemented(&self) -> bool {
         !NOT_YET.contains(&self.mnemonic())
-            || ALREADY_SUPPORTED.contains(&self.spelling.as_str())
     }
 }
 
