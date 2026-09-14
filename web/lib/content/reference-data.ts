@@ -87,12 +87,13 @@ interface ReferenceSeed {
    *  Two conventions hold across every example. Comments start at column 32,
    *  which is column 40 once playground-source indents the body by eight
    *  spaces (the course's comment column); a line whose code already reaches
-   *  32 takes a two-space gap instead. Immediates are bare in the general-
-   *  register lines, the way the course writes them, and carry the `#` in
-   *  every vector line: the vector shift and compare-against-zero parsers
-   *  reject the bare spelling, so the hashed one is the only form those rows
-   *  can use, and it is what the reference's Form cells and the conformance
-   *  inventory carry for them. */
+   *  32 takes a two-space gap instead. Immediates follow the row: a general-
+   *  register row writes them bare, the way the course does, and a vector
+   *  row carries the `#` on every line, its scalar setup lines included, so
+   *  no block mixes the two spellings. The vector shift and compare-against-
+   *  zero parsers reject the bare spelling, so the hashed one is the only
+   *  form those rows can use, and it is what the reference's Form cells and
+   *  the conformance inventory carry for them. */
   example?: string;
   gotchas?: string[];
   encoding?: BitField[];
