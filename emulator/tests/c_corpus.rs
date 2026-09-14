@@ -21,20 +21,16 @@ const EXPECTED_FAULTS: &[(&str, &str)] = &[
     ("46_stack_overflow", "stack overflow"),
 ];
 
-/// Programs expected to fail assembly at every tier, with the reason. An
-/// entry that starts assembling flips this list red, so a fix is recorded
-/// instead of passing silently.
-const PENDING: &[(&str, &str)] = &[(
-    "13_float_double",
-    "gcc copies a 16-byte struct through a q register; the fp file is 64-bit scalar by design",
-)];
-
-/// The same, for the optimized tier alone: these assemble and match at
-/// -O0 and reach a form only gcc's optimizer emits.
-const PENDING_O2: &[(&str, &str)] = &[(
-    "14_float_single",
-    "gcc zeroes a float with `movi v0.2s, #0`; SIMD arrangements and the v register file are out of scope",
-)];
+/// Programs expected to fail assembly, the first list at every tier and
+/// the second at the optimized one alone, each with the reason. An entry
+/// that starts assembling flips its list red, so a fix is recorded
+/// instead of passing silently. Both are empty now that the register file
+/// is 128 bits wide and the vector immediates assemble: 13_float_double
+/// copies its struct through q registers at -O0 and zeroes it with
+/// `movi d31, #0` at -O2, and 14_float_single zeroes a float with
+/// `movi v0.2s, #0`.
+const PENDING: &[(&str, &str)] = &[];
+const PENDING_O2: &[(&str, &str)] = &[];
 
 /// One run's budget. The slowest passing program at -O0 (21_long_loop,
 /// three million C loop iterations) spends about 50M steps; the wall
@@ -253,12 +249,12 @@ fn corpus_at_o2_coverage_map() {
     for f in &failures {
         println!("  {f}");
     }
-    // Measured 2026-09-02 against the -O2 tier. Every remaining gap is a v
-    // register: 13_float_double copies a 16-byte struct through q0 and
-    // 14_float_single zeroes a float with `movi v0.2s, #0`. Both are on
-    // the pending lists, so nothing here fails to assemble for a reason
-    // this crate means to cover.
-    const O2_FLOOR: usize = 48;
+    // Measured 2026-09-13 against the -O2 tier, after the vector
+    // immediates and the lane moves landed on top of the 128-bit register
+    // file. The last two gaps were both MOVI (`movi d31, #0` and
+    // `movi v0.2s, #0`), so the optimized tier now matches the -O0 one
+    // and PENDING_O2 is empty.
+    const O2_FLOOR: usize = 50;
     assert!(
         passing >= O2_FLOOR,
         "o2 coverage fell below the recorded floor: {passing} < {O2_FLOOR}"

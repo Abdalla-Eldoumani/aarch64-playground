@@ -1,13 +1,18 @@
 name: check
 
+# integration is the batch branch: feature branches open their pull
+# requests against it, and a pull request can only restore caches saved on
+# its base branch or on main, so pushes to integration run here too and
+# leave warm caches behind for every feature branch that follows.
 on:
   push:
-    branches: [main]
+    branches: [main, integration]
   pull_request:
-    branches: [main]
+    branches: [main, integration]
   # The weekly run catches what breaks with no PR open: a new dependency
   # advisory (the audit gate below), a toolchain fetch failing, a registry
-  # moving. Same cadence as the bounds workflow.
+  # moving. Same cadence as the bounds workflow. It also refreshes every
+  # cache on main, one of the two scopes a pull request can restore from.
   schedule:
     - cron: "0 6 * * 1"
 
@@ -24,17 +29,22 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   NEXT_TELEMETRY_DISABLED: 1
-  # One source for the node major so the node_modules cache keys below can
-  # never serve modules installed under a different node, and one for the
-  # rust toolchain so a bump rolls the cargo caches instead of leaving them
-  # permanently restoring another compiler's artifacts.
+  # One source for the node major so the node_modules cache keys can never
+  # serve modules installed under a different node, and one each for the
+  # rust toolchain and wasm-pack so a bump rolls every cargo and wasm
+  # cache instead of leaving them restoring another compiler's artifacts.
+  # The two rust pins match scripts/vercel-build.sh, so CI tests the
+  # compiler that ships.
   NODE_VERSION: "24"
   RUST_TOOLCHAIN: "1.96.0"
+  WASM_PACK_VERSION: "0.14.0"
 
 # Every web job needs the wasm bundles, so the job that produces them does
-# nothing else and finishes in under a minute; everything downstream fans
-# out in parallel behind it.
-# cargo test runs beside it rather than in front of it.
+# nothing else; everything downstream fans out in parallel behind it. The
+# bundles are a pure function of the emulator sources and the two pinned
+# tools, so they are cached on that key: a pull request that leaves the
+# emulator alone restores them in seconds and never installs a toolchain.
+# cargo test runs beside all of this rather than in front of it.
 jobs:
   wasm:
     name: wasm-pack bundles
@@ -43,11 +53,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: restore wasm bundles
+        id: bundles
+        uses: actions/cache@v6
+        with:
+          path: |
+            web/lib/wasm/
+            web/lib/wasm-node/
+          key: ${{ runner.os }}-wasm-out-${{ env.RUST_TOOLCHAIN }}-${{ env.WASM_PACK_VERSION }}-${{ hashFiles('emulator/src/**', 'emulator/Cargo.toml', 'emulator/Cargo.lock') }}
+
       # Third-party actions are pinned to full commit SHAs so a moved tag
       # cannot swap the code CI runs; the comment names the human-readable ref.
-      # The toolchain itself is pinned to the same version the deploy build
-      # uses (scripts/vercel-build.sh), so CI tests the compiler that ships.
       - name: install rust toolchain
+        if: steps.bundles.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch, 2026-08
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -57,6 +75,7 @@ jobs:
       # compile for different targets, and a shared key meant whichever job
       # saved first left the other recompiling its half on every run.
       - name: cache cargo
+        if: steps.bundles.outputs.cache-hit != 'true'
         uses: actions/cache@v6
         with:
           path: |
@@ -72,15 +91,18 @@ jobs:
       # jetli/wasm-pack-action (that one rate-limits without a token on
       # newer GitHub runners).
       - name: install wasm-pack
+        if: steps.bundles.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2.87.4
         with:
-          tool: wasm-pack@0.14.0
+          tool: wasm-pack@${{ env.WASM_PACK_VERSION }}
 
       - name: wasm-pack web build
+        if: steps.bundles.outputs.cache-hit != 'true'
         run: wasm-pack build emulator --release --target web --out-dir ../web/lib/wasm
 
       # The two targets share the cargo build; this one only re-runs bindgen.
       - name: wasm-pack node build
+        if: steps.bundles.outputs.cache-hit != 'true'
         run: wasm-pack build emulator --release --target nodejs --out-dir ../web/lib/wasm-node
 
       - name: upload wasm artifacts
@@ -162,6 +184,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The corpus script runs on node alone (it loads the wasm bundle
+      # directly), so this job skips the node_modules restore the other
+      # web jobs go through.
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -183,11 +208,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/node-setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
       # tsc needs the generated .d.ts from both wasm bundles to type-check.
       - name: download wasm artifacts
@@ -195,22 +218,6 @@ jobs:
         with:
           name: wasm-bundles
           path: web/lib
-
-      # node_modules is a pure function of the lockfile on one runner image,
-      # so a hit skips npm ci entirely; a miss falls through to it. The key
-      # hashes package.json too: npm ci is also the manifest/lockfile sync
-      # gate, so an edit to either file must force a real install.
-      - name: cache node_modules
-        id: nm
-        uses: actions/cache@v6
-        with:
-          path: web/node_modules
-          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-nm-${{ hashFiles('web/package-lock.json', 'web/package.json') }}
-
-      - name: install
-        if: steps.nm.outputs.cache-hit != 'true'
-        working-directory: web
-        run: npm ci --no-audit --no-fund
 
       # The production dependency gate: fails on any moderate-or-higher
       # advisory against a shipped dep. Dev-only tooling is watched by
@@ -247,29 +254,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/node-setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
       - name: download wasm artifacts
         uses: actions/download-artifact@v8
         with:
           name: wasm-bundles
           path: web/lib
-
-      - name: cache node_modules
-        id: nm
-        uses: actions/cache@v6
-        with:
-          path: web/node_modules
-          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-nm-${{ hashFiles('web/package-lock.json', 'web/package.json') }}
-
-      - name: install
-        if: steps.nm.outputs.cache-hit != 'true'
-        working-directory: web
-        run: npm ci --no-audit --no-fund
 
       # The webpack cache is content-addressed internally, so restoring a
       # stale entry is safe and still cuts the build roughly in half; the
@@ -298,10 +291,14 @@ jobs:
         working-directory: web
         run: npm run size
 
-  # The suite is partitioned across three runners with vitest --shard; every
-  # file runs exactly once across the union. A shard cannot judge the global
-  # coverage floor from its slice, so VITEST_SHARD defers the thresholds to
-  # the coverage job, which merges the blob reports and enforces them once.
+  # The suite is partitioned across six runners with vitest --shard; every
+  # file runs exactly once across the union. Six because the slowest shard
+  # is the critical path of the whole workflow and vitest splits by file
+  # count, not by cost: four shards left the longest one at 80 s and the
+  # merge job waiting on it.
+  # A shard cannot judge the global coverage floor from its slice, so
+  # VITEST_SHARD defers the thresholds to the coverage job, which merges
+  # the blob reports and enforces them once.
   web-test:
     name: vitest shard ${{ matrix.shard }}
     needs: wasm
@@ -310,33 +307,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/node-setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
       - name: download wasm artifacts
         uses: actions/download-artifact@v8
         with:
           name: wasm-bundles
           path: web/lib
-
-      - name: cache node_modules
-        id: nm
-        uses: actions/cache@v6
-        with:
-          path: web/node_modules
-          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-nm-${{ hashFiles('web/package-lock.json', 'web/package.json') }}
-
-      - name: install
-        if: steps.nm.outputs.cache-hit != 'true'
-        working-directory: web
-        run: npm ci --no-audit --no-fund
 
       # The default reporter rides along so a failing test is readable right
       # in this job's log; the blob is only the merge job's input.
@@ -345,7 +328,7 @@ jobs:
         env:
           # A flag, not the shard index: it only tells vitest to defer the floors.
           VITEST_SHARD: "1"
-        run: npm test -- --coverage --reporter=blob --reporter=default --shard=${{ matrix.shard }}/3
+        run: npm test -- --coverage --reporter=blob --reporter=default --shard=${{ matrix.shard }}/6
 
       # .vitest/blob is where vitest 5 writes the blob (vitest 4 used
       # .vitest-reports). It is a dot-directory, which upload-artifact skips
@@ -368,23 +351,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/node-setup
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: cache node_modules
-        id: nm
-        uses: actions/cache@v6
-        with:
-          path: web/node_modules
-          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-nm-${{ hashFiles('web/package-lock.json', 'web/package.json') }}
-
-      - name: install
-        if: steps.nm.outputs.cache-hit != 'true'
-        working-directory: web
-        run: npm ci --no-audit --no-fund
 
       - name: download blob reports
         uses: actions/download-artifact@v8

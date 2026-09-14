@@ -46,8 +46,11 @@ describe("CallingConventionGuide", () => {
     expect(text).toContain("s0");
     expect(text).toContain("fcvt");
     expect(text).toContain("no floating-point frame pointer");
-    // The course never teaches vector registers; the guide must not either.
-    expect(text).not.toContain("vector");
+    // The vector width is named as the playground's reach, not the course's,
+    // and the callee-saved promise is pinned to the low 64 bits of v8-v15.
+    expect(text).toContain("The course keeps to");
+    expect(text).toContain("preserves only the low 64 bits of");
+    expect(text).toContain("v8");
   });
 
   it("teaches the w view of the integer registers under section 01", () => {

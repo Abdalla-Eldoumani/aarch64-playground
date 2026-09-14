@@ -1,8 +1,15 @@
 use std::collections::HashMap;
 
 use crate::decoder::{
-    MemSize, DP1_OPS, FP_BINARY_OPS, FP_FROM_INT_OPS, FP_MUL_ADD_OPS, FP_TO_INT_OPS,
-    FP_UNARY_OPS, LDST_EXTENDS,
+    element_letter, lane_allowed, shift_imm_field, simd_across_by_name, simd_diff_by_name,
+    simd_elem_bits, simd_elem_by_name, simd_imm_form, simd_logical_by_name, simd_logical_name,
+    simd_fp_across_by_name, simd_fp_elem_by_name, simd_fp_misc_by_name, simd_fp_same_by_name,
+    simd_misc_by_name, simd_permute_by_name, simd_same_by_name,
+    simd_shift_by_name, simd_struct_bytes, simd_struct_index_bits, size_field, MemSize,
+    SimdDiffShape, SimdElemKind, SimdFpMiscRow, SimdFpMiscShape, SimdImmForm, SimdImmOp,
+    SimdLogicalOp, SimdMiscShape, SimdShiftRow, SimdShiftShape, SimdStructShape, DP1_OPS,
+    FP_BINARY_OPS, FP_FROM_INT_OPS, FP_MUL_ADD_OPS,
+    FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS, SIMD_STRUCT_MULTIPLE,
 };
 use crate::errors::EmuError;
 use crate::registers::{reg_alias, Condition, CONDITIONS};
@@ -165,13 +172,69 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "SMADDL", "SMSUBL", "UMADDL", "UMSUBL", "SMNEGL", "UMNEGL",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
+    // the unscaled and no-allocate spellings (SIMD&FP registers only)
+    "LDUR", "STUR", "LDNP", "STNP",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
     "FMAX", "FMIN", "FMAXNM", "FMINNM", "FCSEL",
     "FMADD", "FMSUB", "FNMADD", "FNMSUB",
     "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
+    // advanced simd: the vector immediates and the lane moves (the vector
+    // forms of MOV, ORR, BIC and FMOV ride their existing arms)
+    "MOVI", "MVNI", "DUP", "INS", "UMOV", "SMOV",
+    // advanced simd: the integer lane families (the vector forms of ADD,
+    // SUB, MUL, AND, EOR, ORN, MVN, NEG, CLS, CLZ, RBIT, REV16 and REV32
+    // ride their existing arms)
+    "MLA", "MLS", "PMUL", "BSL", "BIT", "BIF",
+    "CMEQ", "CMGE", "CMGT", "CMHI", "CMHS", "CMTST", "CMLE", "CMLT",
+    "SQADD", "UQADD", "SQSUB", "UQSUB", "SUQADD", "USQADD", "SQABS", "SQNEG",
+    "SHADD", "UHADD", "SRHADD", "URHADD", "SHSUB", "UHSUB",
+    "SQDMULH", "SQRDMULH",
+    "SMAX", "SMIN", "UMAX", "UMIN", "SMAXP", "SMINP", "UMAXP", "UMINP",
+    "SMAXV", "SMINV", "UMAXV", "UMINV", "ADDV", "SADDLV", "UADDLV", "ADDP",
+    "SADDLP", "UADDLP", "SADALP", "UADALP",
+    "SABD", "UABD", "SABA", "UABA",
+    "ABS", "NOT", "CNT", "REV64", "URECPE", "URSQRTE",
+    // advanced simd: the widening, narrowing and doubling three-different
+    // families (SMULL and UMULL already ride their general-register arms)
+    "SADDL", "SADDL2", "UADDL", "UADDL2", "SSUBL", "SSUBL2", "USUBL", "USUBL2",
+    "SMULL2", "UMULL2", "SMLAL", "SMLAL2", "UMLAL", "UMLAL2", "SMLSL", "SMLSL2",
+    "UMLSL", "UMLSL2", "SABDL", "SABDL2", "UABDL", "UABDL2", "SABAL", "SABAL2",
+    "UABAL", "UABAL2", "SADDW", "SADDW2", "UADDW", "UADDW2", "SSUBW", "SSUBW2",
+    "USUBW", "USUBW2", "ADDHN", "ADDHN2", "RADDHN", "RADDHN2", "SUBHN", "SUBHN2",
+    "RSUBHN", "RSUBHN2", "SQDMULL", "SQDMULL2", "SQDMLAL", "SQDMLAL2", "SQDMLSL",
+    "SQDMLSL2", "PMULL", "PMULL2",
+    // advanced simd: the narrowing extracts and the lengthening shift
+    "XTN", "XTN2", "SQXTN", "SQXTN2", "UQXTN", "UQXTN2", "SQXTUN", "SQXTUN2", "SHLL",
+    "SHLL2",
+    // advanced simd: shift by immediate (SXTL and UXTL are its #0 aliases)
+    "SHL", "SSHR", "USHR", "SSRA", "USRA", "SRSHR", "URSHR", "SRSRA", "URSRA", "SLI",
+    "SRI", "SQSHL", "UQSHL", "SQSHLU", "SSHLL", "SSHLL2", "USHLL", "USHLL2", "SXTL",
+    "SXTL2", "UXTL", "UXTL2", "SHRN", "SHRN2", "RSHRN", "RSHRN2", "SQSHRN", "SQSHRN2",
+    "UQSHRN", "UQSHRN2", "SQRSHRN", "SQRSHRN2", "UQRSHRN", "UQRSHRN2", "SQSHRUN",
+    "SQSHRUN2", "SQRSHRUN", "SQRSHRUN2",
+    // advanced simd: shift by register (SQSHL and UQSHL are listed above)
+    "SSHL", "USHL", "SRSHL", "URSHL", "SQRSHL", "UQRSHL",
+    // advanced simd: the permutes and the table lookups (the by-element
+    // multiplies are spellings of mnemonics already listed above)
+    "EXT", "TBL", "TBX", "ZIP1", "ZIP2", "UZP1", "UZP2", "TRN1", "TRN2",
+    // advanced simd: the structure loads and stores, including the
+    // single-lane and replicate shapes
+    "LD1", "LD2", "LD3", "LD4", "ST1", "ST2", "ST3", "ST4",
+    "LD1R", "LD2R", "LD3R", "LD4R",
     // the rest of the float-to-integer rounding modes
     "FCVTZU", "FCVTAS", "FCVTAU", "FCVTMS", "FCVTMU", "FCVTPS", "FCVTPU",
+    // advanced simd: the floating-point lane families (the vector forms of
+    // FADD, FSUB, FMUL, FDIV, FMAX, FMIN, FMAXNM, FMINNM, FABS, FNEG,
+    // FSQRT, FMOV, SCVTF, UCVTF and every FCVT rounding mode ride their
+    // existing arms)
+    "FMLA", "FMLS", "FMULX", "FABD", "FRECPS", "FRSQRTS",
+    "FADDP", "FMAXP", "FMINP", "FMAXNMP", "FMINNMP",
+    "FMAXV", "FMINV", "FMAXNMV", "FMINNMV",
+    "FCMEQ", "FCMGE", "FCMGT", "FCMLE", "FCMLT", "FACGE", "FACGT",
+    "FRECPE", "FRSQRTE", "FRECPX",
+    "FRINTA", "FRINTI", "FRINTM", "FRINTN", "FRINTP", "FRINTX", "FRINTZ",
+    "FCVTN", "FCVTN2", "FCVTL", "FCVTL2", "FCVTXN", "FCVTXN2",
     // pc-relative address formation
     "ADR", "ADRP",
     // branches
@@ -221,6 +284,20 @@ fn encode_line(
         return encode_bcond(&ops, cond, pc, labels, line_num);
     }
 
+    // A dozen integer vector mnemonics are also general-register ones,
+    // and only the operands separate the two readings, so the sniff
+    // stands ahead of the dispatch rather than inside a dozen arms.
+    if is_simd_integer_line(&mn, &ops) {
+        return encode_simd_integer(&mn, &ops, line_num);
+    }
+
+    // The float mnemonics are the same story one class over: two dozen of
+    // them name a scalar FP instruction as well, and only the operands
+    // say which reading a line is.
+    if is_simd_float_line(&mn, &ops) {
+        return encode_simd_float(&mn, &ops, line_num);
+    }
+
     match mn.as_str() {
         // -- moves --
         "MOV" => encode_mov(&ops, line_num),
@@ -249,7 +326,7 @@ fn encode_line(
         // -- logical --
         "AND" => encode_log_dispatch(&ops, 0b00, line_num),
         "ANDS" => encode_log_dispatch(&ops, 0b11, line_num),
-        "ORR" => encode_log_dispatch(&ops, 0b01, line_num),
+        "ORR" => encode_orr(&ops, line_num),
         "EOR" => encode_log_dispatch(&ops, 0b10, line_num),
         "BIC" => encode_bic(&ops, line_num),
         "ORN" => encode_log_reg(&ops, 0b01, true, line_num),
@@ -317,6 +394,8 @@ fn encode_line(
         "LDRSB" => encode_ldrs(&ops, 0b00, line_num),
         "LDRSH" => encode_ldrs(&ops, 0b01, line_num),
         "LDRSW" => encode_ldrs(&ops, 0b10, line_num),
+        "LDUR" => encode_ldur_stur(&ops, 1, line_num),
+        "STUR" => encode_ldur_stur(&ops, 0, line_num),
 
         // -- floating-point --
         "FADD" => encode_fp_binary(&ops, "fadd", line_num),
@@ -354,6 +433,67 @@ fn encode_line(
         "FCVTPU" => encode_fp_cvt_int(&ops, "fcvtpu", line_num),
         "LDP" => encode_ldst_pair(&ops, 1, line_num),
         "STP" => encode_ldst_pair(&ops, 0, line_num),
+        "LDNP" => encode_ldst_pair_no_allocate(&ops, 1, line_num),
+        "STNP" => encode_ldst_pair_no_allocate(&ops, 0, line_num),
+
+        // -- advanced simd: the integer lane families --
+        "MLA" | "MLS" | "PMUL" | "BSL" | "BIT" | "BIF" => encode_simd_integer(&mn, &ops, line_num),
+        "CMEQ" | "CMGE" | "CMGT" | "CMHI" | "CMHS" | "CMTST" | "CMLE" | "CMLT" => encode_simd_integer(&mn, &ops, line_num),
+        "SQADD" | "UQADD" | "SQSUB" | "UQSUB" | "SUQADD" | "USQADD" | "SQABS" | "SQNEG" => encode_simd_integer(&mn, &ops, line_num),
+        "SHADD" | "UHADD" | "SRHADD" | "URHADD" | "SHSUB" | "UHSUB" => encode_simd_integer(&mn, &ops, line_num),
+        "SQDMULH" | "SQRDMULH" => encode_simd_integer(&mn, &ops, line_num),
+        "SMAX" | "SMIN" | "UMAX" | "UMIN" | "SMAXP" | "SMINP" | "UMAXP" | "UMINP" => encode_simd_integer(&mn, &ops, line_num),
+        "SMAXV" | "SMINV" | "UMAXV" | "UMINV" | "ADDV" | "SADDLV" | "UADDLV" | "ADDP" => encode_simd_integer(&mn, &ops, line_num),
+        "SADDLP" | "UADDLP" | "SADALP" | "UADALP" => encode_simd_integer(&mn, &ops, line_num),
+        "SABD" | "UABD" | "SABA" | "UABA" => encode_simd_integer(&mn, &ops, line_num),
+        "ABS" | "NOT" | "CNT" | "REV64" | "URECPE" | "URSQRTE" => encode_simd_integer(&mn, &ops, line_num),
+        "SADDL" | "SADDL2" | "UADDL" | "UADDL2" | "SSUBL" | "SSUBL2" | "USUBL" | "USUBL2" => encode_simd_integer(&mn, &ops, line_num),
+        "SMULL2" | "UMULL2" | "SMLAL" | "SMLAL2" | "UMLAL" | "UMLAL2" | "SMLSL" | "SMLSL2" => encode_simd_integer(&mn, &ops, line_num),
+        "UMLSL" | "UMLSL2" | "SABDL" | "SABDL2" | "UABDL" | "UABDL2" | "SABAL" | "SABAL2" => encode_simd_integer(&mn, &ops, line_num),
+        "UABAL" | "UABAL2" | "SADDW" | "SADDW2" | "UADDW" | "UADDW2" | "SSUBW" | "SSUBW2" => encode_simd_integer(&mn, &ops, line_num),
+        "USUBW" | "USUBW2" | "ADDHN" | "ADDHN2" | "RADDHN" | "RADDHN2" | "SUBHN" | "SUBHN2" => encode_simd_integer(&mn, &ops, line_num),
+        "RSUBHN" | "RSUBHN2" | "SQDMULL" | "SQDMULL2" | "SQDMLAL" | "SQDMLAL2" | "SQDMLSL" => encode_simd_integer(&mn, &ops, line_num),
+        "SQDMLSL2" | "PMULL" | "PMULL2" => encode_simd_integer(&mn, &ops, line_num),
+        "XTN" | "XTN2" | "SQXTN" | "SQXTN2" | "UQXTN" | "UQXTN2" | "SQXTUN" | "SQXTUN2" => encode_simd_integer(&mn, &ops, line_num),
+        "SHLL" | "SHLL2" => encode_simd_integer(&mn, &ops, line_num),
+        "SHL" | "SSHR" | "USHR" | "SSRA" | "USRA" | "SRSHR" | "URSHR" | "SRSRA" | "URSRA" => encode_simd_integer(&mn, &ops, line_num),
+        "SLI" | "SRI" | "SQSHL" | "UQSHL" | "SQSHLU" | "SSHLL" | "SSHLL2" | "USHLL" => encode_simd_integer(&mn, &ops, line_num),
+        "USHLL2" | "SXTL" | "SXTL2" | "UXTL" | "UXTL2" | "SHRN" | "SHRN2" | "RSHRN" => encode_simd_integer(&mn, &ops, line_num),
+        "RSHRN2" | "SQSHRN" | "SQSHRN2" | "UQSHRN" | "UQSHRN2" | "SQRSHRN" | "SQRSHRN2" => encode_simd_integer(&mn, &ops, line_num),
+        "UQRSHRN" | "UQRSHRN2" | "SQSHRUN" | "SQSHRUN2" | "SQRSHRUN" | "SQRSHRUN2" => encode_simd_integer(&mn, &ops, line_num),
+        "SSHL" | "USHL" | "SRSHL" | "URSHL" | "SQRSHL" | "UQRSHL" => encode_simd_integer(&mn, &ops, line_num),
+
+        // -- advanced simd: the floating-point lane families --
+        "FMLA" | "FMLS" | "FMULX" | "FABD" | "FRECPS" | "FRSQRTS" => encode_simd_float(&mn, &ops, line_num),
+        "FADDP" | "FMAXP" | "FMINP" | "FMAXNMP" | "FMINNMP" => encode_simd_float(&mn, &ops, line_num),
+        "FMAXV" | "FMINV" | "FMAXNMV" | "FMINNMV" => encode_simd_float(&mn, &ops, line_num),
+        "FCMEQ" | "FCMGE" | "FCMGT" | "FCMLE" | "FCMLT" | "FACGE" | "FACGT" => encode_simd_float(&mn, &ops, line_num),
+        "FRECPE" | "FRSQRTE" | "FRECPX" => encode_simd_float(&mn, &ops, line_num),
+        "FRINTA" | "FRINTI" | "FRINTM" | "FRINTN" | "FRINTP" | "FRINTX" | "FRINTZ" => encode_simd_float(&mn, &ops, line_num),
+        "FCVTN" | "FCVTN2" | "FCVTL" | "FCVTL2" | "FCVTXN" | "FCVTXN2" => encode_simd_float(&mn, &ops, line_num),
+
+        // -- advanced simd: the vector immediates and the lane moves --
+        "MOVI" => encode_simd_mod_imm(&ops, SimdImmOp::Movi, line_num),
+        "MVNI" => encode_simd_mod_imm(&ops, SimdImmOp::Mvni, line_num),
+        "DUP" => encode_simd_dup(&ops, line_num),
+        "INS" => encode_simd_ins(&ops, line_num),
+        "UMOV" => encode_simd_lane_out(&ops, false, line_num),
+        "SMOV" => encode_simd_lane_out(&ops, true, line_num),
+
+        // -- advanced simd: the permutes and the table lookups --
+        "EXT" => encode_simd_ext(&ops, line_num),
+        "TBL" => encode_simd_table(false, &ops, line_num),
+        "TBX" => encode_simd_table(true, &ops, line_num),
+        "ZIP1" | "ZIP2" | "UZP1" | "UZP2" | "TRN1" | "TRN2" => {
+            encode_simd_permute(&mn.to_ascii_lowercase(), &ops, line_num)
+        }
+
+        // -- advanced simd: the structure loads and stores --
+        // One line, like every other arm: `every_dispatch_arm_is_listed_in_supported_mnemonics`
+        // reads the patterns off this file's text and only sees the line the `=>` is on.
+        "LD1" | "LD2" | "LD3" | "LD4" | "ST1" | "ST2" | "ST3" | "ST4" | "LD1R" | "LD2R" | "LD3R" | "LD4R" => {
+            encode_simd_structure(&mn.to_ascii_lowercase(), &ops, line_num)
+        }
 
         // -- pc-relative address formation --
         "ADR" => encode_adr(&ops, false, pc, labels, line_num),
@@ -407,14 +547,15 @@ fn split_mnemonic(line: &str) -> (&str, &str) {
 }
 
 fn split_operands(s: &str) -> Vec<&str> {
-    // split on commas but keep bracket groups together
+    // split on commas but keep bracket groups together. A brace group is
+    // one operand too: TBL's register list holds commas of its own.
     let mut result = Vec::new();
     let mut depth = 0;
     let mut start = 0;
     for (i, c) in s.char_indices() {
         match c {
-            '[' => depth += 1,
-            ']' => depth -= 1,
+            '[' | '{' => depth += 1,
+            ']' | '}' => depth -= 1,
             ',' if depth == 0 => {
                 result.push(s[start..i].trim());
                 start = i + 1;
@@ -664,6 +805,12 @@ fn asm_error(line_num: usize, msg: &str) -> EmuError {
 fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "MOV requires 2 operands");
+    }
+    // The vector spellings GAS prints for INS, UMOV, DUP and ORR. Only
+    // those name an arrangement or a lane, so one operand carrying either
+    // is what marks the line.
+    if ops.iter().any(|o| parse_vec_operand(o).is_some()) {
+        return encode_simd_mov(ops, ln);
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
     let op2 = ops[1].trim();
@@ -1170,6 +1317,11 @@ fn encode_log_reg(ops: &[&str], opc: u8, n: bool, ln: usize) -> Result<u32, EmuE
 /// with the N bit set; AArch64 has no BIC-immediate, so a `#imm` third
 /// operand gets a plain-language error instead of a register-parse failure.
 fn encode_bic(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    // The vector BIC takes either an immediate or a third register, and
+    // unlike the general-register one it does have an immediate form.
+    if ops.first().is_some_and(|o| parse_vec_operand(o).is_some()) {
+        return encode_vector_logical(ops, SimdImmOp::Bic, ln);
+    }
     if ops.len() != 3 && ops.len() != 4 {
         return asm_err(
             ln,
@@ -1714,14 +1866,109 @@ fn encode_neg(ops: &[&str], set_flags: bool, ln: usize) -> Result<u32, EmuError>
     encode_dp(&new_ops, 1, if set_flags { 1 } else { 0 }, ln)
 }
 
-fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
-    // Accept D0..D31 or S0..S31 (returns width ('D' or 'S') too).
+/// The width a `b`/`h`/`s`/`d`/`q` register name spells. The SIMD&FP
+/// register file is 128 bits wide and these five are its low
+/// 8/16/32/64/128-bit views of the same 32 entries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FpWidth {
+    B,
+    H,
+    S,
+    D,
+    Q,
+}
+
+impl FpWidth {
+    fn from_prefix(c: char) -> Option<Self> {
+        match c.to_ascii_uppercase() {
+            'B' => Some(FpWidth::B),
+            'H' => Some(FpWidth::H),
+            'S' => Some(FpWidth::S),
+            'D' => Some(FpWidth::D),
+            'Q' => Some(FpWidth::Q),
+            _ => None,
+        }
+    }
+
+    /// The register-name prefix, lowercase, as GAS spells it.
+    fn letter(self) -> char {
+        match self {
+            FpWidth::B => 'b',
+            FpWidth::H => 'h',
+            FpWidth::S => 's',
+            FpWidth::D => 'd',
+            FpWidth::Q => 'q',
+        }
+    }
+
+    /// Access width in bytes; also the unsigned-offset scale.
+    fn bytes(self) -> u64 {
+        match self {
+            FpWidth::B => 1,
+            FpWidth::H => 2,
+            FpWidth::S => 4,
+            FpWidth::D => 8,
+            FpWidth::Q => 16,
+        }
+    }
+
+    /// log2 of the access width: the one index-register scale amount a
+    /// register-offset address may write, and what the S bit means.
+    fn scale_shift(self) -> u32 {
+        self.bytes().trailing_zeros()
+    }
+
+    /// The `size` field (bits 31:30) of a SIMD&FP load/store. Q shares
+    /// size 00 with B and is told apart by `opc_high`.
+    fn size_field(self) -> u32 {
+        match self {
+            FpWidth::B | FpWidth::Q => 0b00,
+            FpWidth::H => 0b01,
+            FpWidth::S => 0b10,
+            FpWidth::D => 0b11,
+        }
+    }
+
+    /// The high bit of `opc` (bit 23) in a SIMD&FP load/store: set only
+    /// for the 128-bit Q form, which the two-bit size field cannot spell.
+    fn opc_high(self) -> u32 {
+        if matches!(self, FpWidth::Q) { 1 } else { 0 }
+    }
+
+    /// The `opc` field (bits 31:30) of a SIMD&FP load/store PAIR: 00 for
+    /// S, 01 for D, 10 for Q. B and H have no pair form.
+    fn pair_opc(self) -> Option<u32> {
+        match self {
+            FpWidth::S => Some(0b00),
+            FpWidth::D => Some(0b01),
+            FpWidth::Q => Some(0b10),
+            FpWidth::B | FpWidth::H => None,
+        }
+    }
+}
+
+/// A parsed SIMD&FP register operand: which register, and which view of
+/// it the spelling named.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FpReg {
+    idx: u8,
+    width: FpWidth,
+}
+
+fn parse_fp_register(s: &str, ln: usize) -> Result<FpReg, EmuError> {
+    // Accept b0..b31, h0..h31, s0..s31, d0..d31 and q0..q31: the five
+    // views of one 128-bit register file.
     let s = s.trim();
     let first = s.chars().next().ok_or_else(|| asm_error(ln, "empty register"))?;
-    let prefix = first.to_ascii_uppercase();
-    if prefix != 'D' && prefix != 'S' {
-        return asm_err(ln, &format!("expected D or S register, got: {s}"));
-    }
+    let Some(width) = FpWidth::from_prefix(first) else {
+        return asm_err(
+            ln,
+            &format!(
+                "expected a b, h, s, d or q register, or a v one with an \
+                 arrangement (v3.16b), got: {s}"
+            ),
+        );
+    };
     let idx: u8 = s[1..]
         .parse()
         .map_err(|_| asm_error(ln, &format!("bad FP register: {s}")))?;
@@ -1729,25 +1976,39 @@ fn parse_fp_register(s: &str, ln: usize) -> Result<(u8, char), EmuError> {
         return asm_err(
             ln,
             &format!(
-                "`{s}` is not a floating-point register: the fp registers are d0 \
-                 through d31 and s0 through s31"
+                "`{s}` is not a floating-point register: the SIMD&FP file runs 0 to 31, \
+                 named b, h, s, d or q for its 8-, 16-, 32-, 64- and 128-bit views and \
+                 v with an arrangement for the vector one"
             ),
         );
     }
-    Ok((idx, prefix))
+    Ok(FpReg { idx, width })
 }
 
 /// The ftype field (bits 23:22) for a scalar FP width: 0b01 for D, 0b00
 /// for S. Every scalar FP base opcode below is written in its S (ftype=00)
-/// form and this adds the D bit back.
-fn fp_ftype(width: char) -> u32 {
-    if width == 'D' { 0x0040_0000 } else { 0 }
+/// form and this adds the D bit back. B, H and Q have no ftype in that
+/// space: scalar FP arithmetic is S and D only, and quietly encoding a
+/// `q` operand as an S would compute the wrong answer.
+fn fp_ftype(width: FpWidth, ln: usize) -> Result<u32, EmuError> {
+    match width {
+        FpWidth::S => Ok(0),
+        FpWidth::D => Ok(0x0040_0000),
+        other => asm_err(
+            ln,
+            &format!(
+                "a {} register has no scalar floating-point form here: this \
+                 instruction takes s or d registers",
+                other.letter()
+            ),
+        ),
+    }
 }
 
 /// All operands of one FP instruction must share a width; mixing S and D
 /// silently computing in the wrong precision would be far worse than an
 /// error, so name the mnemonic and both widths.
-fn require_same_fp_width(name: &str, widths: &[char], ln: usize) -> Result<char, EmuError> {
+fn require_same_fp_width(name: &str, widths: &[FpWidth], ln: usize) -> Result<FpWidth, EmuError> {
     let first = widths[0];
     if widths.iter().any(|w| *w != first) {
         return asm_err(
@@ -1770,14 +2031,14 @@ fn encode_fp_mul_add(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuErro
     if ops.len() != 4 {
         return asm_err(ln, &format!("{name} requires 4 operands: {name} fd, fn, fm, fa"));
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
-    let (fm, wm) = parse_fp_register(ops[2], ln)?;
-    let (fa, wa) = parse_fp_register(ops[3], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[2], ln)?;
+    let FpReg { idx: fa, width: wa } = parse_fp_register(ops[3], ln)?;
     let width = require_same_fp_width(name, &[wd, wn, wm, wa], ln)?;
     // 3-source: 0_0_0_11111_ftype_o1_Rm_o0_Ra_Rn_Rd
     Ok(0x1F00_0000
-        | fp_ftype(width)
+        | fp_ftype(width, ln)?
         | (u32::from(*o1) << 21)
         | ((fm as u32) << 16)
         | (u32::from(*o0) << 15)
@@ -1793,13 +2054,13 @@ fn encode_fcsel(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 4 {
         return asm_err(ln, "fcsel requires 4 operands: fcsel fd, fn, fm, cond");
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
-    let (fm, wm) = parse_fp_register(ops[2], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[2], ln)?;
     let width = require_same_fp_width("fcsel", &[wd, wn, wm], ln)?;
     let cond = parse_condition_allowing_nv(ops[3], ln)?;
     Ok(0x1E20_0C00
-        | fp_ftype(width)
+        | fp_ftype(width, ln)?
         | ((fm as u32) << 16)
         | ((cond as u32) << 12)
         | ((fn_ as u32) << 5)
@@ -1817,13 +2078,13 @@ fn encode_fp_binary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError
     if ops.len() != 3 {
         return asm_err(ln, &format!("{name} requires 3 operands: {name} fd, fn, fm"));
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
-    let (fm, wm) = parse_fp_register(ops[2], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[2], ln)?;
     let width = require_same_fp_width(name, &[wd, wn, wm], ln)?;
     // 2-source: 0_0_0_11110_ftype_1_Rm_opcode_10_Rn_Rd
     Ok(0x1E20_0800
-        | fp_ftype(width)
+        | fp_ftype(width, ln)?
         | ((fm as u32) << 16)
         | ((opcode & 0xF) << 12)
         | ((fn_ as u32) << 5)
@@ -1834,13 +2095,29 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "fmov requires 2 operands");
     }
+    // An arrangement in the destination and a float in the source is the
+    // vector immediate; a lane anywhere else is the upper-lane move.
+    if let Some(d) = parse_vec_operand(ops[0]).filter(|reg| reg.lane.is_none()) {
+        let source = ops[1].trim();
+        let literal = source.strip_prefix('#').unwrap_or(source);
+        if literal
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit() || c == '-' || c == '+' || c == '.')
+        {
+            return encode_simd_fmov_imm(&d, literal, ln);
+        }
+    }
+    if ops.iter().any(|o| parse_vec_operand(o).is_some()) {
+        return encode_fmov_lane(ops, ln);
+    }
     // General destination is the FP -> GP direction: `fmov x0, d0`,
     // `fmov w0, s0`. Raw bits move; no conversion.
     if let Ok((rd, sf)) = parse_register(ops[0], ln) {
         if ops[0].trim().eq_ignore_ascii_case("sp") {
             return asm_err(ln, "fmov cannot target sp");
         }
-        let (fn_, wn) = parse_fp_register(ops[1], ln).map_err(|_| {
+        let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln).map_err(|_| {
             asm_error(
                 ln,
                 &format!("fmov with a general destination takes an FP source, got: {}", ops[1]),
@@ -1848,7 +2125,7 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         })?;
         return encode_fmov_general(rd, sf, wn, fn_, false, ln);
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
 
     // Immediate form: `fmov d9, 9.0` / `fmov s0, 0.5` (course style, `#`
     // optional). The operand is anything that reads as a float literal
@@ -1871,7 +2148,7 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
             .map(|c| c as u8)
             .find(|&c| crate::decoder::expand_fmov_imm8(c) == value.to_bits());
         let Some(imm8) = imm8 else {
-            let fallback = if wd == 'D' { ".double" } else { ".float" };
+            let fallback = if wd == FpWidth::D { ".double" } else { ".float" };
             return asm_err(
                 ln,
                 &format!(
@@ -1880,7 +2157,7 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
             );
         };
         // FMOV Fd, #imm: 0_0_0_11110_ftype_1_imm8_100_00000_Rd
-        return Ok(0x1E20_1000 | fp_ftype(wd) | ((imm8 as u32) << 13) | (fd as u32));
+        return Ok(0x1E20_1000 | fp_ftype(wd, ln)? | ((imm8 as u32) << 13) | (fd as u32));
     }
 
     // General source is the GP -> FP direction: `fmov d0, x0`, `fmov s0, w0`.
@@ -1891,10 +2168,10 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         return encode_fmov_general(rn, sf, wd, fd, true, ln);
     }
 
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("fmov", &[wd, wn], ln)?;
     // FMOV Fd, Fn: 0_0_0_11110_ftype_1_00000_010000_Rn_Rd
-    Ok(0x1E20_4000 | fp_ftype(width) | ((fn_ as u32) << 5) | (fd as u32))
+    Ok(0x1E20_4000 | fp_ftype(width, ln)? | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 /// FMOV between the register files, either direction: raw bits, no
@@ -1904,12 +2181,13 @@ fn encode_fmov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
 fn encode_fmov_general(
     gp: u8,
     gp_is_x: bool,
-    fp_width: char,
+    fp_width: FpWidth,
     fp: u8,
     to_fp: bool,
     ln: usize,
 ) -> Result<u32, EmuError> {
-    let widths_match = (gp_is_x && fp_width == 'D') || (!gp_is_x && fp_width == 'S');
+    let widths_match = (gp_is_x && fp_width == FpWidth::D)
+        || (!gp_is_x && fp_width == FpWidth::S);
     if !widths_match {
         return asm_err(
             ln,
@@ -1921,10 +2199,1696 @@ fn encode_fmov_general(
     let (rd, rn) = if to_fp { (fp, gp) } else { (gp, fp) };
     Ok((sf_bit << 31)
         | 0x1E20_0000
-        | fp_ftype(fp_width)
+        | fp_ftype(fp_width, ln)?
         | (opcode << 16)
         | ((rn as u32) << 5)
         | (rd as u32))
+}
+
+// ---------------------------------------------------------------------------
+// advanced simd operands
+// ---------------------------------------------------------------------------
+
+/// The eight arrangement suffixes, each as (spelling, lane bytes, Q).
+const ARRANGEMENTS: &[(&str, u8, bool)] = &[
+    ("8b", 1, false),
+    ("16b", 1, true),
+    ("4h", 2, false),
+    ("8h", 2, true),
+    ("2s", 4, false),
+    ("4s", 4, true),
+    ("1d", 8, false),
+    ("2d", 8, true),
+];
+
+/// A `v` register operand the way source spells it: either a whole
+/// register under an arrangement (`v3.16b`) or one lane of it
+/// (`v3.b[15]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VecReg {
+    idx: u8,
+    /// Lane width in bytes: 1, 2, 4 or 8.
+    esize: u8,
+    /// The 128-bit arrangement. Meaningless on a lane reference, where
+    /// the element's own width is all the encoding carries.
+    q: bool,
+    /// The lane a `[n]` names, or None for a plain arrangement.
+    lane: Option<u8>,
+}
+
+impl VecReg {
+    /// The imm5 field of the copy group: the lowest set bit names the
+    /// element width and the bits above it the lane.
+    fn imm5(self) -> u32 {
+        let shift = self.esize.trailing_zeros();
+        (u32::from(self.lane.unwrap_or(0)) << (shift + 1)) | (1 << shift)
+    }
+}
+
+/// The lane width a `b`/`h`/`s`/`d` element letter names.
+fn element_bytes(letter: &str) -> Option<u8> {
+    match letter {
+        "b" => Some(1),
+        "h" => Some(2),
+        "s" => Some(4),
+        "d" => Some(8),
+        _ => None,
+    }
+}
+
+/// Read a vector operand, or None when the text is not one. The callers
+/// sniff with this before committing to a SIMD encoding, so a spelling
+/// that is not a vector operand has to answer None rather than an error.
+fn parse_vec_operand(s: &str) -> Option<VecReg> {
+    let text = s.trim().to_ascii_lowercase();
+    let (head, tail) = text.split_once('.')?;
+    let idx: u8 = head.strip_prefix('v')?.parse().ok()?;
+    if idx > 31 {
+        return None;
+    }
+    if let Some((letter, rest)) = tail.split_once('[') {
+        let esize = element_bytes(letter)?;
+        let lane: u8 = rest.strip_suffix(']')?.trim().parse().ok()?;
+        if u32::from(lane) >= 16 / u32::from(esize) {
+            return None;
+        }
+        return Some(VecReg { idx, esize, q: true, lane: Some(lane) });
+    }
+    let (_, esize, q) = ARRANGEMENTS.iter().find(|(name, _, _)| *name == tail)?;
+    Some(VecReg { idx, esize: *esize, q: *q, lane: None })
+}
+
+/// The same, with a diagnosis instead of None: for operands that can only
+/// be vectors by the time we get here.
+fn parse_vec_reg(s: &str, ln: usize) -> Result<VecReg, EmuError> {
+    parse_vec_operand(s).ok_or_else(|| {
+        asm_error(
+            ln,
+            &format!(
+                "`{}` is not a vector operand: write a register and an arrangement \
+                 (v3.16b, v3.4h, v3.2s, v3.2d) or one lane of one (v3.b[15])",
+                s.trim()
+            ),
+        )
+    })
+}
+
+/// A vector operand that names a whole register, not a lane.
+fn parse_vec_arrangement(s: &str, ln: usize) -> Result<VecReg, EmuError> {
+    let reg = parse_vec_reg(s, ln)?;
+    if reg.lane.is_some() {
+        return asm_err(ln, &format!("`{}` names one lane; this operand takes a whole register", s.trim()));
+    }
+    Ok(reg)
+}
+
+/// A vector operand that names one lane.
+fn parse_vec_lane(s: &str, ln: usize) -> Result<(VecReg, u8), EmuError> {
+    let reg = parse_vec_reg(s, ln)?;
+    match reg.lane {
+        Some(lane) => Ok((reg, lane)),
+        None => asm_err(
+            ln,
+            &format!("`{}` names a whole register; this operand takes one lane (v3.b[15])", s.trim()),
+        ),
+    }
+}
+
+/// The `lsl #8` / `msl #16` tail of a vector immediate, as (bits, msl).
+fn parse_vec_imm_shift(s: &str, ln: usize) -> Result<(u8, bool), EmuError> {
+    let text = s.trim().to_ascii_lowercase();
+    let (keyword, amount) = text
+        .split_once(char::is_whitespace)
+        .ok_or_else(|| asm_error(ln, &format!("`{}` is not a shift: write `lsl #8`", s.trim())))?;
+    let msl = match keyword {
+        "lsl" => false,
+        "msl" => true,
+        _ => return asm_err(ln, &format!("`{keyword}` is not a vector immediate shift: use lsl or msl")),
+    };
+    let amount = amount.trim().trim_start_matches('#').trim();
+    let bits: u8 = amount
+        .parse()
+        .map_err(|_| asm_error(ln, &format!("`{amount}` is not a shift amount")))?;
+    Ok((bits, msl))
+}
+
+// ---------------------------------------------------------------------------
+// advanced simd encoders
+// ---------------------------------------------------------------------------
+
+/// MOVI / MVNI, and the ORR and BIC that take an immediate instead of a
+/// third register. The destination's arrangement picks the element width,
+/// the optional `lsl`/`msl` tail picks the shift, and `simd_imm_form` -
+/// the same table the decoder reads - turns the three into a cmode, so
+/// the two directions cannot drift apart.
+fn encode_simd_mod_imm(ops: &[&str], op: SimdImmOp, ln: usize) -> Result<u32, EmuError> {
+    let name = match op {
+        SimdImmOp::Movi => "movi",
+        SimdImmOp::Mvni => "mvni",
+        SimdImmOp::Orr => "orr",
+        SimdImmOp::Bic => "bic",
+        // FMOV's immediate is a float, so it is encoded by the fmov arm.
+        SimdImmOp::Fmov => "fmov",
+    };
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(
+            ln,
+            &format!("{name} takes a vector, an immediate, and an optional shift ({name} v0.4s, #1, lsl #8)"),
+        );
+    }
+    // `movi d3, #imm` is the one form that names a scalar register: a
+    // 64-bit destination whose immediate is the byte mask.
+    let scalar_d = parse_vec_operand(ops[0]).is_none();
+    let dest = if scalar_d {
+        let reg = parse_fp_register(ops[0], ln)?;
+        if reg.width != FpWidth::D || op != SimdImmOp::Movi {
+            return asm_err(ln, &format!("{name} takes a vector destination (v0.4s) or, for movi, a d register"));
+        }
+        VecReg { idx: reg.idx, esize: 8, q: false, lane: None }
+    } else {
+        parse_vec_arrangement(ops[0], ln)?
+    };
+    if dest.esize == 8 && !dest.q && !scalar_d {
+        return asm_err(ln, &format!("{name} has no 1d form: use the d register spelling"));
+    }
+    let value = parse_immediate(ops[1], ln)? as u64;
+    let (shift, msl) = match ops.len() {
+        3 => parse_vec_imm_shift(ops[2], ln)?,
+        _ => (0, false),
+    };
+
+    // The 64-bit element is a per-byte mask, so it carries its own imm8;
+    // every other width takes imm8 straight from the operand.
+    let imm8 = if dest.esize == 8 {
+        let mut imm8 = 0u8;
+        for byte in 0..8 {
+            match (value >> (byte * 8)) & 0xff {
+                0x00 => {}
+                0xff => imm8 |= 1 << byte,
+                _ => return asm_err(
+                    ln,
+                    &format!(
+                        "{name} of a 64-bit element takes an immediate whose every byte is \
+                         0x00 or 0xff, and {value:#x} has one that is neither"
+                    ),
+                ),
+            }
+        }
+        imm8
+    } else {
+        if value > 0xff {
+            return asm_err(ln, &format!("{name} takes an 8-bit immediate (0 to 255), got {value:#x}"));
+        }
+        value as u8
+    };
+
+    // The op bit is not simply "is this the inverting mnemonic": the
+    // 64-bit MOVI sets it too. Search the shared table for the pair that
+    // spells this mnemonic, element width and shift, and there is exactly
+    // one of them or none at all.
+    let wanted = SimdImmForm { op, esize: dest.esize, shift, msl };
+    let pair = (0u8..16)
+        .flat_map(|c| [(c, false), (c, true)])
+        .find(|(c, op_bit)| simd_imm_form(*c, *op_bit) == Some(wanted));
+    let Some((cmode, op_bit)) = pair else {
+        return asm_err(
+            ln,
+            &format!("{name} has no form with a {}-bit element and that shift", u32::from(dest.esize) * 8),
+        );
+    };
+    Ok(((dest.q as u32) << 30)
+        | ((op_bit as u32) << 29)
+        | (0x0F << 24)
+        | ((u32::from(imm8) >> 5) << 16)
+        | (u32::from(cmode) << 12)
+        | (1 << 10)
+        | ((u32::from(imm8) & 0x1F) << 5)
+        | u32::from(dest.idx))
+}
+
+/// The copy group's word: 0 Q op 01110000 imm5 0 imm4 1 Rn Rd for a
+/// vector destination, 01 0 11110000 imm5 0 0000 1 Rn Rd for the scalar
+/// DUP the assembler also spells `mov b3, v7.b[15]`.
+fn simd_copy_word(q: bool, op: bool, scalar: bool, imm5: u32, imm4: u32, rn: u8, rd: u8) -> u32 {
+    let head = if scalar { 0x5E00_0000 } else { ((q as u32) << 30) | (0x0E << 24) };
+    head | ((op as u32) << 29) | (imm5 << 16) | (imm4 << 11) | (1 << 10)
+        | (u32::from(rn) << 5)
+        | u32::from(rd)
+}
+
+/// DUP, all three shapes: a general register into every lane, one lane
+/// into every lane, and one lane into a scalar register.
+fn encode_simd_dup(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "dup takes 2 operands: dup v0.4s, w1 or dup v0.4s, v1.s[2]");
+    }
+    // `dup b3, v7.b[15]` (which GAS prints as `mov`): a scalar
+    // destination, so the element width comes from the source lane.
+    if parse_vec_operand(ops[0]).is_none() {
+        let dest = parse_fp_register(ops[0], ln)?;
+        let (src, _) = parse_vec_lane(ops[1], ln)?;
+        if u64::from(src.esize) != dest.width.bytes() {
+            return asm_err(
+                ln,
+                &format!(
+                    "dup into {}{} needs a {} lane",
+                    dest.width.letter(),
+                    dest.idx,
+                    dest.width.letter()
+                ),
+            );
+        }
+        return Ok(simd_copy_word(false, false, true, src.imm5(), 0b0000, src.idx, dest.idx));
+    }
+    let dest = parse_vec_arrangement(ops[0], ln)?;
+    if parse_vec_operand(ops[1]).is_some() {
+        let (src, _) = parse_vec_lane(ops[1], ln)?;
+        if src.esize != dest.esize {
+            return asm_err(ln, "dup copies a lane into lanes of the same width");
+        }
+        return Ok(simd_copy_word(dest.q, false, false, src.imm5(), 0b0000, src.idx, dest.idx));
+    }
+    let (rn, sf) = parse_register(ops[1], ln)?;
+    if sf != (dest.esize == 8) {
+        return asm_err(
+            ln,
+            "dup fills 2d lanes from an x register and every narrower arrangement from a w register",
+        );
+    }
+    Ok(simd_copy_word(dest.q, false, false, dest.imm5(), 0b0001, rn, dest.idx))
+}
+
+/// INS, both shapes: a general register into one lane, and one lane into
+/// another. Both write a single lane of a 128-bit destination, so Q is
+/// always set.
+fn encode_simd_ins(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "ins takes 2 operands: ins v0.s[1], w2 or ins v0.s[1], v3.s[0]");
+    }
+    let (dest, _) = parse_vec_lane(ops[0], ln)?;
+    if parse_vec_operand(ops[1]).is_some() {
+        let (src, lane) = parse_vec_lane(ops[1], ln)?;
+        if src.esize != dest.esize {
+            return asm_err(ln, "ins copies a lane into a lane of the same width");
+        }
+        let imm4 = u32::from(lane) << src.esize.trailing_zeros();
+        return Ok(simd_copy_word(true, true, false, dest.imm5(), imm4, src.idx, dest.idx));
+    }
+    let (rn, sf) = parse_register(ops[1], ln)?;
+    if sf != (dest.esize == 8) {
+        return asm_err(
+            ln,
+            "ins writes a d lane from an x register and every narrower lane from a w register",
+        );
+    }
+    Ok(simd_copy_word(true, false, false, dest.imm5(), 0b0011, rn, dest.idx))
+}
+
+/// UMOV and SMOV: one lane out into a general register, zero-extended or
+/// sign-extended. The destination's width is the Q bit, and the pairs the
+/// architecture allows differ between the two.
+fn encode_simd_lane_out(ops: &[&str], signed: bool, ln: usize) -> Result<u32, EmuError> {
+    let name = if signed { "smov" } else { "umov" };
+    if ops.len() != 2 {
+        return asm_err(ln, &format!("{name} takes 2 operands: {name} w0, v1.b[3]"));
+    }
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (src, _) = parse_vec_lane(ops[1], ln)?;
+    // UMOV reads a lane no wider than its destination and, being the
+    // plain `mov` at the full width, only b/h/s into w and d into x.
+    // SMOV has to leave room for the sign, so its widest lane is one
+    // step below the destination.
+    let allowed = if signed {
+        if sf { src.esize <= 4 } else { src.esize <= 2 }
+    } else if sf {
+        src.esize == 8
+    } else {
+        src.esize <= 4
+    };
+    if !allowed {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} cannot move a {}-bit lane into {}",
+                u32::from(src.esize) * 8,
+                if sf { "an x register" } else { "a w register" }
+            ),
+        );
+    }
+    let imm4 = if signed { 0b0101 } else { 0b0111 };
+    Ok(simd_copy_word(sf, false, false, src.imm5(), imm4, src.idx, rd))
+}
+
+// ---------------------------------------------------------------------------
+// advanced simd: the integer lane families
+// ---------------------------------------------------------------------------
+
+/// A b/h/s/d register operand as the SIMD-scalar forms spell their
+/// operands, answered as (register, lane bytes). `q` is not one of them:
+/// no integer lane form names the whole 128 bits without an arrangement.
+fn simd_scalar_operand(s: &str) -> Option<(u8, u8)> {
+    let text = s.trim();
+    let esize = match FpWidth::from_prefix(text.chars().next()?)? {
+        FpWidth::B => 1,
+        FpWidth::H => 2,
+        FpWidth::S => 4,
+        FpWidth::D => 8,
+        FpWidth::Q => return None,
+    };
+    let idx: u8 = text[1..].parse().ok()?;
+    if idx > 31 {
+        return None;
+    }
+    Some((idx, esize))
+}
+
+/// Whether a line can only be the integer vector reading of its
+/// mnemonic. ADD, SUB, MUL, AND, EOR, ORN, MVN, NEG, CLS, CLZ, RBIT,
+/// REV16 and REV32 each name a general-register instruction as well, and
+/// only the operands tell the two apart: a first operand naming an
+/// arrangement (`v3.16b`) or a b/h/s/d register can be nothing else. The
+/// sniff sits ahead of the dispatch so those arms stay one line each.
+fn is_simd_integer_line(mn: &str, ops: &[&str]) -> bool {
+    // ORR, BIC and MOV keep their own sniffs: those have to reach the
+    // vector immediates and the lane moves, which are other classes.
+    if matches!(mn, "ORR" | "BIC" | "MOV") {
+        return false;
+    }
+    let (name, _) = simd_integer_name(mn);
+    let known = simd_logical_by_name(&name).is_some()
+        || simd_same_by_name(&name).is_some()
+        || simd_misc_by_name(&name, false).is_some()
+        || simd_misc_by_name(&name, true).is_some()
+        || simd_across_by_name(&name).is_some()
+        || simd_diff_by_name(&name).is_some()
+        || simd_shift_by_name(&name).is_some()
+        || is_extend_long_alias(&name);
+    known
+        && ops
+            .first()
+            .is_some_and(|op| parse_vec_operand(op).is_some() || simd_scalar_operand(op).is_some())
+}
+
+/// SXTL and UXTL: how GAS spells the lengthening shift by #0, and how it
+/// prints that word back.
+fn is_extend_long_alias(name: &str) -> bool {
+    matches!(name, "sxtl" | "uxtl")
+}
+
+/// The table key for a mnemonic, and whether it carried the `2` suffix.
+/// GAS takes `not` for the vector MVN and prints MVN back, so the two
+/// spellings share one row. A trailing `2` is only a suffix on a
+/// mnemonic whose class has an upper-half form: `rev32` keeps its name.
+fn simd_integer_name(mn: &str) -> (String, bool) {
+    let lower = mn.to_ascii_lowercase();
+    if lower == "not" {
+        return ("mvn".to_string(), false);
+    }
+    if let Some(base) = lower.strip_suffix('2') {
+        if simd_takes_upper_half(base) {
+            return (base.to_string(), true);
+        }
+    }
+    (lower, false)
+}
+
+/// Whether a mnemonic has a `2` spelling at all: the rows whose narrow
+/// operands can sit in the upper half of their register.
+fn simd_takes_upper_half(name: &str) -> bool {
+    is_extend_long_alias(name)
+        || simd_diff_by_name(name).is_some()
+        || simd_misc_by_name(name, false)
+            .is_some_and(|row| matches!(row.shape, SimdMiscShape::Narrow | SimdMiscShape::Shll))
+        || simd_shift_by_name(name).is_some_and(|row| row.shape != SimdShiftShape::Same)
+}
+
+/// The common header of the three classes: the top byte, U, and the size
+/// field. `low` carries bits 21:0, which is where the classes differ.
+fn simd_class_word(scalar: bool, q: bool, u: bool, size: u8, low: u32) -> u32 {
+    let base = if scalar { 0x5E00_0000 } else { 0x0E00_0000 | ((q as u32) << 30) };
+    base | ((u as u32) << 29) | (u32::from(size) << 22) | low
+}
+
+/// The Advanced SIMD integer families. One entry point, because the
+/// operands rather than the mnemonic decide which class a line is in:
+/// `cmgt v3.8b, v7.8b, v21.8b` is three-same and `cmgt v3.8b, v7.8b, #0`
+/// two-register misc, and `addp` is three-same with three operands and
+/// the SIMD-scalar pairwise form with two.
+fn encode_simd_integer(mn: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let (name, upper) = simd_integer_name(mn);
+    if let Some((op, _, _)) = simd_logical_by_name(&name) {
+        return encode_simd_logical_reg(ops, op, ln);
+    }
+    match ops.len() {
+        // A lane in the last operand is the by-element class, an
+        // encoding of its own that every one of these mnemonics also
+        // has a whole-register form of.
+        3 if simd_elem_by_name(&name).is_some()
+            && parse_vec_operand(ops[2]).is_some_and(|reg| reg.lane.is_some()) =>
+        {
+            encode_simd_by_element(&name, ops, upper, ln)
+        }
+        // A third operand spelled `#` is one of three different things:
+        // the compare against zero, SHLL's fixed shift by the lane
+        // width, or a shift by immediate.
+        3 if ops[2].trim().starts_with('#') => {
+            if simd_misc_by_name(&name, true).is_some() {
+                encode_simd_two_misc(&name, ops, true, upper, ln)
+            } else if let Some(row) = simd_shift_by_name(&name) {
+                encode_simd_shift_imm(row, ops, upper, Some(ops[2]), ln)
+            } else {
+                encode_simd_two_misc(&name, ops, false, upper, ln)
+            }
+        }
+        3 if simd_diff_by_name(&name).is_some() => encode_simd_three_diff(&name, ops, upper, ln),
+        3 => encode_simd_three_same(&name, ops, ln),
+        2 if is_extend_long_alias(&name) => {
+            let long = if name == "sxtl" { "sshll" } else { "ushll" };
+            let row = simd_shift_by_name(long).expect("the lengthening shift has a row");
+            encode_simd_shift_imm(row, ops, upper, None, ln)
+        }
+        2 if simd_across_by_name(&name).is_some() => encode_simd_across(&name, ops, ln),
+        2 => encode_simd_two_misc(&name, ops, false, upper, ln),
+        _ => asm_err(
+            ln,
+            &format!(
+                "`{}` is a vector instruction here, and takes 2 or 3 operands \
+                 ({} v0.8b, v1.8b) or their b/h/s/d scalar forms",
+                mn.to_ascii_lowercase(),
+                mn.to_ascii_lowercase()
+            ),
+        ),
+    }
+}
+
+/// Three-same: `Vd.T, Vn.T, Vm.T`, with the SIMD-scalar `Fd, Fn, Fm`
+/// beside it. Every operand has the same shape, which is what names the
+/// size field.
+fn encode_simd_three_same(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let Some(row) = simd_same_by_name(name) else {
+        return asm_err(ln, &format!("`{name}` does not take three operands"));
+    };
+    if let Some((rd, esize)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, en)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let Some((rm, em)) = simd_scalar_operand(ops[2]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[2].trim()));
+        };
+        if en != esize || em != esize || !lane_allowed(row.scalar, esize) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width; its operands all take one"),
+            );
+        }
+        let low = (1 << 21)
+            | (u32::from(rm) << 16)
+            | (u32::from(row.opcode) << 11)
+            | (1 << 10)
+            | (u32::from(rn) << 5)
+            | u32::from(rd);
+        return Ok(simd_class_word(true, false, row.u, size_field(esize), low));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    if n.esize != d.esize || m.esize != d.esize || n.q != d.q || m.q != d.q {
+        return asm_err(ln, &format!("{name} takes three operands of the same arrangement"));
+    }
+    // No three-same form is spelled 1d: a single 64-bit lane is the
+    // SIMD-scalar form, written with a d register.
+    if !lane_allowed(row.lanes, d.esize) || (d.esize == 8 && !d.q) {
+        return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&d)));
+    }
+    let low = (1 << 21)
+        | (u32::from(m.idx) << 16)
+        | (u32::from(row.opcode) << 11)
+        | (1 << 10)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx);
+    Ok(simd_class_word(false, d.q, row.u, size_field(d.esize), low))
+}
+
+/// Two-register misc: `Vd.T, Vn.T`, the compares against zero
+/// (`Vd.T, Vn.T, #0`), and the pairwise widening adds, whose destination
+/// holds half as many lanes of twice the width.
+fn encode_simd_two_misc(
+    name: &str,
+    ops: &[&str],
+    zero: bool,
+    upper: bool,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let Some(row) = simd_misc_by_name(name, zero) else {
+        return asm_err(
+            ln,
+            &format!("`{name}` has no form with these operands"),
+        );
+    };
+    if zero && ops[2].trim().trim_start_matches('#').trim() != "0" {
+        return asm_err(ln, &format!("{name} compares against #0, nothing else"));
+    }
+    let narrowing = row.shape == SimdMiscShape::Narrow;
+    let shll = row.shape == SimdMiscShape::Shll;
+    if shll != (ops.len() == 3 && !zero) {
+        return asm_err(
+            ln,
+            &format!("{name} takes {} operands", if shll { 3 } else { 2 }),
+        );
+    }
+    if let Some((rd, esize)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, en)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        // A narrowing extract reads a lane of twice what it writes.
+        let expected = if narrowing { esize * 2 } else { esize };
+        if en != expected || upper || !lane_allowed(row.scalar, esize) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width; both operands take one"),
+            );
+        }
+        let low = (1 << 21)
+            | (u32::from(row.opcode) << 12)
+            | (1 << 11)
+            | (u32::from(rn) << 5)
+            | u32::from(rd);
+        return Ok(simd_class_word(true, false, row.u, size_field(esize), low));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    // The narrow side is the one the size field names, and Q is which
+    // half of the register it sits in: exactly what the `2` suffix says.
+    let (narrow, wide) = match row.shape {
+        SimdMiscShape::Narrow => (&d, &n),
+        SimdMiscShape::Shll => (&n, &d),
+        _ => (&n, &n),
+    };
+    if narrowing || shll {
+        if wide.esize != narrow.esize * 2 || !wide.q || narrow.q != upper {
+            return asm_err(
+                ln,
+                &format!(
+                    "{name} writes lanes of {} the source's width, and the `2` suffix \
+                     is what names the upper half",
+                    if narrowing { "half" } else { "twice" }
+                ),
+            );
+        }
+        if shll {
+            let want = u32::from(narrow.esize) * 8;
+            let amount = parse_immediate(ops[2], ln)?;
+            if amount != i64::from(want) {
+                return asm_err(ln, &format!("{name} shifts by exactly #{want} for this arrangement"));
+            }
+        }
+    } else {
+        let widen = row.shape == SimdMiscShape::Widen;
+        let dest_esize = if widen { n.esize * 2 } else { n.esize };
+        if d.esize != dest_esize || d.q != n.q {
+            return asm_err(
+                ln,
+                &format!(
+                    "{name} writes {} lanes for a {} source",
+                    if widen { "twice as wide" } else { "matching" },
+                    arrangement_name(&n)
+                ),
+            );
+        }
+        if !widen && n.esize == 8 && !n.q {
+            return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&n)));
+        }
+    }
+    if !lane_allowed(row.lanes, narrow.esize) {
+        return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&n)));
+    }
+    // A row that fixes its own size field says so: RBIT is spelled in
+    // byte lanes but encodes size 01.
+    let size = row.size.unwrap_or_else(|| size_field(narrow.esize));
+    let low = (1 << 21)
+        | (u32::from(row.opcode) << 12)
+        | (1 << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx);
+    Ok(simd_class_word(false, narrow.q, row.u, size, low))
+}
+
+/// Three-different: `Vd.<2T>, Vn.T, Vm.T` and the wide and narrowing
+/// shapes beside it, with the SIMD-scalar `Fd, Fn, Fm` of the doubling
+/// multiplies. The size field names the NARROW width and Q is the `2`
+/// suffix, which selects the upper half of whichever operands are narrow.
+fn encode_simd_three_diff(name: &str, ops: &[&str], upper: bool, ln: usize) -> Result<u32, EmuError> {
+    let row = simd_diff_by_name(name).expect("the caller checked the table");
+    if let Some((rd, dest_esize)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, en)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let Some((rm, em)) = simd_scalar_operand(ops[2]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[2].trim()));
+        };
+        if upper || em != en || dest_esize != en * 2 || !lane_allowed(row.scalar, en) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width; it writes twice what it reads"),
+            );
+        }
+        let low = (1 << 21)
+            | (u32::from(rm) << 16)
+            | (u32::from(row.opcode) << 12)
+            | (u32::from(rn) << 5)
+            | u32::from(rd);
+        return Ok(simd_class_word(true, false, row.u, size_field(en), low));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    // Which operands are narrow is the shape; the narrow ones carry Q.
+    let (narrow, wide): (&VecReg, &VecReg) = match row.shape {
+        SimdDiffShape::Long => (&n, &d),
+        SimdDiffShape::Wide => (&m, &d),
+        SimdDiffShape::Narrow => (&d, &n),
+    };
+    let shaped = match row.shape {
+        SimdDiffShape::Long => n.esize == m.esize && n.q == m.q && d.q,
+        SimdDiffShape::Wide => n.esize == d.esize && n.q == d.q && d.q,
+        SimdDiffShape::Narrow => n.esize == m.esize && n.q == m.q && n.q,
+    };
+    if !shaped || wide.esize != narrow.esize * 2 || narrow.q != upper {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} pairs a {} arrangement with lanes of twice that width, and the \
+                 `2` suffix is what names the upper half of the narrow operands",
+                arrangement_name(narrow)
+            ),
+        );
+    }
+    if !lane_allowed(row.lanes, narrow.esize) {
+        return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(narrow)));
+    }
+    let low = (1 << 21)
+        | (u32::from(m.idx) << 16)
+        | (u32::from(row.opcode) << 12)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx);
+    Ok(simd_class_word(false, narrow.q, row.u, size_field(narrow.esize), low))
+}
+
+/// The class header of the shift-by-immediate group. It sits one bit
+/// above the three-register classes (bits 28:24 are 01111, not 01110)
+/// and has no size field: immh:immb carries both the lane width and the
+/// amount, which is why `simd_class_word` cannot serve it.
+fn simd_shift_word(scalar: bool, q: bool, u: bool, low: u32) -> u32 {
+    let base = if scalar { 0x5F00_0000 } else { 0x0F00_0000 | ((q as u32) << 30) };
+    base | ((u as u32) << 29) | low
+}
+
+/// Shift by immediate: `Vd.T, Vn.T, #shift`, the lengthening
+/// `Vd.<2T>, Vn.T, #shift` and the narrowing `Vd.T, Vn.<2T>, #shift`,
+/// with the SIMD-scalar forms beside them. `amount` is None for the SXTL
+/// and UXTL spellings, which are the lengthening shift by zero.
+fn encode_simd_shift_imm(
+    row: &SimdShiftRow,
+    ops: &[&str],
+    upper: bool,
+    amount: Option<&str>,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let name = row.name;
+    let shift = match amount {
+        None => 0i64,
+        Some(text) => parse_immediate(text, ln)?,
+    };
+    let (esize, q, scalar, rn, rd) = if let Some((rd, dest)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, src)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let expected = if row.shape == SimdShiftShape::Narrow { dest * 2 } else { dest };
+        if upper || src != expected || !lane_allowed(row.scalar, dest) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width"),
+            );
+        }
+        (dest, false, true, rn, rd)
+    } else {
+        let d = parse_vec_arrangement(ops[0], ln)?;
+        let n = parse_vec_arrangement(ops[1], ln)?;
+        let (narrow, wide): (&VecReg, &VecReg) = match row.shape {
+            SimdShiftShape::Same => (&d, &d),
+            SimdShiftShape::Long => (&n, &d),
+            SimdShiftShape::Narrow => (&d, &n),
+        };
+        let shaped = match row.shape {
+            SimdShiftShape::Same => {
+                // No shift is spelled 1d: a single 64-bit lane is the
+                // SIMD-scalar form, written with a d register.
+                let one_d = d.esize == 8 && !d.q;
+                d.esize == n.esize && d.q == n.q && !upper && !one_d
+            }
+            _ => wide.esize == narrow.esize * 2 && wide.q && narrow.q == upper,
+        };
+        if !shaped {
+            return asm_err(
+                ln,
+                &format!("{name} does not take these arrangements together"),
+            );
+        }
+        (narrow.esize, narrow.q, false, n.idx, d.idx)
+    };
+    if !lane_allowed(row.lanes, esize) {
+        return asm_err(ln, &format!("{name} does not take a {}-bit lane", u32::from(esize) * 8));
+    }
+    // A left shift can clear the lane and a right shift can fill it with
+    // the sign, so the two ranges are off by one from each other.
+    let bits = i64::from(u32::from(esize) * 8);
+    let ok = if row.right { shift >= 1 && shift <= bits } else { shift >= 0 && shift < bits };
+    if !ok {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} shifts by {} for a {bits}-bit lane, not #{shift}",
+                if row.right { format!("1 to {bits}") } else { format!("0 to {}", bits - 1) }
+            ),
+        );
+    }
+    let field = shift_imm_field(esize, shift as u8, row.right);
+    let low = (u32::from(field) << 16)
+        | (u32::from(row.opcode) << 11)
+        | (1 << 10)
+        | (u32::from(rn) << 5)
+        | u32::from(rd);
+    Ok(simd_shift_word(scalar, q, row.u, low))
+}
+
+/// The class header of the by-element group. Like the shift group it
+/// sits at bits 28:24 = 01111, and bit 10 clear is what tells the two
+/// apart. `l`, `m` and `h` are the three index bits.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn simd_elem_word(
+    scalar: bool,
+    q: bool,
+    u: bool,
+    esize: u8,
+    rm4: u8,
+    l: u8,
+    m: u8,
+    h: u8,
+    opcode: u8,
+    rn: u8,
+    rd: u8,
+) -> u32 {
+    let base = if scalar { 0x5F00_0000 } else { 0x0F00_0000 | ((q as u32) << 30) };
+    base | ((u as u32) << 29)
+        | (u32::from(size_field(esize)) << 22)
+        | (u32::from(l) << 21)
+        | (u32::from(m) << 20)
+        | (u32::from(rm4) << 16)
+        | (u32::from(opcode) << 12)
+        | (u32::from(h) << 11)
+        | (u32::from(rn) << 5)
+        | u32::from(rd)
+}
+
+/// The by-element multiplies: `Vd, Vn, Vm.Ts[index]`. A lane in the LAST
+/// operand is the only thing that separates these from the three-same
+/// and three-different rows they share a mnemonic with.
+fn encode_simd_by_element(
+    name: &str,
+    ops: &[&str],
+    upper: bool,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let row = simd_elem_by_name(name).expect("the caller checked the table");
+    let (m, index) = parse_vec_lane(ops[2], ln)?;
+    let esize = m.esize;
+    if !lane_allowed(row.lanes, esize) {
+        return asm_err(
+            ln,
+            &format!("{name} indexes an h or an s element, not {}", element_letter(esize)),
+        );
+    }
+    // An h element spends the M bit as the index's low bit, which leaves
+    // Rm four bits wide: v16 and up have nowhere to go.
+    if esize == 2 && m.idx > 15 {
+        return asm_err(
+            ln,
+            &format!("{name} reads an h element out of v0..v15; the index needs the bit v{} would use", m.idx),
+        );
+    }
+    let long = matches!(row.kind, SimdElemKind::Long(_));
+    let (rm4, l, mbit, h) = simd_elem_bits(esize, m.idx, index);
+    if let Some((rd, dest)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, src)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let expected = if long { esize * 2 } else { esize };
+        if !row.scalar || upper || src != esize || dest != expected {
+            return asm_err(ln, &format!("{name} has no scalar form of this width"));
+        }
+        return Ok(simd_elem_word(true, false, row.u, esize, rm4, l, mbit, h, row.opcode, rn, rd));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    // The long rows write lanes of twice the source width and spell the
+    // upper half of the source with the `2` suffix; the rest keep one
+    // arrangement throughout and have no `2` spelling at all.
+    let shaped = if long {
+        n.esize == esize && d.esize == esize * 2 && d.q && n.q == upper
+    } else {
+        !upper && n.esize == esize && d.esize == esize && n.q == d.q
+    };
+    if !shaped {
+        return asm_err(
+            ln,
+            &format!("{name} does not take these arrangements with a {} element", element_letter(esize)),
+        );
+    }
+    let q = if long { upper } else { d.q };
+    Ok(simd_elem_word(false, q, row.u, esize, rm4, l, mbit, h, row.opcode, n.idx, d.idx))
+}
+
+// ---------------------------------------------------------------------------
+// advanced simd: the floating-point lane families
+// ---------------------------------------------------------------------------
+
+/// The table key for a float mnemonic, and whether it carried the `2`
+/// suffix. Only the three width-changing conversions have one.
+fn simd_float_name(mn: &str) -> (String, bool) {
+    let lower = mn.to_ascii_lowercase();
+    if let Some(base) = lower.strip_suffix('2') {
+        if matches!(base, "fcvtn" | "fcvtl" | "fcvtxn") {
+            return (base.to_string(), true);
+        }
+    }
+    (lower, false)
+}
+
+fn simd_float_known(name: &str) -> bool {
+    simd_fp_same_by_name(name).is_some()
+        || simd_fp_misc_by_name(name, false).is_some()
+        || simd_fp_misc_by_name(name, true).is_some()
+        || simd_fp_across_by_name(name, false).is_some()
+        || simd_fp_across_by_name(name, true).is_some()
+        || simd_fp_elem_by_name(name).is_some()
+}
+
+/// Whether the mnemonic has a SIMD-scalar form at all. The rows that do
+/// not are exactly the ones scalar FP already spells in its own class,
+/// which is what keeps `fadd s3, s7, s21` out of here.
+fn simd_float_has_scalar_form(name: &str) -> bool {
+    simd_fp_same_by_name(name).is_some_and(|row| row.scalar)
+        || simd_fp_misc_by_name(name, false).is_some_and(|row| row.scalar)
+        || simd_fp_misc_by_name(name, true).is_some_and(|row| row.scalar)
+}
+
+/// Whether a line can only be the float vector reading of its mnemonic.
+/// A vector operand settles it outright; otherwise the SIMD-scalar forms
+/// are the ones whose first two operands are both b/h/s/d registers,
+/// which is what tells `fcvtzs s3, s7` from `fcvtzs w3, s7` and
+/// `scvtf s3, s7` from `scvtf s3, w7`.
+fn is_simd_float_line(mn: &str, ops: &[&str]) -> bool {
+    let (name, _) = simd_float_name(mn);
+    if !simd_float_known(&name) {
+        return false;
+    }
+    if ops.iter().any(|op| parse_vec_operand(op).is_some()) {
+        return true;
+    }
+    simd_float_has_scalar_form(&name)
+        && ops.len() >= 2
+        && simd_scalar_operand(ops[0]).is_some()
+        && simd_scalar_operand(ops[1]).is_some()
+}
+
+/// The header of the float classes: the top byte, U, the `a` opcode bit
+/// at 23, and `sz` at 22 where the integer classes keep a size field.
+fn simd_fp_class_word(scalar: bool, q: bool, u: bool, a: bool, esize: u8, low: u32) -> u32 {
+    let base = if scalar { 0x5E00_0000 } else { 0x0E00_0000 | ((q as u32) << 30) };
+    base | ((u as u32) << 29) | ((a as u32) << 23) | (((esize == 8) as u32) << 22) | low
+}
+
+/// The Advanced SIMD floating-point families. One entry point, because
+/// the operands rather than the mnemonic decide the class: `fcmgt` with
+/// three registers is three-same and with `#0.0` two-register misc, and
+/// `fmaxp` takes three operands as three-same and two as the SIMD-scalar
+/// pairwise fold.
+fn encode_simd_float(mn: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let (name, upper) = simd_float_name(mn);
+    if ops.len() == 3
+        && simd_fp_elem_by_name(&name).is_some()
+        && parse_vec_operand(ops[2]).is_some_and(|reg| reg.lane.is_some())
+    {
+        return encode_simd_fp_by_element(&name, ops, ln);
+    }
+    match ops.len() {
+        // A third operand spelled `#` is either the compare against zero
+        // or the fixed-point conversion's fraction width.
+        3 if ops[2].trim().starts_with('#') => {
+            let zero = simd_fp_misc_by_name(&name, true).is_some();
+            encode_simd_fp_two_misc(&name, ops, zero, upper, ln)
+        }
+        3 => encode_simd_fp_three_same(&name, ops, ln),
+        2 if simd_fp_across_by_name(&name, false).is_some()
+            || simd_fp_across_by_name(&name, true).is_some() =>
+        {
+            encode_simd_fp_across(&name, ops, ln)
+        }
+        2 => encode_simd_fp_two_misc(&name, ops, false, upper, ln),
+        _ => asm_err(
+            ln,
+            &format!(
+                "`{}` is a vector instruction here, and takes 2 or 3 operands \
+                 ({} v0.2s, v1.2s) or their s/d scalar forms",
+                mn.to_ascii_lowercase(),
+                mn.to_ascii_lowercase()
+            ),
+        ),
+    }
+}
+
+/// Float three-same: `Vd.T, Vn.T, Vm.T` over 2s, 4s or 2d, with the
+/// SIMD-scalar `Fd, Fn, Fm` beside the rows that have one.
+fn encode_simd_fp_three_same(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let Some(row) = simd_fp_same_by_name(name) else {
+        return asm_err(ln, &format!("`{name}` does not take three operands"));
+    };
+    let low_bits = |rm: u8, rn: u8, rd: u8| {
+        (1 << 21)
+            | (u32::from(rm) << 16)
+            | (u32::from(row.opcode) << 11)
+            | (1 << 10)
+            | (u32::from(rn) << 5)
+            | u32::from(rd)
+    };
+    if let Some((rd, esize)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, en)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        let Some((rm, em)) = simd_scalar_operand(ops[2]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[2].trim()));
+        };
+        if !row.scalar || en != esize || em != esize || (esize != 4 && esize != 8) {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width; its operands all take one"),
+            );
+        }
+        return Ok(simd_fp_class_word(true, false, row.u, row.a, esize, low_bits(rm, rn, rd)));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    if n.esize != d.esize || m.esize != d.esize || n.q != d.q || m.q != d.q {
+        return asm_err(ln, &format!("{name} takes three operands of the same arrangement"));
+    }
+    // Float lanes are 2s, 4s or 2d: a single 64-bit lane is the
+    // SIMD-scalar form, written with a d register.
+    if (d.esize != 4 && d.esize != 8) || (d.esize == 8 && !d.q) {
+        return asm_err(
+            ln,
+            &format!("{name} does not take the {} arrangement", arrangement_name(&d)),
+        );
+    }
+    Ok(simd_fp_class_word(
+        false,
+        d.q,
+        row.u,
+        row.a,
+        d.esize,
+        low_bits(m.idx, n.idx, d.idx),
+    ))
+}
+
+/// Float two-register misc: `Vd.T, Vn.T`, the compares against `#0.0`,
+/// the `#fbits` fixed-point conversions, and the width-changing FCVTN /
+/// FCVTL / FCVTXN, whose `2` suffix is the Q bit.
+fn encode_simd_fp_two_misc(
+    name: &str,
+    ops: &[&str],
+    zero: bool,
+    upper: bool,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let Some(row) = simd_fp_misc_by_name(name, zero) else {
+        return asm_err(ln, &format!("`{name}` has no form with these operands"));
+    };
+    if zero {
+        let text = ops[2].trim().trim_start_matches('#').trim();
+        if text.parse::<f64>().is_ok_and(|value| value != 0.0) || text.parse::<f64>().is_err() {
+            return asm_err(ln, &format!("{name} compares against #0.0, nothing else"));
+        }
+    }
+    // A third operand that is not `#0.0` is the fraction width, and only
+    // the four conversions between a float and a fixed-point integer
+    // have a form that takes one.
+    let fbits = match (zero, ops.len()) {
+        (true, 3) => None,
+        (false, 2) => None,
+        (false, 3) if row.fixed.is_some() => Some(ops[2]),
+        _ => return asm_err(ln, &format!("{name} takes {} operands", if zero { 3 } else { 2 })),
+    };
+    let narrow = row.shape == SimdFpMiscShape::Narrow;
+    if let Some((rd, dest)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, src)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        // A narrowing convert reads a lane of twice what it writes.
+        let esize = src;
+        if !row.scalar
+            || upper
+            || dest != if narrow { esize / 2 } else { esize }
+            || !lane_allowed(row.lanes, esize)
+        {
+            return asm_err(
+                ln,
+                &format!("{name} has no scalar form of this width; both operands take one"),
+            );
+        }
+        return simd_fp_misc_finish(row, true, false, esize, rn, rd, fbits, ln);
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    // The `2` suffix IS the Q bit on the width-changing rows: it names
+    // the half of the register the narrow side lives in.
+    let (esize, q) = match row.shape {
+        SimdFpMiscShape::Narrow => {
+            if !n.q || d.esize != n.esize / 2 || d.q != upper {
+                return asm_err(
+                    ln,
+                    &format!(
+                        "{name} writes lanes of half the source's width, and the `2` \
+                         suffix is what names the upper half of the destination"
+                    ),
+                );
+            }
+            (n.esize, upper)
+        }
+        SimdFpMiscShape::Long => {
+            if !d.q || n.esize != d.esize / 2 || n.q != upper {
+                return asm_err(
+                    ln,
+                    &format!(
+                        "{name} writes lanes of twice the source's width, and the `2` \
+                         suffix is what names the upper half of the source"
+                    ),
+                );
+            }
+            (d.esize, upper)
+        }
+        _ => {
+            if upper || d.esize != n.esize || d.q != n.q || (d.esize == 8 && !d.q) {
+                return asm_err(
+                    ln,
+                    &format!("{name} does not take the {} arrangement", arrangement_name(&n)),
+                );
+            }
+            (d.esize, d.q)
+        }
+    };
+    if !row.vector || !lane_allowed(row.lanes, esize) {
+        return asm_err(
+            ln,
+            &format!("{name} does not take the {} arrangement", arrangement_name(&n)),
+        );
+    }
+    simd_fp_misc_finish(row, false, q, esize, n.idx, d.idx, fbits, ln)
+}
+
+/// The word a float two-misc row makes, in whichever of its two
+/// encodings the line spelled: the plain one, or the shift-immediate
+/// class the `#fbits` conversions live in.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn simd_fp_misc_finish(
+    row: &SimdFpMiscRow,
+    scalar: bool,
+    q: bool,
+    esize: u8,
+    rn: u8,
+    rd: u8,
+    fbits: Option<&str>,
+    ln: usize,
+) -> Result<u32, EmuError> {
+    let Some(text) = fbits else {
+        let low = (1 << 21)
+            | (u32::from(row.opcode) << 12)
+            | (1 << 11)
+            | (u32::from(rn) << 5)
+            | u32::from(rd);
+        return Ok(simd_fp_class_word(scalar, q, row.u, row.a, esize, low));
+    };
+    let opcode = row.fixed.expect("the caller checked the row has a fixed-point form");
+    let amount = parse_immediate(text, ln)?;
+    let bits = i64::from(esize) * 8;
+    if amount < 1 || amount > bits {
+        return asm_err(
+            ln,
+            &format!("{} takes a fraction width of 1 to {bits} for this lane", row.name),
+        );
+    }
+    let field = u32::from(shift_imm_field(esize, amount as u8, true));
+    let base = if scalar { 0x5F00_0000 } else { 0x0F00_0000 | ((q as u32) << 30) };
+    Ok(base
+        | ((row.u as u32) << 29)
+        | (field << 16)
+        | (u32::from(opcode) << 11)
+        | (1 << 10)
+        | (u32::from(rn) << 5)
+        | u32::from(rd))
+}
+
+/// The float across-lanes fold (`fmaxv s3, v7.4s`) and the SIMD-scalar
+/// pairwise class beside it (`faddp s3, v7.2s`), which shares the
+/// encoding and differs only in bit 28.
+fn encode_simd_fp_across(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let row = simd_fp_across_by_name(name, false)
+        .or_else(|| simd_fp_across_by_name(name, true))
+        .expect("the caller checked the table");
+    let Some((rd, dest)) = simd_scalar_operand(ops[0]) else {
+        return asm_err(ln, &format!("{name} writes one s or d register"));
+    };
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    if dest != n.esize || (n.esize != 4 && n.esize != 8) {
+        return asm_err(
+            ln,
+            &format!("{name} folds a {} source into a matching register", arrangement_name(&n)),
+        );
+    }
+    // The pairwise class folds exactly two lanes; the vector fold only
+    // comes in the 128-bit single arrangement.
+    let shaped = if row.scalar_class {
+        (n.esize == 4 && !n.q) || (n.esize == 8 && n.q)
+    } else {
+        n.esize == 4 && n.q
+    };
+    if !shaped {
+        return asm_err(
+            ln,
+            &format!("{name} does not take the {} arrangement", arrangement_name(&n)),
+        );
+    }
+    let low = (1 << 21)
+        | (1 << 20)
+        | (u32::from(row.opcode) << 12)
+        | (1 << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(rd);
+    Ok(simd_fp_class_word(row.scalar_class, n.q, row.u, row.a, n.esize, low))
+}
+
+/// The float by-element multiplies: `Vd.T, Vn.T, Vm.Ts[index]` and the
+/// SIMD-scalar `Fd, Fn, Vm.Ts[index]`. An s element packs its index into
+/// H:L and a d element, which has only two lanes, into H alone.
+fn encode_simd_fp_by_element(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let row = simd_fp_elem_by_name(name).expect("the caller checked the table");
+    let (m, index) = parse_vec_lane(ops[2], ln)?;
+    let esize = m.esize;
+    if esize != 4 && esize != 8 {
+        return asm_err(
+            ln,
+            &format!("{name} indexes an s or a d element, not {}", element_letter(esize)),
+        );
+    }
+    let (rm4, l, mbit, h) = simd_elem_bits(esize, m.idx, index);
+    if let Some((rd, dest)) = simd_scalar_operand(ops[0]) {
+        let Some((rn, src)) = simd_scalar_operand(ops[1]) else {
+            return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
+        };
+        if dest != esize || src != esize {
+            return asm_err(ln, &format!("{name} has no scalar form of this width"));
+        }
+        return Ok(simd_elem_word(true, false, row.u, esize, rm4, l, mbit, h, row.opcode, rn, rd));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    if d.esize != esize || n.esize != esize || d.q != n.q || (esize == 8 && !d.q) {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} does not take these arrangements with a {} element",
+                element_letter(esize)
+            ),
+        );
+    }
+    Ok(simd_elem_word(false, d.q, row.u, esize, rm4, l, mbit, h, row.opcode, n.idx, d.idx))
+}
+
+/// FMOV (vector, immediate): cmode 1111, whose imm8 is the same 8-bit
+/// VFP float the scalar `fmov s0, #1.0` carries, replicated across the
+/// arrangement's lanes. `op` picks the 64-bit lane, so 2d is the only
+/// arrangement it comes in.
+fn encode_simd_fmov_imm(d: &VecReg, literal: &str, ln: usize) -> Result<u32, EmuError> {
+    if (d.esize != 4 && d.esize != 8) || (d.esize == 8 && !d.q) {
+        return asm_err(ln, "the vector fmov immediate takes 2s, 4s or 2d");
+    }
+    let value: f64 = literal
+        .parse()
+        .map_err(|_| asm_error(ln, &format!("cannot parse '{literal}' as an FMOV float immediate")))?;
+    let Some(imm8) = (0u16..=255)
+        .map(|c| c as u8)
+        .find(|&c| crate::decoder::expand_fmov_imm8(c) == value.to_bits())
+    else {
+        return asm_err(
+            ln,
+            &format!(
+                "{literal} does not fit the FMOV 8-bit float immediate; \
+                 build the vector from a .float or .double instead"
+            ),
+        );
+    };
+    Ok(0x0F00_0400
+        | ((d.q as u32) << 30)
+        | (((d.esize == 8) as u32) << 29)
+        | ((u32::from(imm8) >> 5) << 16)
+        | (0b1111 << 12)
+        | ((u32::from(imm8) & 0x1f) << 5)
+        | u32::from(d.idx))
+}
+
+/// ZIP/UZP/TRN: `Vd.T, Vn.T, Vm.T`, one arrangement throughout.
+fn encode_simd_permute(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let Some((_, opcode)) = simd_permute_by_name(name) else {
+        return asm_err(ln, &format!("`{name}` is not a permute"));
+    };
+    if ops.len() != 3 {
+        return asm_err(ln, &format!("{name} takes three operands of one arrangement"));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    // No permute is spelled 1d: shuffling one 64-bit lane moves nothing.
+    if n.esize != d.esize || m.esize != d.esize || n.q != d.q || m.q != d.q || (d.esize == 8 && !d.q)
+    {
+        return asm_err(ln, &format!("{name} takes three operands of the same arrangement"));
+    }
+    Ok(0x0E00_0000
+        | ((d.q as u32) << 30)
+        | (u32::from(size_field(d.esize)) << 22)
+        | (u32::from(m.idx) << 16)
+        | (u32::from(opcode) << 12)
+        | (1 << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx))
+}
+
+/// EXT: `Vd.T, Vn.T, Vm.T, #index`, byte lanes only. The window starts
+/// `index` bytes into Vn:Vm, so it has to stay inside the concatenation.
+fn encode_simd_ext(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(ln, "ext takes three 8b or 16b operands and a byte position (ext v0.8b, v1.8b, v2.8b, #3)");
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    if d.esize != 1 || n.esize != 1 || m.esize != 1 || n.q != d.q || m.q != d.q {
+        return asm_err(ln, "ext takes three operands, all 8b or all 16b");
+    }
+    let bytes = i64::from(if d.q { 16 } else { 8 });
+    let index = parse_immediate(ops[3], ln)?;
+    if index < 0 || index >= bytes {
+        return asm_err(ln, &format!("ext starts 0 to {} bytes into the pair, not #{index}", bytes - 1));
+    }
+    Ok(0x2E00_0000
+        | ((d.q as u32) << 30)
+        | (u32::from(m.idx) << 16)
+        | ((index as u32) << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(d.idx))
+}
+
+/// `{v7.16b}`, `{v7.16b, v8.16b}` or `{v7.16b-v10.16b}`: one to four
+/// consecutive registers in braces, wrapping past v31. TBL's table and
+/// the structure loads' register list are the same syntax, so they read
+/// it here rather than twice. `suffix` is appended to every element
+/// before it is parsed, which is how the single-structure forms hand it
+/// the `[15]` that sits outside their braces. Answers the first
+/// register (with the arrangement every element has to share) and how
+/// many there are.
+fn parse_vec_list(s: &str, suffix: &str, ln: usize) -> Result<(VecReg, u8), EmuError> {
+    let text = s.trim();
+    let inner = text
+        .strip_prefix('{')
+        .and_then(|body| body.strip_suffix('}'))
+        .ok_or_else(|| {
+            asm_error(ln, "a register list is a brace list of 1 to 4 registers ({v0.16b-v3.16b})")
+        })?;
+    let element = |part: &str| parse_vec_reg(&format!("{}{suffix}", part.trim()), ln);
+    let registers: Vec<VecReg> = if let Some((first, last)) = inner.split_once('-') {
+        let first = element(first)?;
+        let last = element(last)?;
+        if (last.esize, last.q, last.lane) != (first.esize, first.q, first.lane) {
+            return asm_err(ln, "every register in a list carries the same arrangement");
+        }
+        let len = (u32::from(last.idx) + 32 - u32::from(first.idx)) % 32 + 1;
+        (0..len)
+            .map(|step| VecReg { idx: ((u32::from(first.idx) + step) % 32) as u8, ..first })
+            .collect()
+    } else {
+        inner.split(',').map(element).collect::<Result<Vec<VecReg>, EmuError>>()?
+    };
+    if registers.is_empty() || registers.len() > 4 {
+        return asm_err(ln, "a register list holds 1 to 4 registers");
+    }
+    let head = registers[0];
+    if registers.iter().any(|reg| (reg.esize, reg.q, reg.lane) != (head.esize, head.q, head.lane)) {
+        return asm_err(ln, "every register in a list carries the same arrangement");
+    }
+    if registers
+        .windows(2)
+        .any(|pair| (u32::from(pair[0].idx) + 1) % 32 != u32::from(pair[1].idx))
+    {
+        return asm_err(ln, "a register list's registers are consecutive, wrapping past v31");
+    }
+    Ok((head, registers.len() as u8))
+}
+
+/// TBL and TBX: `Vd.T, {table}, Vm.T`. The table is always 16b whatever
+/// the destination is; TBX differs only in bit 12.
+fn encode_simd_table(extend: bool, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let name = if extend { "tbx" } else { "tbl" };
+    if ops.len() != 3 {
+        return asm_err(ln, &format!("{name} takes a destination, a brace list of 1 to 4 table registers, and an index vector"));
+    }
+    let d = parse_vec_arrangement(ops[0], ln)?;
+    let m = parse_vec_arrangement(ops[2], ln)?;
+    if d.esize != 1 || m.esize != 1 || m.q != d.q {
+        return asm_err(ln, &format!("{name} takes 8b or 16b for both the destination and the index vector"));
+    }
+    let (table, len) = parse_vec_list(ops[1], "", ln)?;
+    if table.lane.is_some() {
+        return asm_err(ln, "a lookup table holds whole registers, not lanes");
+    }
+    if table.esize != 1 || !table.q {
+        return asm_err(ln, "every register in a lookup table is spelled 16b");
+    }
+    let rn = table.idx;
+    Ok(0x0E00_0000
+        | ((d.q as u32) << 30)
+        | (u32::from(m.idx) << 16)
+        | (u32::from(len - 1) << 13)
+        | ((extend as u32) << 12)
+        | (u32::from(rn) << 5)
+        | u32::from(d.idx))
+}
+
+/// LD1-LD4 / ST1-ST4: `{list}, [Xn]` with an optional post-index tail.
+/// `name` is the lowercase mnemonic, whose digit is the interleave
+/// factor and whose `r` suffix is the replicate form; everything else
+/// about the word falls out of the shape of the register list. The
+/// index packing of the single-structure forms comes from
+/// `decoder::simd_struct_index_bits`, the same rule the decoder reads
+/// the other way, so the two cannot drift.
+fn encode_simd_structure(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let load = name.starts_with("ld");
+    let replicate = name.ends_with('r');
+    let structures = name.as_bytes()[2] - b'0';
+
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} takes a brace list of registers, an address, and an optional \
+                 post-index amount"
+            ),
+        );
+    }
+
+    // The single-structure forms put their lane index after the closing
+    // brace (`{v3.b, v4.b}[15]`), so it is split off here and handed to
+    // the list parser as a suffix on every element.
+    let text = ops[0].trim();
+    let (list_text, suffix) = match text.rfind('}') {
+        Some(close) => {
+            let (body, rest) = text.split_at(close + 1);
+            (body.to_string(), rest.trim().to_string())
+        }
+        None => (text.to_string(), String::new()),
+    };
+    let (first, count) = parse_vec_list(&list_text, &suffix, ln)?;
+    // A lane inside the braces is not a spelling GAS has: the index sits
+    // after the closing brace and applies to the whole list, so
+    // `{v3.b[3]}` has to be turned away rather than read as `{v3.b}[3]`.
+    if suffix.is_empty() && first.lane.is_some() {
+        return asm_err(
+            ln,
+            &format!("{name} spells the lane index after the list: `{{v3.b}}[3]`, not inside it"),
+        );
+    }
+
+    // LD1 and ST1 are the only families whose list can hold more
+    // registers than the mnemonic's digit: there is nothing to
+    // interleave, so the registers are simply filled in turn.
+    let many = structures == 1 && !replicate && first.lane.is_none();
+    if !many && count != structures {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} names {structures} register{} in its list",
+                if structures == 1 { "" } else { "s" }
+            ),
+        );
+    }
+
+    let shape = if replicate {
+        if first.lane.is_some() {
+            return asm_err(ln, &format!("{name} replicates whole registers, not one lane"));
+        }
+        SimdStructShape::Replicate
+    } else if let Some(index) = first.lane {
+        SimdStructShape::Lane(index)
+    } else {
+        // A 1d register holds one element, so there is nothing for an
+        // interleaving form to interleave.
+        if first.esize == 8 && !first.q && structures > 1 {
+            return asm_err(
+                ln,
+                &format!("{name} has no 1d form: only ld1 and st1 reach a one-element list"),
+            );
+        }
+        SimdStructShape::Multiple
+    };
+    let esize = first.esize;
+    let total = simd_struct_bytes(shape, count, esize, first.q);
+
+    let address = ops[1].trim();
+    let inner = address
+        .strip_prefix('[')
+        .and_then(|body| body.strip_suffix(']'))
+        .ok_or_else(|| {
+            asm_error(ln, &format!("{name} takes a bare address with no offset, `[x7]`"))
+        })?;
+    let (rn, base_is_64) = parse_register(inner, ln)?;
+    if !base_is_64 {
+        return asm_err(ln, &format!("{name}'s base register is a 64-bit register"));
+    }
+
+    let post = match ops.get(2) {
+        None => None,
+        // A register spelling is the register form; anything else is
+        // read as the immediate. The sniff is on the spelling rather
+        // than on a leading `#` because the hosted frontend folds a
+        // constant expression down to a bare number before we see it.
+        Some(tail) => match parse_register(tail.trim(), ln) {
+            Ok((rm, true)) if rm != 31 => Some(rm),
+            Ok(_) => {
+                return asm_err(ln, &format!("{name}'s post-index register is x0 through x30"))
+            }
+            Err(_) => {
+                let amount = parse_immediate(tail, ln)?;
+                if amount < 0 || amount as u64 != total {
+                    return asm_err(
+                        ln,
+                        &format!(
+                            "{name} post-indexes by the bytes it moves, so this form \
+                             writes back #{total}"
+                        ),
+                    );
+                }
+                // The immediate form spends Rm on the marker 31 rather
+                // than on the amount, which is fixed by the shape.
+                Some(31u8)
+            }
+        },
+    };
+    let rm = u32::from(post.unwrap_or(0));
+    let writeback = u32::from(post.is_some());
+
+    if let SimdStructShape::Multiple = shape {
+        let &(opcode, _, _) = SIMD_STRUCT_MULTIPLE
+            .iter()
+            .find(|row| row.1 == structures && row.2 == count)
+            .ok_or_else(|| asm_error(ln, &format!("{name} takes 1 to 4 registers")))?;
+        return Ok(0x0C00_0000
+            | ((first.q as u32) << 30)
+            | (writeback << 23)
+            | ((load as u32) << 22)
+            | (rm << 16)
+            | (u32::from(opcode) << 12)
+            | (esize.trailing_zeros() << 10)
+            | (u32::from(rn) << 5)
+            | u32::from(first.idx));
+    }
+
+    let (q, s, size) = match shape {
+        SimdStructShape::Lane(index) => simd_struct_index_bits(esize, index),
+        _ => (first.q, false, esize.trailing_zeros() as u8),
+    };
+    // opcode<2:1> names the element width, 11 being the replicate rows;
+    // opcode<0> and R carry the family number between them.
+    let width_bits = match shape {
+        SimdStructShape::Replicate => 0b11,
+        _ => match esize {
+            1 => 0b00,
+            2 => 0b01,
+            _ => 0b10,
+        },
+    };
+    let opcode = (width_bits << 1) | ((structures - 1) >> 1);
+    Ok(0x0D00_0000
+        | ((q as u32) << 30)
+        | (writeback << 23)
+        | ((load as u32) << 22)
+        | (u32::from((structures - 1) & 1) << 21)
+        | (rm << 16)
+        | (u32::from(opcode) << 13)
+        | ((s as u32) << 12)
+        | (u32::from(size) << 10)
+        | (u32::from(rn) << 5)
+        | u32::from(first.idx))
+}
+
+/// Across lanes: `Fd, Vn.T`, the whole source folded into one scalar.
+/// `addp d3, v7.2d` is the SIMD-scalar pairwise class, same shape.
+fn encode_simd_across(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let row = simd_across_by_name(name).expect("the caller checked the table");
+    let Some((rd, dest_esize)) = simd_scalar_operand(ops[0]) else {
+        return asm_err(ln, &format!("{name} writes one b, h, s or d register"));
+    };
+    let n = parse_vec_arrangement(ops[1], ln)?;
+    let expected = if row.widen { n.esize * 2 } else { n.esize };
+    if dest_esize != expected {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} folds a {} source into a {} register",
+                arrangement_name(&n),
+                element_letter(expected)
+            ),
+        );
+    }
+    // The group never folds a 64-bit arrangement of its wider lanes:
+    // that would leave one or two elements, which is what the pairwise
+    // forms are for.
+    if !lane_allowed(row.lanes, n.esize) || (n.esize >= 4 && !n.q) {
+        return asm_err(ln, &format!("{name} does not take the {} arrangement", arrangement_name(&n)));
+    }
+    let low = (1 << 21)
+        | (1 << 20)
+        | (u32::from(row.opcode) << 12)
+        | (1 << 11)
+        | (u32::from(n.idx) << 5)
+        | u32::from(rd);
+    Ok(simd_class_word(row.scalar_class, n.q, row.u, size_field(n.esize), low))
+}
+
+/// The arrangement suffix a parsed operand was written with, for a
+/// diagnostic that quotes back what the line said.
+fn arrangement_name(reg: &VecReg) -> &'static str {
+    ARRANGEMENTS
+        .iter()
+        .find(|(_, esize, q)| *esize == reg.esize && *q == reg.q)
+        .map(|(name, _, _)| *name)
+        .unwrap_or("vector")
+}
+
+/// The bitwise three-same group: AND, BIC, ORR, ORN, EOR, BSL, BIT and
+/// BIF. The size field is the op selector here, not an element width, so
+/// all eight take the byte arrangements alone.
+fn encode_simd_logical_reg(ops: &[&str], op: SimdLogicalOp, ln: usize) -> Result<u32, EmuError> {
+    let name = simd_logical_name(op);
+    let (_, u, size) = simd_logical_by_name(name).expect("every logical op has a row");
+    if ops.len() != 3 {
+        return asm_err(ln, &format!("the vector {name} takes 3 operands: {name} v0.16b, v1.16b, v2.16b"));
+    }
+    let rd = parse_vec_arrangement(ops[0], ln)?;
+    let rn = parse_vec_arrangement(ops[1], ln)?;
+    let rm = parse_vec_arrangement(ops[2], ln)?;
+    if rd.esize != 1 || rn.esize != 1 || rm.esize != 1 || rn.q != rd.q || rm.q != rd.q {
+        return asm_err(
+            ln,
+            &format!("the vector {name} takes three matching 8b or 16b operands"),
+        );
+    }
+    let low = (1 << 21)
+        | (u32::from(rm.idx) << 16)
+        | (0b000111 << 10)
+        | (u32::from(rn.idx) << 5)
+        | u32::from(rd.idx);
+    Ok(simd_class_word(false, rd.q, u, size, low))
+}
+
+/// The two vector readings of ORR and BIC: a modified immediate
+/// (`orr v0.4s, #1, lsl #8`) and three registers (`orr v0.16b, v1.16b,
+/// v2.16b`). Reached only when the first operand names an arrangement.
+fn encode_vector_logical(ops: &[&str], op: SimdImmOp, ln: usize) -> Result<u32, EmuError> {
+    let second = ops.get(1).map(|s| s.trim()).unwrap_or("");
+    if second.starts_with('#') || second.starts_with(|c: char| c.is_ascii_digit()) {
+        return encode_simd_mod_imm(ops, op, ln);
+    }
+    let logical = if op == SimdImmOp::Bic { SimdLogicalOp::Bic } else { SimdLogicalOp::Orr };
+    encode_simd_logical_reg(ops, logical, ln)
+}
+
+/// ORR: the general-register and bitmask-immediate forms, plus the two
+/// vector ones. A first operand that names an arrangement is what tells
+/// them apart.
+fn encode_orr(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.first().is_some_and(|o| parse_vec_operand(o).is_some()) {
+        return encode_vector_logical(ops, SimdImmOp::Orr, ln);
+    }
+    encode_log_dispatch(ops, 0b01, ln)
+}
+
+/// FMOV between an x register and the UPPER 64-bit lane of a vector
+/// register. It is the only FMOV that names a lane, and the only one
+/// that leaves half of its destination alone.
+fn encode_fmov_lane(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let to_fp = parse_vec_operand(ops[0]).is_some();
+    let (lane_text, gp_text) = if to_fp { (ops[0], ops[1]) } else { (ops[1], ops[0]) };
+    let (lane_reg, lane) = parse_vec_lane(lane_text, ln)?;
+    if lane_reg.esize != 8 || lane != 1 {
+        return asm_err(
+            ln,
+            "fmov moves a general register to or from the upper 64-bit lane alone (v0.d[1])",
+        );
+    }
+    let (gp, sf) = parse_register(gp_text, ln)?;
+    if !sf {
+        return asm_err(ln, "fmov pairs v0.d[1] with an x register");
+    }
+    // sf 0011110 10 1 01 opcode 000000 Rn Rd, opcode 111 in and 110 out.
+    let opcode: u32 = if to_fp { 0b111 } else { 0b110 };
+    let (rd, rn) = if to_fp { (lane_reg.idx, gp) } else { (gp, lane_reg.idx) };
+    Ok(0x9EA8_0000 | (opcode << 16) | (u32::from(rn) << 5) | u32::from(rd))
+}
+
+/// The vector spellings of `mov`, each an alias for one of the encoders
+/// above: lane to lane and register to lane are INS, lane out is UMOV,
+/// lane into a scalar is DUP, and whole register to whole register is
+/// ORR with the source named twice.
+fn encode_simd_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 2 {
+        return asm_err(ln, "the vector mov takes 2 operands");
+    }
+    let dest = parse_vec_operand(ops[0]);
+    match dest {
+        Some(d) if d.lane.is_some() => encode_simd_ins(ops, ln),
+        Some(_) => encode_simd_logical_reg(&[ops[0], ops[1], ops[1]], SimdLogicalOp::Orr, ln),
+        // A lane source with a non-vector destination: a general
+        // register takes UMOV, a b/h/s/d scalar takes DUP.
+        None if parse_register(ops[0], ln).is_ok() => encode_simd_lane_out(ops, false, ln),
+        None => encode_simd_dup(ops, ln),
+    }
 }
 
 /// Encode an FP data-processing 1-source op (`FNEG` / `FABS` / `FSQRT`
@@ -1940,10 +3904,10 @@ fn encode_fp_unary(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuError>
     if ops.len() != 2 {
         return asm_err(ln, &format!("{name} requires 2 operands: {name} fd, fn"));
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width(name, &[wd, wn], ln)?;
-    Ok(0x1E20_4000 | fp_ftype(width) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
+    Ok(0x1E20_4000 | fp_ftype(width, ln)? | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 /// FCVT converts between the S and D views: `fcvt d0, s1` widens (exact),
@@ -1953,8 +3917,8 @@ fn encode_fcvt(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "fcvt requires 2 operands: fcvt fd, fn");
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
     if wd == wn {
         return asm_err(
             ln,
@@ -1962,22 +3926,22 @@ fn encode_fcvt(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         );
     }
     // 1-source with opcode 0b0001 followed by dest-type; ftype = source width.
-    let opcode: u32 = if wd == 'D' { 0b000101 } else { 0b000100 };
-    Ok(0x1E20_4000 | fp_ftype(wn) | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
+    let opcode: u32 = if wd == FpWidth::D { 0b000101 } else { 0b000100 };
+    Ok(0x1E20_4000 | fp_ftype(wn, ln)? | (opcode << 15) | ((fn_ as u32) << 5) | (fd as u32))
 }
 
 fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u32, EmuError> {
     if ops.len() != 2 {
         return asm_err(ln, "fcmp/fcmpe requires 2 operands");
     }
-    let (fn_, wn) = parse_fp_register(ops[0], ln)?;
-    let (fm, wm) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("fcmp", &[wn, wm], ln)?;
     // FCMP Fn, Fm: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_0_0000; FCMPE sets
     // opc bit 4. The emulator raises no FP exceptions, so the two set the
     // same flags either way.
     let opc: u32 = if signaling { 0b10000 } else { 0 };
-    Ok(0x1E20_2000 | fp_ftype(width) | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc)
+    Ok(0x1E20_2000 | fp_ftype(width, ln)? | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc)
 }
 
 /// SCVTF / UCVTF Fd, Rn, plus SCVTF's SIMD-scalar spelling. `name` keys
@@ -1993,24 +3957,16 @@ fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, Em
             &format!("{name} requires 2 operands, or 3 with a fixed-point scale ({name} fd, rn, #fbits)"),
         );
     }
-    let (fd, wd) = parse_fp_register(ops[0], ln)?;
-    // The source is either a general register (the usual course form) or
-    // an FP register already holding the integer bits (gcc emits
-    // `ldr s31, [...]` then `scvtf s30, s31`): the SIMD-scalar encoding,
-    // which exists for SCVTF only.
-    if let Ok((fn_, wn)) = parse_fp_register(ops[1], ln) {
-        if name != "scvtf" {
-            return asm_err(
-                ln,
-                &format!("{name} takes a general-register source ({name} fd, xn / {name} fd, wn)"),
-            );
-        }
-        if ops.len() == 3 {
-            return asm_err(ln, "the fixed-point form takes a general-register source");
-        }
-        let width = require_same_fp_width(name, &[wd, wn], ln)?;
-        let sz: u32 = if width == 'D' { 1 << 22 } else { 0 };
-        return Ok(0x5E21_D800 | sz | ((fn_ as u32) << 5) | (fd as u32));
+    let FpReg { idx: fd, width: wd } = parse_fp_register(ops[0], ln)?;
+    // The source is a general register. An s or d source is the vector
+    // family's SIMD-scalar form (the integer bits already sit in the FP
+    // file, as they do after gcc's `ldr s31, [...]`), which the sniff
+    // ahead of the dispatch has already routed away from here.
+    if parse_fp_register(ops[1], ln).is_ok() {
+        return asm_err(
+            ln,
+            &format!("{name} takes a general-register source ({name} fd, xn / {name} fd, wn)"),
+        );
     }
     let (rn, sf) = parse_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
@@ -2021,7 +3977,7 @@ fn encode_fp_cvt_from_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, Em
     // replaces the zeros.
     Ok((sf_bit << 31)
         | 0x1E00_0000
-        | fp_ftype(wd)
+        | fp_ftype(wd, ln)?
         | (if scale.is_some() { 0 } else { 1 << 21 })
         | (u32::from(*rmode) << 19)
         | (u32::from(*opcode) << 16)
@@ -2070,14 +4026,14 @@ fn encode_fp_cvt_int(ops: &[&str], name: &str, ln: usize) -> Result<u32, EmuErro
         );
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
-    let (fn_, wn) = parse_fp_register(ops[1], ln)?;
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[1], ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
     let scale = fixed_point_scale(ops.get(2), sf, name, ln)?;
     // sf_0_0_11110_ftype_bit21_rmode_opcode_scale(6)_Rn_Rd. Bit 21 is what
     // separates the integer form from the fixed-point one.
     Ok((sf_bit << 31)
         | 0x1E00_0000
-        | fp_ftype(wn)
+        | fp_ftype(wn, ln)?
         | (if scale.is_some() { 0 } else { 1 << 21 })
         | (u32::from(*rmode) << 19)
         | (u32::from(*opcode) << 16)
@@ -2210,12 +4166,13 @@ fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result<u32, EmuEr
     if ops.len() < 2 {
         return asm_err(ln, "LDR/STR requires at least 2 operands");
     }
-    // FP LDR/STR: the target is a D/S register. Dispatch to the SIMD&FP
-    // encoding; this path only handles the plain integer form.
+    // FP LDR/STR: the target is a b/h/s/d/q register. Dispatch to the
+    // SIMD&FP encoding; this path only handles the plain integer form.
+    // Only bare LDR/STR carry an FP target; LDRB and friends pin `size`
+    // themselves and stay integer.
     if let Some(first_char) = ops[0].trim().chars().next() {
-        let upper = first_char.to_ascii_uppercase();
-        if matches!(upper, 'D' | 'S') && size == 0b11 {
-            return encode_ldst_fp(ops, load, ln);
+        if FpWidth::from_prefix(first_char).is_some() && size == 0b11 {
+            return encode_ldst_fp(ops, load, false, ln);
         }
     }
     let (rt, target_is_x) = parse_register(ops[0], ln)?;
@@ -2364,7 +4321,10 @@ fn looks_like_register(s: &str) -> bool {
     // register-offset address apart from an immediate one, so an
     // out-of-range index like `x99` still reads as a register and reaches
     // `parse_register` for the real complaint.
-    for prefix in ["x", "w"] {
+    // The SIMD&FP names ride the same test: a `q` operand is a register,
+    // and an address that names one has to reach `parse_register` for the
+    // real complaint instead of being silently read as an immediate.
+    for prefix in ["x", "w", "b", "h", "s", "d", "q", "v"] {
         if let Some(rest) = lower.strip_prefix(prefix) {
             if rest == "zr" {
                 return true;
@@ -2679,22 +4639,31 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
     })
 }
 
-fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
-    // SIMD&FP LDR/STR (immediate, unsigned offset):
-    //   size[31:30] | 111 | V=1 | 01 | opc[23:22] | imm12 | Rn | Rt
-    // D uses size=0b11, opc=01 (load) or 00 (store); S uses size=0b10,
-    // same opc selection. Access scale is 8 for D, 4 for S.
-    let (rt, width) = parse_fp_register(ops[0], ln)?;
+/// SIMD&FP LDR/STR at all five widths.
+///
+/// Unsigned offset:  size | 111 | V=1 | 01 | opc | imm12 | Rn | Rt
+/// imm9 family:      size | 111 | V=1 | 00 | opc | 0 | imm9 | idx | Rn | Rt
+/// Register offset:  size | 111 | V=1 | 00 | opc | 1 | Rm | option | S | 10 | Rn | Rt
+///
+/// `opc` is `opc_high:load`, so the Q form (opc_high 1, size 00) is what
+/// tells a 128-bit access from the byte one they share a size field with.
+/// `unscaled` is set by LDUR/STUR, which spell the imm9 offset form
+/// outright and take no other addressing mode.
+fn encode_ldst_fp(ops: &[&str], load: u8, unscaled: bool, ln: usize) -> Result<u32, EmuError> {
+    let FpReg { idx: rt, width } = parse_fp_register(ops[0], ln)?;
     let addr_str: String = ops[1..].join(",");
     let am = parse_addressing_mode(addr_str.trim(), ln)?;
-    let (size, scale) = match width {
-        'D' => (0b11u32, 8u64),
-        'S' => (0b10u32, 4u64),
-        _ => return asm_err(ln, "unsupported FP LDR/STR width"),
+    let size = width.size_field();
+    let scale = width.bytes();
+    let opc: u32 = (width.opc_high() << 1) | u32::from(load);
+    let mnemonic = if unscaled {
+        if load == 1 { "LDUR" } else { "STUR" }
+    } else if load == 1 {
+        "LDR"
+    } else {
+        "STR"
     };
-    let opc: u32 = if load == 1 { 0b01 } else { 0b00 };
-    // The imm9 family shared by the unscaled-offset and writeback forms:
-    //   size | 1111 | 00 | opc | 0 | imm9 | idx | Rn | Rt
+    // The imm9 family shared by the unscaled-offset and writeback forms.
     let imm9_form = |offset_val: i64, idx: u32, rn: u8| -> Result<u32, EmuError> {
         if !(-256..=255).contains(&offset_val) {
             return asm_err(ln, "FP offset must be in [-256, 255] for this form");
@@ -2715,9 +4684,10 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
             mode: IndexMode::Unsigned,
         } => {
             let offset_val = offset.unwrap_or(0);
-            if offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
+            if unscaled || offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
                 // Same GAS conversion as the integer path: negative or
-                // unaligned offsets ride the unscaled encoding.
+                // unaligned offsets ride the unscaled encoding, and
+                // LDUR/STUR ask for it by name.
                 return imm9_form(offset_val, 0b00, rn);
             }
             let imm12 = (offset_val as u64 / scale) as u32;
@@ -2733,17 +4703,69 @@ fn encode_ldst_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
                 | (rt as u32))
         }
         AddressingMode::Immediate { rn, offset, mode } => {
+            if unscaled {
+                return asm_err(
+                    ln,
+                    &format!("{mnemonic} takes a plain [Xn, #imm] address, with no writeback"),
+                );
+            }
             let offset_val = offset.unwrap_or(0);
             let idx = if matches!(mode, IndexMode::PreIndex) { 0b11 } else { 0b01 };
             imm9_form(offset_val, idx, rn)
         }
-        AddressingMode::RegOffset { .. } => {
-            asm_err(
-                ln,
-                "FP LDR/STR register-offset is not supported; compute the address with add and use [Xn]",
-            )
+        AddressingMode::RegOffset {
+            rn,
+            rm,
+            option,
+            shift_amount,
+        } => {
+            if unscaled {
+                return asm_err(
+                    ln,
+                    &format!("{mnemonic} takes a plain [Xn, #imm] address, not a register offset"),
+                );
+            }
+            // S means "scale the index by the access size". The only
+            // amount that may be written is log2 of the access width, and
+            // a written #0 sets S for a byte access, where the two spell
+            // the same shift: GAS keeps the distinction in the word.
+            let shift = i64::from(width.scale_shift());
+            let s_bit: u32 = match shift_amount {
+                None => 0,
+                Some(a) if a == shift => 1,
+                Some(0) => 0,
+                Some(a) => {
+                    return asm_err(
+                        ln,
+                        &format!(
+                            "this {}-byte access can only scale its index register by #0 or #{shift}, got #{a}",
+                            width.bytes()
+                        ),
+                    );
+                }
+            };
+            Ok((size << 30)
+                | (0b1111 << 26)
+                | (opc << 22)
+                | (1 << 21)
+                | ((rm as u32) << 16)
+                | ((option as u32) << 13)
+                | (s_bit << 12)
+                | (0b10 << 10)
+                | ((rn as u32) << 5)
+                | (rt as u32))
         }
     }
+}
+
+/// LDUR/STUR of a SIMD&FP register: the unscaled signed-offset form
+/// spelled out. The integer LDUR/STUR are not in `SUPPORTED_MNEMONICS`,
+/// so a general-register operand is turned away by `parse_fp_register`.
+fn encode_ldur_stur(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() < 2 {
+        return asm_err(ln, "LDUR/STUR requires at least 2 operands");
+    }
+    encode_ldst_fp(ops, load, true, ln)
 }
 
 #[allow(clippy::identity_op)] // zero fields kept to document the full encoding layout
@@ -2751,12 +4773,12 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     if ops.len() < 3 {
         return asm_err(ln, "LDP/STP requires at least 3 operands");
     }
-    // An FP first operand (d8, s0) routes the pair through the SIMD&FP
-    // class, the same sniff encode_ldst does for single registers. The
-    // digit check keeps `sp` on the general path.
+    // An FP first operand (d8, s0, q1) routes the pair through the
+    // SIMD&FP class, the same sniff encode_ldst does for single
+    // registers. The digit check keeps `sp` on the general path.
     let first = ops[0].trim();
     if let Some(c) = first.chars().next() {
-        if matches!(c.to_ascii_uppercase(), 'D' | 'S')
+        if FpWidth::from_prefix(c).is_some()
             && first.len() >= 2
             && first[1..].chars().all(|d| d.is_ascii_digit())
         {
@@ -2825,14 +4847,27 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
         | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
 }
 
-/// LDP/STP of the FP file: V=1, opc 00 for S pairs (scale 4) or 01 for D
-/// pairs (scale 8). Same addressing modes and imm7 range as the general
-/// form; a callee-saved `stp d8, d9, [sp, -16]!` prologue is correct
-/// AAPCS64 and lands here.
-fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
-    let (rt, wt) = parse_fp_register(ops[0], ln)?;
-    let (rt2, wt2) = parse_fp_register(ops[1], ln)?;
+/// LDP/STP/LDNP/STNP of the FP file: V=1, opc 00 for S pairs (scale 4),
+/// 01 for D pairs (scale 8), 10 for Q pairs (scale 16). Same addressing
+/// modes and imm7 range as the general form; a callee-saved
+/// `stp d8, d9, [sp, -16]!` prologue is correct AAPCS64 and lands here.
+/// `no_allocate` is the LDNP/STNP op2 (00), a plain signed offset whose
+/// only difference is a cache hint, so it takes no writeback index.
+fn encode_ldst_pair_fp_inner(
+    ops: &[&str], load: u8, no_allocate: bool, ln: usize,
+) -> Result<u32, EmuError> {
+    let FpReg { idx: rt, width: wt } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: rt2, width: wt2 } = parse_fp_register(ops[1], ln)?;
     let width = require_same_fp_width("ldp/stp", &[wt, wt2], ln)?;
+    let Some(opc) = width.pair_opc() else {
+        return asm_err(
+            ln,
+            &format!(
+                "there is no {}-register pair form: ldp/stp take s, d or q registers",
+                width.letter()
+            ),
+        );
+    };
 
     let addr_str: String = ops[2..].join(",");
     let am = parse_addressing_mode(addr_str.trim(), ln)?;
@@ -2842,8 +4877,14 @@ fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuErro
             return asm_err(ln, "LDP/STP does not accept a register offset");
         }
     };
+    if no_allocate && !matches!(mode, IndexMode::Unsigned) {
+        return asm_err(
+            ln,
+            "LDNP/STNP take a plain [Xn, #imm] address, with no writeback",
+        );
+    }
 
-    let scale: i64 = if width == 'D' { 8 } else { 4 };
+    let scale = width.bytes() as i64;
     if offset_val % scale != 0 {
         return asm_err(ln, "pair offset must be aligned to register size");
     }
@@ -2861,16 +4902,33 @@ fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuErro
     }
     let imm7_enc = (quotient as u32) & 0x7F;
 
-    let opc: u32 = if width == 'D' { 0b01 } else { 0b00 };
-    let mode_bits: u32 = match mode {
-        IndexMode::PostIndex => 0b01,
-        IndexMode::Unsigned => 0b10,
-        IndexMode::PreIndex => 0b11,
+    let mode_bits: u32 = if no_allocate {
+        0b00
+    } else {
+        match mode {
+            IndexMode::PostIndex => 0b01,
+            IndexMode::Unsigned => 0b10,
+            IndexMode::PreIndex => 0b11,
+        }
     };
 
     Ok((opc << 30) | (0b101 << 27) | (1 << 26) | (mode_bits << 23)
         | ((load as u32) << 22) | (imm7_enc << 15)
         | ((rt2 as u32) << 10) | ((rn as u32) << 5) | (rt as u32))
+}
+
+fn encode_ldst_pair_fp(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    encode_ldst_pair_fp_inner(ops, load, false, ln)
+}
+
+/// LDNP/STNP, the no-allocate pair. SIMD&FP only here: the general-
+/// register spelling is not in `SUPPORTED_MNEMONICS`, so a `x0` operand
+/// is turned away by `parse_fp_register`.
+fn encode_ldst_pair_no_allocate(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+    if ops.len() < 3 {
+        return asm_err(ln, "LDNP/STNP requires at least 3 operands");
+    }
+    encode_ldst_pair_fp_inner(ops, load, true, ln)
 }
 
 /// Encode `adr Rd, label` (byte-relative) or `adrp Rd, label` (page-
@@ -3398,18 +5456,34 @@ mod tests {
     #[test]
     fn scvtf_converts_integer_bits_already_in_the_fp_register() {
         use crate::cpu::Cpu;
-        use crate::decoder::{decode, Instruction};
+        use crate::decoder::{decode, Instruction, SimdFpMiscOp};
         let labels = HashMap::new();
         let s_form = encode_line("scvtf s30, s31", 0, &labels, 1).unwrap();
         assert_eq!(s_form, 0x5E21_DBFE);
         assert!(matches!(
             decode(s_form).unwrap(),
-            Instruction::FpScvtfFp { fd: 30, fn_: 31, single: true }
+            Instruction::SimdFpTwoMisc {
+                op: SimdFpMiscOp::Scvtf,
+                esize: 4,
+                scalar: true,
+                fbits: 0,
+                rn: 31,
+                rd: 30,
+                ..
+            }
         ));
         let d_form = encode_line("scvtf d1, d2", 0, &labels, 1).unwrap();
         assert!(matches!(
             decode(d_form).unwrap(),
-            Instruction::FpScvtfFp { fd: 1, fn_: 2, single: false }
+            Instruction::SimdFpTwoMisc {
+                op: SimdFpMiscOp::Scvtf,
+                esize: 8,
+                scalar: true,
+                fbits: 0,
+                rn: 2,
+                rd: 1,
+                ..
+            }
         ));
 
         // 7 as integer bits in s31 becomes 7.0f32 in s30.
@@ -3581,15 +5655,15 @@ mod tests {
 
     #[test]
     fn fp_pairs_encode_as_the_gas_words_and_round_trip() {
-        use crate::decoder::{decode, Instruction, LdStPairOp};
+        use crate::decoder::{decode, Instruction, LdStPairOp, MemSize};
         let labels = HashMap::new();
         // The canonical callee-saved prologue word, byte-matched to GAS.
         let word = encode_line("stp d8, d9, [sp, -16]!", 0, &labels, 1).unwrap();
         assert_eq!(word, 0x6DBF_27E8);
         match decode(word).unwrap() {
-            Instruction::FpLdStPair { op, single, rt, rt2, rn, imm7, .. } => {
+            Instruction::FpLdStPair { op, size, rt, rt2, rn, imm7, .. } => {
                 assert_eq!(op, LdStPairOp::Stp);
-                assert!(!single);
+                assert_eq!(size, MemSize::X);
                 assert_eq!((rt, rt2, rn, imm7), (8, 9, 31, -16));
             }
             other => panic!("decoded to {other:?} (the V=1 pair once ran as a GP pair)"),
@@ -3609,16 +5683,22 @@ mod tests {
     }
 
     #[test]
-    fn fp_pairs_reject_mixed_widths_and_q_pairs_stay_unknown() {
-        use crate::decoder::decode;
+    fn fp_pairs_reject_mixed_widths_and_carry_the_q_form() {
+        use crate::decoder::{decode, Instruction, MemSize};
         let labels = HashMap::new();
         let err = encode_line("stp d0, s1, [sp, -16]!", 0, &labels, 1)
             .unwrap_err()
             .to_string();
         assert!(err.contains("all S or all D"), "{err}");
-        // A Q-register pair word (opc=10, V=1) stays undecoded rather than
-        // mis-running.
-        assert!(decode(0xAD00_07E0).is_err(), "q pair must not decode");
+        // A Q-register pair word (opc=10, V=1) is a real 16-byte pair.
+        assert!(matches!(
+            decode(0xAD00_07E0).unwrap(),
+            Instruction::FpLdStPair { size: MemSize::Q, .. }
+        ));
+        assert_eq!(
+            encode_line("stp q0, q1, [sp]", 0, &labels, 1).unwrap(),
+            0xAD00_07E0
+        );
     }
 
     #[test]
@@ -5292,7 +7372,11 @@ svc 0").unwrap();
         ] {
             assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
         }
-        let err = encode_line("ucvtf s0, s1", 0, &labels, 1).unwrap_err().to_string();
+        // Two FP registers is no longer this class at all: it is the
+        // SIMD-scalar UCVTF, whose source is an integer already sitting
+        // in the FP file.
+        assert_eq!(encode_line("ucvtf s0, s1", 0, &labels, 1).unwrap(), 0x7E21_D820);
+        let err = encode_line("ucvtf s0, q1", 0, &labels, 1).unwrap_err().to_string();
         assert!(err.contains("general-register source"), "{err}");
         let source = r#"
             MOV X0, #-1
@@ -5951,6 +8035,38 @@ svc 0").unwrap();
         );
     }
 
+    // -- brace register lists --
+
+    #[test]
+    fn a_lane_inside_the_braces_is_refused() {
+        // The list parser reads a whole vector operand per element, so a
+        // lane spelling would parse; GAS has no such form. TBL's table is
+        // whole registers, and the structure loads put the index AFTER
+        // the closing brace, where it applies to the list as a whole.
+        let labels: HashMap<String, u64> = HashMap::new();
+        for (src, needle) in [
+            ("tbl v0.8b, {v1.b[3]}, v2.8b", "whole registers, not lanes"),
+            ("tbx v0.8b, {v1.b[0]-v2.b[0]}, v2.8b", "whole registers, not lanes"),
+            ("ld1 {v3.b[3]}, [x7]", "after the list"),
+            ("ld2 {v3.b[3], v4.b[3]}, [x7]", "after the list"),
+        ] {
+            let msg = match encode_line(src, 0, &labels, 1) {
+                Err(EmuError::AssemblyError { message, .. }) => message,
+                other => panic!("`{src}` must be refused, got {other:?}"),
+            };
+            assert!(msg.contains(needle), "`{src}`: message was: {msg}");
+        }
+        // The spellings they are confused with still assemble, to the
+        // words csarm produced.
+        for (src, want) in [
+            ("tbl v0.8b, {v1.16b}, v2.8b", 0x0E02_0020u32),
+            ("ld1 {v3.b}[3], [x7]", 0x0D40_0CE3),
+            ("ld2 {v3.b, v4.b}[3], [x7]", 0x0D60_0CE3),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
+    }
+
     // -- the supported-mnemonic list --
 
     #[test]
@@ -6150,10 +8266,12 @@ svc 0").unwrap();
             tokens_of("[sp, #-8]!"),
             vec!["LBracket:[", "Reg:sp", "Comma:,", "Imm:#-8", "RBracket:]", "Bang:!"]
         );
-        // `d1` is not a general register, so it is a Keyword and lands on
-        // the immediate path, exactly where `[x0, d1]`'s complaint
-        // comes from.
-        assert_eq!(tokens_of("d1"), vec!["Keyword:d1"]);
+        // A SIMD&FP name reads as a register too, so `[x0, d1]` reaches
+        // `parse_register` for the real complaint instead of falling onto
+        // the immediate path.
+        assert_eq!(tokens_of("d1"), vec!["Reg:d1"]);
+        assert_eq!(tokens_of("q31"), vec!["Reg:q31"]);
+        assert_eq!(tokens_of("lsl"), vec!["Keyword:lsl"]);
         assert_eq!(tokens_of("x99"), vec!["Reg:x99"]);
         assert_eq!(tokens_of("0x10"), vec!["Imm:0x10"]);
         assert_eq!(tokens_of("'a'"), vec!["Imm:'a'"]);

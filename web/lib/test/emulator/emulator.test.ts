@@ -257,6 +257,7 @@ describe("EmulatorInstance feature detection", () => {
     const emu = wrap();
     expect(emu.getFpRegisters()).toEqual([]);
     expect(emu.getChangedFpRegisters()).toEqual(new Uint8Array(0));
+    expect(emu.getVectorRegisters()).toEqual([]);
     expect(emu.lintSource(".text")).toEqual([]);
     expect(emu.m4Expand(".text")).toBeNull();
     expect(emu.wantsTerminal()).toBe(false);
@@ -278,6 +279,7 @@ describe("EmulatorInstance feature detection", () => {
     const emu = wrap({
       get_fp_registers: () => ["0x3ff0000000000000"],
       get_changed_fp_registers: () => new Uint8Array([0]),
+      get_vector_registers: () => ["0x00000000000000003ff0000000000000"],
       lint_source: () => warnings,
       m4_expand: () => expansion,
       wants_terminal: () => true,
@@ -285,6 +287,9 @@ describe("EmulatorInstance feature detection", () => {
     });
     expect(emu.getFpRegisters()).toEqual(["0x3ff0000000000000"]);
     expect(emu.getChangedFpRegisters()).toEqual(new Uint8Array([0]));
+    expect(emu.getVectorRegisters()).toEqual([
+      "0x00000000000000003ff0000000000000",
+    ]);
     expect(emu.lintSource(".text")).toBe(warnings);
     expect(emu.m4Expand(".text")).toBe(expansion);
     expect(emu.wantsTerminal()).toBe(true);

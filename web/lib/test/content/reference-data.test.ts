@@ -21,7 +21,7 @@ const CONDITIONS = new Set([
   "VS", "VC", "HI", "LS", "GE", "LT", "GT", "LE", "AL",
 ]);
 
-// The eight category sections of the reference, in doc order.
+// The nine category sections of the reference, in doc order.
 const CATEGORIES: ReadonlySet<ReferenceCategory> = new Set([
   "Data processing",
   "Compare and test",
@@ -31,6 +31,7 @@ const CATEGORIES: ReadonlySet<ReferenceCategory> = new Set([
   "Branches",
   "System",
   "Floating point",
+  "Vector",
 ]);
 
 // Canonicalize a mnemonic: upper-case, and fold every conditional-branch
@@ -136,7 +137,7 @@ describe("reference-data matches the documented instruction set", () => {
     expect(canonical.length).toBe(new Set(canonical).size);
   });
 
-  it("assigns every instruction one of the eight categories", () => {
+  it("assigns every instruction one of the nine categories", () => {
     const invalid = REFERENCE_INSTRUCTIONS.filter(
       (insn) => !CATEGORIES.has(insn.category),
     ).map((insn) => insn.mnemonic);

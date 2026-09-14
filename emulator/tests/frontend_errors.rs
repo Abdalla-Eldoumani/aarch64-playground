@@ -834,3 +834,88 @@ fn the_entry_point_is_a_label_and_start_counts_as_one() {
         .expect("`.global main` plus `_start:` must link, as ld does");
     assert_eq!(image.entry_point, image.symbols["_start"]);
 }
+
+#[test]
+fn a_brace_register_list_survives_the_frontend_and_runs() {
+    // The hosted parser used to refuse every `{...}` operand: the `.` of
+    // an arrangement made the operand look like an expression, and the
+    // evaluator then reported "unexpected `{`". That closed the whole
+    // structure load/store family, and TBL with it, to real programs.
+    // This drives one of each shape end to end and checks the bytes.
+    //
+    // buf holds 0..31, idx holds the table indices, out is the store
+    // target. Every expected value below is read off those two tables.
+    let src = "        .data\n\
+               buf:    .byte 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\n\
+                       .byte 16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31\n\
+               idx:    .byte 3,1,0,2,15,14,7,7\n\
+               out:    .space 16\n\
+               brace:  .string \"a { not an operand } b\"\n\
+               \n\
+                       .text\n\
+                       .global main\n\
+               main:\n\
+                       ldr  x9, =buf\n\
+                       ldr  x1, =out\n\
+                       ldr  x5, =idx\n\
+                       mov  x0, x9\n\
+                       // a brace in a comment { like this } is just text\n\
+                       ld1  {v0.16b}, [x0], #16\n\
+                       sub  x10, x0, x9\n\
+                       umov w2, v0.b[5]\n\
+                       ld4r {v4.8b-v7.8b}, [x0]\n\
+                       umov w3, v6.b[7]\n\
+                       movi v3.16b, #0\n\
+                       ld1  {v3.b}[3], [x0]\n\
+                       umov w4, v3.b[3]\n\
+                       ld1  {v3.b}[7], [x0], #1\n\
+                       umov w6, v3.b[7]\n\
+                       sub  x11, x0, x9\n\
+                       movi v1.8b, #0xff\n\
+                       st2  {v0.8b, v1.8b}, [x1]\n\
+                       ld1  {v9.8b}, [x5]\n\
+                       tbl  v10.8b, {v0.16b}, v9.8b\n\
+                       umov w7, v10.b[4]\n\
+                       mov  x8, 93\n\
+                       svc  0\n";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("a brace list must assemble");
+    cpu.load_linked_image(&image).expect("load failed");
+    let result = cpu.run_until_break(1000).expect("run failed");
+    assert!(result.halted, "the program must reach its exit syscall");
+
+    // ld1 (multiple) filled v0 with buf[0..16], so lane 5 is 5.
+    assert_eq!(cpu.regs.read_gpr(2, false), 5, "ld1 {{v0.16b}} loaded the wrong bytes");
+    // Its immediate post-index writes back the bytes it moved: 16.
+    assert_eq!(cpu.regs.read_gpr(10, true), 16, "the post-index writeback is wrong");
+    // ld4r read four bytes at buf+16 (16, 17, 18, 19) and broadcast one
+    // into each register, so every lane of v6 is 18.
+    assert_eq!(cpu.regs.read_gpr(3, false), 18, "ld4r broadcast the wrong element");
+    // The single-lane load touched lane 3 of a zeroed v3 with buf[16].
+    assert_eq!(cpu.regs.read_gpr(4, false), 16, "the single-lane load is wrong");
+    // A lane load with a post-index after the `[3]` suffix: the same
+    // byte again into lane 7, and the base moves on by one element.
+    assert_eq!(cpu.regs.read_gpr(6, false), 16, "the lane post-index load is wrong");
+    assert_eq!(cpu.regs.read_gpr(11, true), 17, "a lane form writes back its element width");
+    // tbl through a brace table: index 4 of idx is 15, and buf[15] is 15.
+    assert_eq!(cpu.regs.read_gpr(7, false), 15, "tbl through a brace table is wrong");
+
+    // st2 interleaved v0's low half with a vector of 0xff bytes.
+    let out = image.symbols["out"];
+    let written = cpu.mem.read_bytes(out, 16).expect("read the store target");
+    assert_eq!(
+        written,
+        vec![0, 0xff, 1, 0xff, 2, 0xff, 3, 0xff, 4, 0xff, 5, 0xff, 6, 0xff, 7, 0xff],
+        "st2 did not interleave the two registers"
+    );
+
+    // A brace inside a string literal (and inside a comment, above) is
+    // data, not an operand: it has to reach memory untouched.
+    let brace = image.symbols["brace"];
+    let text = cpu.mem.read_bytes(brace, 23).expect("read the string");
+    assert_eq!(
+        text,
+        b"a { not an operand } b\0".to_vec(),
+        "a brace inside a .string must survive verbatim"
+    );
+}

@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,045 Rust tests (824 of them unit tests on the lib target, the rest spread over twenty-one integration suites; there are no doc tests), 2,149 web tests across 183 files, and 16 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,050 Rust tests (825 of them unit tests on the lib target, the rest spread over twenty-three integration suites; there are no doc tests), 2,149 web tests across 183 files, and 22 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
 
 ## Rust
 
@@ -63,6 +63,73 @@ node scripts/verify-corpus.js
 
 Runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout and post-run VFS state. It then assembles every shipped example, fixture or not, so a program no fixture exercises still has to build; `is-prime` is skipped there because it is a leaf function with no entry point and ships without a caller. It loads a prebuilt node-target bundle rather than building one, so build that first from `emulator/`: `wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node` (or point `WASM_DIR` at an existing build). Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
 
+## The server-parity sweep
+
+On demand, not a gate. It runs every program the site ships twice, once
+through the node-target emulator and once through the real course
+toolchain on csarm, and compares stdout, exit code, and the files each
+side wrote byte for byte:
+
+```bash
+node scripts/parity-sweep.js
+```
+
+The program set is derived from the tree on every run, so a program added
+anywhere is swept without editing the script: the shipped examples with
+their fixtures, every lesson editor starter, every write and identify-bug
+exercise starter, the two starters in `docs/authoring-content.md`, every
+reference entry's try-in-playground payload, both halves of every pitfall,
+and the landing hero. The csarm half compiles each program the course way
+(`m4 program.s > program.m4.s`, then `gcc`) and runs it with its stdin,
+argv, and fixture files; a terminal-face program is built on both sides
+but never compared byte for byte. Each program gets one row: `same`,
+`interactive`, or `differs` with the first differing offset and both
+sides' first 200 bytes.
+
+`--playground-only` skips csarm entirely, `--reuse-remote` reruns the
+remote half over the tree already uploaded there, and `--server-only`
+recompares a results directory a previous run downloaded. It needs the
+node-target WASM built (`wasm-pack build --target nodejs --out-dir
+../web/lib/wasm-node` from `emulator/`) and key-based ssh to csarm.
+
+Everything the sweep writes -- the per-program directories, both sides'
+results, and `report.md` -- lands outside the repository, under
+`aarch64-playground-parity` in the OS temp directory by default and wherever
+`PARITY_SCRATCH` points otherwise. The report is not tracked and is never
+committed: rerun the sweep to regenerate it.
+
+## The SIMD conformance suites
+
+Two suites replay a capture taken on the course server (GNU as 2.46.1 and
+gcc 16.2.1 on csarm, 2026-09-13) rather than anything written by hand:
+
+```bash
+cargo test --manifest-path emulator/Cargo.toml --test simd
+cargo test --manifest-path emulator/Cargo.toml --test simd_behaviour
+```
+
+`emulator/tests/simd-inventory.txt` holds every Advanced SIMD form GAS
+accepts, 2,208 of them, as `spelling => 0xWORD` plus the spelling objdump
+prints back when it differs. `tests/simd.rs` requires each line whose
+family has landed to assemble to exactly that word, decode, and print
+back through `decoder::format`; each line whose mnemonic is still on
+`NOT_YET` (shared through `tests/common/mod.rs`) must be REJECTED, so the
+queue flips red the moment a family lands rather than quietly rotting.
+
+`emulator/tests/simd-behaviour.txt` is the other half: for three input
+sets, the registers and 16-byte memory chunks each line actually changed
+on the server. `tests/simd_behaviour.rs` rebuilds that machine state and
+replays every implemented line, so a form that encodes correctly but
+moves the wrong bytes still fails. Neither fixture is ever hand-edited;
+both are regenerated from the probe.
+
+The two counts move together as families land. Today `simd.rs` holds
+2,205 lines to their word and rejects none, with 3 literal loads checked
+through the hosted pipeline instead, and `simd_behaviour.rs` replays
+every one of its 6,615 rows. The queue is empty: every family the
+inventory carries has landed, and `common::NOT_YET` stays so a family
+taken back out has somewhere to be declared.
+
 ## The C corpus
 
 Fifty small C programs compiled by gcc, whose assembly is replayed
@@ -76,17 +143,17 @@ branch. It runs inside the ordinary Rust suite with no toolchain at all:
 cargo test --manifest-path emulator/Cargo.toml --test c_corpus
 ```
 
-At `-O0` the corpus is a gate and 49 of the 50 programs match. The
-fiftieth, `13_float_double`, is on the pending list at both tiers: gcc
-copies a 16-byte struct through a `q` register, and the FP file here is
-64-bit scalar by design. The `-O2` tier is an ignored coverage
-map (`-- --ignored` runs it), not a gate; it passes 48 of 50 against a
-recorded floor of 48, the second gap being `14_float_single`, which gcc
-zeroes with `movi v0.2s, #0`. A pending program is not counted as
-passing: it is kept out of the failure list because its gap is already
-recorded, and out of the passing count because it never ran. One that
-starts assembling turns its tier red, so a fix gets recorded instead of
-passing unnoticed.
+At `-O0` the corpus is a gate and all 50 programs match. The `-O2` tier
+is an ignored coverage map (`-- --ignored` runs it), not a gate; it
+passes 50 of 50 against a recorded floor of 50, the last two gaps having
+closed when the vector immediates landed (`13_float_double` zeroes its
+struct with `movi d31, #0` once the optimizer drops the `q` copies its
+`-O0` tier makes, and `14_float_single` zeroes a float with
+`movi v0.2s, #0`). Both pending lists are empty. A pending program is
+not counted as passing: it is kept out of the failure list because its
+gap is already recorded, and out of the passing count because it never
+ran. One that starts assembling turns its tier red, so a fix gets
+recorded instead of passing unnoticed.
 
 Adding a program and regenerating the references needs a cross
 compiler and qemu-user; [`emulator/tests/c-corpus/README.md`](../emulator/tests/c-corpus/README.md)
@@ -151,7 +218,9 @@ Drives Firefox through the live app to confirm CSP boots Monaco and the editor r
 does not need:
 
 - **wasm**: the web and nodejs wasm-pack builds, uploaded as an artifact
-  every other job below downloads.
+  every other job below downloads. The bundles are cached on a hash of the
+  emulator sources and the two tool pins, so a change that leaves the
+  emulator alone restores them instead of installing a toolchain.
 - **rust**: four jobs that run alongside the web jobs: `cargo test` minus
   the corpus gate, and the fifty-program corpus sliced three ways
   (`CORPUS_SHARD=i/3`, read by the test itself), every program running
@@ -160,15 +229,18 @@ does not need:
 - **corpus**: `node scripts/verify-corpus.js`.
 - **web-static**: the dependency audit, `npm run lint`, `npm run typecheck`.
 - **web-build**: `npm run build` and `npm run size`.
-- **web-test**: `npm test -- --coverage` split into three shards
-  (`--shard=n/3`), every test file running exactly once across them.
+- **web-test**: `npm test -- --coverage` split into six shards
+  (`--shard=n/6`), every test file running exactly once across them.
 - **coverage**: merges the shards' blob reports (vitest writes them under
   `web/.vitest/blob/`, which the shard jobs upload and this job downloads)
   and enforces the coverage floors in `web/vitest.config.mts` on the
   whole-suite numbers, so a suite that passes locally can still fail CI if
   coverage drops below them.
 
-Each job maps to a local command above. The shards set `VITEST_SHARD` so
+Every web job restores `web/node_modules` through one composite action
+(`.github/actions/node-setup`) keyed on the manifest and lockfile with
+their `version` fields removed, so a release bump does not cold-install
+every job. Each job maps to a local command above. The shards set `VITEST_SHARD` so
 the floors are judged once on the merged report rather than against a
 shard's partial slice; a plain local `npm test -- --coverage` still
 enforces them directly.

@@ -24,9 +24,10 @@ interface ExampleGroup {
  * Examples presented as a level-up path, in the order the concepts
  * build: first programs, data and memory, stack and locals, records
  * and arrays, subroutines, static data and arguments, floating point,
- * files and I/O, then a miscellaneous stage for playable extras. Each
- * stage carries at least one program; the labels are the stage names,
- * with no course-week text.
+ * files and I/O, a vector-register stage the course does not teach,
+ * then a miscellaneous stage for playable extras. Each stage carries at
+ * least one program; the labels are the stage names, with no
+ * course-week text.
  */
 const GROUPS: ExampleGroup[] = [
   {
@@ -77,6 +78,17 @@ const GROUPS: ExampleGroup[] = [
       { name: "write file", stem: "write-file" },
       { name: "read file", stem: "read-file" },
       { name: "copy file", stem: "copy-file" },
+    ],
+  },
+  {
+    label: "Vector registers (not taught in the course)",
+    items: [
+      { name: "uppercase a line", stem: "vector-upper" },
+      { name: "count the characters", stem: "vector-strlen" },
+      { name: "sum sixteen ints", stem: "vector-sum" },
+      { name: "dot product", stem: "vector-dot" },
+      { name: "brighten a picture", stem: "vector-brighten" },
+      { name: "mean of floats", stem: "vector-mean" },
     ],
   },
   {

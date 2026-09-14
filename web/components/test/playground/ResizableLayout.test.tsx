@@ -1,67 +1,134 @@
 // pins what the laptop layout itself owns, with the panel library mocked
 // away: the four-pane arrangement (an outer horizontal split, a vertical
 // split inside each column), which slot each child lands in, the three
-// localStorage keys the breakpoint prop derives, and the size mapping in
-// both directions: a persisted array becomes the panes' default sizes, and
-// a finished drag is written back by panel id, with a missing id keeping the
-// size it already had rather than collapsing the pane to zero.
+// localStorage keys the breakpoint prop derives, the size mapping in both
+// directions (a persisted array becomes the panes' default sizes, and a
+// finished drag is written back by panel id, with a missing id keeping the
+// size it already had rather than collapsing the pane to zero), and the grip
+// on every seam: its name, the band it draws, and the double-click that puts
+// its group back to the authored split. Keyboard resizing belongs to the
+// library and is pinned against the real one in ResizableLayout.keyboard.test.tsx.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 type Layout = Record<string, number>;
+type GroupHandle = { getLayout: () => Layout; setLayout: (l: Layout) => Layout };
 
 // The real Group hands onLayoutChange to a drag gesture behind a
 // ResizeObserver jsdom does not have. The mock parks the callback on the
 // group's own DOM node, so a test can fire it exactly as a finished drag
 // would without a synthetic pointer.
 const dragHandlers = vi.hoisted(() => new WeakMap<Element, (l: Layout) => void>());
+// Every layout pushed through a group's imperative handle: the only way a
+// stored or reset split can move a group that is already mounted.
+const setLayoutCalls = vi.hoisted(() => [] as Layout[]);
+// What each mocked group currently believes its layout to be. The real
+// library moves first and reports afterwards, so the tests have to model that
+// or the component's own reconcile effect reads a stale layout.
+const groupLayouts = vi.hoisted(() => new WeakMap<Element, { layout: Layout }>());
 
-vi.mock("react-resizable-panels", () => ({
-  Group: ({
-    orientation,
-    defaultLayout,
-    onLayoutChange,
-    children,
-  }: {
-    orientation: string;
-    defaultLayout: Layout;
-    onLayoutChange: (l: Layout) => void;
-    children: ReactNode;
-  }) => (
-    <div
-      data-group={orientation}
-      data-layout={JSON.stringify(defaultLayout)}
-      ref={(el) => {
-        if (el) dragHandlers.set(el, onLayoutChange);
-      }}
-    >
-      {children}
-    </div>
-  ),
-  Panel: ({
-    id,
-    minSize,
-    defaultSize,
-    children,
-  }: {
-    id: string;
-    minSize: string;
-    defaultSize: string;
-    children?: ReactNode;
-  }) => (
-    <div data-panel={id} data-min={minSize} data-size={defaultSize}>
-      {children}
-    </div>
-  ),
-  Separator: () => <div data-separator="" />,
-}));
+vi.mock("react-resizable-panels", async () => {
+  const { useLayoutEffect, useRef } = await import("react");
+  return {
+    useGroupRef: () => useRef<GroupHandle | null>(null),
+    Group: ({
+      orientation,
+      defaultLayout,
+      onLayoutChange,
+      groupRef,
+      children,
+    }: {
+      orientation: string;
+      defaultLayout: Layout;
+      onLayoutChange: (l: Layout) => void;
+      groupRef?: { current: GroupHandle | null };
+      children: ReactNode;
+    }) => {
+      // The real group reports its layout the moment it can measure itself,
+      // and on a column that gets its height a beat after first render that
+      // lands BEFORE the parent's storage read. A layout effect is the same
+      // seam: it runs ahead of every passive effect above it.
+      const reported = useRef(false);
+      useLayoutEffect(() => {
+        if (reported.current) return;
+        reported.current = true;
+        onLayoutChange(defaultLayout);
+      });
+      return (
+        <div
+          data-group={orientation}
+          data-layout={JSON.stringify(defaultLayout)}
+          ref={(el) => {
+            if (!el) return;
+            dragHandlers.set(el, onLayoutChange);
+            let state = groupLayouts.get(el);
+            if (!state) {
+              state = { layout: { ...defaultLayout } };
+              groupLayouts.set(el, state);
+            }
+            const held = state;
+            if (groupRef) {
+              groupRef.current = {
+                getLayout: () => held.layout,
+                setLayout: (l: Layout) => {
+                  setLayoutCalls.push(l);
+                  held.layout = { ...l };
+                  return l;
+                },
+              };
+            }
+          }}
+        >
+          {children}
+        </div>
+      );
+    },
+    Panel: ({
+      id,
+      minSize,
+      defaultSize,
+      children,
+    }: {
+      id: string;
+      minSize: string;
+      defaultSize: string;
+      children?: ReactNode;
+    }) => (
+      <div data-panel={id} data-min={minSize} data-size={defaultSize}>
+        {children}
+      </div>
+    ),
+    Separator: ({
+      children,
+      className,
+      disableDoubleClick,
+      ...rest
+    }: {
+      children?: ReactNode;
+      className?: string;
+      disableDoubleClick?: boolean;
+    } & Record<string, unknown>) => (
+      <div
+        {...rest}
+        role="separator"
+        tabIndex={0}
+        data-separator=""
+        data-library-doubleclick={disableDoubleClick ? "off" : "on"}
+        className={className}
+      >
+        {children}
+      </div>
+    ),
+  };
+});
 
 import { ResizableLayout } from "@/components/playground/ResizableLayout";
+import type { Breakpoint } from "@/lib/hooks/use-breakpoint";
 
 const KEY = "aarch64-playground:layout:";
 
-function renderLayout(breakpoint: "lg" | "xl" = "lg") {
+function renderLayout(breakpoint: Breakpoint = "lg") {
   return render(
     <ResizableLayout
       breakpoint={breakpoint}
@@ -86,14 +153,26 @@ function group(paneId: string): HTMLElement {
   return el as HTMLElement;
 }
 
+/** The grip between a named pair of panes. */
+function grip(label: string): HTMLElement {
+  const el = document.querySelector(`[aria-label="${label}"]`);
+  if (!el) throw new Error(`no grip labelled ${label}`);
+  return el as HTMLElement;
+}
+
 function drag(paneId: string, layout: Layout): void {
-  const handler = dragHandlers.get(group(paneId));
+  const el = group(paneId);
+  const handler = dragHandlers.get(el);
   if (!handler) throw new Error(`no drag handler for ${paneId}`);
+  // The library resizes the group and only then reports the new layout.
+  const state = groupLayouts.get(el);
+  if (state) state.layout = { ...state.layout, ...layout };
   act(() => handler(layout));
 }
 
 afterEach(() => {
   cleanup();
+  setLayoutCalls.length = 0;
   window.localStorage.clear();
 });
 
@@ -165,12 +244,21 @@ describe("ResizableLayout", () => {
     window.localStorage.setItem(`${KEY}lg-left`, "[80,20]");
     window.localStorage.setItem(`${KEY}lg-right`, "[25,75]");
     renderLayout();
-    expect(panel("panel-left").getAttribute("data-size")).toBe("30%");
-    expect(panel("panel-right").getAttribute("data-size")).toBe("70%");
-    expect(panel("panel-editor").getAttribute("data-size")).toBe("80%");
-    expect(panel("panel-disasm").getAttribute("data-size")).toBe("20%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("25%");
-    expect(panel("panel-tabs").getAttribute("data-size")).toBe("75%");
+    // The stored split reaches a mounted group through its handle, never
+    // through the Panels' `defaultSize`: that prop stays on the opening
+    // split, because a Panel re-registers when it changes and a
+    // re-registration mid-drag restarts the drag under the pointer.
+    expect(panel("panel-left").getAttribute("data-size")).toBe("55%");
+    expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
+    expect(setLayoutCalls).toHaveLength(3);
+    expect(setLayoutCalls).toEqual(
+      expect.arrayContaining([
+        { "panel-left": 30, "panel-right": 70 },
+        { "panel-editor": 80, "panel-disasm": 20 },
+        { "panel-regs": 25, "panel-tabs": 75 },
+      ]),
+    );
   });
 
   it("names each group's layout by panel id", () => {
@@ -214,5 +302,127 @@ describe("ResizableLayout", () => {
     expect(window.localStorage.getItem(`${KEY}xl`)).toBe("[60,40]");
     expect(window.localStorage.getItem(`${KEY}xl-right`)).toBe("[35,65]");
     expect(window.localStorage.getItem(`${KEY}lg`)).toBeNull();
+  });
+
+  it("names each seam after the two panes it sits between", () => {
+    renderLayout();
+    const labels = Array.from(document.querySelectorAll('[role="separator"]')).map(
+      (el) => el.getAttribute("aria-label"),
+    );
+    expect(labels).toEqual([
+      "resize editor and disassembly",
+      "resize editor and debug column",
+      "resize registers and tabs",
+    ]);
+  });
+
+  it("draws every seam as a band with a grip mark and a focus ring", () => {
+    renderLayout();
+    const seams = Array.from(document.querySelectorAll('[role="separator"]'));
+    expect(seams.length).toBe(3);
+    for (const seam of seams) {
+      const cls = seam.getAttribute("class") ?? "";
+      expect(cls).toContain("bg-[var(--border)]");
+      expect(cls).toContain("hover:bg-[var(--cyan)]");
+      expect(cls).toContain("data-[separator=active]:bg-[var(--cyan)]");
+      expect(cls).toContain("focus-visible:[box-shadow:var(--ring)]");
+      // The mark's rest ink is --bg-base, not --border-strong: high-contrast
+      // gives both border tokens the same #FFFFFF, so a --border-strong mark
+      // is white on a white band.
+      const mark = seam.querySelector('[aria-hidden="true"]');
+      expect(mark).toBeTruthy();
+      const markCls = mark?.getAttribute("class") ?? "";
+      expect(markCls).toContain("bg-[var(--bg-base)]");
+      expect(markCls).toContain("group-data-[separator=active]/grip:bg-[var(--cyan-dim)]");
+    }
+  });
+
+  it("sizes and points each seam along its own axis", () => {
+    renderLayout();
+    const outer = grip("resize editor and debug column").getAttribute("class") ?? "";
+    expect(outer).toContain("w-1.5");
+    expect(outer).toContain("cursor-col-resize");
+    const inner = grip("resize registers and tabs").getAttribute("class") ?? "";
+    expect(inner).toContain("h-1.5");
+    expect(inner).toContain("cursor-row-resize");
+  });
+
+  it("puts a group back to its authored split on a double-click", () => {
+    renderLayout();
+    drag("panel-left", { "panel-left": 30, "panel-right": 70 });
+    expect(window.localStorage.getItem(`${KEY}lg`)).toBe("[30,70]");
+
+    fireEvent.doubleClick(grip("resize editor and debug column"));
+    expect(setLayoutCalls).toEqual([{ "panel-left": 55, "panel-right": 45 }]);
+    expect(window.localStorage.getItem(`${KEY}lg`)).toBe("[55,45]");
+  });
+
+  it("resets only the group whose seam was double-clicked", () => {
+    renderLayout();
+    drag("panel-left", { "panel-left": 30, "panel-right": 70 });
+    drag("panel-regs", { "panel-regs": 80, "panel-tabs": 20 });
+
+    fireEvent.doubleClick(grip("resize registers and tabs"));
+    expect(setLayoutCalls).toEqual([{ "panel-regs": 45, "panel-tabs": 55 }]);
+    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBe("[45,55]");
+    expect(window.localStorage.getItem(`${KEY}lg`)).toBe("[30,70]");
+  });
+
+  it("stands the library's own double-click down so the two cannot fight", () => {
+    // The library's reset takes a panel back to its `defaultSize`, which here
+    // is the PERSISTED size; the authored split is ours to restore.
+    renderLayout();
+    const flags = Array.from(document.querySelectorAll('[role="separator"]')).map(
+      (el) => el.getAttribute("data-library-doubleclick"),
+    );
+    expect(flags).toEqual(["off", "off", "off"]);
+  });
+  it("pushes a stored split onto the group the first render could not carry", () => {
+    // useLayoutPersistence reads localStorage in an effect, and the library
+    // reads defaultLayout only at mount, so the stored sizes have to be put
+    // on the mounted group by hand or a reload loses them.
+    window.localStorage.setItem(`${KEY}lg`, "[30,70]");
+    renderLayout();
+    expect(setLayoutCalls).toEqual([{ "panel-left": 30, "panel-right": 70 }]);
+  });
+
+  it("leaves a group alone when the stored split is the one it mounted with", () => {
+    window.localStorage.setItem(`${KEY}lg`, "[55,45]");
+    window.localStorage.setItem(`${KEY}lg-left`, "[70,30]");
+    window.localStorage.setItem(`${KEY}lg-right`, "[45,55]");
+    renderLayout();
+    expect(setLayoutCalls).toEqual([]);
+  });
+
+  it("does not push a finished drag back at the group that reported it", () => {
+    renderLayout();
+    drag("panel-left", { "panel-left": 40, "panel-right": 60 });
+    expect(setLayoutCalls).toEqual([]);
+  });
+  it("does not let the mount's own report overwrite a stored split", () => {
+    // The group reports its layout as soon as it can measure itself, which
+    // beats the storage read. That report is not the reader resizing
+    // anything, so it must not be written.
+    window.localStorage.setItem(`${KEY}md`, "[30,70]");
+    window.localStorage.setItem(`${KEY}md-left`, "[60,40]");
+    window.localStorage.setItem(`${KEY}md-right`, "[35,65]");
+    renderLayout("md");
+    expect(window.localStorage.getItem(`${KEY}md`)).toBe("[30,70]");
+    expect(window.localStorage.getItem(`${KEY}md-left`)).toBe("[60,40]");
+    expect(window.localStorage.getItem(`${KEY}md-right`)).toBe("[35,65]");
+    // And the stored splits still reach the mounted groups, innermost first:
+    // a child's effects flush before its parent's.
+    expect(setLayoutCalls).toEqual([
+      { "panel-editor": 60, "panel-disasm": 40 },
+      { "panel-regs": 35, "panel-tabs": 65 },
+      { "panel-left": 30, "panel-right": 70 },
+    ]);
+  });
+
+  it("writes nothing at all for a group nobody has resized", () => {
+    renderLayout();
+    expect(window.localStorage.getItem(`${KEY}lg`)).toBeNull();
+    expect(window.localStorage.getItem(`${KEY}lg-left`)).toBeNull();
+    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBeNull();
   });
 });

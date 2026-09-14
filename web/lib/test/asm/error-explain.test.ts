@@ -178,6 +178,65 @@ describe("explainError", () => {
     expect(explainError("incomplete \\xNN escape")).not.toBeNull();
   });
 
+  // The five blocks below came out of the server-parity sweep
+  // (scripts/parity-sweep.js): every string is the one the emulator
+  // actually produced for a program the site ships, and each block also
+  // carries what the same program does on the course servers, because the
+  // sweep found the two sides disagreeing there.
+
+  it("explains a missing entry point and keeps the student on main", () => {
+    // web/public/examples/cpsc355/is-prime.s, a leaf function with no
+    // caller. csarm refuses the same file: `undefined reference to 'main'`.
+    const e = explainError(
+      "no entry point. Define `main:` (declared `.global main`) or `_start:`. A file holding only helper functions runs as part of a program whose other file has `main`",
+    );
+    expect(e).not.toBeNull();
+    expect(e!.fix).toContain(".global main");
+    // snake.s defines its own `_start` and links here but not on the
+    // servers, where crt1.o already has one.
+    expect(e!.fix).toContain("multiple definition of '_start'");
+  });
+
+  it("explains the step ceiling as a runaway loop or an unsaved lr", () => {
+    // The second pitfall's fault half: greet calls printf without saving
+    // lr, so it returns into itself. On csarm the same program never stops.
+    const e = explainError(
+      "stopped after 10 million steps, which is the playground's ceiling. The usual cause is a loop whose exit condition never becomes true: check that the counter is actually changing, and that the branch condition is the one you meant (b.le against b.lt, b.ne against b.eq)",
+    );
+    expect(e).not.toBeNull();
+    expect(e!.why).toContain("x30");
+    expect(e!.fix.toLowerCase()).toContain("ctrl+c");
+  });
+
+  it("explains m4 recursion and names the repeated-define trap", () => {
+    // Produced by `define(one_r, two_r)` above `define(two_r, one_r)`. The
+    // sweep hit the server half of the same trap: dsav's files each repeat
+    // `define(fp, x29)`, and pasted into one buffer GNU m4 rewrites the
+    // second one to `define(x29, x29)` and never terminates.
+    const e = explainError("m4 recursion exceeded 32 rounds");
+    expect(e).not.toBeNull();
+    expect(e!.styleSection).toBe("m4 preprocessing");
+    expect(e!.why).toContain("define(x29, x29)");
+  });
+
+  it("warns that a backtick is fatal to m4 on the servers, comment or not", () => {
+    // The playground strips `//` comments before m4 sees them, so a
+    // backtick in a comment assembles here and dies on csarm with
+    // `ERROR: end of file in string`. One shipped lesson starter did.
+    const e = explainError("unsupported m4 construct: backtick-quoted string");
+    expect(e).not.toBeNull();
+    expect(e!.fix).toContain("end of file in string");
+  });
+
+  it("says the math names need -lm on the servers", () => {
+    // calc.s calls pow/sqrt/sin/cos/tan/log/exp. The playground hosts them;
+    // `gcc calc.s -o calc` on csarm fails to link without -lm.
+    const e = explainError(
+      "`score_1_r` is not defined anywhere in this program: check the spelling against the label or the `name = value` line that defines it. m4 substitution is whole-token and case-sensitive",
+    );
+    expect(e!.fix).toContain("-lm");
+  });
+
   it("returns null when no tailored block exists, so the raw message renders", () => {
     // // The emulator's own wording carries the remedy in these cases, so
     // there is no generic fallback.

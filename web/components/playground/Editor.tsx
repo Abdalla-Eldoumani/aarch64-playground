@@ -3,7 +3,11 @@
 import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
-import { lookupDoc } from "@/lib/asm/instruction-docs";
+import { lookupDocAt } from "@/lib/asm/instruction-docs";
+import {
+  MNEMONIC_ALTERNATION,
+  REGISTER_PATTERN,
+} from "@/lib/asm/highlight-arm64";
 import { explainError } from "@/lib/asm/error-explain";
 import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
 import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
@@ -125,14 +129,23 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
         [/\/\*/, "comment", "@blockComment"],
         [/\/\/.*$/, "comment"],
         [/;.*$/, "comment"],
+        // The keyword set is the highlighter's, which is the hover-card
+        // table's, which the drift guards pin to the assembler's own
+        // SUPPORTED_MNEMONICS: one list, three surfaces. Only the conditional
+        // branches are added here, because that table folds the whole family
+        // onto a single placeholder entry.
         [
           new RegExp(
-            `\\b(${[...ARM64_MNEMONICS, ...COND_BRANCHES].join("|")})\\b`,
-            "i"
+            `\\b(${[MNEMONIC_ALTERNATION, ...COND_BRANCHES].join("|")})\\b`,
+            "i",
           ),
           "keyword",
         ],
-        [/\b(X[0-9]|X[12][0-9]|X30|W[0-9]|W[12][0-9]|W30|SP|XZR|WZR)\b/i, "variable"],
+        // The register file, from the same alternation the reading surfaces
+        // test against, so the two cannot drift. Its trailing lookahead is
+        // what stops Monarch colouring a prefix of a name that is not one:
+        // `x31` and `v3.3s` stay plain.
+        [new RegExp(REGISTER_PATTERN, "i"), "variable"],
         [/#-?0x[0-9a-fA-F]+/, "number.hex"],
         [/#-?[0-9]+/, "number"],
         [/\w+:/, "type.identifier"],
@@ -265,14 +278,11 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
     provideHover(model: TextModel, position: MonacoPosition) {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
-      // Grab the possibly-dotted conditional form (e.g. "B.EQ").
+      // The lookup rule (including the dotted conditional form) lives beside
+      // the table in lib/asm/instruction-docs, so this provider holds none of
+      // it and the whole path is pinned without Monaco.
       const line = model.getLineContent(position.lineNumber);
-      const dotStart = word.startColumn - 1;
-      const extended =
-        line[dotStart - 1] === "." && /[A-Za-z]/.test(line[dotStart - 2] ?? "")
-          ? `${line[dotStart - 2]}.${word.word}`
-          : word.word;
-      const doc = lookupDoc(extended) ?? lookupDoc(word.word);
+      const doc = lookupDocAt(line, word.word, word.startColumn);
       if (!doc) return null;
       const lines: string[] = [
         `**${word.word.toLowerCase()}** · ${doc.summary}`,
@@ -328,23 +338,6 @@ interface EditorProps {
    *  parent bumps the nonce so the same line can be requested twice. */
   focusRequest?: { line: number; nonce: number } | null;
 }
-
-const ARM64_MNEMONICS = [
-  "MOV", "MOVZ", "MOVK", "MOVN",
-  "ADD", "ADDS", "SUB", "SUBS", "MUL", "MADD", "MSUB", "UDIV", "SDIV", "NEG",
-  "AND", "ANDS", "ORR", "EOR", "MVN", "TST",
-  "LSL", "LSR", "ASR", "ROR",
-  "SXTB", "SXTH", "SXTW", "UXTB", "UXTH",
-  "CMP", "CMN",
-  "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDP", "STP",
-  "LDRSB", "LDRSH", "LDRSW",
-  "ADR", "ADRP",
-  "B", "BL", "BR", "BLR", "RET",
-  "CBZ", "CBNZ", "TBZ", "TBNZ",
-  "CSEL", "CSINC", "CSET",
-  "NOP", "SVC",
-  "FMOV", "FADD", "FSUB", "FMUL", "FDIV", "FCMP", "SCVTF", "FCVTZS",
-];
 
 const COND_BRANCHES = [
   "B.EQ", "B.NE", "B.HS", "B.LO", "B.MI", "B.PL",

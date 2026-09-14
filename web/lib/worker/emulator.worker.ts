@@ -458,9 +458,13 @@ function snapshot(): StateSnapshot {
   const emulatorFp = emulator as unknown as {
     get_fp_registers?: () => string[];
     get_changed_fp_registers?: () => Uint8Array;
+    get_vector_registers?: () => string[];
   };
   const fpRegisters = emulatorFp.get_fp_registers?.() ?? [];
   const changedFp = emulatorFp.get_changed_fp_registers?.() ?? new Uint8Array(0);
+  // The full 128-bit file, feature-detected the same way: [] on an older
+  // cached WASM, which is what hides the v-view.
+  const vectorRegisters = emulatorFp.get_vector_registers?.() ?? [];
   // Optional terminal-mode surface, feature-detected the same way.
   const emulatorTerm = emulator as unknown as { wants_terminal?: () => boolean };
   const wantsTerminal = emulatorTerm.wants_terminal?.() ?? false;
@@ -486,6 +490,7 @@ function snapshot(): StateSnapshot {
     frame,
     registers: regs.gpr,
     fpRegisters,
+    vectorRegisters,
     sp: regs.sp,
     pc: regs.pc,
     nzcv: regs.nzcv,

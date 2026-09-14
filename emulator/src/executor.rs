@@ -197,11 +197,19 @@ pub fn execute(
         Instruction::LdStPair { op, sf, rt, rt2, rn, imm7, mode } => {
             exec_ldst_pair(*op, *sf, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
         }
-        Instruction::FpLdStPair { op, single, rt, rt2, rn, imm7, mode } => {
-            exec_fp_ldst_pair(*op, *single, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
+        Instruction::FpLdStPair { op, size, rt, rt2, rn, imm7, mode, .. } => {
+            exec_fp_ldst_pair(*op, *size, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
         }
+        Instruction::SimdLdStStructure {
+            load, structures, count, esize, q, shape, rt, rn, post,
+        } => exec_simd_ldst_structure(
+            *load, *structures, *count, *esize, *q, *shape, *rt, *rn, *post, regs, mem,
+        ),
         Instruction::LdrLiteral { sf, rt, offset } => {
             exec_ldr_literal(*sf, *rt, *offset, regs, mem)
+        }
+        Instruction::FpLdrLiteral { rt, offset, size } => {
+            exec_fp_ldr_literal(*rt, *offset, *size, regs, mem)
         }
         Instruction::CompareBranch { sf, rt, nonzero, offset } => {
             exec_compare_branch(*sf, *rt, *nonzero, *offset, regs)
@@ -236,64 +244,8 @@ pub fn execute(
         Instruction::FpBinary { op, fd, fn_, fm, single } => {
             exec_fp_binary(*op, *fd, *fn_, *fm, *single, regs)
         }
-        Instruction::FpLdSt { load, ft, rn, offset, size, mode } => {
-            // Base register 31 means SP here, exactly as in the integer
-            // load/store path: FP spills sit on the stack.
-            check_sp_alignment(*rn, regs)?;
-            let base = regs.read_gpr_or_sp(*rn, true);
-            let (addr, writeback) = match mode {
-                IndexMode::PreIndex => {
-                    let a = (base as i64).wrapping_add(*offset) as u64;
-                    (a, Some(a))
-                }
-                IndexMode::PostIndex => {
-                    let wb = (base as i64).wrapping_add(*offset) as u64;
-                    (base, Some(wb))
-                }
-                IndexMode::SignedOffset => {
-                    ((base as i64).wrapping_add(*offset) as u64, None)
-                }
-            };
-            check_guest_address(
-                addr,
-                if *load {
-                    crate::errors::MemAccess::Read
-                } else {
-                    crate::errors::MemAccess::Write
-                },
-            )?;
-            if *load {
-                match size {
-                    MemSize::X => {
-                        // LDR Dt: read 64 bits into the D register's raw bits.
-                        let v = mem.read_u64(addr)?;
-                        regs.write_fpr_bits(*ft, v);
-                    }
-                    MemSize::W => {
-                        // LDR St: read 32 bits; upper 32 of the FP reg go
-                        // to zero per AAPCS.
-                        let v = mem.read_u32(addr)? as u64;
-                        regs.write_fpr_bits(*ft, v);
-                    }
-                    _ => return Err(EmuError::UnknownInstruction(0)),
-                }
-            } else {
-                match size {
-                    MemSize::X => {
-                        let v = regs.read_fpr_bits(*ft);
-                        mem.write_u64(addr, v)?;
-                    }
-                    MemSize::W => {
-                        let v = regs.read_fpr_bits(*ft) as u32;
-                        mem.write_u32(addr, v)?;
-                    }
-                    _ => return Err(EmuError::UnknownInstruction(0)),
-                }
-            }
-            if let Some(wb) = writeback {
-                regs.write_gpr_or_sp(*rn, true, wb);
-            }
-            Ok(ExecResult::Advance)
+        Instruction::FpLdSt { load, ft, rn, offset, size, mode, .. } => {
+            exec_fp_ldst(*load, *ft, *rn, offset, *size, *mode, regs, mem)
         }
         Instruction::FpMoveImm { fd, imm_bits, single } => {
             // The decoder already expanded the immediate to the right
@@ -316,19 +268,6 @@ pub fn execute(
             regs.write_fpr_bits(*fd, if *single { v & 0xFFFF_FFFF } else { v });
             Ok(ExecResult::Advance)
         }
-        Instruction::FpScvtfFp { fd, fn_, single } => {
-            // The integer bits already sit in Fn; convert at the
-            // register's own width. S results are an f32 pattern in the
-            // low 32 bits with the upper half zeroed, like every S write.
-            let bits = regs.read_fpr_bits(*fn_);
-            let out = if *single {
-                u64::from(((bits as u32 as i32) as f32).to_bits())
-            } else {
-                ((bits as i64) as f64).to_bits()
-            };
-            regs.write_fpr_bits(*fd, out);
-            Ok(ExecResult::Advance)
-        }
         Instruction::FpMoveGeneral { to_fp, sf, single, rd, rn } => {
             // Raw bits either direction; the S forms move the low 32 bits
             // and (into the FP file) zero the upper half.
@@ -341,6 +280,112 @@ pub fn execute(
                 let v = if *single { v & 0xFFFF_FFFF } else { v };
                 regs.write_gpr(*rd, *sf, v);
             }
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpMoveLane { to_fp, rd, rn } => {
+            // The upper 64-bit lane alone: writing it leaves the low half
+            // in place, which is how a 128-bit value gets built in two
+            // moves. Reading it takes the high half, not the low one.
+            if *to_fp {
+                let v = regs.read_gpr(*rn, true);
+                regs.write_fpr_lane(*rd, 8, 1, v);
+            } else {
+                regs.write_gpr(*rd, true, regs.read_fpr_lane(*rn, 8, 1));
+            }
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdModifiedImm { op, arrangement, rd, value, .. } => {
+            // A 64-bit destination zeroes the upper half; the scalar
+            // `movi d3` form is a 64-bit one under another name.
+            let wide = arrangement.is_some_and(|a| a.q);
+            let mask: u128 = if wide { u128::MAX } else { u128::from(u64::MAX) };
+            let result = match op {
+                // FMOV's expanded float is already replicated across the
+                // destination, so it moves exactly like MOVI's pattern.
+                SimdImmOp::Movi | SimdImmOp::Fmov => *value,
+                SimdImmOp::Mvni => !*value,
+                SimdImmOp::Orr => regs.read_fpr_q(*rd) | *value,
+                SimdImmOp::Bic => regs.read_fpr_q(*rd) & !*value,
+            };
+            regs.write_fpr_q(*rd, result & mask);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdLogicalReg { op, q, rm, rn, rd } => {
+            let n = regs.read_fpr_q(*rn);
+            let m = regs.read_fpr_q(*rm);
+            let d = regs.read_fpr_q(*rd);
+            // BSL, BIT and BIF pick each bit from one of two sources
+            // under a mask, so all three read the destination: BSL uses
+            // it as the mask, the other two as one of the sources with
+            // the second operand as the mask.
+            let result = match op {
+                SimdLogicalOp::And => n & m,
+                SimdLogicalOp::Bic => n & !m,
+                SimdLogicalOp::Orr => n | m,
+                SimdLogicalOp::Orn => n | !m,
+                SimdLogicalOp::Eor => n ^ m,
+                SimdLogicalOp::Bsl => (n & d) | (m & !d),
+                SimdLogicalOp::Bit => (n & m) | (d & !m),
+                SimdLogicalOp::Bif => (n & !m) | (d & m),
+            };
+            let mask: u128 = if *q { u128::MAX } else { u128::from(u64::MAX) };
+            regs.write_fpr_q(*rd, result & mask);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdThreeSame { op, esize, q, scalar, rm, rn, rd } => {
+            exec_simd_three_same(*op, *esize, *q, *scalar, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdTwoMisc { op, esize, q, scalar, rn, rd } => {
+            exec_simd_two_misc(*op, *esize, *q, *scalar, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdThreeDiff { op, esize, upper, scalar, rm, rn, rd } => {
+            exec_simd_three_diff(*op, *esize, *upper, *scalar, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdShiftImm { op, esize, q, scalar, shift, rn, rd } => {
+            exec_simd_shift_imm(*op, *esize, *q, *scalar, *shift, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdAcross { op, esize, q, rn, rd } => {
+            exec_simd_across(*op, *esize, *q, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdCopy { op, esize, q, index, index2, rn, rd } => {
+            exec_simd_copy(*op, *esize, *q, *index, *index2, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdPermute { op, esize, q, rm, rn, rd } => {
+            exec_simd_permute(*op, *esize, *q, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdExt { q, index, rm, rn, rd } => {
+            exec_simd_ext(*q, *index, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdTableLookup { extend, q, len, rm, rn, rd } => {
+            exec_simd_table_lookup(*extend, *q, *len, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdFpThreeSame { op, esize, q, scalar, rm, rn, rd } => {
+            exec_simd_fp_three_same(*op, *esize, *q, *scalar, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdFpTwoMisc { op, esize, q, scalar, fbits, rn, rd } => {
+            exec_simd_fp_two_misc(*op, *esize, *q, *scalar, *fbits, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdFpAcross { op, esize, q, rn, rd } => {
+            exec_simd_fp_across(*op, *esize, *q, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdFpByElement { op, esize, q, scalar, index, rm, rn, rd } => {
+            exec_simd_fp_by_element(*op, *esize, *q, *scalar, *index, *rm, *rn, *rd, regs);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::SimdByElement { op, esize, q, scalar, index, rm, rn, rd } => {
+            exec_simd_by_element(*op, *esize, *q, *scalar, *index, *rm, *rn, *rd, regs);
             Ok(ExecResult::Advance)
         }
         Instruction::FpUnary { op, fd, fn_, single } => {
@@ -667,15 +712,11 @@ fn check_sp_alignment(rn: u8, regs: &RegisterFile) -> Result<(), EmuError> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
-fn exec_ldst(
-    op: LdStOp, rt: u8, rn: u8, offset: &LdStOffset, size: MemSize,
-    mode: IndexMode, regs: &mut RegisterFile, mem: &mut Memory,
-) -> Result<ExecResult, EmuError> {
-    check_sp_alignment(rn, regs)?;
-    let base = regs.read_gpr_or_sp(rn, true);
-
-    let offset_val = match offset {
+/// The byte displacement a load/store's offset operand contributes. The
+/// register form's extend rules are the same for the integer file and the
+/// SIMD&FP file, so every load/store path reads them from here.
+fn resolve_ldst_offset(offset: &LdStOffset, regs: &RegisterFile) -> i64 {
+    match offset {
         LdStOffset::Immediate(imm) => *imm,
         LdStOffset::Register {
             rm,
@@ -688,25 +729,31 @@ fn exec_ldst(
                 ExtendType::Uxtw => raw & 0xFFFF_FFFF,
                 ExtendType::Sxtw => (raw as i32) as i64 as u64,
             };
-            (extended << (*shift_amount as u64)) as i64
+            (extended << u64::from(shift_amount.unwrap_or(0))) as i64
         }
-    };
+    }
+}
 
-    let (address, writeback) = match mode {
-        IndexMode::PreIndex => {
-            let addr = (base as i64).wrapping_add(offset_val) as u64;
-            (addr, Some(addr))
-        }
-        IndexMode::PostIndex => {
-            let addr = base;
-            let wb = (base as i64).wrapping_add(offset_val) as u64;
-            (addr, Some(wb))
-        }
-        IndexMode::SignedOffset => {
-            let addr = (base as i64).wrapping_add(offset_val) as u64;
-            (addr, None)
-        }
-    };
+/// The accessed address and the writeback value (None when the base is
+/// left alone) an index mode produces from a base and a displacement.
+fn apply_index_mode(base: u64, offset_val: i64, mode: IndexMode) -> (u64, Option<u64>) {
+    let moved = (base as i64).wrapping_add(offset_val) as u64;
+    match mode {
+        IndexMode::PreIndex => (moved, Some(moved)),
+        IndexMode::PostIndex => (base, Some(moved)),
+        IndexMode::SignedOffset => (moved, None),
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
+fn exec_ldst(
+    op: LdStOp, rt: u8, rn: u8, offset: &LdStOffset, size: MemSize,
+    mode: IndexMode, regs: &mut RegisterFile, mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    check_sp_alignment(rn, regs)?;
+    let base = regs.read_gpr_or_sp(rn, true);
+    let offset_val = resolve_ldst_offset(offset, regs);
+    let (address, writeback) = apply_index_mode(base, offset_val, mode);
 
     match op {
         LdStOp::Ldr => {
@@ -716,6 +763,8 @@ fn exec_ldst(
                 MemSize::H => mem.read_u16(address)? as u64,
                 MemSize::W => mem.read_u32(address)? as u64,
                 MemSize::X => mem.read_u64(address)?,
+                // Q is a SIMD&FP width; the integer decode never spells it.
+                MemSize::Q => return Err(EmuError::UnknownInstruction(0)),
             };
             regs.write_gpr(rt, true, value);
         }
@@ -727,6 +776,8 @@ fn exec_ldst(
                 MemSize::H => mem.write_u16(address, value as u16)?,
                 MemSize::W => mem.write_u32(address, value as u32)?,
                 MemSize::X => mem.write_u64(address, value)?,
+                // Q is a SIMD&FP width; the integer decode never spells it.
+                MemSize::Q => return Err(EmuError::UnknownInstruction(0)),
             }
         }
     }
@@ -805,65 +856,246 @@ fn exec_ldst_pair(
     Ok(ExecResult::Advance)
 }
 
+/// SIMD&FP LDR/STR at every width the register file has a view for.
+/// Base register 31 means SP here, exactly as in the integer load/store
+/// path: FP spills sit on the stack. A load writes the scalar view and
+/// zeroes every bit above it; a B or H store writes only the low byte or
+/// halfword of the register.
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
+fn exec_fp_ldst(
+    load: bool, ft: u8, rn: u8, offset: &LdStOffset, size: MemSize,
+    mode: IndexMode, regs: &mut RegisterFile, mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    check_sp_alignment(rn, regs)?;
+    let base = regs.read_gpr_or_sp(rn, true);
+    let offset_val = resolve_ldst_offset(offset, regs);
+    let (address, writeback) = apply_index_mode(base, offset_val, mode);
+    check_guest_address(
+        address,
+        if load {
+            crate::errors::MemAccess::Read
+        } else {
+            crate::errors::MemAccess::Write
+        },
+    )?;
+
+    if load {
+        match size {
+            MemSize::B => {
+                let v = u64::from(mem.read_u8(address)?);
+                regs.write_fpr_scalar(ft, 1, v);
+            }
+            MemSize::H => {
+                let v = u64::from(mem.read_u16(address)?);
+                regs.write_fpr_scalar(ft, 2, v);
+            }
+            MemSize::W => {
+                let v = u64::from(mem.read_u32(address)?);
+                regs.write_fpr_scalar(ft, 4, v);
+            }
+            MemSize::X => {
+                let v = mem.read_u64(address)?;
+                regs.write_fpr_scalar(ft, 8, v);
+            }
+            MemSize::Q => {
+                let v = mem.read_u128(address)?;
+                regs.write_fpr_q(ft, v);
+            }
+        }
+    } else {
+        match size {
+            MemSize::B => mem.write_u8(address, regs.read_fpr_bits(ft) as u8)?,
+            MemSize::H => mem.write_u16(address, regs.read_fpr_bits(ft) as u16)?,
+            MemSize::W => mem.write_u32(address, regs.read_fpr_bits(ft) as u32)?,
+            MemSize::X => mem.write_u64(address, regs.read_fpr_bits(ft))?,
+            MemSize::Q => mem.write_u128(address, regs.read_fpr_q(ft))?,
+        }
+    }
+
+    if let Some(wb) = writeback {
+        regs.write_gpr_or_sp(rn, true, wb);
+    }
+
+    Ok(ExecResult::Advance)
+}
+
 #[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
 fn exec_fp_ldst_pair(
-    op: LdStPairOp, single: bool, rt: u8, rt2: u8, rn: u8,
+    op: LdStPairOp, size: MemSize, rt: u8, rt2: u8, rn: u8,
     imm7: i16, mode: IndexMode,
     regs: &mut RegisterFile, mem: &mut Memory,
 ) -> Result<ExecResult, EmuError> {
     check_sp_alignment(rn, regs)?;
     let base = regs.read_gpr_or_sp(rn, true);
+    let (address, writeback) = apply_index_mode(base, imm7 as i64, mode);
 
-    let (address, writeback) = match mode {
-        IndexMode::PreIndex => {
-            let addr = (base as i64 + imm7 as i64) as u64;
-            (addr, Some(addr))
-        }
-        IndexMode::PostIndex => {
-            let wb = (base as i64 + imm7 as i64) as u64;
-            (base, Some(wb))
-        }
-        IndexMode::SignedOffset => {
-            let addr = (base as i64 + imm7 as i64) as u64;
-            (addr, None)
-        }
-    };
-
-    let pair_size: u64 = if single { 4 } else { 8 };
+    let pair_size = u64::from(size.bytes());
     let access = match op {
         LdStPairOp::Ldp => crate::errors::MemAccess::Read,
         LdStPairOp::Stp => crate::errors::MemAccess::Write,
     };
     check_guest_address(address, access)?;
     check_guest_address(address.wrapping_add(pair_size), access)?;
+    let second = address.wrapping_add(pair_size);
 
     match op {
-        LdStPairOp::Ldp => {
-            // S loads zero the upper 32 bits of the FP register, like the
-            // single-register S load.
-            let (v1, v2) = if single {
-                (mem.read_u32(address)? as u64, mem.read_u32(address + pair_size)? as u64)
-            } else {
-                (mem.read_u64(address)?, mem.read_u64(address + pair_size)?)
-            };
-            regs.write_fpr_bits(rt, v1);
-            regs.write_fpr_bits(rt2, v2);
-        }
-        LdStPairOp::Stp => {
-            let v1 = regs.read_fpr_bits(rt);
-            let v2 = regs.read_fpr_bits(rt2);
-            if single {
-                mem.write_u32(address, v1 as u32)?;
-                mem.write_u32(address + pair_size, v2 as u32)?;
-            } else {
-                mem.write_u64(address, v1)?;
-                mem.write_u64(address + pair_size, v2)?;
+        LdStPairOp::Ldp => match size {
+            // Each element is a scalar destination, so the bits above the
+            // loaded width go to zero, like the single-register load.
+            MemSize::W => {
+                regs.write_fpr_scalar(rt, 4, u64::from(mem.read_u32(address)?));
+                regs.write_fpr_scalar(rt2, 4, u64::from(mem.read_u32(second)?));
             }
-        }
+            MemSize::X => {
+                regs.write_fpr_scalar(rt, 8, mem.read_u64(address)?);
+                regs.write_fpr_scalar(rt2, 8, mem.read_u64(second)?);
+            }
+            MemSize::Q => {
+                regs.write_fpr_q(rt, mem.read_u128(address)?);
+                regs.write_fpr_q(rt2, mem.read_u128(second)?);
+            }
+            // opc 11 is unallocated, so the decoder never builds a B or H
+            // pair.
+            MemSize::B | MemSize::H => return Err(EmuError::UnknownInstruction(0)),
+        },
+        LdStPairOp::Stp => match size {
+            MemSize::W => {
+                mem.write_u32(address, regs.read_fpr_bits(rt) as u32)?;
+                mem.write_u32(second, regs.read_fpr_bits(rt2) as u32)?;
+            }
+            MemSize::X => {
+                mem.write_u64(address, regs.read_fpr_bits(rt))?;
+                mem.write_u64(second, regs.read_fpr_bits(rt2))?;
+            }
+            MemSize::Q => {
+                mem.write_u128(address, regs.read_fpr_q(rt))?;
+                mem.write_u128(second, regs.read_fpr_q(rt2))?;
+            }
+            MemSize::B | MemSize::H => return Err(EmuError::UnknownInstruction(0)),
+        },
     }
 
     if let Some(wb) = writeback {
         regs.write_gpr_or_sp(rn, true, wb);
+    }
+
+    Ok(ExecResult::Advance)
+}
+
+/// One element of `esize` bytes, zero-extended.
+fn read_element(mem: &Memory, addr: u64, esize: u8) -> Result<u64, EmuError> {
+    Ok(match esize {
+        1 => u64::from(mem.read_u8(addr)?),
+        2 => u64::from(mem.read_u16(addr)?),
+        4 => u64::from(mem.read_u32(addr)?),
+        _ => mem.read_u64(addr)?,
+    })
+}
+
+fn write_element(mem: &mut Memory, addr: u64, esize: u8, value: u64) -> Result<(), EmuError> {
+    match esize {
+        1 => mem.write_u8(addr, value as u8),
+        2 => mem.write_u16(addr, value as u16),
+        4 => mem.write_u32(addr, value as u32),
+        _ => mem.write_u64(addr, value),
+    }
+}
+
+/// LD1-LD4 / ST1-ST4 in all three shapes.
+///
+/// The bytes are consumed in address order and the register list is
+/// walked in step with them, which is what makes a load de-interleave
+/// and a store interleave: `ld2 {v3.8b, v4.8b}` puts the byte at +0 in
+/// v3 lane 0 and the byte at +1 in v4 lane 0, so v3 ends up holding
+/// every even byte and v4 every odd one. LD1/ST1 with more than one
+/// register is the degenerate case: one structure per element, so each
+/// register is simply filled in turn. A 64-bit arrangement zeroes bits
+/// 127:64 of every destination, like any other write below the full
+/// width; the single-lane shape is the one that does not, because it
+/// writes one lane and leaves the register around it alone.
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
+fn exec_simd_ldst_structure(
+    load: bool, structures: u8, count: u8, esize: u8, q: bool,
+    shape: SimdStructShape, rt: u8, rn: u8, post: Option<u8>,
+    regs: &mut RegisterFile, mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    check_sp_alignment(rn, regs)?;
+    let base = regs.read_gpr_or_sp(rn, true);
+    let total = simd_struct_bytes(shape, count, esize, q);
+    let access = if load {
+        crate::errors::MemAccess::Read
+    } else {
+        crate::errors::MemAccess::Write
+    };
+    check_guest_address(base, access)?;
+    check_guest_address(base.wrapping_add(total - 1), access)?;
+
+    // The register list wraps past v31, so every index goes through here.
+    let reg_at = |step: u32| ((u32::from(rt) + step) % 32) as u8;
+
+    match shape {
+        SimdStructShape::Multiple => {
+            let lanes = if q { 16u32 } else { 8 } / u32::from(esize);
+            // A load writes every lane, so zeroing first is all the
+            // upper-half rule needs.
+            if load && !q {
+                for step in 0..u32::from(count) {
+                    regs.write_fpr_q(reg_at(step), 0);
+                }
+            }
+            let repeats = u32::from(count / structures);
+            let mut offset = 0u64;
+            for repeat in 0..repeats {
+                for lane in 0..lanes {
+                    for slot in 0..u32::from(structures) {
+                        let reg = reg_at(repeat * u32::from(structures) + slot);
+                        let addr = base.wrapping_add(offset);
+                        if load {
+                            let value = read_element(mem, addr, esize)?;
+                            regs.write_fpr_lane(reg, esize, lane as u8, value);
+                        } else {
+                            let value = regs.read_fpr_lane(reg, esize, lane as u8);
+                            write_element(mem, addr, esize, value)?;
+                        }
+                        offset += u64::from(esize);
+                    }
+                }
+            }
+        }
+        SimdStructShape::Lane(index) => {
+            for slot in 0..u32::from(count) {
+                let reg = reg_at(slot);
+                let addr = base.wrapping_add(u64::from(slot) * u64::from(esize));
+                if load {
+                    let value = read_element(mem, addr, esize)?;
+                    regs.write_fpr_lane(reg, esize, index, value);
+                } else {
+                    let value = regs.read_fpr_lane(reg, esize, index);
+                    write_element(mem, addr, esize, value)?;
+                }
+            }
+        }
+        SimdStructShape::Replicate => {
+            let lanes = if q { 16u32 } else { 8 } / u32::from(esize);
+            for slot in 0..u32::from(count) {
+                let addr = base.wrapping_add(u64::from(slot) * u64::from(esize));
+                let value = u128::from(read_element(mem, addr, esize)?);
+                let mut filled = 0u128;
+                for lane in 0..lanes {
+                    filled |= value << (lane * u32::from(esize) * 8);
+                }
+                // Writing the whole register is what zeroes the upper
+                // half of a 64-bit arrangement.
+                regs.write_fpr_q(reg_at(slot), filled);
+            }
+        }
+    }
+
+    if let Some(rm) = post {
+        // Rm 31 is the immediate form: the total bytes moved, which the
+        // word does not spell because there is only one legal value.
+        let step = if rm == 31 { total } else { regs.read_gpr(rm, true) };
+        regs.write_gpr_or_sp(rn, true, base.wrapping_add(step));
     }
 
     Ok(ExecResult::Advance)
@@ -884,6 +1116,28 @@ fn exec_ldr_literal(
     } else {
         let value = mem.read_u32(target)? as u64;
         regs.write_gpr(rt, false, value);
+    }
+    Ok(ExecResult::Advance)
+}
+
+/// LDR (literal) of a SIMD&FP register: the PC-relative load the linker
+/// never emits (the hosted pipeline lowers `ldr s0, label` to two words)
+/// but gcc output can carry.
+fn exec_fp_ldr_literal(
+    rt: u8,
+    offset: i64,
+    size: MemSize,
+    regs: &mut RegisterFile,
+    mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    let target = (regs.read_pc() as i64).wrapping_add(offset) as u64;
+    check_guest_address(target, crate::errors::MemAccess::Read)?;
+    match size {
+        MemSize::W => regs.write_fpr_scalar(rt, 4, u64::from(mem.read_u32(target)?)),
+        MemSize::X => regs.write_fpr_scalar(rt, 8, mem.read_u64(target)?),
+        MemSize::Q => regs.write_fpr_q(rt, mem.read_u128(target)?),
+        // opc 11 is unallocated, so the decoder never builds these.
+        MemSize::B | MemSize::H => return Err(EmuError::UnknownInstruction(0)),
     }
     Ok(ExecResult::Advance)
 }
@@ -1043,34 +1297,159 @@ fn exec_mul_div(
     Ok(ExecResult::Advance)
 }
 
-/// What `fp_max` and its siblings need of a float, so the S and D paths
-/// run the same body instead of two copies whose NaN rules could drift.
-trait FpOperand: Copy + PartialOrd {
-    const NAN: Self;
+/// What the float rules need of a float, so the S and D paths run the
+/// same body instead of two copies whose NaN rules could drift. The
+/// scalar FP instructions and the vector lanes share every one of them.
+trait FpOperand:
+    Copy
+    + PartialOrd
+    + std::ops::Add<Output = Self>
+    + std::ops::Sub<Output = Self>
+    + std::ops::Mul<Output = Self>
+    + std::ops::Div<Output = Self>
+    + std::ops::Neg<Output = Self>
+{
+    /// The AArch64 default NaN's bit pattern. `default_nan_if_new`
+    /// rebuilds the value from these bits rather than from a float
+    /// constant, because the optimizer is free to treat one NaN as
+    /// interchangeable with another and hand back the host's own.
+    const DEFAULT_NAN_BITS: u64;
     const ZERO: Self;
+    const TWO: Self;
+    const THREE: Self;
+    const ONE_POINT_FIVE: Self;
+    const INFINITY: Self;
+    const NEG_INFINITY: Self;
+    /// The width in bytes, so a generic body can name its own lane mask.
+    const BYTES: u8;
     fn is_nan(self) -> bool;
+    /// A NaN whose mantissa's high bit is CLEAR, which is the signalling
+    /// kind an operation has to quiet as it propagates it.
+    fn is_signalling(self) -> bool;
+    fn quieted(self) -> Self;
+    fn is_infinite(self) -> bool;
     fn is_sign_negative(self) -> bool;
+    fn from_lane(bits: u64) -> Self;
+    fn to_bits(self) -> u64;
+    fn abs(self) -> Self;
+    fn sqrt(self) -> Self;
+    fn mul_add(self, mul: Self, add: Self) -> Self;
+    fn round_ties_even(self) -> Self;
+    fn round(self) -> Self;
+    fn floor(self) -> Self;
+    fn ceil(self) -> Self;
+    fn trunc(self) -> Self;
 }
 
 impl FpOperand for f32 {
-    const NAN: Self = f32::NAN;
+    const DEFAULT_NAN_BITS: u64 = 0x7FC0_0000;
     const ZERO: Self = 0.0;
+    const TWO: Self = 2.0;
+    const THREE: Self = 3.0;
+    const ONE_POINT_FIVE: Self = 1.5;
+    const INFINITY: Self = f32::INFINITY;
+    const NEG_INFINITY: Self = f32::NEG_INFINITY;
+    const BYTES: u8 = 4;
     fn is_nan(self) -> bool {
         f32::is_nan(self)
+    }
+    fn is_signalling(self) -> bool {
+        f32::is_nan(self) && f32::to_bits(self) & 0x0040_0000 == 0
+    }
+    fn quieted(self) -> Self {
+        f32::from_bits(f32::to_bits(self) | 0x0040_0000)
+    }
+    fn is_infinite(self) -> bool {
+        f32::is_infinite(self)
     }
     fn is_sign_negative(self) -> bool {
         f32::is_sign_negative(self)
     }
+    fn from_lane(bits: u64) -> Self {
+        f32::from_bits(bits as u32)
+    }
+    fn to_bits(self) -> u64 {
+        u64::from(f32::to_bits(self))
+    }
+    fn abs(self) -> Self {
+        f32::abs(self)
+    }
+    fn sqrt(self) -> Self {
+        f32::sqrt(self)
+    }
+    fn mul_add(self, mul: Self, add: Self) -> Self {
+        f32::mul_add(self, mul, add)
+    }
+    fn round_ties_even(self) -> Self {
+        f32::round_ties_even(self)
+    }
+    fn round(self) -> Self {
+        f32::round(self)
+    }
+    fn floor(self) -> Self {
+        f32::floor(self)
+    }
+    fn ceil(self) -> Self {
+        f32::ceil(self)
+    }
+    fn trunc(self) -> Self {
+        f32::trunc(self)
+    }
 }
 
 impl FpOperand for f64 {
-    const NAN: Self = f64::NAN;
+    const DEFAULT_NAN_BITS: u64 = 0x7FF8_0000_0000_0000;
     const ZERO: Self = 0.0;
+    const TWO: Self = 2.0;
+    const THREE: Self = 3.0;
+    const ONE_POINT_FIVE: Self = 1.5;
+    const INFINITY: Self = f64::INFINITY;
+    const NEG_INFINITY: Self = f64::NEG_INFINITY;
+    const BYTES: u8 = 8;
     fn is_nan(self) -> bool {
         f64::is_nan(self)
     }
+    fn is_signalling(self) -> bool {
+        f64::is_nan(self) && f64::to_bits(self) & 0x0008_0000_0000_0000 == 0
+    }
+    fn quieted(self) -> Self {
+        f64::from_bits(f64::to_bits(self) | 0x0008_0000_0000_0000)
+    }
+    fn is_infinite(self) -> bool {
+        f64::is_infinite(self)
+    }
     fn is_sign_negative(self) -> bool {
         f64::is_sign_negative(self)
+    }
+    fn from_lane(bits: u64) -> Self {
+        f64::from_bits(bits)
+    }
+    fn to_bits(self) -> u64 {
+        f64::to_bits(self)
+    }
+    fn abs(self) -> Self {
+        f64::abs(self)
+    }
+    fn sqrt(self) -> Self {
+        f64::sqrt(self)
+    }
+    fn mul_add(self, mul: Self, add: Self) -> Self {
+        f64::mul_add(self, mul, add)
+    }
+    fn round_ties_even(self) -> Self {
+        f64::round_ties_even(self)
+    }
+    fn round(self) -> Self {
+        f64::round(self)
+    }
+    fn floor(self) -> Self {
+        f64::floor(self)
+    }
+    fn ceil(self) -> Self {
+        f64::ceil(self)
+    }
+    fn trunc(self) -> Self {
+        f64::trunc(self)
     }
 }
 
@@ -1081,8 +1460,8 @@ impl FpOperand for f64 {
 /// signed-zero answer is documented as unspecified, so both rules are
 /// written out here rather than delegated.
 fn fp_max<T: FpOperand>(a: T, b: T) -> T {
-    if a.is_nan() || b.is_nan() {
-        return T::NAN;
+    if let Some(nan) = fp_process_nans(&[a, b]) {
+        return nan;
     }
     if a == T::ZERO && b == T::ZERO {
         return if a.is_sign_negative() { b } else { a };
@@ -1091,8 +1470,8 @@ fn fp_max<T: FpOperand>(a: T, b: T) -> T {
 }
 
 fn fp_min<T: FpOperand>(a: T, b: T) -> T {
-    if a.is_nan() || b.is_nan() {
-        return T::NAN;
+    if let Some(nan) = fp_process_nans(&[a, b]) {
+        return nan;
     }
     if a == T::ZERO && b == T::ZERO {
         return if a.is_sign_negative() { a } else { b };
@@ -1100,27 +1479,29 @@ fn fp_min<T: FpOperand>(a: T, b: T) -> T {
     if a < b { a } else { b }
 }
 
-/// FMAXNM / FMINNM are IEEE maxNum / minNum: a quiet NaN operand is
-/// ignored and the number wins. The signed-zero rule is FMAX's, so the
-/// numeric case delegates rather than restating it.
+/// FMAXNM / FMINNM are IEEE maxNum / minNum: a QUIET NaN operand is
+/// treated as missing, which the pseudocode does by standing an infinity
+/// in its place before running FPMax. A signalling one is not missing -
+/// it falls through and propagates, quieted, like any other operand -
+/// and two quiet NaNs leave nothing to stand in for either. The
+/// signed-zero rule is FMAX's, so the numeric case delegates rather than
+/// restating it.
 fn fp_max_num<T: FpOperand>(a: T, b: T) -> T {
-    if a.is_nan() {
-        return b;
+    let quiet = |v: T| v.is_nan() && !v.is_signalling();
+    match (quiet(a), quiet(b)) {
+        (true, false) => fp_max(T::NEG_INFINITY, b),
+        (false, true) => fp_max(a, T::NEG_INFINITY),
+        _ => fp_max(a, b),
     }
-    if b.is_nan() {
-        return a;
-    }
-    fp_max(a, b)
 }
 
 fn fp_min_num<T: FpOperand>(a: T, b: T) -> T {
-    if a.is_nan() {
-        return b;
+    let quiet = |v: T| v.is_nan() && !v.is_signalling();
+    match (quiet(a), quiet(b)) {
+        (true, false) => fp_min(T::INFINITY, b),
+        (false, true) => fp_min(a, T::INFINITY),
+        _ => fp_min(a, b),
     }
-    if b.is_nan() {
-        return a;
-    }
-    fp_min(a, b)
 }
 
 /// Replace a NaN this operation GENERATED with the AArch64 default NaN
@@ -1132,11 +1513,1544 @@ fn fp_min_num<T: FpOperand>(a: T, b: T) -> T {
 /// FPCR.DN is clear here, so a quiet NaN propagates with its own sign and
 /// payload.
 fn default_nan_if_new<T: FpOperand>(result: T, sources: &[T]) -> T {
+    T::from_lane(default_nan_bits_if_new(result, sources))
+}
+
+/// The same rule answered as BITS, which is the form it is really about
+/// and the one every lane goes through. It cannot be expressed on the
+/// value alone: nothing stops the optimizer from handing back a
+/// different NaN when the answer is only "a NaN", and on an x86-64 host
+/// that is the sign-set one this rule exists to replace.
+fn default_nan_bits_if_new<T: FpOperand>(result: T, sources: &[T]) -> u64 {
     if result.is_nan() && !sources.iter().any(|s| s.is_nan()) {
-        T::NAN
+        T::DEFAULT_NAN_BITS
     } else {
-        result
+        result.to_bits()
     }
+}
+
+/// The Advanced SIMD copy group. DUP and the two lane-out forms write a
+/// whole destination, so they zero everything they do not set; INS writes
+/// one lane and leaves the rest of the register exactly as it was.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_copy(
+    op: SimdCopyOp,
+    esize: u8,
+    q: bool,
+    index: u8,
+    index2: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if q { 16 } else { 8 };
+    match op {
+        SimdCopyOp::DupGeneral => {
+            let element = regs.read_gpr(rn, esize == 8);
+            regs.write_fpr_q(rd, simd_replicate(element, esize, bytes));
+        }
+        SimdCopyOp::DupElement => {
+            let element = regs.read_fpr_lane(rn, esize, index);
+            regs.write_fpr_q(rd, simd_replicate(element, esize, bytes));
+        }
+        SimdCopyOp::DupScalar => {
+            let element = regs.read_fpr_lane(rn, esize, index);
+            regs.write_fpr_scalar(rd, esize, element);
+        }
+        SimdCopyOp::InsGeneral => {
+            let value = regs.read_gpr(rn, esize == 8);
+            regs.write_fpr_lane(rd, esize, index, value);
+        }
+        SimdCopyOp::InsElement => {
+            let value = regs.read_fpr_lane(rn, esize, index2);
+            regs.write_fpr_lane(rd, esize, index, value);
+        }
+        SimdCopyOp::Umov => {
+            let value = regs.read_fpr_lane(rn, esize, index);
+            regs.write_gpr(rd, q, value);
+        }
+        SimdCopyOp::Smov => {
+            let value = regs.read_fpr_lane(rn, esize, index);
+            let spare = 64 - u32::from(esize) * 8;
+            regs.write_gpr(rd, q, (((value << spare) as i64) >> spare) as u64);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// advanced simd: the integer lane families
+// ---------------------------------------------------------------------------
+//
+// Every lane operation below works at the lane's OWN width: the value is
+// masked back to `esize` bytes before it is stored, and the arithmetic
+// that gets there is explicitly wrapping or saturating. The three places
+// a wider intermediate is right are the ones the instruction defines that
+// way - the halving adds compute in one extra bit, the saturating forms
+// have to see the overflow they clamp, and the doubling multiplies take
+// the high half of a double-width product - and each says so at its arm.
+
+/// All-ones over `esize` bytes: the mask a lane result is stored under,
+/// and the value a lane compare writes when it holds.
+fn lane_mask(esize: u8) -> u64 {
+    match esize {
+        1 => 0xff,
+        2 => 0xffff,
+        4 => 0xffff_ffff,
+        _ => u64::MAX,
+    }
+}
+
+/// One lane read as a signed value.
+fn lane_signed(value: u64, esize: u8) -> i64 {
+    let spare = 64 - u32::from(esize) * 8;
+    ((value << spare) as i64) >> spare
+}
+
+/// Clamp to the signed range of `esize` bytes, then store as the lane's
+/// bit pattern. The argument is i128 because the caller has already gone
+/// past the lane's width: that overflow is the thing being clamped.
+fn sat_signed(value: i128, esize: u8) -> u64 {
+    let bits = u32::from(esize) * 8;
+    let high = (1i128 << (bits - 1)) - 1;
+    let low = -(1i128 << (bits - 1));
+    (value.clamp(low, high) as u64) & lane_mask(esize)
+}
+
+/// Clamp to the unsigned range of `esize` bytes.
+fn sat_unsigned(value: i128, esize: u8) -> u64 {
+    let high = (1i128 << (u32::from(esize) * 8)) - 1;
+    value.clamp(0, high) as u64
+}
+
+/// The lanes of a register, low lane first. `bytes` is how much of the
+/// register the arrangement covers: 8, 16, or the width of one lane for
+/// a SIMD-scalar form.
+fn read_lanes(value: u128, esize: u8, bytes: u8) -> Vec<u64> {
+    let width = u32::from(esize) * 8;
+    let mask = lane_mask(esize);
+    (0..bytes / esize)
+        .map(|lane| ((value >> (u32::from(lane) * width)) as u64) & mask)
+        .collect()
+}
+
+/// Pack lanes back into a register value. Everything above the lanes is
+/// zero, which is the write rule for both the 64-bit arrangements and
+/// the SIMD-scalar forms.
+fn pack_lanes(lanes: &[u64], esize: u8) -> u128 {
+    let width = u32::from(esize) * 8;
+    let mask = u128::from(lane_mask(esize));
+    lanes
+        .iter()
+        .enumerate()
+        .fold(0u128, |acc, (i, lane)| acc | ((u128::from(*lane) & mask) << (i as u32 * width)))
+}
+
+/// The half of a 128-bit source a widening or `2` form reads: the low
+/// lanes for the plain spelling, the high ones for the `2` suffix.
+fn read_half_lanes(value: u128, esize: u8, upper: bool) -> Vec<u64> {
+    let lanes = read_lanes(value, esize, 16);
+    let half = lanes.len() / 2;
+    if upper {
+        lanes[half..].to_vec()
+    } else {
+        lanes[..half].to_vec()
+    }
+}
+
+/// Write a 64-bit-wide result. The plain form fills the low half and
+/// zeroes bits 127:64; the `2` form fills the high half and leaves the
+/// low one exactly as it was, which is the whole point of the suffix.
+fn write_half(regs: &mut RegisterFile, rd: u8, upper: bool, packed: u128) {
+    if upper {
+        let low = regs.read_fpr_q(rd) & u128::from(u64::MAX);
+        regs.write_fpr_q(rd, low | (packed << 64));
+    } else {
+        regs.write_fpr_q(rd, packed);
+    }
+}
+
+/// Carry-less (polynomial) multiply of two bytes: PMUL's lane operation.
+fn poly_mul(a: u64, b: u64) -> u64 {
+    (0..8).fold(0u64, |acc, bit| if (b >> bit) & 1 == 1 { acc ^ (a << bit) } else { acc })
+}
+
+/// Bits of one byte in reverse order: RBIT's lane operation.
+fn reverse_byte(byte: u64) -> u64 {
+    u64::from((byte as u8).reverse_bits())
+}
+
+/// Leading sign bits of a lane, the sign bit itself excluded, which is
+/// what CLS counts.
+fn count_leading_sign_bits(value: u64, esize: u8) -> u64 {
+    let bits = u32::from(esize) * 8;
+    let below = (1u64 << (bits - 1)) - 1;
+    let differing = ((value >> 1) ^ value) & below;
+    if differing == 0 {
+        u64::from(bits - 1)
+    } else {
+        u64::from(differing.leading_zeros() - (64 - (bits - 1)))
+    }
+}
+
+fn count_leading_zeros(value: u64, esize: u8) -> u64 {
+    let bits = u32::from(esize) * 8;
+    if value == 0 {
+        u64::from(bits)
+    } else {
+        u64::from(value.leading_zeros() - (64 - bits))
+    }
+}
+
+/// ARM's RecipEstimate over the nine leading bits of a fixed-point
+/// operand: the estimate table URECPE reads.
+fn recip_estimate(a: u32) -> u32 {
+    let a = a * 2 + 1;
+    let b = (1u32 << 19) / a;
+    b.div_ceil(2)
+}
+
+/// ARM's RecipSqrtEstimate, the same table for URSQRTE. The search for
+/// `b` is the pseudocode's own loop, kept literal rather than solved: it
+/// is what pins the boundary cases the capture checks.
+fn recip_sqrt_estimate(a: u32) -> u32 {
+    let a = if a < 256 { a * 2 + 1 } else { (((a >> 1) << 1) + 1) * 2 };
+    let mut b = 512u32;
+    while u64::from(a) * u64::from(b + 1) * u64::from(b + 1) < (1u64 << 28) {
+        b += 1;
+    }
+    b.div_ceil(2)
+}
+
+/// URECPE: an operand below 0.5 has no representable reciprocal in the
+/// fixed-point format, so the estimate saturates to all ones.
+fn unsigned_recip_estimate(operand: u32) -> u32 {
+    if operand >> 31 == 0 {
+        u32::MAX
+    } else {
+        (recip_estimate(operand >> 23) & 0x1ff) << 23
+    }
+}
+
+/// URSQRTE: the same, with the cut at 0.25.
+fn unsigned_rsqrt_estimate(operand: u32) -> u32 {
+    if operand >> 30 == 0 {
+        u32::MAX
+    } else {
+        (recip_sqrt_estimate(operand >> 23) & 0x1ff) << 23
+    }
+}
+
+/// One lane of a three-same operation. `d` is the destination lane,
+/// which only the accumulating rows (MLA, MLS, SABA, UABA) read.
+fn simd_same_lane(op: SimdSameOp, a: u64, b: u64, d: u64, esize: u8) -> u64 {
+    let mask = lane_mask(esize);
+    let sa = lane_signed(a, esize);
+    let sb = lane_signed(b, esize);
+    let bits = u32::from(esize) * 8;
+    // The absolute difference the SABD/SABA and UABD/UABA rows share.
+    let sdiff = (i128::from(sa) - i128::from(sb)).unsigned_abs() as u64;
+    let udiff = a.abs_diff(b);
+    match op {
+        SimdSameOp::Add => a.wrapping_add(b) & mask,
+        SimdSameOp::Sub => a.wrapping_sub(b) & mask,
+        SimdSameOp::Mul => a.wrapping_mul(b) & mask,
+        SimdSameOp::Mla => d.wrapping_add(a.wrapping_mul(b)) & mask,
+        SimdSameOp::Mls => d.wrapping_sub(a.wrapping_mul(b)) & mask,
+        SimdSameOp::Pmul => poly_mul(a, b) & mask,
+        SimdSameOp::Cmeq => if a == b { mask } else { 0 },
+        SimdSameOp::Cmtst => if a & b != 0 { mask } else { 0 },
+        SimdSameOp::Cmgt => if sa > sb { mask } else { 0 },
+        SimdSameOp::Cmge => if sa >= sb { mask } else { 0 },
+        SimdSameOp::Cmhi => if a > b { mask } else { 0 },
+        SimdSameOp::Cmhs => if a >= b { mask } else { 0 },
+        SimdSameOp::Smax | SimdSameOp::Smaxp => if sa >= sb { a } else { b },
+        SimdSameOp::Smin | SimdSameOp::Sminp => if sa <= sb { a } else { b },
+        SimdSameOp::Umax | SimdSameOp::Umaxp => a.max(b),
+        SimdSameOp::Umin | SimdSameOp::Uminp => a.min(b),
+        SimdSameOp::Sabd => sdiff & mask,
+        SimdSameOp::Uabd => udiff & mask,
+        SimdSameOp::Saba => d.wrapping_add(sdiff) & mask,
+        SimdSameOp::Uaba => d.wrapping_add(udiff) & mask,
+        // The halving adds and subtracts are defined in one extra bit:
+        // the sum is formed at esize+1 and the result is its bits
+        // esize:1, so the carry out is never lost.
+        SimdSameOp::Shadd => ((i128::from(sa) + i128::from(sb)) >> 1) as u64 & mask,
+        SimdSameOp::Uhadd => ((i128::from(a) + i128::from(b)) >> 1) as u64 & mask,
+        SimdSameOp::Srhadd => ((i128::from(sa) + i128::from(sb) + 1) >> 1) as u64 & mask,
+        SimdSameOp::Urhadd => ((i128::from(a) + i128::from(b) + 1) >> 1) as u64 & mask,
+        SimdSameOp::Shsub => ((i128::from(sa) - i128::from(sb)) >> 1) as u64 & mask,
+        SimdSameOp::Uhsub => ((i128::from(a) - i128::from(b)) >> 1) as u64 & mask,
+        // The saturating rows have to see the overflow to clamp it.
+        SimdSameOp::Sqadd => sat_signed(i128::from(sa) + i128::from(sb), esize),
+        SimdSameOp::Uqadd => sat_unsigned(i128::from(a) + i128::from(b), esize),
+        SimdSameOp::Sqsub => sat_signed(i128::from(sa) - i128::from(sb), esize),
+        SimdSameOp::Uqsub => sat_unsigned(i128::from(a) - i128::from(b), esize),
+        // The doubling multiplies form a double-width product on
+        // purpose and keep its high half: the only pair that saturates
+        // is the two minimum values, whose doubled product is one past
+        // the top of the lane.
+        SimdSameOp::Sqdmulh => {
+            sat_signed((2 * i128::from(sa) * i128::from(sb)) >> bits, esize)
+        }
+        SimdSameOp::Sqrdmulh => {
+            let product = 2 * i128::from(sa) * i128::from(sb) + (1i128 << (bits - 1));
+            sat_signed(product >> bits, esize)
+        }
+        SimdSameOp::Addp => a.wrapping_add(b) & mask,
+        // The register shifts read a shift COUNT out of the second
+        // source rather than a value, so they have their own lane rule.
+        SimdSameOp::Sshl
+        | SimdSameOp::Ushl
+        | SimdSameOp::Srshl
+        | SimdSameOp::Urshl
+        | SimdSameOp::Sqshl
+        | SimdSameOp::Uqshl
+        | SimdSameOp::Sqrshl
+        | SimdSameOp::Uqrshl => simd_shift_reg_lane(op, a, b, esize),
+    }
+}
+
+/// One lane of a register shift. The count is the SIGNED low byte of the
+/// second source's lane: positive shifts left, negative right. The
+/// rounding rows add half an ulp of the discarded bits before shifting,
+/// and the saturating rows clamp a left shift that leaves the lane.
+fn simd_shift_reg_lane(op: SimdSameOp, a: u64, count: u64, esize: u8) -> u64 {
+    let bits = u32::from(esize) * 8;
+    let mask = lane_mask(esize);
+    let shift = (count & 0xff) as u8 as i8;
+    let signed = matches!(
+        op,
+        SimdSameOp::Sshl | SimdSameOp::Srshl | SimdSameOp::Sqshl | SimdSameOp::Sqrshl
+    );
+    let rounding = matches!(
+        op,
+        SimdSameOp::Srshl | SimdSameOp::Urshl | SimdSameOp::Sqrshl | SimdSameOp::Uqrshl
+    );
+    let saturating = matches!(
+        op,
+        SimdSameOp::Sqshl | SimdSameOp::Uqshl | SimdSameOp::Sqrshl | SimdSameOp::Uqrshl
+    );
+    // The shift is defined on the unbounded integer the lane holds, so
+    // the intermediate is i128: that width is the instruction's, not a
+    // convenience, and the truncation or clamp back to the lane is the
+    // last step rather than a side effect of the arithmetic.
+    let element = if signed {
+        i128::from(lane_signed(a, esize))
+    } else {
+        i128::from(a)
+    };
+    let saturate = |value: i128| {
+        if signed {
+            sat_signed(value, esize)
+        } else {
+            sat_unsigned(value, esize)
+        }
+    };
+    if shift >= 0 {
+        let s = u32::from(shift as u8);
+        if s >= bits {
+            // Every bit the lane held has left it: the truncating rows
+            // answer zero and the saturating ones the extreme the sign
+            // of the operand asks for.
+            if !saturating || element == 0 {
+                return 0;
+            }
+            return saturate(if element > 0 { i128::MAX / 2 } else { i128::MIN / 2 });
+        }
+        let value = element << s;
+        if saturating {
+            saturate(value)
+        } else {
+            (value as u64) & mask
+        }
+    } else {
+        // A right shift past the lane empties it whatever the count, so
+        // the count is capped where the answer stops changing rather
+        // than left to run the rounding constant off the intermediate.
+        let k = u32::from(shift.unsigned_abs()).min(bits + 1);
+        let base = if rounding { element + (1i128 << (k - 1)) } else { element };
+        let value = base >> k;
+        if saturating {
+            saturate(value)
+        } else {
+            (value as u64) & mask
+        }
+    }
+}
+
+/// Whether a three-same row reads its two sources as one concatenated
+/// vector and folds neighbouring pairs, rather than lane against lane.
+fn is_pairwise(op: SimdSameOp) -> bool {
+    matches!(
+        op,
+        SimdSameOp::Addp
+            | SimdSameOp::Smaxp
+            | SimdSameOp::Sminp
+            | SimdSameOp::Umaxp
+            | SimdSameOp::Uminp
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_three_same(
+    op: SimdSameOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if scalar { esize } else if q { 16 } else { 8 };
+    let n = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let m = read_lanes(regs.read_fpr_q(rm), esize, bytes);
+    let d = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+    let out: Vec<u64> = if is_pairwise(op) {
+        // Vn's lanes then Vm's, folded two at a time, so the low half of
+        // the destination comes from Vn and the high half from Vm.
+        let concat: Vec<u64> = n.iter().chain(m.iter()).copied().collect();
+        (0..concat.len() / 2)
+            .map(|i| simd_same_lane(op, concat[i * 2], concat[i * 2 + 1], 0, esize))
+            .collect()
+    } else {
+        (0..n.len())
+            .map(|i| simd_same_lane(op, n[i], m[i], d[i], esize))
+            .collect()
+    };
+    regs.write_fpr_q(rd, pack_lanes(&out, esize));
+}
+
+/// One lane of a two-register misc operation. `d` is the destination
+/// lane, which the two saturating accumulate rows read.
+fn simd_misc_lane(op: SimdMiscOp, a: u64, d: u64, esize: u8) -> u64 {
+    let mask = lane_mask(esize);
+    let sa = lane_signed(a, esize);
+    match op {
+        SimdMiscOp::Cnt => u64::from(a.count_ones()),
+        SimdMiscOp::Mvn => !a & mask,
+        SimdMiscOp::Rbit => reverse_byte(a),
+        SimdMiscOp::Cls => count_leading_sign_bits(a, esize),
+        SimdMiscOp::Clz => count_leading_zeros(a, esize),
+        // ABS and NEG wrap at the lane's own width, so the minimum value
+        // is its own absolute value; their saturating twins clamp it.
+        SimdMiscOp::Abs => sa.wrapping_abs() as u64 & mask,
+        SimdMiscOp::Neg => 0u64.wrapping_sub(a) & mask,
+        SimdMiscOp::Sqabs => sat_signed(i128::from(sa).abs(), esize),
+        SimdMiscOp::Sqneg => sat_signed(-i128::from(sa), esize),
+        // SUQADD accumulates an unsigned operand into a signed
+        // destination and saturates as a signed value; USQADD is the
+        // other way round.
+        SimdMiscOp::Suqadd => {
+            sat_signed(i128::from(lane_signed(d, esize)) + i128::from(a), esize)
+        }
+        SimdMiscOp::Usqadd => sat_unsigned(i128::from(d) + i128::from(sa), esize),
+        SimdMiscOp::Cmgt0 => if sa > 0 { mask } else { 0 },
+        SimdMiscOp::Cmge0 => if sa >= 0 { mask } else { 0 },
+        SimdMiscOp::Cmeq0 => if sa == 0 { mask } else { 0 },
+        SimdMiscOp::Cmle0 => if sa <= 0 { mask } else { 0 },
+        SimdMiscOp::Cmlt0 => if sa < 0 { mask } else { 0 },
+        SimdMiscOp::Urecpe => u64::from(unsigned_recip_estimate(a as u32)),
+        SimdMiscOp::Ursqrte => u64::from(unsigned_rsqrt_estimate(a as u32)),
+        // The element-reversal and pairwise-widening rows are not lane
+        // to lane, so `exec_simd_two_misc` handles them itself.
+        SimdMiscOp::Rev64
+        | SimdMiscOp::Rev32
+        | SimdMiscOp::Rev16
+        | SimdMiscOp::Saddlp
+        | SimdMiscOp::Uaddlp
+        | SimdMiscOp::Sadalp
+        | SimdMiscOp::Uadalp
+        | SimdMiscOp::Xtn
+        | SimdMiscOp::Sqxtn
+        | SimdMiscOp::Uqxtn
+        | SimdMiscOp::Sqxtun
+        | SimdMiscOp::Shll => unreachable!("handled by shape, not lane by lane"),
+    }
+}
+
+/// One lane of a narrowing extract. The source is twice `esize` wide, so
+/// the value can be past what the result lane holds: that overflow is
+/// exactly what the three saturating rows clamp and XTN discards.
+fn simd_narrow_lane(op: SimdMiscOp, a: u64, esize: u8) -> u64 {
+    let wide = esize * 2;
+    let signed = i128::from(lane_signed(a, wide));
+    match op {
+        SimdMiscOp::Xtn => a & lane_mask(esize),
+        SimdMiscOp::Sqxtn => sat_signed(signed, esize),
+        SimdMiscOp::Uqxtn => sat_unsigned(i128::from(a), esize),
+        // SQXTUN reads the source SIGNED and saturates it into an
+        // UNSIGNED lane, so a negative source clamps at zero.
+        SimdMiscOp::Sqxtun => sat_unsigned(signed, esize),
+        _ => unreachable!("only the narrowing extracts reach this"),
+    }
+}
+
+fn exec_simd_two_misc(
+    op: SimdMiscOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if scalar { esize } else if q { 16 } else { 8 };
+    let source = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    match op {
+        // The REV rows reverse the ORDER of elements inside a container
+        // of 64, 32 or 16 bits; the elements themselves are untouched.
+        SimdMiscOp::Rev64 | SimdMiscOp::Rev32 | SimdMiscOp::Rev16 => {
+            let container: u8 = match op {
+                SimdMiscOp::Rev64 => 8,
+                SimdMiscOp::Rev32 => 4,
+                _ => 2,
+            };
+            let out: Vec<u64> = source
+                .chunks(usize::from(container / esize))
+                .flat_map(|chunk| chunk.iter().rev().copied())
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+        // The pairwise widening adds fold neighbouring lanes into one of
+        // twice the width; the ADALP pair accumulates into what the
+        // destination already holds.
+        SimdMiscOp::Saddlp | SimdMiscOp::Uaddlp | SimdMiscOp::Sadalp | SimdMiscOp::Uadalp => {
+            let signed = matches!(op, SimdMiscOp::Saddlp | SimdMiscOp::Sadalp);
+            let accumulate = matches!(op, SimdMiscOp::Sadalp | SimdMiscOp::Uadalp);
+            let wide = esize * 2;
+            let wide_mask = lane_mask(wide);
+            let held = read_lanes(regs.read_fpr_q(rd), wide, bytes);
+            let out: Vec<u64> = (0..source.len() / 2)
+                .map(|i| {
+                    let (a, b) = (source[i * 2], source[i * 2 + 1]);
+                    let sum = if signed {
+                        (lane_signed(a, esize).wrapping_add(lane_signed(b, esize))) as u64
+                    } else {
+                        a.wrapping_add(b)
+                    };
+                    let sum = sum & wide_mask;
+                    if accumulate {
+                        held[i].wrapping_add(sum) & wide_mask
+                    } else {
+                        sum
+                    }
+                })
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        // The narrowing extracts read lanes of twice the result's width
+        // and, in the `2` form, write the upper half of the destination
+        // rather than zeroing everything above the result.
+        SimdMiscOp::Xtn | SimdMiscOp::Sqxtn | SimdMiscOp::Uqxtn | SimdMiscOp::Sqxtun => {
+            let wide = esize * 2;
+            let read = if scalar { wide } else { 16 };
+            let lanes = read_lanes(regs.read_fpr_q(rn), wide, read);
+            let out: Vec<u64> = lanes.iter().map(|v| simd_narrow_lane(op, *v, esize)).collect();
+            if scalar {
+                regs.write_fpr_scalar(rd, esize, out[0]);
+            } else {
+                write_half(regs, rd, q, pack_lanes(&out, esize));
+            }
+        }
+        // SHLL shifts each lane left by exactly its own width into a
+        // lane of twice that, so the result is the source in the top
+        // half of every widened lane and zeros below it.
+        SimdMiscOp::Shll => {
+            let wide = esize * 2;
+            let width = u32::from(esize) * 8;
+            let lanes = read_half_lanes(regs.read_fpr_q(rn), esize, q);
+            let out: Vec<u64> = lanes.iter().map(|v| (v << width) & lane_mask(wide)).collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        _ => {
+            let held = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+            let out: Vec<u64> = source
+                .iter()
+                .enumerate()
+                .map(|(i, lane)| simd_misc_lane(op, *lane, held[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+    }
+}
+
+/// One lane of a three-different operation, computed at the WIDE width.
+/// Both `a` and `b` arrive already at the width the instruction reads
+/// them in: the widening rows extend their narrow operands first (which
+/// is what "long" means), and the narrowing rows are handed two wide
+/// lanes and keep the top half of the answer. `d` is the destination
+/// lane, which the accumulating rows read.
+fn simd_diff_lane(op: SimdDiffOp, a: i128, b: i128, d: u64, esize: u8) -> u64 {
+    let wide = esize * 2;
+    let wide_mask = lane_mask(wide);
+    let narrow_mask = lane_mask(esize);
+    let bits = u32::from(esize) * 8;
+    let half_ulp = 1u64 << (bits - 1);
+    match op {
+        SimdDiffOp::Saddl | SimdDiffOp::Uaddl | SimdDiffOp::Saddw | SimdDiffOp::Uaddw => {
+            (a + b) as u64 & wide_mask
+        }
+        SimdDiffOp::Ssubl | SimdDiffOp::Usubl | SimdDiffOp::Ssubw | SimdDiffOp::Usubw => {
+            (a - b) as u64 & wide_mask
+        }
+        SimdDiffOp::Sabdl | SimdDiffOp::Uabdl => (a - b).unsigned_abs() as u64 & wide_mask,
+        SimdDiffOp::Sabal | SimdDiffOp::Uabal => {
+            d.wrapping_add((a - b).unsigned_abs() as u64) & wide_mask
+        }
+        SimdDiffOp::Smull | SimdDiffOp::Umull => (a * b) as u64 & wide_mask,
+        SimdDiffOp::Smlal | SimdDiffOp::Umlal => d.wrapping_add((a * b) as u64) & wide_mask,
+        SimdDiffOp::Smlsl | SimdDiffOp::Umlsl => d.wrapping_sub((a * b) as u64) & wide_mask,
+        // PMUL's carry-less product of two bytes fills the wide lane.
+        SimdDiffOp::Pmull => poly_mul(a as u64, b as u64) & wide_mask,
+        // The doubling multiplies saturate their product at the wide
+        // width; the accumulating pair then saturate the sum as well, so
+        // a product already at the limit cannot wrap on the way in.
+        SimdDiffOp::Sqdmull => sat_signed(2 * a * b, wide),
+        SimdDiffOp::Sqdmlal | SimdDiffOp::Sqdmlsl => {
+            let product = i128::from(lane_signed(sat_signed(2 * a * b, wide), wide));
+            let held = i128::from(lane_signed(d, wide));
+            let sum = if op == SimdDiffOp::Sqdmlal { held + product } else { held - product };
+            sat_signed(sum, wide)
+        }
+        // The high-half narrowing adds form the sum at the SOURCE width
+        // and keep its top half; the rounding pair add half an ulp of
+        // that half first, which is the bit just below what is kept.
+        SimdDiffOp::Addhn | SimdDiffOp::Raddhn => {
+            let sum = (a + b) as u64;
+            let sum = if op == SimdDiffOp::Raddhn { sum.wrapping_add(half_ulp) } else { sum };
+            ((sum & wide_mask) >> bits) & narrow_mask
+        }
+        SimdDiffOp::Subhn | SimdDiffOp::Rsubhn => {
+            let diff = (a - b) as u64;
+            let diff = if op == SimdDiffOp::Rsubhn { diff.wrapping_add(half_ulp) } else { diff };
+            ((diff & wide_mask) >> bits) & narrow_mask
+        }
+    }
+}
+
+/// How a three-different row extends its narrow operands. The S/U pair
+/// of every widening row differ in nothing else; the narrowing rows
+/// extend nothing, because both their operands already arrive wide.
+fn simd_diff_signed(op: SimdDiffOp) -> bool {
+    matches!(
+        op,
+        SimdDiffOp::Saddl
+            | SimdDiffOp::Saddw
+            | SimdDiffOp::Ssubl
+            | SimdDiffOp::Ssubw
+            | SimdDiffOp::Sabal
+            | SimdDiffOp::Sabdl
+            | SimdDiffOp::Smlal
+            | SimdDiffOp::Smlsl
+            | SimdDiffOp::Smull
+            | SimdDiffOp::Sqdmlal
+            | SimdDiffOp::Sqdmlsl
+            | SimdDiffOp::Sqdmull
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_three_diff(
+    op: SimdDiffOp,
+    esize: u8,
+    upper: bool,
+    scalar: bool,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_diff_row(op);
+    let wide = esize * 2;
+    let signed = simd_diff_signed(op);
+    let extend = |lane: u64| -> i128 {
+        if signed {
+            i128::from(lane_signed(lane, esize))
+        } else {
+            i128::from(lane)
+        }
+    };
+    if scalar {
+        let n = read_lanes(regs.read_fpr_q(rn), esize, esize)[0];
+        let m = read_lanes(regs.read_fpr_q(rm), esize, esize)[0];
+        let d = read_lanes(regs.read_fpr_q(rd), wide, wide)[0];
+        let out = simd_diff_lane(op, extend(n), extend(m), d, esize);
+        regs.write_fpr_scalar(rd, wide, out);
+        return;
+    }
+    match row.shape {
+        SimdDiffShape::Long => {
+            let n = read_half_lanes(regs.read_fpr_q(rn), esize, upper);
+            let m = read_half_lanes(regs.read_fpr_q(rm), esize, upper);
+            let held = read_lanes(regs.read_fpr_q(rd), wide, 16);
+            let out: Vec<u64> = (0..n.len())
+                .map(|i| simd_diff_lane(op, extend(n[i]), extend(m[i]), held[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        SimdDiffShape::Wide => {
+            let n = read_lanes(regs.read_fpr_q(rn), wide, 16);
+            let m = read_half_lanes(regs.read_fpr_q(rm), esize, upper);
+            let held = read_lanes(regs.read_fpr_q(rd), wide, 16);
+            let out: Vec<u64> = (0..m.len())
+                .map(|i| simd_diff_lane(op, i128::from(n[i]), extend(m[i]), held[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        SimdDiffShape::Narrow => {
+            let n = read_lanes(regs.read_fpr_q(rn), wide, 16);
+            let m = read_lanes(regs.read_fpr_q(rm), wide, 16);
+            let out: Vec<u64> = (0..n.len())
+                .map(|i| simd_diff_lane(op, i128::from(n[i]), i128::from(m[i]), 0, esize))
+                .collect();
+            write_half(regs, rd, upper, pack_lanes(&out, esize));
+        }
+    }
+}
+
+/// One lane of a shift by immediate at the lane's own width. `d` is the
+/// destination lane, which the accumulating and inserting rows read.
+fn simd_shift_same_lane(op: SimdShiftOp, a: u64, d: u64, shift: u8, esize: u8) -> u64 {
+    let mask = lane_mask(esize);
+    let s = u32::from(shift);
+    // A right shift of the whole lane width is a legal encoding
+    // (`ushr v3.2d, v7.2d, #64`), so the arithmetic runs in 128 bits
+    // where shifting a lane entirely away is defined rather than UB.
+    let signed = i128::from(lane_signed(a, esize));
+    let unsigned = i128::from(a);
+    let asr = (signed >> s) as u64;
+    let lsr = (unsigned >> s) as u64;
+    let round = |value: i128| ((value + (1i128 << (s - 1))) >> s) as u64;
+    match op {
+        SimdShiftOp::Shl => (a << s) & mask,
+        SimdShiftOp::Sshr => asr & mask,
+        SimdShiftOp::Ushr => lsr & mask,
+        SimdShiftOp::Ssra => d.wrapping_add(asr) & mask,
+        SimdShiftOp::Usra => d.wrapping_add(lsr) & mask,
+        SimdShiftOp::Srshr => round(signed) & mask,
+        SimdShiftOp::Urshr => round(unsigned) & mask,
+        SimdShiftOp::Srsra => d.wrapping_add(round(signed)) & mask,
+        SimdShiftOp::Ursra => d.wrapping_add(round(unsigned)) & mask,
+        // SLI keeps the destination's low `shift` bits and SRI its high
+        // ones: the bits the shift would have left undefined.
+        SimdShiftOp::Sli => ((a << s) | (d & ((1u64 << s) - 1))) & mask,
+        SimdShiftOp::Sri => {
+            let kept = (u128::from(mask) & !(u128::from(mask) >> s)) as u64;
+            (((u128::from(a) >> s) as u64) | (d & kept)) & mask
+        }
+        SimdShiftOp::Sqshl => sat_signed(signed << s, esize),
+        SimdShiftOp::Uqshl => sat_unsigned(unsigned << s, esize),
+        // SQSHLU reads the lane SIGNED and saturates it into an UNSIGNED
+        // one, so a negative lane clamps at zero however far it shifts.
+        SimdShiftOp::Sqshlu => sat_unsigned(signed << s, esize),
+        _ => unreachable!("the lengthening and narrowing shifts have their own lane rules"),
+    }
+}
+
+/// One lane of a narrowing right shift: the source is twice `esize`
+/// wide, and what will not fit in the result lane is where every one of
+/// these saturates.
+fn simd_shift_narrow_lane(op: SimdShiftOp, a: u64, shift: u8, esize: u8) -> u64 {
+    let wide = esize * 2;
+    let s = u32::from(shift);
+    let signed = i128::from(lane_signed(a, wide));
+    let unsigned = i128::from(a);
+    let half_ulp = 1i128 << (s - 1);
+    match op {
+        SimdShiftOp::Shrn => ((unsigned >> s) as u64) & lane_mask(esize),
+        SimdShiftOp::Rshrn => (((unsigned + half_ulp) >> s) as u64) & lane_mask(esize),
+        SimdShiftOp::Sqshrn => sat_signed(signed >> s, esize),
+        SimdShiftOp::Sqrshrn => sat_signed((signed + half_ulp) >> s, esize),
+        SimdShiftOp::Uqshrn => sat_unsigned(unsigned >> s, esize),
+        SimdShiftOp::Uqrshrn => sat_unsigned((unsigned + half_ulp) >> s, esize),
+        // The UN pair read the source signed and answer an unsigned
+        // lane, so a negative source clamps at zero.
+        SimdShiftOp::Sqshrun => sat_unsigned(signed >> s, esize),
+        SimdShiftOp::Sqrshrun => sat_unsigned((signed + half_ulp) >> s, esize),
+        _ => unreachable!("only the narrowing shifts reach this"),
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_shift_imm(
+    op: SimdShiftOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    shift: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_shift_row(op);
+    let wide = esize * 2;
+    match row.shape {
+        SimdShiftShape::Same => {
+            let bytes = if scalar {
+                esize
+            } else if q {
+                16
+            } else {
+                8
+            };
+            let source = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+            let held = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+            let out: Vec<u64> = (0..source.len())
+                .map(|i| simd_shift_same_lane(op, source[i], held[i], shift, esize))
+                .collect();
+            if scalar {
+                regs.write_fpr_scalar(rd, esize, out[0]);
+            } else {
+                regs.write_fpr_q(rd, pack_lanes(&out, esize));
+            }
+        }
+        // SSHLL and USHLL extend each lane to twice its width and then
+        // shift, so nothing can leave the result lane.
+        SimdShiftShape::Long => {
+            let signed = op == SimdShiftOp::Sshll;
+            let lanes = read_half_lanes(regs.read_fpr_q(rn), esize, q);
+            let out: Vec<u64> = lanes
+                .iter()
+                .map(|lane| {
+                    let extended = if signed { lane_signed(*lane, esize) as u64 } else { *lane };
+                    (extended << shift) & lane_mask(wide)
+                })
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+        SimdShiftShape::Narrow => {
+            let read = if scalar { wide } else { 16 };
+            let lanes = read_lanes(regs.read_fpr_q(rn), wide, read);
+            let out: Vec<u64> = lanes
+                .iter()
+                .map(|lane| simd_shift_narrow_lane(op, *lane, shift, esize))
+                .collect();
+            if scalar {
+                regs.write_fpr_scalar(rd, esize, out[0]);
+            } else {
+                write_half(regs, rd, q, pack_lanes(&out, esize));
+            }
+        }
+    }
+}
+
+fn exec_simd_across(
+    op: SimdAcrossOp,
+    esize: u8,
+    q: bool,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if q { 16 } else { 8 };
+    let lanes = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let signed = |value: &u64| i128::from(lane_signed(*value, esize));
+    let (width, value) = match op {
+        // The widening sums add at twice the lane width before they
+        // fold, so nothing is lost on the way to the destination.
+        SimdAcrossOp::Saddlv => {
+            let sum = lanes.iter().map(signed).sum::<i128>();
+            (esize * 2, sum as u64 & lane_mask(esize * 2))
+        }
+        SimdAcrossOp::Uaddlv => {
+            let sum = lanes.iter().map(|v| i128::from(*v)).sum::<i128>();
+            (esize * 2, sum as u64 & lane_mask(esize * 2))
+        }
+        SimdAcrossOp::Addv => {
+            let sum = lanes.iter().fold(0u64, |acc, v| acc.wrapping_add(*v));
+            (esize, sum & lane_mask(esize))
+        }
+        SimdAcrossOp::Smaxv => {
+            let best = lanes.iter().max_by_key(|v| lane_signed(**v, esize)).copied();
+            (esize, best.unwrap_or(0))
+        }
+        SimdAcrossOp::Sminv => {
+            let best = lanes.iter().min_by_key(|v| lane_signed(**v, esize)).copied();
+            (esize, best.unwrap_or(0))
+        }
+        SimdAcrossOp::Umaxv => (esize, lanes.iter().copied().max().unwrap_or(0)),
+        SimdAcrossOp::Uminv => (esize, lanes.iter().copied().min().unwrap_or(0)),
+        // The SIMD-scalar pairwise ADDP folds the two lanes it has.
+        SimdAcrossOp::AddpScalar => {
+            let sum = lanes.iter().fold(0u64, |acc, v| acc.wrapping_add(*v));
+            (esize, sum & lane_mask(esize))
+        }
+    };
+    regs.write_fpr_scalar(rd, width, value);
+}
+
+/// ZIP/UZP/TRN: one destination lane per rule, read out of the two
+/// sources laid end to end. Nothing here is arithmetic, so the lanes
+/// move as bit patterns whatever their width.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_permute(
+    op: SimdPermuteOp,
+    esize: u8,
+    q: bool,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if q { 16 } else { 8 };
+    let n = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let m = read_lanes(regs.read_fpr_q(rm), esize, bytes);
+    let count = n.len();
+    let half = count / 2;
+    let pairs: Vec<u64> = n.iter().chain(m.iter()).copied().collect();
+    let out: Vec<u64> = (0..count)
+        .map(|i| match op {
+            // The ZIPs interleave one half of each source.
+            SimdPermuteOp::Zip1 => {
+                if i % 2 == 0 { n[i / 2] } else { m[i / 2] }
+            }
+            SimdPermuteOp::Zip2 => {
+                if i % 2 == 0 { n[half + i / 2] } else { m[half + i / 2] }
+            }
+            // The UZPs take every other lane of the two concatenated.
+            SimdPermuteOp::Uzp1 => pairs[i * 2],
+            SimdPermuteOp::Uzp2 => pairs[i * 2 + 1],
+            // The TRNs take the even (or odd) lanes of both.
+            SimdPermuteOp::Trn1 => {
+                if i % 2 == 0 { n[i] } else { m[i - 1] }
+            }
+            SimdPermuteOp::Trn2 => {
+                if i % 2 == 0 { n[i + 1] } else { m[i] }
+            }
+        })
+        .collect();
+    regs.write_fpr_q(rd, pack_lanes(&out, esize));
+}
+
+/// EXT: a byte window into Vn:Vm starting `index` bytes in. The 8b form
+/// concatenates the low halves, so its window can only reach 15 bytes.
+fn exec_simd_ext(q: bool, index: u8, rm: u8, rn: u8, rd: u8, regs: &mut RegisterFile) {
+    let bytes = if q { 16usize } else { 8 };
+    let n = regs.read_fpr_q(rn).to_le_bytes();
+    let m = regs.read_fpr_q(rm).to_le_bytes();
+    let source: Vec<u8> = n[..bytes].iter().chain(m[..bytes].iter()).copied().collect();
+    let mut out = [0u8; 16];
+    for (i, slot) in out[..bytes].iter_mut().enumerate() {
+        *slot = source[usize::from(index) + i];
+    }
+    regs.write_fpr_q(rd, u128::from_le_bytes(out));
+}
+
+/// TBL and TBX: every byte of Vm indexes a byte table made of `len`
+/// registers from Vn on, wrapping past v31. An index past the table
+/// answers zero for TBL and leaves the destination byte for TBX.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_table_lookup(
+    extend: bool,
+    q: bool,
+    len: u8,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if q { 16usize } else { 8 };
+    let mut table: Vec<u8> = Vec::with_capacity(usize::from(len) * 16);
+    for step in 0..u32::from(len) {
+        let reg = ((u32::from(rn) + step) % 32) as u8;
+        table.extend_from_slice(&regs.read_fpr_q(reg).to_le_bytes());
+    }
+    let indices = regs.read_fpr_q(rm).to_le_bytes();
+    let held = regs.read_fpr_q(rd).to_le_bytes();
+    let mut out = [0u8; 16];
+    for (i, slot) in out[..bytes].iter_mut().enumerate() {
+        *slot = match table.get(usize::from(indices[i])) {
+            Some(byte) => *byte,
+            None if extend => held[i],
+            None => 0,
+        };
+    }
+    regs.write_fpr_q(rd, u128::from_le_bytes(out));
+}
+
+/// The by-element multiplies. One lane of Vm stands in for the whole
+/// second source, so the arithmetic is the three-same and
+/// three-different lane functions unchanged, with that lane broadcast.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_by_element(
+    op: SimdElemOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    index: u8,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_elem_row(op);
+    let element = read_lanes(regs.read_fpr_q(rm), esize, 16)[usize::from(index)];
+    match row.kind {
+        SimdElemKind::Same(same) => {
+            let bytes = if scalar { esize } else if q { 16 } else { 8 };
+            let n = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+            let d = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+            let out: Vec<u64> = (0..n.len())
+                .map(|i| simd_same_lane(same, n[i], element, d[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+        SimdElemKind::Long(diff) => {
+            let wide = esize * 2;
+            let signed = simd_diff_signed(diff);
+            let extend = |lane: u64| -> i128 {
+                if signed {
+                    i128::from(lane_signed(lane, esize))
+                } else {
+                    i128::from(lane)
+                }
+            };
+            if scalar {
+                let n = read_lanes(regs.read_fpr_q(rn), esize, esize)[0];
+                let d = read_lanes(regs.read_fpr_q(rd), wide, wide)[0];
+                let out = simd_diff_lane(diff, extend(n), extend(element), d, esize);
+                regs.write_fpr_scalar(rd, wide, out);
+                return;
+            }
+            // Q is the `2` suffix here, exactly as in the three-different
+            // class: it names the half of Vn the narrow lanes come from.
+            let n = read_half_lanes(regs.read_fpr_q(rn), esize, q);
+            let held = read_lanes(regs.read_fpr_q(rd), wide, 16);
+            let out: Vec<u64> = (0..n.len())
+                .map(|i| simd_diff_lane(diff, extend(n[i]), extend(element), held[i], esize))
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, wide));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// the floating-point lane engine
+// ---------------------------------------------------------------------------
+//
+// Every rule here is per LANE: the scalar FP paths above and these run
+// the same helpers, so the two cannot disagree about a NaN, a rounding
+// mode or a saturation rail.
+//
+//   - `fp_process_nans` is the operand rule: a NaN that ARRIVED in a lane
+//     comes back out of that lane quieted, sign and payload intact
+//     (FPCR.DN is clear). A signalling operand wins over a quiet one, and
+//     within a kind the earlier operand wins.
+//   - `default_nan_if_new` is the other half: a NaN this operation MADE
+//     becomes the positive AArch64 default NaN.
+//   - FMAX and FMIN propagate an operand NaN; FMAXNM and FMINNM stand
+//     an infinity in a QUIET NaN's place and return the other operand,
+//     but leave a signalling one for FMAX to propagate.
+//   - FCMEQ/FCMGE/FCMGT/FCMLE/FCMLT and FACGE/FACGT write a lane of all
+//     ones or all zeros, and every one of them is false against a NaN.
+//   - FCVTZS/FCVTZU saturate at the LANE's integer rails and answer zero
+//     for a NaN, exactly as the general-register forms do.
+
+/// ARM's FPProcessNaNs over as many operands as the form has. `None`
+/// means no operand was a NaN and the arithmetic runs.
+fn fp_process_nans<T: FpOperand>(sources: &[T]) -> Option<T> {
+    sources
+        .iter()
+        .find(|s| s.is_signalling())
+        .or_else(|| sources.iter().find(|s| s.is_nan()))
+        .map(|s| s.quieted())
+}
+
+/// FMULX: the product, except that an infinity against a zero answers
+/// exactly 2.0 with the sign of the product, where FMUL answers with the
+/// invalid-operation NaN.
+fn fp_mulx<T: FpOperand>(a: T, b: T) -> u64 {
+    if let Some(nan) = fp_process_nans(&[a, b]) {
+        return nan.to_bits();
+    }
+    if (a.is_infinite() && b == T::ZERO) || (a == T::ZERO && b.is_infinite()) {
+        let negative = a.is_sign_negative() != b.is_sign_negative();
+        return if negative { (-T::TWO).to_bits() } else { T::TWO.to_bits() };
+    }
+    default_nan_bits_if_new(a * b, &[a, b])
+}
+
+/// FRECPS, the Newton-Raphson step for a reciprocal: 2.0 - a*b with one
+/// rounding over the whole expression, and an exact 2.0 where an
+/// infinity meets a zero.
+fn fp_recps<T: FpOperand>(a: T, b: T) -> u64 {
+    // The pseudocode negates the first operand BEFORE it looks for a NaN
+    // to propagate, so the answer carries the flipped sign.
+    if let Some(nan) = fp_process_nans(&[-a, b]) {
+        return nan.to_bits();
+    }
+    if (a.is_infinite() && b == T::ZERO) || (a == T::ZERO && b.is_infinite()) {
+        return T::TWO.to_bits();
+    }
+    default_nan_bits_if_new((-a).mul_add(b, T::TWO), &[a, b])
+}
+
+/// FRSQRTS, the step for a reciprocal square root: (3.0 - a*b) / 2. The
+/// halving is exact, so the fused multiply-add is still the only
+/// rounding; an infinity against a zero answers 1.5.
+fn fp_rsqrts<T: FpOperand>(a: T, b: T) -> u64 {
+    if let Some(nan) = fp_process_nans(&[-a, b]) {
+        return nan.to_bits();
+    }
+    if (a.is_infinite() && b == T::ZERO) || (a == T::ZERO && b.is_infinite()) {
+        return T::ONE_POINT_FIVE.to_bits();
+    }
+    default_nan_bits_if_new((-a).mul_add(b, T::THREE) / T::TWO, &[a, b])
+}
+
+/// One lane of a floating-point three-same operation, answered as the
+/// lane's bits so the compares can write all ones.
+fn simd_fp_same_lane<T: FpOperand>(op: SimdFpSameOp, a: T, b: T, d: T) -> u64 {
+    let mask = lane_mask(T::BYTES);
+    let flag = |yes: bool| if yes { mask } else { 0 };
+    let value = match op {
+        // A NaN makes every compare false, and none of them propagates.
+        SimdFpSameOp::Fcmeq => return flag(a == b),
+        SimdFpSameOp::Fcmge => return flag(a >= b),
+        SimdFpSameOp::Fcmgt => return flag(a > b),
+        SimdFpSameOp::Facge => return flag(a.abs() >= b.abs()),
+        SimdFpSameOp::Facgt => return flag(a.abs() > b.abs()),
+        SimdFpSameOp::Fadd | SimdFpSameOp::Faddp => fp_arith(a + b, &[a, b]),
+        SimdFpSameOp::Fsub => fp_arith(a - b, &[a, b]),
+        SimdFpSameOp::Fmul => fp_arith(a * b, &[a, b]),
+        SimdFpSameOp::Fdiv => fp_arith(a / b, &[a, b]),
+        // FMLA and FMLS are FUSED: one rounding over the product and the
+        // sum together. FMLS negates the first product operand, never the
+        // result, and the destination lane is the addend and the FIRST
+        // operand the NaN rule looks at.
+        SimdFpSameOp::Fmla => fp_arith(a.mul_add(b, d), &[d, a, b]),
+        SimdFpSameOp::Fmls => fp_arith((-a).mul_add(b, d), &[d, -a, b]),
+        SimdFpSameOp::Fmulx => fp_mulx(a, b),
+        SimdFpSameOp::Fmax | SimdFpSameOp::Fmaxp => fp_max(a, b).to_bits(),
+        SimdFpSameOp::Fmin | SimdFpSameOp::Fminp => fp_min(a, b).to_bits(),
+        SimdFpSameOp::Fmaxnm | SimdFpSameOp::Fmaxnmp => fp_max_num(a, b).to_bits(),
+        SimdFpSameOp::Fminnm | SimdFpSameOp::Fminnmp => fp_min_num(a, b).to_bits(),
+        // FABD is FPAbs(FPSub(a, b)), and FPAbs is a bit clear: it
+        // strips the sign off a propagated NaN too.
+        SimdFpSameOp::Fabd => fp_arith(a - b, &[a, b]) & !fp_sign_bit(T::BYTES),
+        SimdFpSameOp::Frecps => fp_recps(a, b),
+        SimdFpSameOp::Frsqrts => fp_rsqrts(a, b),
+    };
+    value & mask
+}
+
+/// The two NaN rules applied in order, answered as the lane's bits: an
+/// operand NaN comes back quieted, and failing that a NaN this operation
+/// made becomes the default one.
+fn fp_arith<T: FpOperand>(result: T, sources: &[T]) -> u64 {
+    match fp_process_nans(sources) {
+        Some(nan) => nan.to_bits(),
+        None => default_nan_bits_if_new(result, sources),
+    }
+}
+
+/// The sign bit of a lane of `bytes`, which FABS clears and FNEG flips.
+fn fp_sign_bit(bytes: u8) -> u64 {
+    1u64 << (u32::from(bytes) * 8 - 1)
+}
+
+/// The three-same lane function at the width the encoding names.
+fn fp_same_lane(op: SimdFpSameOp, esize: u8, a: u64, b: u64, d: u64) -> u64 {
+    if esize == 4 {
+        simd_fp_same_lane::<f32>(op, f32::from_lane(a), f32::from_lane(b), f32::from_lane(d))
+    } else {
+        simd_fp_same_lane::<f64>(op, f64::from_lane(a), f64::from_lane(b), f64::from_lane(d))
+    }
+}
+
+/// FPRecipEstimate: the leading bits of a reciprocal, taken from the same
+/// integer table URECPE reads, with the exponent reflected around the
+/// format's bias. Written over the raw bits so one body serves both
+/// widths, exactly as the pseudocode does.
+fn fp_recip_estimate_bits(bits: u64, esize: u8) -> u64 {
+    let (frac_bits, exp_bits) = fp_layout(esize);
+    let bias = (1i32 << (exp_bits - 1)) - 1;
+    let sign = bits & (1u64 << (frac_bits + exp_bits));
+    let exp_field = ((bits >> frac_bits) & ((1u64 << exp_bits) - 1)) as i32;
+    let frac_field = bits & ((1u64 << frac_bits) - 1);
+    if exp_field == (1 << exp_bits) - 1 {
+        // Infinity answers a zero of the same sign; a NaN never reaches
+        // here, the caller has already processed it.
+        return sign;
+    }
+    if exp_field == 0 && frac_field == 0 {
+        return sign | fp_infinity_bits(esize);
+    }
+    // Anything below 2^-(bias+1) has no representable reciprocal at all,
+    // and round-to-nearest turns that overflow into an infinity. In bits
+    // that is a subnormal with both its top fraction bits clear.
+    if exp_field == 0 && frac_field < (1u64 << (frac_bits - 2)) {
+        return sign | fp_infinity_bits(esize);
+    }
+    let mut exp = exp_field;
+    let mut fraction = frac_field << (52 - frac_bits);
+    if exp == 0 {
+        // A subnormal renormalizes by hand: shift the leading one up to
+        // the implied place and pay for the shift out of the exponent.
+        if fraction >> 51 == 0 {
+            exp = -1;
+            fraction = (fraction << 2) & ((1u64 << 52) - 1);
+        } else {
+            fraction = (fraction << 1) & ((1u64 << 52) - 1);
+        }
+    }
+    let scaled = 0x100u32 | ((fraction >> 44) & 0xff) as u32;
+    let mut result_exp = (2 * bias - 1) - exp;
+    let estimate = recip_estimate(scaled);
+    let mut fraction = u64::from(estimate & 0xff) << 44;
+    if result_exp == 0 {
+        fraction = (1u64 << 51) | (fraction >> 1);
+    } else if result_exp == -1 {
+        fraction = (1u64 << 50) | (fraction >> 2);
+        result_exp = 0;
+    }
+    let exp_mask = (1u64 << exp_bits) - 1;
+    sign | (((result_exp as u64) & exp_mask) << frac_bits) | (fraction >> (52 - frac_bits))
+}
+
+/// FPRSqrtEstimate, the same shape over the reciprocal-square-root table.
+/// A negative operand has no answer at all, which is the one estimate
+/// that reaches the default NaN.
+fn fp_rsqrt_estimate_bits(bits: u64, esize: u8) -> u64 {
+    let (frac_bits, exp_bits) = fp_layout(esize);
+    let bias = (1i32 << (exp_bits - 1)) - 1;
+    let sign = bits & (1u64 << (frac_bits + exp_bits));
+    let exp_field = ((bits >> frac_bits) & ((1u64 << exp_bits) - 1)) as i32;
+    let frac_field = bits & ((1u64 << frac_bits) - 1);
+    if exp_field == 0 && frac_field == 0 {
+        return sign | fp_infinity_bits(esize);
+    }
+    if sign != 0 {
+        return fp_default_nan_bits(esize);
+    }
+    if exp_field == (1 << exp_bits) - 1 {
+        return 0;
+    }
+    let mut exp = exp_field;
+    let mut fraction = frac_field << (52 - frac_bits);
+    if exp == 0 {
+        while fraction >> 51 == 0 {
+            fraction = (fraction << 1) & ((1u64 << 52) - 1);
+            exp -= 1;
+        }
+        fraction = (fraction << 1) & ((1u64 << 52) - 1);
+    }
+    let scaled = if exp & 1 == 0 {
+        0x100u32 | ((fraction >> 44) & 0xff) as u32
+    } else {
+        0x80u32 | ((fraction >> 45) & 0x7f) as u32
+    };
+    let result_exp = (3 * bias - 1 - exp).div_euclid(2);
+    let estimate = recip_sqrt_estimate(scaled);
+    let exp_mask = (1u64 << exp_bits) - 1;
+    let fraction = u64::from(estimate & 0xff) << 44;
+    (((result_exp as u64) & exp_mask) << frac_bits) | (fraction >> (52 - frac_bits))
+}
+
+/// FRECPX: the sign and a mantissa of zeros over the exponent's
+/// complement, which is the exact power of two a reciprocal would land
+/// on. A zero or subnormal answers the largest exponent instead.
+fn fp_recpx_bits(bits: u64, esize: u8) -> u64 {
+    let (frac_bits, exp_bits) = fp_layout(esize);
+    let exp_mask = (1u64 << exp_bits) - 1;
+    let sign = bits & (1u64 << (frac_bits + exp_bits));
+    let exp = (bits >> frac_bits) & exp_mask;
+    // A zero or a denormal answers the largest exponent short of the
+    // one infinities and NaNs claim, which is what the pseudocode's
+    // `max_exp = Ones() - 1` says.
+    let out = if exp == 0 { exp_mask - 1 } else { !exp & exp_mask };
+    sign | (out << frac_bits)
+}
+
+/// (fraction bits, exponent bits) of a lane width.
+fn fp_layout(esize: u8) -> (u32, u32) {
+    if esize == 4 {
+        (23, 8)
+    } else {
+        (52, 11)
+    }
+}
+
+fn fp_infinity_bits(esize: u8) -> u64 {
+    if esize == 4 { 0x7F80_0000 } else { 0x7FF0_0000_0000_0000 }
+}
+
+fn fp_default_nan_bits(esize: u8) -> u64 {
+    if esize == 4 { f32::DEFAULT_NAN_BITS } else { f64::DEFAULT_NAN_BITS }
+}
+
+/// One lane of a floating-point two-register misc operation that keeps
+/// its width: the unary arithmetic, the roundings and the compares
+/// against zero. The conversions are not lane-to-lane in one format and
+/// go through their own helpers.
+fn simd_fp_misc_lane<T: FpOperand>(op: SimdFpMiscOp, a: T) -> u64 {
+    let mask = lane_mask(T::BYTES);
+    let flag = |yes: bool| if yes { mask } else { 0 };
+    match op {
+        SimdFpMiscOp::Fcmgt0 => return flag(a > T::ZERO),
+        SimdFpMiscOp::Fcmge0 => return flag(a >= T::ZERO),
+        SimdFpMiscOp::Fcmeq0 => return flag(a == T::ZERO),
+        SimdFpMiscOp::Fcmle0 => return flag(a <= T::ZERO),
+        SimdFpMiscOp::Fcmlt0 => return flag(a < T::ZERO),
+        // FABS and FNEG are bit operations and touch a NaN the same way
+        // they touch a number: the sign bit, and nothing else.
+        SimdFpMiscOp::Fabs => return a.abs().to_bits() & mask,
+        SimdFpMiscOp::Fneg => return (-a).to_bits() & mask,
+        _ => {}
+    }
+    if let Some(nan) = fp_process_nans(&[a]) {
+        return nan.to_bits() & mask;
+    }
+    let value = match op {
+        SimdFpMiscOp::Fsqrt => default_nan_bits_if_new(a.sqrt(), &[a]),
+        SimdFpMiscOp::Frecpe => fp_recip_estimate_bits(a.to_bits(), T::BYTES),
+        SimdFpMiscOp::Frsqrte => fp_rsqrt_estimate_bits(a.to_bits(), T::BYTES),
+        SimdFpMiscOp::Frecpx => fp_recpx_bits(a.to_bits(), T::BYTES),
+        // The rounding modes the mnemonics name; FRINTI and FRINTX both
+        // follow FPCR.RMode, which is round-to-nearest-even here.
+        SimdFpMiscOp::Frintn | SimdFpMiscOp::Frinti | SimdFpMiscOp::Frintx => {
+            a.round_ties_even().to_bits()
+        }
+        SimdFpMiscOp::Frinta => a.round().to_bits(),
+        SimdFpMiscOp::Frintm => a.floor().to_bits(),
+        SimdFpMiscOp::Frintp => a.ceil().to_bits(),
+        SimdFpMiscOp::Frintz => a.trunc().to_bits(),
+        _ => unreachable!("the conversions have their own helpers"),
+    };
+    value & mask
+}
+
+/// The two-misc lane function at the width the encoding names.
+fn fp_misc_lane(op: SimdFpMiscOp, esize: u8, a: u64) -> u64 {
+    if esize == 4 {
+        simd_fp_misc_lane::<f32>(op, f32::from_lane(a))
+    } else {
+        simd_fp_misc_lane::<f64>(op, f64::from_lane(a))
+    }
+}
+
+/// SCVTF / UCVTF over one lane: the integer is exact in f64 at either
+/// width, and dividing by a power of two is exact, so the single
+/// rounding is the one the destination format makes.
+fn fp_from_int_lane(signed: bool, esize: u8, bits: u64, fbits: u8) -> u64 {
+    let value = if esize == 4 {
+        if signed { f64::from(bits as u32 as i32) } else { f64::from(bits as u32) }
+    } else if signed {
+        bits as i64 as f64
+    } else {
+        bits as f64
+    };
+    let scaled = if fbits == 0 { value } else { value / 2f64.powi(i32::from(fbits)) };
+    if esize == 4 {
+        u64::from((scaled as f32).to_bits())
+    } else {
+        scaled.to_bits()
+    }
+}
+
+/// FCVT{N,A,M,P,Z}{S,U} over one lane, saturating at the LANE's rails.
+fn fp_to_int_lane(op: FpToIntOp, esize: u8, bits: u64, fbits: u8) -> u64 {
+    let value = if esize == 4 { f64::from(f32::from_bits(bits as u32)) } else { f64::from_bits(bits) };
+    fp_to_int(op, value, fbits, esize == 8)
+}
+
+/// FCVTN's and FCVTL's lane conversions, and FCVTXN's round-to-odd
+/// narrowing beside them. `wide` is the wider of the two lane widths.
+fn fp_narrow_lane(odd: bool, wide: u8, bits: u64) -> u64 {
+    if wide == 4 {
+        return u64::from(f32_to_f16(f32::from_bits(bits as u32)));
+    }
+    let value = f64::from_bits(bits);
+    if value.is_nan() {
+        // FPConvertNaN moves the payload down and sets the quiet bit.
+        let sign = ((bits >> 32) & 0x8000_0000) as u32;
+        return u64::from(sign | 0x7FC0_0000 | ((bits >> 29) as u32 & 0x3F_FFFF));
+    }
+    if odd {
+        return u64::from(f64_to_f32_round_odd(value).to_bits());
+    }
+    u64::from((value as f32).to_bits())
+}
+
+fn fp_widen_lane(wide: u8, bits: u64) -> u64 {
+    if wide == 4 {
+        return u64::from(f16_to_f32(bits as u16).to_bits());
+    }
+    let narrow = bits as u32;
+    if f32::from_bits(narrow).is_nan() {
+        let sign = u64::from(narrow & 0x8000_0000) << 32;
+        return sign | 0x7FF8_0000_0000_0000 | (u64::from(narrow & 0x3F_FFFF) << 29);
+    }
+    f64::from(f32::from_bits(narrow)).to_bits()
+}
+
+/// FCVTXN's rounding: toward zero, except that an inexact result takes
+/// the neighbour with an ODD significand, so a later widening can tell
+/// the two halves of a tie apart. Rust rounds to nearest even, so the
+/// answer is that neighbour when the nearest one is even and inexact.
+fn f64_to_f32_round_odd(value: f64) -> f32 {
+    let nearest = value as f32;
+    if f64::from(nearest) == value || nearest.to_bits() & 1 == 1 {
+        return nearest;
+    }
+    // The exact value sits strictly between `nearest` and one of its
+    // neighbours, and both neighbours have an odd significand.
+    let key = fp_order_key(nearest);
+    let moved = if f64::from(nearest) < value { key + 1 } else { key - 1 };
+    fp_from_order_key(moved)
+}
+
+/// A total order over f32 bit patterns, so stepping one representable
+/// value works across zero and across the sign.
+fn fp_order_key(value: f32) -> u32 {
+    let bits = value.to_bits();
+    if bits >> 31 == 1 { !bits } else { bits | 0x8000_0000 }
+}
+
+fn fp_from_order_key(key: u32) -> f32 {
+    f32::from_bits(if key & 0x8000_0000 != 0 { key & 0x7FFF_FFFF } else { !key })
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_fp_three_same(
+    op: SimdFpSameOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let bytes = if scalar { esize } else if q { 16 } else { 8 };
+    let n = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let m = read_lanes(regs.read_fpr_q(rm), esize, bytes);
+    let d = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+    let out: Vec<u64> = if simd_fp_same_row(op).pairwise {
+        // Vn's lanes then Vm's, folded two at a time, so the low half of
+        // the destination comes from Vn and the high half from Vm.
+        let concat: Vec<u64> = n.iter().chain(m.iter()).copied().collect();
+        (0..concat.len() / 2)
+            .map(|i| fp_same_lane(op, esize, concat[i * 2], concat[i * 2 + 1], 0))
+            .collect()
+    } else {
+        (0..n.len()).map(|i| fp_same_lane(op, esize, n[i], m[i], d[i])).collect()
+    };
+    regs.write_fpr_q(rd, pack_lanes(&out, esize));
+}
+
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_fp_two_misc(
+    op: SimdFpMiscOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    fbits: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_fp_misc_row(op);
+    let source = regs.read_fpr_q(rn);
+    match row.shape {
+        // FCVTN and FCVTXN write lanes of half the width they read, into
+        // the half of the destination Q names; FCVTL reads that half.
+        SimdFpMiscShape::Narrow => {
+            let odd = op == SimdFpMiscOp::Fcvtxn;
+            if scalar {
+                let value = fp_narrow_lane(odd, esize, read_lanes(source, esize, esize)[0]);
+                regs.write_fpr_scalar(rd, esize / 2, value);
+                return;
+            }
+            let lanes = read_lanes(source, esize, 16);
+            let out: Vec<u64> =
+                lanes.iter().map(|bits| fp_narrow_lane(odd, esize, *bits)).collect();
+            write_half(regs, rd, q, pack_lanes(&out, esize / 2));
+        }
+        SimdFpMiscShape::Long => {
+            let lanes = read_half_lanes(source, esize / 2, q);
+            let out: Vec<u64> = lanes.iter().map(|bits| fp_widen_lane(esize, *bits)).collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+        _ => {
+            let bytes = if scalar { esize } else if q { 16 } else { 8 };
+            let lanes = read_lanes(source, esize, bytes);
+            let out: Vec<u64> = lanes
+                .iter()
+                .map(|bits| match simd_fp_cvt_role(op) {
+                    Some(FpCvtRole::ToInt(to_int)) => fp_to_int_lane(to_int, esize, *bits, fbits),
+                    Some(FpCvtRole::FromInt(from_int)) => {
+                        fp_from_int_lane(from_int == FpFromIntOp::Scvtf, esize, *bits, fbits)
+                    }
+                    None => fp_misc_lane(op, esize, *bits),
+                })
+                .collect();
+            regs.write_fpr_q(rd, pack_lanes(&out, esize));
+        }
+    }
+}
+
+fn exec_simd_fp_across(
+    op: SimdFpAcrossOp,
+    esize: u8,
+    q: bool,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let row = simd_fp_across_row(op);
+    // The scalar pairwise class always reads exactly two lanes; the
+    // vector fold reads the whole 128-bit arrangement.
+    let bytes = if row.scalar_class { esize * 2 } else if q { 16 } else { 8 };
+    let lanes = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let same = match op {
+        SimdFpAcrossOp::Fmaxv | SimdFpAcrossOp::FmaxpScalar => SimdFpSameOp::Fmax,
+        SimdFpAcrossOp::Fminv | SimdFpAcrossOp::FminpScalar => SimdFpSameOp::Fmin,
+        SimdFpAcrossOp::Fmaxnmv | SimdFpAcrossOp::FmaxnmpScalar => SimdFpSameOp::Fmaxnm,
+        SimdFpAcrossOp::Fminnmv | SimdFpAcrossOp::FminnmpScalar => SimdFpSameOp::Fminnm,
+        SimdFpAcrossOp::FaddpScalar => SimdFpSameOp::Fadd,
+    };
+    regs.write_fpr_scalar(rd, esize, fp_reduce(same, esize, &lanes));
+}
+
+/// The fold ARM's `Reduce` describes: halve, fold each half, then fold
+/// the two answers, with the LOW half as the first operand. It is a tree
+/// rather than a running total, and which NaN comes out depends on it.
+fn fp_reduce(op: SimdFpSameOp, esize: u8, lanes: &[u64]) -> u64 {
+    if lanes.len() == 1 {
+        return lanes[0];
+    }
+    let half = lanes.len() / 2;
+    let lo = fp_reduce(op, esize, &lanes[..half]);
+    let hi = fp_reduce(op, esize, &lanes[half..]);
+    fp_same_lane(op, esize, lo, hi, 0)
+}
+
+/// The floating-point by-element multiplies: one lane of Vm stands in for
+/// the whole second source, so the arithmetic is the three-same lane
+/// function unchanged with that lane broadcast.
+#[allow(clippy::too_many_arguments)] // one argument per encoding field
+fn exec_simd_fp_by_element(
+    op: SimdFpElemOp,
+    esize: u8,
+    q: bool,
+    scalar: bool,
+    index: u8,
+    rm: u8,
+    rn: u8,
+    rd: u8,
+    regs: &mut RegisterFile,
+) {
+    let same = simd_fp_elem_row(op).same;
+    let element = read_lanes(regs.read_fpr_q(rm), esize, 16)[usize::from(index)];
+    let bytes = if scalar { esize } else if q { 16 } else { 8 };
+    let n = read_lanes(regs.read_fpr_q(rn), esize, bytes);
+    let d = read_lanes(regs.read_fpr_q(rd), esize, bytes);
+    let out: Vec<u64> = (0..n.len())
+        .map(|i| fp_same_lane(same, esize, n[i], element, d[i]))
+        .collect();
+    regs.write_fpr_q(rd, pack_lanes(&out, esize));
 }
 
 fn exec_fp_binary(
@@ -1230,11 +3144,21 @@ fn exec_fp_to_int(
     op: FpToIntOp, rd: u8, fn_: u8, sf: bool, single: bool, fbits: u8,
     regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
-    let mut value = if single {
+    let value = if single {
         regs.read_fpr_f32(fn_) as f64
     } else {
         regs.read_fpr_f64(fn_)
     };
+    regs.write_gpr(rd, sf, fp_to_int(op, value, fbits, sf));
+    Ok(ExecResult::Advance)
+}
+
+/// The rounding mode and the saturation rails of one FCVT, shared by the
+/// general-register forms above and the vector lanes below: `wide` is a
+/// 64-bit destination, `fbits` the fixed-point scale.
+fn fp_to_int(op: FpToIntOp, value: f64, fbits: u8, wide: bool) -> u64 {
+    let mut value = value;
+    let sf = wide;
     if fbits != 0 {
         // powi, not a shift: fbits reaches 64 and the exponent form is
         // exact for every value the field can hold.
@@ -1276,8 +3200,7 @@ fn exec_fp_to_int(
     } else {
         rounded as u32 as u64
     };
-    regs.write_gpr(rd, sf, result);
-    Ok(ExecResult::Advance)
+    result
 }
 
 /// SCVTF / UCVTF. The only difference is how the source register's bits
@@ -1322,43 +3245,15 @@ fn exec_ldrs(
     // Compute the effective address using the same offset math as exec_ldst.
     check_sp_alignment(rn, regs)?;
     let base = regs.read_gpr_or_sp(rn, true);
-    let offset_val = match offset {
-        LdStOffset::Immediate(imm) => *imm,
-        LdStOffset::Register {
-            rm,
-            extend,
-            shift_amount,
-        } => {
-            let raw = regs.read_gpr(*rm, true);
-            let extended = match extend {
-                ExtendType::Lsl | ExtendType::Sxtx => raw,
-                ExtendType::Uxtw => raw & 0xFFFF_FFFF,
-                ExtendType::Sxtw => (raw as i32) as i64 as u64,
-            };
-            (extended << (*shift_amount as u64)) as i64
-        }
-    };
-    let (address, writeback) = match mode {
-        IndexMode::PreIndex => {
-            let addr = (base as i64).wrapping_add(offset_val) as u64;
-            (addr, Some(addr))
-        }
-        IndexMode::PostIndex => {
-            let addr = base;
-            let wb = (base as i64).wrapping_add(offset_val) as u64;
-            (addr, Some(wb))
-        }
-        IndexMode::SignedOffset => {
-            let addr = (base as i64).wrapping_add(offset_val) as u64;
-            (addr, None)
-        }
-    };
+    let offset_val = resolve_ldst_offset(offset, regs);
+    let (address, writeback) = apply_index_mode(base, offset_val, mode);
     check_guest_address(address, crate::errors::MemAccess::Read)?;
     let value_64 = match size {
         MemSize::B => (mem.read_u8(address)? as i8) as i64,
         MemSize::H => (mem.read_u16(address)? as i16) as i64,
         MemSize::W => (mem.read_u32(address)? as i32) as i64,
-        MemSize::X => return Err(EmuError::UnknownInstruction(0)),
+        // X is reserved in the sign-extending space and Q is SIMD&FP only.
+        MemSize::X | MemSize::Q => return Err(EmuError::UnknownInstruction(0)),
     };
     if sf {
         regs.write_gpr(rt, true, value_64 as u64);
@@ -2200,7 +4095,7 @@ mod tests {
 
         let ldr = Instruction::LdSt {
             op: LdStOp::Ldr, rt: 0, rn: 12,
-            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Sxtw, shift_amount: 2 },
+            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Sxtw, shift_amount: Some(2) },
             size: MemSize::W,
             mode: IndexMode::SignedOffset,
         };
@@ -2219,7 +4114,7 @@ mod tests {
 
         let ldr = Instruction::LdSt {
             op: LdStOp::Ldr, rt: 0, rn: 12,
-            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Sxtw, shift_amount: 2 },
+            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Sxtw, shift_amount: Some(2) },
             size: MemSize::W,
             mode: IndexMode::SignedOffset,
         };
@@ -2238,7 +4133,7 @@ mod tests {
 
         let ldr = Instruction::LdSt {
             op: LdStOp::Ldr, rt: 0, rn: 12,
-            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Uxtw, shift_amount: 2 },
+            offset: LdStOffset::Register { rm: 9, extend: ExtendType::Uxtw, shift_amount: Some(2) },
             size: MemSize::W,
             mode: IndexMode::SignedOffset,
         };
@@ -2257,7 +4152,7 @@ mod tests {
 
         let ldr = Instruction::LdSt {
             op: LdStOp::Ldr, rt: 0, rn: 21,
-            offset: LdStOffset::Register { rm: 19, extend: ExtendType::Lsl, shift_amount: 3 },
+            offset: LdStOffset::Register { rm: 19, extend: ExtendType::Lsl, shift_amount: Some(3) },
             size: MemSize::X,
             mode: IndexMode::SignedOffset,
         };

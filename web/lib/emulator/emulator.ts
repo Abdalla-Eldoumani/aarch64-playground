@@ -287,6 +287,13 @@ export class EmulatorInstance {
     return this.inner.get_changed_fp_registers?.() ?? new Uint8Array(0);
   }
 
+  /** The 32 vector registers (v0-v31, the same bits as q0-q31) as "0x" + 32
+   *  hex digits, or [] when the loaded WASM predates the export, which is how
+   *  the v-view hides itself on an older local build. */
+  getVectorRegisters(): string[] {
+    return this.inner.get_vector_registers?.() ?? [];
+  }
+
   /** Pre-assembly structural lint warnings; [] on a wasm build that
    *  predates the export (feature-detected, never throws). */
   lintSource(source: string): Array<{ line: number; message: string }> {
@@ -384,6 +391,8 @@ interface WasmEmulatorInstance {
   /** Optional: present once the emulator crate ships the FP surface. */
   get_fp_registers?(): string[];
   get_changed_fp_registers?(): Uint8Array;
+  /** Optional: the full 128-bit vector file, present once the crate ships it. */
+  get_vector_registers?(): string[];
   /** Optional: standalone m4 pass, present once the crate ships it. */
   m4_expand?(source: string): unknown;
   /** Optional: external-call context for the current pc (js_name is

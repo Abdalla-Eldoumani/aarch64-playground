@@ -20,8 +20,9 @@ found a silent wrong-target bug in every dotless conditional branch
 - `NAME.out` / `NAME.code`: reference stdout and exit code
 - `NAME.O2.s` / `NAME.O2.out` / `NAME.O2.code`: the `-O2` tier, run as an
   ignored coverage map (`cargo test --test c_corpus -- --ignored`). It is
-  not a correctness gate, but it holds a recorded floor: 48 of 50 must
-  pass, and growth is recorded by raising the floor
+  not a correctness gate, but it holds a recorded floor: 50 of 50 must
+  pass, and growth is recorded by raising the floor. The `-O0` tier is
+  the gate and all 50 of 50 match
 - `NAME.stdin`, `NAME.args`, `NAME.flags`: optional program input,
   arguments, and per-program compile flags
 
@@ -36,13 +37,12 @@ a toolchain change announces itself; a scheduled workflow runs it weekly.
 Exit codes use the shell convention: a program killed by signal N records
 128+N (139 for SIGSEGV, 135 for SIGBUS).
 
-Two programs are recorded exceptions in the other direction.
-`13_float_double` does not assemble at either tier, because gcc copies a
-16-byte struct through a q register and the fp file is 64-bit scalar by
-design. `14_float_single` assembles and matches at -O0 and fails only at
--O2, where gcc zeroes a float with `movi v0.2s, #0`. The corpus test
-carries each on a pending list, so the day one starts assembling the list
-turns red and the fix gets recorded instead of passing silently.
+Both pending lists in the corpus test are empty: every program assembles
+and matches at both tiers. The last two exceptions were `13_float_double`
+and `14_float_single`, each waiting at -O2 alone on the vector immediate
+gcc zeroes with (`movi d31, #0` and `movi v0.2s, #0`), and both now pass.
+The lists stay in the test so a future gap has to be recorded to be
+tolerated, and either turns red the day its program starts assembling.
 
 Three programs crash on purpose, and the corpus test asserts the
 emulator's own diagnosis instead of an output match:

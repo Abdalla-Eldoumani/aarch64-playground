@@ -74,9 +74,9 @@ export function explainError(message: string): ErrorExplanation | null {
     lower.includes("is not a floating-point register")
   ) {
     return {
-      what: "An instruction referenced a register index outside 0..30.",
-      why: "Almost always a typo (W32 instead of W3, X31 instead of XZR or SP) or a stale operand left over from refactoring.",
-      fix: "Re-read the operand and check the register class: general-purpose registers are x0-x30 plus xzr and sp; the FPU set is d0-d31 and s0-s31. The assembler accepts both upper and lower case.",
+      what: "An instruction referenced a register index its class does not have: x and w stop at 30, the SIMD&FP names at 31.",
+      why: "Almost always a typo (W32 instead of W3, X31 instead of XZR or SP, V32 instead of V3) or a stale operand left over from refactoring.",
+      fix: "Re-read the operand and check the register class: general-purpose registers are x0-x30 plus xzr and sp; the SIMD&FP file is 32 entries seen at six widths, b0-b31, h0-h31, s0-s31, d0-d31, q0-q31 and v0-v31, where a v name carries an arrangement (v0.16b, v0.8h, v0.4s, v0.2d and the 64-bit 8b/4h/2s/1d) or one lane (v0.b[15], v0.s[3]). The course writes s and d. The assembler accepts both upper and lower case.",
       styleSection: "naming conventions",
     };
   }
@@ -94,6 +94,22 @@ export function explainError(message: string): ErrorExplanation | null {
       why: "The base register held a small number instead of an address. The course servers kill this with a segmentation fault. A `mov` where `ldr xN, =label` was meant, or an m4 register alias that reuses a register a pointer already lives in, are the usual causes.",
       fix: "Check how the base register was loaded: addresses come from `ldr xN, =label`. If an m4 define names the same register a pointer occupies (`define(i_r, w19)` after `ldr x19, =arr`), rename the alias to a free register.",
       styleSection: "addressing modes",
+    };
+  }
+  if (lower.includes("no entry point")) {
+    return {
+      what: "Nothing in the source is labelled `main:` or `_start:`, so there is no instruction to begin at.",
+      why: "The linker starts a program at one of those two names. A file of helper functions is meant to be assembled beside the file that has main, and `ld` on the course servers refuses the same file with `undefined reference to 'main'`.",
+      fix: "Name the entry `main:` and declare it `.global main`. Keep it called main even if you have seen `_start` elsewhere: gcc supplies `_start` from its own startup file, so a source that defines its own links here but fails on the servers with `multiple definition of '_start'`.",
+      styleSection: "general",
+    };
+  }
+  if (lower.includes("the playground's ceiling")) {
+    return {
+      what: "The run was stopped at the playground's ten-million-instruction ceiling; the program had not finished.",
+      why: "Either a loop whose exit condition never becomes true, or a routine that called something without saving x30 first, so its `ret` jumps back into the middle of itself and never leaves.",
+      fix: "Step the loop and watch the counter register: check that it actually changes, that the branch is the one you meant (b.le against b.lt), and that every routine which calls another saves x29/x30 in its prologue. The course servers have no such ceiling, so the same program hangs there until ctrl+c.",
+      styleSection: "general",
     };
   }
   if (lower.startsWith("stack overflow")) {
@@ -129,7 +145,15 @@ export function explainError(message: string): ErrorExplanation | null {
     return {
       what: "m4 saw a construct outside the playground's narrow subset (define + name=expr only).",
       why: "Course-shipped m4 files sometimes include ifdef/ifelse/forloop. Those expand at the macro level; the playground refuses them so error messages stay aligned with the original lines.",
-      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control. The playground does not pre-process backtick quoting either.",
+      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control. A backtick is the one to take seriously: GNU m4 on the course servers reads a backtick ANYWHERE in the file, inside a `//` comment included, as an opening quote and then swallows the rest of the source (`ERROR: end of file in string`). Use plain quotes in comments.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  if (detail.includes("m4 recursion exceeded")) {
+    return {
+      what: "m4 kept rewriting the same text round after round, so a macro expands into something that expands back into it.",
+      why: "Two defines that name each other (`define(a_r, b_r)` with `define(b_r, a_r)`) never reach a fixed point. The same shape appears by accident when one file is pasted after another and repeats a define: GNU m4 expands a define's FIRST argument too, so a second `define(fp, x29)` becomes `define(x29, x29)` and m4 on the course servers never terminates at all.",
+      fix: "Give each alias one definition, in one place: keep the `define(fp, x29)` / `define(lr, x30)` block at the top of the combined program and delete the repeats the other files brought with them.",
       styleSection: "m4 preprocessing",
     };
   }
@@ -141,7 +165,7 @@ export function explainError(message: string): ErrorExplanation | null {
     return {
       what: "A label or alias used in this expression is not defined anywhere in the source.",
       why: "Either a typo (the alias was defined as `score1_r` but used as `score_1_r`) or a section ordering issue where a forward reference points at code never reached by the assembler.",
-      fix: "Search the source for the exact identifier; m4 substitution is whole-token and case-sensitive. For numeric constants, prefer `name = expr` over `define()` so the linker can fold the value.",
+      fix: "Search the source for the exact identifier; m4 substitution is whole-token and case-sensitive. For numeric constants, prefer `name = expr` over `define()` so the linker can fold the value. The libc math names go the other way: `pow`, `sqrt`, `sin`, `cos`, `tan`, `log` and `exp` resolve here, but on the course servers `gcc` only links them with `-lm` on the command line.",
       styleSection: "naming conventions",
     };
   }

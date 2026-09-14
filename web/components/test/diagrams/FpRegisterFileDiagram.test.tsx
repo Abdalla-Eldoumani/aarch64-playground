@@ -19,12 +19,17 @@ describe("FpRegisterFileDiagram", () => {
   });
 
   it("pairs every d cell with its s view, the way the course names them", () => {
-    render(<FpRegisterFileDiagram />);
+    const { container } = render(<FpRegisterFileDiagram />);
     for (const sview of ["s0", "s8", "s15", "s31"]) {
       expect(screen.getAllByText(sview).length).toBeGreaterThanOrEqual(1);
     }
-    // No vector-register talk anywhere: the course teaches s and d only.
-    expect(screen.queryByText(/vector/)).toBeNull();
+    // The cells stay in s/d; the vector width is named once in the footer, as
+    // the playground's reach rather than the course's, with the callee-saved
+    // promise pinned to bits 63:0 of v8-v15.
+    const text = container.textContent ?? "";
+    expect(text).toContain("the vector file as well");
+    expect(text).toContain("while the course keeps to");
+    expect(text).toContain("preserves only bits 63:0 of");
   });
 
   it("labels the callee-saved band and teaches the two views in the footer", () => {

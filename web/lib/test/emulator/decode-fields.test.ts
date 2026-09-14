@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Validates the presentation-side field slicer against machine words the
 // real assembler produces: every layout must re-concatenate to exactly the
 // 32 bits it was given, and the operand fields must decode to the registers
@@ -10,7 +11,7 @@ import { decodeFields } from "@/lib/emulator/decode-fields";
 
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
-const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm/aarch64_emulator");
+const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");
 
 /** Assemble a program and return its machine words in program order. */
 function assembleWords(source: string): number[] {

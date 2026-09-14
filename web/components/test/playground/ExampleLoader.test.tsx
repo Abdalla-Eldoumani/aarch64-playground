@@ -18,6 +18,7 @@ const STAGES = [
   "Static data and command-line arguments",
   "Floating point",
   "Files and I/O",
+  "Vector registers (not taught in the course)",
   "Miscellaneous",
 ];
 
@@ -79,9 +80,9 @@ describe("ExampleLoader", () => {
   it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
-    // 14 course programs, 2 stage fillers, and the 6 playable extras under
-    // Miscellaneous.
-    expect(labels.length).toBe(22);
+    // 14 course programs, 2 stage fillers, the 6 vector demonstrations, and
+    // the 6 playable extras under Miscellaneous.
+    expect(labels.length).toBe(28);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
@@ -94,6 +95,8 @@ describe("ExampleLoader", () => {
     expect(labels).toContain("temperature converter");
     expect(labels).toContain("two sum");
     expect(labels).toContain("deadzone");
+    expect(labels).toContain("uppercase a line");
+    expect(labels).toContain("mean of floats");
   });
 
   it("fetches the picked example and forwards the payload + label to onLoad", async () => {

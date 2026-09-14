@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
+import type { ReactNode } from "react";
 
 vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
@@ -15,6 +16,16 @@ vi.mock("@/components/panels/RegisterPanel", () => ({
 }));
 vi.mock("@/components/playground/ResizableLayout", () => ({
   ResizableLayout: () => <div data-testid="layout" />,
+  // The tablet arrangement reaches the panel library through PaneSplit;
+  // these suites want the panes it wraps, not the split itself.
+  PaneSplit: ({ first, second }: { first: ReactNode; second: ReactNode }) => (
+    <div data-testid="pane-split">
+      {first}
+      {second}
+    </div>
+  ),
+  EDITOR_SPLIT: { label: "resize editor and disassembly" },
+  DEBUG_SPLIT: { label: "resize registers and tabs" },
 }));
 
 // The console's ownership badge is one of the five suppression points, and
