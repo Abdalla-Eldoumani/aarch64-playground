@@ -549,6 +549,77 @@ The conversions between a float lane and an integer lane are the scalar mnemonic
 
 `FMOV Vd.T, #imm` fills every lane with the same 8-bit float immediate the scalar `fmov s0, #1.0` takes, in the `2S`, `4S` and `2D` arrangements. `FMUL`, `FMLA`, `FMLS` and `FMULX` also take a by-element second source (`fmul v3.2s, v7.2s, v21.s[3]`, `fmul d3, d7, v21.d[1]`): one lane of `Vm` against every lane of `Vn`, with the index packed into the encoding's `H:L` bits for an `S` element and `H` alone for a `D` one, which has only two lanes.
 
+## Vector structure loads and stores
+
+`LD1`-`LD4` and `ST1`-`ST4` move a brace list of one to four vector
+registers between memory and the register file. The list is written
+either with commas (`{v3.16b, v4.16b}`) or as a range
+(`{v3.16b-v4.16b}`), it wraps past `v31` (`{v30.16b-v1.16b}` is v30,
+v31, v0, v1), and GAS prints a list of more than one register back as a
+range whichever way it was written.
+
+Each of them takes three addressing forms and nothing else: the bare
+`[Xn]`, the immediate post-index `[Xn], #imm` where `#imm` is always the
+total bytes the instruction moved (the word has no field for any other
+value), and the register post-index `[Xn], Xm`. There is no offset, no
+pre-index and no scaling.
+
+The digit is the interleave factor. `LD2`/`LD3`/`LD4` de-interleave as
+they read: `ld2 {v3.8b, v4.8b}, [x7]` over the bytes `00 01 02 ...`
+leaves v3 holding `00 02 04 06 ...` and v4 holding `01 03 05 07 ...`.
+The matching store interleaves the same way, writing one element from
+each register in turn. `LD1`/`ST1` interleave nothing, which is why they
+alone reach two, three and four registers: the list is filled a register
+at a time.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `LD1`    | `LD1 {Vt.T}, [Xn]` / `{Vt.T, Vt2.T}` / three / four (`8B`/`16B`, `4H`/`8H`, `2S`/`4S`, `1D`/`2D`), plus `[Xn], #imm` and `[Xn], Xm` | Contiguous load, no interleaving. The only family that spells `1D`, and the only one whose list can be longer than its digit. A 64-bit arrangement (`8B`, `4H`, `2S`, `1D`) zeroes bits 127:64 of every destination. |
+| `ST1`    | the same shapes                   | The contiguous store. Nothing outside the bytes the list covers is written. |
+| `LD2`    | `LD2 {Vt.T, Vt2.T}, [Xn]` (`8B`/`16B`, `4H`/`8H`, `2S`/`4S`, `2D`), plus the two post-index forms | Two-way de-interleave: element 0 to the first register, element 1 to the second, alternating on. No `1D` form, because a one-element list has nothing to interleave. |
+| `ST2`    | the same shapes                   | The two-way interleave, the exact inverse. |
+| `LD3`    | `LD3 {Vt.T, Vt2.T, Vt3.T}, [Xn]` (the same arrangements as `LD2`) | Three-way de-interleave, for `xyz` triples. |
+| `ST3`    | the same shapes                   | The three-way interleave.               |
+| `LD4`    | `LD4 {Vt.T, Vt2.T, Vt3.T, Vt4.T}, [Xn]` (the same arrangements) | Four-way de-interleave, for `rgba` quads. |
+| `ST4`    | the same shapes                   | The four-way interleave.                |
+
+Single structure, one lane at a time. The list names an element width
+rather than an arrangement and carries the lane index outside the
+braces: `ld1 {v3.b}[15], [x7]`, `ld4 {v3.s-v6.s}[3], [x7]`. These touch
+ONE lane of each register and leave every other bit of it alone, which
+is the difference that matters: nothing above the lane is zeroed. A `B`
+index runs 0-15, an `H` index 0-7, an `S` index 0-3 and a `D` index
+0-1. The index is not a field of its own; it is spread across the Q
+bit, the S bit and the size field, which is why `ld1 {v3.b}[15]`
+(`0x4d401ce3`) and `ld1 {v3.b}[0]` (`0x0d4000e3`) differ in three
+places at once.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `LD1`    | `LD1 {Vt.B}[index], [Xn]` (and `H`, `S`, `D`), plus `[Xn], #imm` and `[Xn], Xm` | Load one element into one lane. The post-index immediate is the element's own width: 1, 2, 4 or 8. |
+| `ST1`    | the same shapes                   | Store that one lane and nothing else.   |
+| `LD2`    | `LD2 {Vt.B, Vt2.B}[index], [Xn]` (and `H`, `S`, `D`) | Two consecutive elements into the same lane of two registers; the post-index immediate is twice the element width. |
+| `ST2`    | the same shapes                   | The matching store.                     |
+| `LD3`    | `LD3 {Vt.B, Vt2.B, Vt3.B}[index], [Xn]` (and `H`, `S`, `D`) | Three elements into the same lane of three registers. |
+| `ST3`    | the same shapes                   | The matching store.                     |
+| `LD4`    | `LD4 {Vt.B, Vt2.B, Vt3.B, Vt4.B}[index], [Xn]` (and `H`, `S`, `D`) | Four elements into the same lane of four registers. |
+| `ST4`    | the same shapes                   | The matching store.                     |
+
+Replicate. `LD1R`-`LD4R` read one element per register and copy it into
+EVERY lane of that register, which is how a scalar is broadcast straight
+out of memory. They are loads only; there is no `ST1R`.
+
+| Mnemonic | Form                              | Notes                                   |
+| -------- | --------------------------------- | --------------------------------------- |
+| `LD1R`   | `LD1R {Vt.T}, [Xn]` (`8B`/`16B`, `4H`/`8H`, `2S`/`4S`, `1D`/`2D`), plus `[Xn], #imm` and `[Xn], Xm` | One element filling every lane. A 64-bit arrangement zeroes bits 127:64. The post-index immediate is the ELEMENT width, not the register width: `ld1r {v3.16b}, [x7], #1`. |
+| `LD2R`   | `LD2R {Vt.T, Vt2.T}, [Xn]` (the same arrangements, `1D` included) | Two consecutive elements, one broadcast into each register. |
+| `LD3R`   | `LD3R {Vt.T, Vt2.T, Vt3.T}, [Xn]` | Three elements, one per register.       |
+| `LD4R`   | `LD4R {Vt.T, Vt2.T, Vt3.T, Vt4.T}, [Xn]` | Four elements, one per register. `ld4r {v3.2s-v6.2s}, [x7], #16` walks four words. |
+
+An address in the unmapped first page faults here exactly as it does for
+`LDR` and `STR`: the run halts with the null-pointer diagnosis, and an
+`SP` base off the 16-byte boundary halts with the bus-error one.
+
 ## Directives
 
 | Directive     | Notes                                                 |
@@ -671,10 +742,35 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- The `LD1`-`LD4` and `ST1`-`ST4` structure loads and stores, including the single-lane and replicating (`LD1R`-`LD4R`) forms. Every other vector family is in: the 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, the whole of the integer lane arithmetic, and the whole of the floating-point lane arithmetic.
+- The Advanced SIMD EXTENSION families. The base set is in; what is out is
+  every family GNU `as` on the course servers refuses without an
+  architecture directive, named here by its ARM extension so a rejection
+  can be looked up, with the spellings each one was measured with:
+  - `FEAT_AES`: `aese v0.16b, v1.16b`
+  - `FEAT_SHA1`: `sha1c q0, s1, v2.4s`
+  - `FEAT_SHA256`: `sha256h q0, q1, v2.4s`
+  - `FEAT_SHA512`: `sha512h q0, q1, v2.2d`
+  - `FEAT_SHA3`: `eor3`, `rax1`, `xar`, `bcax`
+  - `FEAT_SM3`: `sm3ss1`. `FEAT_SM4`: `sm4e`
+  - `FEAT_PMULL`: the `1Q` form alone, `pmull v0.1q, v1.1d, v2.1d`. The `8H` polynomial multiply and its `PMULL2` are base and are in.
+  - `FEAT_DotProd`: `sdot v0.4s, v1.16b, v2.16b` and the by-element `udot`
+  - `FEAT_I8MM`: `usdot`, `sudot`, `smmla`, `ummla`, `usmmla`
+  - `FEAT_FP16`: half-precision ARITHMETIC on `4H`/`8H` lanes: `fadd v0.4h, v1.4h, v2.4h`, `fmaxv h0, v1.4h`, `fcmeq v0.8h, v1.8h, #0.0`, `scvtf v0.4h, v1.4h`, the by-element `fmul v0.4h, v1.4h, v2.h[3]`, and `fmov v0.4h, #1.0`. The CONVERSIONS to and from `4H` (`FCVTN`, `FCVTN2`, `FCVTL`, `FCVTL2`) are base v8.0 and are in.
+  - `FEAT_RDM`: `sqrdmlah` and the by-element `sqrdmlsh`
+  - `FEAT_FCMA`: `fcadd v0.4s, v1.4s, v2.4s, #90`, `fcmla`
+  - `FEAT_JSCVT`: `fjcvtzs w0, d1`
+  - `FEAT_FRINTTS`: `frint32x v0.4s, v1.4s`, `frint64z d0, d1`
+  - `FEAT_FHM`: `fmlal v0.4s, v1.4h, v2.4h`, `fmlsl2`
+  - `FEAT_BF16`: `bfdot`, `bfmlalb`, `bfcvtn`, `bfmmla`
+  - `FEAT_FAMINMAX`: `famax v0.4s, v1.4s, v2.4s`
+  - `FEAT_FP8`: `fscale`, `f1cvtl`, and the `8B` `fcvtn v0.8b, v1.4h`; `FP8DOT4` (`fdot`) and `FP8FMA` (`fmlalb`) sit under it
+  - `FEAT_LUT`: `luti2`, `luti4`
+  - `FEAT_LRCPC3`: `ldap1`, `stl1`, `ldapur`, `stlur`
+  - `FEAT_LSFE`: `ldfadd`, `ldbfmax`, `stfmin`
+  - `FEAT_LSUI`: `ldtp`, `ldtnp`, `sttp`
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
-- Crypto, SVE, SME
+- SVE and SME
 
 If you hit one of these and need it, see [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to add it.
