@@ -36,7 +36,12 @@ const MNEMONICS = new Set<string>([
   "fsub", "fmul", "fdiv", "fcmp", "scvtf", "fcvtzs",
 ]);
 
-const REGISTER_RE = /^(?:x(?:[12]?\d|30)|w(?:[12]?\d|30)|sp|xzr|wzr)$/i;
+// The whole register file: the general names, the five scalar views of a
+// SIMD&FP entry (b, h, s, d, q), and the vector view with either an arrangement
+// (`v3.16b`) or one indexed lane (`v3.b[15]`), which the scanner hands over as
+// a single word.
+const REGISTER_RE =
+  /^(?:[xw](?:[12]?\d|30)|sp|xzr|wzr|[bhsdq](?:[12]?\d|3[01])|v(?:[12]?\d|3[01])(?:\.(?:16b|8b|8h|4h|4s|2s|2d|1d|[bhsd]\[\d+\]))?)$/i;
 const CONDITIONAL_BRANCH_RE = /^b\.[a-z]{2,4}$/i;
 const LABEL_RE = /^[A-Za-z_.$][\w.$]*:$/;
 const DIRECTIVE_RE = /^\.[A-Za-z][\w.]*$/;
@@ -44,9 +49,11 @@ const DIRECTIVE_RE = /^\.[A-Za-z][\w.]*$/;
 // One scanner pass per line, longest-meaningful-chunk first: line comments and
 // strings win over words; a `#`-prefixed immediate is a number (mirroring the
 // editor, which only colors `#` immediates); a digit-led token stays plain; a
-// trailing-colon word is a label.
+// trailing-colon word is a label. A word may end in a bracketed index so a lane
+// form (`v3.b[15]`) scans as one token; a memory operand still starts at its
+// own `[`, which no word precedes.
 const SCAN =
-  /(\/\/[^\n]*|;[^\n]*)|("(?:[^"\\]|\\.)*")|(#-?(?:0x[0-9a-fA-F]+|\d+))|(\d[\w.$]*)|([A-Za-z_.$][\w.$]*:?)|(\s+)|([^\s])/g;
+  /(\/\/[^\n]*|;[^\n]*)|("(?:[^"\\]|\\.)*")|(#-?(?:0x[0-9a-fA-F]+|\d+))|(\d[\w.$]*)|([A-Za-z_.$][\w.$]*(?:\[\d+\])?:?)|(\s+)|([^\s])/g;
 
 function classifyWord(word: string): TokenKind {
   if (LABEL_RE.test(word)) return "label";
