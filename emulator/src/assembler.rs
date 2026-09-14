@@ -489,10 +489,9 @@ fn encode_line(
         }
 
         // -- advanced simd: the structure loads and stores --
-        "LD1" | "LD2" | "LD3" | "LD4" | "ST1" | "ST2" | "ST3" | "ST4" => {
-            encode_simd_structure(&mn.to_ascii_lowercase(), &ops, line_num)
-        }
-        "LD1R" | "LD2R" | "LD3R" | "LD4R" => {
+        // One line, like every other arm: `every_dispatch_arm_is_listed_in_supported_mnemonics`
+        // reads the patterns off this file's text and only sees the line the `=>` is on.
+        "LD1" | "LD2" | "LD3" | "LD4" | "ST1" | "ST2" | "ST3" | "ST4" | "LD1R" | "LD2R" | "LD3R" | "LD4R" => {
             encode_simd_structure(&mn.to_ascii_lowercase(), &ops, line_num)
         }
 
@@ -3576,6 +3575,9 @@ fn encode_simd_table(extend: bool, ops: &[&str], ln: usize) -> Result<u32, EmuEr
         return asm_err(ln, &format!("{name} takes 8b or 16b for both the destination and the index vector"));
     }
     let (table, len) = parse_vec_list(ops[1], "", ln)?;
+    if table.lane.is_some() {
+        return asm_err(ln, "a lookup table holds whole registers, not lanes");
+    }
     if table.esize != 1 || !table.q {
         return asm_err(ln, "every register in a lookup table is spelled 16b");
     }
@@ -3615,11 +3617,23 @@ fn encode_simd_structure(name: &str, ops: &[&str], ln: usize) -> Result<u32, Emu
     // brace (`{v3.b, v4.b}[15]`), so it is split off here and handed to
     // the list parser as a suffix on every element.
     let text = ops[0].trim();
-    let (list_text, suffix) = match text.split_once("}[") {
-        Some((body, index)) => (format!("{body}}}"), format!("[{index}")),
+    let (list_text, suffix) = match text.rfind('}') {
+        Some(close) => {
+            let (body, rest) = text.split_at(close + 1);
+            (body.to_string(), rest.trim().to_string())
+        }
         None => (text.to_string(), String::new()),
     };
     let (first, count) = parse_vec_list(&list_text, &suffix, ln)?;
+    // A lane inside the braces is not a spelling GAS has: the index sits
+    // after the closing brace and applies to the whole list, so
+    // `{v3.b[3]}` has to be turned away rather than read as `{v3.b}[3]`.
+    if suffix.is_empty() && first.lane.is_some() {
+        return asm_err(
+            ln,
+            &format!("{name} spells the lane index after the list: `{{v3.b}}[3]`, not inside it"),
+        );
+    }
 
     // LD1 and ST1 are the only families whose list can hold more
     // registers than the mnemonic's digit: there is nothing to
@@ -3670,9 +3684,16 @@ fn encode_simd_structure(name: &str, ops: &[&str], ln: usize) -> Result<u32, Emu
 
     let post = match ops.get(2) {
         None => None,
-        Some(tail) => {
-            let tail = tail.trim();
-            if tail.starts_with('#') {
+        // A register spelling is the register form; anything else is
+        // read as the immediate. The sniff is on the spelling rather
+        // than on a leading `#` because the hosted frontend folds a
+        // constant expression down to a bare number before we see it.
+        Some(tail) => match parse_register(tail.trim(), ln) {
+            Ok((rm, true)) if rm != 31 => Some(rm),
+            Ok(_) => {
+                return asm_err(ln, &format!("{name}'s post-index register is x0 through x30"))
+            }
+            Err(_) => {
                 let amount = parse_immediate(tail, ln)?;
                 if amount < 0 || amount as u64 != total {
                     return asm_err(
@@ -3686,17 +3707,8 @@ fn encode_simd_structure(name: &str, ops: &[&str], ln: usize) -> Result<u32, Emu
                 // The immediate form spends Rm on the marker 31 rather
                 // than on the amount, which is fixed by the shape.
                 Some(31u8)
-            } else {
-                let (rm, sf) = parse_register(tail, ln)?;
-                if !sf || rm == 31 {
-                    return asm_err(
-                        ln,
-                        &format!("{name}'s post-index register is x0 through x30"),
-                    );
-                }
-                Some(rm)
             }
-        }
+        },
     };
     let rm = u32::from(post.unwrap_or(0));
     let writeback = u32::from(post.is_some());
@@ -8021,6 +8033,38 @@ svc 0").unwrap();
             msg.contains("is not a floating-point register"),
             "message was: {msg}"
         );
+    }
+
+    // -- brace register lists --
+
+    #[test]
+    fn a_lane_inside_the_braces_is_refused() {
+        // The list parser reads a whole vector operand per element, so a
+        // lane spelling would parse; GAS has no such form. TBL's table is
+        // whole registers, and the structure loads put the index AFTER
+        // the closing brace, where it applies to the list as a whole.
+        let labels: HashMap<String, u64> = HashMap::new();
+        for (src, needle) in [
+            ("tbl v0.8b, {v1.b[3]}, v2.8b", "whole registers, not lanes"),
+            ("tbx v0.8b, {v1.b[0]-v2.b[0]}, v2.8b", "whole registers, not lanes"),
+            ("ld1 {v3.b[3]}, [x7]", "after the list"),
+            ("ld2 {v3.b[3], v4.b[3]}, [x7]", "after the list"),
+        ] {
+            let msg = match encode_line(src, 0, &labels, 1) {
+                Err(EmuError::AssemblyError { message, .. }) => message,
+                other => panic!("`{src}` must be refused, got {other:?}"),
+            };
+            assert!(msg.contains(needle), "`{src}`: message was: {msg}");
+        }
+        // The spellings they are confused with still assemble, to the
+        // words csarm produced.
+        for (src, want) in [
+            ("tbl v0.8b, {v1.16b}, v2.8b", 0x0E02_0020u32),
+            ("ld1 {v3.b}[3], [x7]", 0x0D40_0CE3),
+            ("ld2 {v3.b, v4.b}[3], [x7]", 0x0D60_0CE3),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
     }
 
     // -- the supported-mnemonic list --
