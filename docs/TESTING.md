@@ -89,9 +89,10 @@ moves the wrong bytes still fails. Neither fixture is ever hand-edited;
 both are regenerated from the probe.
 
 The two counts move together as families land. Today `simd.rs` holds
-1,391 lines to their word and rejects 814, with 3 literal loads checked
+1,674 lines to their word and rejects 531, with 3 literal loads checked
 through the hosted pipeline instead, and `simd_behaviour.rs` replays
-4,167 rows.
+5,022 rows. What is left on the queue is the structure loads and stores
+(`ld1`..`ld4`, `st1`..`st4` and the replicating `ld1r`..`ld4r`).
 
 ## The C corpus
 

@@ -76,8 +76,28 @@ const WIDEN_SHIFT: &[&str] = &[
 const PERMUTE: &[&str] =
     &["ext", "tbl", "tbx", "trn1", "trn2", "uzp1", "uzp2", "zip1", "zip2"];
 
-/// Whether this suite replays a line. Everything else implemented (the
-/// SIMD-scalar SCVTF) is left to `simd.rs` until its own feature lands.
+/// The floating-point lane families: three-same, two-register misc
+/// (compares against zero and every conversion included), across lanes,
+/// and the by-element multiplies, plus the SIMD-scalar class of each.
+/// Both spellings of the three width-changing conversions are here,
+/// because the `2` suffix is part of the mnemonic the fixture keys on;
+/// `fmov` is not, because the vector immediate rides MOVES with the rest
+/// of the register-to-register forms.
+const FLOAT: &[&str] = &[
+    "fabd", "fabs", "facge", "facgt", "fadd", "faddp",
+    "fcmeq", "fcmge", "fcmgt", "fcmle", "fcmlt",
+    "fcvtas", "fcvtau", "fcvtl", "fcvtl2", "fcvtms", "fcvtmu", "fcvtn", "fcvtn2",
+    "fcvtns", "fcvtnu", "fcvtps", "fcvtpu", "fcvtxn", "fcvtxn2", "fcvtzs", "fcvtzu",
+    "fdiv", "fmax", "fmaxnm", "fmaxnmp", "fmaxnmv", "fmaxp", "fmaxv",
+    "fmin", "fminnm", "fminnmp", "fminnmv", "fminp", "fminv",
+    "fmla", "fmls", "fmul", "fmulx", "fneg",
+    "frecpe", "frecps", "frecpx", "frinta", "frinti", "frintm", "frintn", "frintp",
+    "frintx", "frintz", "frsqrte", "frsqrts", "fsqrt", "fsub",
+    "scvtf", "ucvtf",
+];
+
+/// Whether this suite replays a line. Everything else implemented is
+/// left to `simd.rs` until its own feature lands.
 fn is_replayed(line: &InventoryLine) -> bool {
     line.implemented()
         && !line.spelling.contains("_probe")
@@ -85,7 +105,8 @@ fn is_replayed(line: &InventoryLine) -> bool {
             || MOVES.contains(&line.mnemonic())
             || INTEGER.contains(&line.mnemonic())
             || WIDEN_SHIFT.contains(&line.mnemonic())
-            || PERMUTE.contains(&line.mnemonic()))
+            || PERMUTE.contains(&line.mnemonic())
+            || FLOAT.contains(&line.mnemonic()))
 }
 
 /// Where the mapped buffer's base sits: page-aligned (so SP-based forms
@@ -143,7 +164,7 @@ fn base_register(spelling: &str) -> Option<&str> {
     let inside = spelling.split_once(", [")?.1;
     Some(
         inside
-            .split(|c: char| c == ',' || c == ']')
+            .split([',', ']'])
             .next()
             .expect("a base register")
             .trim(),

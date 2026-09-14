@@ -163,7 +163,7 @@ The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` giv
 
 ## Floating point
 
-The register file is 128 bits wide: 32 entries named `V0`-`V31`, or `Q0`-`Q31` when a whole one is moved. `B`, `H`, `S` and `D` are views of the low 8, 16, 32 and 64 bits of the same entry, so `d3` and `q3` are the same register at two widths. Writing a scalar view zeroes every bit above it, exactly as the hardware does: an `S` write clears bits 127:32, a `D` write clears 127:64. Loads and stores reach all five widths; the arithmetic below is scalar `S` and `D` only. The `V` view and its arrangements have their own section under [Vector moves and immediates](#vector-moves-and-immediates).
+The register file is 128 bits wide: 32 entries named `V0`-`V31`, or `Q0`-`Q31` when a whole one is moved. `B`, `H`, `S` and `D` are views of the low 8, 16, 32 and 64 bits of the same entry, so `d3` and `q3` are the same register at two widths. Writing a scalar view zeroes every bit above it, exactly as the hardware does: an `S` write clears bits 127:32, a `D` write clears 127:64. Loads and stores reach all five widths; the arithmetic below is scalar `S` and `D` only. The `V` view and its arrangements have their own sections under [Vector moves and immediates](#vector-moves-and-immediates) and [Vector floating point](#vector-floating-point), where most of the mnemonics below gain a lane arrangement.
 
 Every scalar instruction takes both course views: the S form (single precision, a C `float`) and the D form (double precision, a C `double`). Widths never mix inside one instruction; `FCVT` converts between them. Single-precision arithmetic rounds in single precision, exactly like the hardware.
 
@@ -209,7 +209,7 @@ The `FCVT` conversion family names its rounding mode in the mnemonic: `N` neares
 
 The `V` view of the register file writes an arrangement after the register name: `v3.16b` is sixteen byte lanes, `v3.8h` eight halfwords, `v3.4s` four words, `v3.2d` two doublewords, and the `8b`/`4h`/`2s`/`1d` forms are the same shapes over the low 64 bits alone, with the upper half zeroed by every write. One lane is `v3.b[15]`, `v3.h[7]`, `v3.s[3]` or `v3.d[1]`.
 
-Only the moves and immediates are here; the lane arithmetic over the same arrangements is in [Vector integer arithmetic](#vector-integer-arithmetic).
+Only the moves and immediates are here; the lane arithmetic over the same arrangements is in [Vector integer arithmetic](#vector-integer-arithmetic) and [Vector floating point](#vector-floating-point).
 
 A whole-register write zeroes what it does not set, and a 64-bit arrangement clears bits 127:64. A lane write is the exception: `ins`, the `mov` spellings of it, and `fmov v0.d[1], x1` leave every other lane exactly as it was.
 
@@ -496,6 +496,59 @@ By element. Every multiply and multiply-accumulate above also takes ONE lane of 
 | `SQDMULH` | `SQDMULH Vd.4H, Vn.4H, Vm.H[index]` / `SQDMULH Hd, Hn, Vm.H[index]` (and `2S`/`4S`, `Sd, Sn`) | The doubled product's HIGH half, saturating only at the two minimum values. |
 | `SQRDMULH` | the same shapes                 | The rounding one: half an ulp of the kept half is added before the high half is taken. |
 
+## Vector floating point
+
+The float lanes are `2S`, `4S` and `2D`: four bytes or eight, never one or two. There is no `1D` arrangement (a single 64-bit lane is the SIMD-scalar form, written `d3`), and no half-precision arithmetic at all, because that is `FEAT_FP16`; the only place `4H` and `8H` appear is `FCVTN` and `FCVTL`, which convert to and from IEEE binary16 and are base ARMv8.
+
+Most of these mnemonics also name a scalar FP instruction, and only the operands say which reading a line is: `fadd s3, s7, s21` is the scalar class and `fadd v3.2s, v7.2s, v21.2s` this one. `FADD`, `FSUB`, `FMUL`, `FDIV`, `FMAX`, `FMIN`, `FMAXNM`, `FMINNM`, `FABS`, `FNEG`, `FSQRT`, `FMOV`, `SCVTF`, `UCVTF` and every `FCVT` rounding mode are listed under [Floating point](#floating-point) and gain a vector arrangement here. Where a family has a SIMD-scalar form of its own (`fmulx s3, s7, s21`, `fcvtzs s3, s7`) the table says so.
+
+Every rule below is per lane. A NaN that arrives in an operand comes back out of that lane with its sign and payload intact, quieted if it was signalling; a NaN the operation itself makes is the positive default NaN (`0x7FC00000` for `S`, `0x7FF8000000000000` for `D`). The compares write a lane of all ones or all zeros, and every one of them is false against a NaN. A 64-bit arrangement zeroes bits 127:64 of its destination.
+
+| Mnemonic  | Form                             | Notes                                   |
+| --------- | -------------------------------- | --------------------------------------- |
+| `FMLA`    | `FMLA Vd.T, Vn.T, Vm.T` / `FMLA Vd.T, Vn.T, Vm.Ts[i]` / `FMLA Sd, Sn, Vm.S[i]` | Fused multiply-add into the destination: `Vd = Vd + Vn * Vm`, one rounding over the whole thing. The destination lane is an operand, so it is also the first NaN the lane can propagate. |
+| `FMLS`    | the same shapes                  | `Vd = Vd - Vn * Vm`. The pseudocode negates `Vn`'s lane before the fused multiply-add, never the result, so a NaN arriving in `Vn` comes back with its sign flipped. |
+| `FMULX`   | `FMULX Vd.T, Vn.T, Vm.T` / `FMULX Sd, Sn, Sm` / by element | The product, except that an infinity against a zero answers exactly `2.0` with the sign of the product, where `FMUL` answers with the default NaN. |
+| `FABD`    | `FABD Vd.T, Vn.T, Vm.T` / `FABD Sd, Sn, Sm` | `\|Vn - Vm\|`. The absolute value is a bit clear applied after the subtract, so it strips the sign off a propagated NaN too. |
+| `FRECPS`  | `FRECPS Vd.T, Vn.T, Vm.T` / `FRECPS Sd, Sn, Sm` | The Newton-Raphson step for a reciprocal: `2.0 - Vn * Vm`, fused. An infinity against a zero gives exactly `2.0`. `Vn` is negated before the NaN rule looks at it. |
+| `FRSQRTS` | the same shapes                  | The step for a reciprocal square root: `(3.0 - Vn * Vm) / 2`. An infinity against a zero gives `1.5`. |
+| `FADDP`   | `FADDP Vd.T, Vn.T, Vm.T` / `FADDP Sd, Vn.2S` / `FADDP Dd, Vn.2D` | Pairwise: `Vn`'s lanes then `Vm`'s, folded two at a time, so the low half of the destination comes from `Vn`. The two-operand form folds the pair it has into one scalar. |
+| `FMAXP`   | the same shapes                  | The pairwise maximum, with `FMAX`'s NaN rule. |
+| `FMINP`   | the same shapes                  | The pairwise minimum.                   |
+| `FMAXNMP` | the same shapes                  | The pairwise `FMAXNM`.                  |
+| `FMINNMP` | the same shapes                  | The pairwise `FMINNM`.                  |
+| `FMAXV`   | `FMAXV Sd, Vn.4S`                | The whole vector folded to one scalar. Only the `4S` arrangement exists: folding two lanes is what the pairwise forms are for. The fold is a tree (halves, then their answers), which is what decides WHICH NaN comes out when there is more than one. |
+| `FMINV`   | `FMINV Sd, Vn.4S`                | The minimum fold.                       |
+| `FMAXNMV` | `FMAXNMV Sd, Vn.4S`              | The fold that ignores quiet NaNs.       |
+| `FMINNMV` | `FMINNMV Sd, Vn.4S`              | The same for the minimum.               |
+| `FCMEQ`   | `FCMEQ Vd.T, Vn.T, Vm.T` / `FCMEQ Vd.T, Vn.T, #0.0` / `FCMEQ Sd, Sn, Sm` / `FCMEQ Sd, Sn, #0.0` | All ones where the lanes are equal, all zeros where they are not. `+0.0` equals `-0.0`, and a NaN is equal to nothing, itself included. |
+| `FCMGE`   | the same shapes                  | Greater than or equal.                  |
+| `FCMGT`   | the same shapes                  | Strictly greater than.                  |
+| `FCMLE`   | `FCMLE Vd.T, Vn.T, #0.0` / `FCMLE Sd, Sn, #0.0` | Less than or equal to zero. There is no register form: swap the operands and use `FCMGE`. |
+| `FCMLT`   | `FCMLT Vd.T, Vn.T, #0.0` / `FCMLT Sd, Sn, #0.0` | Strictly less than zero, same story.    |
+| `FACGE`   | `FACGE Vd.T, Vn.T, Vm.T` / `FACGE Sd, Sn, Sm` | `FCMGE` on the absolute values, so the signs are ignored and `-3.0` beats `2.0`. |
+| `FACGT`   | the same shapes                  | The strict absolute compare.            |
+| `FRECPE`  | `FRECPE Vd.T, Vn.T` / `FRECPE Sd, Sn` | A reciprocal ESTIMATE, eight significant bits from the architecture's own table (the same table `URECPE` reads). A zero gives an infinity of the same sign, an infinity gives a zero, and anything below `2^-(bias+1)` overflows to an infinity. |
+| `FRSQRTE` | `FRSQRTE Vd.T, Vn.T` / `FRSQRTE Sd, Sn` | A reciprocal-square-root estimate from the matching table. A zero gives an infinity, a negative gives the default NaN, and `+inf` gives `+0.0`. |
+| `FRECPX`  | `FRECPX Sd, Sn` / `FRECPX Dd, Dn` | Scalar only: the sign kept, the exponent complemented, the mantissa zeroed, which is the exact power of two a reciprocal lands on. A zero or subnormal answers the largest exponent short of the one infinities claim. |
+| `FRINTN`  | `FRINTN Vd.T, Vn.T`              | Round to an integral float, nearest with ties to EVEN: `2.5` gives `2.0`. |
+| `FRINTA`  | `FRINTA Vd.T, Vn.T`              | Nearest with ties AWAY from zero: `2.5` gives `3.0`. The `.5` cases are the only place it differs from `FRINTN`, exactly as `FCVTAS` differs from `FCVTNS`. |
+| `FRINTM`  | `FRINTM Vd.T, Vn.T`              | Toward minus infinity (floor).          |
+| `FRINTP`  | `FRINTP Vd.T, Vn.T`              | Toward plus infinity (ceiling).         |
+| `FRINTZ`  | `FRINTZ Vd.T, Vn.T`              | Toward zero (truncate).                 |
+| `FRINTX`  | `FRINTX Vd.T, Vn.T`              | The current rounding mode, which here is nearest-even. It differs from `FRINTI` only in raising the inexact exception, and this emulator raises none. |
+| `FRINTI`  | `FRINTI Vd.T, Vn.T`              | The current rounding mode, quietly.     |
+| `FCVTN`   | `FCVTN Vd.4H, Vn.4S` / `FCVTN Vd.2S, Vn.2D` | Narrow each lane to half its width, round to nearest even, into the LOW half of the destination (the upper half is zeroed). The `4H` form is IEEE binary16. |
+| `FCVTN2`  | `FCVTN2 Vd.8H, Vn.4S` / `FCVTN2 Vd.4S, Vn.2D` | The same, into the UPPER half, leaving the low half alone. |
+| `FCVTL`   | `FCVTL Vd.4S, Vn.4H` / `FCVTL Vd.2D, Vn.2S` | Widen each lane, which is exact. The plain form reads the LOW half of the source. |
+| `FCVTL2`  | `FCVTL2 Vd.4S, Vn.8H` / `FCVTL2 Vd.2D, Vn.4S` | The same, reading the UPPER half.       |
+| `FCVTXN`  | `FCVTXN Vd.2S, Vn.2D` / `FCVTXN Sd, Dn` | Narrow `D` to `S` with round to ODD: toward zero, but an inexact result takes the neighbour with an odd significand, so a later widening can still tell the two halves of a tie apart. `2D` only. |
+| `FCVTXN2` | `FCVTXN2 Vd.4S, Vn.2D`           | The upper-half form.                    |
+
+The conversions between a float lane and an integer lane are the scalar mnemonics over an arrangement: `SCVTF Vd.T, Vn.T` and `UCVTF Vd.T, Vn.T` read each lane as a signed or unsigned integer of the lane's own width, and `FCVTZS`/`FCVTZU`/`FCVTAS`/`FCVTAU`/`FCVTMS`/`FCVTMU`/`FCVTNS`/`FCVTNU`/`FCVTPS`/`FCVTPU` go the other way, saturating at the LANE's rails and answering zero for a NaN. All four directions also take the SIMD-scalar spelling (`fcvtzs s3, s7`, whose result lands in the FP file rather than a general register) and the fixed-point `#fbits` form (`scvtf v3.2s, v7.2s, #17` divides by `2^fbits`; `fcvtzs` multiplies before rounding), where `fbits` runs 1 to 32 on an `S` lane and 1 to 64 on a `D` one.
+
+`FMOV Vd.T, #imm` fills every lane with the same 8-bit float immediate the scalar `fmov s0, #1.0` takes, in the `2S`, `4S` and `2D` arrangements. `FMUL`, `FMLA`, `FMLS` and `FMULX` also take a by-element second source (`fmul v3.2s, v7.2s, v21.s[3]`, `fmul d3, d7, v21.d[1]`): one lane of `Vm` against every lane of `Vn`, with the index packed into the encoding's `H:L` bits for an `S` element and `H` alone for a `D` one, which has only two lanes.
+
 ## Directives
 
 | Directive     | Notes                                                 |
@@ -618,7 +671,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- The rest of the vector families: floating-point lanes and the `LD1`-`ST4` structure loads. The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, and the whole of the integer lane arithmetic above (three-same, two-register misc, across lanes, the widening and narrowing forms, the shifts, the permutes and table lookups, and the element-indexed multiplies) are all in; the rest lands in the changes that follow.
+- The `LD1`-`LD4` and `ST1`-`ST4` structure loads and stores, including the single-lane and replicating (`LD1R`-`LD4R`) forms. Every other vector family is in: the 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, the whole of the integer lane arithmetic, and the whole of the floating-point lane arithmetic.
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
