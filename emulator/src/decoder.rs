@@ -83,6 +83,19 @@ pub enum LdStPairOp {
     Stp,
 }
 
+/// Which of the three shapes a structure load or store takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdStructShape {
+    /// Whole registers: every lane of each one is moved, de-interleaved
+    /// on the way in and interleaved on the way out.
+    Multiple,
+    /// One lane of each register, the rest left alone.
+    Lane(u8),
+    /// One element read once and copied into every lane of each
+    /// register (LD1R-LD4R). Loads only.
+    Replicate,
+}
+
 /// Addressing mode for load/store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexMode {
@@ -1929,6 +1942,68 @@ pub fn f32_to_f16(value: f32) -> u16 {
     sign | ((((unbiased + 14) as u16) << 10) + rounded as u16)
 }
 
+/// The load/store multiple-structures opcodes, as (opcode, the number in
+/// the mnemonic, how many registers the brace list names). LD1 and ST1
+/// alone reach two, three and four registers without interleaving, so
+/// they own four rows and every other family one.
+pub const SIMD_STRUCT_MULTIPLE: &[(u8, u8, u8)] = &[
+    (0b0000, 4, 4),
+    (0b0010, 1, 4),
+    (0b0100, 3, 3),
+    (0b0110, 1, 3),
+    (0b0111, 1, 1),
+    (0b1000, 2, 2),
+    (0b1010, 1, 2),
+];
+
+/// The lane index a single-structure word carries, or None when the
+/// combination is unallocated. Q, S and the two-bit size field hold it
+/// between them, and how many of those bits are index is what the
+/// element width decides: `ld1 {v3.b}[15]` (0x4d401ce3: Q=1, S=1,
+/// size=11) spends all four, `ld1 {v3.h}[7]` (0x4d4058e3: Q=1, S=1,
+/// size=10) three with size's low bit held clear, `ld1 {v3.s}[3]`
+/// (0x4d4090e3: Q=1, S=1, size=00) two, and `ld1 {v3.d}[1]`
+/// (0x4d4084e3: Q=1, S=0, size=01) only Q.
+pub fn simd_struct_index(esize: u8, q: bool, s: bool, size: u8) -> Option<u8> {
+    let q = u8::from(q);
+    let s = u8::from(s);
+    match esize {
+        1 => Some((q << 3) | (s << 2) | size),
+        2 => (size & 1 == 0).then_some((q << 2) | (s << 1) | (size >> 1)),
+        4 => (size == 0b00).then_some((q << 1) | s),
+        8 => (size == 0b01 && s == 0).then_some(q),
+        _ => None,
+    }
+}
+
+/// The inverse: the Q, S and size bits an index packs into. The caller
+/// has already range-checked the index against the element width.
+pub fn simd_struct_index_bits(esize: u8, index: u8) -> (bool, bool, u8) {
+    match esize {
+        1 => (index & 8 != 0, index & 4 != 0, index & 3),
+        2 => (index & 4 != 0, index & 2 != 0, (index & 1) << 1),
+        4 => (index & 2 != 0, index & 1 != 0, 0b00),
+        _ => (index & 1 != 0, false, 0b01),
+    }
+}
+
+/// The total bytes a structure load or store moves, which is also the
+/// only amount its immediate post-index form can add to the base: the
+/// word carries no immediate field because there is one legal value.
+pub fn simd_struct_bytes(shape: SimdStructShape, count: u8, esize: u8, q: bool) -> u64 {
+    let per_register = match shape {
+        SimdStructShape::Multiple => {
+            if q {
+                16
+            } else {
+                8
+            }
+        }
+        _ => u64::from(esize),
+    };
+    u64::from(count) * per_register
+}
+
 /// Which reading of the Advanced SIMD copy group an encoding carries.
 /// DUP, INS, UMOV and SMOV share one word shape and differ only in imm4.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2109,6 +2184,30 @@ pub enum Instruction {
         /// The op2 00 encoding: LDNP/STNP, a signed offset with no
         /// writeback whose only other difference is a cache hint.
         no_allocate: bool,
+    },
+    /// LD1-LD4 / ST1-ST4: the Advanced SIMD structure loads and stores.
+    /// `structures` is the number in the mnemonic (the interleave factor)
+    /// and `count` how many registers the brace list names; the two differ
+    /// only for the LD1/ST1 forms that take two, three or four registers
+    /// without interleaving. The registers are consecutive from `rt`,
+    /// wrapping past v31.
+    SimdLdStStructure {
+        load: bool,
+        structures: u8,
+        count: u8,
+        /// Element width in bytes: 1, 2, 4 or 8.
+        esize: u8,
+        /// The 128-bit arrangement. Unread by the single-lane shape,
+        /// where the Q bit is the top bit of the lane index instead.
+        q: bool,
+        shape: SimdStructShape,
+        rt: u8,
+        rn: u8,
+        /// Post-index writeback: None for the plain `[Xn]` form,
+        /// `Some(31)` for the immediate form (whose amount is always the
+        /// total bytes moved, so the word spends no bits on it), and
+        /// `Some(rm)` for the register form.
+        post: Option<u8>,
     },
     /// B/BL (26-bit signed offset, already shifted left 2).
     BrImm {
@@ -3840,6 +3939,48 @@ pub fn format(instr: &Instruction) -> Option<String> {
             let address = address_text(*rn, &LdStOffset::Immediate(i64::from(*imm7)), *mode);
             Some(format!("{mnemonic} {reg}{rt}, {reg}{rt2}, {address}"))
         }
+        Instruction::SimdLdStStructure {
+            load,
+            structures,
+            count,
+            esize,
+            q,
+            shape,
+            rt,
+            rn,
+            post,
+        } => {
+            let replicate = matches!(shape, SimdStructShape::Replicate);
+            let head = if *load { "ld" } else { "st" };
+            let tail = if replicate { "r" } else { "" };
+            // GAS prints a list of more than one register as a range,
+            // and the range wraps past v31 exactly as the list does.
+            let element = |t: &str| {
+                if *count == 1 {
+                    format!("{{v{rt}.{t}}}")
+                } else {
+                    let last = (u32::from(*rt) + u32::from(*count) - 1) % 32;
+                    format!("{{v{rt}.{t}-v{last}.{t}}}")
+                }
+            };
+            let list = match shape {
+                SimdStructShape::Lane(index) => {
+                    let letter = element_letter(*esize).to_string();
+                    format!("{}[{index}]", element(&letter))
+                }
+                _ => element(Arrangement { esize: *esize, q: *q }.suffix()),
+            };
+            let address = match post {
+                None => format!("[{}]", base_name(*rn)),
+                Some(31) => format!(
+                    "[{}], #{}",
+                    base_name(*rn),
+                    simd_struct_bytes(*shape, *count, *esize, *q)
+                ),
+                Some(rm) => format!("[{}], x{rm}", base_name(*rn)),
+            };
+            Some(format!("{head}{structures}{tail} {list}, {address}"))
+        }
         Instruction::FpLdrLiteral { rt, offset, size } => {
             let reg = fp_reg_letter(*size);
             Some(format!("ldr {reg}{rt}, {}", imm_text(*offset)))
@@ -4150,8 +4291,99 @@ fn decode_ldst_group(instr: u32) -> Result<Instruction, EmuError> {
         return decode_ldst_pair(instr);
     }
 
+    // the Advanced SIMD structure loads and stores, LD1-LD4 / ST1-ST4:
+    // 0 Q 0011 0 x ... , where bit 24 picks whole registers from the
+    // single-element shapes. Nothing else in the group claims 0x0C/0x0D.
+    if (instr & 0xBE00_0000) == 0x0C00_0000 {
+        return decode_simd_ldst_structure(instr)
+            .ok_or(EmuError::UnknownInstruction(instr));
+    }
+
     // single register load/store
     decode_ldst_single(instr)
+}
+
+/// LD1-LD4 / ST1-ST4 in all three shapes. `None` for an unallocated
+/// combination, which the caller turns into an unknown instruction
+/// rather than executing something the word does not mean.
+fn decode_simd_ldst_structure(instr: u32) -> Option<Instruction> {
+    let q = bit(instr, 30) == 1;
+    let single = bit(instr, 24) == 1;
+    let load = bit(instr, 22) == 1;
+    let r = bit(instr, 21) == 1;
+    let rm = bits(instr, 20, 16) as u8;
+    let size = bits(instr, 11, 10) as u8;
+    let rn = bits(instr, 9, 5) as u8;
+    let rt = bits(instr, 4, 0) as u8;
+
+    // Without writeback the Rm field is RES0, and on the multiple
+    // shape bit 21 is too.
+    let post = if bit(instr, 23) == 1 {
+        Some(rm)
+    } else {
+        if rm != 0 {
+            return None;
+        }
+        None
+    };
+
+    if !single {
+        if r {
+            return None;
+        }
+        let opcode = bits(instr, 15, 12) as u8;
+        let &(_, structures, count) =
+            SIMD_STRUCT_MULTIPLE.iter().find(|row| row.0 == opcode)?;
+        let esize = 1u8 << size;
+        // A 1D arrangement holds one element, so there is nothing for an
+        // interleaving form to interleave: only LD1/ST1 spell it.
+        if esize == 8 && !q && structures > 1 {
+            return None;
+        }
+        return Some(Instruction::SimdLdStStructure {
+            load,
+            structures,
+            count,
+            esize,
+            q,
+            shape: SimdStructShape::Multiple,
+            rt,
+            rn,
+            post,
+        });
+    }
+
+    // Single-structure: opcode<2:1> names the element width (11 being
+    // the replicate rows), opcode<0> and R together the family number.
+    let opcode = bits(instr, 15, 13) as u8;
+    let s = bit(instr, 12) == 1;
+    let structures = 1 + (opcode & 1) * 2 + u8::from(r);
+    let (esize, shape) = if opcode >> 1 == 0b11 {
+        // LD1R-LD4R. S is RES0 here, and there is no store form.
+        if s || !load {
+            return None;
+        }
+        (1u8 << size, SimdStructShape::Replicate)
+    } else {
+        let esize = match opcode >> 1 {
+            0b00 => 1,
+            0b01 => 2,
+            _ if size & 1 == 0 => 4,
+            _ => 8,
+        };
+        (esize, SimdStructShape::Lane(simd_struct_index(esize, q, s, size)?))
+    };
+    Some(Instruction::SimdLdStStructure {
+        load,
+        structures,
+        count: structures,
+        esize,
+        q,
+        shape,
+        rt,
+        rn,
+        post,
+    })
 }
 
 fn decode_ldr_literal(instr: u32) -> Result<Instruction, EmuError> {

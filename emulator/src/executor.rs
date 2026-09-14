@@ -200,6 +200,11 @@ pub fn execute(
         Instruction::FpLdStPair { op, size, rt, rt2, rn, imm7, mode, .. } => {
             exec_fp_ldst_pair(*op, *size, *rt, *rt2, *rn, *imm7, *mode, regs, mem)
         }
+        Instruction::SimdLdStStructure {
+            load, structures, count, esize, q, shape, rt, rn, post,
+        } => exec_simd_ldst_structure(
+            *load, *structures, *count, *esize, *q, *shape, *rt, *rn, *post, regs, mem,
+        ),
         Instruction::LdrLiteral { sf, rt, offset } => {
             exec_ldr_literal(*sf, *rt, *offset, regs, mem)
         }
@@ -972,6 +977,125 @@ fn exec_fp_ldst_pair(
 
     if let Some(wb) = writeback {
         regs.write_gpr_or_sp(rn, true, wb);
+    }
+
+    Ok(ExecResult::Advance)
+}
+
+/// One element of `esize` bytes, zero-extended.
+fn read_element(mem: &Memory, addr: u64, esize: u8) -> Result<u64, EmuError> {
+    Ok(match esize {
+        1 => u64::from(mem.read_u8(addr)?),
+        2 => u64::from(mem.read_u16(addr)?),
+        4 => u64::from(mem.read_u32(addr)?),
+        _ => mem.read_u64(addr)?,
+    })
+}
+
+fn write_element(mem: &mut Memory, addr: u64, esize: u8, value: u64) -> Result<(), EmuError> {
+    match esize {
+        1 => mem.write_u8(addr, value as u8),
+        2 => mem.write_u16(addr, value as u16),
+        4 => mem.write_u32(addr, value as u32),
+        _ => mem.write_u64(addr, value),
+    }
+}
+
+/// LD1-LD4 / ST1-ST4 in all three shapes.
+///
+/// The bytes are consumed in address order and the register list is
+/// walked in step with them, which is what makes a load de-interleave
+/// and a store interleave: `ld2 {v3.8b, v4.8b}` puts the byte at +0 in
+/// v3 lane 0 and the byte at +1 in v4 lane 0, so v3 ends up holding
+/// every even byte and v4 every odd one. LD1/ST1 with more than one
+/// register is the degenerate case: one structure per element, so each
+/// register is simply filled in turn. A 64-bit arrangement zeroes bits
+/// 127:64 of every destination, like any other write below the full
+/// width; the single-lane shape is the one that does not, because it
+/// writes one lane and leaves the register around it alone.
+#[allow(clippy::too_many_arguments)] // operands mirror the instruction's fields
+fn exec_simd_ldst_structure(
+    load: bool, structures: u8, count: u8, esize: u8, q: bool,
+    shape: SimdStructShape, rt: u8, rn: u8, post: Option<u8>,
+    regs: &mut RegisterFile, mem: &mut Memory,
+) -> Result<ExecResult, EmuError> {
+    check_sp_alignment(rn, regs)?;
+    let base = regs.read_gpr_or_sp(rn, true);
+    let total = simd_struct_bytes(shape, count, esize, q);
+    let access = if load {
+        crate::errors::MemAccess::Read
+    } else {
+        crate::errors::MemAccess::Write
+    };
+    check_guest_address(base, access)?;
+    check_guest_address(base.wrapping_add(total - 1), access)?;
+
+    // The register list wraps past v31, so every index goes through here.
+    let reg_at = |step: u32| ((u32::from(rt) + step) % 32) as u8;
+
+    match shape {
+        SimdStructShape::Multiple => {
+            let lanes = if q { 16u32 } else { 8 } / u32::from(esize);
+            // A load writes every lane, so zeroing first is all the
+            // upper-half rule needs.
+            if load && !q {
+                for step in 0..u32::from(count) {
+                    regs.write_fpr_q(reg_at(step), 0);
+                }
+            }
+            let repeats = u32::from(count / structures);
+            let mut offset = 0u64;
+            for repeat in 0..repeats {
+                for lane in 0..lanes {
+                    for slot in 0..u32::from(structures) {
+                        let reg = reg_at(repeat * u32::from(structures) + slot);
+                        let addr = base.wrapping_add(offset);
+                        if load {
+                            let value = read_element(mem, addr, esize)?;
+                            regs.write_fpr_lane(reg, esize, lane as u8, value);
+                        } else {
+                            let value = regs.read_fpr_lane(reg, esize, lane as u8);
+                            write_element(mem, addr, esize, value)?;
+                        }
+                        offset += u64::from(esize);
+                    }
+                }
+            }
+        }
+        SimdStructShape::Lane(index) => {
+            for slot in 0..u32::from(count) {
+                let reg = reg_at(slot);
+                let addr = base.wrapping_add(u64::from(slot) * u64::from(esize));
+                if load {
+                    let value = read_element(mem, addr, esize)?;
+                    regs.write_fpr_lane(reg, esize, index, value);
+                } else {
+                    let value = regs.read_fpr_lane(reg, esize, index);
+                    write_element(mem, addr, esize, value)?;
+                }
+            }
+        }
+        SimdStructShape::Replicate => {
+            let lanes = if q { 16u32 } else { 8 } / u32::from(esize);
+            for slot in 0..u32::from(count) {
+                let addr = base.wrapping_add(u64::from(slot) * u64::from(esize));
+                let value = u128::from(read_element(mem, addr, esize)?);
+                let mut filled = 0u128;
+                for lane in 0..lanes {
+                    filled |= value << (lane * u32::from(esize) * 8);
+                }
+                // Writing the whole register is what zeroes the upper
+                // half of a 64-bit arrangement.
+                regs.write_fpr_q(reg_at(slot), filled);
+            }
+        }
+    }
+
+    if let Some(rm) = post {
+        // Rm 31 is the immediate form: the total bytes moved, which the
+        // word does not spell because there is only one legal value.
+        let step = if rm == 31 { total } else { regs.read_gpr(rm, true) };
+        regs.write_gpr_or_sp(rn, true, base.wrapping_add(step));
     }
 
     Ok(ExecResult::Advance)

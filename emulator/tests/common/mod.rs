@@ -10,11 +10,10 @@
 /// Mnemonics the inventory carries that the crate does NOT assemble yet.
 /// Every line whose mnemonic is on this list must be REJECTED, so the
 /// list flips red the moment a family lands and stops being a claim
-/// nobody checks. Removing a name is how a family is declared done.
-pub const NOT_YET: &[&str] = &[
-    "ld1", "ld1r", "ld2", "ld2r", "ld3", "ld3r", "ld4", "ld4r",
-    "st1", "st2", "st3", "st4",
-];
+/// nobody checks. Removing a name is how a family is declared done; the
+/// list is empty now that every family has landed, and it stays so that a
+/// family taken back out has somewhere to be declared.
+pub const NOT_YET: &[&str] = &[];
 
 /// One line of `simd-inventory.txt`.
 pub struct InventoryLine {

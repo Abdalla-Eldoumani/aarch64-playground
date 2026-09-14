@@ -5,11 +5,11 @@ use crate::decoder::{
     simd_elem_bits, simd_elem_by_name, simd_imm_form, simd_logical_by_name, simd_logical_name,
     simd_fp_across_by_name, simd_fp_elem_by_name, simd_fp_misc_by_name, simd_fp_same_by_name,
     simd_misc_by_name, simd_permute_by_name, simd_same_by_name,
-    simd_shift_by_name, size_field, MemSize, SimdDiffShape, SimdElemKind, SimdFpMiscRow,
-    SimdFpMiscShape, SimdImmForm, SimdImmOp,
-    SimdLogicalOp, SimdMiscShape, SimdShiftRow, SimdShiftShape, DP1_OPS, FP_BINARY_OPS,
-    FP_FROM_INT_OPS, FP_MUL_ADD_OPS,
-    FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS,
+    simd_shift_by_name, simd_struct_bytes, simd_struct_index_bits, size_field, MemSize,
+    SimdDiffShape, SimdElemKind, SimdFpMiscRow, SimdFpMiscShape, SimdImmForm, SimdImmOp,
+    SimdLogicalOp, SimdMiscShape, SimdShiftRow, SimdShiftShape, SimdStructShape, DP1_OPS,
+    FP_BINARY_OPS, FP_FROM_INT_OPS, FP_MUL_ADD_OPS,
+    FP_TO_INT_OPS, FP_UNARY_OPS, LDST_EXTENDS, SIMD_STRUCT_MULTIPLE,
 };
 use crate::errors::EmuError;
 use crate::registers::{reg_alias, Condition, CONDITIONS};
@@ -218,6 +218,10 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // advanced simd: the permutes and the table lookups (the by-element
     // multiplies are spellings of mnemonics already listed above)
     "EXT", "TBL", "TBX", "ZIP1", "ZIP2", "UZP1", "UZP2", "TRN1", "TRN2",
+    // advanced simd: the structure loads and stores, including the
+    // single-lane and replicate shapes
+    "LD1", "LD2", "LD3", "LD4", "ST1", "ST2", "ST3", "ST4",
+    "LD1R", "LD2R", "LD3R", "LD4R",
     // the rest of the float-to-integer rounding modes
     "FCVTZU", "FCVTAS", "FCVTAU", "FCVTMS", "FCVTMU", "FCVTPS", "FCVTPU",
     // advanced simd: the floating-point lane families (the vector forms of
@@ -482,6 +486,13 @@ fn encode_line(
         "TBX" => encode_simd_table(true, &ops, line_num),
         "ZIP1" | "ZIP2" | "UZP1" | "UZP2" | "TRN1" | "TRN2" => {
             encode_simd_permute(&mn.to_ascii_lowercase(), &ops, line_num)
+        }
+
+        // -- advanced simd: the structure loads and stores --
+        // One line, like every other arm: `every_dispatch_arm_is_listed_in_supported_mnemonics`
+        // reads the patterns off this file's text and only sees the line the `=>` is on.
+        "LD1" | "LD2" | "LD3" | "LD4" | "ST1" | "ST2" | "ST3" | "ST4" | "LD1R" | "LD2R" | "LD3R" | "LD4R" => {
+            encode_simd_structure(&mn.to_ascii_lowercase(), &ops, line_num)
         }
 
         // -- pc-relative address formation --
@@ -3505,42 +3516,50 @@ fn encode_simd_ext(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         | u32::from(d.idx))
 }
 
-/// `{v7.16b}`, `{v7.16b, v8.16b}` or `{v7.16b-v10.16b}`: the table one
-/// to four consecutive registers make, wrapping past v31. Answers the
-/// first register and how many there are.
-fn parse_table_list(s: &str, ln: usize) -> Result<(u8, u8), EmuError> {
+/// `{v7.16b}`, `{v7.16b, v8.16b}` or `{v7.16b-v10.16b}`: one to four
+/// consecutive registers in braces, wrapping past v31. TBL's table and
+/// the structure loads' register list are the same syntax, so they read
+/// it here rather than twice. `suffix` is appended to every element
+/// before it is parsed, which is how the single-structure forms hand it
+/// the `[15]` that sits outside their braces. Answers the first
+/// register (with the arrangement every element has to share) and how
+/// many there are.
+fn parse_vec_list(s: &str, suffix: &str, ln: usize) -> Result<(VecReg, u8), EmuError> {
     let text = s.trim();
     let inner = text
         .strip_prefix('{')
         .and_then(|body| body.strip_suffix('}'))
         .ok_or_else(|| {
-            asm_error(ln, "a lookup table is a brace list of 1 to 4 registers ({v0.16b-v3.16b})")
+            asm_error(ln, "a register list is a brace list of 1 to 4 registers ({v0.16b-v3.16b})")
         })?;
-    let table_reg = |part: &str| -> Result<u8, EmuError> {
-        let reg = parse_vec_arrangement(part, ln)?;
-        if reg.esize != 1 || !reg.q {
-            return asm_err(ln, "every register in a lookup table is spelled 16b");
+    let element = |part: &str| parse_vec_reg(&format!("{}{suffix}", part.trim()), ln);
+    let registers: Vec<VecReg> = if let Some((first, last)) = inner.split_once('-') {
+        let first = element(first)?;
+        let last = element(last)?;
+        if (last.esize, last.q, last.lane) != (first.esize, first.q, first.lane) {
+            return asm_err(ln, "every register in a list carries the same arrangement");
         }
-        Ok(reg.idx)
-    };
-    let registers: Vec<u8> = if let Some((first, last)) = inner.split_once('-') {
-        let first = table_reg(first)?;
-        let last = table_reg(last)?;
-        let len = (u32::from(last) + 32 - u32::from(first)) % 32 + 1;
-        (0..len).map(|step| ((u32::from(first) + step) % 32) as u8).collect()
+        let len = (u32::from(last.idx) + 32 - u32::from(first.idx)) % 32 + 1;
+        (0..len)
+            .map(|step| VecReg { idx: ((u32::from(first.idx) + step) % 32) as u8, ..first })
+            .collect()
     } else {
-        inner.split(',').map(table_reg).collect::<Result<Vec<u8>, EmuError>>()?
+        inner.split(',').map(element).collect::<Result<Vec<VecReg>, EmuError>>()?
     };
     if registers.is_empty() || registers.len() > 4 {
-        return asm_err(ln, "a lookup table holds 1 to 4 registers");
+        return asm_err(ln, "a register list holds 1 to 4 registers");
+    }
+    let head = registers[0];
+    if registers.iter().any(|reg| (reg.esize, reg.q, reg.lane) != (head.esize, head.q, head.lane)) {
+        return asm_err(ln, "every register in a list carries the same arrangement");
     }
     if registers
         .windows(2)
-        .any(|pair| (u32::from(pair[0]) + 1) % 32 != u32::from(pair[1]))
+        .any(|pair| (u32::from(pair[0].idx) + 1) % 32 != u32::from(pair[1].idx))
     {
-        return asm_err(ln, "a lookup table's registers are consecutive, wrapping past v31");
+        return asm_err(ln, "a register list's registers are consecutive, wrapping past v31");
     }
-    Ok((registers[0], registers.len() as u8))
+    Ok((head, registers.len() as u8))
 }
 
 /// TBL and TBX: `Vd.T, {table}, Vm.T`. The table is always 16b whatever
@@ -3555,7 +3574,14 @@ fn encode_simd_table(extend: bool, ops: &[&str], ln: usize) -> Result<u32, EmuEr
     if d.esize != 1 || m.esize != 1 || m.q != d.q {
         return asm_err(ln, &format!("{name} takes 8b or 16b for both the destination and the index vector"));
     }
-    let (rn, len) = parse_table_list(ops[1], ln)?;
+    let (table, len) = parse_vec_list(ops[1], "", ln)?;
+    if table.lane.is_some() {
+        return asm_err(ln, "a lookup table holds whole registers, not lanes");
+    }
+    if table.esize != 1 || !table.q {
+        return asm_err(ln, "every register in a lookup table is spelled 16b");
+    }
+    let rn = table.idx;
     Ok(0x0E00_0000
         | ((d.q as u32) << 30)
         | (u32::from(m.idx) << 16)
@@ -3563,6 +3589,172 @@ fn encode_simd_table(extend: bool, ops: &[&str], ln: usize) -> Result<u32, EmuEr
         | ((extend as u32) << 12)
         | (u32::from(rn) << 5)
         | u32::from(d.idx))
+}
+
+/// LD1-LD4 / ST1-ST4: `{list}, [Xn]` with an optional post-index tail.
+/// `name` is the lowercase mnemonic, whose digit is the interleave
+/// factor and whose `r` suffix is the replicate form; everything else
+/// about the word falls out of the shape of the register list. The
+/// index packing of the single-structure forms comes from
+/// `decoder::simd_struct_index_bits`, the same rule the decoder reads
+/// the other way, so the two cannot drift.
+fn encode_simd_structure(name: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let load = name.starts_with("ld");
+    let replicate = name.ends_with('r');
+    let structures = name.as_bytes()[2] - b'0';
+
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} takes a brace list of registers, an address, and an optional \
+                 post-index amount"
+            ),
+        );
+    }
+
+    // The single-structure forms put their lane index after the closing
+    // brace (`{v3.b, v4.b}[15]`), so it is split off here and handed to
+    // the list parser as a suffix on every element.
+    let text = ops[0].trim();
+    let (list_text, suffix) = match text.rfind('}') {
+        Some(close) => {
+            let (body, rest) = text.split_at(close + 1);
+            (body.to_string(), rest.trim().to_string())
+        }
+        None => (text.to_string(), String::new()),
+    };
+    let (first, count) = parse_vec_list(&list_text, &suffix, ln)?;
+    // A lane inside the braces is not a spelling GAS has: the index sits
+    // after the closing brace and applies to the whole list, so
+    // `{v3.b[3]}` has to be turned away rather than read as `{v3.b}[3]`.
+    if suffix.is_empty() && first.lane.is_some() {
+        return asm_err(
+            ln,
+            &format!("{name} spells the lane index after the list: `{{v3.b}}[3]`, not inside it"),
+        );
+    }
+
+    // LD1 and ST1 are the only families whose list can hold more
+    // registers than the mnemonic's digit: there is nothing to
+    // interleave, so the registers are simply filled in turn.
+    let many = structures == 1 && !replicate && first.lane.is_none();
+    if !many && count != structures {
+        return asm_err(
+            ln,
+            &format!(
+                "{name} names {structures} register{} in its list",
+                if structures == 1 { "" } else { "s" }
+            ),
+        );
+    }
+
+    let shape = if replicate {
+        if first.lane.is_some() {
+            return asm_err(ln, &format!("{name} replicates whole registers, not one lane"));
+        }
+        SimdStructShape::Replicate
+    } else if let Some(index) = first.lane {
+        SimdStructShape::Lane(index)
+    } else {
+        // A 1d register holds one element, so there is nothing for an
+        // interleaving form to interleave.
+        if first.esize == 8 && !first.q && structures > 1 {
+            return asm_err(
+                ln,
+                &format!("{name} has no 1d form: only ld1 and st1 reach a one-element list"),
+            );
+        }
+        SimdStructShape::Multiple
+    };
+    let esize = first.esize;
+    let total = simd_struct_bytes(shape, count, esize, first.q);
+
+    let address = ops[1].trim();
+    let inner = address
+        .strip_prefix('[')
+        .and_then(|body| body.strip_suffix(']'))
+        .ok_or_else(|| {
+            asm_error(ln, &format!("{name} takes a bare address with no offset, `[x7]`"))
+        })?;
+    let (rn, base_is_64) = parse_register(inner, ln)?;
+    if !base_is_64 {
+        return asm_err(ln, &format!("{name}'s base register is a 64-bit register"));
+    }
+
+    let post = match ops.get(2) {
+        None => None,
+        // A register spelling is the register form; anything else is
+        // read as the immediate. The sniff is on the spelling rather
+        // than on a leading `#` because the hosted frontend folds a
+        // constant expression down to a bare number before we see it.
+        Some(tail) => match parse_register(tail.trim(), ln) {
+            Ok((rm, true)) if rm != 31 => Some(rm),
+            Ok(_) => {
+                return asm_err(ln, &format!("{name}'s post-index register is x0 through x30"))
+            }
+            Err(_) => {
+                let amount = parse_immediate(tail, ln)?;
+                if amount < 0 || amount as u64 != total {
+                    return asm_err(
+                        ln,
+                        &format!(
+                            "{name} post-indexes by the bytes it moves, so this form \
+                             writes back #{total}"
+                        ),
+                    );
+                }
+                // The immediate form spends Rm on the marker 31 rather
+                // than on the amount, which is fixed by the shape.
+                Some(31u8)
+            }
+        },
+    };
+    let rm = u32::from(post.unwrap_or(0));
+    let writeback = u32::from(post.is_some());
+
+    if let SimdStructShape::Multiple = shape {
+        let &(opcode, _, _) = SIMD_STRUCT_MULTIPLE
+            .iter()
+            .find(|row| row.1 == structures && row.2 == count)
+            .ok_or_else(|| asm_error(ln, &format!("{name} takes 1 to 4 registers")))?;
+        return Ok(0x0C00_0000
+            | ((first.q as u32) << 30)
+            | (writeback << 23)
+            | ((load as u32) << 22)
+            | (rm << 16)
+            | (u32::from(opcode) << 12)
+            | (esize.trailing_zeros() << 10)
+            | (u32::from(rn) << 5)
+            | u32::from(first.idx));
+    }
+
+    let (q, s, size) = match shape {
+        SimdStructShape::Lane(index) => simd_struct_index_bits(esize, index),
+        _ => (first.q, false, esize.trailing_zeros() as u8),
+    };
+    // opcode<2:1> names the element width, 11 being the replicate rows;
+    // opcode<0> and R carry the family number between them.
+    let width_bits = match shape {
+        SimdStructShape::Replicate => 0b11,
+        _ => match esize {
+            1 => 0b00,
+            2 => 0b01,
+            _ => 0b10,
+        },
+    };
+    let opcode = (width_bits << 1) | ((structures - 1) >> 1);
+    Ok(0x0D00_0000
+        | ((q as u32) << 30)
+        | (writeback << 23)
+        | ((load as u32) << 22)
+        | (u32::from((structures - 1) & 1) << 21)
+        | (rm << 16)
+        | (u32::from(opcode) << 13)
+        | ((s as u32) << 12)
+        | (u32::from(size) << 10)
+        | (u32::from(rn) << 5)
+        | u32::from(first.idx))
 }
 
 /// Across lanes: `Fd, Vn.T`, the whole source folded into one scalar.
@@ -7841,6 +8033,38 @@ svc 0").unwrap();
             msg.contains("is not a floating-point register"),
             "message was: {msg}"
         );
+    }
+
+    // -- brace register lists --
+
+    #[test]
+    fn a_lane_inside_the_braces_is_refused() {
+        // The list parser reads a whole vector operand per element, so a
+        // lane spelling would parse; GAS has no such form. TBL's table is
+        // whole registers, and the structure loads put the index AFTER
+        // the closing brace, where it applies to the list as a whole.
+        let labels: HashMap<String, u64> = HashMap::new();
+        for (src, needle) in [
+            ("tbl v0.8b, {v1.b[3]}, v2.8b", "whole registers, not lanes"),
+            ("tbx v0.8b, {v1.b[0]-v2.b[0]}, v2.8b", "whole registers, not lanes"),
+            ("ld1 {v3.b[3]}, [x7]", "after the list"),
+            ("ld2 {v3.b[3], v4.b[3]}, [x7]", "after the list"),
+        ] {
+            let msg = match encode_line(src, 0, &labels, 1) {
+                Err(EmuError::AssemblyError { message, .. }) => message,
+                other => panic!("`{src}` must be refused, got {other:?}"),
+            };
+            assert!(msg.contains(needle), "`{src}`: message was: {msg}");
+        }
+        // The spellings they are confused with still assemble, to the
+        // words csarm produced.
+        for (src, want) in [
+            ("tbl v0.8b, {v1.16b}, v2.8b", 0x0E02_0020u32),
+            ("ld1 {v3.b}[3], [x7]", 0x0D40_0CE3),
+            ("ld2 {v3.b, v4.b}[3], [x7]", 0x0D60_0CE3),
+        ] {
+            assert_eq!(encode_line(src, 0, &labels, 1).unwrap(), want, "{src}");
+        }
     }
 
     // -- the supported-mnemonic list --

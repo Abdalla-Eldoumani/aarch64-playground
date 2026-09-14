@@ -89,10 +89,11 @@ moves the wrong bytes still fails. Neither fixture is ever hand-edited;
 both are regenerated from the probe.
 
 The two counts move together as families land. Today `simd.rs` holds
-1,674 lines to their word and rejects 531, with 3 literal loads checked
+2,205 lines to their word and rejects none, with 3 literal loads checked
 through the hosted pipeline instead, and `simd_behaviour.rs` replays
-5,022 rows. What is left on the queue is the structure loads and stores
-(`ld1`..`ld4`, `st1`..`st4` and the replicating `ld1r`..`ld4r`).
+every one of its 6,615 rows. The queue is empty: every family the
+inventory carries has landed, and `common::NOT_YET` stays so a family
+taken back out has somewhere to be declared.
 
 ## The C corpus
 
