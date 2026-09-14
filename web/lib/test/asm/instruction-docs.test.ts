@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { INSTRUCTION_DOCS, lookupDoc } from "@/lib/asm/instruction-docs";
+import {
+  INSTRUCTION_DOCS,
+  lookupDoc,
+  lookupDocAt,
+} from "@/lib/asm/instruction-docs";
 
 describe("instruction-docs cExample", () => {
   it("LDR carries a C-equivalent for its load form", () => {
@@ -29,6 +33,52 @@ describe("lookupDoc", () => {
 
   it("returns undefined for unknown mnemonics", () => {
     expect(lookupDoc("FROBNICATE")).toBeUndefined();
+  });
+});
+
+// The editor's hover provider (components/playground/Editor.tsx) does nothing
+// but hand Monaco's word and its column to lookupDocAt, so driving that
+// function over real source lines pins the whole hover path without Monaco.
+// The word an editor reports is what Monaco's default word scan would give:
+// letters and digits, broken at the dot.
+describe("lookupDocAt (the editor's hover path)", () => {
+  /** The line, and the mnemonic's 1-based start column in it. */
+  const hover = (line: string, word: string) =>
+    lookupDocAt(line, word, line.indexOf(word) + 1);
+
+  it("resolves a vector mnemonic exactly as it resolves stp", () => {
+    expect(hover("        stp     x29, x30, [sp, -16]!", "stp")).toBe(
+      INSTRUCTION_DOCS.STP,
+    );
+    expect(hover("        movi    v1.4s, 0x7f", "movi")).toBe(
+      INSTRUCTION_DOCS.MOVI,
+    );
+    expect(hover("        addv    s2, v1.4s", "addv")).toBe(
+      INSTRUCTION_DOCS.ADDV,
+    );
+    expect(hover("        ld4r    {v4.8b, v5.8b, v6.8b, v7.8b}, [x7]", "ld4r"))
+      .toBe(INSTRUCTION_DOCS.LD4R);
+  });
+
+  it("re-attaches the letter before the dot for a conditional branch", () => {
+    // Monaco's word scan breaks `b.eq` at the dot and reports `eq`.
+    const line = "        b.eq    done";
+    expect(lookupDocAt(line, "eq", line.indexOf("eq") + 1)).toBe(
+      INSTRUCTION_DOCS["B.COND"],
+    );
+  });
+
+  it("answers nothing for an operand or an unknown word", () => {
+    expect(hover("        movi    v1.4s, 0x7f", "v1")).toBeUndefined();
+    expect(hover("        frobnicate x0", "frobnicate")).toBeUndefined();
+  });
+
+  it("resolves every documented mnemonic at the head of a course line", () => {
+    const missing = Object.keys(INSTRUCTION_DOCS)
+      .filter((m) => m !== "B.COND")
+      .map((m) => m.toLowerCase())
+      .filter((m) => hover(`        ${m}     v1.4s, v2.4s`, m) === undefined);
+    expect(missing, "mnemonics the hover provider would miss").toEqual([]);
   });
 });
 
