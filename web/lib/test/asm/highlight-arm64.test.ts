@@ -46,6 +46,29 @@ describe("tokenizeLine", () => {
     expect(kinds("        b.lt sp")).toEqual(["text", "keyword", "text", "register"]);
   });
 
+  it("colors every view of the SIMD&FP file, arrangement and lane included", () => {
+    for (const reg of ["b3", "h3", "s3", "d3", "q3", "v0", "v31"]) {
+      expect(textOf(`        fmov ${reg}`, "register"), reg).toEqual([reg]);
+    }
+    expect(textOf("        add v3.16b, v7.8h, v21.2d", "register")).toEqual([
+      "v3.16b",
+      "v7.8h",
+      "v21.2d",
+    ]);
+    // A lane form is one token, index and all.
+    expect(textOf("        ins v3.b[15], w7", "register")).toEqual([
+      "v3.b[15]",
+      "w7",
+    ]);
+    // A memory operand's bracket still stands on its own.
+    expect(textOf("        ldr q0, [x7]", "register")).toEqual(["q0", "x7"]);
+    // v32 is not a register, so the name stays plain text.
+    expect(textOf("        add v32.16b, v1.16b, v2.16b", "register")).toEqual([
+      "v1.16b",
+      "v2.16b",
+    ]);
+  });
+
   it("takes a quoted string whole", () => {
     expect(textOf('msg:    .string "hello\\n"', "string")).toEqual(['"hello\\n"']);
   });
