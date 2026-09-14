@@ -154,8 +154,9 @@ to `encode_simd_integer`, `encode_simd_float`, `encode_simd_permute` or
 for its class and encodes from that row; the operand shape then picks the
 class within a family (a lane in the last operand is the by-element
 encoding, a `#` third operand a compare against zero or a shift by
-immediate). The rest of the SIMD arms (`MOVI`, `MVNI`, `DUP`, `INS`,
-`UMOV`, `SMOV`, `EXT`, `TBL`, `TBX`) carry a constant like every other arm.
+immediate). The remaining SIMD arms either carry a constant like every other arm
+(`MOVI`, `MVNI`, `UMOV`, `SMOV`, `TBL`, `TBX`) or name a single mnemonic
+whose dedicated encoder needs none (`DUP`, `INS`, `EXT`).
 The four name-dispatched families keep 364 patterns inside 178 source lines
 and keep every SIMD bit field in one table the decoder reads back. The
 unit test `every_dispatch_arm_is_listed_in_supported_mnemonics` reads the
