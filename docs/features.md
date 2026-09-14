@@ -27,6 +27,8 @@ reference).
 | "Open in playground" hand-off (shared pill; asm code blocks only) | `web/components/ui/OpenInPlayground.tsx` (used by `web/components/learn/LessonArticle.tsx` and `web/components/practice/ExerciseView.tsx`) |
 | Exercise checker (no stored solution) | `web/lib/content/exercise-checker.ts` |
 | Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/ReferenceView.tsx`, `InstructionReference.tsx`, `PitfallsCatalog.tsx`, `CallingConventionGuide.tsx`, `web/lib/content/reference-data.ts` |
+| Vector reference category (229 of the 365 reference rows, the ninth category beside Data processing, Compare and test, Conditional select, Memory, PC-relative addressing, Branches, System and Floating point) | `web/lib/content/reference-data.ts`, `web/components/reference/InstructionReference.tsx` |
+| One mnemonic list behind three surfaces (reference rows, Monaco hover cards, editor keyword colouring), pinned to the assembler's `SUPPORTED_MNEMONICS` by drift tests | `web/lib/asm/mnemonics.ts`, `web/lib/asm/instruction-docs.ts`, `web/lib/asm/highlight-arm64.ts`, `web/components/playground/Editor.tsx` |
 | Reference interactivity (NZCV panel, condition-code explorer, worked encodings, frame walk, alignment probe, runnable pitfalls) | `web/components/diagrams/FlagEffect.tsx`, `CondCodeExplorer.tsx`, `BitFieldDiagram.tsx`, `FrameWalk.tsx`, `StackAlignment.tsx`, `web/components/reference/PitfallsCatalog.tsx` |
 | NZCV math behind the flag panels (flag-setters, `fcmp`, operand parsing) | `web/lib/emulator/flag-math.ts` |
 | Register-file teaching diagrams (x/w and d/s views) | `web/components/diagrams/RegisterFileDiagram.tsx`, `FpRegisterFileDiagram.tsx` |
@@ -46,6 +48,9 @@ reference).
 | Source formatter (`Ctrl+Shift+F`) | `web/lib/asm/asm-formatter.ts` |
 | Context-aware completion provider | `web/lib/asm/asm-completion.ts` |
 | Per-mnemonic Monaco hover docs | `web/lib/asm/instruction-docs.ts`, `error-explain.ts` |
+| Advanced SIMD base set (the `v` file, its arrangements, the by-element, permute, table-lookup and structure forms; the extension families GNU `as` refuses without an architecture directive are out, named by ARM feature in the instruction reference) | the `SIMD_*` tables in `emulator/src/decoder.rs`, the `encode_simd_*` encoders in `emulator/src/assembler.rs`, "Things that are not implemented" in [`instruction-reference.md`](instruction-reference.md) |
+| Vector operand spelling (`v0.16b`, `v0.b[3]` kept as one token) | `emulator/src/frontend/lexer.rs`, `assembler::parse_vec_operand` |
+| Server-parity sweep (every shipped program run through the emulator and through the course toolchain on csarm, compared byte for byte) | `scripts/parity-sweep.js`, [`TESTING.md`](TESTING.md) |
 | Multi-file tabs (concat at assemble) | `web/components/playground/MultiFileTabs.tsx` |
 | Glyph-margin breakpoint dots | `web/components/playground/Editor.tsx` |
 
@@ -67,7 +72,8 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | Register panel with ABI aliases | `web/components/panels/RegisterPanel.tsx`, `RegisterRow.tsx` |
-| Floating-point register view (`d0`–`d31`, dec/hex, s-written values read as floats) | `web/components/panels/RegisterPanel.tsx`, `DRegisterRow.tsx` |
+| Three register views (`x0`–`x30`, `d0`–`d31`, and the 128-bit `v0`–`v31`), each with its own decimal/hex toggle; s-written values read as floats | `web/components/panels/RegisterPanel.tsx`, `RegisterRow.tsx`, `DRegisterRow.tsx`, `VRegisterRow.tsx` |
+| Vector lane strip (b/h/s/d lane widths, lane 0 at the least significant end, each lane as unsigned hex and signed decimal, the lanes that moved in `--changed` ink) | `web/lib/emulator/vector-lanes.ts`, `web/components/panels/VRegisterRow.tsx` |
 | Memory panel (sparse, paged) | `web/components/panels/MemoryPanel.tsx` |
 | Address-band labels + jump list (from the emulator's own map) | the wasm `memoryMap` export in `emulator/src/lib.rs`, `web/lib/emulator/memory-map.ts`, `web/components/panels/MemoryPanel.tsx` |
 | Stack panel + frame-pointer chase | `web/components/panels/StackPanel.tsx`, `web/lib/emulator/frame-labels.ts` |
@@ -76,7 +82,7 @@ reference).
 | Console (stdout/stderr + stdin) | `web/components/panels/ConsolePanel.tsx` |
 | Interactive stdin (blocked read pulls the console forward, gates run/step/back) | `web/components/panels/ConsolePanel.tsx`, `web/components/playground/Controls.tsx`, `EmbeddablePlayground.tsx` |
 | Persistent VFS home directory (IndexedDB, full playground only) | `web/lib/playground/vfs-persist.ts`, `web/components/playground/EmbeddablePlayground.tsx` |
-| Register auto-follow (fp write flips to the d file) | `web/components/panels/RegisterPanel.tsx` |
+| Register auto-follow (one class wrote: show it; a d write is bits 63:0 only, anything above that or a `v`/`q` destination is a v write; several at once: the view stays put and the other cells carry a change dot) | `web/components/panels/RegisterPanel.tsx`, `web/lib/emulator/vector-lanes.ts::upperHalfMoved` |
 | Base converter (convert tab) | `web/components/panels/BaseConverter.tsx`, `web/lib/asm/base-convert.ts` |
 | Live decode strip (bit fields under the pc) | `web/components/panels/DecodeStrip.tsx`, `web/lib/emulator/decode-fields.ts`, `web/lib/asm/explain-line.ts` |
 | Disassembly table (pc marker, windowed past 512 rows) | `web/components/panels/InstructionView.tsx` |
