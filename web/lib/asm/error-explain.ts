@@ -76,7 +76,7 @@ export function explainError(message: string): ErrorExplanation | null {
     return {
       what: "An instruction referenced a register index outside 0..30.",
       why: "Almost always a typo (W32 instead of W3, X31 instead of XZR or SP) or a stale operand left over from refactoring.",
-      fix: "Re-read the operand and check the register class: general-purpose registers are x0-x30 plus xzr and sp; the FPU set is d0-d31 and s0-s31. The assembler accepts both upper and lower case.",
+      fix: "Re-read the operand and check the register class: general-purpose registers are x0-x30 plus xzr and sp; the SIMD&FP file is 32 entries seen at six widths, b0-b31, h0-h31, s0-s31, d0-d31, q0-q31 and v0-v31, where a v name carries an arrangement (v0.16b, v0.8h, v0.4s, v0.2d and the 64-bit 8b/4h/2s/1d) or one lane (v0.b[15], v0.s[3]). The course writes s and d. The assembler accepts both upper and lower case.",
       styleSection: "naming conventions",
     };
   }
