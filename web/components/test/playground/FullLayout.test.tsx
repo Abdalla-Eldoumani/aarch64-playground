@@ -13,26 +13,43 @@ type Layout = Record<string, number>;
 // group's node instead of being reached through a synthetic drag.
 const dragHandlers = vi.hoisted(() => new WeakMap<Element, (l: Layout) => void>());
 
+// Every layout pushed through a group's imperative handle: the way a stored
+// split reaches a group that is already mounted.
+const setLayoutCalls = vi.hoisted(() => [] as Layout[]);
+
 vi.mock("react-resizable-panels", async () => {
   const { useRef } = await import("react");
   return {
-    useGroupRef: () => useRef(null),
+    useGroupRef: () =>
+      useRef<{ getLayout: () => Layout; setLayout: (l: Layout) => Layout } | null>(null),
     Group: ({
       orientation,
       defaultLayout,
       onLayoutChange,
+      groupRef,
       children,
     }: {
       orientation: string;
       defaultLayout: Layout;
       onLayoutChange: (l: Layout) => void;
+      groupRef?: { current: { getLayout: () => Layout; setLayout: (l: Layout) => Layout } | null };
       children: ReactNode;
     }) => (
       <div
         data-group={orientation}
         data-layout={JSON.stringify(defaultLayout)}
         ref={(el) => {
-          if (el) dragHandlers.set(el, onLayoutChange);
+          if (!el) return;
+          dragHandlers.set(el, onLayoutChange);
+          if (groupRef) {
+            groupRef.current = {
+              getLayout: () => defaultLayout,
+              setLayout: (l: Layout) => {
+                setLayoutCalls.push(l);
+                return l;
+              },
+            };
+          }
         }}
       >
         {children}
@@ -114,6 +131,7 @@ function drag(paneId: string, layout: Layout): void {
 }
 
 afterEach(() => {
+  setLayoutCalls.length = 0;
   cleanup();
   window.localStorage.clear();
 });
@@ -181,10 +199,18 @@ describe("FullLayout", () => {
     window.localStorage.setItem(`${KEY}md-left`, "[85,15]");
     window.localStorage.setItem(`${KEY}md-right`, "[20,80]");
     renderLayout("md");
-    expect(panel("panel-editor").getAttribute("data-size")).toBe("85%");
-    expect(panel("panel-disasm").getAttribute("data-size")).toBe("15%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("20%");
-    expect(panel("panel-tabs").getAttribute("data-size")).toBe("80%");
+    // The Panels open on the authored split; the stored one is pushed
+    // through each group's handle once the storage read has run.
+    expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
+    // Exactly one push per group: a second would be the reconcile loop.
+    expect(setLayoutCalls).toHaveLength(2);
+    expect(setLayoutCalls).toEqual(
+      expect.arrayContaining([
+        { "panel-editor": 85, "panel-disasm": 15 },
+        { "panel-regs": 20, "panel-tabs": 80 },
+      ]),
+    );
   });
 
   it("hands laptop widths the four-pane resizable layout instead", () => {
