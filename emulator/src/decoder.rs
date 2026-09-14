@@ -5733,4 +5733,65 @@ mod tests {
             }
         );
     }
+
+    // -- the half-precision pair (FCVTN / FCVTL over 4H) --
+
+    /// Every expected value here is worked out by hand from the format,
+    /// not read back off the implementation. A half subnormal is
+    /// `frac * 2^-24`, the least normal is `2^-14`, and the largest
+    /// finite half is 65504.
+    #[test]
+    fn f32_to_f16_rounds_and_denormalizes_by_hand() {
+        // Subnormals: the value IS the fraction field, in units of 2^-24.
+        assert_eq!(f32_to_f16(2f32.powi(-20)), 0x0010); // 16 * 2^-24
+        assert_eq!(f32_to_f16(2f32.powi(-24)), 0x0001); // the least subnormal
+        // Half a unit in the last place, so round-to-nearest-EVEN keeps
+        // the even neighbour, which is zero.
+        assert_eq!(f32_to_f16(2f32.powi(-25)), 0x0000);
+        // Three quarters of a ulp rounds up instead.
+        assert_eq!(f32_to_f16(1.5 * 2f32.powi(-25)), 0x0001);
+        // 65520 sits exactly halfway between the largest finite half and
+        // 65536, so ties-to-even carries it out of the format entirely.
+        assert_eq!(f32_to_f16(65520.0), 0x7c00);
+        assert_eq!(f32_to_f16(65504.0), 0x7bff);
+        assert_eq!(f32_to_f16(1.0), 0x3c00);
+        assert_eq!(f32_to_f16(-2.5), 0xc100);
+        assert_eq!(f32_to_f16(f32::INFINITY), 0x7c00);
+        assert_eq!(f32_to_f16(f32::NEG_INFINITY), 0xfc00);
+        assert_eq!(f32_to_f16(-0.0), 0x8000);
+        // A NaN keeps its sign and the payload bits half precision has
+        // room for, and a signalling one is quieted on the way down.
+        assert_eq!(f32_to_f16(f32::from_bits(0x7FC0_2000)), 0x7e01);
+        assert_eq!(f32_to_f16(f32::from_bits(0x7F80_2000)), 0x7e01);
+        assert_eq!(f32_to_f16(f32::from_bits(0xFFC0_2000)), 0xfe01);
+    }
+
+    #[test]
+    fn f16_to_f32_widens_exactly_by_hand() {
+        assert_eq!(f16_to_f32(0x0001), 2f32.powi(-24));
+        assert_eq!(f16_to_f32(0x0010), 2f32.powi(-20));
+        assert_eq!(f16_to_f32(0x0400), 2f32.powi(-14)); // the least normal
+        assert_eq!(f16_to_f32(0x3c00), 1.0);
+        assert_eq!(f16_to_f32(0x7bff), 65504.0);
+        assert_eq!(f16_to_f32(0xc100), -2.5);
+        assert_eq!(f16_to_f32(0x7c00), f32::INFINITY);
+        assert_eq!(f16_to_f32(0xfc00), f32::NEG_INFINITY);
+        assert_eq!(f16_to_f32(0x0000).to_bits(), 0);
+        assert_eq!(f16_to_f32(0x8000).to_bits(), 0x8000_0000);
+        // The quiet bit is set on the way up too, and the payload moves.
+        assert_eq!(f16_to_f32(0x7e00).to_bits(), 0x7FC0_0000);
+        assert_eq!(f16_to_f32(0x7e01).to_bits(), 0x7FC0_2000);
+        assert_eq!(f16_to_f32(0x7c01).to_bits(), 0x7FC0_2000);
+    }
+
+    /// Widening is exact, so narrowing has to undo it bit for bit. The
+    /// loops cover every finite non-zero half: the subnormals, where the
+    /// leading one has to be found and put back, and the normals.
+    #[test]
+    fn every_finite_f16_round_trips_through_f32() {
+        for half in (0x0001u16..=0x7bff).chain(0x8001u16..=0xfbff) {
+            let back = f32_to_f16(f16_to_f32(half));
+            assert_eq!(back, half, "0x{half:04x} came back as 0x{back:04x}");
+        }
+    }
 }
