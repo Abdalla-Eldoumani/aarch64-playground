@@ -48,11 +48,16 @@ const DIRECTIVES: Suggestion[] = [
   ".type", ".size",
 ].map((name) => ({ label: name, kind: "directive", detail: "directive" }));
 
+// The SIMD&FP file is one set of 32 entries seen at six widths, so every view
+// is offered: the course's `s` and `d`, the `b`, `h` and `q` the loads and the
+// lane moves reach, and the `v` name the arrangements hang off.
+const FP_VIEWS = ["b", "h", "s", "d", "q", "v"];
+
 const REGISTERS: Suggestion[] = [
   ...Array.from({ length: 31 }, (_, i) => `x${i}`),
   ...Array.from({ length: 31 }, (_, i) => `w${i}`),
   "sp", "xzr", "wzr", "fp", "lr",
-  ...Array.from({ length: 32 }, (_, i) => `d${i}`),
+  ...FP_VIEWS.flatMap((v) => Array.from({ length: 32 }, (_, i) => `${v}${i}`)),
 ].map((name) => ({ label: name, kind: "register", detail: "register" }));
 
 const LIBC: Suggestion[] = [
