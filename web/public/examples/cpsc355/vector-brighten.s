@@ -30,10 +30,10 @@ fmt_after:  .string "after:\n"
 // show(): print the picture, one character per pixel, one line per row
         .balign 4
 show:
-        stp     fp, lr, [sp, -32]!
+        stp     fp, lr, [sp, -48]!
         mov     fp, sp
         stp     x19, x20, [fp, 16]      // main keeps values in these
-        str     x21, [fp, 24]
+        str     x21, [fp, 32]
 
         ldr     row_r, =picture
         mov     rows_r, 0
@@ -60,8 +60,8 @@ sh_row_test:
         b.lt    sh_row
 
         ldp     x19, x20, [fp, 16]
-        ldr     x21, [fp, 24]
-        ldp     fp, lr, [sp], 32
+        ldr     x21, [fp, 32]
+        ldp     fp, lr, [sp], 48
         ret
 
         .balign 4
