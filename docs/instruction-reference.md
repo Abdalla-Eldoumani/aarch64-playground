@@ -509,7 +509,7 @@ Every rule below is per lane. A NaN that arrives in an operand comes back out of
 | `FMLA`    | `FMLA Vd.T, Vn.T, Vm.T` / `FMLA Vd.T, Vn.T, Vm.Ts[i]` / `FMLA Sd, Sn, Vm.S[i]` | Fused multiply-add into the destination: `Vd = Vd + Vn * Vm`, one rounding over the whole thing. The destination lane is an operand, so it is also the first NaN the lane can propagate. |
 | `FMLS`    | the same shapes                  | `Vd = Vd - Vn * Vm`. The pseudocode negates `Vn`'s lane before the fused multiply-add, never the result, so a NaN arriving in `Vn` comes back with its sign flipped. |
 | `FMULX`   | `FMULX Vd.T, Vn.T, Vm.T` / `FMULX Sd, Sn, Sm` / by element | The product, except that an infinity against a zero answers exactly `2.0` with the sign of the product, where `FMUL` answers with the default NaN. |
-| `FABD`    | `FABD Vd.T, Vn.T, Vm.T` / `FABD Sd, Sn, Sm` | `|Vn - Vm|`. The absolute value is a bit clear applied after the subtract, so it strips the sign off a propagated NaN too. |
+| `FABD`    | `FABD Vd.T, Vn.T, Vm.T` / `FABD Sd, Sn, Sm` | `\|Vn - Vm\|`. The absolute value is a bit clear applied after the subtract, so it strips the sign off a propagated NaN too. |
 | `FRECPS`  | `FRECPS Vd.T, Vn.T, Vm.T` / `FRECPS Sd, Sn, Sm` | The Newton-Raphson step for a reciprocal: `2.0 - Vn * Vm`, fused. An infinity against a zero gives exactly `2.0`. `Vn` is negated before the NaN rule looks at it. |
 | `FRSQRTS` | the same shapes                  | The step for a reciprocal square root: `(3.0 - Vn * Vm) / 2`. An infinity against a zero gives `1.5`. |
 | `FADDP`   | `FADDP Vd.T, Vn.T, Vm.T` / `FADDP Sd, Vn.2S` / `FADDP Dd, Vn.2D` | Pairwise: `Vn`'s lanes then `Vm`'s, folded two at a time, so the low half of the destination comes from `Vn`. The two-operand form folds the pair it has into one scalar. |
@@ -671,7 +671,7 @@ finishes on the next step.
 
 ## Things that are not implemented
 
-- The rest of the vector families: floating-point lanes and the `LD1`-`ST4` structure loads. The 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, and the whole of the integer lane arithmetic above (three-same, two-register misc, across lanes, the widening and narrowing forms, the shifts, the permutes and table lookups, and the element-indexed multiplies) are all in; the rest lands in the changes that follow.
+- The `LD1`-`LD4` and `ST1`-`ST4` structure loads and stores, including the single-lane and replicating (`LD1R`-`LD4R`) forms. Every other vector family is in: the 128-bit register file, its loads, stores and pairs, the arrangement and lane syntax, the vector immediates and lane moves, the whole of the integer lane arithmetic, and the whole of the floating-point lane arithmetic.
 - System registers (`MRS`, `MSR`)
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
