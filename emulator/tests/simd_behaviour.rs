@@ -96,8 +96,17 @@ const FLOAT: &[&str] = &[
     "scvtf", "ucvtf",
 ];
 
-/// Whether this suite replays a line. Everything else implemented is
-/// left to `simd.rs` until its own feature lands.
+/// The structure loads and stores. Like MEMORY these name a base
+/// register and carry `mem=` chunks and `base=` deltas; unlike it a
+/// single line moves a list of up to four registers, so one row can
+/// name four of them.
+const STRUCTURE: &[&str] = &[
+    "ld1", "ld1r", "ld2", "ld2r", "ld3", "ld3r", "ld4", "ld4r",
+    "st1", "st2", "st3", "st4",
+];
+
+/// Whether this suite replays a line: every implemented family is on one
+/// of the lists above, so only the literal-load probes stay out.
 fn is_replayed(line: &InventoryLine) -> bool {
     line.implemented()
         && !line.spelling.contains("_probe")
@@ -106,7 +115,8 @@ fn is_replayed(line: &InventoryLine) -> bool {
             || INTEGER.contains(&line.mnemonic())
             || WIDEN_SHIFT.contains(&line.mnemonic())
             || PERMUTE.contains(&line.mnemonic())
-            || FLOAT.contains(&line.mnemonic()))
+            || FLOAT.contains(&line.mnemonic())
+            || STRUCTURE.contains(&line.mnemonic()))
 }
 
 /// Where the mapped buffer's base sits: page-aligned (so SP-based forms
