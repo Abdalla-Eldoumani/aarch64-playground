@@ -147,18 +147,20 @@ variant), and a match whose arms carry constants reads better than a table
 of function pointers: the encoder for any instruction is one grep away, and
 the compiler still checks it.
 
-The Advanced SIMD families are the one group whose arms carry no constants.
-A whole family shares a single line that lists its mnemonics and hands the
-name to `encode_simd_integer`, `encode_simd_float`, `encode_simd_permute`
-or `encode_simd_structure`, which looks the row up by name in the shared
-table for its class and encodes from that row; the operand shape then picks
-the class within a family (a lane in the last operand is the by-element
+Four Advanced SIMD families are the exception to the arm-carries-constants
+rule. Each shares a single line that lists its mnemonics and hands the name
+to `encode_simd_integer`, `encode_simd_float`, `encode_simd_permute` or
+`encode_simd_structure`, which looks the row up by name in the shared table
+for its class and encodes from that row; the operand shape then picks the
+class within a family (a lane in the last operand is the by-element
 encoding, a `#` third operand a compare against zero or a shift by
-immediate). That keeps 364 patterns inside 178 source lines and keeps every
-SIMD bit field in one table the decoder reads back. The unit test
-`every_dispatch_arm_is_listed_in_supported_mnemonics` reads the patterns off
-the file's own text one line at a time, which is why a family stays on one
-line however long it grows.
+immediate). The rest of the SIMD arms (`MOVI`, `MVNI`, `DUP`, `INS`,
+`UMOV`, `SMOV`, `EXT`, `TBL`, `TBX`) carry a constant like every other arm.
+The four name-dispatched families keep 364 patterns inside 178 source lines
+and keep every SIMD bit field in one table the decoder reads back. The
+unit test `every_dispatch_arm_is_listed_in_supported_mnemonics` reads the
+patterns off the file's own text one line at a time, which is why a family
+stays on one line however long it grows.
 
 ## Shared fact tables
 
@@ -191,9 +193,13 @@ added in one place cannot be missed in another:
 
 The Advanced SIMD classes are the largest set of these tables, one per
 encoding class, all in `decoder.rs`. Each row carries a mnemonic and the
-bits that name it, and each table has a lookup by name for the assembler,
-a lookup by bits for the decoder, and the row itself for `format`, so an
-instruction spells, encodes, decodes and prints back from one place:
+bits that name it, and the row-shaped tables have a lookup by name for the
+assembler, a lookup by bits for the decoder, and the row itself for
+`format`, so an instruction spells, encodes, decodes and prints back from
+one place. Three tables are flatter: `SIMD_LOGICAL` and `SIMD_PERMUTE`
+answer their two lookups with the operation and its bits rather than a row,
+and `SIMD_STRUCT_MULTIPLE` has no named lookups at all, both sides
+searching it inline.
 
 - `SIMD_LOGICAL`: the bitwise three-same group (AND, ORR, EOR, BIC, ORN,
   and the bit-select trio), keyed by U and the size field.
@@ -215,8 +221,8 @@ instruction spells, encodes, decodes and prints back from one place:
 - `SIMD_STRUCT_MULTIPLE`: the LD1-LD4 / ST1-ST4 multiple-structure
   opcodes, as (opcode, the number in the mnemonic, how many registers the
   brace list names).
-- The index packers, `decoder.rs`: `simd_elem_index` and `simd_elem_bits`
-  split and rebuild the by-element lane index out of L, M and H, and
+- The index packers: `simd_elem_index` and `simd_elem_bits` split and
+  rebuild the by-element lane index out of L, M and H, and
   `simd_struct_index` and `simd_struct_index_bits` do the same for the
   single-structure Q, S and size bits. Both directions live beside each
   other so an index cannot be packed one way and read back another.
@@ -353,6 +359,11 @@ backend emits a `StateSnapshot` (defined in `worker/protocol.ts`):
 - `fpRegisters` (`d0`–`d31` as raw IEEE-754 bit patterns) and
   `changedFpRegs`; both empty when the loaded WASM predates the fp
   surface, which the UI feature-detects
+- `vectorRegisters` (`v0`–`v31` as `0x` plus 32 hex digits, the same 128
+  bits `q0`–`q31` name); empty when the loaded WASM predates the vector
+  surface, which hides the v view. No `changedVecRegs` rides beside it:
+  the register panel diffs the frame against the previous one itself,
+  because it needs to know which LANES moved, not just which registers
 - `stdoutDelta`/`stderrDelta`, `exitCode`, `blocked`, `halted`,
   `canStepBack`
 - `externalCall`: the hosted call a paused pc sits inside
@@ -469,8 +480,9 @@ readable in the browser console.
 - Rust: per-module `#[cfg(test)]` unit tests plus integration suites in
   [`emulator/tests/`](../emulator/tests/) (conformance, acceptance, the
   resource-bound walls, stepping/line-map, external-call context, hosted
-  end-to-end, the CPSC 355 corpus, server parity, and the reference drift
-  guard).
+  end-to-end, the CPSC 355 corpus, server parity, the two SIMD suites
+  (`simd.rs` against the inventory capture, `simd_behaviour.rs` against
+  the behaviour capture), and the reference drift guard).
 - Web: a vitest suite across the lib helpers, the hooks, the worker
   protocol, and the input validators.
 - WASM end-to-end: [`scripts/verify-corpus.js`](../scripts/verify-corpus.js)
