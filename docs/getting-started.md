@@ -129,11 +129,11 @@ editor; nothing is sent to a server.
   a coding exercise puts the author's starting program back and forgets
   what you had saved.
 - **Reference** (`/reference`): the supported instruction set, with a
-  worked encoding diagram per instruction and an interactive NZCV panel
-  on the flag-setters, filtered by a box that `/` jumps into from
-  anywhere on the page; a calling-convention guide with a step-through
-  frame walk; and a pitfalls catalog whose examples run in place so you
-  watch each mistake fail.
+  worked encoding diagram on the ten instructions whose bit layout is
+  worth walking through, an interactive NZCV panel on the flag-setters,
+  and a filter box that `/` jumps into from anywhere on the page; a
+  calling-convention guide with a step-through frame walk; and a pitfalls
+  catalog whose examples run in place so you watch each mistake fail.
 
 ## more playground features
 
@@ -153,7 +153,7 @@ for the full index of where each lives.
 - **Terminal** (the term tab) is an xterm.js shell with the course toolchain (`m4 f.asm > f.s`, `gcc f.s -o prog`, `./prog [args]`), redirections, basic VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
 - **Decode strip** above the registers shows the instruction under the pc as its actual encoding fields, with the destination field lit amber; it re-latches on every step.
 - **Register views**: three cells in the register panel's header switch between `x0`–`x30`, `d0`–`d31`, and the 128-bit `v0`–`v31`, and a second pair picks decimal or raw bits for whichever view is up. A value written through an `s` register reads as the float it is (suffixed `f`).
-- **Vector lanes**: the v view slices each register into `b`, `h`, `s` or `d` lanes (8, 16, 32 or 64 bits) from a fourth group of cells, lane 0 at the least significant end, each lane showing its unsigned hex and its signed decimal; the lanes a step moved are inked as changed. `q0`–`q31` is the same 128 bits under another name.
+- **Vector lanes**: the v view slices each register into `b`, `h`, `s` or `d` lanes (8, 16, 32 or 64 bits) from a third group of cells beside the view and format ones, lane 0 at the least significant end, each lane showing its unsigned hex and its signed decimal; the lanes a step moved are inked as changed. `q0`–`q31` is the same 128 bits under another name.
 - **The view follows the write**: when one register class changes, the panel switches to it, so a step that writes `d3` shows the d file and one that writes above bit 63 or names a `v` or `q` destination shows the v file. When two classes change in the same step the view stays where it is and the other cells carry a change dot.
 - **Three themes** cycle through dark, light, and high-contrast from the header.
 - **Per-panel zoom** with `Ctrl+Wheel` over a panel.
