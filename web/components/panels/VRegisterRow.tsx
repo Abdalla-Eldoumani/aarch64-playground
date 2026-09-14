@@ -45,9 +45,14 @@ export function VRegisterRow({
       : null;
   const laneBits = LANE_BYTES[width] * 8;
 
+  // `relative` holds the screen-reader-only span below inside this row.
+  // That span is absolutely positioned, and without a positioned ancestor
+  // it escapes the panel's scroll box and lands on the document: thirty-two
+  // rows of them put a page scrollbar under the v-view that scrolled onto
+  // nothing.
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-2 rounded-[var(--radius-control)] px-2 py-1 ${
+      className={`relative flex flex-wrap items-center gap-x-2 rounded-[var(--radius-control)] px-2 py-1 ${
         changed ? "anim-reg-flash [box-shadow:inset_2px_0_0_0_var(--amber)]" : ""
       }`}
     >
