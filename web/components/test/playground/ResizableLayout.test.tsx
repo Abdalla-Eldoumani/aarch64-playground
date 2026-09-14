@@ -244,12 +244,21 @@ describe("ResizableLayout", () => {
     window.localStorage.setItem(`${KEY}lg-left`, "[80,20]");
     window.localStorage.setItem(`${KEY}lg-right`, "[25,75]");
     renderLayout();
-    expect(panel("panel-left").getAttribute("data-size")).toBe("30%");
-    expect(panel("panel-right").getAttribute("data-size")).toBe("70%");
-    expect(panel("panel-editor").getAttribute("data-size")).toBe("80%");
-    expect(panel("panel-disasm").getAttribute("data-size")).toBe("20%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("25%");
-    expect(panel("panel-tabs").getAttribute("data-size")).toBe("75%");
+    // The stored split reaches a mounted group through its handle, never
+    // through the Panels' `defaultSize`: that prop stays on the opening
+    // split, because a Panel re-registers when it changes and a
+    // re-registration mid-drag restarts the drag under the pointer.
+    expect(panel("panel-left").getAttribute("data-size")).toBe("55%");
+    expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
+    expect(setLayoutCalls).toHaveLength(3);
+    expect(setLayoutCalls).toEqual(
+      expect.arrayContaining([
+        { "panel-left": 30, "panel-right": 70 },
+        { "panel-editor": 80, "panel-disasm": 20 },
+        { "panel-regs": 25, "panel-tabs": 75 },
+      ]),
+    );
   });
 
   it("names each group's layout by panel id", () => {
