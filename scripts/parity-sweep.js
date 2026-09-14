@@ -13,8 +13,8 @@
 // landing hero. A program that lands in any of those sources is swept the
 // next time this runs, with no edit here.
 //
-// Scratch lives OUTSIDE the tree (default: the main checkout's
-// .agent/run/parity/, override with PARITY_SCRATCH): one directory per
+// Scratch lives OUTSIDE the tree (default: aarch64-playground-parity under
+// the OS temp directory, override with PARITY_SCRATCH): one directory per
 // program holding program.s, stdin, args, its vfs files, and meta.json,
 // plus results/ from each side and the report.
 //
@@ -37,6 +37,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { spawnSync } = require("child_process");
 
 const repoRoot = path.join(__dirname, "..");
@@ -62,14 +63,11 @@ const SSH_DEADLINE_MS = 30 * 60 * 1000;
 
 // ---------------------------------------------------------------------
 // Scratch root. The sweep writes megabytes of per-program directories and
-// two results trees; none of it belongs in the tree, so it goes to the
-// main checkout's .agent/ (excluded there). A worktree without a sibling
-// main checkout falls back to its own .agent/.
+// two results trees; none of it belongs in the tree, so it goes to the OS
+// temp directory unless PARITY_SCRATCH points somewhere else.
 function resolveScratchRoot() {
   if (process.env.PARITY_SCRATCH) return path.resolve(process.env.PARITY_SCRATCH);
-  const sibling = path.resolve(repoRoot, "..", "aarch64-playground", ".agent");
-  if (fs.existsSync(sibling)) return path.join(sibling, "run", "parity");
-  return path.join(repoRoot, ".agent", "run", "parity");
+  return path.join(os.tmpdir(), "aarch64-playground-parity");
 }
 const scratchRoot = resolveScratchRoot();
 const programsRoot = path.join(scratchRoot, "programs");
