@@ -203,6 +203,8 @@ describe("FullLayout", () => {
     // through each group's handle once the storage read has run.
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
     expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
+    // Exactly one push per group: a second would be the reconcile loop.
+    expect(setLayoutCalls).toHaveLength(2);
     expect(setLayoutCalls).toEqual(
       expect.arrayContaining([
         { "panel-editor": 85, "panel-disasm": 15 },
