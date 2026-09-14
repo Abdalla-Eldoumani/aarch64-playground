@@ -136,6 +136,7 @@ reference).
 | --- | --- |
 | Tutorial runner with `expect` checks | `web/components/playground/TutorialRunner.tsx`, `web/lib/content/tutorials.ts` |
 | Example loader (stage-grouped) | `web/components/playground/ExampleLoader.tsx` |
+| Vector-register examples (the six demonstrations in the stage the course does not teach) | `web/public/examples/cpsc355/vector-*.s`, the stage in `web/components/playground/ExampleLoader.tsx` |
 | Terminal-first examples (the data structures visualizer and two-sum by flag; snake, calc and deadzone by raw mode at run time) | `EXAMPLE_TERMINAL` in `web/lib/playground/playground-handoff.ts`, the terminal takeover in `web/components/playground/EmbeddablePlayground.tsx` |
 | Run-mode control (console or terminal, per interactive example: snake, the data structures visualizer, calc, temp-convert, two-sum, deadzone) | `EXAMPLE_INTERACTIVE` in `web/lib/playground/playground-handoff.ts`, `web/components/playground/RunModeControl.tsx`, `?run=` in `web/lib/hooks/use-deep-link.ts` |
 | Dual-face examples (calc, temp-convert, two-sum ship a plain-text face; picking console seeds the args line with `console`) | `EXAMPLE_MODE_ARGS` and `modeArgsFor` in `web/lib/playground/playground-handoff.ts` |

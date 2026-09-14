@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,050 Rust tests (825 of them unit tests on the lib target, the rest spread over twenty-three integration suites; there are no doc tests), 2,149 web tests across 183 files, and 16 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,050 Rust tests (825 of them unit tests on the lib target, the rest spread over twenty-three integration suites; there are no doc tests), 2,149 web tests across 183 files, and 22 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
 
 ## Rust
 

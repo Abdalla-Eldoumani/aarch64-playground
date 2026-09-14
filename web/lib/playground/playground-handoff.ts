@@ -363,6 +363,8 @@ export const EXAMPLE_INPUTS: Record<
   "student-record": { stdin: true },
   "temp-convert": { args: true },
   "triangle-area": { stdin: true },
+  "vector-strlen": { stdin: true },
+  "vector-upper": { stdin: true },
 };
 
 /**
