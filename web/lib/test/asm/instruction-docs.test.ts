@@ -114,10 +114,7 @@ describe("instruction-docs covers the documented set", () => {
     expect(documented.size).toBeGreaterThan(0);
   });
 
-  // Skipped until the reference change lands: the instruction reference now
-  // documents LDUR, STUR, LDNP and STNP ahead of their hover cards and
-  // reference rows, so this mirror check trips on exactly those four.
-  it.skip("resolves every documented mnemonic through lookupDoc", () => {
+  it("resolves every documented mnemonic through lookupDoc", () => {
     const missing = [...documented].filter((m) => lookupDoc(m) === undefined);
     expect(missing).toEqual([]);
   });
