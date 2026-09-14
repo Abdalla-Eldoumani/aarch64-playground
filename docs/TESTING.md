@@ -63,6 +63,41 @@ node scripts/verify-corpus.js
 
 Runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout and post-run VFS state. It then assembles every shipped example, fixture or not, so a program no fixture exercises still has to build; `is-prime` is skipped there because it is a leaf function with no entry point and ships without a caller. It loads a prebuilt node-target bundle rather than building one, so build that first from `emulator/`: `wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node` (or point `WASM_DIR` at an existing build). Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
 
+## The server-parity sweep
+
+On demand, not a gate. It runs every program the site ships twice, once
+through the node-target emulator and once through the real course
+toolchain on csarm, and compares stdout, exit code, and the files each
+side wrote byte for byte:
+
+```bash
+node scripts/parity-sweep.js
+```
+
+The program set is derived from the tree on every run, so a program added
+anywhere is swept without editing the script: the shipped examples with
+their fixtures, every lesson editor starter, every write and identify-bug
+exercise starter, the two starters in `docs/authoring-content.md`, every
+reference entry's try-in-playground payload, both halves of every pitfall,
+and the landing hero. The csarm half compiles each program the course way
+(`m4 program.s > program.m4.s`, then `gcc`) and runs it with its stdin,
+argv, and fixture files; a terminal-face program is built on both sides
+but never compared byte for byte. Each program gets one row: `same`,
+`interactive`, or `differs` with the first differing offset and both
+sides' first 200 bytes.
+
+`--playground-only` skips csarm entirely, `--reuse-remote` reruns the
+remote half over the tree already uploaded there, and `--server-only`
+recompares a results directory a previous run downloaded. It needs the
+node-target WASM built (`wasm-pack build --target nodejs --out-dir
+../web/lib/wasm-node` from `emulator/`) and key-based ssh to csarm.
+
+Everything the sweep writes -- the per-program directories, both sides'
+results, and `report.md` -- lands outside the repository, under
+`aarch64-playground-parity` in the OS temp directory by default and wherever
+`PARITY_SCRATCH` points otherwise. The report is not tracked and is never
+committed: rerun the sweep to regenerate it.
+
 ## The SIMD conformance suites
 
 Two suites replay a capture taken on the course server (GNU as 2.46.1 and
