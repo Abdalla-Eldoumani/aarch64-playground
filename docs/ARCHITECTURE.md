@@ -61,7 +61,9 @@ starters, and acceptance criteria off the wire.
 Emulator modules:
 
 ```
-registers.rs  X0..X30, SP, PC, NZCV, 32 FP registers (f32 + f64 views)
+registers.rs  X0..X30, SP, PC, NZCV, and the 32-entry 128-bit SIMD&FP
+              file (b/h/s/d/q scalar views, v arrangements, lane reads
+              and writes)
 memory.rs     sparse HashMap of 4 KiB pages
 decoder.rs    32-bit word to Instruction
 executor.rs   per-instruction semantics + NZCV math
@@ -136,14 +138,27 @@ SUBS/ADDS/ANDS against XZR, NEG/MVN to SUB/ORN against XZR, CSET to
 CSINC, LSL/LSR/ASR immediates to UBFM/SBFM); CBZ/CBNZ and TBZ/TBNZ are
 first-class. This keeps the executor to canonical encodings only.
 
-The dispatch itself stays a match on the mnemonic, 131 arms long, on
-purpose. Conditional branches never reach it: both spellings of every
+The dispatch itself stays a match on the mnemonic, 364 arm patterns long,
+on purpose. Conditional branches never reach it: both spellings of every
 condition resolve through the shared condition table before the match, so
-131 arms cover all 165 supported mnemonics. Each arm carries the constants
+364 arms cover all 398 supported mnemonics. Each arm carries the constants
 that mnemonic needs (opcode bits, an operand-count rule, the flag-setting
 variant), and a match whose arms carry constants reads better than a table
 of function pointers: the encoder for any instruction is one grep away, and
 the compiler still checks it.
+
+The Advanced SIMD families are the one group whose arms carry no constants.
+A whole family shares a single line that lists its mnemonics and hands the
+name to `encode_simd_integer`, `encode_simd_float`, `encode_simd_permute`
+or `encode_simd_structure`, which looks the row up by name in the shared
+table for its class and encodes from that row; the operand shape then picks
+the class within a family (a lane in the last operand is the by-element
+encoding, a `#` third operand a compare against zero or a shift by
+immediate). That keeps 364 patterns inside 178 source lines and keeps every
+SIMD bit field in one table the decoder reads back. The unit test
+`every_dispatch_arm_is_listed_in_supported_mnemonics` reads the patterns off
+the file's own text one line at a time, which is why a family stays on one
+line however long it grows.
 
 ## Shared fact tables
 
@@ -174,6 +189,38 @@ added in one place cannot be missed in another:
   FCVT keep their own encoders, since their opcodes are entangled with the
   operand width.
 
+The Advanced SIMD classes are the largest set of these tables, one per
+encoding class, all in `decoder.rs`. Each row carries a mnemonic and the
+bits that name it, and each table has a lookup by name for the assembler,
+a lookup by bits for the decoder, and the row itself for `format`, so an
+instruction spells, encodes, decodes and prints back from one place:
+
+- `SIMD_LOGICAL`: the bitwise three-same group (AND, ORR, EOR, BIC, ORN,
+  and the bit-select trio), keyed by U and the size field.
+- `SIMD_THREE_SAME`: the integer three-same group, `Vd.T, Vn.T, Vm.T`.
+- `SIMD_TWO_MISC`: the two-register misc group and the compares against
+  `#0`, which share the class and differ by one bit.
+- `SIMD_ACROSS`: the across-lanes reductions, a whole vector folded to one
+  scalar.
+- `SIMD_THREE_DIFF`: the widening and narrowing forms, whose operands are
+  not all one width.
+- `SIMD_SHIFT_IMM`: shift by immediate, including the lengthening and
+  narrowing shifts the extend aliases lower to.
+- `SIMD_PERMUTE`: ZIP/UZP/TRN, keyed by the 3-bit opcode.
+- `SIMD_BY_ELEMENT`: the by-element multiplies, one lane of Vm against
+  every lane of Vn.
+- `SIMD_FP_THREE_SAME`, `SIMD_FP_TWO_MISC`, `SIMD_FP_ACROSS` and
+  `SIMD_FP_BY_ELEMENT`: the same four shapes over float lanes, with the
+  SIMD-scalar spellings marked in the rows that have one.
+- `SIMD_STRUCT_MULTIPLE`: the LD1-LD4 / ST1-ST4 multiple-structure
+  opcodes, as (opcode, the number in the mnemonic, how many registers the
+  brace list names).
+- The index packers, `decoder.rs`: `simd_elem_index` and `simd_elem_bits`
+  split and rebuild the by-element lane index out of L, M and H, and
+  `simd_struct_index` and `simd_struct_index_bits` do the same for the
+  single-structure Q, S and size bits. Both directions live beside each
+  other so an index cannot be packed one way and read back another.
+
 ## Decoder
 
 ARMv8 instructions are fixed 32-bit. The decoder is a cascade of
@@ -182,6 +229,21 @@ ARMv8 instructions are fixed 32-bit. The decoder is a cascade of
 carry their width (the ftype field): the S forms compute in f32 and the
 D forms in f64, with `fcvt` converting between the two views; compares
 dispatch through `fpu.rs` on execution.
+
+Advanced SIMD lands in the same top-level group as scalar FP, so the
+cascade tries it first: `decode_advanced_simd` walks the SIMD classes in
+turn (modified immediate, the bitwise three-same group, three-different,
+shift by immediate, integer three-same, two-register misc, across lanes,
+by element, EXT, the table lookups, the permutes, and the copy group),
+with the structure loads and stores reached through the load/store group
+instead. A class that shares its bits with a float family tries its
+integer table first and its `SIMD_FP_*` table second, so `fadd v0.4s, ...`
+and `add v0.4s, ...` come out of the same block. Anything that is not one
+of these classes answers `None`, and so does a reserved encoding inside a
+class the word does match: an arrangement the class does not allow, or a
+field combination no row carries. Either way the scalar FP decode carries
+on and the word ends as `UnknownInstruction`, so the machine halts on it
+instead of running some neighbouring instruction.
 
 ## Memory model
 
