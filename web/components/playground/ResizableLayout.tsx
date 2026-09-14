@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   Group,
   Panel,
@@ -118,6 +118,11 @@ export function PaneSplit({
   const { ids, defaults, minSizes, label } = spec;
   const [sizes, save, , ready] = useLayoutPersistence(storageKey, defaults);
   const groupRef = useGroupRef();
+  // The opening split, frozen at mount. A Panel re-registers with the group
+  // whenever its `defaultSize` prop changes, and re-registering mid-drag
+  // restarts the drag from the pointer's current position: fed the live
+  // sizes, every grip moved one pointer event per drag and no further.
+  const [opening] = useState(sizes);
 
   // The library's own double-click resets a panel to its `defaultSize`, which
   // here IS the persisted size, so it would be a no-op after the first drag.
@@ -152,14 +157,14 @@ export function PaneSplit({
     <Group
       orientation={orientation}
       groupRef={groupRef}
-      defaultLayout={toLayout(sizes, ids)}
+      defaultLayout={toLayout(opening, ids)}
       onLayoutChange={(layout) => save(toArray(layout, ids, sizes))}
       style={{ height: "100%" }}
     >
       <Panel
         id={ids[0]}
         minSize={minSizes[0]}
-        defaultSize={`${sizes[0] ?? defaults[0]}%`}
+        defaultSize={`${opening[0] ?? defaults[0]}%`}
       >
         {first}
       </Panel>
@@ -179,7 +184,7 @@ export function PaneSplit({
       <Panel
         id={ids[1]}
         minSize={minSizes[1]}
-        defaultSize={`${sizes[1] ?? defaults[1]}%`}
+        defaultSize={`${opening[1] ?? defaults[1]}%`}
       >
         {second}
       </Panel>
