@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security problem
+    url: https://github.com/Abdalla-Eldoumani/aarch64-playground/security/advisories/new
+    about: Anything that lets a URL run code outside the WASM sandbox or read another origin's state goes here, privately, not in a public issue.
+  - name: How the playground works
+    url: https://github.com/Abdalla-Eldoumani/aarch64-playground/blob/main/docs/getting-started.md
+    about: The getting-started guide answers most questions about loading, running, and stepping a program.
