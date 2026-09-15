@@ -6,8 +6,8 @@ authors:
   - family-names: "Eldoumani"
     given-names: "Abdalla"
 license: AGPL-3.0-only
-version: 2.6.0
-date-released: "2026-09-14"
+version: 2.6.1
+date-released: "2026-09-15"
 repository-code: "https://github.com/Abdalla-Eldoumani/aarch64-playground"
 url: "https://aarch64-playground.com"
 keywords:
