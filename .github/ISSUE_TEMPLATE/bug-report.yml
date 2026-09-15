@@ -1,0 +1,38 @@
+name: Bug report
+description: The playground assembled, ran, or showed something differently from the course server
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The server (GAS, glibc, GNU m4 on csarm) is the reference for every behaviour here. The most useful report carries the program and the two outputs that disagree.
+  - type: textarea
+    id: program
+    attributes:
+      label: Program
+      description: The smallest assembly file that shows the problem, or a share link from the playground.
+      render: asm
+    validations:
+      required: true
+  - type: textarea
+    id: playground
+    attributes:
+      label: What the playground did
+      description: The console output, the error message, or the register or memory value you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: server
+    attributes:
+      label: What the server did
+      description: The output of the same program on csarm (or another aarch64 Linux with GCC), if you have it. Leave empty if you could not run it.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Chrome 152 on Windows 11
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Steps to reproduce beyond assemble and run, the example you loaded, or what you already tried.
