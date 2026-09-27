@@ -38,7 +38,7 @@ export function clipDescription(text: string): string {
 // Stand-ins for the punctuation inside inline code, so `XOX.OX.O.` or
 // `QUIET!` never reads as the end of a sentence.
 const CODE_PUNCTUATION = ".!?:";
-const STAND_INS = "";
+const STAND_INS = "\uE000\uE001\uE002\uE003";
 
 /** Inline Markdown down to the words a snippet shows. */
 function plainText(markdown: string): string {
@@ -87,7 +87,7 @@ export function snippetFromMarkdown(markdown: string): string {
     snippet = next;
   }
   if (snippet.length < 100 && prose.length > snippet.length) snippet = clipDescription(prose);
-  return snippet.replace(/[-]/g, (mark) => CODE_PUNCTUATION[STAND_INS.indexOf(mark)]);
+  return snippet.replace(/[\uE000-\uE003]/g, (mark) => CODE_PUNCTUATION[STAND_INS.indexOf(mark)]);
 }
 
 /** A lesson's snippet: its authored summary, or else its opening prose. */
