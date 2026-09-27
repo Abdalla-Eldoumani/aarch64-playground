@@ -33,6 +33,10 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
 
   if (!open) return null;
 
+  // Without the platform's share sheet a share button could only copy, so
+  // it would be a second copy button under another name.
+  const canShare = typeof navigator !== "undefined" && "share" in navigator;
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url);
@@ -44,10 +48,6 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   };
 
   const share = async () => {
-    if (typeof navigator === "undefined" || !("share" in navigator)) {
-      copy();
-      return;
-    }
     try {
       await navigator.share({ title: "cpsc 355 playground", url });
     } catch {
@@ -101,14 +101,16 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           >
             close
           </button>
-          <button
-            type="button"
-            onClick={share}
-            disabled={oversize}
-            className="text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-          >
-            share
-          </button>
+          {canShare && (
+            <button
+              type="button"
+              onClick={share}
+              disabled={oversize}
+              className="text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            >
+              share
+            </button>
+          )}
           <button
             type="button"
             onClick={copy}
