@@ -669,9 +669,13 @@ export function RegisterPanel({
         else zoom.zoomOut();
       }}
     >
-      <div className="shrink-0 px-2 pt-1">
+      {/* A container, so the first row can measure itself. Under 500px the
+          kicker goes to screen readers only: beside it the lane cells wrapped
+          to a third row, and at a tablet's 44px cells that left the list no
+          room. The view cells name the panel anyway. */}
+      <div className="shrink-0 px-2 pt-1 [container-type:inline-size]">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <h2 className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)]">
+          <h2 className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)] [@container(max-width:500px)]:sr-only">
             regfile
           </h2>
           {hasFp ? (
