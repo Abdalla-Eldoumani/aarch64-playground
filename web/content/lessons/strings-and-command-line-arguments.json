@@ -96,7 +96,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Count the vowels](/practice/count-the-vowels): walk a string byte by byte.\n- [Caesar's little secret](/practice/caesars-little-secret): change a string in place.\n- [argv arithmetic](/practice/argv-arithmetic): add up numbers given on the command line."
+      "markdown": "## Practice\n\n- [Count the vowels](/practice/count-the-vowels): walk a string byte by byte.\n- [Caesar's little secret](/practice/caesars-little-secret): change a string in place.\n- [Palindrome or not](/practice/palindrome-or-not): compare a word from both ends, capitals and all.\n- [argv arithmetic](/practice/argv-arithmetic): add up numbers given on the command line.\n- [Say it louder](/practice/say-it-louder): print every argument in capitals.\n- [Morse code translator](/practice/morse-code-translator): look each letter up in a table of string pointers."
     }
   ]
 }
