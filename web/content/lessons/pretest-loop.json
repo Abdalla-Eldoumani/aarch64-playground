@@ -124,7 +124,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Sum from one to n](/practice/sum-to-n): add every integer from 1 to n with a counting loop.\n- [Count by sevens](/practice/count-by-sevens): step a counter by 7 and print each value.\n- [Fibonacci goes large](/practice/fibonacci-goes-large): slide a pair of values forward fifty times in `x` registers.\n- [gcd, the Euclid way](/practice/gcd-the-euclid-way): repeat a remainder step while a value is not zero.\n- [The overeager counter](/practice/the-overeager-counter): find the loop test that runs one pass too many."
+      "markdown": "## Practice\n\n- [Sum from one to n](/practice/sum-to-n): add every integer from 1 to n with a counting loop.\n- [Count by sevens](/practice/count-by-sevens): step a counter by 7 and print each value.\n- [Fibonacci goes large](/practice/fibonacci-goes-large): slide a pair of values forward `n` times in `x` registers.\n- [gcd, the Euclid way](/practice/gcd-the-euclid-way): repeat a remainder step while a value is not zero.\n- [Collatz countdown](/practice/collatz-countdown): loop until n reaches 1, halving it or tripling it inside.\n- [The overeager counter](/practice/the-overeager-counter): find the loop test that runs one pass too many."
     }
   ]
 }
