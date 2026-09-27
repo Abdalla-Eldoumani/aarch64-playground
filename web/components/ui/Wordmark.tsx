@@ -28,7 +28,7 @@ export function Wordmark({
   return (
     <Link
       href="/"
-      className={`inline-flex items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus-visible:[box-shadow:var(--ring)] ${className}`}
+      className={`inline-flex items-center gap-2 rounded-[var(--radius-control)] [@media(pointer:coarse)]:min-h-[44px] focus:outline-none focus-visible:[box-shadow:var(--ring)] ${className}`}
     >
       <span aria-hidden="true" className="inline-flex" style={{ height }}>
         {cells.map((width, index) => (
