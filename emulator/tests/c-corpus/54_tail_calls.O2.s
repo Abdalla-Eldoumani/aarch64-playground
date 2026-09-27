@@ -129,7 +129,7 @@ ack:
 	b	.L27
 	.align	2
 	.align 5
-next__constprop__0:
+next.constprop.0:
 	adrp	x3, .LANCHOR1
 	add	x3, x3, :lo12:.LANCHOR1
 	ldrb	w0, [x3, 16]
@@ -159,7 +159,7 @@ next__constprop__0:
 	b	st_other
 	.align	2
 	.align 5
-gcd__constprop__0:
+gcd.constprop.0:
 	ldr	w3, [x2]
 	mov	x4, x0
 	mov	x0, x1
@@ -191,7 +191,7 @@ gcd__constprop__0:
 	.text
 	.align	2
 	.align 5
-rotate__constprop__0:
+rotate.constprop.0:
 	stp	x29, x30, [sp, -112]!
 	mov	w9, 51555
 	mov	w8, 59416
@@ -278,7 +278,7 @@ rotate__constprop__0:
 	ret
 	.align	2
 	.align 5
-sum_to__constprop__0:
+sum_to.constprop.0:
 	uxtw	x1, w0
 	mov	x0, 0
 	cbz	w1, .L57
@@ -330,7 +330,7 @@ main:
 	adrp	x24, .LC4
 	mov	w23, 23
 	str	x25, [sp, 64]
-	bl	sum_to__constprop__0
+	bl	sum_to.constprop.0
 	mov	x1, x0
 	adrp	x0, .LC1
 	add	x0, x0, :lo12:.LC1
@@ -355,7 +355,7 @@ main:
 	ldr	w0, [x20, 8]
 	mov	w19, 0
 	mov	x21, 1
-	bl	rotate__constprop__0
+	bl	rotate.constprop.0
 	mov	x1, x0
 	adrp	x0, .LC3
 	add	x0, x0, :lo12:.LC3
@@ -381,7 +381,7 @@ main:
 	mov	x1, x22
 	mov	x0, x21
 	str	wzr, [sp, 92]
-	bl	gcd__constprop__0
+	bl	gcd.constprop.0
 	mov	w2, w19
 	ldr	w4, [sp, 92]
 	mov	x3, x0
@@ -432,7 +432,7 @@ main:
 	add	x0, x0, :lo12:.LC6
 	bl	printf
 	strb	wzr, [x19, 16]
-	bl	next__constprop__0
+	bl	next.constprop.0
 	mov	w1, w0
 	adrp	x0, .LC7
 	add	x0, x0, :lo12:.LC7
