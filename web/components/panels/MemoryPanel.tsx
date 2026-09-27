@@ -147,7 +147,7 @@ export function MemoryPanel({
           value={baseAddr}
           onChange={handleAddrChange}
           aria-label="memory base address"
-          className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
+          className="touch-target bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
         />
         <Select
           size="xs"
