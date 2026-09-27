@@ -3,6 +3,8 @@ description: >-
   Checks out nothing and installs nothing new: it puts node on PATH and
   restores web/node_modules from a cache keyed on the dependency graph
   alone. Every web job calls this, so the install policy lives in one place.
+  Like every cache in check.yml, it restores on any run and saves only
+  outside pull requests.
 
 inputs:
   node-version:
@@ -12,13 +14,12 @@ inputs:
 runs:
   using: composite
   steps:
-    # The ~/.npm tarball cache only matters on a node_modules miss, where it
-    # turns the install from a download into a link.
+    # setup-node's own npm cache would restore ~/.npm in every job and save
+    # it in a post step; the steps below restore it only on a miss.
     - uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node-version }}
-        cache: npm
-        cache-dependency-path: web/package-lock.json
+        package-manager-cache: false
 
     # The cache key hashes the manifest and the lockfile with the project's
     # own version fields removed. node_modules is a function of the
@@ -50,12 +51,23 @@ runs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `hash=${hash}\n`);
         '
 
-    - name: cache node_modules
+    - name: restore node_modules
       id: nm
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: web/node_modules
         key: ${{ runner.os }}-node${{ inputs.node-version }}-nm-${{ steps.lock.outputs.hash }}
+
+    # The ~/.npm tarball cache only matters on a node_modules miss, where it
+    # turns the install from a download into a link.
+    - name: restore npm tarballs
+      id: npm
+      if: steps.nm.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-npm-${{ hashFiles('web/package-lock.json') }}
+        restore-keys: ${{ runner.os }}-npm-
 
     # npm ci is also the manifest/lockfile sync gate: a package.json edit
     # with no lockfile refresh fails here on the first run after the edit,
@@ -65,3 +77,17 @@ runs:
       shell: bash
       working-directory: web
       run: npm ci --no-audit --no-fund
+
+    - name: save node_modules
+      if: steps.nm.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+      uses: actions/cache/save@v6
+      with:
+        path: web/node_modules
+        key: ${{ steps.nm.outputs.cache-primary-key }}
+
+    - name: save npm tarballs
+      if: steps.nm.outputs.cache-hit != 'true' && steps.npm.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.npm
+        key: ${{ steps.npm.outputs.cache-primary-key }}
