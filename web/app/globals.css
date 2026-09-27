@@ -589,11 +589,14 @@ body {
 .embed-area-console {
   grid-area: console;
 }
-/* A frame under 38rem (a phone) shows one pane at a time behind the view
-   switch, with the status line and its register peek under it. The editor is
-   hidden, not removed, so its caret and undo survive a switch. Where
-   container queries are missing, the switch and the status line stay hidden
-   and the base stack above is what shows. */
+/* A frame under 38rem (a phone), or under 56rem on a touch screen (a
+   tablet, where the stacked console was too short for its 44px input row),
+   shows one pane at a time behind the view switch, with the status line and
+   its register peek under it. The editor is hidden, not removed, so its caret
+   and undo survive a switch. Where container queries are missing, the switch
+   and the status line stay hidden and the base stack above is what shows.
+   The two blocks below are the same rules under the two conditions: CSS has
+   no way to join a container query and a media query in one prelude. */
 .embed-view,
 .embed-status {
   display: none;
@@ -649,6 +652,35 @@ body {
   .embed-area-registers {
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+}
+/* After the 38rem and 56rem bands, so a touch tablet's frame in those
+   bands takes the single pane instead. */
+@media (pointer: coarse) {
+  @container (max-width: 55.98rem) {
+    .embed-view {
+      display: flex;
+    }
+    .embed-status {
+      display: block;
+    }
+    .embed-grid {
+      grid-template-areas: "pane";
+      grid-template-rows: minmax(0, 1fr);
+    }
+    .embed-area-editor,
+    .embed-area-registers,
+    .embed-area-console {
+      grid-area: pane;
+      border-bottom: 0;
+    }
+    .embed-grid:not([data-pane="editor"]) .embed-area-editor {
+      visibility: hidden;
+    }
+    .embed-grid:not([data-pane="registers"]) .embed-area-registers,
+    .embed-grid:not([data-pane="console"]) .embed-area-console {
+      display: none;
+    }
   }
 }
 
