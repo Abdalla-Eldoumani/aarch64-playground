@@ -130,6 +130,74 @@ describe("Editor fallback gutter", () => {
     expect(textarea.scrollTop).toBe(1212);
   });
 
+  it("holds the pc reveal while following is off, and reveals once it turns on", () => {
+    // An assemble puts the pc on the entry line before the first step; the
+    // student's scroll has to stay where it is until then.
+    narrowViewport();
+    const program = Array.from({ length: 200 }, (_, i) => `  mov x0, ${i}`).join("\n");
+    const at = (follow: boolean) => (
+      <Editor
+        value={program}
+        onChange={() => {}}
+        currentLine={60}
+        breakpoints={new Set<number>()}
+        onToggleBreakpoint={() => {}}
+        assemblyErrors={[]}
+        followCurrentLine={follow}
+      />
+    );
+    const { rerender } = render(at(false));
+    const textarea = screen.getByLabelText("assembly source");
+    makeScrollable(textarea, 240);
+    rerender(at(false));
+    expect(textarea.scrollTop).toBe(0);
+    rerender(at(true));
+    expect(textarea.scrollTop).toBe(1212);
+  });
+
+  it("jumps to a requested error line: centred, caret at its start, focused", () => {
+    narrowViewport();
+    const program = Array.from({ length: 200 }, (_, i) => `  mov x0, ${i}`).join("\n");
+    const at = (request: { line: number; nonce: number } | null) => (
+      <Editor
+        value={program}
+        onChange={() => {}}
+        currentLine={null}
+        breakpoints={new Set<number>()}
+        onToggleBreakpoint={() => {}}
+        assemblyErrors={[]}
+        focusRequest={request}
+      />
+    );
+    const { rerender } = render(at(null));
+    const textarea = screen.getByLabelText("assembly source") as HTMLTextAreaElement;
+    makeScrollable(textarea, 240);
+    rerender(at({ line: 76, nonce: 1 }));
+    // Line 76 starts at 12 + 75*24 = 1812; centred in 240px: 1812 - 108.
+    expect(textarea.scrollTop).toBe(1704);
+    expect(document.activeElement).toBe(textarea);
+    // Each earlier line is "  mov x0, N" plus its newline.
+    const start = program.split("\n").slice(0, 75).join("\n").length + 1;
+    expect(textarea.selectionStart).toBe(start);
+    expect(textarea.selectionEnd).toBe(start);
+  });
+
+  it("does not replay a jump that was already requested when it mounted", () => {
+    narrowViewport();
+    render(
+      <Editor
+        value={"  mov x0, 1\n".repeat(100)}
+        onChange={() => {}}
+        currentLine={null}
+        breakpoints={new Set<number>()}
+        onToggleBreakpoint={() => {}}
+        assemblyErrors={[]}
+        focusRequest={{ line: 90, nonce: 3 }}
+      />,
+    );
+    expect(document.activeElement).not.toBe(screen.getByLabelText("assembly source"));
+  });
+
   it("keeps breakpoint labels on the lines the window actually shows", () => {
     renderFallback("\n".repeat(49_999));
     scrollTo(24_000);
