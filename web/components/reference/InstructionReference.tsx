@@ -34,7 +34,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type JSX,
   type KeyboardEvent,
 } from "react";
@@ -48,6 +47,7 @@ import { Button } from "@/components/ui/Button";
 import { FlagEffect, FLAG_SETTERS, type FlagMnemonic } from "@/components/diagrams/FlagEffect";
 import { CondCodeExplorer } from "@/components/diagrams/CondCodeExplorer";
 import { buildShareHash } from "@/lib/playground/share";
+import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
 import { playgroundSource } from "@/lib/playground/playground-source";
 
 // The emulator surface loads only when an example is run in place, so
@@ -67,19 +67,6 @@ const EmbeddablePlayground = dynamic(
  */
 function hashId(mnemonic: string): string {
   return mnemonic.toLowerCase().replace(/\./g, "-");
-}
-
-// The URL fragment as an external store: the server snapshot and the first
-// client render read empty (matching the server), then the post-hydration read
-// returns the real fragment id without a setState-in-effect.
-function subscribeHash(callback: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  window.addEventListener("hashchange", callback);
-  return () => window.removeEventListener("hashchange", callback);
-}
-function readHashFragment(): string {
-  if (typeof window === "undefined") return "";
-  return window.location.hash.replace(/^#/, "");
 }
 
 const ITEM_BASE =
@@ -118,7 +105,7 @@ export function InstructionReference({
   // to keep in sync and at most one emulator exists.
   const [benchFor, setBenchFor] = useState<string | null>(null);
 
-  const fragment = useSyncExternalStore(subscribeHash, readHashFragment, () => "");
+  const fragment = useHashFragment();
 
   const filterId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
