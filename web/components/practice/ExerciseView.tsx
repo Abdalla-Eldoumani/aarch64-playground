@@ -32,7 +32,11 @@ import type {
   StructuralAssertion,
   WriteExercise,
 } from "@/lib/content/exercise-schema";
-import { checkExercise, type CheckResult } from "@/lib/content/exercise-checker";
+import {
+  checkExercise,
+  type CheckResult,
+  type StructuralCheck,
+} from "@/lib/content/exercise-checker";
 import { markSolved } from "@/lib/playground/solved-state";
 import { clearAnswer, readAnswer, saveAnswer } from "@/lib/playground/exercise-answers";
 import { validateStdin } from "@/lib/playground/upload-guard";
@@ -96,20 +100,51 @@ function resultCriterion(assertion: ResultAssertion): ReactNode {
 }
 
 /**
- * A shape-only label for one structural assertion. forbids-literal is described
- * as "computes the result" without naming the forbidden value, so the table
- * and the results panel never reveal the hardcoded answer.
+ * A shape-only label for one structural assertion. A forbidden number is
+ * described as "computes the result" without naming it, so the table and the
+ * results panel never reveal the hardcoded answer; an author forbids a string
+ * only for a shortcut the prompt already names, so that one is shown.
  */
 function structuralCriterion(assertion: StructuralAssertion): ReactNode {
+  const where = assertion.in !== undefined && (
+    <>
+      {" "}
+      in <code className={CRITERION_CODE}>{assertion.in}</code>
+    </>
+  );
   switch (assertion.kind) {
     case "uses-instruction":
       return (
         <>
           uses <code className={CRITERION_CODE}>{assertion.mnemonic}</code>
+          {where}
+        </>
+      );
+    case "forbids-instruction":
+      return (
+        <>
+          does not use{" "}
+          {assertion.mnemonics.map((mnemonic, index) => (
+            <span key={mnemonic}>
+              {index > 0 && (index === assertion.mnemonics.length - 1 ? " or " : ", ")}
+              <code className={CRITERION_CODE}>{mnemonic}</code>
+            </span>
+          ))}
+          {where}
         </>
       );
     case "forbids-literal":
-      return "computes the result (does not hardcode it)";
+      // A forbidden number is the answer itself, so it stays unnamed; a
+      // forbidden string is a shortcut (a %o format, a banned call) the
+      // prompt already names.
+      return typeof assertion.value === "number" ? (
+        <>computes the result (does not hardcode it){where}</>
+      ) : (
+        <>
+          does not contain <code className={CRITERION_CODE}>{assertion.value}</code>
+          {where}
+        </>
+      );
     default: {
       const exhaustive: never = assertion;
       return exhaustive;
@@ -121,12 +156,17 @@ function structuralCriterion(assertion: StructuralAssertion): ReactNode {
  * Why a structural check missed. It reports the shape of the miss, which the
  * student can already see in their own source, so it leaks no answer.
  */
-function structuralMiss(assertion: StructuralAssertion): string {
+function structuralMiss(check: StructuralCheck): string {
+  const { assertion } = check;
+  if (check.scopeMissing) return `your program has no ${assertion.in} label`;
+  const where = assertion.in === undefined ? "your program" : assertion.in;
   switch (assertion.kind) {
     case "uses-instruction":
-      return `${assertion.mnemonic} does not appear in your program`;
+      return `${assertion.mnemonic} does not appear in ${where}`;
+    case "forbids-instruction":
+      return `${check.found ?? assertion.mnemonics[0]} appears in ${where}`;
     case "forbids-literal":
-      return `the value ${assertion.value} appears literally in your source`;
+      return `the value ${assertion.value} appears literally in ${where}`;
     default: {
       const exhaustive: never = assertion;
       return exhaustive;
@@ -359,9 +399,7 @@ export function ExerciseView({
                   <span className="font-mono text-[13px] leading-snug text-[var(--text-primary)]">
                     {structuralCriterion(check.assertion)}
                     {!check.pass && (
-                      <span className="text-[var(--danger)]">
-                        : {structuralMiss(check.assertion)}
-                      </span>
+                      <span className="text-[var(--danger)]">: {structuralMiss(check)}</span>
                     )}
                   </span>
                 </div>
