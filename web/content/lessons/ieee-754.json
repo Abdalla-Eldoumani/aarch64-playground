@@ -2,6 +2,7 @@
   "title": "Inside a float: IEEE 754",
   "slug": "ieee-754",
   "order": 29,
+  "lastUpdated": "2026-09-27",
   "summary": "Split a single or double into its sign, exponent, and fraction, convert between decimal and bits by hand, and spot zero, subnormals, infinity, and NaN.",
   "tags": [
     "floating point",
