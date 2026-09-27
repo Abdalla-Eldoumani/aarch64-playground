@@ -72,4 +72,7 @@ async function main() {
   console.log(`\nall ${Object.keys(REQUIRED).length} security headers present and valid`);
 }
 
-main();
+// A test loads the predicates without fetching anything.
+if (require.main === module) main();
+
+module.exports = { REQUIRED };
