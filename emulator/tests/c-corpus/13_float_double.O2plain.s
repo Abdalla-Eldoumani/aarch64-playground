@@ -1,13 +1,13 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	avg
 avg:
 	cmp	w1, 0
 	ble	.L4
 	movi	d31, #0
 	add	x2, x0, w1, uxtw 3
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldr	d30, [x0], 8
 	fadd	d31, d31, d30
@@ -16,7 +16,7 @@ avg:
 	scvtf	d0, w1
 	fdiv	d0, d31, d0
 	ret
-	.align 2
+	.p2align 2,,3
 .L4:
 	movi	d31, #0
 	scvtf	d0, w1
@@ -52,7 +52,7 @@ avg:
 	.string	"%8.2f|%-8.2f|%08.3f\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -80]!
@@ -68,7 +68,7 @@ main:
 	str	x1, [x0, 32]
 	mov	x1, x0
 	stp	q31, q30, [x0]
-	.align 5
+	.p2align 5,,15
 .L8:
 	ldr	d31, [x2], 8
 	add	x3, sp, 80
@@ -78,7 +78,7 @@ main:
 	fmov	d31, 5.0e+0
 	movi	d1, #0
 	fdiv	d0, d0, d31
-	.align 5
+	.p2align 5,,15
 .L9:
 	ldr	d31, [x0], 8
 	add	x2, sp, 80
@@ -88,7 +88,7 @@ main:
 	fmov	d31, 5.0e+0
 	movi	d2, #0
 	fdiv	d1, d1, d31
-	.align 5
+	.p2align 5,,15
 .L10:
 	ldr	d31, [x1], 8
 	add	x0, sp, 80
