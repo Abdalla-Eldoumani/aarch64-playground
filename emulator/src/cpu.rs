@@ -374,6 +374,9 @@ pub struct Cpu {
     /// tokenizing loop has to hand out the same token again. Zero is
     /// glibc's NULL start, where `strtok(NULL, ...)` faults.
     pub strtok_save: u64,
+    /// qsort and bsearch calls part-way through, waiting on the program's
+    /// comparator. Snapshotted so step-back can rewind into a sort.
+    pub callbacks: crate::hosted::callback::CallbackState,
     /// Host-requested pause of the step-back snapshot ring. The web sets
     /// it for live terminal sessions, where per-step clones cost far more
     /// than the steps and stepping back mid-session has no meaning.
@@ -473,6 +476,7 @@ impl Cpu {
             term: TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
             strtok_save: 0,
+            callbacks: Default::default(),
             snapshots_paused: false,
             pending_sleep_ns: None,
             refund_steps_total: 0,
@@ -552,6 +556,15 @@ impl Cpu {
         cpu.host.register("fgets", crate::hosted::stdio::fgets);
         cpu.host.register("fputs", crate::hosted::stdio::fputs);
         cpu.host.register("fclose", crate::hosted::stdio::fclose);
+        // What optimized code calls in place of putchar, getchar and
+        // fputs: glibc's inline putchar is putc(c, stdout).
+        cpu.host.register("putc", crate::hosted::stdio::putc);
+        cpu.host.register("fputc", crate::hosted::stdio::putc);
+        cpu.host.register("getc", crate::hosted::stdio::getc);
+        cpu.host.register("fwrite", crate::hosted::stdio::fwrite);
+        // The two calls that run the program's own comparator.
+        cpu.host.register("qsort", crate::hosted::callback::qsort);
+        cpu.host.register("bsearch", crate::hosted::callback::bsearch);
         // The libm subset: double in d0 (and d1 for the two-argument
         // forms), double out in d0.
         cpu.host.register("sqrt", crate::hosted::math::sqrt);
@@ -565,6 +578,7 @@ impl Cpu {
         cpu.host.register("floor", crate::hosted::math::floor);
         cpu.host.register("fabs", crate::hosted::math::fabs);
         cpu.host.register("fmod", crate::hosted::math::fmod);
+        cpu.host.register("sincos", crate::hosted::math::sincos);
         // Sentinel used when a hosted program's `main` returns. Loader
         // stashes this address in LR so `ret` from main halts cleanly
         // with x0 as the exit code.
@@ -656,6 +670,7 @@ impl Cpu {
         // program's memory would hand its first strtok(NULL) a stale
         // address that now means something else.
         self.strtok_save = 0;
+        self.callbacks = Default::default();
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
         self.refund_output_total = 0;
@@ -665,6 +680,7 @@ impl Cpu {
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
+        self.mem.set_zero_fill(image.data_spans.clone());
         self.regs.write_pc(image.entry_point);
         // Stash the `__main_return` sentinel in LR so a hosted program
         // that returns out of `main` halts cleanly instead of jumping to
@@ -997,6 +1013,7 @@ impl Cpu {
                 term: self.term,
                 heap: self.heap.clone(),
                 strtok_save: self.strtok_save,
+                callbacks: self.callbacks.clone(),
                 stdout_seen: self.stdout_seen,
                 stderr_seen: self.stderr_seen,
             });
@@ -1440,10 +1457,12 @@ impl Cpu {
             term: &mut self.term,
             heap: &mut self.heap,
             strtok_save: &mut self.strtok_save,
+            callbacks: &mut self.callbacks,
         };
         let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
         match outcome {
-            HostOutcome::Continue => {}
+            // No syscall calls into the program, so Call never arrives here.
+            HostOutcome::Continue | HostOutcome::Call(_) => {}
             HostOutcome::NeedInput => self.blocked = true,
             HostOutcome::Sleep(ns) => self.apply_sleep(ns),
             HostOutcome::Exited(code) => {
@@ -1493,6 +1512,8 @@ impl Cpu {
         let fpr_snapshot = self.regs.snapshot_fpr();
         // The table is read-only during dispatch; split the borrow by
         // temporarily taking the entries, dispatching, then restoring.
+        // qsort's comparator returns to the stub it was called from.
+        self.callbacks.stub_pc = pc;
         let table = std::mem::take(&mut self.host);
         let mut ctx = HostContext {
             regs: &mut self.regs,
@@ -1508,6 +1529,7 @@ impl Cpu {
             term: &mut self.term,
             heap: &mut self.heap,
             strtok_save: &mut self.strtok_save,
+            callbacks: &mut self.callbacks,
         };
         let outcome = table
             .dispatch(pc, &mut ctx)
@@ -1539,6 +1561,9 @@ impl Cpu {
                 self.exit_code = Some(code);
                 self.halted = true;
             }
+            // Into the program's comparator, arguments and link register
+            // already set: the call is not over, so nothing is clobbered.
+            HostOutcome::Call(target) => self.regs.write_pc(target),
         }
 
         let current = self.regs.snapshot();
@@ -1557,7 +1582,7 @@ impl Cpu {
         }
 
         let result_outcome = match host_outcome {
-            HostOutcome::Continue => StepOutcome::Advance,
+            HostOutcome::Continue | HostOutcome::Call(_) => StepOutcome::Advance,
             HostOutcome::NeedInput => StepOutcome::WaitingForInput,
             HostOutcome::Sleep(ns) => StepOutcome::Sleeping(ns.min(MAX_SLEEP_NS)),
             HostOutcome::Exited(code) => StepOutcome::Exited(code),
@@ -1697,6 +1722,7 @@ impl Cpu {
         self.term = TermState::default();
         self.heap = crate::hosted::heap::HeapState::default();
         self.strtok_save = 0;
+        self.callbacks = Default::default();
         self.snapshots_paused = false;
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
@@ -1747,6 +1773,7 @@ impl Cpu {
             term: self.term,
             heap: self.heap.clone(),
             strtok_save: self.strtok_save,
+            callbacks: self.callbacks.clone(),
             stdout_seen: self.stdout_seen,
             stderr_seen: self.stderr_seen,
         };
@@ -1774,6 +1801,7 @@ impl Cpu {
         self.term = snap.term;
         self.heap = snap.heap;
         self.strtok_save = snap.strtok_save;
+        self.callbacks = snap.callbacks;
         // Display counters follow the machine; the output-flood budget
         // deliberately does not, for the same reason the step budget
         // survives a restore.
@@ -1838,6 +1866,7 @@ impl Cpu {
         self.term = snap.term;
         self.heap = snap.heap;
         self.strtok_save = snap.strtok_save;
+        self.callbacks = snap.callbacks;
         // What the frame printed is now un-printed as far as the display
         // is concerned, so a host can trim its transcript back. The
         // output-flood budget below is untouched on purpose.
