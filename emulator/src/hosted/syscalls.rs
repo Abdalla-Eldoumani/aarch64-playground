@@ -42,7 +42,7 @@ const TCSETSF: u64 = 0x5404;
 const ICANON: u32 = 0o0002;
 const ECHO: u32 = 0o0010;
 /// A cooked terminal's typical c_lflag (ISIG|ICANON|ECHO|ECHOE|ECHOK|
-/// IEXTEN), what TCGETS reports before a program goes raw.
+/// IEXTEN), which TCGETS reports until a program switches to raw mode.
 const COOKED_LFLAG: u32 = 0o105073;
 
 /// fcntl commands and the flag bit the games use.
