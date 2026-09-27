@@ -101,7 +101,6 @@ describe("LessonMarkdown", () => {
     const { container } = render(<LessonMarkdown markdown={markdown} />);
     const table = container.querySelector("table");
     expect(table?.parentElement?.className).toContain("overflow-x-auto");
-    expect(table?.className).toContain("tabular-nums");
     const th = container.querySelector("th");
     const td = container.querySelectorAll("td");
     expect(th?.className).toContain("px-3 py-2");
@@ -109,6 +108,7 @@ describe("LessonMarkdown", () => {
     expect(th?.className).toContain("border-[var(--border)]");
     expect(td[1]?.className).toContain("px-3 py-2");
     expect(td[1]?.className).toContain("border-[var(--border)]");
+    expect(td[1]?.className).toContain("tabular-nums");
     // The column's right alignment survives sanitizing.
     expect(td[1]?.style.textAlign).toBe("right");
     expect(td[1]?.textContent).toBe("4");
