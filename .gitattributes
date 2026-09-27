@@ -12,6 +12,9 @@
 # Shell scripts must be LF or bash on Linux refuses to run them.
 *.sh text eol=lf
 
+# Served as-is, so a Windows build must not ship it with CRLF endings.
+web/public/llms.txt text eol=lf
+
 # The C corpus references are byte-compared against emulator output and
 # against tools/sanitize.py's regeneration, so none of them may be
 # rewritten at checkout. .out files carry program-controlled bytes and
