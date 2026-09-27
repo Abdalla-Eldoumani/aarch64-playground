@@ -131,10 +131,33 @@ export function exactValue(bits: bigint, width: FloatWidth): string {
 }
 
 /**
+ * The two decimals of `digits` significant digits either side of a
+ * positive exact decimal, nearer first, each written n e k. Just one when
+ * the value already fits in that many digits.
+ */
+function bracketingDecimals(exact: string, digits: number): string[] {
+  const [whole, fraction = ""] = exact.split(".");
+  const all = whole + fraction;
+  const lead = all.search(/[1-9]/);
+  const below = BigInt(all.slice(lead, lead + digits).padEnd(digits, "0"));
+  const power = whole.length - lead - digits;
+  const rest = all.slice(lead + digits).replace(/0+$/, "");
+  const low = `${below}e${power}`;
+  if (rest === "") return [low];
+  const high = `${below + 1n}e${power}`;
+  // Both are digits after a point, so as text they compare as 0.rest
+  // against 0.5. A tie goes to the even one, as JS and Python pick.
+  const upFirst = rest > "5" || (rest === "5" && below % 2n === 1n);
+  return upFirst ? [high, low] : [low, high];
+}
+
+/**
  * The shortest decimal that reads back to exactly these bits, the way JS,
  * Python, and Java print floats. A 64-bit pattern is a JS number, so its
- * own toString is already shortest; a 32-bit one tries 1 to 9 significant
- * digits and keeps the first that parses back to the same pattern.
+ * own toString is already shortest. A 32-bit one tries 1 to 9 significant
+ * digits and, at each, both decimals either side of the value: at a power
+ * of two the gap below is half the gap above, so the nearer one can miss
+ * while the one past it still reads back.
  */
 export function formatFloatValue(bits: bigint, width: FloatWidth): string {
   const kind = classify(bits, width);
@@ -144,10 +167,15 @@ export function formatFloatValue(bits: bigint, width: FloatWidth): string {
   if (kind === "zero") return `${minus}0`;
   const x = floatValue(bits, width);
   if (width === 64) return String(x);
+  const exact = exactValue(bits, 32).replace(/^-/, "");
   for (let digits = 1; digits < 9; digits++) {
-    const text = String(Number(x.toPrecision(digits)));
-    const back = decimalToFloat(text, 32);
-    if (typeof back === "object" && back?.bits === bits) return text;
+    for (const decimal of bracketingDecimals(exact, digits)) {
+      // At 9 digits or fewer a decimal survives the trip through a double,
+      // so this only reformats it the way JS prints numbers.
+      const text = String(Number(minus + decimal));
+      const back = decimalToFloat(text, 32);
+      if (typeof back === "object" && back?.bits === bits) return text;
+    }
   }
   return String(Number(x.toPrecision(9)));
 }
