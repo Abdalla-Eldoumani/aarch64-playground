@@ -47,6 +47,12 @@ describe("seeded exercises validate", () => {
     });
   });
 
+  it("carry the date their content last changed, which the sitemap prints", () => {
+    files.forEach((file, index) => {
+      expect(exercises[index].lastUpdated, `${file} has no lastUpdated`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+
   it("offer at least as many coding exercises as theory sets", () => {
     const theory = exercises.filter((exercise) => practiceSide(exercise) === "theory");
     expect(coding.length).toBeGreaterThanOrEqual(theory.length);
