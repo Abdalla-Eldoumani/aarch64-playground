@@ -2,6 +2,7 @@
   "title": "Float anatomy",
   "slug": "float-anatomy",
   "order": 66,
+  "lastUpdated": "2026-09-27",
   "topic": "floating-point",
   "difficulty": "core",
   "prompt": "A float read from standard input sits in `s0`. Take it apart the way IEEE 754 lays it out, and say what kind of value it is. With the stdin box as given the program prints:\n\n```\nsign=1 exponent=129 fraction=0x580000\nnormal, 2^2\n```\n\nA single-precision float is 32 bits: the sign in bit 31 (1 means negative), a biased exponent in bits 30 to 23, and the fraction in bits 22 to 0. The exponent is stored with 127 added, which is the bias, so the stored 129 above means 2 to the power 2: 6.75 is 1.6875 times 4.\n\nCopy the bits out of `s0` into a w register with `fmov`. Nothing is converted: the same 32 bits move from the floating-point registers to the general ones, where the integer instructions can reach them. Then pull out the three fields (`ubfx` does it in one instruction each) and print them with `fmt_parts`.\n\nThe second line depends on the exponent:\n\n- 255 (all ones): `infinity` when the fraction is 0, otherwise `not a number`\n- 0 (all zeros): `zero` when the fraction is 0 (the sign still counts, so there is a negative zero), otherwise `subnormal`, a number too small for the normal form\n- anything else: `normal, 2^e`, where e is the exponent minus 127\n\n## what is checked\n\n- both lines for the number in the stdin box, and for more numbers you cannot see\n- the program exits cleanly\n- the bits move with `fmov`",
