@@ -303,7 +303,13 @@ malloc and friends run over a fixed 16 MiB heap window at `0x0090_0000`
 with host-side allocator state, so a stray store cannot corrupt the
 free list; a wild or double free halts with a plain message.
 Stubs read argument registers per AAPCS64, call into
-Rust, write results to `x0`/`d0`, then return via `pc = lr`. `main`
+Rust, write results to `x0`/`d0`, then return via `pc = lr`. On the way
+back they fill every register AAPCS64 lets a callee change (x0-x18 and
+v0-v7 apart from the one holding the result, v16-v31, the top half of
+v8-v15, and NZCV) with
+0xDEADBEEFDEADBEEF, as real glibc leaves its own values there, and a
+program that reads one before writing it gets a console note naming the
+call and the register. `main`
 returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
 the exit code.
 
