@@ -95,7 +95,7 @@
     "remark-gfm": "4.0.1"
   },
   "devDependencies": {
-    "@size-limit/file": "12.1.0",
+    "@size-limit/file": "14.0.1",
     "@testing-library/react": "16.3.2",
     "@types/node": "24.13.4",
     "@types/react": "19.3.0",
@@ -109,7 +109,7 @@
     "lighthouse": "13.4.1",
     "playwright": "1.59.1",
     "postcss": "8.5.23",
-    "size-limit": "12.1.0",
+    "size-limit": "14.0.1",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
     "vitest": "5.0.2"
