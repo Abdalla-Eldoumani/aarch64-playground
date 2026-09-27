@@ -1,0 +1,92 @@
+{
+  "title": "Binary, hex, and octal: one number, many spellings",
+  "slug": "binary-hex-and-octal",
+  "order": 13,
+  "summary": "Read one bit pattern as unsigned, as two's complement, in hex and in octal, and know the range each size can hold.",
+  "tags": [
+    "binary arithmetic",
+    "format strings"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Registers and immediates](/learn/registers-and-immediates)\n- [Printing integers and characters](/learn/printing-other-data-types)"
+    },
+    {
+      "type": "prose",
+      "markdown": "A register holds bits and nothing else. The same 32 bits can be a count, a temperature below zero, or a letter, and the machine does not know which. The meaning comes from the instruction that uses the bits or, when you print them, from the format specifier you give `printf`.\n\nThis lesson reads one bit pattern several ways: as an unsigned number, as a signed number, and in hexadecimal and octal, two shorter ways to write binary. It also gives the range of values each register size can hold."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Bits and place value\n\nA *bit* is one binary digit, 0 or 1. A binary number works like a decimal one, except that each place is worth twice the place to its right instead of ten times. From the right, the places are worth 1, 2, 4, 8, 16, and so on.\n\nBits are numbered from the right, starting at 0. Bit 0 is the *least significant bit*, worth 1. In an 8-bit value, bit 7 is the *most significant bit*, worth 128. Here is 200 in eight bits:\n\n| bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |\n|---|---|---|---|---|---|---|---|---|\n| worth | 128 | 64 | 32 | 16 | 8 | 4 | 2 | 1 |\n| 200 | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |\n\nTo turn a decimal number into binary, take away the largest place value that fits, put a 1 in that place, and repeat with what is left. For 200: 200 - 128 = 72, 72 - 64 = 8, 8 - 8 = 0. Bits 7, 6 and 3 are 1 and the rest are 0, so 200 is `11001000`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Hex and octal: binary in short form\n\nRows of bits are hard to read and easy to miscount, so people write them in *hexadecimal* (hex for short, base 16) or in *octal* (base 8).\n\nHex works because 16 is 2 to the power 4, so each hex digit stands for exactly four bits. The digits are 0 to 9 and then `a` to `f` for 10 to 15. To convert, split the bits into groups of four starting from the right and write one digit per group:\n\n`1100 1000` becomes `c` `8`, which is `0xc8`.\n\nOctal uses groups of three, because 8 is 2 to the power 3, and its digits run from 0 to 7:\n\n`11 001 000` becomes `3` `1` `0`, which is `0310`.\n\nGoing back is the same step in reverse: each hex digit becomes four bits and each octal digit becomes three. A 32-bit value always takes 8 hex digits. It takes 11 octal digits, and since 32 is not a multiple of 3, the top octal digit covers only two bits and is never more than 3. Octal comes back later for Linux file permissions, where each digit holds three yes-or-no bits. To check a conversion, type the number into the [base converter](/reference#converter-octal), which shows it in binary, octal, decimal and hex at once."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "In source code, `0x` starts a hex number and `0b` starts a binary one, and a number that starts with a plain `0` is octal. The assembler reads `010` as eight, not ten, so never pad a decimal number with leading zeros."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Sizes and unsigned ranges\n\nData comes in four sizes. A *byte* is 8 bits, a *halfword* is 16 bits, a *word* is 32 bits, and a *doubleword* is 64 bits. A `w` register holds a word and an `x` register holds a doubleword.\n\nC on 64-bit Linux follows the *LP64* model: `long` values and pointers are 64 bits (the L and the P in the name), while `int` stays at 32.\n\n| size | bits | C type | register view |\n|---|---|---|---|\n| byte | 8 | `char` | low 8 bits of a register |\n| halfword | 16 | `short` | low 16 bits of a register |\n| word | 32 | `int` | `w0` to `w30` |\n| doubleword | 64 | `long`, every pointer | `x0` to `x30` |\n\nWith n bits there are 2 to the power n different patterns. Read as *unsigned* numbers, which have no sign and are never negative, they run from 0 up to 2 to the power n, minus 1. A byte holds 0 to 255, and a word holds 0 to 4,294,967,295."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Negative numbers: two's complement\n\nSigned numbers use *two's complement*: the top bit counts as a negative amount instead of a positive one, and every other place keeps its usual value. In a byte, bit 7 is worth -128 instead of +128, so the pattern `11001000` reads as -128 + 64 + 8 = -56.\n\nThe top bit is called the *sign bit*: when it is 1, the number is negative. So the same eight bits are 200 when read as unsigned and -56 when read as signed. When the sign bit is 1, the two readings always differ by 2 to the power n (256 for a byte); when it is 0, they are the same number.\n\nThe signed range is lopsided by one, because zero takes one of the patterns with the sign bit off:\n\n| size | unsigned range | signed range |\n|---|---|---|\n| byte | 0 to 255 | -128 to 127 |\n| halfword | 0 to 65,535 | -32,768 to 32,767 |\n| word | 0 to 4,294,967,295 | -2,147,483,648 to 2,147,483,647 |\n| doubleword | 0 to 18,446,744,073,709,551,615 | -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807 |"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "All ones is -1 at every size. In a byte, `11111111` is -128 + 64 + 32 + 16 + 8 + 4 + 2 + 1 = -1. That is why -1 printed as an unsigned number shows the largest value the size can hold."
+    },
+    {
+      "type": "prose",
+      "markdown": "## One pattern, four readings\n\n`printf` has a specifier for each reading of a word: `%d` prints it as signed, `%u` as unsigned, `%x` as hex (without the `0x`), and `%o` as octal (without the leading 0). Putting an `l` in front, as in `%ld`, `%lu`, `%lx` and `%lo`, makes `printf` read a whole `x` register instead of a `w` register.\n\nThe program below passes the same register value to all four specifiers at once, one row per value. In the header, `%%` prints a single `%`, so each column is labeled with its own specifier.\n\nEach value goes into `w9` just before the call and is not needed after it. `w9` is a *scratch register*: a register whose value does not have to survive a call, because `printf` is free to change x0 to x18."
+    },
+    {
+      "type": "editor",
+      "starter": "// Print the same bit patterns with the signed, unsigned, hex, and octal specifiers\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(word_r, w9)\ndefine(dword_r, x9)\n\n.data\nfmt_head:   .string \"         %%d          %%u        %%x           %%o\\n\"\nfmt_word:   .string \"%11d %11u %9x %12o\\n\"\nfmt_dword:  .string \"\\nthe doubleword -1:\\n%%ld %ld\\n%%lu %lu\\n%%lx %lx\\n%%lo %lo\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_head\n        bl      printf\n\n        mov     word_r, 200\n        ldr     x0, =fmt_word\n        mov     w1, word_r                  // the same 32 bits go to all four specifiers\n        mov     w2, word_r\n        mov     w3, word_r\n        mov     w4, word_r\n        bl      printf\n\n        mov     word_r, -56                 // same low byte as 200: 0xc8\n        ldr     x0, =fmt_word\n        mov     w1, word_r\n        mov     w2, word_r\n        mov     w3, word_r\n        mov     w4, word_r\n        bl      printf\n\n        mov     word_r, -1                  // every bit set\n        ldr     x0, =fmt_word\n        mov     w1, word_r\n        mov     w2, word_r\n        mov     w3, word_r\n        mov     w4, word_r\n        bl      printf\n\n        mov     dword_r, -1                 // all 64 bits set this time\n        ldr     x0, =fmt_dword\n        mov     x1, dword_r                 // an l specifier reads the whole x register\n        mov     x2, dword_r\n        mov     x3, dword_r\n        mov     x4, dword_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "         %d          %u        %x           %o\n        200         200        c8          310\n        -56  4294967240  ffffffc8  37777777710\n         -1  4294967295  ffffffff  37777777777\n\nthe doubleword -1:\n%ld -1\n%lu 18446744073709551615\n%lx ffffffffffffffff\n%lo 1777777777777777777777\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The 200 row reads the same in the first two columns, because the sign bit of the word (bit 31) is 0. The -56 row ends in `c8`, the same low byte as 200, and its unsigned column shows 4294967240, which is -56 + 4,294,967,296. The -1 row is all ones: 4294967295 as unsigned, `ffffffff` in hex, and `37777777777` in octal, whose top digit is 3 because only two bits are left for it.\n\nThe last four lines hand an `x` register holding -1 to the `l` specifiers, and print 18446744073709551615, sixteen `f`s, and 1777777777777777777777.\n\nChange `200` to `0xc8` or to `0b11001000` and run again. The output does not change, because all three spellings put the same bits into the register."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Negating by hand\n\nTo negate a two's complement number, flip every bit and then add 1. Flipping alone gives -n - 1, because a number and its flipped copy add up to all ones, which is -1. The extra 1 turns that into -n.\n\n`mvn` flips every bit of a register (the name reads as \"move not\"; [Binary logic: masks, flags, and tst](/learn/binary-logic) covers it with the other logic instructions), and `neg` does the flip and the add in one step.\n\nThe program below negates 13 by hand and prints each step twice: in hex with `%08x`, which pads to eight digits with zeros, and as a signed number with `%d`. 13 and its negation are needed after several calls, so they live in `w19` and `w20`: `printf` may change x0 to x18, but it has to give x19 to x28 back unchanged. This `main` uses `w19` and `w20` without saving them first, as the programs in these lessons do. A subroutine you write yourself has to save any of x19 to x28 that it changes; [Subroutines: saved registers, pointers, and big arguments](/learn/calling-conventions) shows how."
+    },
+    {
+      "type": "editor",
+      "starter": "// Negate 13 in two's complement: flip every bit, then add one\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(n_r, w19)\ndefine(neg_r, w20)\n\n.data\nfmt_start:  .string \"13:            %08x = %d\\n\"\nfmt_flip:   .string \"bits flipped:  %08x = %d\\n\"\nfmt_plus:   .string \"plus one:      %08x = %d\\n\"\nfmt_neg:    .string \"neg of 13:     %08x = %d\\n\"\nfmt_sum:    .string \"13 + (-13):    %08x = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     n_r, 13\n        ldr     x0, =fmt_start\n        mov     w1, n_r                     // %08x and %d read the same register value\n        mov     w2, n_r\n        bl      printf\n\n        ldr     x0, =fmt_flip\n        mvn     w1, n_r                     // every 0 becomes 1 and every 1 becomes 0\n        mov     w2, w1\n        bl      printf\n\n        mvn     neg_r, n_r\n        add     neg_r, neg_r, 1             // flip, then add one: the two's complement\n        ldr     x0, =fmt_plus\n        mov     w1, neg_r\n        mov     w2, neg_r\n        bl      printf\n\n        ldr     x0, =fmt_neg\n        neg     w1, n_r                     // one instruction does both steps\n        mov     w2, w1\n        bl      printf\n\n        ldr     x0, =fmt_sum\n        add     w1, n_r, neg_r              // the carry out of bit 31 has nowhere to go\n        mov     w2, w1\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "13:            0000000d = 13\nbits flipped:  fffffff2 = -14\nplus one:      fffffff3 = -13\nneg of 13:     fffffff3 = -13\n13 + (-13):    00000000 = 0\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "It prints `0000000d = 13`, then `fffffff2 = -14` after the flip and `fffffff3 = -13` after adding one. `neg` gives the same `fffffff3`.\n\nThe last line adds 13 and -13 and gets `00000000 = 0`. The true sum is `0x100000000`: the addition produces a *carry*, a 1 that moves into the next place, out of bit 31. A `w` register has no bit 32 to keep it in, so it is dropped and zero is left. Dropping that carry is what lets one adder work for signed and unsigned numbers alike: the same bits come out either way, and only the reading differs."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. What is the byte `10000001` as an unsigned number, and as a two's complement number?\n2. Write `0x2f` in binary and in octal.\n3. `w1` holds -2. What does `printf` print for it with `%x`, and with `%u`?\n4. What is the largest signed halfword, in decimal and in hex?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. 129 unsigned; -128 + 1 = -127 signed.\n2. `0010 1111` in binary; regrouped as `00 101 111`, that is `057` in octal (47 in decimal).\n3. `fffffffe` and 4294967294.\n4. 32,767, which is `0x7fff`: every bit set except the sign bit."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: binary arithmetic (intro)](/practice/quiz-basic-binary-arithmetic): wraparound and negating in two's complement. Its questions on carries and `adc` come with [Binary arithmetic: flags, carries, and wide numbers](/learn/binary-arithmetic-and-flags).\n- [Quiz: binary logic (core)](/practice/quiz-inter-binary-logic): opens with the signed range of a word, the size of a `long`, and the bits in an octal digit.\n- [Binary broadcast](/practice/binary-broadcast): prints a number one bit at a time. It needs the shifts from [Shifts, sign extension, and bitfields](/learn/shifts-and-bitfields), so come back to it after that lesson."
+    }
+  ]
+}
