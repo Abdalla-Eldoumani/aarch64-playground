@@ -9,7 +9,7 @@ function setup(overrides: Partial<ToolbarProps> = {}) {
     onShare: vi.fn(),
     onTour: vi.fn(),
     onToggleTheme: vi.fn(),
-    buildDiagnostic: vi.fn(() => ({ source: "" })),
+    buildDiagnostic: vi.fn(async () => ({ source: "" })),
     onOpenCommandPalette: vi.fn(),
     sourceLink: (
       <a href="https://example.com" aria-label="View source on GitHub">
@@ -33,7 +33,7 @@ describe("Toolbar", () => {
     setup();
     for (const name of [
       "share program",
-      "copy diagnostic bundle to clipboard",
+      "diagnostic bundle",
       "start guided tour",
       "toggle theme",
       // The palette opener's name is its visible label (WCAG label-in-name);
