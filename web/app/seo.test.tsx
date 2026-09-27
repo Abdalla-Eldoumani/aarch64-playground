@@ -131,6 +131,8 @@ describe("per-page titles and snippets", () => {
     expect((await lessonMetadata(slugParams("pretest-loop"))).description).toBe(lesson.summary);
     const exercise = await exerciseMetadata(slugParams("sum-to-n"));
     expect(exercise.description).toMatch(/^Write a loop that adds up every integer from 1 to n/);
+    const roster = await exerciseMetadata(slugParams("monster-roster"));
+    expect(roster.description).toMatch(/^Find the monster with the most hit points.*array of structures/);
   });
 
   it("restate the whole card with the page's own address", () => {
