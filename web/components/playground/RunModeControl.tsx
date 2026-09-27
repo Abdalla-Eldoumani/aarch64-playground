@@ -55,7 +55,7 @@ export function RunModeControl({ mode, onChange, disabled = false }: RunModeCont
               aria-pressed={active}
               disabled={disabled}
               onClick={() => onChange(value)}
-              className={`inline-flex min-h-[36px] items-center justify-center px-3.5 font-sans text-[12px] font-medium transition-colors focus:outline-none focus-visible:z-10 focus-visible:[box-shadow:var(--ring)] disabled:opacity-50 disabled:pointer-events-none ${
+              className={`touch-target inline-flex min-h-[36px] items-center justify-center px-3.5 font-sans text-[12px] font-medium transition-colors focus:outline-none focus-visible:z-10 focus-visible:[box-shadow:var(--ring)] disabled:opacity-50 disabled:pointer-events-none ${
                 index > 0 ? "border-l border-[var(--border)]" : ""
               } ${
                 active
