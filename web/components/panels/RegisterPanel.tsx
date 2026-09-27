@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { formatWord64 } from "@/lib/emulator/format-hex";
+import { isCallLeftover } from "@/lib/emulator/clobber-note";
 import { LANE_WIDTHS, upperHalfMoved, type LaneWidth } from "@/lib/emulator/vector-lanes";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 import { ZoomControl } from "@/components/ui/ZoomControl";
@@ -310,12 +311,22 @@ export function RegisterPanel({
     return out;
   }, [vectorRegisters, prevVectors]);
 
+  // A library call leaves its pattern in every caller-saved vector register:
+  // the call's doing, not a write for the view to follow.
+  const followedVecRegs = useMemo(() => {
+    const out = new Set<number>();
+    for (const i of new Set([...changedVecRegs, ...changedFpRegs])) {
+      if (!isCallLeftover(i, prevVectors[i], vectorRegisters[i])) out.add(i);
+    }
+    return out;
+  }, [changedVecRegs, changedFpRegs, prevVectors, vectorRegisters]);
+
   const upperMoved = useMemo(() => {
     for (const i of changedVecRegs) {
-      if (upperHalfMoved(prevVectors[i], vectorRegisters[i])) return true;
+      if (followedVecRegs.has(i) && upperHalfMoved(prevVectors[i], vectorRegisters[i])) return true;
     }
     return false;
-  }, [changedVecRegs, prevVectors, vectorRegisters]);
+  }, [changedVecRegs, followedVecRegs, prevVectors, vectorRegisters]);
 
   const vSpelledDest = useMemo(() => {
     if (executedLine == null || !source) return false;
@@ -341,7 +352,7 @@ export function RegisterPanel({
   useEffect(() => {
     const touched: RegView[] = [];
     if (changedRegs.size > 0) touched.push("x");
-    if (changedFpRegs.size > 0 || changedVecRegs.size > 0) {
+    if (followedVecRegs.size > 0) {
       // A d write reaches bits 63:0 and no further; anything above that, or a
       // destination the student spelled v or q, is a vector write.
       touched.push(hasVec && (upperMoved || vSpelledDest) ? "v" : "d");
@@ -353,8 +364,7 @@ export function RegisterPanel({
     dispatchView({ kind: "follow", touched: usable });
   }, [
     changedRegs,
-    changedFpRegs,
-    changedVecRegs,
+    followedVecRegs,
     upperMoved,
     vSpelledDest,
     hasFp,
