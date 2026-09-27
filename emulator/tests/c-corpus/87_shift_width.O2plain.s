@@ -32,7 +32,7 @@
 	.string	"rot %08x %08x %08x\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #112
@@ -49,7 +49,7 @@ main:
 	add	x24, x19, 16
 	ldr	x21, [x19, 8]
 	add	x23, x23, :lo12:.LC0
-	.align 5
+	.p2align 5,,15
 .L2:
 	ldr	w1, [x24, w22, sxtw 2]
 	add	w22, w22, 1
@@ -86,7 +86,7 @@ main:
 	mov	x0, 0
 	mov	w2, 0
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L6:
 	lsl	x3, x1, 5
 	sub	x1, x3, x1
@@ -264,7 +264,7 @@ main:
 	ldp	x23, x24, [sp, 64]
 	add	sp, sp, 112
 	ret
-	.align 2
+	.p2align 2,,3
 .L18:
 	lsl	w3, w20, w0
 	cmp	w3, w4
@@ -278,7 +278,7 @@ wv:
 	.word	-559038737
 	.zero	4
 xv:
-	.quad	-9141386507638288913
+	.xword	-9141386507638288913
 counts:
 	.word	0
 	.word	1
