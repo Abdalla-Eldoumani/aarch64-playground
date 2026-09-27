@@ -62,6 +62,10 @@ pub struct LinkedImage {
     /// Zero and empty for a program that calls nothing hosted.
     pub trampoline_base: u64,
     pub trampoline_names: Vec<String>,
+    /// Each data section's `[start, end)`. Only the bytes a directive
+    /// wrote land in `writes`; the loader has the rest read as zeros, the
+    /// way Linux maps a whole `.bss`.
+    pub data_spans: Vec<(u64, u64)>,
 }
 
 /// Literal-pool slot identity: the operand text, plus the address of the
@@ -167,6 +171,7 @@ fn link(prog: &Program, host: &HostTable) -> Result<LinkedImage, EmuError> {
         // start here" without consulting the name list.
         trampoline_base: if pool.trampolines.is_empty() { 0 } else { pool.tramp_base },
         trampoline_names: pool.trampolines,
+        data_spans: emission.data_spans,
     })
 }
 
@@ -228,6 +233,7 @@ struct Emission {
     writes: Vec<(u64, Vec<u8>)>,
     line_map: Vec<(u64, u32)>,
     instruction_count: usize,
+    data_spans: Vec<(u64, u64)>,
 }
 
 /// Pass 1a: place labels at section base + running byte offset, and
@@ -535,7 +541,7 @@ fn size_literal_pool(prog: &Program, layout: &mut Layout) -> Result<Pool, EmuErr
                     }
                     continue;
                 }
-                if let Some(target) = extract_bl_target(tokens) {
+                if let Some(target) = extract_call_target(tokens, true) {
                     if let Some(addr) = layout.symbols.get(&target) {
                         if is_host_address(*addr)
                             && !host_trampoline_set.contains_key(&target)
@@ -628,6 +634,7 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
     let mut writes: Vec<(u64, Vec<u8>)> = Vec::new();
     let mut line_map: Vec<(u64, u32)> = Vec::new();
     let mut instruction_count: usize = 0;
+    let mut data_spans: Vec<(u64, u64)> = Vec::new();
     let expanded_lines: Vec<&str> = prog.expanded_source.lines().collect();
 
     for section in &prog.sections {
@@ -791,7 +798,8 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         // tokens directly handles tab whitespace and
                         // trailing token noise.
                         let mut tokens_owned = tokens.clone();
-                        redirect_bl_to_trampoline_tokens(&mut tokens_owned, tramp_addr);
+                        let redirected =
+                            redirect_bl_to_trampoline_tokens(&mut tokens_owned, tramp_addr);
                         let raw = expanded_lines
                             .get(original_line - 1)
                             .copied()
@@ -827,6 +835,13 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                             // tab-separated lines reach the encoder
                             // correctly.
                             format!("bl {name}")
+                        } else if let Some(name) =
+                            extract_call_target(&tokens_owned, true)
+                                .filter(|_| redirected && tokens_owned.len() == 2)
+                        {
+                            // A tail call into libc: the same hop through
+                            // the trampoline, with no return address set.
+                            format!("b {name}")
                         } else {
                             // `.` inside an instruction immediate folds
                             // section-relative, exactly like a label: GAS
@@ -860,6 +875,9 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                     instruction_count += 1;
                 }
             }
+        }
+        if section.kind != SectionKind::Text {
+            data_spans.push((base, base + offset));
         }
     }
 
@@ -900,6 +918,7 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
         writes,
         line_map,
         instruction_count,
+        data_spans,
     })
 }
 
@@ -1584,13 +1603,20 @@ fn try_evaluate_operand(
 
 /// If this instruction is `bl <ident>`, return the target identifier.
 fn extract_bl_target(tokens: &[crate::frontend::lexer::Token]) -> Option<String> {
+    extract_call_target(tokens, false)
+}
+
+/// The target of `bl <ident>`, or with `tail` also of `b <ident>`: gcc
+/// ends a function whose last act is a libc call with `b printf`, which
+/// needs the same trampoline a `bl` does.
+fn extract_call_target(tokens: &[crate::frontend::lexer::Token], tail: bool) -> Option<String> {
     if tokens.len() < 2 {
         return None;
     }
     let TokenKind::Ident(mn) = &tokens[0].kind else {
         return None;
     };
-    if !mn.eq_ignore_ascii_case("bl") {
+    if !mn.eq_ignore_ascii_case("bl") && !(tail && mn.eq_ignore_ascii_case("b")) {
         return None;
     }
     let TokenKind::Ident(name) = &tokens[1].kind else {
@@ -1604,30 +1630,21 @@ fn is_host_address(addr: u64) -> bool {
     (HOST_STUB_BASE..HOST_STUB_BASE + 0x1_0000).contains(&addr)
 }
 
-/// Token-based BL redirect. When the line is `bl <ident>` and `<ident>`
-/// names a host stub with a registered trampoline, mutate `tokens[1]`
-/// from `Ident(name)` to `Ident("__tramp_<name>")`. Returns true when
-/// the rewrite happened. Operates on the lexer's already-tokenized
-/// instruction so trailing comments (stripped by m4) and tab whitespace
-/// (already collapsed by the lexer) cannot break the match the way the
-/// raw-string version did.
+/// Token-based BL redirect. When the line is `bl <ident>` (or the tail
+/// call `b <ident>`) and `<ident>` names a host stub with a registered
+/// trampoline, mutate `tokens[1]` from `Ident(name)` to
+/// `Ident("__tramp_<name>")`. Returns true when the rewrite happened.
+/// Operates on the lexer's already-tokenized instruction so trailing
+/// comments (stripped by m4) and tab whitespace (already collapsed by the
+/// lexer) cannot break the match the way the raw-string version did.
 pub(crate) fn redirect_bl_to_trampoline_tokens(
     tokens: &mut [crate::frontend::lexer::Token],
     tramp_addr: &HashMap<String, u64>,
 ) -> bool {
-    if tokens.len() < 2 {
-        return false;
-    }
-    let TokenKind::Ident(mn) = &tokens[0].kind else {
+    let Some(name) = extract_call_target(tokens, true) else {
         return false;
     };
-    if !mn.eq_ignore_ascii_case("bl") {
-        return false;
-    }
-    let TokenKind::Ident(name) = &tokens[1].kind else {
-        return false;
-    };
-    if !tramp_addr.contains_key(name) {
+    if !tramp_addr.contains_key(&name) {
         return false;
     }
     let new_name = format!("__tramp_{name}");
