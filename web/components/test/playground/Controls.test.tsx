@@ -14,6 +14,23 @@ const allHandlers = () => ({
 });
 
 describe("Controls", () => {
+  it("counts one step in the singular and more in the plural", () => {
+    const h = allHandlers();
+    const props = {
+      ...h,
+      canStepBack: true,
+      isRunning: false,
+      isHalted: false,
+      programLoaded: true,
+      error: null,
+    };
+    const { rerender } = render(<Controls {...props} stepCount={1} />);
+    expect(screen.getByText("1 step")).toBeTruthy();
+    expect(screen.getByLabelText("1 instruction executed")).toBeTruthy();
+    rerender(<Controls {...props} stepCount={2} />);
+    expect(screen.getByText("2 steps")).toBeTruthy();
+  });
+
   it("marks the action row as an instrument band and keeps the error out of it", () => {
     const h = allHandlers();
     const { container } = render(
