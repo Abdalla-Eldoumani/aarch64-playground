@@ -2,6 +2,7 @@
   "title": "Predict: memory and the stack",
   "slug": "predict-frame-stack",
   "order": 96,
+  "lastUpdated": "2026-09-27",
   "topic": "memory",
   "difficulty": "challenge",
   "variant": "prediction",
