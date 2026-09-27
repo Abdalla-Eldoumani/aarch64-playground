@@ -15,9 +15,6 @@ outputs:
   web:
     description: '"true" when verify-corpus, the build, and the vitest shards should run'
     value: ${{ steps.classify.outputs.web }}
-  mobile:
-    description: '"true" when the mobile app changed'
-    value: ${{ steps.classify.outputs.mobile }}
 
 runs:
   using: composite
