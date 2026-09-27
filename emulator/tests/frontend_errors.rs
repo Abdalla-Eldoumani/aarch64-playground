@@ -70,7 +70,7 @@ fn duplicate_labels_are_rejected_naming_both_lines() {
                loop:\n\
                ret\n";
     let msg = assemble_err(src);
-    assert!(msg.contains("`loop`"), "message was: {msg}");
+    assert!(msg.contains("`loop'"), "message was: {msg}");
     assert!(msg.contains("line 4"), "message was: {msg}");
     assert!(msg.contains("line 7"), "message was: {msg}");
 }
@@ -84,7 +84,7 @@ fn cross_section_duplicate_labels_are_rejected() {
                .text\n\
                main: ret\n";
     let msg = assemble_err(src);
-    assert!(msg.contains("`buf`"), "message was: {msg}");
+    assert!(msg.contains("`buf'"), "message was: {msg}");
 }
 
 #[test]
@@ -803,7 +803,7 @@ fn the_entry_point_is_a_label_and_start_counts_as_one() {
                   ret\n";
     let msg = assemble_err(equate);
     assert!(
-        msg.contains("no entry point") || msg.contains("no `main:`"),
+        msg.contains("undefined reference to `main'"),
         "an equate named main must not become the entry point, got: {msg}"
     );
 
