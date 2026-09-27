@@ -75,7 +75,7 @@ export function CodeBlock({
         type="button"
         onClick={copy}
         aria-label="copy code to clipboard"
-        className={`absolute right-2 top-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-2 py-1 font-mono text-[10px] leading-none outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
+        className={`touch-target absolute right-2 top-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-2 py-1 font-mono text-[10px] [@media(pointer:coarse)]:text-[12px] leading-none outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
           copied
             ? "text-[var(--success)]"
             : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
