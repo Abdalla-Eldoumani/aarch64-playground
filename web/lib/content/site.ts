@@ -5,6 +5,15 @@
 export const SITE_URL = "https://aarch64-playground.com";
 export const REPO_URL = "https://github.com/Abdalla-Eldoumani/aarch64-playground";
 
+/** The name every title, share card, structured-data entry, and the app manifest print. */
+export const SITE_NAME = "AArch64 Playground";
+
+// The home page's search result. The root layout falls back to the same
+// pair, so a page without its own copy still reads as the home page.
+export const HOME_TITLE = "ARMv8 assembly emulator and debugger";
+export const HOME_DESCRIPTION =
+  "Write, run, and step through ARMv8 assembly in your browser while the registers, stack, and memory update. A free study tool for CPSC 355.";
+
 // The preview image messaging apps show. Open Graph and Twitter cards do not deep-merge
 // across route segments, so every restated card pulls this one image; the url
 // stays relative and resolves through metadataBase to the production origin.
@@ -12,7 +21,7 @@ export const SHARE_CARD_IMAGE = {
   url: "/og.png",
   width: 1200,
   height: 630,
-  alt: "cpsc 355 playground: the debugger mid-step, with the current instruction and a changed register highlighted",
+  alt: "AArch64 Playground, an ARMv8 emulator and debugger in the browser, beside a register file with one register just changed",
 } as const;
 
 // The facts the footer states, kept here so the copy has one source. The
