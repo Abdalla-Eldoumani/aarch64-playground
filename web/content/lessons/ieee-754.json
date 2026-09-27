@@ -167,7 +167,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Quiz: floating point (challenge)](/practice/quiz-advance-floating-point): how `fmov` fits a constant into 8 bits (a sign, 3 exponent bits and 4 fraction bits, this lesson's layout in miniature).\n- [Fill in the blank: floating point (core)](/practice/blanks-floating-point): `.float` and `.double`.\n- [Predict: floating point (core)](/practice/predict-floating-point): `fneg` and `fabs`, which touch only the sign bit."
+      "markdown": "## Practice\n\n- [Float anatomy](/practice/float-anatomy): split a float into its sign, exponent and fraction, and name what kind of value it is.\n- [Build a float from parts](/practice/build-a-float-from-parts): the same layout, run backwards.\n- [Quiz: floating point (challenge)](/practice/quiz-advance-floating-point): how `fmov` fits a constant into 8 bits (a sign, 3 exponent bits and 4 fraction bits, this lesson's layout in miniature).\n- [Fill in the blank: floating point (core)](/practice/blanks-floating-point): `.float` and `.double`.\n- [Predict: floating point (core)](/practice/predict-floating-point): `fneg` and `fabs`, which touch only the sign bit."
     }
   ]
 }
