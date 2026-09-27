@@ -16,7 +16,9 @@ vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: () => <div data-testid="registers" />,
 }));
 vi.mock("@/components/panels/ConsolePanel", () => ({
-  ConsolePanel: () => <div data-testid="console" />,
+  ConsolePanel: ({ keyHints = true }: { keyHints?: boolean }) => (
+    <div data-testid="console" data-keyhints={String(keyHints)} />
+  ),
 }));
 // react-resizable-panels needs a ResizeObserver jsdom does not provide; the
 // full-chrome layout is not what these unit tests exercise.
@@ -362,10 +364,12 @@ describe("EmbeddablePlayground", () => {
   });
 
   it("checker Check re-runs after a source edit, but not when the source is unchanged", async () => {
-    // A loaded program so the re-run is driven purely by the source-change
-    // guard, not by the empty-instructions branch.
+    // A loaded program that ran to its end, so the re-run is driven purely
+    // by the source-change guard, not by the empty-instructions branch or
+    // by a run that stopped short.
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
+      isHalted: true,
     });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -401,6 +405,72 @@ describe("EmbeddablePlayground", () => {
     await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(3));
     expect(hub.assemble).toHaveBeenCalledTimes(2);
     expect(hub.run).toHaveBeenCalledTimes(2);
+  });
+
+  it("checker Check feeds the authored input, then ends it, and reruns a run that stopped short", async () => {
+    // Loaded but not halted: a Run that parked on a read. Grading that
+    // half-finished state would fail a correct program, so Check starts over.
+    const hub: Hub = makeHub({
+      instructions: [{ address: 0x400000, hex: "0x00000000", text: "svc" }],
+      isHalted: false,
+    });
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const onCheck = vi.fn();
+    const { container } = render(
+      <EmbeddablePlayground
+        chrome="checker"
+        startSource="svc 0"
+        startStdin={"one\ntwo\n"}
+        onCheck={onCheck}
+      />,
+    );
+    engage(container);
+    fireEvent.click(screen.getByLabelText("check"));
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByLabelText("check"));
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(2));
+    expect(hub.run).toHaveBeenCalledTimes(2);
+    // The input goes in before end of input, and end of input before the run.
+    const pushed = vi.mocked(hub.pushStdin).mock.invocationCallOrder.at(-1)!;
+    const closed = vi.mocked(hub.closeStdin).mock.invocationCallOrder.at(-1)!;
+    const ran = vi.mocked(hub.run).mock.invocationCallOrder.at(-1)!;
+    expect(vi.mocked(hub.pushStdin)).toHaveBeenLastCalledWith("one\ntwo\n");
+    expect(pushed).toBeLessThan(closed);
+    expect(closed).toBeLessThan(ran);
+  });
+
+  it("checker shows an args box only when asked, and runs with what it holds", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const { container, rerender } = render(
+      <EmbeddablePlayground chrome="checker" startSource="mov x0, 1" onCheck={vi.fn()} />,
+    );
+    expect(screen.queryByLabelText("args")).toBeNull();
+    rerender(
+      <EmbeddablePlayground
+        chrome="checker"
+        startSource="mov x0, 1"
+        startArgs="12 7"
+        showArgs
+        onCheck={vi.fn()}
+      />,
+    );
+    engage(container);
+    const box = screen.getByLabelText("args") as HTMLInputElement;
+    expect(box.value).toBe("12 7");
+    fireEvent.change(box, { target: { value: "5 -3 8" } });
+    fireEvent.click(screen.getByLabelText("check"));
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
+  });
+
+  it("embed consoles point at the step and run buttons, not at keys only the playground binds", () => {
+    useEmulatorMock.mockReturnValue(makeHub());
+    const { container } = render(<EmbeddablePlayground chrome="embed" startSource="mov x0, 1" />);
+    expect(screen.getByTestId("console").dataset.keyhints).toBe("false");
+    engage(container);
+    expect(screen.getByTestId("console").dataset.keyhints).toBe("false");
   });
 
   it("embed Run assembles the current source before executing", async () => {
