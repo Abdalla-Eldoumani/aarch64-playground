@@ -1,0 +1,108 @@
+{
+  "title": "Shifts, sign extension, and bitfields",
+  "slug": "shifts-and-bitfields",
+  "order": 15,
+  "summary": "Shift and rotate bits, widen narrow values with sign or zero extension, and pack or unpack fields with bfi and ubfx.",
+  "tags": [
+    "bitwise",
+    "binary logic"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Binary, hex, and octal: one number, many spellings](/learn/binary-hex-and-octal)\n- [Binary logic: masks, flags, and tst](/learn/binary-logic)"
+    },
+    {
+      "type": "prose",
+      "markdown": "A *shift* slides every bit of a register left or right by some number of places. Sliding left by one place doubles an unsigned value, the way writing a 0 on the right of a decimal number multiplies it by ten; sliding right halves it.\n\nThis lesson covers the four shift instructions, how to widen a narrow value to fill a bigger register, and the bitfield instructions, which read or write a group of neighboring bits in one step."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Shifting and rotating\n\n| instruction | what fills the gap | effect on the value |\n|---|---|---|\n| `lsl d, n, k` (logical shift left) | zeros, on the right | multiplies by 2 to the power k, as long as no 1 bit falls off the top |\n| `lsr d, n, k` (logical shift right) | zeros, on the left | divides an unsigned value by 2 to the power k, dropping the remainder |\n| `asr d, n, k` (arithmetic shift right) | copies of the sign bit, on the left | divides a signed value by 2 to the power k, rounding down |\n| `ror d, n, k` (rotate right) | the bits that fell off the right end | none: the bits go around in a circle |\n\nBits pushed off the end are lost, except with `ror`. The amount k is 0 to 31 for a `w` register and 0 to 63 for an `x` register. It can also come from a register, as in `lsl w1, w2, w3`; then only the low 5 bits of the amount count (6 for an `x` register). There is no rotate left: rotating a word left by k is the same as `ror` by 32 - k.\n\nFor example, 7 is `0111`. Shifted left by 4, it becomes `0111 0000`, which is 112."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Watching each shift\n\nThe program below applies each shift to a small value and prints the result. Each value sits in `w9` only until the `printf` call, so a scratch register is enough."
+    },
+    {
+      "type": "editor",
+      "starter": "// Shift and rotate small values and print what each instruction leaves\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(val_r, w9)\n\n.data\nfmt_lsl:    .string \"7 lsl 4     = %d\\n\"\nfmt_lsr:    .string \"100 lsr 3   = %d\\n\"\nfmt_asr:    .string \"-100 asr 2  = %d\\n\"\nfmt_lsrneg: .string \"-100 lsr 2  = %d\\n\"\nfmt_round:  .string \"-7 asr 1    = %d, but -7 sdiv 2 = %d\\n\"\nfmt_ror:    .string \"1 ror 1     = 0x%08x\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_lsl\n        mov     val_r, 7\n        lsl     w1, val_r, 4                // 7 * 2^4\n        bl      printf\n\n        ldr     x0, =fmt_lsr\n        mov     val_r, 100\n        lsr     w1, val_r, 3                // 100 / 2^3, remainder dropped\n        bl      printf\n\n        ldr     x0, =fmt_asr\n        mov     val_r, -100\n        asr     w1, val_r, 2                // copies of the sign bit fill in from the left\n        bl      printf\n\n        ldr     x0, =fmt_lsrneg\n        mov     val_r, -100\n        lsr     w1, val_r, 2                // zeros fill in, so the sign is lost\n        bl      printf\n\n        ldr     x0, =fmt_round\n        mov     val_r, -7\n        asr     w1, val_r, 1                // rounds down, toward minus infinity\n        mov     w10, 2\n        sdiv    w2, val_r, w10              // rounds toward zero\n        bl      printf\n\n        ldr     x0, =fmt_ror\n        mov     val_r, 1\n        ror     w1, val_r, 1                // the bit leaving on the right comes back at bit 31\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "7 lsl 4     = 112\n100 lsr 3   = 12\n-100 asr 2  = -25\n-100 lsr 2  = 1073741799\n-7 asr 1    = -4, but -7 sdiv 2 = -3\n1 ror 1     = 0x80000000\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "It prints 112 and 12 for the two unsigned shifts, then -25 for `-100 asr 2`. The same pattern shifted with `lsr` prints 1073741799: `lsr` fills the top with zeros, so the sign bit turns off and a negative number becomes a large positive one.\n\nThe fifth line shows how the two kinds of division round. `asr` rounds down, toward minus infinity, so `-7 asr 1` is -4. `sdiv` rounds toward zero, so -7 divided by 2 is -3. Shifting is only a replacement for signed division when rounding down is what you want.\n\nThe last line rotates 1 right by one place: the bit that falls off bit 0 comes back in at bit 31, giving `0x80000000`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Shifts inside other instructions\n\nMany instructions accept a shift on their last register operand, applied before the operation itself. This line adds `x3` times 4 to `x2` in one instruction:"
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "        add     x1, x2, x3, lsl 2           // x1 = x2 + x3 * 4\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Array code uses this to scale an index by the size of an element, as [Arrays in memory, in one and two dimensions](/learn/arrays-in-memory) shows."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Widening: sign and zero extension\n\nSometimes a narrow value has to fill a wider register: a byte from a string, a halfword from a file, or an `int` that has to be added to a 64-bit address. There are two ways to fill the new upper bits:\n\n- *Zero extension* fills them with 0s. That keeps an unsigned value the same.\n- *Sign extension* fills them with copies of the narrow value's sign bit. That keeps a signed value the same.\n\n| instruction | reads | fills the bits above with |\n|---|---|---|\n| `sxtb` | the low 8 bits | copies of bit 7 |\n| `sxth` | the low 16 bits | copies of bit 15 |\n| `sxtw` | a `w` register, writing an `x` register | copies of bit 31 |\n| `uxtb` | the low 8 bits | zeros |\n| `uxth` | the low 16 bits | zeros |\n\nThere is no `uxtw` instruction, because none is needed: any instruction that writes a `w` register sets bits 32 to 63 of the matching `x` register to 0. A plain `mov w2, w9` already zero-extends."
+    },
+    {
+      "type": "editor",
+      "starter": "// Widen narrow values with sign extension and with zero extension\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(val_r, w9)\n\n.data\nfmt_byte:   .string \"byte 0xf0:       sxtb gives %d, uxtb gives %d\\n\"\nfmt_half:   .string \"halfword 0x8000: sxth gives %d, uxth gives %d\\n\"\nfmt_word:   .string \"word -5:         sxtw gives %ld, mov gives %ld\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_byte\n        mov     val_r, 0xf0\n        sxtb    w1, val_r                   // bit 7 is 1, so ones fill bits 8 to 31\n        uxtb    w2, val_r                   // zeros fill bits 8 to 31\n        bl      printf\n\n        ldr     x0, =fmt_half\n        mov     val_r, 0x8000\n        sxth    w1, val_r                   // bit 15 is the sign bit of a halfword\n        uxth    w2, val_r\n        bl      printf\n\n        ldr     x0, =fmt_word\n        mov     val_r, -5\n        sxtw    x1, val_r                   // copies bit 31 into bits 32 to 63\n        mov     w2, val_r                   // writing a w register zeroes bits 32 to 63 of x2\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "byte 0xf0:       sxtb gives -16, uxtb gives 240\nhalfword 0x8000: sxth gives -32768, uxth gives 32768\nword -5:         sxtw gives -5, mov gives 4294967291\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "It prints -16 and 240 for the byte `0xf0`, -32768 and 32768 for the halfword `0x8000`, and -5 against 4294967291 for the word -5."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "The last line of that program is a common bug. An `int` moved with a `w` register and then printed with `%ld`, or added to a 64-bit value, is zero-extended, so -5 turns into 4294967291. Widen it with `sxtw` first, or keep using the `w` register and `%d`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Bitfields: packing and unpacking\n\nA *bitfield* is a group of neighboring bits that holds one value. Its position is given by its lowest bit, the *lsb*, and its *width* in bits. Two instructions cover most jobs:\n\n- `bfi d, n, lsb, width` (bitfield insert) copies the low `width` bits of `n` into `d`, starting at bit `lsb`, and leaves every other bit of `d` as it was.\n- `ubfx d, n, lsb, width` (unsigned bitfield extract) copies `width` bits of `n`, starting at bit `lsb`, down to bit 0 of `d`, and fills the rest of `d` with zeros.\n\nWithout them, packing a field takes a mask, a shift and an `orr`, and unpacking takes a shift and an `and`.\n\nA common 16-bit pixel format keeps a color in three fields:\n\n| bits | 15 to 11 | 10 to 5 | 4 to 0 |\n|---|---|---|---|\n| field | red | green | blue |\n| width | 5 | 6 | 5 |\n\nThe program below packs red 20, green 45 and blue 12 into one pixel with `bfi`, pulls them back out with `ubfx`, and then clears the green field. Only the pixel has to survive a `printf` call, so it is the one value kept in `w19`. As in the other programs here, `main` uses `w19` without saving it, which a subroutine you write yourself may not do."
+    },
+    {
+      "type": "editor",
+      "starter": "// Pack three color channels into one 16-bit pixel with bfi, then unpack with ubfx\n// layout: red in bits 11 to 15, green in bits 5 to 10, blue in bits 0 to 4\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(red_r, w9)\ndefine(green_r, w10)\ndefine(blue_r, w11)\ndefine(pixel_r, w19)\n\n.data\nfmt_pack:   .string \"packed:   0x%04x\\n\"\nfmt_fields: .string \"unpacked: red = %d, green = %d, blue = %d\\n\"\nfmt_clear:  .string \"no green: 0x%04x\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     red_r, 20                   // 5 bits: 0 to 31\n        mov     green_r, 45                 // 6 bits: 0 to 63\n        mov     blue_r, 12                  // 5 bits: 0 to 31\n\n        mov     pixel_r, 0\n        bfi     pixel_r, red_r, 11, 5       // low 5 bits of red_r land at bit 11\n        bfi     pixel_r, green_r, 5, 6\n        bfi     pixel_r, blue_r, 0, 5\n\n        ldr     x0, =fmt_pack\n        mov     w1, pixel_r\n        bl      printf\n\n        ldr     x0, =fmt_fields\n        ubfx    w1, pixel_r, 11, 5          // 5 bits starting at bit 11, moved down to bit 0\n        ubfx    w2, pixel_r, 5, 6\n        ubfx    w3, pixel_r, 0, 5\n        bl      printf\n\n        bfi     pixel_r, wzr, 5, 6          // insert six zeros: only the green field changes\n        ldr     x0, =fmt_clear\n        mov     w1, pixel_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "packed:   0xa5ac\nunpacked: red = 20, green = 45, blue = 12\nno green: 0xa00c\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The packed line shows `0xa5ac`. Red 20 is `10100`, green 45 is `101101`, and blue 12 is `01100`. Side by side that is `10100 101101 01100`, regrouped as `1010 0101 1010 1100`, which is `0xa5ac`. `ubfx` gets 20, 45 and 12 back.\n\nThe last step inserts six zero bits taken from `wzr` over the green field. Only that field changes, and the pixel becomes `0xa00c`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## More bitfield instructions\n\n| instruction | what it does |\n|---|---|\n| `sbfx d, n, lsb, width` | like `ubfx`, but fills the rest of `d` with copies of the field's top bit, so the field reads as a signed number |\n| `bfxil d, n, lsb, width` | extracts a field of `n` into the low bits of `d` and keeps the other bits of `d` |\n| `ubfiz d, n, lsb, width` | like `bfi`, but sets every other bit of `d` to 0 |\n| `sbfiz d, n, lsb, width` | like `ubfiz`, but fills the bits above the field with copies of the field's top bit |\n\nFor example, `sbfx` on the red field of `0xa5ac` gives -12: `10100` read as a 5-bit two's complement number is -16 + 4."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. What does `lsl w1, w1, 3` do to 5?\n2. `w9` holds -12. What do `asr w1, w9, 2` and `lsr w1, w9, 2` give?\n3. `w9` holds `0x80`. What do `sxtb w1, w9` and `uxtb w1, w9` give?\n4. Which instruction copies bits 4 to 7 of `w0` into the low bits of `w1`, with zeros above them?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. 40, which is 5 times 8.\n2. -3 and 1073741821.\n3. -128 and 128.\n4. `ubfx w1, w0, 4, 4`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Double, double, double](/practice/double-trouble): multiply by 8 with `lsl` instead of `mul`.\n- [Binary broadcast](/practice/binary-broadcast) and [Bit population census](/practice/bit-population-census): print a number in binary, and count its 1 bits, with `lsr` and `and`.\n- [Predict: binary logic (challenge)](/practice/predict-binary-logic): what `lsl`, `lsr`, `bic` and `sxtb` leave in a register.\n- [Fill in the blank: binary logic (core)](/practice/blanks-binary-logic) and [Quiz: binary logic (challenge)](/practice/quiz-advance-binary-logic): `asr` against `lsr`, `sxtb`, and the difference between `bfi`, `ubfiz` and `bfxil`."
+    }
+  ]
+}
