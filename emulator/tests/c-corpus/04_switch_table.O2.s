@@ -5,7 +5,7 @@
 	.string	"many"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	dense
 dense:
 	cmp	w0, 7
@@ -14,13 +14,13 @@ dense:
 	add	x1, x1, :lo12:.LANCHOR0
 	ldr	x0, [x1, w0, uxtw 3]
 	ret
-	.align 2
+	.p2align 2,,3
 .L3:
 	adrp	x0, .LC1
 	add	x0, x0, :lo12:.LC1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sparse
 sparse:
 	mov	w1, w0
@@ -35,19 +35,19 @@ sparse:
 	csinv	w0, w0, wzr, eq
 .L5:
 	ret
-	.align 2
+	.p2align 2,,3
 .L7:
 	mov	w0, 5000
 	cmp	w1, w0
 	mov	w0, 40
 	csinv	w0, w0, wzr, eq
 	ret
-	.align 2
+	.p2align 2,,3
 .L8:
 	mov	w0, 30
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fall
 fall:
 	mov	w1, w0
@@ -62,13 +62,13 @@ fall:
 	csinv	w0, w0, wzr, eq
 .L13:
 	ret
-	.align 2
+	.p2align 2,,3
 .L15:
 	cmp	w0, 100
 	mov	w0, 7
 	csinv	w0, w0, wzr, eq
 	ret
-	.align 2
+	.p2align 2,,3
 .L16:
 	mov	w0, 100
 	ret
@@ -87,7 +87,7 @@ fall:
 	.string	"%d %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -80]!
@@ -97,7 +97,7 @@ main:
 	add	x20, x20, :lo12:.LC2
 	mov	w19, -1
 	stp	x21, x22, [sp, 32]
-	.align 5
+	.p2align 5,,15
 .L22:
 	mov	w0, w19
 	bl	dense
@@ -186,12 +186,12 @@ main:
 	.align	3
 	.LANCHOR0:
 CSWTCH.1:
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
-	.quad	.LC13
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
+	.xword	.LC13
 
