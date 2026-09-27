@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix1
 mix1:
 	ubfiz	w1, w0, 3, 5
@@ -8,7 +8,7 @@ mix1:
 	add	w0, w0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix2
 mix2:
 	ubfx	x3, x0, 8, 8
@@ -24,7 +24,7 @@ mix2:
 	bfi	w0, w1, 8, 8
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix3
 mix3:
 	sub	sp, sp, #32
@@ -50,7 +50,7 @@ mix3:
 	bfi	x0, x1, 16, 8
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix5
 mix5:
 	sub	sp, sp, #32
@@ -76,7 +76,7 @@ mix5:
 	bfi	x0, x1, 32, 8
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix7
 mix7:
 	sub	sp, sp, #32
@@ -84,7 +84,7 @@ mix7:
 	add	x2, sp, 8
 	add	x5, sp, 15
 	str	x0, [sp, 8]
-	.align 5
+	.p2align 5,,15
 .L13:
 	ldrb	w0, [x2]
 	add	w0, w0, 1
@@ -108,7 +108,7 @@ mix7:
 	bfi	x0, x1, 48, 8
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix9
 mix9:
 	fmov	d1, x0
@@ -130,7 +130,7 @@ mix9:
 	umov	x0, v29.d[0]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix12
 mix12:
 	fmov	d1, x0
@@ -148,7 +148,7 @@ mix12:
 	add	v29.8b, v0.8b, v29.8b
 	mla	v29.8b, v31.8b, v30.8b
 	str	d29, [sp]
-	.align 5
+	.p2align 5,,15
 .L19:
 	ldrb	w4, [x1, 8]
 	add	x1, x1, 1
@@ -165,7 +165,7 @@ mix12:
 	add	sp, sp, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix15
 mix15:
 	sub	sp, sp, #32
@@ -178,7 +178,7 @@ mix15:
 	strb	w1, [sp, 14]
 	mov	x1, sp
 	strh	w0, [sp, 12]
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldrb	w4, [x1]
 	ubfiz	w0, w4, 3, 5
@@ -204,7 +204,7 @@ mix15:
 	add	sp, sp, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix16
 mix16:
 	fmov	d1, x0
@@ -221,7 +221,7 @@ mix16:
 	umov	x1, v29.d[1]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	neg6
 neg6:
 	lsr	w2, w0, 16
@@ -245,7 +245,7 @@ neg6:
 	bfi	x0, x1, 32, 16
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	rot12
 rot12:
 	sub	sp, sp, #32
@@ -259,7 +259,7 @@ rot12:
 	add	sp, sp, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	next16
 next16:
 	add	w0, w0, 1
@@ -267,7 +267,7 @@ next16:
 	and	x0, x0, 255
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	spill
 spill:
 	sub	sp, sp, #64
@@ -300,7 +300,7 @@ spill:
 	bne	.L33
 	add	x1, sp, 40
 	add	x3, sp, 47
-	.align 5
+	.p2align 5,,15
 .L34:
 	add	x2, x0, x0, lsl 6
 	add	x0, x0, x2, lsl 1
@@ -311,7 +311,7 @@ spill:
 	add	x3, sp, 24
 	add	x4, sp, 33
 	mov	x1, x3
-	.align 5
+	.p2align 5,,15
 .L35:
 	add	x2, x0, x0, lsl 6
 	add	x0, x0, x2, lsl 1
@@ -320,7 +320,7 @@ spill:
 	cmp	x4, x1
 	bne	.L35
 	add	x1, sp, 8
-	.align 5
+	.p2align 5,,15
 .L36:
 	add	x2, x0, x0, lsl 6
 	add	x0, x0, x2, lsl 1
@@ -330,7 +330,7 @@ spill:
 	bne	.L36
 	add	x1, sp, 64
 	add	x3, sp, 79
-	.align 5
+	.p2align 5,,15
 .L37:
 	add	x2, x0, x0, lsl 6
 	add	x0, x0, x2, lsl 1
@@ -352,7 +352,7 @@ spill:
 	.string	" | %u\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	show
 show:
 	stp	x29, x30, [sp, -48]!
@@ -371,7 +371,7 @@ show:
 	add	x21, x20, w21, sxtw
 	add	x22, x22, :lo12:.LC6
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L46:
 	ldrb	w1, [x20]
 	mov	x0, x22
@@ -389,7 +389,7 @@ show:
 	ldp	x29, x30, [sp], 48
 	add	x0, x0, :lo12:.LC7
 	b	printf
-	.align 2
+	.p2align 2,,3
 .L47:
 	mov	w19, 0
 	mov	w1, w19
@@ -447,7 +447,7 @@ show:
 	.string	"sizes %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #320
@@ -516,7 +516,7 @@ main:
 	mvn	w4, w1
 	strb	w4, [x3, -1]
 	b	.L52
-	.align 2
+	.p2align 2,,3
 .L53:
 	cmp	w19, 11
 	ble	.L54
