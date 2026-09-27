@@ -645,7 +645,8 @@ export function lookupDoc(raw: string): InstructionDoc | undefined {
 }
 
 /**
- * The card for the word an editor found at `startColumn` (1-based) of `line`.
+ * The table key for the word an editor found at `startColumn` (1-based) of
+ * `line`, or undefined when the word names no instruction.
  *
  * The editor's word scan treats `.` as a separator, so a conditional branch
  * arrives as the bare condition (`eq` out of `b.eq`); this re-attaches the
@@ -668,14 +669,4 @@ export function docKeyAt(
       ? `${line[at - 2]}.${word}`
       : word;
   return docKey(dotted) ?? docKey(word);
-}
-
-/** The card for {@link docKeyAt}'s key. */
-export function lookupDocAt(
-  line: string,
-  word: string,
-  startColumn: number,
-): InstructionDoc | undefined {
-  const key = docKeyAt(line, word, startColumn);
-  return key === undefined ? undefined : INSTRUCTION_DOCS[key];
 }
