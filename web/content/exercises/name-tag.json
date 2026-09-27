@@ -2,6 +2,7 @@
   "title": "Name tag",
   "slug": "name-tag",
   "order": 55,
+  "lastUpdated": "2026-09-27",
   "topic": "io",
   "difficulty": "intro",
   "prompt": "Print a name tag from two initials and an age read from input. For the input `A B 19` the tag reads:\n\n```\nHELLO my name is\nA.B. (age 19)\n```\n\nThe starter reads the input and leaves the first initial in `first_r`, the second in `last_r`, and the age in `age_r`. Add one format string to `.data` and print the whole tag with a single `printf`.\n\nEach format specifier takes the next argument register in order: the first reads `w1`, the second `w2`, the third `w3`. `%c` prints the character whose code is in the register, and `%d` prints a 32-bit signed whole number, so `w` registers are the right width for all three. A `\\n` in the middle of the format string starts the second line.\n\n## what is checked\n\n- with input `A B 19` the output is exactly the two lines above\n- the program exits cleanly\n- the program also runs on inputs you do not see, so it has to work for any input, not only this one",
