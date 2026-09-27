@@ -6,6 +6,18 @@
  * take function names from.
  */
 
+/** What a library call leaves in each 64 bits of a caller-saved register. */
+export const CLOBBER_HEX = "deadbeefdeadbeef";
+
+/** Whether vector register `index` went from `prev` to `next` ("0x" + 32 hex
+ *  digits) only by a library call's overwrite: the pattern in both halves,
+ *  or, for v8-v15, in the top half above an unchanged low half. */
+export function isCallLeftover(index: number, prev?: string, next?: string): boolean {
+  if (next?.slice(2, 18) !== CLOBBER_HEX) return false;
+  const low = next.slice(18);
+  return index >= 8 && index < 16 ? prev?.slice(18) === low : low === CLOBBER_HEX;
+}
+
 /** What read the register: an instruction, a library call taking it as an
  *  argument, or main's return handing it back as the exit status. */
 const READ_BY_CALL = 1;
