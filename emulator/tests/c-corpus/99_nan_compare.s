@@ -33,6 +33,18 @@ vals:
 	.word	-524288
 	.text
 	.align	2
+differ:
+	sub	sp, sp, #16
+	str	d0, [sp, 8]
+	str	d1, [sp]
+	ldr	d30, [sp, 8]
+	ldr	d31, [sp]
+	fcmp	d30, d31
+	cset	w0, ne
+	and	w0, w0, 255
+	add	sp, sp, 16
+	ret
+	.align	2
 relations:
 	stp	x29, x30, [sp, -80]!
 	mov	x29, sp
@@ -47,10 +59,10 @@ relations:
 	b	.L38
 .L32:
 	mov	w1, 49
-	b	.L6
+	b	.L8
 .L38:
 	mov	w1, 48
-.L6:
+.L8:
 	ldr	x0, [sp, 40]
 	strb	w1, [x0]
 	ldr	d30, [sp, 56]
@@ -60,10 +72,10 @@ relations:
 	b	.L39
 .L33:
 	mov	w1, 49
-	b	.L9
+	b	.L11
 .L39:
 	mov	w1, 48
-.L9:
+.L11:
 	ldr	x0, [sp, 40]
 	add	x0, x0, 1
 	strb	w1, [x0]
@@ -74,10 +86,10 @@ relations:
 	b	.L40
 .L34:
 	mov	w1, 49
-	b	.L12
+	b	.L14
 .L40:
 	mov	w1, 48
-.L12:
+.L14:
 	ldr	x0, [sp, 40]
 	add	x0, x0, 2
 	strb	w1, [x0]
@@ -88,36 +100,33 @@ relations:
 	b	.L41
 .L35:
 	mov	w1, 49
-	b	.L15
+	b	.L17
 .L41:
 	mov	w1, 48
-.L15:
+.L17:
 	ldr	x0, [sp, 40]
 	add	x0, x0, 3
 	strb	w1, [x0]
 	ldr	d30, [sp, 56]
 	ldr	d31, [sp, 48]
 	fcmp	d30, d31
-	bne	.L16
-	mov	w1, 49
-	b	.L17
-.L16:
-	mov	w1, 48
-.L17:
-	ldr	x0, [sp, 40]
-	add	x0, x0, 4
-	strb	w1, [x0]
-	ldr	d30, [sp, 56]
-	ldr	d31, [sp, 48]
-	fcmp	d30, d31
-	beq	.L18
+	bne	.L18
 	mov	w1, 49
 	b	.L19
 .L18:
 	mov	w1, 48
 .L19:
 	ldr	x0, [sp, 40]
+	add	x0, x0, 4
+	strb	w1, [x0]
+	ldr	d1, [sp, 48]
+	ldr	d0, [sp, 56]
+	bl	differ
+	and	w1, w0, 255
+	ldr	x0, [sp, 40]
 	add	x0, x0, 5
+	add	w1, w1, 48
+	and	w1, w1, 255
 	strb	w1, [x0]
 	ldr	d30, [sp, 56]
 	ldr	d31, [sp, 48]
