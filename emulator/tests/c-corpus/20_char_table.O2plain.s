@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	score
 score:
 	sub	w1, w0, #97
@@ -20,7 +20,7 @@ score:
 	csel	w0, w0, w1, eq
 .L1:
 	ret
-	.align 2
+	.p2align 2,,3
 .L3:
 	mov	w0, 2
 	ret
@@ -42,7 +42,7 @@ score:
 	.string	"%c%d "
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	adrp	x0, .LC2
@@ -60,7 +60,7 @@ main:
 	stp	x21, x22, [sp, 32]
 	str	x0, [sp, 63]
 	mov	w0, 97
-	.align 5
+	.p2align 5,,15
 .L9:
 	sub	w1, w0, #97
 	and	w1, w1, 255
@@ -91,7 +91,7 @@ main:
 	mov	w1, 100
 	strh	w0, [sp, 52]
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L24:
 	ldrb	w0, [x19]
 	lsr	w1, w0, 4
@@ -112,7 +112,7 @@ main:
 	add	x5, x5, :lo12:.LC0+8
 	mov	w4, 0
 	mov	w0, 113
-	.align 5
+	.p2align 5,,15
 .L12:
 	bl	score
 	add	w4, w4, w0
@@ -134,7 +134,7 @@ main:
 	add	x3, x3, :lo12:.LC1+10
 	mov	w0, 1
 	str	w0, [sp, 120]
-	.align 5
+	.p2align 5,,15
 .L13:
 	ldrb	w0, [x2, 1]!
 	sub	w0, w0, #97
@@ -148,7 +148,7 @@ main:
 	mov	x19, 1
 	add	x21, x21, :lo12:.LC6
 	b	.L15
-	.align 2
+	.p2align 2,,3
 .L14:
 	add	x19, x19, 1
 	cmp	x19, 27
