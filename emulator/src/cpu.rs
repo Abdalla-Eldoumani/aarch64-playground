@@ -4,7 +4,7 @@ use crate::decoder;
 use crate::errors::{EmuError, MemAccess};
 use crate::executor::{self, ExecResult};
 use crate::frontend::sections::{Item, Program};
-use crate::hosted::{HostContext, HostOutcome, HostTable};
+use crate::hosted::{HostContext, HostOutcome, HostTable, RETURNS_IN_D0, RETURNS_NOTHING};
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
 use crate::snapshot::{Snapshot, SnapshotRing};
@@ -254,6 +254,14 @@ pub struct StdinSegment {
     pub echoed: bool,
 }
 
+/// What read a register a library call had overwritten, the second word
+/// of a clobber note row (see `Cpu::take_clobber_notes`): an instruction,
+/// a library call taking it as an argument, or main's return handing it
+/// back as the exit status.
+pub const READ_BY_INSTRUCTION: u32 = 0;
+pub const READ_BY_CALL: u32 = 1;
+pub const READ_BY_MAIN_RETURN: u32 = 2;
+
 /// Result of a run (multiple steps).
 #[derive(Debug, Clone)]
 pub struct RunResult {
@@ -385,6 +393,12 @@ pub struct Cpu {
     /// Zero and empty for a program with no hosted calls.
     pub trampoline_base: u64,
     pub trampoline_names: Vec<String>,
+    /// Note rows not yet taken by the host, and the registers already
+    /// noted (bit N for register N as the rows number them): one note per
+    /// register per run. Not snapshotted, like the console buffers the
+    /// notes sit beside.
+    clobber_notes: Vec<u32>,
+    clobber_noted: u64,
 }
 
 impl Cpu {
@@ -427,6 +441,8 @@ impl Cpu {
             text_end: None,
             trampoline_base: 0,
             trampoline_names: Vec::new(),
+            clobber_notes: Vec::new(),
+            clobber_noted: 0,
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -596,6 +612,8 @@ impl Cpu {
         self.refund_steps_total = 0;
         self.refund_output_total = 0;
         self.snapshots_paused = false;
+        self.clobber_notes.clear();
+        self.clobber_noted = 0;
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
@@ -977,6 +995,63 @@ impl Cpu {
 
     /// Execute one instruction at the current PC.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
+        // Reads made between steps (the register panel) are not the program's.
+        self.regs.take_clobbered_reads();
+        let pc = self.regs.read_pc();
+        let lr = self.regs.read_gpr(30, true);
+        let call_pc = self.regs.clobber_call_pc;
+        let result = self.execute_step();
+        self.note_clobbered_reads(pc, lr, call_pc);
+        result
+    }
+
+    /// One note per caller-saved register the step read while it still held
+    /// what a library call left. `pc`, `lr` and `call_pc` are from before the
+    /// step, so a library function reading a stale argument names its own
+    /// `bl` as the reader and the earlier call as the culprit.
+    fn note_clobbered_reads(&mut self, pc: u64, lr: u64, call_pc: u64) {
+        let reads = self.regs.take_clobbered_reads();
+        if reads.is_empty() {
+            return;
+        }
+        let (read_by, read_pc) = if self.host.lookup("__main_return") == Some(pc) {
+            (READ_BY_MAIN_RETURN, pc)
+        } else if self.host.contains_address(pc) {
+            (READ_BY_CALL, lr.wrapping_sub(4))
+        } else {
+            (READ_BY_INSTRUCTION, pc)
+        };
+        let read = u64::from(reads.x) | (u64::from(reads.d) << 32);
+        let fresh = read & !self.clobber_noted;
+        self.clobber_noted |= fresh;
+        for register in 0..64 {
+            if (fresh >> register) & 1 != 0 {
+                // Every address the loader hands out fits in 32 bits.
+                let row = [register, read_by, call_pc as u32, read_pc as u32];
+                self.clobber_notes.extend_from_slice(&row);
+            }
+        }
+    }
+
+    /// The notes recorded since the last take, four words each: the
+    /// register (`xN` is N, `dN` is 32 + N), what read it (`READ_BY_*`),
+    /// the `bl` of the call that overwrote it, and the pc that read it
+    /// (a reading library call's `bl`).
+    pub fn take_clobber_notes(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.clobber_notes)
+    }
+
+    /// What a real library call leaves behind, applied as the call returns
+    /// (see `RegisterFile::clobber_caller_saved`).
+    fn clobber_after_call(&mut self, stub_pc: u64) {
+        let name = self.host.name_for_address(stub_pc).unwrap_or_default();
+        let in_d0 = RETURNS_IN_D0.contains(&name);
+        let in_x0 = !in_d0 && !RETURNS_NOTHING.contains(&name);
+        let call_pc = self.regs.read_gpr(30, true).wrapping_sub(4);
+        self.regs.clobber_caller_saved(in_x0, in_d0, call_pc);
+    }
+
+    fn execute_step(&mut self) -> Result<StepResult, EmuError> {
         if self.halted {
             let outcome = match self.exit_code {
                 Some(code) => StepOutcome::Exited(code),
@@ -1359,6 +1434,7 @@ impl Cpu {
 
         match host_outcome {
             HostOutcome::Continue => {
+                self.clobber_after_call(pc);
                 // Return to caller: pc = lr.
                 let lr = self.regs.read_gpr(30, true);
                 self.regs.write_pc(lr);
@@ -1372,6 +1448,7 @@ impl Cpu {
                 // No libc stub returns Sleep, but the arm stays correct: a
                 // sleeping stub returns to its caller like Continue.
                 self.apply_sleep(ns);
+                self.clobber_after_call(pc);
                 let lr = self.regs.read_gpr(30, true);
                 self.regs.write_pc(lr);
             }
@@ -1541,6 +1618,8 @@ impl Cpu {
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
         self.refund_output_total = 0;
+        self.clobber_notes.clear();
+        self.clobber_noted = 0;
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
         // the libc + hosted-printf/scanf stubs, and the frontend linker
         // needs them to resolve `bl printf` / `bl scanf` after a reset
