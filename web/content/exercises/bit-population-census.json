@@ -4,9 +4,10 @@
   "order": 24,
   "topic": "bitwise",
   "difficulty": "core",
-  "prompt": "How many bits of `0xb7a5` are set? Count them with a loop.\n\nThe classic walk: mask off the lowest bit with `and`, add it to the count, shift the value right by one, and stop when nothing is left. Every set bit takes exactly one turn through position zero.\n\n## what is checked\n\n- the count of set bits is printed on its own line\n- the program exits cleanly\n- the count comes from masking and shifting (`and`, `lsr`)",
-  "starter": "// count how many bits of a value are set\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(value_r, x19)\ndefine(count_r, x20)\ndefine(bit_r, x21)\n\n        .data\nfmt:    .string \"bits set = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     value_r, =0xb7a5\n        mov     count_r, 0\n\n        // TODO: while value_r is not zero, mask off its lowest bit\n        // with and, add that bit to count_r, and shift value_r right\n        // by one.\n\n        ldr     x0, =fmt\n        mov     x1, count_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "How many bits of a 64-bit value are set? The starter reads the value in hex (`b7a5` in the stdin box). Count them with a loop.\n\nThe classic walk: mask off the lowest bit with `and`, add it to the count, shift the value right by one, and stop when nothing is left. Every set bit takes exactly one turn through position zero. Pick the shift with care: the hidden inputs include values with the top bit set.\n\n## what is checked\n\n- the count of set bits is printed on its own line\n- the program exits cleanly\n- the count comes from masking and shifting (`and`, `lsr`)\n- the same holds for other values you do not see, 0 and all 64 bits set among them",
+  "starter": "// count how many bits of a value are set\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(value_r, x19)\ndefine(count_r, x20)\ndefine(bit_r, x21)\n\n        .data\nfmt_in:     .string \"%llx\"\nfmt_out:    .string \"bits set = %lld\\n\"\n\n        .bss\n        .balign 8\nvalue_m:    .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the value, typed in hex\n        ldr     x1, =value_m\n        bl      scanf\n        ldr     x9, =value_m\n        ldr     value_r, [x9]\n        mov     count_r, 0\n\n        // TODO: while value_r is not zero, mask off its lowest bit\n        // with and, add that bit to count_r, and shift value_r right\n        // by one.\n\n        ldr     x0, =fmt_out\n        mov     x1, count_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "b7a5\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -33,5 +34,34 @@
         "value": 10
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "bits set = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "ffffffffffffffff\n",
+      "stdout": "bits set = 64\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "8000000000000000\n",
+      "stdout": "bits set = 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "bits set = 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "123456789abcdef\n",
+      "stdout": "bits set = 32\n",
+      "exitCode": 0
+    }
+  ]
 }
