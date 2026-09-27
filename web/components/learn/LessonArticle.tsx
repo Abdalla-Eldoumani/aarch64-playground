@@ -85,7 +85,7 @@ export function LessonArticle({
                   }
                 >
                   <span className="mr-2 font-mono text-[11px] text-[var(--text-tertiary)]">
-                    {sheetNumber}.{i}
+                    {sheetNumber}.{i + 1}
                   </span>
                   {entry.text}
                 </a>
