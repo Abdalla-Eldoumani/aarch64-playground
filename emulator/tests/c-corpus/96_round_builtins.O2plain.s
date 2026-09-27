@@ -1,71 +1,71 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 s_even:
 	frintn	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 s_nearby:
 	frinti	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 s_rint:
 	frintx	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 s_round:
 	frinta	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 s_trunc:
 	frintz	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 s_ceil:
 	frintp	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 s_floor:
 	frintm	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 r_even:
 	frintn	d0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 r_nearby:
 	frinti	d0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 r_trunc:
 	frintz	d0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 r_ceil:
 	frintp	d0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 r_round:
 	frinta	d0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 r_floor:
 	frintm	d0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 r_rint:
 	frintx	d0, d0
 	ret
@@ -108,7 +108,7 @@ r_rint:
 	.string	"sum %.17g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -132,7 +132,7 @@ main:
 	stp	x19, x20, [sp, 16]
 	stp	d14, d15, [sp, 80]
 	bl	puts
-	.align 5
+	.p2align 5,,15
 .L20:
 	ldr	d15, [x22, w21, sxtw 3]
 	mov	w1, w21
@@ -142,7 +142,7 @@ main:
 	fmov	d0, d15
 	bl	printf
 	b	.L19
-	.align 2
+	.p2align 2,,3
 .L50:
 	fmov	x1, d0
 	mov	x0, x24
@@ -185,7 +185,7 @@ main:
 	mov	w1, w25
 	bl	printf
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L52:
 	fmov	x1, d0
 	mov	x0, x21
@@ -215,7 +215,7 @@ main:
 	add	x26, x22, 208
 	add	x21, x23, 120
 	mov	w24, 0
-	.align 5
+	.p2align 5,,15
 .L26:
 	ldr	s15, [x26, w24, sxtw 2]
 	add	x19, x23, 64
@@ -223,7 +223,7 @@ main:
 	mov	x0, x25
 	fcvt	d0, s15
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L25:
 	ldr	x0, [x19], 8
 	fmov	s0, s15
@@ -243,7 +243,7 @@ main:
 	mov	x0, 4886405595696988160
 	mov	w19, 0
 	fmov	d15, x0
-	.align 5
+	.p2align 5,,15
 .L29:
 	ldr	d31, [x22, w19, sxtw 3]
 	fabs	d30, d31
@@ -260,7 +260,7 @@ main:
 	mov	w0, 1317011456
 	mov	w19, 0
 	fmov	s14, w0
-	.align 5
+	.p2align 5,,15
 .L34:
 	add	x0, x22, 208
 	ldr	s15, [x0, w19, sxtw 2]
@@ -287,7 +287,7 @@ main:
 	mov	w0, -8
 	fmov	d29, x1
 	b	.L36
-	.align 2
+	.p2align 2,,3
 .L53:
 	scvtf	d31, w0
 	fadd	d30, d31, d15
@@ -311,7 +311,7 @@ main:
 	ldp	x25, x26, [sp, 64]
 	ldp	x29, x30, [sp], 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L38:
 	fcvtns	x5, d31
 	fcvtas	x4, d31
@@ -321,7 +321,7 @@ main:
 	mov	x0, x20
 	bl	printf
 	b	.L27
-	.align 2
+	.p2align 2,,3
 .L39:
 	fcvtms	w2, s15
 	mov	w1, w19
@@ -333,7 +333,7 @@ main:
 	mov	w0, 10
 	bl	putchar
 	b	.L30
-	.align 2
+	.p2align 2,,3
 .L40:
 	fcvtau	w1, s15
 	mov	x0, x21
@@ -346,22 +346,22 @@ main:
 	.align	4
 	.LANCHOR1:
 dops:
-	.quad	r_floor
-	.quad	r_ceil
-	.quad	r_trunc
-	.quad	r_round
-	.quad	r_rint
-	.quad	r_nearby
-	.quad	r_even
+	.xword	r_floor
+	.xword	r_ceil
+	.xword	r_trunc
+	.xword	r_round
+	.xword	r_rint
+	.xword	r_nearby
+	.xword	r_even
 	.zero	8
 fops:
-	.quad	s_floor
-	.quad	s_ceil
-	.quad	s_trunc
-	.quad	s_round
-	.quad	s_rint
-	.quad	s_nearby
-	.quad	s_even
+	.xword	s_floor
+	.xword	s_ceil
+	.xword	s_trunc
+	.xword	s_round
+	.xword	s_rint
+	.xword	s_nearby
+	.xword	s_even
 	.data
 	.align	4
 	.LANCHOR0:
@@ -414,8 +414,8 @@ dv:
 	.word	-1048576
 	.zero	8
 nanbits:
-	.quad	9221120237041090561
-	.quad	-4503599627370495
+	.xword	9221120237041090561
+	.xword	-4503599627370495
 fv:
 	.word	1056964608
 	.word	-1090519040
