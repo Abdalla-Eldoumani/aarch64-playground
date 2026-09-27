@@ -958,12 +958,14 @@ describe("the args box a mode-args example runs with", () => {
     await act(async () => {
       ref.current!.assemble();
     });
-    expect(hub.assemble).toHaveBeenCalledWith(SOURCE, ["console"]);
+    // The third argument is the workspace the notes name lines by.
+    const workspace = { main: SOURCE, extras: [] };
+    expect(hub.assemble).toHaveBeenCalledWith(SOURCE, ["console"], workspace);
 
     fireEvent.change(argsBox(), { target: { value: "./calc scientific" } });
     await act(async () => {
       ref.current!.assemble();
     });
-    expect(hub.assemble).toHaveBeenLastCalledWith(SOURCE, ["./calc", "scientific"]);
+    expect(hub.assemble).toHaveBeenLastCalledWith(SOURCE, ["./calc", "scientific"], workspace);
   });
 });
