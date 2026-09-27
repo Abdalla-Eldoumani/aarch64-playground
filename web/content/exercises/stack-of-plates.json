@@ -2,6 +2,7 @@
   "title": "Stack of plates",
   "slug": "stack-of-plates",
   "order": 46,
+  "lastUpdated": "2026-09-27",
   "topic": "memory",
   "difficulty": "core",
   "prompt": "Four plates go into the frame, and they come back out top-first. The starter reads the plates one at a time into `plate_r`; each read overwrites the plate before it, so store every plate in its named stack slot before the next read comes in. Then load them back and print them in reverse order.\n\nThe starter's frame is already sized with the course's alignment formula, and each slot has a named offset. Your job is the `str`s going in and the `ldr`s coming out; the printing order is what makes it a stack.\n\n## what is checked\n\n- four lines, `89`, `55`, `34`, `21`, for the plates in the stdin box\n- the program exits cleanly\n- the plates go into the frame with `str`\n- the same holds for other plates you do not see, zeros and the largest and smallest 64-bit values among them",
