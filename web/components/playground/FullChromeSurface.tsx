@@ -507,8 +507,7 @@ export function FullChromeSurface({
     () =>
       createTerminalContext({
         machine: emuRef,
-        combinedSource: () =>
-          combineSources(sourceRef.current, extraFilesRef.current),
+        workspace: () => ({ main: sourceRef.current, extras: extraFilesRef.current }),
         applySeeds,
         stageVfsFile,
         removeVfsFile,
