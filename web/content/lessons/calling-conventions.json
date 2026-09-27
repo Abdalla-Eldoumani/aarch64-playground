@@ -113,7 +113,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [The forgetful helper](/practice/the-forgetful-helper): a helper breaks a register its caller needs.\n- [The leaky frame](/practice/the-leaky-frame): a frame breaks the alignment rule.\n- [Quiz: subroutines (challenge)](/practice/quiz-advance-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): the rules in this lesson."
+      "markdown": "## Practice\n\n- [The forgetful helper](/practice/the-forgetful-helper): a helper breaks a register its caller needs.\n- [The leaky frame](/practice/the-leaky-frame): a frame breaks the alignment rule.\n- [Two answers, one call](/practice/two-answers-one-call): hand back a quotient and a remainder through pointers.\n- [Return to sender](/practice/return-to-sender): return a struct too big for `x0` and `x1` through the address in `x8`.\n- [Quiz: subroutines (challenge)](/practice/quiz-advance-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): the rules in this lesson."
     }
   ]
 }
