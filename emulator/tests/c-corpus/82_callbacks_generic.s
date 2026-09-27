@@ -1241,17 +1241,17 @@ main:
 	.section .rodata
 	.align	3
 .LC0:
-	.quad	5
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	9223372036854775807
-	.quad	0
-	.quad	1099511627776
-	.quad	-1099511627776
-	.quad	77
-	.quad	-77
-	.quad	1
-	.quad	-9223372036854775807
+	.xword	5
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	9223372036854775807
+	.xword	0
+	.xword	1099511627776
+	.xword	-1099511627776
+	.xword	77
+	.xword	-77
+	.xword	1
+	.xword	-9223372036854775807
 	.align	3
 .LC20:
 	.string	"dbcadbbcadcaab"
@@ -1275,18 +1275,18 @@ main:
 	.string	"zulu"
 	.align	3
 .LC23:
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC1
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC2
-	.quad	.LC6
-	.quad	.LC3
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC1
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC2
+	.xword	.LC6
+	.xword	.LC3
 	.align	3
 .LC8:
-	.quad	0
+	.xword	0
 	.string	"echo"
 	.zero	3
 	.word	0
