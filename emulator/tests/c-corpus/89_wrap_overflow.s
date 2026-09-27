@@ -22,22 +22,22 @@ ip:
 	.word	-2147483648
 	.align	3
 lp:
-	.quad	9223372036854775807
-	.quad	1
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	-9223372036854775808
-	.quad	-9223372036854775808
-	.quad	3037000499
-	.quad	3037000499
-	.quad	3037000500
-	.quad	3037000500
-	.quad	-4294967296
-	.quad	2147483648
-	.quad	4294967296
-	.quad	2147483648
-	.quad	0
-	.quad	-9223372036854775808
+	.xword	9223372036854775807
+	.xword	1
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	-9223372036854775808
+	.xword	-9223372036854775808
+	.xword	3037000499
+	.xword	3037000499
+	.xword	3037000500
+	.xword	3037000500
+	.xword	-4294967296
+	.xword	2147483648
+	.xword	4294967296
+	.xword	2147483648
+	.xword	0
+	.xword	-9223372036854775808
 	.align	3
 up:
 	.word	-1
@@ -52,16 +52,16 @@ up:
 	.word	2
 	.align	3
 ulp:
-	.quad	-1
-	.quad	1
-	.quad	0
-	.quad	1
-	.quad	4294967296
-	.quad	4294967296
-	.quad	4294967295
-	.quad	4294967297
-	.quad	-9223372036854775808
-	.quad	2
+	.xword	-1
+	.xword	1
+	.xword	0
+	.xword	1
+	.xword	4294967296
+	.xword	4294967296
+	.xword	4294967295
+	.xword	4294967297
+	.xword	-9223372036854775808
+	.xword	2
 	.text
 	.align	2
 fnv32:
@@ -821,13 +821,13 @@ main:
 	.section .rodata
 	.align	3
 .LC0:
-	.quad	-1
-	.quad	-1
-	.quad	5
+	.xword	-1
+	.xword	-1
+	.xword	5
 	.align	3
 .LC1:
-	.quad	1
-	.quad	0
-	.quad	7
+	.xword	1
+	.xword	0
+	.xword	7
 	.text
 
