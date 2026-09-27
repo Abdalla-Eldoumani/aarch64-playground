@@ -8,16 +8,17 @@
  * so register tokens keep their hover-defines), the syntax as a bordered mono
  * chip, the full-width encoding bit-field with bit-range headers when the
  * instruction has one (with the worked field bits when the data authors them),
- * the C equivalent as a second chip, and an NZCV flags row driven by the
- * FLAG_SETTERS set; the try-in-playground link composes the shared share-hash
- * and sits quietly at the top right of the detail. Every entry can also
- * run its worked example in place: "run this example" swaps the static block
- * for the one shared EmbeddablePlayground seeded with the same
- * playgroundSource payload the deep link carries, so reading and running are
- * one surface (the embed is dynamically imported and mounts only on demand,
- * keeping the route light). Flag-setting entries additionally render the
- * FlagEffect panel with a fragment link over to b.cond, and the b.cond entry
- * renders the CondCodeExplorer that unpacks each condition code; the link is
+ * the C equivalent as a code block with its intrinsic under it, and an NZCV
+ * flags row driven by the data's setsFlags; the try-in-playground link
+ * composes the shared share-hash and sits quietly at the top right of the
+ * detail. Every entry can also run its worked example in place: "run this
+ * example" swaps the static block for the one shared EmbeddablePlayground
+ * seeded with the same playgroundSource payload the deep link carries, its
+ * registers panel opened on the file the example writes, so reading and
+ * running are one surface (the embed is dynamically imported and mounts only
+ * on demand, keeping the route light). The compares FlagEffect can model
+ * additionally render that panel with a fragment link over to b.cond, and the
+ * b.cond entry renders the CondCodeExplorer that unpacks each condition code; the link is
  * a plain `#b-cond` anchor because a hashchange already clears the pick and
  * hands selection back to the fragment store below.
  * Data arrives as a prop and the type is the only import
@@ -396,12 +397,21 @@ export function InstructionReference({
               </div>
             )}
 
-            {current.cExample && (
-              <div className="flex flex-col gap-2">
-                <p className={LABEL}>c equivalent</p>
-                <p className={`${CHIP} text-[13px]`}>{current.cExample}</p>
-              </div>
-            )}
+            <div className="flex flex-col gap-2">
+              <p className={LABEL}>c equivalent</p>
+              <CodeBlock code={current.cExample} language="c" />
+              {current.intrinsic && (
+                <p className="font-sans text-[13px] text-[var(--text-secondary)]">
+                  In C, the intrinsic{" "}
+                  <code className="font-mono text-[var(--text-primary)]">
+                    {current.intrinsic}
+                  </code>{" "}
+                  (from{" "}
+                  {current.intrinsic.startsWith("__") ? "arm_acle.h" : "arm_neon.h"}
+                  ) is a function the compiler turns into this instruction.
+                </p>
+              )}
+            </div>
 
             <div
               role="group"
@@ -414,7 +424,7 @@ export function InstructionReference({
                   <span
                     key={flag}
                     className={`flex h-5 w-5 items-center justify-center rounded-[3px] border font-mono text-[10px] ${
-                      FLAG_SETTERS.has(current.mnemonic)
+                      current.setsFlags
                         ? "border-[var(--border-strong)] text-[var(--text-secondary)]"
                         : "border-[var(--border)] text-[var(--text-tertiary)]"
                     }`}
@@ -424,9 +434,7 @@ export function InstructionReference({
                 ))}
               </span>
               <span className="font-sans text-[13px] text-[var(--text-secondary)]">
-                {FLAG_SETTERS.has(current.mnemonic)
-                  ? "sets nzcv"
-                  : "does not set flags"}
+                {current.setsFlags ? "sets nzcv" : "does not set flags"}
               </span>
             </div>
 
@@ -439,6 +447,7 @@ export function InstructionReference({
                   chrome="embed"
                   startSource={playgroundSource(current)}
                   readOnly={false}
+                  registerView={current.registerView}
                 />
               </div>
             ) : (
