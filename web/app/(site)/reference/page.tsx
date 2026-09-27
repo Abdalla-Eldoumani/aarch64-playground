@@ -3,32 +3,14 @@ import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
 import { ReferenceView } from "@/components/reference/ReferenceView";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
-import { SHARE_CARD_IMAGE } from "@/lib/content/site";
+import { pageMetadata } from "@/lib/content/seo";
 
-const DESCRIPTION =
-  "A searchable map of the supported AArch64 instructions and the calling convention.";
-
-export const metadata: Metadata = {
-  title: "reference",
-  description: DESCRIPTION,
-  alternates: { canonical: "/reference" },
-  // Open Graph and Twitter are not deep-merged across segments, so each route
-  // restates the full composed title and its own url instead of inheriting.
-  openGraph: {
-    type: "website",
-    siteName: "cpsc 355 playground",
-    title: "reference · cpsc 355 playground",
-    description: DESCRIPTION,
-    url: "/reference",
-    images: [SHARE_CARD_IMAGE],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "reference · cpsc 355 playground",
-    description: DESCRIPTION,
-    images: [SHARE_CARD_IMAGE],
-  },
-};
+export const metadata: Metadata = pageMetadata({
+  title: "AArch64 instruction reference",
+  description:
+    "Every instruction the emulator runs, with its syntax, a runnable example, the C it matches, and the flags it sets, plus the calling convention.",
+  path: "/reference",
+});
 
 // Server page: it owns the route metadata and statically generates. The
 // build-time instruction set is handed to the client view as plain data, and a
