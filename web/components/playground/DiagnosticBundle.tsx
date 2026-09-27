@@ -31,7 +31,7 @@ export function DiagnosticBundle({ build }: DiagnosticBundleProps) {
         type="button"
         onClick={() => setRequest(Promise.resolve().then(build))}
         aria-haspopup="dialog"
-        className="text-xs rounded px-2 py-1 bg-[var(--bg-sunken)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] whitespace-nowrap"
+        className="touch-target text-xs rounded px-2 py-1 bg-[var(--bg-sunken)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] whitespace-nowrap"
       >
         diagnostic bundle
       </button>
