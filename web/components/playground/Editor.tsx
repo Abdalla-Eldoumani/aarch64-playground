@@ -337,6 +337,15 @@ interface EditorProps {
   /** Jump the editor to a line (an error the student should fix): the
    *  parent bumps the nonce so the same line can be requested twice. */
   focusRequest?: { line: number; nonce: number } | null;
+  /** Scroll the current line into view whenever it moves. The parent turns
+   *  this off while a run is driving: the marker then moves many times a
+   *  second and the student may be reading somewhere else. It comes back on
+   *  when the run stops, which is what reveals a breakpoint hit. */
+  followCurrentLine?: boolean;
+  /** Ctrl+Enter (Cmd+Enter) inside the editor. Monaco binds that chord to
+   *  "insert line below" and stops the key there, so the page's own shortcut
+   *  never saw it; a surface that runs programs passes its action here. */
+  onRunShortcut?: () => void;
 }
 
 const COND_BRANCHES = [
@@ -373,6 +382,8 @@ export function Editor({
   onFormat,
   readOnly,
   focusRequest,
+  followCurrentLine = true,
+  onRunShortcut,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -405,6 +416,15 @@ export function Editor({
   useEffect(() => {
     onFormatRef.current = onFormat;
   }, [onFormat]);
+  // Same for the run chord, plus the context key that decides whether Monaco
+  // gives the chord to it at all: without a handler, Ctrl+Enter keeps its
+  // stock "insert line below".
+  const onRunShortcutRef = useRef(onRunShortcut);
+  const canRunKeyRef = useRef<{ set: (value: boolean) => void } | null>(null);
+  useEffect(() => {
+    onRunShortcutRef.current = onRunShortcut;
+    canRunKeyRef.current?.set(Boolean(onRunShortcut));
+  }, [onRunShortcut]);
   const toast = useToast();
   // The vendored build has to be named to the loader BEFORE
   // @monaco-editor/react asks for it: an unnamed instance is exactly what sends
@@ -517,6 +537,14 @@ export function Editor({
     editor.focus();
   }, [focusRequest]);
 
+  // Follow the pc: a step or a stop below the fold brings the line into view.
+  // Centred only when it is off screen, so stepping through visible code
+  // never scrolls. The cursor stays where the student left it.
+  useEffect(() => {
+    if (currentLine == null || !followCurrentLine) return;
+    editorRef.current?.revealLineInCenterIfOutsideViewport(currentLine);
+  }, [currentLine, followCurrentLine]);
+
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
       editorRef.current = editor;
@@ -538,18 +566,31 @@ export function Editor({
       // than "edit text"; Monaco's default label is generic.
       editor.getDomNode()?.setAttribute("aria-label", "ARM64 assembly source code editor");
 
-      // Escape blurs the editor when no internal Monaco widget is open,
-      // so keyboard-only users aren't trapped inside Monaco when they
-      // hit Esc to back out of a focused control. The context expression
-      // is what makes "no widget open" hold: a command registered without
-      // one outranks Monaco's own Escape bindings, which left the find
-      // widget with nothing to close it from the keyboard.
+      // Escape leaves the editor when no internal Monaco widget is open, so
+      // a keyboard-only student is not trapped: Tab indents in here, and
+      // Escape then Tab moves on to the next control. The focus sits on
+      // Monaco's input element INSIDE the node, which is what has to blur;
+      // blurring the node itself did nothing. The context expression is what
+      // makes "no widget open" hold: a command registered without one
+      // outranks Monaco's own Escape bindings, which left the find and
+      // suggestion widgets with nothing to close them from the keyboard.
       editor.addCommand(
         monaco.KeyCode.Escape,
         () => {
-          editor.getDomNode()?.blur();
+          const active = document.activeElement;
+          if (active instanceof HTMLElement && editor.getDomNode()?.contains(active)) {
+            active.blur();
+          }
         },
-        "!findWidgetVisible",
+        "!findWidgetVisible && !suggestWidgetVisible",
+      );
+
+      const canRun = editor.createContextKey("playgroundCanRun", Boolean(onRunShortcutRef.current));
+      canRunKeyRef.current = canRun;
+      editor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+        () => onRunShortcutRef.current?.(),
+        "playgroundCanRun",
       );
 
       // Ctrl+Shift+F invokes the playground's source formatter (the
@@ -702,6 +743,13 @@ export function Editor({
             cursorStyle: "block",
             cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
             accessibilitySupport: "auto",
+            // Enter always ends the line; Tab takes a suggestion. With the
+            // stock setting, `mov x0, x1` then Enter accepted `x1` from the
+            // open list and the next instruction landed on the same line.
+            acceptSuggestionOnEnter: "off",
+            // What a screen reader announces on entering the editor: the way
+            // out, since Tab is taken by indentation in here.
+            ariaLabel: "assembly source. Tab indents; press Escape, then Tab, to leave the editor",
             readOnly,
           }}
         />
