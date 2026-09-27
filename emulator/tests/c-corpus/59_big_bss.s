@@ -76,14 +76,14 @@ gap_stats:
 	ldr	w0, [sp, 24]
 	cmp	w0, 0
 	bne	.L6
-	adrp	x0, counts__0
-	add	x0, x0, :lo12:counts__0
+	adrp	x0, counts.0
+	add	x0, x0, :lo12:counts.0
 	ldrsw	x1, [sp, 28]
 	ldrh	w0, [x0, x1, lsl 1]
 	add	w0, w0, 1
 	and	w2, w0, 65535
-	adrp	x0, counts__0
-	add	x0, x0, :lo12:counts__0
+	adrp	x0, counts.0
+	add	x0, x0, :lo12:counts.0
 	ldrsw	x1, [sp, 28]
 	strh	w2, [x0, x1, lsl 1]
 	mov	w0, 0
@@ -93,12 +93,12 @@ gap_stats:
 	str	w0, [sp, 44]
 	b	.L8
 .L10:
-	adrp	x0, counts__0
-	add	x0, x0, :lo12:counts__0
+	adrp	x0, counts.0
+	add	x0, x0, :lo12:counts.0
 	ldrsw	x1, [sp, 44]
 	ldrh	w1, [x0, x1, lsl 1]
-	adrp	x0, counts__0
-	add	x0, x0, :lo12:counts__0
+	adrp	x0, counts.0
+	add	x0, x0, :lo12:counts.0
 	ldrsw	x2, [sp, 40]
 	ldrh	w0, [x0, x2, lsl 1]
 	cmp	w1, w0
@@ -124,23 +124,23 @@ gap_stats:
 	ldr	w0, [sp, 44]
 	cmp	w0, 0
 	ble	.L12
-	adrp	x0, counts__0
-	add	x0, x0, :lo12:counts__0
+	adrp	x0, counts.0
+	add	x0, x0, :lo12:counts.0
 	ldrsw	x1, [sp, 44]
 	ldrh	w0, [x0, x1, lsl 1]
 	cmp	w0, 0
 	beq	.L13
 .L12:
-	adrp	x0, counts__0
-	add	x0, x0, :lo12:counts__0
+	adrp	x0, counts.0
+	add	x0, x0, :lo12:counts.0
 	ldrh	w0, [x0, 4]
 	mov	w6, w0
-	adrp	x0, counts__0
-	add	x0, x0, :lo12:counts__0
+	adrp	x0, counts.0
+	add	x0, x0, :lo12:counts.0
 	ldrh	w0, [x0, 12]
 	mov	w2, w0
-	adrp	x0, counts__0
-	add	x0, x0, :lo12:counts__0
+	adrp	x0, counts.0
+	add	x0, x0, :lo12:counts.0
 	ldrsw	x1, [sp, 44]
 	ldrh	w0, [x0, x1, lsl 1]
 	mov	w5, w0
@@ -737,5 +737,5 @@ main:
 sieve:
 	.skip 150001
 	.balign 8
-counts__0:
+counts.0:
 	.skip 2000
