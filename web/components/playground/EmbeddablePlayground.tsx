@@ -455,9 +455,11 @@ function EmbeddableCore({
   // re-applies the program's input seeds: the assemble reset the machine, so
   // seeded stdin and VFS files must be back in place before the run. Only a
   // blocked or paused unchanged program resumes without re-assembling.
+  // `fromTop` is Ctrl+Enter's assemble-and-run.
   const lastRunSourceRef = useRef<string | null>(null);
-  const runEmbed = useCallback(async () => {
+  const runEmbed = useCallback(async (fromTop = false) => {
     if (
+      fromTop ||
       emu.instructions.length === 0 ||
       lastRunSourceRef.current !== source ||
       emu.isHalted
@@ -556,6 +558,7 @@ function EmbeddableCore({
   const onStateChangeRef = useRef(onStateChange);
   const onSourceChangeRef = useRef(onSourceChange);
   const assembleRef = useRef(assembleWithHistory);
+  const runEmbedRef = useRef(runEmbed);
   const loadProgramRef = useRef(loadProgram);
   const buildCommandsRef = useRef(buildCommands);
   useEffect(() => {
@@ -567,9 +570,10 @@ function EmbeddableCore({
     onStateChangeRef.current = onStateChange;
     onSourceChangeRef.current = onSourceChange;
     assembleRef.current = assembleWithHistory;
+    runEmbedRef.current = runEmbed;
     loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
-  }, [emu, source, extraFiles, argsText, cursor, onStateChange, onSourceChange, assembleWithHistory, loadProgram, buildCommands]);
+  }, [emu, source, extraFiles, argsText, cursor, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands]);
 
   // The buffer itself, which onStateChange deliberately does not mirror (its
   // ten fields are the machine's outcome, not the editor's). Fires on mount
@@ -701,14 +705,10 @@ function EmbeddableCore({
           full.assembleAndRun();
           return;
         }
-        const assembled = sourceRef.current;
-        void assembleRef.current().then((ok) => {
-          if (!ok) return;
-          // Recorded as run, so the embed's run press continues from a
-          // breakpoint instead of assembling and starting over.
-          lastRunSourceRef.current = assembled;
-          emuRef.current.run();
-        });
+        // The embed's own run, from the top: main.asm alone, as its run press
+        // assembles it. The workspace assemble would link the playground's
+        // stored helper files into a lesson's program and file it in recents.
+        void runEmbedRef.current(true);
       },
       // Run, step, and back cannot pass a blocked read (the machine just
       // re-blocks), so while stdin is awaited they no-op like the disabled
