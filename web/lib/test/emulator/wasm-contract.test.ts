@@ -798,3 +798,40 @@ describe("m4 expansion", () => {
     });
   });
 });
+
+describe("clobber notes", () => {
+  // The printf on line 10 overwrites x9 and line 12 reads it: one row of
+  // [register 9, read by an instruction (0), call line 10, read line 12],
+  // drained by the first take. The second printf prints what the call
+  // left, 0xdeadbeefdeadbeef, as a signed long.
+  it("drains one row naming the register, the reader, and both lines", () => {
+    withEmulator((emu) => {
+      assemble(
+        emu,
+        [
+          "        .data",
+          'fmt:    .string "%ld\\n"',
+          "        .text",
+          "        .global main",
+          "main:",
+          "        stp     x29, x30, [sp, -16]!",
+          "        mov     x9, 42",
+          "        ldr     x0, =fmt",
+          "        mov     x1, x9",
+          "        bl      printf",
+          "        ldr     x0, =fmt",
+          "        mov     x1, x9",
+          "        bl      printf",
+          "        ldp     x29, x30, [sp], 16",
+          "        mov     w0, 0",
+          "        ret",
+        ].join("\n"),
+      );
+      emu.run_until_break(10_000);
+      expect(emu.is_halted()).toBe(true);
+      expect(emu.take_stdout()).toBe("42\n-2401053088876216593\n");
+      expect(Array.from(emu.take_clobber_notes())).toEqual([9, 0, 10, 12]);
+      expect(Array.from(emu.take_clobber_notes())).toEqual([]);
+    });
+  });
+});
