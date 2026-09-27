@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::decoder;
 use crate::errors::{EmuError, MemAccess};
 use crate::executor::{self, ExecResult};
-use crate::frontend::sections::{Item, Program};
+use crate::frontend::sections::{align_padding, Item, Program};
 use crate::hosted::{HostContext, HostOutcome, HostTable, RETURNS_IN_D0, RETURNS_NOTHING};
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
@@ -760,13 +760,8 @@ impl Cpu {
                     Item::Reserve(n) => {
                         offset += *n;
                     }
-                    Item::AlignToBytes(n) => {
-                        if *n > 0 {
-                            let rem = offset % n;
-                            if rem != 0 {
-                                offset += n - rem;
-                            }
-                        }
+                    Item::AlignToBytes { bytes, max_skip } => {
+                        offset += align_padding(offset, *bytes, *max_skip);
                     }
                     Item::Label { .. } => {}
                     Item::SymbolAssignment { .. } => {}
