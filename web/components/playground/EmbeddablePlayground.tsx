@@ -800,6 +800,7 @@ function EmbeddableCore({
           <ConsolePanel
             stdout={emu.stdout}
             stderr={emu.stderr}
+            notes={emu.notes}
             blocked={emu.blocked}
             exitCode={emu.exitCode}
             vfsFiles={emu.vfsFiles}
