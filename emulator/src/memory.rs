@@ -62,7 +62,14 @@ pub struct Memory {
     free: Vec<Vec<u8>>,
     dirty: Vec<(u64, usize)>,
     written: u64,
+    /// `[start, end)` spans that read as zeros before their first write:
+    /// the data sections the loader placed. Linux maps a whole `.bss`, so a
+    /// read of an untouched page there answers 0 rather than faulting.
+    zero_fill: Vec<(u64, u64)>,
 }
+
+/// What an untouched page inside a `zero_fill` span reads as.
+static ZERO_PAGE: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
 
 impl Clone for Memory {
     /// Snapshots need the live pages, never the recycle pool: cloning the
@@ -76,6 +83,7 @@ impl Clone for Memory {
             free: Vec::new(),
             dirty: Vec::new(),
             written: self.written,
+            zero_fill: self.zero_fill.clone(),
         }
     }
 }
@@ -92,7 +100,18 @@ impl Memory {
             free: Vec::new(),
             dirty: Vec::new(),
             written: 0,
+            zero_fill: Vec::new(),
         }
+    }
+
+    /// Name the spans that read as zeros until written (the loaded data
+    /// sections), replacing any earlier ones.
+    pub fn set_zero_fill(&mut self, spans: Vec<(u64, u64)>) {
+        self.zero_fill = spans;
+    }
+
+    fn in_zero_fill(&self, addr: u64) -> bool {
+        self.zero_fill.iter().any(|&(start, end)| addr >= start && addr < end)
     }
 
     /// Drain the dirty-write buffer accumulated since the last call.
@@ -159,7 +178,7 @@ impl Memory {
 
     /// Check whether the page containing `addr` is mapped.
     pub fn is_mapped(&self, addr: u64) -> bool {
-        self.pages.contains_key(&(addr & PAGE_MASK))
+        self.pages.contains_key(&(addr & PAGE_MASK)) || self.in_zero_fill(addr)
     }
 
     /// Number of 4 KiB pages currently mapped. Used to enforce and observe
@@ -177,6 +196,7 @@ impl Memory {
     /// and the NEXT program was blamed for it: reset never gave the pages
     /// back.
     pub fn clear(&mut self) {
+        self.zero_fill.clear();
         let Self { pages, free, .. } = self;
         for (_, page) in pages.drain() {
             // A page a snapshot frame still shares cannot be recycled:
@@ -197,13 +217,14 @@ impl Memory {
 
     fn get_page(&self, addr: u64) -> Result<&[u8], EmuError> {
         let base = addr & PAGE_MASK;
-        self.pages
-            .get(&base)
-            .map(|b| b.as_slice())
-            .ok_or(EmuError::MemoryFault {
+        match self.pages.get(&base) {
+            Some(page) => Ok(page.as_slice()),
+            None if self.in_zero_fill(addr) => Ok(&ZERO_PAGE),
+            None => Err(EmuError::MemoryFault {
                 address: addr,
                 access: MemAccess::Read,
-            })
+            }),
+        }
     }
 
     fn get_page_mut(&mut self, addr: u64) -> Result<&mut [u8], EmuError> {
