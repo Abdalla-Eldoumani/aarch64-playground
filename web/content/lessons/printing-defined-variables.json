@@ -2,6 +2,7 @@
   "title": "Printing a variable from .data",
   "slug": "printing-defined-variables",
   "order": 8,
+  "lastUpdated": "2026-09-27",
   "summary": "Load a value out of .data with two ldr instructions, print it, and store a new value back with str.",
   "tags": [
     "printing",
