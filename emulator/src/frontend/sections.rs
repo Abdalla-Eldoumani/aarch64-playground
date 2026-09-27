@@ -70,8 +70,9 @@ pub enum Item {
     /// the BSS path (no initial data, just a size).
     Reserve(u64),
     /// Realign the offset to a byte boundary. `.balign N` sets `N`;
-    /// `.align N` converts to `2^N` for us. Padding bytes are zero.
-    AlignToBytes(u64),
+    /// `.align N` and `.p2align N` convert to `2^N` for us, and their
+    /// third argument is `max_skip`. Padding bytes are zero.
+    AlignToBytes { bytes: u64, max_skip: Option<u64> },
     /// A label fixed at the current offset, captured during parsing. The
     /// line lets the linker reject a duplicate definition where it is
     /// discovered, naming both sites.
@@ -114,6 +115,18 @@ pub enum Item {
         width: usize,
         original_line: usize,
     },
+}
+
+/// The padding an `AlignToBytes` item adds at `offset`: up to the next
+/// multiple of `bytes`, or nothing when that is more than `max_skip`, the
+/// rule behind gcc's `.p2align 5,,15`.
+pub fn align_padding(offset: u64, bytes: u64, max_skip: Option<u64>) -> u64 {
+    let pad = if bytes == 0 { 0 } else { (bytes - offset % bytes) % bytes };
+    if max_skip.is_some_and(|max| pad > max) {
+        0
+    } else {
+        pad
+    }
 }
 
 /// Resolved or pending value for a named symbol.
