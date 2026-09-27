@@ -27,7 +27,7 @@ sgn:
 	.text
 	.align	2
 	.align 5
-show_cut__constprop__0:
+show_cut.constprop.0:
 	stp	x29, x30, [sp, -48]!
 	adrp	x1, .LC15
 	add	x1, x1, :lo12:.LC15
@@ -67,7 +67,7 @@ show_cut__constprop__0:
 	.text
 	.align	2
 	.align 5
-hex__constprop__0:
+hex.constprop.0:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
 	stp	x19, x20, [sp, 16]
@@ -515,7 +515,7 @@ main:
 	add	x1, sp, 104
 	adrp	x0, .LC46
 	add	x0, x0, :lo12:.LC46
-	bl	hex__constprop__0
+	bl	hex.constprop.0
 	mov	x2, 8
 	mov	w1, 35
 	add	x0, sp, 104
@@ -531,7 +531,7 @@ main:
 	add	x1, sp, 104
 	adrp	x0, .LC48
 	add	x0, x0, :lo12:.LC48
-	bl	hex__constprop__0
+	bl	hex.constprop.0
 	adrp	x0, .LC49
 	add	x0, x0, :lo12:.LC49
 	stp	xzr, xzr, [sp, 216]
@@ -741,7 +741,7 @@ main:
 	bl	printf
 	adrp	x21, .LC71
 	mov	x0, x20
-	bl	show_cut__constprop__0
+	bl	show_cut.constprop.0
 	adrp	x0, .LC70
 	add	x0, x0, :lo12:.LC70
 	adrp	x20, .LC72
@@ -981,7 +981,7 @@ main:
 	add	x1, sp, 174
 	adrp	x0, .LC91
 	add	x0, x0, :lo12:.LC91
-	bl	hex__constprop__0
+	bl	hex.constprop.0
 	add	x1, sp, 160
 	adrp	x0, .LC92
 	add	x0, x0, :lo12:.LC92
