@@ -8,6 +8,7 @@ import {
   flipBit,
   formatBinary,
   formatHex,
+  formatOctal,
   formatRep,
   formatSigned,
   formatUnsigned,
@@ -21,13 +22,14 @@ import {
   truncate,
 } from "@/lib/asm/base-convert";
 
-const REPS: readonly Rep[] = ["hex", "binary", "unsigned", "signed"];
+const REPS: readonly Rep[] = ["hex", "octal", "binary", "unsigned", "signed"];
 
 interface Row {
   name: string;
   width: Width;
   bits: bigint;
   hex: string;
+  octal: string;
   binary: string;
   unsigned: string;
   signed: string;
@@ -39,39 +41,40 @@ interface Row {
 // The 64-bit rows sit far beyond Number's safe range on purpose.
 const TABLE: Row[] = [
   // 8-bit
-  { name: "zero", width: 8, bits: 0n, hex: "00", binary: "0000 0000", unsigned: "0", signed: "0", sign: 0 },
-  { name: "one", width: 8, bits: 1n, hex: "01", binary: "0000 0001", unsigned: "1", signed: "1", sign: 0 },
-  { name: "minus one / max unsigned", width: 8, bits: 255n, hex: "ff", binary: "1111 1111", unsigned: "255", signed: "-1", sign: 1 },
-  { name: "min signed", width: 8, bits: 128n, hex: "80", binary: "1000 0000", unsigned: "128", signed: "-128", sign: 1 },
-  { name: "max signed", width: 8, bits: 127n, hex: "7f", binary: "0111 1111", unsigned: "127", signed: "127", sign: 0 },
-  { name: "mid", width: 8, bits: 42n, hex: "2a", binary: "0010 1010", unsigned: "42", signed: "42", sign: 0 },
+  { name: "zero", width: 8, bits: 0n, hex: "00", octal: "000", binary: "0000 0000", unsigned: "0", signed: "0", sign: 0 },
+  { name: "one", width: 8, bits: 1n, hex: "01", octal: "001", binary: "0000 0001", unsigned: "1", signed: "1", sign: 0 },
+  { name: "minus one / max unsigned", width: 8, bits: 255n, hex: "ff", octal: "377", binary: "1111 1111", unsigned: "255", signed: "-1", sign: 1 },
+  { name: "min signed", width: 8, bits: 128n, hex: "80", octal: "200", binary: "1000 0000", unsigned: "128", signed: "-128", sign: 1 },
+  { name: "max signed", width: 8, bits: 127n, hex: "7f", octal: "177", binary: "0111 1111", unsigned: "127", signed: "127", sign: 0 },
+  { name: "mid", width: 8, bits: 42n, hex: "2a", octal: "052", binary: "0010 1010", unsigned: "42", signed: "42", sign: 0 },
   // 16-bit
-  { name: "zero", width: 16, bits: 0n, hex: "0000", binary: "0000 0000 0000 0000", unsigned: "0", signed: "0", sign: 0 },
-  { name: "one", width: 16, bits: 1n, hex: "0001", binary: "0000 0000 0000 0001", unsigned: "1", signed: "1", sign: 0 },
-  { name: "minus one / max unsigned", width: 16, bits: 65535n, hex: "ffff", binary: "1111 1111 1111 1111", unsigned: "65535", signed: "-1", sign: 1 },
-  { name: "min signed", width: 16, bits: 32768n, hex: "8000", binary: "1000 0000 0000 0000", unsigned: "32768", signed: "-32768", sign: 1 },
-  { name: "max signed", width: 16, bits: 32767n, hex: "7fff", binary: "0111 1111 1111 1111", unsigned: "32767", signed: "32767", sign: 0 },
-  { name: "mid", width: 16, bits: 4660n, hex: "1234", binary: "0001 0010 0011 0100", unsigned: "4660", signed: "4660", sign: 0 },
+  { name: "zero", width: 16, bits: 0n, hex: "0000", octal: "000000", binary: "0000 0000 0000 0000", unsigned: "0", signed: "0", sign: 0 },
+  { name: "one", width: 16, bits: 1n, hex: "0001", octal: "000001", binary: "0000 0000 0000 0001", unsigned: "1", signed: "1", sign: 0 },
+  { name: "minus one / max unsigned", width: 16, bits: 65535n, hex: "ffff", octal: "177777", binary: "1111 1111 1111 1111", unsigned: "65535", signed: "-1", sign: 1 },
+  { name: "min signed", width: 16, bits: 32768n, hex: "8000", octal: "100000", binary: "1000 0000 0000 0000", unsigned: "32768", signed: "-32768", sign: 1 },
+  { name: "max signed", width: 16, bits: 32767n, hex: "7fff", octal: "077777", binary: "0111 1111 1111 1111", unsigned: "32767", signed: "32767", sign: 0 },
+  { name: "mid", width: 16, bits: 4660n, hex: "1234", octal: "011064", binary: "0001 0010 0011 0100", unsigned: "4660", signed: "4660", sign: 0 },
   // 32-bit
-  { name: "zero", width: 32, bits: 0n, hex: "00000000", binary: "0000 0000 0000 0000 0000 0000 0000 0000", unsigned: "0", signed: "0", sign: 0 },
-  { name: "one", width: 32, bits: 1n, hex: "00000001", binary: "0000 0000 0000 0000 0000 0000 0000 0001", unsigned: "1", signed: "1", sign: 0 },
-  { name: "minus one / max unsigned", width: 32, bits: 4294967295n, hex: "ffffffff", binary: "1111 1111 1111 1111 1111 1111 1111 1111", unsigned: "4294967295", signed: "-1", sign: 1 },
-  { name: "min signed", width: 32, bits: 2147483648n, hex: "80000000", binary: "1000 0000 0000 0000 0000 0000 0000 0000", unsigned: "2147483648", signed: "-2147483648", sign: 1 },
-  { name: "max signed", width: 32, bits: 2147483647n, hex: "7fffffff", binary: "0111 1111 1111 1111 1111 1111 1111 1111", unsigned: "2147483647", signed: "2147483647", sign: 0 },
-  { name: "mid", width: 32, bits: 3735928559n, hex: "deadbeef", binary: "1101 1110 1010 1101 1011 1110 1110 1111", unsigned: "3735928559", signed: "-559038737", sign: 1 },
+  { name: "zero", width: 32, bits: 0n, hex: "00000000", octal: "00000000000", binary: "0000 0000 0000 0000 0000 0000 0000 0000", unsigned: "0", signed: "0", sign: 0 },
+  { name: "one", width: 32, bits: 1n, hex: "00000001", octal: "00000000001", binary: "0000 0000 0000 0000 0000 0000 0000 0001", unsigned: "1", signed: "1", sign: 0 },
+  { name: "minus one / max unsigned", width: 32, bits: 4294967295n, hex: "ffffffff", octal: "37777777777", binary: "1111 1111 1111 1111 1111 1111 1111 1111", unsigned: "4294967295", signed: "-1", sign: 1 },
+  { name: "min signed", width: 32, bits: 2147483648n, hex: "80000000", octal: "20000000000", binary: "1000 0000 0000 0000 0000 0000 0000 0000", unsigned: "2147483648", signed: "-2147483648", sign: 1 },
+  { name: "max signed", width: 32, bits: 2147483647n, hex: "7fffffff", octal: "17777777777", binary: "0111 1111 1111 1111 1111 1111 1111 1111", unsigned: "2147483647", signed: "2147483647", sign: 0 },
+  { name: "mid", width: 32, bits: 3735928559n, hex: "deadbeef", octal: "33653337357", binary: "1101 1110 1010 1101 1011 1110 1110 1111", unsigned: "3735928559", signed: "-559038737", sign: 1 },
   // 64-bit
-  { name: "zero", width: 64, bits: 0n, hex: "0000000000000000", binary: "0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000", unsigned: "0", signed: "0", sign: 0 },
-  { name: "one", width: 64, bits: 1n, hex: "0000000000000001", binary: "0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0001", unsigned: "1", signed: "1", sign: 0 },
-  { name: "minus one / max unsigned", width: 64, bits: 18446744073709551615n, hex: "ffffffffffffffff", binary: "1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111", unsigned: "18446744073709551615", signed: "-1", sign: 1 },
-  { name: "min signed", width: 64, bits: 9223372036854775808n, hex: "8000000000000000", binary: "1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000", unsigned: "9223372036854775808", signed: "-9223372036854775808", sign: 1 },
-  { name: "max signed", width: 64, bits: 9223372036854775807n, hex: "7fffffffffffffff", binary: "0111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111", unsigned: "9223372036854775807", signed: "9223372036854775807", sign: 0 },
-  { name: "mid", width: 64, bits: 81985529216486895n, hex: "0123456789abcdef", binary: "0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1110 1111", unsigned: "81985529216486895", signed: "81985529216486895", sign: 0 },
+  { name: "zero", width: 64, bits: 0n, hex: "0000000000000000", octal: "0000000000000000000000", binary: "0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000", unsigned: "0", signed: "0", sign: 0 },
+  { name: "one", width: 64, bits: 1n, hex: "0000000000000001", octal: "0000000000000000000001", binary: "0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0001", unsigned: "1", signed: "1", sign: 0 },
+  { name: "minus one / max unsigned", width: 64, bits: 18446744073709551615n, hex: "ffffffffffffffff", octal: "1777777777777777777777", binary: "1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111", unsigned: "18446744073709551615", signed: "-1", sign: 1 },
+  { name: "min signed", width: 64, bits: 9223372036854775808n, hex: "8000000000000000", octal: "1000000000000000000000", binary: "1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000", unsigned: "9223372036854775808", signed: "-9223372036854775808", sign: 1 },
+  { name: "max signed", width: 64, bits: 9223372036854775807n, hex: "7fffffffffffffff", octal: "0777777777777777777777", binary: "0111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111", unsigned: "9223372036854775807", signed: "9223372036854775807", sign: 0 },
+  { name: "mid", width: 64, bits: 81985529216486895n, hex: "0123456789abcdef", octal: "0004432126361152746757", binary: "0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1110 1111", unsigned: "81985529216486895", signed: "81985529216486895", sign: 0 },
 ];
 
 describe("canonical table: every representation at every width", () => {
   for (const row of TABLE) {
     test(`${row.width}-bit ${row.name}`, () => {
       expect(formatHex(row.bits, row.width)).toBe(row.hex);
+      expect(formatOctal(row.bits, row.width)).toBe(row.octal);
       expect(formatBinary(row.bits, row.width)).toBe(row.binary);
       expect(formatUnsigned(row.bits)).toBe(row.unsigned);
       expect(formatSigned(row.bits, row.width)).toBe(row.signed);
@@ -79,9 +82,10 @@ describe("canonical table: every representation at every width", () => {
     });
   }
 
-  test("formatRep dispatches to the same four formats", () => {
+  test("formatRep dispatches to the same five formats", () => {
     const row = TABLE[2]; // 8-bit minus one
     expect(formatRep("hex", row.bits, row.width)).toBe(row.hex);
+    expect(formatRep("octal", row.bits, row.width)).toBe(row.octal);
     expect(formatRep("binary", row.bits, row.width)).toBe(row.binary);
     expect(formatRep("unsigned", row.bits, row.width)).toBe(row.unsigned);
     expect(formatRep("signed", row.bits, row.width)).toBe(row.signed);
@@ -106,6 +110,10 @@ describe("parseRep accepts common spellings", () => {
     { rep: "hex", text: "FF", width: 8, bits: 255n },
     { rep: "hex", text: "  ff  ", width: 8, bits: 255n },
     { rep: "hex", text: "00000001", width: 8, bits: 1n }, // leading zeros are value-neutral
+    { rep: "octal", text: "377", width: 8, bits: 255n },
+    { rep: "octal", text: "0755", width: 16, bits: 493n }, // C's leading 0 is just a digit
+    { rep: "octal", text: "0o17", width: 8, bits: 15n },
+    { rep: "octal", text: " 0O17 ", width: 8, bits: 15n },
     { rep: "binary", text: "0b1010", width: 8, bits: 10n },
     { rep: "binary", text: "1010", width: 8, bits: 10n },
     { rep: "binary", text: "0000 1010", width: 8, bits: 10n },
@@ -133,6 +141,7 @@ describe("parseRep empty", () => {
   test("a bare prefix is empty, not invalid", () => {
     expect(parseRep("hex", "0x", 32)).toEqual({ kind: "empty" });
     expect(parseRep("binary", "0b", 32)).toEqual({ kind: "empty" });
+    expect(parseRep("octal", "0o", 32)).toEqual({ kind: "empty" });
   });
 });
 
@@ -140,6 +149,11 @@ describe("parseRep invalid input gets a specific message", () => {
   const CASES: Array<{ rep: Rep; text: string; expectIn: string }> = [
     { rep: "hex", text: "xyz", expectIn: "0-9 and a-f" },
     { rep: "hex", text: "0xg1", expectIn: "0-9 and a-f" },
+    { rep: "octal", text: "8", expectIn: "8 and 9 are not octal digits" },
+    { rep: "octal", text: "0129", expectIn: "8 and 9 are not octal digits" },
+    { rep: "octal", text: "17a", expectIn: "octal digits are 0-7" },
+    { rep: "octal", text: "0x17", expectIn: "octal digits are 0-7" },
+    { rep: "octal", text: "-7", expectIn: "octal digits are 0-7" },
     { rep: "binary", text: "102", expectIn: "0 and 1" },
     { rep: "binary", text: "0b12", expectIn: "0 and 1" },
     { rep: "unsigned", text: "12a", expectIn: "decimal digits" },
@@ -168,6 +182,14 @@ describe("parseRep range: one past the boundary at every width", () => {
       if (outcome.kind === "range") {
         expect(outcome.message).toContain(`${width + 1} bits`);
         expect(outcome.message).toContain(`${width}-bit`);
+      }
+    });
+    test(`octal just past ${width}-bit max`, () => {
+      const outcome = parseRep("octal", (maxUnsigned(width) + 1n).toString(8), width);
+      expect(outcome.kind).toBe("range");
+      if (outcome.kind === "range") {
+        expect(outcome.message).toContain(`${width + 1} bits`);
+        expect(outcome.message).toContain(`${width}-bit octal maxes at`);
       }
     });
     test(`binary one digit past ${width} bits`, () => {
