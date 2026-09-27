@@ -22,12 +22,12 @@
     {
       "question": "Which ARMv8-A Exception Level is reserved for a hypervisor running guest operating systems?",
       "options": [
+        "EL2",
         "EL0",
         "EL1",
-        "EL2",
         "EL3"
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 0,
       "explanation": "ARMv8-A defines four levels: EL0 for application code, EL1 for the operating system kernel, EL2 for a hypervisor hosting guest kernels, and EL3 for the secure monitor. Course programs run entirely at EL0 and reach the kernel only through system calls.",
       "hint": "It sits one privilege level above the operating system kernel."
     },
@@ -35,11 +35,11 @@
       "question": "The multiply-add instruction madd Wd, Wn, Wm, Wa computes which expression?",
       "options": [
         "Wd = (Wa + Wn) * Wm",
-        "Wd = Wa + (Wn * Wm)",
         "Wd = Wa - (Wn * Wm)",
-        "Wd = (Wn * Wm) / Wa"
+        "Wd = (Wn * Wm) / Wa",
+        "Wd = Wa + (Wn * Wm)"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 3,
       "explanation": "madd multiplies the first two source registers and adds the accumulator, so Wd = Wa + (Wn * Wm). The subtracting form is msub, which computes Wd = Wa - (Wn * Wm), and mul Wd, Wn, Wm is just madd with wzr as the accumulator.",
       "hint": "The fourth operand is the accumulator, not a second multiplicand."
     },
@@ -60,10 +60,10 @@
       "options": [
         "It raises an exception and the program halts.",
         "It produces infinity and sets the overflow (V) flag.",
-        "It substitutes a divisor of 1 so the division still succeeds.",
-        "It raises no exception and writes 0 to the destination register."
+        "It raises no exception and writes 0 to the destination register.",
+        "It substitutes a divisor of 1 so the division still succeeds."
       ],
-      "correctAnswer": 3,
+      "correctAnswer": 2,
       "explanation": "AArch64 integer division by zero is defined to write 0 into the destination register with no trap and no flag change. Nothing tells you the division was meaningless, so the program has to compare the divisor against zero itself before dividing.",
       "hint": "Unlike a high-level language, the hardware here reports nothing at all."
     }
