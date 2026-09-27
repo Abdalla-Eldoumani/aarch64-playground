@@ -139,6 +139,8 @@ interface BackendConfig {
   stepThrows: boolean;
   stepBackThrows: boolean;
   runResult: RunResultPayload;
+  /** What the machine looks like where a run stops (blocked on a read, say). */
+  runSnapshot: Partial<StateSnapshot>;
   runThrows: boolean;
   runDeferred: boolean;
   resolveLabelValue: number | null;
@@ -190,6 +192,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     stepThrows: false,
     stepBackThrows: false,
     runResult: { pc: CODE_BASE, halted: false, steps_executed: 5, hit_breakpoint: false, error: null },
+    runSnapshot: {},
     runThrows: false,
     runDeferred: false,
     resolveLabelValue: CODE_BASE,
@@ -273,7 +276,8 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     step() {
       calls.step++;
       if (cfg.stepThrows) return Promise.reject(new Error("step boom"));
-      const s = fire();
+      // A real step keeps a frame to go back to.
+      const s = fire({ canStepBack: true });
       return Promise.resolve({ stepResult: cfg.stepResult, snapshot: s });
     },
     stepBack() {
@@ -295,12 +299,12 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       if (cfg.runDeferred) {
         return new Promise((resolve) => {
           runResolve = () => {
-            const s = fire();
+            const s = fire(cfg.runSnapshot);
             resolve({ runResult: cfg.runResult, snapshot: s });
           };
         });
       }
-      const s = fire();
+      const s = fire(cfg.runSnapshot);
       return Promise.resolve({ runResult: cfg.runResult, snapshot: s });
     },
     pause() {
@@ -740,11 +744,114 @@ describe("useEmulator stepping and running", () => {
   it("stepBack records a rejected backend call as an error", async () => {
     const fake = makeBackend({ stepBackThrows: true });
     const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ canStepBack: true });
+    });
 
     await act(async () => {
       result.current.stepBack();
     });
     await waitFor(() => expect(result.current.error).toBe("stepback boom"));
+  });
+
+  it("stepBack past the oldest kept frame moves neither the machine nor the counter", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.step();
+    });
+    await waitFor(() => expect(result.current.stepCount).toBe(1));
+    // The ring ran out: the machine reports nothing left to undo.
+    act(() => {
+      fake.fire({ canStepBack: false });
+    });
+
+    await act(async () => {
+      result.current.stepBack();
+    });
+    expect(fake.calls.stepBack).toBe(0);
+    expect(result.current.stepCount).toBe(1);
+  });
+
+  it("step on a halted machine neither executes nor counts", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.step();
+    });
+    await waitFor(() => expect(result.current.stepCount).toBe(1));
+    act(() => {
+      fake.fire({ halted: true, exitCode: 0 });
+    });
+
+    await act(async () => {
+      result.current.step();
+      result.current.step();
+    });
+    expect(fake.calls.step).toBe(1);
+    expect(result.current.stepCount).toBe(1);
+    expect(result.current.replayFrames).toHaveLength(1);
+  });
+
+  it("resumes a run that stopped at a read once the console answers it", async () => {
+    const fake = makeBackend({ runSnapshot: { blocked: true } });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.isRunning).toBe(false));
+    expect(result.current.blocked).toBe(true);
+
+    fake.cfg.runSnapshot = {};
+    await act(async () => {
+      result.current.pushStdin("3 4\n", true);
+      result.current.resumeAfterInput();
+    });
+    await waitFor(() => expect(fake.calls.run).toHaveLength(2));
+    await waitFor(() => expect(result.current.stepCount).toBe(10));
+
+    // Nothing is waiting any more, so a second answer starts nothing.
+    await act(async () => {
+      result.current.resumeAfterInput();
+    });
+    expect(fake.calls.run).toHaveLength(2);
+  });
+
+  it("leaves a step that stopped at a read for the next step", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.step();
+    });
+    act(() => {
+      fake.fire({ blocked: true });
+    });
+
+    await act(async () => {
+      result.current.pushStdin("7\n", true);
+      result.current.resumeAfterInput();
+    });
+    expect(fake.calls.run).toHaveLength(0);
+  });
+
+  it("does not resume a blocked run the student reset away", async () => {
+    const fake = makeBackend({ runSnapshot: { blocked: true } });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.isRunning).toBe(false));
+    await act(async () => {
+      result.current.reset();
+    });
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+
+    await act(async () => {
+      result.current.resumeAfterInput();
+    });
+    expect(fake.calls.run).toHaveLength(1);
   });
 
   it("run adds the executed step count and clears the running flag", async () => {
@@ -1092,6 +1199,61 @@ describe("useEmulator breakpoints", () => {
     expect(fake.calls.setBreakpoint).toEqual([]);
   });
 
+  it("keeps a dot set before the first assemble and arms it once the program assembles", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+
+    // Nothing is assembled, so nothing resolves yet; the dot still shows.
+    act(() => {
+      result.current.toggleBreakpoint(10);
+    });
+    expect(result.current.breakpoints.has(10)).toBe(true);
+    expect(fake.calls.setBreakpoint).toEqual([]);
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    expect([...result.current.breakpoints]).toEqual([10]);
+    expect(fake.calls.setBreakpoint).toEqual([CODE_BASE + 4]);
+    expect(result.current.droppedBreakpoints).toEqual([]);
+  });
+
+  it("clears a dot set before assembling when it is clicked again", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      result.current.toggleBreakpoint(10);
+    });
+    act(() => {
+      result.current.toggleBreakpoint(10);
+    });
+    expect(result.current.breakpoints.size).toBe(0);
+  });
+
+  it("names the dots an assemble dropped because nothing runs at or after them", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      // Line 8 is the `main:` label, which forward-resolves to the prologue;
+      // line 20 is past the last instruction.
+      result.current.toggleBreakpoint(20);
+      result.current.toggleBreakpoint(8);
+    });
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    expect([...result.current.breakpoints]).toEqual([8]);
+    expect(fake.calls.setBreakpoint).toEqual([CODE_BASE]);
+    expect(result.current.droppedBreakpoints).toEqual([20]);
+
+    // The notice belongs to that assemble only.
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    expect(result.current.droppedBreakpoints).toEqual([]);
+  });
+
   it("forwards address-based breakpoint set and clear to the backend", async () => {
     const fake = makeBackend();
     const { result } = await mountLoaded(fake);
@@ -1150,6 +1312,33 @@ describe("useEmulator backend passthroughs", () => {
     expect(fake.calls.saveState).toEqual(["chk1"]);
     expect(fake.calls.loadState).toEqual(["chk1"]);
     expect(fake.calls.deleteState).toEqual(["chk1"]);
+  });
+
+  it("brings the step counter back with a loaded save", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    for (let i = 1; i <= 3; i++) {
+      await act(async () => {
+        result.current.step();
+      });
+      await waitFor(() => expect(result.current.stepCount).toBe(i));
+    }
+    act(() => {
+      result.current.saveState("three");
+    });
+    for (let i = 4; i <= 5; i++) {
+      await act(async () => {
+        result.current.step();
+      });
+      await waitFor(() => expect(result.current.stepCount).toBe(i));
+    }
+
+    await act(async () => {
+      result.current.loadState("three");
+    });
+    await waitFor(() => expect(result.current.stepCount).toBe(3));
+    // The frames stepped after the save belong to a timeline that is gone.
+    expect(result.current.replayFrames).toHaveLength(0);
   });
 
   it("uploadVfsFile forwards path and data", async () => {
