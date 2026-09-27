@@ -155,51 +155,51 @@ rem_:
 optab:
 	.byte	43
 	.zero	7
-	.quad	.LC23
-	.quad	add
+	.xword	.LC23
+	.xword	add
 	.byte	45
 	.zero	7
-	.quad	.LC24
-	.quad	sub
+	.xword	.LC24
+	.xword	sub
 	.byte	42
 	.zero	7
-	.quad	.LC25
-	.quad	mul
+	.xword	.LC25
+	.xword	mul
 	.byte	47
 	.zero	7
-	.quad	.LC26
-	.quad	quo
+	.xword	.LC26
+	.xword	quo
 	.byte	37
 	.zero	7
-	.quad	.LC27
-	.quad	rem_
+	.xword	.LC27
+	.xword	rem_
 	.byte	38
 	.zero	7
-	.quad	.LC28
-	.quad	band
+	.xword	.LC28
+	.xword	band
 	.byte	124
 	.zero	7
-	.quad	.LC29
-	.quad	bor
+	.xword	.LC29
+	.xword	bor
 	.byte	94
 	.zero	7
-	.quad	.LC30
-	.quad	bxor
+	.xword	.LC30
+	.xword	bxor
 	.byte	60
 	.zero	7
-	.quad	.LC31
-	.quad	mn
+	.xword	.LC31
+	.xword	mn
 	.byte	62
 	.zero	7
-	.quad	.LC32
-	.quad	mx
+	.xword	.LC32
+	.xword	mx
 	.data
 	.align	3
 slots:
-	.quad	add
-	.quad	sub
-	.quad	mul
-	.quad	bxor
+	.xword	add
+	.xword	sub
+	.xword	mul
+	.xword	bxor
 	.text
 	.align	2
 pick:
@@ -455,7 +455,7 @@ ten:
 	.data
 	.align	3
 tenp:
-	.quad	ten
+	.xword	ten
 	.text
 	.align	2
 one:
@@ -467,8 +467,8 @@ one:
 	.section .rodata
 	.align	3
 fact_step:
-	.quad	one
-	.quad	fact
+	.xword	one
+	.xword	fact
 	.text
 	.align	2
 fact:
@@ -602,28 +602,28 @@ tri_grow:
 	.string	"rect"
 	.align	3
 rect_vt:
-	.quad	.LC33
-	.quad	rect_area2
-	.quad	rect_perim
-	.quad	rect_grow
+	.xword	.LC33
+	.xword	rect_area2
+	.xword	rect_perim
+	.xword	rect_grow
 	.align	3
 .LC34:
 	.string	"tri"
 	.align	3
 tri_vt:
-	.quad	.LC34
-	.quad	tri_area2
-	.quad	tri_perim
-	.quad	tri_grow
+	.xword	.LC34
+	.xword	tri_area2
+	.xword	tri_perim
+	.xword	tri_grow
 	.align	3
 .LC35:
 	.string	"square"
 	.align	3
 square_vt:
-	.quad	.LC35
-	.quad	rect_area2
-	.quad	rect_perim
-	.quad	rect_grow
+	.xword	.LC35
+	.xword	rect_area2
+	.xword	rect_perim
+	.xword	rect_grow
 	.text
 	.align	2
 st_err:
@@ -1358,22 +1358,22 @@ main:
 	.string	"9 9 * 9 * 9 * 9 -"
 	.align	3
 .LC36:
-	.quad	.LC0
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
+	.xword	.LC0
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
 	.align	3
 .LC11:
-	.quad	rect_vt
-	.quad	tri_vt
-	.quad	square_vt
-	.quad	tri_vt
+	.xword	rect_vt
+	.xword	tri_vt
+	.xword	square_vt
+	.xword	tri_vt
 	.align	3
 .LC12:
 	.string	"-12_345"
@@ -1403,15 +1403,15 @@ main:
 	.string	"-0_0_1"
 	.align	3
 .LC49:
-	.quad	.LC12
-	.quad	.LC13
-	.quad	.LC14
-	.quad	.LC15
-	.quad	.LC16
-	.quad	.LC17
-	.quad	.LC18
-	.quad	.LC19
-	.quad	.LC20
-	.quad	.LC21
+	.xword	.LC12
+	.xword	.LC13
+	.xword	.LC14
+	.xword	.LC15
+	.xword	.LC16
+	.xword	.LC17
+	.xword	.LC18
+	.xword	.LC19
+	.xword	.LC20
+	.xword	.LC21
 	.text
 
