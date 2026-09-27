@@ -33,16 +33,28 @@ export interface StaticCodeViewProps {
  */
 export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
   const lines = value.replace(/\n$/, "").split("\n");
+  const boxRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLSpanElement>(null);
 
-  // Follow the pc the way the editor does. `block: "nearest"` scrolls only when
-  // the line is actually out of view, so a program that fits never jumps.
+  // Follow the pc the way the editor does: the nearest scroll, and only when
+  // the line is out of view, so a program that fits never moves. The box's
+  // own scrollTop is written rather than calling scrollIntoView, which also
+  // scrolls the page: on a phone the autoplay yanked a reader who had
+  // scrolled past the hero back up to it every half second.
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest" });
+    const box = boxRef.current;
+    const line = activeRef.current;
+    if (!box || !line) return;
+    const top = line.offsetTop;
+    const bottom = top + line.offsetHeight;
+    if (top < box.scrollTop) box.scrollTop = top;
+    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
   }, [currentLine]);
 
   return (
-    <div className="h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)]">
+    // `relative` makes this box the lines' offsetParent, so their offsetTop
+    // is measured from the top of the scrolled content.
+    <div ref={boxRef} className="relative h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)]">
       <pre className="min-w-full font-mono text-[14px] leading-[21px] text-[var(--text-primary)]">
         <code>
           {lines.map((line, index) => {
