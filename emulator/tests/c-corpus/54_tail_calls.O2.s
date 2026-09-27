@@ -1,26 +1,26 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 is_odd:
 	cbnz	x0, .L4
 	mov	w0, 0
 	ret
-	.align 2
+	.p2align 2,,3
 .L4:
 	sub	x0, x0, #1
 	b	is_even
 	.align	2
-	.align 5
+	.p2align 5,,15
 is_even:
 	cbnz	x0, .L7
 	mov	w0, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L7:
 	sub	x0, x0, #1
 	b	is_odd
 	.align	2
-	.align 5
+	.p2align 5,,15
 kind:
 	sub	w1, w0, #97
 	and	w1, w1, 255
@@ -32,12 +32,12 @@ kind:
 	cset	w0, hi
 	add	w0, w0, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L10:
 	mov	w0, 0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 next:
 	ldrb	w6, [x0]
 	cbz	w6, .L17
@@ -61,12 +61,12 @@ next:
 	madd	w1, w5, w1, w3
 	mov	x16, x4
 	br	x16
-	.align 2
+	.p2align 2,,3
 .L17:
 	mov	w0, 131
 	madd	w0, w1, w0, w2
 	ret
-	.align 2
+	.p2align 2,,3
 .L21:
 	adrp	x1, .LANCHOR0
 	add	x1, x1, :lo12:.LANCHOR0
@@ -77,26 +77,26 @@ next:
 	mov	x16, x3
 	br	x16
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_letter:
 	mov	w4, 4660
 	mov	w3, 0
 	eor	w1, w1, w4
 	b	next
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_digit:
 	add	w1, w1, 7
 	mov	w3, 1
 	b	next
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_other:
 	sub	w1, w1, #3
 	mov	w3, 2
 	b	next
 	.align	2
-	.align 5
+	.p2align 5,,15
 ack:
 	stp	x29, x30, [sp, -32]!
 	mov	x29, sp
@@ -121,14 +121,14 @@ ack:
 	add	x0, x1, 1
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L33:
 	sub	x1, x1, #1
 	bl	ack
 	mov	x1, x0
 	b	.L27
 	.align	2
-	.align 5
+	.p2align 5,,15
 next.constprop.0:
 	adrp	x3, .LANCHOR1
 	add	x3, x3, :lo12:.LANCHOR1
@@ -158,7 +158,7 @@ next.constprop.0:
 	mov	w1, 5
 	b	st_other
 	.align	2
-	.align 5
+	.p2align 5,,15
 gcd.constprop.0:
 	ldr	w3, [x2]
 	mov	x4, x0
@@ -166,7 +166,7 @@ gcd.constprop.0:
 	add	w5, w3, 2
 	cbnz	x1, .L44
 	b	.L47
-	.align 2
+	.p2align 2,,3
 .L45:
 	mov	x0, x3
 .L44:
@@ -178,7 +178,7 @@ gcd.constprop.0:
 	cbnz	x3, .L45
 	str	w1, [x2]
 	ret
-	.align 2
+	.p2align 2,,3
 .L47:
 	add	w3, w3, 1
 	mov	x0, x4
@@ -190,7 +190,7 @@ gcd.constprop.0:
 	.string	"rotate n=%d a=%lld e=%lld h=%lld i=%lld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 rotate.constprop.0:
 	stp	x29, x30, [sp, -112]!
 	mov	w9, 51555
@@ -222,7 +222,7 @@ rotate.constprop.0:
 	movk	w7, 0xda, lsl 16
 	cmp	w0, w7
 	bls	.L55
-	.align 5
+	.p2align 5,,15
 .L49:
 	cbz	w19, .L53
 .L56:
@@ -277,12 +277,12 @@ rotate.constprop.0:
 	ldp	x29, x30, [sp], 112
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sum_to.constprop.0:
 	uxtw	x1, w0
 	mov	x0, 0
 	cbz	w1, .L57
-	.align 5
+	.p2align 5,,15
 .L60:
 	umaddl	x0, w1, w1, x0
 	subs	x1, x1, #1
@@ -316,7 +316,7 @@ sum_to.constprop.0:
 	.string	"ack(3,%d)=%ld calls=%ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -362,7 +362,7 @@ main:
 	bl	printf
 	mov	x0, 0
 	b	.L67
-	.align 2
+	.p2align 2,,3
 .L66:
 	mov	x0, x22
 	cmp	w19, 92
@@ -404,7 +404,7 @@ main:
 	movk	w7, 0xcccc, lsl 16
 	mov	w6, 12
 	strb	w0, [x5, 16]!
-	.align 5
+	.p2align 5,,15
 .L68:
 	umull	x1, w2, w7
 	lsr	x1, x1, 34
@@ -444,7 +444,7 @@ main:
 	add	x23, x23, :lo12:.LC8
 	add	x22, x22, :lo12:.LC9
 	mov	x21, 0
-	.align 5
+	.p2align 5,,15
 .L70:
 	mov	x1, x21
 	mov	x0, 2
@@ -485,9 +485,9 @@ main:
 	.align	4
 	.LANCHOR0:
 table:
-	.quad	st_letter
-	.quad	st_digit
-	.quad	st_other
+	.xword	st_letter
+	.xword	st_digit
+	.xword	st_other
 	.data
 	.align	2
 	.LANCHOR2:
