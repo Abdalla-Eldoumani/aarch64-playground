@@ -69,6 +69,10 @@ const FOLLOW_KEY = "aarch64-playground:regfile-follow";
 /** How long a scroll by the student holds the list still. */
 const USER_SCROLL_HOLD_MS = 5000;
 
+/** How long after a follow the list still re-shows the write when its box
+ *  or the host's pane changes height. */
+const SETTLE_MS = 1000;
+
 const VIEW_LABELS: Record<RegView, string> = {
   x: "x0–x30",
   d: "d0–d31",
@@ -608,9 +612,30 @@ export function RegisterPanel({
     const grid = gridRef.current;
     if (!follow || !body || !grid) return;
     if (Date.now() - userScrolledAt.current < USER_SCROLL_HOLD_MS) return;
+    const smooth = !prefersReducedMotion();
     // The grid's children are the rows in register order, SP at 31.
-    const rows = pending.rows.map((i) => grid.children[i]).filter((row) => row != null);
-    revealRows(body, rows, !prefersReducedMotion());
+    const reveal = () =>
+      revealRows(body, pending.rows.map((i) => grid.children[i]).filter((row) => row != null), smooth);
+    reveal();
+    if (pending.rows.length === 0 || typeof ResizeObserver === "undefined") return;
+    // The decode strip above the panel can settle a frame after the step,
+    // shrinking the box or the pane under a row just shown.
+    const pane = hostPane(body);
+    const boxes = pane ? [body, pane] : [body];
+    const heights = boxes.map((box) => box.clientHeight);
+    const observer = new ResizeObserver(() => {
+      if (boxes.every((box, i) => box.clientHeight === heights[i])) return;
+      boxes.forEach((box, i) => {
+        heights[i] = box.clientHeight;
+      });
+      if (Date.now() - userScrolledAt.current >= USER_SCROLL_HOLD_MS) reveal();
+    });
+    for (const box of boxes) observer.observe(box);
+    const settled = setTimeout(() => observer.disconnect(), SETTLE_MS);
+    return () => {
+      clearTimeout(settled);
+      observer.disconnect();
+    };
   }, [pending, view, running, follow]);
 
   // Said once per write, and not at all mid-run. A second, identical write
