@@ -84,26 +84,26 @@ counter:
 	mov	w0, w2
 	orr	w0, w1, w0
 	strb	w0, [sp, 12]
-	adrp	x0, st__0
-	add	x0, x0, :lo12:st__0
+	adrp	x0, st.0
+	add	x0, x0, :lo12:st.0
 	ldr	w0, [x0]
 	add	w1, w0, 1
-	adrp	x0, st__0
-	add	x0, x0, :lo12:st__0
+	adrp	x0, st.0
+	add	x0, x0, :lo12:st.0
 	str	w1, [x0]
 	str	wzr, [sp, 28]
 	b	.L2
 .L3:
-	adrp	x0, st__0
-	add	x0, x0, :lo12:st__0
+	adrp	x0, st.0
+	add	x0, x0, :lo12:st.0
 	ldr	x1, [x0, 8]
 	ldrsw	x0, [sp, 28]
 	mov	x2, sp
 	ldrb	w0, [x2, x0]
 	and	x0, x0, 255
 	add	x1, x1, x0
-	adrp	x0, st__0
-	add	x0, x0, :lo12:st__0
+	adrp	x0, st.0
+	add	x0, x0, :lo12:st.0
 	str	x1, [x0, 8]
 	ldr	w0, [sp, 28]
 	add	w0, w0, 1
@@ -112,13 +112,13 @@ counter:
 	ldr	w0, [sp, 28]
 	cmp	w0, 12
 	ble	.L3
-	adrp	x0, st__0
-	add	x0, x0, :lo12:st__0
+	adrp	x0, st.0
+	add	x0, x0, :lo12:st.0
 	ldr	w1, [x0]
 	mov	w0, 1000
 	mul	w3, w1, w0
-	adrp	x0, st__0
-	add	x0, x0, :lo12:st__0
+	adrp	x0, st.0
+	add	x0, x0, :lo12:st.0
 	ldr	x1, [x0, 8]
 	mov	x0, 63439
 	movk	x0, 0xe353, lsl 16
@@ -985,5 +985,5 @@ main:
 
 	.bss
 	.balign 8
-st__0:
+st.0:
 	.skip 16
