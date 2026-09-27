@@ -220,7 +220,8 @@ pub const CLOBBER_PATTERN: u64 = 0xDEAD_BEEF_DEAD_BEEF;
 pub const CLOBBER_NZCV: u8 = 0b1101;
 
 /// A set of registers by bit: x0-x30 in `x`, and d0-d31 (the low 64 bits
-/// of v0-v31) in `d`.
+/// of v0-v31) in `d`. Bit 31 of `x`, which no x register uses, is the
+/// NZCV flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RegMask {
     pub x: u32,
@@ -231,6 +232,23 @@ impl RegMask {
     pub fn is_empty(&self) -> bool {
         self.x == 0 && self.d == 0
     }
+}
+
+/// The flags' number in the clobber bookkeeping, where `xN` is N and `dN`
+/// is 32 + N.
+pub const FLAGS_CODE: u8 = 31;
+const FLAGS_BIT: u32 = 1 << FLAGS_CODE;
+
+/// Where a register's leftovers came from, for the note that names them.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ClobberOrigin {
+    /// The register the call overwrote (`FLAGS_CODE` numbering). A copy
+    /// carries its source's.
+    pub register: u8,
+    /// The `bl` of that call.
+    pub call_pc: u32,
+    /// The copy that first read the leftovers, 0 until one did.
+    pub copied_at: u32,
 }
 
 /// The 64-bit ARM register file.
@@ -254,8 +272,9 @@ pub struct RegisterFile {
     /// Which clobbered registers were read since the last take. A Cell
     /// because every read path borrows the file shared.
     clobbered_reads: Cell<RegMask>,
-    /// The `bl` of the call behind `clobbered`.
-    pub clobber_call_pc: u64,
+    /// Per register (`FLAGS_CODE` numbering), where the leftovers in it
+    /// came from; meaningful while its `clobbered` bit is set.
+    clobber_origins: [ClobberOrigin; 64],
 }
 
 impl RegisterFile {
@@ -269,7 +288,7 @@ impl RegisterFile {
             fpr: [0u128; 32],
             clobbered: RegMask::default(),
             clobbered_reads: Cell::new(RegMask::default()),
-            clobber_call_pc: 0,
+            clobber_origins: [ClobberOrigin::default(); 64],
         }
     }
 
@@ -295,14 +314,70 @@ impl RegisterFile {
             }
         }
         self.nzcv = NzcvFlags::unpack(CLOBBER_NZCV);
-        self.clobbered.x |= 0x7_FFFF & !u32::from(keep_x0); // x0-x18
+        let x = (0x7_FFFF & !u32::from(keep_x0)) | FLAGS_BIT; // x0-x18, flags
+        self.clobbered.x |= x;
         self.clobbered.d |= d;
-        self.clobber_call_pc = call_pc;
+        let fresh = u64::from(x) | (u64::from(d) << 32);
+        for (code, origin) in self.clobber_origins.iter_mut().enumerate() {
+            if (fresh >> code) & 1 != 0 {
+                // Every address the loader hands out fits in 32 bits.
+                *origin = ClobberOrigin { register: code as u8, call_pc: call_pc as u32, copied_at: 0 };
+            }
+        }
     }
 
     /// The clobbered registers read since the last take, emptied.
     pub fn take_clobbered_reads(&self) -> RegMask {
         self.clobbered_reads.take()
+    }
+
+    /// Where the leftovers in register `code` (`FLAGS_CODE` numbering)
+    /// came from. The `& 63` here and below keeps a bounds-check panic out
+    /// of the wasm.
+    pub fn clobber_origin(&self, code: u8) -> ClobberOrigin {
+        self.clobber_origins[usize::from(code & 63)]
+    }
+
+    /// A copy (`mov`, `fmov`) moves leftovers without using them: the
+    /// destination takes over the source's origin, so a note waits for the
+    /// read that uses the value and then names the copy.
+    pub fn carry_clobber(&mut self, from: u8, to: u8, pc: u32) {
+        let mut origin = self.clobber_origins[usize::from(from & 63)];
+        if origin.copied_at == 0 {
+            origin.copied_at = pc;
+        }
+        self.clobber_origins[usize::from(to & 63)] = origin;
+        if to < 32 {
+            self.clobbered.x |= 1 << to;
+        } else {
+            self.clobbered.d |= 1 << (to - 32);
+        }
+    }
+
+    /// Evaluate a condition, as a read of the flags.
+    #[inline(never)]
+    pub fn condition_holds(&self, cond: Condition) -> bool {
+        if cond != Condition::AL {
+            self.mark_flags_read();
+        }
+        self.nzcv.check(cond)
+    }
+
+    /// The carry flag, as `adc` and `sbc` read it.
+    #[inline(never)]
+    pub fn carry_flag(&self) -> bool {
+        self.mark_flags_read();
+        self.nzcv.c
+    }
+
+    /// The executor sets the flags by assigning `nzcv` wherever an
+    /// instruction writes them, so there is no one write to clear the mark
+    /// on. The flags count as a call's leftovers while they still read as
+    /// its pattern instead, which no compare produces.
+    fn mark_flags_read(&self) {
+        if self.nzcv.pack() == CLOBBER_NZCV {
+            self.mark_read(FLAGS_BIT, 0);
+        }
     }
 
     /// Note which of these registers a read found still holding a call's
