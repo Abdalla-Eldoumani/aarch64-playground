@@ -37,8 +37,8 @@ export function integerReading(bits: bigint, width: Width): IntegerReading {
 }
 
 /**
- * A float's decimal. A whole number keeps a `.0` so it still reads as a
- * float, the way the course's printf output does; `-0.0` keeps its sign.
+ * A float's decimal. A whole number keeps a `.0` so it reads as a float,
+ * not an integer; `-0.0` keeps its sign.
  * Past 15 digits a whole number switches to exponent form: its trailing
  * zeros are rounding, not data, and twenty of them do not fit a lane.
  */
