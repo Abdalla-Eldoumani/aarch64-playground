@@ -45,6 +45,9 @@ function precedes(a: Element, b: Element): boolean {
   );
 }
 
+/** A whole program: it defines main, so the playground can link it. */
+const PROGRAM = "        .global main\nmain:\n        mov     w0, 1\n        ret";
+
 const fullLesson: Lesson = {
   title: "Test Lesson",
   slug: "test-lesson",
@@ -54,7 +57,7 @@ const fullLesson: Lesson = {
       type: "prose",
       markdown: "## First Heading\n\nthe lead paragraph appears here",
     },
-    { type: "code", language: "asm", source: "mov x0, #1\nret" },
+    { type: "code", language: "asm", source: PROGRAM },
     { type: "callout", variant: "note", markdown: "a callout body line" },
     {
       type: "editor",
@@ -116,7 +119,7 @@ describe("LessonArticle", () => {
     const href = codeLink.getAttribute("href") ?? "";
     expect(href.startsWith("/playground#p2=")).toBe(true);
     const decoded = okShareState(href.slice("/playground".length));
-    expect(decoded).toEqual({ source: "mov x0, #1\nret" });
+    expect(decoded).toEqual({ source: PROGRAM });
   });
 
   it("shows the open-in-playground link only for assembly code blocks", () => {
@@ -125,7 +128,7 @@ describe("LessonArticle", () => {
       slug: "languages",
       order: 1,
       body: [
-        { type: "code", language: "asm", source: "mov x0, #1\nret" },
+        { type: "code", language: "asm", source: PROGRAM },
         { type: "code", language: "c", source: "int main(){ return 0; }" },
         { type: "code", language: "text", source: "plain listing" },
       ],
@@ -138,7 +141,23 @@ describe("LessonArticle", () => {
     const decoded = okShareState(
       (links[0].getAttribute("href") ?? "").slice("/playground".length),
     );
-    expect(decoded).toEqual({ source: "mov x0, #1\nret" });
+    expect(decoded).toEqual({ source: PROGRAM });
+  });
+
+  it("leaves the link off an assembly fragment that defines no main", () => {
+    const lesson: Lesson = {
+      title: "Fragments",
+      slug: "fragments",
+      order: 1,
+      body: [
+        { type: "code", language: "asm", source: "        cmp     w19, 5\n        b.gt    done" },
+        { type: "code", language: "asm", source: "// the loop body calls main: again\n        b       top" },
+      ],
+    };
+    render(<LessonArticle lesson={lesson} />);
+    // A fragment opened alone fails to link, so the hand-off would lead to
+    // an error; a `main:` inside a comment does not count as a definition.
+    expect(screen.queryAllByRole("link", { name: /open in playground/i })).toHaveLength(0);
   });
 
   it("gives the editor block a deep link carrying starter, args, and stdin", () => {
