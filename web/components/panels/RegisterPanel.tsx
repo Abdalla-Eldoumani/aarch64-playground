@@ -28,6 +28,9 @@ import { DRegisterRow } from "@/components/panels/DRegisterRow";
 import { VRegisterRow } from "@/components/panels/VRegisterRow";
 
 interface RegisterPanelProps {
+  /** The file to open on, read at mount, from a host that knows what its
+   *  program writes; left out, the student's last choice is used. */
+  openOn?: RegView;
   registers: string[];
   changedRegs: Set<number>;
   /** d0-d31 raw bit patterns; [] hides the d-view (older WASM). */
@@ -55,7 +58,7 @@ interface RegisterPanelProps {
 // so each label reads its own bit, in the conventional ARM N Z C V order.
 const FLAG_NAMES = ["N", "Z", "C", "V"];
 
-type RegView = "x" | "d" | "v";
+export type RegView = "x" | "d" | "v";
 
 const VIEW_KEY = "aarch64-playground:regfile-view";
 /** The d-view's format flag keeps the key it shipped with, so a returning
@@ -388,6 +391,7 @@ function joinSpeech(parts: string[]): string {
 }
 
 export function RegisterPanel({
+  openOn,
   registers,
   changedRegs,
   fpRegisters = NO_REGISTERS,
@@ -411,8 +415,10 @@ export function RegisterPanel({
 
   const [viewState, dispatchView] = useReducer(reduceView, INITIAL_VIEW);
   useEffect(() => {
-    const stored = parseView(safeGetItem(VIEW_KEY));
+    const stored = openOn ?? parseView(safeGetItem(VIEW_KEY));
     if (stored != null) dispatchView({ kind: "show", view: stored });
+    // openOn is a hint for the first view, not a setting to track.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { flagged, pending, doubles } = viewState;
   const view: RegView =
