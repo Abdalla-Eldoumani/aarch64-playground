@@ -67,7 +67,7 @@ cmp_str:
 	.data
 	.align	3
 inner:
-	.quad	cmp_str
+	.xword	cmp_str
 	.text
 	.align	2
 cmp_rev:
@@ -846,14 +846,14 @@ main:
 	.word	12345
 	.align	3
 .LC2:
-	.quad	-9223372036854775808
-	.quad	1
-	.quad	-1
-	.quad	4294967296
-	.quad	0
-	.quad	4294967295
-	.quad	9223372036854775807
-	.quad	3735928559
+	.xword	-9223372036854775808
+	.xword	1
+	.xword	-1
+	.xword	4294967296
+	.xword	0
+	.xword	4294967295
+	.xword	9223372036854775807
+	.xword	3735928559
 	.align	3
 .LC3:
 	.string	"pear"
@@ -886,16 +886,16 @@ main:
 	.string	"cherry"
 	.align	3
 .LC30:
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
 	.align	3
 .LC14:
 	.string	"zucchini"
@@ -904,11 +904,11 @@ main:
 	.string	"fi"
 	.align	3
 .LC33:
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC14
-	.quad	.LC15
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC14
+	.xword	.LC15
 	.align	3
 .LC36:
 	.string	"the quick brown fox jumps over a lazy dog"
