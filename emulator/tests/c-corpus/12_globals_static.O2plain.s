@@ -95,7 +95,7 @@ greeting:
 	.data
 	.align	3
 	.LANCHOR0:
-id__0:
+id.0:
 	.word	100
 counter:
 	.word	5
