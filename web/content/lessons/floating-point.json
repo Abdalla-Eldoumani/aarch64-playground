@@ -1,0 +1,112 @@
+{
+  "title": "Floating point: the other register file",
+  "slug": "floating-point",
+  "order": 26,
+  "summary": "Load, compute with, convert, compare, and print single and double values, and pass them to and from functions in d0 to d7.",
+  "tags": [
+    "floating point",
+    "registers"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Printing integers and characters](/learn/printing-other-data-types)\n- [Subroutines: saved registers, pointers, and big arguments](/learn/calling-conventions)"
+    },
+    {
+      "type": "prose",
+      "markdown": "An integer register cannot hold 12.5 or 0.045. For numbers with a fraction the processor has *floating-point* numbers: a value stored as a sign, a power of two, and a fixed number of significant digits, the way scientific notation writes 6.02 * 10^23, but in binary. How those bits are laid out is the subject of [Inside a float: IEEE 754](/learn/ieee-754); this lesson is about using them.\n\nFloating-point values live in their own set of 32 registers, apart from `x0` to `x30`, and have their own instructions, nearly all of them starting with `f`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The s and d registers\n\nEach of the 32 floating-point registers can be read at more than one width. `d0` to `d31` are 64 bits wide and hold a *double* (double precision, C's `double`, good for about 15 significant decimal digits). `s0` to `s31` are the low 32 bits of the same registers and hold a *single* (single precision, C's `float`, about 7 digits). `d3` and `s3` are one register seen two ways, just as `x3` and `w3` are, and writing `s3` clears the rest of it. The full 128-bit register is called `v3`; the vector instructions use that name, and this lesson needs only `s` and `d`.\n\nAn instruction works at one width. `fadd d0, d1, d2` adds doubles and `fadd s0, s1, s2` adds singles. `fadd d0, s1, d2` does not assemble: convert one operand first, as shown further down."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Constants\n\nA floating-point constant goes in `.data` with `.double` (8 bytes) or `.float` (4 bytes). The number is written with a `0r` prefix, which marks it as a real number rather than an integer: `rate: .double 0r0.045`. Load it the way you load any variable, its address first and then the value, but into a `d` or `s` register: `ldr x9, =rate` and then `ldr d9, [x9]`.\n\n`fmov` can put a constant straight into a register, but only from a small set: a whole number of sixteenths times a power of two, from 0.125 up to 31, such as 0.25, 0.5, 1.0, 2.5, and 10.0. `fmov d1, 0.1` does not assemble, because no such product equals 0.1 exactly; put 0.1 in `.data` instead. `fmov` also copies one register to another (`fmov d0, d8`) and copies raw bits from a general register: `fmov d8, xzr` makes 0.0, because a double whose 64 bits are all zero is 0.0."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Arithmetic\n\n`fadd`, `fsub`, `fmul`, and `fdiv` take a destination and two sources, like their integer cousins. A few more have no integer twin:\n\n- `fmadd d0, d1, d2, d3` computes `d3 + d1 * d2`, and `fmsub d0, d1, d2, d3` computes `d3 - d1 * d2`. Each rounds once, at the end, instead of after the multiply and again after the add.\n- `fnmul d0, d1, d2` is `-(d1 * d2)`.\n- `fabs` and `fneg` take one source and give its absolute value and its negation.\n\nDividing by zero does not stop the program. `1.0 / 0.0` gives infinity, and `0.0 / 0.0` gives NaN, a special value meaning \"not a number\"; `printf` shows them as `inf` and `nan`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Printing with %f\n\n`printf` reads each `%f` from the floating-point registers: the first from `d0`, the next from `d1`, and so on. The format string still goes in `x0` and each `%d` still comes from `w1`, `w2`, and on, because the two kinds of argument are counted separately. The format `\"year %2d: interest %6.2f, balance %8.2f\\n\"` takes the year from `w1`, the interest from `d0`, and the balance from `d1`. `%.2f` prints two digits after the point, and `%8.2f` also pads the number to 8 characters so the columns line up.\n\nThe program below grows a balance of 1000.00 by 4.5 percent a year. Each pass multiplies the balance by the rate to get the year's interest, adds the interest on, and prints both. The balance and the rate have to survive every call to `printf`, so they live in `d8` and `d9`, two registers that a call must leave as it found them; the rules are in the last section."
+    },
+    {
+      "type": "editor",
+      "starter": "// A balance earns 4.5 percent interest a year; print ten years of it\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(year_r, w19)\ndefine(bal_r, d8)\ndefine(rate_r, d9)\n\ndefine(YEARS, 10)\n\nsave_x19_s = 16\nsave_d8_s = 24\nsave_d9_s = 32\nalloc = -(16 + 24) & -16\ndealloc = -alloc\n\n.data\nfmt_year:   .string \"year %2d: interest %6.2f, balance %8.2f\\n\"\n        .balign 8\nstart:      .double 0r1000.0\nrate:       .double 0r0.045\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        str     x19, [fp, save_x19_s]       // callee-saved: main changes them,\n        str     bal_r, [fp, save_d8_s]      // so main puts the old values back\n        str     rate_r, [fp, save_d9_s]     // before it returns\n\n        ldr     x9, =start\n        ldr     bal_r, [x9]                 // balance = 1000.00\n        ldr     x9, =rate\n        ldr     rate_r, [x9]                // rate = 0.045\n\n        mov     year_r, 1\n        b       sv_test\nsv_loop:\n        fmul    d0, bal_r, rate_r           // this year's interest\n        fadd    bal_r, bal_r, d0            // added to the balance\n        fmov    d1, bal_r                   // second %f comes from d1\n        ldr     x0, =fmt_year               // first %f comes from d0 (already there)\n        mov     w1, year_r                  // %d comes from w1\n        bl      printf\n\n        add     year_r, year_r, 1\nsv_test:\n        cmp     year_r, YEARS\n        b.le    sv_loop\n\n        mov     w0, 0\n        ldr     x19, [fp, save_x19_s]\n        ldr     bal_r, [fp, save_d8_s]\n        ldr     rate_r, [fp, save_d9_s]\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "year  1: interest  45.00, balance  1045.00\nyear  2: interest  47.02, balance  1092.03\nyear  3: interest  49.14, balance  1141.17\nyear  4: interest  51.35, balance  1192.52\nyear  5: interest  53.66, balance  1246.18\nyear  6: interest  56.08, balance  1302.26\nyear  7: interest  58.60, balance  1360.86\nyear  8: interest  61.24, balance  1422.10\nyear  9: interest  63.99, balance  1486.10\nyear 10: interest  66.87, balance  1552.97\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "It prints ten lines, from `year  1: interest  45.00, balance  1045.00` to `year 10: interest  66.87, balance  1552.97`."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Look at year 2: 1045.00 plus 47.02 is 1092.02, yet the line says 1092.03. The machine kept every digit it could. The interest was a hair under 47.025 and the new balance a hair over 1092.025, and `printf` rounded each one on its own as it printed it, the first down and the second up. Rounding happens only in what you print, never in what the register holds."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Printing a single\n\n`%f` always means a double. `printf` takes any number of arguments, and C widens every `float` it passes to such a function into a `double`, so `printf` never receives a single at all. Widen one yourself with `fcvt d0, s0` before the call. Skip that step and `printf` reads the 32 bits of `s0` as if they were a 64-bit double, a number so tiny it prints as 0.00."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Converting between integers and floating point\n\n- `scvtf d1, w9` turns a signed integer into a double, so 100 becomes 100.0 (`ucvtf` does the same for an unsigned integer).\n- `fcvtzs w2, d0` turns a double into a signed integer by dropping the fraction, as C's `(int)x` does: 23.7 becomes 23 and -23.7 becomes -23.\n- `fcvtns w1, d0` rounds to the nearest integer instead: 23.7 becomes 24. A value exactly halfway goes to the even neighbor, so 2.5 becomes 2 and 3.5 becomes 4 (`fcvtnu` rounds the same way to an unsigned result).\n- `fcvt d0, s0` widens a single to a double, and `fcvt s0, d0` narrows a double to a single, rounding off the digits that do not fit."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Comparing\n\n`fcmp d1, d2` compares two values of the same width and sets the flags, and the signed conditions read them just as they do after `cmp`: `b.gt`, `b.ge`, `b.lt`, `b.le`, `b.eq`, and `b.ne`. Most results carry a little rounding, so compare against a limit with `b.gt` or `b.le` rather than testing for an exact match with `b.eq`.\n\nThe program below shows each conversion. It divides 100 by 8 twice, once with `sdiv` and once with `fdiv` after `scvtf`, then uses `fcmp` to pick the warmer of two single-precision sensor readings, rounds it both ways, and widens it with `fcvt` so `printf` can print it."
+    },
+    {
+      "type": "editor",
+      "starter": "// Convert and compare: integer to double, single to double, double to integer,\n// and fcmp to pick the warmer of two sensor readings\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(LENGTH, 100)\ndefine(PEOPLE, 8)\n\n.data\nfmt_int:    .string \"%d / %d with sdiv: %d\\n\"\nfmt_real:   .string \"%d / %d with fdiv: %.2f\\n\"\nfmt_warm:   .string \"warmer reading: %.2f, fcvtns gives %d, fcvtzs gives %d\\n\"\n        .balign 4\nsensor_a:   .float  0r21.6\nsensor_b:   .float  0r23.7\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // integer division drops the fraction\n        mov     w9, LENGTH\n        mov     w10, PEOPLE\n        sdiv    w3, w9, w10\n        ldr     x0, =fmt_int\n        mov     w1, w9\n        mov     w2, w10\n        bl      printf\n\n        // convert both to double first and the fraction survives\n        mov     w9, LENGTH                  // printf may have changed w9 and w10\n        mov     w10, PEOPLE\n        scvtf   d1, w9                      // 100 becomes 100.0\n        scvtf   d2, w10                     // 8 becomes 8.0\n        fdiv    d0, d1, d2\n        ldr     x0, =fmt_real\n        mov     w1, w9\n        mov     w2, w10\n        bl      printf\n\n        // two single-precision readings: keep the larger in s0\n        ldr     x9, =sensor_a\n        ldr     s1, [x9]\n        ldr     x9, =sensor_b\n        ldr     s2, [x9]\n        fmov    s0, s1                      // guess that a is warmer\n        fcmp    s1, s2\n        b.gt    cc_print                    // a > b: the guess was right\n        fmov    s0, s2\ncc_print:\n        fcvtns  w1, s0                      // round to the nearest whole number\n        fcvtzs  w2, s0                      // chop toward zero, as C's (int) does\n        fcvt    d0, s0                      // printf takes a float as a double\n        ldr     x0, =fmt_warm\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "100 / 8 with sdiv: 12\n100 / 8 with fdiv: 12.50\nwarmer reading: 23.70, fcvtns gives 24, fcvtzs gives 23\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "It prints three lines: `sdiv` answers 12, `fdiv` answers 12.50, and the warmer reading, 23.70, becomes 24 with `fcvtns` and 23 with `fcvtzs`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Floating point and subroutines\n\nThe calling convention (the rules every function follows) has a floating-point half that mirrors the integer half:\n\n- Arguments go in `d0` to `d7` (`s0` to `s7` for singles), counted separately from the integer arguments in `x0` to `x7`. A function `scale(int count, double factor)` receives `count` in `w0` and `factor` in `d0`.\n- A floating-point result comes back in `d0` (or `s0`).\n- `d8` to `d15` are callee-saved: a function that changes one must put the old value back before it returns, just like `x19` to `x28`. Only their low 64 bits count, so saving the `d` register is enough.\n- Every other floating-point register, `d0` to `d7` and `d16` to `d31`, may be changed by any call, `printf` included.\n\nThe next program turns the formula a + (b - a) * t into a subroutine. This *linear interpolation* finds the point a fraction t of the way from a to b: t = 0 gives a, t = 1 gives b, and t = 0.5 the point halfway. `lerp` takes a, b, and t in `d0`, `d1`, and `d2`, does the work with one `fsub` and one `fmadd`, and returns the answer in `d0`. `main` walks t from 0 to 1 in steps of 0.25 and keeps it in `d8` so that it survives the calls. Because `d8` is callee-saved, `main` stores the old `d8` in its frame first and loads it back before it returns."
+    },
+    {
+      "type": "editor",
+      "starter": "// lerp: an oven heats from 20 to 180 degrees; print the temperature\n// at every quarter of the way\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(t_r, d8)\n\nsave_d8_s = 16\nalloc = -(16 + 8) & -16\ndealloc = -alloc\n\n.data\nfmt_row:    .string \"t = %.2f: %5.1f degrees\\n\"\n        .balign 8\ncold:       .double 0r20.0\nhot:        .double 0r180.0\n\n.text\n// lerp(d0 = a, d1 = b, d2 = t) -> d0 = a + (b - a) * t\n        .balign 4\n        .global lerp\nlerp:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n        fsub    d1, d1, d0                  // d1 = b - a\n        fmadd   d0, d1, d2, d0              // d0 = (b - a) * t + a, in one step\n        ldp     fp, lr, [sp], 16\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        str     t_r, [fp, save_d8_s]        // d8 is callee-saved: keep the caller's\n\n        fmov    t_r, xzr                    // t = 0.0 (a double of all zero bits)\n        b       lp_test\nlp_loop:\n        ldr     x9, =cold\n        ldr     d0, [x9]                    // a\n        ldr     x9, =hot\n        ldr     d1, [x9]                    // b\n        fmov    d2, t_r                     // t\n        bl      lerp\n\n        fmov    d1, d0                      // the temperature is the second %f\n        fmov    d0, t_r                     // t is the first\n        ldr     x0, =fmt_row\n        bl      printf\n\n        fmov    d16, 0.25                   // d16 is scratch: set it just before use\n        fadd    t_r, t_r, d16\nlp_test:\n        fmov    d16, 1.0\n        fcmp    t_r, d16\n        b.le    lp_loop\n\n        mov     w0, 0\n        ldr     t_r, [fp, save_d8_s]        // give the caller its d8 back\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "t = 0.00:  20.0 degrees\nt = 0.25:  60.0 degrees\nt = 0.50: 100.0 degrees\nt = 0.75: 140.0 degrees\nt = 1.00: 180.0 degrees\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "It prints five lines, one for each quarter: 20.0, 60.0, 100.0, 140.0, and 180.0 degrees."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "The step of 0.25 and the limit of 1.0 go through `d16`, which any call may change. That is why the loop sets `d16` again just before each use, and never counts on it across `bl lerp` or `bl printf`. A value that must outlive a call belongs in `d8` to `d15`, saved in the prologue, or in memory."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. Which register holds the format string for `printf`, and which holds the first `%f`?\n2. A function takes `(int count, double scale)`. Where does each argument arrive?\n3. Why does a single need `fcvt d0, s0` before it is printed?\n4. A loop keeps a running total in `d5` and calls `printf` on every pass. What goes wrong, and what is the fix?\n5. `fmov d1, 0.1` does not assemble. What do you write instead?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `x0` holds the format string and `d0` the first `%f`.\n2. `count` in `w0` and `scale` in `d0`: integer and floating-point arguments are counted separately.\n3. `printf` only ever receives doubles, because C widens a `float` passed to it, so `%f` reads 64 bits.\n4. `printf` may change `d0` to `d7`, so the total can be lost. Keep it in one of `d8` to `d15` and save that register in the prologue.\n5. Put `.double 0r0.1` in `.data` under a label, then load its address and `ldr d1` from it."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: floating point (intro)](/practice/quiz-basic-floating-point), then [core](/practice/quiz-inter-floating-point) and [challenge](/practice/quiz-advance-floating-point): the registers, the instructions, and the calling rules.\n- [Fill in the blank: floating point (core)](/practice/blanks-floating-point) and [Predict: floating point (core)](/practice/predict-floating-point): the directives, the conversions, and what each instruction leaves in a register."
+    }
+  ]
+}
