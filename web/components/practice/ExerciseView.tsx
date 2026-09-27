@@ -12,7 +12,8 @@
  * The Check button fires `onCheck(snapshot)`; the handler runs `checkExercise`
  * against the snapshot and the live student source (read through the embed ref),
  * so structural checks see what the student actually wrote. A passing check
- * marks the exercise solved once.
+ * marks the exercise solved once. Each check press brings the RESULTS panel
+ * into view with the smallest scroll.
  *
  * No answer leak: the specification table describes the shape of each check (no
  * expected values); the RESULTS panel shows expected-vs-actual as feedback but
@@ -174,6 +175,10 @@ function structuralMiss(check: StructuralCheck): string {
   }
 }
 
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 /** One SPECIFICATION row: mono label column over a hairline, shape-only value. */
 function SpecRow({ label, children }: { label: string; children: ReactNode }): JSX.Element {
   return (
@@ -269,14 +274,28 @@ export function ExerciseView({
     embedRef.current?.loadSource(exercise.starter);
   }, [exercise.slug, exercise.starter]);
 
+  const resultsRef = useRef<HTMLDivElement>(null);
+  // Bumped by every check press, so the panel scrolls into view only in
+  // answer to one, never on a render of its own.
+  const [checkCount, setCheckCount] = useState(0);
+
   const handleCheck = (snapshot: EmbeddableState): void => {
     // Read the LIVE editor source so structural checks run on what the student
     // wrote, falling back to the starter before the embed has registered.
     const source = embedRef.current?.getSource() ?? exercise.starter;
     const outcome = checkExercise(exercise.acceptance, snapshot, source);
     setResult(outcome);
+    setCheckCount((n) => n + 1);
     if (outcome.pass) markSolved(exercise.slug);
   };
+
+  useEffect(() => {
+    if (checkCount === 0) return;
+    const panel = resultsRef.current;
+    if (panel && typeof panel.scrollIntoView === "function") {
+      panel.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    }
+  }, [checkCount]);
 
   const allChecks = result ? [...result.results, ...result.structural] : [];
   const passingCount = allChecks.filter((check) => check.pass).length;
@@ -362,7 +381,7 @@ export function ExerciseView({
           </button>
         </div>
 
-        <div role="status">
+        <div role="status" ref={resultsRef} className="scroll-mb-4">
           {result && (
             <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
               <div className="flex items-baseline justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-2.5">
