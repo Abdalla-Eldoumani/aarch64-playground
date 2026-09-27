@@ -17,7 +17,7 @@
 	.string	"lane check %016lx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -55,7 +55,7 @@ main:
 	stp	x23, x24, [sp, 48]
 	stp	x25, x26, [sp, 64]
 	stp	x27, x28, [sp, 80]
-	.align 5
+	.p2align 5,,15
 .L2:
 	eor	w0, w0, w0, lsl 13
 	eor	w0, w0, w0, lsr 17
@@ -100,7 +100,7 @@ main:
 	strh	w1, [x4, 6]
 	str	w6, [x20, 1020]
 	strb	wzr, [x21, 1024]
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldr	q30, [x0], 16
 	saddw	v31.2d, v31.2d, v30.2s
@@ -112,7 +112,7 @@ main:
 	addp	d31, v31.2d
 	mov	x0, x23
 	movi	v30.4s, 0
-	.align 5
+	.p2align 5,,15
 .L4:
 	ldr	q29, [x0], 16
 	add	v30.4s, v30.4s, v29.4s
@@ -123,7 +123,7 @@ main:
 	movi	v30.4s, 0
 	add	x28, x21, 256
 	mov	x0, x27
-	.align 5
+	.p2align 5,,15
 .L5:
 	ldr	q29, [x0], 16
 	saddw	v30.4s, v30.4s, v29.4h
@@ -165,7 +165,7 @@ main:
 	add	x0, x21, 1536
 	add	x2, x21, 3584
 	mov	x6, 0
-	.align 5
+	.p2align 5,,15
 .L8:
 	ldr	x1, [x0], 8
 	add	x6, x6, x1
@@ -173,7 +173,7 @@ main:
 	bne	.L8
 	movi	v30.4s, 0
 	mov	x0, x23
-	.align 5
+	.p2align 5,,15
 .L9:
 	ldr	q29, [x0], 16
 	uaddw	v30.2d, v30.2d, v29.2s
@@ -195,7 +195,7 @@ main:
 	add	x1, x21, 256
 	mov	x0, 0
 	mov	v27.16b, v31.16b
-	.align 5
+	.p2align 5,,15
 .L10:
 	ldr	q29, [x0, x2]
 	ldr	q30, [x0, x1]
@@ -208,7 +208,7 @@ main:
 	add	x1, x20, 1024
 	movi	v31.4s, 0
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L11:
 	ldr	q29, [x20, x0]
 	ldr	q30, [x0, x1]
@@ -222,7 +222,7 @@ main:
 	movi	v30.4s, 0
 	add	x1, x20, 3072
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L12:
 	ldr	q28, [x0, x2]
 	ldr	q29, [x0, x1]
@@ -270,7 +270,7 @@ main:
 	bne	.L14
 	addv	s28, v30.4s
 	movi	v30.4s, 0
-	.align 5
+	.p2align 5,,15
 .L15:
 	ldr	q29, [x27], 16
 	smull	v23.4s, v29.4h, v29.4h
@@ -293,7 +293,7 @@ main:
 	bl	printf
 	movi	v31.4s, 0x80, lsl 24
 	mov	x0, x20
-	.align 5
+	.p2align 5,,15
 .L16:
 	ldr	q30, [x0], 16
 	smax	v31.4s, v31.4s, v30.4s
@@ -303,7 +303,7 @@ main:
 	mov	x0, x20
 	fmov	w1, s31
 	mvni	v31.4s, 0x80, lsl 24
-	.align 5
+	.p2align 5,,15
 .L17:
 	ldr	q30, [x0], 16
 	smin	v31.4s, v31.4s, v30.4s
@@ -314,7 +314,7 @@ main:
 	add	x3, x20, 4096
 	fmov	w2, s31
 	movi	v31.4s, 0
-	.align 5
+	.p2align 5,,15
 .L18:
 	ldr	q30, [x0], 16
 	umax	v31.4s, v31.4s, v30.4s
@@ -325,7 +325,7 @@ main:
 	add	x6, x21, 1280
 	mov	w4, 255
 	fmov	w3, s31
-	.align 5
+	.p2align 5,,15
 .L19:
 	ldrb	w5, [x0], 1
 	cmp	w5, w4
@@ -344,7 +344,7 @@ main:
 	add	x6, x21, 768
 	smov	w5, v31.b[0]
 	mvni	v31.8h, 0x80, lsl 8
-	.align 5
+	.p2align 5,,15
 .L21:
 	ldr	q30, [x0], 16
 	smin	v31.8h, v31.8h, v30.8h
@@ -371,7 +371,7 @@ main:
 	addv	s28, v28.4s
 	mov	x0, x20
 	movi	v30.4s, 0
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldr	q31, [x0], 16
 	cmgt	v31.4s, v31.4s, #0
@@ -380,7 +380,7 @@ main:
 	bne	.L23
 	addv	s30, v30.4s
 	mov	w3, 0
-	.align 5
+	.p2align 5,,15
 .L24:
 	ldr	w0, [x23], 4
 	eor	w3, w3, w0
@@ -430,7 +430,7 @@ main:
 	eor	w0, w0, w9
 	strb	w0, [x5, x7]
 	mov	x0, x20
-	.align 5
+	.p2align 5,,15
 .L26:
 	ldr	q30, [x0], 16
 	saddw	v31.2d, v31.2d, v30.2s
@@ -442,7 +442,7 @@ main:
 	fmov	x0, d31
 	add	x0, x0, x1
 	add	x1, x21, 768
-	.align 5
+	.p2align 5,,15
 .L27:
 	ldr	q30, [x1], 16
 	zip1	v29.16b, v30.16b, v27.16b
@@ -459,7 +459,7 @@ main:
 	mov	x1, 0
 	movi	v31.4s, 0
 	fmov	w2, s28
-	.align 5
+	.p2align 5,,15
 .L28:
 	ldr	q30, [x1, x4]
 	ldr	q29, [x1, x3]
