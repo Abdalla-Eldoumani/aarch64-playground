@@ -139,6 +139,17 @@ describe("explainError", () => {
     );
   });
 
+  it("recognizes ld's undefined reference for an ldr = or a data slot", () => {
+    // What the emulator says for `ldr x0, =fmtt` when only fmt is defined,
+    // opening with the line ld prints on the course servers.
+    const e = explainError(
+      "undefined reference to `fmtt'\nno line defines `fmtt:`: check the spelling, and check that the label line ends with a `:`",
+    );
+    expect(e!.styleSection).toBe("naming conventions");
+    // main keeps its own block.
+    expect(explainError("undefined reference to `main'")!.styleSection).toBe("general");
+  });
+
   it("recognizes immediate-out-of-range encodings", () => {
     const e = explainError("immediate out of range for movz");
     expect(e!.styleSection).toBe("literal pool");
