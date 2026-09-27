@@ -527,7 +527,7 @@ fn encode_line(
         "NOP" => Ok(crate::decoder::NOP_WORD),
         "SVC" => encode_svc(&ops, line_num),
 
-        _ => asm_err(line_num, &format!("unknown mnemonic `{mn}`: {UNKNOWN_MNEMONIC_HINT}")),
+        _ => Err(unknown_mnemonic(mnemonic, operands, line_num)),
     }
 }
 
@@ -773,11 +773,36 @@ const UNKNOWN_MNEMONIC_HINT: &str =
     "check the spelling, or look it up in the instruction reference to see \
      whether the playground implements it";
 
-/// The tail every missing-label complaint carries. A label line that lost
-/// its `:` reads as an instruction here, so it is indistinguishable from a
-/// misspelling without saying both.
-const NO_SUCH_LABEL_HINT: &str =
-    "check the spelling, and check that the label line ends with a `:`";
+/// GAS's complaint about a mnemonic it does not know. GAS lowercases the
+/// name and echoes the line with the spaces after its commas squeezed out;
+/// the first line repeats it exactly so it reads the same here as on the
+/// course servers. The nearest supported spellings are the web explainer's
+/// to add: the name table would cost the wasm about 2 KB compressed, and
+/// nothing else in it needs one.
+fn unknown_mnemonic(mnemonic: &str, operands: &str, ln: usize) -> EmuError {
+    let mnemonic = mnemonic.to_ascii_lowercase();
+    let squeezed: Vec<&str> = operands.split(',').map(str::trim).collect();
+    let echo = if operands.is_empty() {
+        mnemonic.clone()
+    } else {
+        format!("{mnemonic} {}", squeezed.join(","))
+    };
+    asm_error(ln, &format!("unknown mnemonic `{mnemonic}' -- `{echo}'\n{UNKNOWN_MNEMONIC_HINT}"))
+}
+
+/// A branch or address naming a label nothing defines. GAS leaves such a
+/// name for ld, which fails the link with the first line below. A label
+/// line that lost its `:` reads as an instruction, so the guidance names
+/// both causes.
+fn undefined_label(ln: usize, target: &str) -> EmuError {
+    asm_error(
+        ln,
+        &format!(
+            "undefined reference to `{target}'\nno line defines `{target}:`: check the \
+             spelling, and check that the label line ends with a `:`"
+        ),
+    )
+}
 
 /// A selector the dispatch cannot produce reached an encoder. No source
 /// text can cause it, so the message asks for a bug report rather than
@@ -4953,7 +4978,7 @@ fn encode_adr(
         *labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| asm_error(ln, &format!("no label named `{target}` in this program: {NO_SUCH_LABEL_HINT}")))?
+            .ok_or_else(|| undefined_label(ln, target))?
     };
 
     let imm: i64 = if adrp {
@@ -4989,7 +5014,7 @@ fn encode_branch_imm(
         let addr = labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| asm_error(ln, &format!("no label named `{target}` in this program: {NO_SUCH_LABEL_HINT}")))?;
+            .ok_or_else(|| undefined_label(ln, target))?;
         *addr as i64 - pc as i64
     };
 
@@ -5019,7 +5044,7 @@ fn encode_bcond(
         let addr = labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| asm_error(ln, &format!("no label named `{target}` in this program: {NO_SUCH_LABEL_HINT}")))?;
+            .ok_or_else(|| undefined_label(ln, target))?;
         *addr as i64 - pc as i64
     };
 
@@ -5138,7 +5163,7 @@ fn resolve_branch_target(
         let addr = labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| asm_error(ln, &format!("no label named `{target}` in this program: {NO_SUCH_LABEL_HINT}")))?;
+            .ok_or_else(|| undefined_label(ln, target))?;
         Ok(*addr as i64 - pc as i64)
     }
 }
