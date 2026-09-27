@@ -5,7 +5,7 @@
 	.string	"%u %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	mov	w1, 40389
@@ -17,7 +17,7 @@ main:
 	movk	w3, 0x100, lsl 16
 	movk	w2, 0x1e, lsl 16
 	mov	x29, sp
-	.align 5
+	.p2align 5,,15
 .L2:
 	eor	w1, w0, w1
 	add	w0, w0, 1
@@ -29,7 +29,7 @@ main:
 	mov	x2, 0
 	mov	w6, 7
 	movk	w5, 0xf, lsl 16
-	.align 5
+	.p2align 5,,15
 .L3:
 	udiv	w4, w3, w6
 	lsl	w0, w4, 3
