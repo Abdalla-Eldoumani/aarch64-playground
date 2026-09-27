@@ -125,6 +125,7 @@ export function resolveBoot(
   if (dl.bundle) {
     return {
       source: dl.bundle.source,
+      files: dl.bundle.files,
       args: dl.bundle.args ?? "",
       stdin: dl.bundle.stdin,
       fromShare: false,
@@ -184,6 +185,7 @@ export function resolveHandoff(
       kind: "bundle",
       payload: {
         source: dl.bundle.source,
+        files: dl.bundle.files,
         args: dl.bundle.args,
         stdin: dl.bundle.stdin,
         label: "diagnostic bundle",
