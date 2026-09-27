@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { explainError } from "@/lib/asm/error-explain";
+import { errorHoverMarkdown, explainError } from "@/lib/asm/error-explain";
 
 // Every string below is the shape production actually delivers: assemble
 // errors arrive as the BARE inner message (the wasm boundary strips the
@@ -283,5 +283,33 @@ describe("explainError", () => {
         "unknown directive `.wrod`: the directives the playground recognizes are .text, .data, .bss, .rodata, .section, .global, .globl, .type, .size, .balign, .align, .skip, .zero, .space, .string, .asciz, .ascii, .byte, .hword, .short, .word, .quad, .dword, .double, .float, .equ, and .set",
       ),
     ).toBeNull();
+  });
+});
+
+describe("errorHoverMarkdown", () => {
+  // Reads a markdown line back the way the renderer does: an escaped mark or
+  // an escaped line break stands for itself.
+  const unescape = (md: string) => md.replace(/\\(\n|[!-/:-@[-`{-~])/g, "$1");
+  const unescapedBacktick = /(^|[^\\])`/;
+
+  it("escapes the backticks of GAS's quoting so no code span swallows the message", () => {
+    const message =
+      "unknown mnemonic `mvo' -- `mvo w0,0'\ncheck the spelling, or look it up in the instruction reference to see whether the playground implements it";
+    const md = errorHoverMarkdown(message);
+    const [bold, ...rest] = md.split("\n\n");
+    expect(bold).toContain(
+      "**unknown mnemonic \\`mvo\\' \\-\\- \\`mvo w0\\,0\\'\\\ncheck the spelling\\,",
+    );
+    expect(bold).not.toMatch(unescapedBacktick);
+    expect(unescape(bold.slice(2, -2))).toBe(message);
+    // The teaching block after it keeps its own code spans.
+    expect(rest).toContain("*fix:* did you mean `mov` or `mvn`?");
+  });
+
+  it("escapes ld's quoting when the explainer has nothing to add", () => {
+    const message = "unknown mnemonic `frobnicate' -- `frobnicate x0'";
+    const md = errorHoverMarkdown(message);
+    expect(md).not.toMatch(unescapedBacktick);
+    expect(unescape(md)).toBe(message);
   });
 });
