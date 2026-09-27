@@ -10,12 +10,12 @@
     {
       "question": "What does the addressing mode [x29, w21, sxtw] accomplish?",
       "options": [
-        "It scales the offset in w21 by 4 and adds it to x29.",
+        "It scales the offset in w21 by 4 and adds it to x29, as an array index would need.",
+        "It sign-extends w21 to 64 bits, adds it to x29, and accesses that address.",
         "It zero-extends the 32-bit offset in w21, adds it to x29, and accesses memory.",
-        "It sign-extends the 32-bit offset in w21, adds it to the 64-bit base register x29, and accesses memory.",
-        "It pre-indexes x29 by the value in w21."
+        "It pre-indexes x29 by the value in w21, so x29 keeps the new address afterwards."
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 1,
       "explanation": "The sxtw form takes a 32-bit register offset. It sign-extends the value in w21 to 64 bits, adds that offset to the base address in x29, and uses the result as the memory address. Sign extension is what lets a negative index reach lower addresses.",
       "hint": "sxtw stands for sign-extend word."
     },
@@ -34,24 +34,24 @@
     {
       "question": "If a stack allocation is 32 bytes, including the 16-byte frame record, what does the stack layout look like immediately after stp x29, x30, [sp, -32]! executes?",
       "options": [
-        "sp points to the higher-address end of the allocated space, where the frame record is stored.",
-        "sp points to the lower-address end of the allocated space, where the 16-byte frame record is stored, with the remaining 16 bytes above it in the stack frame.",
-        "The frame record is placed at the higher-address end and the local variables overwrite the caller's stack frame.",
-        "x30 is overwritten before it can be saved."
+        "sp is at the high end of the 32 bytes, where the frame record is stored, with 16 free bytes below it.",
+        "The frame record is at the high end, and the locals spill into the caller's frame above it.",
+        "x30 is overwritten by the store before its old value can be saved.",
+        "sp is at the low end of the 32 bytes, with the frame record there and 16 free bytes above it."
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 3,
       "explanation": "The pre-indexed form subtracts 32 from sp first, then stores x29 and x30 at the new sp. The frame record therefore occupies the lowest 16 bytes of the new allocation, leaving the 16 bytes above it for local variables and padding.",
       "hint": "The ! updates sp before the store, so where does the store land?"
     },
     {
       "question": "Why does ldp x29, x30, [sp], 16 use post-indexed addressing when the function returns?",
       "options": [
-        "To keep the stack full and descending.",
-        "Because it restores the frame record from the current sp first, then increments sp to deallocate the 16 bytes.",
-        "Because fp is unstable during stack-frame teardown.",
-        "To prevent alignment faults on x30."
+        "To keep the stack full and descending, which requires every load to move sp before it reads.",
+        "Because fp is unstable during teardown, so the pair must be read before x29 is overwritten.",
+        "To prevent an alignment fault on x30, which must be loaded from an address ending in 8.",
+        "It reads the frame record at sp first, then adds 16 to sp to release those bytes."
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 3,
       "explanation": "The post-indexed form loads the saved x29 and x30 from the current sp, and only then adds 16 to sp to release the frame record. Reading first is what makes the teardown safe, because once sp has moved past those 16 bytes they are no longer part of the frame and anything pushed later may overwrite them.",
       "hint": "Restore the saved registers first, then move sp past the frame record."
     },
@@ -59,11 +59,11 @@
       "question": "If you need to scale a 64-bit register offset by 8 bytes before adding it to the base register, what syntax is required?",
       "options": [
         "[base, xm, mul 8]",
-        "[base, xm, lsl 3]",
         "[base, xm, lsl 8]",
+        "[base, xm, lsl 3]",
         "[base, xm, uxtw]"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 2,
       "explanation": "A register offset is scaled with a left shift, not a multiply. Shifting left by 3 multiplies the index by 2^3, which is 8, so [base, xm, lsl 3] steps the offset one doubleword per index value.",
       "hint": "A left shift by 3 multiplies a value by 2^3."
     }
