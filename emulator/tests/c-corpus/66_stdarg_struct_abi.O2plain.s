@@ -32,7 +32,7 @@
 	.string	" m:%g,%ld"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 walk:
 	stp	x29, x30, [sp, -384]!
 	mov	x29, sp
@@ -66,7 +66,7 @@ walk:
 	mov	x22, 0
 	mov	x21, 0
 	mov	x24, 0
-	.align 5
+	.p2align 5,,15
 .L44:
 	cmp	w1, 105
 	beq	.L3
@@ -94,7 +94,7 @@ walk:
 	ldr	d0, [sp, 64]
 	fcvtzs	x0, d0, #3
 	add	x22, x22, x0
-	.align 5
+	.p2align 5,,15
 .L11:
 	ldrb	w1, [x19, 1]!
 	cbnz	w1, .L44
@@ -112,7 +112,7 @@ walk:
 	ldp	x23, x24, [sp, 48]
 	ldp	x29, x30, [sp], 384
 	ret
-	.align 2
+	.p2align 2,,3
 .L4:
 	cmp	w1, 116
 	beq	.L12
@@ -139,7 +139,7 @@ walk:
 	mul	w20, w20, w1
 	add	x24, x24, w20, sxtw
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L13:
 	cmp	w1, 119
 	bne	.L11
@@ -161,7 +161,7 @@ walk:
 	add	x20, x20, x1
 	eor	x21, x21, x20
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L6:
 	cmp	w1, 104
 	bne	.L11
@@ -194,7 +194,7 @@ walk:
 	fcvtzs	x0, d1
 	add	x22, x22, x0
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L5:
 	ldr	w1, [sp, 188]
 	ldr	x0, [sp, 160]
@@ -231,7 +231,7 @@ walk:
 	fcvtzs	x0, s31
 	add	x22, x22, x0
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L14:
 	ldr	w1, [sp, 184]
 	ldr	x0, [sp, 160]
@@ -252,7 +252,7 @@ walk:
 	fcvtzs	x0, d0
 	madd	x21, x0, x20, x21
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L12:
 	ldr	w1, [sp, 184]
 	ldr	x0, [sp, 160]
@@ -277,7 +277,7 @@ walk:
 	add	w20, w20, w3
 	add	x21, x21, w20, sxtw
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L7:
 	ldr	w1, [sp, 184]
 	ldr	x0, [sp, 160]
@@ -306,7 +306,7 @@ walk:
 	add	x20, x20, x3
 	add	x22, x22, x20
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L3:
 	ldr	w1, [sp, 184]
 	ldr	x0, [sp, 160]
@@ -451,7 +451,7 @@ walk:
 	.string	"pptwpbhmfi"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #784
@@ -733,17 +733,17 @@ main:
 	.section .rodata
 	.align	4
 .LC20:
-	.quad	4620693218747482112
-	.quad	4467570833576951808
+	.xword	4620693218747482112
+	.xword	4467570833576951808
 	.section .rodata
 	.align	4
 	.LANCHOR0:
 .LC16:
-	.quad	1
-	.quad	-20
+	.xword	1
+	.xword	-20
 .LC17:
-	.quad	-4
-	.quad	5
+	.xword	-4
+	.xword	5
 .LC18:
 	.word	0
 	.word	1073217536
