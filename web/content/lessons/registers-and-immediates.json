@@ -1,38 +1,105 @@
 {
   "title": "Registers and immediates",
   "slug": "registers-and-immediates",
-  "order": 1,
-  "summary": "How registers hold values, and how to load a constant too wide for one instruction.",
+  "order": 4,
+  "summary": "Name the 31 registers and their jobs, write a constant in any of four bases, and build one too wide for a single mov.",
   "tags": [
     "registers",
     "immediates"
   ],
   "body": [
     {
-      "type": "prose",
-      "markdown": "AArch64 gives you thirty-one general-purpose registers, `x0` through `x30`, each holding 64 bits. The same storage has a 32-bit view, `w0` through `w30`, that reads and writes the low half. A program spends most of its time moving values between these registers and computing on them, so the move instructions are worth knowing well.\n\nAn *immediate* is a constant encoded directly inside an instruction. Immediates are convenient but small: only so many bits remain in a 32-bit instruction word after the opcode and the register fields, so one instruction cannot carry an arbitrary 64-bit constant."
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read this first:\n\n- [Anatomy of an assembly file](/learn/anatomy-of-a-program)"
     },
     {
       "type": "prose",
-      "markdown": "## Moving values into registers\n\n`mov` copies a value into a register, either from another register or from a small immediate. When the constant is small enough, `mov x0, 42` is all you need and the assembler picks a suitable encoding for you.\n\nWider constants are built one 16-bit halfword at a time. `movz` writes a halfword and zeroes the rest of the register, while `movk` writes a halfword and keeps everything else. Use them by hand when a value is too wide for a single `mov`."
+      "markdown": "A *register* is a small, fast storage slot inside the processor. Arithmetic instructions work on registers, not on memory, so a value has to be in a register before the processor can compute with it.\n\nAArch64 gives you thirty-one general-purpose registers, `x0` through `x30`, each holding 64 bits. The same storage has a 32-bit view, `w0` through `w30`, that reads and writes the low half. Writing a `w` register also clears the upper 32 bits of the matching `x` register: after `mov w19, 5`, all of `x19` holds 5, whatever was there before. A program spends most of its time moving values between these registers and computing on them, so the move instructions are worth knowing well."
     },
     {
-      "type": "code",
-      "language": "asm",
-      "source": "// the immediate move forms: mov, movz, movk, and add with an immediate\ndefine(r, x19)\n\n        .data\nfmt:    .string \"%lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     r, 42\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        movz    r, 0x0002, lsl 16           // zero the register, set one halfword\n        movk    r, 0x0003                    // keep that halfword, set the low one\n        add     r, r, 1\n        ldr     x0, =fmt\n        mov     x1, r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "type": "prose",
+      "markdown": "## What each register is for\n\nAny of the thirty-one can hold any value, but the *calling convention*, the set of rules every function on the system agrees to follow, gives most of them a job. Those rules are what let your program call `printf` and still find its own values where it left them.\n\n| Register | Job |\n|---|---|\n| `x0` to `x7` | Pass arguments into a function; `x0` also carries the result back |\n| `x8` | Holds the address where a function should write a large result |\n| `x9` to `x15` | Temporaries: yours to use, but any call may change them |\n| `x16`, `x17` | Used by the linker on the way into a called function: avoid them |\n| `x18` | Reserved for the operating system: avoid it |\n| `x19` to `x28` | Saved registers: a function that changes one must restore it before returning, so a value kept here survives a call |\n| `x29`, named `fp` | The frame pointer: marks the current function's area of the stack |\n| `x30`, named `lr` | The link register: `bl` stores the return address here |"
+    },
+    {
+      "type": "prose",
+      "markdown": "## The stack pointer, the zero register, and pc\n\n`sp` is the stack pointer, which tracks the top of the stack; the [stack lesson](/learn/stack-and-frame-pointer) covers it. `xzr`, with its 32-bit view `wzr`, is the zero register: reading it always gives 0, and anything written to it is thrown away. Both are register number 31 in the machine code, and each instruction decides which of the two that number means.\n\n`pc`, the program counter, holds the address of the instruction running now. No ordinary instruction names it as an operand; branch instructions are how a program changes it.\n\nA separate bank of 32 floating-point registers, `d0` to `d31` (with `s0` to `s31` as their 32-bit views), holds numbers with fractions. The [floating-point lesson](/learn/floating-point) covers them."
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "markdown": "Library functions such as `printf` and `scanf` are allowed to change any of `x0` to `x18`, and they do. A value left in `x9` before `bl printf` is gone afterward. Keep anything that must outlive a call in `x19` to `x28`.\n\nWhen a program in these first lessons keeps a value in `x19` or above inside `main`, it does not save the old contents first. That is common practice for `main`, but a subroutine you write yourself must save and restore any of `x19` to `x28` it changes; the subroutine lessons show how."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Giving registers names\n\nThe programs on this site give registers readable names with *m4*, a text tool that runs over the file before the assembler sees it. `define(value_r, x19)` tells m4 to replace every later `value_r` with `x19`; the `_r` ending marks the name as a register. Every program here opens with two such lines that name `x29` as `fp` and `x30` as `lr`, so the frame pointer and the link register can be written by their jobs.\n\nm4 replaces a defined name everywhere below its `define`, including inside strings, so pick names that never appear as words in your messages."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Immediates and number bases\n\nAn *immediate* is a constant written inside an instruction, like the `42` in `mov w19, 42`. The assembler packs it into the 32-bit instruction word itself, so the value arrives without a trip to memory.\n\nThe destination always comes first: `mov w19, 42` means \"w19 becomes 42\", and `add w20, w19, 8` means \"w20 becomes w19 plus 8\".\n\nAn immediate can be written in four bases, and its prefix says which:\n\n| Written as | Base | Prefix | Value |\n|---|---|---|---|\n| `42` | decimal | none | 42 |\n| `0x2a` | hexadecimal | `0x` | 42 |\n| `0b101010` | binary | `0b` | 42 |\n| `052` | octal | a leading `0` | 42 |"
     },
     {
       "type": "callout",
       "variant": "pitfall",
-      "markdown": "A common slip is to reach for `movk` first. `movk` keeps the other halfwords, so if the register still holds an earlier value those bits survive into your constant. Begin with `movz` to clear the register and set the first halfword, then layer `movk` on top. The other trap is range: a plain `mov` immediate is limited, and a constant outside that range has to be built with the `movz` and `movk` pair rather than forced into one instruction."
+      "markdown": "A leading zero means octal, never a padded decimal. `010` is eight, `017` is fifteen, and `09` does not assemble at all, because 9 is not an octal digit. Never pad a decimal number with zeros to line up a column. The [base converter](/reference#converter-octal) shows any value in all four bases."
     },
     {
       "type": "prose",
-      "markdown": "## Building a wide constant\n\nTo place a value that spans more than one halfword, start with `movz` to set one halfword and clear the register, then use `movk` with a left shift to fill each remaining halfword. The shift selects which 16-bit slot the immediate lands in: `lsl 16` targets bits 16 to 31, `lsl 32` targets bits 32 to 47, and so on.\n\nOnce the constant is in place, ordinary arithmetic such as `add` with an immediate adjusts it without touching memory. Run the program below, then change the halfwords and watch the printed value follow."
+      "markdown": "The program below writes one value four ways and then falls into the trap. It prints `42 42 42 42` on the first line and `010 reads as 8` on the second.\n\nThe two lines at the top of `main` and the last three are the setup and return that every program here shares, and the next two lessons explain `printf`. For now, read `w1` to `w4` as the values to print, in order."
     },
     {
       "type": "editor",
-      "starter": "// build a wide constant halfword by halfword, then add an immediate\ndefine(value_r, x19)\n\n        .data\nfmt:    .string \"value = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        movz    value_r, 0x0001, lsl 16       // value_r = 0x0000_0000_0001_0000\n        movk    value_r, 0x2710                // keep the upper halfword, set the low one\n        add     value_r, value_r, 0x20\n\n        ldr     x0, =fmt\n        mov     x1, value_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "starter": "// One value in four spellings, and a leading zero that changes the base\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt_same:   .string \"%d %d %d %d\\n\"\nfmt_trap:   .string \"010 reads as %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_same\n        mov     w1, 42                      // decimal\n        mov     w2, 0x2a                    // hexadecimal\n        mov     w3, 0b101010                // binary\n        mov     w4, 052                     // octal: the leading zero is the prefix\n        bl      printf\n\n        ldr     x0, =fmt_trap\n        mov     w1, 010                     // octal again, so eight, not ten\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "42 42 42 42\n010 reads as 8\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## What fits in one mov\n\nImmediates are convenient but small: only so many bits remain in a 32-bit instruction word after the opcode and the register fields, so one instruction cannot carry an arbitrary 64-bit constant.\n\n`mov` is not a single instruction either. It is an *alias*, a friendly name the assembler turns into whichever real instruction does the job: `mov x0, x1` becomes `orr x0, xzr, x1` (an OR with zero), `mov x0, sp` becomes `add x0, sp, 0`, and `mov x0, 42` becomes `movz x0, 42`. A disassembler may show you the real name.\n\nSo a `mov` with an immediate works only when the constant has one of three shapes:\n\n- a 16-bit value (0 to 65535) sitting in any one of the register's 16-bit slots (four in an `x` register, two in a `w` register), like `0x70000`\n- such a value with every bit flipped, which covers small negative numbers like `-5`\n- a block of ones that repeats at a fixed spacing across the register, like `0x00ff00ff00ff00ff` (the exact rule is fiddly, and the assembler checks it for you)\n\nThe program below uses each shape and prints `65535 458752 -5 ff00ff00ff00ff`. Change `0x70000` to `0x70001` and run it again: the assembler refuses the line, because that value needs two slots."
+    },
+    {
+      "type": "editor",
+      "starter": "// Four constants, each small enough for a single mov\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt_fits:   .string \"%ld %ld %ld %lx\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_fits\n        mov     x1, 65535                   // one halfword, bits 0 to 15\n        mov     x2, 0x70000                 // one halfword, bits 16 to 31\n        mov     x3, -5                      // a halfword with every bit flipped\n        mov     x4, 0x00ff00ff00ff00ff      // one pattern repeated four times\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "65535 458752 -5 ff00ff00ff00ff\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Building a wide constant\n\nA constant with none of those shapes is built one *halfword*, 16 bits, at a time; a 64-bit register holds four halfwords. `movz` (move and zero) writes a halfword and zeroes the rest of the register, while `movk` (move and keep) writes a halfword and keeps everything else.\n\nStart with `movz` to set one halfword and clear the register, then use `movk` for each remaining halfword. A left shift picks the 16-bit slot the immediate lands in: no shift targets bits 0 to 15, `lsl 16` targets bits 16 to 31, `lsl 32` targets bits 32 to 47, and `lsl 48` targets bits 48 to 63.\n\nOnce the constant is in place, ordinary arithmetic such as `add` with an immediate adjusts it without touching memory."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "A common slip is to reach for `movk` first. `movk` keeps the other halfwords, so if the register still holds an earlier value those bits survive into your constant: had `value_r` held -1 and the program below started with `movk` in place of `movz`, its hex output would read `0xffffffff00012730`. Begin with `movz` to clear the register and set the first halfword, then layer `movk` on top. The other trap is range: a plain `mov` takes only the three shapes above, and any other constant has to be built with the `movz` and `movk` pair rather than forced into one instruction."
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below builds `0x12710` from two halfwords, adds `0x20`, and prints the result in decimal and in hex: `value = 75568 (0x12730)`. The hex form shows each halfword directly. Change the halfwords and watch the printed value follow.\n\nThis `main` keeps its value in `x19` without saving the old contents first, the habit the warning above describes."
+    },
+    {
+      "type": "editor",
+      "starter": "// Build a wide constant halfword by halfword, then add an immediate\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(value_r, x19)\n\n.data\nfmt_value:  .string \"value = %ld (0x%lx)\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        movz    value_r, 0x0001, lsl 16     // bits 16 to 31 = 0x0001, all else zero\n        movk    value_r, 0x2710             // bits 0 to 15 = 0x2710, the rest kept\n        add     value_r, value_r, 0x20      // 0x12710 + 0x20 = 0x12730\n\n        ldr     x0, =fmt_value\n        mov     x1, value_r                 // once in decimal\n        mov     x2, value_r                 // and once in hex\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "value = 75568 (0x12730)\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. After `mov x19, -1` and then `mov w19, 7`, what does `x19` hold?\n2. Which registers keep their values across `bl printf`?\n3. What does `mov w20, 017` put in `w20`?\n4. Can `mov x21, 0x30000` be one instruction? What about `mov x21, 0x30001`?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. 7, because writing `w19` clears the upper half of `x19`.\n2. `x19` to `x28`, plus `fp` and `sp`; `x0` to `x18` may change.\n3. 15, because the leading zero makes it octal.\n4. Yes: it is one halfword in bits 16 to 31. No: it needs a `movz` and a `movk`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Warm up the registers](/practice/warm-up-the-registers): combine three registers with two instructions.\n- [The vanishing value](/practice/the-vanishing-value): fix a swap of two registers that loses one of the values.\n- [Quiz: ARMv8 assembly (intro)](/practice/quiz-basic-armv8): the register roles, aliases, and exception levels."
     }
   ]
 }
