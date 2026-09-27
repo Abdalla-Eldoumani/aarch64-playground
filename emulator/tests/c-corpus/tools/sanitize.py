@@ -102,14 +102,10 @@ RULES = [
     ("isoc",         re.compile(r"^(?P<mn>bl)\s+__isoc(99|23)_(?P<fn>scanf|fscanf|sscanf|strtol)\b"), ("replace", "{mn} {fn}")),
 ]
 
-# Identifier rewrites applied outside string literals on every surviving line.
+# Rewrites applied outside string literals on every surviving line. gcc's
+# dotted names (`twice.constprop.0`, a static local's `count.0`) stay as they
+# are: the playground reads them as GAS does.
 IDENT_RULES = [
-    # gcc names static locals `id.0` and the copies of a function it
-    # specializes `f.constprop.0`, `f.isra.0`, `f.part.0` (stacked, too:
-    # `f.constprop.0.isra.0`); the playground's lexer stops an identifier
-    # at a dot, so each dot becomes `__`
-    ("dotted_name",  re.compile(r"(?<![\w.])([A-Za-z_]\w*)((?:\.(?:constprop|isra|part|cold|\d+))+)\b"),
-                     lambda m: m.group(1) + m.group(2).replace(".", "__")),
     # gcc writes `[x0, #:lo12:sym]` for FP literal loads; the playground takes `:lo12:` bare
     ("hash_lo12",    re.compile(r"#:lo12:"), ":lo12:"),
 ]
