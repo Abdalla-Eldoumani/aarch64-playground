@@ -34,10 +34,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local course material, not for the public repo. Consulted during
-# development only; nothing from it ships.
-cpsc355-kb/
-
 # Editors
 .vscode/
 .idea/
