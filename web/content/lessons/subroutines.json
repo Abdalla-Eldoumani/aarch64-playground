@@ -1,0 +1,112 @@
+{
+  "title": "Writing your own subroutines",
+  "slug": "subroutines",
+  "order": 21,
+  "summary": "Write a subroutine that takes arguments in x0 to x7 and returns in w0 or x0, and know when it needs a frame and when a macro would do.",
+  "tags": [
+    "subroutines",
+    "frame pointer"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Pre-test loops](/learn/pretest-loop)\n- [The stack and the frame pointer](/learn/stack-and-frame-pointer)"
+    },
+    {
+      "type": "prose",
+      "markdown": "A *subroutine* is a named piece of code that other parts of the program can run and then carry on from where they were. C calls it a function. `main` is a subroutine, and so is `printf`. Writing your own lets you name a job once and run it from as many places as you like."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Calling and returning\n\n`bl tri` (*branch with link*) does two things at once: it puts the address of the next instruction in `lr` (`x30`), the *link register*, and it jumps to the label `tri`. `ret` jumps to whatever address `lr` holds. Together they make a round trip: the subroutine runs, and `ret` lands on the instruction right after the `bl` that called it.\n\nThe code that runs the `bl` is the *caller*, and the subroutine it runs is the *callee*. A subroutine kept as one copy of the code and reached with `bl` is called a *closed* subroutine."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Arguments in, result out\n\nCallers and callees agree on where values go, so any caller can use any callee. The rules come from the *AAPCS64*, the procedure call standard that every AArch64 Linux program follows:\n\n- the first eight integer and address arguments go in `x0` to `x7`, in order, or `w0` to `w7` for 32-bit ints;\n- the result comes back in `x0`, or `w0` for an int;\n- a callee may change `x0` to `x18` without putting them back, so the caller cannot count on them after a `bl`.\n\nSo `tri(n)` takes `n` in `w0` and hands its answer back in `w0`. `printf` follows the same rules, which is why its format string always goes in `x0` and the values to print in `x1` onward."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Leaf subroutines skip the frame\n\nA *leaf* subroutine calls nothing else. No `bl` inside it replaces `lr`, so `lr` still holds the way back when it reaches `ret`. If it also keeps nothing on the stack, it needs no frame at all: no `stp`, no `ldp`, just the work and `ret`.\n\n`tri` below is a leaf. It works out the *triangular number* `n(n + 1) / 2`, the sum 1 + 2 + ... + n, using only `w0` and `w9`. `main` calls it with 1 to 6 and prints each answer:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "tri(1) = 1\ntri(2) = 3\ntri(3) = 6\ntri(4) = 10\ntri(5) = 15\ntri(6) = 21\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// A leaf subroutine tri(n) = n(n + 1) / 2, called from main for k = 1 to 6\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(k_r, w19)\n\n.data\nfmt:        .string \"tri(%d) = %d\\n\"\n\n.text\n\n// tri(w0 = n) -> w0 = n(n + 1) / 2\n// Leaf: it calls nothing, so lr still holds the way back and no frame is needed\n        .balign 4\n        .global tri\ntri:\n        add     w9, w0, 1                   // w9 = n + 1\n        mul     w9, w9, w0                  // w9 = n(n + 1)\n        lsr     w0, w9, 1                   // halve it; n(n + 1) is always even\n        ret                                 // jump to the address in lr\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     k_r, 1\n        b       tri_test\ntri_loop:\n        mov     w0, k_r                     // the argument goes in w0\n        bl      tri                         // lr = address of the next line\n        mov     w2, w0                      // take the result before x0 is reused\n        mov     w1, k_r\n        ldr     x0, =fmt\n        bl      printf\n        add     k_r, k_r, 1\ntri_test:\n        cmp     k_r, 6\n        b.le    tri_loop\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "tri(1) = 1\ntri(2) = 3\ntri(3) = 6\ntri(4) = 10\ntri(5) = 15\ntri(6) = 21\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`main` copies the result out of `w0` (`mov w2, w0`) before it loads the format string into `x0`. The two share one register, so those lines must stay in that order. `k_r` lives in `w19` because `printf` may change `x0` to `x18`. Like other short programs, `main` uses `w19` without saving it first; any other subroutine must save the `x19` to `x28` registers it uses, which [the next lesson](/learn/calling-conventions) shows."
+    },
+    {
+      "type": "prose",
+      "markdown": "## A subroutine that calls another\n\nOnce a subroutine runs a `bl` of its own, that `bl` overwrites `lr`, and the way back to its caller is lost unless it was saved first. So a subroutine that calls anything, `printf` included, opens the same way `main` does, with `stp fp, lr, [sp, -16]!` and `mov fp, sp`, and closes with `ldp fp, lr, [sp], 16` before `ret`.\n\nThe 16 bytes that `stp` stores are a *frame record*: the caller's `fp` and the return address. The new `fp` points at the record, and the record holds the caller's `fp`, which points at the caller's record. The records form a chain from the running subroutine back to `main`. A debugger follows that chain to show a *backtrace*, the list of calls that led to the current line. While `show` in the next program runs, the top of the stack looks like this:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "higher addresses\n  main's fp ->  [ fp of main's caller | return address out of main ]\n  show's fp ->  [ main's fp           | line after bl show in main ]\nlower addresses\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Open subroutines\n\nThere is a second way to reuse code: copy the instructions to every place that needs them. That is an *open* subroutine. An m4 macro with arguments can do the copying at build time, with `$1` and `$2` standing for the arguments it is given:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "define(tri_open, `add     $1, $2, 1\n        mul     $1, $1, $2\n        lsr     $1, $1, 1')\n\n        tri_open(t_r, k_r)          // m4 pastes the three lines here, both arguments filled in\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "An open subroutine has no `bl`, no `ret` and no frame, so it saves a few instructions each time it runs. The cost is that every use adds another copy of the body, it cannot call itself, and a debugger cannot step over it as one call. It suits a few lines inside a busy loop; anything longer, or used in many places, is better as a closed subroutine."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "The playground's m4 expands the one-line `define(name, text)` used for register names and constants, but not a macro with arguments like `tri_open`, so the program below writes the three lines out itself. With GNU m4 the macro version builds to the same instructions."
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below works out `tri(10)` both ways and hands each answer to `show`, a subroutine that calls `printf`. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "written in place: tri(10) = 55\ncalled with bl: tri(10) = 55\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// tri(10) two ways: written out in place (open) and called with bl (closed)\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(k_r, w19)\ndefine(t_r, w20)\n\n.data\nfmt:        .string \"%s: tri(%d) = %d\\n\"\nhow_open:   .string \"written in place\"\nhow_closed: .string \"called with bl\"\n\n.text\n\n// tri(w0 = n) -> w0 = n(n + 1) / 2\n// Leaf: no frame\n        .balign 4\n        .global tri\ntri:\n        add     w9, w0, 1\n        mul     w9, w9, w0\n        lsr     w0, w9, 1\n        ret\n\n// show(x0 = how, w1 = n, w2 = value) prints one line\n// Not a leaf: its bl to printf overwrites lr, so it saves fp and lr first\n        .balign 4\n        .global show\nshow:\n        stp     fp, lr, [sp, -16]!          // this frame record points back at main's\n        mov     fp, sp\n\n        mov     w3, w2                      // move each argument up one register\n        mov     w2, w1                      // to free x0 for the format string\n        mov     x1, x0\n        ldr     x0, =fmt\n        bl      printf\n\n        ldp     fp, lr, [sp], 16\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     k_r, 10\n\n        // open: the body of tri copied here; a macro would paste these same lines\n        add     t_r, k_r, 1\n        mul     t_r, t_r, k_r\n        lsr     t_r, t_r, 1\n\n        ldr     x0, =how_open\n        mov     w1, k_r\n        mov     w2, t_r\n        bl      show\n\n        // closed: the one shared copy of tri, reached with bl and left with ret\n        mov     w0, k_r\n        bl      tri\n        mov     w2, w0\n        mov     w1, k_r\n        ldr     x0, =how_closed\n        bl      show\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "written in place: tri(10) = 55\ncalled with bl: tri(10) = 55\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "To see the chain, set a breakpoint on the `bl printf` line inside `show` and run. `fp` now points at `show`'s frame record: the 8 bytes at `fp` hold `main`'s `fp`, and the 8 bytes at `fp + 8` hold the address of the instruction after the `bl show` that made this call.\n\n`show` also moves its arguments up one register before it loads the format string: `w2` to `w3`, then `w1` to `w2`, then `x0` to `x1`. Working from the top down copies each value out before anything overwrites it."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. Why can `tri` skip `stp fp, lr` when `show` cannot?\n2. A subroutine takes five int arguments. Which registers hold them?\n3. Delete the `stp`, `mov fp, sp` and `ldp` lines from `show` and run. What happens?\n4. What does each use of `tri_open` add to the program, and what does each `bl tri` add?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `tri` runs no `bl`, so `lr` still holds its return address at `ret`. The `bl printf` in `show` overwrites `lr`.\n2. `w0` to `w4`.\n3. The first line prints and the program never finishes: `bl printf` left `lr` pointing at `show`'s own `ret`, so `ret` jumps to itself again and again. The playground stops it when it reaches its step limit.\n4. Three instructions against one, plus the moves that set up the argument."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Call yourself](/practice/call-yourself): a subroutine that calls itself.\n- [Quiz: subroutines (intro)](/practice/quiz-basic-subroutines), then [core](/practice/quiz-inter-subroutines): `bl`, `ret`, and the argument registers.\n- [Fill in the blank: subroutines (core)](/practice/blanks-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): frames, arguments, and return values."
+    }
+  ]
+}
