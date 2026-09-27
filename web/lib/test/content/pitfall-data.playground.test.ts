@@ -118,10 +118,11 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     expect(fix.exitCode).toBe(0);
   });
 
-  it("caller-saved: the callee's scratch eats the parked sum, the fix keeps 42", () => {
+  it("caller-saved: the call eats the parked sum, the fix keeps 42", () => {
     const pitfall = demo("caller-saved registers do not survive a call");
     const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toBe("step 1 done\nsum = 1\n"); // announce's leftover, not 42
+    // 0xdeadbeefdeadbeef, what a library call leaves in x9, printed as a long.
+    expect(fault.stdout).toBe("step 1 done\nsum = -2401053088876216593\n");
     expect(fault.halted).toBe(true);
     const fix = runProgram(pitfall.fix, 100_000);
     expect(fix.stdout).toBe("step 1 done\nsum = 42\n");
