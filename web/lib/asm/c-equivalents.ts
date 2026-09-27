@@ -1,6 +1,7 @@
 /**
- * The C equivalent of every instruction the playground assembles, shown in
- * the editor's hover card and on the reference page.
+ * The C equivalent of every instruction the playground assembles, shown on
+ * the reference page and, when it fits on one short line, in the editor's
+ * hover card.
  *
  * Each entry is plain C that computes what the instruction computes. A form is
  * one block: its first line is a comment that declares the operands as C
@@ -2373,3 +2374,23 @@ for (int i = 0; i < 8; i++) {          // one element per register
     intrinsic: "vld4_dup_u8",
   },
 };
+
+// A longer card spills past an embedded editor's frame, which clips it.
+const HOVER_INLINE_MAX = 60;
+
+/**
+ * The hover card's c equivalent line for a table key: C that fits on one short
+ * line is shown in place, anything longer is a link to the key's entry on the
+ * reference page (`origin` is the site's, since the card needs a full URL).
+ */
+export function hoverCLine(key: string, origin: string): string | undefined {
+  if (!Object.hasOwn(C_EQUIVALENTS, key)) return undefined;
+  const { c } = C_EQUIVALENTS[key];
+  if (!c.includes("\n") && c.length <= HOVER_INLINE_MAX) {
+    return `**c equivalent:** \`${c}\``;
+  }
+  const name = key.toLowerCase();
+  // The same fragment the reference writes for an entry: b.cond is #b-cond.
+  const url = `${origin}/reference#${name.replace(/\./g, "-")}`;
+  return `**c equivalent:** see [${name} in the reference](${url})`;
+}
