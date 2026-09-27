@@ -154,6 +154,9 @@ export type EmbeddablePlaygroundProps = {
   showBack?: boolean;
   /** Check only applies in checker chrome. */
   showCheck?: boolean;
+  /** Embed/checker only: an args box in the control band, seeded from
+   *  `startArgs`, for a program that reads its command line. */
+  showArgs?: boolean;
   onStateChange?: (state: EmbeddableState) => void;
   /** Every editor buffer value, including the first. The practice checker
    *  persists the student's work from here; nothing else listens. */
@@ -220,6 +223,7 @@ function EmbeddableCore({
   showStep = true,
   showBack = true,
   showCheck = true,
+  showArgs = false,
   onStateChange,
   onSourceChange,
   onCheck,
@@ -448,29 +452,31 @@ function EmbeddableCore({
   // The reduced embed/checker chrome has no separate Assemble control, so its
   // primary Run must assemble first; otherwise runUntilBreak executes over
   // empty memory and nothing the student wrote runs. Assemble when nothing is
-  // loaded yet (fresh or post-reset, instructions empty), the source changed
-  // since the last run, or the machine has halted (Run on a finished program
-  // means run it again from the start), awaiting the hub so the backend is
-  // loaded before run. A failed assemble skips the run, and a successful one
-  // re-applies the program's input seeds: the assemble reset the machine, so
-  // seeded stdin and VFS files must be back in place before the run. Only a
-  // blocked or paused unchanged program resumes without re-assembling.
+  // loaded yet (fresh or post-reset, instructions empty), the source or the
+  // args changed since the last run (the ref holds both, as `runKey`), or the
+  // machine has halted (Run on a finished program means run it again from the
+  // start), awaiting the hub so the backend is loaded before run. A failed
+  // assemble skips the run, and a successful one re-applies the program's
+  // input seeds: the assemble reset the machine, so seeded stdin and VFS files
+  // must be back in place before the run. Only a blocked or paused unchanged
+  // program resumes without re-assembling.
   // `fromTop` is Ctrl+Enter's assemble-and-run.
   const lastRunSourceRef = useRef<string | null>(null);
+  const runKey = `${argsText}\n${source}`;
   const runEmbed = useCallback(async (fromTop = false) => {
     if (
       fromTop ||
       emu.instructions.length === 0 ||
-      lastRunSourceRef.current !== source ||
+      lastRunSourceRef.current !== runKey ||
       emu.isHalted
     ) {
-      lastRunSourceRef.current = source;
+      lastRunSourceRef.current = runKey;
       const ok = await emu.assemble(source, parseArgs(argsText));
       if (!ok) return;
       applySeeds();
     }
     emu.run();
-  }, [emu, source, argsText, applySeeds]);
+  }, [emu, source, argsText, runKey, applySeeds]);
 
   // Step has the same cold-start problem Run has: a bare step would advance
   // over empty memory. Same gate, so the first press assembles, re-seeds, and
@@ -479,16 +485,16 @@ function EmbeddableCore({
   const stepEmbed = useCallback(async () => {
     if (
       emu.instructions.length === 0 ||
-      lastRunSourceRef.current !== source ||
+      lastRunSourceRef.current !== runKey ||
       emu.isHalted
     ) {
-      lastRunSourceRef.current = source;
+      lastRunSourceRef.current = runKey;
       const ok = await emu.assemble(source, parseArgs(argsText));
       if (!ok) return;
       applySeeds();
     }
     emu.step();
-  }, [emu, source, argsText, applySeeds]);
+  }, [emu, source, argsText, runKey, applySeeds]);
 
   // Back cannot pass a blocked read (the machine just re-blocks), so while
   // stdin is awaited it no-ops. One guard, two callers: the imperative handle
@@ -666,14 +672,14 @@ function EmbeddableCore({
   // can PASS on code the student already edited away, or every result fails on
   // zeroed pre-run state before any Run. Reuse runEmbed's assemble-if-stale
   // guard (the shared lastRunSourceRef): when nothing has run yet or the source
-  // changed since the last run, assemble + run it to completion first, then
-  // snapshot; an unchanged, already-run program is checked as-is. The run loop
-  // is bounded by the emulator's own step ceiling; the wall-clock poll is only
-  // a safety net, and reads the live hub through emuRef so a per-render new hub
-  // identity is always observed.
+  // or args changed since the last run, assemble + run it to completion first,
+  // then snapshot; an unchanged, already-run program is checked as-is. The run
+  // loop is bounded by the emulator's own step ceiling; the
+  // wall-clock poll is only a safety net, and reads the live hub through emuRef
+  // so a per-render new hub identity is always observed.
   const checkEmbed = useCallback(async () => {
-    if (emu.instructions.length === 0 || lastRunSourceRef.current !== source) {
-      lastRunSourceRef.current = source;
+    if (emu.instructions.length === 0 || lastRunSourceRef.current !== runKey) {
+      lastRunSourceRef.current = runKey;
       const ok = await emu.assemble(source, parseArgs(argsText));
       // A failed assemble must not reach the grader (mirroring runEmbed):
       // grading the stale machine marked structural checks green against
@@ -690,7 +696,7 @@ function EmbeddableCore({
       } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
     }
     onCheck?.(currentState());
-  }, [emu, source, argsText, onCheck, currentState, applySeeds]);
+  }, [emu, source, argsText, runKey, onCheck, currentState, applySeeds]);
 
   // Stable handle identity; every method reads through a latest-value ref so
   // the object never needs rebuilding (no re-registration churn).
@@ -800,6 +806,7 @@ function EmbeddableCore({
         showStep={showStep}
         showBack={showBack}
         showCheck={chrome === "checker" && showCheck}
+        args={showArgs ? { value: argsText, onChange: setArgsText } : undefined}
         isRunning={emu.isRunning}
         // Deliberately no programLoaded test: that is what keeps the
         // cold-start assemble-first press reachable by pointer.
@@ -921,6 +928,7 @@ export const EmbeddablePlayground = forwardRef<
     showStep = true,
     showBack = true,
     showCheck = true,
+    showArgs = false,
   } = props;
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Full chrome is the primary in-viewport content, so it engages on mount,
@@ -1061,6 +1069,7 @@ export const EmbeddablePlayground = forwardRef<
           showStep={showStep}
           showBack={showBack}
           showCheck={chrome === "checker" && showCheck}
+          args={showArgs ? { value: startArgs ?? "", onChange: engage } : undefined}
           isRunning={false}
           canStep
           canStepBack={false}
