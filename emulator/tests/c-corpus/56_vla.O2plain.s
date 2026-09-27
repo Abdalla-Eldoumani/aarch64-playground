@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 levels:
 	add	w1, w0, 1
 	stp	x29, x30, [sp, -32]!
@@ -15,7 +15,7 @@ levels:
 	add	x4, x4, 1
 	mov	w3, -50
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L3:
 	str	w3, [x1, x2, lsl 2]
 	add	x2, x2, 1
@@ -27,7 +27,7 @@ levels:
 	cbnz	w2, .L13
 .L4:
 	add	x4, x1, w4, uxtw 2
-	.align 5
+	.p2align 5,,15
 .L5:
 	ldrsw	x2, [x1], 4
 	add	x0, x0, x2
@@ -36,14 +36,14 @@ levels:
 	mov	sp, x29
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L13:
 	sub	w0, w2, #1
 	stp	x1, x4, [x29, 16]
 	bl	levels
 	ldp	x1, x4, [x29, 16]
 	b	.L4
-	.align 2
+	.p2align 2,,3
 .L6:
 	mov	sp, x29
 	mov	x0, 0
@@ -73,7 +73,7 @@ levels:
 	.string	"vla+call=%lld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -128]!
@@ -175,11 +175,11 @@ main:
 	mov	x9, x4
 	mov	x3, 0
 	mov	w2, 0
-	.align 5
+	.p2align 5,,15
 .L21:
 	lsl	w7, w2, 1
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L20:
 	sub	x1, x3, x0
 	cmp	w2, w0
@@ -201,16 +201,16 @@ main:
 	mov	x7, x23
 	mov	w10, 0
 	add	x8, x0, x6
-	.align 5
+	.p2align 5,,15
 .L22:
 	mov	x5, 0
-	.align 5
+	.p2align 5,,15
 .L24:
 	add	x2, x25, x5
 	mov	x1, x9
 	mov	x0, 0
 	str	xzr, [x7, x5]
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldr	x3, [x2]
 	add	x2, x2, x6
@@ -237,7 +237,7 @@ main:
 	add	x26, x26, :lo12:.LC2
 	mov	x21, 0
 	mov	w28, 0
-	.align 5
+	.p2align 5,,15
 .L26:
 	sxtw	x0, w28
 	mul	x1, x27, x0
@@ -267,7 +267,7 @@ main:
 	mov	w3, 5
 	mov	w2, 63314
 	mov	x0, 12
-	.align 5
+	.p2align 5,,15
 .L27:
 	add	x1, x0, 15
 	mov	sp, x20
@@ -302,7 +302,7 @@ main:
 	cmp	w9, 0
 	ble	.L28
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L29:
 	mul	w1, w0, w0
 	sxtw	x1, w1
@@ -318,7 +318,7 @@ main:
 	mov	x1, 0
 	ldr	x7, [x10, 24]
 	ldr	x3, [x2], 32
-	.align 5
+	.p2align 5,,15
 .L32:
 	add	x0, x3, x6, lsl 1
 	add	x5, x12, x12, lsl 1
