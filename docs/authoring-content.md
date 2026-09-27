@@ -34,11 +34,17 @@ Metadata:
   spelling (AArch64, ARMv8, `printf`, `.data`, `x19`), and nothing else.
   No trailing period, and no "in ARMv8 AArch64 Assembly" suffix: every
   page here is that, and the suffix pushes the words that tell one lesson
-  from another off the end of an index card.
+  from another off the end of an index card. Keep it under 60 characters,
+  about what a search result shows.
 - `slug`: url-safe kebab-case, matching the file name.
 - `order`: the index sorts by this; a number or string.
+- `lastUpdated`: the day you last changed the lesson, as `YYYY-MM-DD`. The
+  sitemap tells search engines this date, so set it to today whenever you
+  edit the file. A shipped file without it fails the content tests.
 - `summary`: optional one-line blurb for the index card. Say what the
-  reader will be able to do, not that the lesson covers a topic.
+  reader will be able to do, not that the lesson covers a topic. It is
+  also the page's search-result snippet, so keep it under 155 characters
+  and different from every other page's.
 - `tags`: optional list of strings for the index filter. A tag is
   lowercase, written with spaces rather than dashes, and names a concept
   a reader would search for instead of restating the title. The shipped
@@ -117,6 +123,7 @@ main:
   "title": "Adding two registers",
   "slug": "adding-two-registers",
   "order": 2,
+  "lastUpdated": "2026-09-27",
   "summary": "Load two values, add them with the add instruction, and print the result.",
   "tags": [
     "registers",
@@ -162,7 +169,8 @@ Fields every variant carries:
   the tier and the index prints it as its own chip. The page's metadata
   title composes the two as `<title> (<difficulty>)`, so the three sets of
   a theory family still get three distinct browser tabs and share cards
-  while the heading on the page stays bare.
+  while the heading on the page stays bare. Keep that composed title under
+  60 characters.
 - `slug`: url-safe kebab-case, matching the file name.
 - `order`: the index sorts by this; a number or string. The sheet runs
   every coding exercise first and then every theory set, each side grouped
@@ -175,11 +183,14 @@ Fields every variant carries:
   live in `web/lib/content/practice-topics.ts`; a topic missing from that
   table still renders (its id is the label) but sorts after every listed
   one, so a new topic wants a row there.
+- `lastUpdated`: the day you last changed the exercise, as `YYYY-MM-DD`,
+  as for a lesson.
 - `difficulty`: optional, one of `intro`, `core`, or `challenge`.
 - `prompt`: the task description, Markdown. Open with the task itself: what
   the starter gives the reader, and what the program has to do. A sentence
   that only sets a mood should become a hint ("One pass over the array is
-  enough") or go.
+  enough") or go. The prompt's opening sentences, without its lists and
+  code, become the page's search-result snippet.
 - `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
   or `blanks`. The variant decides where the exercise appears: `write` and
   `identify-bug` sit in the coding column of the practice page, the other
@@ -324,6 +335,7 @@ Saved as `web/content/exercises/subtract-two-numbers.json`:
   "title": "Subtract two numbers",
   "slug": "subtract-two-numbers",
   "order": 2,
+  "lastUpdated": "2026-09-27",
   "topic": "armv8",
   "difficulty": "intro",
   "prompt": "The starter loads two values, `a` and `b`. Subtract `b` from `a` so the difference ends up in `a`, then let the program print it.\n\n## what is checked\n\n- the printed line reads `diff = 12`\n- the program exits cleanly\n- the difference is computed, not written in as a constant",
