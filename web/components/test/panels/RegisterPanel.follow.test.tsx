@@ -232,6 +232,36 @@ describe("RegisterPanel follows the write", () => {
     expect(status()).toBe("");
     expect(scrollCalls).toHaveLength(1);
   });
+
+  it("takes a newly loaded program for no write, even over a call's leftovers", () => {
+    const { rerender } = mount();
+    // A run that ended just after a printf: x0 is the result, and every
+    // caller-saved vector register holds the call's pattern.
+    const leftovers = VECS.map((_, i) =>
+      i >= 8 && i < 16
+        ? "0xdeadbeefdeadbeef0000000000000000"
+        : "0xdeadbeefdeadbeefdeadbeefdeadbeef",
+    );
+    rerender(
+      panel({
+        vectorRegisters: leftovers,
+        changedRegs: new Set([0]),
+        registers: withRegister(0, "0x0000000000000005"),
+      }),
+    );
+    expect(status()).toBe("x0 = 0x5");
+    // The student opens the v view, then assembles again: the machine comes
+    // back zeroed and reports no write.
+    fireEvent.click(screen.getByRole("button", { name: "v0–v31" }));
+    scrollCalls = [];
+    rerender(panel({ vectorRegisters: [...VECS] }));
+    expect(status()).toBe("");
+    expect(scrollCalls).toEqual([]);
+    expect(screen.getByRole("button", { name: "v0–v31" }).getAttribute("aria-pressed")).toBe("true");
+    const box = screen.getByRole("region", { name: "register values" });
+    expect(box.querySelector(".anim-reg-flash")).toBeNull();
+    expect(box.innerHTML).not.toContain("var(--changed)");
+  });
 });
 
 describe("RegisterPanel follow changes switch", () => {
