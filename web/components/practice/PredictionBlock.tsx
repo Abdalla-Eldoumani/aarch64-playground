@@ -89,6 +89,12 @@ export function PredictionBlock({
           onChange={(event) => setInputVal(event.target.value)}
           disabled={answered}
           placeholder="your answer"
+          // Register values and mnemonics are not words: a phone must not
+          // capitalise, correct, or underline them.
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
           className={`w-full max-w-sm rounded-[var(--radius-control)] border px-4 py-2.5 font-mono text-[14px] outline-none transition-colors disabled:opacity-80 ${inputTone}`}
         />
 
