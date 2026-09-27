@@ -114,7 +114,7 @@ pile:
 	ret
 	.align	2
 	.align 5
-big__constprop__0:
+big.constprop.0:
 	stp	x29, x30, [sp, -16]!
 	mov	x0, -4464
 	movk	x0, 0xfffe, lsl 16
@@ -156,7 +156,7 @@ big__constprop__0:
 	ret
 	.align	2
 	.align 5
-survive__constprop__0:
+survive.constprop.0:
 	adrp	x2, .LANCHOR1
 	add	x0, x2, :lo12:.LANCHOR1
 	stp	x29, x30, [sp, -16]!
@@ -191,7 +191,7 @@ survive__constprop__0:
 	ret
 	.align	2
 	.align 5
-chain__constprop__0:
+chain.constprop.0:
 	stp	x29, x30, [sp, -16]!
 	adrp	x2, .LANCHOR1+96
 	mov	x1, 0
@@ -279,17 +279,17 @@ main:
 	add	x0, x0, :lo12:.LC11
 	bl	printf
 	ldr	w0, [x19, 28]
-	bl	chain__constprop__0
+	bl	chain.constprop.0
 	mov	x1, x0
 	adrp	x0, .LC12
 	add	x0, x0, :lo12:.LC12
 	bl	printf
-	bl	survive__constprop__0
+	bl	survive.constprop.0
 	mov	w1, w0
 	adrp	x0, .LC13
 	add	x0, x0, :lo12:.LC13
 	bl	printf
-	bl	big__constprop__0
+	bl	big.constprop.0
 	mov	w1, w0
 	adrp	x0, .LC14
 	add	x0, x0, :lo12:.LC14
