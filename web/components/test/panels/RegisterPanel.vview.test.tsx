@@ -69,15 +69,43 @@ describe("RegisterPanel v-register view", () => {
     expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("v");
   });
 
-  it("re-slices the same bits under the persisted lane width", () => {
+  function pickArrangement(label: string) {
+    fireEvent.click(screen.getByRole("combobox", { name: "lane arrangement" }));
+    fireEvent.pointerDown(screen.getByRole("option", { name: label }));
+  }
+
+  it("re-slices the same bits under the persisted lane arrangement", () => {
     render(panel({ vectorRegisters: vecsWith("0x0123456789abcdeffedcba9876543210") }));
     fireEvent.click(screen.getByRole("button", { name: "v0–v31" }));
     // Two 64-bit lanes by default.
     expect(screen.getByText("fedcba9876543210")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "s, 32-bit lanes" }));
+    pickArrangement("4s");
     expect(screen.getByText("76543210")).toBeTruthy();
     expect(screen.queryByText("fedcba9876543210")).toBeNull();
     expect(window.localStorage.getItem("aarch64-playground:regfile-lane-width")).toBe("s");
+  });
+
+  it("reads a float arrangement as floats in decimal, and as hex in hex", () => {
+    // Lanes from the top: 3.1415927f, 1.0f, -1.0f, 0.0f.
+    render(panel({ vectorRegisters: vecsWith("0x40490fdb3f800000bf80000000000000") }));
+    fireEvent.click(screen.getByRole("button", { name: "v0–v31" }));
+    pickArrangement("4s float");
+    expect(window.localStorage.getItem("aarch64-playground:regfile-lane-width")).toBe("sf");
+    expect(screen.getByText("3f800000")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "dec" }));
+    expect(screen.getByText("3.1415927")).toBeTruthy();
+    expect(screen.getByText("1.0")).toBeTruthy();
+    expect(screen.getByText("-1.0")).toBeTruthy();
+    expect(screen.queryByText("3f800000")).toBeNull();
+  });
+
+  it("lands a returning student on the lane width they stored", () => {
+    window.localStorage.setItem("aarch64-playground:regfile-lane-width", "b");
+    window.localStorage.setItem("aarch64-playground:regfile-view", "v");
+    render(panel({}));
+    expect(
+      screen.getByRole("combobox", { name: "lane arrangement" }).textContent,
+    ).toContain("16b");
   });
 
   it("persists the vector format toggle under its own key", () => {
