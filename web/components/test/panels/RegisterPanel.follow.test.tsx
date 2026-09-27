@@ -220,6 +220,21 @@ describe("RegisterPanel follows the write", () => {
     expect(scrollCalls).toEqual([]);
   });
 
+  it("still follows a write that comes after a step that wrote nothing", () => {
+    const { rerender } = mount();
+    rerender(panel({ changedRegs: new Set([28]) }));
+    // A branch or a compare: no register written.
+    rerender(panel({ changedRegs: new Set() }));
+    expect(status()).toBe("");
+    rerender(panel({ changedRegs: new Set([0]) }));
+    // Row 0 sits 480 px above the box after the first follow.
+    expect(scrollCalls).toEqual([
+      { top: 480, behavior: "smooth" },
+      { top: 0, behavior: "smooth" },
+    ]);
+    expect(status()).toBe("x0 = 0x0");
+  });
+
   it("does not say the write from before a run again when the run stops", () => {
     const { rerender } = mount();
     // One snapshot is one set of objects; only `running` changes after it.
