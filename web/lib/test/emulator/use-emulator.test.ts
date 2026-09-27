@@ -3,6 +3,7 @@ import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import type { EmulatorBackend } from "@/lib/emulator/backend";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { combineSources } from "@/lib/playground/file-map";
+import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type {
   AssembleResultPayload,
   RunResultPayload,
@@ -1290,6 +1291,50 @@ describe("useEmulator backend passthroughs", () => {
     });
     expect(fake.calls.pushStdin).toEqual(["seeded\n", "typed\n"]);
     expect(fake.calls.pushStdinInteractive).toEqual([undefined, true]);
+  });
+
+  it("remembers the stdin a run was given until an assemble or reset starts over", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      result.current.pushStdin("3 4\n", true);
+      result.current.pushStdin("q");
+    });
+    expect(result.current.stdinGiven()).toBe("3 4\nq");
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    expect(result.current.stdinGiven()).toBe("");
+
+    act(() => {
+      result.current.pushStdin("5\n");
+    });
+    act(() => {
+      result.current.reset();
+    });
+    expect(result.current.stdinGiven()).toBe("");
+  });
+
+  it("keeps only the newest 100 KiB of a long session's stdin", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      result.current.pushStdin("a".repeat(MAX_STDIN_BYTES));
+      result.current.pushStdin("last\n");
+    });
+    const given = result.current.stdinGiven();
+    expect(given).toHaveLength(MAX_STDIN_BYTES);
+    expect(given.endsWith("last\n")).toBe(true);
+  });
+
+  it("readMemory asks the machine directly instead of the render cache", async () => {
+    const fake = makeBackend({ memBytes: new Uint8Array([1, 2, 3, 4]) });
+    const { result } = await mountLoaded(fake);
+    await expect(result.current.readMemory(0x600000, 4)).resolves.toEqual(
+      new Uint8Array([1, 2, 3, 4]),
+    );
+    expect(fake.calls.getMemory).toContainEqual([0x600000, 4]);
   });
 
   it("save/load/delete state forward the name and ignore an empty save name", async () => {
