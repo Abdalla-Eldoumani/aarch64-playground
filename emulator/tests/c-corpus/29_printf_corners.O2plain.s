@@ -50,7 +50,7 @@
 	.string	"no newline at end"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #64
