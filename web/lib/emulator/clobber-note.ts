@@ -15,7 +15,7 @@ const READ_BY_MAIN_RETURN = 2;
  *  line holds; a line the machine could not map is just "a library call". */
 function callOnLine(lines: readonly string[], line: number): string {
   if (line <= 0) return "a library call";
-  const callee = /\bbl\s+([A-Za-z_.$][\w.$]*)/.exec(lines[line - 1] ?? "")?.[1];
+  const callee = /\bbl\s+([A-Za-z_.$][\w.$]*)/i.exec(lines[line - 1] ?? "")?.[1];
   return `the ${callee ?? "library"} call on line ${line}`;
 }
 
