@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 take3:
 	ldr	w4, [x0, 24]
 	ldr	x1, [x0]
@@ -25,7 +25,7 @@ take3:
 	madd	w0, w3, w0, w2
 	add	w0, w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L15:
 	add	w2, w4, 8
 	str	w2, [x0, 24]
@@ -42,7 +42,7 @@ take3:
 	mov	x2, x1
 	and	x1, x4, -8
 	b	.L6
-	.align 2
+	.p2align 2,,3
 .L7:
 	ldr	w2, [x5, w2, sxtw]
 	beq	.L13
@@ -67,7 +67,7 @@ take3:
 	.string	" %s:%016lx%016lx"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 show128:
 	stp	x29, x30, [sp, -48]!
 	mov	x2, 16
@@ -113,7 +113,7 @@ show128:
 	.string	"\n  sum=%lx check=%016lx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 wide:
 	stp	x29, x30, [sp, -384]!
 	mov	x29, sp
@@ -154,7 +154,7 @@ wide:
 	str	d15, [sp, 64]
 	fmov	d15, x0
 	b	.L44
-	.align 2
+	.p2align 2,,3
 .L72:
 	cmp	w1, 84
 	beq	.L23
@@ -178,7 +178,7 @@ wide:
 	str	q30, [sp, 112]
 	bl	show128
 	add	x19, x19, x0
-	.align 5
+	.p2align 5,,15
 .L26:
 	ldrb	w1, [x21, 1]!
 	cbz	w1, .L71
@@ -208,13 +208,13 @@ wide:
 	add	x19, x19, x0
 	ldrb	w1, [x21, 1]!
 	cbnz	w1, .L44
-	.align 5
+	.p2align 5,,15
 .L71:
 	ldrb	w1, [x20]
 	mov	x21, 0
 	cbz	w1, .L64
 	movi	v31.4s, 0
-	.align 5
+	.p2align 5,,15
 .L62:
 	str	q31, [sp, 96]
 	cmp	w1, 113
@@ -251,7 +251,7 @@ wide:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 384
 	ret
-	.align 2
+	.p2align 2,,3
 .L24:
 	ldr	w1, [sp, 152]
 	ldr	x0, [sp, 128]
@@ -268,7 +268,7 @@ wide:
 	add	x19, x19, w24, uxtb
 	bl	printf
 	b	.L26
-	.align 2
+	.p2align 2,,3
 .L21:
 	ldr	w1, [sp, 156]
 	ldr	x0, [sp, 128]
@@ -287,7 +287,7 @@ wide:
 	fcvtzs	x0, d0
 	add	x19, x19, x0
 	b	.L26
-	.align 2
+	.p2align 2,,3
 .L23:
 	add	x0, sp, 128
 	bl	take3
@@ -297,7 +297,7 @@ wide:
 	add	x0, x0, :lo12:.LC7
 	bl	printf
 	b	.L26
-	.align 2
+	.p2align 2,,3
 .L27:
 	ldr	w1, [sp, 152]
 	ldr	x0, [sp, 128]
@@ -313,7 +313,7 @@ wide:
 	bl	printf
 	add	x19, x19, w24, uxtw
 	b	.L26
-	.align 2
+	.p2align 2,,3
 .L74:
 	ldr	w1, [sp, 184]
 	ldr	x0, [sp, 160]
@@ -337,7 +337,7 @@ wide:
 	add	x1, x1, x1, lsl 1
 	eor	x1, x1, x0
 	b	.L49
-	.align 2
+	.p2align 2,,3
 .L78:
 	add	w2, w1, 8
 	str	w2, [sp, 184]
@@ -346,7 +346,7 @@ wide:
 	ldr	x0, [sp, 168]
 	add	x0, x0, w1, sxtw
 	b	.L61
-	.align 2
+	.p2align 2,,3
 .L75:
 	ldr	w1, [sp, 188]
 	ldr	x0, [sp, 160]
@@ -360,7 +360,7 @@ wide:
 	ldr	q30, [x0]
 	str	q30, [sp, 112]
 	b	.L68
-	.align 2
+	.p2align 2,,3
 .L76:
 	ldr	w1, [sp, 188]
 	ldr	x0, [sp, 160]
@@ -374,13 +374,13 @@ wide:
 	mov	x2, 8
 	str	d30, [sp, 112]
 	b	.L69
-	.align 2
+	.p2align 2,,3
 .L77:
 	add	x0, sp, 160
 	bl	take3
 	uxtw	x1, w0
 	b	.L49
-	.align 2
+	.p2align 2,,3
 .L82:
 	add	w1, w1, 15
 	and	w1, w1, -16
@@ -462,7 +462,7 @@ wide:
 	.string	"\n  fp_full=%g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fp_full:
 	stp	x29, x30, [sp, -160]!
 	mov	x29, sp
@@ -492,7 +492,7 @@ fp_full:
 	fadd	d15, d15, d6
 	fadd	d15, d15, d7
 	b	.L92
-	.align 2
+	.p2align 2,,3
 .L86:
 	add	x0, x1, 11
 	ldr	w22, [x1]
@@ -529,7 +529,7 @@ fp_full:
 	ldr	w22, [x1]
 	ldr	w1, [sp, 92]
 	tbz	w1, #31, .L89
-	.align 5
+	.p2align 5,,15
 .L95:
 	add	w2, w1, 16
 	str	w2, [sp, 92]
@@ -538,7 +538,7 @@ fp_full:
 	ldr	x0, [sp, 80]
 	add	x0, x0, w1, sxtw
 	b	.L91
-	.align 2
+	.p2align 2,,3
 .L96:
 	fmov	d0, d15
 	adrp	x0, .LC10
@@ -559,7 +559,7 @@ fp_full:
 	.string	"\n  gp_full=%ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 gp_full:
 	add	x1, x0, x1, lsl 1
 	add	x2, x2, x2, lsl 1
@@ -593,7 +593,7 @@ gp_full:
 	stp	q4, q5, [sp, 160]
 	stp	q6, q7, [sp, 192]
 	b	.L104
-	.align 2
+	.p2align 2,,3
 .L98:
 	ldr	x22, [x1]
 	add	x0, x1, 15
@@ -630,7 +630,7 @@ gp_full:
 	ldr	x22, [x1]
 	ldr	w1, [sp, 92]
 	tbz	w1, #31, .L101
-	.align 5
+	.p2align 5,,15
 .L107:
 	add	w2, w1, 16
 	str	w2, [sp, 92]
@@ -639,7 +639,7 @@ gp_full:
 	ldr	x0, [sp, 80]
 	add	x0, x0, w1, sxtw
 	b	.L103
-	.align 2
+	.p2align 2,,3
 .L108:
 	mov	x1, x23
 	adrp	x0, .LC12
@@ -676,7 +676,7 @@ gp_full:
 	.string	"TTTi"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #224
@@ -920,8 +920,8 @@ main:
 	.section .rodata
 	.align	4
 .LC13:
-	.quad	-81985529216486896
-	.quad	81985529216486895
+	.xword	-81985529216486896
+	.xword	81985529216486895
 	.section .rodata
 	.align	4
 	.LANCHOR0:
