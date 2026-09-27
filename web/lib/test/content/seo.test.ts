@@ -50,11 +50,55 @@ describe("snippetFromMarkdown", () => {
       "- one",
       "- two",
       "",
-      "The starter reads the word into `word_buf` and already holds the format string for the middle line.",
+      "Put the border in `.data`, then print the border, the middle line, and the border again.",
     ].join("\n");
     expect(snippetFromMarkdown(prompt)).toBe(
-      "Draw a box around one word read from input. The starter reads the word into word_buf and already holds the format string for the middle line.",
+      "Draw a box around one word read from input. Put the border in .data, then print the border, the middle line, and the border again.",
     );
+  });
+
+  it("keeps an opening lead-in, since it states the task", () => {
+    const prompt = [
+      "A 32-bit add can go wrong in two ways, and the flags record both:",
+      "",
+      "- V: the signed answer does not fit",
+      "- C: a 1 carries out of bit 31",
+      "",
+      "Add the two inputs with `adds`, which sets the flags.",
+    ].join("\n");
+    expect(snippetFromMarkdown(prompt)).toBe(
+      "A 32-bit add can go wrong in two ways, and the flags record both. Add the two inputs with adds, which sets the flags.",
+    );
+  });
+
+  it("leaves out register aliases and the starter's plumbing", () => {
+    expect(
+      snippetFromMarkdown(
+        "Two friends trade a secret handshake as a number. The starter reads it and holds the strings. Put the code in `code_r`, then print one action for each set bit.",
+      ),
+    ).toBe("Two friends trade a secret handshake as a number.");
+    expect(
+      snippetFromMarkdown("Three values arrive in `a_r`, `b_r`, and `c_r`. Compute (a + b) - c and print it."),
+    ).toBe("Compute (a + b) - c and print it.");
+  });
+
+  it("keeps a starter opening only when the task points back to it", () => {
+    expect(snippetFromMarkdown("The starter reads one signed number. Print its magnitude.")).toBe(
+      "The starter reads one signed number. Print its magnitude.",
+    );
+    expect(snippetFromMarkdown("The starter reads a board into `board`. Print who wins, or keep playing.")).toBe(
+      "Print who wins, or keep playing.",
+    );
+  });
+
+  it("never lets a starter opening stand alone", () => {
+    const opening =
+      "The starter reads a price in cents and a quantity straight into two words in .data, called price and quantity.";
+    const snippet = snippetFromMarkdown(
+      `${opening} Multiply them, store the product in the third word, and print all three words with a single call.`,
+    );
+    expect(snippet.startsWith(`${opening} Multiply them`)).toBe(true);
+    expect(snippet.endsWith("...")).toBe(true);
   });
 
   it("never ends a sentence on punctuation inside inline code", () => {
