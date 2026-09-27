@@ -16,11 +16,16 @@ vi.mock("@/components/learn/LessonMarkdown", () => ({
 // reference feeds it, so the run-in-place tests never instantiate Monaco or
 // the WASM worker.
 vi.mock("@/components/playground/EmbeddablePlayground", () => ({
-  EmbeddablePlayground: (props: { chrome?: string; startSource?: string }) => (
+  EmbeddablePlayground: (props: {
+    chrome?: string;
+    startSource?: string;
+    registerView?: string;
+  }) => (
     <div
       data-testid="embed"
       data-chrome={props.chrome}
       data-startsource={props.startSource}
+      data-registerview={props.registerView}
     />
   ),
 }));
@@ -30,9 +35,10 @@ import { playgroundSource } from "@/lib/playground/playground-source";
 
 const THEMES = ["dark", "light", "high-contrast"] as const;
 
-// Two categories, four entries: one carries a worked encoding (add), one sets
-// flags (cmp), the others are plain. Distinct syntax/example strings make the
-// detail unambiguous.
+// Four categories, six entries: one carries a worked encoding and an
+// intrinsic (add), two set flags (cmp, which has the flag panel, and adcs,
+// which does not), one writes a vector register (addv), the others are plain.
+// Distinct syntax/example strings make the detail unambiguous.
 const FIXTURE: ReferenceInstruction[] = [
   {
     mnemonic: "mov",
@@ -40,6 +46,9 @@ const FIXTURE: ReferenceInstruction[] = [
     syntax: "mov xd, xn",
     summary: "mov summary prose",
     example: "mov x0, x1",
+    cExample: "Rd = Rm;",
+    setsFlags: false,
+    registerView: "x",
     gotchas: ["mov gotcha note"],
   },
   {
@@ -49,6 +58,9 @@ const FIXTURE: ReferenceInstruction[] = [
     summary: "add summary prose",
     example: "add x0, x1, x2",
     cExample: "x0 = x1 + x2;",
+    intrinsic: "vaddq_u8",
+    setsFlags: false,
+    registerView: "x",
     encoding: [
       { bits: 1, label: "sf", value: "1", meaning: "x width" },
       { bits: 31, label: "rest", value: "0".repeat(31) },
@@ -56,11 +68,24 @@ const FIXTURE: ReferenceInstruction[] = [
     encodedAsm: "add x19, x0, 8",
   },
   {
+    mnemonic: "adcs",
+    category: "Data processing",
+    syntax: "adcs xd, xn, xm",
+    summary: "adcs summary prose",
+    example: "adcs x0, x1, x2",
+    cExample: "Rd = Rn + Rm + C;",
+    setsFlags: true,
+    registerView: "x",
+  },
+  {
     mnemonic: "cmp",
     category: "Compare and test",
     syntax: "cmp xn, xm",
     summary: "cmp summary prose",
     example: "cmp x0, x1",
+    cExample: "uint64_t r = Rn - op2;",
+    setsFlags: true,
+    registerView: "x",
   },
   {
     mnemonic: "ldr",
@@ -68,6 +93,9 @@ const FIXTURE: ReferenceInstruction[] = [
     syntax: "ldr xt, [xn]",
     summary: "ldr summary prose",
     example: "ldr x0, [x1]",
+    cExample: "Xt = *(uint64_t *)Xn;",
+    setsFlags: false,
+    registerView: "x",
     gotchas: ["ldr gotcha note"],
   },
   {
@@ -76,6 +104,19 @@ const FIXTURE: ReferenceInstruction[] = [
     syntax: "b.eq label / b.ne label / ...",
     summary: "b.cond summary prose",
     example: "cmp w0, #0\nb.eq done",
+    cExample: "if (cond) goto label;",
+    setsFlags: false,
+    registerView: "x",
+  },
+  {
+    mnemonic: "addv",
+    category: "Vector",
+    syntax: "addv bd, vn.8b",
+    summary: "addv summary prose",
+    example: "addv b3, v7.8b",
+    cExample: "Bd = 0;\nfor (int i = 0; i < 8; i++) Bd += Vn[i];",
+    setsFlags: false,
+    registerView: "v",
   },
 ];
 
@@ -264,13 +305,43 @@ describe("InstructionReference", () => {
     expect(screen.getByLabelText("assembled word")).toBeTruthy();
   });
 
-  it("shows the C-equivalent chip only when the data carries one", () => {
+  it("shows the C equivalent for every entry, and the intrinsic when there is one", () => {
     render(<InstructionReference instructions={FIXTURE} />);
-    // mov (default selection) has no cExample -> no section
-    expect(screen.queryByText("c equivalent")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "add" }));
+    // mov (default selection): its C, and no intrinsic line
     expect(screen.getByText("c equivalent")).toBeTruthy();
+    expect(screen.getByText("Rd = Rm;")).toBeTruthy();
+    expect(screen.queryByText(/is a function the compiler turns/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "add" }));
     expect(screen.getByText("x0 = x1 + x2;")).toBeTruthy();
+    expect(screen.getByText("vaddq_u8")).toBeTruthy();
+    expect(screen.getByText(/arm_neon\.h/)).toBeTruthy();
+  });
+
+  it("keeps a multi-line C equivalent on its own lines", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "addv" }));
+    expect(screen.getByText("Bd = 0;")).toBeTruthy();
+    expect(
+      screen.getByText("for (int i = 0; i < 8; i++) Bd += Vn[i];"),
+    ).toBeTruthy();
+  });
+
+  it("opens the live example on the register file the example writes", async () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "addv" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "run this example: addv" }),
+    );
+    const embed = await screen.findByTestId("embed");
+    expect(embed.getAttribute("data-registerview")).toBe("v");
+  });
+
+  it("badges every flag setter, not only the ones with a flag panel", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "adcs" }));
+    const flags = screen.getByRole("group", { name: "adcs flags" });
+    expect(within(flags).getByText("sets nzcv")).toBeTruthy();
+    expect(screen.queryByLabelText("adcs flag effect")).toBeNull();
   });
 
   it("dims the flags row for non-setters and notes nzcv for setters", () => {
