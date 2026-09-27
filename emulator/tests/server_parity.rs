@@ -777,3 +777,112 @@ main:
     let (_, out) = run_with_stdin(source, "");
     assert_eq!(out, "30\n");
 }
+
+// gcc -O2 names the copy of a function it specializes `twice.constprop.0`,
+// and GAS takes a dot anywhere after a symbol's first character. The lexer
+// ended the name at the first dot, so the label line was refused as having
+// nothing to assemble, and a student pasting gcc's output hit that wall.
+#[test]
+fn a_gcc_clone_name_is_a_label() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%d\n"
+
+        .text
+        .balign 4
+twice.constprop.0:
+        lsl     w0, w0, 1
+        ret
+
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 21
+        bl      twice.constprop.0
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "42\n");
+}
+
+// The other dotted names gcc writes: `.isra.0`, `.part.0` and `.cold`
+// clones, stacked suffixes, and static locals (`count.0`), reached as a
+// `bl`, `b`, `adr` and `blr` target, through `ldr =`, `adrp` with `:lo12:`,
+// and from a `.quad` slot.
+#[test]
+fn every_gcc_dotted_name_resolves_wherever_a_label_can_go() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%d %d %d %d\n"
+        .balign 8
+where:          .quad hits.12
+count.0:        .word 5
+hits.12:        .word 7
+
+        .text
+        .balign 4
+bump.isra.0:
+        add     w0, w0, 1
+        ret
+half.part.0:
+        asr     w0, w0, 1
+        ret
+pick.constprop.0.isra.0:
+        b       half.part.0
+fail.cold:
+        mov     w0, 99
+        ret
+
+        .global main
+main:
+        stp     fp, lr, [sp, -48]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+        stp     x21, x22, [sp, 32]
+
+        ldr     x9, =count.0
+        ldr     w0, [x9]
+        bl      bump.isra.0
+        mov     w19, w0
+
+        ldr     x9, =where
+        ldr     x9, [x9]
+        ldr     w0, [x9]
+        bl      pick.constprop.0.isra.0
+        mov     w20, w0
+
+        adrp    x9, hits.12
+        add     x9, x9, :lo12:hits.12
+        ldr     w21, [x9]
+
+        adr     x9, fail.cold
+        blr     x9
+        mov     w4, w0
+
+        mov     w3, w21
+        mov     w2, w20
+        mov     w1, w19
+        ldr     x0, =fmt
+        bl      printf
+
+        ldp     x21, x22, [sp, 32]
+        ldp     x19, x20, [sp, 16]
+        mov     w0, 0
+        ldp     fp, lr, [sp], 48
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "6 3 7 99\n");
+}
