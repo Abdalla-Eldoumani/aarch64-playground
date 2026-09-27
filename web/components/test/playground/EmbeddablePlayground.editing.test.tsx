@@ -182,6 +182,23 @@ describe("Ctrl+Enter", () => {
     expect(hub.assemble).toHaveBeenCalledTimes(1);
   });
 
+  it("assembles only the frame's own program, never the playground's stored helper files", async () => {
+    // A student's playground workspace has a helper that also defines main.
+    window.localStorage.setItem(
+      "aarch64-playground:multi-files",
+      JSON.stringify([{ name: "helper.s", body: "main:   mov x0, 7\n        ret\n" }]),
+    );
+    const hub = makeHub();
+    mountEmbed(hub);
+    await act(async () => {
+      editorProps.current!.onRunShortcut!();
+    });
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledWith(SOURCE, []);
+    // A lesson's program is not filed among the playground's recent programs.
+    expect(window.localStorage.getItem("aarch64-playground:auto-save:recent")).toBeNull();
+  });
+
   it("does not run from the embed editor after a failed assemble", async () => {
     const hub = makeHub({ assemble: vi.fn(async () => false) });
     mountEmbed(hub);
