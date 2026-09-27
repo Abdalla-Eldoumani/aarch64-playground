@@ -70,7 +70,7 @@ export function LessonArticle({
           open
           className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 lg:border-0 lg:bg-transparent lg:p-0"
         >
-          <summary className="cursor-pointer select-none font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] lg:list-none">
+          <summary className="cursor-pointer select-none font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] lg:list-none [@media(pointer:coarse)]:text-[12px] [@media(pointer:coarse)]:leading-[44px]">
             on this page
           </summary>
           <ul className="mt-3 flex flex-col lg:mt-0">
