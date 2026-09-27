@@ -2,6 +2,7 @@
   "title": "Three in a row",
   "slug": "three-in-a-row",
   "order": 45,
+  "lastUpdated": "2026-09-27",
   "topic": "memory",
   "difficulty": "core",
   "prompt": "Read three integers, keep each one in its own local in the stack frame, and print them smallest first on one line.\n\nThe starter sets up a frame with room for three 4-byte locals at the offsets `a_s`, `b_s` and `c_s`. `scanf` needs the address of the place where it should store a number; for a frame local that address is `fp` plus the local's offset, built with `add x1, fp, a_s`. Once the three values are loaded into `a_r`, `b_r` and `c_r`, compare pairs and swap any pair that is out of order until `a_r <= b_r <= c_r`. Try your steps on an input where the smallest number comes last.\n\n## what is checked\n\n- the three numbers in ascending order, separated by single spaces\n- the program exits cleanly\n- the numbers are read into the frame (`add` present) and compared (`cmp` present)\n- your program also runs on inputs you do not see: every order, negative numbers, repeated numbers, and the largest and smallest 32-bit values",
