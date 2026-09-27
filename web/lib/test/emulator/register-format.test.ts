@@ -96,9 +96,19 @@ describe("floatText", () => {
 
   it("keeps a .0 on whole numbers and the sign on zero", () => {
     expect(floatText(0x4045000000000000n, 64)).toBe("42.0");
+    // 123456789012345 is the widest whole number still written out.
+    expect(floatText(0x42dc12218377de40n, 64)).toBe("123456789012345.0");
     expect(floatText(0n, 64)).toBe("0.0");
     expect(floatText(0x8000000000000000n, 64)).toBe("-0.0");
     expect(floatText(0x80000000n, 32)).toBe("-0.0");
+  });
+
+  it("writes a whole number past 15 digits in exponent form", () => {
+    expect(floatText(0x430c6bf526340000n, 64)).toBe("1e+15");
+    expect(floatText(0x4415af1d78b58c40n, 64)).toBe("1e+20");
+    expect(floatText(0xc341c37937e08000n, 64)).toBe("-1e+16");
+    // The pattern a library call leaves, read as a single.
+    expect(floatText(0xdeadbeefn, 32)).toBe("-6.2598534e+18");
   });
 
   it("names infinities and NaNs, sign included, whatever the payload", () => {
