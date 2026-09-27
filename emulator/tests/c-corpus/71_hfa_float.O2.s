@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	cmul
 cmul:
 	fmov	w1, s1
@@ -32,7 +32,7 @@ cmul:
 	fmov	s1, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	cross
 cross:
 	fmov	s31, s0
@@ -46,7 +46,7 @@ cross:
 	fnmsub	s2, s31, s4, s30
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	axpy
 axpy:
 	fmov	w2, s0
@@ -87,7 +87,7 @@ axpy:
 	fmov	s3, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	crowd
 crowd:
 	sub	sp, sp, #32
@@ -109,7 +109,7 @@ crowd:
 	fmadd	s0, s0, s31, s2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	crowd2
 crowd2:
 	fmov	w3, s7
@@ -150,7 +150,7 @@ crowd2:
 	fmadd	s0, s30, s0, s31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	blend
 blend:
 	fmov	w4, s0
@@ -192,7 +192,7 @@ blend:
 	fmov	s3, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	shift
 shift:
 	sub	sp, sp, #48
@@ -202,7 +202,7 @@ shift:
 	add	sp, sp, 48
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	twist
 twist:
 	adrp	x1, .LANCHOR0
@@ -223,7 +223,7 @@ twist:
 	add	sp, sp, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fimix
 fimix:
 	sbfx	x1, x0, 0, 32
@@ -250,7 +250,7 @@ fimix:
 	.string	"\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pf
 pf:
 	stp	x29, x30, [sp, -48]!
@@ -268,7 +268,7 @@ pf:
 	str	x21, [sp, 32]
 	adrp	x21, .LC6
 	add	x21, x21, :lo12:.LC6
-	.align 5
+	.p2align 5,,15
 .L19:
 	ldr	s0, [x19], 4
 	mov	x0, x21
@@ -289,7 +289,7 @@ pf:
 	.string	"%s %.4f %.4f %.4f\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pf3
 pf3:
 	fcvt	d2, s2
@@ -343,7 +343,7 @@ pf3:
 	.string	"sizes %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #384
@@ -493,7 +493,7 @@ main:
 	ldr	q31, [x20, 56]
 	stp	q30, q29, [x26]
 	str	q31, [x26, 32]
-	.align 5
+	.p2align 5,,15
 .L28:
 	umull	x0, w25, w22
 	lsr	x0, x0, 33
@@ -648,7 +648,7 @@ main:
 	ldp	d14, d15, [sp, 128]
 	add	sp, sp, 384
 	ret
-	.align 2
+	.p2align 2,,3
 .L26:
 	add	x0, sp, 264
 	add	w25, w25, 1
