@@ -65,7 +65,9 @@ export function VRegisterRow({
         changed ? "anim-reg-flash [box-shadow:inset_2px_0_0_0_var(--amber)]" : ""
       }`}
     >
-      <span className="w-[9ch] shrink-0 text-[var(--text-secondary)]">
+      {/* nowrap: "v10 (q10)" is exactly 9ch, and Chromium broke it at the
+          space, doubling the height of 22 rows. */}
+      <span className="w-[9ch] shrink-0 whitespace-nowrap text-[var(--text-secondary)]">
         v{index} (q{index})
       </span>
       <span className="sr-only">
