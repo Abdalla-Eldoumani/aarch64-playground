@@ -181,8 +181,8 @@ describe("FullLayout", () => {
     renderLayout("md");
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
     expect(panel("panel-disasm").getAttribute("data-size")).toBe("30%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
-    expect(panel("panel-tabs").getAttribute("data-size")).toBe("55%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("56%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("44%");
   });
 
   it("keeps the tablet sizes under their own two keys", () => {
@@ -202,7 +202,7 @@ describe("FullLayout", () => {
     // The Panels open on the authored split; the stored one is pushed
     // through each group's handle once the storage read has run.
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("56%");
     // Exactly one push per group: a second would be the reconcile loop.
     expect(setLayoutCalls).toHaveLength(2);
     expect(setLayoutCalls).toEqual(
