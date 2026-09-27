@@ -187,6 +187,20 @@ function joinClasses(...parts: Array<string | undefined | false>): string {
 // render hands the panels the same objects every time and never remounts them
 // on a parent re-render.
 const NO_CHANGED_REGS: Set<number> = new Set();
+
+// The status line of a frame nobody has pressed yet.
+const IDLE_RUN_STATUS = {
+  programLoaded: false,
+  isRunning: false,
+  isHalted: false,
+  blocked: false,
+  exitCode: null,
+  stepCount: 0,
+  failed: false,
+  registers: IDLE_CPU_VIEW.registers,
+  sp: IDLE_CPU_VIEW.sp,
+  changedRegs: NO_CHANGED_REGS,
+};
 const NO_VFS_FILES: string[] = [];
 
 // One naming rule for every recents entry: the program's first comment
@@ -853,6 +867,19 @@ function EmbeddableCore({
         onStep={() => void stepEmbed()}
         onStepBack={handleStepBack}
         onCheck={() => void checkEmbed()}
+        runStatus={{
+          programLoaded: emu.programLoaded,
+          isRunning: emu.isRunning,
+          isHalted: emu.isHalted,
+          blocked: emu.blocked,
+          exitCode: emu.exitCode,
+          stepCount: emu.stepCount,
+          failed: emu.error != null,
+          registers: emu.registers,
+          sp: emu.sp,
+          changedRegs: emu.changedRegs,
+        }}
+        hasOutput={emu.stdout.length + emu.stderr.length > 0}
         editor={
           staticEditor ? (
             <StaticCodeView value={source} currentLine={emu.currentLine} />
@@ -1114,6 +1141,8 @@ export const EmbeddablePlayground = forwardRef<
           onStep={engage}
           onStepBack={engage}
           onCheck={engage}
+          runStatus={IDLE_RUN_STATUS}
+          hasOutput={false}
           editor={
             staticEditor && startSource !== undefined ? (
               <StaticCodeView value={startSource} currentLine={null} />
