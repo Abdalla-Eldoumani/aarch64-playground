@@ -1,11 +1,11 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 add1:
 	add	w0, w0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 dbl:
 	lsl	w0, w0, 1
 	ret
@@ -15,7 +15,7 @@ dbl:
 	.string	"fib calls=%d deepest=%d now=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fib_probe:
 	stp	x29, x30, [sp, -48]!
 	adrp	x6, .LANCHOR0
@@ -40,7 +40,7 @@ fib_probe:
 	mov	w0, w4
 	ldp	x29, x30, [sp], 48
 	ret
-	.align 2
+	.p2align 2,,3
 .L11:
 	sub	w0, w4, #1
 	mov	w1, 0
@@ -59,7 +59,7 @@ fib_probe:
 	ldr	w3, [x5, 4]
 	sub	w3, w3, #1
 	b	.L8
-	.align 2
+	.p2align 2,,3
 .L10:
 	mov	w1, w0
 	adrp	x0, .LC0
@@ -99,7 +99,7 @@ fib_probe:
 	.string	"d=%.17g big=%lld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #144
@@ -130,7 +130,7 @@ main:
 	add	x0, x23, :lo12:dbl
 	str	x0, [sp, 128]
 	b	.L18
-	.align 2
+	.p2align 2,,3
 .L38:
 	ldr	w0, [x19, 32]
 	sub	w0, w0, #1
@@ -262,7 +262,7 @@ main:
 	adrp	x21, .LC4
 	add	x21, x21, :lo12:.LC4
 	mov	w20, 10
-	.align 5
+	.p2align 5,,15
 .L19:
 	ldr	w1, [x19, 88]
 	mov	x0, x21
@@ -356,7 +356,7 @@ main:
 	ldp	x27, x28, [sp, 96]
 	add	sp, sp, 144
 	ret
-	.align 2
+	.p2align 2,,3
 .L28:
 	adrp	x1, .LC1
 	add	x2, x21, 32
@@ -384,11 +384,11 @@ main:
 	.align	4
 	.LANCHOR2:
 names.5:
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
-	.quad	.LC1
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
+	.xword	.LC1
 	.data
 	.align	4
 	.LANCHOR1:
@@ -414,13 +414,13 @@ c.14:
 	.byte	120
 	.zero	3
 cur.13:
-	.quad	pool.12+20
+	.xword	pool.12+20
 op.11:
-	.quad	add1
+	.xword	add1
 m.8:
 	.byte	113
 	.zero	7
-	.quad	81985529216486895
+	.xword	81985529216486895
 	.hword	-2
 	.byte 250, 251, 252
 	.zero	3
@@ -428,12 +428,12 @@ hits.7:
 	.word	-5
 	.zero	4
 last.6:
-	.quad	names.5+32
+	.xword	names.5+32
 d.1:
 	.word	-1717986918
 	.word	1069128089
 big.0:
-	.quad	-9000000000000000000
+	.xword	-9000000000000000000
 	.bss
 	.align	4
 	.LANCHOR0:
