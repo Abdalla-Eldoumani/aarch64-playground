@@ -12,6 +12,9 @@ import type { ExternalCall } from "@/lib/worker/protocol";
  * component suites share.
  */
 
+/** A register file the registers panel can show: x0-x30, d0-d31, or v0-v31. */
+export type RegView = "x" | "d" | "v";
+
 export interface AssemblyError {
   line: number;
   message: string;
