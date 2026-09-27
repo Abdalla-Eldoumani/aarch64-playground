@@ -2,6 +2,7 @@
   "title": "Monster roster",
   "slug": "monster-roster",
   "order": 36,
+  "lastUpdated": "2026-09-27",
   "topic": "arrays",
   "difficulty": "challenge",
   "prompt": "The starter reads a roster of up to eight monsters into `roster`, an array of structures. Each input line is a name of up to five letters, the monster's hit points, and its attitude, for example `Troll 88 -35`. Print the monster with the most hit points in this form:\n\n```text\nstrongest: Troll, 88 hp, attitude -35\n```\n\nIf two monsters tie, the one listed first wins. If the roster has no monsters, print `the roster is empty` instead.\n\nA structure (a struct in C) is a group of fields stored side by side, each at a fixed distance, its offset, from the start of the structure. The starter names the offsets: the name at 0, the attitude at 6, the hit points at 8, and each monster takes 12 bytes, so monster i starts at `roster + i * 12`. Load each field with its own size. The attitude is a signed halfword (16 bits): a 32-bit load at its offset would also pick up two bytes of the hit points, and an unsigned load turns -35 into 65501.\n\n## what is checked\n\n- one line naming the strongest monster, or the empty-roster line\n- the program exits cleanly\n- the attitude is loaded as a signed halfword (`ldrsh` present)\n- your program also runs on rosters you do not see: a tie, a single monster, an empty roster, the strongest listed last, and a roster where every monster has negative hit points",
