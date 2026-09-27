@@ -204,9 +204,9 @@ gcd:
 	.section .rodata
 	.align	3
 table:
-	.quad	st_letter
-	.quad	st_digit
-	.quad	st_other
+	.xword	st_letter
+	.xword	st_digit
+	.xword	st_other
 	.text
 	.align	2
 kind:
