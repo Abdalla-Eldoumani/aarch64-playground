@@ -224,6 +224,7 @@ mod tests {
         term: crate::cpu::TermState,
         heap: HeapState,
         strtok_save: u64,
+        callbacks: crate::hosted::callback::CallbackState,
     }
 
     impl Host {
@@ -241,6 +242,7 @@ mod tests {
                 term: crate::cpu::TermState::default(),
                 heap: HeapState::default(),
                 strtok_save: 0,
+                callbacks: Default::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -258,6 +260,7 @@ mod tests {
                 term: &mut self.term,
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
+                callbacks: &mut self.callbacks,
             }
         }
         /// Call a stub with x0/x1 set and hand back x0.
