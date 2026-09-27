@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { act, forwardRef, useEffect, useImperativeHandle, type Ref } from "react";
 import type { Exercise } from "@/lib/content/exercise-schema";
 import type { CheckResult } from "@/lib/content/exercise-checker";
-import { checkExercise } from "@/lib/content/exercise-checker";
+import { checkExercise, checkHiddenCase } from "@/lib/content/exercise-checker";
+import { runHeadless } from "@/lib/emulator/headless-run";
 import { markSolved } from "@/lib/playground/solved-state";
 import { readShareHash } from "@/lib/playground/share";
 
@@ -48,6 +49,7 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
       startSource?: string;
       startArgs?: string;
       startStdin?: string;
+      showArgs?: boolean;
       onCheck?: (snapshot: unknown) => void;
       onSourceChange?: (source: string) => void;
     },
@@ -76,6 +78,7 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
         data-startsource={props.startSource}
         data-startargs={props.startArgs}
         data-startstdin={props.startStdin}
+        data-showargs={props.showArgs ? "1" : undefined}
       >
         <button type="button" onClick={() => props.onCheck?.(MOCK_SNAPSHOT)}>
           check
@@ -88,12 +91,21 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
   }),
 }));
 
-vi.mock("@/lib/content/exercise-checker", () => ({ checkExercise: vi.fn() }));
+vi.mock("@/lib/content/exercise-checker", () => ({
+  checkExercise: vi.fn(),
+  checkHiddenCase: vi.fn(),
+}));
+// The hidden inputs run on a machine of their own; neither the wasm nor the
+// runner loads here, so each test decides what a hidden run reports.
+vi.mock("@/lib/emulator/emulator", () => ({ loadEmulator: vi.fn(async () => ({})) }));
+vi.mock("@/lib/emulator/headless-run", () => ({ runHeadless: vi.fn() }));
 vi.mock("@/lib/playground/solved-state", () => ({ markSolved: vi.fn() }));
 
 import { ExerciseView } from "@/components/practice/ExerciseView";
 
 const checkExerciseMock = vi.mocked(checkExercise);
+const checkHiddenCaseMock = vi.mocked(checkHiddenCase);
+const runHeadlessMock = vi.mocked(runHeadless);
 const markSolvedMock = vi.mocked(markSolved);
 
 afterEach(() => {
@@ -254,7 +266,7 @@ describe("ExerciseView", () => {
     expect(status.textContent).toContain("leaves the right value in x0");
     expect(status.textContent).toContain("expected 55, got 42");
     expect(status.textContent).toContain(
-      "computes the result (does not hardcode it): the value 55 appears literally in your source",
+      "computes the result (does not hardcode it): the value 55 appears literally in your program",
     );
     expect(markSolvedMock).not.toHaveBeenCalled();
   });
@@ -377,5 +389,151 @@ describe("ExerciseView saved answers", () => {
       bugExercise.starter,
     );
     expect(storedAnswer("bug-exercise")).toBeNull();
+  });
+});
+
+describe("ExerciseView hidden inputs", () => {
+  const hiddenExercise: Exercise = {
+    ...writeExercise,
+    slug: "hidden-exercise",
+    stdin: "10\n",
+    hiddenCases: [
+      { stdin: "3\n", stdout: "sum = 6\n", exitCode: 0 },
+      { stdin: "0\n", stdout: "sum = 0\n", exitCode: 0, edge: true },
+      { args: "7", stdout: "sum = 28\n", exitCode: 0 },
+    ],
+  };
+  const outcome = {
+    assembleError: null,
+    error: null,
+    finished: true,
+    stdout: "",
+    exitCode: 0,
+    stackBalanced: true,
+    frameIntact: true,
+  };
+
+  it("names how many hidden inputs there are and never what they are", () => {
+    render(<ExerciseView exercise={hiddenExercise} />);
+    const text = screen.getByRole("region", { name: /specification/i }).textContent ?? "";
+    expect(text).toContain("3 more inputs you do not see");
+    expect(text).not.toContain("sum = 6");
+    expect(text).not.toContain("28");
+  });
+
+  it("runs them after the visible checks pass, shows a failing one's input, and does not mark solved", async () => {
+    checkExerciseMock.mockReturnValue(passResult);
+    runHeadlessMock.mockResolvedValue(outcome);
+    checkHiddenCaseMock
+      .mockReturnValueOnce({ pass: true, miss: null, detail: "" })
+      .mockReturnValueOnce({ pass: false, miss: "stdout", detail: '"sum = 1\\n"' })
+      .mockReturnValueOnce({ pass: true, miss: null, detail: "" });
+    render(<ExerciseView exercise={hiddenExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+
+    await screen.findByText(/hidden input 3/);
+    expect(runHeadlessMock).toHaveBeenCalledTimes(3);
+    // The live source and each case's own input reach the runner.
+    expect(runHeadlessMock.mock.calls[0].slice(1)).toEqual([MOCK_SOURCE, [], "3\n"]);
+    expect(runHeadlessMock.mock.calls[2].slice(1)).toEqual([MOCK_SOURCE, ["7"], undefined]);
+    const status = screen.getByRole("status").textContent ?? "";
+    expect(status).toContain('input "0\\n"');
+    expect(status).toContain('it prints something else: got "sum = 1\\n"');
+    expect(status).not.toContain("sum = 0");
+    expect(status).not.toContain("all checks passed");
+    expect(markSolvedMock).not.toHaveBeenCalled();
+  });
+
+  it("marks solved once every hidden input passes too", async () => {
+    checkExerciseMock.mockReturnValue(passResult);
+    runHeadlessMock.mockResolvedValue(outcome);
+    checkHiddenCaseMock.mockReturnValue({ pass: true, miss: null, detail: "" });
+    render(<ExerciseView exercise={hiddenExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+
+    await screen.findByText("all checks passed");
+    expect(markSolvedMock).toHaveBeenCalledWith("hidden-exercise");
+  });
+
+  it("holds the hidden inputs back while the visible checks fail", () => {
+    checkExerciseMock.mockReturnValue(failResult);
+    render(<ExerciseView exercise={hiddenExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+
+    expect(screen.getByRole("status").textContent).toContain(
+      "3 hidden inputs run once the checks above pass",
+    );
+    expect(runHeadlessMock).not.toHaveBeenCalled();
+  });
+
+  it("brings the results into view in answer to a check, and only then", () => {
+    const scroll = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { value: scroll, configurable: true });
+    try {
+      checkExerciseMock.mockReturnValue(failResult);
+      render(<ExerciseView exercise={writeExercise} />);
+      expect(scroll).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: /check/i }));
+
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.contexts[0]).toBe(screen.getByRole("status"));
+      expect(scroll.mock.calls[0][0]).toMatchObject({ block: "nearest" });
+    } finally {
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+});
+
+describe("ExerciseView command line and shortcut rules", () => {
+  it("gives the embed an args box only when the exercise takes arguments", () => {
+    const { unmount } = render(<ExerciseView exercise={{ ...writeExercise, args: "12 7" }} />);
+    expect(screen.getByTestId("embed").getAttribute("data-showargs")).toBe("1");
+    unmount();
+
+    render(<ExerciseView exercise={{ ...writeExercise, args: "" }} />);
+    expect(screen.getByTestId("embed").getAttribute("data-showargs")).toBeNull();
+    // An empty args row would only say there is nothing to say.
+    expect(screen.getByRole("region", { name: /specification/i }).textContent).not.toContain("args");
+  });
+
+  it("names forbidden instructions and scoped checks in plain words", () => {
+    const exercise: Exercise = {
+      ...writeExercise,
+      acceptance: {
+        results: [{ kind: "exit", equals: 0 }],
+        structural: [
+          { kind: "forbids-instruction", mnemonics: ["mul", "madd", "msub"] },
+          { kind: "uses-instruction", mnemonic: "bl fact", in: "fact" },
+          { kind: "forbids-literal", value: "%lo" },
+        ],
+      },
+    };
+    render(<ExerciseView exercise={exercise} />);
+    const text = screen.getByRole("region", { name: /specification/i }).textContent ?? "";
+    expect(text).toContain("does not use mul, madd or msub");
+    expect(text).toContain("uses bl fact in fact");
+    expect(text).toContain("does not contain %lo");
+  });
+
+  it("says which forbidden instruction a failing program used", () => {
+    checkExerciseMock.mockReturnValue({
+      pass: false,
+      results: [],
+      structural: [
+        {
+          assertion: { kind: "forbids-instruction", mnemonics: ["mul", "madd"] },
+          pass: false,
+          found: "madd",
+        },
+      ],
+      summary: "0 of 1 checks passing",
+    });
+    render(<ExerciseView exercise={writeExercise} />);
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    expect(screen.getByRole("status").textContent).toContain("madd appears in your program");
   });
 });
