@@ -1,0 +1,119 @@
+{
+  "title": "Subroutines: saved registers, pointers, and big arguments",
+  "slug": "calling-conventions",
+  "order": 22,
+  "summary": "Keep the registers a caller counts on, hand back answers through pointers, pass a ninth argument on the stack, and return a large struct through x8.",
+  "tags": [
+    "subroutines",
+    "stack"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Writing your own subroutines](/learn/subroutines)\n- [The stack and the frame pointer](/learn/stack-and-frame-pointer)"
+    },
+    {
+      "type": "prose",
+      "markdown": "The last lesson wrote subroutines that take a few numbers in `x0` to `x7` and hand one back in `x0`. Real functions need more. They share registers with the code that calls them, they return more than one answer, they take more than eight arguments, and some return records too big for a register.\n\nAll of this is settled by the *calling convention*: the rules every function on the system follows, so that any function can call any other. On ARMv8 Linux that is the AAPCS64 (Procedure Call Standard for the Arm 64-bit Architecture), the same standard that put the arguments in `x0` to `x7` in the last lesson."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Who may change which register\n\nA called function (the *callee*) and the function that called it (the *caller*) share the same 31 registers. The convention splits them into two groups.\n\nA *caller-saved* register is one the callee may change freely. If the caller still needs its value after the call, the caller has to keep the value somewhere safe first. A *callee-saved* register is one the callee must hand back holding exactly what it held on entry. The callee may use it, but only after storing the old value, and it must put that value back before `ret`.\n\n| Registers | Job | After a `bl` |\n|---|---|---|\n| `x0` to `x7` | arguments in, result out | may have changed |\n| `x8` | address for a large returned struct | may have changed |\n| `x9` to `x15` | temporaries | may have changed |\n| `x16`, `x17` | used by the linker between a call and its target | may have changed |\n| `x18` | reserved for the platform | do not use it |\n| `x19` to `x28` | values that must outlive a call | unchanged |\n| `x29` (`fp`), `x30` (`lr`) | frame pointer, return address | saved by the prologue |\n| `sp` | stack pointer | back where it was |\n\n`printf`, `scanf` and every other library function follow the same rules. That is the part that catches people: a call to `printf` may change any register from `x0` to `x18`, and on the servers it does. The playground does the same, so a program that breaks the rule fails here too."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "A loop counter kept in `x9` works until the loop body calls `printf`. After the call, `x9` holds whatever `printf` left in it, so the count jumps to a strange value or the loop never ends:\n\n```text\n        mov     w9, 1\nprint_loop:\n        ldr     x0, =fmt_count\n        mov     w1, w9\n        bl      printf              // may change x0 to x18\n        add     w9, w9, 1           // w9 is no longer the count\n```\n\nKeep a value that has to survive a call in `x19` to `x28` (and save that register, as the next section shows), or store it in the frame before the call and load it back after."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Saving the callee-saved registers you use\n\nA function that wants `x19` and `x20` makes room for them in its frame, stores them right after the prologue, and loads them back right before the epilogue. The pair takes 16 bytes, so the frame grows by 16:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "save_s = 16\nalloc = -(16 + 16) & -16                    // fp and lr, then x19 and x20\ndealloc = -alloc\n\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        stp     x19, x20, [fp, save_s]      // keep the caller's values\n\n        // the body is free to change x19 and x20 here\n\n        ldp     x19, x20, [fp, save_s]      // give them back\n        ldp     fp, lr, [sp], dealloc\n        ret\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The caller never sees the change: from its side, `x19` and `x20` hold the same values before and after the call, which is the whole promise.\n\nShort course programs often let `main` change `x19` to `x28` without saving them. A helper may never do that, because its caller is your own code and is counting on those registers. The programs from here on save them in every function that uses them, `main` included."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Two answers from one call\n\nA function returns one value in `x0`. To hand back more, the caller passes the *address* of a variable and the callee stores its answer at that address. An address passed this way is called a *pointer*: a value that says where something is in memory, rather than what it is. In C:"
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "void minmax(int *base, int n, int *lo, int *hi);\n\nint lo, hi;\nminmax(temps, 7, &lo, &hi);         // &lo is the address of lo\nprintf(\"lowest = %d, highest = %d\\n\", lo, hi);\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "In assembly, `lo` and `hi` are two locals in `main`'s frame. `add x2, fp, lo_s` computes the address of `lo` (it does not load its value), and `minmax` writes through that address with `str lo_r, [x2]`. After the call, `main` loads both locals and prints them.\n\n`minmax` keeps its running lowest and highest in `x19` and `x20`, so it saves and restores them. It calls nothing, so the temporaries `x9` to `x15` would also do; `x19` and `x20` are there to show the save. Run it: it prints `lowest = -3, highest = 25`."
+    },
+    {
+      "type": "editor",
+      "starter": "// minmax: one call hands back two answers through pointers into main's frame\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(i_r, w9)\ndefine(val_r, w10)\ndefine(lo_r, w19)\ndefine(hi_r, w20)\n\ndefine(TEMPS_N, 7)\n\n.data\ntemps_m:    .word 12, -3, 25, 7, 0, 18, 4\nfmt_range:  .string \"lowest = %d, highest = %d\\n\"\n\n.text\n// minmax(x0 = base, w1 = n, x2 = &lo, x3 = &hi): writes the smallest and\n// the largest element through the two pointers\nmm_save = 16\nmm_alloc = -(16 + 16) & -16\nmm_dealloc = -mm_alloc\n\n        .balign 4\n        .global minmax\nminmax:\n        stp     fp, lr, [sp, mm_alloc]!\n        mov     fp, sp\n        stp     x19, x20, [fp, mm_save]     // keep the caller's x19 and x20\n\n        ldr     lo_r, [x0]                  // both start at element 0\n        mov     hi_r, lo_r\n        mov     i_r, 1\n        b       mm_test\nmm_loop:\n        ldr     val_r, [x0, i_r, SXTW 2]\n        cmp     val_r, lo_r\n        b.ge    mm_check_hi\n        mov     lo_r, val_r                 // new lowest\nmm_check_hi:\n        cmp     val_r, hi_r\n        b.le    mm_next\n        mov     hi_r, val_r                 // new highest\nmm_next:\n        add     i_r, i_r, 1\nmm_test:\n        cmp     i_r, w1\n        b.lt    mm_loop\n\n        str     lo_r, [x2]                  // *lo = lowest\n        str     hi_r, [x3]                  // *hi = highest\n\n        ldp     x19, x20, [fp, mm_save]     // hand x19 and x20 back unchanged\n        ldp     fp, lr, [sp], mm_dealloc\n        ret\n\n// main: two int locals, lo and hi, that minmax fills in\nlo_s = 16\nhi_s = 20\nalloc = -(16 + 8) & -16\ndealloc = -alloc\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        ldr     x0, =temps_m\n        mov     w1, TEMPS_N\n        add     x2, fp, lo_s                // x2 = the address of lo, not its value\n        add     x3, fp, hi_s                // x3 = the address of hi\n        bl      minmax\n\n        ldr     x0, =fmt_range\n        ldr     w1, [fp, lo_s]              // minmax wrote these two locals\n        ldr     w2, [fp, hi_s]\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "lowest = -3, highest = 25\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## More than eight arguments\n\nOnly eight arguments fit in `x0` to `x7`. The ninth and any after it go on the stack: the caller stores them at `sp` just before the `bl`, each in its own 8-byte slot, and takes the space back after the call returns. Because `sp` must stay a multiple of 16, a single 8-byte argument still costs 16 bytes of stack.\n\nOn the other side, the callee's prologue moves `sp` down by its own frame, so the caller's slot ends up just above the new frame. With a 16-byte frame the ninth argument is at `[fp, 16]`:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "              higher addresses\n[fp, 16]      ninth argument (the caller's slot)\n[fp, 8]       saved lr\n[fp, 0]       saved fp          <- fp and sp inside det3\n              lower addresses\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "`det3` takes the nine entries of a 3 by 3 grid, row by row, and returns its *determinant*, one number worked out from all nine entries (the formula is in the comments). The first eight entries arrive in `w0` to `w7`; the ninth, 6, comes from the stack. The program prints `det = -11`."
+    },
+    {
+      "type": "editor",
+      "starter": "// det3: nine arguments, one more than the registers x0 to x7 can carry\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(a_r, w0)\ndefine(b_r, w1)\ndefine(c_r, w2)\ndefine(d_r, w3)\ndefine(e_r, w4)\ndefine(f_r, w5)\ndefine(g_r, w6)\ndefine(h_r, w7)\ndefine(i_r, w9)\n\n.data\nfmt_det:    .string \"det = %d\\n\"\n\n.text\n// det3(w0 to w7 = a to h, first stack slot = i) -> w0 = the determinant of\n//   | a b c |\n//   | d e f |\n//   | g h i |\ni_arg = 16                                  // the caller's stack slot, just above this frame\n\n        .balign 4\n        .global det3\ndet3:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     i_r, [fp, i_arg]            // the ninth argument\n\n        mul     w10, e_r, i_r\n        msub    w10, f_r, h_r, w10          // w10 = ei - fh\n        mul     w11, d_r, i_r\n        msub    w11, f_r, g_r, w11          // w11 = di - fg\n        mul     w12, d_r, h_r\n        msub    w12, e_r, g_r, w12          // w12 = dh - eg\n\n        mul     w13, a_r, w10               // a(ei - fh)\n        msub    w13, b_r, w11, w13          //   - b(di - fg)\n        madd    w0, c_r, w12, w13           //   + c(dh - eg)\n\n        ldp     fp, lr, [sp], 16\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // det3(2, 1, 3, 0, 4, 1, 5, 2, 6)\n        sub     sp, sp, 16                  // one 8-byte slot, rounded up to keep sp aligned\n        mov     w9, 6\n        str     w9, [sp]                    // the ninth argument goes at sp\n        mov     w0, 2\n        mov     w1, 1\n        mov     w2, 3\n        mov     w3, 0\n        mov     w4, 4\n        mov     w5, 1\n        mov     w6, 5\n        mov     w7, 2\n        bl      det3\n        add     sp, sp, 16                  // the caller gives its slot back\n\n        mov     w1, w0\n        ldr     x0, =fmt_det\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "det = -11\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Returning a struct bigger than 16 bytes\n\nA *struct* groups several fields into one block of memory. A struct of 16 bytes or less whose fields are integers or addresses comes back in `x0` and `x1`. A bigger one does not fit in registers, so the caller reserves space for it, puts the address of that space in `x8`, and makes the call. The callee writes each field through `x8`. `x8` is caller-saved like `x0` to `x7`, so a caller that needs the address after the call keeps its own copy; here `main` rebuilds it from `fp`."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "struct hms { long hours; long minutes; long seconds; };    // 24 bytes\n\nstruct hms split_time(long seconds);\n\nstruct hms t = split_time(50000);\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "`split_time` turns a number of seconds into that 24-byte struct. `main` reserves the 24 bytes in its frame at offset 16, points `x8` at them, and prints the three fields: `50000 seconds is 13 h 53 min 20 s`."
+    },
+    {
+      "type": "editor",
+      "starter": "// split_time: a 24-byte struct comes back through the address in x8\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(unit_r, x9)\ndefine(left_r, x10)\ndefine(part_r, x11)\n\n// struct hms { long hours; long minutes; long seconds; }\nhours_f = 0\nminutes_f = 8\nseconds_f = 16\nhms_size = 24\n\n.data\nfmt_time:    .string \"%ld seconds is %ld h %ld min %ld s\\n\"\n\n.text\n// split_time(x0 = seconds, x8 = address of an hms) fills in all three fields.\n// A leaf: it calls nothing, so it needs no frame.\n        .balign 4\n        .global split_time\nsplit_time:\n        mov     unit_r, 3600\n        udiv    part_r, x0, unit_r\n        msub    left_r, part_r, unit_r, x0  // seconds left after the hours\n        str     part_r, [x8, hours_f]\n\n        mov     unit_r, 60\n        udiv    part_r, left_r, unit_r\n        msub    left_r, part_r, unit_r, left_r\n        str     part_r, [x8, minutes_f]\n        str     left_r, [x8, seconds_f]\n        ret\n\n// main keeps the result struct in its own frame\ntime_s = 16\nalloc = -(16 + hms_size) & -16\ndealloc = -alloc\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     x0, 50000\n        add     x8, fp, time_s              // where split_time should write its answer\n        bl      split_time\n\n        ldr     x0, =fmt_time\n        mov     x1, 50000\n        ldr     x2, [fp, time_s + hours_f]\n        ldr     x3, [fp, time_s + minutes_f]\n        ldr     x4, [fp, time_s + seconds_f]\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "50000 seconds is 13 h 53 min 20 s\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. A function changes `x21` but calls nothing. Must it save `x21`?\n2. A loop keeps its counter in `x12` and calls `scanf` on every pass. What goes wrong, and what are two ways to fix it?\n3. A function takes ten `int` arguments and opens a 16-byte frame. Where are the ninth and the tenth?\n4. `add x2, fp, lo_s` and `ldr w2, [fp, lo_s]` both mention `lo_s`. Which one passes a pointer?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. Yes. `x21` is callee-saved, so any function that changes it puts it back, whether or not it calls anything.\n2. `scanf` may change `x12`, so the count is lost. Move the counter to one of `x19` to `x28` and save that register, or store the counter in the frame before the call and load it after.\n3. The ninth at `[fp, 16]` and the tenth at `[fp, 24]`. Each stack argument has its own 8-byte slot, and the caller reserved 16 bytes for the two.\n4. The `add`. It computes the address `fp + lo_s`; the `ldr` loads the value stored there."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [The forgetful helper](/practice/the-forgetful-helper): a helper breaks a register its caller needs.\n- [The leaky frame](/practice/the-leaky-frame): a frame breaks the alignment rule.\n- [Quiz: subroutines (challenge)](/practice/quiz-advance-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): the rules in this lesson."
+    }
+  ]
+}
