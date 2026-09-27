@@ -13,6 +13,7 @@ import dynamic from "next/dynamic";
 import type { FullChromeBridge } from "@/components/playground/FullChromeSurface";
 import { useEmulator } from "@/lib/emulator/use-emulator";
 import { IDLE_CPU_VIEW } from "@/lib/emulator/use-cpu-view";
+import type { RegView } from "@/lib/emulator/emulator-state";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseArgs } from "@/lib/playground/args";
@@ -23,7 +24,7 @@ import type { Action } from "@/lib/playground/commands";
 import { buildPaletteCommands } from "@/lib/playground/palette-commands";
 import { Editor } from "@/components/playground/lazy-editor";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
-import { RegisterPanel, type RegView } from "@/components/panels/RegisterPanel";
+import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { EmbedLayout } from "@/components/playground/EmbedLayout";
 import {
