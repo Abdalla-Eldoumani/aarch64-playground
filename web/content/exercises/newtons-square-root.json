@@ -2,6 +2,7 @@
   "title": "Newton's square root",
   "slug": "newtons-square-root",
   "order": 65,
+  "lastUpdated": "2026-09-27",
   "topic": "floating-point",
   "difficulty": "challenge",
   "prompt": "Find the square root of the number in the stdin box without the `fsqrt` instruction, using the rule Isaac Newton's method gives for square roots: if `guess` is a guess at the root of `n`, then\n\n`next = (guess + n / guess) / 2`\n\nis a better one. Start at or above the root (`n` itself, or `1.0` when `n` is below 1) and every step lands closer, always from above. In exact arithmetic that goes on forever; in floating point the guesses soon stop getting smaller, because a double holds only so many digits. So repeat the rule, compare each `next` with `guess` using `fcmp`, and stop as soon as `next` is not smaller. `guess` is then the answer. Do not count steps: a big `n` needs far more of them than a small one.\n\nPrint the root with the `%.6f` format in `.data`, which reads a double from `d0`. Two inputs need care before the loop:\n\n- a negative number has no real square root: print `no real square root` and return 1\n- the root of 0 is 0; left to the loop, the guess shrinks to zero and `0 / 0` is not a number, so the loop never ends\n\n## what is checked\n\n- the root printed for the number in the stdin box, and for more numbers you cannot see\n- the exit status (0, or 1 for a negative number)\n- the loop is yours: `fdiv` and `fcmp` present, no `fsqrt`",
