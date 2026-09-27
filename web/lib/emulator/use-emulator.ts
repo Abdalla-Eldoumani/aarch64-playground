@@ -25,6 +25,7 @@ import { useConsoleOutput } from "@/lib/emulator/use-console-output";
 import { useCpuView } from "@/lib/emulator/use-cpu-view";
 import { useMemoryCache } from "@/lib/emulator/use-memory-cache";
 import { parseArgs } from "@/lib/playground/args";
+import type { Workspace } from "@/lib/playground/file-map";
 import type { ExternalCall, StateSnapshot } from "@/lib/worker/protocol";
 
 // The hub is the import site every consumer already uses, so the contract
@@ -41,6 +42,8 @@ export function useEmulator(): EmulatorState {
   const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
   const sourceRef = useRef("");
+  // The files that source joins: the notes name lines per file.
+  const workspaceRef = useRef<Workspace>({ main: "", extras: [] });
   const frameRef = useRef(0);
   // Authoritative linker address -> editor-line map for the current
   // assembly. Empty until the first successful hosted assemble; an empty
@@ -175,9 +178,9 @@ export function useEmulator(): EmulatorState {
     // sends neither, and the scrollback stays append-only as before.
     if (snap.stdoutSeen != null) syncSeen("stdout", snap.stdoutSeen);
     if (snap.stderrSeen != null) syncSeen("stderr", snap.stderrSeen);
-    // Worded against the source just assembled, whose lines the rows name.
+    // Worded against the files just assembled, whose joined lines the rows name.
     if (snap.clobberNotes?.length) {
-      appendNotes(clobberNoteTexts(snap.clobberNotes, sourceRef.current));
+      appendNotes(clobberNoteTexts(snap.clobberNotes, workspaceRef.current));
     }
     // Drive the current-line marker off the linker's authoritative
     // address->editor-line map: look the snapshot pc up directly instead
@@ -287,12 +290,14 @@ export function useEmulator(): EmulatorState {
       source: string,
       args: string[],
       surfaceErrors: boolean,
+      workspace: Workspace = { main: source, extras: [] },
     ): Promise<AssembleOutcome> => {
       const backend = backendRef.current;
       if (!backend) {
         return Promise.resolve({ success: false, error: "emulator not loaded", errorLine: null });
       }
       sourceRef.current = source;
+      workspaceRef.current = workspace;
       if (surfaceErrors) {
         setError(null);
         setAssemblyErrors([]);
@@ -423,8 +428,8 @@ export function useEmulator(): EmulatorState {
   );
 
   const assemble = useCallback(
-    (source: string, args: string[] = []): Promise<boolean> =>
-      assembleWith(source, args, true).then((r) => r.success),
+    (source: string, args: string[] = [], workspace?: Workspace): Promise<boolean> =>
+      assembleWith(source, args, true, workspace).then((r) => r.success),
     [assembleWith],
   );
 
@@ -433,8 +438,8 @@ export function useEmulator(): EmulatorState {
   // editor's error markers: the terminal's error belongs to the terminal's
   // file, not the source the editor happens to show.
   const assembleForTool = useCallback(
-    (source: string, args: string[] = []): Promise<AssembleOutcome> =>
-      assembleWith(source, args, false),
+    (source: string, args: string[] = [], workspace?: Workspace): Promise<AssembleOutcome> =>
+      assembleWith(source, args, false, workspace),
     [assembleWith],
   );
 
