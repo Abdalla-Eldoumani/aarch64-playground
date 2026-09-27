@@ -31,9 +31,9 @@ describe("Controls", () => {
     expect(screen.getByText("2 steps")).toBeTruthy();
   });
 
-  it("marks the action row as an instrument band and keeps the error out of it", () => {
+  it("keeps the error out of the button row", () => {
     const h = allHandlers();
-    const { container } = render(
+    render(
       <Controls
         {...h}
         canStepBack={false}
@@ -43,15 +43,37 @@ describe("Controls", () => {
         error="undefined label: mian"
       />,
     );
-    const band = container.querySelector(".controls-band");
-    expect(band).not.toBeNull();
-    // Every button rides the strip; the spacer it suppresses under sm carries
-    // its own class, and the alert is a sibling row, not a scrolled-away child.
-    expect(band!.querySelectorAll("button")).toHaveLength(5);
-    expect(band!.querySelector(":scope > .controls-spacer")).not.toBeNull();
+    const row = screen.getByRole("button", { name: "assemble" }).parentElement!;
+    expect(row.querySelectorAll("button")).toHaveLength(5);
     const alert = screen.getByRole("alert");
-    expect(alert.closest(".controls-band")).toBeNull();
-    expect(alert.parentElement).toBe(band!.parentElement);
+    expect(row.contains(alert)).toBe(false);
+    expect(alert.parentElement).toBe(row.parentElement);
+  });
+
+  it("gives a phone five buttons that share the width, with nothing to scroll", () => {
+    // The old phone row was a scrolling strip that needed 413px: reset sat
+    // past the edge of a 393px screen and back under the fade.
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        compact
+        canStepBack={false}
+        isRunning={false}
+        isHalted={true}
+        programLoaded={true}
+        stepCount={12}
+        error={null}
+      />,
+    );
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(5);
+    const row = buttons[0].parentElement!;
+    expect(row.className).not.toContain("overflow");
+    for (const b of buttons) expect(b.className).toMatch(/flex-(1|\[1\.4\])/);
+    // The phone's status line reports steps and the finish instead.
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(document.querySelector("kbd")).toBeNull();
   });
 
   it("renders the five control buttons in canonical order", () => {
