@@ -1,79 +1,79 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 lsl_w:
 // 10 "programs/87_shift_width.c" 1
 	lsl w0, w0, w1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 lsr_w:
 // 17 "programs/87_shift_width.c" 1
 	lsr w0, w0, w1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 asr_w:
 // 24 "programs/87_shift_width.c" 1
 	asr w0, w0, w1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 ror_w:
 // 31 "programs/87_shift_width.c" 1
 	ror w0, w0, w1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 lsl_x:
 // 38 "programs/87_shift_width.c" 1
 	lsl x0, x0, x1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 lsr_x:
 // 45 "programs/87_shift_width.c" 1
 	lsr x0, x0, x1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 asr_x:
 // 52 "programs/87_shift_width.c" 1
 	asr x0, x0, x1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 ror_x:
 // 59 "programs/87_shift_width.c" 1
 	ror x0, x0, x1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 shl_masked:
 	lsl	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 shl_zero_past:
 	cmp	w1, 32
 	lsl	w0, w0, w1
 	csel	w0, w0, wzr, cc
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 rot_c:
 	ror	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 funnel:
 	neg	w3, w2
 	lsr	x1, x1, x2
@@ -113,7 +113,7 @@ funnel:
 	.string	"rot %08x %08x %08x\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #112
@@ -130,7 +130,7 @@ main:
 	add	x24, x21, 16
 	ldr	x20, [x21, 8]
 	add	x23, x23, :lo12:.LC0
-	.align 5
+	.p2align 5,,15
 .L17:
 	ldr	w8, [x24, w22, sxtw 2]
 	mov	w0, w19
@@ -168,7 +168,7 @@ main:
 	mov	x4, 0
 	mov	w2, 0
 	mov	x3, 0
-	.align 5
+	.p2align 5,,15
 .L21:
 	lsl	x0, x3, 5
 	mov	w1, w4
@@ -351,7 +351,7 @@ main:
 	ldp	x23, x24, [sp, 64]
 	add	sp, sp, 112
 	ret
-	.align 2
+	.p2align 2,,3
 .L30:
 	bl	shl_zero_past
 	cmp	w5, w0
@@ -365,7 +365,7 @@ wv:
 	.word	-559038737
 	.zero	4
 xv:
-	.quad	-9141386507638288913
+	.xword	-9141386507638288913
 counts:
 	.word	0
 	.word	1
