@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import type { EmulatorBackend } from "@/lib/emulator/backend";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
+import { combineSources } from "@/lib/playground/file-map";
 import type {
   AssembleResultPayload,
   RunResultPayload,
@@ -494,6 +495,25 @@ describe("useEmulator load + snapshot application", () => {
       fake.fire({ stderrDelta: "e2" });
     });
     expect(result.current.stderr).toBe("e1e2");
+  });
+
+  it("words a note's lines per file in the workspace it assembled", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    const helper = { name: "util.s", body: "util:\n        bl      puts\n        add     x1, x9, 1" };
+    const combined = combineSources(HOSTED_SOURCE, [helper]);
+    await act(async () => {
+      await result.current.assemble(combined, [], { main: HOSTED_SOURCE, extras: [helper] });
+    });
+    // HOSTED_SOURCE is 13 lines and the boundary comment is 14, so the
+    // helper's lines 2 and 3 are 16 and 17 of the joined string.
+    act(() => {
+      fake.fire({ clobberNotes: [9, 0, 16, 17] });
+    });
+    expect(result.current.notes).toHaveLength(1);
+    expect(result.current.notes[0]).toMatch(
+      /^util\.s line 3 reads x9, but the puts call on util\.s line 2 overwrote it\./,
+    );
   });
 
   it("unprints stdout down to a snapshot whose display counter moved back", async () => {
