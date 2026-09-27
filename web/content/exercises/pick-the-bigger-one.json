@@ -4,9 +4,10 @@
   "order": 9,
   "topic": "branching",
   "difficulty": "intro",
-  "prompt": "Two contenders sit in registers. Print the larger one.\n\nA clean pattern: assume one of them is the winner, then compare and replace the assumption only when the other is bigger. That way there is exactly one branch to reason about.\n\n## what is checked\n\n- the larger value is printed on its own line\n- the program exits cleanly\n- a comparison decides it",
-  "starter": "// compare two values and print the larger one\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(winner_r, x21)\n\n        .data\nfmt:    .string \"bigger = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, 123                    // contender one\n        mov     b_r, 87                     // contender two\n        mov     winner_r, 0                 // replace this placeholder\n\n        // TODO: compare a_r and b_r and leave the larger value\n        // in winner_r\n\n        ldr     x0, =fmt\n        mov     x1, winner_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Two contenders arrive on input, and the starter reads them into registers. Print the larger one.\n\nA clean pattern: assume one of them is the winner, then compare and replace the assumption only when the other is bigger. That way there is exactly one branch to reason about.\n\n## what is checked\n\n- the larger value is printed on its own line\n- the program exits cleanly\n- a comparison decides it\n- the same holds for other inputs you do not see: either one can be bigger, they can be equal, and they can be negative",
+  "starter": "// compare two values and print the larger one\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(winner_r, x21)\n\n        .data\nfmt_in:     .string \"%lld %lld\"\nfmt_out:    .string \"bigger = %lld\\n\"\n\n        .bss\n        .balign 8\na_m:        .skip 8\nb_m:        .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the two contenders\n        ldr     x1, =a_m\n        ldr     x2, =b_m\n        bl      scanf\n        ldr     x9, =a_m\n        ldr     a_r, [x9]\n        ldr     x9, =b_m\n        ldr     b_r, [x9]\n        mov     winner_r, 0                 // replace this placeholder\n\n        // TODO: compare a_r and b_r and leave the larger value\n        // in winner_r\n\n        ldr     x0, =fmt_out\n        mov     x1, winner_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "123 87\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -25,5 +26,28 @@
         "mnemonic": "cmp"
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "87 123\n",
+      "stdout": "bigger = 123\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "5 5\n",
+      "stdout": "bigger = 5\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-3 -10\n",
+      "stdout": "bigger = -3\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "-1 0\n",
+      "stdout": "bigger = 0\n",
+      "exitCode": 0
+    }
+  ]
 }
