@@ -815,15 +815,15 @@ export function RegisterPanel({
       {/* The panel's own scroll box: the header above stays put, and following
           a write scrolls this first. It takes focus so the rows can be
           scrolled from the keyboard. It never shrinks under three rows (19px
-          each at 12px, plus its bottom padding): a lesson frame on a phone
-          gives the whole panel less height than the header, and the list
-          shrank to nothing; the frame's own pane scrolls instead. */}
+          each at 12px): a lesson frame on a phone gives the whole panel less
+          height than the header, and the list shrank to nothing; the frame's
+          own pane scrolls instead. */}
       <div
         ref={bodyRef}
         role="region"
         aria-label="register values"
         tabIndex={0}
-        className="min-h-[calc(4.75em+0.5rem)] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        className="min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
         onWheel={(e) => {
           if (!e.ctrlKey) markUserScroll();
         }}
