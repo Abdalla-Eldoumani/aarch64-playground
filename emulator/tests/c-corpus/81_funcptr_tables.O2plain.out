@@ -1,0 +1,36 @@
+rpn [3 4 + 2 *] = 14
+rpn [9 7 % 5 ^] = 7
+rpn [8 5 < 9 >] = 9
+rpn [1 2 3 4 + + +] = 10
+rpn [5 0 /] = 0
+rpn [2 +] = 2 (bad)
+rpn [9 6 & 6 |] = 6
+rpn [7 3 - 4 - 1 2 * *] = 0
+rpn [9 x] = 9 (bad)
+rpn [9 9 * 9 * 9 * 9 -] = 6552
+ops: add(-17,5)=-12 sub(-17,5)=-22 mul(-17,5)=-85 quo(-17,5)=-3 rem(-17,5)=-2 and(-17,5)=5 or(-17,5)=-17 xor(-17,5)=-22 min(-17,5)=-17 max(-17,5)=5
+same: 1 1 1 0
+round 0: 7007 repeat=-20
+round 1: 7952 repeat=6
+round 2: 8993 repeat=-20
+round 3: 9940 repeat=6
+ten: 5188320494233
+fact: 1 24 5040 3628800 6227020800 20922789888000 121645100408832000 2432902008176640000
+rect area2=24 perim=14
+tri area2=24 perim=18
+square area2=50 perim=20
+tri area2=60 perim=30
+rect area2=60 perim=22
+tri area2=96 perim=36
+square area2=98 perim=28
+tri area2=240 perim=60
+parse [-12_345] ok -12345
+parse [+7] ok 7
+parse [1__2] no 0
+parse [-] no 0
+parse [12a] no 0
+parse [0] ok 0
+parse [_5] no 0
+parse [9_] no 0
+parse [] no 0
+parse [-0_0_1] ok -1
