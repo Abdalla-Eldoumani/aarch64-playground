@@ -1,24 +1,24 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	add
 add:
 	add	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sub
 sub:
 	sub	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mul
 mul:
 	mul	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	swap
 swap:
 	ldr	w3, [x1]
@@ -27,7 +27,7 @@ swap:
 	str	w2, [x1]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	apply
 apply:
 	mov	x16, x0
@@ -35,7 +35,7 @@ apply:
 	mov	w1, w2
 	br	x16
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	set
 set:
 	str	x1, [x0]
@@ -55,7 +55,7 @@ set:
 	.string	"%ld %c\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -80]!
@@ -111,7 +111,7 @@ main:
 	movk	x0, 0x72, lsl 48
 	str	x0, [sp, 48]
 	mov	x0, x1
-	.align 5
+	.p2align 5,,15
 .L10:
 	ldrb	w2, [x0, 1]!
 	cbnz	w2, .L10
