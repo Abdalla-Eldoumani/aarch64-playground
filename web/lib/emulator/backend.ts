@@ -308,6 +308,7 @@ class MainThreadBackend implements EmulatorBackend {
     // the key then stays off the snapshot so the hub skips the unprint.
     const stdoutSeen = this.emu.stdoutSeen();
     const stderrSeen = this.emu.stderrSeen();
+    const clobberNotes = this.emu.takeClobberNotes();
     return {
       frame: this.frame,
       registers: regs.gpr,
@@ -326,6 +327,7 @@ class MainThreadBackend implements EmulatorBackend {
       stderrDelta: this.emu.takeStderr(),
       ...(stdoutSeen != null ? { stdoutSeen } : {}),
       ...(stderrSeen != null ? { stderrSeen } : {}),
+      ...(clobberNotes.length ? { clobberNotes } : {}),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       wantsTerminal: this.emu.wantsTerminal(),
