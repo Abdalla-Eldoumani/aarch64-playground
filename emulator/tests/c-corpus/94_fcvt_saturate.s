@@ -478,30 +478,30 @@ fcvtpu_x:
 	.string	"pu"
 	.align	3
 modes:
-	.quad	.LC0
-	.quad	fcvtns_w
-	.quad	fcvtns_x
-	.quad	.LC1
-	.quad	fcvtas_w
-	.quad	fcvtas_x
-	.quad	.LC2
-	.quad	fcvtms_w
-	.quad	fcvtms_x
-	.quad	.LC3
-	.quad	fcvtps_w
-	.quad	fcvtps_x
-	.quad	.LC4
-	.quad	fcvtnu_w
-	.quad	fcvtnu_x
-	.quad	.LC5
-	.quad	fcvtau_w
-	.quad	fcvtau_x
-	.quad	.LC6
-	.quad	fcvtmu_w
-	.quad	fcvtmu_x
-	.quad	.LC7
-	.quad	fcvtpu_w
-	.quad	fcvtpu_x
+	.xword	.LC0
+	.xword	fcvtns_w
+	.xword	fcvtns_x
+	.xword	.LC1
+	.xword	fcvtas_w
+	.xword	fcvtas_x
+	.xword	.LC2
+	.xword	fcvtms_w
+	.xword	fcvtms_x
+	.xword	.LC3
+	.xword	fcvtps_w
+	.xword	fcvtps_x
+	.xword	.LC4
+	.xword	fcvtnu_w
+	.xword	fcvtnu_x
+	.xword	.LC5
+	.xword	fcvtau_w
+	.xword	fcvtau_x
+	.xword	.LC6
+	.xword	fcvtmu_w
+	.xword	fcvtmu_x
+	.xword	.LC7
+	.xword	fcvtpu_w
+	.xword	fcvtpu_x
 	.align	3
 .LC8:
 	.string	"d%02d %016lx i=%d u=%u l=%ld ul=%lu\n"
