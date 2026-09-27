@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
+import { clobberNoteTexts } from "@/lib/emulator/clobber-note";
 import { buildDisassembly, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
 import type {
@@ -94,6 +95,8 @@ export function useEmulator(): EmulatorState {
     stderr,
     appendStdout,
     appendStderr,
+    notes,
+    appendNotes,
     syncSeen,
     clearScrollback,
     preserveScrollback,
@@ -172,6 +175,10 @@ export function useEmulator(): EmulatorState {
     // sends neither, and the scrollback stays append-only as before.
     if (snap.stdoutSeen != null) syncSeen("stdout", snap.stdoutSeen);
     if (snap.stderrSeen != null) syncSeen("stderr", snap.stderrSeen);
+    // Worded against the source just assembled, whose lines the rows name.
+    if (snap.clobberNotes?.length) {
+      appendNotes(clobberNoteTexts(snap.clobberNotes, sourceRef.current));
+    }
     // Drive the current-line marker off the linker's authoritative
     // address->editor-line map: look the snapshot pc up directly instead
     // of counting non-label source lines (which double-counts data/macro
@@ -220,6 +227,7 @@ export function useEmulator(): EmulatorState {
       setDirtyAddrsTick((t) => t + 1);
     }
   }, [
+    appendNotes,
     appendStderr,
     appendStdout,
     applyRegisters,
@@ -657,6 +665,7 @@ export function useEmulator(): EmulatorState {
       memoryRegions,
       stdout,
       stderr,
+      notes,
       blocked,
       wantsTerminal,
       setOutputTap,
@@ -707,7 +716,7 @@ export function useEmulator(): EmulatorState {
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
       currentLine, externalCall, instructions, codeBase, memoryRegions,
-      stdout, stderr, blocked,
+      stdout, stderr, notes, blocked,
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
