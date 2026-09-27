@@ -291,6 +291,32 @@ export function explainError(message: string): ErrorExplanation | null {
 }
 
 /**
+ * The editor's hover for an error line, as Monaco markdown: the raw message in
+ * bold, then the explainer's teaching block when one matches. The raw message
+ * is escaped, because GAS and ld quote names as `name' and markdown would pair
+ * those backticks into the wrong code spans; its line breaks are kept so the
+ * hover reads line for line like the alert under the editor.
+ */
+export function errorHoverMarkdown(message: string): string {
+  // The four ranges are every ASCII punctuation mark, the set markdown lets a
+  // backslash escape; a backslash before a line break keeps the break.
+  const raw = message.replace(/[!-/:-@[-`{-~]/g, "\\$&").replace(/\n/g, "\\\n");
+  const explanation = explainError(message);
+  if (!explanation) return raw;
+  return [
+    `**${raw}**`,
+    "",
+    `*what:* ${explanation.what}`,
+    "",
+    `*why:* ${explanation.why}`,
+    "",
+    `*fix:* ${explanation.fix}`,
+    "",
+    `*consult:* ${explanation.styleSection} (docs/cpsc355-style-guide.md)`,
+  ].join("\n");
+}
+
+/**
  * The supported mnemonics nearest to a misspelled one: every name at the
  * smallest edit distance found, at most three, in the reference's order. A
  * swap of two neighbouring letters counts as one edit (`mvo` is one swap from
