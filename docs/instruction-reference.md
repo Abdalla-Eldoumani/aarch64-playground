@@ -634,12 +634,12 @@ An address in the unmapped first page faults here exactly as it does for
 | `.section <name>` | Named form; `.rodata` / `.bss` / etc.             |
 | `.global` / `.globl` | Mark a symbol as externally visible.           |
 | `.balign N`   | Pad to an N-byte boundary (byte count).               |
-| `.align N`    | Pad to 2^N bytes (power-of-two form).                 |
+| `.align N` / `.p2align N` | Pad to 2^N bytes (power-of-two form). A third argument caps the padding: `.p2align 5,,15` pads to 32 bytes only when that takes 15 bytes or fewer, and skips the padding otherwise. A fill value (the second argument) is refused. |
 | `.skip N` / `.zero N` / `.space N` | Reserve N zero-initialized bytes. `N` may be a constant expression over equates defined above it (`.skip STACKSIZE * 4`). `.skip` and `.space` take an optional fill byte (`.space 4, 7`), ignored in `.bss` as GAS does; `.zero` takes the size alone. |
 | `.byte`       | One byte.                                             |
-| `.hword` / `.short` | Two bytes little-endian.                        |
-| `.word`       | Four bytes little-endian.                             |
-| `.quad` / `.dword` | Eight bytes little-endian. Course files write `.dword`; GCC output writes `.quad`. Values may name labels (`table: .dword msg_one, msg_two`): each slot receives the label's absolute address at link time, which is how assignment-style pointer tables are built and then indexed with `ldr Xt, [table, Wi, SXTW 3]`. |
+| `.hword` / `.short` / `.2byte` | Two bytes little-endian.             |
+| `.word` / `.4byte` | Four bytes little-endian.                        |
+| `.quad` / `.dword` / `.xword` / `.8byte` | Eight bytes little-endian. Course files write `.dword`; GCC output writes `.quad`, and `.xword` for tables of addresses. Values may name labels (`table: .dword msg_one, msg_two`): each slot receives the label's absolute address at link time, which is how assignment-style pointer tables are built and then indexed with `ldr Xt, [table, Wi, SXTW 3]`. |
 | `.double`     | IEEE 754 double (use `0r3.14` literal form).          |
 | `.float`      | IEEE 754 float.                                       |
 | `.string` / `.asciz` | Null-terminated string.                        |
@@ -669,7 +669,16 @@ An address in the unmapped first page faults here exactly as it does for
 
 ## GCC output compatibility
 
-Unmodified AArch64 GCC `-S` output assembles: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, and label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them.
+The code AArch64 GCC `-S` writes assembles as it stands: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them, and GCC's data and alignment spellings (`.2byte` jump tables, `.xword`, `.p2align 5,,15`) are in the table above.
+
+A whole `-S` file still needs these edits before it assembles:
+
+- Delete the metadata lines: `.arch`, `.file`, `.ident`, every `.cfi_` directive, `.aeabi_subsection` / `.aeabi_attribute`, `.section .note.GNU-stack`, and the `#APP` / `#NO_APP` markers around inline assembly.
+- Write `.set NAME, VALUE` as `NAME = VALUE`.
+- Replace `.local NAME` plus `.comm NAME, SIZE, ALIGN` with `.balign ALIGN`, `NAME:`, and `.skip SIZE` in `.bss`.
+- Write a `.base64` string out as `.byte` rows.
+- Drop the `#` in front of `:lo12:` inside an address: `ldr d0, [x0, :lo12:.LC0]`, not `[x0, #:lo12:.LC0]`.
+- Call `scanf` and `strtol` by those names where glibc's headers renamed them `__isoc99_scanf` or `__isoc23_strtol`.
 
 ## Host stubs (hosted runtime)
 
