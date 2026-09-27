@@ -216,3 +216,64 @@ report:
     assert_eq!(cpu.exit_code, Some(0));
     assert_eq!(stdout_of(&mut cpu), "not a number\n");
 }
+
+/// gcc merges a sin and a cos of one value into sincos, which stores both
+/// results. The NaN answers are glibc's on AArch64: a domain error gives
+/// the positive default NaN (the host's own has its sign set), a NaN
+/// argument comes back quieted with its payload, and fabs changes only
+/// the sign bit.
+#[test]
+fn sincos_and_the_nan_answers_match_glibc() {
+    let src = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+        .balign 8
+nan_neg:    .quad 0xfff8000000000001
+snan:       .quad 0x7ff4000000000003
+fmt:        .string "%.6f %.6f %016lx %016lx %016lx\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+
+        fmov    d0, 0.5
+        add     x0, fp, 16
+        add     x1, fp, 24
+        bl      sincos
+
+        fmov    d0, -1.0
+        bl      sqrt
+        fmov    x19, d0
+        ldr     x9, =nan_neg
+        ldr     d0, [x9]
+        bl      fabs
+        fmov    x20, d0
+        ldr     x9, =snan
+        ldr     d0, [x9]
+        bl      floor
+        fmov    x3, d0
+
+        ldr     d0, [fp, 16]
+        ldr     d1, [fp, 24]
+        mov     x1, x19
+        mov     x2, x20
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+    let mut cpu = load(src);
+    let r = cpu.run_until_break(1_000_000).expect("run");
+    assert!(r.halted, "program did not halt: {:?}", cpu.abort_message);
+    assert_eq!(
+        stdout_of(&mut cpu),
+        "0.479426 0.877583 7ff8000000000000 7ff8000000000001 7ffc000000000003\n"
+    );
+}
