@@ -2,6 +2,7 @@
   "title": "C in one sitting",
   "slug": "c-in-one-sitting",
   "order": 1,
+  "lastUpdated": "2026-09-27",
   "summary": "Read the C that later lessons turn into assembly: types and their sizes, printf and scanf, pointer parameters, the two loop shapes, and arrays.",
   "tags": [
     "variables",
