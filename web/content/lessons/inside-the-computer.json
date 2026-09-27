@@ -2,6 +2,7 @@
   "title": "System architecture: what is inside the box",
   "slug": "inside-the-computer",
   "order": 2,
+  "lastUpdated": "2026-09-27",
   "summary": "Name the parts of a computer, and follow one instruction as the processor fetches, decodes and runs it.",
   "tags": [
     "system architecture"
