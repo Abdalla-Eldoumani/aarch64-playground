@@ -67,7 +67,7 @@ function observe(mnemonic: string, program: string, value: number) {
 
 describe("the reference's flag badges match the machine", () => {
   it("names at least one flag setter and one that leaves the flags alone", () => {
-    expect(REFERENCE_INSTRUCTIONS.filter((i) => i.setsFlags).length).toBe(13);
+    expect(REFERENCE_INSTRUCTIONS.filter((i) => i.setsFlags).length).toBe(15);
     expect(REFERENCE_INSTRUCTIONS.some((i) => !i.setsFlags)).toBe(true);
   });
 
