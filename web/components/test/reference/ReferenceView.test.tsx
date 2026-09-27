@@ -34,6 +34,9 @@ const INSTRUCTIONS: ReferenceInstruction[] = [
     syntax: "mov xd, xn",
     summary: "move a value",
     example: "mov x0, x1",
+    cExample: "Rd = Rm;",
+    setsFlags: false,
+    registerView: "x",
   },
   {
     mnemonic: "add",
@@ -41,6 +44,9 @@ const INSTRUCTIONS: ReferenceInstruction[] = [
     syntax: "add xd, xn, xm",
     summary: "add two values",
     example: "add x0, x1, x2",
+    cExample: "Rd = Rn + Rm;",
+    setsFlags: false,
+    registerView: "x",
   },
 ];
 
