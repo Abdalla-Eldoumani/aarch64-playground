@@ -2,6 +2,7 @@
   "title": "Subroutines: saved registers, pointers, and big arguments",
   "slug": "calling-conventions",
   "order": 22,
+  "lastUpdated": "2026-09-27",
   "summary": "Keep the registers a caller counts on, hand back answers through pointers, pass a ninth argument on the stack, and return a large struct through x8.",
   "tags": [
     "subroutines",
