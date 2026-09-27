@@ -139,8 +139,10 @@ fn every_local_corpus_program_links_and_runs() {
                 if msg.contains("no entry point") {
                     println!("LINK HELPER: {name} (no main by design)");
                     link_ok += 1;
-                } else if let Some(name) = function_from_c_neighbour(path, &msg) {
-                    println!("LINK NEEDS C: {name} (`{name}` is defined in a C file next to it)");
+                } else if let Some(function) = function_from_c_neighbour(path, &msg) {
+                    println!(
+                        "LINK NEEDS C: {name} (`{function}` is defined in a C file next to it)"
+                    );
                 } else {
                     println!("LINK FAIL: {name}: {e}");
                     link_fail += 1;
