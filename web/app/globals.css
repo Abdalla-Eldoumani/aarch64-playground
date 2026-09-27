@@ -540,6 +540,22 @@ body {
   }
 }
 
+/* A lesson term's card (LessonMarkdown) sits along the bottom edge on a touch
+   screen or in a window under 1024px: hung off a term near the right edge, it
+   ran past the screen and widened the page. The auto margins centre it once
+   the width reaches its cap. */
+@media (max-width: 1023.98px), (pointer: coarse) {
+  .term-card {
+    position: fixed;
+    inset: auto 1rem calc(1rem + var(--safe-bottom));
+    z-index: 60;
+    width: auto;
+    max-width: 32rem;
+    margin: 0 auto;
+    padding: 0.5rem 0.75rem;
+  }
+}
+
 /* =============================================================================
    EMBEDDED PLAYGROUND LAYOUT
    The hero, lesson, and exercise embeds render at whatever width their host
