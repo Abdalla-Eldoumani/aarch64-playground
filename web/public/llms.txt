@@ -1,0 +1,27 @@
+# AArch64 Playground
+
+> A free AArch64 (ARMv8) assembly emulator and visual debugger that runs in the browser. Paste or write a program, assemble it, and step through it one instruction at a time while the registers, stack, memory, and output update. Built as a study tool for CPSC 355 at the University of Calgary; not officially affiliated with the university.
+
+The emulator is an interpreter written in Rust and compiled to WebAssembly. Programs run inside the browser tab: no server, no install, no account, and the code stays on the reader's machine. It assembles GNU assembler syntax with m4 macros, the style CPSC 355 teaches, and also plain `gcc -S` output.
+
+## Main sections
+
+- [Home](https://aarch64-playground.com/): what the site does, with a short program to step through.
+- [Playground](https://aarch64-playground.com/playground): the full editor and debugger. Assemble, run, step forward and back, set breakpoints, and read the integer, floating-point, and 128-bit vector registers, memory, and the stack. Has a console with keyboard input and a terminal.
+- [Learn](https://aarch64-playground.com/learn): lessons in AArch64 assembly, from registers and loops to the stack, subroutines, floating point, and system calls, each with an editor you can run.
+- [Practice](https://aarch64-playground.com/practice): coding exercises checked by running the reader's program on hidden inputs, plus quizzes, fill-in-the-blank sets, and output predictions graded in the page.
+- [Reference](https://aarch64-playground.com/reference): every instruction the emulator accepts, with its syntax, an example, the C it matches, and the flags it sets, plus the calling convention and common mistakes.
+
+## How it differs from real hardware
+
+- It runs user programs only, with no operating system underneath. System registers (MRS, MSR), atomics and exclusive loads and stores (LDXR, STXR, LDAR, STLR, SWP, CAS), SVE, and SME are not supported. The base Advanced SIMD set is supported; the optional extensions (AES, SHA, dot product, half-precision arithmetic, and the rest) are not.
+- Library calls such as printf, scanf, malloc, and fopen do not run glibc's code. The emulator answers them itself and matches glibc's results. rand gives glibc's sequence, time returns a fixed value, and the clock moves only when the program sleeps, so a program given the same input runs the same way every time.
+- System calls through `svc 0` cover files, input and output, sleeping, the clock, and exit (openat, close, lseek, read, write, exit, and a few more). Files live in a virtual filesystem inside the tab.
+- There is no model of caches or timing: the emulator counts instructions, not cycles, so it cannot say how fast code runs on a real chip. Floating point always rounds to nearest, ties to even, and never sets the exception flags.
+- Faults match Linux: a load or store near address zero stops the program like a segmentation fault, and a memory access through `sp`, or a library call, while `sp` is not a multiple of 16 stops it like a bus error.
+- Limits keep a runaway program from freezing the tab: about 10 million instructions per run, 32 MiB of touched memory, an 8 MiB stack, a 16 MiB heap, and 4 MiB of output. A program that hits one stops with a message saying which.
+
+## Optional
+
+- [Source code](https://github.com/Abdalla-Eldoumani/aarch64-playground): the emulator, the site, and the tests, under the AGPL-3.0 license.
+- [Instruction reference](https://github.com/Abdalla-Eldoumani/aarch64-playground/blob/main/docs/instruction-reference.md): the supported instructions, library calls, and system calls in one file.
