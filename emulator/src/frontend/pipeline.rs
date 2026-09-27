@@ -264,10 +264,11 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                     if let Some(first) = label_lines.get(name) {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
+                            // The first line is GAS's own wording, quotes included.
                             message: format!(
-                                "label `{name}` is already defined on line {first}. \
-                                 Give each label a unique name (labels are file-wide, \
-                                 not per-function)"
+                                "symbol `{name}' is already defined\n\
+                                 `{name}:` first appears on line {first}: give this one a \
+                                 different name (labels are file-wide, not per-function)"
                             ),
                         });
                     }
@@ -906,49 +907,41 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
     })
 }
 
-/// The address execution starts at, which real ld takes from `main` (or
-/// `_start` for a program that declares neither a `main` label nor a
-/// `.global main`).
+/// The first line of what ld prints when gcc's startup code finds no
+/// `main` to call. Every missing-entry error opens with it, so the
+/// playground and the course servers say the same thing.
+const UNDEFINED_MAIN: &str = "undefined reference to `main'";
+
+/// The address execution starts at. gcc links a startup file whose
+/// `_start` calls `main`, so `main` has to be a label AND global. A program
+/// that defines its own `_start` is built with as + ld instead, where
+/// nothing calls main, so neither rule applies to it; it runs from `main`
+/// when it has one, as it always has here, and from `_start` otherwise.
 fn resolve_entry_point(prog: &Program, layout: &Layout) -> Result<u64, EmuError> {
     // An entry point has to be a LABEL. `main = 5` also lands in `symbols`,
     // and taking it would start execution at address 5 with no diagnostic.
-    let main_is_label = layout.label_lines.contains_key("main");
+    let main_line = layout.label_lines.get("main").copied();
     let start_is_label = layout.label_lines.contains_key("_start");
+    let main_is_global = prog.globals.contains("main");
 
-    // `.global main` with no `main:` would fall back to CODE_BASE;
-    // real ld reports the undefined reference. It is only an error when
-    // nothing else can be the entry point, though: ld links a program that
-    // declares the global out of habit and enters at `_start`, because an
-    // unreferenced undefined global is not an error.
-    if prog.globals.contains("main") && !main_is_label && !start_is_label {
-        return Err(EmuError::LinkError {
-            line: 0,
-            message: "no `main:` label found. `.global main` is declared, so \
-                      execution is meant to start at `main`: add a `main:` label \
-                      above the first instruction, or remove the `.global main` \
-                      line if this file is a helper"
-                .into(),
-        });
+    // A `.global main` beside `_start:` with no `main:` still links: ld does
+    // not mind an undefined global that nothing references.
+    if start_is_label {
+        return Ok(layout.symbols[if main_line.is_some() { "main" } else { "_start" }]);
     }
-    // A file with neither entry symbol would run from the top of
-    // .text, which turns a helpers-only file into a confusing crash.
-    // Real ld refuses to link it; so do we.
-    if !main_is_label && !start_is_label {
-        return Err(EmuError::LinkError {
-            line: 0,
-            message: "no entry point. Define `main:` (declared `.global main`) \
-                      or `_start:`. A file holding only helper functions runs as \
-                      part of a program whose other file has `main`"
-                .into(),
-        });
-    }
-    // Falling back to CODE_BASE would run whatever helper happens to sit
-    // at the top of .text instead of the program the student wrote.
-    Ok(if main_is_label {
-        layout.symbols["main"]
-    } else {
-        layout.symbols["_start"]
-    })
+    let (line, guidance) = match main_line {
+        Some(_) if main_is_global => return Ok(layout.symbols["main"]),
+        // A local label is invisible to the startup code in another
+        // object file, so ld reports main as undefined even though the
+        // label is right there.
+        Some(at) => (at, "`main:` is here but not global, so the startup code \
+                          cannot see it: add `.global main` on the line above `main:`"),
+        None if main_is_global => (0, "`.global main` is declared but no line defines \
+                                       the label: add `main:` above main's first instruction"),
+        None => (0, "no line defines `main:`, where every program starts: add `.global main` \
+                     and then `main:` above the first instruction"),
+    };
+    Err(EmuError::LinkError { line, message: format!("{UNDEFINED_MAIN}\n{guidance}") })
 }
 
 /// Return the textual key for an `ldr xN, =<expr>` pseudo plus whether the
