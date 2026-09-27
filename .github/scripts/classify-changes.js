@@ -1,14 +1,17 @@
 // Decides which check.yml jobs a pull request needs from the files it
 // changes. .github/actions/changed-paths pipes `git diff --name-only -z` in
 // on stdin; pushes and the weekly run pass --all instead and test
-// everything. Prints one `name=true|false` line per job group and appends
-// the same lines to $GITHUB_OUTPUT when the runner sets it.
+// everything. Prints a `classes=` line naming the path classes it saw, then
+// one `name=true|false` line per job group, and appends the same lines to
+// $GITHUB_OUTPUT when the runner sets it.
 
 // Each file gets the class of the first rule it matches. A file no rule
 // matches counts as a workflow change, so a new kind of file runs every job
 // until someone gives it a rule.
 const RULES = [
   ["workflows", /^\.github\/(workflows|actions|scripts)\//],
+  // No job checks the mobile app yet; its own class keeps a mobile/ change
+  // from counting as unknown and running every job.
   ["mobile", /^mobile\//],
   ["emulator", /^emulator\//],
   // Data the tests read: lessons, exercises, the shipped examples, and the
@@ -47,11 +50,10 @@ function classify(files) {
     static: everything || classes.has("web") || wasm,
     // verify-corpus, next build + size-limit, and the vitest shards
     web: everything || classes.has("web") || classes.has("content") || wasm,
-    mobile: everything || classes.has("mobile"),
   };
 }
 
-const EVERYTHING = { classes: ["all"], rust: true, static: true, web: true, mobile: true };
+const EVERYTHING = { classes: ["all"], rust: true, static: true, web: true };
 
 if (require.main === module) {
   const fs = require("fs");
