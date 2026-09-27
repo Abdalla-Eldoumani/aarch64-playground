@@ -131,9 +131,10 @@ function runModeGroup(): HTMLElement | null {
 }
 
 // The tab band renders only the active panel, so the console's ownership
-// props exist only once the console tab is the selected one.
+// props exist only once the console tab is the selected one. The tab's name
+// gains ", new output" when output lands behind another tab.
 function showConsole(): void {
-  fireEvent.click(screen.getByRole("tab", { name: "console" }));
+  fireEvent.click(screen.getByRole("tab", { name: /^console\b/ }));
 }
 
 function makeIO() {
