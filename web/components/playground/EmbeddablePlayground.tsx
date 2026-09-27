@@ -404,7 +404,10 @@ function EmbeddableCore({
     // buffers, however much the student types while the assemble is in
     // flight.
     pinAssembledLayout(source, extraFiles);
-    const ok = await emu.assemble(combined, parseArgs(argsText));
+    const ok = await emu.assemble(combined, parseArgs(argsText), {
+      main: source,
+      extras: extraFiles,
+    });
     if (ok) applySeeds();
     return ok;
   }, [
