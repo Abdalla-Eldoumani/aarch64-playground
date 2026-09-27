@@ -13,8 +13,8 @@ const { classify } = createRequire(import.meta.url)(SCRIPT) as {
   classify: (files: string[]) => Record<string, unknown>;
 };
 
-const NOTHING = { rust: false, static: false, web: false, mobile: false };
-const EVERYTHING = { rust: true, static: true, web: true, mobile: true };
+const NOTHING = { rust: false, static: false, web: false };
+const EVERYTHING = { rust: true, static: true, web: true };
 
 describe("the path filter", () => {
   it("runs the web jobs and not the Rust ones for a web change", () => {
@@ -33,11 +33,7 @@ describe("the path filter", () => {
   });
 
   it("runs everything for an emulator source change, since the wasm bundles change", () => {
-    expect(classify(["emulator/src/executor.rs"])).toEqual({
-      classes: ["emulator"],
-      ...EVERYTHING,
-      mobile: false,
-    });
+    expect(classify(["emulator/src/executor.rs"])).toEqual({ classes: ["emulator"], ...EVERYTHING });
   });
 
   it("runs only the Rust jobs for an emulator test change", () => {
@@ -63,8 +59,8 @@ describe("the path filter", () => {
     expect(classify([".github/scripts/check-needs.js"])).toEqual({ classes: ["workflows"], ...EVERYTHING });
   });
 
-  it("runs only the mobile job for a mobile change", () => {
-    expect(classify(["mobile/app/index.tsx"])).toEqual({ classes: ["mobile"], ...NOTHING, mobile: true });
+  it("runs nothing for a mobile change", () => {
+    expect(classify(["mobile/app/index.tsx"])).toEqual({ classes: ["mobile"], ...NOTHING });
   });
 
   it("runs everything for a file no rule knows", () => {
@@ -78,7 +74,6 @@ describe("the path filter", () => {
       ...NOTHING,
       static: true,
       web: true,
-      mobile: true,
     });
     expect(classify([])).toEqual({ classes: [], ...NOTHING });
   });
@@ -99,11 +94,11 @@ describe("the path filter as the workflow runs it", () => {
 
   it("reads NUL-separated paths from stdin and writes the step outputs", () => {
     expect(run([], "docs/DEPLOY.md\0emulator/tests/simd.rs\0")).toBe(
-      "classes=docs,emulator\nrust=true\nstatic=false\nweb=false\nmobile=false\n",
+      "classes=docs,emulator\nrust=true\nstatic=false\nweb=false\n",
     );
   });
 
   it("turns every job on with --all", () => {
-    expect(run(["--all"], "")).toBe("classes=all\nrust=true\nstatic=true\nweb=true\nmobile=true\n");
+    expect(run(["--all"], "")).toBe("classes=all\nrust=true\nstatic=true\nweb=true\n");
   });
 });
