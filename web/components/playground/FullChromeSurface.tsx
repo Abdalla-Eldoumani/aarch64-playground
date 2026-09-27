@@ -55,6 +55,7 @@ import {
   combinedLineFor,
   diagnosticsForFile,
   errorWithFileName,
+  MAIN_FILE,
   planBreakpointRemap,
   resolveLine,
   validateFileName,
@@ -83,10 +84,14 @@ export type FullChromeBridge = {
   /** The buffer was replaced without a payload, so the launch mode it
    *  belonged to goes with it. */
   onSourceReplaced: () => void;
-  /** Reset through the drive, so a live foreground session stands down. */
+  /** Reset through the drive, so a live foreground session stands down, and
+   *  restart the program when the workspace still matches what was
+   *  assembled. */
   resetMachine: () => void;
   /** Run, which in terminal mode hands the pane over instead. */
   run: () => void;
+  /** Ctrl+Enter: assemble, then run the way a run press would. */
+  assembleAndRun: () => void;
   /** Whether the composite launch has somewhere to land. */
   launchable: () => boolean;
   launchInteractive: () => void;
@@ -207,13 +212,29 @@ export function FullChromeSurface({
     reset: resetLaunch,
   } = useLaunchMode({ args: argsText, setArgs: setArgsText });
   const importTarget = getImportTarget(activeFile);
+  // The main buffer as the last program load or import left it: anything
+  // else in there is the student's own edit.
+  const loadedSourceRef = useRef(source);
+
+  // An import writes over main.asm and, unlike a program load, keeps no copy
+  // of what was there in recents, so it asks before replacing code that
+  // differs from the file coming in.
+  const confirmImportOverMain = useCallback(
+    (name: string, body: string): boolean =>
+      source.trim() === "" ||
+      source === body ||
+      window.confirm(`Import ${name} into main.asm? It replaces the code there, including your edits.`),
+    [source],
+  );
 
   const handleImport = useCallback(
     (target: ImportTarget, body: string) => {
+      if (target.kind === "main" && !confirmImportOverMain("this file", body)) return;
       resetLaunch();
       switch (target.kind) {
         case "main":
           setSource(body);
+          loadedSourceRef.current = body;
           toast.show("imported into main.asm");
           return;
         case "extra": {
@@ -226,7 +247,7 @@ export function FullChromeSurface({
         }
       }
     },
-    [extraFiles, setExtraFiles, setSource, toast, resetLaunch],
+    [extraFiles, setExtraFiles, setSource, toast, resetLaunch, confirmImportOverMain],
   );
 
   // Multi-select import: a file named main.asm / main.s replaces the main
@@ -234,9 +255,13 @@ export function FullChromeSurface({
   // whole multi-file program lands in one gesture.
   const handleImportMany = useCallback(
     (files: { name: string; body: string }[]) => {
-      resetLaunch();
       const mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
-      if (mainIdx >= 0) setSource(files[mainIdx].body);
+      if (mainIdx >= 0 && !confirmImportOverMain(files[mainIdx].name, files[mainIdx].body)) return;
+      resetLaunch();
+      if (mainIdx >= 0) {
+        setSource(files[mainIdx].body);
+        loadedSourceRef.current = files[mainIdx].body;
+      }
       const rest = files.filter((_, i) => i !== mainIdx);
       const next = [...extraFiles];
       for (const f of rest) {
@@ -247,7 +272,28 @@ export function FullChromeSurface({
       setExtraFiles(next);
       toast.show(`imported ${files.length} files`);
     },
-    [extraFiles, setExtraFiles, setSource, toast, resetLaunch],
+    [extraFiles, setExtraFiles, setSource, toast, resetLaunch, confirmImportOverMain],
+  );
+
+  // A load replacing edits made since the last load or import asks first.
+  // The replaced text also goes to recents, so the question is only about
+  // work the student may not know is kept there; an untouched example is
+  // swapped without asking.
+  const loadProgramWithConfirm = useCallback(
+    (payload: HandoffPayload) => {
+      const edited = source.trim() !== "" && source !== loadedSourceRef.current;
+      if (
+        edited &&
+        source !== payload.source &&
+        !window.confirm(
+          `Load ${payload.label ?? "this program"}? It replaces your edits in main.asm. The current code stays under "recent" if you want it back.`,
+        )
+      ) {
+        return;
+      }
+      loadProgram(payload);
+    },
+    [source, loadProgram],
   );
   // The terminal pane's foreground sessions: the shared drive, the console
   // watermark a session leaves behind, and the two rising edges (a blocked
@@ -315,6 +361,36 @@ export function FullChromeSurface({
     handleRunRef.current = handleRun;
   }, [handleRun]);
 
+  // Ctrl+Enter: assemble, then run it the way a run press would. Terminal
+  // mode's one-action launch already is exactly that.
+  const assembleAndRun = useCallback(async () => {
+    if (launchMode === "terminal") {
+      await launchInteractive();
+      return;
+    }
+    if (await assembleWithHistory()) emuRef.current.run();
+  }, [launchMode, launchInteractive, assembleWithHistory, emuRef]);
+
+  // Reset starts the same program over. The machine is cleared either way;
+  // when the workspace is still exactly what was assembled it is assembled
+  // again at once, so the breakpoints stay armed and run and step stay live
+  // instead of demanding an assemble. An edited workspace waits for the
+  // student's own assemble. A live terminal session only stands down: a
+  // reassemble under it would let its resume latch start the new program
+  // with no key pressed.
+  const restartProgram = useCallback(() => {
+    const wasLoaded = emuRef.current.programLoaded;
+    resetMachine();
+    if (!wasLoaded || foregroundLive || !assembledLayout) return;
+    const unchanged =
+      assembledLayout.main === source &&
+      assembledLayout.extras.length === extraFiles.length &&
+      assembledLayout.extras.every(
+        (f, i) => f.name === extraFiles[i].name && f.body === extraFiles[i].body,
+      );
+    if (unchanged) void assembleWithHistory();
+  }, [emuRef, resetMachine, foregroundLive, assembledLayout, source, extraFiles, assembleWithHistory]);
+
   // Whether the composite launch has somewhere to land: only the terminal
   // mode owns the pane at run press, and only this surface has a pane.
   const launchable = launchMode === "terminal";
@@ -326,7 +402,8 @@ export function FullChromeSurface({
     adoptLaunch,
     dropTerminalWatermark,
     resetLaunch,
-    resetMachine,
+    restartProgram,
+    assembleAndRun,
     launchable,
     launchInteractive,
   });
@@ -335,7 +412,8 @@ export function FullChromeSurface({
       adoptLaunch,
       dropTerminalWatermark,
       resetLaunch,
-      resetMachine,
+      restartProgram,
+      assembleAndRun,
       launchable,
       launchInteractive,
     };
@@ -354,12 +432,14 @@ export function FullChromeSurface({
         // A new program starts on a fresh console; no session owns it yet.
         liveRef.current.dropTerminalWatermark();
         setShareBanner(Boolean(payload.fromShare));
+        loadedSourceRef.current = payload.source;
         return nextArgs;
       },
       onAssemble: () => liveRef.current.dropTerminalWatermark(),
       onSourceReplaced: () => liveRef.current.resetLaunch(),
-      resetMachine: () => liveRef.current.resetMachine(),
+      resetMachine: () => liveRef.current.restartProgram(),
       run: () => handleRunRef.current(),
+      assembleAndRun: () => void liveRef.current.assembleAndRun(),
       launchable: () => liveRef.current.launchable,
       launchInteractive: () => void liveRef.current.launchInteractive(),
       openConverter: () => requestPane("convert"),
@@ -434,6 +514,17 @@ export function FullChromeSurface({
     const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
     return loc.file === activeFile ? loc.line : null;
   }, [emu.currentLine, machineMain, machineExtras, activeFile]);
+  // Follow execution into the file it is in: a step into a helper's function,
+  // or a stop there, brings that helper's tab forward, and the editor then
+  // reveals the line. Keyed on the pc's line, so a tab the student picks
+  // while paused stays picked. Not while a run drives (the pc crosses files
+  // many times a second), and never onto a tab closed since the assemble.
+  useEffect(() => {
+    if (emu.currentLine == null || emu.isRunning) return;
+    const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
+    if (loc.file !== MAIN_FILE && extraFilesRef.current[loc.file]?.name !== loc.name) return;
+    setActiveFile(loc.file);
+  }, [emu.currentLine, emu.isRunning, machineMain, machineExtras, setActiveFile, extraFilesRef]);
   const activeBreakpoints = useMemo(
     () => breakpointsForFile(emu.breakpoints, source, extraFiles, activeFile),
     [emu.breakpoints, source, extraFiles, activeFile],
@@ -572,6 +663,8 @@ export function FullChromeSurface({
           lintWarnings={activeLint}
           onCursorChange={isMain ? setCursor : undefined}
           focusRequest={errorFocus}
+          followCurrentLine={!emu.isRunning}
+          onRunShortcut={() => void assembleAndRun()}
           onFormat={() => {
             if (!isMain) return;
             const next = formatAsm(source);
@@ -688,6 +781,7 @@ export function FullChromeSurface({
         exitCode={emu.exitCode}
         vfsFiles={emu.vfsFiles}
         pushStdin={emu.pushStdin}
+        onInputSent={emu.resumeAfterInput}
         closeStdin={emu.closeStdin}
         uploadVfsFile={stageVfsFile}
         clearConsole={clearConsoleAll}
@@ -775,11 +869,24 @@ export function FullChromeSurface({
     saves: savesBlock,
   };
 
+  // Output that lands while another tab is up (a run's printf behind the
+  // memory view) marks the console tab until the student opens it. The
+  // length seen is adjusted during render, not in an effect, so the mark
+  // never paints a frame after the console is already showing; a cleared
+  // console resets it.
+  const outputLength = emu.stdout.length + emu.stderr.length;
+  const [seenOutput, setSeenOutput] = useState(0);
+  if (seenOutput !== outputLength && (activeTab === "console" || outputLength < seenOutput)) {
+    setSeenOutput(outputLength);
+  }
+  const consoleUnread = activeTab !== "console" && outputLength > seenOutput;
+
   const rightTabs = (
     <RightTabs
       activeTab={activeTab}
       onSelectTab={setActiveTab}
       consoleBlocked={emu.blocked}
+      consoleUnread={consoleUnread}
       panes={panes}
     />
   );
@@ -811,7 +918,7 @@ export function FullChromeSurface({
   return (
     <>
       <PlaygroundHeaderBand
-        onLoadProgram={loadProgram}
+        onLoadProgram={loadProgramWithConfirm}
         source={source}
         files={extraFiles}
         importTarget={importTarget}
@@ -871,7 +978,7 @@ export function FullChromeSurface({
         canStepBack={emu.canStepBack}
         onRun={handleRun}
         onPause={emu.pause}
-        onReset={resetMachine}
+        onReset={restartProgram}
         isRunning={emu.isRunning}
         isAssembling={emu.isAssembling}
         isHalted={emu.isHalted}
