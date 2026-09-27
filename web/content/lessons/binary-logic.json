@@ -2,6 +2,7 @@
   "title": "Binary logic: masks, flags, and tst",
   "slug": "binary-logic",
   "order": 14,
+  "lastUpdated": "2026-09-27",
   "summary": "Set, clear, flip and test chosen bits of a register with orr, bic, eor, and and tst, using masks.",
   "tags": [
     "binary logic",
