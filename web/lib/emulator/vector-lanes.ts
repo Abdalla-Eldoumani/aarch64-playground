@@ -7,14 +7,11 @@
  * width: 16 b, 8 h, 4 s, 2 d. Re-slicing never changes the bits, only how many
  * groups they are read in.
  *
- * Each lane reports its bits as UNSIGNED hex and its value as a SIGNED decimal
- * (two's complement at the lane's own width): the row states that pairing in
- * its accessible text, because "0xff" and "-1" are the same byte.
+ * A lane is its bits as unsigned hex; register-format reads them as a signed
+ * or unsigned integer, or a float, at the lane's own width.
  */
 
 export type LaneWidth = "b" | "h" | "s" | "d";
-
-export const LANE_WIDTHS: readonly LaneWidth[] = ["b", "h", "s", "d"];
 
 /** Bytes per lane, which is also what the width letter means in the ISA. */
 export const LANE_BYTES: Record<LaneWidth, number> = { b: 1, h: 2, s: 4, d: 8 };
@@ -24,8 +21,6 @@ export interface VectorLane {
   index: number;
   /** The lane's bits, unsigned, unprefixed, zero-padded to the lane width. */
   hex: string;
-  /** The same bits read as a two's-complement signed integer. */
-  signed: string;
 }
 
 /** Bytes in a v register; a q register is the same 128 bits under another name. */
@@ -52,19 +47,10 @@ export function laneCount(width: LaneWidth): number {
 export function sliceLanes(bitsHex: string, width: LaneWidth): VectorLane[] {
   const digits = digitsOf(bitsHex);
   const per = LANE_BYTES[width] * 2;
-  const bits = BigInt(LANE_BYTES[width] * 8);
-  const span = 1n << bits;
-  const half = 1n << (bits - 1n);
   const lanes: VectorLane[] = [];
   for (let index = 0; index < laneCount(width); index++) {
     const end = VECTOR_DIGITS - index * per;
-    const hex = digits.slice(end - per, end);
-    const unsigned = BigInt(`0x${hex}`);
-    lanes.push({
-      index,
-      hex,
-      signed: String(unsigned >= half ? unsigned - span : unsigned),
-    });
+    lanes.push({ index, hex: digits.slice(end - per, end) });
   }
   return lanes;
 }
