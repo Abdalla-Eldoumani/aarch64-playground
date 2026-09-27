@@ -225,4 +225,48 @@ describe("validateLesson (message quality on malformed shapes)", () => {
     if (!result.ok) throw new Error(result.error);
     expect(result.lesson.body[0]).toEqual({ type: "editor", starter: "" });
   });
+
+  test("keeps an editor's expectedOutput, with or without an exit status", () => {
+    const result = validateLesson({
+      ...validLesson(),
+      body: [
+        { type: "editor", starter: "", expectedOutput: { stdout: "42\n", exitCode: 3 } },
+        { type: "editor", starter: "", expectedOutput: { stdout: "" } },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.lesson.body).toEqual([
+      { type: "editor", starter: "", expectedOutput: { stdout: "42\n", exitCode: 3 } },
+      { type: "editor", starter: "", expectedOutput: { stdout: "" } },
+    ]);
+  });
+
+  test("drops unknown keys inside expectedOutput", () => {
+    const result = validateLesson({
+      ...validLesson(),
+      body: [{ type: "editor", starter: "", expectedOutput: { stdout: "x", stderr: "y" } }],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.lesson.body[0]).toEqual({
+      type: "editor",
+      starter: "",
+      expectedOutput: { stdout: "x" },
+    });
+  });
+
+  test("rejects an expectedOutput without a stdout string or with an impossible exit status", () => {
+    const editor = (expectedOutput: unknown) => ({
+      ...validLesson(),
+      body: [{ type: "prose", markdown: "x" }, { type: "editor", starter: "", expectedOutput }],
+    });
+    expect(rejectError(editor("42\n"))).toMatch(/body\[1\] \(editor\): expectedOutput/);
+    expect(rejectError(editor(null))).toMatch(/expectedOutput/);
+    expect(rejectError(editor({ exitCode: 0 }))).toMatch(/stdout/);
+    expect(rejectError(editor({ stdout: 42 }))).toMatch(/stdout/);
+    for (const exitCode of [-1, 256, 1.5, "0"]) {
+      expect(rejectError(editor({ stdout: "", exitCode }))).toMatch(/exitCode/);
+    }
+  });
 });
