@@ -63,7 +63,7 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
                   </span>
                 </div>
                 {a.shortcut && (
-                  <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  <kbd className="[@media(pointer:coarse)]:hidden text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border)]">
                     {a.shortcut}
                   </kbd>
                 )}
