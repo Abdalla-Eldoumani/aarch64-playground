@@ -9,7 +9,7 @@
 	.text
 	.align	2
 	.align 5
-hex__constprop__0:
+hex.constprop.0:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
 	stp	x19, x20, [sp, 16]
@@ -450,7 +450,7 @@ main:
 	add	x1, sp, 120
 	adrp	x0, .LC43
 	add	x0, x0, :lo12:.LC43
-	bl	hex__constprop__0
+	bl	hex.constprop.0
 	adrp	x0, .LC44
 	add	x0, x0, :lo12:.LC44
 	str	x0, [sp, 248]
@@ -463,7 +463,7 @@ main:
 	add	x1, sp, 120
 	adrp	x0, .LC45
 	add	x0, x0, :lo12:.LC45
-	bl	hex__constprop__0
+	bl	hex.constprop.0
 	add	x0, sp, 744
 	str	xzr, [sp, 776]
 	stp	xzr, xzr, [x0]
@@ -948,7 +948,7 @@ main:
 	add	x1, sp, 702
 	adrp	x0, .LC91
 	add	x0, x0, :lo12:.LC91
-	bl	hex__constprop__0
+	bl	hex.constprop.0
 	add	x1, sp, 688
 	adrp	x0, .LC92
 	add	x0, x0, :lo12:.LC92
