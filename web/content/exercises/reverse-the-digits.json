@@ -2,6 +2,7 @@
   "title": "Reverse the digits",
   "slug": "reverse-the-digits",
   "order": 21,
+  "lastUpdated": "2026-09-27",
   "topic": "loops",
   "difficulty": "core",
   "prompt": "Read a number and print it with its digits reversed: `9317` prints as `7139`.\n\nEach trip around the loop, peel off the last digit (the remainder mod 10), append it to the running result with `result = result * 10 + digit`, and cut the source number down by a factor of ten. `msub` gives you the remainder; `madd` does the multiply-and-add in one instruction.\n\n## what is checked\n\n- the reversed number is printed on its own line\n- the program exits cleanly\n- the digits are peeled in a loop (`msub` present, answer not written in)\n- the same holds for other numbers you do not see: 0, one digit, and trailing zeros (`1200` reverses to `21`)",
