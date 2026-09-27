@@ -117,7 +117,7 @@ print_i128:
 	b	print_u128
 	.align	2
 	.align 5
-mix__constprop__0:
+mix.constprop.0:
 	asr	x8, x0, 63
 	umulh	x1, x0, x2
 	mul	x5, x0, x2
@@ -521,7 +521,7 @@ main:
 	sbc	x7, xzr, x23
 	mov	x2, x19
 	mov	x3, x21
-	bl	mix__constprop__0
+	bl	mix.constprop.0
 	mov	x20, x0
 	mov	x21, x1
 	adrp	x0, .LC35
