@@ -1966,7 +1966,7 @@ vzero:
 	.word	14
 	.word	2147483647
 	.zero	4
-CSWTCH__24:
+CSWTCH.24:
 	.quad	.LC20
 	.quad	.LC21
 	.quad	.LC22
@@ -1999,7 +1999,7 @@ CSWTCH__24:
 	.quad	-9223372036854775808
 	.quad	9223372036854775807
 	.quad	4294967295
-CSWTCH__27:
+CSWTCH.27:
 	.byte	5
 	.byte	4
 	.byte	4
