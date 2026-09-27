@@ -3868,7 +3868,7 @@ add     sp, sp, #32`,
  */
 export const NZCV_WRITERS: ReadonlySet<string> = new Set([
   "adds", "subs", "adcs", "sbcs", "ands", "negs",
-  "cmp", "cmn", "tst", "ccmp", "ccmn", "fcmp", "fcmpe",
+  "cmp", "cmn", "tst", "ccmp", "ccmn", "fcmp", "fcmpe", "fccmp", "fccmpe",
 ]);
 
 const VECTOR_REGISTER = /\b[vq](?:[12]?[0-9]|3[01])\b/;
