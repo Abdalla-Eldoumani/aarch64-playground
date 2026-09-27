@@ -67,14 +67,21 @@ describe("share card metadata", () => {
     const title = metadata.title;
     const template =
       title && typeof title === "object" && "template" in title ? title.template : null;
-    expect(template).toBe("%s · cpsc 355 playground");
+    expect(template).toBe("%s · AArch64 Playground");
+  });
+
+  it("falls back to the home page's title and snippet", () => {
+    const title = metadata.title;
+    const fallback = title && typeof title === "object" && "default" in title ? title.default : null;
+    expect(fallback).toBe("ARMv8 assembly emulator and debugger · AArch64 Playground");
+    expect(metadata.description).toContain("CPSC 355");
   });
 
   it("carries a complete open graph card", () => {
     const og = metadata.openGraph;
-    expect(og?.title).toBe("cpsc 355 playground");
+    expect(og?.title).toBe("ARMv8 assembly emulator and debugger · AArch64 Playground");
     expect(og?.description).toBeTruthy();
-    expect(og?.siteName).toBe("cpsc 355 playground");
+    expect(og?.siteName).toBe("AArch64 Playground");
     expect(og?.url).toBe("/");
     expect(og && "type" in og && og.type).toBe("website");
   });
@@ -92,7 +99,7 @@ describe("share card metadata", () => {
     expect(twitter && "card" in twitter && twitter.card).toBe(
       "summary_large_image",
     );
-    expect(twitter?.title).toBe("cpsc 355 playground");
+    expect(twitter?.title).toBe("ARMv8 assembly emulator and debugger · AArch64 Playground");
     expect(twitter?.description).toBeTruthy();
     const [image] = asImages(twitter?.images);
     expect(image.url).toBe("/og.png");
@@ -108,7 +115,7 @@ describe("share card metadata", () => {
     ]);
     expect(png.readUInt32BE(16)).toBe(1200);
     expect(png.readUInt32BE(20)).toBe(630);
-    expect(png.byteLength).toBeLessThan(300 * 1024);
+    expect(png.byteLength).toBeLessThan(64 * 1024);
   });
 });
 
