@@ -35,4 +35,10 @@ jobs:
           HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         # The hook URL is a credential: it stays in the environment, never on
         # the command line of the log, and curl prints only an error line.
-        run: curl -fsS --max-time 30 -X POST "$HOOK" > /dev/null
+        # A missing secret would otherwise fail with curl's bare usage error.
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::the VERCEL_DEPLOY_HOOK_URL secret is not set"
+            exit 1
+          fi
+          curl -fsS --max-time 30 -X POST "$HOOK" > /dev/null
