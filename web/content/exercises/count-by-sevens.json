@@ -2,6 +2,7 @@
   "title": "Count by sevens",
   "slug": "count-by-sevens",
   "order": 12,
+  "lastUpdated": "2026-09-27",
   "topic": "loops",
   "difficulty": "intro",
   "prompt": "Print every multiple of seven from 7 up to and including a limit, one per line. The starter reads the limit and holds the first multiple and the limit in callee-saved registers.\n\nWrite the loop: print, step by seven, and keep going while the counter has not passed the limit. Since `printf` is a function call, it is free to clobber the caller-saved registers; that is why the loop state lives in `x19` and `x20`.\n\n## what is checked\n\n- ten lines, `7` through `70`, for the limit in the stdin box\n- the program exits cleanly\n- a comparison drives the loop\n- the same holds for other limits you do not see; a limit below 7 prints nothing",
