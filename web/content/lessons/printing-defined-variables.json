@@ -93,7 +93,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Sum a global array](/practice/sum-a-global-array): read a whole array of values out of `.data` and add them up. It needs a loop, so try it after the [pre-test loop lesson](/learn/pretest-loop)."
+      "markdown": "## Practice\n\n- [The price is right](/practice/the-price-is-right): load two words from `.data`, multiply them, and store the product in a third.\n- [Sum a global array](/practice/sum-a-global-array): add up an array of scores that lives in `.bss`. It needs a loop, so try it after the [pre-test loop lesson](/learn/pretest-loop)."
     }
   ]
 }
