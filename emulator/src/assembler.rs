@@ -640,6 +640,12 @@ fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError> {
                     ),
                 )
             })?
+    } else if s.len() > 1 && s.starts_with('0') && s.bytes().all(|b| b.is_ascii_digit()) {
+        // GAS reads a leading zero as octal (`052` is 42) in an instruction
+        // as in a data directive, so both go through the lexer's one rule.
+        crate::frontend::lexer::parse_int(s)
+            .map(|v| v as u64)
+            .ok_or_else(|| asm_error(line_num, &crate::frontend::lexer::integer_error(s)))?
     } else {
         s.parse()
             .map_err(|_| {
