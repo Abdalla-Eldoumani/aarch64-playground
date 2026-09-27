@@ -669,7 +669,7 @@ An address in the unmapped first page faults here exactly as it does for
 
 ## GCC output compatibility
 
-Unmodified AArch64 GCC `-S` output assembles: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, and label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them.
+Unmodified AArch64 GCC `-S` output assembles: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, and label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them.
 
 ## Host stubs (hosted runtime)
 
