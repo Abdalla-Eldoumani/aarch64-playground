@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	matmul
 matmul:
 	stp	x29, x30, [sp, -32]!
@@ -36,7 +36,7 @@ matmul:
 	beq	.L4
 	ldr	w3, [x7, 4]!
 	b	.L6
-	.align 2
+	.p2align 2,,3
 .L4:
 	add	x2, x2, 16
 	cmp	x2, x9
@@ -44,7 +44,7 @@ matmul:
 	ldr	w3, [x2]
 	add	x0, x0, 16
 	b	.L2
-	.align 2
+	.p2align 2,,3
 .L1:
 	ldp	x19, x20, [sp, 16]
 	ldp	x29, x30, [sp], 32
@@ -58,7 +58,7 @@ matmul:
 	.string	"%ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -304]!
