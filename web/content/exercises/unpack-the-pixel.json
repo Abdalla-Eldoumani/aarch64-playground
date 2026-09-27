@@ -2,6 +2,7 @@
   "title": "Unpack the pixel",
   "slug": "unpack-the-pixel",
   "order": 27,
+  "lastUpdated": "2026-09-27",
   "topic": "bitwise",
   "difficulty": "core",
   "prompt": "A 32-bit colour packs four 8-bit channels into one word, laid out `0xAARRGGBB`: alpha (how solid the pixel is) in the top byte, then red, then green, and blue in the lowest byte.\n\nThe starter reads a colour typed in hex into `pixel_r`. Pull each channel into its own register with `ubfx`, short for unsigned bitfield extract. For example, `ubfx w9, w10, 4, 12` copies the 12 bits of `w10` that start at bit 4 down to the bottom of `w9` and fills the rest of `w9` with zeros.\n\nThen make `swapped_r` a copy of the colour with its red and blue bytes traded, using `bfi`, short for bitfield insert. For example, `bfi w9, w10, 20, 4` copies the low 4 bits of `w10` into bits 20 to 23 of `w9` and leaves every other bit of `w9` as it was.\n\nWith the sample input `4a90e2ff` the output is:\n\n```\nalpha 74, red 144, green 226, blue 255\nswapped 0x4affe290\n```\n\n## what is checked\n\n- both lines for the sample input\n- the program exits cleanly\n- the channels come out with `ubfx` and go back in with `bfi`\n- the right answer for other colours, including all zeros, all ones, and a colour whose top bit is set",
