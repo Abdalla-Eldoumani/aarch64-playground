@@ -113,7 +113,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="label"
-          className="w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          className="touch-target w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch label"
         />
         <input
@@ -121,7 +121,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={addr}
           onChange={(e) => setAddr(e.target.value)}
           placeholder="0x00400000"
-          className="w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          className="touch-target w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch address"
         />
         <input
@@ -131,11 +131,11 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={length}
           onChange={(e) => setLength(parseInt(e.target.value, 10) || 1)}
           aria-label="watch byte length"
-          className="w-14 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)]"
+          className="touch-target w-14 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)]"
         />
         <button
           type="submit"
-          className="px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+          className="touch-target px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         >
           add
         </button>
@@ -169,7 +169,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
                   <button
                     type="button"
                     onClick={() => remove(i)}
-                    className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)] px-1"
+                    className="touch-target text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)] px-1"
                     aria-label={`remove memory watch ${w.label}`}
                   >
                     x
