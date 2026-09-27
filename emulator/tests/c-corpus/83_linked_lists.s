@@ -1134,13 +1134,13 @@ main:
 	.string	"alp"
 	.align	3
 .LC25:
-	.quad	.LC0
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
+	.xword	.LC0
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
 	.text
 
