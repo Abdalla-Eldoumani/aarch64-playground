@@ -2,6 +2,7 @@
   "title": "Quiz: ARMv8 assembly",
   "slug": "quiz-inter-armv8",
   "order": 83,
+  "lastUpdated": "2026-09-27",
   "topic": "armv8",
   "difficulty": "core",
   "variant": "quiz",
