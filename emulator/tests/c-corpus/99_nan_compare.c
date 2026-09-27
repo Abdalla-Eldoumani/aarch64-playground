@@ -9,6 +9,11 @@ static volatile double vals[NV] = {
     __builtin_nan(""), -__builtin_nan(""),
 };
 
+/* Kept out of relations(): with it inside, gcc 16.2.1 at -O2 -fno-inline
+   sends the equal and the unordered case down one path and stores 0 for
+   a != b when an operand is NaN, where C says 1. */
+__attribute__((noinline)) static int differ(double a, double b) { return a != b; }
+
 /* One call per pair, so each comparison is a real FCMP or FCMPE and a
    condition code at every optimisation level. */
 static void relations(double a, double b, char *out)
@@ -18,7 +23,7 @@ static void relations(double a, double b, char *out)
     out[2] = '0' + (a > b);
     out[3] = '0' + (a >= b);
     out[4] = '0' + (a == b);
-    out[5] = '0' + (a != b);
+    out[5] = '0' + differ(a, b);
     out[6] = '0' + __builtin_isless(a, b);
     out[7] = '0' + __builtin_islessequal(a, b);
     out[8] = '0' + __builtin_isgreater(a, b);
