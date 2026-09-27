@@ -1,0 +1,96 @@
+{
+  "title": "Talking to the operating system: svc and files",
+  "slug": "system-calls-and-files",
+  "order": 27,
+  "summary": "Ask the operating system for input and output with svc: write and read without printf, then create, fill, and read back a file, checking every result.",
+  "tags": [
+    "input and output"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Binary, hex, and octal: one number, many spellings](/learn/binary-hex-and-octal)\n- [The stack and the frame pointer](/learn/stack-and-frame-pointer)\n- [Strings, pointer arrays, and argv](/learn/strings-and-command-line-arguments)"
+    },
+    {
+      "type": "prose",
+      "markdown": "`printf` and `scanf` never touch the screen or the keyboard themselves. They are library functions that turn numbers into text and back, and then ask the *operating system* to move the bytes. The operating system is the program that shares the machine among all the others, and its core, the *kernel*, is the only code allowed to work with devices directly. A request from your program to the kernel is a *system call*. This lesson makes system calls by hand."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Three layers of input and output\n\nEvery byte a program prints passes through three layers:\n\n1. Library functions such as `printf`, `scanf`, and `puts`. They format numbers as text, and they collect output in a *buffer* (a block of memory used as a waiting area) so they can hand it on in large pieces.\n2. System calls such as `write` and `read`. They move raw bytes and know nothing about `%d` or `%f`.\n3. The devices: screen, keyboard, disk. Only the kernel works with these.\n\nUnix treats every device, and every file on the disk, as a *file*: something you can read bytes from or write bytes to. A program names an open file by a small number, its *file descriptor*. Every program starts with three already open: 0 is standard input (usually the keyboard), 1 is standard output (usually the screen), and 2 is standard error (also the screen, but kept separate so error messages do not end up inside output that was sent to a file)."
+    },
+    {
+      "type": "prose",
+      "markdown": "## How svc works\n\nAn ordinary program such as yours runs at EL0, *exception level* 0, the processor's least trusted mode, where instructions that control devices are not allowed. The kernel runs at EL1. The instruction `svc 0` (supervisor call) is the one door between them: it switches the processor to EL1 and jumps into the kernel, which reads your request from the registers, does the work, and comes back to the instruction after the `svc`.\n\nThe request is spelled out in registers:\n\n- `x8` holds the *service number*, which picks the system call.\n- `x0` to `x5` hold its arguments, in order.\n- After `svc 0`, `x0` holds the result. A negative result means the call failed.\n\nA system call changes no register except `x0`, unlike a `bl` to a library function. These are the calls this lesson uses:\n\n| `x8` | call | arguments | result in `x0` |\n|---|---|---|---|\n| 56 | `openat` | `x0` = directory, `x1` = path, `x2` = flags, `x3` = mode | a new file descriptor |\n| 57 | `close` | `x0` = file descriptor | 0 |\n| 63 | `read` | `x0` = file descriptor, `x1` = buffer address, `x2` = most bytes to read | bytes read, 0 at the end |\n| 64 | `write` | `x0` = file descriptor, `x1` = address of the bytes, `x2` = how many | bytes written |\n| 93 | `exit` | `x0` = exit status | does not come back |"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Writing without printf\n\nThe first program prints one line with `write`. `write` needs the message's length in bytes, and the assembler can count it. In `note_len = . - note`, the dot stands for the current address, just past the message's last byte, and taking away the message's first address leaves its length.\n\nThe message uses `.ascii` rather than `.string`. `.string` adds a zero byte at the end, which `printf` needs to find the end of a string but `write` does not: counted into the length, the zero byte would be sent to the screen as an invisible extra character.\n\nThe program then prints the count the kernel returned, this time with `printf`. Run it: the first line is `this line never went through printf` and the second is `write reported 36 bytes`."
+    },
+    {
+      "type": "editor",
+      "starter": "// Put a line on the screen with the write system call, no printf\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(STDOUT, 1)\ndefine(SYS_WRITE, 64)\n\n.data\nnote:       .ascii  \"this line never went through printf\\n\"\nnote_len = . - note                         // the assembler counts the bytes\nfmt_count:  .string \"write reported %ld bytes\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     x0, STDOUT                  // where: file descriptor 1\n        ldr     x1, =note                   // what: the first byte\n        mov     x2, note_len                // how many bytes\n        mov     x8, SYS_WRITE               // which service\n        svc     0                           // ask the kernel; x0 = bytes written\n\n        mov     x1, x0                      // print the count the kernel returned\n        ldr     x0, =fmt_count\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "this line never went through printf\nwrite reported 36 bytes\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "`printf` keeps its text in its buffer and passes it to `write` later: at the end of each line when the output is a screen, but only when the buffer fills or the program ends when the output goes to a file, which is how an automatic grader reads it. A program that mixes `printf` and `write` can then print out of order. This one is safe because its `write` comes first. When you mix them, put every `printf` after the last `write`, or use one of the two throughout. For the same reason, end a program by returning from `main`, which empties the buffer, and not with service 93, which ends it at once and loses whatever `printf` was still holding."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Opening a file\n\n`openat` opens a file and returns a new file descriptor for it, usually 3 for the first file a program opens. It takes four arguments:\n\n- `x0`: the directory a relative path starts from. The special value `AT_FDCWD`, which is -100, means the current directory.\n- `x1`: the address of the file name, ending in a zero byte (write it with `.string`, since the kernel looks for that zero).\n- `x2`: the *flags*, one bit for each choice, joined with `|`.\n- `x3`: the permission *mode*, which counts only when the call creates the file.\n\nThe flags and the mode are written in octal, base 8, which the assembler recognizes by a leading `0`: `0644` is octal, and `644` would be decimal. One octal digit stands for exactly three bits, which suits values built from single bits and groups of three:\n\n| flag | octal | meaning |\n|---|---|---|\n| `O_RDONLY` | `0` | read only |\n| `O_WRONLY` | `01` | write only |\n| `O_RDWR` | `02` | read and write |\n| `O_CREAT` | `0100` | create the file if it does not exist |\n| `O_TRUNC` | `01000` | empty the file if it does exist |\n| `O_APPEND` | `02000` | add every write at the end |\n\nThe mode's three octal digits give the permissions of the file's owner, of the owner's group, and of everyone else. Each digit adds up read (4), write (2), and execute (1), so `0644` lets the owner read and write, and everyone else only read."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Writing a file and reading it back\n\nThe next program uses all four calls. It creates `notes.txt`, writes three lines to it, and closes it. Then it opens the file again to read it and copies it to the screen 32 bytes at a time: `read` fills a buffer in the frame and returns how many bytes it put there, and `write` sends exactly that many to file descriptor 1. A read can return fewer bytes than asked for, which is normal; only 0 means the end of the file.\n\nEvery call that can fail is checked. If `openat` returns a negative number, or `write` stores fewer bytes than it was given, the program writes an error line to standard error and returns 1 from `main`, the exit status that tells the shell something went wrong. The descriptor stays in `x19` so that it is still there if you add a `printf` later; `main` saves `x19` first, as the calling convention asks."
+    },
+    {
+      "type": "editor",
+      "starter": "// Create a file, write three lines to it, then read it back\n// to the screen, all with system calls\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(file_r, w19)\n\ndefine(AT_FDCWD, -100)\ndefine(O_RDONLY, 0)\ndefine(O_WRONLY, 01)\ndefine(O_CREAT, 0100)\ndefine(O_TRUNC, 01000)\ndefine(MODE, 0644)\ndefine(SYS_OPENAT, 56)\ndefine(SYS_CLOSE, 57)\ndefine(SYS_READ, 63)\ndefine(SYS_WRITE, 64)\ndefine(CHUNK, 32)\n\nsave_s = 16\nbuf_s = 32\nalloc = -(16 + 16 + CHUNK) & -16\ndealloc = -alloc\n\n.data\npath:       .string \"notes.txt\"\nlines:      .ascii  \"buy bread\\n\"\n            .ascii  \"call grandma\\n\"\n            .ascii  \"water the plants\\n\"\nlines_len = . - lines\nerr_make:   .ascii  \"notes: cannot create notes.txt\\n\"\nerr_make_len = . - err_make\nerr_open:   .ascii  \"notes: cannot open notes.txt\\n\"\nerr_open_len = . - err_open\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        str     x19, [fp, save_s]           // main changes x19, so it saves it\n\n        // openat(AT_FDCWD, path, write only + create + empty it, rw-r--r--)\n        mov     x0, AT_FDCWD                // the path is relative to this directory\n        ldr     x1, =path\n        mov     x2, O_WRONLY | O_CREAT | O_TRUNC\n        mov     x3, MODE\n        mov     x8, SYS_OPENAT\n        svc     0\n        cmp     x0, 0\n        b.lt    nf_make_failed              // a negative result is an error code\n        mov     file_r, w0                  // the descriptor the kernel handed out\n\n        // write(fd, lines, lines_len)\n        mov     w0, file_r\n        ldr     x1, =lines\n        mov     x2, lines_len\n        mov     x8, SYS_WRITE\n        svc     0\n        cmp     x0, lines_len\n        b.ne    nf_make_failed              // anything short of every byte failed\n\n        // close(fd)\n        mov     w0, file_r\n        mov     x8, SYS_CLOSE\n        svc     0\n\n        // openat again, read only this time; a mode matters only when creating\n        mov     x0, AT_FDCWD\n        ldr     x1, =path\n        mov     x2, O_RDONLY\n        mov     x8, SYS_OPENAT\n        svc     0\n        cmp     x0, 0\n        b.lt    nf_open_failed\n        mov     file_r, w0\n\nnf_copy:\n        // read(fd, buffer, CHUNK): x0 = bytes that arrived, 0 at the end\n        mov     w0, file_r\n        add     x1, fp, buf_s\n        mov     x2, CHUNK\n        mov     x8, SYS_READ\n        svc     0\n        cmp     x0, 0\n        b.le    nf_copied                   // 0 is the end, negative an error\n\n        // write(1, buffer, bytes just read)\n        mov     x2, x0\n        mov     x0, 1\n        add     x1, fp, buf_s\n        mov     x8, SYS_WRITE\n        svc     0\n        b       nf_copy\n\nnf_copied:\n        mov     w0, file_r\n        mov     x8, SYS_CLOSE\n        svc     0\n        mov     w0, 0                       // exit status 0: it all worked\n        b       nf_return\n\nnf_make_failed:\n        ldr     x1, =err_make\n        mov     x2, err_make_len\n        b       nf_report\nnf_open_failed:\n        ldr     x1, =err_open\n        mov     x2, err_open_len\nnf_report:\n        mov     x0, 2                       // file descriptor 2: standard error\n        mov     x8, SYS_WRITE\n        svc     0\n        mov     w0, 1                       // exit status 1 tells the shell it failed\n\nnf_return:\n        ldr     x19, [fp, save_s]\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "buy bread\ncall grandma\nwater the plants\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "It prints the three lines it wrote, `buy bread`, `call grandma`, and `water the plants`, and exits with status 0."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "To watch the error path, delete `| O_CREAT` from the first `openat`. The file does not exist yet, and the program no longer asks for it to be made, so `openat` fails, and the program prints `notes: cannot create notes.txt` and exits with status 1. A failed system call returns the error's number made negative (-2, for example, when a file does not exist), and the C library's own `open` turns every failure into -1. Testing for any negative value, as this program does, catches all of them."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Reading until the input ends\n\nStandard input works the same way through file descriptor 0. The last program reads it 8 bytes at a time, adds up what each `read` returns, and stops when `read` returns 0. The lesson feeds it three lines, 28 bytes when the newline at the end of each line is counted.\n\nA keyboard never runs out by itself, so after those 28 bytes the program waits, and the console says it is waiting for input. Press **Ctrl+D** in the console's input box. That marks the end of the input, `read` returns 0, and the program prints `28 bytes`. On the server, `./count < notes.txt` feeds it a file instead, and the end of the file does the same job."
+    },
+    {
+      "type": "editor",
+      "starter": "// Read standard input in small chunks until it ends,\n// then print how many bytes came in\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(total_r, x19)\n\ndefine(STDIN, 0)\ndefine(SYS_READ, 63)\ndefine(CHUNK, 8)\n\nsave_s = 16\nbuf_s = 24\nalloc = -(16 + 8 + CHUNK) & -16\ndealloc = -alloc\n\n.data\nfmt_total:  .string \"%ld bytes\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        str     x19, [fp, save_s]\n\n        mov     total_r, 0\nbc_read:\n        mov     x0, STDIN\n        add     x1, fp, buf_s\n        mov     x2, CHUNK                   // at most 8 bytes per call\n        mov     x8, SYS_READ\n        svc     0\n        cmp     x0, 0\n        b.le    bc_done                     // 0: the input has ended\n        add     total_r, total_r, x0\n        b       bc_read\n\nbc_done:\n        ldr     x0, =fmt_total\n        mov     x1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldr     x19, [fp, save_s]\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "stdin": "one two three\nfour five\nsix\n",
+      "expectedOutput": {
+        "stdout": "28 bytes\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. Which register picks the system call, and which holds its result?\n2. What does `read` return at the end of the input, and what does a negative result mean?\n3. Why does a message for `write` suit `.ascii` better than `.string`?\n4. What permissions does the mode `0640` give?\n5. After `svc 0`, which registers may have changed?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `x8` picks the call, and `x0` holds the result.\n2. It returns 0. A negative result means the call failed.\n3. `write` sends exactly the number of bytes in `x2`. A length taken with `. - label` after `.string` counts the zero byte, and `write` would send it.\n4. The owner can read and write (6), the group can read (4), and everyone else has no access (0).\n5. Only `x0`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Echo the sum](/practice/echo-the-sum): read input the library way, with `scanf`.\n- [Quiz: ARMv8 assembly (challenge)](/practice/quiz-advance-armv8): asks about exception levels."
+    }
+  ]
+}
