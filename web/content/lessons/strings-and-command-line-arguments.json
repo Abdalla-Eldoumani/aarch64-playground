@@ -2,6 +2,7 @@
   "title": "Strings, pointer arrays, and argv",
   "slug": "strings-and-command-line-arguments",
   "order": 24,
+  "lastUpdated": "2026-09-27",
   "summary": "Handle text as bytes: character codes, strings that end in a zero byte, tables of string addresses, and the arguments main receives.",
   "tags": [
     "strings",
