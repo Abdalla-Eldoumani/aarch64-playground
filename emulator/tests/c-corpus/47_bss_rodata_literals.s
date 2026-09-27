@@ -16,7 +16,7 @@ rc:
 	.data
 	.align	3
 lit:
-	.quad	.LC0
+	.xword	.LC0
 	.section .rodata
 	.align	3
 arr:
