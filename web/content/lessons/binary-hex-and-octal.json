@@ -86,7 +86,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Quiz: binary arithmetic (intro)](/practice/quiz-basic-binary-arithmetic): wraparound and negating in two's complement. Its questions on carries and `adc` come with [Binary arithmetic: flags, carries, and wide numbers](/learn/binary-arithmetic-and-flags).\n- [Quiz: binary logic (core)](/practice/quiz-inter-binary-logic): opens with the signed range of a word, the size of a `long`, and the bits in an octal digit.\n- [Binary broadcast](/practice/binary-broadcast): prints a number one bit at a time. It needs the shifts from [Shifts, sign extension, and bitfields](/learn/shifts-and-bitfields), so come back to it after that lesson."
+      "markdown": "## Practice\n\n- [Base eight, by hand](/practice/base-eight-by-hand): print a number in octal without `%o`, one digit per power of 8. It needs a loop, so try it after the [pre-test loop lesson](/learn/pretest-loop).\n- [Quiz: binary arithmetic (intro)](/practice/quiz-basic-binary-arithmetic): wraparound and negating in two's complement. Its questions on carries and `adc` come with [Binary arithmetic: flags, carries, and wide numbers](/learn/binary-arithmetic-and-flags).\n- [Quiz: binary logic (core)](/practice/quiz-inter-binary-logic): opens with the signed range of a word, the size of a `long`, and the bits in an octal digit.\n- [Binary broadcast](/practice/binary-broadcast): prints a number one bit at a time. It needs the shifts from [Shifts, sign extension, and bitfields](/learn/shifts-and-bitfields), so come back to it after that lesson."
     }
   ]
 }
