@@ -129,7 +129,7 @@ export function explainError(message: string): ErrorExplanation | null {
   }
   if (lower.includes("no terminating zero byte")) {
     return {
-      what: "A string operation scanned 64 KiB from the shown address without finding the closing zero byte.",
+      what: "A string operation scanned 1 MiB from the shown address without finding the closing zero byte.",
       why: "C strings end at a NUL. `.ascii` emits the characters WITHOUT one; `.asciz`/`.string` add it. A store past the end of a buffer can also overwrite the terminator.",
       fix: "Declare the string with .asciz or .string, and check any loop that writes into the buffer stops before its last byte.",
       styleSection: "naming conventions",
