@@ -1,25 +1,25 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fact
 fact:
 	cmp	w0, 1
 	ble	.L4
 	sxtw	x1, w0
 	mov	x0, 1
-	.align 5
+	.p2align 5,,15
 .L3:
 	mul	x0, x0, x1
 	sub	x1, x1, #1
 	cmp	w1, 1
 	bgt	.L3
 	ret
-	.align 2
+	.p2align 2,,3
 .L4:
 	mov	x0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fib
 fib:
 	cmp	w0, 1
@@ -52,11 +52,11 @@ fib:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 64
 	ret
-	.align 2
+	.p2align 2,,3
 .L13:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	ack
 ack:
 	cbz	w0, .L30
@@ -75,19 +75,19 @@ ack:
 	add	w0, w1, 1
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L31:
 	sub	w1, w1, #1
 	bl	ack
 	mov	w1, w0
 	cbnz	w19, .L18
 	b	.L17
-	.align 2
+	.p2align 2,,3
 .L30:
 	add	w0, w1, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sum10
 sum10:
 	sxtw	x1, w1
@@ -104,7 +104,7 @@ sum10:
 	add	x0, x7, x0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix
 mix:
 	add	w0, w0, w1
@@ -122,7 +122,7 @@ mix:
 	add	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pressure
 pressure:
 	add	w1, w0, 1
@@ -133,7 +133,7 @@ pressure:
 	add	w6, w0, 6
 	add	w3, w0, 7
 	mov	w8, 10
-	.align 5
+	.p2align 5,,15
 .L35:
 	add	w0, w0, w1
 	subs	w8, w8, #1
@@ -168,7 +168,7 @@ pressure:
 	.string	"%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #64
