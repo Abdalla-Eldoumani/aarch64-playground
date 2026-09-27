@@ -135,12 +135,12 @@ export function WatchPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="x0 or [fp, score1_s] or arr[2]"
-          className="flex-1 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          className="touch-target flex-1 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch expression"
         />
         <button
           type="submit"
-          className="px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+          className="touch-target px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         >
           add
         </button>
@@ -185,7 +185,7 @@ export function WatchPanel({
                 <button
                   type="button"
                   onClick={() => remove(expr)}
-                  className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)] px-1"
+                  className="touch-target text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)] px-1"
                   aria-label={`remove watch ${expr}`}
                 >
                   x
