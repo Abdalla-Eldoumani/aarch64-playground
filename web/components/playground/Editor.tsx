@@ -571,9 +571,10 @@ export function Editor({
       // Escape then Tab moves on to the next control. The focus sits on
       // Monaco's input element INSIDE the node, which is what has to blur;
       // blurring the node itself did nothing. The context expression is what
-      // makes "no widget open" hold: a command registered without one
-      // outranks Monaco's own Escape bindings, which left the find and
-      // suggestion widgets with nothing to close them from the keyboard.
+      // leaves Monaco's own Escape work first: a command registered without
+      // one outranks those bindings, which left the find and suggestion
+      // widgets with nothing to close them and a selection or extra cursors
+      // with nothing to collapse them. Escape does that, a second one leaves.
       editor.addCommand(
         monaco.KeyCode.Escape,
         () => {
@@ -582,7 +583,7 @@ export function Editor({
             active.blur();
           }
         },
-        "!findWidgetVisible && !suggestWidgetVisible",
+        "!findWidgetVisible && !suggestWidgetVisible && !editorHasSelection && !editorHasMultipleSelections",
       );
 
       const canRun = editor.createContextKey("playgroundCanRun", Boolean(onRunShortcutRef.current));
