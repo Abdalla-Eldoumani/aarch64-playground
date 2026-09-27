@@ -1,18 +1,18 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	asc
 asc:
 	sub	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	desc
 desc:
 	sub	w0, w1, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sort
 sort:
 	cmp	w1, 0
@@ -31,10 +31,10 @@ sort:
 	mov	x23, x25
 	stp	x19, x20, [sp, 16]
 	mov	x20, 1
-	.align 5
+	.p2align 5,,15
 .L6:
 	mov	x19, x20
-	.align 5
+	.p2align 5,,15
 .L8:
 	ldr	w1, [x21, x19, lsl 2]
 	ldr	w0, [x22, x20, lsl 2]
@@ -66,7 +66,7 @@ sort:
 	.string	"%d "
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -144]!
@@ -103,10 +103,10 @@ main:
 	mov	x25, x28
 	add	x20, sp, 116
 	mov	x23, 7
-	.align 5
+	.p2align 5,,15
 .L20:
 	mov	x19, 0
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldr	w22, [x20, x19, lsl 2]
 	ldr	w21, [x20, -4]
@@ -124,7 +124,7 @@ main:
 	add	x20, x20, 4
 	subs	x23, x23, #1
 	bne	.L20
-	.align 5
+	.p2align 5,,15
 .L25:
 	ldr	w1, [x25], 4
 	mov	x0, x26
