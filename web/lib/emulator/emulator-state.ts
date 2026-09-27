@@ -54,6 +54,13 @@ export interface EmulatorState {
   error: string | null;
   assemblyErrors: AssemblyError[];
   breakpoints: Set<number>;
+  /**
+   * Gutter lines the last editor assemble had to drop because no instruction
+   * runs at or after them (a dot set before assembling, below the last
+   * instruction). A new array per assemble that dropped any, so the shell can
+   * say why a dot vanished; empty otherwise.
+   */
+  droppedBreakpoints: number[];
   currentLine: number | null;
   /**
    * The external call the paused pc sits inside, or null when the pc is one
@@ -141,6 +148,13 @@ export interface EmulatorState {
    * a redirect prints nothing, and the pane echoes for itself.
    */
   pushStdin: (s: string, interactive?: boolean) => void;
+  /**
+   * Pick a run back up after the console answered the read it stopped at.
+   * A no-op unless the last stop was a RUN parked on input: a step that
+   * reached a read waits for the next step, as it always has. The terminal
+   * drive resumes its own sessions and never calls this.
+   */
+  resumeAfterInput: () => void;
   /** Pause/resume the step-back snapshot ring (terminal sessions). */
   setSnapshotsPaused: (paused: boolean) => void;
   /** Signal end-of-input (ctrl-d): getchar sees EOF, scanf finishes. */
