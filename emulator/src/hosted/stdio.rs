@@ -187,6 +187,61 @@ pub fn fputs(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
+/// putc(c, stream), and fputc beside it: one byte to a stream, answered
+/// as an unsigned char, or EOF when the write is refused. glibc's putchar
+/// is `putc(c, stdout)`, which is the call optimized code makes.
+pub fn putc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let byte = ctx.regs.read_gpr(0, true) as u8;
+    let handle = ctx.regs.read_gpr(1, true);
+    let Some(fd) = fd_of(ctx, handle) else {
+        return Err(not_a_stream("putc", handle));
+    };
+    let written = write_to_fd(ctx, fd as u64, &[byte]) == 1;
+    ctx.regs.write_gpr(0, true, if written { u64::from(byte) } else { EOF });
+    Ok(HostOutcome::Continue)
+}
+
+/// getc(stream): the next byte as an unsigned char, or EOF. On stdin it is
+/// getchar, stall contract included; glibc's getchar is `getc(stdin)`.
+pub fn getc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let handle = ctx.regs.read_gpr(0, true);
+    let Some(fd) = fd_of(ctx, handle) else {
+        return Err(not_a_stream("getc", handle));
+    };
+    if fd == 0 {
+        return crate::hosted::libc::getchar(ctx);
+    }
+    // An output stream has no open-file entry, so it reads as end of file.
+    let byte = take_line_from_file(ctx, fd, 1);
+    ctx.regs.write_gpr(0, true, byte.first().map_or(EOF, |b| u64::from(*b)));
+    Ok(HostOutcome::Continue)
+}
+
+/// fwrite(ptr, size, n, stream) -> how many whole items went out. gcc
+/// turns `fputs("text", f)` into an fwrite of the length it can see.
+pub fn fwrite(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let ptr = ctx.regs.read_gpr(0, true);
+    let size = ctx.regs.read_gpr(1, true);
+    let count = ctx.regs.read_gpr(2, true);
+    let handle = ctx.regs.read_gpr(3, true);
+    let Some(fd) = fd_of(ctx, handle) else {
+        return Err(not_a_stream("fwrite", handle));
+    };
+    // Grown as far as mapped memory goes, never pre-reserved from the
+    // guest's count, the same rule the write syscall keeps.
+    let mut bytes = Vec::new();
+    for i in 0..size.saturating_mul(count) {
+        bytes.push(ctx.mem.read_u8(ptr.wrapping_add(i))?);
+    }
+    let written = write_to_fd(ctx, fd as u64, &bytes);
+    let items = if written <= 0 || size == 0 { 0 } else { written as u64 / size };
+    ctx.regs.write_gpr(0, true, items);
+    Ok(HostOutcome::Continue)
+}
+
+/// C's EOF in a 64-bit register.
+const EOF: u64 = u64::MAX;
+
 /// fgets(buf, n, stream) -> buf, or NULL at end of input.
 /// Reads at most `n - 1` bytes, stops just past a newline and KEEPS it,
 /// and always terminates what it stored. From stdin it follows scanf's
@@ -335,6 +390,7 @@ mod tests {
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
         strtok_save: u64,
+        callbacks: crate::hosted::callback::CallbackState,
     }
 
     impl Host {
@@ -356,6 +412,7 @@ mod tests {
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
                 strtok_save: 0,
+                callbacks: Default::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -373,6 +430,7 @@ mod tests {
                 term: &mut self.term,
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
+                callbacks: &mut self.callbacks,
             }
         }
         fn place_string(&mut self, addr: u64, s: &[u8]) {
