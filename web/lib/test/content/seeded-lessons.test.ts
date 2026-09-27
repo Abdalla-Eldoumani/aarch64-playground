@@ -29,6 +29,16 @@ describe("seeded lessons", () => {
     }
   });
 
+  it("carry the date their content last changed, which the sitemap prints", () => {
+    for (const file of files) {
+      const parsed: unknown = JSON.parse(fs.readFileSync(path.join(DIR, file), "utf8"));
+      const result = validateLesson(parsed);
+      expect(result.ok && result.lesson.lastUpdated, `${file} has no lastUpdated`).toMatch(
+        /^\d{4}-\d{2}-\d{2}$/,
+      );
+    }
+  });
+
   it("contain no week labels, archive numbers, or personal data", () => {
     const banned = /week\s*\d|tutorial\s*\d|assignment\s*\d|@[a-z0-9.-]+\.[a-z]{2,}/i;
     for (const file of files) {
