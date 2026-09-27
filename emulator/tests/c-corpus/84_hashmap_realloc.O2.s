@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fnv1a:
 	ldrb	w1, [x0]
 	mov	x2, x0
@@ -11,7 +11,7 @@ fnv1a:
 	cbz	w1, .L1
 	mov	x3, 435
 	movk	x3, 0x100, lsl 32
-	.align 5
+	.p2align 5,,15
 .L3:
 	eor	x0, x1, x0
 	ldrb	w1, [x2, 1]!
@@ -20,7 +20,7 @@ fnv1a:
 .L1:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 rehash:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -40,7 +40,7 @@ rehash:
 	sub	x5, x19, #1
 	add	x6, x22, x20, lsl 3
 	b	.L12
-	.align 2
+	.p2align 2,,3
 .L9:
 	add	x3, x3, 24
 	cmp	x6, x3
@@ -51,7 +51,7 @@ rehash:
 	bne	.L9
 	ldr	x1, [x3]
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L23:
 	add	x1, x1, 1
 .L22:
@@ -77,7 +77,7 @@ rehash:
 	ldp	x29, x30, [sp], 48
 	b	free
 	.align	2
-	.align 5
+	.p2align 5,,15
 find:
 	stp	x29, x30, [sp, -80]!
 	mov	x29, sp
@@ -97,7 +97,7 @@ find:
 	mov	x25, x2
 	mov	x26, x0
 	b	.L26
-	.align 2
+	.p2align 2,,3
 .L27:
 	ldr	x3, [x20]
 	cmp	x3, x25
@@ -131,7 +131,7 @@ find:
 	ldp	x23, x24, [sp, 48]
 	ldp	x29, x30, [sp], 80
 	ret
-	.align 2
+	.p2align 2,,3
 .L36:
 	ldr	x2, [x26, 32]
 	mov	x1, x24
@@ -151,7 +151,7 @@ find:
 	mov	x21, x20
 	b	.L24
 	.align	2
-	.align 5
+	.p2align 5,,15
 del:
 	stp	x29, x30, [sp, -32]!
 	mov	x4, x1
@@ -176,14 +176,14 @@ del:
 	ldr	x19, [sp, 16]
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L40:
 	ldr	x19, [sp, 16]
 	mov	w0, 0
 	ldp	x29, x30, [sp], 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 get:
 	stp	x29, x30, [sp, -16]!
 	mov	x5, x0
@@ -202,12 +202,12 @@ get:
 .L42:
 	ldp	x29, x30, [sp], 16
 	ret
-	.align 2
+	.p2align 2,,3
 .L44:
 	mov	w0, -1
 	b	.L42
 	.align	2
-	.align 5
+	.p2align 5,,15
 arena_put:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -224,7 +224,7 @@ arena_put:
 	cmp	x1, x2
 	bls	.L47
 	mov	x21, 16
-	.align 5
+	.p2align 5,,15
 .L49:
 	lsl	x1, x2, 1
 	cmp	x2, 0
@@ -252,7 +252,7 @@ arena_put:
 	ldp	x29, x30, [sp], 48
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 bump:
 	stp	x29, x30, [sp, -64]!
 	mov	x29, sp
@@ -295,7 +295,7 @@ bump:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 64
 	ret
-	.align 2
+	.p2align 2,,3
 .L56:
 	cmp	w0, 0
 	mov	x1, x23
@@ -389,7 +389,7 @@ bump:
 	.string	"calloc nonzero %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #544
@@ -445,7 +445,7 @@ main:
 	mov	x21, 0
 	mov	x20, 8
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L61:
 	mov	x0, x24
 	mov	w2, 1
@@ -491,7 +491,7 @@ main:
 	stp	q30, q31, [sp, 256]
 	bl	printf
 	ldr	w6, [sp, 96]
-	.align 5
+	.p2align 5,,15
 .L62:
 	ldr	x1, [x28], 8
 	mov	x0, x24
@@ -522,7 +522,7 @@ main:
 	stp	q29, q30, [sp, 112]
 	bl	printf
 	ldr	w6, [sp, 96]
-	.align 5
+	.p2align 5,,15
 .L63:
 	ldr	x1, [x27], 8
 	mov	x0, x24
@@ -547,7 +547,7 @@ main:
 	add	x28, x28, :lo12:.LC0
 	add	x27, x27, :lo12:.LC11
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L65:
 	tst	x19, 1
 	mov	x0, x24
@@ -603,7 +603,7 @@ main:
 	mov	w24, 0
 	movk	w28, 0xaaaa, lsl 16
 	b	.L69
-	.align 2
+	.p2align 2,,3
 .L67:
 	add	x22, x22, 1
 	add	x27, x27, 24
@@ -654,7 +654,7 @@ main:
 	mov	x21, 0
 	bl	printf
 	b	.L77
-	.align 2
+	.p2align 2,,3
 .L70:
 	str	w20, [x21, x19, lsl 2]
 	add	x19, x19, 1
@@ -679,7 +679,7 @@ main:
 .L101:
 	mov	w4, -1000
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L73:
 	ldr	w2, [x21, x1, lsl 2]
 	add	x1, x1, 1
@@ -709,7 +709,7 @@ main:
 	bl	free
 	cbz	x27, .L78
 	mov	x19, 1
-	.align 5
+	.p2align 5,,15
 .L79:
 	mov	x0, sp
 	add	x0, x0, x19, lsl 3
@@ -742,7 +742,7 @@ main:
 	movi	v27.16b, 0x1
 	add	x0, x0, 4000
 	mov	v28.16b, v30.16b
-	.align 5
+	.p2align 5,,15
 .L80:
 	ldr	q31, [x1], 16
 	cmtst	v31.16b, v31.16b, v31.16b
@@ -775,7 +775,7 @@ main:
 	ldp	x27, x28, [sp, 80]
 	add	sp, sp, 544
 	ret
-	.align 2
+	.p2align 2,,3
 .L99:
 	mov	x0, 24
 	bl	malloc
@@ -840,19 +840,19 @@ text:
 	.string	"kite rode the warm air over the hill and the small birds below it hid in the hedge, while the kite turned and turned again; a farmer on the hill saw the kite, saw the hedge shake, and went back to the barn where the old red tractor sat waiting in the dark."
 	.zero	7
 .LC21:
-	.quad	.LC0
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
+	.xword	.LC0
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
 .LC24:
-	.quad	.LC0
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC9
-	.quad	.LC11
-	.quad	.LC12
+	.xword	.LC0
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC9
+	.xword	.LC11
+	.xword	.LC12
 
