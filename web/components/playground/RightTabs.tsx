@@ -36,6 +36,8 @@ export interface RightTabsProps {
   onSelectTab: (tab: RightTab) => void;
   /** Marks the console tab while the machine waits on a stdin read. */
   consoleBlocked: boolean;
+  /** Marks the console tab when output arrived while another tab was up. */
+  consoleUnread?: boolean;
   panes: DebugPanes;
 }
 
@@ -61,6 +63,7 @@ export function RightTabs({
   activeTab,
   onSelectTab,
   consoleBlocked,
+  consoleUnread = false,
   panes,
 }: RightTabsProps) {
   // The terminal mounts lazily on first use and then stays mounted (it hides
@@ -80,7 +83,17 @@ export function RightTabs({
       >
         {TABS.map((tab) => {
           const selected = activeTab === tab;
-          const showDot = tab === "console" && consoleBlocked && !selected;
+          // The dot is drawn for sight; the same fact rides in the tab's
+          // name for a screen reader, since a colored dot alone says nothing.
+          const dotReason =
+            tab !== "console" || selected
+              ? null
+              : consoleBlocked
+                ? "waiting for input"
+                : consoleUnread
+                  ? "new output"
+                  : null;
+          const showDot = dotReason !== null;
           return (
             <button
               key={tab}
@@ -97,10 +110,13 @@ export function RightTabs({
             >
               {tab}
               {showDot && (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"
-                />
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"
+                  />
+                  <span className="sr-only">, {dotReason}</span>
+                </>
               )}
             </button>
           );
