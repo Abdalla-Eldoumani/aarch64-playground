@@ -481,7 +481,7 @@ readable in the browser console.
 - Rust: per-module `#[cfg(test)]` unit tests plus integration suites in
   [`emulator/tests/`](../emulator/tests/) (conformance, acceptance, the
   resource-bound walls, stepping/line-map, external-call context, hosted
-  end-to-end, the CPSC 355 corpus, server parity, the two SIMD suites
+  end-to-end, the local corpus, server parity, the two SIMD suites
   (`simd.rs` against the inventory capture, `simd_behaviour.rs` against
   the behaviour capture), and the reference drift guard).
 - Web: a vitest suite across the lib helpers, the hooks, the worker
