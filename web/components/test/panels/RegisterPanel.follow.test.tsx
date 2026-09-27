@@ -279,6 +279,78 @@ describe("RegisterPanel follows the write", () => {
   });
 });
 
+describe("RegisterPanel in a host pane shorter than itself", () => {
+  // A lesson frame on a phone: a 60 px pane that scrolls, holding a 50 px
+  // header over the list's 100 px box, so the pane scrolls 90 px at most.
+  let paneTop = 0;
+  let paneCalls: ScrollToOptions[] = [];
+
+  function framed(props: PanelProps = {}) {
+    return (
+      <div data-testid="pane" style={{ overflowY: "auto" }}>
+        {panel(props)}
+      </div>
+    );
+  }
+
+  function mountFramed() {
+    paneTop = 0;
+    paneCalls = [];
+    const view = render(framed());
+    const pane = screen.getByTestId("pane");
+    Object.defineProperty(pane, "scrollHeight", { configurable: true, value: 150 });
+    Object.defineProperty(pane, "clientHeight", { configurable: true, value: 60 });
+    Object.defineProperty(pane, "scrollTop", { configurable: true, get: () => paneTop });
+    Object.defineProperty(pane, "scrollTo", {
+      configurable: true,
+      value(options: ScrollToOptions) {
+        paneCalls.push(options);
+        paneTop = options.top ?? paneTop;
+      },
+    });
+    const box = screen.getByRole("region", { name: "register values" });
+    Object.defineProperty(box, "scrollHeight", { configurable: true, value: 700 });
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: BOX_HEIGHT });
+    Object.defineProperty(box, "scrollTop", { configurable: true, get: () => scrollTop });
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this === pane) return rect(0, 60);
+      if (this === box) return rect(50 - paneTop, BOX_HEIGHT);
+      if (this.parentElement?.parentElement === box) {
+        const line = Array.prototype.indexOf.call(this.parentElement.children, this);
+        return rect(50 - paneTop + line * ROW - scrollTop, ROW);
+      }
+      return rect(0, 0);
+    });
+    return view;
+  }
+
+  it("scrolls the list, then the pane, just far enough, and never the page", () => {
+    const pageScroll = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const { rerender } = mountFramed();
+    // Row 3 (110-130) is inside the list's box (50-150) but below the pane
+    // (0-60): only the pane moves, by 70.
+    rerender(framed({ changedRegs: new Set([3]) }));
+    expect(scrollCalls).toEqual([]);
+    expect(paneCalls).toEqual([{ top: 70, behavior: "smooth" }]);
+    // Row 28 is far down the list: the list moves 480 to show it at its
+    // bottom edge, and the pane goes the last 20 it can.
+    rerender(framed({ changedRegs: new Set([28]) }));
+    expect(scrollCalls).toEqual([{ top: 480, behavior: "smooth" }]);
+    expect(paneCalls[1]).toEqual({ top: 90, behavior: "smooth" });
+    expect(pageScroll).not.toHaveBeenCalled();
+  });
+
+  it("holds still after a finger drags the pane by the header", () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const { rerender } = mountFramed();
+    fireEvent.touchMove(screen.getByRole("checkbox", { name: "follow changes" }));
+    now += 1_000;
+    rerender(framed({ changedRegs: new Set([3]) }));
+    expect(paneCalls).toEqual([]);
+  });
+});
+
 describe("RegisterPanel follow changes switch", () => {
   it("is on by default, and off it keeps the list and the view where they are", () => {
     const { rerender } = mount();
