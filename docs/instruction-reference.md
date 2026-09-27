@@ -36,8 +36,8 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `UMNEGL` | `UMNEGL Xd, Wn, Wm`              | The unsigned form.                      |
 | `UDIV`   | `UDIV Xd, Xn, Xm`                | Unsigned divide, zero on divide-by-zero. |
 | `SDIV`   | `SDIV Xd, Xn, Xm`                | Signed divide.                           |
-| `NEG`    | `NEG Xd, Xm`                     | Alias for `SUB Xd, XZR, Xm`.             |
-| `NEGS`   | `NEGS Xd, Xm`                    | Alias for `SUBS Xd, XZR, Xm`; sets NZCV. |
+| `NEG`    | `NEG Xd, Xm` / `NEG Xd, Xm, LSL #k` | Alias for `SUB Xd, XZR, Xm`, shifted-register operand included: `neg w0, w1, lsl 1` is `-(w1 << 1)`. |
+| `NEGS`   | same                             | Alias for `SUBS Xd, XZR, Xm`; sets NZCV. |
 | `AND`    | `AND Xd, Xn, Xm` / `..., #imm` / `AND Xd, Xn, Xm, LSR #k` | Logical AND. |
 | `ANDS`   | same                             | Sets NZCV.                               |
 | `ORR`    | `ORR Xd, Xn, Xm` / `ORR Xd, Xn, #imm` / `ORR Xd, Xn, Xm, LSL #k` | Logical OR. The immediate is an ARM64 bitmask immediate (a repeating run of ones), not any 12-bit value. |
@@ -56,6 +56,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `LSR`    | `LSR Xd, Xn, #imm` / `LSR Xd, Xn, Xm` | Logical shift right, immediate or register amount. |
 | `ASR`    | `ASR Xd, Xn, #imm` / `ASR Xd, Xn, Xm` | Arithmetic shift right, immediate or register amount. |
 | `ROR`    | `ROR Xd, Xn, #imm` / `ROR Xd, Xn, Xm` | Rotate right, immediate or register amount. The immediate form is an alias for `EXTR Xd, Xn, Xn, #imm`; the register form is `RORV`. |
+| `EXTR`   | `EXTR Xd, Xn, Xm, #lsb` / W form | Extract: the register-width field starting at bit `lsb` of the pair `Xn:Xm`, so the low bits come from `Xm` and the high ones from `Xn`. `lsb` runs 0 to 63 (31 for W). With `Xn` and `Xm` the same register it is `ROR`. |
 | `UBFX`   | `UBFX Xd, Xn, #lsb, #width`      | Unsigned bitfield extract: pulls `width` bits starting at `lsb` down to bit 0, zeros the rest. Alias for `UBFM`. |
 | `SBFX`   | `SBFX Xd, Xn, #lsb, #width`      | Signed bitfield extract: the same field, sign-extended from its top bit instead of zeroed. Alias for `SBFM`. |
 | `BFI`    | `BFI Xd, Xn, #lsb, #width`       | Bitfield insert: drops the low `width` bits of `Xn` into `Xd` at `lsb`; every other `Xd` bit survives. Alias for `BFM`. |
@@ -114,6 +115,7 @@ which is why none of them accepts `AL` or `NV`.
 | `LDRSB`  | `LDRSB Wt, [Xn, #imm]` / `LDRSB Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Byte load, sign-extended into Wt or Xt. |
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
 | `LDRSW`  | `LDRSW Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Word load, sign-extended to 64 bits. `Xt` target only, per the ARM spec. |
+| `LDPSW`  | `LDPSW Xt1, Xt2, [Xn, #imm]` (+ pre/post index) | Load a pair of words, each sign-extended to 64 bits. `X` targets only; the offset scales by 4. |
 | `LDUR`   | `LDUR Bt/Ht/St/Dt/Qt, [Xn, #imm]`                     | The unscaled signed-offset load, spelled out. SIMD&FP targets only; `imm` runs [-256, 255] and is never scaled. `LDR` picks this encoding on its own for a negative or unaligned offset. |
 | `STUR`   | same                                                  | The unscaled store.                |
 | `LDNP`   | `LDNP St1, St2, [Xn, #imm]` / `Dt1, Dt2` / `Qt1, Qt2` | The no-allocate pair load: a plain signed offset, no writeback. Identical here to `LDP`; on hardware it only differs in a cache hint. |
@@ -160,6 +162,7 @@ The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` giv
 | -------- | -------- | -------------------------------------- |
 | `NOP`    | `NOP`    | Does nothing, still advances PC.       |
 | `SVC`    | `SVC #0` | Hosted: reads the syscall number from `x8`. `SVC #N` with `N != 0` halts the CPU. |
+| `BRK`    | `BRK #imm` | Breakpoint trap: stops the program with `Trace/breakpoint trap`, as it does on the servers. `imm` runs 0 to 65535. GCC plants one where it proved the code can only fault, such as a use of a pointer that is NULL on that path. |
 
 ## Floating point
 
@@ -189,9 +192,12 @@ The `FCVT` conversion family names its rounding mode in the mnemonic: `N` neares
 | `FABS`   | `FABS Dd, Dn` / `FABS Sd, Sn`     | Absolute value: clears the sign bit.    |
 | `FSQRT`  | `FSQRT Dd, Dn` / `FSQRT Sd, Sn`   | Square root. A negative operand gives NaN, not a fault. |
 | `FCSEL`  | `FCSEL Dd, Dn, Dm, cond` / S form  | `Fd = cond ? Fn : Fm`. The integer `CSEL` for the FP file; the flags come from an earlier `FCMP` or `CMP`. The chosen register's bits are copied, so a NaN or a signed zero passes through unchanged. Unlike `CSET` and `CINC`, this takes `AL` and `NV`, as GAS does. |
-| `FCMP`   | `FCMP Dn, Dm` / `FCMP Sn, Sm`     | Updates NZCV. Unordered sets C and V.   |
+| `FCMP`   | `FCMP Dn, Dm` / `FCMP Sn, Sm` / `FCMP Dn, #0.0` | Updates NZCV. Unordered sets C and V. The `#0.0` form compares against zero without naming a second register. |
 | `FCMPE`  | same                              | The signaling form; here it sets the same flags (the emulator raises no FP exceptions). |
-| `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). |
+| `FCCMP`  | `FCCMP Dn, Dm, #nzcv, cond` / S form | The FP `CCMP`: when `cond` holds, set NZCV as `FCMP Dn, Dm` would; otherwise set it to the 4-bit literal. GCC builds `&&` and `\|\|` chains of float compares out of these. Takes `AL` and `NV`, as GAS does. |
+| `FCCMPE` | same                              | The signaling form; the same flags here. |
+| `FCVT`   | `FCVT Dd, Sn` / `FCVT Sd, Dn`     | Precision convert: widening is exact, narrowing rounds. Widen before `printf` (it takes doubles). A NaN keeps its sign and payload, quieted. |
+| `FRINTM` | `FRINTM Dd, Dn` / S form          | Round to an integral float toward minus infinity (C's `floor`). `FRINTP` (ceil), `FRINTZ` (trunc), `FRINTA` (round), `FRINTN`, `FRINTX` and `FRINTI` (rint, nearbyint) take the same scalar shapes; their rounding modes are in the [Vector floating point](#vector-floating-point) table. |
 | `SCVTF`  | `SCVTF Dd, Xn` / `SCVTF Sd, Wn` / `SCVTF Dd, Xn, #fbits` / `SCVTF Sd, Sn` / `SCVTF Dd, Dn` | Signed integer to float. The FP-source forms convert integer bits already sitting in the register (how gcc converts an int it loaded with `ldr s31, [...]`). The three-operand form is the fixed-point one: it divides by `2^fbits`, so `scvtf d0, x0, #2` on `6` gives `1.5`. `fbits` runs 1 to 32 for a W source and 1 to 64 for an X one. |
 | `UCVTF`  | `UCVTF Dd, Xn` / `UCVTF Sd, Wn` (and the other width pairs) | Unsigned integer to float. `SCVTF` reads the same bits as signed, so the two differ on any value with the top bit set. |
 | `FCVTZS` | `FCVTZS Xd, Dn` / `FCVTZS Wd, Sn` / `FCVTZS Xd, Sn, #fbits` | Truncate float to signed integer. The three-operand form is the fixed-point one: it multiplies by `2^fbits` before truncating, so `fcvtzs w0, d0, #2` on `1.5` gives `6`. `fbits` runs 1 to 32 for a W destination and 1 to 64 for an X one. `SCVTF` takes the same third operand and divides instead. |
@@ -671,11 +677,12 @@ Pre-registered and available without setup:
 
 | Name     | Notes                                                    |
 | -------- | -------------------------------------------------------- |
-| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %e %g %.Nf` plus `*` width and precision; walks `x0..x7` and `d0..d7` independently for mixed int/double args. |
+| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %F %e %E %g %G` with glibc's flags (`-`, `+`, space, `#`, `0`), widths and precisions (`*` included) and the `hh h l ll z j t` length modifiers; `inf` and `nan` print as glibc prints them. Walks `x0..x7` and `d0..d7` independently for mixed int/double args. A long double (`%Lf`) stops with a message: the playground has no 128-bit float. |
 | `sprintf` / `snprintf`         | The printf engine writing into a buffer. `snprintf` truncates to `size - 1` plus the terminator and returns the untruncated length, so `if (n >= size)` detects the overflow. |
 | `scanf`  | `%d %u %x %s %c %f`; returns `WaitingForInput` when stdin runs dry. |
 | `puts` / `putchar` / `getchar` | Standard libc semantics.                  |
 | `fgets` / `fputs`              | Line in, string out, over stdin/stdout/stderr or a virtual file. `fgets` keeps the newline and answers NULL at end of input. |
+| `putc` / `fputc` / `getc` / `fwrite` | One byte out, one byte in, and a block of `size * n` bytes out, over the same streams. Optimized GCC output calls these where the C wrote `putchar`, `getchar` or `fputs`. |
 | `strlen` / `strcmp` / `strcpy` | Standard libc semantics.                  |
 | `strncmp` / `strncpy` / `strcat` / `strchr` / `strstr` | glibc-exact where glibc has an opinion: `strncmp` returns the byte difference, `strncpy` NUL-pads the field and omits the terminator when the source fills it, `strchr` can find the terminator itself. |
 | `strtok`                       | glibc's static cursor, kept host-side so step-back re-hands the same token. Cuts the string in place. |
@@ -683,6 +690,7 @@ Pre-registered and available without setup:
 | `strtol`                       | glibc's grammar: whitespace, sign, base 0 inferring `0x`/leading-zero/decimal, `endptr` writeback, LONG_MIN/LONG_MAX clamp on overflow. |
 | `abs` / `labs`                 | Wrap at the minimum value, like the hardware. |
 | `isdigit` / `isalpha` / `isspace` / `toupper` / `tolower` | C locale. The is* stubs return glibc's mask bit (nonzero, not 1), and the three tables the macros index (`__ctype_b_loc`, `__ctype_toupper_loc`, `__ctype_tolower_loc`) are hosted too, so GCC output that never calls the function still works. |
+| `qsort` / `bsearch`            | glibc's contracts. The comparator is your code and runs as it would on the servers: each call enters it with the two element pointers in `x0` and `x1` and returns to the library, so a breakpoint in it hits. The sort is a binary insertion sort, so the number of comparator calls is not glibc's. |
 | `calloc` / `realloc`           | glibc's edges: `calloc` zeroes and refuses an overflowing product; `realloc` is malloc for NULL, free for size 0, in place when the block already fits. |
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
@@ -704,8 +712,9 @@ Pre-registered and available without setup:
 | `log10`                        | Argument in `d0`, result in `d0`. Base ten, same domain edges as `log`. |
 | `exp`                          | Argument in `d0`, result in `d0`. `e` raised to the argument. |
 | `floor`                        | Argument in `d0`, result in `d0`. Rounds toward negative infinity. |
-| `fabs`                         | Argument in `d0`, result in `d0`. Absolute value. |
+| `fabs`                         | Argument in `d0`, result in `d0`. Absolute value; only the sign bit changes, so a NaN keeps its payload. |
 | `fmod`                         | Dividend in `d0`, divisor in `d1`, result in `d0`. The remainder keeps the sign of the dividend. |
+| `sincos`                       | Argument in `d0`; stores the sine through `x0` and the cosine through `x1`. GCC merges a `sin` and a `cos` of the same value into this one call. |
 
 Stepping through one of these costs three steps, and the debugger says
 where you are for all three. A `bl printf` lands first on the two words of
@@ -738,7 +747,7 @@ finishes on the next step.
 
 ## NZCV flags
 
-`ADDS`, `SUBS`, `ADCS`, `SBCS`, `ANDS`, `NEGS`, `CMP`, `CMN`, `CCMP`, `CCMN`, `TST`, and `FCMP` / `FCMPE` update the condition flags. They are visible in the register panel as `N Z C V` and used by `B.cond` / `CSEL` / `CSET` / friends.
+`ADDS`, `SUBS`, `ADCS`, `SBCS`, `ANDS`, `NEGS`, `CMP`, `CMN`, `CCMP`, `CCMN`, `TST`, `FCMP` / `FCMPE`, and `FCCMP` / `FCCMPE` update the condition flags. They are visible in the register panel as `N Z C V` and used by `B.cond` / `CSEL` / `CSET` / friends.
 
 ## Things that are not implemented
 
