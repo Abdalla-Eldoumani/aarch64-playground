@@ -1,13 +1,13 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mkpt
 mkpt:
 	uxtw	x0, w0
 	orr	x0, x0, x1, lsl 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mkbig
 mkbig:
 	lsl	x1, x0, 1
@@ -17,7 +17,7 @@ mkbig:
 	stp	x1, x0, [x8, 16]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	dot
 dot:
 	asr	x2, x0, 32
@@ -26,7 +26,7 @@ dot:
 	madd	w0, w0, w1, w2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	scale
 scale:
 	ldp	w2, w3, [x0]
@@ -49,7 +49,7 @@ scale:
 	.string	"%c %d %d %ld %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
