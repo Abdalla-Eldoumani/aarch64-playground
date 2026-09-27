@@ -337,6 +337,10 @@ Rd = Rn >> shift;                      // copies of the sign bit shift in`,
 Rd = shift == 0 ? Rn : Rn >> shift | Rn << (64 - shift);`,
     intrinsic: "__rorll",
   },
+  EXTR: {
+    c: `// uint64_t Rd, Rn, Rm; int lsb (0 to 63)
+Rd = lsb == 0 ? Rm : Rm >> lsb | Rn << (64 - lsb);   // Rn's low bits land on top`,
+  },
   SBFX: {
     c: `// int64_t Rd; uint64_t Rn; int lsb, width
 Rd = (int64_t)(Rn << (64 - lsb - width)) >> (64 - width);   // sign-extended`,
@@ -529,6 +533,11 @@ Wt = *(int16_t *)(Xn + off);           // ldrsh wt: to 32 bits, the top of xt cl
     c: `// int64_t Xt; char *Xn; int64_t off
 Xt = *(int32_t *)(Xn + off);           // four bytes, sign-extended`,
   },
+  LDPSW: {
+    c: `// int64_t Xt1, Xt2; char *Xn; int64_t off
+Xt1 = *(int32_t *)(Xn + off);          // four bytes, sign-extended
+Xt2 = *(int32_t *)(Xn + off + 4);      // the next four, sign-extended too`,
+  },
   LDP: {
     c: `// uint64_t Xt1, Xt2; char *Xn; int64_t off
 Xt1 = *(uint64_t *)(Xn + off);
@@ -618,6 +627,10 @@ if (Rt >> bit & 1) goto label;`,
     c: `// uint64_t X0, X1, X2, X8 (svc 0: the kernel reads the call number in x8)
 X0 = syscall(X8, X0, X1, X2);          // x8 = 64 is write(x0, x1, x2)`,
   },
+  BRK: {
+    c: `// int imm (any 16-bit tag; gcc's own trap is brk #1000)
+__builtin_trap();                      // the program stops: Trace/breakpoint trap`,
+  },
 
   // floating point
   FMOV: {
@@ -696,6 +709,34 @@ if (isnan(Dn) || isnan(Dm)) { N = 0; Z = 0; C = 1; V = 1; }   // unordered
 else if (Dn == Dm) { N = 0; Z = 1; C = 1; V = 0; }
 else if (Dn < Dm)  { N = 1; Z = 0; C = 0; V = 0; }
 else               { N = 0; Z = 0; C = 1; V = 0; }`,
+  },
+  FCCMP: {
+    c: `// double Dn, Dm; int nzcv, cond, N, Z, C, V
+if (cond) {                            // compare, exactly as fcmp does
+  if (isnan(Dn) || isnan(Dm)) { N = 0; Z = 0; C = 1; V = 1; }   // unordered
+  else if (Dn == Dm) { N = 0; Z = 1; C = 1; V = 0; }
+  else if (Dn < Dm)  { N = 1; Z = 0; C = 0; V = 0; }
+  else               { N = 0; Z = 0; C = 1; V = 0; }
+} else {                               // write the #nzcv literal instead
+  N = nzcv >> 3 & 1;
+  Z = nzcv >> 2 & 1;
+  C = nzcv >> 1 & 1;
+  V = nzcv & 1;
+}`,
+  },
+  FCCMPE: {
+    c: `// double Dn, Dm; int nzcv, cond, N, Z, C, V (the same flags fccmp sets)
+if (cond) {                            // compare, exactly as fcmpe does
+  if (isnan(Dn) || isnan(Dm)) { N = 0; Z = 0; C = 1; V = 1; }   // unordered
+  else if (Dn == Dm) { N = 0; Z = 1; C = 1; V = 0; }
+  else if (Dn < Dm)  { N = 1; Z = 0; C = 0; V = 0; }
+  else               { N = 0; Z = 0; C = 1; V = 0; }
+} else {                               // write the #nzcv literal instead
+  N = nzcv >> 3 & 1;
+  Z = nzcv >> 2 & 1;
+  C = nzcv >> 1 & 1;
+  V = nzcv & 1;
+}`,
   },
   FCVT: {
     c: `// double Dd; float Sn
