@@ -681,12 +681,8 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                     let mut bytes = Vec::with_capacity(exprs.len() * width);
                     for (i, group) in exprs.iter().enumerate() {
                         let here = base + offset + (i * width) as u64;
-                        let value = evaluate(
-                            group,
-                            &|name| symbol_at(name, *original_line, symbols, equates),
-                            here as i64,
-                            *original_line,
-                        )?;
+                        let value =
+                            evaluate_linked(group, symbols, equates, here, *original_line)?;
                         let le = value.to_le_bytes();
                         bytes.extend_from_slice(&le[..*width]);
                     }
@@ -1168,13 +1164,37 @@ fn resolve_ldr_eq_target(
     // slot, which is what GAS resolves `.` to inside an `=expr` operand.
     // Passing 0 unconditionally makes `ldr x0, =. + 8` load 8.
     let tokens = lex(text, line)?;
-    let value = evaluate(
-        &tokens,
-        &|name| symbol_at(name, line, symbols, equates),
+    let value = evaluate_linked(&tokens, symbols, equates, here, line)?;
+    Ok(value as u64)
+}
+
+/// Evaluate a value the linker fills in: a literal-pool constant, a data
+/// slot, or an address operand. GAS leaves a name nothing defines to ld
+/// there, so the error opens with ld's line, as it does on the servers.
+fn evaluate_linked(
+    tokens: &[crate::frontend::lexer::Token],
+    symbols: &HashMap<String, u64>,
+    equates: &EquateDefs,
+    here: u64,
+    line: usize,
+) -> Result<i64, EmuError> {
+    let missing = std::cell::Cell::new(None);
+    evaluate(
+        tokens,
+        &|name| {
+            let value = symbol_at(name, line, symbols, equates);
+            if value.is_none() {
+                missing.set(Some(name.to_string()));
+            }
+            value
+        },
         here as i64,
         line,
-    )?;
-    Ok(value as u64)
+    )
+    .map_err(|e| match missing.take() {
+        Some(name) => assembler::undefined_label(line, &name),
+        None => e,
+    })
 }
 
 /// Resolve a relocatable expression operand (a bare symbol, or a symbol
@@ -1190,12 +1210,7 @@ fn resolve_relocatable_operand(
     line: usize,
 ) -> Result<u64, EmuError> {
     let tokens = lex(text, line)?;
-    let value = evaluate(
-        &tokens,
-        &|name| symbol_at(name, line, symbols, equates),
-        here as i64,
-        line,
-    )?;
+    let value = evaluate_linked(&tokens, symbols, equates, here, line)?;
     Ok(value as u64)
 }
 
@@ -1379,14 +1394,7 @@ fn rewrite_operand(
         if is_bare_identifier(name) {
             return match symbols.get(name) {
                 Some(addr) => Ok(format!("{}", addr & 0xFFF)),
-                None => Err(EmuError::AssemblyError {
-                    line: ln,
-                    message: format!(
-                        "`{name}` is not defined anywhere in this program: check the \
-                         spelling against the label or the `name = value` line that \
-                         defines it. m4 substitution is whole-token and case-sensitive"
-                    ),
-                }),
+                None => Err(assembler::undefined_label(ln, name)),
             };
         }
         // A relocatable expression, not just a bare symbol: gcc writes
