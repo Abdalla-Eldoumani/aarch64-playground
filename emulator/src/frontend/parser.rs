@@ -465,7 +465,7 @@ fn parse_directive(
         ".hword" | ".short" | ".2byte" => emit_int_list(rest, prog, *current, line, 2),
         ".word" | ".4byte" => emit_int_list(rest, prog, *current, line, 4),
         // `.dword` is the spelling course files write for 8-byte values;
-        // gcc writes `.quad`, and `.xword` for pointer tables. Same emission.
+        // AArch64 gcc writes `.xword` for every 8-byte value. Same emission.
         ".quad" | ".dword" | ".xword" | ".8byte" => emit_int_list(rest, prog, *current, line, 8),
         ".double" => emit_float_list(rest, prog, *current, line, true),
         ".float" => emit_float_list(rest, prog, *current, line, false),
