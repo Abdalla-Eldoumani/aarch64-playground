@@ -46,7 +46,7 @@ interface RegisterPanelProps {
   source?: string;
   currentLine?: number | null;
   /** A run is streaming snapshots. The list holds still and says nothing
-   *  until it stops, then follows the last write once. */
+   *  until it stops, then follows what the snapshot it stopped on wrote. */
   running?: boolean;
 }
 
@@ -216,6 +216,8 @@ interface ViewState {
 type ViewAction =
   /** The student picked a cell, or the stored choice arrived after mount. */
   | { kind: "show"; view: RegView }
+  /** A run is streaming: the write from before it is no longer the news. */
+  | { kind: "run" }
   /** The classes this step wrote, already filtered to the ones that exist. */
   | {
       kind: "follow";
@@ -249,6 +251,7 @@ function reduceView(state: ViewState, action: ViewAction): ViewState {
     flagged.delete(action.view);
     return { ...state, view: action.view, flagged };
   }
+  if (action.kind === "run") return state.pending ? { ...state, pending: null } : state;
   const { touched, move } = action;
   let { view, flagged } = state;
   // Exactly one class wrote: show it, so a mixed program needs no manual
@@ -263,11 +266,13 @@ function reduceView(state: ViewState, action: ViewAction): ViewState {
     const others = touched.filter((t) => t !== view);
     if (!sameViews(others, flagged)) flagged = new Set(others);
   }
+  // A snapshot that wrote nothing drops the last write too: kept, its words
+  // would come back after a run as if the run had just written them.
   const rows = action.rows[view];
   const pending =
     rows.length > 0 || action.speech
       ? { id: (state.pending?.id ?? 0) + 1, view, rows, speech: action.speech }
-      : state.pending;
+      : null;
   let { doubles } = state;
   if (action.fpWritten.some((i) => doubles.has(i) !== action.dSpelled)) {
     const next = new Set(doubles);
@@ -533,9 +538,20 @@ export function RegisterPanel({
       });
     },
   );
+  // A run is followed once, from the snapshot it stops on: what it streamed
+  // on the way is stale by then. A stop that brought no snapshot of its own
+  // finds the one from before the run already followed, and repeats nothing.
+  const followedSnap = useRef<readonly [ReadonlySet<number>, ReadonlySet<number>] | null>(null);
   useEffect(() => {
+    if (running) {
+      dispatchView({ kind: "run" });
+      return;
+    }
+    const last = followedSnap.current;
+    if (last?.[0] === changedRegs && last[1] === followedVecRegs) return;
+    followedSnap.current = [changedRegs, followedVecRegs];
     followWrite(changedRegs, followedVecRegs);
-  }, [changedRegs, followedVecRegs]);
+  }, [changedRegs, followedVecRegs, running]);
 
   const pickView = useCallback((next: RegView) => {
     dispatchView({ kind: "show", view: next });
