@@ -2,6 +2,7 @@
   "title": "How many minutes old?",
   "slug": "how-many-minutes-old",
   "order": 56,
+  "lastUpdated": "2026-09-27",
   "topic": "io",
   "difficulty": "core",
   "prompt": "Read an age in whole years with `scanf` and print how many minutes that is, counting every year as 365 days. For the input `19`:\n\n```\n19 years is 9986400 minutes\n```\n\nThe starter has both format strings and a 4-byte slot in `.bss`, `years_in`. Call `scanf` with `fmt_in` in `x0` and the address of `years_in` in `x1`, then load the age into `years_r`.\n\nA year has 525600 minutes, so at 4086 years the answer no longer fits in 32 bits (the largest 32-bit int is 2147483647). Widen the age first: `sxtw` copies a 32-bit `w` value into a 64-bit `x` register and keeps its sign, and `mul` on `x` registers then gives the full 64-bit product. `%ld` prints a 64-bit `x` register. 525600 is too wide for one `mov`, so build it with `mul` from 1440 (minutes in a day) and 365.\n\n## what is checked\n\n- with input `19` the line above is printed\n- the program exits cleanly\n- `sxtw` widens the age\n- the program also runs on ages you do not see: zero, a negative number, and ages whose minutes do not fit in 32 bits",
