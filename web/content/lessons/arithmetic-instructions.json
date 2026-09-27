@@ -1,0 +1,105 @@
+{
+  "title": "Arithmetic, and the missing remainder",
+  "slug": "arithmetic-instructions",
+  "order": 7,
+  "summary": "Work out formulas with add, sub, mul, madd and msub, divide with sdiv and udiv, and build a remainder from sdiv and msub.",
+  "tags": [
+    "armv8 basics",
+    "registers"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Registers and immediates](/learn/registers-and-immediates)\n- [Printing integers and characters](/learn/printing-other-data-types)"
+    },
+    {
+      "type": "prose",
+      "markdown": "AArch64 has an instruction for each of the four basic operations: `add`, `sub`, `mul`, and two for division, `sdiv` and `udiv`. It also has instructions that multiply and add in one step, which keeps a formula short. What it does not have is an instruction for the remainder. This lesson goes through each instruction, uses them to work out a formula, and then builds the remainder out of a divide and a multiply."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Destination first\n\nEvery arithmetic instruction names the register that gets the answer first, then the registers it reads, called its sources. `sub w0, w1, w2` means \"w0 becomes w1 minus w2\". The destination can also be one of the sources, so `add w19, w19, w20` adds `w20` onto `w19`.\n\nUse the `w` registers for `int` values, which are 32 bits, and the `x` registers for `long` values, which are 64 bits. In these instructions every register is the same width: all `w` or all `x`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The eight instructions\n\nEvery row of this table starts from `w1` = 7, `w2` = 3 and `w3` = 10.\n\n| Instruction | What it computes | Result |\n|---|---|---|\n| `add w0, w1, w2` | `w1 + w2` | 10 |\n| `sub w0, w1, w2` | `w1 - w2` | 4 |\n| `mul w0, w1, w2` | `w1 * w2` | 21 |\n| `madd w0, w1, w2, w3` | `w1 * w2 + w3` | 31 |\n| `msub w0, w1, w2, w3` | `w3 - w1 * w2` | -11 |\n| `mneg w0, w1, w2` | `-(w1 * w2)` | -21 |\n| `sdiv w0, w1, w2` | `w1 / w2`, signed | 2 |\n| `udiv w0, w1, w2` | `w1 / w2`, unsigned | 2 |\n\n`madd` is short for multiply-add, `msub` for multiply-subtract, and `mneg` for multiply-negate. In `madd` and `msub` the register that is added to, or subtracted from, comes last: `msub w0, w1, w2, w3` is `w3 - w1 * w2`, not `w1 * w2 - w3`.\n\n`sdiv` reads the bits as a signed number, one that can be negative, and `udiv` reads them as an unsigned number, one that cannot. For 7 and 3 they agree. The last section shows where they do not."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Only `add` and `sub` accept an immediate, a constant written into the instruction itself, in place of their last source register: `add w0, w1, 10` works, and any value from 0 to 4095 is always accepted. The other six need every source in a register, so `mul w0, w1, 3` does not assemble. Put the constant in a register first with `mov w9, 3`, then multiply by `w9`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Working out a formula\n\nTo work out a formula, split it into steps of one instruction each and keep each partial answer in a register. A register used this way is called a temporary: it holds a value only until a later step uses it. For y = 3x^2 - 5x + 7, where x^2 means x times x, the steps are:\n\n1. `sq = x * x`, with `mul`\n2. `y = 3 * sq + 7`, with `madd`\n3. `y = y - 5 * x`, with `msub`\n\nThe constants 3, 5 and 7 go into `w9`, `w10` and `w11` first, because `madd` and `msub` take no immediates. Those three are scratch registers, which means a function you call, such as `printf`, is allowed to change them. That is fine here, because nothing reads them after the call.\n\nThe program prints `3x^2 - 5x + 7 at x = 4 is 35`. Change `X_VALUE` to 5 and run it again: the answer becomes 57."
+    },
+    {
+      "type": "editor",
+      "starter": "// Works out y = 3x^2 - 5x + 7 for one value of x and prints it.\n// Change X_VALUE and run again.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(x_r, w19)\ndefine(sq_r, w20)\ndefine(y_r, w21)\n\ndefine(X_VALUE, 4)\n\n.data\nfmt_y:          .string \"3x^2 - 5x + 7 at x = %d is %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     x_r, X_VALUE\n        mov     w9, 3                       // mul, madd and msub take no immediates,\n        mov     w10, 5                      // so each constant goes into a register\n        mov     w11, 7\n\n        mul     sq_r, x_r, x_r              // sq = x * x\n        madd    y_r, w9, sq_r, w11          // y = 3 * sq + 7\n        msub    y_r, w10, x_r, y_r          // y = y - 5 * x\n\n        ldr     x0, =fmt_y\n        mov     w1, x_r\n        mov     w2, y_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "3x^2 - 5x + 7 at x = 4 is 35\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "This `main` keeps its named values in `w19` to `w21` without saving those registers first. Course programs do this in `main`: when `main` returns, the program ends, so nothing is left to notice the change. A function of your own must save any of `x19` to `x28` that it changes and put them back before it returns, which [a later lesson](/learn/calling-conventions) shows."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Division drops the fraction\n\n`sdiv` gives a whole number and drops the fraction, always rounding toward zero: 38 / 7 is 5, not 5.43, and -38 / 7 is -5, not -6. The part that was dropped is the remainder, and no AArch64 instruction hands it to you."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Building the remainder\n\nThe remainder is what is left after taking away as many whole copies of the divisor as fit:\n\nremainder = a - (a / b) * b\n\nThat is the shape of `msub`, so a divide followed by a multiply-subtract gives it:"
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "        sdiv    quot_r, a_r, b_r            // quot = a / b\n        msub    rem_r, quot_r, b_r, a_r     // rem = a - quot * b\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below shares 38 cookies among 7 friends. 38 / 7 is 5, and 38 - 5 * 7 is 3, so it prints `38 cookies, 7 friends: 5 each, 3 left over`. Set `COOKIES` to 40 and run it again: the last number becomes 5.\n\nWith a negative number to divide, the remainder comes out negative too: -38 and 7 give -5 each and -3 left over, the same answer as the `%` operator in C."
+    },
+    {
+      "type": "editor",
+      "starter": "// Shares cookies out evenly: sdiv gives the share for each friend,\n// and msub gives the cookies left over.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(cookies_r, w19)\ndefine(friends_r, w20)\ndefine(each_r, w21)\ndefine(left_r, w22)\n\ndefine(COOKIES, 38)\ndefine(FRIENDS, 7)\n\n.data\nfmt_share:      .string \"%d cookies, %d friends: %d each, %d left over\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     cookies_r, COOKIES\n        mov     friends_r, FRIENDS\n\n        sdiv    each_r, cookies_r, friends_r            // each = cookies / friends\n        msub    left_r, each_r, friends_r, cookies_r    // left = cookies - each * friends\n\n        ldr     x0, =fmt_share\n        mov     w1, cookies_r\n        mov     w2, friends_r\n        mov     w3, each_r\n        mov     w4, left_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "38 cookies, 7 friends: 5 each, 3 left over\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Dividing by zero\n\nOn many machines, dividing by zero stops the program with an error. AArch64 does not: `sdiv` and `udiv` with a zero divisor write 0 and carry on. The program keeps running with a wrong answer and nothing warns you, so when a divisor could be zero, compare it with zero before dividing. [Conditionals with cmp and b.cond](/learn/assembly-conditionals-basics) shows how to act on that comparison."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Signed or unsigned division\n\nA register holds bits, and the same bits can be read two ways. Read as a signed number, the 32 bits of -8 mean -8. Read as an unsigned number, the same bits mean 4294967288, because an unsigned number has no negative values. `sdiv` uses the signed reading and `udiv` the unsigned one, so they agree on positive numbers and disagree as soon as one is negative. Use `sdiv` for `int` and `long` values, and `udiv` only for values that can never be negative.\n\nThe program below divides 9 by 0, then divides -8 by 2 both ways. The `%u` specifier prints the unsigned reading of a `w` register. It prints:\n\n```text\nsdiv 9 / 0 = 0\nsdiv -8 / 2 = -4\nudiv -8 / 2 = 2147483644 (it read -8 as 4294967288)\n```\n\n[Binary, hex, and octal](/learn/binary-hex-and-octal) explains why -8 and 4294967288 share one bit pattern."
+    },
+    {
+      "type": "editor",
+      "starter": "// Two surprises in division: a zero divisor gives 0 instead of\n// stopping the program, and udiv reads a negative number as a large positive one.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(nine_r, w19)\ndefine(zero_r, w20)\ndefine(neg_r, w21)\ndefine(two_r, w22)\n\n.data\nfmt_zero:       .string \"sdiv 9 / 0 = %d\\n\"\nfmt_sdiv:       .string \"sdiv -8 / 2 = %d\\n\"\nfmt_udiv:       .string \"udiv -8 / 2 = %d (it read -8 as %u)\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     nine_r, 9\n        mov     zero_r, 0\n        mov     neg_r, -8\n        mov     two_r, 2\n\n        ldr     x0, =fmt_zero\n        sdiv    w1, nine_r, zero_r          // no fault: the answer is simply 0\n        bl      printf\n\n        ldr     x0, =fmt_sdiv\n        sdiv    w1, neg_r, two_r            // signed: -8 / 2 = -4\n        bl      printf\n\n        ldr     x0, =fmt_udiv\n        udiv    w1, neg_r, two_r            // unsigned: the same bits mean 4294967288\n        mov     w2, neg_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sdiv 9 / 0 = 0\nsdiv -8 / 2 = -4\nudiv -8 / 2 = 2147483644 (it read -8 as 4294967288)\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. After `mov w1, 4`, `mov w2, 6` and `mov w3, 30`, what does `msub w0, w1, w2, w3` leave in `w0`?\n2. Which two instructions leave the remainder of `w19` divided by `w20` in `w21`, using `w22` for the quotient?\n3. Why does `mul w0, w1, 10` fail to assemble, and what is the fix?\n4. What does `sdiv w0, w1, w2` leave in `w0` when `w2` holds 0?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. 6, because 30 - 4 * 6 = 6.\n2. `sdiv w22, w19, w20`, then `msub w21, w22, w20, w19`.\n3. `mul` takes registers only, so move 10 into a register first: `mov w9, 10`, then `mul w0, w1, w9`.\n4. 0, and the program carries on with no error."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Warm up the registers](/practice/warm-up-the-registers): combine three registers with an add and a subtract.\n- [Fizzbuzz, by hand](/practice/fizzbuzz-by-hand): the divide-then-`msub` remainder inside a loop. Try it after the [pre-test loop lesson](/learn/pretest-loop).\n- [Quiz: ARMv8 assembly (core)](/practice/quiz-inter-armv8), [Fill in the blank: ARMv8 assembly (core)](/practice/blanks-armv8) and [Predict: ARMv8 assembly (challenge)](/practice/predict-armv8): questions on these instructions and the registers around them."
+    }
+  ]
+}
