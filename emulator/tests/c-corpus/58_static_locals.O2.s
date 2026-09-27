@@ -252,7 +252,7 @@ fib_probe:
 	.text
 	.align	2
 	.align 5
-halves__isra__0:
+halves.isra.0:
 	adrp	x0, .LANCHOR1
 	add	x0, x0, :lo12:.LANCHOR1
 	mov	x2, 6148914691236517205
@@ -445,7 +445,7 @@ main:
 	mov	w0, 0
 	bl	fib_probe
 .L42:
-	bl	halves__isra__0
+	bl	halves.isra.0
 	subs	w19, w19, #1
 	bne	.L42
 	ldp	x29, x30, [sp, 16]
@@ -471,7 +471,7 @@ main:
 	.section .rodata
 	.align	4
 	.LANCHOR2:
-names__5:
+names.5:
 	.quad	.LC10
 	.quad	.LC11
 	.quad	.LC12
@@ -480,19 +480,19 @@ names__5:
 	.data
 	.align	4
 	.LANCHOR1:
-hits__17:
+hits.17:
 	.word	100
-hits__7:
+hits.7:
 	.word	-5
-c__16:
+c.16:
 	.byte	-6
 	.zero	1
-s__15:
+s.15:
 	.hword	-6
-c__14:
+c.14:
 	.byte	120
 	.zero	3
-pool__12:
+pool.12:
 	.word	11
 	.word	22
 	.word	33
@@ -501,40 +501,40 @@ pool__12:
 	.word	66
 	.word	77
 	.word	88
-cur__13:
-	.quad	pool__12+20
-last__6:
-	.quad	names__5+32
-m__8:
+cur.13:
+	.quad	pool.12+20
+last.6:
+	.quad	names.5+32
+m.8:
 	.byte	113
 	.zero	7
 	.quad	81985529216486895
 	.hword	-2
 	.byte 250, 251, 252
 	.zero	3
-op__11:
+op.11:
 	.quad	add1
-d__1:
+d.1:
 	.word	-1717986918
 	.word	1069128089
-big__0:
+big.0:
 	.quad	-9000000000000000000
 rounds:
 	.word	300
 	.bss
 	.align	4
 	.LANCHOR0:
-hits__18:
+hits.18:
 	.zero	4
 	.zero	12
-hist__10:
+hist.10:
 	.zero	4000
-total__9:
+total.9:
 	.zero	4
-calls__4:
+calls.4:
 	.zero	4
-now__2:
+now.2:
 	.zero	4
-deepest__3:
+deepest.3:
 	.zero	4
 
