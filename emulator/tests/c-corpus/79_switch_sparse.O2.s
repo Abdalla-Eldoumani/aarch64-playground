@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 sparse32:
 	cmp	w0, 4095
 	beq	.L6
@@ -23,7 +23,7 @@ sparse32:
 .L1:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L21:
 	cmn	w0, #4096
 	beq	.L7
@@ -40,7 +40,7 @@ sparse32:
 	cmp	w0, w1
 	cset	w1, eq
 	b	.L1
-	.align 2
+	.p2align 2,,3
 .L5:
 	mov	w1, 12
 	mov	w2, 2147418112
@@ -51,7 +51,7 @@ sparse32:
 	mov	w1, 13
 	csel	w1, wzr, w1, ne
 	b	.L1
-	.align 2
+	.p2align 2,,3
 .L4:
 	mov	w1, 5
 	cmn	w0, #1
@@ -60,20 +60,20 @@ sparse32:
 	mov	w1, 6
 	csel	w1, wzr, w1, ne
 	b	.L1
-	.align 2
+	.p2align 2,,3
 .L7:
 	mov	w1, 4
 	b	.L1
-	.align 2
+	.p2align 2,,3
 .L12:
 	mov	w1, 11
 	b	.L1
-	.align 2
+	.p2align 2,,3
 .L6:
 	mov	w1, 7
 	b	.L1
 	.align	2
-	.align 5
+	.p2align 5,,15
 clustered:
 	cmp	w0, 1002
 	beq	.L23
@@ -93,7 +93,7 @@ clustered:
 .L22:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L24:
 	mov	w2, 50000
 	cmp	w0, w2
@@ -108,7 +108,7 @@ clustered:
 	lsl	w1, w1, 1
 	add	w1, w1, 104
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L40:
 	mov	w2, 50003
 	cmp	w0, w2
@@ -121,7 +121,7 @@ clustered:
 	sub	w0, w0, w1
 	add	w1, w0, 502
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L26:
 	cmp	w0, 1000
 	beq	.L34
@@ -135,7 +135,7 @@ clustered:
 	mul	w1, w1, w0
 	add	w1, w1, 8
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L28:
 	cmp	w0, 4
 	beq	.L59
@@ -143,7 +143,7 @@ clustered:
 	add	w0, w1, w0, lsl 2
 	add	w1, w0, 5
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L42:
 	cmp	w0, 1006
 	beq	.L45
@@ -154,7 +154,7 @@ clustered:
 .L38:
 	mov	w1, -1
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L48:
 	cmp	w0, 1048576
 	bne	.L38
@@ -162,85 +162,85 @@ clustered:
 	mul	w1, w1, w0
 	add	w1, w1, 999
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L27:
 	lsl	w0, w1, 3
 	sub	w0, w0, w1
 	add	w1, w0, 3
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L41:
 	add	w1, w1, w1, lsl 1
 	lsl	w1, w1, 2
 	add	w1, w1, 105
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L34:
 	add	w1, w1, 50
 	lsl	w1, w1, 1
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L58:
 	lsl	w1, w1, 3
 	add	w1, w1, 501
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L36:
 	add	w0, w1, w1, lsl 3
 	add	w0, w1, w0, lsl 1
 	add	w1, w0, 7
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L47:
 	add	w1, w1, w1, lsl 1
 	lsl	w1, w1, 1
 	add	w1, w1, 503
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L57:
 	lsl	w1, w1, 3
 	add	w1, w1, 103
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L29:
 	add	w1, w1, w1, lsl 1
 	add	w1, w1, 1
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L39:
 	add	w1, w1, w1, lsl 3
 	add	w1, w1, 500
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L23:
 	add	w1, w1, w1, lsl 1
 	lsl	w1, w1, 1
 	add	w1, w1, 102
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L25:
 	add	w1, w1, w1, lsl 4
 	add	w1, w1, 6
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L35:
 	lsl	w1, w1, 2
 	add	w1, w1, 101
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L45:
 	mov	w0, 14
 	mul	w1, w1, w0
 	add	w1, w1, 106
 	b	.L22
-	.align 2
+	.p2align 2,,3
 .L59:
 	add	w0, w1, w1, lsl 2
 	add	w0, w1, w0, lsl 1
 	add	w1, w0, 4
 	b	.L22
 	.align	2
-	.align 5
+	.p2align 5,,15
 punct_kind:
 	sub	w0, w0, #33
 	cmp	w0, 63
@@ -265,12 +265,12 @@ punct_kind:
 	csel	w0, wzr, w0, eq
 .L60:
 	ret
-	.align 2
+	.p2align 2,,3
 .L62:
 	mov	w0, 0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 key64:
 	mov	x2, 9223372036854775807
 	cmp	x0, x2
@@ -290,7 +290,7 @@ key64:
 .L66:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L68:
 	mov	x3, 47806
 	mov	w1, 7
@@ -308,7 +308,7 @@ key64:
 	csel	w1, w1, wzr, eq
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L69:
 	mov	x1, 1099511627776
 	cmp	x0, x1
@@ -316,13 +316,13 @@ key64:
 	lsl	w1, w1, 2
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L70:
 	mov	w1, 5
 	mov	w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 skey64:
 	cmn	x0, #1
 	beq	.L81
@@ -340,7 +340,7 @@ skey64:
 .L78:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L80:
 	mov	w1, 5
 	mov	x2, 2147483648
@@ -352,13 +352,13 @@ skey64:
 	csel	w1, w1, wzr, eq
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L81:
 	mov	w1, 4
 	mov	w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 is_small_prime:
 	cmp	w0, 127
 	bgt	.L88
@@ -374,7 +374,7 @@ is_small_prime:
 	lsr	x0, x1, x0
 	and	w0, w0, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L88:
 	cmp	w0, 191
 	bgt	.L92
@@ -388,7 +388,7 @@ is_small_prime:
 	lsr	x0, x1, x0
 	and	w0, w0, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L89:
 	mov	x1, 4177
 	sub	w0, w0, #67
@@ -398,11 +398,11 @@ is_small_prime:
 	lsr	x0, x1, x0
 	and	w0, w0, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L94:
 	mov	w0, 0
 	ret
-	.align 2
+	.p2align 2,,3
 .L92:
 	sub	w0, w0, #193
 	cmp	w0, 6
@@ -412,7 +412,7 @@ is_small_prime:
 	and	w0, w0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sc_kind:
 	sxtb	w1, w0
 	cmp	w1, 0
@@ -428,7 +428,7 @@ sc_kind:
 	cset	w0, eq
 .L97:
 	ret
-	.align 2
+	.p2align 2,,3
 .L99:
 	mov	w0, 5
 	cmp	w1, 100
@@ -437,7 +437,7 @@ sc_kind:
 	mov	w0, 6
 	csel	w0, w0, wzr, eq
 	ret
-	.align 2
+	.p2align 2,,3
 .L100:
 	mov	w0, 4
 	ret
@@ -486,7 +486,7 @@ sc_kind:
 	.string	" %d:%d"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -510,7 +510,7 @@ main:
 	adrp	x0, .LC0
 	add	x0, x0, :lo12:.LC0
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L109:
 	mov	x19, -1
 .L111:
@@ -543,7 +543,7 @@ main:
 	adrp	x0, .LC3
 	add	x0, x0, :lo12:.LC3
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L113:
 	ldr	w0, [x22, x19, lsl 2]
 	add	w1, w19, 10
@@ -564,7 +564,7 @@ main:
 	adrp	x0, .LC5
 	add	x0, x0, :lo12:.LC5
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L114:
 	mov	w0, w19
 	add	w19, w19, 1
@@ -595,7 +595,7 @@ main:
 	adrp	x0, .LC7
 	add	x0, x0, :lo12:.LC7
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L115:
 	ldr	x4, [x25], 8
 	add	x4, x23, x4
@@ -624,7 +624,7 @@ main:
 	mov	x26, 9223372036854775807
 	bl	printf
 	b	.L119
-	.align 2
+	.p2align 2,,3
 .L116:
 	sub	x0, x4, #1
 	bl	skey64
@@ -665,7 +665,7 @@ main:
 	adrp	x0, .LC10
 	add	x0, x0, :lo12:.LC10
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L124:
 	add	w0, w19, w20
 	bl	is_small_prime
@@ -694,7 +694,7 @@ main:
 	mov	w19, 0
 	bl	printf
 	b	.L126
-	.align 2
+	.p2align 2,,3
 .L125:
 	add	w19, w19, 1
 	cmp	w19, 256
@@ -721,7 +721,7 @@ main:
 	ldp	x25, x26, [sp, 64]
 	ldp	x29, x30, [sp], 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L121:
 	mov	w1, w19
 	mov	x0, x21
@@ -734,19 +734,19 @@ main:
 	.align	4
 	.LANCHOR1:
 k32.3:
-	.quad	-2147483648
-	.quad	-65536
-	.quad	-4097
-	.quad	-4096
-	.quad	-1
-	.quad	0
-	.quad	4095
-	.quad	4096
-	.quad	65535
-	.quad	65536
-	.quad	74565
-	.quad	2147418112
-	.quad	2147483647
+	.xword	-2147483648
+	.xword	-65536
+	.xword	-4097
+	.xword	-4096
+	.xword	-1
+	.xword	0
+	.xword	4095
+	.xword	4096
+	.xword	65535
+	.xword	65536
+	.xword	74565
+	.xword	2147418112
+	.xword	2147483647
 	.zero	8
 kc.2:
 	.word	0
@@ -769,27 +769,27 @@ kc.2:
 	.word	-1
 	.zero	8
 k64.1:
-	.quad	0
-	.quad	4294967295
-	.quad	4294967296
-	.quad	1099511627776
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
-	.quad	-2401053089206453570
-	.quad	-1
-	.quad	8589934591
-	.quad	-2401053092612145152
-	.quad	3405691582
+	.xword	0
+	.xword	4294967295
+	.xword	4294967296
+	.xword	1099511627776
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
+	.xword	-2401053089206453570
+	.xword	-1
+	.xword	8589934591
+	.xword	-2401053092612145152
+	.xword	3405691582
 	.zero	8
 s64.0:
-	.quad	-9223372036854775808
-	.quad	-4294967296
-	.quad	-4096
-	.quad	-1
-	.quad	2147483648
-	.quad	9223372036854775807
-	.quad	2147483647
-	.quad	-2147483648
+	.xword	-9223372036854775808
+	.xword	-4294967296
+	.xword	-4096
+	.xword	-1
+	.xword	2147483648
+	.xword	9223372036854775807
+	.xword	2147483647
+	.xword	-2147483648
 	.bss
 	.align	2
 	.LANCHOR0:
