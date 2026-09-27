@@ -22,12 +22,12 @@
     {
       "question": "The base address of an int array is in x21 and a 64-bit index is in x20. Which line stores w22 into the element at that index in one instruction?",
       "options": [
-        "str w22, [x21, x20, lsl #2]",
         "str w22, [x21, x20, sxtw #2]",
         "str w22, [x21, x20 * 4]",
-        "str w22, [x21, lsl #2, x20]"
+        "str w22, [x21, lsl #2, x20]",
+        "str w22, [x21, x20, lsl #2]"
       ],
-      "correctAnswer": 0,
+      "correctAnswer": 3,
       "explanation": "The register offset form scales the index inside the brackets, and lsl #2 multiplies it by 4, the size of an int. The sxtw extension applies only to a 32-bit index in a w register, and the addressing syntax accepts no arithmetic expression and no reordered operands.",
       "hint": "The shift goes last, inside the brackets, and a left shift of 2 multiplies by 4."
     },
@@ -35,11 +35,11 @@
       "question": "The same array base is in x21, but the index is now a signed 32-bit value in w20. Which line stores w22 into the element at that index?",
       "options": [
         "str w22, [x21, w20, lsl #2]",
-        "str w22, [x21, w20, sxtw #2]",
         "str w22, [x21, w20, uxtw #2]",
+        "str w22, [x21, w20, sxtw #2]",
         "str w22, [x21, w20]"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 2,
       "explanation": "A 32-bit offset register must be widened to 64 bits before it is added to the base, so the operand names the extension and #2 scales the index by 4. Use sxtw for a signed index, since uxtw would zero-extend a negative value into a large positive offset, and plain lsl only accepts a 64-bit index register.",
       "hint": "Sign-extend the word and scale it in the same operand."
     },
