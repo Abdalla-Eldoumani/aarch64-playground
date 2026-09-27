@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	score
 score:
 	ubfx	x2, x0, 32, 16
@@ -21,7 +21,7 @@ score:
 	.string	"d %d %d: %ld %ld %ld bytes %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	distances
 distances:
 	mov	w1, w3
@@ -44,7 +44,7 @@ distances:
 	mov	x3, x4
 	b	printf
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sort24
 sort24:
 	cmp	w1, 1
@@ -55,7 +55,7 @@ sort24:
 	add	x9, sp, 8
 	mov	w10, 0
 	mov	w12, 24
-	.align 5
+	.p2align 5,,15
 .L11:
 	ldp	x2, x3, [x8]
 	stp	x2, x3, [x9]
@@ -65,7 +65,7 @@ sort24:
 	ldr	x1, [x8, 16]
 	str	x1, [x9, 16]
 	mov	x1, x8
-	.align 5
+	.p2align 5,,15
 .L7:
 	ldr	x3, [x1, -24]
 	cmp	x3, x6
@@ -95,7 +95,7 @@ sort24:
 	bne	.L11
 	add	sp, sp, 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L18:
 	add	w1, w2, 1
 	umaddl	x1, w1, w12, x0
@@ -103,7 +103,7 @@ sort24:
 .L15:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	find24
 find24:
 	mov	x6, x0
@@ -111,7 +111,7 @@ find24:
 	mov	w0, 0
 	mov	w7, 24
 	b	.L21
-	.align 2
+	.p2align 2,,3
 .L22:
 	sub	w3, w4, w0
 	add	w3, w0, w3, asr 1
@@ -131,7 +131,7 @@ find24:
 	cmp	x1, x2
 	csinv	w0, w0, wzr, eq
 	ret
-	.align 2
+	.p2align 2,,3
 .L26:
 	add	w0, w3, 1
 	b	.L21
@@ -139,7 +139,7 @@ find24:
 	mov	w0, -1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	bump
 bump:
 	adrp	x2, .LANCHOR0
@@ -162,7 +162,7 @@ bump:
 	stp	q31, q30, [x8]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	reverse36
 reverse36:
 	cmp	w1, 1
@@ -174,7 +174,7 @@ reverse36:
 	umaddl	x2, w1, w2, x3
 	sub	w1, w1, #1
 	mov	w3, 0
-	.align 5
+	.p2align 5,,15
 .L30:
 	ldp	q31, q30, [x0]
 	add	w3, w3, 1
@@ -194,7 +194,7 @@ reverse36:
 	blt	.L30
 	add	sp, sp, 48
 	ret
-	.align 2
+	.p2align 2,,3
 .L33:
 	ret
 	.section .rodata
@@ -203,7 +203,7 @@ reverse36:
 	.string	"grow %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	push
 push:
 	stp	x29, x30, [sp, -48]!
@@ -227,7 +227,7 @@ push:
 .L36:
 	ldp	x29, x30, [sp], 48
 	ret
-	.align 2
+	.p2align 2,,3
 .L43:
 	cbnz	w1, .L44
 	mov	x1, 20
@@ -251,7 +251,7 @@ push:
 	ldr	x4, [sp, 40]
 	ldr	w1, [x3, 8]
 	b	.L37
-	.align 2
+	.p2align 2,,3
 .L44:
 	lsl	w2, w1, 1
 	mov	w1, 20
@@ -287,7 +287,7 @@ push:
 	.string	"sizes %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #832
@@ -306,7 +306,7 @@ main:
 	stp	x21, x22, [sp, 32]
 	stp	x25, x26, [sp, 64]
 	stp	x27, x28, [sp, 80]
-	.align 5
+	.p2align 5,,15
 .L46:
 	mul	w2, w0, w0
 	str	w0, [x1]
@@ -324,7 +324,7 @@ main:
 	mov	w5, 0
 	mov	x4, x20
 	mov	w3, 26
-	.align 5
+	.p2align 5,,15
 .L48:
 	add	w1, w5, w5, lsl 2
 	add	w2, w5, w5, lsl 1
@@ -335,7 +335,7 @@ main:
 	sub	w0, w0, #3
 	sxtw	x0, w0
 	str	x0, [x4, -12]
-	.align 5
+	.p2align 5,,15
 .L47:
 	sdiv	w0, w2, w3
 	msub	w0, w0, w3, w2
@@ -357,7 +357,7 @@ main:
 	mov	x0, x19
 	mov	w2, 65
 	ldp	q29, q28, [x21]
-	.align 5
+	.p2align 5,,15
 .L49:
 	dup	v31.4s, w1
 	add	w1, w1, 10
@@ -373,7 +373,7 @@ main:
 	add	x4, x6, 120
 	mov	x1, 0
 	mov	w3, 1000
-	.align 5
+	.p2align 5,,15
 .L50:
 	ldrsh	w0, [x6, 4]
 	add	x6, x6, 12
@@ -438,7 +438,7 @@ main:
 	mov	x0, x25
 	mov	w1, 12
 	bl	sort24
-	.align 5
+	.p2align 5,,15
 .L52:
 	ldr	x1, [x20, -12]
 	and	w0, w23, 3
@@ -456,12 +456,12 @@ main:
 	add	x20, x20, :lo12:.LC6
 	mov	x23, -4
 	mov	w26, 24
-	.align 5
+	.p2align 5,,15
 .L53:
 	mov	w2, 12
 	mov	w1, 0
 	b	.L54
-	.align 2
+	.p2align 2,,3
 .L55:
 	sub	w0, w2, w1
 	add	w0, w1, w0, asr 1
@@ -487,11 +487,11 @@ main:
 	add	x23, x23, 1
 	bl	printf
 	b	.L53
-	.align 2
+	.p2align 2,,3
 .L86:
 	add	w1, w0, 1
 	b	.L54
-	.align 2
+	.p2align 2,,3
 .L87:
 	mov	x0, x20
 	mov	w2, 10
@@ -553,7 +553,7 @@ main:
 	mov	x1, x9
 	mov	w2, 0
 	mov	w0, 0
-	.align 5
+	.p2align 5,,15
 .L62:
 	add	w4, w0, w5
 	str	w4, [x1]
@@ -612,7 +612,7 @@ main:
 	bl	printf
 	stp	xzr, xzr, [sp, 128]
 	b	.L67
-	.align 2
+	.p2align 2,,3
 .L65:
 	add	w19, w19, 1
 	cmp	w19, 40
@@ -661,7 +661,7 @@ main:
 	movk	x6, 0x8970, lsl 48
 	movk	x5, 0x3b9a, lsl 16
 	umaddl	x7, w1, w7, x4
-	.align 5
+	.p2align 5,,15
 .L69:
 	sub	x2, x4, #20
 .L70:
