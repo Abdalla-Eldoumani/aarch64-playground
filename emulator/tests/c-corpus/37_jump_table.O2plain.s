@@ -5,7 +5,7 @@
 	.string	"many"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	name
 name:
 	cmp	w0, 11
@@ -14,7 +14,7 @@ name:
 	add	x1, x1, :lo12:.LANCHOR0
 	ldr	x0, [x1, w0, uxtw 3]
 	ret
-	.align 2
+	.p2align 2,,3
 .L3:
 	adrp	x0, .LC0
 	add	x0, x0, :lo12:.LC0
@@ -25,7 +25,7 @@ name:
 	.string	"%d=%s "
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -48]!
@@ -39,7 +39,7 @@ main:
 	add	x22, x22, :lo12:.LC0
 	add	x21, x21, :lo12:.LANCHOR0
 	mov	w19, -1
-	.align 5
+	.p2align 5,,15
 .L9:
 	cmp	w19, 11
 	bhi	.L6
@@ -107,16 +107,16 @@ main:
 	.align	3
 	.LANCHOR0:
 CSWTCH.1:
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
-	.quad	.LC13
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
+	.xword	.LC13
 
