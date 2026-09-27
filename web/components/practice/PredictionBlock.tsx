@@ -12,6 +12,7 @@
 import { useId, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { FeedbackAlert } from "@/components/practice/FeedbackAlert";
+import { typedAnswerIsRight } from "@/lib/content/theory-answers";
 
 export function PredictionBlock({
   code,
@@ -21,6 +22,7 @@ export function PredictionBlock({
   hint,
   value,
   onValueChange,
+  locked,
   onAttempt,
 }: {
   /** The snippet the student traces by hand; it is never executed. */
@@ -36,6 +38,9 @@ export function PredictionBlock({
   value?: string;
   /** Fires on every keystroke so the sheet can persist it. */
   onValueChange?: (value: string) => void;
+  /** Opens answered when the sheet restored this question as already
+   *  checked and right; honoured only while the restored answer still is. */
+  locked?: boolean;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
@@ -50,9 +55,10 @@ export function PredictionBlock({
     if (onValueChange) onValueChange(next);
   };
 
-  const isCorrect = inputVal.trim().toLowerCase() === answer.trim().toLowerCase();
+  const isCorrect = typedAnswerIsRight([answer], inputVal);
+  const answered = submitted || (locked === true && isCorrect);
 
-  const inputTone = submitted
+  const inputTone = answered
     ? isCorrect
       ? "border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] font-medium text-[var(--success)]"
       : "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] font-medium text-[var(--danger)]"
@@ -81,12 +87,12 @@ export function PredictionBlock({
           type="text"
           value={inputVal}
           onChange={(event) => setInputVal(event.target.value)}
-          disabled={submitted}
+          disabled={answered}
           placeholder="your answer"
           className={`w-full max-w-sm rounded-[var(--radius-control)] border px-4 py-2.5 font-mono text-[14px] outline-none transition-colors disabled:opacity-80 ${inputTone}`}
         />
 
-        {!submitted ? (
+        {!answered ? (
           <Button
             disabled={inputVal.trim() === ""}
             onClick={() => {
