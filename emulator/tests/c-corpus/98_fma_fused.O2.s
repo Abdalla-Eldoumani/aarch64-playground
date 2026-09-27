@@ -342,7 +342,7 @@ main:
 	.section .rodata
 	.align	4
 	.LANCHOR2:
-coef__0:
+coef.0:
 	.word	436314138
 	.word	1059717536
 	.word	381774871
