@@ -2,6 +2,7 @@
   "title": "The overflow detective",
   "slug": "overflow-detective",
   "order": 2,
+  "lastUpdated": "2026-09-27",
   "topic": "binary-arithmetic",
   "difficulty": "core",
   "prompt": "A 32-bit add can go wrong in two different ways, and the flags record both:\n\n- V (overflow) is set when the answer does not fit as a signed number: two positives giving a negative, or two negatives giving a positive.\n- C (carry) is set when the answer does not fit as an unsigned number: a 1 carried out of bit 31.\n\nThe starter reads two integers into `left_r` and `right_r` and prints the report. Add them into `sum_r` with `adds`, which sets the flags (a plain `add` does not). Then point `ovf_r` at `str_yes` when V is set, and `carry_r` at `str_yes` when C is set. The conditions `vs` and `vc` test V; `cs` and `cc` test C. Keep the add in `w` registers: the same numbers added in `x` registers would never overflow.\n\nWith the sample input `2147483647 1` the program prints `2147483647 + 1 = -2147483648 (overflow: yes, carry: no)`.\n\n## what is checked\n\n- the report for the sample input\n- the program exits cleanly\n- the sum comes from `adds`\n- the right report for other pairs, including 0 + 0, two negatives, and a pair that sets both flags",
