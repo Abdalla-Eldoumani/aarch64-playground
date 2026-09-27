@@ -1,0 +1,38 @@
+1+2*3                      -> 7 (depth 1)
+(1+2)*3                    -> 9 (depth 2)
+100-10-1                   -> 89 (depth 1)
+2^3^2                      -> 512 (depth 1)
+-2^2                       -> -4 (depth 1)
+(-2)^3                     -> -8 (depth 2)
+-7/2                       -> -3 (depth 1)
+-7%3                       -> -1 (depth 1)
+7%-3                       -> 1 (depth 1)
+-(-(-5))                   -> -5 (depth 3)
+2*(3+4)*(5-(6-7))          -> 84 (depth 3)
+ 12 * ( 3 + 4 )            -> 84 (depth 2)
+2-2?10:20                  -> 20 (depth 2)
+0?1:1?7:8                  -> 7 (depth 3)
+9223372036854775807+0      -> 9223372036854775807 (depth 1)
+-9223372036854775807-1     -> -9223372036854775808 (depth 1)
+-9223372036854775807-2     -> error at 22: overflow
+9223372036854775808        -> error at 19: number too big
+3037000499*3037000499      -> 9223372030926249001 (depth 1)
+3037000500*3037000500      -> error at 21: overflow
+-3037000500*3037000500     -> error at 22: overflow
+2^62                       -> 4611686018427387904 (depth 1)
+2^63                       -> error at 4: overflow
+(-2)^63                    -> -9223372036854775808 (depth 2)
+(0-9223372036854775807-1)/ -> error at 28: overflow
+(0-9223372036854775807-1)% -> error at 28: overflow
+4/0                        -> error at 3: divide by zero
+1+                         -> error at 2: expected a number
+(1+2                       -> error at 4: expected ')'
+2^-1                       -> error at 4: negative exponent
+1 2                        -> error at 2: unexpected character
+1?2                        -> error at 3: expected ':'
+                           -> error at 0: expected a number
+600 parens                 -> 7 (depth 601)
+600 parens, one short      -> error at 1200: expected ')'
+201 minus levels           -> -5 (depth 202)
+sum 1..300                 -> 45150 (depth 1)
+400 carets                 -> 2 (depth 1)
