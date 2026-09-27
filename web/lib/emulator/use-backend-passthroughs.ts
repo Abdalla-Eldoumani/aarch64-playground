@@ -11,6 +11,7 @@ export interface BackendPassthroughs {
   lint: (source: string) => Promise<AssemblyError[]>;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   readVfsFile: (path: string) => Promise<Uint8Array>;
+  readMemory: (addr: number, len: number) => Promise<Uint8Array>;
   deleteVfsFile: (path: string) => Promise<boolean>;
   resolveLabel: (name: string) => Promise<number | null>;
   m4Expand: (
@@ -95,6 +96,15 @@ export function useBackendPassthroughs(
     [backendRef],
   );
 
+  const readMemory = useCallback(
+    async (addr: number, len: number) => {
+      const backend = backendRef.current;
+      if (!backend) return new Uint8Array();
+      return backend.getMemory(addr, len);
+    },
+    [backendRef],
+  );
+
   const deleteVfsFile = useCallback(
     async (path: string) => {
       const backend = backendRef.current;
@@ -148,6 +158,7 @@ export function useBackendPassthroughs(
     lint,
     uploadVfsFile,
     readVfsFile,
+    readMemory,
     deleteVfsFile,
     resolveLabel,
     m4Expand,
