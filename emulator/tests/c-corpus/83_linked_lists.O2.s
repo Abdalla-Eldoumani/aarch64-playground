@@ -295,7 +295,7 @@ insert_sorted:
 	ret
 	.align	2
 	.align 5
-remove_if__constprop__0:
+remove_if.constprop.0:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
 	str	x0, [sp, 40]
@@ -331,7 +331,7 @@ remove_if__constprop__0:
 	ret
 	.align	2
 	.align 5
-rnd__constprop__0:
+rnd.constprop.0:
 	adrp	x0, .LANCHOR0
 	mov	w3, 20077
 	movk	w3, 0x41c6, lsl 16
@@ -408,7 +408,7 @@ main:
 	str	wzr, [sp, 116]
 	.align 5
 .L91:
-	bl	rnd__constprop__0
+	bl	rnd.constprop.0
 	sub	w0, w0, #30
 	mov	x1, x19
 	bl	mk
@@ -450,7 +450,7 @@ main:
 	bl	show
 	add	x1, sp, 116
 	mov	x0, x19
-	bl	remove_if__constprop__0
+	bl	remove_if.constprop.0
 	mov	x19, x0
 	ldr	w1, [sp, 116]
 	adrp	x0, .LC17
