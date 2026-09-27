@@ -55,7 +55,7 @@ nv_norm:
 	ret
 	.align	2
 	.align 5
-step__constprop__0:
+step.constprop.0:
 	fmov	w2, s0
 	mov	x0, 0
 	mov	x1, 0
@@ -97,7 +97,7 @@ step__constprop__0:
 	ret
 	.align	2
 	.align 5
-bf_sum__constprop__0:
+bf_sum.constprop.0:
 	movi	v0.2s, #0
 	add	x2, x0, 48
 	.align 5
@@ -118,7 +118,7 @@ bf_sum__constprop__0:
 	ret
 	.align	2
 	.align 5
-range__constprop__0:
+range.constprop.0:
 	mov	x1, x0
 	add	x0, x0, 56
 	ldr	d31, [x1], 8
@@ -138,7 +138,7 @@ range__constprop__0:
 	ret
 	.align	2
 	.align 5
-no_backfill__constprop__0:
+no_backfill.constprop.0:
 	mov	x0, 140737488355328
 	fmov	d31, 6.0e+0
 	movk	x0, 0x404b, lsl 48
@@ -157,7 +157,7 @@ no_backfill__constprop__0:
 	ret
 	.align	2
 	.align 5
-fi_mix__constprop__0:
+fi_mix.constprop.0:
 	sxtw	x0, w0
 	fmov	d31, x0
 	mov	x0, 0
@@ -170,7 +170,7 @@ fi_mix__constprop__0:
 	ret
 	.align	2
 	.align 5
-d4_scale__constprop__0:
+d4_scale.constprop.0:
 	sub	sp, sp, #96
 	adrp	x0, .LC1
 	ldr	q30, [x0, :lo12:.LC1]
@@ -186,7 +186,7 @@ d4_scale__constprop__0:
 	ret
 	.align	2
 	.align 5
-fd_swap__constprop__0__isra__0:
+fd_swap.constprop.0.isra.0:
 	fcvt	d0, s0
 	mov	x0, 18725
 	movk	x0, 0x3e12, lsl 16
@@ -194,7 +194,7 @@ fd_swap__constprop__0__isra__0:
 	ret
 	.align	2
 	.align 5
-spill__constprop__0__isra__0:
+spill.constprop.0.isra.0:
 	fmov	w1, s3
 	fmov	x0, d2
 	bfi	x0, x1, 32, 32
@@ -326,7 +326,7 @@ main:
 	fmov	d0, d15
 	stp	d15, d1, [sp, 264]
 	stp	d2, d3, [sp, 280]
-	bl	d4_scale__constprop__0
+	bl	d4_scale.constprop.0
 	fmov	d14, d3
 	adrp	x0, .LC4
 	add	x0, x0, :lo12:.LC4
@@ -367,10 +367,10 @@ main:
 	bfi	x0, x1, 0, 32
 	mov	x1, -7
 	bfi	x0, x1, 32, 32
-	bl	fi_mix__constprop__0
+	bl	fi_mix.constprop.0
 	ldr	s0, [x19, 16]
 	mov	x2, x0
-	bl	fd_swap__constprop__0__isra__0
+	bl	fd_swap.constprop.0.isra.0
 	sxtw	x0, w0
 	fmov	d1, x0
 	sbfx	x0, x2, 0, 32
@@ -400,7 +400,7 @@ main:
 	fmov	d1, d14
 	fmov	d0, d15
 	fmov	s2, w21
-	bl	spill__constprop__0__isra__0
+	bl	spill.constprop.0.isra.0
 	adrp	x0, .LC8
 	add	x0, x0, :lo12:.LC8
 	bl	printf
@@ -408,7 +408,7 @@ main:
 	ldp	d0, d1, [sp, 264]
 	fcvt	d4, s4
 	ldp	d2, d3, [sp, 280]
-	bl	no_backfill__constprop__0
+	bl	no_backfill.constprop.0
 	adrp	x0, .LC9
 	add	x0, x0, :lo12:.LC9
 	bl	printf
@@ -434,7 +434,7 @@ main:
 	bne	.L27
 	add	x8, sp, 240
 	add	x0, sp, 424
-	bl	range__constprop__0
+	bl	range.constprop.0
 	ldr	x1, [sp, 256]
 	adrp	x0, .LC10
 	ldp	d0, d1, [sp, 240]
@@ -480,7 +480,7 @@ main:
 	orr	w0, w0, w1
 	strb	w0, [sp, 372]
 	add	x0, sp, 328
-	bl	bf_sum__constprop__0
+	bl	bf_sum.constprop.0
 	fcvt	d0, s0
 	mov	x2, 16
 	mov	x1, 12
@@ -515,7 +515,7 @@ main:
 	fmov	s1, s22
 	fmov	s2, s26
 	fmov	s3, s25
-	bl	step__constprop__0
+	bl	step.constprop.0
 	fmov	s23, s0
 	fmov	s22, s1
 	fmov	s0, s21
@@ -527,7 +527,7 @@ main:
 	add	x0, sp, 384
 	stp	s23, s22, [x0, -8]
 	stp	s26, s25, [x0]
-	bl	step__constprop__0
+	bl	step.constprop.0
 	fmov	s21, s0
 	fmov	s20, s1
 	fmov	s0, s18
@@ -539,7 +539,7 @@ main:
 	add	x1, sp, 400
 	stp	s21, s20, [x1, -8]
 	stp	s24, s19, [x1]
-	bl	step__constprop__0
+	bl	step.constprop.0
 	add	x2, sp, 416
 	fmov	s18, s0
 	fmov	s17, s1
