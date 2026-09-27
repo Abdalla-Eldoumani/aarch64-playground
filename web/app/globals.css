@@ -519,9 +519,10 @@ body {
   /* 44px is the least a fingertip hits reliably. Dense controls a mouse
      handles at 24px (zoom steps, the files strip, the tool row) carry this
      class, so they grow on a touch screen and keep their size under a mouse.
-     A min size wins over a fixed h-6 or w-6, and this rule comes after the
-     utilities, so it also wins over a smaller min-h. */
-  .touch-target {
+     A min size wins over a fixed h-6 or w-6. The class is doubled because
+     Tailwind emits its variant utilities (sm:min-h-0) after this file's own
+     rules, and a single class would lose to them. */
+  .touch-target.touch-target {
     min-height: 44px;
     min-width: 44px;
   }
