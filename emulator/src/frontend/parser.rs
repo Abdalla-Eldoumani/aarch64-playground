@@ -277,11 +277,12 @@ pub const DIRECTIVES: &[&str] = &[
     // symbol attributes
     ".global", ".globl", ".type", ".size",
     // alignment and reservation
-    ".balign", ".align", ".skip", ".zero", ".space",
+    ".balign", ".align", ".p2align", ".skip", ".zero", ".space",
     // strings
     ".string", ".asciz", ".ascii",
     // integers
-    ".byte", ".hword", ".short", ".word", ".quad", ".dword",
+    ".byte", ".hword", ".short", ".2byte", ".word", ".4byte", ".quad", ".dword", ".xword",
+    ".8byte",
     // floats
     ".double", ".float",
     // recognized, answered with the "write NAME = expression" message
@@ -342,19 +343,38 @@ fn parse_directive(
             }
             prog.section_or_insert(*current)
                 .items
-                .push(Item::AlignToBytes(value as u64));
+                .push(Item::AlignToBytes { bytes: value as u64, max_skip: None });
             Ok(())
         }
-        ".align" => {
-            // On AArch64 GAS, `.align N` is power-of-two: align to 2^N bytes.
-            let n = eval_const(rest, line)?;
-            if !(0..=32).contains(&n) {
-                return Err(err(line, ".align exponent out of range"));
+        ".align" | ".p2align" => {
+            // On AArch64 GAS both align to 2^N bytes and take `N, fill,
+            // max`; gcc writes `.p2align 5,,15`. A max of 0 means no limit.
+            let groups = split_comma_groups(rest);
+            if groups.is_empty() || groups[0].is_empty() || groups.len() > 3 {
+                return Err(err(line, &format!("expected `{name} N` or `{name} N,,max`")));
             }
-            let bytes = 1u64 << n;
+            if groups.get(1).is_some_and(|fill| !fill.is_empty()) {
+                return Err(err(
+                    line,
+                    "an alignment fill value is not supported: the padding is zero \
+                     bytes (no-ops in .text). Leave the fill out, as in `.p2align 4,,15`",
+                ));
+            }
+            let n = eval_const(groups[0], line)?;
+            if !(0..=32).contains(&n) {
+                return Err(err(line, &format!("{name} exponent out of range")));
+            }
+            let max_skip = match groups.get(2) {
+                Some(max) => match eval_const(max, line)? {
+                    0 => None,
+                    m if m > 0 => Some(m as u64),
+                    _ => return Err(err(line, &format!("{name} needs a non-negative max"))),
+                },
+                None => None,
+            };
             prog.section_or_insert(*current)
                 .items
-                .push(Item::AlignToBytes(bytes));
+                .push(Item::AlignToBytes { bytes: 1u64 << n, max_skip });
             Ok(())
         }
         ".skip" | ".zero" | ".space" => {
@@ -442,11 +462,11 @@ fn parse_directive(
             Ok(())
         }
         ".byte" => emit_int_list(rest, prog, *current, line, 1),
-        ".hword" | ".short" => emit_int_list(rest, prog, *current, line, 2),
-        ".word" => emit_int_list(rest, prog, *current, line, 4),
+        ".hword" | ".short" | ".2byte" => emit_int_list(rest, prog, *current, line, 2),
+        ".word" | ".4byte" => emit_int_list(rest, prog, *current, line, 4),
         // `.dword` is the spelling course files write for 8-byte values;
-        // `.quad` is the GAS name GCC output carries. Same emission.
-        ".quad" | ".dword" => emit_int_list(rest, prog, *current, line, 8),
+        // gcc writes `.quad`, and `.xword` for pointer tables. Same emission.
+        ".quad" | ".dword" | ".xword" | ".8byte" => emit_int_list(rest, prog, *current, line, 8),
         ".double" => emit_float_list(rest, prog, *current, line, true),
         ".float" => emit_float_list(rest, prog, *current, line, false),
         // Constants are supported, just not under these spellings; say so
@@ -939,7 +959,7 @@ mod tests {
         assert!(text
             .items
             .iter()
-            .any(|i| matches!(i, Item::AlignToBytes(4))));
+            .any(|i| matches!(i, Item::AlignToBytes { bytes: 4, max_skip: None })));
     }
 
     #[test]
@@ -950,7 +970,19 @@ mod tests {
         assert!(text
             .items
             .iter()
-            .any(|i| matches!(i, Item::AlignToBytes(16))));
+            .any(|i| matches!(i, Item::AlignToBytes { bytes: 16, max_skip: None })));
+    }
+
+    #[test]
+    fn p2align_takes_gccs_max_skip_and_refuses_a_fill() {
+        let p = parse_ok(".text\n.p2align 5,,15\n.p2align 2,,0\n");
+        let items = &p.section(SectionKind::Text).unwrap().items;
+        assert!(matches!(items[0], Item::AlignToBytes { bytes: 32, max_skip: Some(15) }));
+        assert!(matches!(items[1], Item::AlignToBytes { bytes: 4, max_skip: None }));
+        let e = parse(".data\n.p2align 3, 0\n").unwrap_err().to_string();
+        assert!(e.contains("fill value is not supported"), "got: {e}");
+        let e = parse(".data\n.p2align 3,,-1\n").unwrap_err().to_string();
+        assert!(e.contains("non-negative max"), "got: {e}");
     }
 
     #[test]
@@ -1318,9 +1350,10 @@ mod tests {
             let operand = match *name {
                 ".section" => " .rodata",
                 ".global" | ".globl" | ".type" | ".size" => " main",
-                ".balign" | ".align" | ".skip" | ".zero" | ".space" => " 4",
+                ".balign" | ".align" | ".p2align" | ".skip" | ".zero" | ".space" => " 4",
                 ".string" | ".asciz" | ".ascii" => " \"hi\"",
-                ".byte" | ".hword" | ".short" | ".word" | ".quad" | ".dword" => " 1",
+                ".byte" | ".hword" | ".short" | ".2byte" | ".word" | ".4byte" | ".quad"
+                | ".dword" | ".xword" | ".8byte" => " 1",
                 ".double" | ".float" => " 1.0",
                 ".equ" | ".set" => " SIZE, 40",
                 _ => "",
