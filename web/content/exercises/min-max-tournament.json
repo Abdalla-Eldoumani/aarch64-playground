@@ -4,9 +4,10 @@
   "order": 33,
   "topic": "arrays",
   "difficulty": "core",
-  "prompt": "Find the smallest and the largest element of the eight-entry array in one pass, and print both.\n\nSeed both records with element zero (the starter already has), then walk the rest once. Each element gets two comparisons: one against the minimum and one against the maximum. \n\n## what is checked\n\n- `min` and `max` each printed on their own line\n- the program exits cleanly\n- comparisons decide the records",
-  "starter": "// find both the smallest and the largest element in one pass\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(base_r, x22)\ndefine(i_r, w19)\ndefine(n_r, w20)\ndefine(min_r, w21)\ndefine(max_r, w24)\ndefine(elem_r, w23)\n\n        .data\nentries:    .word 58, 3, 77, 12, 41, 90, 6, 25\nn_entries:  .word 8\n\nfmt_min:    .string \"min = %d\\n\"\nfmt_max:    .string \"max = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     base_r, =entries\n        ldr     x9, =n_entries\n        ldr     n_r, [x9]\n        ldr     min_r, [base_r]             // both start at element zero\n        ldr     max_r, [base_r]\n        mov     i_r, 1\n\n        // TODO: walk the remaining elements once. Compare each against\n        // min_r and max_r and update whichever record it beats. One\n        // loop, two comparisons per element.\n\n        ldr     x0, =fmt_min\n        mov     w1, min_r\n        bl      printf\n        ldr     x0, =fmt_max\n        mov     w1, max_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Find the smallest and the largest element of an array in one pass, and print both. The starter reads a count and then that many values into the word array `entries`.\n\nSeed both records with element zero (the starter already has), then walk the rest once. Each element gets two comparisons: one against the minimum and one against the maximum.\n\n## what is checked\n\n- `min` and `max` each printed on their own line\n- the program exits cleanly\n- comparisons decide the records\n- the same holds for other arrays you do not see: one element, all equal, negatives, and the extremes at either end",
+  "starter": "// find both the smallest and the largest element in one pass\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(base_r, x22)\ndefine(i_r, w19)\ndefine(n_r, w20)\ndefine(min_r, w21)\ndefine(max_r, w24)\ndefine(elem_r, w23)\n\n        .data\nfmt_in:     .string \"%d\"\nfmt_low:    .string \"min = %d\\n\"\nfmt_high:    .string \"max = %d\\n\"\n\n        .bss\n        .balign 4\nn_m:        .skip 4\nentries:    .skip 128                       // room for 32 words\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // how many values follow\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]\n        ldr     base_r, =entries\n        mov     i_r, 0\n        b       fill_test\nfill_loop:\n        ldr     x0, =fmt_in                 // read the next value into its slot\n        add     x1, base_r, i_r, sxtw 2\n        bl      scanf\n        add     i_r, i_r, 1\nfill_test:\n        cmp     i_r, n_r\n        b.lt    fill_loop\n\n        ldr     min_r, [base_r]             // both start at element zero\n        ldr     max_r, [base_r]\n        mov     i_r, 1\n\n        // TODO: walk the remaining elements once. Compare each against\n        // min_r and max_r and update whichever record it beats. One\n        // loop, two comparisons per element.\n\n        ldr     x0, =fmt_low\n        mov     w1, min_r\n        bl      printf\n        ldr     x0, =fmt_high\n        mov     w1, max_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "8\n58 3 77 12 41 90 6 25\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -25,5 +26,29 @@
         "mnemonic": "cmp"
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "1\n-5\n",
+      "stdout": "min = -5\nmax = -5\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "3\n7 7 7\n",
+      "stdout": "min = 7\nmax = 7\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "5\n-10 20 -30 40 -50\n",
+      "stdout": "min = -50\nmax = 40\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "4\n100 3 2 1\n",
+      "stdout": "min = 1\nmax = 100\n",
+      "exitCode": 0
+    }
+  ]
 }
