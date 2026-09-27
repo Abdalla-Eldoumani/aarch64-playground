@@ -11,7 +11,8 @@
       "prompt": "Reserve and initialize four bytes in the .data section holding the single-precision value 5.0.",
       "code": "a_m: .___ 0r5.0",
       "blanks": [
-        "float"
+        "float",
+        "single"
       ],
       "explanation": ".float emits the 4-byte IEEE 754 single for the literal, and GAS accepts .single as another spelling of the same directive. .double would emit the 8-byte form instead.",
       "hint": "Four bytes, not eight."
