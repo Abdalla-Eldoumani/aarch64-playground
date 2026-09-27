@@ -57,7 +57,9 @@ export function describeLine(
   // Only the substitutions are named. Annotating the whole operand list would
   // claim the untouched literals are aliases too.
   const detail = aliases ? aliasPairs(operands, aliases) : "";
-  return `${mnemonic.toLowerCase()} ${operands}${detail} · ${doc.summary}`;
+  // The summaries are written for the hover card, which renders Markdown;
+  // this gloss is plain text, where the code backticks would print raw.
+  return `${mnemonic.toLowerCase()} ${operands}${detail} · ${doc.summary.replace(/`/g, "")}`;
 }
 
 /**
