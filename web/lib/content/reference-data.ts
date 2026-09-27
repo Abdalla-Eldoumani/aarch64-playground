@@ -1,11 +1,13 @@
-import { lookupDoc } from "@/lib/asm/instruction-docs";
+import { docKey, INSTRUCTION_DOCS } from "@/lib/asm/instruction-docs";
+import { C_EQUIVALENTS } from "@/lib/asm/c-equivalents";
 
 /**
  * The rich data source for the two-pane instruction reference. It is derived
  * from docs/instruction-reference.md (the canonical mnemonic list, the eight
  * category sections, and the Form column) and merges the hover-card prose from
- * instruction-docs.ts by mnemonic, so the one-line summary and the C-equivalent
- * keep a single source rather than being retyped here. A guard
+ * instruction-docs.ts and the C from c-equivalents.ts by mnemonic, so the
+ * one-line summary and the C keep a single source rather than being retyped
+ * here. A guard
  * (reference-data.test.ts) pins this set to the documented set so the two
  * cannot drift apart.
  *
@@ -54,8 +56,16 @@ export interface ReferenceInstruction {
   summary: string;
   /** Short snippet: the merged hover example, else an authored fallback. */
   example: string;
-  /** One-line C equivalent, merged from instruction-docs when present. */
-  cExample?: string;
+  /** The C equivalent, merged from c-equivalents: one block per form. */
+  cExample: string;
+  /** The intrinsic that compiles to this instruction, where one exists. */
+  intrinsic?: string;
+  /** True when the instruction writes the NZCV flags. */
+  setsFlags: boolean;
+  /** The register file the worked example writes, so the in-place run opens
+   *  the registers panel on it: v for a vector register, d for a scalar
+   *  floating-point one, x otherwise. */
+  registerView: "x" | "d" | "v";
   /** Authored notes for traps worth calling out. */
   gotchas?: string[];
   /** Authored bit-field layout for the curated subset; widths sum to 32. */
@@ -72,7 +82,7 @@ export interface ReferenceInstruction {
 
 /**
  * One authored row before the instruction-docs merge. The summary and the
- * C-equivalent come from the merge, so a seed carries only what the doc owns:
+ * C equivalent come from the merge, so a seed carries only what the doc owns:
  * its category, its Form-derived syntax, the reference-page example, and the
  * optional authored extras.
  */
@@ -3776,13 +3786,38 @@ add     sp, sp, #32`,
   },
 ];
 
+/**
+ * Every instruction that writes NZCV. The badge and the flags test read this
+ * one list; FlagEffect's panel covers only the compares it can model.
+ */
+export const NZCV_WRITERS: ReadonlySet<string> = new Set([
+  "adds", "subs", "adcs", "sbcs", "ands", "negs",
+  "cmp", "cmn", "tst", "ccmp", "ccmn", "fcmp", "fcmpe",
+]);
+
+const VECTOR_REGISTER = /\b[vq](?:[12]?[0-9]|3[01])\b/;
+const FP_REGISTER = /\b[bhsd](?:[12]?[0-9]|3[01])\b/;
+
+/** Which register file a program's code (comments aside) writes to. */
+function registerViewOf(program: string): ReferenceInstruction["registerView"] {
+  const code = program.replace(/\/\/.*$/gm, "");
+  if (VECTOR_REGISTER.test(code)) return "v";
+  if (FP_REGISTER.test(code)) return "d";
+  return "x";
+}
+
 export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map(
   (seed): ReferenceInstruction => {
-    const doc = lookupDoc(seed.mnemonic);
-    if (!doc) {
+    const key = docKey(seed.mnemonic);
+    if (key === undefined) {
       throw new Error(
         `reference-data: no instruction-docs entry for ${seed.mnemonic}`,
       );
+    }
+    const doc = INSTRUCTION_DOCS[key];
+    const c = C_EQUIVALENTS[key];
+    if (!c) {
+      throw new Error(`reference-data: no C equivalent for ${seed.mnemonic}`);
     }
     // The seed's worked example wins on the reference page; the hover card
     // keeps its own terse example straight from instruction-docs.
@@ -3796,7 +3831,10 @@ export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map
       syntax: seed.syntax,
       summary: doc.summary,
       example,
-      ...(doc.cExample !== undefined ? { cExample: doc.cExample } : {}),
+      cExample: c.c,
+      ...(c.intrinsic !== undefined ? { intrinsic: c.intrinsic } : {}),
+      setsFlags: NZCV_WRITERS.has(seed.mnemonic),
+      registerView: registerViewOf(seed.runnable ?? example),
       ...(seed.gotchas !== undefined ? { gotchas: seed.gotchas } : {}),
       ...(seed.encoding !== undefined ? { encoding: seed.encoding } : {}),
       ...(seed.encodedAsm !== undefined ? { encodedAsm: seed.encodedAsm } : {}),
