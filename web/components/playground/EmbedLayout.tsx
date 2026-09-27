@@ -1,7 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { MAX_ARGS_CHARS } from "@/lib/playground/upload-guard";
+import { RunStatus, type RunStatusProps } from "@/components/playground/RunStatus";
 
 export interface EmbedLayoutProps {
   editor: ReactNode;
@@ -30,7 +32,20 @@ export interface EmbedLayoutProps {
   onStep: () => void;
   onStepBack: () => void;
   onCheck: () => void;
+  /** What the status line under a narrow frame's code reports. */
+  runStatus: Omit<RunStatusProps, "showPeek" | "onOpenRegisters">;
+  /** The program has printed something, so a finished run is worth
+   *  switching a narrow frame to the console for. */
+  hasOutput: boolean;
 }
+
+type Pane = "editor" | "registers" | "console";
+
+const PANES: { id: Pane; label: string }[] = [
+  { id: "editor", label: "code" },
+  { id: "registers", label: "registers" },
+  { id: "console", label: "console" },
+];
 
 // On a phone the run buttons share the frame's width and wrap to a second
 // row rather than scroll: the old single scrolling strip put check, the one
@@ -47,6 +62,13 @@ const SECONDARY =
  * The three-pane arrangement comes from the container-driven embed-grid areas
  * in globals.css, so each host's own width (a prose measure, a wide hero)
  * picks the layout rather than the viewport.
+ *
+ * A frame narrower than 38rem (a phone) shows one pane at a time behind a
+ * code | registers | console switch, with a status line under it that peeks
+ * at the registers the last step wrote: stacked three high, the register pane
+ * got under 100px, all of it header, so no register row was ever in view.
+ * The switch and the status line exist at every width and CSS shows them
+ * only in a narrow frame.
  */
 export function EmbedLayout({
   editor,
@@ -67,10 +89,44 @@ export function EmbedLayout({
   onStep,
   onStepBack,
   onCheck,
+  runStatus,
+  hasOutput,
 }: EmbedLayoutProps) {
+  const [pane, setPane] = useState<Pane>("editor");
+  // A read that blocks, or a run that finishes having printed, brings the
+  // console forward in a narrow frame, the way the phone playground does.
+  const [seen, setSeen] = useState({ blocked: runStatus.blocked, running: isRunning });
+  if (seen.blocked !== runStatus.blocked || seen.running !== isRunning) {
+    setSeen({ blocked: runStatus.blocked, running: isRunning });
+    const readBlocked = runStatus.blocked && !seen.blocked;
+    const runFinished = seen.running && !isRunning && runStatus.isHalted && hasOutput;
+    if (readBlocked || runFinished) setPane("console");
+  }
+
   return (
     <div className="embed-layout flex flex-col flex-1 min-h-0">
-      <div className="flex-1 min-h-0 embed-grid">
+      <div
+        role="group"
+        aria-label="view"
+        className="embed-view border-b border-[var(--border)] bg-[var(--bg-sunken)]"
+      >
+        {PANES.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            aria-pressed={pane === p.id}
+            onClick={() => setPane(p.id)}
+            className={`h-11 flex-1 font-sans text-[13px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--cyan)] ${
+              pane === p.id
+                ? "text-[var(--cyan)] [box-shadow:inset_0_-2px_0_0_var(--cyan)]"
+                : "text-[var(--text-secondary)]"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 min-h-0 embed-grid" data-pane={pane}>
         <div className="embed-area-editor min-h-0 min-w-0 flex flex-col">{editor}</div>
         <div className="embed-area-registers min-h-0 min-w-0 overflow-auto">
           {registers}
@@ -78,6 +134,13 @@ export function EmbedLayout({
         <div className="embed-area-console min-h-0 min-w-0 overflow-hidden flex flex-col">
           {console}
         </div>
+      </div>
+      <div className="embed-status">
+        <RunStatus
+          {...runStatus}
+          showPeek={pane !== "registers"}
+          onOpenRegisters={() => setPane("registers")}
+        />
       </div>
       <div className="flex flex-col gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center">
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
