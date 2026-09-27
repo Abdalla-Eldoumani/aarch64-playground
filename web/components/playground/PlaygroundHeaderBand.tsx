@@ -39,8 +39,8 @@ export interface PlaygroundHeaderBandProps {
   onShare: () => void;
   onTour: () => void;
   onToggleTheme: () => void;
-  /** Built on click by the shell, which owns the hub the snapshot reads. */
-  buildDiagnostic: () => DiagnosticBundle;
+  /** Gathered by the shell, which owns the hub the snapshot reads. */
+  buildDiagnostic: () => Promise<DiagnosticBundle>;
   onOpenCommandPalette: () => void;
   onOpenShortcuts: () => void;
 }
