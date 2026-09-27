@@ -14,12 +14,15 @@
 
 const SITE = process.argv[2] || process.env.SITE || "https://aarch64-playground.com";
 
-// The host each source in a CSP names, from every directive. A keyword such
-// as 'self' or a bare scheme such as blob: names none.
+// The host each source in a CSP names, from every directive of every policy
+// (one header value can hold several, joined by commas). https: and http:
+// admit any host, so they read as *; a keyword such as 'self' or another
+// bare scheme such as blob: names none.
 function cspHosts(policy) {
   return policy
-    .split(";")
+    .split(/[;,]/)
     .flatMap((directive) => directive.trim().split(/\s+/).slice(1))
+    .map((source) => (/^https?:$/i.test(source) ? "*" : source))
     .filter((source) => !source.startsWith("'") && !/^[a-z][a-z0-9+.-]*:$/i.test(source))
     .map((source) => source.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[/:]/)[0].toLowerCase());
 }
