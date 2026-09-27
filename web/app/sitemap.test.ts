@@ -39,9 +39,9 @@ describe("sitemap", () => {
     }
   });
 
-  it("emits absolute URLs anchored to the single site origin", () => {
+  it("emits absolute https URLs on the bare domain", () => {
     for (const entry of entries) {
-      expect(entry.url.startsWith(SITE_URL)).toBe(true);
+      expect(entry.url).toMatch(/^https:\/\/aarch64-playground\.com\//);
     }
   });
 
@@ -66,6 +66,33 @@ describe("sitemap", () => {
       expect(typeof entry.priority).toBe("number");
     }
   });
+
+  it("dates each lesson and exercise from its own lastUpdated field", () => {
+    const pages = [
+      ...loadAllLessons().map((item) => ({ path: `/learn/${item.slug}`, date: item.lastUpdated })),
+      ...loadAllExercises().map((item) => ({ path: `/practice/${item.slug}`, date: item.lastUpdated })),
+    ];
+    for (const page of pages) {
+      const entry = entries.find((candidate) => candidate.url === new URL(page.path, SITE_URL).toString());
+      expect(page.date, page.path).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(entry?.lastModified, page.path).toBe(page.date);
+    }
+  });
+
+  it("dates each index by its newest item and leaves undated what no content file dates", () => {
+    const newest = (dates: (string | undefined)[]) => dates.filter(Boolean).sort().at(-1);
+    const lastmod = (path: string) =>
+      entries.find((entry) => entry.url === new URL(path, SITE_URL).toString())?.lastModified;
+    expect(lastmod("/learn")).toBe(newest(loadAllLessons().map((item) => item.lastUpdated)));
+    expect(lastmod("/practice")).toBe(newest(loadAllExercises().map((item) => item.lastUpdated)));
+    for (const path of ["/", "/playground", "/reference"]) expect(lastmod(path), path).toBeUndefined();
+  });
+
+  it("never stamps the build time", () => {
+    // Two builds of the same content must print the same sitemap.
+    expect(sitemap()).toEqual(entries);
+    for (const entry of entries) expect(entry.lastModified instanceof Date).toBe(false);
+  });
 });
 
 describe("robots", () => {
@@ -80,7 +107,7 @@ describe("robots", () => {
     expect(rule?.allow).toBe("/");
   });
 
-  it("references the sitemap", () => {
-    expect(sitemapUrl?.endsWith("/sitemap.xml")).toBe(true);
+  it("references the sitemap at its https address", () => {
+    expect(sitemapUrl).toBe("https://aarch64-playground.com/sitemap.xml");
   });
 });
