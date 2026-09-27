@@ -1,8 +1,8 @@
 {
   "title": "Printing a variable from .data",
   "slug": "printing-defined-variables",
-  "order": 5,
-  "summary": "How to load a value out of .data with two ldr instructions and print it.",
+  "order": 8,
+  "summary": "Load a value out of .data with two ldr instructions, print it, and store a new value back with str.",
   "tags": [
     "printing",
     "variables"
@@ -11,61 +11,89 @@
     {
       "type": "callout",
       "variant": "prereq",
-      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n\n- [Printing integers and characters](/learn/printing-other-data-types)" 
+      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n- [Printing integers and characters](/learn/printing-other-data-types)"
     },
     {
-    "type": "prose",
-    "markdown": "In many Assembly programs, data is stored in variables within the `.data` section before it is used. While printing values directly using immediate constants is straightforward, accessing and printing values stored in memory requires additional steps. \n\n This lesson loads a value out of `.data` into a register and passes it to `printf`."
-
+      "type": "prose",
+      "markdown": "In many assembly programs, data is stored in variables in the `.data` section before it is used. Printing an immediate, a constant written into the instruction itself, is straightforward. Printing a value stored in memory takes an extra step, because the value has to be loaded into a register first.\n\nThis lesson loads a value out of `.data` into a register, passes it to `printf`, and then changes the value in memory."
     },
     {
-        "type": "prose",
-        "markdown": "## A review of printing with printf\n\nPrinting in Assembly always follows the same four steps.\n\nThe printing process can be summarized into the following steps:\n\n1. Define the string or format string.\n2. Load the address of the string or format string into `x0`.\n3. Place the corresponding value to be printed into the appropriate argument registers (if any).\n4. Call `printf`.\n\nThese steps remain the same when printing variables stored in the `.data` section. However, the main difference is found in step 3.\n\nIn previous lessons, the values being printed were provided directly as immediate values and moved into the appropriate argument registers. For example:\n\n`mov x1, 67`\n\nHere the value comes out of a `.data` variable instead of an immediate, but it still ends up in the same argument register.\n"
+      "type": "prose",
+      "markdown": "## A review of printing with printf\n\nPrinting in assembly always follows the same four steps:\n\n1. Define the string or format string: the text to print, with a specifier such as `%d` marking where each value goes.\n2. Load the address of the string or format string into `x0`.\n3. Place each value to be printed in the next argument register (`w1` or `x1`, then `w2` or `x2`, and so on), if there are any.\n4. Call `printf`.\n\nThese steps stay the same when printing variables stored in the `.data` section. The difference is in step 3.\n\nIn previous lessons, the values being printed were immediates, moved straight into an argument register. For example:\n\n`mov w1, 67`\n\nHere the value comes out of a `.data` variable instead of an immediate, but it still ends up in the same argument register."
     },
     {
-        "type": "prose",
-        "markdown": "## Loading values from .data\n\nSuppose we have an integer value of `85` stored in a variable named `importantNumber` within the `.data` section, as shown below:\n\n"
+      "type": "prose",
+      "markdown": "## Loading values from .data\n\nSuppose we have an integer value of `85` stored in a variable named `importantNumber` in the `.data` section, as shown below:"
     },
     {
-        "type": "code",
-        "language": "asm",
-        "source": "    .data\n    importantNumber: .word 85"
+      "type": "code",
+      "language": "asm",
+      "source": ".data\nimportantNumber:      .word 85              // a 4-byte integer\n"
     },
     {
-        "type": "prose",
-        "markdown" : "\nTo load the value stored in the `importantNumber` variable defined in the `.data` section, we must first retrieve the address of the variable. Once the address has been obtained, we can use it to access and load the value stored at that memory location. The following code demonstrates this process:\n"
-
+      "type": "prose",
+      "markdown": "To load the value stored in `importantNumber`, we must first get the address of the variable. Once we have the address, we can use it to load the value stored at that memory location. The following two lines do both:"
     },
     {
-        "type": "code",
-        "language": "asm",
-        "source": "// pseudo-ops and directives\nmain: \n    // program prologue\n    ..\n    ldr x21, =importantNumber\n    ldr w1, [x21]\n    ..\n\n    // program epilogue"
-
+      "type": "code",
+      "language": "asm",
+      "source": "        ldr     x9, =importantNumber        // x9 = the address of the variable\n        ldr     w1, [x9]                    // w1 = the value stored at that address\n"
     },
     {
-        "type": "prose",
-        "markdown": "\nThe `ldr` instruction is used to retrieve both the address of the variable and the value stored at that address. In this process, two `ldr` instructions are required.\n\nThe first `ldr` instruction retrieves the address of the variable and stores it in register `x21`. The second `ldr` instruction uses this address to access the value stored in memory and loads the retrieved value into register `w1`. A `.word` is 32 bits, so the load uses the 32-bit `w` form of the register; an `x1` load would drag in the 4 bytes stored after the variable too. The register `x0` is preserved for the address of the format string, which is passed to `printf` as the first argument."
+      "type": "prose",
+      "markdown": "The `ldr` instruction is used both to get the address of the variable and to load the value stored at that address, so two `ldr` instructions are needed.\n\nThe first `ldr` puts the address of the variable in register `x9`. The `=` in front of the label asks for the label's address rather than what is stored there, and an address is 64 bits, so it always goes in an `x` register. The second `ldr` uses this address to reach memory and loads the value found there into register `w1`. A `.word` is 32 bits, so the load uses the 32-bit `w` form of the register; an `x1` load would drag in the 4 bytes stored after the variable too. The register `x0` is reserved for the address of the format string, which is passed to `printf` as the first argument.\n\n`x9` is a scratch register: a function you call, such as `printf`, is allowed to change it. That is fine here, because the address is needed only until the value is loaded."
     },
     {
-        "type": "callout",
-        "variant": "note",
-        "markdown": "The square brackets `[]` in the `ldr` instruction indicate memory access (dereferencing). They tell the processor to use the value inside the register as a memory address and access the data stored at that location."
+      "type": "callout",
+      "variant": "note",
+      "markdown": "The square brackets `[]` in the `ldr` instruction indicate memory access (dereferencing). They tell the processor to use the value inside the register as a memory address and access the data stored at that location."
     },
     {
-        "type": "prose",
-        "markdown": "## Printing the variable\n\nOnce the variable value and format string have been loaded into the appropriate argument registers, the `printf` function can be called to display the formatted output. The following code demonstrates the complete process:\n\n"    
+      "type": "prose",
+      "markdown": "## Printing the variable\n\nOnce the format string address is in `x0` and the value is in `w1`, `printf` can be called to display the output. The complete program below prints `Integer Variable Content: 85`."
     },
     {
-        "type": "editor",
-        "starter": "    .data\n    // Format string for printing an integer\n    format1:   .string  \"Integer Variable Content: %d\\n\"\n\n    importantNumber:      .word 85\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // Program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n    \n    ldr x0, =format1\n    // x1 is the second argument, and .word is 32 bits, so load it as w1\n    ldr  x21, =importantNumber\n    ldr w1, [x21]\n    bl printf\n\n    // Program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
+      "type": "editor",
+      "starter": "// Loads a number stored in .data and prints it.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt_int:              .string \"Integer Variable Content: %d\\n\"\n        .balign 4                           // start the word on a multiple of 4\nimportantNumber:      .word 85\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_int                // the format string address goes in x0\n        ldr     x9, =importantNumber        // first the address of the variable\n        ldr     w1, [x9]                    // then the 4-byte value stored there\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "Integer Variable Content: 85\n",
+        "exitCode": 0
+      }
     },
     {
-        "type": "callout",
-        "variant":"note",
-        "markdown": "You can print variables of any data type using the process shown above. Use the format specifier and the **register width** that match the variable's type.\n\nWhen calling `printf`, you must pass arguments whose data types match their corresponding format specifiers. A mismatch prints garbage."
-
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Notice the `.balign 4` line between the string and the word. `.balign 4` adds zero bytes until the next address is a multiple of 4. The string takes 30 bytes (29 characters plus the zero byte that marks its end), so without the padding the word would start 30 bytes into `.data`, which is not a multiple of 4. A 4-byte value belongs at an address divisible by 4, and `.balign 4` makes sure of that however long the string above it is."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Changing a variable in memory\n\n`str` (store register) is the mirror image of `ldr`: it copies a register into memory at the address in the square brackets. Loading a variable gives you a copy in a register, and changing the copy leaves the variable in memory as it was. To change the variable itself, store the new value back to its address.\n\nThe program below loads a counter that starts at 41, adds 1 to the copy, stores the copy back, and then loads the counter again. It prints `visits before: 41, after: 42`. Delete the `str` line and run it again: the second number stays 41, because only the register copy changed."
+    },
+    {
+      "type": "editor",
+      "starter": "// Adds 1 to a counter kept in .data, stores the new value back,\n// then reads memory again to show the variable itself changed.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt_visits:           .string \"visits before: %d, after: %d\\n\"\n        .balign 4\nvisits:               .word 41\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x9, =visits                 // x9 = the address of the counter\n        ldr     w10, [x9]                   // w10 = 41, a copy of the counter\n        add     w11, w10, 1                 // w11 = 42, but memory still holds 41\n        str     w11, [x9]                   // now memory holds 42 as well\n\n        ldr     x0, =fmt_visits\n        mov     w1, w10                     // the value read before the store\n        ldr     w2, [x9]                    // a fresh read after the store\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "visits before: 41, after: 42\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "You can print variables of any data type using the process shown above. Use the format specifier and the **register width** that match the variable's type.\n\nWhen calling `printf`, you must pass arguments whose data types match their corresponding format specifiers. A mismatch prints garbage."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. Why does printing a `.data` variable take two `ldr` instructions instead of one?\n2. `count` is a `.word` printed with `%d`. Should it be loaded into `w1` or `x1`, and why?\n3. After `ldr w10, [x9]` and `add w10, w10, 5`, has the variable at the address in `x9` changed? Which instruction would change it?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. The first `ldr` gets the variable's address, and the second loads the value stored at that address.\n2. `w1`: a `.word` is 4 bytes and `%d` prints a 32-bit `int`, while an `x1` load would pull in the 4 bytes after the variable as well.\n3. No, only the copy in `w10` changed. `str w10, [x9]` writes it back."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Sum a global array](/practice/sum-a-global-array): read a whole array of values out of `.data` and add them up. It needs a loop, so try it after the [pre-test loop lesson](/learn/pretest-loop)."
     }
-
-   
   ]
 }
