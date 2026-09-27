@@ -518,13 +518,16 @@ export function FullChromeSurface({
   // or a stop there, brings that helper's tab forward, and the editor then
   // reveals the line. Keyed on the pc's line, so a tab the student picks
   // while paused stays picked. Not while a run drives (the pc crosses files
-  // many times a second), and never onto a tab closed since the assemble.
+  // many times a second), not before the first step (assembling from a
+  // helper tab must not yank the student to main's entry), and never onto a
+  // tab closed since the assemble.
+  const executing = emu.stepCount > 0 && !emu.isRunning;
   useEffect(() => {
-    if (emu.currentLine == null || emu.isRunning) return;
+    if (emu.currentLine == null || !executing) return;
     const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
     if (loc.file !== MAIN_FILE && extraFilesRef.current[loc.file]?.name !== loc.name) return;
     setActiveFile(loc.file);
-  }, [emu.currentLine, emu.isRunning, machineMain, machineExtras, setActiveFile, extraFilesRef]);
+  }, [emu.currentLine, executing, machineMain, machineExtras, setActiveFile, extraFilesRef]);
   const activeBreakpoints = useMemo(
     () => breakpointsForFile(emu.breakpoints, source, extraFiles, activeFile),
     [emu.breakpoints, source, extraFiles, activeFile],
@@ -663,7 +666,7 @@ export function FullChromeSurface({
           lintWarnings={activeLint}
           onCursorChange={isMain ? setCursor : undefined}
           focusRequest={errorFocus}
-          followCurrentLine={!emu.isRunning}
+          followCurrentLine={executing}
           onRunShortcut={() => void assembleAndRun()}
           onFormat={() => {
             if (!isMain) return;
