@@ -1,0 +1,4 @@
+$ gcc misspelled-mnemonic.s -o program
+misspelled-mnemonic.s: Assembler messages:
+misspelled-mnemonic.s:14: Error: unknown mnemonic `mvo' -- `mvo w0,0'
+[exit 1]
