@@ -1616,7 +1616,7 @@ fn extract_call_target(tokens: &[crate::frontend::lexer::Token], tail: bool) -> 
     let TokenKind::Ident(mn) = &tokens[0].kind else {
         return None;
     };
-    if !mn.eq_ignore_ascii_case("bl") && !(tail && mn.eq_ignore_ascii_case("b")) {
+    if !(mn.eq_ignore_ascii_case("bl") || tail && mn.eq_ignore_ascii_case("b")) {
         return None;
     }
     let TokenKind::Ident(name) = &tokens[1].kind else {
