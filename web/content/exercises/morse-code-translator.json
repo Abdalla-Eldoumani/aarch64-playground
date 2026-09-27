@@ -2,6 +2,7 @@
   "title": "Morse code translator",
   "slug": "morse-code-translator",
   "order": 39,
+  "lastUpdated": "2026-09-27",
   "topic": "strings",
   "difficulty": "challenge",
   "prompt": "Turn the words on the command line into Morse code. The starter already holds the code for every letter: 26 strings, and a table `morse` of 26 pointers to them in alphabet order, eight bytes each (`.dword`). The args box holds `hello world`. Change it to try other words with run. Check always uses `hello world`.\n\nFor each word from `argv[1]` on, walk its bytes with `ldrb` until the terminating zero. Turn each letter into a table index (`'a'` is 0, `'z'` is 25, and a capital counts the same as its lower-case letter), load the pointer at that index, and print the string it points to with `%s`. Anything that is not a letter prints `?`.\n\nSpacing matters, because the output is compared exactly:\n\n- one space between the letters of a word\n- ` / ` between words\n- a newline at the very end\n- with no words at all, print `nothing to send` on its own line and return 1 from `main`\n\nSo `hello world` prints `.... . .-.. .-.. --- / .-- --- .-. .-.. -..`.\n\n## what is checked\n\n- the Morse line for `hello world`, the args in the specification, and for more arguments you cannot see\n- the exit status (0 after a message, 1 with nothing to send)\n- the words are read byte by byte (`ldrb`)",
