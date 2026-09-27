@@ -74,7 +74,7 @@
 	.string	"%*d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #352
@@ -101,7 +101,7 @@ main:
 	mov	w20, -9
 	stp	x27, x28, [sp, 256]
 	stp	d12, d13, [sp, 272]
-	.align 5
+	.p2align 5,,15
 .L3:
 	mov	w19, -2
 	mov	w21, 0
@@ -144,7 +144,7 @@ main:
 	adrp	x0, .LC7
 	adrp	x20, .LANCHOR0
 	ldr	d12, [x0, :lo12:.LC7]
-	.align 5
+	.p2align 5,,15
 .L4:
 	fmov	d2, d13
 	fmov	d0, d12
