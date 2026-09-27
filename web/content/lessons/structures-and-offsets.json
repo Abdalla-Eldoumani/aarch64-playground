@@ -2,6 +2,7 @@
   "title": "Structures as offset tables",
   "slug": "structures-and-offsets",
   "order": 20,
+  "lastUpdated": "2026-09-27",
   "summary": "Lay out a struct as named field offsets with the padding it needs, read and write each field at its own size, and nest one struct inside another.",
   "tags": [
     "arrays"
