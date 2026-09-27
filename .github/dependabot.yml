@@ -4,15 +4,13 @@ updates:
     directory: /web
     schedule:
       interval: weekly
-    # A version bump waits a week after its release, so a broken release is
-    # usually pulled or fixed before it reaches a pull request. Security
-    # updates never wait. next is exempt so a Next.js security release,
-    # which patches only the newest minor, is never held back.
+    # New versions wait 7 days, so a broken release is usually pulled first.
+    # next ships security fixes as normal releases, so it and eslint-config-next never wait.
     cooldown:
       default-days: 7
       exclude: ["next", "eslint-config-next"]
-    # Each group moves together: split across two pull requests, the
-    # packages fail npm ci on each other's peer versions.
+    # react, vitest, and size-limit packages require matching versions of each other,
+    # so one bumped alone fails npm ci; next and eslint-config-next release as a pair.
     groups:
       next:
         patterns: ["next", "eslint-config-next"]
@@ -36,8 +34,7 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: concurrently
         update-types: ["version-update:semver-major"]
-      # Below 1.0 a minor release can change the API, and the editor ships
-      # vendored, so this one pin decides what every visitor runs.
+      # Below 1.0 a minor can break the API, and the site bundles this exact version.
       - dependency-name: monaco-editor
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: playwright
