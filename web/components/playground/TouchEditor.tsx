@@ -16,6 +16,11 @@ export interface TouchEditorProps {
   onDrop: (e: React.DragEvent) => void;
   onCursorChange?: (pos: { line: number; column: number }) => void;
   readOnly?: boolean;
+  /** Jump to a line (an error to fix), as Editor's prop of the same name. */
+  focusRequest?: { line: number; nonce: number } | null;
+  /** Follow the pc, as Editor's prop of the same name: off while a run
+   *  drives and until the first step. */
+  followCurrentLine?: boolean;
 }
 
 // Vertical padding shared by the gutter, the colour layer, and the textarea,
@@ -58,6 +63,8 @@ export function TouchEditor({
   onDrop,
   onCursorChange,
   readOnly = false,
+  focusRequest = null,
+  followCurrentLine = true,
 }: TouchEditorProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const [moreRight, setMoreRight] = useState(false);
@@ -107,7 +114,7 @@ export function TouchEditor({
   // moves only as far as it must.
   useEffect(() => {
     const ta = taRef.current;
-    if (!ta || currentLine == null) return;
+    if (!ta || currentLine == null || !followCurrentLine) return;
     const top = PAD_Y + (currentLine - 1) * LINE_H;
     const above = top < ta.scrollTop;
     const below = top + LINE_H > ta.scrollTop + ta.clientHeight;
@@ -117,7 +124,26 @@ export function TouchEditor({
     // The scroll event this write raises carries the new offset into state
     // and re-picks the window; this paint keeps the layers aligned meanwhile.
     paint(next, ta.scrollLeft);
-  }, [currentLine, paint]);
+  }, [currentLine, followCurrentLine, paint]);
+
+  // Jump to an error: the line centred, the caret at its start, the focus in
+  // the editor, as Monaco's revealLineInCenter does. A request already there
+  // at mount is not replayed, as Monaco drops one it gets before it loads, so
+  // a remount never steals the focus.
+  const seenFocusRef = useRef(focusRequest?.nonce ?? null);
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta || !focusRequest || focusRequest.nonce === seenFocusRef.current) return;
+    seenFocusRef.current = focusRequest.nonce;
+    const lines = ta.value.split("\n");
+    const line = Math.min(Math.max(1, focusRequest.line), lines.length);
+    const start = lines.slice(0, line - 1).reduce((sum, text) => sum + text.length + 1, 0);
+    ta.focus({ preventScroll: true });
+    ta.setSelectionRange(start, start);
+    ta.scrollTop = Math.max(0, PAD_Y + (line - 1) * LINE_H - (ta.clientHeight - LINE_H) / 2);
+    ta.scrollLeft = 0;
+    paint(ta.scrollTop, 0);
+  }, [focusRequest, paint]);
 
   // Ctrl/Cmd + / toggles line comments on the touched lines, as Monaco does,
   // for a tablet with a keyboard. `onChange` (the parent's over-cap guard)
