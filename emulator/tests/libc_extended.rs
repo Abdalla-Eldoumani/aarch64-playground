@@ -309,40 +309,40 @@ fmt:    .string "%d %d %d %d %d %d\n"
         .text
         .global main
 main:
-        stp     fp, lr, [sp, -32]!
+        stp     fp, lr, [sp, -64]!
         mov     fp, sp
         stp     x19, x20, [sp, 16]
+        stp     x21, x22, [sp, 32]
+        str     x23, [sp, 48]
 
         bl      __ctype_toupper_loc
         ldr     x1, [x0]
-        ldr     w2, [x1, 388]
-        ldr     w3, [x1, 260]
-        ldr     w4, [x1, 212]
-        mov     x19, x2
+        ldr     w19, [x1, 388]
+        ldr     w20, [x1, 260]
+        ldr     w21, [x1, 212]
         bl      __ctype_tolower_loc
         ldr     x5, [x0]
-        ldr     w6, [x5, 260]
+        ldr     w22, [x5, 260]
         mov     x7, -1
-        ldr     w8, [x5, x7, lsl 2]
-        mov     w20, w8
+        ldr     w23, [x5, x7, lsl 2]
 
         mov     w0, 'a'
         bl      toupper
 
-        ldr     x1, =fmt
-        mov     x9, x0
-        mov     x0, x1
+        mov     w6, w0
+        ldr     x0, =fmt
         mov     w1, w19
-        mov     w2, w3
-        mov     w3, w4
-        mov     w4, w6
-        mov     w5, w20
-        mov     w6, w9
+        mov     w2, w20
+        mov     w3, w21
+        mov     w4, w22
+        mov     w5, w23
         bl      printf
 
         ldp     x19, x20, [sp, 16]
+        ldp     x21, x22, [sp, 32]
+        ldr     x23, [sp, 48]
         mov     w0, 0
-        ldp     fp, lr, [sp], 32
+        ldp     fp, lr, [sp], 64
         ret
 "#;
     let mut cpu = load(src);
