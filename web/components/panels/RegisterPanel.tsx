@@ -662,8 +662,8 @@ export function RegisterPanel({
   const restCell = "text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
   const toggleOn = "bg-[var(--bg-elevated)] text-[var(--text-primary)]";
   // A short cell under a mouse keeps the header to two lines; a finger gets
-  // the full 44px.
-  const touchTall = "min-h-[22px] [@media(pointer:coarse)]:min-h-[44px]";
+  // the full 44px each way.
+  const touchTall = "min-h-[22px] [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px] [@media(pointer:coarse)]:justify-center";
 
   const availableViews = (["x", "d", "v"] as RegView[]).filter(
     (id) => id === "x" || (id === "d" && hasFp) || (id === "v" && hasVec),
