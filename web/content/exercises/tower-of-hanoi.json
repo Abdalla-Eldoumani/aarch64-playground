@@ -2,6 +2,7 @@
   "title": "Tower of Hanoi",
   "slug": "tower-of-hanoi",
   "order": 51,
+  "lastUpdated": "2026-09-27",
   "topic": "subroutines",
   "difficulty": "challenge",
   "prompt": "Three pegs, A, B and C, and a tower of n discs on peg A, the smallest on top. Move the whole tower to peg C one disc at a time, never putting a bigger disc on a smaller one. The starter's `main` reads n (0 to 10) and calls `hanoi(n, 'A', 'C', 'B')`. Write `hanoi` so it prints every move and returns how many moves it made.\n\n`hanoi` is recursive: it calls itself on a smaller tower. To move n discs from `from` to `to`, move the top n - 1 discs from `from` to `spare`, move disc n from `from` to `to`, then move the n - 1 discs from `spare` to `to`. A tower of 0 discs needs no moves. Print the move of disc d as `disc d: X -> Y`, with the pegs printed as characters (`%c`).\n\nEvery call of `hanoi` still needs n, the three pegs, and its running count after its own calls return, so keep them in x19 to x28. Its caller is using those registers too, so save the ones you use in the frame on entry and restore them before `ret`.\n\nFor n = 2 the output is:\n\n```\ndisc 1: A -> B\ndisc 2: A -> C\ndisc 1: B -> C\nmoves: 3\n```\n\n## what is checked\n\n- every move, then the count, for the starter's input (n = 3)\n- the program exits with status 0\n- the same checks on other inputs the checker keeps hidden, including an empty tower",
