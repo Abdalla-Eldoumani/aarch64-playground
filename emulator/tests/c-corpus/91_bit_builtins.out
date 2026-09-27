@@ -1,0 +1,44 @@
+0000000000000000 pop 0 0 clz 32 64 ctz 32 64 cls 31 63
+  ffs 0 0 parity 0 0 bswap 0000 00000000 0000000000000000
+0000000000000001 pop 1 1 clz 31 63 ctz 0 0 cls 30 62
+  ffs 1 1 parity 1 1 bswap 0100 01000000 0100000000000000
+0000000000000002 pop 1 1 clz 30 62 ctz 1 1 cls 29 61
+  ffs 2 2 parity 1 1 bswap 0200 02000000 0200000000000000
+0000000000000003 pop 2 2 clz 30 62 ctz 0 0 cls 29 61
+  ffs 1 1 parity 0 0 bswap 0300 03000000 0300000000000000
+0000000000000080 pop 1 1 clz 24 56 ctz 7 7 cls 23 55
+  ffs 8 8 parity 1 1 bswap 8000 80000000 8000000000000000
+00000000000000ff pop 8 8 clz 24 56 ctz 0 0 cls 23 55
+  ffs 1 1 parity 0 0 bswap ff00 ff000000 ff00000000000000
+8000000000000000 pop 0 1 clz 32 0 ctz 32 63 cls 31 0
+  ffs 0 64 parity 0 1 bswap 0000 00000000 0000000000000080
+ffffffffffffffff pop 32 64 clz 0 0 ctz 0 0 cls 31 63
+  ffs 1 1 parity 0 0 bswap ffff ffffffff ffffffffffffffff
+7fffffffffffffff pop 32 63 clz 0 1 ctz 0 0 cls 31 0
+  ffs 1 1 parity 0 1 bswap ffff ffffffff ffffffffffffff7f
+00000000ffffffff pop 32 32 clz 0 32 ctz 0 0 cls 31 31
+  ffs 1 1 parity 0 0 bswap ffff ffffffff ffffffff00000000
+ffffffff00000000 pop 0 32 clz 32 0 ctz 32 32 cls 31 31
+  ffs 0 33 parity 0 0 bswap 0000 00000000 00000000ffffffff
+0123456789abcdef pop 20 32 clz 0 7 ctz 0 0 cls 0 6
+  ffs 1 1 parity 0 0 bswap efcd efcdab89 efcdab8967452301
+fedcba9876543210 pop 12 32 clz 1 0 ctz 4 4 cls 0 6
+  ffs 5 5 parity 0 0 bswap 1032 10325476 1032547698badcfe
+8000000000000001 pop 1 2 clz 31 0 ctz 0 0 cls 30 0
+  ffs 1 1 parity 1 0 bswap 0100 01000000 0100000000000080
+0000000100000000 pop 0 1 clz 32 31 ctz 32 32 cls 31 30
+  ffs 0 33 parity 0 1 bswap 0000 00000000 0000000001000000
+aaaaaaaaaaaaaaaa pop 16 32 clz 0 0 ctz 1 1 cls 0 0
+  ffs 2 2 parity 0 0 bswap aaaa aaaaaaaa aaaaaaaaaaaaaaaa
+0000000080000000 pop 1 1 clz 0 32 ctz 31 31 cls 0 31
+  ffs 32 32 parity 1 1 bswap 0000 00000080 0000008000000000
+sums pop 2505 clz 9573 ctz 5466 mismatches 0
+log2(1) = 0, next pow2 1
+log2(2) = 1, next pow2 2
+log2(3) = 1, next pow2 4
+log2(1000) = 9, next pow2 1024
+log2(4096) = 12, next pow2 4096
+log2(4097) = 12, next pow2 8192
+log2(9223372036854775808) = 63, next pow2 9223372036854775808
+set bits of 123456789abcdef: 0 1 2 3 5 6 7 8 10 11 14 15 16 17 19 21 23 24 27 31 32 33 34 37 38 40 42 46 48 49 53 56
+popcount total 24576
