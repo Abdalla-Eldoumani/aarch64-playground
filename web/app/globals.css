@@ -588,6 +588,40 @@ body {
 .embed-area-console {
   grid-area: console;
 }
+/* A frame under 38rem (a phone) shows one pane at a time behind the view
+   switch, with the status line and its register peek under it. The editor is
+   hidden, not removed, so its caret and undo survive a switch. Where
+   container queries are missing, the switch and the status line stay hidden
+   and the base stack above is what shows. */
+.embed-view,
+.embed-status {
+  display: none;
+}
+@container (max-width: 37.98rem) {
+  .embed-view {
+    display: flex;
+  }
+  .embed-status {
+    display: block;
+  }
+  .embed-grid {
+    grid-template-areas: "pane";
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .embed-area-editor,
+  .embed-area-registers,
+  .embed-area-console {
+    grid-area: pane;
+    border-bottom: 0;
+  }
+  .embed-grid:not([data-pane="editor"]) .embed-area-editor {
+    visibility: hidden;
+  }
+  .embed-grid:not([data-pane="registers"]) .embed-area-registers,
+  .embed-grid:not([data-pane="console"]) .embed-area-console {
+    display: none;
+  }
+}
 @container (min-width: 38rem) {
   .embed-grid {
     grid-template-areas: "editor editor" "registers registers" "console console";
