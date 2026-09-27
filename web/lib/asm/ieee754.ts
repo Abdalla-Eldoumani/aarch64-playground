@@ -34,7 +34,7 @@ export type FloatClass =
   | "quiet NaN"
   | "signalling NaN";
 
-export interface FloatFields {
+interface FloatFields {
   sign: 0 | 1;
   /** The stored (biased) exponent. */
   exponent: number;
@@ -46,7 +46,7 @@ function topExponent(width: FloatWidth): number {
   return (1 << FLOAT_LAYOUT[width].exponentBits) - 1;
 }
 
-export function splitFloat(bits: bigint, width: FloatWidth): FloatFields {
+function splitFloat(bits: bigint, width: FloatWidth): FloatFields {
   const { exponentBits, fractionBits } = FLOAT_LAYOUT[width];
   return {
     sign: (bits >> BigInt(width - 1)) & 1n ? 1 : 0,
@@ -55,7 +55,7 @@ export function splitFloat(bits: bigint, width: FloatWidth): FloatFields {
   };
 }
 
-export function joinFloat(fields: FloatFields, width: FloatWidth): bigint {
+function joinFloat(fields: FloatFields, width: FloatWidth): bigint {
   const { fractionBits } = FLOAT_LAYOUT[width];
   return (
     (BigInt(fields.sign) << BigInt(width - 1)) |
