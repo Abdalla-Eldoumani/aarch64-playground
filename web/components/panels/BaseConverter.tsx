@@ -314,7 +314,7 @@ export function BaseConverter({
       <>
         {/* The pattern cut where the hardware cuts it: the same three
             fields the inputs below edit, in binary. */}
-        <div className="flex gap-1 font-mono text-[11px]">
+        <div className="flex gap-2 font-mono text-[11px]">
           {strip.map((part) => (
             <div
               key={part.name}
