@@ -127,10 +127,12 @@ const INLINE_CODE_CLASS =
 // sideways inside the column instead of pushing the page wider.
 const TABLE_WRAP_CLASS = "my-4 overflow-x-auto";
 const TABLE_CLASS =
-  "border-collapse text-left tabular-nums text-[var(--text-primary)] [font:var(--type-small)]";
+  "border-collapse text-left text-[var(--text-primary)] [font:var(--type-small)]";
+// The table's font shorthand resets numeral spacing, so the cells set it.
 const TH_CLASS =
-  "border border-[var(--border)] border-b-[color:var(--border-strong)] bg-[var(--bg-sunken)] px-3 py-2 align-bottom font-semibold";
-const TD_CLASS = "border border-[var(--border)] px-3 py-2 align-top";
+  "border border-[var(--border)] border-b-[color:var(--border-strong)] bg-[var(--bg-sunken)] px-3 py-2 align-bottom font-semibold tabular-nums";
+const TD_CLASS =
+  "border border-[var(--border)] px-3 py-2 align-top tabular-nums";
 const HOVER_WRAP_CLASS =
   "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:shadow-[var(--ring)]";
 const TOOLTIP_CLASS =
