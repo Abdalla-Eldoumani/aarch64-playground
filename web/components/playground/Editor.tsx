@@ -701,6 +701,8 @@ export function Editor({
         onDrop={onDrop}
         onCursorChange={onCursorChange}
         readOnly={readOnly}
+        focusRequest={focusRequest}
+        followCurrentLine={followCurrentLine}
       />
     );
   }
