@@ -3,7 +3,8 @@
 // storing its own.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { RegisterPanel, type RegView } from "@/components/panels/RegisterPanel";
+import type { RegView } from "@/lib/emulator/emulator-state";
+import { RegisterPanel } from "@/components/panels/RegisterPanel";
 
 afterEach(() => {
   cleanup();
