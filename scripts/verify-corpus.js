@@ -129,6 +129,12 @@ if (fs.existsSync(fixturesRoot)) {
       continue;
     }
     let ok = true;
+    // Every shipped example ends with status 0 on the course servers; a
+    // main that forgets to set w0 exits with whatever printf left there.
+    if (Number(result.exitCode) !== 0) {
+      console.log(`  FAIL: exit code ${result.exitCode}, expected 0`);
+      ok = false;
+    }
     if (hasStdout) {
       // Normalize CRLF to LF on the fixture side. On Windows, git's
       // autocrlf can introduce CRLF endings on checkout; the WASM
@@ -239,14 +245,6 @@ function combineSources(main, extras) {
   return parts.join("\n");
 }
 
-// is-prime.s ships as a leaf function with no entry point on purpose; its
-// own header says to assemble it beside a caller, and no such caller is a
-// shipped file. Naming it here rather than inferring "has no main" keeps a
-// main that goes missing from any other example a hard failure.
-const LEAF_ONLY = {
-  "is-prime": "leaf function, no entry point; no caller ships with it",
-};
-
 console.log(`\n=== assembly gate ===`);
 const exampleFiles = readExampleFiles(
   path.join(__dirname, "..", "web", "lib", "playground", "playground-handoff.ts"),
@@ -255,10 +253,6 @@ let assembleFailed = false;
 for (const file of fs.readdirSync(hostedRoot).sort()) {
   if (!file.endsWith(".s")) continue;
   const stem = file.slice(0, -2);
-  if (LEAF_ONLY[stem]) {
-    console.log(`  SKIP ${stem}: ${LEAF_ONLY[stem]}`);
-    continue;
-  }
   const helpers = (exampleFiles[stem] || []).map((name) => ({
     name,
     body: fs.readFileSync(path.join(hostedRoot, stem, name), "utf8"),
