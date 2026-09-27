@@ -1,48 +1,48 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 add:
 	add	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sub:
 	sub	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 mul:
 	mul	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 bxor:
 	eor	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 band:
 	and	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 bor:
 	orr	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 mn:
 	cmp	w1, w0
 	csel	w0, w1, w0, le
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 mx:
 	cmp	w1, w0
 	csel	w0, w1, w0, ge
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 quo:
 	cbz	w1, .L11
 	sdiv	w1, w0, w1
@@ -50,7 +50,7 @@ quo:
 	mov	w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 rem_:
 	cbz	w1, .L16
 	sdiv	w2, w0, w1
@@ -59,7 +59,7 @@ rem_:
 	mov	w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 ten:
 	add	x1, x0, w1, sxtw 1
 	sxth	w2, w2
@@ -81,12 +81,12 @@ ten:
 	smaddl	x0, w1, w0, x7
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 one:
 	mov	x0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fact:
 	stp	x29, x30, [sp, -32]!
 	mov	x29, sp
@@ -104,21 +104,21 @@ fact:
 	ldp	x29, x30, [sp], 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 rect_area2:
 	ldp	w0, w1, [x0, 8]
 	smull	x0, w0, w1
 	lsl	x0, x0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 rect_perim:
 	ldp	w0, w1, [x0, 8]
 	add	w0, w0, w1
 	sbfiz	x0, x0, 1, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 rect_grow:
 	dup	v31.2s, w1
 	ldr	d30, [x0, 8]
@@ -126,13 +126,13 @@ rect_grow:
 	str	d30, [x0, 8]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 tri_area2:
 	ldp	w1, w0, [x0, 8]
 	smull	x0, w1, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 tri_perim:
 	ldpsw	x1, x2, [x0, 8]
 	ldrsw	x0, [x0, 16]
@@ -140,7 +140,7 @@ tri_perim:
 	add	x0, x1, x0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 tri_grow:
 	ldr	d31, [x0, 8]
 	fmov	s30, w1
@@ -151,13 +151,13 @@ tri_grow:
 	str	d31, [x0, 8]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_err:
 	adrp	x0, st_err
 	add	x0, x0, :lo12:st_err
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_need:
 	sub	w0, w0, #48
 	cmp	w0, 9
@@ -170,13 +170,13 @@ st_need:
 	add	x0, x0, :lo12:st_digit
 	str	x2, [x1]
 	ret
-	.align 2
+	.p2align 2,,3
 .L33:
 	adrp	x0, st_err
 	add	x0, x0, :lo12:st_err
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_digit:
 	cmp	w0, 95
 	beq	.L36
@@ -195,20 +195,20 @@ st_digit:
 .L35:
 	mov	x0, x2
 	ret
-	.align 2
+	.p2align 2,,3
 .L36:
 	adrp	x2, st_need
 	add	x2, x2, :lo12:st_need
 	mov	x0, x2
 	ret
-	.align 2
+	.p2align 2,,3
 .L38:
 	adrp	x2, st_err
 	add	x2, x2, :lo12:st_err
 	mov	x0, x2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_start:
 	cmp	w0, 45
 	beq	.L48
@@ -225,7 +225,7 @@ st_start:
 	add	x0, x0, :lo12:st_digit
 	str	x2, [x1]
 	ret
-	.align 2
+	.p2align 2,,3
 .L48:
 	mov	x0, -1
 	str	x0, [x1, 8]
@@ -233,7 +233,7 @@ st_start:
 	adrp	x0, st_need
 	add	x0, x0, :lo12:st_need
 	ret
-	.align 2
+	.p2align 2,,3
 .L44:
 	adrp	x0, st_err
 	add	x0, x0, :lo12:st_err
@@ -292,7 +292,7 @@ st_start:
 	.string	"parse [%s] %s %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #304
@@ -316,7 +316,7 @@ main:
 	stp	q27, q28, [sp, 144]
 	stp	q29, q30, [sp, 176]
 	str	q31, [sp, 208]
-	.align 5
+	.p2align 5,,15
 .L62:
 	adrp	x3, .LC23
 	ldr	x23, [x22]
@@ -326,11 +326,11 @@ main:
 	mov	x28, x23
 	ldrb	w4, [x23]
 	cbz	w4, .L51
-	.align 5
+	.p2align 5,,15
 .L50:
 	add	x1, x20, 96
 	mov	w0, 0
-	.align 5
+	.p2align 5,,15
 .L56:
 	ldrb	w3, [x1]
 	cmp	w3, w4
@@ -369,7 +369,7 @@ main:
 	add	x26, x26, :lo12:.LC30
 	mov	w22, 0
 	adrp	x27, .LC31
-	.align 5
+	.p2align 5,,15
 .L63:
 	ldp	x25, x2, [x21, 8]
 	mov	w1, 5
@@ -455,7 +455,7 @@ main:
 	ext	v30.16b, v30.16b, v31.16b, #8
 	stp	q29, q30, [x23]
 	ldr	x22, [x23, x24, lsl 3]
-	.align 5
+	.p2align 5,,15
 .L75:
 	mov	w1, w28
 	blr	x22
@@ -575,7 +575,7 @@ main:
 	ldr	x0, [x21]
 	ldp	x23, x1, [x0]
 	b	.L81
-	.align 2
+	.p2align 2,,3
 .L107:
 	sub	w1, w4, #48
 	and	w3, w1, 255
@@ -587,7 +587,7 @@ main:
 	str	w1, [x19, w2, sxtw 2]
 	add	w2, w2, 1
 	b	.L59
-	.align 2
+	.p2align 2,,3
 .L53:
 	cmp	w2, 1
 	ble	.L57
@@ -605,7 +605,7 @@ main:
 	str	w0, [x19, x27]
 	mov	w2, w26
 	b	.L59
-	.align 2
+	.p2align 2,,3
 .L108:
 	cmp	w2, 15
 	ble	.L54
@@ -643,7 +643,7 @@ main:
 	ldr	q31, [x20, 544]
 	stp	q29, q28, [x19, 16]
 	str	q31, [sp, 112]
-	.align 5
+	.p2align 5,,15
 .L87:
 	add	x2, x23, :lo12:st_start
 	ldr	q31, [sp, 112]
@@ -651,7 +651,7 @@ main:
 	str	q31, [sp, 128]
 	mov	x20, x24
 	b	.L84
-	.align 2
+	.p2align 2,,3
 .L114:
 	add	x20, x20, 1
 	cmp	x2, x21
@@ -810,107 +810,107 @@ main:
 	.align	4
 	.LANCHOR0:
 fact_step:
-	.quad	one
-	.quad	fact
+	.xword	one
+	.xword	fact
 .LC28:
-	.quad	.LC0
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
+	.xword	.LC0
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
 optab:
 	.byte	43
 	.zero	7
-	.quad	.LC48
-	.quad	add
+	.xword	.LC48
+	.xword	add
 	.byte	45
 	.zero	7
-	.quad	.LC49
-	.quad	sub
+	.xword	.LC49
+	.xword	sub
 	.byte	42
 	.zero	7
-	.quad	.LC50
-	.quad	mul
+	.xword	.LC50
+	.xword	mul
 	.byte	47
 	.zero	7
-	.quad	.LC51
-	.quad	quo
+	.xword	.LC51
+	.xword	quo
 	.byte	37
 	.zero	7
-	.quad	.LC52
-	.quad	rem_
+	.xword	.LC52
+	.xword	rem_
 	.byte	38
 	.zero	7
-	.quad	.LC53
-	.quad	band
+	.xword	.LC53
+	.xword	band
 	.byte	124
 	.zero	7
-	.quad	.LC54
-	.quad	bor
+	.xword	.LC54
+	.xword	bor
 	.byte	94
 	.zero	7
-	.quad	.LC55
-	.quad	bxor
+	.xword	.LC55
+	.xword	bxor
 	.byte	60
 	.zero	7
-	.quad	.LC56
-	.quad	mn
+	.xword	.LC56
+	.xword	mn
 	.byte	62
 	.zero	7
-	.quad	.LC57
-	.quad	mx
+	.xword	.LC57
+	.xword	mx
 rect_vt:
-	.quad	.LC25
-	.quad	rect_area2
-	.quad	rect_perim
-	.quad	rect_grow
+	.xword	.LC25
+	.xword	rect_area2
+	.xword	rect_perim
+	.xword	rect_grow
 .LC38:
 	.word	3
 	.word	4
 tri_vt:
-	.quad	.LC47
-	.quad	tri_area2
-	.quad	tri_perim
-	.quad	tri_grow
+	.xword	.LC47
+	.xword	tri_area2
+	.xword	tri_perim
+	.xword	tri_grow
 .LC39:
 	.word	4
 	.word	6
 square_vt:
-	.quad	.LC46
-	.quad	rect_area2
-	.quad	rect_perim
-	.quad	rect_grow
+	.xword	.LC46
+	.xword	rect_area2
+	.xword	rect_perim
+	.xword	rect_grow
 .LC40:
 	.word	6
 	.word	10
 .LC42:
-	.quad	.LC12
-	.quad	.LC13
-	.quad	.LC14
-	.quad	.LC15
-	.quad	.LC16
-	.quad	.LC17
-	.quad	.LC18
-	.quad	.LC19
-	.quad	.LC20
-	.quad	.LC21
+	.xword	.LC12
+	.xword	.LC13
+	.xword	.LC14
+	.xword	.LC15
+	.xword	.LC16
+	.xword	.LC17
+	.xword	.LC18
+	.xword	.LC19
+	.xword	.LC20
+	.xword	.LC21
 	.zero	8
 .LC43:
-	.quad	0
-	.quad	1
+	.xword	0
+	.xword	1
 	.data
 	.align	4
 	.LANCHOR1:
 slots:
-	.quad	add
-	.quad	sub
-	.quad	mul
-	.quad	bxor
+	.xword	add
+	.xword	sub
+	.xword	mul
+	.xword	bxor
 tenp:
-	.quad	ten
+	.xword	ten
 
