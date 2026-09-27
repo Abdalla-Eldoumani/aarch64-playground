@@ -12,6 +12,12 @@ export function splitPasteLines(data: string): string[] {
 const ESCAPE_SEQUENCES = /\x1b(?:\[[0-?]*[ -/]*[@-~]|O[@-~]|[@-Z\\-_])/g;
 const CONTROL_BYTES = /[\x00-\x1f\x7f\x80-\x9f]/g;
 
+/** Remove whole ANSI escape sequences and keep everything else, newlines
+ *  included: for plain-text surfaces showing a terminal program's output. */
+export function stripEscapeSequences(text: string): string {
+  return text.replace(ESCAPE_SEQUENCES, "");
+}
+
 /**
  * Drop terminal control data from text entering the input buffer: whole
  * ANSI escape sequences first (a special key's CSI/SS3 sequence, or a
@@ -22,8 +28,7 @@ const CONTROL_BYTES = /[\x00-\x1f\x7f\x80-\x9f]/g;
  * the submitted command and scrambles the scrollback on repaint.
  */
 export function sanitizeInput(text: string): string {
-  return text
-    .replace(ESCAPE_SEQUENCES, "")
+  return stripEscapeSequences(text)
     .replace(/\t/g, " ")
     .replace(CONTROL_BYTES, "");
 }
