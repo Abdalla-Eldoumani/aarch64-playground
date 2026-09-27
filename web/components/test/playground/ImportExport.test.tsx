@@ -334,6 +334,7 @@ describe("ImportExport and the command palette", () => {
   const paletteDeps: PaletteDeps = {
     blocked: false,
     programLoaded: true,
+    isRunning: false,
     canStepBack: true,
     launchable: false,
     source: "",
