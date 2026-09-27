@@ -383,6 +383,16 @@ export function InstructionReference({
       <section
         ref={detailRef}
         aria-label="instruction detail"
+        // A fragment link in here (the b.cond link, the permalink) makes the
+        // browser jump to the index row with that id. Stacked, the detail
+        // sits some 12,000px under that row, so once the jump lands it is
+        // brought back; the link itself still navigates, so back still works.
+        onClick={(event) => {
+          const href = (event.target as Element).closest?.('a[href^="#"]')?.getAttribute("href");
+          if (!href || !stacked()) return;
+          if (!instructions.some((i) => hashId(i.mnemonic) === href.slice(1))) return;
+          requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start" }));
+        }}
         // Clear of the site bar when a pick scrolls it into view.
         className="flex min-w-0 scroll-mt-20 flex-col gap-4"
       >
