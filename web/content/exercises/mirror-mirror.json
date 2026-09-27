@@ -1,0 +1,65 @@
+{
+  "title": "Mirror, mirror",
+  "slug": "mirror-mirror",
+  "order": 44,
+  "topic": "memory",
+  "difficulty": "core",
+  "prompt": "The starter reads a count n (0 to 16) and then n numbers into the word array `list` in `.bss`, and prints the array at the end. Reverse the array in place before it is printed, so the last number comes out first.\n\nIn place means inside `list` itself, with no second array. Point one register at the first element and another at the last, swap the two words they point at, then move both pointers one element toward the middle. Stop when they meet or cross. Post-index addressing, such as `[left_r], 4`, uses the address in the register and then adds 4 to it, so one instruction can both store and step.\n\n## what is checked\n\n- the line `mirrored:` followed by the numbers in reverse order\n- the program exits cleanly\n- the array is changed in memory (`str` present)\n- your program also runs on lists you do not see: odd and even lengths, negative numbers, a single number, and an empty list",
+  "starter": "// read up to 16 numbers, reverse them in place, and print them\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(base_r, x19)\ndefine(n_r, w20)\ndefine(i_r, w21)\n\ndefine(MAX, 16)\n\n.data\nfmt_in:     .string \"%d\"\nfmt_head:   .string \"mirrored:\"\nfmt_el:     .string \" %d\"\nfmt_end:    .string \"\\n\"\n\n.bss\n.align 4\nlist:       .skip 64                        // MAX ints\ncount:      .skip 4\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // how many numbers follow\n        ldr     x1, =count\n        bl      scanf\n        ldr     x9, =count\n        ldr     n_r, [x9]\n\n        cmp     n_r, 0                      // keep n between 0 and MAX\n        b.ge    n_not_negative\n        mov     n_r, 0\nn_not_negative:\n        cmp     n_r, MAX\n        b.le    n_in_range\n        mov     n_r, MAX\nn_in_range:\n        ldr     base_r, =list\n\n        mov     i_r, 0                      // read the numbers into list\n        b       fill_test\nfill_loop:\n        ldr     x0, =fmt_in\n        add     x1, base_r, i_r, sxtw 2     // the address of list[i]\n        bl      scanf\n        add     i_r, i_r, 1\nfill_test:\n        cmp     i_r, n_r\n        b.lt    fill_loop\n\n        // TODO: reverse list[0] to list[n - 1] in place. Keep one\n        // pointer on the first element and one on the last, swap the\n        // two words they point at, and move both one element toward\n        // the middle until they meet or cross.\n\n        ldr     x0, =fmt_head               // print list as it now sits in memory\n        bl      printf\n        mov     i_r, 0\n        b       show_test\nshow_loop:\n        ldr     x0, =fmt_el\n        ldr     w1, [base_r, i_r, sxtw 2]\n        bl      printf\n        add     i_r, i_r, 1\nshow_test:\n        cmp     i_r, n_r\n        b.lt    show_loop\n        ldr     x0, =fmt_end\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "8\n3 1 4 1 5 9 2 6\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "mirrored: 6 2 9 5 1 4 1 3\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "str"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "5\n1 2 3 4 5\n",
+      "stdout": "mirrored: 5 4 3 2 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "6\n10 -20 30 -40 50 -60\n",
+      "stdout": "mirrored: -60 50 -40 30 -20 10\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "2\n7 9\n",
+      "stdout": "mirrored: 9 7\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1\n42\n",
+      "stdout": "mirrored: 42\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "0\n",
+      "stdout": "mirrored:\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "16\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16\n",
+      "stdout": "mirrored: 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}
