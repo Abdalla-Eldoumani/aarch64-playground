@@ -2,6 +2,7 @@
   "title": "The absolute truth",
   "slug": "the-absolute-truth",
   "order": 8,
+  "lastUpdated": "2026-09-27",
   "topic": "branching",
   "difficulty": "intro",
   "prompt": "The starter reads one signed number into the value register. Print its magnitude: `-42` prints as `42`.\n\nCompare the register against zero, skip the sign flip when it is already positive, and flip it otherwise. `neg` produces the negation of a register in one instruction.\n\n## what is checked\n\n- the magnitude is printed on its own line\n- the program exits cleanly\n- a comparison decides, and the sign flip uses `neg`\n- the same holds for other inputs you do not see: positive values and zero have to come out unchanged",
