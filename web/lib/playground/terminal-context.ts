@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
 import type { DispatchContext, TerminalProgramIO } from "@/lib/terminal/dispatch";
+import { combineSources, type Workspace } from "@/lib/playground/file-map";
 import { validateStdin } from "@/lib/playground/upload-guard";
 
 export type TerminalContextDeps = {
@@ -9,8 +10,8 @@ export type TerminalContextDeps = {
    *  below would poll an isRunning that can never change and report the pre-run
    *  stdout and exit code. */
   machine: RefObject<EmulatorState>;
-  /** The editor's live workspace as the one string the assembler sees. */
-  combinedSource: () => string;
+  /** The editor's live workspace: main plus any extra files. */
+  workspace: () => Workspace;
   /** Put the home directory back after a tool assemble wipes the machine. */
   applySeeds: () => void;
   /** The playground's working-set write paths, so a terminal redirect or an
@@ -49,6 +50,7 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     args: string[],
     stdin?: string,
     io?: TerminalProgramIO,
+    workspace?: Workspace,
   ) => {
     // The tool assemble deliberately leaves the editor's console
     // scrollback alone, so the hub's stdout/stderr still hold whatever the
@@ -65,7 +67,7 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     // args[0] is the `./name` the terminal displays; the emulator owns
     // argv[0] and re-adds it, so only argv[1..] goes through. Passing
     // the whole array would double the program name.
-    const verdict = await machine.current.assembleForTool(text, args.slice(1));
+    const verdict = await machine.current.assembleForTool(text, args.slice(1), workspace);
     applySeeds();
     if (!verdict.success) {
       // The verdict is the only carrier of the assemble error here;
@@ -138,8 +140,10 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     // The editor's program: the same run shape as a compiled executable,
     // over the live workspace (main plus any extra files, exactly what
     // the assemble button builds).
-    runProgram: async (args: string[], stdin?: string, io?: TerminalProgramIO) =>
-      runText(deps.combinedSource(), args, stdin, io),
+    runProgram: async (args: string[], stdin?: string, io?: TerminalProgramIO) => {
+      const ws = deps.workspace();
+      return runText(combineSources(ws.main, ws.extras), args, stdin, io, ws);
+    },
     step: async () => {
       machine.current.step();
       const e = machine.current;
