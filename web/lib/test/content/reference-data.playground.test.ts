@@ -42,7 +42,12 @@ describe("every try-in-playground payload assembles", () => {
       const result = emu.run_until_break(100_000) as {
         error?: string | null;
       };
-      if (result.error) {
+      // Stopping is what brk does, and its entry says so.
+      if (inst.mnemonic === "brk") {
+        if (!result.error?.startsWith("Trace/breakpoint trap")) {
+          failures.push(`brk: ${result.error ?? "ran past the trap"}`);
+        }
+      } else if (result.error) {
         failures.push(`${inst.mnemonic}: ${result.error}`);
       } else if (!emu.is_halted()) {
         failures.push(`${inst.mnemonic}: never halted`);
