@@ -93,7 +93,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Echo the sum](/practice/echo-the-sum): read two numbers with `scanf` and print their total. It keeps the numbers in the stack frame rather than in `.bss`, so each address is made with `add` instead of `ldr =label`; the [stack lesson](/learn/stack-and-frame-pointer) explains that form. The call to `scanf` is the same."
+      "markdown": "## Practice\n\n- [How many minutes old?](/practice/how-many-minutes-old): read a number into a `.bss` slot with `scanf`, the way this lesson does, and scale it.\n- [Echo the sum](/practice/echo-the-sum): read two numbers with `scanf` and print their total. It keeps the numbers in the stack frame rather than in `.bss`, so each address is made with `add` instead of `ldr =label`; the [stack lesson](/learn/stack-and-frame-pointer) explains that form. The call to `scanf` is the same."
     }
   ]
 }
