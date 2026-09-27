@@ -2,7 +2,7 @@
 // one bit pattern stay in sync, bad text is refused with a message under its
 // own field while the last value stands, and a link can open it at octal or
 // at the float reading.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { BaseConverter } from "@/components/panels/BaseConverter";
 
@@ -119,6 +119,22 @@ describe("BaseConverter overflow and bad input", () => {
     expect(messageFor("hex")).toContain("0-9 and a-f");
     // The message sits with its own field, not with the others.
     expect(messageFor("binary")).toBe("");
+  });
+
+  it("scrolls a new message into view, so a field low on a phone still shows it", () => {
+    // jsdom has no scrollIntoView; stand one in and record what it was called on.
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      render(<BaseConverter />);
+      fireEvent.change(field("octal"), { target: { value: "9" } });
+      const id = field("octal").getAttribute("aria-describedby");
+      const targets = scroll.mock.contexts as Element[];
+      expect(targets.some((el) => el.id === id)).toBe(true);
+      expect(scroll).toHaveBeenLastCalledWith({ block: "nearest" });
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
   });
 
   it("blur resolves a held message back to the hint", () => {
