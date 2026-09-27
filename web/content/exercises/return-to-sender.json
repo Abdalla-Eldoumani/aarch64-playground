@@ -1,0 +1,58 @@
+{
+  "title": "Return to sender",
+  "slug": "return-to-sender",
+  "order": 53,
+  "topic": "subroutines",
+  "difficulty": "challenge",
+  "prompt": "A struct bigger than 16 bytes does not fit in x0 and x1, so it comes back another way. The *caller*, the code making the call, reserves room for the struct in its own frame and passes that address in x8. The *callee*, the subroutine being called, writes the struct there. The caller picks the address and the callee delivers to it.\n\nWrite `describe(n)`, which fills in this struct for the n in x0:\n\n```c\nstruct profile {\n    long square;   // n * n\n    int  sign;     // -1, 0 or 1\n    int  odd;      // 1 if n is odd, else 0\n    int  last;     // the last decimal digit of n, never negative\n};\n```\n\nWork out each field's offset first. A `long` starts at a multiple of 8, and the whole struct is padded out to a multiple of 8 as well, so its 20 bytes of fields take 24. Store each field at its own width: an x register for the `long`, a w register for each `int`.\n\nThen finish `main`: grow its frame to hold the struct, point x8 at it, call `describe`, and load the fields into x2, w3, w4 and w5 for the `printf` that is already there. The starter's input prints:\n\n```\n7: square 49, sign 1, odd 1, last digit 7\n-12: square 144, sign -1, odd 0, last digit 2\n```\n\n## what is checked\n\n- the two lines above\n- the program exits with status 0\n- the same checks on other inputs the checker keeps hidden, including 0, negative numbers, a square too big for 32 bits, and no input at all\n- the struct travels through memory: the source uses `x8` and `str`",
+  "starter": "// describe each number read with one call that returns a 24-byte struct\ndefine(fp, x29)\ndefine(lr, x30)\n\n// struct profile { long square; int sign; int odd; int last; }\n// TODO: name each field's offset, and the struct's size.\n\nn_s = 16\nalloc = -(16 + 8) & -16                     // TODO: make room for the struct too\ndealloc = -alloc\n\n.data\nfmt_in:     .string \"%ld\"\nfmt_out:    .string \"%ld: square %ld, sign %d, odd %d, last digit %d\\n\"\n\n.text\n\n// describe(x0 = n) -> struct profile, written to the address the caller passes\n        .balign 4\n        .global describe\ndescribe:\n        // TODO: fill in all four fields of the struct for n.\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        b       fill_test\n\nnext_n:\n        // TODO: call describe for the number in the n_s slot, with a\n        // struct in this frame as the place for the answer. Then load\n        // the fields: square into x2, sign into w3, odd into w4, and\n        // the last digit into w5.\n\n        ldr     x0, =fmt_out\n        ldr     x1, [fp, n_s]\n        bl      printf\n\nfill_test:\n        ldr     x0, =fmt_in\n        add     x1, fp, n_s\n        bl      scanf\n        cmp     w0, 1                       // 1 value matched; -1 means the input ran out\n        b.eq    next_n\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+  "args": "",
+  "stdin": "7\n-12\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "7: square 49, sign 1, odd 1, last digit 7\n-12: square 144, sign -1, odd 0, last digit 2\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "x8"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "str"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "0: square 0, sign 0, odd 0, last digit 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "100000\n-3037000499\n",
+      "stdout": "100000: square 10000000000, sign 1, odd 0, last digit 0\n-3037000499: square 9223372030926249001, sign -1, odd 1, last digit 9\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "-1\n1\n10\n",
+      "stdout": "-1: square 1, sign -1, odd 1, last digit 1\n1: square 1, sign 1, odd 1, last digit 1\n10: square 100, sign 1, odd 0, last digit 0\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "",
+      "stdout": "",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}
