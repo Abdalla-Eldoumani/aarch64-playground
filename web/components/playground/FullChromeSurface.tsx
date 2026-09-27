@@ -6,8 +6,7 @@ import { useBreakpoint } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
-import { formatByte, formatWord64 } from "@/lib/emulator/format-hex";
-import type { DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
+import { collectDiagnostic } from "@/lib/playground/diagnostic-bundle";
 import { formatAsm } from "@/lib/asm/asm-formatter";
 import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 import { useLaunchMode } from "@/lib/playground/use-launch-mode";
@@ -908,29 +907,18 @@ export function FullChromeSurface({
     />
   );
 
-  // The bug-report snapshot, built on click rather than per render: it reads
-  // the top of the stack out of the machine, which the toolbar must not have
-  // to hold.
-  const buildDiagnostic = (): DiagnosticBundle => ({
-    source,
-    args: argsText || undefined,
-    stdin: undefined,
-    stdout: emu.stdout || undefined,
-    stderr: emu.stderr || undefined,
-    notes: emu.notes.length > 0 ? emu.notes : undefined,
-    exitCode: emu.exitCode,
-    registers: emu.registers,
-    sp: emu.sp,
-    pc: formatWord64(emu.pc),
-    stackBytes: (() => {
-      const spNum = Number(BigInt(emu.sp));
-      if (!Number.isFinite(spNum)) return undefined;
-      const top = emu.getMemory(spNum, 64);
-      if (!top.length) return undefined;
-      return Array.from(top).map(formatByte).join(" ");
-    })(),
-    error: emu.error,
-  });
+  // The bug-report snapshot, gathered when its dialog opens rather than per
+  // render: it reads memory and the virtual files out of the machine, which
+  // the toolbar must not have to hold. Lines the machine reports count in the
+  // assembled layout; the program it carries is the one on screen.
+  const buildDiagnostic = () =>
+    collectDiagnostic({
+      machine: emuRef.current,
+      workspace: { main: source, extras: extraFiles },
+      assembled: assembledLayout,
+      args: argsText,
+      userAgent: navigator.userAgent,
+    });
 
   return (
     <>
