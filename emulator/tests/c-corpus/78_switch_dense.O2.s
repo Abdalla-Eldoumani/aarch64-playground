@@ -1162,7 +1162,7 @@ vzero:
 	.section .rodata
 	.align	4
 	.LANCHOR0:
-CSWTCH__23:
+CSWTCH.23:
 	.quad	.LC21
 	.quad	.LC22
 	.quad	.LC23
@@ -1175,7 +1175,7 @@ CSWTCH__23:
 	.quad	.LC30
 	.quad	.LC31
 	.quad	.LC32
-CSWTCH__26:
+CSWTCH.26:
 	.byte	5
 	.byte	4
 	.byte	4
