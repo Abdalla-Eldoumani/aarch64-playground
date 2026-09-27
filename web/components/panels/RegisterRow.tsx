@@ -8,9 +8,9 @@ export interface RegisterRowProps {
   alias?: string;
   /** Formatted value, typically hex such as "0x0000000000000001". */
   value: string;
-  /** A second reading of the same bits, shown beneath the value in tertiary
-   *  mono. The x-view's decimal mode puts the unsigned reading here beside the
-   *  signed one; omitted, the row is the single-value row it has always been. */
+  /** A second reading of the same bits, shown beneath the value in a smaller
+   *  tertiary line. The x-view's decimal mode puts the unsigned reading here
+   *  when it differs from the signed one; omitted, the row is one line. */
   secondary?: string;
   /** When true the row plays the write flash and tints the value with
    *  `--changed`; the parent sets it for the step in which the register wrote. */
@@ -19,9 +19,10 @@ export interface RegisterRowProps {
 
 /**
  * One register row: name / alias / value columns. The value uses tabular
- * figures so hex digits line up down the column. The row is a wrap-capable
- * flex line rather than a rigid grid: an 18-character hex value cannot
- * shrink, so in a panel narrower than one full line it reflows onto its own
+ * figures so hex digits line up down the column. Sizes are relative (em for
+ * type, ch for the columns), so the panel's zoom scales the whole row from
+ * the font size its grid sets. The row is a wrap-capable flex line rather
+ * than a rigid grid: a value too long for the column reflows onto its own
  * right-aligned line under the name and alias instead of painting into the
  * neighboring column; `title` keeps the full value one hover away. On a
  * write the row plays the `anim-reg-flash` keyframe: the amber write bar
@@ -43,29 +44,27 @@ export function RegisterRow({
       // The 2px amber edge bar is the machine's write marker; the flash
       // above strikes into it, and the --changed ink on the value keeps
       // the write readable after the motion ends.
-      className={`flex flex-wrap items-center gap-x-2 rounded-[var(--radius-control)] px-2 py-1 ${
+      className={`flex flex-wrap items-center gap-x-[0.5ch] rounded-[var(--radius-control)] px-1.5 py-0.5 font-mono leading-[1.25] ${
         changed
           ? "anim-reg-flash [box-shadow:inset_2px_0_0_0_var(--amber)]"
           : ""
       }`}
     >
-      <span className="w-10 shrink-0 font-mono text-[13px] text-[var(--text-secondary)]">
-        {name}
-      </span>
-      <span className="w-11 shrink-0 text-left font-mono text-[12px] text-[var(--text-secondary)]">
+      <span className="w-[3ch] shrink-0 text-[var(--text-secondary)]">{name}</span>
+      <span className="w-[4ch] shrink-0 text-left text-[0.9167em] text-[var(--text-secondary)]">
         {alias ?? ""}
       </span>
       <span className="ml-auto flex min-w-0 flex-col items-end text-right">
         <span
           title={value}
-          className={`font-mono text-[13px] tabular-nums ${
+          className={`tabular-nums ${
             changed ? "text-[var(--changed)]" : "text-[var(--text-primary)]"
           }`}
         >
           {value}
         </span>
         {secondary ? (
-          <span className="font-mono text-[11px] tabular-nums text-[var(--text-tertiary)]">
+          <span className="text-[0.8334em] tabular-nums text-[var(--text-tertiary)]">
             {secondary}
           </span>
         ) : null}
