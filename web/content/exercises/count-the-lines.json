@@ -1,0 +1,67 @@
+{
+  "title": "Count the lines",
+  "slug": "count-the-lines",
+  "order": 58,
+  "topic": "io",
+  "difficulty": "core",
+  "prompt": "Count the lines and the bytes on standard input without `scanf` or `getchar`: ask the operating system for the bytes yourself with the `read` system call. With the stdin box as given the program prints `lines: 3, bytes: 34`.\n\n`read` is service 63. Put the file descriptor in `x0` (0 is standard input), the buffer address in `x1`, the most bytes you want in `x2`, and 63 in `x8`, then run `svc 0`. The answer in `x0` is how many bytes actually arrived, which can be fewer than you asked for. An answer of 0 means the input is finished.\n\nSo read into the 64-byte `buf` in a loop: add each answer to the byte count, and count the newline bytes (value 10) among the bytes that read just delivered. Only those: whatever sits past them in `buf` is left over from an earlier read. A line counts when its newline arrives, so text whose last line has no newline has one line fewer than it looks.\n\nThe stdin box stands in for running the program with `< file` on a server: once its text runs out, `read` answers 0. If a run ever sits waiting for more input instead, Ctrl-D in the console's input line ends it.\n\n## what is checked\n\n- the count line for the text in the stdin box, and for more inputs you cannot see (short, empty, and longer than the buffer)\n- the program exits cleanly\n- the input comes through system calls (`svc` present, no `getchar`)",
+  "starter": "// count the lines and bytes on standard input, reading it in chunks with svc\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(lines_r, x19)\ndefine(bytes_r, x20)\ndefine(got_r, x21)\ndefine(buf_r, x22)\n\ndefine(STDIN, 0)\ndefine(SYS_READ, 63)\ndefine(BUF_SIZE, 64)\n\n.data\nfmt_out:    .string \"lines: %ld, bytes: %ld\\n\"\n\n.bss\nbuf:        .skip 64                        // BUF_SIZE bytes\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     lines_r, 0\n        mov     bytes_r, 0\n        ldr     buf_r, =buf\n\n        // TODO: repeat until read answers 0 (end of input) or less:\n        //   read up to BUF_SIZE bytes from STDIN into buf, add the number\n        //   of bytes it delivered to bytes_r, and count the newline bytes\n        //   (value 10) among just those bytes into lines_r.\n\n        ldr     x0, =fmt_out\n        mov     x1, lines_r\n        mov     x2, bytes_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "first line\nsecond line\nthird line\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "lines: 3, bytes: 34\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "svc"
+      },
+      {
+        "kind": "forbids-instruction",
+        "mnemonics": [
+          "scanf",
+          "getchar"
+        ]
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "",
+      "stdout": "lines: 0, bytes: 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "no newline at the end",
+      "stdout": "lines: 0, bytes: 21\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "\n\n\n",
+      "stdout": "lines: 3, bytes: 3\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "the quick line\nthe quick line\nthe quick line\nthe quick line\nthe quick line\n",
+      "stdout": "lines: 5, bytes: 75\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "a much longer first line here\nshort\n",
+      "stdout": "lines: 2, bytes: 36\n",
+      "exitCode": 0
+    }
+  ]
+}
