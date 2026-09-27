@@ -336,8 +336,16 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex flex-col h-dvh">
-        {!isEmbed && <SiteNav variant="slim" stars={stars} />}
+      {/* A phone on its side puts its notch at a side edge, so the side
+          insets are kept clear of controls and code. */}
+      <div className="flex flex-col h-dvh pl-[var(--safe-left)] pr-[var(--safe-right)]">
+        {/* The phone playground's own top bar replaces the site bar (see
+            .playground-site-nav in globals.css). */}
+        {!isEmbed && (
+          <div className="playground-site-nav">
+            <SiteNav variant="slim" stars={stars} />
+          </div>
+        )}
         {/* This route's single main landmark and the root skip link's target.
             The emulator component itself is a labeled section, so every page
             that composes it (hero, lessons, exercises, reference) keeps one
