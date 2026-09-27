@@ -50,6 +50,7 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     memoryRegions: [],
     stdout: "",
     stderr: "",
+    notes: [],
     blocked: false,
     wantsTerminal: false,
     setOutputTap: vi.fn(),
