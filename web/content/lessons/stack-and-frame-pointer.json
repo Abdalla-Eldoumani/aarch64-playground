@@ -1,42 +1,126 @@
 {
   "title": "The stack and the frame pointer",
   "slug": "stack-and-frame-pointer",
-  "order": 2,
-  "summary": "How a function claims a stack frame, saves fp and lr, and reaches its locals by offset.",
+  "order": 18,
+  "summary": "Open a stack frame that saves fp and lr, keep locals at fp offsets, read input straight into them, and keep sp 16-byte aligned.",
   "tags": [
     "stack",
-    "frame pointer"
+    "frame pointer",
+    "memory and the stack"
   ],
   "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Memory: loads, stores, and addressing modes](/learn/memory-and-addressing-modes)\n- [Reading numbers with scanf](/learn/reading-input-with-scanf)"
+    },
     {
       "type": "prose",
       "markdown": "The stack is the memory a function uses for its own working storage: saved registers, local variables, and the bookkeeping that lets control return to the caller. It grows downward, from higher addresses toward lower ones, and the stack pointer `sp` points at the lowest in-use byte.\n\nThe frame pointer `fp`, the register `x29`, marks a fixed point in the current function's slice of the stack, its *frame*. Because `sp` can move during a function, code reads and writes locals at steady offsets from `fp` instead, so each local keeps one stable address for the life of the call."
     },
     {
       "type": "prose",
-      "markdown": "## The prologue and epilogue\n\nA function that calls other functions opens with a *prologue* and closes with an *epilogue*. The prologue saves the caller's frame pointer and the return address, then claims space for the new frame; the epilogue restores them and hands control back.\n\nThe pair instructions do this in one step. `stp fp, lr, [sp, alloc]!` stores `fp` and `lr` and moves `sp` down by `alloc` in one pre-indexed access, and `ldp fp, lr, [sp], dealloc` restores them and lifts `sp` back afterward. Between the two, `mov fp, sp` anchors the frame."
+      "markdown": "## Where the stack lives\n\nA running program's memory is split into regions. The instructions and the global variables sit at the low end, the stack starts near the top, and the space between is shared by two regions that grow toward each other:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "  higher addresses\n  +----------------------+\n  | stack                |  grows down as functions open frames\n  |          |           |\n  |          v           |\n  |                      |\n  |          ^           |\n  |          |           |\n  | heap                 |  grows up as malloc hands out memory\n  +----------------------+\n  | .bss                 |  globals that start at zero\n  | .data                |  globals with starting values\n  | .text                |  the program's instructions\n  +----------------------+\n  lower addresses\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Because `sp` points at the last byte in use and the stack grows toward lower addresses, this kind of stack is called *full descending*. AArch64 has no push or pop instruction; the pre-index and post-index forms do the job. `str x19, [sp, -16]!` is a push: move `sp` down 16 bytes, then store. `ldr x19, [sp], 16` is a pop: load, then move `sp` back up. Both move `sp` by 16 even though `x19` is 8 bytes, to keep `sp` a multiple of 16."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The prologue and epilogue\n\nA function that calls other functions opens with a *prologue* and closes with an *epilogue*. The prologue saves the caller's frame pointer and the return address, then claims space for the new frame; the epilogue restores them and hands control back.\n\nThe pair instructions do this in one step each. `stp fp, lr, [sp, alloc]!` is a pre-index store: it first adds `alloc` to `sp`, and since `alloc` is negative (-32 in the program below), that moves `sp` down by 32 bytes; then it stores `fp` and `lr` at the address `sp` now holds. The epilogue's `ldp fp, lr, [sp], dealloc` is a post-index load: it reads the two back, then adds `dealloc` (32) to lift `sp` back up. Between the two, `mov fp, sp` anchors the frame. The program below prints `n = 5`."
     },
     {
       "type": "code",
       "language": "asm",
-      "source": "// the frame skeleton: prologue, one local by fp offset, epilogue\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(n_r, w9)\n\nn_s = 16\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n        .data\nfmt:    .string \"n = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!        // save fp+lr and open the frame\n        mov     fp, sp\n\n        mov     w0, 5\n        str     w0, [fp, n_s]\n        ldr     n_r, [fp, n_s]\n\n        ldr     x0, =fmt\n        mov     w1, n_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc       // restore fp+lr and close the frame\n        ret\n"
+      "source": "// The frame skeleton: prologue, one local by fp offset, epilogue\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(n_r, w9)\n\nn_s = 16\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n.data\nfmt:    .string \"n = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!        // save fp+lr and open the frame\n        mov     fp, sp\n\n        mov     w0, 5\n        str     w0, [fp, n_s]\n        ldr     n_r, [fp, n_s]\n\n        ldr     x0, =fmt\n        mov     w1, n_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc       // restore fp+lr and close the frame\n        ret\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## What lr holds\n\n`bl label` does two things: it puts the address of the instruction after the `bl` into `lr`, the register `x30`, and it jumps to `label`. `ret` jumps to whatever address `lr` holds. That is how a function finds its way back to its caller.\n\nWhen `main` starts, `lr` holds the address in the C start-up code that called `main`. The first `bl printf` inside `main` overwrites `lr` with an address inside `main`, so without a saved copy, `main`'s own `ret` would jump back into `main` instead of out of it. The prologue saves `lr` for exactly this reason. The 16 bytes holding the saved `fp` and `lr` are called the *frame record*, and because each saved `fp` points at the caller's frame record, the records form a chain back through every active call."
     },
     {
       "type": "callout",
       "variant": "warning",
-      "markdown": "Two rules keep a frame correct. First, `sp` must stay 16-byte aligned at every point where another function might run, which is why the frame size is rounded with `& -16`. Second, a function that calls anything must save `fp` and `lr` on entry and restore them before it returns: `lr` holds the address to return to, and a call overwrites it, so losing it strands the function with no way back."
+      "markdown": "Two rules keep a frame correct. First, `sp` must stay a multiple of 16 whenever it is used to reach memory or another function runs, which is why the frame size is rounded with `& -16`. Second, a function that calls anything must save `fp` and `lr` on entry and restore them before it returns: `lr` holds the address to return to, and a call overwrites it, so losing it strands the function with no way back."
     },
     {
       "type": "prose",
-      "markdown": "## Locals in the frame\n\nLocal variables live at fixed offsets above `fp`. Storing one is `str w0, [fp, 16]`; reading it back is `ldr w1, [fp, 16]`. The offsets are yours to choose, as long as they stay inside the space the prologue reserved.\n\nThe reserved size comes from the alignment formula `alloc = -(16 + locals) & -16`, where `locals` is the number of bytes the function needs. The `& -16` rounds the frame up to a multiple of sixteen so the stack keeps its alignment, and the leading sixteen bytes hold the saved `fp` and `lr` pair. The two editors below allocate frames, fill locals with fixed values, and read them back by offset."
+      "markdown": "## Locals in the frame\n\nLocal variables live at fixed offsets above `fp`. Storing one is `str w0, [fp, 16]`; reading it back is `ldr w1, [fp, 16]`. The offsets are yours to choose, as long as they stay inside the space the prologue reserved. Course programs name each offset once at the top, as in `a_s = 16`. That line is an assembler *equate*: a name for a number, fixed before the program runs. `define(a_s, 16)` does the same job through m4. The assembler can also give a register a second name, as in `fp .req x29`, but course programs name registers with m4 `define` lines instead.\n\nThe reserved size comes from the alignment formula `alloc = -(16 + locals) & -16`, where `locals` is the number of bytes the function needs. The leading sixteen bytes hold the saved `fp` and `lr` pair, and the `& -16` rounds the frame up to a multiple of sixteen so the stack keeps its alignment.\n\nHere is the rounding worked out for two 4-byte ints. -(16 + 8) is -24. In two's complement, -16 is all 1s except for four 0s at the bottom, so `& -16` clears the lowest four bits of -24:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "  -24        ...1111 1110 1000\n  -16        ...1111 1111 0000\n  -24 & -16  ...1111 1110 0000   = -32\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Clearing low bits of a negative number moves it further from zero, so the frame can only grow: 24 bytes needed, 32 reserved, and `dealloc` is 32.\n\nThe two editors below allocate frames, fill locals with fixed values, and read them back by offset. The first prints `sum = 13, product = 42` and the second prints `total = 42`."
     },
     {
       "type": "editor",
-      "starter": "// two locals in the frame: print their sum and product\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(a_r, w9)\ndefine(b_r, w10)\ndefine(sum_r, w11)\ndefine(prod_r, w12)\n\na_s = 16\nb_s = 20\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n        .data\nfmt:    .string \"sum = %d, product = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     w0, 6\n        str     w0, [fp, a_s]               // local a = 6\n        mov     w0, 7\n        str     w0, [fp, b_s]               // local b = 7\n\n        ldr     a_r, [fp, a_s]\n        ldr     b_r, [fp, b_s]\n        add     sum_r, a_r, b_r\n        mul     prod_r, a_r, b_r\n\n        ldr     x0, =fmt\n        mov     w1, sum_r\n        mov     w2, prod_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n"
+      "starter": "// Two locals in the frame: print their sum and product\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(a_r, w9)\ndefine(b_r, w10)\ndefine(sum_r, w11)\ndefine(prod_r, w12)\n\na_s = 16\nb_s = 20\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n.data\nfmt:    .string \"sum = %d, product = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     w0, 6\n        str     w0, [fp, a_s]               // local a = 6\n        mov     w0, 7\n        str     w0, [fp, b_s]               // local b = 7\n\n        ldr     a_r, [fp, a_s]\n        ldr     b_r, [fp, b_s]\n        add     sum_r, a_r, b_r\n        mul     prod_r, a_r, b_r\n\n        ldr     x0, =fmt\n        mov     w1, sum_r\n        mov     w2, prod_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sum = 13, product = 42\n",
+        "exitCode": 0
+      }
     },
     {
       "type": "editor",
-      "starter": "// three locals in the frame: accumulate a running total across fp offsets\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(total_r, w9)\ndefine(t_r, w10)\n\nx_s = 16\ny_s = 20\nz_s = 24\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n        .data\nfmt:    .string \"total = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     w0, 10\n        str     w0, [fp, x_s]\n        mov     w0, 20\n        str     w0, [fp, y_s]\n        mov     w0, 12\n        str     w0, [fp, z_s]\n\n        mov     total_r, wzr                // wzr reads as zero\n        ldr     t_r, [fp, x_s]\n        add     total_r, total_r, t_r\n        ldr     t_r, [fp, y_s]\n        add     total_r, total_r, t_r\n        ldr     t_r, [fp, z_s]\n        add     total_r, total_r, t_r\n\n        ldr     x0, =fmt\n        mov     w1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n"
+      "starter": "// Three locals in the frame: accumulate a running total across fp offsets\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(total_r, w9)\ndefine(t_r, w10)\n\nx_s = 16\ny_s = 20\nz_s = 24\nalloc = -(16 + 16) & -16\ndealloc = -alloc\n\n.data\nfmt:    .string \"total = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     w0, 10\n        str     w0, [fp, x_s]\n        mov     w0, 20\n        str     w0, [fp, y_s]\n        mov     w0, 12\n        str     w0, [fp, z_s]\n\n        mov     total_r, wzr                // wzr reads as zero\n        ldr     t_r, [fp, x_s]\n        add     total_r, total_r, t_r\n        ldr     t_r, [fp, y_s]\n        add     total_r, total_r, t_r\n        ldr     t_r, [fp, z_s]\n        add     total_r, total_r, t_r\n\n        ldr     x0, =fmt\n        mov     w1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "total = 42\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Reading input into the frame\n\nA frame local is a good place for `scanf` to put what it reads, because `scanf` needs the address of each variable, and a local's address is `fp` plus its offset. `add x1, fp, first_s` computes that address; it does not load anything. After the call the numbers sit in the frame, safe from anything `scanf` did to `x0` through `x18`, and `ldr` brings them into registers.\n\nThe program below reads two whole numbers and prints the larger. The lesson feeds it `27 45`, so it prints `a = 27, b = 45, the larger is 45`. Its frame holds two 4-byte ints, so it uses the `alloc` worked out above."
+    },
+    {
+      "type": "editor",
+      "starter": "// Read two whole numbers into locals in the frame, then print the larger\n\ndefine(fp, x29)\ndefine(lr, x30)\n\nfirst_s = 16                                // local a sits 16 bytes above fp\nsecond_s = 20                               // local b sits right after it\nalloc = -(16 + 8) & -16                     // -24 rounds down to -32\ndealloc = -alloc\n\n.data\nfmt_in:     .string \"%d %d\"\nfmt_out:    .string \"a = %d, b = %d, the larger is %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in\n        add     x1, fp, first_s             // the address of a, not its value\n        add     x2, fp, second_s            // the address of b\n        bl      scanf\n\n        ldr     w1, [fp, first_s]           // scanf wrote both numbers into the frame\n        ldr     w2, [fp, second_s]\n        mov     w3, w1\n        cmp     w2, w1\n        b.le    big_done\n        mov     w3, w2                      // b is the larger\nbig_done:\n        ldr     x0, =fmt_out\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "stdin": "27 45\n",
+      "expectedOutput": {
+        "stdout": "a = 27, b = 45, the larger is 45\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "`ldr x1, [fp, first_s]` in place of `add x1, fp, first_s` hands `scanf` the value stored in the local instead of its address. `scanf` then writes to whatever address that value happens to be, and the program either crashes or quietly changes memory it does not own."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Locals made partway through\n\nA function does not have to claim all its space in the prologue. A block of code that needs a temporary local can move `sp` down when it starts and back up when it ends. The new bytes sit below `fp`, so they are reached with negative offsets. The program below prints `block local = 99`."
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "// Make room for a local partway through main, use it, then give the room back\n\ndefine(fp, x29)\ndefine(lr, x30)\n\nt_s = -16                                   // the block's local sits below fp\n\n.data\nfmt:        .string \"block local = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        sub     sp, sp, 16                  // 16 more bytes, so sp stays a multiple of 16\n        mov     w9, 99\n        str     w9, [fp, t_s]\n        ldr     x0, =fmt\n        ldr     w1, [fp, t_s]\n        bl      printf\n        add     sp, sp, 16                  // hand the bytes back before the epilogue\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Two details matter. The block moves `sp` by 16, not by the 4 bytes it uses, so `sp` stays a multiple of 16 while `printf` runs. And the block gives its bytes back with `add sp, sp, 16` before the epilogue, because `ldp fp, lr, [sp], 16` reads the saved pair at `sp`: with `sp` still 16 bytes low, it would load the wrong values and `ret` would jump to a bad address."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. A function needs five 4-byte ints as locals. What are `alloc` and `dealloc`?\n2. After `stp fp, lr, [sp, -32]!` and `mov fp, sp`, where are the saved `fp` and `lr`, and what is the lowest offset from `fp` a local can use?\n3. Why does `main` need to save `lr` when it calls `printf`, even though `main` never uses `lr` itself?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. The locals take 20 bytes, so -(16 + 20) is -36, and -36 & -16 is -48. `alloc` is -48 and `dealloc` is 48.\n2. `fp` is saved at `[fp]` and `lr` at `[fp, 8]`, so the first free offset is 16.\n3. `main`'s final `ret` uses `lr`. `bl printf` replaces `lr` with a return address inside `main`, so without the saved copy, `ret` would never leave `main`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Stack of plates](/practice/stack-of-plates): four locals at named frame offsets, loaded back top first.\n- [The leaky frame](/practice/the-leaky-frame): a program that crashes because `sp` loses its alignment. Find the line and fix it.\n- [Quiz: memory and the stack (core)](/practice/quiz-inter-frame-stack) and [challenge](/practice/quiz-advance-frame-stack): frame layout, locals made inside a block, and alignment.\n- [Predict: memory and the stack (challenge)](/practice/predict-frame-stack): work out frame sizes, padding, and the address a store writes to."
     }
   ]
 }
