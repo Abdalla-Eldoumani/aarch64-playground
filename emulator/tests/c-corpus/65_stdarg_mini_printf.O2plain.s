@@ -8,7 +8,7 @@
 	.string	"0123456789abcdef"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 mini.constprop.0:
 	sub	sp, sp, #752
 	add	x8, sp, 704
@@ -54,7 +54,7 @@ mini.constprop.0:
 	mov	w22, 48
 	stp	x27, x28, [sp, 80]
 	b	.L95
-	.align 2
+	.p2align 2,,3
 .L236:
 	add	w24, w24, 1
 	mov	x19, x1
@@ -77,7 +77,7 @@ mini.constprop.0:
 	bne	.L5
 	mov	w0, 45
 	b	.L7
-	.align 2
+	.p2align 2,,3
 .L113:
 	ldrb	w1, [x19, 1]!
 	mov	w4, 1
@@ -102,7 +102,7 @@ mini.constprop.0:
 	and	w3, w1, 255
 	cmp	w3, 9
 	bhi	.L14
-	.align 5
+	.p2align 5,,15
 .L13:
 	ldrb	w2, [x19, 1]!
 	add	w0, w0, w0, lsl 2
@@ -122,7 +122,7 @@ mini.constprop.0:
 	ccmp	w1, w2, 4, ne
 	mov	w2, 122
 	bne	.L239
-	.align 5
+	.p2align 5,,15
 .L17:
 	ldrb	w1, [x19, 1]!
 	cmp	w1, 108
@@ -161,7 +161,7 @@ mini.constprop.0:
 .L50:
 	add	x3, sp, 120
 	mov	x5, 1
-	.align 5
+	.p2align 5,,15
 .L51:
 	udiv	x6, x2, x1
 	add	x7, x3, x5
@@ -193,7 +193,7 @@ mini.constprop.0:
 	add	x7, x1, w7, uxtw
 	add	x3, x3, x5
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L54:
 	neg	x1, x2
 	ldrb	w1, [x3, x1]
@@ -209,7 +209,7 @@ mini.constprop.0:
 	blt	.L41
 	cbnz	w2, .L88
 	b	.L134
-	.align 2
+	.p2align 2,,3
 .L235:
 	ldp	x19, x20, [sp, 16]
 	ldp	x21, x22, [sp, 32]
@@ -222,7 +222,7 @@ mini.constprop.0:
 	ldp	x25, x26, [sp, 64]
 	add	sp, sp, 752
 	ret
-	.align 2
+	.p2align 2,,3
 .L237:
 	ldr	w0, [sp, 168]
 	ldr	x1, [sp, 144]
@@ -238,7 +238,7 @@ mini.constprop.0:
 	csneg	w0, w0, w0, ge
 	csinc	w28, w28, wzr, ge
 	b	.L8
-	.align 2
+	.p2align 2,,3
 .L240:
 	cmp	w1, 99
 	beq	.L22
@@ -326,7 +326,7 @@ mini.constprop.0:
 	sub	x3, x3, #1
 	mov	x20, 1
 	b	.L65
-	.align 2
+	.p2align 2,,3
 .L69:
 	add	x2, x5, x20
 	strb	w1, [x2, -1]
@@ -365,7 +365,7 @@ mini.constprop.0:
 .L110:
 	mov	w1, 0
 	mov	x2, 1
-	.align 5
+	.p2align 5,,15
 .L78:
 	add	x2, x2, x2, lsl 2
 	add	w1, w1, 1
@@ -384,7 +384,7 @@ mini.constprop.0:
 	fmul	d30, d30, d31
 	fcvtzu	x9, d30
 	udiv	x5, x9, x2
-	.align 5
+	.p2align 5,,15
 .L79:
 	umulh	x1, x5, x13
 	add	x10, x3, x7
@@ -418,7 +418,7 @@ mini.constprop.0:
 	add	x7, x12, w7, uxtw
 	add	x3, x3, x6
 	mov	x5, 0
-	.align 5
+	.p2align 5,,15
 .L82:
 	neg	x6, x5
 	ldrb	w6, [x3, x6]
@@ -452,7 +452,7 @@ mini.constprop.0:
 	and	w2, w1, 255
 	cmp	w2, 9
 	bhi	.L15
-	.align 5
+	.p2align 5,,15
 .L16:
 	add	w21, w21, w21, lsl 2
 	add	w21, w1, w21, lsl 1
@@ -562,7 +562,7 @@ mini.constprop.0:
 	add	x8, x8, :lo12:.LC1
 	mov	x6, 1
 	movk	x9, 0xcccd, lsl 0
-	.align 5
+	.p2align 5,,15
 .L36:
 	umulh	x1, x2, x9
 	add	x7, x3, x6
@@ -602,7 +602,7 @@ mini.constprop.0:
 	add	x7, x1, w7, sxtw
 	add	x6, x3, x6
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L38:
 	neg	x3, x2
 	ldrb	w3, [x6, x3]
@@ -671,7 +671,7 @@ mini.constprop.0:
 	mov	x5, -3689348814741910324
 	add	x6, x6, 1
 	movk	x5, 0xcccd, lsl 0
-	.align 5
+	.p2align 5,,15
 .L90:
 	udiv	x3, x9, x2
 	mov	x7, x20
@@ -926,7 +926,7 @@ mini.constprop.0:
 	.string	"%.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #400
