@@ -1,26 +1,26 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fbits:
 	fmov	w0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 dbits:
 	fmov	x0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 f_of:
 	fmov	s0, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 d_of:
 	fmov	d0, x0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 q16f:
 	scvtf	s0, x0
 	mov	w0, 931135488
@@ -28,7 +28,7 @@ q16f:
 	fmul	s0, s0, s31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 q32d:
 	scvtf	d0, x0
 	mov	x0, 4463067230724161536
@@ -36,7 +36,7 @@ q32d:
 	fmul	d0, d0, d31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 uq16f:
 	ucvtf	s0, x0
 	mov	w0, 931135488
@@ -73,7 +73,7 @@ uq16f:
 	.string	"exact %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -48]!
@@ -85,7 +85,7 @@ main:
 	adrp	x21, .LC0
 	add	x21, x21, :lo12:.LC0
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L10:
 	ldr	x2, [x20, w19, sxtw 3]
 	mov	w1, w19
@@ -114,7 +114,7 @@ main:
 	add	x22, x20, 144
 	add	x21, x21, :lo12:.LC1
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L11:
 	ldr	x2, [x22, w19, sxtw 3]
 	mov	w1, w19
@@ -179,7 +179,7 @@ main:
 	add	x22, x20, 240
 	add	x21, x21, :lo12:.LC4
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L14:
 	ldr	d0, [x22, w19, sxtw 3]
 	mov	w1, w19
@@ -199,7 +199,7 @@ main:
 	add	x22, x20, 384
 	add	x21, x21, :lo12:.LC5
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L15:
 	ldr	s0, [x22, w19, sxtw 2]
 	mov	w1, w19
@@ -217,7 +217,7 @@ main:
 	add	x21, x20, 416
 	add	x22, x22, :lo12:.LC6
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L16:
 	ldr	x2, [x21, w19, sxtw 3]
 	mov	w1, w19
@@ -255,7 +255,7 @@ main:
 	mov	x3, x0
 	mov	x1, 0
 	movk	x5, 0x3, lsl 48
-	.align 5
+	.p2align 5,,15
 .L18:
 	scvtf	s30, x0
 	scvtf	d31, x2
@@ -281,31 +281,31 @@ main:
 	.align	4
 	.LANCHOR0:
 sv:
-	.quad	0
-	.quad	-1
-	.quad	16777217
-	.quad	16777219
-	.quad	-16777217
-	.quad	2147483647
-	.quad	-2147483648
-	.quad	9007199254740993
-	.quad	9007199254740995
-	.quad	-9007199254740993
-	.quad	1152921573326323713
-	.quad	-1152921573326323713
-	.quad	4611686293305294849
-	.quad	1152921710765277183
-	.quad	-1152921710765277183
-	.quad	9223371487098961921
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
+	.xword	0
+	.xword	-1
+	.xword	16777217
+	.xword	16777219
+	.xword	-16777217
+	.xword	2147483647
+	.xword	-2147483648
+	.xword	9007199254740993
+	.xword	9007199254740995
+	.xword	-9007199254740993
+	.xword	1152921573326323713
+	.xword	-1152921573326323713
+	.xword	4611686293305294849
+	.xword	1152921710765277183
+	.xword	-1152921710765277183
+	.xword	9223371487098961921
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
 uv:
-	.quad	-1
-	.quad	-9223371487098961919
-	.quad	-549755813889
-	.quad	-9223372036854774783
-	.quad	-9223372036854774784
-	.quad	4294967295
+	.xword	-1
+	.xword	-9223371487098961919
+	.xword	-549755813889
+	.xword	-9223372036854774783
+	.xword	-9223372036854774784
+	.xword	4294967295
 si:
 	.word	16777217
 	.word	-16777219
@@ -364,12 +364,12 @@ wv:
 	.word	-2147483648
 	.zero	8
 dnan:
-	.quad	9221120237041090560
-	.quad	-2251799813685247
-	.quad	9218868437227405317
-	.quad	-3377699720527872
-	.quad	9218868437764276224
-	.quad	9223372036854775807
+	.xword	9221120237041090560
+	.xword	-2251799813685247
+	.xword	9218868437227405317
+	.xword	-3377699720527872
+	.xword	9218868437764276224
+	.xword	9223372036854775807
 fnan:
 	.word	2143289344
 	.word	-4194303
