@@ -176,9 +176,13 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
             }
             return Err(lex_err(line, "unexpected '>' (did you mean '>>'?)"));
         }
-        // Dot: standalone or directive identifier.
+        // Dot: standalone or directive identifier. GAS's sized data
+        // directives are the only names that start with a digit; split at
+        // the digit, `.2byte` read as a `.` and the integer `2b`.
         if b == b'.' {
-            if i + 1 < bytes.len() && is_id_start(bytes[i + 1]) {
+            let after = &bytes[i + 1..];
+            let sized = [b"2byte", b"4byte", b"8byte"].iter().any(|d| after.starts_with(*d));
+            if after.first().is_some_and(|&c| is_id_start(c)) || sized {
                 let start = i;
                 i += 1;
                 while i < bytes.len() && is_id_continue(bytes[i]) {
@@ -1110,5 +1114,19 @@ mod tests {
                 TokenKind::Ident("start".into()),
             ]
         );
+    }
+
+    #[test]
+    fn a_sized_data_directive_is_one_token() {
+        for name in [".2byte", ".4byte", ".8byte"] {
+            let t = lex(&format!("{name} (.L3 - .L1) / 4"), 1).unwrap();
+            assert_eq!(t[0].kind, TokenKind::DirectiveIdent(name.into()));
+            assert_eq!(t[2].kind, TokenKind::DirectiveIdent(".L3".into()));
+        }
+        // Any other digit after a dot still leaves the dot on its own.
+        let t = lex(".+2", 1).unwrap();
+        assert_eq!(kinds(&t), vec![TokenKind::Dot, TokenKind::Plus, TokenKind::IntLit(2)]);
+        let t = lex(". 2", 1).unwrap();
+        assert_eq!(kinds(&t), vec![TokenKind::Dot, TokenKind::IntLit(2)]);
     }
 }
