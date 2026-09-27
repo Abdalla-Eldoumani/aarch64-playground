@@ -70,8 +70,21 @@ function hashId(mnemonic: string): string {
   return mnemonic.toLowerCase().replace(/\./g, "-");
 }
 
+/** Below lg the detail sits under the whole index, some 14,000px down on a
+ *  phone, so a pick there has to bring it into view or nothing seems to
+ *  happen. */
+function stacked(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 1023.98px)").matches;
+}
+
+function reveal(node: HTMLElement | null | undefined, block: ScrollLogicalPosition): void {
+  const reduce =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  node?.scrollIntoView({ block, behavior: reduce ? "auto" : "smooth" });
+}
+
 const ITEM_BASE =
-  "flex min-h-[36px] w-full items-center px-3 text-left font-mono text-[13px] outline-none transition-colors focus-visible:[box-shadow:var(--ring)]";
+  "touch-target flex min-h-[36px] w-full items-center px-3 text-left font-mono text-[13px] outline-none transition-colors focus-visible:[box-shadow:var(--ring)]";
 const ITEM_SELECTED =
   "bg-[color-mix(in_srgb,var(--cyan)_8%,transparent)] text-[var(--cyan)] [box-shadow:inset_2px_0_0_0_var(--cyan)]";
 const ITEM_IDLE = "text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
@@ -111,6 +124,7 @@ export function InstructionReference({
   const filterId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const detailRef = useRef<HTMLElement>(null);
 
   // Category order follows first appearance in the data, so the index sections
   // keep the document's order rather than an alphabetical one.
@@ -184,9 +198,11 @@ export function InstructionReference({
     const raw = window.location.hash.replace(/^#/, "");
     if (!raw) return;
     const match = instructions.find((i) => hashId(i.mnemonic) === raw);
-    if (match) {
-      itemRefs.current[match.mnemonic]?.scrollIntoView({ block: "nearest" });
-    }
+    if (!match) return;
+    // A link to one instruction wants its detail; beside the index that is
+    // already on screen, under it the detail has to be brought up.
+    if (stacked()) detailRef.current?.scrollIntoView({ block: "start" });
+    else itemRefs.current[match.mnemonic]?.scrollIntoView({ block: "nearest" });
   }, [instructions]);
 
   // A click pins the selection via `picked` and writes the fragment with
@@ -232,7 +248,8 @@ export function InstructionReference({
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", `#${hashId(mnemonic)}`);
     }
-    itemRefs.current[mnemonic]?.scrollIntoView({ block: "nearest" });
+    if (stacked()) reveal(detailRef.current, "start");
+    else itemRefs.current[mnemonic]?.scrollIntoView({ block: "nearest" });
   }
 
   function moveActive(delta: 1 | -1) {
@@ -357,11 +374,24 @@ export function InstructionReference({
       </div>
 
       <section
+        ref={detailRef}
         aria-label="instruction detail"
-        className="flex min-w-0 flex-col gap-4"
+        // Clear of the site bar when a pick scrolls it into view.
+        className="flex min-w-0 scroll-mt-20 flex-col gap-4"
       >
         {current && (
           <>
+            <button
+              type="button"
+              onClick={() => {
+                const item = itemRefs.current[current.mnemonic];
+                reveal(item, "center");
+                item?.focus({ preventScroll: true });
+              }}
+              className={`${PERMALINK} self-start lg:hidden`}
+            >
+              back to the list
+            </button>
             <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <h2 className="font-mono text-[28px] font-bold leading-none tracking-[-0.01em] text-[var(--text-primary)]">
                 {current.mnemonic}
