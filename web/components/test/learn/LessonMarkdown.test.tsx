@@ -91,4 +91,26 @@ describe("LessonMarkdown", () => {
     const tocId = extractToc({ body: [block] })[0].id;
     expect(h2?.id).toBe(tocId);
   });
+
+  it("renders a gfm table with padded, ruled cells inside a sideways scroller", () => {
+    const markdown = [
+      "| Specifier | Bytes |",
+      "| --- | ---: |",
+      "| `%d` | 4 |",
+    ].join("\n");
+    const { container } = render(<LessonMarkdown markdown={markdown} />);
+    const table = container.querySelector("table");
+    expect(table?.parentElement?.className).toContain("overflow-x-auto");
+    expect(table?.className).toContain("tabular-nums");
+    const th = container.querySelector("th");
+    const td = container.querySelectorAll("td");
+    expect(th?.className).toContain("px-3 py-2");
+    expect(th?.className).toContain("font-semibold");
+    expect(th?.className).toContain("border-[var(--border)]");
+    expect(td[1]?.className).toContain("px-3 py-2");
+    expect(td[1]?.className).toContain("border-[var(--border)]");
+    // The column's right alignment survives sanitizing.
+    expect(td[1]?.style.textAlign).toBe("right");
+    expect(td[1]?.textContent).toBe("4");
+  });
 });
