@@ -8,14 +8,14 @@
 	.string	"%02x %02x %02x %02x %02x\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -48]!
 	mov	x5, 1
 	add	x1, sp, 32
 	mov	x29, sp
-	.align 5
+	.p2align 5,,15
 .L2:
 	add	x0, x1, x5
 	strb	w5, [x0, -1]
