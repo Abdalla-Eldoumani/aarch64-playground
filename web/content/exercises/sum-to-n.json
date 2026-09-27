@@ -4,9 +4,10 @@
   "order": 14,
   "topic": "loops",
   "difficulty": "core",
-  "prompt": "Write a loop that adds up every integer from 1 to `n` and prints the total.\n\nThe starter sets `n` to 10 and leaves a running total and a counter ready in registers. Fill in the loop body so it adds each value from 1 through `n` into the total. The program already prints whatever the total register holds.\n\n## what is checked\n\n- the total is printed on its own line\n- the program exits cleanly\n- the total is built up in the loop, not written in as a constant",
-  "starter": "// sum every integer from 1 to n, then print the total\ndefine(sum_r, x19)\ndefine(i_r, x20)\ndefine(n_r, x21)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     n_r, 10                     // add up 1 through n\n        mov     sum_r, 0\n        mov     i_r, 1\n\n        // TODO: loop from i = 1 to n, adding each i into sum_r\n\n        ldr     x0, =fmt\n        mov     x1, sum_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",
+  "prompt": "Write a loop that adds up every integer from 1 to `n` and prints the total.\n\nThe starter reads `n` and leaves a running total and a counter ready in registers. Fill in the loop so it adds each value from 1 through `n` into the total. The program already prints whatever the total register holds.\n\n## what is checked\n\n- the total is printed on its own line\n- the program exits cleanly\n- the total is built up in the loop, not written in as a constant\n- the same holds for other values of `n` you do not see; for 0 or a negative `n` there is nothing to add, so the total is 0",
+  "starter": "// sum every integer from 1 to n, then print the total\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(sum_r, x19)\ndefine(i_r, x20)\ndefine(n_r, x21)\n\n        .data\nfmt_in:     .string \"%lld\"\nfmt_out:    .string \"sum = %lld\\n\"\n\n        .bss\n        .balign 8\nn_m:        .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read n\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]                   // add up 1 through n\n        mov     sum_r, 0\n        mov     i_r, 1\n\n        // TODO: loop from i = 1 to n, adding each i into sum_r\n\n        ldr     x0, =fmt_out\n        mov     x1, sum_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "10\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -25,5 +26,34 @@
         "value": 55
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "sum = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-5\n",
+      "stdout": "sum = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "sum = 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "100\n",
+      "stdout": "sum = 5050\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "100000\n",
+      "stdout": "sum = 5000050000\n",
+      "exitCode": 0
+    }
+  ]
 }
