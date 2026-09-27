@@ -174,6 +174,25 @@ describe("ConsolePanel controls and state", () => {
     expect(screen.getByText("exit 0")).toBeTruthy();
   });
 
+  it("names F10 and F5 only where the page binds them", () => {
+    const props = {
+      stdout: "",
+      stderr: "",
+      blocked: false,
+      exitCode: null,
+      vfsFiles: [],
+      pushStdin: vi.fn(),
+      closeStdin: vi.fn(),
+      uploadVfsFile: vi.fn(),
+      clearConsole: vi.fn(),
+    };
+    const { rerender } = render(<ConsolePanel {...props} />);
+    expect(screen.getByText(/Step with F10, run with F5/)).toBeTruthy();
+    rerender(<ConsolePanel {...props} keyHints={false} />);
+    expect(screen.queryByText(/F10|F5/)).toBeNull();
+    expect(screen.getByText(/Press step or run under the editor/)).toBeTruthy();
+  });
+
   it("shows the idle hint with no output and the stream once it arrives", () => {
     const { rerender } = render(
       <ConsolePanel
