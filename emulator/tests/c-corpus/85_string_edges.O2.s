@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 L:
 	sub	sp, sp, #16
 	str	x0, [sp, 8]
@@ -8,7 +8,7 @@ L:
 	add	sp, sp, 16
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sgn:
 	cmp	w0, 0
 	cset	w1, gt
@@ -26,7 +26,7 @@ sgn:
 	.string	"]\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 show_cut.constprop.0:
 	stp	x29, x30, [sp, -48]!
 	adrp	x1, .LC15
@@ -40,7 +40,7 @@ show_cut.constprop.0:
 	adrp	x0, .LC16
 	add	x0, x0, :lo12:.LC16
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L7:
 	ldrb	w0, [x19], 1
 	cmp	w0, 0
@@ -66,7 +66,7 @@ show_cut.constprop.0:
 	.string	"\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 hex.constprop.0:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -80,7 +80,7 @@ hex.constprop.0:
 	adrp	x0, .LC18
 	add	x0, x0, :lo12:.LC18
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L11:
 	ldrb	w1, [x19], 1
 	mov	x0, x20
@@ -288,7 +288,7 @@ hex.constprop.0:
 	.string	"plain char: %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #720
@@ -721,7 +721,7 @@ main:
 	mov	x2, x0
 	add	x24, x24, :lo12:.LC69
 	mov	w25, 0
-	.align 5
+	.p2align 5,,15
 .L16:
 	sub	w3, w2, w20
 	mov	w1, w25
@@ -815,7 +815,7 @@ main:
 	str	w0, [x25, 48]
 	stp	q30, q29, [x25]
 	str	q31, [x25, 32]
-	.align 5
+	.p2align 5,,15
 .L17:
 	add	x0, x24, x19, lsl 3
 	add	x1, x25, x19, lsl 2
@@ -934,7 +934,7 @@ main:
 	mov	w23, 0
 	bl	__ctype_b_loc
 	mov	x24, x0
-	.align 5
+	.p2align 5,,15
 .L18:
 	ldr	x0, [x24]
 	ldrh	w0, [x0, w19, uxtw 1]
@@ -971,7 +971,7 @@ main:
 	add	x1, sp, 160
 	ldr	x2, [x0]
 	mov	w0, 72
-	.align 5
+	.p2align 5,,15
 .L19:
 	ubfiz	x0, x0, 2, 8
 	ldr	w0, [x2, x0]
@@ -1074,19 +1074,19 @@ main:
 	.string	"c"
 	.zero	4
 .LC75:
-	.quad	.LC0
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
+	.xword	.LC0
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
 .LC14:
 	.word	0
 	.word	0
