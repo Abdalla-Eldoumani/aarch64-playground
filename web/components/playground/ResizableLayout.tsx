@@ -42,9 +42,12 @@ export const EDITOR_SPLIT: SplitSpec = {
   label: "resize editor and disassembly",
 };
 
+// The registers take the larger share: after one step they must show the
+// write without scrolling at laptop heights, and the tabs below stay tall
+// enough for a readable memory dump and console.
 export const DEBUG_SPLIT: SplitSpec = {
   ids: ["panel-regs", "panel-tabs"],
-  defaults: [45, 55],
+  defaults: [56, 44],
   minSizes: ["20%", "20%"],
   label: "resize registers and tabs",
 };
