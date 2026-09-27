@@ -159,6 +159,16 @@ export function BaseConverter({
     target.scrollIntoView?.({ block: "start" });
   }, []);
 
+  useEffect(() => {
+    // A refusal has to be seen: on a short phone screen the line under a
+    // field near the bottom edge starts out of view. "nearest" leaves a
+    // line that already shows exactly where it is.
+    if (!message || message.key === "width") return;
+    document
+      .getElementById(`${uid}-${message.key}-message`)
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [message, uid]);
+
   const onFieldChange = useCallback(
     (key: string, text: string, outcome: FloatParseOutcome) => {
       setDraft({ key, text });
