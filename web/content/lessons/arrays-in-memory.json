@@ -2,6 +2,7 @@
   "title": "Arrays in memory, in one and two dimensions",
   "slug": "arrays-in-memory",
   "order": 19,
+  "lastUpdated": "2026-09-27",
   "summary": "Reserve an array in the frame or in .bss and reach any element, in one or two dimensions, as base plus index times size.",
   "tags": [
     "arrays",
