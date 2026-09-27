@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { buildShareUrl, shareHashSize, type ShareState } from "@/lib/playground/share";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { SITE_NAME } from "@/lib/content/site";
 
 export interface ShareDialogProps {
   open: boolean;
@@ -49,7 +50,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
 
   const share = async () => {
     try {
-      await navigator.share({ title: "cpsc 355 playground", url });
+      await navigator.share({ title: SITE_NAME, url });
     } catch {
       // user cancelled or not supported; no-op
     }
