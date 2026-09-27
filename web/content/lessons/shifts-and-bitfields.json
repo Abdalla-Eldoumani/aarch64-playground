@@ -2,6 +2,7 @@
   "title": "Shifts, sign extension, and bitfields",
   "slug": "shifts-and-bitfields",
   "order": 15,
+  "lastUpdated": "2026-09-27",
   "summary": "Shift and rotate bits, widen narrow values with sign or zero extension, and pack or unpack fields with bfi and ubfx.",
   "tags": [
     "bitwise",
