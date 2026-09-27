@@ -506,7 +506,9 @@ pub(crate) fn parse_int(text: &str) -> Option<i64> {
         }
         return u64::from_str_radix(&s[1..], 8).ok().map(|v| v as i64);
     }
-    s.parse::<i64>().ok()
+    // Decimal takes the whole 64-bit range too: gcc writes LONG_MIN as
+    // `-9223372036854775808`, whose magnitude is one past i64::MAX.
+    s.parse::<u64>().ok().map(|v| v as i64)
 }
 
 /// Message for an integer literal the lexer cannot read. A leading zero
