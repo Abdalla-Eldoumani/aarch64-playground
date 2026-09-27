@@ -1,5 +1,6 @@
 import { SiteNav } from "@/components/chrome/SiteNav";
 import { SiteFooter } from "@/components/chrome/SiteFooter";
+import { InstallHint } from "@/components/chrome/InstallHint";
 import { CropMarks } from "@/components/ui/CropMarks";
 import { fetchStarCount } from "@/lib/content/github";
 
@@ -29,6 +30,7 @@ export default async function SiteLayout({
         {children}
       </main>
       <SiteFooter />
+      <InstallHint />
     </div>
   );
 }
