@@ -7,6 +7,8 @@ import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/playground/
 interface ConsolePanelProps {
   stdout: string;
   stderr: string;
+  /** The machine's plain-language notes about the run, under the output. */
+  notes?: string[];
   blocked: boolean;
   /** A terminal program owns the pane's input: its reads are answered by
    *  keystrokes in the terminal, so this console's stdin box would send
@@ -35,6 +37,8 @@ interface ConsolePanelProps {
   clearConsole: () => void;
 }
 
+const NO_NOTES: string[] = [];
+
 /**
  * Console pane: scrollback for stdout/stderr, a stdin input row, a clear
  * button, and a file-upload dropzone that registers bytes into the virtual
@@ -46,6 +50,7 @@ export function ConsolePanel({
   terminalOwnedFrom = null,
   stdout,
   stderr,
+  notes = NO_NOTES,
   blocked,
   exitCode,
   vfsFiles,
@@ -90,7 +95,7 @@ export function ConsolePanel({
     const el = scrollRef.current;
     if (!el || !autoScrollRef.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [stdout, stderr]);
+  }, [stdout, stderr, notes]);
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -200,7 +205,17 @@ export function ConsolePanel({
           </p>
         )}
         {stderr && <span className="text-[var(--danger)]">{stderr}</span>}
-        {!shownStdout && !stderr && terminalOwnedFrom == null && (
+        {notes.map((note, i) => (
+          <p
+            key={i}
+            role="note"
+            className="mt-1 font-sans text-[11px] whitespace-normal text-[var(--text-primary)]"
+          >
+            <span className="font-semibold text-[var(--warning)]">note: </span>
+            {note}
+          </p>
+        ))}
+        {!shownStdout && !stderr && notes.length === 0 && terminalOwnedFrom == null && (
           <div className="space-y-1">
             <p className="font-serif text-[13px] text-[var(--text-primary)]">
               Output prints here as your program runs.
