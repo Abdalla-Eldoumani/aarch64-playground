@@ -35,5 +35,6 @@ top:
 test:   cmp     i_r, argc_r
         b.lt    top
 
+        mov     w0, 0                  // exit status 0
         ldp     fp, lr, [sp], 16
         ret
