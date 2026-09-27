@@ -1,10 +1,10 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 nonzero:
 	mov	w3, 0
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L2:
 	ldrb	w4, [x0, x2]
 	add	x2, x2, 4096
@@ -23,14 +23,14 @@ nonzero:
 	.string	"gaps: twins=%u gap6=%u commonest=%d widest=%d (x%u)\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 gap_stats.isra.0:
 	cbz	w1, .L22
 	adrp	x6, .LANCHOR0
 	add	x1, x6, :lo12:.LANCHOR0
 	mov	x0, 1
 	mov	w3, 0
-	.align 5
+	.p2align 5,,15
 .L6:
 	ldrh	w4, [x1, x0, lsl 1]
 	ldrh	w2, [x1, w3, sxtw 1]
@@ -44,7 +44,7 @@ gap_stats.isra.0:
 	mov	w0, 0
 	ldr	q30, [x4, :lo12:.LANCHOR1]
 	b	.L10
-	.align 2
+	.p2align 2,,3
 .L14:
 	add	w0, w0, 8
 	sub	x2, x2, #16
@@ -66,7 +66,7 @@ gap_stats.isra.0:
 	sub	x0, x4, #1
 	sub	x0, x0, x2
 	b	.L12
-	.align 2
+	.p2align 2,,3
 .L25:
 	sub	x4, x4, #1
 	cmp	x4, x0
@@ -119,7 +119,7 @@ gap_stats.isra.0:
 	.string	"heap: sum=%llu, then sieve[last]=%x wide[59999]=%lld marker=%x,%x,%x,%x\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -245,7 +245,7 @@ main:
 	mov	x0, 0
 	mov	x3, -1
 	mov	x2, 60817
-	.align 5
+	.p2align 5,,15
 .L35:
 	smaddl	x1, w0, w0, x3
 	mul	x1, x1, x0
@@ -258,7 +258,7 @@ main:
 	add	x4, x4, 3208
 	mov	x0, 0
 	mov	x3, 7976
-	.align 5
+	.p2align 5,,15
 .L36:
 	lsl	x2, x0, 3
 	sub	x0, x2, x0
@@ -285,13 +285,13 @@ main:
 	movk	w9, 0x51eb, lsl 16
 	mov	w8, 200
 	mov	x12, 8400
-	.align 5
+	.p2align 5,,15
 .L37:
 	neg	w7, w10
 	mov	w2, w4
 	mov	x1, x11
 	mov	w3, 0
-	.align 5
+	.p2align 5,,15
 .L38:
 	sub	w0, w5, w2
 	strh	w0, [x1, 4]
@@ -319,10 +319,10 @@ main:
 	add	x6, x6, 776
 	mov	x1, 0
 	mov	x5, 6000
-	.align 5
+	.p2align 5,,15
 .L39:
 	sub	x2, x4, #1224
-	.align 5
+	.p2align 5,,15
 .L40:
 	ldr	w3, [x2]
 	add	x1, x1, x1, lsl 1
@@ -358,7 +358,7 @@ main:
 	mov	x19, 0
 	mov	x0, 0
 	movk	x1, 0x3, lsl 16
-	.align 5
+	.p2align 5,,15
 .L43:
 	ldrb	w2, [x22, x0]
 	add	x2, x2, x0
