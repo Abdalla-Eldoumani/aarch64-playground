@@ -53,6 +53,16 @@ pub fn exit_status(regs: &crate::registers::RegisterFile) -> i64 {
     regs.read_gpr(0, false) as i32 as i64
 }
 
+/// The stubs whose result comes back in d0. Every stub on neither list
+/// answers an int, a size, or a pointer in x0: the one caller-saved
+/// register a call's return leaves meaningful.
+pub const RETURNS_IN_D0: &[&str] = &[
+    "atof", "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor", "fabs", "fmod",
+];
+
+/// The stubs that return nothing (C's `void`).
+pub const RETURNS_NOTHING: &[&str] = &["srand", "free"];
+
 /// Context passed to each host stub. Split out so stubs can borrow what
 /// they need without holding a `&mut Cpu` (which would conflict with the
 /// dispatcher's mutable borrow of the table).
