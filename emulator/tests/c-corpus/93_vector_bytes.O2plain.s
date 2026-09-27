@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 to_upper:
 	adrp	x1, .LANCHOR0
 	add	x1, x1, :lo12:.LANCHOR0
@@ -9,7 +9,7 @@ to_upper:
 	movi	v30.16b, 0x19
 	mov	x0, 0
 	movi	v29.16b, 0xffffffffffffffe0
-	.align 5
+	.p2align 5,,15
 .L2:
 	ldr	q28, [x1, x0]
 	add	v27.16b, v28.16b, v31.16b
@@ -27,7 +27,7 @@ to_upper:
 	.string	"%-9s %08x %02x %02x %02x %02x %02x\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 report:
 	adrp	x8, .LANCHOR0
 	add	x8, x8, :lo12:.LANCHOR0
@@ -37,7 +37,7 @@ report:
 	add	x6, x8, 1024
 	movk	w2, 0x811c, lsl 16
 	movk	w5, 0x100, lsl 16
-	.align 5
+	.p2align 5,,15
 .L6:
 	ldrb	w4, [x3], 1
 	eor	w2, w4, w2
@@ -107,7 +107,7 @@ report:
 	.string	"again"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -48]!
@@ -131,7 +131,7 @@ main:
 	movk	w5, 0x3c6e, lsl 16
 	movk	x8, 0xe38e, lsl 48
 	stp	x21, x22, [sp, 32]
-	.align 5
+	.p2align 5,,15
 .L12:
 	madd	w1, w1, w6, w5
 	tbz	x0, 5, .L9
@@ -153,7 +153,7 @@ main:
 	mov	w0, -128
 	strb	w0, [x3, 3]
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L13:
 	ldr	q31, [x19, x0]
 	eor	v31.16b, v31.16b, v29.16b
@@ -175,7 +175,7 @@ main:
 	movi	v25.16b, 0x6d
 	movi	v26.16b, 0xfffffffffffffff3
 	movi	v27.16b, 0xd
-	.align 5
+	.p2align 5,,15
 .L14:
 	ldr	q29, [x19, x0]
 	cmhi	v28.16b, v29.16b, v25.16b
@@ -195,7 +195,7 @@ main:
 	add	x2, x19, 1024
 	add	x1, x19, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L15:
 	ldr	q31, [x19, x0]
 	ldr	q28, [x0, x2]
@@ -215,7 +215,7 @@ main:
 	add	x2, x19, 1024
 	add	x1, x19, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L16:
 	ldr	q31, [x19, x0]
 	ldr	q28, [x0, x2]
@@ -234,7 +234,7 @@ main:
 	add	x2, x19, 1024
 	add	x1, x19, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L17:
 	ldr	q31, [x19, x0]
 	ldr	q29, [x0, x2]
@@ -249,7 +249,7 @@ main:
 	add	x2, x19, 1024
 	add	x1, x19, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L18:
 	ldr	q28, [x19, x0]
 	ldr	q31, [x0, x2]
@@ -267,7 +267,7 @@ main:
 	add	x2, x19, 1024
 	add	x1, x19, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L19:
 	ldr	q31, [x0, x2]
 	ldr	q29, [x19, x0]
@@ -281,7 +281,7 @@ main:
 	bl	report
 	add	x1, x19, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L20:
 	ldr	q29, [x19, x0]
 	shl	v31.16b, v29.16b, 3
@@ -296,7 +296,7 @@ main:
 	add	x2, x19, 1536
 	add	x1, x19, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L21:
 	ldr	q31, [x0, x2]
 	cmlt	v29.16b, v31.16b, #0
@@ -316,7 +316,7 @@ main:
 	ldr	q27, [x4, :lo12:.LC18]
 	add	x3, x19, 1024
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L22:
 	ldr	q29, [x19, x1]
 	ldr	q31, [x1, x3]
@@ -333,7 +333,7 @@ main:
 	add	x21, x19, 512
 	add	x2, x19, 3072
 	mov	x1, x21
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldp	q31, q29, [x0], 32
 	uzp2	v31.16b, v31.16b, v29.16b
@@ -346,7 +346,7 @@ main:
 	mov	x22, x19
 	add	x20, x19, 512
 	mov	x0, x19
-	.align 5
+	.p2align 5,,15
 .L24:
 	ld2	{v28.16b - v29.16b}, [x0], 32
 	add	v28.16b, v28.16b, v29.16b
@@ -369,7 +369,7 @@ main:
 	mov	x1, x3
 	add	x2, x19, 1024
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L25:
 	ldr	q28, [x19, x0]
 	ldr	q29, [x2, x0]
@@ -382,7 +382,7 @@ main:
 	add	x4, x3, 1024
 	movk	w1, 0x811c, lsl 16
 	movk	w2, 0x100, lsl 16
-	.align 5
+	.p2align 5,,15
 .L26:
 	ldrb	w0, [x3], 1
 	eor	w1, w0, w1
@@ -406,7 +406,7 @@ main:
 	movi	v26.16b, 0x20
 	movi	v27.16b, 0x1
 	mov	v30.16b, v29.16b
-	.align 5
+	.p2align 5,,15
 .L27:
 	ldr	q31, [x0], 16
 	cmeq	v31.16b, v31.16b, v26.16b
@@ -429,7 +429,7 @@ main:
 	add	x4, x4, :lo12:.LANCHOR3
 	sub	x0, x4, #256
 	mov	x1, x0
-	.align 5
+	.p2align 5,,15
 .L28:
 	ld4	{v20.16b - v23.16b}, [x22], 64
 	add	x1, x1, 64
@@ -473,7 +473,7 @@ main:
 	bne	.L28
 	add	x3, x0, 512
 	mov	x1, x0
-	.align 5
+	.p2align 5,,15
 .L29:
 	ldr	q31, [x1]
 	rev32	v31.16b, v31.16b
@@ -481,7 +481,7 @@ main:
 	cmp	x3, x1
 	bne	.L29
 	mov	w1, 0
-	.align 5
+	.p2align 5,,15
 .L30:
 	lsl	w2, w1, 5
 	sub	w1, w2, w1
@@ -507,7 +507,7 @@ main:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 48
 	ret
-	.align 2
+	.p2align 2,,3
 .L9:
 	umulh	x2, x0, x8
 	lsr	x2, x2, 6
