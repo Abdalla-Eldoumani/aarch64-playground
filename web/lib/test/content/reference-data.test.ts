@@ -143,4 +143,33 @@ describe("reference-data matches the documented instruction set", () => {
     ).map((insn) => insn.mnemonic);
     expect(invalid).toEqual([]);
   });
+
+  it("carries C text for every one of the 365 instructions", () => {
+    const withC = REFERENCE_INSTRUCTIONS.filter(
+      (insn) => /[;{}]/.test(insn.cExample),
+    );
+    expect(REFERENCE_INSTRUCTIONS.length).toBe(365);
+    expect(withC.length).toBe(365);
+  });
+
+  it("keeps vector lines out of the examples of scalar rows", () => {
+    const vectorLine = /\b[vq](?:[12]?[0-9]|3[01])\b/;
+    const mixed = REFERENCE_INSTRUCTIONS.filter(
+      (insn) =>
+        insn.category !== "Vector" &&
+        insn.example
+          .split("\n")
+          .some((line) => vectorLine.test(line.replace(/\/\/.*$/, ""))),
+    ).map((insn) => insn.mnemonic);
+    expect(mixed).toEqual([]);
+  });
+
+  it("opens the live example on the register file its example writes", () => {
+    const view = (m: string) =>
+      REFERENCE_INSTRUCTIONS.find((insn) => insn.mnemonic === m)?.registerView;
+    expect(view("add")).toBe("x");
+    expect(view("fmadd")).toBe("d");
+    expect(view("addv")).toBe("v");
+    expect(view("ld1")).toBe("v");
+  });
 });
