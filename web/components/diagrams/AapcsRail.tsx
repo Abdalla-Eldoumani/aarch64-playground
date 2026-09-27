@@ -5,7 +5,7 @@ import type { JSX } from "react";
  * bordered rows mapping the register file to its ABI roles, tinted by the
  * site's two-pole logic: cyan for the registers that are yours to pass and
  * receive, amber for the ones the callee must preserve, a 60% fade for the
- * platform registers to leave alone. Purely presentational: the nine rows
+ * platform registers to leave alone. Purely presentational: the twelve rows
  * are the content (the full AAPCS64 role map), so they live here rather than
  * in a data module, and nothing reads live debugger state. Token-only, so all
  * three themes resolve from the same markup.
@@ -16,6 +16,8 @@ type Tint = "cyan" | "neutral" | "muted" | "amber" | "amber-strong";
 interface RailRow {
   /** Register range, mono, e.g. "x0 – x7". */
   range: string;
+  /** The same registers' other name, shown under the range, e.g. "q0 – q7". */
+  alias?: string;
   /** Uppercase role note, e.g. "arguments · results". */
   note: string;
   tint: Tint;
@@ -31,6 +33,9 @@ const ROWS: RailRow[] = [
   { range: "d0 – d7", note: "float args · results", tint: "cyan" },
   { range: "d8 – d15", note: "callee-saved", tint: "amber" },
   { range: "d16 – d31", note: "caller-saved float temps", tint: "neutral" },
+  { range: "v0 – v7", alias: "q0 – q7", note: "vector args · results", tint: "cyan" },
+  { range: "v8 – v15", alias: "q8 – q15", note: "callee-saved: low 64 bits only", tint: "amber" },
+  { range: "v16 – v31", alias: "q16 – q31", note: "caller-saved vector temps", tint: "neutral" },
 ];
 
 /** Per-tint chrome: border and range ink; the note stays quiet throughout. */
@@ -88,6 +93,9 @@ export function AapcsRail({
               className={`shrink-0 whitespace-nowrap font-mono text-[13px] font-medium ${TINT[row.tint].range}`}
             >
               {row.range}
+              {row.alias && (
+                <span className="block text-[11px] font-normal">{row.alias}</span>
+              )}
             </span>
             <span
               className={`min-w-0 text-right font-mono text-[10px] uppercase leading-tight tracking-[0.06em] ${TINT[row.tint].note}`}
@@ -104,6 +112,9 @@ export function AapcsRail({
         32 bits, and each <span className="font-mono not-italic">d</span> row is
         one register with an{" "}
         <span className="font-mono not-italic">s</span> view of its low 32 bits.
+        The <span className="font-mono not-italic">v</span> rows are those same
+        registers at their full 128 bits, named{" "}
+        <span className="font-mono not-italic">q</span> when read as one value.
       </p>
     </aside>
   );
