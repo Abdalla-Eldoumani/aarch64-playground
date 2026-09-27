@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react
 // fires exactly once (no double-fire) with no shortcut lost.
 const handle = vi.hoisted(() => ({
   assemble: vi.fn(),
+  assembleAndRun: vi.fn(),
   run: vi.fn(),
   pause: vi.fn(),
   step: vi.fn(),
@@ -42,7 +43,11 @@ vi.mock("@/components/playground/EmbeddablePlayground", async () => {
   };
 });
 vi.mock("@/components/playground/CommandPalette", () => ({ CommandPalette: () => null }));
-vi.mock("@/components/playground/ShortcutsHelp", () => ({ ShortcutsHelp: () => null }));
+// The help modal renders a marker while open, so a test can see what `?` did.
+vi.mock("@/components/playground/ShortcutsHelp", () => ({
+  ShortcutsHelp: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="shortcuts-help" /> : null,
+}));
 vi.mock("@/components/playground/ShareDialog", () => ({ ShareDialog: () => null }));
 vi.mock("@/components/chrome/SiteNav", () => ({ SiteNav: () => null }));
 
@@ -94,6 +99,42 @@ describe("page keyboard ownership", () => {
     render(<Home />);
     fireEvent.keyDown(window, { key: "F5", shiftKey: true });
     expect(handle.reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes Ctrl+Enter to assemble-and-run, once", () => {
+    render(<Home />);
+    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+    expect(handle.assembleAndRun).toHaveBeenCalledTimes(1);
+    expect(handle.assemble).not.toHaveBeenCalled();
+  });
+});
+
+describe("the help key", () => {
+  it("opens the shortcuts help from anywhere outside a text surface", async () => {
+    const { findByTestId } = render(<Home />);
+    fireEvent.keyDown(document.body, { key: "?" });
+    expect(await findByTestId("shortcuts-help")).toBeTruthy();
+  });
+
+  it("leaves a ? typed in the editor to the editor", () => {
+    const { queryByTestId } = render(<Home />);
+    // Monaco's editing surface: a textarea in some browsers, and in Chrome a
+    // plain focusable div (EditContext), inside the .monaco-editor node.
+    const editor = document.createElement("div");
+    editor.className = "monaco-editor";
+    const surface = document.createElement("div");
+    surface.className = "native-edit-context";
+    surface.tabIndex = 0;
+    editor.appendChild(surface);
+    document.body.appendChild(editor);
+    try {
+      const event = new KeyboardEvent("keydown", { key: "?", bubbles: true, cancelable: true });
+      surface.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(queryByTestId("shortcuts-help")).toBeNull();
+    } finally {
+      editor.remove();
+    }
   });
 });
 
