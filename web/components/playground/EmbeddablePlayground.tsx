@@ -91,6 +91,8 @@ export type EmbeddableState = {
  */
 export type EmbeddablePlaygroundHandle = {
   assemble(): void;
+  /** Ctrl+Enter: assemble the workspace, then run it if that succeeded. */
+  assembleAndRun(): void;
   run(): void;
   pause(): void;
   step(): void;
@@ -303,6 +305,28 @@ function EmbeddableCore({
   }, [emu.assemblyErrors]);
   const toast = useToast();
 
+  // A dot set before assembling can sit where nothing runs (below the last
+  // instruction). The assemble drops it, and the student is told which one
+  // and why rather than watching it vanish.
+  useEffect(() => {
+    const dropped = emu.droppedBreakpoints;
+    if (dropped.length === 0) return;
+    const pinned = assembledLayoutRef.current;
+    const where = dropped.map((line) => {
+      const loc = resolveLine(
+        line,
+        pinned?.main ?? sourceRef.current,
+        pinned?.extras ?? extraFilesRef.current,
+      );
+      return `${loc.name} line ${loc.line}`;
+    });
+    toast.info(
+      dropped.length === 1
+        ? `removed the breakpoint on ${where[0]}: no instruction runs at or after that line`
+        : `removed the breakpoints on ${where.join(", ")}: no instruction runs at or after those lines`,
+    );
+  }, [emu.droppedBreakpoints, toast]);
+
   // Replacing the program text drops the launch mode: it belongs to the
   // program that set it, and a stale mode would send an unrelated
   // program's run to the terminal pane.
@@ -496,6 +520,7 @@ function EmbeddableCore({
       buildPaletteCommands({
         blocked: emu.blocked,
         programLoaded: emu.programLoaded,
+        isRunning: emu.isRunning,
         canStepBack: emu.canStepBack,
         launchable: fullRef.current?.launchable() ?? false,
         source,
@@ -668,6 +693,18 @@ function EmbeddableCore({
   const handle = useMemo<EmbeddablePlaygroundHandle>(
     () => ({
       assemble: () => assembleRef.current(),
+      // The full surface owns the run press (terminal mode hands the pane
+      // over), so it owns this too; embed and checker run the machine.
+      assembleAndRun: () => {
+        const full = fullRef.current;
+        if (full) {
+          full.assembleAndRun();
+          return;
+        }
+        void assembleRef.current().then((ok) => {
+          if (ok) emuRef.current.run();
+        });
+      },
       // Run, step, and back cannot pass a blocked read (the machine just
       // re-blocks), so while stdin is awaited they no-op like the disabled
       // buttons; assemble and reset stay live as the two real exits.
@@ -786,6 +823,7 @@ function EmbeddableCore({
               lintWarnings={lintWarnings}
               onCursorChange={setCursor}
               focusRequest={errorFocus}
+              followCurrentLine={!emu.isRunning}
               readOnly={readOnly}
             />
           )
@@ -808,6 +846,7 @@ function EmbeddableCore({
             exitCode={emu.exitCode}
             vfsFiles={emu.vfsFiles}
             pushStdin={emu.pushStdin}
+            onInputSent={emu.resumeAfterInput}
             echoStdin={chrome !== "checker"}
             closeStdin={emu.closeStdin}
             uploadVfsFile={stageVfsFile}
@@ -965,6 +1004,7 @@ export const EmbeddablePlayground = forwardRef<
     ref,
     () => ({
       assemble: () => runOrQueue((handle) => handle.assemble()),
+      assembleAndRun: () => runOrQueue((handle) => handle.assembleAndRun()),
       run: () => runOrQueue((handle) => handle.run()),
       pause: () => runOrQueue((handle) => handle.pause()),
       step: () => runOrQueue((handle) => handle.step()),
