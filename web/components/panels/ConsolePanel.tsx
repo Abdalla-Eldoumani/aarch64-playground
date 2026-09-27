@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/playground/upload-guard";
+import { stripEscapeSequences } from "@/lib/terminal/input-state";
 
 interface ConsolePanelProps {
   stdout: string;
@@ -27,6 +28,9 @@ interface ConsolePanelProps {
   /** Queue stdin. The second argument marks a line typed at a prompt, which
    *  the machine echoes into the transcript as a read consumes it. */
   pushStdin: (s: string, interactive?: boolean) => void;
+  /** Called after a line or an end-of-input is sent, so a run parked on the
+   *  read picks up again instead of waiting for another run press. */
+  onInputSent?: () => void;
   /** Whether a typed line is echoed into the transcript. The checker
    *  chrome turns this off: its fast path grades the live stdout, and an
    *  echoed byte there would fail a correct program's `equals` check. */
@@ -55,6 +59,7 @@ export function ConsolePanel({
   exitCode,
   vfsFiles,
   pushStdin,
+  onInputSent,
   echoStdin = true,
   closeStdin,
   uploadVfsFile,
@@ -123,14 +128,19 @@ export function ConsolePanel({
     // console then reads "Enter score 1: 10", like the terminal pane and
     // like a real cooked-mode tty. The checker chrome opts out.
     pushStdin(stdinValue + "\n", echoStdin);
+    onInputSent?.();
     setStdinValue("");
   };
 
   // Output from before a terminal session took over; the session's own
   // bytes belong to the pane. stderr is never routed there, so it renders
-  // whole: this scrollback is the only surface that ever shows it.
+  // whole: this scrollback is the only surface that ever shows it. A
+  // full-screen program often clears the screen before it claims the
+  // terminal, so its escape sequences are dropped rather than printed raw.
   const shownStdout =
-    terminalOwnedFrom == null ? stdout : stdout.slice(0, terminalOwnedFrom);
+    terminalOwnedFrom == null
+      ? stdout
+      : stripEscapeSequences(stdout.slice(0, terminalOwnedFrom));
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -248,6 +258,7 @@ export function ConsolePanel({
             if (e.ctrlKey && (e.key === "d" || e.key === "D") && stdinValue === "") {
               e.preventDefault();
               closeStdin();
+              onInputSent?.();
             }
           }}
           placeholder={
