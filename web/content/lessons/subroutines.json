@@ -93,7 +93,7 @@
     },
     {
       "type": "prose",
-      "markdown": "To see the chain, set a breakpoint on the `bl printf` line inside `show` and run. `fp` now points at `show`'s frame record: the 8 bytes at `fp` hold `main`'s `fp`, and the 8 bytes at `fp + 8` hold the address of the instruction after the `bl show` that made this call.\n\n`show` also moves its arguments up one register before it loads the format string: `w2` to `w3`, then `w1` to `w2`, then `x0` to `x1`. Working from the top down copies each value out before anything overwrites it."
+      "markdown": "To see the chain, run the program (or press step) once, then set a breakpoint on the `bl printf` line inside `show` and press run. `fp` now points at `show`'s frame record: the 8 bytes at `fp` hold `main`'s `fp`, and the 8 bytes at `fp + 8` hold the address of the instruction after the `bl show` that made this call.\n\n`show` also moves its arguments up one register before it loads the format string: `w2` to `w3`, then `w1` to `w2`, then `x0` to `x1`. Working from the top down copies each value out before anything overwrites it."
     },
     {
       "type": "prose",
