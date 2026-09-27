@@ -264,7 +264,7 @@ fixed:
 	ret
 	.align	2
 	.align 5
-mini__constprop__0:
+mini.constprop.0:
 	sub	sp, sp, #704
 	add	x8, sp, 656
 	add	x0, sp, 528
@@ -801,7 +801,7 @@ main:
 	add	x21, x21, :lo12:.LC4
 	stp	x25, x26, [sp, 288]
 	stp	x27, x28, [sp, 304]
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	mov	w22, w0
 	mov	w0, 8
 	str	w0, [sp]
@@ -860,7 +860,7 @@ main:
 	mov	x3, -1
 	movk	x2, 0xfee0, lsl 32
 	mov	x0, x19
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	mov	w25, w0
 	mov	x5, 51966
 	mov	w0, 107
@@ -924,7 +924,7 @@ main:
 	mov	w3, -2
 	mov	w2, 1
 	mov	x0, x19
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	add	x8, x19, 512
 	mov	w22, w0
 	mov	w0, -6
@@ -991,7 +991,7 @@ main:
 	add	x1, x21, :lo12:.LC13
 	stp	d29, d28, [sp]
 	str	d27, [sp, 16]
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	fmov	d0, 5.0e-1
 	mov	w22, w0
 	add	x2, x21, :lo12:.LC13
@@ -1058,7 +1058,7 @@ main:
 	mov	x4, -3
 	mov	w2, 1
 	mov	x0, x19
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	mov	w23, w0
 	fmov	d0, 1.25e-1
 	mov	w0, 8
@@ -1123,7 +1123,7 @@ main:
 	mov	w5, 7
 	mov	w4, -42
 	mov	x0, x19
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	add	x8, x19, 512
 	mov	w24, w0
 	mov	w0, -6
@@ -1179,7 +1179,7 @@ main:
 	add	x5, x23, :lo12:.LC19
 	mov	w2, 35
 	mov	x0, x19
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	fmov	d0, -3.5e+0
 	mov	w24, w0
 	add	x4, x22, :lo12:.LC20
@@ -1224,7 +1224,7 @@ main:
 	mov	x3, x5
 	mov	x2, -1
 	mov	x0, x19
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	mov	w22, w0
 	mov	x5, 52719
 	add	x2, x21, :lo12:.LC22
@@ -1332,7 +1332,7 @@ main:
 	str	w12, [sp, 184]
 	str	w13, [sp, 192]
 	str	w14, [sp, 200]
-	bl	mini__constprop__0
+	bl	mini.constprop.0
 	add	x15, x19, 512
 	mov	w14, 20
 	mov	w13, 19
