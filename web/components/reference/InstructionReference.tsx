@@ -101,7 +101,7 @@ const ACTION_LINK =
 // NZCV in register order, the four condition-flag chips of the FLAGS row.
 const NZCV = ["N", "Z", "C", "V"] as const;
 const PERMALINK =
-  "inline-flex min-h-[44px] items-center font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+  "touch-target inline-flex min-h-[44px] items-center font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
 
 export function InstructionReference({
   instructions,
@@ -248,8 +248,15 @@ export function InstructionReference({
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", `#${hashId(mnemonic)}`);
     }
-    if (stacked()) reveal(detailRef.current, "start");
-    else itemRefs.current[mnemonic]?.scrollIntoView({ block: "nearest" });
+    if (stacked()) {
+      reveal(detailRef.current, "start");
+      return;
+    }
+    itemRefs.current[mnemonic]?.scrollIntoView({ block: "nearest" });
+    // Reaching an item low in the sticky index can scroll the page as well,
+    // which carried the detail's heading off the top of the screen.
+    const detail = detailRef.current;
+    if (detail && detail.getBoundingClientRect().top < 0) reveal(detail, "start");
   }
 
   function moveActive(delta: 1 | -1) {
