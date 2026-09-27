@@ -44,7 +44,7 @@ is_odd:
 	ret
 	.align	2
 	.align 5
-is_even__part__0:
+is_even.part.0:
 	cmp	w0, 1
 	beq	.L28
 	cmp	w0, 2
@@ -74,7 +74,7 @@ is_even__part__0:
 	b	is_odd
 	.align	2
 	.align 5
-is_odd__part__0:
+is_odd.part.0:
 	cmp	w0, 1
 	bne	.L75
 	ret
@@ -160,10 +160,10 @@ main:
 	add	x0, x0, :lo12:.LC0
 	bl	printf
 	mov	w0, 198
-	bl	is_even__part__0
+	bl	is_even.part.0
 	mov	w1, w0
 	mov	w0, 199
-	bl	is_odd__part__0
+	bl	is_odd.part.0
 	mov	w2, w0
 	adrp	x0, .LC1
 	add	x0, x0, :lo12:.LC1
