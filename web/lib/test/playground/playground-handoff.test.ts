@@ -124,6 +124,15 @@ describe("resolveHandoff", () => {
     expect(decision.payload.source).toBe("mov x1, 9");
   });
 
+  it("reopens a bundle's helper files beside main.asm", () => {
+    const files = [{ name: "util.s", body: "helper:\n    ret\n" }];
+    const query = `?bundle=${encodeBundle({ source: "bl helper", files })}`;
+    const decision = resolveHandoff({ fromShare: false, fromBundle: false }, query, "", decodeBundle);
+    if (decision?.kind !== "bundle") throw new Error("expected bundle");
+    expect(decision.payload.files).toEqual(files);
+    expect(resolveBoot(query, "", null, "default", decodeBundle).files).toEqual(files);
+  });
+
   it("suppresses the example fetch when a share payload is in the URL", () => {
     const consumed = resolveHandoff(
       { fromShare: true, fromBundle: false },
