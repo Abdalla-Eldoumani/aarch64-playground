@@ -1,0 +1,59 @@
+{
+  "title": "Change for a twenty",
+  "slug": "change-for-a-twenty",
+  "order": 7,
+  "topic": "armv8",
+  "difficulty": "core",
+  "prompt": "A customer pays with a twenty-dollar bill, 2000 cents. The starter reads the price in cents, from 0 to 2000. Work out the change, then split it into as few coins as possible: as many quarters (25 cents) as fit, then dimes (10), then nickels (5), then pennies (1). Leave the results in `change_r`, `quarters_r`, `dimes_r`, `nickels_r` and `pennies_r`; the starter prints them.\n\nA64 has no remainder instruction. `sdiv` gives how many whole times one number fits in another, and `msub` multiplies two registers and subtracts the product from a third, which is exactly the leftover:\n\n```\nsdiv    w9, w12, w10        // w9 = w12 / w10, fraction dropped\nmsub    w13, w9, w10, w12   // w13 = w12 - w9 * w10, the remainder\n```\n\nFor a price of 1541 the change is 459 cents: 18 quarters make 450, which leaves 9 cents, and 9 cents is 0 dimes, 1 nickel and 4 pennies.\n\n## what is checked\n\n- with input `1541` the output is `change in cents: 459`, then `25c x 18`, `10c x 0`, `5c x 1` and `1c x 4`, one per line\n- the program exits cleanly\n- the leftovers come from `msub`\n- the program also runs on prices you do not see, including one that needs no change at all and one that needs every kind of coin",
+  "starter": "// make change for a twenty in quarters, dimes, nickels and pennies\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(price_r, w19)\ndefine(change_r, w20)\ndefine(quarters_r, w21)\ndefine(dimes_r, w22)\ndefine(nickels_r, w23)\ndefine(pennies_r, w24)\n\ndefine(BILL, 2000)\n\n.data\nfmt_in:     .string \"%d\"\nfmt_out:    .string \"change in cents: %d\\n25c x %d\\n10c x %d\\n5c x %d\\n1c x %d\\n\"\n\n.bss\n        .balign 4\nprice_in:   .skip 4                         // scanf stores the price here\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the price in cents, 0 to 2000\n        ldr     x1, =price_in\n        bl      scanf\n        ldr     x9, =price_in\n        ldr     price_r, [x9]\n\n        mov     change_r, 0                 // replace these placeholders\n        mov     quarters_r, 0\n        mov     dimes_r, 0\n        mov     nickels_r, 0\n        mov     pennies_r, 0\n\n        // TODO: the change is BILL minus the price. Count the quarters\n        // in it, then the dimes in what is left, then the nickels, and\n        // what is left after that is pennies.\n\n        ldr     x0, =fmt_out\n        mov     w1, change_r\n        mov     w2, quarters_r\n        mov     w3, dimes_r\n        mov     w4, nickels_r\n        mov     w5, pennies_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "1541\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "change in cents: 459\n25c x 18\n10c x 0\n5c x 1\n1c x 4\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "msub"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "2000\n",
+      "stdout": "change in cents: 0\n25c x 0\n10c x 0\n5c x 0\n1c x 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "0\n",
+      "stdout": "change in cents: 2000\n25c x 80\n10c x 0\n5c x 0\n1c x 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "change in cents: 1999\n25c x 79\n10c x 2\n5c x 0\n1c x 4\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1959\n",
+      "stdout": "change in cents: 41\n25c x 1\n10c x 1\n5c x 1\n1c x 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1999\n",
+      "stdout": "change in cents: 1\n25c x 0\n10c x 0\n5c x 0\n1c x 1\n",
+      "exitCode": 0
+    }
+  ]
+}
