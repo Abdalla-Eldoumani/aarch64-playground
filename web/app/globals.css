@@ -60,6 +60,8 @@
      so the base/dark block owns them; they cascade to every theme via :root. */
   --safe-bottom:    env(safe-area-inset-bottom, 0px);
   --safe-top:       env(safe-area-inset-top, 0px);
+  --safe-left:      env(safe-area-inset-left, 0px);
+  --safe-right:     env(safe-area-inset-right, 0px);
   --font-scale:     1;
 }
 
@@ -500,63 +502,39 @@ body {
 }
 
 /* =============================================================================
-   INSTRUMENT BANDS (header + controls)
-   Under sm the debugger's two chrome rows compress from stacked wrap rows into
-   horizontally scrolling instrument bands: on a phone the editor is the point,
-   so the chrome takes a single strip that scrolls within itself (the same
-   self-scroll pattern as the tab strip) with every control at full size and
-   hit target, instead of wrapping into rows that push the editor below the
-   fold. The 639.98px bound matches Tailwind's max-sm. The scrollbar is hidden
-   because the fade at each edge is the affordance.
+   PHONES AND TOUCH SCREENS
+   The playground's phone arrangement (components/playground/PhoneLayout) is
+   chosen by the same bounds as this query: under 768px wide, or under 500px
+   tall, which is a phone on its side. Its own top bar carries the home link
+   and the site links, so the site bar steps aside and the code gets its
+   height.
 ============================================================================= */
-@media (max-width: 639.98px) {
-  .header-band,
-  .controls-band {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    /* A fade at each edge says "there is more this way" without an extra
-       element inside a row whose children are all interactive, and it reads
-       the same in all three themes. The scroll padding matches the two fade
-       widths, so a control scrolled into view by a tab press lands past the
-       fade rather than under it. */
-    scroll-padding-inline: 12px 24px;
-    -webkit-mask-image: linear-gradient(
-      to right,
-      transparent 0,
-      #000 12px,
-      #000 calc(100% - 24px),
-      transparent 100%
-    );
-    mask-image: linear-gradient(
-      to right,
-      transparent 0,
-      #000 12px,
-      #000 calc(100% - 24px),
-      transparent 100%
-    );
+@media (max-width: 767.98px), (max-height: 499.98px) {
+  .playground-site-nav {
+    display: none;
   }
-  .header-band > *,
-  .controls-band > * {
-    flex-shrink: 0;
+}
+
+@media (pointer: coarse) {
+  /* 44px is the least a fingertip hits reliably. Dense controls a mouse
+     handles at 24px (zoom steps, the files strip, the tool row) carry this
+     class, so they grow on a touch screen and keep their size under a mouse.
+     A min size wins over a fixed h-6 or w-6, and this rule comes after the
+     utilities, so it also wins over a smaller min-h. */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
   }
-  /* Spacers the width of each fade, so the first and last controls can scroll
-     clear of it: without them the last control sits under the end fade at
-     maximum scroll and its focus ring is dimmed. */
-  .header-band::before,
-  .controls-band::before {
-    content: "";
-    flex: 0 0 12px;
+  /* iOS zooms the page into any field whose text is under 16px when it takes
+     focus, and leaves it zoomed. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px !important;
   }
-  .header-band::after,
-  .controls-band::after {
-    content: "";
-    flex: 0 0 24px;
-  }
-  /* The spacer pushes the status chips right on a wide row; inside a scrolling
-     strip it would only add empty scroll width, and its neighbours (the step
-     counter and the halted chip) are already hidden under sm. */
-  .controls-spacer {
+  /* A soft keyboard takes half the screen; while the editor has it, the
+     view tabs step aside so the code and the run controls keep the rest. */
+  .phone-layout:has(textarea:focus) .phone-tabs {
     display: none;
   }
 }
