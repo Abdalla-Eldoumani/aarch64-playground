@@ -144,6 +144,8 @@ const ABI_ALIAS: Record<number, string> = {
 const NO_REGISTERS: string[] = [];
 const NO_CHANGES: ReadonlySet<number> = new Set<number>();
 
+const ZERO_VECTOR = /^0x0+$/;
+
 /** Persisted boolean flag, SSR-safe (reads localStorage after mount). A
  *  reducer, like the lane arrangement below, so the stored value can arrive
  *  from an effect. */
@@ -422,9 +424,17 @@ export function RegisterPanel({
     prevLine: currentLine,
   });
   if (snapPair.cur !== vectorRegisters) {
+    // Every load and reset starts the machine with a zeroed vector file and
+    // no write reported. That is a new program, not an instruction, so the
+    // diff starts over from it: otherwise clearing a library call's
+    // leftovers reads as 32 vector writes.
+    const newMachine =
+      changedRegs.size === 0 &&
+      changedFpRegs.size === 0 &&
+      vectorRegisters.every((bits) => ZERO_VECTOR.test(bits));
     setSnapPair({
       cur: vectorRegisters,
-      prev: snapPair.cur,
+      prev: newMachine ? vectorRegisters : snapPair.cur,
       line: currentLine,
       prevLine: snapPair.line,
     });
