@@ -2,6 +2,7 @@
   "title": "Floating point: the other register file",
   "slug": "floating-point",
   "order": 26,
+  "lastUpdated": "2026-09-27",
   "summary": "Load, compute with, convert, compare, and print single and double values, and pass them to and from functions in d0 to d7.",
   "tags": [
     "floating point",
