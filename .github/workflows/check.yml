@@ -39,28 +39,71 @@ env:
   RUST_TOOLCHAIN: "1.96.0"
   WASM_PACK_VERSION: "0.14.0"
 
-# Every web job needs the wasm bundles, so the job that produces them does
-# nothing else; everything downstream fans out in parallel behind it. The
-# bundles are a pure function of the emulator sources and the two pinned
-# tools, so they are cached on that key: a pull request that leaves the
-# emulator alone restores them in seconds and never installs a toolchain.
-# cargo test runs beside all of this rather than in front of it.
+# How a run is laid out:
+# - changes reads which files a pull request touches and turns off the jobs
+#   those files cannot affect, so a docs change builds and tests nothing.
+#   Pushes and the weekly run test everything.
+# - wasm runs beside it and only looks the bundles up in the cache; it
+#   builds them only on a miss, so a change that leaves the emulator alone
+#   never waits on a toolchain. Each job that needs the bundles restores
+#   them itself.
+# - Every cache is restored on every run but saved only on pushes and the
+#   weekly run: those are the scopes a pull request can restore from, and a
+#   pull request's own saves would serve nothing but its own later runs.
+# - ci waits for all of it and is the one required status check.
 jobs:
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.classify.outputs.rust }}
+      static: ${{ steps.classify.outputs.static }}
+      web: ${{ steps.classify.outputs.web }}
+    steps:
+      # A pull request checks out its merge commit, and depth 2 brings the
+      # base commit (the merge's first parent) along to diff against.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      # --no-renames lists a moved file under its old path too, so moving a
+      # file out of emulator/ still counts as an emulator change.
+      - name: classify the changed paths
+        id: classify
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git diff --name-only --no-renames -z HEAD^1 HEAD > "$RUNNER_TEMP/changed"
+            node .github/scripts/classify-changes.js < "$RUNNER_TEMP/changed"
+          else
+            node .github/scripts/classify-changes.js --all
+          fi
+
+  # The bundles are a pure function of the emulator sources and the two
+  # pinned tools, so they are cached on that key. A hit ends this job after
+  # the lookup; a miss builds them and hands them to this run's other jobs
+  # as an artifact.
   wasm:
     name: wasm-pack bundles
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      key: ${{ steps.bundles.outputs.cache-primary-key }}
+      built: ${{ steps.bundles.outputs.cache-hit != 'true' }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: restore wasm bundles
+      # The path list must match the wasm-bundles action's exactly: the
+      # cache version is a hash of it.
+      - name: look up wasm bundles
         id: bundles
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: |
             web/lib/wasm/
             web/lib/wasm-node/
           key: ${{ runner.os }}-wasm-out-${{ env.RUST_TOOLCHAIN }}-${{ env.WASM_PACK_VERSION }}-${{ hashFiles('emulator/src/**', 'emulator/Cargo.toml', 'emulator/Cargo.lock') }}
+          lookup-only: true
 
       # Third-party actions are pinned to full commit SHAs so a moved tag
       # cannot swap the code CI runs; the comment names the human-readable ref.
@@ -74,9 +117,10 @@ jobs:
       # This job and cargo test keep separate target caches on purpose: they
       # compile for different targets, and a shared key meant whichever job
       # saved first left the other recompiling its half on every run.
-      - name: cache cargo
+      - name: restore cargo cache
+        id: cargo
         if: steps.bundles.outputs.cache-hit != 'true'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry
@@ -106,6 +150,7 @@ jobs:
         run: wasm-pack build emulator --release --target nodejs --out-dir ../web/lib/wasm-node
 
       - name: upload wasm artifacts
+        if: steps.bundles.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: wasm-bundles
@@ -116,6 +161,25 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
+      - name: save wasm bundles
+        if: steps.bundles.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            web/lib/wasm/
+            web/lib/wasm-node/
+          key: ${{ steps.bundles.outputs.cache-primary-key }}
+
+      - name: save cargo cache
+        if: steps.bundles.outputs.cache-hit != 'true' && steps.cargo.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            emulator/target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
   # The corpus gate replays fifty gcc-compiled programs and was nearly all
   # of the cargo runtime, so the suite is partitioned the way the vitest
   # shards below are: one job runs every test except that gate, and three
@@ -124,9 +188,12 @@ jobs:
   # other half of the speedup lives in emulator/Cargo.toml: the test
   # profile runs at opt-level 1 with overflow checks and debug assertions
   # still on, because an unoptimized walk of the interpreter loop was
-  # minutes of pure constant factor.
+  # minutes of pure constant factor. Splitting cargo test further buys
+  # nothing: its floor is the compile plus simd_behaviour, a single test.
   rust:
     name: ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -160,8 +227,9 @@ jobs:
       # test binary), so they share one cache key and whichever saves first
       # wins; the full-suite job keeps the key it always had rather than
       # letting a subset save evict the artifacts its next run restores.
-      - name: cache cargo
-        uses: actions/cache@v6
+      - name: restore cargo cache
+        id: cargo
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry
@@ -176,9 +244,20 @@ jobs:
           CORPUS_SHARD: ${{ matrix.shard }}
         run: cargo test --manifest-path emulator/Cargo.toml ${{ matrix.args }}
 
+      - name: save cargo cache
+        if: steps.cargo.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            emulator/target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
   corpus:
     name: verify-corpus
-    needs: wasm
+    needs: [changes, wasm]
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -191,18 +270,18 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: download wasm artifacts
-        uses: actions/download-artifact@v8
+      - uses: ./.github/actions/wasm-bundles
         with:
-          name: wasm-bundles
-          path: web/lib
+          key: ${{ needs.wasm.outputs.key }}
+          built: ${{ needs.wasm.outputs.built }}
 
       - name: verify-corpus
         run: node scripts/verify-corpus.js
 
   web-static:
     name: lint + typecheck + audit
-    needs: wasm
+    needs: [changes, wasm]
+    if: needs.changes.outputs.static == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -213,11 +292,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # tsc needs the generated .d.ts from both wasm bundles to type-check.
-      - name: download wasm artifacts
-        uses: actions/download-artifact@v8
+      - uses: ./.github/actions/wasm-bundles
         with:
-          name: wasm-bundles
-          path: web/lib
+          key: ${{ needs.wasm.outputs.key }}
+          built: ${{ needs.wasm.outputs.built }}
 
       # The production dependency gate: fails on any moderate-or-higher
       # advisory against a shipped dep. Dev-only tooling is watched by
@@ -248,7 +326,8 @@ jobs:
 
   web-build:
     name: next build + size-limit
-    needs: wasm
+    needs: [changes, wasm]
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -258,17 +337,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: download wasm artifacts
-        uses: actions/download-artifact@v8
+      - uses: ./.github/actions/wasm-bundles
         with:
-          name: wasm-bundles
-          path: web/lib
+          key: ${{ needs.wasm.outputs.key }}
+          built: ${{ needs.wasm.outputs.built }}
 
       # The webpack cache is content-addressed internally, so restoring a
       # stale entry is safe and still cuts the build roughly in half; the
       # per-sha key just keeps the newest one winning.
-      - name: cache next build
-        uses: actions/cache@v6
+      - name: restore next build cache
+        id: next-cache
+        uses: actions/cache/restore@v6
         with:
           path: web/.next/cache
           key: ${{ runner.os }}-next-${{ hashFiles('web/package-lock.json') }}-${{ github.sha }}
@@ -279,6 +358,13 @@ jobs:
       - name: build
         working-directory: web
         run: npm run build
+
+      - name: save next build cache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v6
+        with:
+          path: web/.next/cache
+          key: ${{ steps.next-cache.outputs.cache-primary-key }}
 
       # size-limit sums whatever its globs match, and an empty match sums to
       # zero and passes: a renamed chunk would un-measure itself silently.
@@ -296,12 +382,15 @@ jobs:
   # is the critical path of the whole workflow and vitest splits by file
   # count, not by cost: four shards left the longest one at 80 s and the
   # merge job waiting on it.
-  # A shard cannot judge the global coverage floor from its slice, so
-  # VITEST_SHARD defers the thresholds to the coverage job, which merges
-  # the blob reports and enforces them once.
+  # Coverage is measured only where the floors are enforced (pushes and the
+  # weekly run); a pull request runs the same tests without it. A shard
+  # cannot judge the global floor from its slice, so VITEST_SHARD defers
+  # the thresholds to the coverage job, which merges the blob reports and
+  # enforces them once.
   web-test:
     name: vitest shard ${{ matrix.shard }}
-    needs: wasm
+    needs: [changes, wasm]
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -315,11 +404,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: download wasm artifacts
-        uses: actions/download-artifact@v8
+      - uses: ./.github/actions/wasm-bundles
         with:
-          name: wasm-bundles
-          path: web/lib
+          key: ${{ needs.wasm.outputs.key }}
+          built: ${{ needs.wasm.outputs.built }}
 
       # The default reporter rides along so a failing test is readable right
       # in this job's log; the blob is only the merge job's input.
@@ -328,12 +416,13 @@ jobs:
         env:
           # A flag, not the shard index: it only tells vitest to defer the floors.
           VITEST_SHARD: "1"
-        run: npm test -- --coverage --reporter=blob --reporter=default --shard=${{ matrix.shard }}/6
+        run: npm test -- ${{ github.event_name != 'pull_request' && '--coverage --reporter=blob' || '' }} --reporter=default --shard=${{ matrix.shard }}/6
 
       # .vitest/blob is where vitest 5 writes the blob (vitest 4 used
       # .vitest-reports). It is a dot-directory, which upload-artifact skips
       # unless told otherwise; without the flag this uploads nothing.
       - name: upload blob report
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: blob-report-${{ matrix.shard }}
@@ -346,6 +435,7 @@ jobs:
   coverage:
     name: merge shards + coverage floors
     needs: web-test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -368,3 +458,20 @@ jobs:
       - name: merge reports and enforce coverage floors
         working-directory: web
         run: npm test -- --merge-reports --coverage
+
+  # The one required status check. It waits for every job above, including
+  # the ones the path filter skipped, and fails if any of them failed or was
+  # cancelled; a skipped job passes.
+  ci:
+    name: ci
+    needs: [changes, wasm, rust, corpus, web-static, web-build, web-test, coverage]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: every needed job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node .github/scripts/check-needs.js
