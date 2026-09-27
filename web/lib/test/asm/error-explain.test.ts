@@ -104,7 +104,7 @@ describe("explainError", () => {
 
   it("explains an unterminated C string via .asciz", () => {
     const e = explainError(
-      "strlen: the string at 0x600000 has no terminating zero byte within 64 KiB. Declare strings with .asciz or .string (not .ascii), and check nothing wrote over the terminator",
+      "strlen: the string at 0x600000 has no terminating zero byte within 1 MiB. Declare strings with .asciz or .string (not .ascii), and check nothing wrote over the terminator",
     );
     expect(e).not.toBeNull();
     expect(e!.fix).toContain(".asciz");
