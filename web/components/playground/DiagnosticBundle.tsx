@@ -35,10 +35,8 @@ export function DiagnosticBundle({ build }: DiagnosticBundleProps) {
       >
         diagnostic bundle
       </button>
-      {/* Portalled to the body: under sm the header band is a scroll strip
-          with an edge mask, and a mask paints everything inside the band
-          through the band's box, a fixed dialog included, so the dialog was
-          cut down to the band. */}
+      {/* Portalled to the body, so no masked or clipping ancestor can cut
+          the fixed dialog down to its own box. */}
       {request &&
         createPortal(<BundleDialog request={request} onClose={() => setRequest(null)} />, document.body)}
     </>
@@ -103,9 +101,11 @@ function BundleDialog({
           ? "copy failed: select the text in the box and copy it by hand."
           : "";
 
+  // Above the phone menu sheet (z-70) the button lives in: under it, the
+  // dialog opened behind the sheet that holds the focus.
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-3"
       role="dialog"
       aria-modal="true"
       aria-labelledby="diagnostic-bundle-title"
