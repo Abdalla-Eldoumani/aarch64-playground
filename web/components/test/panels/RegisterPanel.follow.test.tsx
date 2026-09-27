@@ -2,7 +2,8 @@
 // the page) just far enough to show the written row, switches to the v view
 // for a vector write, holds still for 5 s after the student scrolls, jumps
 // instantly under reduced motion, stands down when "follow changes" is off,
-// waits out a run, and says each write once through a polite status region.
+// waits out a run, shows the row again when its box settles shorter just
+// after, and says each write once through a polite status region.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
@@ -21,7 +22,27 @@ const BOX_HEIGHT = 100;
 const ROW = 20;
 
 let scrollTop = 0;
+let boxHeight = BOX_HEIGHT;
 let scrollCalls: ScrollToOptions[] = [];
+
+// The strip above the panel can grow a frame after a step and take height
+// from the list. jsdom has no ResizeObserver: suites that need one stub this
+// in, and it reports only when a test says the layout moved.
+let observing: StubResizeObserver[] = [];
+
+class StubResizeObserver {
+  constructor(readonly report: () => void) {}
+  observe() {
+    observing.push(this);
+  }
+  disconnect() {
+    observing = observing.filter((o) => o !== this);
+  }
+}
+
+function layoutMoved() {
+  for (const observer of [...observing]) observer.report();
+}
 
 function rect(top: number, height: number): DOMRect {
   return {
@@ -39,11 +60,13 @@ function rect(top: number, height: number): DOMRect {
 
 beforeEach(() => {
   scrollTop = 0;
+  boxHeight = BOX_HEIGHT;
   scrollCalls = [];
+  observing = [];
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
     this: Element,
   ) {
-    if (this.getAttribute("role") === "region") return rect(BOX_TOP, BOX_HEIGHT);
+    if (this.getAttribute("role") === "region") return rect(BOX_TOP, boxHeight);
     const grid = this.parentElement;
     if (grid?.parentElement?.getAttribute("role") === "region") {
       const line = Array.prototype.indexOf.call(grid.children, this);
@@ -65,6 +88,8 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
   delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
 });
 
@@ -98,7 +123,7 @@ function mount() {
   const view = render(panel());
   const box = screen.getByRole("region", { name: "register values" });
   Object.defineProperty(box, "scrollHeight", { configurable: true, value: 700 });
-  Object.defineProperty(box, "clientHeight", { configurable: true, value: BOX_HEIGHT });
+  Object.defineProperty(box, "clientHeight", { configurable: true, get: () => boxHeight });
   Object.defineProperty(box, "scrollTop", {
     configurable: true,
     get: () => scrollTop,
@@ -283,6 +308,7 @@ describe("RegisterPanel in a host pane shorter than itself", () => {
   // A lesson frame on a phone: a 60 px pane that scrolls, holding a 50 px
   // header over the list's 100 px box, so the pane scrolls 90 px at most.
   let paneTop = 0;
+  let paneHeight = 60;
   let paneCalls: ScrollToOptions[] = [];
 
   function framed(props: PanelProps = {}) {
@@ -295,11 +321,12 @@ describe("RegisterPanel in a host pane shorter than itself", () => {
 
   function mountFramed() {
     paneTop = 0;
+    paneHeight = 60;
     paneCalls = [];
     const view = render(framed());
     const pane = screen.getByTestId("pane");
     Object.defineProperty(pane, "scrollHeight", { configurable: true, value: 150 });
-    Object.defineProperty(pane, "clientHeight", { configurable: true, value: 60 });
+    Object.defineProperty(pane, "clientHeight", { configurable: true, get: () => paneHeight });
     Object.defineProperty(pane, "scrollTop", { configurable: true, get: () => paneTop });
     Object.defineProperty(pane, "scrollTo", {
       configurable: true,
@@ -313,7 +340,7 @@ describe("RegisterPanel in a host pane shorter than itself", () => {
     Object.defineProperty(box, "clientHeight", { configurable: true, value: BOX_HEIGHT });
     Object.defineProperty(box, "scrollTop", { configurable: true, get: () => scrollTop });
     vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
-      if (this === pane) return rect(0, 60);
+      if (this === pane) return rect(0, paneHeight);
       if (this === box) return rect(50 - paneTop, BOX_HEIGHT);
       if (this.parentElement?.parentElement === box) {
         const line = Array.prototype.indexOf.call(this.parentElement.children, this);
@@ -348,6 +375,60 @@ describe("RegisterPanel in a host pane shorter than itself", () => {
     now += 1_000;
     rerender(framed({ changedRegs: new Set([3]) }));
     expect(paneCalls).toEqual([]);
+  });
+
+  it("shows the row again when the pane settles shorter under it", () => {
+    vi.stubGlobal("ResizeObserver", StubResizeObserver);
+    const { rerender } = mountFramed();
+    rerender(framed({ changedRegs: new Set([3]) }));
+    // Row 3 now fills 40-60, the pane's last 20 px; a 50 px pane cuts it,
+    // so the pane moves 10 more.
+    paneHeight = 50;
+    layoutMoved();
+    expect(paneCalls).toEqual([
+      { top: 70, behavior: "smooth" },
+      { top: 80, behavior: "smooth" },
+    ]);
+  });
+});
+
+describe("RegisterPanel when its box settles after a follow", () => {
+  function shrinkBox(height: number) {
+    boxHeight = height;
+    layoutMoved();
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", StubResizeObserver);
+  });
+
+  it("shows the written row again when the box shrinks under it", () => {
+    const { rerender } = mount();
+    rerender(panel({ changedRegs: new Set([28]) }));
+    // Row 28 now fills 180-200, the box's last 20 px; a 90 px box ends at
+    // 190, so the list moves 10 more.
+    shrinkBox(90);
+    expect(scrollCalls).toEqual([
+      { top: 480, behavior: "smooth" },
+      { top: 490, behavior: "smooth" },
+    ]);
+  });
+
+  it("holds still when the student scrolled before the box settled", () => {
+    const { rerender, box } = mount();
+    rerender(panel({ changedRegs: new Set([28]) }));
+    fireEvent.wheel(box, { deltaY: 120 });
+    shrinkBox(90);
+    expect(scrollCalls).toEqual([{ top: 480, behavior: "smooth" }]);
+  });
+
+  it("stops watching a second after the follow", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { rerender } = mount();
+    rerender(panel({ changedRegs: new Set([28]) }));
+    vi.advanceTimersByTime(1000);
+    shrinkBox(90);
+    expect(scrollCalls).toEqual([{ top: 480, behavior: "smooth" }]);
   });
 });
 
