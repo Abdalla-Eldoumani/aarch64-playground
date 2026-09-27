@@ -673,12 +673,18 @@ function EmbeddableCore({
   // zeroed pre-run state before any Run. Reuse runEmbed's assemble-if-stale
   // guard (the shared lastRunSourceRef): when nothing has run yet or the source
   // or args changed since the last run, assemble + run it to completion first,
-  // then snapshot; an unchanged, already-run program is checked as-is. The run
-  // loop is bounded by the emulator's own step ceiling; the
+  // then snapshot; an unchanged program that already ran to its end is checked
+  // as-is. The run loop is bounded by the emulator's own step ceiling; the
   // wall-clock poll is only a safety net, and reads the live hub through emuRef
   // so a per-render new hub identity is always observed.
   const checkEmbed = useCallback(async () => {
-    if (emu.instructions.length === 0 || lastRunSourceRef.current !== runKey) {
+    // A run that stopped short of its end (parked on a read, paused, faulted)
+    // is not a result to grade, so it runs again from the top like a stale one.
+    if (
+      emu.instructions.length === 0 ||
+      lastRunSourceRef.current !== runKey ||
+      !emuRef.current.isHalted
+    ) {
       lastRunSourceRef.current = runKey;
       const ok = await emu.assemble(source, parseArgs(argsText));
       // A failed assemble must not reach the grader (mirroring runEmbed):
@@ -689,6 +695,10 @@ function EmbeddableCore({
       // Same post-assemble seeding as Run: the exercise's stdin and
       // fixtures must be on the freshly reset machine before it runs.
       applySeeds();
+      // Then end of input, as `./program < input` gives on the servers: a
+      // read past the authored input sees end of file instead of waiting
+      // for a key nobody will press. Run keeps the input open for typing.
+      emu.closeStdin();
       emu.run();
       const startedAt = Date.now();
       do {
