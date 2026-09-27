@@ -152,7 +152,7 @@ pub fn execute(
             exec_dp_carry(*sub, *set_flags, *sf, *rd, *rn, *rm, regs)
         }
         Instruction::CondCompare { sub, sf, rn, operand, cond, nzcv } => {
-            if regs.nzcv.check(*cond) {
+            if regs.condition_holds(*cond) {
                 let a = regs.read_gpr(*rn, *sf);
                 let b = match operand {
                     CondCmpOperand::Reg(rm) => regs.read_gpr(*rm, *sf),
@@ -263,7 +263,7 @@ pub fn execute(
         Instruction::FpCondSel { fd, fn_, fm, cond, single } => {
             // Bits, not values: the chosen source may be a NaN or a
             // signed zero, and neither survives a compare-and-rebuild.
-            let src = if regs.nzcv.check(*cond) { *fn_ } else { *fm };
+            let src = if regs.condition_holds(*cond) { *fn_ } else { *fm };
             let v = regs.read_fpr_bits(src);
             regs.write_fpr_bits(*fd, if *single { v & 0xFFFF_FFFF } else { v });
             Ok(ExecResult::Advance)
@@ -547,7 +547,7 @@ fn exec_dp_carry(
         regs.read_gpr(rm, sf)
     };
 
-    let (result, flags) = add_with_carry(operand1, operand2, regs.nzcv.c, sf);
+    let (result, flags) = add_with_carry(operand1, operand2, regs.carry_flag(), sf);
     if set_flags {
         regs.nzcv = flags;
     }
@@ -1218,7 +1218,7 @@ fn exec_br_reg(
 fn exec_bcond(
     cond: Condition, offset: i64, regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
-    if regs.nzcv.check(cond) {
+    if regs.condition_holds(cond) {
         let pc = regs.read_pc();
         regs.write_pc((pc as i64 + offset) as u64);
         Ok(ExecResult::Branched)
@@ -1231,7 +1231,7 @@ fn exec_cond_sel(
     op: CondSelOp, sf: bool, rd: u8, rn: u8, rm: u8,
     cond: Condition, regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
-    let taken = regs.nzcv.check(cond);
+    let taken = regs.condition_holds(cond);
     let val_n = regs.read_gpr(rn, sf);
     let val_m = regs.read_gpr(rm, sf);
 
