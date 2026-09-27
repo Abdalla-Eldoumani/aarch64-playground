@@ -1,0 +1,99 @@
+{
+  "title": "Reading numbers with scanf",
+  "slug": "reading-input-with-scanf",
+  "order": 9,
+  "summary": "Read numbers from the keyboard with scanf into .bss slots, then load them into registers to use them.",
+  "tags": [
+    "input and output",
+    "variables"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Printing a variable from .data](/learn/printing-defined-variables)\n- [Arithmetic, and the missing remainder](/learn/arithmetic-instructions)"
+    },
+    {
+      "type": "prose",
+      "markdown": "`scanf` is the input side of `printf`. It reads text typed at the keyboard, turns it into numbers as its format string describes, and stores each number in memory. This lesson reserves memory for the numbers, calls `scanf`, and loads what it stored into registers."
+    },
+    {
+      "type": "prose",
+      "markdown": "## scanf needs addresses\n\n`printf` only reads the values it prints, so you pass it the values. `scanf` has to change variables, so you pass it their addresses: the format string's address in `x0`, then the address of the first variable in `x1`, the second in `x2`, and so on. `scanf` writes each number it reads to the matching address.\n\nPassing a value where an address belongs is the most common `scanf` mistake. `scanf` then treats the number as an address and writes wherever it points, which on Linux usually ends the program with a segmentation fault: the operating system stopping a program that touched memory it does not own."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Room for the numbers: .bss\n\nThe numbers need a place in memory to land. The `.bss` section holds variables that start out as zero. The program file does not store their contents, only how many bytes each one needs, and every byte is zero when the program starts. `.skip 4` reserves 4 bytes, the size of one `int`:"
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": ".bss\n        .balign 4\nfirst_n:        .skip 4                     // room for one int\nsecond_n:       .skip 4                     // and room for another\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "A label in `.bss` works like a label in `.data`: `ldr x1, =first_n` puts its address in `x1`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Calling scanf\n\nThe format string `\"%d %d\"` asks for two `int` values. `scanf` skips spaces and line breaks before each number, so `12 30` on one line and `12` and `30` on two lines both work. The call needs three arguments:"
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "        ldr     x0, =fmt_two                // what to read: \"%d %d\"\n        ldr     x1, =first_n                // where the first number goes\n        ldr     x2, =second_n               // where the second number goes\n        bl      scanf\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "When `scanf` returns, `w0` holds how many numbers it stored. With good input that is 2 here; it is smaller when the input stops early or is not a number."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Loading the numbers\n\nAfter the call, each number sits in memory, not in a register. Load it the same way as any variable: the address first, then the value.\n\nA number that must still be there after the next `printf` or `scanf` goes in one of `w19` to `w28`. A library function is allowed to change `x0` to `x18`, but it leaves `x19` to `x28` as it found them. The program below prints twice, so it keeps the two numbers in `w19` and `w20`.\n\nThe lesson feeds it the input `12 30`, so it prints:\n\n```text\n12 plus 30 is 42\n12 times 30 is 360\n```\n\nTo try your own numbers, open it in the playground, run it, and type two numbers in the console when it waits for input."
+    },
+    {
+      "type": "editor",
+      "starter": "// Reads two whole numbers from the keyboard, then prints\n// their sum and their product.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, w19)\ndefine(b_r, w20)\n\n.data\nfmt_two:        .string \"%d %d\"\nfmt_sum:        .string \"%d plus %d is %d\\n\"\nfmt_prod:       .string \"%d times %d is %d\\n\"\n\n.bss\n        .balign 4\nfirst_n:        .skip 4                     // scanf stores the first number here\nsecond_n:       .skip 4                     // and the second one here\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_two                // what to read: two ints\n        ldr     x1, =first_n                // where the first one goes\n        ldr     x2, =second_n               // where the second one goes\n        bl      scanf\n\n        ldr     x9, =first_n\n        ldr     a_r, [x9]                   // a = the first number\n        ldr     x9, =second_n\n        ldr     b_r, [x9]                   // b = the second number\n\n        ldr     x0, =fmt_sum\n        mov     w1, a_r\n        mov     w2, b_r\n        add     w3, a_r, b_r\n        bl      printf\n\n        ldr     x0, =fmt_prod               // a_r and b_r survived printf:\n        mov     w1, a_r                     // it leaves w19 to w28 as it found them\n        mov     w2, b_r\n        mul     w3, a_r, b_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "stdin": "12 30\n",
+      "expectedOutput": {
+        "stdout": "12 plus 30 is 42\n12 times 30 is 360\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "This `main` uses `w19` and `w20` without saving those registers first. Course programs do this in `main`: when `main` returns, the program ends, so nothing is left to notice the change. A function of your own must save any of `x19` to `x28` that it changes and put them back before it returns, which [a later lesson](/learn/calling-conventions) shows."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Match the specifier to the slot\n\nEach specifier tells `scanf` how many bytes to write at the address you pass:\n\n| Specifier | C type | Bytes written | Load it back with |\n|---|---|---|---|\n| `%d` | `int` | 4 | a `w` register |\n| `%ld` | `long` | 8 | an `x` register |\n\nThe slot needs room for all of those bytes, and the load that reads it back must be the same size. A `%ld` aimed at a 4-byte slot writes 8 bytes and wipes out whatever is stored just after the slot. A `%d` aimed at an 8-byte slot fills only 4 of its 8 bytes, and an 8-byte load reads the other 4 as well."
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below reads a `long` with `%ld` into an 8-byte slot and an `int` with `%d` into a 4-byte slot. The lesson feeds it `-5 -7`, and it prints `long: -5, int: -7`.\n\nNow make the mistake on purpose: change `\"%ld %d\"` to `\"%d %d\"` and run it again. It prints `long: 4294967291, int: -7`. `%d` wrote the 4 bytes of -5 into the first half of the slot, the second half kept the zeros that `.bss` starts with, and the 8-byte load read the two halves as one large positive number. A positive input hides the mistake, because the missing half would have been zeros anyway.\n\n`%ld` is also what reads a number too big for an `int`. Open the program in the playground and type `5000000000 -7`: it prints `long: 5000000000, int: -7`."
+    },
+    {
+      "type": "editor",
+      "starter": "// Reads a long and an int. Each specifier stores a different number\n// of bytes, so each one gets a slot of that size.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(big_r, x19)\ndefine(small_r, w20)\n\n.data\nfmt_read:       .string \"%ld %d\"\nfmt_show:       .string \"long: %ld, int: %d\\n\"\n\n.bss\n        .balign 8\nbig_n:          .skip 8                     // %ld stores 8 bytes\nsmall_n:        .skip 4                     // %d stores 4 bytes\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_read\n        ldr     x1, =big_n\n        ldr     x2, =small_n\n        bl      scanf\n\n        ldr     x9, =big_n\n        ldr     big_r, [x9]                 // 8-byte slot, 8-byte load into an x register\n        ldr     x9, =small_n\n        ldr     small_r, [x9]               // 4-byte slot, 4-byte load into a w register\n\n        ldr     x0, =fmt_show\n        mov     x1, big_r                   // %ld takes the whole x register\n        mov     w2, small_r                 // %d takes the w half\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "stdin": "-5 -7\n",
+      "expectedOutput": {
+        "stdout": "long: -5, int: -7\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. Why does the call pass `ldr x1, =first_n` and not the value stored at `first_n`?\n2. A program reads one number with `\"%ld\"`. How many bytes should its `.bss` slot reserve, and which kind of register should load it back?\n3. A number read by `scanf` is printed after another call to `printf`. Why keep it in `w19` rather than `w9`?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `scanf` stores into memory, so it needs the address of the place to store.\n2. 8 bytes, `.skip 8`, loaded back with an `x` register.\n3. `printf` may change `x0` to `x18`, and `w9` is the low half of `x9`, but it leaves `x19` to `x28` as it found them."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Echo the sum](/practice/echo-the-sum): read two numbers with `scanf` and print their total. It keeps the numbers in the stack frame rather than in `.bss`, so each address is made with `add` instead of `ldr =label`; the [stack lesson](/learn/stack-and-frame-pointer) explains that form. The call to `scanf` is the same."
+    }
+  ]
+}
