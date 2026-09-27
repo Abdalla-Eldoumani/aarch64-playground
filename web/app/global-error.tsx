@@ -77,8 +77,11 @@ export default function GlobalError({
         // rather than failing the copy.
         source: loadAutoSavedBuffer() ?? "",
         error: detail,
+        // The path rides in the status line, since the report ends with the
+        // two sections the student fills in.
+        status: `the page ${window.location.pathname} stopped with the error below`,
       });
-      setReport(`${markdown}**route:** \`${window.location.pathname}\`\n`);
+      setReport(markdown);
     });
     return () => {
       live = false;
