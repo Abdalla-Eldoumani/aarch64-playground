@@ -55,12 +55,35 @@ describe("explainError", () => {
     expect(fp!.styleSection).toBe("naming conventions");
   });
 
-  it("explains the sp-alignment fault via the frame rounding idiom", () => {
+  it("offers the nearest supported mnemonics for a misspelled one", () => {
+    // The emulator's message for `mvo w0, 0`, whose first line is GAS's own
+    // on the course servers.
     const e = explainError(
-      "stopped: sp is 0x7ffffff8, which is not a multiple of 16. On Linux every load or store through sp faults when sp is off the 16-byte boundary (a bus error on the servers); the line that broke it is above this one. Round the frame up: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`",
+      "unknown mnemonic `mvo' -- `mvo w0,0'\ncheck the spelling, or look it up in the instruction reference to see whether the playground implements it",
     );
     expect(e).not.toBeNull();
-    expect(e!.fix).toContain("alloc = -(16 + locals) & -16");
+    expect(e!.fix).toBe("did you mean `mov` or `mvn`?");
+    // Case does not change the guess, and every name one edit away is offered.
+    expect(explainError("unknown mnemonic `LDRR' -- `LDRR x0,[x1]'")!.fix).toBe(
+      "did you mean `ldr`, `ldrb` or `ldrh`?",
+    );
+    expect(explainError("unknown mnemonic `ldrsww' -- `ldrsww x0,[x1]'")!.fix).toBe("did you mean `ldrsw`?");
+  });
+
+  it("leaves a mnemonic nothing resembles to the message's own hint", () => {
+    expect(explainError("unknown mnemonic `frobnicate' -- `frobnicate x0'")).toBeNull();
+  });
+
+  it("explains the sp-alignment fault without repeating the message's fix", () => {
+    const message =
+      "Bus error\nsp is 0x7ffffff8, which is not a multiple of 16: round the frame size above it up to a multiple of 16 (32 instead of 24), or size it with `alloc = -(16 + locals) & -16`";
+    const e = explainError(message);
+    expect(e).not.toBeNull();
+    // Controls prints `fix` right under the message, which already says
+    // how to round the frame; the fix only points at the line to change.
+    expect(e!.fix).toContain("moved sp");
+    expect(e!.fix).not.toContain("alloc");
+    expect(e!.fix.toLowerCase()).not.toContain("round");
   });
 
   it("explains a null-page access via the base register", () => {
@@ -185,13 +208,13 @@ describe("explainError", () => {
   // sweep found the two sides disagreeing there.
 
   it("explains a missing entry point and keeps the student on main", () => {
-    // web/public/examples/cpsc355/is-prime.s, a leaf function with no
-    // caller. csarm refuses the same file: `undefined reference to 'main'`.
+    // The first line is ld's own, as gcc prints it on csarm for a file
+    // with no main and for one whose main is not global.
     const e = explainError(
-      "no entry point. Define `main:` (declared `.global main`) or `_start:`. A file holding only helper functions runs as part of a program whose other file has `main`",
+      "undefined reference to `main'\n`main:` is here but not global, so the startup code cannot see it: add `.global main` on the line above `main:`",
     );
     expect(e).not.toBeNull();
-    expect(e!.fix).toContain(".global main");
+    expect(e!.why).toContain(".global");
     // snake.s defines its own `_start` and links here but not on the
     // servers, where crt1.o already has one.
     expect(e!.fix).toContain("multiple definition of '_start'");
