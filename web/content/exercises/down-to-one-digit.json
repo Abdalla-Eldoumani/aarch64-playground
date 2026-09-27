@@ -1,0 +1,49 @@
+{
+  "title": "Down to one digit",
+  "slug": "down-to-one-digit",
+  "order": 50,
+  "topic": "subroutines",
+  "difficulty": "core",
+  "prompt": "`digsum(n)` adds up the decimal digits of n: `digsum(1234)` is 1 + 2 + 3 + 4 = 10. Apply it again and again and the answer shrinks to one digit, the number's *digital root*: 1234 gives 10, and 10 gives 1. The starter's `main` reads numbers until the input runs out and prints both results for each one, calling `digsum` once for the digit sum and once more for every step toward the root. Write `digsum`.\n\nSplit off the lowest digit with a division by 10: the remainder (`udiv`, then `msub`) is the digit, and the quotient is what is left. Stop when nothing is left, so `digsum(0)` is 0. The input is never negative.\n\n`digsum` calls nothing, which makes it a *leaf*: it needs no frame of its own as long as it works only in x0 and x9 to x15. `main` keeps its values in x19, x20 and x21 across the calls, so a `digsum` that borrows those breaks `main`.\n\nThe starter's input prints:\n\n```\n1234: digit sum 10, digital root 1\n99999: digit sum 45, digital root 9\n```\n\n## what is checked\n\n- the two lines above\n- the program exits with status 0\n- the same checks on other inputs the checker keeps hidden, including 0, the largest 64-bit number, and no input at all",
+  "starter": "// for each number read, print its digit sum and its digital root\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\ndefine(sum_r, x20)\ndefine(root_r, x21)\n\n.data\nfmt_in:     .string \"%ld\"\nfmt_out:    .string \"%ld: digit sum %ld, digital root %ld\\n\"\n\n.bss\n.align 4\nn_in:       .skip 8                         // scanf's landing spot\n\n.text\n\n// digsum(x0 = n, never negative) -> x0 = the sum of n's decimal digits\n        .balign 4\n        .global digsum\ndigsum:\n        // TODO: add up the decimal digits of x0 and return the sum in x0.\n        // Divide by 10 to split off the lowest digit; stop when nothing\n        // is left. main keeps its own values in x19 to x21, so work in\n        // x9 to x15 instead.\n        mov     x0, 0                       // replace this placeholder\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n        b       fill_test\n\nnext_n:\n        ldr     x9, =n_in\n        ldr     n_r, [x9]\n\n        mov     x0, n_r\n        bl      digsum\n        mov     sum_r, x0\n\n        mov     root_r, sum_r               // a digit sum can still have two digits\n        b       root_test\nroot_loop:\n        mov     x0, root_r\n        bl      digsum\n        mov     root_r, x0\nroot_test:\n        cmp     root_r, 9\n        b.gt    root_loop\n\n        ldr     x0, =fmt_out\n        mov     x1, n_r\n        mov     x2, sum_r\n        mov     x3, root_r\n        bl      printf\n\nfill_test:\n        ldr     x0, =fmt_in\n        ldr     x1, =n_in\n        bl      scanf\n        cmp     w0, 1                       // 1 value matched; -1 means the input ran out\n        b.eq    next_n\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "1234\n99999\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "1234: digit sum 10, digital root 1\n99999: digit sum 45, digital root 9\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "0: digit sum 0, digital root 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "9\n10\n19\n",
+      "stdout": "9: digit sum 9, digital root 9\n10: digit sum 1, digital root 1\n19: digit sum 10, digital root 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "9223372036854775807\n",
+      "stdout": "9223372036854775807: digit sum 88, digital root 7\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "",
+      "stdout": "",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}
