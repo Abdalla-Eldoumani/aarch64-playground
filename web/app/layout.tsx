@@ -6,7 +6,8 @@ import "./globals.css";
 import { ToastHost } from "@/components/ui/Toast";
 import { OfflineBadge } from "@/components/chrome/OfflineBadge";
 import { RegisterSW } from "@/components/chrome/RegisterSW";
-import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/content/site";
+import { HOME_DESCRIPTION, HOME_TITLE, SITE_NAME, SITE_URL } from "@/lib/content/site";
+import { composeTitle, pageMetadata } from "@/lib/content/seo";
 
 // Datasheet trio: Source Serif 4 in editorial chrome (reading-surface
 // titles, leads, empty-state heads), IBM Plex Sans for UI controls, body,
@@ -37,68 +38,19 @@ const fontMono = JetBrains_Mono({
   variable: "--font-mono",
 });
 
-const DESCRIPTION =
-  "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";
-
-// Structured data, code-authored literals only: no user input reaches either
-// object, so JSON.stringify into a ld+json script is the whole story. The
-// WebSite entry names the site; the SoftwareApplication entry says what it is
-// (a free, browser-run educational tool) for the search surfaces that show it.
-const WEBSITE_JSON_LD = {
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  name: "cpsc 355 playground",
-  url: SITE_URL,
-  description: DESCRIPTION,
-};
-
-const APPLICATION_JSON_LD = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "cpsc 355 playground",
-  url: SITE_URL,
-  description: DESCRIPTION,
-  applicationCategory: "EducationalApplication",
-  operatingSystem: "Web",
-  offers: {
-    "@type": "Offer",
-    price: 0,
-    priceCurrency: "CAD",
-  },
-  audience: {
-    "@type": "EducationalAudience",
-    educationalRole: "student",
-  },
-};
-
+// The home page's card and canonical, as the fallback for any page that
+// states none. Relative urls resolve against metadataBase, so the https
+// origin is written once. Structured data lives on the pages it describes.
 export const metadata: Metadata = {
+  ...pageMetadata({ title: HOME_TITLE, description: HOME_DESCRIPTION, path: "/" }),
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "cpsc 355 playground",
-    template: "%s · cpsc 355 playground",
+    default: composeTitle(HOME_TITLE),
+    template: `%s · ${SITE_NAME}`,
   },
-  description: DESCRIPTION,
-  // Relative canonical: resolved against metadataBase, so the one origin above
-  // is the only place the production host is written. Every addressable route
-  // restates its own; the 404 deliberately has none.
-  alternates: { canonical: "/" },
   // Search Console URL-prefix verification; the domain property is verified
   // via DNS separately, so this tag is a second anchor, not the primary.
   verification: { google: "RJmIR859S00gRMvoEXI-3lhiav4ygzIp6oUW6lP54j4" },
-  openGraph: {
-    type: "website",
-    siteName: "cpsc 355 playground",
-    title: "cpsc 355 playground",
-    description: DESCRIPTION,
-    url: "/",
-    images: [SHARE_CARD_IMAGE],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "cpsc 355 playground",
-    description: DESCRIPTION,
-    images: [SHARE_CARD_IMAGE],
-  },
 };
 
 export const viewport: Viewport = {
@@ -153,14 +105,6 @@ export default function RootLayout({
         <RegisterSW />
         <OfflineBadge />
         <ToastHost>{children}</ToastHost>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }}
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(APPLICATION_JSON_LD) }}
-        />
         <Analytics />
         <SpeedInsights />
       </body>
