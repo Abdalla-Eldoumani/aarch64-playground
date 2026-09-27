@@ -72,11 +72,11 @@ describe("global error page", () => {
     });
     expect(writeText).toHaveBeenCalledTimes(1);
     const report = writeText.mock.calls[0][0] as string;
-    expect(report).toContain("# diagnostic bundle");
+    expect(report).toContain("# Diagnostic bundle");
     expect(report).toContain("layout blew up");
     expect(report).toContain("digest def456");
     expect(report).toContain("mov x1, 3");
-    expect(report).toContain("**route:**");
+    expect(report).toContain("## Status\n\nthe page / stopped with the error below");
     expect(screen.getByRole("button", { name: "copied" })).toBeTruthy();
   });
 
