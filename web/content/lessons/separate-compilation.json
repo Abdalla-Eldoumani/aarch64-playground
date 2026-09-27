@@ -2,6 +2,7 @@
   "title": "Splitting a program across files",
   "slug": "separate-compilation",
   "order": 25,
+  "lastUpdated": "2026-09-27",
   "summary": "Split a program into files, share labels between them with .global, and build it so the linker can join the pieces, C files included.",
   "tags": [
     "external data",
