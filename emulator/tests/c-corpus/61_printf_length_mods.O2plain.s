@@ -8,7 +8,7 @@
 	.string	" r=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 show:
 	sub	sp, sp, #160
 	and	w7, w0, 65535
@@ -65,7 +65,7 @@ show:
 	.string	"[%-+22zd][%#24zx][%026jd][%.20tu][% hhd][%+hd]\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -80]!
@@ -79,7 +79,7 @@ main:
 	add	x21, x21, :lo12:.LC2
 	stp	x23, x24, [sp, 48]
 	add	x23, x22, 64
-	.align 5
+	.p2align 5,,15
 .L5:
 	mov	x0, x21
 	ldr	x20, [x19], 8
@@ -99,7 +99,7 @@ main:
 	mov	w20, 0
 	movk	x19, 0xcbf2, lsl 48
 	movk	x24, 0x100, lsl 32
-	.align 5
+	.p2align 5,,15
 .L6:
 	eor	x19, x19, x21
 	mov	w1, w20
@@ -119,7 +119,7 @@ main:
 	adrp	x22, .LC4
 	add	x21, x21, :lo12:.LC1
 	add	x22, x22, :lo12:.LC4
-	.align 5
+	.p2align 5,,15
 .L7:
 	ldr	w7, [x19], 4
 	mov	x0, x22
@@ -187,14 +187,14 @@ main:
 	.align	4
 	.LANCHOR0:
 vals.1:
-	.quad	-9114578090645354616
-	.quad	9187201950435737471
-	.quad	4294967296
-	.quad	-1
-	.quad	4294967295
-	.quad	-9223372036854775808
-	.quad	71777214294589695
-	.quad	1099511627904
+	.xword	-9114578090645354616
+	.xword	9187201950435737471
+	.xword	4294967296
+	.xword	-1
+	.xword	4294967295
+	.xword	-9223372036854775808
+	.xword	71777214294589695
+	.xword	1099511627904
 nv.0:
 	.word	127
 	.word	128
