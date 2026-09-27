@@ -418,7 +418,7 @@ limit:
 	.bss
 	.align	4
 	.LANCHOR1:
-counts__0:
+counts.0:
 	.zero	2000
 grid:
 	.zero	360000
