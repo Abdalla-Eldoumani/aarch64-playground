@@ -179,7 +179,7 @@ wv:
 	.word	-559038737
 	.align	3
 xv:
-	.quad	-9141386507638288913
+	.xword	-9141386507638288913
 	.align	3
 counts:
 	.word	0
