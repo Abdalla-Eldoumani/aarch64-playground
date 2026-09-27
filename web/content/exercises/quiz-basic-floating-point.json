@@ -23,11 +23,11 @@
       "question": "Which directive places a double precision constant in .data?",
       "options": [
         ".float",
-        ".double",
         ".dword",
+        ".double",
         ".word"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 2,
       "explanation": ".double assembles its value as an 8-byte IEEE 754 double, the size a d register loads. .float assembles a 4-byte single for an s register, while .dword and .word place 8-byte and 4-byte integers.",
       "hint": "Match the directive to the register: 8 bytes of floating-point data for a d register."
     },
@@ -35,11 +35,11 @@
       "question": "An assembly subroutine returns a double precision result to a C caller. Which register holds the return value?",
       "options": [
         "x0",
-        "s0",
         "d0",
+        "s0",
         "d8"
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 1,
       "explanation": "A double precision result comes back in d0, and a single precision result in s0. Integer and pointer results come back in x0, so a caller reading x0 after a floating-point function reads the wrong register.",
       "hint": "It is the lowest-numbered register of the size that matches the result."
     },
@@ -47,23 +47,23 @@
       "question": "How do the basic floating-point arithmetic instructions such as fadd and fmul differ from their integer counterparts in the operands they accept?",
       "options": [
         "They accept only immediate values.",
-        "They take register operands only and accept no immediate value.",
         "They require a memory address as the third operand.",
-        "They set the condition flags without needing an s suffix."
+        "They set the condition flags without needing an s suffix.",
+        "They take register operands only and accept no immediate value."
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 3,
       "explanation": "fadd, fsub, fmul and fdiv take register operands only, so a constant has to be in an s or d register before the arithmetic runs. They also leave the condition flags alone; fcmp is what sets them.",
       "hint": "Load your floating-point constants into registers before doing arithmetic with them."
     },
     {
       "question": "In gdb, which print format shows a register value as a floating-point number?",
       "options": [
+        "p/f",
         "p/d",
         "p/x",
-        "p/f",
         "x/f"
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 0,
       "explanation": "The f format letter tells print to show a value as floating point, so p/f is the format that reads a value as a number instead of a bit pattern. p/d prints decimal and p/x prints hex, and x/ examines memory at an address instead of printing a value.",
       "hint": "The format letter is the first letter of float, and p prints a value while x examines memory."
     }
