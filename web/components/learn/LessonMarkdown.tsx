@@ -123,6 +123,14 @@ const PRE_CLASS =
   "my-4 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]";
 const INLINE_CODE_CLASS =
   "rounded-[var(--radius-control)] bg-[var(--bg-sunken)] px-1.5 py-0.5 font-mono text-[0.9em] text-[var(--syntax-keyword)]";
+// The wrapper, not the table, scrolls: a wide table on a phone scrolls
+// sideways inside the column instead of pushing the page wider.
+const TABLE_WRAP_CLASS = "my-4 overflow-x-auto";
+const TABLE_CLASS =
+  "border-collapse text-left tabular-nums text-[var(--text-primary)] [font:var(--type-small)]";
+const TH_CLASS =
+  "border border-[var(--border)] border-b-[color:var(--border-strong)] bg-[var(--bg-sunken)] px-3 py-2 align-bottom font-semibold";
+const TD_CLASS = "border border-[var(--border)] px-3 py-2 align-top";
 const HOVER_WRAP_CLASS =
   "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:shadow-[var(--ring)]";
 const TOOLTIP_CLASS =
@@ -164,6 +172,28 @@ const components: Components = {
   },
   pre(props) {
     return <pre className={PRE_CLASS}>{props.children}</pre>;
+  },
+  table(props) {
+    return (
+      <div className={TABLE_WRAP_CLASS}>
+        <table className={TABLE_CLASS}>{props.children}</table>
+      </div>
+    );
+  },
+  // GFM column alignment arrives as an inline text-align style.
+  th(props) {
+    return (
+      <th className={TH_CLASS} style={props.style}>
+        {props.children}
+      </th>
+    );
+  },
+  td(props) {
+    return (
+      <td className={TD_CLASS} style={props.style}>
+        {props.children}
+      </td>
+    );
   },
   code(props) {
     const { className, children } = props;
