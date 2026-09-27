@@ -2,6 +2,7 @@
   "title": "Anatomy of an assembly file",
   "slug": "anatomy-of-a-program",
   "order": 3,
+  "lastUpdated": "2026-09-27",
   "summary": "Read a course program line by line: labels, opcodes, operands, comments, directives, m4 names, and the two build steps.",
   "tags": [
     "armv8 basics"
