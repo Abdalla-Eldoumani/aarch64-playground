@@ -2,6 +2,7 @@
   "title": "Arithmetic, and the missing remainder",
   "slug": "arithmetic-instructions",
   "order": 7,
+  "lastUpdated": "2026-09-27",
   "summary": "Work out formulas with add, sub, mul, madd and msub, divide with sdiv and udiv, and build a remainder from sdiv and msub.",
   "tags": [
     "armv8 basics",
