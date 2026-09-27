@@ -2,6 +2,7 @@
   "title": "Fibonacci past the horizon",
   "slug": "fibonacci-past-the-horizon",
   "order": 3,
+  "lastUpdated": "2026-09-27",
   "topic": "binary-arithmetic",
   "difficulty": "challenge",
   "prompt": "`fib(93)` is the last Fibonacci number that fits in 64 bits, read as unsigned. This program goes on to `fib(186)` by keeping each number in two registers, a high half and a low half: 128 bits together.\n\nAdding two 128-bit numbers takes two instructions. `adds` adds the low halves and sets the carry flag C when their sum does not fit in 64 bits. `adc` (add with carry) then adds the high halves plus C. A plain `add` on the high halves would drop that carry.\n\nThe starter reads `n` (0 to 186) into `nth_r` and prints `a` as 32 hex digits, high half first. Write the loop: `a` starts at fib(0) = 0 and `b` at fib(1) = 1, and each of the `n` steps makes `a + b` the new `b` while `a` takes the old `b`. When the loop ends, `a` is fib(n).\n\nWith the sample input `100` the program prints `fib(100) = 0x000000000000001333db76a7c594bfc3`.\n\n## what is checked\n\n- the line for the sample input\n- the program exits cleanly\n- the 128-bit add uses `adds` and `adc`\n- the right answer for other values of n, including 0, the first n whose answer needs the high half, and 186",
