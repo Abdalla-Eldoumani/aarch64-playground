@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	bubble
 bubble:
 	cmp	w1, 1
@@ -12,10 +12,10 @@ bubble:
 	sub	x2, x2, w1, uxtw 2
 	sub	x1, x0, #8
 	add	x5, x2, x1
-	.align 5
+	.p2align 5,,15
 .L3:
 	mov	x1, x0
-	.align 5
+	.p2align 5,,15
 .L5:
 	ldp	w3, w2, [x1]
 	cmp	w3, w2
@@ -54,7 +54,7 @@ bubble:
 	.string	"%ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #944
@@ -73,10 +73,10 @@ main:
 	ldr	x0, [x0, 32]
 	str	x0, [x4, 32]
 	stp	x6, x7, [sp, 104]
-	.align 5
+	.p2align 5,,15
 .L9:
 	mov	x0, x4
-	.align 5
+	.p2align 5,,15
 .L11:
 	ldp	w2, w1, [x0]
 	cmp	w2, w1
@@ -92,7 +92,7 @@ main:
 	adrp	x21, .LC5
 	add	x19, x3, 40
 	add	x21, x21, :lo12:.LC5
-	.align 5
+	.p2align 5,,15
 .L13:
 	ldr	w1, [x20], 4
 	mov	x0, x21
@@ -119,7 +119,7 @@ main:
 	str	wzr, [sp, 96]
 	movk	x0, 0x1, lsl 32
 	str	x0, [sp, 88]
-	.align 5
+	.p2align 5,,15
 .L14:
 	ldr	w1, [x19], 4
 	mov	x0, x21
@@ -152,7 +152,7 @@ main:
 	bl	putchar
 	add	x4, sp, 144
 	mov	x0, 1
-	.align 5
+	.p2align 5,,15
 .L16:
 	sub	x2, x0, #1
 	add	x3, x4, x0, lsl 3
@@ -164,7 +164,7 @@ main:
 	bne	.L16
 	add	x2, sp, 984
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L17:
 	ldr	x0, [x4], 56
 	add	x1, x1, x0
