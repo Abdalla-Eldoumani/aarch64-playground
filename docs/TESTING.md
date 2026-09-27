@@ -256,8 +256,10 @@ Mirrors the PR template's "How to verify":
 
 ## Start of each term
 
-The course-parity tests run only against a local copy of the current
-tutorials, so nothing automated notices when a new offering changes them.
-Once per term: refresh the local tutorial set, run
-`cargo test --manifest-path emulator/Cargo.toml --test cpsc355_corpus -- --ignored`,
-and fix or file whatever no longer assembles or runs.
+`emulator/tests/local_corpus.rs` runs every `.asm` and `.s` program in a
+folder kept outside the repo, for programs the repo cannot share. CI never
+has that folder, so nothing automated notices when a new term changes them.
+Once per term: refresh the folder, run
+`LOCAL_CORPUS_DIR=<folder> cargo test --manifest-path emulator/Cargo.toml --test local_corpus -- --nocapture`,
+and fix or file whatever no longer assembles or runs. Without the variable
+the test prints a skip line and passes.
