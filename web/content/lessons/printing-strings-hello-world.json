@@ -2,6 +2,7 @@
   "title": "Printing a string with printf",
   "slug": "printing-strings-hello-world",
   "order": 5,
+  "lastUpdated": "2026-09-27",
   "summary": "Store a string in .data, put its address in x0, and print it with printf.",
   "tags": [
     "printing"
