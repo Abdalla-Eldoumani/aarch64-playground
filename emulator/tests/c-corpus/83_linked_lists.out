@@ -1,0 +1,11 @@
+built: -3 22 -1 -20 60 -21 15 65 68 55 26 6 (len 12)
+reversed: 6 26 55 68 65 15 -21 60 -20 -1 22 -3 (len 12)
+sorted: -21 -20 -3 -1 6 15 22 26 55 60 65 68 (len 12)
+inserted: -1000 -21 -21 -20 -3 -1 6 15 22 26 55 60 65 68 1000 (len 15)
+freed 6
+odd first, stable, appended: -1 55 65 -1000 -20 22 26 68 1000 0 111 222 (len 12)
+round 0: kept 100 sum 173250 ok 1
+round 1: kept 100 sum 173350 ok 1
+dlist fwd: 81 9 36 | back: 36 9 81
+josephus: 3 6 9 12 15 18 21 24 27 30 ... survivor 31
+words: /0 alp/3 alpha/5 alphabet/8 bravo/5 charlie/7 delta/5 echo/4
