@@ -6,123 +6,123 @@ rounds:
 	.text
 	.align	2
 tick_a:
-	adrp	x0, hits__19
-	add	x0, x0, :lo12:hits__19
+	adrp	x0, hits.19
+	add	x0, x0, :lo12:hits.19
 	ldr	w0, [x0]
 	add	w1, w0, 1
-	adrp	x0, hits__19
-	add	x0, x0, :lo12:hits__19
+	adrp	x0, hits.19
+	add	x0, x0, :lo12:hits.19
 	str	w1, [x0]
-	adrp	x0, hits__19
-	add	x0, x0, :lo12:hits__19
+	adrp	x0, hits.19
+	add	x0, x0, :lo12:hits.19
 	ldr	w0, [x0]
 	ret
 	.align	2
 tick_b:
-	adrp	x0, hits__18
-	add	x0, x0, :lo12:hits__18
+	adrp	x0, hits.18
+	add	x0, x0, :lo12:hits.18
 	ldr	w0, [x0]
 	add	w1, w0, 2
-	adrp	x0, hits__18
-	add	x0, x0, :lo12:hits__18
+	adrp	x0, hits.18
+	add	x0, x0, :lo12:hits.18
 	str	w1, [x0]
-	adrp	x0, hits__18
-	add	x0, x0, :lo12:hits__18
+	adrp	x0, hits.18
+	add	x0, x0, :lo12:hits.18
 	ldr	w0, [x0]
 	ret
 	.align	2
 tick_c:
-	adrp	x0, hits__17
-	add	x0, x0, :lo12:hits__17
+	adrp	x0, hits.17
+	add	x0, x0, :lo12:hits.17
 	ldr	w1, [x0]
 	mov	w0, 0
 	sub	w0, w0, w1
 	lsl	w0, w0, 1
 	mov	w1, w0
-	adrp	x0, hits__17
-	add	x0, x0, :lo12:hits__17
+	adrp	x0, hits.17
+	add	x0, x0, :lo12:hits.17
 	str	w1, [x0]
-	adrp	x0, hits__17
-	add	x0, x0, :lo12:hits__17
+	adrp	x0, hits.17
+	add	x0, x0, :lo12:hits.17
 	ldr	w0, [x0]
 	ret
 	.align	2
 wrap8:
-	adrp	x0, c__16
-	add	x0, x0, :lo12:c__16
+	adrp	x0, c.16
+	add	x0, x0, :lo12:c.16
 	ldrb	w0, [x0]
 	add	w1, w0, 1
 	and	w2, w1, 255
-	adrp	x1, c__16
-	add	x1, x1, :lo12:c__16
+	adrp	x1, c.16
+	add	x1, x1, :lo12:c.16
 	strb	w2, [x1]
 	ret
 	.align	2
 wrap16:
-	adrp	x0, s__15
-	add	x0, x0, :lo12:s__15
+	adrp	x0, s.15
+	add	x0, x0, :lo12:s.15
 	ldrh	w0, [x0]
 	add	w0, w0, 3
 	and	w1, w0, 65535
-	adrp	x0, s__15
-	add	x0, x0, :lo12:s__15
+	adrp	x0, s.15
+	add	x0, x0, :lo12:s.15
 	strh	w1, [x0]
-	adrp	x0, s__15
-	add	x0, x0, :lo12:s__15
+	adrp	x0, s.15
+	add	x0, x0, :lo12:s.15
 	ldrh	w0, [x0]
 	ret
 	.align	2
 swrap:
-	adrp	x0, c__14
-	add	x0, x0, :lo12:c__14
+	adrp	x0, c.14
+	add	x0, x0, :lo12:c.14
 	ldrsb	w0, [x0]
 	and	w0, w0, 255
 	add	w0, w0, 5
 	and	w0, w0, 255
 	sxtb	w1, w0
-	adrp	x0, c__14
-	add	x0, x0, :lo12:c__14
+	adrp	x0, c.14
+	add	x0, x0, :lo12:c.14
 	strb	w1, [x0]
-	adrp	x0, c__14
-	add	x0, x0, :lo12:c__14
+	adrp	x0, c.14
+	add	x0, x0, :lo12:c.14
 	ldrsb	w0, [x0]
 	ret
 	.align	2
 cursor_next:
 	sub	sp, sp, #16
-	adrp	x0, cur__13
-	add	x0, x0, :lo12:cur__13
+	adrp	x0, cur.13
+	add	x0, x0, :lo12:cur.13
 	ldr	x0, [x0]
 	ldr	w0, [x0]
 	str	w0, [sp, 12]
-	adrp	x0, cur__13
-	add	x0, x0, :lo12:cur__13
+	adrp	x0, cur.13
+	add	x0, x0, :lo12:cur.13
 	ldr	x0, [x0]
 	ldr	w1, [x0]
-	adrp	x0, cur__13
-	add	x0, x0, :lo12:cur__13
+	adrp	x0, cur.13
+	add	x0, x0, :lo12:cur.13
 	ldr	x0, [x0]
 	add	w1, w1, 100
 	str	w1, [x0]
-	adrp	x0, cur__13
-	add	x0, x0, :lo12:cur__13
+	adrp	x0, cur.13
+	add	x0, x0, :lo12:cur.13
 	ldr	x0, [x0]
 	add	x1, x0, 4
-	adrp	x0, cur__13
-	add	x0, x0, :lo12:cur__13
+	adrp	x0, cur.13
+	add	x0, x0, :lo12:cur.13
 	str	x1, [x0]
-	adrp	x0, cur__13
-	add	x0, x0, :lo12:cur__13
+	adrp	x0, cur.13
+	add	x0, x0, :lo12:cur.13
 	ldr	x1, [x0]
-	adrp	x0, end__12
-	add	x0, x0, :lo12:end__12
+	adrp	x0, end.12
+	add	x0, x0, :lo12:end.12
 	ldr	x0, [x0]
 	cmp	x1, x0
 	bne	.L14
-	adrp	x0, cur__13
-	add	x0, x0, :lo12:cur__13
-	adrp	x1, pool__11
-	add	x1, x1, :lo12:pool__11
+	adrp	x0, cur.13
+	add	x0, x0, :lo12:cur.13
+	adrp	x1, pool.11
+	add	x1, x1, :lo12:pool.11
 	str	x1, [x0]
 .L14:
 	ldr	w0, [sp, 12]
@@ -135,33 +135,33 @@ name_of:
 	ldr	w0, [sp, 12]
 	cmp	w0, 4
 	ble	.L17
-	adrp	x0, last__10
-	add	x0, x0, :lo12:last__10
+	adrp	x0, last.10
+	add	x0, x0, :lo12:last.10
 	ldr	x1, [x0]
-	adrp	x0, names__9
-	add	x0, x0, :lo12:names__9
+	adrp	x0, names.9
+	add	x0, x0, :lo12:names.9
 	cmp	x1, x0
 	beq	.L18
-	adrp	x0, last__10
-	add	x0, x0, :lo12:last__10
+	adrp	x0, last.10
+	add	x0, x0, :lo12:last.10
 	ldr	x0, [x0]
 	sub	x0, x0, #8
 	b	.L19
 .L18:
-	adrp	x0, names__9+32
-	add	x0, x0, :lo12:names__9+32
+	adrp	x0, names.9+32
+	add	x0, x0, :lo12:names.9+32
 .L19:
-	adrp	x1, last__10
-	add	x1, x1, :lo12:last__10
+	adrp	x1, last.10
+	add	x1, x1, :lo12:last.10
 	str	x0, [x1]
-	adrp	x0, last__10
-	add	x0, x0, :lo12:last__10
+	adrp	x0, last.10
+	add	x0, x0, :lo12:last.10
 	ldr	x0, [x0]
 	ldr	x0, [x0]
 	b	.L20
 .L17:
-	adrp	x0, names__9
-	add	x0, x0, :lo12:names__9
+	adrp	x0, names.9
+	add	x0, x0, :lo12:names.9
 	ldrsw	x1, [sp, 12]
 	ldr	x0, [x0, x1, lsl 3]
 .L20:
@@ -169,33 +169,33 @@ name_of:
 	ret
 	.align	2
 state:
-	adrp	x0, m__8
-	add	x0, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x0, x0, :lo12:m.8
 	ldrb	w0, [x0]
 	add	w0, w0, 1
 	and	w1, w0, 255
-	adrp	x0, m__8
-	add	x0, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x0, x0, :lo12:m.8
 	strb	w1, [x0]
-	adrp	x0, m__8
-	add	x0, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x0, x0, :lo12:m.8
 	ldr	x0, [x0, 8]
 	ror	x1, x0, 60
-	adrp	x0, m__8
-	add	x0, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x0, x0, :lo12:m.8
 	str	x1, [x0, 8]
-	adrp	x0, m__8
-	add	x0, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x0, x0, :lo12:m.8
 	ldrsh	w0, [x0, 16]
 	and	w0, w0, 65535
 	sub	w0, w0, #3
 	and	w0, w0, 65535
 	sxth	w1, w0
-	adrp	x0, m__8
-	add	x0, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x0, x0, :lo12:m.8
 	strh	w1, [x0, 16]
-	adrp	x0, m__8
-	add	x0, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x0, x0, :lo12:m.8
 	ldrb	w1, [x0]
 	mov	w0, 43691
 	movk	w0, 0xaaaa, lsl 16
@@ -208,21 +208,21 @@ state:
 	sub	w0, w1, w0
 	and	w0, w0, 255
 	mov	w3, w0
-	adrp	x0, m__8
-	add	x1, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x1, x0, :lo12:m.8
 	sxtw	x0, w3
 	add	x0, x1, x0
 	ldrb	w0, [x0, 18]
 	add	w0, w0, 1
 	and	w2, w0, 255
-	adrp	x0, m__8
-	add	x1, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x1, x0, :lo12:m.8
 	sxtw	x0, w3
 	add	x0, x1, x0
 	mov	w1, w2
 	strb	w1, [x0, 18]
-	adrp	x0, m__8
-	add	x0, x0, :lo12:m__8
+	adrp	x0, m.8
+	add	x0, x0, :lo12:m.8
 	ret
 	.align	2
 add1:
@@ -245,14 +245,14 @@ apply_next:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
 	str	w0, [sp, 28]
-	adrp	x0, op__7
-	add	x0, x0, :lo12:op__7
+	adrp	x0, op.7
+	add	x0, x0, :lo12:op.7
 	ldr	x1, [x0]
 	ldr	w0, [sp, 28]
 	blr	x1
 	str	w0, [sp, 44]
-	adrp	x0, op__7
-	add	x0, x0, :lo12:op__7
+	adrp	x0, op.7
+	add	x0, x0, :lo12:op.7
 	ldr	x1, [x0]
 	adrp	x0, add1
 	add	x0, x0, :lo12:add1
@@ -265,8 +265,8 @@ apply_next:
 	adrp	x0, add1
 	add	x0, x0, :lo12:add1
 .L29:
-	adrp	x1, op__7
-	add	x1, x1, :lo12:op__7
+	adrp	x1, op.7
+	add	x1, x1, :lo12:op.7
 	str	x0, [x1]
 	ldr	w0, [sp, 44]
 	ldp	x29, x30, [sp], 48
@@ -286,58 +286,58 @@ fib_probe:
 	ldr	w0, [sp, 40]
 	cmp	w0, 0
 	beq	.L32
-	adrp	x0, calls__6
-	add	x0, x0, :lo12:calls__6
+	adrp	x0, calls.6
+	add	x0, x0, :lo12:calls.6
 	ldr	w1, [x0]
-	adrp	x0, deepest__5
-	add	x0, x0, :lo12:deepest__5
+	adrp	x0, deepest.5
+	add	x0, x0, :lo12:deepest.5
 	ldr	w2, [x0]
-	adrp	x0, now__4
-	add	x0, x0, :lo12:now__4
+	adrp	x0, now.4
+	add	x0, x0, :lo12:now.4
 	ldr	w0, [x0]
 	mov	w3, w0
 	adrp	x0, .LC0
 	add	x0, x0, :lo12:.LC0
 	bl	printf
-	adrp	x0, deepest__5
-	add	x0, x0, :lo12:deepest__5
+	adrp	x0, deepest.5
+	add	x0, x0, :lo12:deepest.5
 	str	wzr, [x0]
-	adrp	x0, deepest__5
-	add	x0, x0, :lo12:deepest__5
+	adrp	x0, deepest.5
+	add	x0, x0, :lo12:deepest.5
 	ldr	w1, [x0]
-	adrp	x0, calls__6
-	add	x0, x0, :lo12:calls__6
+	adrp	x0, calls.6
+	add	x0, x0, :lo12:calls.6
 	str	w1, [x0]
 	mov	w0, 0
 	b	.L33
 .L32:
-	adrp	x0, calls__6
-	add	x0, x0, :lo12:calls__6
+	adrp	x0, calls.6
+	add	x0, x0, :lo12:calls.6
 	ldr	w0, [x0]
 	add	w1, w0, 1
-	adrp	x0, calls__6
-	add	x0, x0, :lo12:calls__6
+	adrp	x0, calls.6
+	add	x0, x0, :lo12:calls.6
 	str	w1, [x0]
-	adrp	x0, now__4
-	add	x0, x0, :lo12:now__4
+	adrp	x0, now.4
+	add	x0, x0, :lo12:now.4
 	ldr	w0, [x0]
 	add	w1, w0, 1
-	adrp	x0, now__4
-	add	x0, x0, :lo12:now__4
+	adrp	x0, now.4
+	add	x0, x0, :lo12:now.4
 	str	w1, [x0]
-	adrp	x0, now__4
-	add	x0, x0, :lo12:now__4
+	adrp	x0, now.4
+	add	x0, x0, :lo12:now.4
 	ldr	w1, [x0]
-	adrp	x0, deepest__5
-	add	x0, x0, :lo12:deepest__5
+	adrp	x0, deepest.5
+	add	x0, x0, :lo12:deepest.5
 	ldr	w0, [x0]
 	cmp	w1, w0
 	ble	.L34
-	adrp	x0, now__4
-	add	x0, x0, :lo12:now__4
+	adrp	x0, now.4
+	add	x0, x0, :lo12:now.4
 	ldr	w1, [x0]
-	adrp	x0, deepest__5
-	add	x0, x0, :lo12:deepest__5
+	adrp	x0, deepest.5
+	add	x0, x0, :lo12:deepest.5
 	str	w1, [x0]
 .L34:
 	ldr	w0, [sp, 44]
@@ -359,12 +359,12 @@ fib_probe:
 	ldr	w0, [sp, 44]
 	str	w0, [sp, 60]
 .L36:
-	adrp	x0, now__4
-	add	x0, x0, :lo12:now__4
+	adrp	x0, now.4
+	add	x0, x0, :lo12:now.4
 	ldr	w0, [x0]
 	sub	w1, w0, #1
-	adrp	x0, now__4
-	add	x0, x0, :lo12:now__4
+	adrp	x0, now.4
+	add	x0, x0, :lo12:now.4
 	str	w1, [x0]
 	ldr	w0, [sp, 60]
 .L33:
@@ -381,21 +381,21 @@ histogram:
 	mov	w1, 1000
 	mul	w1, w2, w1
 	sub	w3, w0, w1
-	adrp	x0, hist__3
-	add	x0, x0, :lo12:hist__3
+	adrp	x0, hist.3
+	add	x0, x0, :lo12:hist.3
 	sxtw	x1, w3
 	ldr	w0, [x0, x1, lsl 2]
 	add	w2, w0, 1
-	adrp	x0, hist__3
-	add	x0, x0, :lo12:hist__3
+	adrp	x0, hist.3
+	add	x0, x0, :lo12:hist.3
 	sxtw	x1, w3
 	str	w2, [x0, x1, lsl 2]
-	adrp	x0, total__2
-	add	x0, x0, :lo12:total__2
+	adrp	x0, total.2
+	add	x0, x0, :lo12:total.2
 	ldr	w0, [x0]
 	add	w1, w0, 1
-	adrp	x0, total__2
-	add	x0, x0, :lo12:total__2
+	adrp	x0, total.2
+	add	x0, x0, :lo12:total.2
 	str	w1, [x0]
 	ldr	w0, [sp, 12]
 	mov	w1, 1000
@@ -403,14 +403,14 @@ histogram:
 	mov	w1, 1000
 	mul	w1, w2, w1
 	sub	w1, w0, w1
-	adrp	x0, hist__3
-	add	x0, x0, :lo12:hist__3
+	adrp	x0, hist.3
+	add	x0, x0, :lo12:hist.3
 	sxtw	x1, w1
 	ldr	w1, [x0, x1, lsl 2]
 	mov	w0, 10000
 	mul	w1, w1, w0
-	adrp	x0, total__2
-	add	x0, x0, :lo12:total__2
+	adrp	x0, total.2
+	add	x0, x0, :lo12:total.2
 	ldr	w0, [x0]
 	add	w0, w1, w0
 	add	sp, sp, 16
@@ -424,15 +424,15 @@ histogram:
 halves:
 	stp	x29, x30, [sp, -16]!
 	mov	x29, sp
-	adrp	x0, d__1
-	add	x0, x0, :lo12:d__1
+	adrp	x0, d.1
+	add	x0, x0, :lo12:d.1
 	ldr	d31, [x0]
 	fadd	d31, d31, d31
-	adrp	x0, d__1
-	add	x0, x0, :lo12:d__1
+	adrp	x0, d.1
+	add	x0, x0, :lo12:d.1
 	str	d31, [x0]
-	adrp	x0, big__0
-	add	x0, x0, :lo12:big__0
+	adrp	x0, big.0
+	add	x0, x0, :lo12:big.0
 	ldr	x0, [x0]
 	mov	x1, 6148914691236517205
 	movk	x1, 0x5556, lsl 0
@@ -440,22 +440,22 @@ halves:
 	asr	x0, x0, 63
 	sub	x0, x1, x0
 	sub	x1, x0, #1
-	adrp	x0, big__0
-	add	x0, x0, :lo12:big__0
+	adrp	x0, big.0
+	add	x0, x0, :lo12:big.0
 	str	x1, [x0]
-	adrp	x0, d__1
-	add	x0, x0, :lo12:d__1
+	adrp	x0, d.1
+	add	x0, x0, :lo12:d.1
 	ldr	d31, [x0]
-	adrp	x0, big__0
-	add	x0, x0, :lo12:big__0
+	adrp	x0, big.0
+	add	x0, x0, :lo12:big.0
 	ldr	x0, [x0]
 	mov	x1, x0
 	fmov	d0, d31
 	adrp	x0, .LC1
 	add	x0, x0, :lo12:.LC1
 	bl	printf
-	adrp	x0, d__1
-	add	x0, x0, :lo12:d__1
+	adrp	x0, d.1
+	add	x0, x0, :lo12:d.1
 	ldr	d31, [x0]
 	fmov	d0, d31
 	ldp	x29, x30, [sp], 16
@@ -683,28 +683,28 @@ main:
 	ret
 	.data
 	.align	2
-hits__18:
+hits.18:
 	.word	100
 	.align	2
-hits__17:
+hits.17:
 	.word	-5
-c__16:
+c.16:
 	.byte	-6
 	.align	1
-s__15:
+s.15:
 	.hword	-6
-c__14:
+c.14:
 	.byte	120
 	.align	3
-cur__13:
-	.quad	pool__11+20
+cur.13:
+	.quad	pool.11+20
 	.section .rodata
 	.align	3
-end__12:
-	.quad	pool__11+32
+end.12:
+	.quad	pool.11+32
 	.data
 	.align	3
-pool__11:
+pool.11:
 	.word	11
 	.word	22
 	.word	33
@@ -714,8 +714,8 @@ pool__11:
 	.word	77
 	.word	88
 	.align	3
-last__10:
-	.quad	names__9+32
+last.10:
+	.quad	names.9+32
 	.section .rodata
 	.align	3
 .LC9:
@@ -733,7 +733,7 @@ last__10:
 .LC13:
 	.string	"four"
 	.align	3
-names__9:
+names.9:
 	.quad	.LC9
 	.quad	.LC10
 	.quad	.LC11
@@ -741,7 +741,7 @@ names__9:
 	.quad	.LC13
 	.data
 	.align	3
-m__8:
+m.8:
 	.byte	113
 	.zero	7
 	.quad	81985529216486895
@@ -749,33 +749,33 @@ m__8:
 	.byte 250, 251, 252
 	.zero	3
 	.align	3
-op__7:
+op.7:
 	.quad	add1
 	.align	3
-d__1:
+d.1:
 	.word	-1717986918
 	.word	1069128089
 	.align	3
-big__0:
+big.0:
 	.quad	-9000000000000000000
 
 
 	.bss
 	.balign 4
-hits__19:
+hits.19:
 	.skip 4
 	.balign 4
-calls__6:
+calls.6:
 	.skip 4
 	.balign 4
-deepest__5:
+deepest.5:
 	.skip 4
 	.balign 4
-now__4:
+now.4:
 	.skip 4
 	.balign 8
-hist__3:
+hist.3:
 	.skip 4000
 	.balign 4
-total__2:
+total.2:
 	.skip 4
