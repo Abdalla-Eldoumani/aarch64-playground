@@ -1,0 +1,53 @@
+{
+  "title": "Guess the number",
+  "slug": "guess-the-number",
+  "order": 17,
+  "topic": "loops",
+  "difficulty": "core",
+  "prompt": "Two players, one input. The first number is the secret (player 1 types it while player 2 looks away), and every number after it is one of player 2's guesses. For each guess that misses, print `higher` if the secret is bigger than the guess, or `lower` if it is smaller. When a guess hits, print `correct! guesses = N`, where N counts every guess including the one that hit, and stop reading.\n\nThe starter reads the secret into `secret_r` and holds the messages. The loop has to read a guess before it has anything to test, so its body always runs at least once: a post-test loop fits. The input always ends with a correct guess.\n\n## what is checked\n\n- with the input `50 25 75 50` (one number per line) the program prints `higher`, `lower`, then `correct! guesses = 3`, one per line, and returns 0\n- the checker also plays games you do not see, including a first guess that hits and secrets of zero or below",
+  "starter": "// a guessing game: the first number in the input is the secret,\n// every number after it is a guess\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(secret_r, x19)\ndefine(guess_r, x20)\ndefine(count_r, x21)\n\n.data\nfmt_in:     .string \"%ld\"\nmsg_higher: .string \"higher\\n\"\nmsg_lower:  .string \"lower\\n\"\nfmt_win:    .string \"correct! guesses = %ld\\n\"\n\n.bss\n.balign 8\nsecret_m:   .skip 8\nguess_m:    .skip 8\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the secret\n        ldr     x1, =secret_m\n        bl      scanf\n        ldr     x9, =secret_m\n        ldr     secret_r, [x9]\n\n        mov     count_r, 0\n\n        // TODO: read a guess into guess_m and count it. Print\n        // msg_higher when the secret is bigger than the guess and\n        // msg_lower when it is smaller. Keep going until a guess\n        // matches the secret, then print fmt_win with the count.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "50\n25\n75\n50\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "higher\nlower\ncorrect! guesses = 3\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "7\n7\n",
+      "stdout": "correct! guesses = 1\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "0\n5\n-5\n0\n",
+      "stdout": "lower\nhigher\ncorrect! guesses = 3\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-20\n-10\n-30\n-20\n",
+      "stdout": "lower\nhigher\ncorrect! guesses = 3\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "73\n50\n75\n62\n68\n71\n73\n",
+      "stdout": "higher\nlower\nhigher\nhigher\nhigher\ncorrect! guesses = 6\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "100 1 1000 100\n",
+      "stdout": "higher\nlower\ncorrect! guesses = 3\n",
+      "exitCode": 0
+    }
+  ]
+}
