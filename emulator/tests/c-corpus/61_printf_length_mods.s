@@ -153,16 +153,16 @@ main:
 	str	wzr, [sp, 60]
 	b	.L4
 .L5:
-	adrp	x0, vals__1
-	add	x0, x0, :lo12:vals__1
+	adrp	x0, vals.1
+	add	x0, x0, :lo12:vals.1
 	ldr	w1, [sp, 60]
 	ldr	x0, [x0, x1, lsl 3]
 	mov	x1, x0
 	adrp	x0, .LC3
 	add	x0, x0, :lo12:.LC3
 	bl	printf
-	adrp	x0, vals__1
-	add	x0, x0, :lo12:vals__1
+	adrp	x0, vals.1
+	add	x0, x0, :lo12:vals.1
 	ldr	w1, [sp, 60]
 	ldr	x0, [x0, x1, lsl 3]
 	bl	show
@@ -209,8 +209,8 @@ main:
 	str	wzr, [sp, 40]
 	b	.L8
 .L9:
-	adrp	x0, nv__0
-	add	x0, x0, :lo12:nv__0
+	adrp	x0, nv.0
+	add	x0, x0, :lo12:nv.0
 	ldr	w1, [sp, 40]
 	ldr	w0, [x0, x1, lsl 2]
 	bl	narrow
@@ -279,7 +279,7 @@ main:
 	ret
 	.section .rodata
 	.align	3
-vals__1:
+vals.1:
 	.quad	-9114578090645354616
 	.quad	9187201950435737471
 	.quad	4294967296
@@ -289,7 +289,7 @@ vals__1:
 	.quad	71777214294589695
 	.quad	1099511627904
 	.align	3
-nv__0:
+nv.0:
 	.word	127
 	.word	128
 	.word	255
