@@ -78,11 +78,11 @@ describe("route error page", () => {
     });
     expect(writeText).toHaveBeenCalledTimes(1);
     const report = writeText.mock.calls[0][0] as string;
-    expect(report).toContain("# diagnostic bundle");
+    expect(report).toContain("# Diagnostic bundle");
     expect(report).toContain("cannot read x of undefined");
     expect(report).toContain("digest abc123");
     expect(report).toContain("mov x0, 7");
-    expect(report).toContain("**route:**");
+    expect(report).toContain("## Status\n\nthe page / stopped with the error below");
     expect(screen.getByRole("button", { name: "copied" })).toBeTruthy();
   });
 
@@ -99,7 +99,7 @@ describe("route error page", () => {
       await Promise.resolve();
     });
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0][0]).toContain("**last error:** boom");
+    expect(writeText.mock.calls[0][0]).toContain("## Error\n\n```text\nboom\n```");
   });
 
   it("says so when the clipboard write is refused", async () => {
