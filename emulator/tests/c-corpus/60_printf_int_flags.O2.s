@@ -23,7 +23,7 @@
 	.string	"%d %i %u %x %o %X\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #144
@@ -44,7 +44,7 @@ main:
 	mov	x27, x24
 	add	x28, x24, 160
 	stp	x19, x20, [sp, 48]
-	.align 5
+	.p2align 5,,15
 .L3:
 	mov	x0, x25
 	ldr	x21, [x27]
@@ -52,7 +52,7 @@ main:
 	mov	w20, 0
 	mov	x1, x21
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L2:
 	mov	w0, 91
 	bl	putchar
@@ -74,7 +74,7 @@ main:
 	add	x27, x24, 192
 	add	x28, x24, 408
 	add	x22, x24, 440
-	.align 5
+	.p2align 5,,15
 .L5:
 	ldr	x21, [x27]
 	mov	x0, x25
@@ -82,7 +82,7 @@ main:
 	mov	w20, 0
 	mov	x1, x21
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L4:
 	mov	w0, 91
 	bl	putchar
@@ -308,26 +308,26 @@ main:
 	.align	4
 	.LANCHOR0:
 sfmt:
-	.quad	.LC34
-	.quad	.LC35
-	.quad	.LC36
-	.quad	.LC37
-	.quad	.LC38
-	.quad	.LC39
-	.quad	.LC40
-	.quad	.LC41
-	.quad	.LC42
-	.quad	.LC43
-	.quad	.LC44
-	.quad	.LC45
-	.quad	.LC46
-	.quad	.LC47
-	.quad	.LC48
-	.quad	.LC49
-	.quad	.LC50
-	.quad	.LC51
-	.quad	.LC52
-	.quad	.LC53
+	.xword	.LC34
+	.xword	.LC35
+	.xword	.LC36
+	.xword	.LC37
+	.xword	.LC38
+	.xword	.LC39
+	.xword	.LC40
+	.xword	.LC41
+	.xword	.LC42
+	.xword	.LC43
+	.xword	.LC44
+	.xword	.LC45
+	.xword	.LC46
+	.xword	.LC47
+	.xword	.LC48
+	.xword	.LC49
+	.xword	.LC50
+	.xword	.LC51
+	.xword	.LC52
+	.xword	.LC53
 svals:
 	.word	0
 	.word	7
@@ -338,33 +338,33 @@ svals:
 	.word	-2147483648
 	.zero	4
 ufmt:
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
-	.quad	.LC13
-	.quad	.LC14
-	.quad	.LC15
-	.quad	.LC16
-	.quad	.LC17
-	.quad	.LC18
-	.quad	.LC19
-	.quad	.LC20
-	.quad	.LC21
-	.quad	.LC22
-	.quad	.LC23
-	.quad	.LC24
-	.quad	.LC25
-	.quad	.LC26
-	.quad	.LC27
-	.quad	.LC28
-	.quad	.LC29
-	.quad	.LC30
-	.quad	.LC31
-	.quad	.LC32
-	.quad	.LC33
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
+	.xword	.LC13
+	.xword	.LC14
+	.xword	.LC15
+	.xword	.LC16
+	.xword	.LC17
+	.xword	.LC18
+	.xword	.LC19
+	.xword	.LC20
+	.xword	.LC21
+	.xword	.LC22
+	.xword	.LC23
+	.xword	.LC24
+	.xword	.LC25
+	.xword	.LC26
+	.xword	.LC27
+	.xword	.LC28
+	.xword	.LC29
+	.xword	.LC30
+	.xword	.LC31
+	.xword	.LC32
+	.xword	.LC33
 	.zero	8
 uvals:
 	.word	0
