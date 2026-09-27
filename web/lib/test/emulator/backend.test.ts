@@ -7,6 +7,9 @@ const h = vi.hoisted(() => ({
   // What the fake wrapper reports for the display counters. Null is the
   // older-wasm answer the wrapper gives when the export is missing.
   seen: { stdout: 12 as number | null, stderr: 3 as number | null },
+  // The clobber note rows the fake wrapper drains; [] is also what an
+  // older wasm build answers.
+  notes: [] as number[],
 }));
 
 vi.mock("@/lib/worker/client", () => ({
@@ -38,6 +41,7 @@ function fakeEmu() {
     takeStderr: () => "",
     stdoutSeen: () => h.seen.stdout,
     stderrSeen: () => h.seen.stderr,
+    takeClobberNotes: () => h.notes,
     listVfsFiles: () => [],
     listStates: () => [],
     takeDirtyAddrs: () => [],
@@ -159,5 +163,17 @@ describe("MainThreadBackend display counters", () => {
     // nothing" and unprint the whole transcript on the next snapshot.
     expect("stdoutSeen" in snap).toBe(false);
     expect("stderrSeen" in snap).toBe(false);
+  });
+});
+
+describe("MainThreadBackend clobber notes", () => {
+  test("the snapshot carries drained rows, and no key when there are none", async () => {
+    setPref("main");
+    h.notes = [9, 0, 16, 18];
+    const withRows = await pickBackend()!.init();
+    expect(withRows.clobberNotes).toEqual([9, 0, 16, 18]);
+    h.notes = [];
+    const without = await pickBackend()!.init();
+    expect("clobberNotes" in without).toBe(false);
   });
 });
