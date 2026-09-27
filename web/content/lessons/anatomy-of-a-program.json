@@ -108,7 +108,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Quiz: ARMv8 assembly (intro)](/practice/quiz-basic-armv8) and [Fill in the blank: ARMv8 assembly (core)](/practice/blanks-armv8). Both also reach into the next few lessons, so come back to them after [Registers and immediates](/learn/registers-and-immediates)."
+      "markdown": "## Practice\n\n- [The macro that ate my message](/practice/the-macro-that-ate-my-message): m4 replaces a `define` name even inside a string. Fix the program without touching the text between the quotes.\n- [Quiz: ARMv8 assembly (intro)](/practice/quiz-basic-armv8) and [Fill in the blank: ARMv8 assembly (core)](/practice/blanks-armv8). Both also reach into the next few lessons, so come back to them after [Registers and immediates](/learn/registers-and-immediates)."
     }
   ]
 }
