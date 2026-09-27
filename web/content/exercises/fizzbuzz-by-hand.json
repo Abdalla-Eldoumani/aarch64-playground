@@ -4,9 +4,10 @@
   "order": 20,
   "topic": "loops",
   "difficulty": "core",
-  "prompt": "The classic interview question, on a machine with no remainder instruction: print the numbers 1 through 15, except say `fizz` for multiples of 3, `buzz` for multiples of 5, and `fizzbuzz` for multiples of both.\n\nAArch64 has division but no remainder instruction. The course idiom is `udiv` then `msub`: divide, multiply the quotient back, subtract, and what is left is the remainder.\n\n## what is checked\n\n- all fifteen lines in order\n- the program exits cleanly\n- the remainders come from `msub`, not from a lookup",
-  "starter": "// fizzbuzz: multiples of 3 say fizz, of 5 say buzz, of both say fizzbuzz\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(i_r, x19)\ndefine(limit_r, x20)\ndefine(q_r, x21)\ndefine(rem3_r, x22)\ndefine(rem5_r, x23)\n\n        .data\nfmt_num:    .string \"%lld\\n\"\nfmt_fizz:   .string \"fizz\\n\"\nfmt_buzz:   .string \"buzz\\n\"\nfmt_both:   .string \"fizzbuzz\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     i_r, 1                      // count 1 through limit\n        mov     limit_r, 15\n\n        // TODO: for each i from 1 to limit, print fizzbuzz when i is\n        // divisible by both 3 and 5, fizz for 3 alone, buzz for 5\n        // alone, and the number itself otherwise. There is no\n        // remainder instruction: divide, then multiply back and\n        // subtract (that is what msub is for).\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "The classic interview question, on a machine with no remainder instruction: print the numbers 1 through a limit, except say `fizz` for multiples of 3, `buzz` for multiples of 5, and `fizzbuzz` for multiples of both. The starter reads the limit.\n\nAArch64 has division but no remainder instruction. The course idiom is `udiv` then `msub`: divide, multiply the quotient back, subtract, and what is left is the remainder.\n\n## what is checked\n\n- all fifteen lines in order for the `15` in the stdin box\n- the program exits cleanly\n- the remainders come from `msub`, not from a lookup\n- the same holds for other limits you do not see; a limit of 0 prints nothing",
+  "starter": "// fizzbuzz: multiples of 3 say fizz, of 5 say buzz, of both say fizzbuzz\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(i_r, x19)\ndefine(limit_r, x20)\ndefine(q_r, x21)\ndefine(rem3_r, x22)\ndefine(rem5_r, x23)\n\n        .data\nfmt_in:     .string \"%lld\"\nfmt_num:    .string \"%lld\\n\"\nfmt_fizz:   .string \"fizz\\n\"\nfmt_buzz:   .string \"buzz\\n\"\nfmt_both:   .string \"fizzbuzz\\n\"\n\n        .bss\n        .balign 8\nlimit_m:    .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the limit\n        ldr     x1, =limit_m\n        bl      scanf\n        ldr     x9, =limit_m\n        ldr     limit_r, [x9]\n        mov     i_r, 1                      // count 1 through limit\n\n        // TODO: for each i from 1 to limit, print fizzbuzz when i is\n        // divisible by both 3 and 5, fizz for 3 alone, buzz for 5\n        // alone, and the number itself otherwise. There is no\n        // remainder instruction: divide, then multiply back and\n        // subtract (that is what msub is for).\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "15\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -29,5 +30,28 @@
         "mnemonic": "udiv"
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "5\n",
+      "stdout": "1\n2\nfizz\n4\nbuzz\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "3\n",
+      "stdout": "1\n2\nfizz\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "31\n",
+      "stdout": "1\n2\nfizz\n4\nbuzz\nfizz\n7\n8\nfizz\nbuzz\n11\nfizz\n13\n14\nfizzbuzz\n16\n17\nfizz\n19\nbuzz\nfizz\n22\n23\nfizz\nbuzz\n26\nfizz\n28\n29\nfizzbuzz\n31\n",
+      "exitCode": 0
+    }
+  ]
 }
