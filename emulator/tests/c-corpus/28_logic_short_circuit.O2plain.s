@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	t
 t:
 	adrp	x1, .LANCHOR0
@@ -10,7 +10,7 @@ t:
 	mov	w0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	f
 f:
 	adrp	x1, .LANCHOR0
@@ -31,7 +31,7 @@ f:
 	.string	"%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -32]!
