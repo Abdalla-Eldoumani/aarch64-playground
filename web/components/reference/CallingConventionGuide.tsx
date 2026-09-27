@@ -10,8 +10,10 @@ import { StackAlignment } from "@/components/diagrams/StackAlignment";
  * The calling-convention quick guide: a reading-measure article in four
  * numbered-kicker sections, the same section grammar as the landing and
  * lesson surfaces. 01 covers the integer register roles over the existing
- * RegisterFileDiagram; 02 covers the floating-point file (d0-d7 arguments,
- * d8-d15 callee-saved low halves, d16-d31 temporaries) over its sibling
+ * RegisterFileDiagram; 02 covers the floating-point and vector file (v0-v7
+ * arguments and results, v8-v15 callee-saved in their low 64 bits only,
+ * v0-v7 and v16-v31 caller-saved, short vectors and homogeneous aggregates in
+ * consecutive v registers, per AAPCS64) over its sibling
  * FpRegisterFileDiagram; 03 is the frame record, stepped live by FrameWalk
  * (code, registers, and frame bands per step), teaching the course frame
  * shape: the saved fp/lr pair at the frame base where fp points, locals
@@ -40,9 +42,13 @@ const integerMarkdown = [
 ].join("\n");
 
 const fpMarkdown = [
-  "Floating-point values ride their own register file of 32 registers, and like the integer file each register has two views the course uses: `s0` is the low 32 bits (a C `float`) and `d0` is the low 64 bits (a C `double`) of the same register: `s0` and `d0` overlap. The registers are wider still underneath: each one is 128 bits, reachable as `q0` or as `v0` with an arrangement, and the playground assembles those vector forms and documents them in the reference's Vector section. The course keeps to `s` and `d`, so think in those two views here. `fcvt d0, s0` widens a float to a double exactly, and `fcvt s0, d0` narrows with rounding, which is the step a program takes before handing a float to `printf`, which always receives doubles.",
+  "Floating-point and vector values ride their own file of 32 registers, `v0` to `v31`, each 128 bits wide. Like the integer file, every register has narrower names for the same storage: `s0` is the low 32 bits (a C `float`), `d0` is the low 64 bits (a C `double`), and `q0` is all 128 bits read as one value. Written `v0` with an arrangement such as `v0.4s`, the same 128 bits are lanes: four 32-bit values side by side. So `s0`, `d0`, `q0` and `v0` are one register, not four. The course keeps to `s` and `d`; the playground assembles the vector forms too, and the reference's Vector section documents them.",
   "",
-  "The calling convention mirrors the integer split. `d0` through `d7` (or `s0`-`s7` for floats) carry the first eight floating-point arguments and return the result, a separate bank from `x0`-`x7`, so `printf(\"%d %f\", ...)` puts the int in `w1` and the double in `d0` without collision. `d8` through `d15` are callee-saved: a routine that writes one must restore it, which is why the course parks long-lived floats there. The promise stops at the `d` width: AAPCS64 preserves only the low 64 bits of `v8`-`v15`, so a routine owes nothing for what it leaves in bits 127:64. `d16` through `d31` are caller-saved temporaries, so treat them as gone once a call returns. There is no floating-point frame pointer: `x29` and `x30` still hold the frame record, whatever type the function computes with.",
+  "`fcvt d0, s0` widens a float to a double exactly, and `fcvt s0, d0` narrows a double to a float, rounding to the nearest float. `printf` takes a variable number of arguments, and C turns a `float` passed that way into a `double`, so a float reaches `printf` as a double in `d0`: widen it with `fcvt d0, s0` before the call.",
+  "",
+  "The calling convention mirrors the integer split. `v0` through `v7` carry the first eight floating-point and vector arguments and return the result (as `d0`-`d7` for doubles, `s0`-`s7` for floats), a separate bank from `x0`-`x7`, so `printf(\"%d %f\", ...)` puts the int in `w1` and the double in `d0` without collision. `v8` through `v15` are callee-saved, but only their low 64 bits: a routine that writes `d8`-`d15` must restore them, which is why the course parks long-lived doubles there, and it owes nothing for bits 127:64, so a caller that needs a whole `q` value kept across a call saves it itself. `v0`-`v7` and `v16`-`v31` are caller-saved: treat them as gone once a call returns. There is no floating-point frame pointer: `x29` and `x30` still hold the frame record, whatever type the function computes with.",
+  "",
+  "Vectors travel the same way. A short vector, 8 or 16 bytes such as eight bytes in `v0.8b` or four floats in `v0.4s`, is passed in one `v` register, just like a double. A struct whose members are all the same floating-point type, or all the same short-vector type, with at most four of them (the standard calls it a homogeneous aggregate), travels in consecutive `v` registers, one member each: a struct of two doubles arrives in `d0` and `d1`. When too few of `v0`-`v7` are left for the whole struct, it goes on the stack instead, never split between the two.",
 ].join("\n");
 
 const frameMarkdown = [
@@ -77,7 +83,7 @@ export function CallingConventionGuide({
 
       <Kicker
         number="02"
-        title="registers by role: floating point"
+        title="registers by role: floating point and vector"
         className="mt-4"
       />
       <LessonMarkdown markdown={fpMarkdown} />
