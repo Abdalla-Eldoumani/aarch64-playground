@@ -11,13 +11,15 @@
  * editor is the shared EmbeddablePlayground in `chrome="checker"`.
  * The Check button fires `onCheck(snapshot)`; the handler runs `checkExercise`
  * against the snapshot and the live student source (read through the embed ref),
- * so structural checks see what the student actually wrote. A passing check
- * marks the exercise solved once. Each check press brings the RESULTS panel
- * into view with the smallest scroll.
+ * so structural checks see what the student actually wrote. When that passes,
+ * the exercise's hidden inputs run on a machine of their own (never the one on
+ * screen), and only a program that passes every one is marked solved. Each
+ * check press brings the RESULTS panel into view with the smallest scroll.
  *
  * No answer leak: the specification table describes the shape of each check (no
- * expected values); the RESULTS panel shows expected-vs-actual as feedback but
- * the view never holds or renders a reference solution. An author/student stdin
+ * expected values); the RESULTS panel shows expected-vs-actual for the visible
+ * run, only the input and the student's own output for a hidden one, and the
+ * view never holds or renders a reference solution. An author/student stdin
  * is bounded by validateStdin before it reaches the embed.
  *
  * The editor buffer survives a reload: it starts from the answer saved for
@@ -28,16 +30,21 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type JSX, type ReactNode } from "react";
 import { buildShareHash } from "@/lib/playground/share";
+import { parseArgs } from "@/lib/playground/args";
 import type {
+  HiddenCase,
   ResultAssertion,
   StructuralAssertion,
   WriteExercise,
 } from "@/lib/content/exercise-schema";
 import {
   checkExercise,
+  checkHiddenCase,
   type CheckResult,
+  type HiddenCaseCheck,
   type StructuralCheck,
 } from "@/lib/content/exercise-checker";
+import type { EmulatorInstance } from "@/lib/emulator/emulator";
 import { markSolved } from "@/lib/playground/solved-state";
 import { clearAnswer, readAnswer, saveAnswer } from "@/lib/playground/exercise-answers";
 import { validateStdin } from "@/lib/playground/upload-guard";
@@ -175,6 +182,82 @@ function structuralMiss(check: StructuralCheck): string {
   }
 }
 
+/** The input a hidden case ran on, quoted so a newline reads as \n. */
+function caseInput(testCase: HiddenCase): string {
+  const parts: string[] = [];
+  if (testCase.args) parts.push(`args ${JSON.stringify(testCase.args)}`);
+  if (testCase.stdin) parts.push(`input ${JSON.stringify(testCase.stdin)}`);
+  return parts.length > 0 ? parts.join(", ") : "no input";
+}
+
+/**
+ * What went wrong on a hidden case, in terms of the student's own run. The
+ * expected output is never shown: the input is, so the student can try it.
+ */
+function hiddenMiss(check: HiddenCaseCheck): string {
+  switch (check.miss) {
+    case "assemble":
+      return `it does not assemble: ${check.detail}`;
+    case "fault":
+      return `it stops with an error: ${check.detail}`;
+    case "unfinished":
+      return "it did not finish: it may loop forever or wait for input that never comes";
+    case "stdout":
+      return `it prints something else: got ${check.detail}`;
+    case "exit":
+      return `it exits with ${check.detail}`;
+    case "stack":
+      return "main returns with sp moved: take the frame down by exactly what you put up";
+    case "frame":
+      return "it writes above main's frame, over values its caller saved there";
+    case null:
+      return "";
+    default: {
+      const exhaustive: never = check.miss;
+      return exhaustive;
+    }
+  }
+}
+
+/** Where the hidden cases stand for the current check. */
+type HiddenState =
+  | { status: "idle" }
+  | { status: "waiting" }
+  | { status: "running" }
+  | { status: "failed" }
+  | { status: "done"; checks: HiddenCaseCheck[] };
+
+/**
+ * One machine for every hidden run on the page, created on the first check.
+ * Each assemble resets it, so runs cannot leak into each other, and a single
+ * instance means repeated checks never pile up emulator memory.
+ */
+let hiddenMachine: Promise<EmulatorInstance> | null = null;
+
+function machineForHiddenCases(): Promise<EmulatorInstance> {
+  hiddenMachine ??= import("@/lib/emulator/emulator")
+    .then((m) => m.loadEmulator())
+    .catch((error: unknown) => {
+      // A failed load (offline, a stale chunk) must not stick for the page's life.
+      hiddenMachine = null;
+      throw error;
+    });
+  return hiddenMachine;
+}
+
+async function runHiddenCases(source: string, cases: HiddenCase[]): Promise<HiddenCaseCheck[]> {
+  const [machine, { runHeadless }] = await Promise.all([
+    machineForHiddenCases(),
+    import("@/lib/emulator/headless-run"),
+  ]);
+  const checks: HiddenCaseCheck[] = [];
+  for (const testCase of cases) {
+    const outcome = await runHeadless(machine, source, parseArgs(testCase.args ?? ""), testCase.stdin);
+    checks.push(checkHiddenCase(testCase, outcome));
+  }
+  return checks;
+}
+
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -274,19 +357,45 @@ export function ExerciseView({
     embedRef.current?.loadSource(exercise.starter);
   }, [exercise.slug, exercise.starter]);
 
+  const [hidden, setHidden] = useState<HiddenState>({ status: "idle" });
+  const hiddenBusyRef = useRef(false);
+  const hiddenCases = exercise.hiddenCases ?? [];
   const resultsRef = useRef<HTMLDivElement>(null);
   // Bumped by every check press, so the panel scrolls into view only in
   // answer to one, never on a render of its own.
   const [checkCount, setCheckCount] = useState(0);
 
   const handleCheck = (snapshot: EmbeddableState): void => {
+    // A second press while the hidden cases run would share their machine.
+    if (hiddenBusyRef.current) return;
     // Read the LIVE editor source so structural checks run on what the student
     // wrote, falling back to the starter before the embed has registered.
     const source = embedRef.current?.getSource() ?? exercise.starter;
     const outcome = checkExercise(exercise.acceptance, snapshot, source);
     setResult(outcome);
     setCheckCount((n) => n + 1);
-    if (outcome.pass) markSolved(exercise.slug);
+    if (hiddenCases.length === 0) {
+      if (outcome.pass) markSolved(exercise.slug);
+      return;
+    }
+    // The hidden runs start once the visible one passes: its misses are the
+    // ones the student can see and fix first.
+    if (!outcome.pass) {
+      setHidden({ status: "waiting" });
+      return;
+    }
+    hiddenBusyRef.current = true;
+    setHidden({ status: "running" });
+    runHiddenCases(source, hiddenCases)
+      .then((checks) => {
+        setHidden({ status: "done", checks });
+        setCheckCount((n) => n + 1);
+        if (checks.every((check) => check.pass)) markSolved(exercise.slug);
+      })
+      .catch(() => setHidden({ status: "failed" }))
+      .finally(() => {
+        hiddenBusyRef.current = false;
+      });
   };
 
   useEffect(() => {
@@ -297,8 +406,14 @@ export function ExerciseView({
     }
   }, [checkCount]);
 
-  const allChecks = result ? [...result.results, ...result.structural] : [];
+  const hiddenChecks = hidden.status === "done" ? hidden.checks : [];
+  const allChecks = result ? [...result.results, ...result.structural, ...hiddenChecks] : [];
   const passingCount = allChecks.filter((check) => check.pass).length;
+  const allPass =
+    result !== null &&
+    result.pass &&
+    (hiddenCases.length === 0 || hiddenChecks.every((check) => check.pass)) &&
+    (hiddenCases.length === 0 || hidden.status === "done");
 
   return (
     <article className="mx-auto w-full max-w-screen-xl px-6 py-10 sm:py-12 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start lg:gap-12">
@@ -324,7 +439,7 @@ export function ExerciseView({
           >
             Specification
           </h2>
-          {exercise.args !== undefined && <SpecRow label="args">{exercise.args}</SpecRow>}
+          {exercise.args && <SpecRow label="args">{exercise.args}</SpecRow>}
           {exercise.stdin !== undefined && (
             <SpecRow label="stdin">
               <span className="whitespace-pre-wrap break-words">{exercise.stdin}</span>
@@ -340,11 +455,18 @@ export function ExerciseView({
               {structuralCriterion(assertion)}
             </SpecRow>
           ))}
+          {hiddenCases.length > 0 && (
+            <SpecRow label="hidden">
+              right output and exit code on {hiddenCases.length} more inputs you do not see
+            </SpecRow>
+          )}
         </section>
 
         <p className="font-sans text-[12px] leading-relaxed text-[var(--text-tertiary)]">
-          Checked by running your program against expected behavior, never by matching a stored
-          solution.
+          {hiddenCases.length > 0
+            ? "We run your program on the input above and on the hidden ones, and compare what it does."
+            : "We run your program and compare what it does."}{" "}
+          Nothing is matched against a stored solution.
         </p>
       </div>
 
@@ -360,6 +482,7 @@ export function ExerciseView({
             startSource={startSource}
             startArgs={exercise.args}
             startStdin={safeStdin(exercise.stdin)}
+            showArgs={Boolean(exercise.args)}
             readOnly={false}
             onSourceChange={handleSourceChange}
             onCheck={handleCheck}
@@ -423,7 +546,35 @@ export function ExerciseView({
                   </span>
                 </div>
               ))}
-              {result.pass && (
+              {hidden.status !== "idle" && hidden.status !== "done" && (
+                <p className="border-b border-[var(--border)] px-4 py-2.5 font-mono text-[13px] leading-snug text-[var(--text-secondary)] last:border-b-0">
+                  {hidden.status === "running" && `running ${hiddenCases.length} hidden inputs...`}
+                  {hidden.status === "waiting" &&
+                    `${hiddenCases.length} hidden inputs run once the checks above pass`}
+                  {hidden.status === "failed" &&
+                    "the hidden inputs could not run: the emulator did not load. Check again."}
+                </p>
+              )}
+              {hiddenChecks.map((check, index) => (
+                <div
+                  key={`hidden-${index}`}
+                  className="flex items-start gap-3 border-b border-[var(--border)] px-4 py-2.5 last:border-b-0"
+                >
+                  <span className="mt-[3px]">
+                    <CheckSquare pass={check.pass} />
+                  </span>
+                  <span className="min-w-0 break-words font-mono text-[13px] leading-snug text-[var(--text-primary)]">
+                    hidden input {index + 1}
+                    {!check.pass && (
+                      <span className="text-[var(--danger)]">
+                        {" "}
+                        ({caseInput(hiddenCases[index])}): {hiddenMiss(check)}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              ))}
+              {allPass && (
                 <div className="flex items-center gap-3 px-4 py-2.5">
                   <CheckSquare pass />
                   <span className="font-mono text-[13px] leading-snug text-[var(--text-primary)]">
