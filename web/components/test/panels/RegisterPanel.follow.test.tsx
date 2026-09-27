@@ -202,6 +202,36 @@ describe("RegisterPanel follows the write", () => {
     expect(scrollCalls).toEqual([{ top: 480, behavior: "smooth" }]);
     expect(status()).toBe("x28 = 0x0");
   });
+
+  it("says and moves nothing after a run whose last instruction wrote nothing", () => {
+    const { rerender } = mount();
+    rerender(panel({ changedRegs: new Set([19]), registers: withRegister(19, "0x000000000000002f") }));
+    expect(status()).toBe("x19 = 0x2f");
+    scrollCalls = [];
+    // Mid-run x27 held 0x35b5f; the run then restored it to 0 and ended on a
+    // ret, so the snapshot it stopped on reports no write.
+    rerender(
+      panel({ running: true, changedRegs: new Set([27]), registers: withRegister(27, "0x0000000000035b5f") }),
+    );
+    const stopped = new Set<number>();
+    rerender(panel({ running: true, changedRegs: stopped }));
+    rerender(panel({ running: false, changedRegs: stopped }));
+    expect(status()).toBe("");
+    expect(scrollCalls).toEqual([]);
+  });
+
+  it("does not say the write from before a run again when the run stops", () => {
+    const { rerender } = mount();
+    // One snapshot is one set of objects; only `running` changes after it.
+    const stepped = { changedRegs: new Set([28]), changedFpRegs: new Set<number>() };
+    rerender(panel(stepped));
+    expect(status()).toBe("x28 = 0x0");
+    // Stopped (a reset, say) before its first snapshot landed.
+    rerender(panel({ ...stepped, running: true }));
+    rerender(panel({ ...stepped, running: false }));
+    expect(status()).toBe("");
+    expect(scrollCalls).toHaveLength(1);
+  });
 });
 
 describe("RegisterPanel follow changes switch", () => {
