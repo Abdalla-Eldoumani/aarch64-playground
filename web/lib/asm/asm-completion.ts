@@ -62,16 +62,17 @@ const REGISTERS: Suggestion[] = [
 
 const LIBC: Suggestion[] = [
   "printf", "sprintf", "snprintf", "scanf", "puts", "putchar", "getchar",
+  "putc", "fputc", "getc", "fwrite",
   "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat",
   "strchr", "strstr", "strtok",
   "memset", "memcpy", "memcmp", "memmove",
   "atoi", "atof", "strtol", "abs", "labs",
   "isdigit", "isalpha", "isspace", "toupper", "tolower",
   "rand", "srand", "time", "exit", "usleep",
-  "malloc", "free", "calloc", "realloc",
+  "malloc", "free", "calloc", "realloc", "qsort", "bsearch",
   "fflush", "fopen", "fprintf", "fgets", "fputs", "fclose",
   "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp",
-  "floor", "fabs", "fmod",
+  "floor", "fabs", "fmod", "sincos",
 ].map((name) => ({ label: name, kind: "libc", detail: "host stub" }));
 
 function instructionSuggestions(): Suggestion[] {
