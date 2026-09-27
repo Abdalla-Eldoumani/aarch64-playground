@@ -287,17 +287,17 @@ mix:
 	.data
 	.align	3
 hv:
-	.quad	81985529216486895
-	.quad	-81985529216486896
-	.quad	1229782938247303441
-	.quad	2459565876494606882
+	.xword	81985529216486895
+	.xword	-81985529216486896
+	.xword	1229782938247303441
+	.xword	2459565876494606882
 	.align	3
 sv:
-	.quad	-9223372036854775808
-	.quad	9223372036854775807
-	.quad	-1
-	.quad	3
-	.quad	-5
+	.xword	-9223372036854775808
+	.xword	9223372036854775807
+	.xword	-1
+	.xword	3
+	.xword	-5
 	.section .rodata
 	.align	3
 .LC4:
@@ -1097,10 +1097,10 @@ main:
 	.section .rodata
 	.align	4
 .LC28:
-	.quad	0
-	.quad	68719476736
+	.xword	0
+	.xword	68719476736
 	.align	4
 .LC34:
-	.quad	0
-	.quad	67108864
+	.xword	0
+	.xword	67108864
 
