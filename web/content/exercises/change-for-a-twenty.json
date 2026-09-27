@@ -2,6 +2,7 @@
   "title": "Change for a twenty",
   "slug": "change-for-a-twenty",
   "order": 7,
+  "lastUpdated": "2026-09-27",
   "topic": "armv8",
   "difficulty": "core",
   "prompt": "A customer pays with a twenty-dollar bill, 2000 cents. The starter reads the price in cents, from 0 to 2000. Work out the change, then split it into as few coins as possible: as many quarters (25 cents) as fit, then dimes (10), then nickels (5), then pennies (1). Leave the results in `change_r`, `quarters_r`, `dimes_r`, `nickels_r` and `pennies_r`; the starter prints them.\n\nA64 has no remainder instruction. `sdiv` gives how many whole times one number fits in another, and `msub` multiplies two registers and subtracts the product from a third, which is exactly the leftover:\n\n```\nsdiv    w9, w12, w10        // w9 = w12 / w10, fraction dropped\nmsub    w13, w9, w10, w12   // w13 = w12 - w9 * w10, the remainder\n```\n\nFor a price of 1541 the change is 459 cents: 18 quarters make 450, which leaves 9 cents, and 9 cents is 0 dimes, 1 nickel and 4 pennies.\n\n## what is checked\n\n- with input `1541` the output is `change in cents: 459`, then `25c x 18`, `10c x 0`, `5c x 1` and `1c x 4`, one per line\n- the program exits cleanly\n- the leftovers come from `msub`\n- the program also runs on prices you do not see, including one that needs no change at all and one that needs every kind of coin",
