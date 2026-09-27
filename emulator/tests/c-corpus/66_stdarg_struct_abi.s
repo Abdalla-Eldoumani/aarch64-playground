@@ -1044,14 +1044,14 @@ main:
 	.zero	3
 	.align	3
 .LC1:
-	.quad	1
-	.quad	-20
-	.quad	300
+	.xword	1
+	.xword	-20
+	.xword	300
 	.align	3
 .LC2:
-	.quad	-4
-	.quad	5
-	.quad	-6
+	.xword	-4
+	.xword	5
+	.xword	-6
 	.align	3
 .LC3:
 	.word	0
