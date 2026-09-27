@@ -1,5 +1,6 @@
 import { docKey, INSTRUCTION_DOCS } from "@/lib/asm/instruction-docs";
 import { C_EQUIVALENTS } from "@/lib/asm/c-equivalents";
+import type { RegView } from "@/lib/emulator/emulator-state";
 
 /**
  * The rich data source for the two-pane instruction reference. It is derived
@@ -65,7 +66,7 @@ export interface ReferenceInstruction {
   /** The register file the worked example writes, so the in-place run opens
    *  the registers panel on it: v for a vector register, d for a scalar
    *  floating-point one, x otherwise. */
-  registerView: "x" | "d" | "v";
+  registerView: RegView;
   /** Authored notes for traps worth calling out. */
   gotchas?: string[];
   /** Authored bit-field layout for the curated subset; widths sum to 32. */
