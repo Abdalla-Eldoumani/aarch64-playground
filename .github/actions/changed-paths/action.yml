@@ -1,0 +1,38 @@
+name: changed paths
+description: >-
+  Tells a check.yml job whether this run needs it. On a pull request it lists
+  the files the pull request changes and sorts them with
+  .github/scripts/classify-changes.js; a push or the weekly run turns every
+  flag on. Needs a checkout with fetch-depth 2.
+
+outputs:
+  rust:
+    description: '"true" when cargo test and the corpus shards should run'
+    value: ${{ steps.classify.outputs.rust }}
+  static:
+    description: '"true" when lint, typecheck, and the dependency audit should run'
+    value: ${{ steps.classify.outputs.static }}
+  web:
+    description: '"true" when verify-corpus, the build, and the vitest shards should run'
+    value: ${{ steps.classify.outputs.web }}
+  mobile:
+    description: '"true" when the mobile app changed'
+    value: ${{ steps.classify.outputs.mobile }}
+
+runs:
+  using: composite
+  steps:
+    # A pull request checks out its merge commit, and depth 2 brings the base
+    # commit (the merge's first parent) along to diff against. --no-renames
+    # lists a moved file under its old path too, so moving a file out of
+    # emulator/ still counts as an emulator change.
+    - name: classify the changed paths
+      id: classify
+      shell: bash
+      run: |
+        if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+          git diff --name-only --no-renames -z HEAD^1 HEAD > "$RUNNER_TEMP/changed"
+          node .github/scripts/classify-changes.js < "$RUNNER_TEMP/changed"
+        else
+          node .github/scripts/classify-changes.js --all
+        fi
