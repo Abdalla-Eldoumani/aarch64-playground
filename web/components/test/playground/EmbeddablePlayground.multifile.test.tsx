@@ -170,9 +170,27 @@ async function fullChromeMounted() {
 }
 
 describe("multi-file line translation", () => {
-  it("keeps the current-line marker in the file the machine assembled", async () => {
+  it("stays on the tab being edited when an assemble puts the entry in another file", async () => {
     seedFiles();
     const hub: Hub = makeHub({ currentLine: UTIL_COMBINED_LINE });
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    await fullChromeMounted();
+    await act(async () => {
+      ref.current!.assemble();
+    });
+    // Nothing has stepped yet: main.asm stays up, with no marker of its own.
+    expect(editorProps.current!.currentLine).toBeNull();
+  });
+
+  it("keeps the current-line marker in the file the machine assembled", async () => {
+    seedFiles();
+    // The program has stepped into util.s.
+    const hub: Hub = makeHub({ currentLine: UTIL_COMBINED_LINE, stepCount: 4 });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
     const { container } = render(
