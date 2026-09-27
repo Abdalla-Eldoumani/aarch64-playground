@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	push
 push:
 	stp	x29, x30, [sp, -32]!
@@ -27,7 +27,7 @@ push:
 	.string	"%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -64]!
@@ -37,7 +37,7 @@ main:
 	stp	x21, x22, [sp, 32]
 	mov	w21, 1
 	str	x23, [sp, 48]
-	.align 5
+	.p2align 5,,15
 .L5:
 	mov	x20, x19
 	mov	x0, 16
@@ -52,7 +52,7 @@ main:
 	mov	w1, 1
 	mov	w2, 64
 	cbz	x20, .L6
-	.align 5
+	.p2align 5,,15
 .L7:
 	ldr	w0, [x20]
 	add	w1, w1, 1
@@ -63,7 +63,7 @@ main:
 	adrp	x0, .LC0
 	add	x0, x0, :lo12:.LC0
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L8:
 	mov	x0, x19
 	ldr	x19, [x19, 8]
@@ -74,7 +74,7 @@ main:
 	bl	malloc
 	mov	x20, x0
 	b	.L13
-	.align 2
+	.p2align 2,,3
 .L9:
 	add	w0, w19, w19, lsl 1
 	str	w0, [x20, x19, lsl 2]
@@ -90,7 +90,7 @@ main:
 	bl	malloc
 	mov	x23, x0
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L10:
 	ldr	w3, [x20, x1, lsl 2]
 	str	w3, [x23, x1, lsl 2]
@@ -104,12 +104,12 @@ main:
 	str	w0, [x23, x19, lsl 2]
 	add	x19, x19, 1
 	b	.L13
-	.align 2
+	.p2align 2,,3
 .L22:
 	mov	x1, x20
 	add	x0, x20, 200
 	mov	x3, 0
-	.align 5
+	.p2align 5,,15
 .L14:
 	ldrsw	x4, [x1], 4
 	add	x3, x3, x4
