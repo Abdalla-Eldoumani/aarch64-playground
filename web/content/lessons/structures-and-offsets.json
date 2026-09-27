@@ -1,0 +1,98 @@
+{
+  "title": "Structures as offset tables",
+  "slug": "structures-and-offsets",
+  "order": 20,
+  "summary": "Lay out a struct as named field offsets with the padding it needs, read and write each field at its own size, and nest one struct inside another.",
+  "tags": [
+    "arrays"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Memory: loads, stores, and addressing modes](/learn/memory-and-addressing-modes)\n- [Arrays in memory, in one and two dimensions](/learn/arrays-in-memory)"
+    },
+    {
+      "type": "prose",
+      "markdown": "A *structure* (a `struct` in C) groups values of different types under one name, such as a book's year, page count, and shelf letter. Each value in it is a *field*. In memory a struct is one block of bytes, and each field sits at a fixed distance from the start of the block, called its *offset*. Assembly has no struct keyword: you write the offsets down as named numbers and add them to the struct's address."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "struct book {\n    short year;     // 2 bytes\n    int   pages;    // 4 bytes\n    char  shelf;    // 1 byte\n};\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Alignment and padding\n\nThe fields do not simply follow one another. Each field starts at an offset that is a multiple of its own size: a short on a multiple of 2, an int on a multiple of 4, a long or a pointer on a multiple of 8. A field placed this way is *aligned*. To keep every field aligned, the compiler leaves unused bytes, called *padding*, in front of any field that would otherwise start in the wrong place.\n\nIn `struct book`, `year` takes offsets 0 and 1. `pages` cannot start at 2, which is not a multiple of 4, so bytes 2 and 3 are padding and `pages` takes 4 to 7. `shelf` takes byte 8. The whole struct then grows to a multiple of its widest field's size, here 4, so its 9 bytes become 12. That end padding matters in an array of books: every element then starts on a multiple of 4, and so does every `pages` field inside it.\n\n| offset | bytes | holds |\n|---|---|---|\n| 0 | 2 | `year` |\n| 2 | 2 | padding |\n| 4 | 4 | `pages` |\n| 8 | 1 | `shelf` |\n| 9 | 3 | padding |"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "AArch64 can load a word from an address that is not a multiple of 4 in most cases, but C always lays a struct out with this padding. A struct that assembly shares with C code has to match the C layout byte for byte, so the programs here follow the same rules."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Offsets as names\n\nWrite the layout down once, one name per field, and use the names everywhere after that. `book_pages = 4` is an *equate*: it gives the number 4 a name, and the assembler puts 4 wherever `book_pages` appears. With the record's address in `book_r`, the `pages` field is at `[book_r, book_pages]`. If the layout ever changes, only the table of equates changes with it."
+    },
+    {
+      "type": "prose",
+      "markdown": "## One load size per field\n\nEach field is read and written with the instruction that matches its size:\n\n| field | store | load |\n|---|---|---|\n| char, 1 byte | `strb` | `ldrb` |\n| short, 2 bytes | `strh` | `ldrsh` |\n| int, 4 bytes | `str` with a `w` register | `ldr` with a `w` register |\n| long or pointer, 8 bytes | `str` with an `x` register | `ldr` with an `x` register |\n\nThe wrong width touches the wrong bytes. A 4-byte `str` into `shelf` also writes the three bytes after it, which are padding here but could be the next field in another struct. A 4-byte `ldr` from `year` reads the padding into the top half of the value.\n\nThe narrow loads also have to fill the rest of the register. `ldrsh` *sign-extends*: it copies the top bit of the short into every higher bit, so -5 stays -5. `ldrh` fills them with zeros instead, so the same bytes read as 65531. A plain `char` on AArch64 Linux holds 0 to 255, so `shelf` is read with `ldrb`, which fills with zeros.\n\nThe program below stores one book in the frame and reads it back. The record needs 12 bytes, so `alloc = -(16 + 12) & -16`, which is -32, and the record starts at `fp + 16`; `add book_r, fp, book_s` puts that address in a register once. That register is `x19`, so the address survives the `printf` calls; like the other short programs before the subroutine lessons, this `main` uses it without saving it first. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "a book record takes 12 bytes\nyear 2019, 412 pages, shelf C\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// One book record in the frame: store each field at its offset, then read them back\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(book_r, x19)\n\n// struct book { short year; int pages; char shelf; }\nbook_year = 0                               // 2 bytes, then 2 bytes of padding\nbook_pages = 4                              // an int starts on a multiple of 4\nbook_shelf = 8                              // 1 byte, then 3 bytes of padding\nbook_size = 12                              // 9 rounded up to a multiple of 4\n\nbook_s = 16                                 // the record starts 16 bytes above fp\nalloc = -(16 + book_size) & -16\ndealloc = -alloc\n\n.data\nfmt_size:   .string \"a book record takes %d bytes\\n\"\nfmt_book:   .string \"year %d, %d pages, shelf %c\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        add     book_r, fp, book_s          // book_r = address of the record\n\n        mov     w9, 2019\n        strh    w9, [book_r, book_year]     // a short takes a 2-byte store\n        mov     w9, 412\n        str     w9, [book_r, book_pages]    // an int takes a 4-byte store\n        mov     w9, 'C'\n        strb    w9, [book_r, book_shelf]    // a char takes a 1-byte store\n\n        ldr     x0, =fmt_size\n        mov     w1, book_size\n        bl      printf\n\n        ldr     x0, =fmt_book\n        ldrsh   w1, [book_r, book_year]     // sign-extend: a short can be negative\n        ldr     w2, [book_r, book_pages]\n        ldrb    w3, [book_r, book_shelf]    // zero-extend: a char code runs 0 to 255\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "a book record takes 12 bytes\nyear 2019, 412 pages, shelf C\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Field order changes the size. Put the int first, `{ int pages; short year; char shelf; }`, and the offsets become 0, 4 and 6 with one byte of padding at the end: 8 bytes instead of 12. Try it: set `book_pages = 0`, `book_year = 4`, `book_shelf = 6` and `book_size = 8`. The program prints `a book record takes 8 bytes` and the same three fields."
+    },
+    {
+      "type": "prose",
+      "markdown": "## A struct inside a struct\n\nA field can itself be a struct. It is aligned by the size of its own widest field, and a field inside it sits at the outer offset plus the inner offset. A library loan can hold two dates:"
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "struct date {\n    short year;         // offset 0\n    char  month;        // offset 2\n};                      // 3 bytes of fields, padded to 4\n\nstruct loan {\n    int         id;     // offset 0\n    struct date out;    // offset 4\n    struct date due;    // offset 8\n};                      // 12 bytes\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The month of the due date is at `loan_due + date_month`, which is `8 + 2 = 10`. The assembler adds the two names for you, so `ldrb w5, [loan_r, loan_due + date_month]` is one load with the fixed offset 10. Writing the equates in terms of each other (`loan_due = loan_out + date_size`) means a change to `date` moves every field after it.\n\nThe program below records a loan taken out in November 2026 and works out the due date three months later, carrying into the next year when the month passes 12. It prints `book 7031: out 2026/11, due 2027/02`."
+    },
+    {
+      "type": "editor",
+      "starter": "// A loan record holding two date records: an inner field sits at outer offset + inner offset\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(loan_r, x19)\n\n// struct date { short year; char month; }\ndate_year = 0                               // 2 bytes\ndate_month = 2                              // 1 byte, then 1 byte of padding\ndate_size = 4                               // 3 rounded up to a multiple of 2\n\n// struct loan { int id; struct date out; struct date due; }\nloan_id = 0                                 // 4 bytes\nloan_out = 4                                // a date needs a multiple of 2, and 4 is one\nloan_due = loan_out + date_size             // 8\nloan_size = loan_due + date_size            // 12\n\nloan_s = 16\nalloc = -(16 + loan_size) & -16\ndealloc = -alloc\n\n.data\nfmt:        .string \"book %d: out %d/%02d, due %d/%02d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        add     loan_r, fp, loan_s          // loan_r = address of the loan\n\n        mov     w9, 7031\n        str     w9, [loan_r, loan_id]\n        mov     w9, 2026\n        strh    w9, [loan_r, loan_out + date_year]\n        mov     w9, 11\n        strb    w9, [loan_r, loan_out + date_month]\n\n        // due = out + 3 months, carrying into the next year past December\n        ldrsh   w10, [loan_r, loan_out + date_year]\n        ldrb    w11, [loan_r, loan_out + date_month]\n        add     w11, w11, 3\n        cmp     w11, 12\n        b.le    store_due\n        sub     w11, w11, 12\n        add     w10, w10, 1\nstore_due:\n        strh    w10, [loan_r, loan_due + date_year]\n        strb    w11, [loan_r, loan_due + date_month]\n\n        ldr     x0, =fmt\n        ldr     w1, [loan_r, loan_id]\n        ldrsh   w2, [loan_r, loan_out + date_year]\n        ldrb    w3, [loan_r, loan_out + date_month]\n        ldrsh   w4, [loan_r, loan_due + date_year]\n        ldrb    w5, [loan_r, loan_due + date_month]\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "book 7031: out 2026/11, due 2027/02\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## An array of structs\n\nAn array of structs puts this lesson and the arrays lesson together. Element `i` starts at `base + i * size_of_struct`, and a field inside it adds the field's offset: the `pages` field of book `i` is at `base + i * 12 + 4`, which is always a multiple of 4 thanks to the end padding. The scaled load from the arrays lesson only multiplies by 1, 2, 4 or 8, so for a 12-byte struct work out `i * 12` with `mul` first and add it to the base."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. Give the offsets and the size of `struct s { char c; long n; short h; }`.\n2. A short field holds -3. What do `ldrsh` and `ldrh` read from it?\n3. In the loan program, what offset does `loan_out + date_month` stand for?\n4. An array of five `struct book` starts at `0x3000`. Where is the `shelf` field of element 3?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `c` at 0, `n` at 8, `h` at 16, and the size is 24, because 18 rounds up to a multiple of 8.\n2. -3 and 65533.\n3. 6.\n4. `0x3000 + 3 * 12 + 8 = 0x302c`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: arrays and structures (intro)](/practice/quiz-basic-arrays), [Fill in the blank: arrays and structures (core)](/practice/blanks-arrays) and [Predict: arrays and structures (challenge)](/practice/predict-arrays): field offsets, padding, and element addresses."
+    }
+  ]
+}
