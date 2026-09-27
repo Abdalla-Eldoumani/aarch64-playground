@@ -75,27 +75,18 @@ function xRows(registers: string[]): string[] {
   });
 }
 
-/** One row per register with bits set; each run of zeroed registers shares
- *  a row, so all 32 are accounted for without 32 lines of zeros. */
+/** Each run of equal registers shares a row: most hold zero, or the one
+ *  pattern a library call leaves, so all 32 fit in a few lines. */
 function collapsedRows(prefix: string, registers: string[], decode: (hex: string) => string): string[] {
   const rows: string[] = [];
-  let zeroFrom: number | null = null;
-  const closeRun = (last: number) => {
-    if (zeroFrom === null) return;
-    rows.push(
-      zeroFrom === last ? `${prefix}${last} = 0` : `${prefix}${zeroFrom} to ${prefix}${last} = 0`,
-    );
-    zeroFrom = null;
-  };
-  registers.forEach((hex, i) => {
-    if (/^0x0*$/i.test(hex.trim())) {
-      zeroFrom ??= i;
-      return;
-    }
-    closeRun(i - 1);
-    rows.push(`${`${prefix}${i}`.padEnd(3)} = ${hex}  ${decode(hex)}`);
-  });
-  closeRun(registers.length - 1);
+  for (let first = 0; first < registers.length; ) {
+    let last = first;
+    while (registers[last + 1] === registers[first]) last++;
+    const hex = registers[first];
+    const names = last === first ? `${prefix}${first}`.padEnd(3) : `${prefix}${first} to ${prefix}${last}`;
+    rows.push(/^0x0*$/i.test(hex.trim()) ? `${names} = 0` : `${names} = ${hex}  ${decode(hex)}`);
+    first = last + 1;
+  }
   return rows;
 }
 
