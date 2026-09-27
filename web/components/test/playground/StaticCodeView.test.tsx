@@ -58,12 +58,33 @@ describe("StaticCodeView", () => {
     expect(marked?.className).toContain("inset_2px");
   });
 
-  it("scrolls the current line into view when it changes", () => {
-    const { rerender } = render(<StaticCodeView value={"a\nb\nc"} currentLine={1} />);
-    scrollIntoView.mockClear();
-    rerender(<StaticCodeView value={"a\nb\nc"} currentLine={3} />);
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  it("scrolls only its own box to the current line, never the page", () => {
+    // scrollIntoView moved the whole page on a phone: the landing's autoplay
+    // pulled a reader who had scrolled on back up to the hero.
+    const program = "a\nb\nc\nd";
+    const { container, rerender } = render(<StaticCodeView value={program} currentLine={1} />);
+    const box = container.firstElementChild as HTMLElement;
+    let top = 0;
+    Object.defineProperty(box, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (next: number) => {
+        top = next;
+      },
+    });
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: 42 });
+    rows(container).forEach((row, i) => {
+      Object.defineProperty(row, "offsetTop", { configurable: true, value: i * 21 });
+      Object.defineProperty(row, "offsetHeight", { configurable: true, value: 21 });
+    });
+    // Line 4 spans 63 to 84; the nearest scroll that shows it in a 42px box
+    // is 42.
+    rerender(<StaticCodeView value={program} currentLine={4} />);
+    expect(box.scrollTop).toBe(42);
+    // Line 3 (42 to 63) is already in view, so the box holds still.
+    rerender(<StaticCodeView value={program} currentLine={3} />);
+    expect(box.scrollTop).toBe(42);
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("colors a mnemonic through the shared highlighter", () => {
