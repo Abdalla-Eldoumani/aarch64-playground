@@ -2,6 +2,7 @@
   "title": "Rock, paper, scissors referee",
   "slug": "rock-paper-scissors-referee",
   "order": 10,
+  "lastUpdated": "2026-09-27",
   "topic": "branching",
   "difficulty": "core",
   "prompt": "Referee one round of rock, paper, scissors. The input holds two moves, player 1's and then player 2's, each written as a number: `0` for rock, `1` for paper, `2` for scissors. Paper covers rock, scissors cut paper, and rock breaks scissors.\n\nPrint exactly one line:\n\n- `player 1 wins` or `player 2 wins`\n- `draw` when both players pick the same move\n- `invalid move` when either number is outside 0 to 2; then `main` returns 1 instead of 0, so whoever ran the program can tell it failed\n\nThe starter reads both moves into `p1_r` and `p2_r` and holds every message you need. Hint: write out player 1's move minus player 2's for all nine rounds. Only five different gaps turn up, and each one always means the same result.\n\n## what is checked\n\n- with the input `1 0` the program prints `player 1 wins` and returns 0\n- the decisions are made with `cmp`\n- the checker also referees rounds you do not see: every winner, a draw, and moves just outside the range",
