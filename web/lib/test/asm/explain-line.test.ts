@@ -23,6 +23,17 @@ describe("describeLine", () => {
     expect(describeLine("// just a comment")).toBeNull();
   });
 
+  it("prints code in a summary as plain text, without Markdown backticks", () => {
+    // The ret summary names the loader's return sentinel in code quotes,
+    // which only the Markdown hover card can render.
+    const ret = describeLine("    ret");
+    expect(ret).toContain("__main_return");
+    expect(ret).not.toContain("`");
+    const ldp = describeLine("    ldp x29, x30, [sp], 16");
+    expect(ldp).toContain("LDP Xt1, Xt2");
+    expect(ldp).not.toContain("`");
+  });
+
   it("describes directives even though they have no instruction doc", () => {
     const out = describeLine("    .word 42");
     expect(out).not.toBeNull();
