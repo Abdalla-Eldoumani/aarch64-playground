@@ -115,7 +115,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Fix the loop bound](/practice/fix-the-loop-bound): a loop that stops one step too early.\n- [Reverse the digits](/practice/reverse-the-digits): peel digits off a number until none are left.\n- [The multiplication table](/practice/the-multiplication-table): one loop inside another.\n- [Fizzbuzz, by hand](/practice/fizzbuzz-by-hand): a counting loop with an else-if chain inside it."
+      "markdown": "## Practice\n\n- [Fix the loop bound](/practice/fix-the-loop-bound): a loop that stops one step too early.\n- [Reverse the digits](/practice/reverse-the-digits): peel digits off a number until none are left.\n- [Guess the number](/practice/guess-the-number): read guesses until one hits. The body runs before the test, so a post-test loop fits.\n- [The multiplication table](/practice/the-multiplication-table): one loop inside another.\n- [Fizzbuzz, by hand](/practice/fizzbuzz-by-hand): a counting loop with an else-if chain inside it."
     }
   ]
 }
