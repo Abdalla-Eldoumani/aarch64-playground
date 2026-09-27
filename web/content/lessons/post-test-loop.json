@@ -2,6 +2,7 @@
   "title": "Post-test loops",
   "slug": "post-test-loop",
   "order": 12,
+  "lastUpdated": "2026-09-27",
   "summary": "How to build a do-while loop, where the body runs once before the first test, and when that changes what a loop prints.",
   "tags": [
     "loops",
