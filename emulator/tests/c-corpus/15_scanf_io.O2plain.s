@@ -35,7 +35,7 @@
 	.string	"eof=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -112]!
@@ -57,7 +57,7 @@ main:
 	add	x22, sp, 80
 	mov	w19, 0
 	mov	x20, 0
-	.align 5
+	.p2align 5,,15
 .L4:
 	mov	x1, x22
 	mov	x0, x21
