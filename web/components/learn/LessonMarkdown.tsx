@@ -11,7 +11,7 @@
  * `components` layer, AFTER sanitization runs over the HTML AST.
  */
 
-import { isValidElement, type JSX, type ReactNode } from "react";
+import { Children, isValidElement, type JSX, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -117,6 +117,23 @@ const UL_CLASS =
 const OL_CLASS =
   "my-4 list-decimal pl-6 text-[var(--text-primary)] [font:var(--type-body)]";
 const LI_CLASS = "my-1";
+// A list item that is nothing but a link (the "read these first" lists) is a
+// row of targets, not a sentence, so on a touch screen its link gets the
+// full 44px height. Links inside running text keep the line's height.
+const LINK_ROW_CLASS =
+  "[@media(pointer:coarse)]:[&>a]:inline-flex [@media(pointer:coarse)]:[&>a]:min-h-[44px] [@media(pointer:coarse)]:[&>a]:items-center";
+
+/** Whether an item's only content is one link. */
+function isLinkRow(children: ReactNode): boolean {
+  const parts = Children.toArray(children).filter(
+    (child) => !(typeof child === "string" && child.trim() === ""),
+  );
+  return (
+    parts.length === 1 &&
+    isValidElement<{ href?: string }>(parts[0]) &&
+    typeof parts[0].props.href === "string"
+  );
+}
 const LINK_CLASS =
   "rounded-[2px] text-[var(--cyan)] underline underline-offset-2 outline-none hover:opacity-80 focus-visible:shadow-[var(--ring)]";
 const PRE_CLASS =
@@ -166,7 +183,11 @@ const components: Components = {
     return <ol className={OL_CLASS}>{props.children}</ol>;
   },
   li(props) {
-    return <li className={LI_CLASS}>{props.children}</li>;
+    return (
+      <li className={isLinkRow(props.children) ? `${LI_CLASS} ${LINK_ROW_CLASS}` : LI_CLASS}>
+        {props.children}
+      </li>
+    );
   },
   a(props) {
     return (
