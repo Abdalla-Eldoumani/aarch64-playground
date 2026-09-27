@@ -338,9 +338,10 @@ interface EditorProps {
    *  parent bumps the nonce so the same line can be requested twice. */
   focusRequest?: { line: number; nonce: number } | null;
   /** Scroll the current line into view whenever it moves. The parent turns
-   *  this off while a run is driving: the marker then moves many times a
-   *  second and the student may be reading somewhere else. It comes back on
-   *  when the run stops, which is what reveals a breakpoint hit. */
+   *  this off while a run is driving (the marker then moves many times a
+   *  second) and before the first step (an assemble's entry marker must not
+   *  scroll away from the line being edited). Turning it back on reveals the
+   *  line, which is what shows a breakpoint hit when a run stops. */
   followCurrentLine?: boolean;
   /** Ctrl+Enter (Cmd+Enter) inside the editor. Monaco binds that chord to
    *  "insert line below" and stops the key there, so the page's own shortcut
