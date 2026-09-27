@@ -1,13 +1,13 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 pop_ref:
 	adrp	x3, .LANCHOR0
 	add	x3, x3, :lo12:.LANCHOR0
 	mov	x4, x0
 	mov	w1, 0
 	mov	w0, 0
-	.align 5
+	.p2align 5,,15
 .L2:
 	lsr	x2, x4, x1
 	and	x2, x2, 15
@@ -18,7 +18,7 @@ pop_ref:
 	bne	.L2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 clz_ref:
 	adrp	x2, .LANCHOR0
 	add	x2, x2, :lo12:.LANCHOR0
@@ -27,7 +27,7 @@ clz_ref:
 	movi	v26.4s, 0x4
 	ldp	q30, q27, [x2, 16]
 	b	.L6
-	.align 2
+	.p2align 2,,3
 .L9:
 	ushr	v30.2d, v30.2d, 4
 	add	w1, w1, 4
@@ -44,7 +44,7 @@ clz_ref:
 	mov	x2, -9223372036854775808
 	lsr	x2, x2, x1
 	b	.L8
-	.align 2
+	.p2align 2,,3
 .L13:
 	add	w1, w1, 1
 	lsr	x2, x2, 1
@@ -56,7 +56,7 @@ clz_ref:
 .L5:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L12:
 	movi	v31.4s, 0x1
 	add	v27.4s, v27.4s, v31.4s
@@ -64,7 +64,7 @@ clz_ref:
 	mov	w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 ctz_ref:
 	adrp	x2, .LANCHOR0
 	add	x2, x2, :lo12:.LANCHOR0
@@ -73,7 +73,7 @@ ctz_ref:
 	movi	v26.4s, 0x4
 	ldp	q27, q30, [x2, 32]
 	b	.L15
-	.align 2
+	.p2align 2,,3
 .L18:
 	shl	v30.2d, v30.2d, 4
 	add	w1, w1, 4
@@ -90,7 +90,7 @@ ctz_ref:
 	mov	x2, 1
 	lsl	x2, x2, x1
 	b	.L17
-	.align 2
+	.p2align 2,,3
 .L22:
 	add	w1, w1, 1
 	lsl	x2, x2, 1
@@ -102,7 +102,7 @@ ctz_ref:
 .L14:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L21:
 	movi	v31.4s, 0x1
 	add	v27.4s, v27.4s, v31.4s
@@ -110,23 +110,23 @@ ctz_ref:
 	mov	w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 clz32:
 	clz	w0, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 ctz32:
 	rbit	w0, w0
 	clz	w0, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 clz64:
 	clz	x0, x0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 ctz64:
 	rbit	x0, x0
 	clz	x0, x0
@@ -158,7 +158,7 @@ ctz64:
 	.string	"popcount total %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #160
@@ -175,7 +175,7 @@ main:
 	add	x25, x25, :lo12:.LC4
 	mov	w23, 0
 	stp	x21, x22, [sp, 48]
-	.align 5
+	.p2align 5,,15
 .L28:
 	ldr	x20, [x19, w23, sxtw 3]
 	fmov	s31, w20
@@ -246,7 +246,7 @@ main:
 	movk	x14, 0x1405, lsl 48
 	movk	w20, 0x4325, lsl 16
 	mov	w18, 61
-	.align 5
+	.p2align 5,,15
 .L30:
 	madd	x9, x9, x15, x14
 	lsr	x5, x9, x9
@@ -317,7 +317,7 @@ main:
 	ldr	x0, [x0, 112]
 	str	q31, [x20, 32]
 	str	x0, [x20, 48]
-	.align 5
+	.p2align 5,,15
 .L32:
 	ldr	x1, [x20, w26, sxtw 3]
 	mov	x3, 1
@@ -347,7 +347,7 @@ main:
 	cbz	x19, .L33
 	adrp	x20, .LC9
 	add	x20, x20, :lo12:.LC9
-	.align 5
+	.p2align 5,,15
 .L34:
 	mov	x0, x19
 	bl	ctz64
@@ -363,7 +363,7 @@ main:
 	bl	printf
 	mov	w2, 1
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L35:
 	fmov	s31, w2
 	add	w2, w2, 1
@@ -390,43 +390,43 @@ main:
 nibble_bits:
 	.byte 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4
 .LC1:
-	.quad	-9223372036854775808
-	.quad	4611686018427387904
+	.xword	-9223372036854775808
+	.xword	4611686018427387904
 .LC2:
 	.word	0
 	.word	1
 	.word	2
 	.word	3
 .LC3:
-	.quad	1
-	.quad	2
+	.xword	1
+	.xword	2
 .LC0:
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	1000
-	.quad	4096
-	.quad	4097
-	.quad	-9223372036854775808
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	1000
+	.xword	4096
+	.xword	4097
+	.xword	-9223372036854775808
 	.data
 	.align	4
 	.LANCHOR1:
 vals:
-	.quad	0
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	128
-	.quad	255
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	9223372036854775807
-	.quad	4294967295
-	.quad	-4294967296
-	.quad	81985529216486895
-	.quad	-81985529216486896
-	.quad	-9223372036854775807
-	.quad	4294967296
-	.quad	-6148914691236517206
-	.quad	2147483648
+	.xword	0
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	128
+	.xword	255
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	9223372036854775807
+	.xword	4294967295
+	.xword	-4294967296
+	.xword	81985529216486895
+	.xword	-81985529216486896
+	.xword	-9223372036854775807
+	.xword	4294967296
+	.xword	-6148914691236517206
+	.xword	2147483648
 
