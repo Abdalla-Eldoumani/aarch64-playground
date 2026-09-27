@@ -4,7 +4,7 @@ How to run each kind of test. The PR template lists the minimum gates; this is t
 
 ## Layers
 
-Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,050 Rust tests (825 of them unit tests on the lib target, the rest spread over twenty-three integration suites; there are no doc tests), 2,149 web tests across 183 files, and 22 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every PR to `main`.
+Three layers: Rust unit and integration tests in `emulator/` (the 50-program C corpus rides among them, described below), a vitest suite in `web/` for the React and library code, and an end-to-end example run (`scripts/verify-corpus.js`) that exercises the shipped programs through a node-target WASM build. Each run prints its own counts; the last measured shape was 1,050 Rust tests (825 of them unit tests on the lib target, the rest spread over twenty-three integration suites; there are no doc tests), 2,149 web tests across 183 files, and 22 example fixtures, all passing. CI (`.github/workflows/check.yml`) runs all of it on every push to `main`, and on a pull request runs the parts its changed files can affect (see [What CI runs](#what-ci-runs)).
 
 ## Rust
 
@@ -236,33 +236,45 @@ Drives Firefox through the live app to confirm CSP boots Monaco and the editor r
 `.github/workflows/check.yml` fans out so nothing waits on anything it
 does not need:
 
-- **wasm**: the web and nodejs wasm-pack builds, uploaded as an artifact
-  every other job below downloads. The bundles are cached on a hash of the
-  emulator sources and the two tool pins, so a change that leaves the
-  emulator alone restores them instead of installing a toolchain.
-- **rust**: four jobs that run alongside the web jobs: `cargo test` minus
-  the corpus gate, and the fifty-program corpus sliced three ways
-  (`CORPUS_SHARD=i/3`, read by the test itself), every program running
-  exactly once across the slices. A plain local `cargo test` still runs
-  the whole suite in one piece.
+- **changes**: on a pull request, lists the changed files and turns off the
+  jobs they cannot affect (`.github/scripts/classify-changes.js`). A docs
+  change runs nothing below; a lesson or example change skips lint and
+  typecheck; a change to `emulator/tests/` runs only the Rust jobs; a
+  change to a workflow, or to a file no rule names, runs everything.
+  Pushes to `main` and `integration` and the weekly run always run
+  everything.
+- **wasm**: looks the web and nodejs wasm-pack bundles up in a cache keyed
+  on a hash of the emulator sources and the two tool pins, and builds them
+  only on a miss. Every job that needs them restores them from that cache,
+  or downloads this job's artifact after a build, so a change that leaves
+  the emulator alone never installs a toolchain.
+- **rust**: four jobs: `cargo test` minus the corpus gate, and the
+  fifty-program corpus sliced three ways (`CORPUS_SHARD=i/3`, read by the
+  test itself), every program running exactly once across the slices. A
+  plain local `cargo test` still runs the whole suite in one piece.
 - **corpus**: `node scripts/verify-corpus.js`.
 - **web-static**: the dependency audit, `npm run lint`, `npm run typecheck`.
 - **web-build**: `npm run build` and `npm run size`.
-- **web-test**: `npm test -- --coverage` split into six shards
-  (`--shard=n/6`), every test file running exactly once across them.
-- **coverage**: merges the shards' blob reports (vitest writes them under
-  `web/.vitest/blob/`, which the shard jobs upload and this job downloads)
-  and enforces the coverage floors in `web/vitest.config.mts` on the
-  whole-suite numbers, so a suite that passes locally can still fail CI if
-  coverage drops below them.
+- **web-test**: `npm test` split into six shards (`--shard=n/6`), every
+  test file running exactly once across them.
+- **coverage**: on pushes and the weekly run only, the shards also measure
+  coverage, and this job merges their blob reports (vitest writes them under
+  `web/.vitest/blob/`) and enforces the coverage floors in
+  `web/vitest.config.mts` on the whole-suite numbers, so a change that
+  passes on its pull request can still fail on `integration` if coverage
+  drops below them.
+- **ci**: waits for every job above and fails if any of them failed or was
+  cancelled; a skipped job passes (`.github/scripts/check-needs.js`). It is
+  the one status check a pull request needs.
 
 Every web job restores `web/node_modules` through one composite action
 (`.github/actions/node-setup`) keyed on the manifest and lockfile with
 their `version` fields removed, so a release bump does not cold-install
-every job. Each job maps to a local command above. The shards set `VITEST_SHARD` so
-the floors are judged once on the merged report rather than against a
-shard's partial slice; a plain local `npm test -- --coverage` still
-enforces them directly.
+every job. Caches are saved only on pushes and the weekly run, never on a
+pull request. Each job maps to a local command above. The shards set
+`VITEST_SHARD` so the floors are judged once on the merged report rather
+than against a shard's partial slice; a plain local `npm test -- --coverage`
+still enforces them directly.
 
 ## Pre-PR checklist
 
