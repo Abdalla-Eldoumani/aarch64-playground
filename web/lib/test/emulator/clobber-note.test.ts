@@ -9,7 +9,7 @@ const SOURCE = [
   "        stp     x29, x30, [sp, -16]!", // 4
   "        bl      printf", // 5
   "        mov     x1, x9", // 6
-  "        bl      puts", // 7
+  "        BL      puts", // 7
   "        blr     x16", // 8
 ].join("\r\n");
 
