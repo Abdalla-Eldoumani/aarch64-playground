@@ -81,11 +81,26 @@ describe("ConsolePanel stdin validation", () => {
 
   it("rejects an over-cap stdin submission without reaching the emulator", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { pushStdin, input } = setup();
+    const onInputSent = vi.fn();
+    const { pushStdin, input } = setup({ onInputSent });
     fireEvent.change(input, { target: { value: "x".repeat(MAX_STDIN_BYTES + 1) } });
     fireEvent.submit(input.closest("form")!);
     expect(pushStdin).not.toHaveBeenCalled();
+    expect(onInputSent).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
+  });
+
+  it("reports a sent line and an end of input, after the bytes are queued", () => {
+    const order: string[] = [];
+    const { input } = setup({
+      pushStdin: () => order.push("push"),
+      closeStdin: () => order.push("close"),
+      onInputSent: () => order.push("sent"),
+    });
+    fireEvent.change(input, { target: { value: "3 4" } });
+    fireEvent.submit(input.closest("form")!);
+    fireEvent.keyDown(input, { key: "d", ctrlKey: true });
+    expect(order).toEqual(["push", "sent", "close", "sent"]);
   });
 });
 
@@ -267,6 +282,30 @@ describe("ConsolePanel output a terminal session produced", () => {
       terminalOwnedFrom: 0,
     });
     expect(screen.getByText(/warning: no such file/)).toBeTruthy();
+  });
+
+  it("drops the screen codes a program sent before it claimed the terminal", () => {
+    // Hide the cursor, clear, home: written in cooked mode, a moment before
+    // the raw-mode switch that pins the watermark.
+    const esc = String.fromCharCode(27);
+    const prelude = `${esc}[?25l${esc}[2J${esc}[Hloading\n`;
+    const { container } = render(
+      <ConsolePanel
+        stdout={`${prelude}${esc}[2J frame`}
+        stderr=""
+        blocked={false}
+        exitCode={null}
+        vfsFiles={[]}
+        pushStdin={vi.fn()}
+        closeStdin={vi.fn()}
+        uploadVfsFile={vi.fn()}
+        clearConsole={vi.fn()}
+        terminalOwnedFrom={prelude.length}
+      />,
+    );
+    expect(container.textContent).toContain("loading");
+    expect(container.textContent).not.toContain(esc);
+    expect(container.textContent).not.toContain("[?25l");
   });
 
   it("renders a classic run byte for byte with no watermark", () => {
