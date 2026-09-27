@@ -2,6 +2,7 @@
   "title": "External data: .data, .bss, and .text",
   "slug": "external-data",
   "order": 23,
+  "lastUpdated": "2026-09-27",
   "summary": "Choose where a variable lives (the frame, .data, .bss or .text) and reach each one by its label.",
   "tags": [
     "external data",
