@@ -370,9 +370,23 @@ describe("collectDiagnostic", () => {
   });
 
   it("keeps the end of a long output and says the start was cut", async () => {
+    const marker = "[output cut: only the end, at most 16000 characters, is included]\n";
     const { stdout } = await collect(pausedMachine({ stdout: `${"a".repeat(20_000)}END` }));
-    expect(stdout?.startsWith("[output cut: only its last 16000 characters are included]\n")).toBe(true);
+    expect(stdout?.startsWith(marker)).toBe(true);
     expect(stdout?.endsWith("END")).toBe(true);
+    // The cut lands on a line boundary, so no half line opens the output.
+    const rows = Array.from({ length: 3000 }, (_, i) => `row ${i}`).join("\n");
+    const lines = (await collect(pausedMachine({ stdout: rows }))).stdout?.split("\n") ?? [];
+    expect(lines[0]).toBe(marker.trimEnd());
+    expect(lines[1]).toMatch(/^row \d+$/);
+    expect(lines.at(-1)).toBe("row 2999");
+  });
+
+  it("prints a line a runaway loop repeats once, with a count", async () => {
+    const { stdout } = await collect(
+      pausedMachine({ stdout: `start\n${"-559038736\n".repeat(50)}ok\nok\nok\ndone\n` }),
+    );
+    expect(stdout).toBe("start\n-559038736\n[the line above repeats 49 more times]\nok\nok\nok\ndone\n");
   });
 
   it("points an assemble error at its file and line, with no machine state", async () => {
