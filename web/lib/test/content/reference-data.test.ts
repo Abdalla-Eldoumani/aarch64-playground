@@ -144,12 +144,12 @@ describe("reference-data matches the documented instruction set", () => {
     expect(invalid).toEqual([]);
   });
 
-  it("carries C text for every one of the 365 instructions", () => {
+  it("carries C text for every one of the 370 instructions", () => {
     const withC = REFERENCE_INSTRUCTIONS.filter(
       (insn) => /[;{}]/.test(insn.cExample),
     );
-    expect(REFERENCE_INSTRUCTIONS.length).toBe(365);
-    expect(withC.length).toBe(365);
+    expect(REFERENCE_INSTRUCTIONS.length).toBe(370);
+    expect(withC.length).toBe(370);
   });
 
   it("keeps vector lines out of the examples of scalar rows", () => {
