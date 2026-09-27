@@ -845,6 +845,24 @@ impl Cpu {
         }
     }
 
+    /// A libc routine read through an address no section covers. On the
+    /// servers the program dies with a segmentation fault, and when x0 holds
+    /// that address the usual cause is an `ldr x0, =fmt` left out before
+    /// `bl printf`, so the message says so. Any other bad pointer keeps the
+    /// plain memory-fault text.
+    fn libc_read_fault(&self, pc: u64, address: u64) -> EmuError {
+        match self.host_call_name(pc) {
+            Some(call) if self.regs.read_gpr(0, true) == address => EmuError::RuntimeError {
+                message: format!(
+                    "Segmentation fault\n{call} reads memory at x0, but x0 holds 0x{address:x}, \
+                     not an address: put `ldr x0, =fmt` right before `bl {call}`, where fmt is \
+                     the label on the string it needs"
+                ),
+            },
+            _ => EmuError::MemoryFault { address, access: MemAccess::Read },
+        }
+    }
+
     /// The two walls a step meets before it executes anything: the
     /// cumulative instruction budget and the stack floor. `Some` is the
     /// calm halt `step` hands back; `None` means the cycle may proceed.
@@ -1041,6 +1059,10 @@ impl Cpu {
             return match dispatched {
                 Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
                     Ok(self.memory_cap_halt())
+                }
+                Err(EmuError::MemoryFault { address, access: MemAccess::Read }) => {
+                    let e = self.libc_read_fault(pc, address);
+                    Ok(self.runtime_error_halt(e))
                 }
                 Err(e) => Ok(self.runtime_error_halt(e)),
                 other => other,
