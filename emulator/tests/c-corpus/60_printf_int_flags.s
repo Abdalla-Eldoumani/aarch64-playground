@@ -62,26 +62,26 @@
 	.string	"%+012d"
 	.align	3
 sfmt:
-	.quad	.LC0
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
-	.quad	.LC13
-	.quad	.LC14
-	.quad	.LC15
-	.quad	.LC16
-	.quad	.LC17
-	.quad	.LC18
-	.quad	.LC19
+	.xword	.LC0
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
+	.xword	.LC13
+	.xword	.LC14
+	.xword	.LC15
+	.xword	.LC16
+	.xword	.LC17
+	.xword	.LC18
+	.xword	.LC19
 	.align	3
 .LC20:
 	.string	"%u"
@@ -165,33 +165,33 @@ sfmt:
 	.string	"%#012o"
 	.align	3
 ufmt:
-	.quad	.LC20
-	.quad	.LC21
-	.quad	.LC22
-	.quad	.LC23
-	.quad	.LC24
-	.quad	.LC25
-	.quad	.LC26
-	.quad	.LC27
-	.quad	.LC28
-	.quad	.LC29
-	.quad	.LC30
-	.quad	.LC31
-	.quad	.LC32
-	.quad	.LC33
-	.quad	.LC34
-	.quad	.LC35
-	.quad	.LC36
-	.quad	.LC37
-	.quad	.LC38
-	.quad	.LC39
-	.quad	.LC40
-	.quad	.LC41
-	.quad	.LC42
-	.quad	.LC43
-	.quad	.LC44
-	.quad	.LC45
-	.quad	.LC46
+	.xword	.LC20
+	.xword	.LC21
+	.xword	.LC22
+	.xword	.LC23
+	.xword	.LC24
+	.xword	.LC25
+	.xword	.LC26
+	.xword	.LC27
+	.xword	.LC28
+	.xword	.LC29
+	.xword	.LC30
+	.xword	.LC31
+	.xword	.LC32
+	.xword	.LC33
+	.xword	.LC34
+	.xword	.LC35
+	.xword	.LC36
+	.xword	.LC37
+	.xword	.LC38
+	.xword	.LC39
+	.xword	.LC40
+	.xword	.LC41
+	.xword	.LC42
+	.xword	.LC43
+	.xword	.LC44
+	.xword	.LC45
+	.xword	.LC46
 	.align	3
 svals:
 	.word	0
