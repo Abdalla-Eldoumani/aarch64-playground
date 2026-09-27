@@ -11,6 +11,8 @@
  * the embed, so an oversize input is dropped at this boundary rather than
  * forwarded into the worker. The toc is built from the same extractToc the
  * renderer ids its headings with, so anchors and heading ids always agree.
+ * Only a code block holding a whole program (one that defines main) gets the
+ * playground link; a fragment would open to a link error.
  */
 
 import type { JSX } from "react";
@@ -30,6 +32,9 @@ function safeStdin(stdin: string | undefined): string | undefined {
   if (stdin === undefined) return undefined;
   return validateStdin(stdin) === null ? stdin : undefined;
 }
+
+/** A `main:` label at the start of a line, the mark of a complete program. */
+const DEFINES_MAIN = /^[ \t]*main:/m;
 
 const TOC_LINK_CLASS =
   "flex min-h-[44px] items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] [font:var(--type-small)] outline-none transition-colors hover:text-[var(--cyan)] focus-visible:[box-shadow:var(--ring)]";
@@ -113,9 +118,9 @@ export function LessonArticle({
                 </div>
               );
             case "code": {
-              // Only assembly runs in the playground; C and plain-text blocks
-              // render without the hand-off (the emulator can't open them).
-              const openable = block.language === "asm";
+              // Only a whole assembly program opens: C and text cannot run,
+              // and a fragment with no main of its own refuses to link.
+              const openable = block.language === "asm" && DEFINES_MAIN.test(block.source);
               return (
                 <div key={index} className="my-6 max-w-2xl">
                   <CodeBlock
