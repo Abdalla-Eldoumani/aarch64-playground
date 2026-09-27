@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 once:
 	ubfx	x1, x0, 4, 8
 	add	w0, w1, w0, uxtb
@@ -11,7 +11,7 @@ once:
 	.string	"alloca(%d): mod16=%d len=%d first=%c\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 odd:
 	stp	x29, x30, [sp, -64]!
 	mov	x29, sp
@@ -23,7 +23,7 @@ odd:
 	add	x23, x23, :lo12:.LANCHOR0
 	stp	x19, x20, [sp, 16]
 	mov	w20, 0
-	.align 5
+	.p2align 5,,15
 .L5:
 	ldr	w21, [x23, w20, sxtw 2]
 	add	w1, w20, 97
@@ -65,7 +65,7 @@ odd:
 	.string	"pile: %s | %s | total=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 pile:
 	stp	x29, x30, [sp, -368]!
 	mov	x29, sp
@@ -75,7 +75,7 @@ pile:
 	str	x21, [sp, 32]
 	add	x21, x29, 48
 	mov	x19, 24
-	.align 5
+	.p2align 5,,15
 .L10:
 	add	x1, x21, x19, lsl 3
 	add	x0, x19, 15
@@ -92,7 +92,7 @@ pile:
 	bne	.L10
 	mov	x19, 1
 	mov	w20, 0
-	.align 5
+	.p2align 5,,15
 .L11:
 	add	x0, x21, x19, lsl 3
 	ldr	x0, [x0, -8]
@@ -113,7 +113,7 @@ pile:
 	ldp	x29, x30, [sp], 368
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 big.constprop.0:
 	stp	x29, x30, [sp, -32]!
 	mov	x0, -4464
@@ -131,7 +131,7 @@ big.constprop.0:
 	mov	x0, 0
 	mov	x2, 4099
 	movk	x1, 0x1, lsl 16
-	.align 5
+	.p2align 5,,15
 .L16:
 	strb	w0, [x19, x0]
 	add	x0, x0, x2
@@ -141,7 +141,7 @@ big.constprop.0:
 	mov	x1, x19
 	add	x3, x3, 1155
 	mov	w0, 0
-	.align 5
+	.p2align 5,,15
 .L17:
 	ldrb	w2, [x1]
 	add	w0, w0, w0, lsl 2
@@ -157,7 +157,7 @@ big.constprop.0:
 	ldp	x29, x30, [sp], 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 survive.constprop.0:
 	adrp	x1, .LANCHOR1
 	add	x0, x1, :lo12:.LANCHOR1
@@ -180,7 +180,7 @@ survive.constprop.0:
 	mov	x0, sp
 	stp	q31, q30, [x2, 64]
 	mvni	v31.4s, 0
-	.align 5
+	.p2align 5,,15
 .L22:
 	str	q31, [x0], 16
 	cmp	x0, x1
@@ -190,7 +190,7 @@ survive.constprop.0:
 	mov	x1, x2
 	mov	sp, x4
 	add	x3, x2, 96
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldr	q30, [x1], 16
 	add	v31.4s, v30.4s, v31.4s
@@ -205,7 +205,7 @@ survive.constprop.0:
 	ldp	x29, x30, [sp], 16
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 chain.constprop.0:
 	stp	x29, x30, [sp, -16]!
 	adrp	x2, .LANCHOR1+96
@@ -215,7 +215,7 @@ chain.constprop.0:
 	adrp	x2, .LC10
 	ldr	q29, [x2, :lo12:.LC10]
 	b	.L31
-	.align 2
+	.p2align 2,,3
 .L28:
 	sub	w0, w0, #1
 	mov	x1, sp
@@ -234,7 +234,7 @@ chain.constprop.0:
 	fmov	x0, d31
 	mov	w3, 1
 	cbz	x1, .L30
-	.align 5
+	.p2align 5,,15
 .L29:
 	ubfiz	x4, x3, 3, 2
 	add	x0, x0, x0, lsl 1
@@ -264,7 +264,7 @@ chain.constprop.0:
 	.string	"big=%u\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -32]!
@@ -279,7 +279,7 @@ main:
 	ble	.L39
 	mov	w3, 0
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L38:
 	mov	w0, w3
 	bl	once
@@ -355,8 +355,8 @@ main:
 	.word	3
 	.word	4
 .LC10:
-	.quad	-200
-	.quad	-200
+	.xword	-200
+	.xword	-200
 	.data
 	.align	4
 	.LANCHOR0:
