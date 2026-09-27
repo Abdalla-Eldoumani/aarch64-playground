@@ -790,11 +790,11 @@ fn unknown_mnemonic(mnemonic: &str, operands: &str, ln: usize) -> EmuError {
     asm_error(ln, &format!("unknown mnemonic `{mnemonic}' -- `{echo}'\n{UNKNOWN_MNEMONIC_HINT}"))
 }
 
-/// A branch or address naming a label nothing defines. GAS leaves such a
-/// name for ld, which fails the link with the first line below. A label
-/// line that lost its `:` reads as an instruction, so the guidance names
-/// both causes.
-fn undefined_label(ln: usize, target: &str) -> EmuError {
+/// A branch, address, literal-pool constant, or data slot naming a label
+/// nothing defines. GAS leaves such a name for ld, which fails the link
+/// with the first line below. A label line that lost its `:` reads as an
+/// instruction, so the guidance names both causes.
+pub(crate) fn undefined_label(ln: usize, target: &str) -> EmuError {
     asm_error(
         ln,
         &format!(
