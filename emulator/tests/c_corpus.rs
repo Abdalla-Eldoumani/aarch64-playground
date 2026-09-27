@@ -1,5 +1,5 @@
-//! The C corpus: fifty small C programs compiled by gcc, their assembly
-//! replayed here, their stdout and exit codes required to match what a
+//! The C corpus: small C programs compiled by gcc at three optimization
+//! levels, their assembly replayed here, their stdout and exit codes required to match what a
 //! real AArch64 Linux machine produced. The references and the method
 //! live in c-corpus/README.md; regeneration is c-corpus/tools/sanitize.py.
 //!
@@ -22,21 +22,23 @@ const EXPECTED_FAULTS: &[(&str, &str)] = &[
 ];
 
 /// Programs expected to fail assembly, the first list at every tier and
-/// the second at the optimized one alone, each with the reason. An entry
+/// the others at one optimized tier alone, each with the reason. An entry
 /// that starts assembling flips its list red, so a fix is recorded
-/// instead of passing silently. Both are empty now that the register file
-/// is 128 bits wide and the vector immediates assemble: 13_float_double
-/// copies its struct through q registers at -O0 and zeroes it with
-/// `movi d31, #0` at -O2, and 14_float_single zeroes a float with
-/// `movi v0.2s, #0`.
+/// instead of passing silently. All three are empty.
 const PENDING: &[(&str, &str)] = &[];
 const PENDING_O2: &[(&str, &str)] = &[];
+const PENDING_O2PLAIN: &[(&str, &str)] = &[];
 
 /// One run's budget. The slowest passing program at -O0 (21_long_loop,
 /// three million C loop iterations) spends about 50M steps; the wall
 /// exists so a runaway regression fails with the step-ceiling message
 /// instead of spinning the suite.
 const STEP_BUDGET: u64 = 200_000_000;
+
+/// How many programs the corpus holds; the directory scan must find at
+/// least this many, so a deleted program fails instead of shrinking the
+/// gate.
+const CORPUS_SIZE: usize = 101;
 
 fn corpus_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("c-corpus")
@@ -124,14 +126,14 @@ fn check_tier(infix: &str) -> TierResult {
         })
         .collect();
     stems.sort();
-    assert!(stems.len() >= 50, "corpus shrank: {} programs", stems.len());
+    assert!(stems.len() >= CORPUS_SIZE, "corpus shrank: {} programs", stems.len());
 
     // CI slices the corpus across parallel runners: CORPUS_SHARD=i/n takes
     // every nth program starting at the ith of the sorted list, so the
     // union of the shards is exactly the corpus and no program runs twice.
     // The count guard above sits before the slice on purpose (a shrunken
     // corpus must fail every shard, not just the one missing a program),
-    // and a plain local `cargo test` still runs all fifty.
+    // and a plain local `cargo test` still runs every program.
     if let Some(spec) = std::env::var("CORPUS_SHARD").ok().filter(|s| !s.is_empty()) {
         let parsed = spec
             .split_once('/')
@@ -152,7 +154,11 @@ fn check_tier(infix: &str) -> TierResult {
     let mut passing = 0usize;
     let mut slowest = (0u64, String::new());
     for stem in &stems {
-        let tier_pending: &[(&str, &str)] = if infix == ".O2" { PENDING_O2 } else { &[] };
+        let tier_pending: &[(&str, &str)] = match infix {
+            ".O2" => PENDING_O2,
+            ".O2plain" => PENDING_O2PLAIN,
+            _ => &[],
+        };
         let pending = PENDING.iter().chain(tier_pending).find(|(s, _)| s == stem);
         let outcome = match run_program(&dir, stem, infix) {
             Ok(o) => {
@@ -236,27 +242,32 @@ fn corpus_at_o0_matches_the_reference() {
     );
 }
 
-/// The -O2 tier is an instruction-coverage map, not a correctness gate:
-/// gcc's optimizer reaches for forms the -O0 corpus never emits. The
-/// floor pins the current coverage so a regression shows up; growth is
-/// recorded by raising it.
-#[test]
-#[ignore = "optimised tier: an instruction-coverage map, not a correctness gate"]
-fn corpus_at_o2_coverage_map() {
-    let TierResult { passing, failures } = check_tier(".O2");
-    let total = 50;
-    println!("o2 coverage: {passing}/{total} pass");
-    for f in &failures {
-        println!("  {f}");
-    }
-    // Measured 2026-09-13 against the -O2 tier, after the vector
-    // immediates and the lane moves landed on top of the 128-bit register
-    // file. The last two gaps were both MOVI (`movi d31, #0` and
-    // `movi v0.2s, #0`), so the optimized tier now matches the -O0 one
-    // and PENDING_O2 is empty.
-    const O2_FLOOR: usize = 50;
+/// The optimised tiers run weekly rather than on every pull request:
+/// gcc's optimizer reaches for forms the -O0 corpus never emits, and
+/// replaying them doubles the suite's time. A failure is still a failure.
+fn assert_tier(infix: &str) {
+    let TierResult { passing, failures } = check_tier(infix);
+    println!("tier {infix}: {passing} of {CORPUS_SIZE} pass");
     assert!(
-        passing >= O2_FLOOR,
-        "o2 coverage fell below the recorded floor: {passing} < {O2_FLOOR}"
+        failures.is_empty(),
+        "{} corpus failure(s) at {infix}:\n  {}",
+        failures.len(),
+        failures.join("\n  ")
     );
+}
+
+/// -O2 with the corpus flags: printf stays printf and every function
+/// stays a call, so the assembly still reads like the C.
+#[test]
+#[ignore = "optimised tier: runs in the weekly corpus workflow"]
+fn corpus_at_o2_matches_the_reference() {
+    assert_tier(".O2");
+}
+
+/// Plain -O2, as a real build compiles: printf becomes puts or putchar,
+/// small functions inline away, and loops vectorize.
+#[test]
+#[ignore = "optimised tier: runs in the weekly corpus workflow"]
+fn corpus_at_o2plain_matches_the_reference() {
+    assert_tier(".O2plain");
 }
