@@ -393,7 +393,7 @@ parse:
 	ret
 	.align	2
 	.align 5
-repeat__constprop__0:
+repeat.constprop.0:
 	stp	x29, x30, [sp, -32]!
 	mov	w2, 1
 	mov	x29, sp
@@ -413,7 +413,7 @@ repeat__constprop__0:
 	ret
 	.align	2
 	.align 5
-apply__constprop__0:
+apply.constprop.0:
 	mov	x16, x0
 	mov	w1, 5
 	mov	w0, -17
@@ -527,7 +527,7 @@ main:
 	ldp	x24, x0, [x19, 8]
 	add	w21, w21, 1
 	add	x19, x19, 24
-	bl	apply__constprop__0
+	bl	apply.constprop.0
 	mov	w3, w0
 	mov	x1, x22
 	mov	x2, x24
@@ -584,7 +584,7 @@ main:
 	stp	q29, q30, [x21]
 	ldr	x0, [x21, x22, lsl 3]
 	add	x22, x22, 1
-	bl	repeat__constprop__0
+	bl	repeat.constprop.0
 	mov	w3, w0
 	mov	w2, w19
 	mov	w1, w26
