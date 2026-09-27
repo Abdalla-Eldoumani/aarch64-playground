@@ -4,13 +4,54 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    # A version bump waits a week after its release, so a broken release is
+    # usually pulled or fixed before it reaches a pull request. Security
+    # updates never wait. next is exempt so a Next.js security release,
+    # which patches only the newest minor, is never held back.
+    cooldown:
+      default-days: 7
+      exclude: ["next", "eslint-config-next"]
+    # Each group moves together: split across two pull requests, the
+    # packages fail npm ci on each other's peer versions.
+    groups:
+      next:
+        patterns: ["next", "eslint-config-next"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
+      size-limit:
+        patterns: ["size-limit", "@size-limit/*"]
+    # Deliberate holds: each of these moves in a planned migration, not in
+    # a weekly bump. Security updates still arrive for all of them.
+    ignore:
+      # Tracks the Node 24 runtime in .nvmrc and on Vercel.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: concurrently
+        update-types: ["version-update:semver-major"]
+      # Below 1.0 a minor release can change the API, and the editor ships
+      # vendored, so this one pin decides what every visitor runs.
+      - dependency-name: monaco-editor
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: playwright
   - package-ecosystem: cargo
     directory: /emulator
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
   # The root manifest is not listed: its `next` entry exists only for Vercel's
   # framework detection, and its `postcss` override moves with web/'s.
