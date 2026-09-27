@@ -5,13 +5,13 @@
 	.string	"walk n=%d c=%d s=%u i=%d l=%lld r=%016llx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 walk:
 	mov	x6, x1
 	cbnz	w0, .L15
 	mov	x0, x1
 	ret
-	.align 2
+	.p2align 2,,3
 .L15:
 	mov	w5, 48573
 	stp	x29, x30, [sp, -48]!
@@ -68,7 +68,7 @@ walk:
 	.string	"ten n=%d h=%d i=%d j=%u k=%lld r=%lld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 ten:
 	sub	sp, sp, #96
 	mov	x16, x3
@@ -96,7 +96,7 @@ ten:
 	add	x0, x0, x1
 	add	sp, sp, 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L17:
 	mov	w8, w0
 	mov	w0, 3
@@ -155,13 +155,13 @@ ten:
 	.string	"keep n=%d q=%.2f w=%.2f r=%016llx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 keep:
 	mov	x2, x1
 	cbnz	w0, .L34
 	mov	x0, x1
 	ret
-	.align 2
+	.p2align 2,,3
 .L34:
 	stp	x29, x30, [sp, -64]!
 	add	x4, x1, 3
@@ -220,7 +220,7 @@ keep:
 	mov	x0, x2
 	ldp	x29, x30, [sp], 64
 	ret
-	.align 2
+	.p2align 2,,3
 .L35:
 	fmov	d1, d14
 	fmov	d0, d15
@@ -246,7 +246,7 @@ keep:
 	.string	"keep=%016llx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #80
