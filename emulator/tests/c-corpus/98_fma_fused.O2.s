@@ -1,16 +1,16 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 dbits:
 	fmov	x0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fbits:
 	fmov	w0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 unfused:
 	fmul	d0, d0, d1
 	sub	sp, sp, #16
@@ -20,7 +20,7 @@ unfused:
 	fadd	d0, d0, d2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 unfusedf:
 	fmul	s0, s0, s1
 	sub	sp, sp, #16
@@ -30,14 +30,14 @@ unfusedf:
 	fadd	s0, s0, s2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 dot:
 	adrp	x1, .LANCHOR0
 	movi	d0, #0
 	add	x1, x1, :lo12:.LANCHOR0
 	mov	x0, 0
 	add	x2, x1, 64
-	.align 5
+	.p2align 5,,15
 .L9:
 	ldr	d31, [x1, x0]
 	ldr	d30, [x0, x2]
@@ -47,27 +47,27 @@ dot:
 	bne	.L9
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fms_:
 	fmsub	d0, d0, d1, d2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fnma_:
 	fnmadd	d0, d0, d1, d2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fnms_:
 	fnmsub	d0, d0, d1, d2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fma_:
 	fmadd	d0, d0, d1, d2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fma_lanes:
 	adrp	x0, .LANCHOR0
 	add	x0, x0, :lo12:.LANCHOR0
@@ -79,12 +79,12 @@ fma_lanes:
 	stp	q26, q29, [x0, 128]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fnmaf_:
 	fnmadd	s0, s0, s1, s2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fmaf_:
 	fmadd	s0, s0, s1, s2
 	ret
@@ -109,7 +109,7 @@ fmaf_:
 	.string	"lane%d %016lx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -123,7 +123,7 @@ main:
 	mov	w20, 0
 	str	x23, [sp, 48]
 	stp	d14, d15, [sp, 64]
-	.align 5
+	.p2align 5,,15
 .L19:
 	sbfiz	x0, x20, 1, 32
 	add	x0, x0, w20, sxtw
@@ -163,7 +163,7 @@ main:
 	add	x21, x19, 336
 	add	x22, x22, :lo12:.LC1
 	mov	w20, 0
-	.align 5
+	.p2align 5,,15
 .L20:
 	sbfiz	x0, x20, 1, 32
 	add	x0, x0, w20, sxtw
@@ -200,7 +200,7 @@ main:
 	movk	x0, 0x3fd3, lsl 48
 	mov	w20, 0
 	fmov	d15, x0
-	.align 5
+	.p2align 5,,15
 .L21:
 	sbfiz	x0, x20, 1, 32
 	add	x0, x0, w20, sxtw
@@ -234,7 +234,7 @@ main:
 	add	x23, x23, :lo12:.LC3
 	mov	w21, -3
 	fmov	d15, 2.5e+0
-	.align 5
+	.p2align 5,,15
 .L23:
 	scvtf	d29, w21
 	ldr	d31, [x19]
@@ -244,7 +244,7 @@ main:
 	movi	d31, #0
 	fmul	d29, d29, d15
 	fcvt	s28, d29
-	.align 5
+	.p2align 5,,15
 .L22:
 	fmov	d1, d29
 	fmov	d0, d31
@@ -278,7 +278,7 @@ main:
 	movk	x1, 0x3fd5, lsl 48
 	mov	x0, 1
 	fmov	d29, x1
-	.align 5
+	.p2align 5,,15
 .L24:
 	scvtf	d30, w0
 	ldr	d31, [x19]
