@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { bundleToMarkdown } from "@/lib/playground/bundle-markdown";
 import {
   bundleShareUrl,
@@ -34,7 +35,12 @@ export function DiagnosticBundle({ build }: DiagnosticBundleProps) {
       >
         diagnostic bundle
       </button>
-      {request && <BundleDialog request={request} onClose={() => setRequest(null)} />}
+      {/* Portalled to the body: under sm the header band is a scroll strip
+          with an edge mask, and a mask paints everything inside the band
+          through the band's box, a fixed dialog included, so the dialog was
+          cut down to the band. */}
+      {request &&
+        createPortal(<BundleDialog request={request} onClose={() => setRequest(null)} />, document.body)}
     </>
   );
 }
@@ -128,7 +134,6 @@ function BundleDialog({
         ) : (
           <textarea
             readOnly
-            wrap="off"
             value={ready?.markdown ?? ""}
             placeholder="reading the machine state..."
             aria-label="diagnostic report"
