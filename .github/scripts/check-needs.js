@@ -15,11 +15,13 @@ function failures(needs) {
 
 if (require.main === module) {
   const bad = failures(JSON.parse(process.env.NEEDS || "{}"));
+  // exitCode rather than exit(): node exits once the output has flushed.
   if (bad.length) {
     console.error(`failed:\n  ${bad.join("\n  ")}`);
-    process.exit(1);
+    process.exitCode = 1;
+  } else {
+    console.log("every needed job passed or was skipped");
   }
-  console.log("every needed job passed or was skipped");
 }
 
 module.exports = { failures };
