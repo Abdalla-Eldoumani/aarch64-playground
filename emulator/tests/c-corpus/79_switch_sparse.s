@@ -1355,19 +1355,19 @@ main:
 	.section .rodata
 	.align	3
 k32.3:
-	.quad	-2147483648
-	.quad	-65536
-	.quad	-4097
-	.quad	-4096
-	.quad	-1
-	.quad	0
-	.quad	4095
-	.quad	4096
-	.quad	65535
-	.quad	65536
-	.quad	74565
-	.quad	2147418112
-	.quad	2147483647
+	.xword	-2147483648
+	.xword	-65536
+	.xword	-4097
+	.xword	-4096
+	.xword	-1
+	.xword	0
+	.xword	4095
+	.xword	4096
+	.xword	65535
+	.xword	65536
+	.xword	74565
+	.xword	2147418112
+	.xword	2147483647
 	.align	3
 kc.2:
 	.word	0
@@ -1390,27 +1390,27 @@ kc.2:
 	.word	-1
 	.align	3
 k64.1:
-	.quad	0
-	.quad	4294967295
-	.quad	4294967296
-	.quad	1099511627776
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
-	.quad	-2401053089206453570
-	.quad	-1
-	.quad	8589934591
-	.quad	-2401053092612145152
-	.quad	3405691582
+	.xword	0
+	.xword	4294967295
+	.xword	4294967296
+	.xword	1099511627776
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
+	.xword	-2401053089206453570
+	.xword	-1
+	.xword	8589934591
+	.xword	-2401053092612145152
+	.xword	3405691582
 	.align	3
 s64.0:
-	.quad	-9223372036854775808
-	.quad	-4294967296
-	.quad	-4096
-	.quad	-1
-	.quad	2147483648
-	.quad	9223372036854775807
-	.quad	2147483647
-	.quad	-2147483648
+	.xword	-9223372036854775808
+	.xword	-4294967296
+	.xword	-4096
+	.xword	-1
+	.xword	2147483648
+	.xword	9223372036854775807
+	.xword	2147483647
+	.xword	-2147483648
 
 
 	.bss
