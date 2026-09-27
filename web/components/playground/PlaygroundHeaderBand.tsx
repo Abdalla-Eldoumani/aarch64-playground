@@ -1,11 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { ExampleLoader } from "@/components/playground/ExampleLoader";
 import { ImportExport } from "@/components/playground/ImportExport";
 import { RecentPrograms } from "@/components/playground/RecentPrograms";
 import { ArgsInput } from "@/components/playground/ArgsInput";
 import { RunModeControl } from "@/components/playground/RunModeControl";
 import { Toolbar } from "@/components/playground/Toolbar";
+import { MoreSheet } from "@/components/playground/MoreSheet";
+import { Wordmark } from "@/components/ui/Wordmark";
+import { MenuIcon } from "@/components/chrome/SiteIcons";
 import type { RecentEntry } from "@/lib/playground/auto-save";
 import type { DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
 import type { SourceFile } from "@/lib/playground/file-map";
@@ -43,6 +47,8 @@ export interface PlaygroundHeaderBandProps {
   buildDiagnostic: () => Promise<DiagnosticBundle>;
   onOpenCommandPalette: () => void;
   onOpenShortcuts: () => void;
+  /** The phone bar: home, examples, and a menu sheet with everything else. */
+  compact?: boolean;
 }
 
 /**
@@ -68,18 +74,18 @@ export function PlaygroundHeaderBand({
   buildDiagnostic,
   onOpenCommandPalette,
   onOpenShortcuts,
+  compact = false,
 }: PlaygroundHeaderBandProps) {
-  return (
-    // header-band: under sm this row stops wrapping and scrolls within
-    // itself, so the editor stays near the top of a phone screen instead
-    // of sitting under seven rows of chrome.
-    <div className="header-band safe-area-top flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
-      <span className="hidden sm:inline font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
-        aarch64-pg
-      </span>
-      <div className="min-w-0 shrink-0">
-        <ExampleLoader onLoad={onLoadProgram} />
-      </div>
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // An action that opens a dialog of its own, or replaces the program, first
+  // puts the sheet away.
+  const fromSheet = (action: () => void) => () => {
+    setSheetOpen(false);
+    action();
+  };
+
+  const program = (
+    <>
       <ImportExport
         source={source}
         files={files}
@@ -93,7 +99,10 @@ export function PlaygroundHeaderBand({
         // resets and the seeds clear, so the previous program's
         // registers, console, stdin, and VFS cannot show under the
         // recalled source. The displaced buffer lands in recents.
-        onLoad={(body) => onLoadProgram({ source: body })}
+        onLoad={(body) => {
+          setSheetOpen(false);
+          onLoadProgram({ source: body });
+        }}
         onClear={recent.clear}
       />
       <ArgsInput source={source} value={args} onChange={onArgsChange} />
@@ -106,6 +115,84 @@ export function PlaygroundHeaderBand({
           disabled={runMode.disabled}
         />
       )}
+    </>
+  );
+  const sourceLink = (
+    <a
+      href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
+      target="_blank"
+      rel="noreferrer noopener"
+      className="inline-flex items-center min-h-[36px] [@media(pointer:coarse)]:min-h-[44px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-sans text-[var(--text-secondary)] hover:text-[var(--cyan)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+      aria-label="source on github"
+    >
+      source
+    </a>
+  );
+  // No F keys on a touch screen, so no shortcut list either.
+  const shortcutsButton = (
+    <button
+      type="button"
+      onClick={compact ? fromSheet(onOpenShortcuts) : onOpenShortcuts}
+      className="shrink-0 inline-flex items-center min-h-[36px] text-xs text-[var(--text-secondary)] hover:text-[var(--cyan)] rounded px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] [@media(pointer:coarse)]:hidden"
+      aria-label="keyboard shortcuts"
+    >
+      ?
+    </button>
+  );
+
+  if (compact) {
+    return (
+      // The phone bar replaces both the site bar and the band, so it carries
+      // the top safe area and the home link itself.
+      <div className="safe-area-top flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-sunken)] pl-[max(0.75rem,var(--safe-left))] pr-[max(0.25rem,var(--safe-right))]">
+        <Wordmark className="shrink-0 min-h-[44px]" />
+        <ExampleLoader onLoad={onLoadProgram} fill />
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          aria-label="menu"
+          aria-haspopup="dialog"
+          aria-expanded={sheetOpen}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        >
+          <MenuIcon />
+        </button>
+        <MoreSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          sections={[
+            { key: "program", label: "program", content: program },
+            {
+              key: "tools",
+              content: (
+                <>
+                  <Toolbar
+                    onShare={fromSheet(onShare)}
+                    onTour={fromSheet(onTour)}
+                    onToggleTheme={onToggleTheme}
+                    buildDiagnostic={buildDiagnostic}
+                    onOpenCommandPalette={fromSheet(onOpenCommandPalette)}
+                    sourceLink={sourceLink}
+                  />
+                  {shortcutsButton}
+                </>
+              ),
+            },
+          ]}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
+      <span className="hidden sm:inline font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
+        aarch64-pg
+      </span>
+      <div className="min-w-0 shrink-0">
+        <ExampleLoader onLoad={onLoadProgram} />
+      </div>
+      {program}
       <Toolbar
         className="ml-auto"
         onShare={onShare}
@@ -113,26 +200,9 @@ export function PlaygroundHeaderBand({
         onToggleTheme={onToggleTheme}
         buildDiagnostic={buildDiagnostic}
         onOpenCommandPalette={onOpenCommandPalette}
-        sourceLink={
-          <a
-            href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex items-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-sans text-[var(--text-secondary)] hover:text-[var(--cyan)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-            aria-label="source on github"
-          >
-            source
-          </a>
-        }
+        sourceLink={sourceLink}
       />
-      <button
-        type="button"
-        onClick={onOpenShortcuts}
-        className="shrink-0 inline-flex items-center min-h-[36px] text-xs text-[var(--text-secondary)] hover:text-[var(--cyan)] rounded px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-        aria-label="keyboard shortcuts"
-      >
-        ?
-      </button>
+      {shortcutsButton}
     </div>
   );
 }
