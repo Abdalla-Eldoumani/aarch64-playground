@@ -143,6 +143,10 @@ export interface EmulatorState {
   /** Whether the range is mapped: true/false once known, null while
    *  the async verdict is in flight (render a pending placeholder). */
   getMemoryMapped: (addr: number, len: number) => boolean | null;
+  /** The bytes of `[addr, addr + len)` read from the machine itself, for a
+   *  reader that cannot wait a render for `getMemory`'s cache (the
+   *  diagnostic bundle). Empty when no machine is loaded. */
+  readMemory: (addr: number, len: number) => Promise<Uint8Array>;
   /**
    * Queue stdin. `interactive` marks a line the student typed at a prompt:
    * the machine echoes it into stdout as a read consumes it, so the console
@@ -151,6 +155,10 @@ export interface EmulatorState {
    * a redirect prints nothing, and the pane echoes for itself.
    */
   pushStdin: (s: string, interactive?: boolean) => void;
+  /** Everything pushed to stdin since the last assemble or reset (its last
+   *  100 KiB): the machine drops input once a read consumes it, and a bug
+   *  report needs what the program was given. */
+  stdinGiven: () => string;
   /**
    * Pick a run back up after the console answered the read it stopped at.
    * A no-op unless the last stop was a RUN parked on input: a step that
