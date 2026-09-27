@@ -41,7 +41,7 @@
 	.string	"fu %.9g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -272]!
@@ -189,7 +189,7 @@ main:
 	mov	w1, 0
 	movk	w4, 0xaaaa, lsl 16
 	fmov	d31, 1.0e+0
-	.align 5
+	.p2align 5,,15
 .L2:
 	umull	x0, w1, w4
 	lsr	x0, x0, 34
@@ -207,7 +207,7 @@ main:
 	ldr	d0, [sp, 208]
 	add	x0, x20, 48
 	fmov	d1, d0
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldr	d31, [x2, 8]!
 	fcmpe	d31, d0
@@ -259,7 +259,7 @@ main:
 	add	x1, sp, 112
 	strb	w0, [sp, 156]
 	b	.L6
-	.align 2
+	.p2align 2,,3
 .L19:
 	ldr	w0, [x1]
 	add	x1, x1, 12
@@ -313,7 +313,7 @@ main:
 	str	s31, [sp, 184]
 	ldr	s31, [x19, 16]
 	str	s31, [sp, 192]
-	.align 5
+	.p2align 5,,15
 .L7:
 	mov	x21, x22
 	mov	x0, x22
