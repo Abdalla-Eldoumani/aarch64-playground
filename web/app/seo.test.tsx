@@ -98,7 +98,7 @@ describe("per-page titles and snippets", () => {
     for (const { path: route, meta } of pages) {
       const title = titleOf(meta);
       expect(title.length, `${route}: ${title}`).toBeLessThanOrEqual(TITLE_MAX);
-      expect(title, route).not.toMatch(/—/);
+      expect(title, route).not.toMatch(/\u2014/);
       expect(seen.get(title), `${route} shares its title with ${seen.get(title)}`).toBeUndefined();
       seen.set(title, route);
     }
@@ -118,7 +118,7 @@ describe("per-page titles and snippets", () => {
       const description = meta.description ?? "";
       expect(description.length, `${route}: ${description}`).toBeGreaterThanOrEqual(50);
       expect(description.length, `${route}: ${description}`).toBeLessThanOrEqual(DESCRIPTION_MAX);
-      expect(description, route).not.toMatch(/—|checked by running your program against|tuned for/);
+      expect(description, route).not.toMatch(/\u2014|checked by running your program against|tuned for/);
       expect(seen.get(description), `${route} shares its snippet with ${seen.get(description)}`).toBeUndefined();
       seen.set(description, route);
     }
@@ -296,7 +296,7 @@ describe("llms.txt", () => {
   });
 
   it("stays plain text with no em dash", () => {
-    expect(text).not.toMatch(/—/);
+    expect(text).not.toMatch(/\u2014/);
     expect(text).not.toMatch(/<[a-z]/i);
   });
 });
