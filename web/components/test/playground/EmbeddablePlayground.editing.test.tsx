@@ -190,12 +190,20 @@ describe("reset", () => {
 });
 
 describe("following the pc", () => {
-  it("asks the editor to follow the line only while nothing is running", async () => {
+  it("asks the editor to follow the line once the program steps, and not while it runs", async () => {
+    // Just assembled: the entry marker must not scroll the student away from
+    // the line they were editing.
     const hub = makeHub({ programLoaded: true, currentLine: 1 });
     const { rerender } = await mountFull(hub);
+    expect(editorProps.current!.followCurrentLine).toBe(false);
+
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, currentLine: 2, stepCount: 1 }));
+    act(() => rerender());
     expect(editorProps.current!.followCurrentLine).toBe(true);
 
-    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, currentLine: 1, isRunning: true }));
+    useEmulatorMock.mockReturnValue(
+      makeHub({ programLoaded: true, currentLine: 2, stepCount: 1, isRunning: true }),
+    );
     act(() => rerender());
     expect(editorProps.current!.followCurrentLine).toBe(false);
   });
