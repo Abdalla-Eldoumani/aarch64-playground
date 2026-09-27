@@ -10,8 +10,9 @@ const DISMISSED_KEY = "aarch64-playground:install-hint-dismissed";
  * Whether this visit is Safari on an iPhone or iPad, outside an installed
  * copy, with the tip not yet dismissed. iOS offers no install prompt of its
  * own, so without the tip a student never learns the playground can live on
- * the home screen and run offline. iPadOS reports itself as a Mac, so a Mac
- * with a touch screen counts too. Other iOS browsers and in-app views are left
+ * the home screen (no offline promise: the service worker holds only what a
+ * visit fetched). iPadOS reports itself as a Mac, so a Mac with a touch
+ * screen counts too. Other iOS browsers and in-app views are left
  * out: their menus differ, and an in-app view cannot install at all.
  */
 function wantsHint(): boolean {
@@ -43,7 +44,7 @@ export function InstallHint() {
     >
       <p className="flex-1 py-1.5 font-sans text-[14px] leading-snug text-[var(--text-primary)]">
         Add the playground to your home screen: tap Share, then Add to Home Screen. It opens full
-        screen and works offline.
+        screen.
       </p>
       <button
         type="button"
