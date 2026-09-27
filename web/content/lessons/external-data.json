@@ -84,7 +84,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Sum a global array](/practice/sum-a-global-array): walk an array that lives in `.data`.\n- [Quiz: external data (intro)](/practice/quiz-basic-external-data), then [core](/practice/quiz-inter-external-data) and [challenge](/practice/quiz-advance-external-data): sections and variable kinds.\n- [Fill in the blank: external data (core)](/practice/blanks-external-data) and [Predict: external data (core)](/practice/predict-external-data): where each kind of variable lives."
+      "markdown": "## Practice\n\n- [Sum a global array](/practice/sum-a-global-array): walk an array that lives in `.bss`.\n- [Are these dice loaded?](/practice/are-these-dice-loaded): tally rolls in a `.bss` array and draw a histogram.\n- [Vending machine brain](/practice/vending-machine-brain): a subroutine that keeps its state in `.bss` words from one call to the next.\n- [Quiz: external data (intro)](/practice/quiz-basic-external-data), then [core](/practice/quiz-inter-external-data) and [challenge](/practice/quiz-advance-external-data): sections and variable kinds.\n- [Fill in the blank: external data (core)](/practice/blanks-external-data) and [Predict: external data (core)](/practice/predict-external-data): where each kind of variable lives."
     }
   ]
 }
