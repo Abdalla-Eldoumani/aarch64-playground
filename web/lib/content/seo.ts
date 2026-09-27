@@ -55,11 +55,24 @@ function plainText(markdown: string): string {
 /** Lines that are not running prose: headings, lists, tables, quotes, indented code. */
 const NOT_PROSE = /^\s*(#{1,6} |[-*+] |\d+\. |\||>)|^ {4}/;
 
+/** A sentence about the starter program rather than the task. */
+const STARTER = /^The starter\b/;
+
+/** A task that leans on the sentence before it, as in "Print its magnitude". */
+const POINTS_BACK = /^(\S+ ){0,2}(it|its|them|they)\b/i;
+
+/** A starter's register alias, such as sum_r: a name the reader has not met yet. */
+const REGISTER_ALIAS = /\b\w+_r\b/;
+
 /**
  * A snippet from authored Markdown: its prose, in whole sentences while they
- * fit. Headings, lists, tables, and code are skipped, and so is a sentence
- * that ends in a colon, since it introduces one of them. When whole
- * sentences come out short, the prose is clipped at a word instead.
+ * fit. Headings, lists, tables, and code are skipped, and so is a later
+ * sentence that ends in a colon (it introduces one of them) or describes the
+ * starter. The opening states the task, so it stays even as a lead-in; an
+ * opening about the starter stays only when the next sentence points back
+ * to it. A sentence naming a register alias is skipped while other prose
+ * remains. When whole sentences come out short, the prose is clipped at a
+ * word instead.
  */
 export function snippetFromMarkdown(markdown: string): string {
   const paragraphs: string[] = [];
@@ -75,10 +88,17 @@ export function snippetFromMarkdown(markdown: string): string {
       current.push(line);
     }
   }
-  const all = paragraphs.flatMap((paragraph) => paragraph.split(/(?<=[.!?])\s+/));
-  const kept = all.filter((sentence) => !sentence.endsWith(":"));
-  // A prompt that is all lead-ins still needs a snippet: end them as statements.
-  const sentences = kept.length > 0 ? kept : all.map((sentence) => sentence.replace(/:$/, "."));
+  const [opening = "", ...later] = paragraphs.flatMap((paragraph) => paragraph.split(/(?<=[.!?])\s+/));
+  const keepOpening = !STARTER.test(opening) || POINTS_BACK.test(later[0] ?? "");
+  const kept = [
+    ...(keepOpening ? [opening] : []),
+    ...later.filter((sentence) => !sentence.endsWith(":") && !STARTER.test(sentence)),
+  ];
+  const taught = kept.filter((sentence) => !REGISTER_ALIAS.test(sentence));
+  // An opening lead-in reads as a statement once its list is gone.
+  const sentences = (taught.length > 0 ? taught : [opening, ...later]).map((sentence) =>
+    sentence.replace(/:$/, "."),
+  );
   const prose = sentences.join(" ");
   let snippet = "";
   for (const sentence of sentences) {
@@ -86,7 +106,9 @@ export function snippetFromMarkdown(markdown: string): string {
     if (next.length > DESCRIPTION_MAX) break;
     snippet = next;
   }
-  if (snippet.length < 100 && prose.length > snippet.length) snippet = clipDescription(prose);
+  // A starter opening alone says nothing of the task, so cut into the task too.
+  const thin = snippet.length < 100 || (snippet === opening && STARTER.test(opening));
+  if (thin && prose.length > snippet.length) snippet = clipDescription(prose);
   return snippet.replace(/[\uE000-\uE003]/g, (mark) => CODE_PUNCTUATION[STAND_INS.indexOf(mark)]);
 }
 
