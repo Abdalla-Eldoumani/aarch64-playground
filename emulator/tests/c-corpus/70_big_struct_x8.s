@@ -426,10 +426,10 @@ mpow:
 	.section .rodata
 	.align	3
 .LC0:
-	.quad	1
-	.quad	0
-	.quad	0
-	.quad	1
+	.xword	1
+	.xword	0
+	.xword	0
+	.xword	1
 	.text
 	.align	2
 	.global	mkrec
@@ -622,12 +622,12 @@ digest:
 	.data
 	.align	3
 ops:
-	.quad	cross
-	.quad	add3
+	.xword	cross
+	.xword	add3
 	.global	knob
 	.align	3
 knob:
-	.quad	5
+	.xword	5
 	.section .rodata
 	.align	3
 .LC3:
@@ -1120,14 +1120,14 @@ main:
 	.section .rodata
 	.align	3
 .LC1:
-	.quad	1
-	.quad	2
-	.quad	3
+	.xword	1
+	.xword	2
+	.xword	3
 	.align	3
 .LC2:
-	.quad	1
-	.quad	1
-	.quad	1
-	.quad	0
+	.xword	1
+	.xword	1
+	.xword	1
+	.xword	0
 	.text
 
