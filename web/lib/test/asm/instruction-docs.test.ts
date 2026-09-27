@@ -6,7 +6,6 @@ import {
   docKey,
   docKeyAt,
   lookupDoc,
-  lookupDocAt,
 } from "@/lib/asm/instruction-docs";
 
 describe("docKey", () => {
@@ -38,36 +37,28 @@ describe("lookupDoc", () => {
   });
 });
 
-// The editor's hover provider (components/playground/Editor.tsx) does nothing
-// but hand Monaco's word and its column to lookupDocAt, so driving that
-// function over real source lines pins the whole hover path without Monaco.
-// The word an editor reports is what Monaco's default word scan would give:
-// letters and digits, broken at the dot.
-describe("lookupDocAt (the editor's hover path)", () => {
+// The editor's hover provider (components/playground/Editor.tsx) hands
+// Monaco's word and its column to docKeyAt and reads both tables with the key
+// it returns, so driving that function over real source lines pins the whole
+// hover path without Monaco. The word an editor reports is what Monaco's
+// default word scan would give: letters and digits, broken at the dot.
+describe("docKeyAt (the editor's hover path)", () => {
   /** The line, and the mnemonic's 1-based start column in it. */
   const hover = (line: string, word: string) =>
-    lookupDocAt(line, word, line.indexOf(word) + 1);
+    docKeyAt(line, word, line.indexOf(word) + 1);
 
   it("resolves a vector mnemonic exactly as it resolves stp", () => {
-    expect(hover("        stp     x29, x30, [sp, -16]!", "stp")).toBe(
-      INSTRUCTION_DOCS.STP,
-    );
-    expect(hover("        movi    v1.4s, 0x7f", "movi")).toBe(
-      INSTRUCTION_DOCS.MOVI,
-    );
-    expect(hover("        addv    s2, v1.4s", "addv")).toBe(
-      INSTRUCTION_DOCS.ADDV,
-    );
-    expect(hover("        ld4r    {v4.8b, v5.8b, v6.8b, v7.8b}, [x7]", "ld4r"))
-      .toBe(INSTRUCTION_DOCS.LD4R);
+    expect(hover("        stp     x29, x30, [sp, -16]!", "stp")).toBe("STP");
+    expect(hover("        movi    v1.4s, 0x7f", "movi")).toBe("MOVI");
+    expect(hover("        addv    s2, v1.4s", "addv")).toBe("ADDV");
+    expect(
+      hover("        ld4r    {v4.8b, v5.8b, v6.8b, v7.8b}, [x7]", "ld4r"),
+    ).toBe("LD4R");
   });
 
   it("re-attaches the letter before the dot for a conditional branch", () => {
     // Monaco's word scan breaks `b.eq` at the dot and reports `eq`.
-    const line = "        b.eq    done";
-    expect(lookupDocAt(line, "eq", line.indexOf("eq") + 1)).toBe(
-      INSTRUCTION_DOCS["B.COND"],
-    );
+    expect(hover("        b.eq    done", "eq")).toBe("B.COND");
   });
 
   it("answers nothing for an operand or an unknown word", () => {
