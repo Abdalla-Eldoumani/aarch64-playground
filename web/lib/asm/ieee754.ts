@@ -131,8 +131,8 @@ export function exactValue(bits: bigint, width: FloatWidth): string {
 }
 
 /**
- * The shortest decimal that reads back to exactly these bits, the way C's
- * printf("%g") and JS print floats. A 64-bit pattern is a JS number, so its
+ * The shortest decimal that reads back to exactly these bits, the way JS,
+ * Python, and Java print floats. A 64-bit pattern is a JS number, so its
  * own toString is already shortest; a 32-bit one tries 1 to 9 significant
  * digits and keeps the first that parses back to the same pattern.
  */
