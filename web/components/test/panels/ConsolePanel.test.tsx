@@ -145,6 +145,15 @@ describe("ConsolePanel controls and state", () => {
     );
   });
 
+  it("shows each note under the output, in place of the idle hint", () => {
+    setup({ notes: ["Line 6 reads x9, but the printf call on line 5 overwrote it."] });
+    const note = screen.getByRole("note");
+    expect(note.textContent).toBe(
+      "note: Line 6 reads x9, but the printf call on line 5 overwrote it.",
+    );
+    expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
+  });
+
   it("shows a zero exit code (the != null edge, not falsiness)", () => {
     setup({ exitCode: 0 });
     expect(screen.getByText("exit 0")).toBeTruthy();
