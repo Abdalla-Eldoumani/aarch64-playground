@@ -17,7 +17,7 @@
 	.string	"%ld %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -16]!
@@ -45,7 +45,7 @@ main:
 	bl	printf
 	mov	w0, 40
 	mov	x1, 1
-	.align 5
+	.p2align 5,,15
 .L2:
 	add	x1, x1, x1, lsl 1
 	subs	w0, w0, #1
