@@ -39,6 +39,9 @@ export const SECURITY_HEADERS = {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Stops `next dev` from writing agent instruction files into the tree,
+  // which otherwise dirties every checkout it runs in.
+  agentRules: false,
   headers() {
     return [
       {
