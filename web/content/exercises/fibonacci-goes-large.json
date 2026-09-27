@@ -4,9 +4,10 @@
   "order": 16,
   "topic": "loops",
   "difficulty": "core",
-  "prompt": "Compute the fiftieth Fibonacci number. It is 12,586,269,025, which does not fit in 32 bits, so the loop has to run in `x` registers.\n\nKeep the classic sliding pair: `a` and `b` start as 0 and 1, and fifty times over, the new value is `a + b`, then the pair slides forward. When the loop ends, `a` holds the answer.\n\n## what is checked\n\n- `fib(50)` printed on its own line\n- the program exits cleanly\n- the loop builds it (answer not written in)",
-  "starter": "// the fiftieth fibonacci number will not fit in 32 bits\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(next_r, x21)\ndefine(i_r, x22)\n\n        .data\nfmt:    .string \"fib(50) = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, 0                      // fib(0)\n        mov     b_r, 1                      // fib(1)\n        mov     i_r, 0\n\n        // TODO: fifty times over, advance the pair: the new value is\n        // a + b, then a takes b's place and b takes the new value.\n        // When the loop ends, a_r holds fib(50).\n\n        ldr     x0, =fmt\n        mov     x1, a_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Compute the `n`th Fibonacci number for the `n` the starter reads. With the 50 in the stdin box the answer is 12,586,269,025, which does not fit in 32 bits, so the loop has to run in `x` registers.\n\nKeep the classic sliding pair: `a` and `b` start as 0 and 1, and `n` times over, the new value is `a + b`, then the pair slides forward. When the loop ends, `a` holds the answer.\n\n## what is checked\n\n- `fib(50)` printed on its own line\n- the program exits cleanly\n- the loop builds it (answer not written in)\n- the same holds for other values of `n` you do not see, from `fib(0)` up to `fib(92)`, the largest that fits in a signed 64-bit register",
+  "starter": "// fibonacci numbers grow past 32 bits fast\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(next_r, x21)\ndefine(i_r, x22)\ndefine(n_r, x23)\n\n        .data\nfmt_in:     .string \"%lld\"\nfmt_out:    .string \"fib(%lld) = %lld\\n\"\n\n        .bss\n        .balign 8\nn_m:        .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read n\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]\n\n        mov     a_r, 0                      // fib(0)\n        mov     b_r, 1                      // fib(1)\n        mov     i_r, 0\n\n        // TODO: n times over, advance the pair: the new value is\n        // a + b, then a takes b's place and b takes the new value.\n        // When the loop ends, a_r holds fib(n).\n\n        ldr     x0, =fmt_out\n        mov     x1, n_r\n        mov     x2, a_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "50\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -29,5 +30,29 @@
         "value": 12586269025
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "fib(0) = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "fib(1) = 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "2\n",
+      "stdout": "fib(2) = 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "92\n",
+      "stdout": "fib(92) = 7540113804746346429\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
 }
