@@ -22,6 +22,9 @@ const ROWS: Array<[string, string]> = [
   ["d0 – d7", "float args · results"],
   ["d8 – d15", "callee-saved"],
   ["d16 – d31", "caller-saved float temps"],
+  ["v0 – v7", "vector args · results"],
+  ["v8 – v15", "callee-saved: low 64 bits only"],
+  ["v16 – v31", "caller-saved vector temps"],
 ];
 
 describe("AapcsRail", () => {
@@ -55,6 +58,19 @@ describe("AapcsRail", () => {
     const note = screen.getByText("fp · lr (the frame record)");
     expect(note.className).toContain("leading-tight");
     expect(note.className).not.toContain("whitespace-nowrap");
+  });
+
+  it("names each v row's q form and tints it like its d row", () => {
+    render(<AapcsRail />);
+    for (const alias of ["q0 – q7", "q8 – q15", "q16 – q31"]) {
+      expect(screen.getByText(alias)).toBeTruthy();
+    }
+    expect(screen.getByText("v0 – v7").className).toContain("var(--cyan)");
+    expect(screen.getByText("v8 – v15").className).toContain("var(--amber)");
+    expect(screen.getByText("v16 – v31").className).toContain(
+      "var(--text-primary)",
+    );
+    expect(screen.getByText(/named/).textContent).toContain("when read as one value");
   });
 
   it("tints the argument rows cyan and the callee-saved rows amber", () => {
