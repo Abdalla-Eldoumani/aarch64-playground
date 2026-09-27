@@ -20,7 +20,7 @@
 	.string	"lane%d %016lx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -112]!
@@ -34,7 +34,7 @@ main:
 	mov	w20, 0
 	str	x23, [sp, 48]
 	stp	d14, d15, [sp, 64]
-	.align 5
+	.p2align 5,,15
 .L2:
 	sbfiz	x0, x20, 1, 32
 	add	x0, x0, w20, sxtw
@@ -65,7 +65,7 @@ main:
 	add	x21, x19, 336
 	add	x22, x22, :lo12:.LC1
 	mov	w20, 0
-	.align 5
+	.p2align 5,,15
 .L3:
 	sbfiz	x0, x20, 1, 32
 	add	x0, x0, w20, sxtw
@@ -98,7 +98,7 @@ main:
 	movk	x0, 0x3fd3, lsl 48
 	mov	w20, 0
 	fmov	d15, x0
-	.align 5
+	.p2align 5,,15
 .L4:
 	sbfiz	x0, x20, 1, 32
 	add	x0, x0, w20, sxtw
@@ -126,7 +126,7 @@ main:
 	add	x23, x23, :lo12:.LC3
 	mov	w21, -3
 	fmov	d15, 2.5e+0
-	.align 5
+	.p2align 5,,15
 .L6:
 	scvtf	d29, w21
 	ldr	d31, [x19]
@@ -136,7 +136,7 @@ main:
 	fmul	d29, d29, d31
 	fmul	d29, d29, d15
 	fcvt	s28, d29
-	.align 5
+	.p2align 5,,15
 .L5:
 	ldr	d31, [x0], 8
 	fmadd	d0, d29, d0, d31
@@ -159,7 +159,7 @@ main:
 	movk	x1, 0x3fd5, lsl 48
 	mov	x0, 1
 	fmov	d29, x1
-	.align 5
+	.p2align 5,,15
 .L7:
 	scvtf	d30, w0
 	ldr	d31, [x19]
@@ -178,7 +178,7 @@ main:
 	movi	d0, #0
 	add	x1, x20, 64
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L8:
 	ldr	d30, [x20, x0]
 	ldr	d31, [x0, x1]
