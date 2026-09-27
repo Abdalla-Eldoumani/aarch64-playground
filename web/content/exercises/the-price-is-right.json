@@ -2,6 +2,7 @@
   "title": "The price is right",
   "slug": "the-price-is-right",
   "order": 42,
+  "lastUpdated": "2026-09-27",
   "topic": "memory",
   "difficulty": "intro",
   "prompt": "The starter reads a price in cents and a quantity straight into two words in `.data`, `price` and `quantity`. Multiply them and store the product in the third word, `total`. The last lines of the starter load all three words back out of memory and print them, so the bill only shows up if it really is in `total`.\n\nA value in `.data` takes two loads to reach: `ldr x9, =price` puts the address of `price` in `x9`, then `ldr w10, [x9]` fetches the 32-bit value stored at that address. `str` goes the other way: `str w12, [x9]` writes `w12` to the address in `x9`.\n\n## what is checked\n\n- with input `1299 3` the line reads `3 x 1299 cents = 3897 cents`\n- the program exits cleanly\n- `mul` works out the bill and `str` writes it to memory\n- the program also runs on prices and quantities you do not see, including a quantity of 0 and a negative quantity (items handed back)",
