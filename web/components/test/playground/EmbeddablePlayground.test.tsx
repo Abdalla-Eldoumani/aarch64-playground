@@ -461,8 +461,52 @@ describe("EmbeddablePlayground", () => {
     const box = screen.getByLabelText("args") as HTMLInputElement;
     expect(box.value).toBe("12 7");
     fireEvent.change(box, { target: { value: "5 -3 8" } });
-    fireEvent.click(screen.getByLabelText("check"));
+    fireEvent.click(screen.getByLabelText("run"));
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
+  });
+
+  it("checker Check grades the authored args whatever the args box holds", async () => {
+    // The expected output was written for the authored args, so a check on
+    // the box's own args failed a correct program the moment the box changed.
+    const hub: Hub = makeHub({
+      instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
+      isHalted: true,
+    });
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    const onCheck = vi.fn();
+    const { container } = render(
+      <EmbeddablePlayground
+        chrome="checker"
+        startSource="mov x0, 1"
+        startArgs="12 7"
+        showArgs
+        onCheck={onCheck}
+      />,
+    );
+    engage(container);
+    const box = screen.getByLabelText("args") as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "5 6" } });
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.assemble).toHaveBeenLastCalledWith("mov x0, 1", ["5", "6"]));
+
+    const check = screen.getByLabelText("check");
+    fireEvent.click(check);
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenLastCalledWith("mov x0, 1", ["12", "7"]);
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    // The box stays the student's, for the next Run.
+    expect(box.value).toBe("5 6");
+
+    // A second check on the same source reuses the authored-args run.
+    fireEvent.click(check);
+    await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(2));
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+
+    // And Run goes back to what the box holds.
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalledTimes(3));
+    expect(hub.assemble).toHaveBeenLastCalledWith("mov x0, 1", ["5", "6"]);
   });
 
   it("embed consoles point at the step and run buttons, not at keys only the playground binds", () => {
