@@ -59,6 +59,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // A soft keyboard shrinks the layout, not just the visible part, so the
+  // playground's bottom bars sit above it instead of behind it on Android.
+  interactiveWidget: "resizes-content",
   // One entry per OS preference, matching the --bg-base of the theme the
   // pre-paint script picks: an OS-light visitor gets a light browser chrome
   // around a light first paint instead of a dark band above it.
