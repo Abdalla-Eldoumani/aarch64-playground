@@ -32,9 +32,14 @@ export interface EmbedLayoutProps {
   onCheck: () => void;
 }
 
+// On a phone the run buttons share the frame's width and wrap to a second
+// row rather than scroll: the old single scrolling strip put check, the one
+// button an exercise needs, past the right edge of every phone.
+const SHARE = "flex-1 min-w-[3.5rem] sm:flex-none";
+
 // One secondary-control string for step, back, and reset.
 const SECONDARY =
-  "min-h-[44px] px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]";
+  `${SHARE} min-h-[44px] px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`;
 
 /**
  * The reduced embed / checker chrome: editor, registers, console, and a
@@ -75,11 +80,11 @@ export function EmbedLayout({
         </div>
       </div>
       <div className="flex flex-col gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center">
-        <div className="controls-band flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {args && (
             // The next run or check assembles with whatever this holds, so a
             // student can try the command lines the hidden inputs use.
-            <label className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-[var(--text-secondary)]">
+            <label className="inline-flex shrink-0 basis-full items-center gap-1.5 font-mono text-[12px] text-[var(--text-secondary)] sm:basis-auto sm:text-[11px]">
               args
               <input
                 type="text"
@@ -101,7 +106,7 @@ export function EmbedLayout({
               onClick={onRun}
               disabled={isRunning}
               aria-label="run"
-              className="min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+              className={`${SHARE} min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`}
             >
               run
             </button>
@@ -145,7 +150,7 @@ export function EmbedLayout({
               type="button"
               onClick={onCheck}
               aria-label="check"
-              className="min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+              className="basis-full min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] sm:basis-auto"
             >
               check
             </button>
@@ -153,8 +158,7 @@ export function EmbedLayout({
         </div>
         {/* A fault must be visible here too: full chrome surfaces the
             machine's error through Controls, and without this line an
-            embedded run that faults just stops silently. It sits outside the
-            scrolling strip so a phone swipe cannot carry it out of reach. */}
+            embedded run that faults just stops silently. */}
         {error && (
           <p
             role="alert"
