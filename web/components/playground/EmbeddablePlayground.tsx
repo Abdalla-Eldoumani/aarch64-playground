@@ -823,7 +823,7 @@ function EmbeddableCore({
               lintWarnings={lintWarnings}
               onCursorChange={setCursor}
               focusRequest={errorFocus}
-              followCurrentLine={!emu.isRunning}
+              followCurrentLine={!emu.isRunning && emu.stepCount > 0}
               readOnly={readOnly}
             />
           )
