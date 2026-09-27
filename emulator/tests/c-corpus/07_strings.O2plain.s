@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	rev
 rev:
 	stp	x29, x30, [sp, -32]!
@@ -16,7 +16,7 @@ rev:
 	sxtw	x1, w1
 	sub	x3, x3, x1
 	sub	x3, x3, #1
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldrb	w4, [x3, x1]
 	ldrb	w0, [x19, x2]
@@ -31,7 +31,7 @@ rev:
 	ldp	x29, x30, [sp], 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pal
 pal:
 	stp	x29, x30, [sp, -32]!
@@ -46,7 +46,7 @@ pal:
 	cmp	w0, 1
 	bgt	.L10
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L17:
 	add	x1, x1, 1
 	cmp	w4, w1
@@ -61,7 +61,7 @@ pal:
 	mov	w0, 0
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L11:
 	ldr	x19, [sp, 16]
 	mov	w0, 1
@@ -97,7 +97,7 @@ pal:
 	.string	"[%10s][%-10s][%c%c]\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	adrp	x0, .LC1
@@ -124,7 +124,7 @@ main:
 	add	x0, x2, x0
 	sub	x0, x0, x1
 	sub	x0, x0, #1
-	.align 5
+	.p2align 5,,15
 .L20:
 	ldrb	w4, [x0, x1]
 	ldrb	w3, [x2]
@@ -156,7 +156,7 @@ main:
 	ldr	x0, [x0, 5]
 	str	x0, [sp, 69]
 	mov	w0, 72
-	.align 5
+	.p2align 5,,15
 .L22:
 	sub	w1, w0, #97
 	and	w1, w1, 255
@@ -177,7 +177,7 @@ main:
 	mov	w1, 0
 	mov	w0, 116
 	movk	x4, 0x10, lsl 16
-	.align 5
+	.p2align 5,,15
 .L24:
 	sub	w0, w0, #97
 	and	w0, w0, 255
