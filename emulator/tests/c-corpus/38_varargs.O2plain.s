@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sum
 sum:
 	sub	sp, sp, #96
@@ -42,7 +42,7 @@ sum:
 .L1:
 	add	sp, sp, 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L5:
 	ldr	x3, [x2, w3, sxtw]
 	add	w1, w1, 1
@@ -51,13 +51,13 @@ sum:
 	beq	.L1
 	mov	w3, w4
 	b	.L7
-	.align 2
+	.p2align 2,,3
 .L8:
 	mov	x0, 0
 	add	sp, sp, 96
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	maxi
 maxi:
 	sub	sp, sp, #96
@@ -102,7 +102,7 @@ maxi:
 .L13:
 	add	sp, sp, 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L23:
 	ldr	w3, [x2, w3, sxtw]
 	add	w1, w1, 1
@@ -112,7 +112,7 @@ maxi:
 	beq	.L13
 	mov	w3, w4
 	b	.L17
-	.align 2
+	.p2align 2,,3
 .L19:
 	mov	w0, 48576
 	add	sp, sp, 96
@@ -124,7 +124,7 @@ maxi:
 	.string	"%ld %ld %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #64
