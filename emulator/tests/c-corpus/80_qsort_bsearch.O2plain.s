@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp_int:
 	ldr	w2, [x0]
 	ldr	w0, [x1]
@@ -10,7 +10,7 @@ cmp_int:
 	sub	w0, w1, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp_ulong:
 	ldr	x2, [x0]
 	ldr	x0, [x1]
@@ -19,21 +19,21 @@ cmp_ulong:
 	sbc	w0, w0, wzr
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp_rev:
 	mov	x2, x0
 	mov	x0, x1
 	mov	x1, x2
 	b	cmp_str
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp_uchar:
 	ldrb	w2, [x0]
 	ldrb	w0, [x1]
 	sub	w0, w2, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp_rec_id:
 	ldr	w2, [x0, 12]
 	ldr	w0, [x1, 12]
@@ -50,7 +50,7 @@ cmp_rec_id:
 	.string	" %d"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 show_ints:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -66,7 +66,7 @@ show_ints:
 	str	x21, [sp, 32]
 	adrp	x21, .LC21
 	add	x21, x21, :lo12:.LC21
-	.align 5
+	.p2align 5,,15
 .L9:
 	ldr	w1, [x19], 4
 	mov	x0, x21
@@ -80,18 +80,18 @@ show_ints:
 	ldp	x29, x30, [sp], 48
 	b	putchar
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp_str:
 	ldr	x0, [x0]
 	ldr	x1, [x1]
 	b	strcmp
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp3:
 	mov	x2, 3
 	b	memcmp
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp_rec:
 	ldrsh	w2, [x0, 10]
 	ldrsh	w5, [x1, 10]
@@ -99,7 +99,7 @@ cmp_rec:
 	beq	.L18
 	sub	w0, w2, w5
 	ret
-	.align 2
+	.p2align 2,,3
 .L18:
 	stp	x29, x30, [sp, -32]!
 	mov	x29, sp
@@ -177,7 +177,7 @@ cmp_rec:
 	.string	"\nsizeof rec %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #704
@@ -248,12 +248,12 @@ main:
 	bl	printf
 	add	x0, x20, :lo12:.LC21
 	str	x0, [sp, 104]
-	.align 5
+	.p2align 5,,15
 .L31:
 	ldr	w7, [x24]
 	sxtw	x1, w25
 	mov	x5, x23
-	.align 5
+	.p2align 5,,15
 .L30:
 	lsr	x3, x1, 1
 	add	x6, x5, x3, lsl 2
@@ -312,7 +312,7 @@ main:
 	adrp	x0, .LC28
 	add	x0, x0, :lo12:.LC28
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L32:
 	ldr	x1, [x21], 8
 	mov	x0, x22
@@ -340,7 +340,7 @@ main:
 	adrp	x0, .LC31
 	add	x0, x0, :lo12:.LC31
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L33:
 	ldr	x1, [x21], 8
 	mov	x0, x26
@@ -360,7 +360,7 @@ main:
 	ldr	x22, [x27]
 	mov	x24, x25
 	mov	x28, 10
-	.align 5
+	.p2align 5,,15
 .L37:
 	lsr	x20, x28, 1
 	mov	x0, x22
@@ -425,7 +425,7 @@ main:
 	adrp	x0, .LC40
 	add	x0, x0, :lo12:.LC40
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L39:
 	mov	x1, x20
 	mov	x0, x26
@@ -456,7 +456,7 @@ main:
 	adrp	x0, .LC41
 	add	x0, x0, :lo12:.LC41
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L40:
 	ldrsh	w2, [x20, 10]
 	mov	x1, x20
@@ -484,12 +484,12 @@ main:
 	add	x19, x19, :lo12:.LC46
 	str	d31, [sp, 160]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L41:
 	ldr	w1, [x21]
 	mov	x5, x23
 	mov	x3, 8
-	.align 5
+	.p2align 5,,15
 .L44:
 	lsr	x4, x3, 1
 	add	x2, x5, x4, lsl 4
@@ -526,32 +526,32 @@ main:
 	ldp	x27, x28, [sp, 80]
 	add	sp, sp, 704
 	ret
-	.align 2
+	.p2align 2,,3
 .L49:
 	mov	x1, x3
 	cbnz	x1, .L30
 	b	.L63
-	.align 2
+	.p2align 2,,3
 .L51:
 	mov	x3, x4
 	cbnz	x3, .L44
 	b	.L64
-	.align 2
+	.p2align 2,,3
 .L50:
 	mov	x28, x20
 	cbnz	x28, .L37
 	b	.L65
-	.align 2
+	.p2align 2,,3
 .L28:
 	sub	x1, x6, x23
 	ubfx	x1, x1, 2, 32
 	b	.L48
-	.align 2
+	.p2align 2,,3
 .L35:
 	sub	x1, x21, x25
 	ubfx	x1, x1, 3, 32
 	b	.L47
-	.align 2
+	.p2align 2,,3
 .L25:
 	add	x1, x1, 4
 	cmp	x1, x23
@@ -633,31 +633,31 @@ main:
 	.word	12345
 	.zero	4
 .LC2:
-	.quad	-9223372036854775808
-	.quad	1
-	.quad	-1
-	.quad	4294967296
-	.quad	0
-	.quad	4294967295
-	.quad	9223372036854775807
-	.quad	3735928559
+	.xword	-9223372036854775808
+	.xword	1
+	.xword	-1
+	.xword	4294967296
+	.xword	0
+	.xword	4294967295
+	.xword	9223372036854775807
+	.xword	3735928559
 .LC30:
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
 .LC33:
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC14
-	.quad	.LC15
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC14
+	.xword	.LC15
 	.zero	8
 .LC38:
 	.byte	122
