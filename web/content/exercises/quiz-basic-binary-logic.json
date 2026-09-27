@@ -10,10 +10,10 @@
     {
       "question": "How is a positive integer negated in two's complement representation?",
       "options": [
-        "By flipping the sign bit from 0 to 1.",
-        "By taking the one's complement (toggling all 0s to 1s and vice versa) and adding 1.",
-        "By shifting all bits to the left by one position.",
-        "By taking the one's complement and subtracting 1."
+        "By flipping only the sign bit from 0 to 1 and leaving the other bits alone.",
+        "By toggling every bit (the one's complement) and adding 1.",
+        "By shifting all bits one place to the left.",
+        "By toggling every bit (the one's complement) and subtracting 1."
       ],
       "correctAnswer": 1,
       "explanation": "Take the one's complement (toggle every bit), then add 1. AArch64 spells this neg xd, xm, which assembles as sub xd, xzr, xm.",
@@ -34,12 +34,12 @@
     {
       "question": "What arithmetic does a logical shift left (lsl) by n bits perform on the value in a register?",
       "options": [
-        "Division by 2^n.",
         "Multiplication by 2^n.",
+        "Division by 2^n.",
         "Addition of n to the value.",
         "Sign extension of a negative value."
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 0,
       "explanation": "lsl moves every bit n places toward the high end and shifts in zeros, so each place doubles the value's weight and the result is the value times 2^n. Bits pushed past the top of the register are discarded, so the answer wraps if the product does not fit.",
       "hint": "Each place a bit moves toward the high end doubles what that bit is worth."
     },
@@ -60,10 +60,10 @@
       "options": [
         "The remaining bits hold the magnitude of the value.",
         "The value is positive.",
-        "The value is negative.",
-        "The last operation overflowed the register."
+        "The last operation overflowed the register.",
+        "The value is negative."
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 3,
       "explanation": "In two's complement the left-most bit carries a negative weight, so any value with that bit set is negative. The other bits keep their usual positive weights rather than holding a magnitude. In a 64-bit register the top bit is worth -2^63, which is why the signed range runs from -2^63 to 2^63 - 1.",
       "hint": "That bit has a name: the sign bit."
     }
