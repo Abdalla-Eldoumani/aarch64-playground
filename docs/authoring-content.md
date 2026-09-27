@@ -165,10 +165,11 @@ Fields every variant carries:
   while the heading on the page stays bare.
 - `slug`: url-safe kebab-case, matching the file name.
 - `order`: the index sorts by this; a number or string. The sheet runs
-  every coding exercise first (1 to 27 today) and then every theory set
-  (28 onward), so give a new set the next number after the last one on its
-  side. Nothing checks that two files share a number, so look before you
-  pick.
+  every coding exercise first and then every theory set, each side grouped
+  by topic in course order, and the number is the exercise's position on
+  that sheet. A new coding exercise goes where its topic and lesson put it,
+  and every exercise after it moves down one. Nothing checks that two files
+  share a number, so look before you pick.
 - `topic`: optional string; the practice page groups exercises under it.
   The sixteen topics, their order on the page, and their printed labels
   live in `web/lib/content/practice-topics.ts`; a topic missing from that
@@ -188,9 +189,27 @@ The coding variants (`write`, and `identify-bug`, where the starter is a
 broken program the reader fixes) add:
 
 - `starter`: the source loaded into the editor; may be empty.
-- `args`: optional command-line arguments for the run.
-- `stdin`: optional input piped to the run.
+- `args`: optional command-line arguments for the run. When it is not empty
+  the editor shows an args box holding it, so the reader can try others.
+- `stdin`: optional input for the run. Check feeds it and then ends the
+  input, the way `./program < file` does on the servers, so a read past it
+  sees end of file.
 - `acceptance`: the criteria below.
+- `hiddenCases`: more runs the reader never sees, checked once the visible
+  one passes. Each is
+  `{ "args": "...", "stdin": "...", "stdout": "...", "exitCode": 0, "edge": true }`:
+  the program starts with `args` (optional), reads `stdin` (optional) and
+  then end of input, and must print exactly `stdout` and exit with
+  `exitCode` (0 to 255). `edge` marks a boundary input such as 0, a
+  negative number, an empty line, no input at all, or the largest value.
+  Every shipped coding exercise carries at least three cases, one of them
+  an edge; a content test checks that, and runs its reference solution
+  (kept beside the tests in `web/lib/test/content/exercise-solutions/`,
+  never in the exercise file) against every case. A hidden run also fails
+  when `main` returns with `sp` somewhere other than where it started, or
+  when the program writes above `main`'s frame, into its caller's stack.
+  A failing case shows the reader its input and their own output, never
+  the expected text.
 
 `acceptance.results` is a non-empty list of checks against the run:
 
@@ -205,9 +224,21 @@ broken program the reader fixes) add:
 useful for requiring an approach or ruling out a shortcut:
 
 - `{ "kind": "uses-instruction", "mnemonic": "sub" }`: the source must use an
-  instruction.
+  instruction. The mnemonic may carry its operand, as in `"bl fact"`.
+- `{ "kind": "forbids-instruction", "mnemonics": ["mul", "madd"] }`: none of
+  these may appear. Each entry is matched as a whole word, so it can also
+  name a register such as `x19`.
 - `{ "kind": "forbids-literal", "value": 12 }`: the source must not contain a
-  literal (a number or a string), which stops someone hardcoding the answer.
+  literal, which stops someone hardcoding the answer. A number is matched as
+  a whole token and never shown to the reader. A string is matched anywhere
+  and is shown (`does not contain %lo`), so use strings for shortcuts the
+  prompt already rules out, not for the answer; the hidden cases already
+  catch a hardcoded answer.
+
+Any structural check can add `"in": "label"` to look only inside one
+function: from that label to the next label that starts a function (`main`,
+any `bl` target, any `.global` name). That is how `call-yourself` requires
+`bl fact` inside `fact` itself, where a `bl` in `main` does not count.
 
 The checker runs the program and compares its output against these checks. It
 never compares against a stored solution, so any correct approach passes and
@@ -321,6 +352,12 @@ Saved as `web/content/exercises/subtract-two-numbers.json`:
   }
 }
 ```
+
+That is the smallest file the schema accepts. Before it ships it also needs
+`hiddenCases`, which means reading `a` and `b` from `stdin` with `scanf`
+rather than fixing them with `mov` (otherwise every case prints the same
+line), and a reference solution, `subtract-two-numbers.s`, in
+`web/lib/test/content/exercise-solutions/`.
 
 ## writing the assembly
 
