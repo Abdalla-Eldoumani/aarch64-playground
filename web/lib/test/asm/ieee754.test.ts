@@ -300,17 +300,65 @@ describe("agreement with the platform's own correctly rounded conversions", () =
     }
   });
 
-  test("32-bit: the shortest text reads back as the same single, in JS too", () => {
-    for (const bits of patterns(32, 400)) {
-      if (classify(bits, 32).includes("NaN")) continue;
+  // The fewest significant digits that read back as this single, by brute
+  // force over the platform's conversions: at each length, the nearest
+  // decimal and one step either side, plus the all-nines one a place lower
+  // for when the nearest rounded up to 1.000...
+  function fewestDigits(x: number): number {
+    const target = Math.abs(x);
+    for (let length = 1; length < 9; length++) {
+      const [mantissa, exponent] = target.toExponential(length - 1).split("e");
+      const n = Number(mantissa.replace(".", ""));
+      const scale = Number(exponent) - (length - 1);
+      const tries = [n - 1, n, n + 1].map((m) => `${m}e${scale}`);
+      if (n === 10 ** (length - 1)) tries.push(`${10 ** length - 1}e${scale - 1}`);
+      if (tries.some((t) => Math.fround(Number(t)) === target)) return length;
+    }
+    return 9;
+  }
+
+  const significantDigits = (text: string) =>
+    text.replace(/^-/, "").split("e")[0].replace(".", "").replace(/^0+/, "").replace(/0+$/, "").length;
+
+  test("32-bit: the text is as short as any that reads back as the same single", () => {
+    // Every normal power of two, where the gap below is half the gap above.
+    const powersOfTwo = Array.from({ length: 254 }, (_, i) => BigInt(i + 1) << 23n);
+    for (const bits of [...patterns(32, 400), ...powersOfTwo]) {
+      const kind = classify(bits, 32);
+      if (kind.includes("NaN")) continue;
       const text = formatFloatValue(bits, 32);
       const outcome = parseFloatField("value", text, 0n, 32);
       expect("bits" in outcome && outcome.bits).toBe(bits);
-      if (Number.isFinite(floatValue(bits, 32))) {
-        expect(Math.fround(Number(text))).toBe(floatValue(bits, 32));
+      if (kind === "normal" || kind === "subnormal") {
+        const x = floatValue(bits, 32);
+        expect(Math.fround(Number(text))).toBe(x);
+        expect({ text, digits: significantDigits(text) }).toEqual({ text, digits: fewestDigits(x) });
       }
     }
   });
+});
+
+describe("the shortest 32-bit text picks the right decimal", () => {
+  // Worked out with numpy's shortest float32 repr. At a power of two the
+  // nearest 8-digit decimal falls outside the single's rounding range while
+  // the one just above it reads back.
+  const CASES: Array<{ bits: bigint; text: string }> = [
+    { bits: 0x6b000000n, text: "1.5474251e+26" },
+    { bits: 0x0f800000n, text: "1.2621775e-29" },
+    { bits: 0x6c800000n, text: "1.2379401e+27" },
+    { bits: 0xeb000000n, text: "-1.5474251e+26" },
+    { bits: 0x8f800000n, text: "-1.2621775e-29" },
+    { bits: 0xec800000n, text: "-1.2379401e+27" },
+    // Exactly halfway between two 8-digit decimals that both read back:
+    // 2^-12 is 0.000244140625 and 0x48c31d44 is 399594.125. The even one wins.
+    { bits: 0x39800000n, text: "0.00024414062" },
+    { bits: 0x48c31d44n, text: "399594.12" },
+  ];
+  for (const c of CASES) {
+    test(`0x${c.bits.toString(16).padStart(8, "0")} prints ${c.text}`, () => {
+      expect(formatFloatValue(c.bits, 32)).toBe(c.text);
+    });
+  }
 });
 
 test("only 32 and 64 have an IEEE-754 reading here", () => {
