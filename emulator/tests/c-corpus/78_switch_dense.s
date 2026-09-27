@@ -1985,25 +1985,25 @@ main:
 	.word	2147483647
 	.align	3
 .LC1:
-	.quad	0
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	4
-	.quad	5
-	.quad	6
-	.quad	7
-	.quad	8
-	.quad	9
-	.quad	10
-	.quad	11
-	.quad	12
-	.quad	-1
-	.quad	4294967299
-	.quad	9223372032559808517
-	.quad	-9223372036854775808
-	.quad	9223372036854775807
-	.quad	4294967295
+	.xword	0
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	4
+	.xword	5
+	.xword	6
+	.xword	7
+	.xword	8
+	.xword	9
+	.xword	10
+	.xword	11
+	.xword	12
+	.xword	-1
+	.xword	4294967299
+	.xword	9223372032559808517
+	.xword	-9223372036854775808
+	.xword	9223372036854775807
+	.xword	4294967295
 	.text
 
 
