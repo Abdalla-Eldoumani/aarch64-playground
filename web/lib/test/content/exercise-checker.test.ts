@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { checkExercise, type CheckerSnapshot } from "@/lib/content/exercise-checker";
-import type { Acceptance } from "@/lib/content/exercise-schema";
+import {
+  checkExercise,
+  checkHiddenCase,
+  type CheckerSnapshot,
+  type HiddenRunOutcome,
+} from "@/lib/content/exercise-checker";
+import type { Acceptance, HiddenCase } from "@/lib/content/exercise-schema";
 
 // Plain mock snapshots: no wasm, no React. Every register defaults to zero and
 // each case overrides only what it exercises.
@@ -65,7 +70,9 @@ describe("checkExercise result assertions", () => {
     const fail = checkExercise(acc, snap({ exitCode: 1 }), "");
     expect(fail.results[0].pass).toBe(false);
     expect(fail.results[0].actual).toBe("1");
-    expect(checkExercise(acc, snap({ exitCode: null }), "").results[0].actual).toBe("none");
+    expect(checkExercise(acc, snap({ exitCode: null }), "").results[0].actual).toBe(
+      "none (the program did not finish)",
+    );
   });
 
   it("checks stdout for an exact match", () => {
@@ -258,5 +265,127 @@ describe("checkExercise defensive result evaluation", () => {
     const result = checkExercise(acc, snap(), "");
     expect(result.results[0].pass).toBe(false);
     expect(result.results[0].actual).toBe("unavailable");
+  });
+});
+
+describe("checkExercise scoped and forbidden instructions", () => {
+  const program = [
+    "fact:",
+    "        stp     x29, x30, [sp, -16]!",
+    "        cmp     x0, 1",
+    "        b.le    fact_base",
+    "fact_base:",
+    "        ret",
+    "        .global main",
+    "main:",
+    "        bl      fact",
+    "        madd    x0, x1, x2, xzr",
+  ].join("\n");
+
+  it("counts an instruction only inside the function an `in` names", () => {
+    const acc: Acceptance = {
+      results: [],
+      structural: [
+        { kind: "uses-instruction", mnemonic: "bl fact", in: "fact" },
+        { kind: "uses-instruction", mnemonic: "bl fact", in: "main" },
+        { kind: "uses-instruction", mnemonic: "stp", in: "fact" },
+      ],
+    };
+    const passes = checkExercise(acc, snap(), program).structural.map((check) => check.pass);
+    expect(passes).toEqual([false, true, true]);
+  });
+
+  it("keeps a loop label inside its function, since nothing calls it", () => {
+    const acc: Acceptance = {
+      results: [],
+      structural: [{ kind: "uses-instruction", mnemonic: "ret", in: "fact" }],
+    };
+    expect(checkExercise(acc, snap(), program).structural[0].pass).toBe(true);
+  });
+
+  it("matches a mnemonic with its operand across column padding", () => {
+    const acc: Acceptance = {
+      results: [],
+      structural: [{ kind: "uses-instruction", mnemonic: "bl fact" }],
+    };
+    expect(checkExercise(acc, snap(), "        bl\t\tfact\n").structural[0].pass).toBe(true);
+  });
+
+  it("fails a check scoped to a function the program never defines", () => {
+    const acc: Acceptance = {
+      results: [],
+      structural: [{ kind: "uses-instruction", mnemonic: "ret", in: "double_it" }],
+    };
+    const check = checkExercise(acc, snap(), program).structural[0];
+    expect(check.pass).toBe(false);
+    expect(check.scopeMissing).toBe(true);
+  });
+
+  it("names the first forbidden instruction a program uses", () => {
+    const acc: Acceptance = {
+      results: [],
+      structural: [{ kind: "forbids-instruction", mnemonics: ["mul", "madd"] }],
+    };
+    const check = checkExercise(acc, snap(), program).structural[0];
+    expect(check.pass).toBe(false);
+    expect(check.found).toBe("madd");
+    const clean = checkExercise(acc, snap(), "        lsl x0, x0, 3\n").structural[0];
+    expect(clean.pass).toBe(true);
+    expect(clean.found).toBeUndefined();
+  });
+
+  it("scopes a forbidden register to one function", () => {
+    const helper = [
+      "double_it:",
+      "        add     x9, x0, x0",
+      "        ret",
+      "        .global main",
+      "main:",
+      "        mov     x19, 100",
+    ].join("\n");
+    const acc: Acceptance = {
+      results: [],
+      structural: [{ kind: "forbids-instruction", mnemonics: ["x19", "w19"], in: "double_it" }],
+    };
+    expect(checkExercise(acc, snap(), helper).structural[0].pass).toBe(true);
+    const trampling = helper.replace("add     x9, x0, x0", "add     x19, x0, x0");
+    expect(checkExercise(acc, snap(), trampling).structural[0].pass).toBe(false);
+  });
+});
+
+describe("checkHiddenCase", () => {
+  const testCase: HiddenCase = { stdin: "5\n", stdout: "25\n", exitCode: 0 };
+  function run(over: Partial<HiddenRunOutcome> = {}): HiddenRunOutcome {
+    return {
+      assembleError: null,
+      error: null,
+      finished: true,
+      stdout: "25\n",
+      exitCode: 0,
+      stackBalanced: true,
+      frameIntact: true,
+      ...over,
+    };
+  }
+
+  it("passes a run that matches on output, status, and both stack rules", () => {
+    expect(checkHiddenCase(testCase, run())).toEqual({ pass: true, miss: null, detail: "" });
+  });
+
+  it("does not judge sp when the program ended without returning from main", () => {
+    expect(checkHiddenCase(testCase, run({ stackBalanced: null })).pass).toBe(true);
+  });
+
+  it("reports the first cause, and only the student's own side of it", () => {
+    expect(checkHiddenCase(testCase, run({ assembleError: "bad line" })).miss).toBe("assemble");
+    expect(checkHiddenCase(testCase, run({ error: "bus error", stdout: "" })).miss).toBe("fault");
+    expect(checkHiddenCase(testCase, run({ finished: false, exitCode: null })).miss).toBe("unfinished");
+    const wrong = checkHiddenCase(testCase, run({ stdout: "24\n", exitCode: 3 }));
+    expect(wrong.miss).toBe("stdout");
+    expect(wrong.detail).toBe(JSON.stringify("24\n"));
+    expect(wrong.detail).not.toContain("25");
+    expect(checkHiddenCase(testCase, run({ exitCode: 3 })).detail).toBe("3");
+    expect(checkHiddenCase(testCase, run({ stackBalanced: false })).miss).toBe("stack");
+    expect(checkHiddenCase(testCase, run({ frameIntact: false })).miss).toBe("frame");
   });
 });
