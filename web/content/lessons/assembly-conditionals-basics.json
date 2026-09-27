@@ -1,8 +1,8 @@
 {
   "title": "Conditionals with cmp and b.cond",
   "slug": "assembly-conditionals-basics",
-  "order": 6,
-  "summary": "How cmp sets the condition flags and how b.cond reads them to build if-else.",
+  "order": 10,
+  "summary": "How cmp sets the condition flags and how b.cond reads them to build an if, an if-else, and an else-if chain.",
   "tags": [
     "conditionals",
     "branching"
@@ -11,11 +11,11 @@
     {
       "type": "callout",
       "variant": "prereq",
-      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n\n- [Printing a variable from .data](/learn/printing-defined-variables)"
+      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n- [Printing integers and characters](/learn/printing-other-data-types)\n- [Printing a variable from .data](/learn/printing-defined-variables)"
     },
     {
       "type": "prose",
-      "markdown": "Every program has to make decisions. In high-level languages a decision is written with `if` and `else`. ARMv8 AArch64 Assembly has no such construct."
+      "markdown": "Every program has to make decisions. In high-level languages a decision is written with `if` and `else`. ARMv8 AArch64 assembly has no such construct."
     },
     {
       "type": "prose",
@@ -32,46 +32,125 @@
     },
     {
       "type": "prose",
-      "markdown": "At the Assembly level, the processor does not understand high-level abstractions such as `if` and `else`. Instead, conditional behaviour is created by directly controlling the flow of execution through comparisons, condition codes, and branch instructions."
+      "markdown": "At the assembly level, the processor does not understand high-level abstractions such as `if` and `else`. Instead, a decision is made by steering the flow of execution directly, through comparisons, condition codes, and branch instructions."
     },
     {
       "type": "prose",
-      "markdown": "## The big picture"
-    },
-    {
-      "type": "prose",
-      "markdown": "Conditional constructs in Assembly can be achieved by comparing values and changing the program's execution flow based on the resulting condition flags. The process can be summarised as follows:\n\n1. Compare two values using the `cmp` instruction.\n2. Use a branch instruction (`b.cond`) to jump to a specific label when the condition is satisfied."
+      "markdown": "## The big picture\n\nConditional constructs in assembly are built by comparing values and changing the program's flow of execution based on the resulting condition flags. The process has two steps:\n\n1. Compare two values using the `cmp` instruction.\n2. Use a branch instruction (`b.cond`) to jump to a specific label when the condition is satisfied."
     },
     {
       "type": "callout",
       "variant": "note",
-      "markdown": "`b.cond` is not an actual Assembly instruction. The `cond` part represents a placeholder for a condition code. Replacing `cond` with a specific condition code creates the actual branch instruction, such as `b.eq`, `b.ne`, or `b.gt`. See the [`b.cond` entry in the Reference](/reference#b-cond) for an interactive breakdown of every condition code."
+      "markdown": "`b.cond` is not an actual assembly instruction. The `cond` part represents a placeholder for a condition code. Replacing `cond` with a specific condition code creates the actual branch instruction, such as `b.eq`, `b.ne`, or `b.gt`. See the [`b.cond` entry in the Reference](/reference#b-cond) for an interactive breakdown of every condition code."
     },
     {
       "type": "prose",
-      "markdown": "## More about cmp and b.cond\n\nThe `cmp` instruction is the compare instruction. It compares the contents of two registers, or the contents of a register with an immediate value, \n\n`cmp` performs the comparison and takes no action on the result.\n\nInstead it updates the condition flags, which record whether the result was zero, negative, carried, or overflowed.\n\nInstructions that use a condition code, such as `b.cond`, examine these condition flags. If the specified condition code (`cond`) is met, `b.cond` branches to the specified label. Otherwise, execution continues with the instruction immediately following `b.cond`."
+      "markdown": "## More about cmp and b.cond\n\nThe `cmp` instruction is the compare instruction. It compares the contents of two registers, or the contents of a register with an immediate value (a constant written into the instruction itself, such as the `5` in `cmp w19, 5`).\n\n`cmp` performs the comparison and takes no action on the result. Instead it updates the condition flags, four one-bit records the processor keeps about the last result that set them:\n\n- **N** (negative) is 1 when the result was negative.\n- **Z** (zero) is 1 when the result was zero, which after a compare means the two values were equal.\n- **C** (carry) is 1 when the subtraction did not need to borrow, which means the first value was at least as large as the second when both are read as unsigned (never negative) numbers.\n- **V** (overflow) is 1 when the true signed result was too large or too small to fit in the register.\n\n`cmp a, b` gets these flags by working out `a - b` and throwing the difference away. Instructions that use a condition code, such as `b.cond`, examine the flags. If the specified condition code (`cond`) is met, `b.cond` branches to the specified label. Otherwise, execution continues with the instruction immediately following `b.cond`."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`cmp` is not the only instruction that sets the flags. An `s` on the end of some arithmetic instructions makes them set the flags as well: `subs` subtracts and sets them, and `adds` adds and sets them. In fact `cmp w19, w20` is another way to write `subs wzr, w19, w20`, a subtraction whose result goes to the zero register and is lost. Plain `add` and `sub` leave the flags alone."
     },
     {
       "type": "prose",
-      "markdown": "## Implementing a conditional\n\nThe above C code can be translated into Assembly as follows:"
+      "markdown": "## Condition codes for signed values\n\nSix condition codes cover the comparisons C writes with `==`, `!=`, `>`, `>=`, `<` and `<=`. Each one reads the flags left by `cmp a, b`:\n\n| Code | Branches when | Flags it reads |\n|---|---|---|\n| `eq` | `a == b` | Z is 1 |\n| `ne` | `a != b` | Z is 0 |\n| `gt` | `a > b` | Z is 0, and N equals V |\n| `ge` | `a >= b` | N equals V |\n| `lt` | `a < b` | N and V differ |\n| `le` | `a <= b` | Z is 1, or N and V differ |\n\nThese six treat the values as signed, so -1 counts as less than 1. Four more codes, `hi`, `hs`, `lo` and `ls`, compare unsigned values instead; [Binary arithmetic: flags, carries, and wide numbers](/learn/binary-arithmetic-and-flags) covers when to reach for those."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Implementing a conditional\n\nThe C code above can be translated into assembly as follows. `a_r` and `b_r` are names for the registers `w19` and `w20`, given with `define` at the top of the full program further down."
     },
     {
       "type": "code",
       "language": "asm",
-      "source": "    // Pseudo-ops and directives\n    ..\nmain:\n    // Program prologue\n    ..\n    mov     x19, 6              // int a = 6;\n    mov     x20, 7              // int b = 7;\n\n    cmp     x19, x20            // Compare a and b: if (a > b)\n    b.gt    greaterThan         // Jump to greaterThan if the condition code is met\n\n    // else block\n    // If the condition code is not met, execution continues with the instruction\n    // immediately following the conditional branch.\n\n    ldr     x0, =fmt2           // Load the address of the \"XY\" string\n    bl      printf\n    b       end\n\n    // without this branch, execution falls into the if block below\n\ngreaterThan:\n    ldr     x0, =fmt1           // Load the address of the \"XX\" string\n    bl      printf\n\nend:\n\n    // Code block after the if-else construct\n    ..\n    // Program epilogue"
+      "source": "        mov     a_r, 6                          // int a = 6;\n        mov     b_r, 7                          // int b = 7;\n\n        cmp     a_r, b_r                        // if (a > b)\n        b.gt    greater_than                    // true: jump to the if part\n\n        // else part: b.gt did not jump, so execution carries on here\n        ldr     x0, =fmt_xy\n        bl      printf\n        // without this branch, execution falls into the if part below\n        b       end\n\ngreater_than:\n        ldr     x0, =fmt_xx\n        bl      printf\n\nend:"
     },
     {
       "type": "prose",
-      "markdown": "The assembly order does not have to match the order of the original `if-else` statement. In this example, the `else` block is placed first because `b.gt` only jumps when the condition is `true`. If the condition is `false`, execution naturally continues to the next instruction, which is the `else` block. After completing the `else` block, an unconditional branch (`b end`) to the label `end` is used to skip over the `if` block and prevent both blocks from executing.\n\nThe `b.gt` instruction checks whether the first value being compared is greater than the second value. In this case, it checks the condition flags updated by `cmp x19, x20` to determine whether the value in `x19` is greater than the value in `x20`."
+      "markdown": "The assembly order does not have to match the order of the original `if-else` statement. In this example, the `else` block is placed first because `b.gt` only jumps when the condition is true. If the condition is false, execution simply continues to the next instruction, which is the `else` block. After completing the `else` block, an unconditional branch (`b end`) to the label `end` skips over the `if` block, so only one of the two blocks runs.\n\nThe `b.gt` instruction checks whether the first value being compared is greater than the second value. In this case, it reads the condition flags updated by `cmp a_r, b_r` to decide whether the value in `a_r` is greater than the value in `b_r`."
     },
     {
       "type": "prose",
-      "markdown": "## The whole program\n\nThe code below demonstrates the complete process of implementing conditionals in Assembly, including the pseudo-ops, function prologue, and function epilogue."
+      "markdown": "## The whole program\n\nThe code below is the complete program, including the data section, the prologue, and the epilogue. Run it and it prints `XY`, because 6 is not greater than 7. Change the 6 to 8, run it again, and it prints `XX`."
     },
     {
       "type": "editor",
+      "starter": "// Print XX when a is greater than b, and XY otherwise\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(a_r, w19)\ndefine(b_r, w20)\n\n.data\nfmt_xx:         .string \"XX\\n\"\nfmt_xy:         .string \"XY\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, 6                          // int a = 6;\n        mov     b_r, 7                          // int b = 7;\n\n        cmp     a_r, b_r                        // if (a > b)\n        b.gt    greater_than                    // true: jump to the if part\n\n        // else part: b.gt did not jump, so execution carries on here\n        ldr     x0, =fmt_xy\n        bl      printf\n        // without this branch, execution falls into the if part below\n        b       end\n\ngreater_than:\n        ldr     x0, =fmt_xx\n        bl      printf\n\nend:\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "XY\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`a` and `b` sit in `w19` and `w20` because `printf`, like any library function, is free to overwrite `x0` to `x18`, while `x19` to `x28` must come back from a call unchanged. The rule runs both ways: a function that changes any of `x19` to `x28` must save it first and put it back before it returns. The `main` programs in these lessons skip that step to stay short. A subroutine you write yourself may not, as [Subroutines: saved registers, pointers, and big arguments](/learn/calling-conventions) shows."
+    },
+    {
+      "type": "prose",
+      "markdown": "## An if with no else\n\nWhen there is no `else`, the shape is shorter, and it reads best in the same order as the C: the test, then the body, then the code after it. The trick is to branch on the opposite condition, called the complement, so that the branch skips the body whenever the C test is false.\n\nThis C caps a score at 100 before printing it:"
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "if (score > 100) {\n    score = 100;\n}\nprintf(\"%d\\n\", score);"
+    },
+    {
+      "type": "prose",
+      "markdown": "In assembly the test flips from `>` to `<=`. When the score is 100 or less there is nothing to do, so `b.le` jumps straight past the body:"
+    },
+    {
+      "type": "code",
       "language": "asm",
-      "starter": "    .data\n    fmt1:   .string \"XX\\n\"\n    fmt2:   .string \"XY\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    mov     x19, 6              // int a = 6;\n    mov     x20, 7              // int b = 7;\n\n    cmp     x19, x20            // Compare a and b: if (a > b)\n    b.gt    greaterThan         // Jump to greaterThan if the condition code is met\n\n    // else block\n    // If the condition code is not met, execution continues with the instruction\n    // immediately following the conditional branch.\n\n    ldr     x0, =fmt2           // Load the address of the \"XY\" string\n    bl      printf\n    b       end\n\n    // without this branch, execution falls into the if block below\n\ngreaterThan:\n    ldr     x0, =fmt1           // Load the address of the \"XX\" string\n    bl      printf\n\nend:\n\n    // Code block after the if-else construct\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"
+      "source": "        cmp     score_r, 100                    // if (score > 100)\n        b.le    cap_done                        // the complement skips the body\n        mov     score_r, 100                    //     score = 100\ncap_done:\n        ldr     x0, =fmt_score                  // the code after the if\n        mov     w1, score_r\n        bl      printf"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Complemented conditions\n\nEvery condition code has a complement that holds exactly when the first one does not. Branching into a body uses the condition itself; branching past a body uses its complement:\n\n| C test | Jump into the body when true | Jump past the body when false |\n|---|---|---|\n| `a == b` | `b.eq` | `b.ne` |\n| `a != b` | `b.ne` | `b.eq` |\n| `a > b` | `b.gt` | `b.le` |\n| `a >= b` | `b.ge` | `b.lt` |\n| `a < b` | `b.lt` | `b.ge` |\n| `a <= b` | `b.le` | `b.gt` |\n\nThe if-else program above uses the middle column: it jumps into the `if` block when `a > b`. The capped score uses the right column. Both work. The right column keeps the blocks in the same order as the C, which makes a long chain easier to check against the original."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "The complement of `>` is `<=`, not `<`. Skipping the body with `b.lt` would still run it when the two values are equal, and equal is exactly the case where `a > b` is false and `a < b` is false too."
+    },
+    {
+      "type": "prose",
+      "markdown": "## An else-if chain\n\nAn else-if chain tests several conditions in turn and runs the body of the first one that holds. This C sorts a parcel into a postage band by its weight in grams:"
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "if (weight <= 100) {\n    printf(\"%d g: letter\\n\", weight);\n} else if (weight <= 500) {\n    printf(\"%d g: small packet\\n\", weight);\n} else if (weight <= 2000) {\n    printf(\"%d g: parcel\\n\", weight);\n} else {\n    printf(\"%d g: freight\\n\", weight);\n}"
+    },
+    {
+      "type": "prose",
+      "markdown": "The assembly keeps the C order and uses the right column of the table. Each test branches on the complement: `b.gt` skips a band's body and moves on to the next test. Each body ends with `b band_done`, the same unconditional branch the if-else used, so exactly one band prints. The last `else` needs no test at all: execution only reaches `try_freight` when every test before it has failed.\n\nThe weight comes from one line near the top, `define(WEIGHT, 750)`, so the program prints `750 g: parcel`. Change the number and run it again to try each band. Try both sides of an edge too: 100 prints `100 g: letter`, and 101 prints `101 g: small packet`."
+    },
+    {
+      "type": "editor",
+      "starter": "// An else-if chain that turns a parcel's weight into a postage band\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(weight_r, w19)\n\ndefine(WEIGHT, 750)                             // grams: change it and run again\n\n.data\nfmt_letter:     .string \"%d g: letter\\n\"\nfmt_small:      .string \"%d g: small packet\\n\"\nfmt_parcel:     .string \"%d g: parcel\\n\"\nfmt_freight:    .string \"%d g: freight\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     weight_r, WEIGHT\n\n        cmp     weight_r, 100                   // if (weight <= 100)\n        b.gt    try_small                       // too heavy: test the next band\n        ldr     x0, =fmt_letter\n        mov     w1, weight_r\n        bl      printf\n        b       band_done                       // one band only: skip the rest\n\ntry_small:\n        cmp     weight_r, 500                   // else if (weight <= 500)\n        b.gt    try_parcel\n        ldr     x0, =fmt_small\n        mov     w1, weight_r\n        bl      printf\n        b       band_done\n\ntry_parcel:\n        cmp     weight_r, 2000                  // else if (weight <= 2000)\n        b.gt    try_freight\n        ldr     x0, =fmt_parcel\n        mov     w1, weight_r\n        bl      printf\n        b       band_done\n\ntry_freight:                                    // else: every test failed\n        ldr     x0, =fmt_freight\n        mov     w1, weight_r\n        bl      printf\n\nband_done:\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "750 g: parcel\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Every body except the last needs its `b band_done`. Delete the first one, set the weight to 40, and run: the program prints `40 g: letter` and then `40 g: small packet`, because after the letter body, execution runs on into the next test, and 40 is also at most 500."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. After `cmp w19, w20`, which branch jumps when `w19` and `w20` hold different values?\n2. You want to skip the body of `if (count >= 10)`. Which conditional branch goes just before the body?\n3. In the postage program, what does a weight of 2000 print, and what does 2001 print?\n4. In the if-else program, what is printed if the `b end` line is deleted?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `b.ne`.\n2. `b.lt`, the complement of `>=`.\n3. `2000 g: parcel` and `2001 g: freight`: 2000 passes the test `weight <= 2000`, and 2001 fails every test.\n4. `XY` and then `XX`: the `else` block runs, and execution falls on into the `if` block."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [The absolute truth](/practice/the-absolute-truth): an if with no else that flips the sign of a negative number.\n- [Pick the bigger one](/practice/pick-the-bigger-one): one comparison decides which of two values to print."
     }
   ]
 }
