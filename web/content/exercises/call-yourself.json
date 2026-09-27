@@ -2,6 +2,7 @@
   "title": "Call yourself",
   "slug": "call-yourself",
   "order": 48,
+  "lastUpdated": "2026-09-27",
   "topic": "functions",
   "difficulty": "challenge",
   "prompt": "Write `fact`, a subroutine that computes a factorial by calling itself. `main` reads `n`, calls `fact`, and prints `n! = ` and the answer.\n\nEach call to `fact` needs its own frame (`lr` must survive the recursive `bl`), and `n` has to outlive the recursive call, which means a callee-saved register that you save on entry and restore on exit. `main` itself keeps `n` in `x19` across the call, so a `fact` that forgets to restore it prints the wrong `n`. Base case first: when `n` is 1 or less, the answer is 1. Otherwise it is `n * fact(n - 1)`.\n\n## what is checked\n\n- `10! = 3628800` printed on its own line for the `10` in the stdin box\n- the program exits cleanly\n- a real call chain does it: `fact` builds a frame (`stp`) and calls itself (`bl fact` inside `fact`), with no precomputed answer\n- the same holds for other values of `n` you do not see, from 0 up to 20",
