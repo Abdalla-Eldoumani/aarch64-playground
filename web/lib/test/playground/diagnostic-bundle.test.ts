@@ -52,6 +52,17 @@ describe("diagnostic-bundle round-trip", () => {
     expect(decodeBundle(evil)).toEqual({ kind: "corrupt" });
   });
 
+  it("keeps the console notes and rejects a non-string note", () => {
+    const notes = ["Line 6 reads x9, but the printf call on line 5 overwrote it."];
+    const decoded = decodeBundle(encodeBundle({ ...sample, notes }));
+    if (decoded.kind !== "ok") throw new Error("expected ok");
+    expect(decoded.bundle.notes).toEqual(notes);
+    const evil = LZString.compressToEncodedURIComponent(
+      JSON.stringify({ v: 1, b: { source: "ret", notes: ["fine", 7] } }),
+    );
+    expect(decodeBundle(evil)).toEqual({ kind: "corrupt" });
+  });
+
   it("decodeBundle rejects non-string entries in registers", () => {
     const evil = LZString.compressToEncodedURIComponent(
       JSON.stringify({ v: 1, b: { source: "ret", registers: ["0x1", 42] } }),
