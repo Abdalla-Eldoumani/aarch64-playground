@@ -18,6 +18,13 @@ describe("VRegisterRow", () => {
     expect(screen.getByText("v0 (q0)")).toBeTruthy();
   });
 
+  it("keeps a two-digit label on one line", () => {
+    // "v10 (q10)" fills its 9ch column exactly; a break at the space would
+    // make the row two lines tall.
+    render(<VRegisterRow index={10} bitsHex={PATTERN} arrangement={INT_D} />);
+    expect(screen.getByText("v10 (q10)").className).toContain("whitespace-nowrap");
+  });
+
   it("groups the same bits by the chosen lane width", () => {
     const { rerender } = render(
       <VRegisterRow index={3} bitsHex={PATTERN} arrangement={INT_D} />,
