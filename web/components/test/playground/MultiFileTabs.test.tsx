@@ -75,7 +75,7 @@ describe("MultiFileTabs", () => {
 
   it("adds a trimmed file name and clears the input", () => {
     const h = renderTabs();
-    const input = screen.getByPlaceholderText("new.asm") as HTMLInputElement;
+    const input = screen.getByLabelText("new file name") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "  helpers.asm  " } });
     fireEvent.click(screen.getByRole("button", { name: "add file" }));
     expect(h.onAdd).toHaveBeenCalledWith("helpers.asm");
@@ -84,9 +84,16 @@ describe("MultiFileTabs", () => {
 
   it("ignores a whitespace-only add", () => {
     const h = renderTabs();
-    fireEvent.change(screen.getByPlaceholderText("new.asm"), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText("new file name"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "add file" }));
     expect(h.onAdd).not.toHaveBeenCalled();
+  });
+
+  it("sends an empty add to the name box instead of doing nothing", () => {
+    const h = renderTabs();
+    fireEvent.click(screen.getByRole("button", { name: "add file" }));
+    expect(h.onAdd).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByLabelText("new file name"));
   });
 
   it("renames on double click through the prompt, trimmed", () => {
@@ -164,7 +171,7 @@ describe("MultiFileTabs keyboard and roles", () => {
   it("names the new-file input for anyone who cannot see its placeholder", () => {
     renderTabs();
     const input = screen.getByLabelText("new file name") as HTMLInputElement;
-    expect(input.placeholder).toBe("new.asm");
+    expect(input.placeholder).toBe("new file name");
   });
 });
 
@@ -213,7 +220,7 @@ describe("MultiFileTabs restore offer", () => {
         onRestoreBackup={onRestoreBackup}
       />,
     );
-    const button = screen.getByText("restore 2 replaced files");
+    const button = screen.getByText("restore 2 files");
     fireEvent.click(button);
     expect(onRestoreBackup).toHaveBeenCalledTimes(1);
   });
