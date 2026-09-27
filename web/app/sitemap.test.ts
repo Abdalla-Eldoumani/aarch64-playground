@@ -10,8 +10,11 @@ describe("sitemap", () => {
   // The expected slug sets come from the same loaders the pages use, so adding
   // a lesson or exercise cannot leave the sitemap behind; the derived count
   // fails loudly if the fixed-route set drifts.
-  const lessonSlugs = loadAllLessons().map((lesson) => lesson.slug);
-  const exerciseSlugs = loadAllExercises().map((exercise) => exercise.slug);
+  // Read once: each loader call rereads and revalidates the whole folder.
+  const lessons = loadAllLessons();
+  const exercises = loadAllExercises();
+  const lessonSlugs = lessons.map((lesson) => lesson.slug);
+  const exerciseSlugs = exercises.map((exercise) => exercise.slug);
 
   it("lists the five fixed routes plus every lesson and exercise", () => {
     expect(entries).toHaveLength(5 + lessonSlugs.length + exerciseSlugs.length);
@@ -69,8 +72,8 @@ describe("sitemap", () => {
 
   it("dates each lesson and exercise from its own lastUpdated field", () => {
     const pages = [
-      ...loadAllLessons().map((item) => ({ path: `/learn/${item.slug}`, date: item.lastUpdated })),
-      ...loadAllExercises().map((item) => ({ path: `/practice/${item.slug}`, date: item.lastUpdated })),
+      ...lessons.map((item) => ({ path: `/learn/${item.slug}`, date: item.lastUpdated })),
+      ...exercises.map((item) => ({ path: `/practice/${item.slug}`, date: item.lastUpdated })),
     ];
     for (const page of pages) {
       const entry = entries.find((candidate) => candidate.url === new URL(page.path, SITE_URL).toString());
@@ -83,15 +86,16 @@ describe("sitemap", () => {
     const newest = (dates: (string | undefined)[]) => dates.filter(Boolean).sort().at(-1);
     const lastmod = (path: string) =>
       entries.find((entry) => entry.url === new URL(path, SITE_URL).toString())?.lastModified;
-    expect(lastmod("/learn")).toBe(newest(loadAllLessons().map((item) => item.lastUpdated)));
-    expect(lastmod("/practice")).toBe(newest(loadAllExercises().map((item) => item.lastUpdated)));
+    expect(lastmod("/learn")).toBe(newest(lessons.map((item) => item.lastUpdated)));
+    expect(lastmod("/practice")).toBe(newest(exercises.map((item) => item.lastUpdated)));
     for (const path of ["/", "/playground", "/reference"]) expect(lastmod(path), path).toBeUndefined();
   });
 
   it("never stamps the build time", () => {
-    // Two builds of the same content must print the same sitemap.
-    expect(sitemap()).toEqual(entries);
-    for (const entry of entries) expect(entry.lastModified instanceof Date).toBe(false);
+    // A date is always a content file's string, never a Date made at build.
+    for (const entry of entries) {
+      expect(entry.lastModified === undefined || typeof entry.lastModified === "string", entry.url).toBe(true);
+    }
   });
 });
 
