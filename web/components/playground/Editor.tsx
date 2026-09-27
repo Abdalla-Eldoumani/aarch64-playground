@@ -4,7 +4,7 @@ import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
 import { docKeyAt, INSTRUCTION_DOCS } from "@/lib/asm/instruction-docs";
-import { C_EQUIVALENTS } from "@/lib/asm/c-equivalents";
+import { hoverCLine } from "@/lib/asm/c-equivalents";
 import {
   MNEMONIC_ALTERNATION,
   REGISTER_PATTERN,
@@ -295,12 +295,8 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       if (doc.example) {
         lines.push("", "```", doc.example, "```");
       }
-      // The C runs to several lines, so it takes a fenced block of its own.
-      const c = C_EQUIVALENTS[key];
-      if (c) {
-        lines.push("", "**c equivalent:**", "```c", c.c, "```");
-        if (c.intrinsic) lines.push("", `intrinsic: \`${c.intrinsic}\``);
-      }
+      const c = hoverCLine(key, window.location.origin);
+      if (c) lines.push("", c);
       return {
         range: new monaco.Range(
           position.lineNumber,
