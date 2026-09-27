@@ -1,119 +1,119 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 d_of:
 	fmov	d0, x0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 bits:
 	fmov	x0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fbits:
 	fmov	w0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 add:
 // 15 "programs/97_nan_zero_subnormal.c" 1
 	fadd d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sub:
 // 15 "programs/97_nan_zero_subnormal.c" 1
 	fsub d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 mul:
 // 15 "programs/97_nan_zero_subnormal.c" 1
 	fmul d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 dvd:
 // 15 "programs/97_nan_zero_subnormal.c" 1
 	fdiv d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 nmul:
 // 15 "programs/97_nan_zero_subnormal.c" 1
 	fnmul d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 max:
 // 16 "programs/97_nan_zero_subnormal.c" 1
 	fmax d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 min:
 // 16 "programs/97_nan_zero_subnormal.c" 1
 	fmin d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 maxnm:
 // 16 "programs/97_nan_zero_subnormal.c" 1
 	fmaxnm d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 minnm:
 // 16 "programs/97_nan_zero_subnormal.c" 1
 	fminnm d0, d0, d1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 madd:
 // 19 "programs/97_nan_zero_subnormal.c" 1
 	fmadd d0, d0, d1, d2
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 msub:
 // 19 "programs/97_nan_zero_subnormal.c" 1
 	fmsub d0, d0, d1, d2
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 nmadd:
 // 19 "programs/97_nan_zero_subnormal.c" 1
 	fnmadd d0, d0, d1, d2
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 nmsub:
 // 19 "programs/97_nan_zero_subnormal.c" 1
 	fnmsub d0, d0, d1, d2
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 root:
 // 20 "programs/97_nan_zero_subnormal.c" 1
 	fsqrt d0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 val:
 	adrp	x1, .LANCHOR0
 	add	x1, x1, :lo12:.LANCHOR0
@@ -152,7 +152,7 @@ val:
 	.string	"fs%d %08x %.9g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #448
@@ -168,10 +168,10 @@ main:
 	stp	d12, d13, [sp, 80]
 	stp	d14, d15, [sp, 96]
 	bl	puts
-	.align 5
+	.p2align 5,,15
 .L21:
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L22:
 	mov	w0, w20
 	bl	val
@@ -232,7 +232,7 @@ main:
 	mov	x19, x21
 	add	x22, x22, :lo12:.LC2
 	mov	w20, 0
-	.align 5
+	.p2align 5,,15
 .L24:
 	ldrb	w0, [x19]
 	add	x19, x19, 3
@@ -270,7 +270,7 @@ main:
 	add	x20, x20, :lo12:.LC3
 	mov	w19, 0
 	fmov	d15, 1.0e+0
-	.align 5
+	.p2align 5,,15
 .L25:
 	movi	v30.4s, 0
 	mov	w0, w19
@@ -460,7 +460,7 @@ main:
 	fneg	d30, d30
 	str	d30, [sp, 328]
 	stp	d27, d28, [sp, 312]
-	.align 5
+	.p2align 5,,15
 .L26:
 	ldr	d0, [x20], 8
 	mov	w1, w19
@@ -479,7 +479,7 @@ main:
 	fcmp	d31, #0.0
 	beq	.L27
 	fmov	d30, 5.0e-1
-	.align 5
+	.p2align 5,,15
 .L28:
 	fmul	d31, d31, d30
 	add	w1, w1, 1
@@ -493,7 +493,7 @@ main:
 	mov	x1, 2024
 	mov	w0, 1000
 	fmov	d29, x1
-	.align 5
+	.p2align 5,,15
 .L29:
 	ldr	d30, [sp, 160]
 	subs	w0, w0, #1
@@ -562,7 +562,7 @@ main:
 	str	d31, [sp, 432]
 	bl	sqrt
 	str	d0, [sp, 440]
-	.align 5
+	.p2align 5,,15
 .L30:
 	ldr	d28, [x20], 8
 	mov	w1, w19
@@ -613,7 +613,7 @@ main:
 	stp	s24, s26, [sp, 216]
 	fmul	s23, s23, s22
 	stp	s23, s31, [sp, 208]
-	.align 5
+	.p2align 5,,15
 .L31:
 	ldr	s0, [x20], 4
 	mov	w1, w19
@@ -657,14 +657,14 @@ fma_cases:
 	.align	4
 	.LANCHOR0:
 in:
-	.quad	9221120237041090560
-	.quad	-2251799813685247
-	.quad	9218868437227405317
-	.quad	-3377699720527872
-	.quad	9218868437227405312
-	.quad	-4503599627370496
-	.quad	0
-	.quad	-9223372036854775808
-	.quad	4607182418800017408
-	.quad	1
+	.xword	9221120237041090560
+	.xword	-2251799813685247
+	.xword	9218868437227405317
+	.xword	-3377699720527872
+	.xword	9218868437227405312
+	.xword	-4503599627370496
+	.xword	0
+	.xword	-9223372036854775808
+	.xword	4607182418800017408
+	.xword	1
 
