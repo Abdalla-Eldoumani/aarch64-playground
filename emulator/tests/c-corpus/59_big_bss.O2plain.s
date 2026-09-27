@@ -23,7 +23,7 @@
 	.string	"heap: sum=%llu, then sieve[last]=%x wide[59999]=%lld marker=%x,%x,%x,%x\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -175,7 +175,7 @@ main:
 	bl	printf
 	mov	x0, 1
 	mov	w3, 0
-	.align 5
+	.p2align 5,,15
 .L14:
 	ldrh	w2, [x25, w3, sxtw 1]
 	ldrh	w1, [x25, x0, lsl 1]
@@ -227,7 +227,7 @@ main:
 	mov	x0, 0
 	mov	x3, -1
 	mov	x2, 60817
-	.align 5
+	.p2align 5,,15
 .L22:
 	smaddl	x1, w0, w0, x3
 	mul	x1, x1, x0
@@ -239,7 +239,7 @@ main:
 	mov	x0, 0
 	add	x3, x3, 3208
 	mov	x2, 7976
-	.align 5
+	.p2align 5,,15
 .L23:
 	lsl	x1, x0, 3
 	sub	x0, x1, x0
@@ -266,13 +266,13 @@ main:
 	movk	w9, 0x51eb, lsl 16
 	mov	w8, 200
 	mov	x12, 8400
-	.align 5
+	.p2align 5,,15
 .L24:
 	neg	w7, w10
 	mov	w1, w4
 	mov	x2, x11
 	mov	w3, 0
-	.align 5
+	.p2align 5,,15
 .L25:
 	sub	w0, w5, w1
 	strh	w0, [x2, 4]
@@ -300,10 +300,10 @@ main:
 	add	x6, x6, 776
 	mov	x1, 0
 	mov	x5, 6000
-	.align 5
+	.p2align 5,,15
 .L26:
 	sub	x2, x4, #1224
-	.align 5
+	.p2align 5,,15
 .L27:
 	ldr	w3, [x2]
 	add	x1, x1, x1, lsl 1
@@ -339,7 +339,7 @@ main:
 	mov	x21, 0
 	mov	x0, 0
 	movk	x1, 0x3, lsl 16
-	.align 5
+	.p2align 5,,15
 .L30:
 	ldrb	w2, [x23, x0]
 	add	x2, x2, x0
