@@ -132,6 +132,20 @@ describe("exercise answers store", () => {
     });
     expect(answer).toEqual({ version: 1, kind: "write", source: "ret", updatedAt: 5 });
   });
+
+  it("keeps a theory answer's graded questions, and never a coding answer's", () => {
+    const quiz = { version: 1, kind: "quiz", answers: [1, null], graded: [0], updatedAt: 5 } as const;
+    expect(validateAnswer(quiz)).toEqual(quiz);
+    const coding = validateAnswer({ version: 1, kind: "write", source: "ret", graded: [0], updatedAt: 5 });
+    expect(coding).toEqual({ version: 1, kind: "write", source: "ret", updatedAt: 5 });
+  });
+
+  it("drops a graded list that is not whole indices but keeps the answers", () => {
+    for (const graded of [[-1], [0.5], ["0"], "0"]) {
+      const answer = validateAnswer({ version: 1, kind: "blanks", answers: ["ldr"], graded, updatedAt: 5 });
+      expect(answer).toEqual({ version: 1, kind: "blanks", answers: ["ldr"], updatedAt: 5 });
+    }
+  });
 });
 
 describe("readAllAnswers", () => {
