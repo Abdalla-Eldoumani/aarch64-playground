@@ -1,20 +1,20 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fsum
 fsum:
 	cmp	w1, 0
 	ble	.L4
 	movi	v0.2s, #0
 	add	x1, x0, w1, uxtw 2
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldr	s31, [x0], 4
 	fadd	s0, s0, s31
 	cmp	x0, x1
 	bne	.L3
 	ret
-	.align 2
+	.p2align 2,,3
 .L4:
 	movi	v0.2s, #0
 	ret
@@ -36,7 +36,7 @@ fsum:
 	.string	"%.2f %.2f %.2f %.2f %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -64]!
