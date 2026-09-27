@@ -872,6 +872,7 @@ function EmbeddableCore({
             pushStdin={emu.pushStdin}
             onInputSent={emu.resumeAfterInput}
             echoStdin={chrome !== "checker"}
+            keyHints={false}
             closeStdin={emu.closeStdin}
             uploadVfsFile={stageVfsFile}
             clearConsole={emu.clearConsole}
@@ -1116,6 +1117,7 @@ export const EmbeddablePlayground = forwardRef<
               vfsFiles={NO_VFS_FILES}
               pushStdin={engage}
               echoStdin={chrome !== "checker"}
+              keyHints={false}
               closeStdin={engage}
               uploadVfsFile={engage}
               clearConsole={engage}
