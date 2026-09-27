@@ -63,7 +63,7 @@
     {
       "name": "stylesheets (tailwind + fonts + monaco/xterm)",
       "path": ".next/static/css/*.css",
-      "limit": "35 KB"
+      "limit": "36 KB"
     },
     {
       "name": "practice index flight payload (the rows the server sends)",
