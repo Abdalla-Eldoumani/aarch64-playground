@@ -292,7 +292,7 @@ export function BaseConverter({
             autoCapitalize="off"
             aria-invalid={own?.tone === "error" ? true : undefined}
             aria-describedby={`${id}-message`}
-            className={`w-full min-w-0 rounded border bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
+            className={`touch-target w-full min-w-0 rounded border bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
               own?.tone === "error" ? "border-[var(--warning)]" : "border-[var(--border)]"
             }`}
           />
@@ -400,7 +400,7 @@ export function BaseConverter({
                 aria-label={`${w} bits, ${WIDTH_TITLES[w]}`}
                 title={WIDTH_TITLES[w]}
                 onClick={() => onWidthChange(w)}
-                className={`inline-flex items-center justify-center rounded-[var(--radius-control)] min-h-[32px] px-2 font-mono text-[12px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
+                className={`touch-target inline-flex items-center justify-center rounded-[var(--radius-control)] min-h-[32px] px-2 font-mono text-[12px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
                   active
                     ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
                     : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
@@ -437,7 +437,7 @@ export function BaseConverter({
                     title={isSign ? `sign bit ${i}` : `bit ${i}`}
                     onClick={() => onBitClick(i)}
                     onFocus={() => setFocusBit(i)}
-                    className={`h-6 w-5 rounded-sm border font-mono text-[11px] leading-none transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
+                    className={`touch-target h-6 w-5 rounded-sm border font-mono text-[11px] leading-none transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
                       on
                         ? "border-[var(--cyan)] bg-[var(--bg-elevated)] font-semibold text-[var(--cyan)]"
                         : "border-[var(--border)] bg-[var(--bg-raised)] text-[var(--text-secondary)] hover:border-[var(--cyan-dim)]"
