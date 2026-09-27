@@ -85,10 +85,6 @@ RULES = [
     ("size",         re.compile(r"^\.size\b"),                                 "drop"),
     ("local",        re.compile(r"^\.local\b"),                                "drop"),
     ("comm",         re.compile(r"^\.comm\s+(?P<sym>[^,\s]+)\s*,\s*(?P<size>\d+)\s*(,\s*(?P<align>\d+))?"), "comm"),
-    ("xword",        re.compile(r"^\.xword\b(?P<rest>.*)$"),                   ("replace", ".quad{rest}")),
-    # halfword jump-table entries at -O2
-    ("2byte",        re.compile(r"^\.2byte\b(?P<rest>.*)$"),                   ("replace", ".hword{rest}")),
-    ("p2align",      re.compile(r"^\.p2align\s+(?P<n>\d+)"),                   ("replace", ".align {n}")),
     ("sect_rodata",  re.compile(r"^\.section\s+\.rodata"),                     ("section", ".section .rodata")),
     ("sect_text",    re.compile(r"^\.section\s+\.text"),                       ("section", ".text")),
     ("sect_data",    re.compile(r"^\.section\s+\.data"),                       ("section", ".data")),
