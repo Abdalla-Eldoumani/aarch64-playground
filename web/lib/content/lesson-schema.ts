@@ -16,7 +16,25 @@ export type LessonBlock =
   | { type: "prose"; markdown: string }
   | { type: "code"; language: "asm" | "c" | "text"; source: string }
   | { type: "callout"; variant: "note" | "warning" | "pitfall" | "prereq"; markdown: string }
-  | { type: "editor"; starter: string; args?: string; stdin?: string };
+  | {
+      type: "editor";
+      starter: string;
+      args?: string;
+      stdin?: string;
+      expectedOutput?: ExpectedOutput;
+    };
+
+/**
+ * What a runnable editor's program prints when it runs with the block's own
+ * args and stdin: its stdout byte for byte and, when the lesson relies on it,
+ * the exit status. A test runs every lesson program and compares, so a
+ * lesson cannot quietly promise output its program no longer gives.
+ */
+export interface ExpectedOutput {
+  stdout: string;
+  /** 0 to 255, as the shell reports it. Omitted when the lesson never says. */
+  exitCode?: number;
+}
 
 /** Lesson metadata plus an ordered, non-empty body of blocks. */
 export interface Lesson {
@@ -56,6 +74,28 @@ export type LessonResult = { ok: true; lesson: Lesson } | { ok: false; error: st
 
 /** URL-safe kebab-case: lowercase alphanumerics joined by single dashes. */
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Narrow an editor's expectedOutput, or say what is wrong with it. The exit
+ * status must be one a shell can report, so a typo such as -1 or 256 fails
+ * the build instead of setting a comparison no program can meet.
+ */
+function validateExpectedOutput(raw: unknown): ExpectedOutput | string {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return "must be an object with a stdout string";
+  }
+  const o = raw as Record<string, unknown>;
+  if (typeof o.stdout !== "string") return "stdout must be a string";
+  const expected: ExpectedOutput = { stdout: o.stdout };
+  if (o.exitCode !== undefined) {
+    const code = o.exitCode;
+    if (typeof code !== "number" || !Number.isInteger(code) || code < 0 || code > 255) {
+      return "exitCode must be an integer from 0 to 255 when present";
+    }
+    expected.exitCode = code;
+  }
+  return expected;
+}
 
 /**
  * Validate one body block by its `type`, tagging every message with the
@@ -108,7 +148,7 @@ function validateBlock(
       if (typeof b.starter !== "string") {
         return { ok: false, error: `body[${index}] (editor): starter must be a string` };
       }
-      const block: { type: "editor"; starter: string; args?: string; stdin?: string } = {
+      const block: Extract<LessonBlock, { type: "editor" }> = {
         type: "editor",
         starter: b.starter,
       };
@@ -123,6 +163,13 @@ function validateBlock(
           return { ok: false, error: `body[${index}] (editor): stdin must be a string when present` };
         }
         block.stdin = b.stdin;
+      }
+      if (b.expectedOutput !== undefined) {
+        const expected = validateExpectedOutput(b.expectedOutput);
+        if (typeof expected === "string") {
+          return { ok: false, error: `body[${index}] (editor): expectedOutput ${expected}` };
+        }
+        block.expectedOutput = expected;
       }
       return { ok: true, block };
     }
