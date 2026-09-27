@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 matmul:
 	cmp	w0, 0
 	ble	.L1
@@ -9,16 +9,16 @@ matmul:
 	mov	x9, x3
 	add	x10, x1, x8
 	mov	w12, 0
-	.align 5
+	.p2align 5,,15
 .L3:
 	mov	x7, 0
-	.align 5
+	.p2align 5,,15
 .L5:
 	add	x4, x2, x7
 	mov	x3, x11
 	mov	x1, 0
 	str	xzr, [x9, x7]
-	.align 5
+	.p2align 5,,15
 .L4:
 	ldr	x5, [x4]
 	add	x4, x4, x8
@@ -39,7 +39,7 @@ matmul:
 .L1:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 nine:
 	add	x1, x0, x1, lsl 1
 	add	x2, x2, x2, lsl 1
@@ -62,7 +62,7 @@ nine:
 	.string	"churn pass=%d size=%d s=%llu\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 churn:
 	stp	x29, x30, [sp, -80]!
 	mov	x29, sp
@@ -85,7 +85,7 @@ churn:
 	movk	w25, 0x26e9, lsl 16
 	movk	w24, 0x83, lsl 16
 	b	.L13
-	.align 2
+	.p2align 2,,3
 .L12:
 	ldr	w0, [x23]
 	add	w20, w20, 7
@@ -145,7 +145,7 @@ churn:
 	mov	x22, 0
 	b	.L10
 	.align	2
-	.align 5
+	.p2align 5,,15
 levels:
 	add	w1, w0, 1
 	stp	x29, x30, [sp, -32]!
@@ -160,7 +160,7 @@ levels:
 	add	x4, x4, 1
 	mov	w3, -50
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L19:
 	str	w3, [x1, x2, lsl 2]
 	add	x2, x2, 1
@@ -172,7 +172,7 @@ levels:
 	cbnz	w2, .L28
 .L20:
 	add	x4, x1, w4, uxtw 2
-	.align 5
+	.p2align 5,,15
 .L21:
 	ldrsw	x2, [x1], 4
 	add	x0, x0, x2
@@ -181,21 +181,21 @@ levels:
 	mov	sp, x29
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L28:
 	sub	w0, w2, #1
 	stp	x1, x4, [x29, 16]
 	bl	levels
 	ldp	x1, x4, [x29, 16]
 	b	.L20
-	.align 2
+	.p2align 2,,3
 .L22:
 	mov	sp, x29
 	mov	x0, 0
 	ldp	x29, x30, [sp], 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 with_vla_and_call:
 	sxtw	x2, w0
 	stp	x29, x30, [sp, -16]!
@@ -210,7 +210,7 @@ with_vla_and_call:
 	add	x15, sp, 16
 	cmp	w2, 0
 	ble	.L32
-	.align 5
+	.p2align 5,,15
 .L30:
 	mul	w1, w0, w0
 	sxtw	x1, w1
@@ -226,7 +226,7 @@ with_vla_and_call:
 	mov	x13, 0
 	ldr	x12, [x15, 24]
 	ldr	x11, [x9], 32
-	.align 5
+	.p2align 5,,15
 .L33:
 	mov	x0, x11
 	mov	x1, x6
@@ -273,7 +273,7 @@ with_vla_and_call:
 	.string	"vla+call=%lld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -309,11 +309,11 @@ main:
 	mov	x5, x24
 	mov	x4, 0
 	mov	w3, 0
-	.align 5
+	.p2align 5,,15
 .L42:
 	lsl	w7, w3, 1
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L43:
 	sub	x1, x4, x0
 	cmp	w3, w0
@@ -345,7 +345,7 @@ main:
 	mov	x3, x22
 	mov	w0, w27
 	bl	matmul
-	.align 5
+	.p2align 5,,15
 .L46:
 	sxtw	x0, w19
 	mul	x1, x26, x0
@@ -375,7 +375,7 @@ main:
 	mov	w3, 5
 	mov	w2, 63314
 	mov	x0, 12
-	.align 5
+	.p2align 5,,15
 .L47:
 	add	x1, x0, 15
 	mov	sp, x4
