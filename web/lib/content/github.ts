@@ -25,7 +25,7 @@ const STARS_URL = `${STARS_ENDPOINT}?deploy=${process.env.VERCEL_DEPLOYMENT_ID ?
  * Server-only: the current stargazer count, or null when the count cannot be
  * trusted. Null covers a non-ok response, a thrown request, a payload without a
  * numeric stargazers_count, and a count of zero: a visible "0" reads as a
- * broken widget,
+ * broken widget.
  */
 export async function fetchStarCount(): Promise<number | null> {
   try {
@@ -33,10 +33,11 @@ export async function fetchStarCount(): Promise<number | null> {
       headers: { Accept: "application/vnd.github+json" },
       // Read once per build and baked into the prerendered pages, so every
       // route stays a static file and no visitor request ever reaches this
-      // call. A stale count is harmless: it refreshes on the next deploy (the
-      // cache key above), and dependabot's weekly bumps deploy at least that
-      // often. A revalidate interval here would turn every route that renders
-      // the nav into an ISR page regenerated on the server.
+      // call. The count refreshes on the next production deploy (the cache
+      // key above), and .github/workflows/refresh-stars.yml asks for one on
+      // every new star and once a week, so no code push is needed. A
+      // revalidate interval here would turn every route that renders the nav
+      // into an ISR page regenerated on the server.
       cache: "force-cache",
       // A hanging GitHub must never stall a prerender: this fetch runs inside
       // the build of every content route, and the catch below already renders
