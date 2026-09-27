@@ -1,0 +1,127 @@
+{
+  "title": "Memory: loads, stores, and addressing modes",
+  "slug": "memory-and-addressing-modes",
+  "order": 17,
+  "summary": "Load and store 1, 2, 4 and 8 bytes with the right extension, and reach memory through offsets, index registers, and pointers that move themselves.",
+  "tags": [
+    "memory and the stack"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Printing a variable from .data](/learn/printing-defined-variables)\n- [Pre-test loops](/learn/pretest-loop)\n- [Shifts, sign extension, and bitfields](/learn/shifts-and-bitfields)"
+    },
+    {
+      "type": "prose",
+      "markdown": "Memory is one long row of bytes, and each byte has a number called its *address*. On AArch64 an address is 64 bits wide. Each running program gets its own private set of numbers, called *virtual addresses*, and the operating system maps them onto the real memory, so two programs can use the same address without getting in each other's way.\n\nAArch64 is a *load/store* design: arithmetic instructions work only on registers. To change a value in memory, a program *loads* it into a register, works on it there, and *stores* the result back. The address always goes inside square brackets, so `ldr w10, [x9]` reads \"load `w10` from the address held in `x9`\"."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Four sizes, two ways to widen\n\nA load or store moves 1, 2, 4 or 8 bytes. The size comes from the mnemonic's last letter (`b` for a byte, `h` for a halfword) or, for 4 and 8 bytes, from the register: a `w` register moves 4 bytes and an `x` register moves 8.\n\n| bytes | store | load, zero-extended | load, sign-extended |\n|---|---|---|---|\n| 1 | `strb w` | `ldrb w` | `ldrsb w` or `ldrsb x` |\n| 2 | `strh w` | `ldrh w` | `ldrsh w` or `ldrsh x` |\n| 4 | `str w` | `ldr w` | `ldrsw x` |\n| 8 | `str x` | `ldr x` | none needed: 8 bytes fill the register |\n\nA store of fewer bytes than the register holds writes only the register's low bytes. A load of fewer bytes has to decide what goes in the register's upper bits:\n\n- *Zero extension* fills them with 0s. Use it for a value that is never negative, such as a character code or a count.\n- *Sign extension* fills them with copies of the value's top bit, so a negative value stays negative in the wider register. The `s` in `ldrsb`, `ldrsh` and `ldrsw` asks for it."
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below stores `0xf0` as a byte, `0xfffe` as a halfword and -10 as a word, then loads each one back both ways. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "byte 0xf0:        ldrb = 240, ldrsb = -16\nhalfword 0xfffe:  ldrh = 65534, ldrsh = -2\nword 0xfffffff6:  ldr  = 4294967286, ldrsw = -10\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Store a byte, a halfword and a word, then load each one back twice:\n// once filling the upper bits with zeros, once with copies of the sign bit\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt_b:      .string \"byte 0xf0:        ldrb = %d, ldrsb = %d\\n\"\nfmt_h:      .string \"halfword 0xfffe:  ldrh = %d, ldrsh = %d\\n\"\nfmt_w:      .string \"word 0xfffffff6:  ldr  = %ld, ldrsw = %ld\\n\"\n\n.bss\n.align 4\nword_m:     .skip 4\nhalf_m:     .skip 2\nbyte_m:     .skip 1\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x9, =byte_m\n        mov     w10, 0xf0\n        strb    w10, [x9]                   // only the low 8 bits reach memory\n        ldrb    w1, [x9]                    // bits 8 to 31 become 0\n        ldrsb   w2, [x9]                    // bits 8 to 31 copy bit 7\n        ldr     x0, =fmt_b\n        bl      printf\n\n        ldr     x9, =half_m\n        mov     w10, 0xfffe\n        strh    w10, [x9]                   // only the low 16 bits reach memory\n        ldrh    w1, [x9]\n        ldrsh   w2, [x9]\n        ldr     x0, =fmt_h\n        bl      printf\n\n        ldr     x9, =word_m\n        mov     w10, -10                    // the bit pattern 0xfffffff6\n        str     w10, [x9]\n        ldr     w1, [x9]                    // writing w1 clears bits 32 to 63 of x1\n        ldrsw   x2, [x9]                    // bits 32 to 63 copy bit 31\n        ldr     x0, =fmt_w\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "byte 0xf0:        ldrb = 240, ldrsb = -16\nhalfword 0xfffe:  ldrh = 65534, ldrsh = -2\nword 0xfffffff6:  ldr  = 4294967286, ldrsw = -10\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The byte `0xf0` has its top bit set. Zero-extended it is 240; sign-extended it is -16. The halfword works the same way: 65534 or -2. For the word, `ldr w1` writes a `w` register, and writing a `w` register always clears bits 32 to 63 of the matching `x` register, so `%ld` sees 4294967286. `ldrsw x2` copies the sign bit up into those bits, so `%ld` sees -10."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "The register picks the size of an `ldr` or `str`, not the label. `ldr x1, [x9]` on a `.word` reads the 4 bytes of the word and the 4 bytes after it, and prints nonsense as soon as something else is stored there. Match the register to the directive: `.byte` with `ldrb` or `ldrsb`, `.hword` with `ldrh` or `ldrsh`, `.word` with a `w` register or `ldrsw`, `.dword` with an `x` register."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Offsets and index registers\n\nThe part inside the brackets is the *addressing mode*: how the processor works out the address. These forms leave the base register unchanged:\n\n| form | address used |\n|---|---|\n| `[x9]` | `x9` |\n| `[x9, 8]` | `x9 + 8` |\n| `[x9, x10]` | `x9 + x10` |\n| `[x9, x10, LSL 2]` | `x9 + x10 * 4` |\n| `[x9, w10, SXTW 2]` | `x9 + w10 * 4`, with `w10` read as signed |\n| `[x9, w10, UXTW 2]` | `x9 + w10 * 4`, with `w10` read as unsigned |\n\nIn an array, element i sits at base + i * size, so the shift after `LSL`, `SXTW` or `UXTW` should match the element size: 0 for bytes, 1 for halfwords, 2 for words, 3 for doublewords. `SXTW` sign-extends a 32-bit index to 64 bits before adding it, which lets an index kept in a `w` register be negative. `UXTW` zero-extends it instead.\n\nThe program below adds up the same five-word array three ways: with a constant offset written out for each element, with a 64-bit index scaled by `LSL 2`, and with a 32-bit index widened and scaled by `SXTW 2`, the form course programs use most. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "constant offsets  total = 75\nlsl 2 index       total = 75\nsxtw 2 index      total = 75\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Sum one array three ways: constant offsets, a 64-bit index scaled\n// by LSL 2, and a 32-bit index widened and scaled by SXTW 2\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(COUNT, 5)\n\n.data\nfmt:        .string \"%-17s total = %d\\n\"\nhow_1:      .string \"constant offsets\"\nhow_2:      .string \"lsl 2 index\"\nhow_3:      .string \"sxtw 2 index\"\n.balign 4                                   // a word starts at a multiple of 4\narr:        .word   12, -3, 40, 7, 19\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // 1. element i sits at base + 4i, so each offset is written out\n        ldr     x9, =arr\n        ldr     w10, [x9]                   // arr[0]\n        ldr     w11, [x9, 4]                // arr[1]\n        add     w10, w10, w11\n        ldr     w11, [x9, 8]\n        add     w10, w10, w11\n        ldr     w11, [x9, 12]\n        add     w10, w10, w11\n        ldr     w11, [x9, 16]               // arr[4]\n        add     w10, w10, w11\n        ldr     x0, =fmt\n        ldr     x1, =how_1\n        mov     w2, w10\n        bl      printf\n\n        // 2. a 64-bit index in x10; LSL 2 multiplies it by 4\n        ldr     x9, =arr\n        mov     x10, 0\n        mov     w11, 0\n        b       lsl_test\nlsl_loop:\n        ldr     w12, [x9, x10, LSL 2]       // address = x9 + x10 * 4\n        add     w11, w11, w12\n        add     x10, x10, 1\nlsl_test:\n        cmp     x10, COUNT\n        b.lt    lsl_loop\n        ldr     x0, =fmt\n        ldr     x1, =how_2\n        mov     w2, w11\n        bl      printf\n\n        // 3. a 32-bit index in w10; SXTW widens it to 64 bits, keeping its sign\n        ldr     x9, =arr\n        mov     w10, 0\n        mov     w11, 0\n        b       sxtw_test\nsxtw_loop:\n        ldr     w12, [x9, w10, SXTW 2]      // address = x9 + w10 * 4\n        add     w11, w11, w12\n        add     w10, w10, 1\nsxtw_test:\n        cmp     w10, COUNT\n        b.lt    sxtw_loop\n        ldr     x0, =fmt\n        ldr     x1, =how_3\n        mov     w2, w11\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "constant offsets  total = 75\nlsl 2 index       total = 75\nsxtw 2 index      total = 75\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Pointers that move themselves\n\nTwo more forms change the base register as part of the access, so a pointer can walk along an array without a separate `add`:\n\n| form | name | what happens |\n|---|---|---|\n| `[x9, 4]!` | pre-index | add 4 to `x9` first, then use the new `x9` as the address |\n| `[x9], 4` | post-index | use `x9` as the address, then add 4 to `x9` |\n\nYou have seen both already. `stp fp, lr, [sp, -16]!` is pre-index: it moves `sp` down, then stores. `ldp fp, lr, [sp], 16` is post-index: it loads, then moves `sp` back up.\n\nThe program below sums the array once with each form. Each loop counts down with `subs`, which sets Z when the count reaches 0, so `b.ne` needs no `cmp`. It also prints how far past the start of the array each pointer finished:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "post-index  total = 75, pointer ends at arr + 20\npre-index   total = 75, pointer ends at arr + 16\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Walk a pointer along the array: post-index loads and then steps,\n// pre-index steps and then loads\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(COUNT, 5)\n\n.data\nfmt:        .string \"%-11s total = %d, pointer ends at arr + %ld\\n\"\nhow_post:   .string \"post-index\"\nhow_pre:    .string \"pre-index\"\n.balign 4\narr:        .word   12, -3, 40, 7, 19\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // post-index: load from the address in x9, then add 4 to x9\n        ldr     x9, =arr\n        mov     w10, COUNT                  // elements left\n        mov     w11, 0                      // total\npost_loop:\n        ldr     w12, [x9], 4\n        add     w11, w11, w12\n        subs    w10, w10, 1                 // Z is set when none are left\n        b.ne    post_loop\n\n        ldr     x13, =arr\n        sub     x3, x9, x13                 // how far the pointer moved\n        ldr     x0, =fmt\n        ldr     x1, =how_post\n        mov     w2, w11\n        bl      printf\n\n        // pre-index: add 4 to x9 first, then load from the new address\n        ldr     x9, =arr\n        sub     x9, x9, 4                   // start one word before the array\n        mov     w10, COUNT\n        mov     w11, 0\npre_loop:\n        ldr     w12, [x9, 4]!\n        add     w11, w11, w12\n        subs    w10, w10, 1\n        b.ne    pre_loop\n\n        ldr     x13, =arr\n        sub     x3, x9, x13\n        ldr     x0, =fmt\n        ldr     x1, =how_pre\n        mov     w2, w11\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "post-index  total = 75, pointer ends at arr + 20\npre-index   total = 75, pointer ends at arr + 16\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "Both totals match, but the pointers stop in different places. Post-index stepped after its last load, so it finished 20 bytes in, one word past the end of the array. Pre-index stepped before each load, so it started one word before the array and finished 16 bytes in, on the last element."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Byte order\n\nA word takes 4 bytes, so storing one fills 4 addresses. AArch64 on Linux is *little-endian*: the byte at the lowest address holds the least significant 8 bits of the value, the \"little end\". The program below stores `0x11223344` and reads its bytes back one at a time with `ldrb`. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "0x11223344 in memory, lowest address first: 44 33 22 11\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Store one word, then read its four bytes back, lowest address first\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt:        .string \"0x%08x in memory, lowest address first: %02x %02x %02x %02x\\n\"\n\n.bss\n.align 4\nword_m:     .skip 4\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        movz    w10, 0x1122, lsl 16\n        movk    w10, 0x3344                 // w10 = 0x11223344\n        ldr     x9, =word_m\n        str     w10, [x9]\n\n        ldr     x0, =fmt\n        ldr     w1, [x9]                    // the whole word\n        ldrb    w2, [x9]                    // the byte at the lowest address\n        ldrb    w3, [x9, 1]\n        ldrb    w4, [x9, 2]\n        ldrb    w5, [x9, 3]                 // the byte at the highest address\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "0x11223344 in memory, lowest address first: 44 33 22 11\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The byte order only shows when a program reads a value at a different size from the one it stored. Store a word and load a word, and the bytes come back in the right order."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Keep each value at an address its own size divides evenly: a word at a multiple of 4, a doubleword at a multiple of 8. That is why `.balign 4` goes before a `.word` that follows strings, whose lengths can be anything. Linux still lets an ordinary load or store use a badly aligned address, only more slowly, but `sp` is strict: using `sp` for a memory access while it is not a multiple of 16 stops the program. The next lesson keeps `sp` aligned."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. A byte in memory holds `0x80`. What does `ldrb w1` put in `w1`, and what does `ldrsb w1` put there, both printed with `%d`?\n2. `x9` holds the address of an array of words and `w10` holds 3. Which address does `ldr w11, [x9, w10, SXTW 2]` read?\n3. `x9` holds 1000. Which address does `ldr w11, [x9], 4` read, and what does `x9` hold afterward? Answer the same for `ldr w11, [x9, 4]!` starting from 1000 again.\n4. `str w10, [x9]` stores `0x0a0b0c0d`. Which byte sits at the address in `x9`?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. 128 and -128. The top bit of `0x80` is 1, so sign extension fills the upper bits with 1s.\n2. `x9 + 12`, the element at index 3.\n3. Post-index reads address 1000 and leaves 1004 in `x9`. Pre-index changes `x9` to 1004 first and reads address 1004.\n4. `0x0d`, the least significant byte, because the machine is little-endian."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Sum a global array](/practice/sum-a-global-array): add up a `.data` array with the `SXTW 2` load from this lesson.\n- [Stack of plates](/practice/stack-of-plates): store four values at named offsets and load them back in reverse. It keeps them in a stack frame, which the next lesson explains.\n- [Quiz: memory and the stack (intro)](/practice/quiz-basic-frame-stack): address size, byte loads, and alignment.\n- [Fill in the blank: memory and the stack (core)](/practice/blanks-frame-stack): byte and halfword loads and stores, pre-index and post-index, and `SXTW` offsets.\n- [Predict: memory and the stack (challenge)](/practice/predict-frame-stack): trace the addresses pre-index and post-index leave behind, and what `ldrb` and `ldrsb` load."
+    }
+  ]
+}
