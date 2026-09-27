@@ -3,26 +3,28 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   INSTRUCTION_DOCS,
+  docKey,
+  docKeyAt,
   lookupDoc,
   lookupDocAt,
 } from "@/lib/asm/instruction-docs";
 
-describe("instruction-docs cExample", () => {
-  it("LDR carries a C-equivalent for its load form", () => {
-    expect(INSTRUCTION_DOCS.LDR.cExample).toBeDefined();
-    expect(INSTRUCTION_DOCS.LDR.cExample).toMatch(/Rd =.*\(int\*\)/);
+describe("docKey", () => {
+  it("upper-cases a known mnemonic and folds every b.cond spelling", () => {
+    expect(docKey("csel")).toBe("CSEL");
+    expect(docKey("b.ne")).toBe("B.COND");
+    expect(docKey("B.cond")).toBe("B.COND");
   });
 
-  it("MOV carries a C assignment", () => {
-    expect(INSTRUCTION_DOCS.MOV.cExample).toMatch(/Rd =/);
+  it("answers nothing for an unknown word, including Object's own names", () => {
+    expect(docKey("frobnicate")).toBeUndefined();
+    expect(docKey("constructor")).toBeUndefined();
+    expect(docKey("hasOwnProperty")).toBeUndefined();
   });
 
-  it("CSEL carries the ternary form", () => {
-    expect(INSTRUCTION_DOCS.CSEL.cExample).toMatch(/cond \? Rn : Rm/);
-  });
-
-  it("entries without a c equivalent simply omit the field", () => {
-    expect(INSTRUCTION_DOCS.NOP.cExample).toBeUndefined();
+  it("gives the hover path the same key for a dotted conditional", () => {
+    const line = "        b.lt    loop";
+    expect(docKeyAt(line, "lt", line.indexOf("lt") + 1)).toBe("B.COND");
   });
 });
 
