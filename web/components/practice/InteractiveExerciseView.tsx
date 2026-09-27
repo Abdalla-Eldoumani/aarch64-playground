@@ -4,15 +4,16 @@
  * The single-exercise layout for the interactive variants (quiz, prediction,
  * blanks): kicker, serif title, prompt, a progress line, then one graded
  * block per question. Grading happens entirely in the blocks; this view only
- * counts first-time-correct questions and marks the exercise solved (the
+ * counts the questions answered correctly and marks the exercise solved (the
  * same solved-state store the index badges read) once every question has
  * been answered correctly.
  *
  * The answers themselves are held here rather than in the blocks, so they
  * can be saved per slug and restored on a later visit, together with which
- * questions were already checked and right, so those open answered. Restoring happens
- * after mount: reading storage during the first render would put a value in
- * the DOM the server render could not have, and hydration would flag it.
+ * questions were already checked and right, so those open answered.
+ * Restoring happens after mount: reading storage during the first render
+ * would put a value in the DOM the server render could not have, and
+ * hydration would flag it.
  */
 
 import { useCallback, useEffect, useReducer, type JSX } from "react";
