@@ -11,7 +11,7 @@
 	.string	"%f %f %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -64]!
@@ -49,7 +49,7 @@ main:
 	bl	sqrt
 	fmov	d11, d0
 	b	.L4
-	.align 2
+	.p2align 2,,3
 .L5:
 	fsqrt	d31, d0
 	fmov	d11, d31
