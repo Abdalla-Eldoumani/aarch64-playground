@@ -26,7 +26,7 @@ export interface ToolbarProps {
 // focus ring is the shared --ring token (same two-layer ring as every other
 // control), and active presses travel one device pixel like the base button.
 const CONTROL =
-  "inline-flex items-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 " +
+  "touch-target inline-flex items-center justify-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 " +
   "text-[12px] font-sans transition-colors focus:outline-none " +
   "focus-visible:[box-shadow:var(--ring)] active:translate-y-px";
 const INACTIVE =
@@ -35,7 +35,7 @@ const INACTIVE =
 function GroupLabel({ children }: { children: ReactNode }) {
   // --type-label: mono, 12px, uppercase, 0.08em tracking.
   return (
-    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)] select-none whitespace-nowrap">
+    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)] select-none whitespace-nowrap [@media(pointer:coarse)]:text-[12px]">
       {children}
     </span>
   );
