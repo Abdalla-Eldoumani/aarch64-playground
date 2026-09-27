@@ -446,3 +446,80 @@ describe("validateExercise (interactive variants)", () => {
     ).toMatch(/blanks\[0\]: blanks/);
   });
 });
+
+describe("validateExercise (hidden inputs and scoped checks)", () => {
+  const cases = [
+    { stdin: "5\n", stdout: "25\n", exitCode: 0 },
+    { args: "0", stdout: "0\n", exitCode: 0, edge: true },
+    { stdout: "", exitCode: 1 },
+  ];
+
+  test("keeps validated hidden cases and drops unknown keys", () => {
+    const exercise = acceptWrite({
+      ...validExercise(),
+      hiddenCases: [...cases, { stdout: "x", exitCode: 0, expected: "leak" }],
+    });
+    expect(exercise.hiddenCases).toEqual([...cases, { stdout: "x", exitCode: 0 }]);
+  });
+
+  test("leaves hiddenCases absent when the file has none", () => {
+    expect(acceptWrite(validExercise()).hiddenCases).toBeUndefined();
+  });
+
+  test("rejects a case with no expected output or a status a program cannot report", () => {
+    expect(rejectError({ ...validExercise(), hiddenCases: "all" })).toMatch(/hiddenCases: expected an array/);
+    expect(rejectError({ ...validExercise(), hiddenCases: [{ exitCode: 0 }] })).toMatch(
+      /hiddenCases\[0\]: stdout/,
+    );
+    expect(rejectError({ ...validExercise(), hiddenCases: [{ stdout: "", exitCode: 256 }] })).toMatch(
+      /hiddenCases\[0\]: exitCode/,
+    );
+    expect(rejectError({ ...validExercise(), hiddenCases: [{ stdout: "", exitCode: -1 }] })).toMatch(
+      /hiddenCases\[0\]: exitCode/,
+    );
+    expect(
+      rejectError({ ...validExercise(), hiddenCases: [{ stdout: "", exitCode: 0, edge: "yes" }] }),
+    ).toMatch(/hiddenCases\[0\]: edge/);
+  });
+
+  test("holds a case's input to the caps a student's own input has", () => {
+    expect(
+      rejectError({ ...validExercise(), hiddenCases: [{ args: "x".repeat(1001), stdout: "", exitCode: 0 }] }),
+    ).toMatch(/hiddenCases\[0\]: args/);
+    expect(
+      rejectError({
+        ...validExercise(),
+        hiddenCases: [{ stdin: "x".repeat(100 * 1024 + 1), stdout: "", exitCode: 0 }],
+      }),
+    ).toMatch(/hiddenCases\[0\]: stdin/);
+  });
+
+  test("accepts a check scoped to a label, and forbids-instruction with a list", () => {
+    const structural = [
+      { kind: "uses-instruction", mnemonic: "bl fact", in: "fact" },
+      { kind: "forbids-instruction", mnemonics: ["mul", "madd"] },
+      { kind: "forbids-literal", value: "x19", in: "double_it" },
+    ];
+    const exercise = acceptWrite({
+      ...validExercise(),
+      acceptance: { results: [{ kind: "exit", equals: 0 }], structural },
+    });
+    expect(exercise.acceptance.structural).toEqual(structural);
+  });
+
+  test("rejects an `in` that is not a label and an empty forbidden list", () => {
+    const withStructural = (structural: unknown[]) => ({
+      ...validExercise(),
+      acceptance: { results: [{ kind: "exit", equals: 0 }], structural },
+    });
+    expect(
+      rejectError(withStructural([{ kind: "uses-instruction", mnemonic: "ret", in: "not a label" }])),
+    ).toMatch(/acceptance\.structural\[0\]: in/);
+    expect(rejectError(withStructural([{ kind: "forbids-instruction", mnemonics: [] }]))).toMatch(
+      /forbids-instruction/,
+    );
+    expect(rejectError(withStructural([{ kind: "forbids-instruction", mnemonics: ["mul", ""] }]))).toMatch(
+      /forbids-instruction/,
+    );
+  });
+});
