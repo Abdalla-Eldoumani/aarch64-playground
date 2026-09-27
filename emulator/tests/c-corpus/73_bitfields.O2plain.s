@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	tick
 tick:
 	ubfx	x1, x0, 1, 3
@@ -33,7 +33,7 @@ tick:
 	bfi	w0, w1, 16, 16
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	widen
 widen:
 	ubfx	x2, x0, 20, 40
@@ -50,7 +50,7 @@ widen:
 	orr	x0, x2, x0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mixpx
 mixpx:
 	ubfx	x2, x0, 5, 6
@@ -98,7 +98,7 @@ mixpx:
 	.string	"sizes %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #176
@@ -126,7 +126,7 @@ main:
 	stp	x25, x26, [sp, 80]
 	str	x27, [sp, 96]
 	b	.L10
-	.align 2
+	.p2align 2,,3
 .L24:
 	and	w1, w0, 1
 	ubfx	x2, x19, 1, 3
@@ -204,7 +204,7 @@ main:
 	mov	x3, x19
 	and	w4, w4, 31
 	mov	w1, 0
-	.align 5
+	.p2align 5,,15
 .L12:
 	add	w0, w1, w1, lsl 2
 	and	w2, w1, 31
@@ -222,7 +222,7 @@ main:
 	cmp	w1, 16
 	bne	.L12
 	mov	w4, 0
-	.align 5
+	.p2align 5,,15
 .L13:
 	sbfiz	x2, x4, 1, 32
 	add	w4, w4, 1
@@ -262,7 +262,7 @@ main:
 	add	x3, sp, 144
 	mov	w1, 0
 	stp	xzr, xzr, [sp, 160]
-	.align 5
+	.p2align 5,,15
 .L14:
 	ldrh	w0, [x19, w1, sxtw 1]
 	add	w1, w1, 1
@@ -277,7 +277,7 @@ main:
 	adrp	x20, .LC7
 	add	x19, sp, 148
 	add	x20, x20, :lo12:.LC7
-	.align 5
+	.p2align 5,,15
 .L15:
 	mov	x0, x20
 	mov	w2, 32
