@@ -15,6 +15,7 @@
  */
 
 import { validateArgs, validateStdin } from "@/lib/playground/upload-guard";
+import { isCalendarDate } from "@/lib/content/lesson-schema";
 
 /** A single result assertion evaluated against emulator output. */
 export type ResultAssertion =
@@ -97,6 +98,8 @@ export interface BaseExercise {
   slug: string;
   /** Sortable; the index orders by this, never by a week label. */
   order: number | string;
+  /** The day the content last changed, YYYY-MM-DD, for the sitemap. */
+  lastUpdated?: string;
   /** Optional index filter. */
   topic?: string;
   /** Optional index filter. */
@@ -552,6 +555,14 @@ export function validateExercise(data: unknown): ExerciseResult {
     return { ok: false, error: "prompt: expected a non-empty string" };
   }
 
+  let lastUpdated: string | undefined;
+  if (o.lastUpdated !== undefined) {
+    if (!isCalendarDate(o.lastUpdated)) {
+      return { ok: false, error: "lastUpdated: expected a YYYY-MM-DD date when present" };
+    }
+    lastUpdated = o.lastUpdated;
+  }
+
   let topic: string | undefined;
   if (o.topic !== undefined) {
     if (typeof o.topic !== "string") {
@@ -588,6 +599,7 @@ export function validateExercise(data: unknown): ExerciseResult {
   }
 
   const base: BaseExercise = { title, slug, order, prompt };
+  if (lastUpdated !== undefined) base.lastUpdated = lastUpdated;
   if (topic !== undefined) base.topic = topic;
   if (difficulty !== undefined) base.difficulty = difficulty;
 
