@@ -124,6 +124,13 @@ describe("validateExercise (malformed metadata)", () => {
     expect(rejectError({ ...validExercise(), difficulty: "easy" })).toMatch(/difficulty/);
   });
 
+  test("keeps a real calendar date in lastUpdated and rejects anything else", () => {
+    expect(acceptWrite({ ...validExercise(), lastUpdated: "2024-02-29" }).lastUpdated).toBe("2024-02-29");
+    for (const bad of ["2025-02-29", "2026-00-10", "Sep 27 2026", 1, null]) {
+      expect(rejectError({ ...validExercise(), lastUpdated: bad }), String(bad)).toMatch(/lastUpdated/);
+    }
+  });
+
   test("rejects an unknown variant", () => {
     expect(rejectError({ ...validExercise(), variant: "fix-it" })).toMatch(/variant/);
   });
