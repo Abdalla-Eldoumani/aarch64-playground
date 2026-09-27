@@ -26,7 +26,7 @@
 	.string	"%.1074f\n%.40e\n%.25g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #320
@@ -67,7 +67,7 @@ main:
 	fneg	d31, d31
 	str	q29, [sp, 256]
 	str	d31, [sp, 304]
-	.align 5
+	.p2align 5,,15
 .L2:
 	ldr	x2, [x20], 8
 	mov	w1, w19
@@ -85,7 +85,7 @@ main:
 	add	x23, sp, 312
 	add	x21, x21, :lo12:stdout
 	add	x26, x26, :lo12:.LC10
-	.align 5
+	.p2align 5,,15
 .L4:
 	ldr	x22, [x24]
 	mov	x0, x27
@@ -93,7 +93,7 @@ main:
 	mov	w20, 0
 	mov	x1, x22
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldr	x1, [x21]
 	mov	w0, 91
@@ -343,43 +343,43 @@ main:
 	.word	1
 	.word	0
 fmts:
-	.quad	.LC29
-	.quad	.LC30
-	.quad	.LC31
-	.quad	.LC32
-	.quad	.LC33
-	.quad	.LC34
-	.quad	.LC35
-	.quad	.LC36
-	.quad	.LC37
-	.quad	.LC38
-	.quad	.LC39
-	.quad	.LC40
-	.quad	.LC41
-	.quad	.LC42
-	.quad	.LC43
-	.quad	.LC44
-	.quad	.LC45
-	.quad	.LC46
-	.quad	.LC47
-	.quad	.LC48
-	.quad	.LC49
-	.quad	.LC50
-	.quad	.LC51
-	.quad	.LC52
-	.quad	.LC53
-	.quad	.LC54
-	.quad	.LC55
-	.quad	.LC56
-	.quad	.LC57
-	.quad	.LC58
-	.quad	.LC59
-	.quad	.LC60
-	.quad	.LC61
-	.quad	.LC62
-	.quad	.LC63
-	.quad	.LC64
-	.quad	.LC65
+	.xword	.LC29
+	.xword	.LC30
+	.xword	.LC31
+	.xword	.LC32
+	.xword	.LC33
+	.xword	.LC34
+	.xword	.LC35
+	.xword	.LC36
+	.xword	.LC37
+	.xword	.LC38
+	.xword	.LC39
+	.xword	.LC40
+	.xword	.LC41
+	.xword	.LC42
+	.xword	.LC43
+	.xword	.LC44
+	.xword	.LC45
+	.xword	.LC46
+	.xword	.LC47
+	.xword	.LC48
+	.xword	.LC49
+	.xword	.LC50
+	.xword	.LC51
+	.xword	.LC52
+	.xword	.LC53
+	.xword	.LC54
+	.xword	.LC55
+	.xword	.LC56
+	.xword	.LC57
+	.xword	.LC58
+	.xword	.LC59
+	.xword	.LC60
+	.xword	.LC61
+	.xword	.LC62
+	.xword	.LC63
+	.xword	.LC64
+	.xword	.LC65
 .LC13:
 	.word	-1698910392
 	.word	1048238066
