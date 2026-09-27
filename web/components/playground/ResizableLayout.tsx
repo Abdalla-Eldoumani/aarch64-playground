@@ -83,6 +83,15 @@ const GRIP_CLASS = [
   "group-data-[separator=focus]/grip:bg-[var(--cyan-dim)]",
 ].join(" ");
 
+// On a touch screen the band keeps its 6px look but takes a finger across
+// 44px: a transparent ::before reaches 19px past each edge, and the group's
+// resizeTargetMinimumSize widens the library's own hit test to match.
+const TOUCH_HIT_X =
+  "[@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-y-0 [@media(pointer:coarse)]:before:-inset-x-[19px]";
+const TOUCH_HIT_Y =
+  "[@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-x-0 [@media(pointer:coarse)]:before:-inset-y-[19px]";
+const HIT_SIZE = { coarse: 44, fine: 10 };
+
 function toArray(layout: Layout | undefined, ids: string[], fallback: number[]): number[] {
   if (!layout) return fallback;
   return ids.map((id, i) => layout[id] ?? fallback[i] ?? 0);
@@ -162,6 +171,7 @@ export function PaneSplit({
       groupRef={groupRef}
       defaultLayout={toLayout(opening, ids)}
       onLayoutChange={(layout) => save(toArray(layout, ids, sizes))}
+      resizeTargetMinimumSize={HIT_SIZE}
       style={{ height: "100%" }}
     >
       <Panel
@@ -174,7 +184,7 @@ export function PaneSplit({
       <Separator
         aria-label={label}
         className={`${SEPARATOR_CLASS} ${
-          horizontal ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize"
+          horizontal ? `w-1.5 cursor-col-resize ${TOUCH_HIT_X}` : `h-1.5 cursor-row-resize ${TOUCH_HIT_Y}`
         }`}
         disableDoubleClick
         onDoubleClick={reset}
