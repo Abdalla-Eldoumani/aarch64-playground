@@ -10,12 +10,12 @@
     {
       "question": "A function declares a local array of ten int values. Where does that array live while the function is running?",
       "options": [
-        "In one contiguous block inside the function's stack frame",
         "On the heap, allocated by malloc when the function is entered",
+        "In one contiguous block inside the function's stack frame",
         "Spread across the temporary registers x9 through x15",
         "In the .bss section, alongside the global variables"
       ],
-      "correctAnswer": 0,
+      "correctAnswer": 1,
       "explanation": "A local array is just another local variable, so the prologue reserves one contiguous block for it in the stack frame and the elements are reached by an offset from x29. A global array is different: it is placed in .data or .bss and lasts for the whole run.",
       "hint": "Local variables live exactly as long as the frame that holds them."
     },
@@ -35,23 +35,23 @@
       "question": "How does C map a two-dimensional array onto the flat bytes of memory?",
       "options": [
         "Column-major order, storing every element of column 0 first",
-        "Row-major order, storing every element of row 0 first",
         "As an array of heap pointers, one per row",
-        "In whatever order the compiler finds convenient"
+        "In whatever order the compiler finds convenient",
+        "Row-major order, storing every element of row 0 first"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 3,
       "explanation": "C uses row-major order: all of row 0, then all of row 1, and so on. So for an array with ncols columns, a[r][c] sits at base address + (r * ncols + c) * element size.",
       "hint": "It finishes a whole row before it moves down to the next one."
     },
     {
       "question": "How does assembly code reach an individual field inside a structure?",
       "options": [
-        "By an offset added to the structure's base address",
         "By an array index, since every field is the same size",
         "By a loop counter that walks the fields in order",
-        "By a system call that resolves the field name"
+        "By a system call that resolves the field name",
+        "By an offset added to the structure's base address"
       ],
-      "correctAnswer": 0,
+      "correctAnswer": 3,
       "explanation": "The assembler has no field names, so each field is a fixed byte offset from the base address of the structure, as in ldr w0, [x19, 8]. Course code usually gives those offsets readable names with m4 define().",
       "hint": "Fields have different sizes, so what matters is how far each one sits from the start."
     },
@@ -59,11 +59,11 @@
       "question": "On 64-bit Linux, an array of long values starts at the address in arr. Which expression gives the address of arr[2]?",
       "options": [
         "arr + 2",
-        "arr + 2 * 4",
         "arr + 2 * 8",
+        "arr + 2 * 4",
         "arr + 16 * 2"
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 1,
       "explanation": "A long is 8 bytes on 64-bit Linux, so element 2 begins 16 bytes past the base: arr + 2 * 8. Using 2 * 4 applies the 4-byte int stride, so it would land on element 1 instead of element 2.",
       "hint": "Work out the byte size of a long first, then scale the index by it."
     }
