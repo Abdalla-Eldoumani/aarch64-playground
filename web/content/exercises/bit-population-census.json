@@ -2,6 +2,7 @@
   "title": "Bit population census",
   "slug": "bit-population-census",
   "order": 24,
+  "lastUpdated": "2026-09-27",
   "topic": "bitwise",
   "difficulty": "core",
   "prompt": "How many bits of a 64-bit value are set? The starter reads the value in hex (`b7a5` in the stdin box). Count them with a loop.\n\nThe classic walk: mask off the lowest bit with `and`, add it to the count, shift the value right by one, and stop when nothing is left. Every set bit takes exactly one turn through position zero. Pick the shift with care: the hidden inputs include values with the top bit set.\n\n## what is checked\n\n- the count of set bits is printed on its own line\n- the program exits cleanly\n- the count comes from masking and shifting (`and`, `lsr`)\n- the same holds for other values you do not see, 0 and all 64 bits set among them",
