@@ -1,0 +1,99 @@
+{
+  "title": "Arrays in memory, in one and two dimensions",
+  "slug": "arrays-in-memory",
+  "order": 19,
+  "summary": "Reserve an array in the frame or in .bss and reach any element, in one or two dimensions, as base plus index times size.",
+  "tags": [
+    "arrays",
+    "memory and the stack"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Pre-test loops](/learn/pretest-loop)\n- [Memory: loads, stores, and addressing modes](/learn/memory-and-addressing-modes)\n- [The stack and the frame pointer](/learn/stack-and-frame-pointer)"
+    },
+    {
+      "type": "prose",
+      "markdown": "An *array* is a list of values of one type stored side by side in memory, with no gaps between them. Each value is an *element*, and its position in the list is its *index*, counted from 0. Every element has the same size, so the address of any one of them follows from three numbers: where the array starts, which index you want, and how many bytes one element takes."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Finding element i\n\nThe address where an array starts is its *base address*. Element `i` sits `i` elements past the base, so the address of `a[i]` is `base + i * size`, where `size` is the width of one element in bytes. For an int array that starts at `0x1000`, `a[0]` is at `0x1000`, `a[1]` is at `0x1004`, and `a[5]` is at `0x1000 + 5 * 4 = 0x1014`.\n\nAArch64 can do that multiply inside the load or store itself. In `ldr w2, [x19, w20, SXTW 2]`, `x19` holds the base and `w20` holds the index. `SXTW` means *sign-extend word*: the 32-bit index is widened to 64 bits, keeping its sign, so it can be added to a 64-bit address. The `2` then shifts the index left by 2 bits, which multiplies it by 4. The shift is the element size written as a power of two:\n\n| element | bytes | shift | load one element |\n|---|---|---|---|\n| char | 1 | 0 | `ldrb w2, [x19, w20, SXTW]` |\n| short | 2 | 1 | `ldrsh w2, [x19, w20, SXTW 1]` |\n| int | 4 | 2 | `ldr w2, [x19, w20, SXTW 2]` |\n| long or pointer | 8 | 3 | `ldr x2, [x19, w20, SXTW 3]` |\n\nThe shift can only be 0 or the one that matches the size of the load, so the table above is the whole list."
+    },
+    {
+      "type": "prose",
+      "markdown": "## An array in the frame\n\nA local array lives in the frame like any other local; it just takes more room. Eight ints take `8 * 4 = 32` bytes, so the frame size is `alloc = -(16 + 32) & -16`, which is -48: 16 bytes for the saved `fp` and `lr`, then 32 for the array. The array starts at `fp + 16`, right above the saved pair.\n\nThe scaled form needs the base address in a register. `add sq_r, fp, sq_s` works it out once. It keeps the sum `fp + 16`, which is the address itself; `ldr` would instead load the value stored at that address. After that line, every element is one load or store away."
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "fp + 44    sq[7]\n  ...\nfp + 24    sq[2]\nfp + 20    sq[1]\nfp + 16    sq[0]      <- sq_r\nfp + 8     saved lr\nfp + 0     saved fp   <- fp and sp\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below fills the array with the squares of 0 to 7 in one loop and prints it in a second. It prints eight lines, from `sq[0] = 0` to `sq[7] = 49`. Step through the fill loop and watch `x9` take each square just before the `str` puts it in the array."
+    },
+    {
+      "type": "editor",
+      "starter": "// Fill an eight-int array in the frame with i * i, then print every element\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(sq_r, x19)\ndefine(i_r, w20)\n\ndefine(COUNT, 8)\n\nsq_s = 16                                   // sq[0] sits 16 bytes above fp\nalloc = -(16 + COUNT * 4) & -16             // fp and lr, then 8 ints of 4 bytes\ndealloc = -alloc\n\n.data\nfmt:        .string \"sq[%d] = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        add     sq_r, fp, sq_s              // sq_r = address of sq[0]\n\n        mov     i_r, 0\n        b       fill_test\nfill_loop:\n        mul     w9, i_r, i_r                // w9 = i * i\n        str     w9, [sq_r, i_r, SXTW 2]     // sq[i] lives at base + i * 4\n        add     i_r, i_r, 1\nfill_test:\n        cmp     i_r, COUNT\n        b.lt    fill_loop\n\n        mov     i_r, 0\n        b       list_test\nlist_loop:\n        ldr     x0, =fmt\n        mov     w1, i_r\n        ldr     w2, [sq_r, i_r, SXTW 2]     // w2 = sq[i]\n        bl      printf\n        add     i_r, i_r, 1\nlist_test:\n        cmp     i_r, COUNT\n        b.lt    list_loop\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sq[0] = 0\nsq[1] = 1\nsq[2] = 4\nsq[3] = 9\nsq[4] = 16\nsq[5] = 25\nsq[6] = 36\nsq[7] = 49\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`main` keeps its base address and index in `x19` and `w20` because `printf` is allowed to change `x0` to `x18`. Short programs like this one let `main` use `x19` to `x28` without saving them first. A subroutine you write yourself does not get that freedom: it must save any of `x19` to `x28` it uses and restore them before it returns."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Nothing checks an index. Change `b.lt` to `b.le` in the fill loop and it writes a ninth element at `fp + 48`, which is past the end of this frame and inside the caller's. The program still prints the same eight lines, and the damage shows up later, if at all, far from the line that caused it. Check every loop bound against the array's length."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Two dimensions in one line of memory\n\nMemory is one long row of bytes, so a table with rows and columns has to be laid out flat. *Row-major order* stores all of row 0, then all of row 1, and so on. In a table with `COLS` columns, element `[row][col]` is element number `row * COLS + col` counted from the start, so its address is `base + (row * COLS + col) * size`. C stores its 2D arrays this way, and so does every program on this site.\n\n*Column-major order* is the other choice: it stores all of column 0 first, and the element number becomes `col * ROWS + row`. Fortran and some math libraries use it. Code that expects one order but is handed the other reads real values from the wrong places.\n\nThe same idea stretches to more dimensions. For `a[D0][D1][D2]`, element `[i][j][k]` is number `(i * D1 + j) * D2 + k`: each index is multiplied by the sizes of all the dimensions to its right. The first size, `D0`, never appears in the formula. It only says how many rows there are."
+    },
+    {
+      "type": "prose",
+      "markdown": "## An array in .bss\n\nA table that several parts of a program share, or one too big for a frame, can live in the `.bss` section instead. `.bss` holds variables that start out as zero: the program file only records how many bytes to reserve, and the loader fills them with zeros when the program starts. `.skip ROWS * COLS * 4` reserves `4 * 5 * 4 = 80` bytes. `.align 4` before it starts the table on a 16-byte boundary, because `.align` counts in powers of two and 2 to the 4th is 16. `ldr grid_r, =grid` then puts the table's address in a register, the same way `ldr x0, =fmt` does for a format string."
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below fills a 4 by 5 table in `.bss` with `row * 10 + col`, so each value spells out its own position. The fill loops find each element by row and column: `madd` (*multiply and add*: `madd w10, row_r, w9, col_r` sets `w10 = row_r * w9 + col_r`) gives the element number, and the scaled store multiplies it by 4.\n\nThe print loop ignores rows and columns. It starts a pointer at the first byte and moves it 4 bytes after each value (`ldr w1, [ptr_r], 4`, the post-index form), and starts a new line whenever the count of values printed is a multiple of 5 (the remainder comes from `sdiv` and `msub`). The rows still come out in order, 0 to 3, because the table really is stored one whole row after another. The last line picks out one element with an offset the assembler works out from the formula, `(2 * 5 + 3) * 4 = 52`. The program prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "   0   1   2   3   4\n  10  11  12  13  14\n  20  21  22  23  24\n  30  31  32  33  34\ngrid[2][3] = 23, at byte offset 52\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Fill a 4 by 5 table in .bss with row * 10 + col, then print it by walking memory in order\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(grid_r, x19)\ndefine(ptr_r, x20)\ndefine(k_r, w21)\ndefine(row_r, w22)\ndefine(col_r, w23)\n\ndefine(ROWS, 4)\ndefine(COLS, 5)\n\npick_off = ((2 * COLS) + 3) * 4             // byte offset of grid[2][3]\n\n.data\nfmt_cell:   .string \"%4d\"\nfmt_nl:     .string \"\\n\"\nfmt_pick:   .string \"grid[2][3] = %d, at byte offset %d\\n\"\n\n.bss\n.align 4\ngrid:       .skip ROWS * COLS * 4           // 20 ints, all zero when the program starts\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     grid_r, =grid\n\n        // fill by [row][col], using the row-major formula\n        mov     row_r, 0\n        b       row_check\nrow_body:\n        mov     col_r, 0\n        b       col_check\ncol_body:\n        mov     w9, COLS\n        madd    w10, row_r, w9, col_r       // w10 = row * COLS + col, the element number\n        mov     w11, 10\n        madd    w12, row_r, w11, col_r      // w12 = row * 10 + col, the value to store\n        str     w12, [grid_r, w10, SXTW 2]  // byte offset = element number * 4\n        add     col_r, col_r, 1\ncol_check:\n        cmp     col_r, COLS\n        b.lt    col_body\n        add     row_r, row_r, 1\nrow_check:\n        cmp     row_r, ROWS\n        b.lt    row_body\n\n        // print by walking the bytes from first to last, one int at a time\n        mov     ptr_r, grid_r\n        mov     k_r, 0\n        b       walk_check\nwalk_body:\n        ldr     x0, =fmt_cell\n        ldr     w1, [ptr_r], 4              // load, then move the pointer to the next int\n        bl      printf\n        add     k_r, k_r, 1\n\n        mov     w9, COLS\n        sdiv    w10, k_r, w9\n        msub    w10, w10, w9, k_r           // w10 = k % COLS\n        cmp     w10, 0\n        b.ne    walk_check                  // end the line after every COLS values\n        ldr     x0, =fmt_nl\n        bl      printf\nwalk_check:\n        cmp     k_r, ROWS * COLS\n        b.lt    walk_body\n\n        ldr     x0, =fmt_pick\n        ldr     w1, [grid_r, pick_off]      // one element, its offset worked out by the assembler\n        mov     w2, pick_off\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "   0   1   2   3   4\n  10  11  12  13  14\n  20  21  22  23  24\n  30  31  32  33  34\ngrid[2][3] = 23, at byte offset 52\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "In the print loop, `w9` and `w10` only hold a value between one call and the next, because `printf` is allowed to change them. The pointer and the count must last across every call, so they live in `ptr_r` and `k_r` (`x20` and `w21`)."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. An array of 10 longs starts at `0x2000`. Where does element 7 start?\n2. Which shift goes with `ldrsh` in the scaled form?\n3. A row-major table of ints has 6 columns. What is the byte offset of element `[3][4]`?\n4. Change `ROWS` to 3 in the grid program. Why does the last line stay the same?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `0x2000 + 7 * 8 = 0x2038`.\n2. 1, because a short is 2 bytes, and 2 is 2 to the power 1.\n3. `(3 * 6 + 4) * 4 = 88`.\n4. The offset of `[2][3]` depends on the number of columns, not rows. Only three rows print now."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Sum a global array](/practice/sum-a-global-array), [Min-max tournament](/practice/min-max-tournament), [Bubble up the order](/practice/bubble-up-the-order) and [The multiplication table](/practice/the-multiplication-table): programs that walk an array.\n- [Quiz: arrays and structures (intro)](/practice/quiz-basic-arrays), then [core](/practice/quiz-inter-arrays) and [challenge](/practice/quiz-advance-arrays): element addresses and row-major order.\n- [Fill in the blank: arrays and structures (core)](/practice/blanks-arrays) and [Predict: arrays and structures (challenge)](/practice/predict-arrays): the scaled loads and the offsets they reach."
+    }
+  ]
+}
