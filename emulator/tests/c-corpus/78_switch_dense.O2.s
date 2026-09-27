@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 mix:
 	eor	w0, w0, w1
 	mov	w1, 403
@@ -9,7 +9,7 @@ mix:
 	eor	w0, w0, w0, lsr 13
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 around:
 	add	w2, w0, 4
 	cmp	w2, 11
@@ -21,7 +21,7 @@ around:
 	sub	w0, w0, w1
 	add	w0, w0, 1000
 	ret
-	.align 2
+	.p2align 2,,3
 .L19:
 	adrp	x0, .L6
 	add	x0, x0, :lo12:.L6
@@ -47,15 +47,15 @@ around:
 	.byte	(.L7 - .Lrtx6) / 4
 	.byte	(.L5 - .Lrtx6) / 4
 	.text
-	.align 2
+	.p2align 2,,3
 .L18:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L12:
 	asr	w0, w1, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L11:
 	mov	w0, 7
 	udiv	w0, w1, w0
@@ -63,51 +63,51 @@ around:
 	sub	w0, w2, w0
 	sub	w0, w1, w0
 	ret
-	.align 2
+	.p2align 2,,3
 .L10:
 	mul	w0, w1, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L9:
 	sub	w0, w1, #1000
 	ret
-	.align 2
+	.p2align 2,,3
 .L8:
 	mov	w0, 257
 	orr	w0, w1, w0
 	ret
-	.align 2
+	.p2align 2,,3
 .L7:
 	and	w0, w1, 240
 	ret
-	.align 2
+	.p2align 2,,3
 .L5:
 	neg	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L17:
 	lsl	w0, w1, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L16:
 	add	w0, w1, 30
 	ret
-	.align 2
+	.p2align 2,,3
 .L15:
 	sub	w0, w1, #20
 	ret
-	.align 2
+	.p2align 2,,3
 .L14:
 	eor	w0, w1, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 big:
 	cmp	w0, 47
 	bls	.L74
 	mov	w0, -1
 	ret
-	.align 2
+	.p2align 2,,3
 .L74:
 	stp	x29, x30, [sp, -16]!
 	mov	w2, w0
@@ -124,56 +124,56 @@ big:
 	.align	0
 	.align	2
 .L23:
-	.hword	(.L70 - .Lrtx23) / 4
-	.hword	(.L69 - .Lrtx23) / 4
-	.hword	(.L68 - .Lrtx23) / 4
-	.hword	(.L67 - .Lrtx23) / 4
-	.hword	(.L66 - .Lrtx23) / 4
-	.hword	(.L65 - .Lrtx23) / 4
-	.hword	(.L64 - .Lrtx23) / 4
-	.hword	(.L63 - .Lrtx23) / 4
-	.hword	(.L62 - .Lrtx23) / 4
-	.hword	(.L61 - .Lrtx23) / 4
-	.hword	(.L60 - .Lrtx23) / 4
-	.hword	(.L59 - .Lrtx23) / 4
-	.hword	(.L58 - .Lrtx23) / 4
-	.hword	(.L57 - .Lrtx23) / 4
-	.hword	(.L56 - .Lrtx23) / 4
-	.hword	(.L55 - .Lrtx23) / 4
-	.hword	(.L54 - .Lrtx23) / 4
-	.hword	(.L53 - .Lrtx23) / 4
-	.hword	(.L52 - .Lrtx23) / 4
-	.hword	(.L51 - .Lrtx23) / 4
-	.hword	(.L50 - .Lrtx23) / 4
-	.hword	(.L49 - .Lrtx23) / 4
-	.hword	(.L48 - .Lrtx23) / 4
-	.hword	(.L47 - .Lrtx23) / 4
-	.hword	(.L46 - .Lrtx23) / 4
-	.hword	(.L45 - .Lrtx23) / 4
-	.hword	(.L44 - .Lrtx23) / 4
-	.hword	(.L43 - .Lrtx23) / 4
-	.hword	(.L42 - .Lrtx23) / 4
-	.hword	(.L41 - .Lrtx23) / 4
-	.hword	(.L40 - .Lrtx23) / 4
-	.hword	(.L39 - .Lrtx23) / 4
-	.hword	(.L38 - .Lrtx23) / 4
-	.hword	(.L37 - .Lrtx23) / 4
-	.hword	(.L36 - .Lrtx23) / 4
-	.hword	(.L35 - .Lrtx23) / 4
-	.hword	(.L34 - .Lrtx23) / 4
-	.hword	(.L33 - .Lrtx23) / 4
-	.hword	(.L32 - .Lrtx23) / 4
-	.hword	(.L31 - .Lrtx23) / 4
-	.hword	(.L30 - .Lrtx23) / 4
-	.hword	(.L29 - .Lrtx23) / 4
-	.hword	(.L28 - .Lrtx23) / 4
-	.hword	(.L27 - .Lrtx23) / 4
-	.hword	(.L26 - .Lrtx23) / 4
-	.hword	(.L25 - .Lrtx23) / 4
-	.hword	(.L24 - .Lrtx23) / 4
-	.hword	(.L22 - .Lrtx23) / 4
+	.2byte	(.L70 - .Lrtx23) / 4
+	.2byte	(.L69 - .Lrtx23) / 4
+	.2byte	(.L68 - .Lrtx23) / 4
+	.2byte	(.L67 - .Lrtx23) / 4
+	.2byte	(.L66 - .Lrtx23) / 4
+	.2byte	(.L65 - .Lrtx23) / 4
+	.2byte	(.L64 - .Lrtx23) / 4
+	.2byte	(.L63 - .Lrtx23) / 4
+	.2byte	(.L62 - .Lrtx23) / 4
+	.2byte	(.L61 - .Lrtx23) / 4
+	.2byte	(.L60 - .Lrtx23) / 4
+	.2byte	(.L59 - .Lrtx23) / 4
+	.2byte	(.L58 - .Lrtx23) / 4
+	.2byte	(.L57 - .Lrtx23) / 4
+	.2byte	(.L56 - .Lrtx23) / 4
+	.2byte	(.L55 - .Lrtx23) / 4
+	.2byte	(.L54 - .Lrtx23) / 4
+	.2byte	(.L53 - .Lrtx23) / 4
+	.2byte	(.L52 - .Lrtx23) / 4
+	.2byte	(.L51 - .Lrtx23) / 4
+	.2byte	(.L50 - .Lrtx23) / 4
+	.2byte	(.L49 - .Lrtx23) / 4
+	.2byte	(.L48 - .Lrtx23) / 4
+	.2byte	(.L47 - .Lrtx23) / 4
+	.2byte	(.L46 - .Lrtx23) / 4
+	.2byte	(.L45 - .Lrtx23) / 4
+	.2byte	(.L44 - .Lrtx23) / 4
+	.2byte	(.L43 - .Lrtx23) / 4
+	.2byte	(.L42 - .Lrtx23) / 4
+	.2byte	(.L41 - .Lrtx23) / 4
+	.2byte	(.L40 - .Lrtx23) / 4
+	.2byte	(.L39 - .Lrtx23) / 4
+	.2byte	(.L38 - .Lrtx23) / 4
+	.2byte	(.L37 - .Lrtx23) / 4
+	.2byte	(.L36 - .Lrtx23) / 4
+	.2byte	(.L35 - .Lrtx23) / 4
+	.2byte	(.L34 - .Lrtx23) / 4
+	.2byte	(.L33 - .Lrtx23) / 4
+	.2byte	(.L32 - .Lrtx23) / 4
+	.2byte	(.L31 - .Lrtx23) / 4
+	.2byte	(.L30 - .Lrtx23) / 4
+	.2byte	(.L29 - .Lrtx23) / 4
+	.2byte	(.L28 - .Lrtx23) / 4
+	.2byte	(.L27 - .Lrtx23) / 4
+	.2byte	(.L26 - .Lrtx23) / 4
+	.2byte	(.L25 - .Lrtx23) / 4
+	.2byte	(.L24 - .Lrtx23) / 4
+	.2byte	(.L22 - .Lrtx23) / 4
 	.text
-	.align 2
+	.p2align 2,,3
 .L24:
 	mov	w1, 22775
 	movk	w1, 0xc2f, lsl 16
@@ -182,7 +182,7 @@ big:
 	mov	w1, 58437
 	movk	w1, 0xabc5, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L25:
 	mov	w1, 57150
 	movk	w1, 0x6df7, lsl 16
@@ -191,7 +191,7 @@ big:
 	mov	w1, 59206
 	movk	w1, 0xa8c6, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L26:
 	mov	w1, 25989
 	movk	w1, 0xcfc0, lsl 16
@@ -200,7 +200,7 @@ big:
 	mov	w1, 58951
 	movk	w1, 0xa9c7, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L27:
 	mov	w1, 60364
 	movk	w1, 0x3188, lsl 16
@@ -209,7 +209,7 @@ big:
 	mov	w1, 57664
 	movk	w1, 0xaec0, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L28:
 	mov	w1, 29203
 	movk	w1, 0x9351, lsl 16
@@ -218,7 +218,7 @@ big:
 	mov	w1, 57409
 	movk	w1, 0xafc1, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L29:
 	mov	w1, 63578
 	movk	w1, 0xf519, lsl 16
@@ -227,7 +227,7 @@ big:
 	mov	w1, 58178
 	movk	w1, 0xacc2, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L30:
 	mov	w1, 32417
 	movk	w1, 0x56e2, lsl 16
@@ -236,7 +236,7 @@ big:
 	mov	w1, 57923
 	movk	w1, 0xadc3, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L31:
 	mov	w1, 1256
 	movk	w1, 0xb8ab, lsl 16
@@ -245,7 +245,7 @@ big:
 	mov	w1, 60748
 	movk	w1, 0xa2cc, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L32:
 	mov	w1, 35631
 	movk	w1, 0x1a73, lsl 16
@@ -254,7 +254,7 @@ big:
 	mov	w1, 60493
 	movk	w1, 0xa3cd, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L33:
 	mov	w1, 4470
 	movk	w1, 0x7c3c, lsl 16
@@ -263,7 +263,7 @@ big:
 	mov	w1, 61262
 	movk	w1, 0xa0ce, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L34:
 	mov	w1, 38845
 	movk	w1, 0xde04, lsl 16
@@ -272,7 +272,7 @@ big:
 	mov	w1, 61007
 	movk	w1, 0xa1cf, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L35:
 	mov	w1, 7684
 	movk	w1, 0x3fcd, lsl 16
@@ -281,7 +281,7 @@ big:
 	mov	w1, 59720
 	movk	w1, 0xa6c8, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L36:
 	mov	w1, 42059
 	movk	w1, 0xa195, lsl 16
@@ -290,7 +290,7 @@ big:
 	mov	w1, 59465
 	movk	w1, 0xa7c9, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L37:
 	mov	w1, 10898
 	movk	w1, 0x35e, lsl 16
@@ -299,7 +299,7 @@ big:
 	mov	w1, 60234
 	movk	w1, 0xa4ca, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L38:
 	mov	w1, 45273
 	movk	w1, 0x6526, lsl 16
@@ -308,7 +308,7 @@ big:
 	mov	w1, 59979
 	movk	w1, 0xa5cb, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L39:
 	mov	w1, 14112
 	movk	w1, 0xc6ef, lsl 16
@@ -317,7 +317,7 @@ big:
 	mov	w1, 54644
 	movk	w1, 0x9af4, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L40:
 	mov	w1, 48487
 	movk	w1, 0x28b7, lsl 16
@@ -326,7 +326,7 @@ big:
 	mov	w1, 54389
 	movk	w1, 0x9bf5, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L41:
 	mov	w1, 17326
 	movk	w1, 0x8a80, lsl 16
@@ -335,7 +335,7 @@ big:
 	mov	w1, 55158
 	movk	w1, 0x98f6, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L42:
 	mov	w1, 51701
 	movk	w1, 0xec48, lsl 16
@@ -344,7 +344,7 @@ big:
 	mov	w1, 54903
 	movk	w1, 0x99f7, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L43:
 	mov	w1, 20540
 	movk	w1, 0x4e11, lsl 16
@@ -353,7 +353,7 @@ big:
 	mov	w1, 53616
 	movk	w1, 0x9ef0, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L44:
 	mov	w1, 54915
 	movk	w1, 0xafd9, lsl 16
@@ -362,7 +362,7 @@ big:
 	mov	w1, 53361
 	movk	w1, 0x9ff1, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L45:
 	mov	w1, 23754
 	movk	w1, 0x11a2, lsl 16
@@ -371,7 +371,7 @@ big:
 	mov	w1, 54130
 	movk	w1, 0x9cf2, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L46:
 	mov	w1, 58129
 	movk	w1, 0x736a, lsl 16
@@ -380,7 +380,7 @@ big:
 	mov	w1, 53875
 	movk	w1, 0x9df3, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L47:
 	mov	w1, 26968
 	movk	w1, 0xd533, lsl 16
@@ -389,7 +389,7 @@ big:
 	mov	w1, 56700
 	movk	w1, 0x92fc, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L48:
 	mov	w1, 61343
 	movk	w1, 0x36fb, lsl 16
@@ -398,7 +398,7 @@ big:
 	mov	w1, 56445
 	movk	w1, 0x93fd, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L49:
 	mov	w1, 30182
 	movk	w1, 0x98c4, lsl 16
@@ -407,7 +407,7 @@ big:
 	mov	w1, 57214
 	movk	w1, 0x90fe, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L50:
 	mov	w1, 64557
 	movk	w1, 0xfa8c, lsl 16
@@ -416,7 +416,7 @@ big:
 	mov	w1, 56959
 	movk	w1, 0x91ff, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L51:
 	mov	w1, 33396
 	movk	w1, 0x5c55, lsl 16
@@ -425,7 +425,7 @@ big:
 	mov	w1, 55672
 	movk	w1, 0x96f8, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L52:
 	mov	w1, 2235
 	movk	w1, 0xbe1e, lsl 16
@@ -434,7 +434,7 @@ big:
 	mov	w1, 55417
 	movk	w1, 0x97f9, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L53:
 	mov	w1, 36610
 	movk	w1, 0x1fe6, lsl 16
@@ -443,7 +443,7 @@ big:
 	mov	w1, 56186
 	movk	w1, 0x94fa, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L54:
 	mov	w1, 5449
 	movk	w1, 0x81af, lsl 16
@@ -452,7 +452,7 @@ big:
 	mov	w1, 55931
 	movk	w1, 0x95fb, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L55:
 	mov	w1, 39824
 	movk	w1, 0xe377, lsl 16
@@ -461,7 +461,7 @@ big:
 	mov	w1, 50532
 	movk	w1, 0x8ae4, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L56:
 	mov	w1, 8663
 	movk	w1, 0x4540, lsl 16
@@ -470,7 +470,7 @@ big:
 	mov	w1, 50277
 	movk	w1, 0x8be5, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L57:
 	mov	w1, 43038
 	movk	w1, 0xa708, lsl 16
@@ -479,7 +479,7 @@ big:
 	mov	w1, 51046
 	movk	w1, 0x88e6, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L58:
 	mov	w1, 11877
 	movk	w1, 0x8d1, lsl 16
@@ -488,7 +488,7 @@ big:
 	mov	w1, 50791
 	movk	w1, 0x89e7, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L59:
 	mov	w1, 46252
 	movk	w1, 0x6a99, lsl 16
@@ -497,7 +497,7 @@ big:
 	mov	w1, 49504
 	movk	w1, 0x8ee0, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L60:
 	mov	w1, 15091
 	movk	w1, 0xcc62, lsl 16
@@ -506,7 +506,7 @@ big:
 	mov	w1, 49249
 	movk	w1, 0x8fe1, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L61:
 	mov	w1, 49466
 	movk	w1, 0x2e2a, lsl 16
@@ -515,7 +515,7 @@ big:
 	mov	w1, 50018
 	movk	w1, 0x8ce2, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L62:
 	mov	w1, 18305
 	movk	w1, 0x8ff3, lsl 16
@@ -524,7 +524,7 @@ big:
 	mov	w1, 49763
 	movk	w1, 0x8de3, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L63:
 	mov	w1, 52680
 	movk	w1, 0xf1bb, lsl 16
@@ -533,7 +533,7 @@ big:
 	mov	w1, 52588
 	movk	w1, 0x82ec, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L64:
 	mov	w1, 21519
 	movk	w1, 0x5384, lsl 16
@@ -542,7 +542,7 @@ big:
 	mov	w1, 52333
 	movk	w1, 0x83ed, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L65:
 	mov	w1, 55894
 	movk	w1, 0xb54c, lsl 16
@@ -551,7 +551,7 @@ big:
 	mov	w1, 53102
 	movk	w1, 0x80ee, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L66:
 	mov	w1, 24733
 	movk	w1, 0x1715, lsl 16
@@ -560,7 +560,7 @@ big:
 	mov	w1, 52847
 	movk	w1, 0x81ef, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L67:
 	mov	w1, 59108
 	movk	w1, 0x78dd, lsl 16
@@ -569,7 +569,7 @@ big:
 	mov	w1, 51560
 	movk	w1, 0x86e8, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L68:
 	mov	w1, 27947
 	movk	w1, 0xdaa6, lsl 16
@@ -578,7 +578,7 @@ big:
 	mov	w1, 51305
 	movk	w1, 0x87e9, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L69:
 	mov	w1, 62322
 	movk	w1, 0x3c6e, lsl 16
@@ -587,7 +587,7 @@ big:
 	mov	w1, 52074
 	movk	w1, 0x84ea, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L70:
 	mov	w1, 31161
 	movk	w1, 0x9e37, lsl 16
@@ -596,7 +596,7 @@ big:
 	mov	w1, 51819
 	movk	w1, 0x85eb, lsl 16
 	b	mix
-	.align 2
+	.p2align 2,,3
 .L22:
 	mov	w1, 53936
 	movk	w1, 0xaa66, lsl 16
@@ -611,7 +611,7 @@ big:
 	.string	"?"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 month:
 	sub	w0, w0, #1
 	cmp	w0, 11
@@ -620,13 +620,13 @@ month:
 	add	x1, x1, :lo12:.LANCHOR0
 	ldr	x0, [x1, w0, uxtw 3]
 	ret
-	.align 2
+	.p2align 2,,3
 .L77:
 	adrp	x0, .LC2
 	add	x0, x0, :lo12:.LC2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 wide:
 	cmp	x0, 11
 	bhi	.L93
@@ -635,7 +635,7 @@ wide:
 .L93:
 	mov	x0, -1
 	ret
-	.align 2
+	.p2align 2,,3
 .L94:
 	adrp	x2, .L81
 	add	x2, x2, :lo12:.L81
@@ -661,11 +661,11 @@ wide:
 	.byte	(.L82 - .Lrtx81) / 4
 	.byte	(.L80 - .Lrtx81) / 4
 	.text
-	.align 2
+	.p2align 2,,3
 .L82:
 	sub	x0, x1, x1, asr 5
 	ret
-	.align 2
+	.p2align 2,,3
 .L80:
 	mov	x0, 62983
 	movk	x0, 0xa98e, lsl 16
@@ -679,32 +679,32 @@ wide:
 	sub	x1, x1, x0
 	add	x0, x1, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L92:
 	add	x0, x1, 100
 	ret
-	.align 2
+	.p2align 2,,3
 .L91:
 	sub	x0, x1, #100
 	ret
-	.align 2
+	.p2align 2,,3
 .L90:
 	lsl	x0, x1, 3
 	sub	x0, x0, x1
 	ret
-	.align 2
+	.p2align 2,,3
 .L89:
 	eor	x0, x1, 127
 	ret
-	.align 2
+	.p2align 2,,3
 .L88:
 	lsl	x0, x1, 3
 	ret
-	.align 2
+	.p2align 2,,3
 .L87:
 	asr	x0, x1, 2
 	ret
-	.align 2
+	.p2align 2,,3
 .L86:
 	mov	x0, 58255
 	movk	x0, 0x8e38, lsl 16
@@ -713,7 +713,7 @@ wide:
 	umulh	x1, x1, x0
 	lsr	x0, x1, 3
 	ret
-	.align 2
+	.p2align 2,,3
 .L85:
 	mov	x2, 63439
 	lsr	x0, x1, 3
@@ -727,16 +727,16 @@ wide:
 	add	x0, x0, x0, lsl 2
 	sub	x0, x1, x0, lsl 3
 	ret
-	.align 2
+	.p2align 2,,3
 .L84:
 	mvn	x0, x1
 	ret
-	.align 2
+	.p2align 2,,3
 .L83:
 	and	x0, x1, 65535
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 cls:
 	cmp	w0, 117
 	bhi	.L97
@@ -745,12 +745,12 @@ cls:
 	add	x1, x1, 96
 	ldrsb	w0, [x1, w0, uxtw]
 	ret
-	.align 2
+	.p2align 2,,3
 .L97:
 	mov	w0, 4
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 duff:
 	adds	w3, w2, 7
 	add	w4, w2, 14
@@ -772,7 +772,7 @@ duff:
 	beq	.L104
 .L98:
 	ret
-	.align 2
+	.p2align 2,,3
 .L100:
 	cmp	w3, 6
 	beq	.L106
@@ -862,7 +862,7 @@ duff:
 	.string	" %d%c"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #528
@@ -882,7 +882,7 @@ main:
 	stp	x25, x26, [sp, 64]
 	str	x27, [sp, 80]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L125:
 	mov	w1, w19
 	add	w0, w22, w19
@@ -923,7 +923,7 @@ main:
 	mov	x0, x22
 	add	x1, x1, :lo12:.LC9
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L126:
 	mov	w0, 4660
 	add	w1, w19, w0
@@ -961,7 +961,7 @@ main:
 	add	x0, x0, :lo12:.LC12
 	str	q31, [sp, 156]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L129:
 	ldr	w0, [x19], 4
 	add	w0, w21, w0
@@ -996,7 +996,7 @@ main:
 	adrp	x0, .LC14
 	add	x0, x0, :lo12:.LC14
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L130:
 	ldr	x0, [x19], 8
 	mov	x1, x23
@@ -1021,7 +1021,7 @@ main:
 	str	xzr, [sp, 120]
 	bl	printf
 	mov	w0, 72
-	.align 5
+	.p2align 5,,15
 .L131:
 	add	w0, w0, w21
 	bl	cls
@@ -1048,7 +1048,7 @@ main:
 	ldr	q31, [x22, 224]
 	mov	x0, x26
 	movi	v29.4s, 0x4
-	.align 5
+	.p2align 5,,15
 .L132:
 	movi	v28.4s, 0x1
 	mla	v28.4s, v31.4s, v31.4s
@@ -1066,10 +1066,10 @@ main:
 	mov	x5, 2
 	mov	w23, 33
 	mov	w22, 43
-	.align 5
+	.p2align 5,,15
 .L133:
 	mov	x0, x25
-	.align 5
+	.p2align 5,,15
 .L134:
 	str	q31, [x0], 16
 	cmp	x0, x27
@@ -1081,7 +1081,7 @@ main:
 	mov	x19, 1
 	mov	w2, w19
 	mov	w1, 0
-	.align 5
+	.p2align 5,,15
 .L135:
 	add	x0, x25, x19, lsl 2
 	add	x3, x26, x19, lsl 2
@@ -1163,18 +1163,18 @@ vzero:
 	.align	4
 	.LANCHOR0:
 CSWTCH.23:
-	.quad	.LC21
-	.quad	.LC22
-	.quad	.LC23
-	.quad	.LC24
-	.quad	.LC25
-	.quad	.LC26
-	.quad	.LC27
-	.quad	.LC28
-	.quad	.LC29
-	.quad	.LC30
-	.quad	.LC31
-	.quad	.LC32
+	.xword	.LC21
+	.xword	.LC22
+	.xword	.LC23
+	.xword	.LC24
+	.xword	.LC25
+	.xword	.LC26
+	.xword	.LC27
+	.xword	.LC28
+	.xword	.LC29
+	.xword	.LC30
+	.xword	.LC31
+	.xword	.LC32
 CSWTCH.26:
 	.byte	5
 	.byte	4
@@ -1314,23 +1314,23 @@ CSWTCH.26:
 	.word	2147483647
 	.zero	4
 .LC1:
-	.quad	0
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	4
-	.quad	5
-	.quad	6
-	.quad	7
-	.quad	8
-	.quad	9
-	.quad	10
-	.quad	11
-	.quad	12
-	.quad	-1
-	.quad	4294967299
-	.quad	9223372032559808517
-	.quad	-9223372036854775808
-	.quad	9223372036854775807
-	.quad	4294967295
+	.xword	0
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	4
+	.xword	5
+	.xword	6
+	.xword	7
+	.xword	8
+	.xword	9
+	.xword	10
+	.xword	11
+	.xword	12
+	.xword	-1
+	.xword	4294967299
+	.xword	9223372032559808517
+	.xword	-9223372036854775808
+	.xword	9223372036854775807
+	.xword	4294967295
 
