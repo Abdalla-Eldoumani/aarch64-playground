@@ -138,6 +138,22 @@ export interface FullChromeSurfaceProps {
   registerBridge: (bridge: FullChromeBridge | null) => void;
 }
 
+// An import, unlike a program load, keeps no copy in recents of what it
+// writes over, so it asks before replacing code that differs from the file
+// coming in, in main.asm or in any helper tab.
+function importReplaces(current: string | undefined, incoming: string): boolean {
+  return current !== undefined && current.trim() !== "" && current !== incoming;
+}
+
+function confirmImport(what: string, replaced: string[]): boolean {
+  return (
+    replaced.length === 0 ||
+    window.confirm(
+      `Import ${what}? It replaces the code in ${replaced.join(", ")}, including your edits.`,
+    )
+  );
+}
+
 /**
  * The playground's own half of the shared shell: the header band, the files
  * strip, the three-column resizable layout with its eight machine views, the
@@ -216,20 +232,11 @@ export function FullChromeSurface({
   // else in there is the student's own edit.
   const loadedSourceRef = useRef(source);
 
-  // An import writes over main.asm and, unlike a program load, keeps no copy
-  // of what was there in recents, so it asks before replacing code that
-  // differs from the file coming in.
-  const confirmImportOverMain = useCallback(
-    (name: string, body: string): boolean =>
-      source.trim() === "" ||
-      source === body ||
-      window.confirm(`Import ${name} into main.asm? It replaces the code there, including your edits.`),
-    [source],
-  );
-
   const handleImport = useCallback(
     (target: ImportTarget, body: string) => {
-      if (target.kind === "main" && !confirmImportOverMain("this file", body)) return;
+      const current = target.kind === "main" ? source : extraFiles[target.index]?.body;
+      const replaced = importReplaces(current, body) ? [describeTarget(target, extraFiles)] : [];
+      if (!confirmImport("this file", replaced)) return;
       resetLaunch();
       switch (target.kind) {
         case "main":
@@ -247,7 +254,7 @@ export function FullChromeSurface({
         }
       }
     },
-    [extraFiles, setExtraFiles, setSource, toast, resetLaunch, confirmImportOverMain],
+    [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch],
   );
 
   // Multi-select import: a file named main.asm / main.s replaces the main
@@ -256,7 +263,13 @@ export function FullChromeSurface({
   const handleImportMany = useCallback(
     (files: { name: string; body: string }[]) => {
       const mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
-      if (mainIdx >= 0 && !confirmImportOverMain(files[mainIdx].name, files[mainIdx].body)) return;
+      const replaced = files.flatMap((f, i) => {
+        const current =
+          i === mainIdx ? source : extraFiles.find((x) => x.name === f.name)?.body;
+        return importReplaces(current, f.body) ? [i === mainIdx ? "main.asm" : f.name] : [];
+      });
+      const what = files.length === 1 ? files[0].name : `${files.length} files`;
+      if (!confirmImport(what, replaced)) return;
       resetLaunch();
       if (mainIdx >= 0) {
         setSource(files[mainIdx].body);
@@ -272,7 +285,7 @@ export function FullChromeSurface({
       setExtraFiles(next);
       toast.show(`imported ${files.length} files`);
     },
-    [extraFiles, setExtraFiles, setSource, toast, resetLaunch, confirmImportOverMain],
+    [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch],
   );
 
   // A load replacing edits made since the last load or import asks first.
