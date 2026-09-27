@@ -2,6 +2,7 @@
   "title": "Power of two, or not?",
   "slug": "power-of-two-or-not",
   "order": 22,
+  "lastUpdated": "2026-09-27",
   "topic": "bitwise",
   "difficulty": "intro",
   "prompt": "A power of two (1, 2, 4, 8, and so on) has exactly one bit set. Subtracting 1 clears that bit and sets every bit below it, so `n` and `n - 1` share no set bits and `n & (n - 1)` is zero. Any other positive number keeps its highest set bit through the subtraction, so the AND is not zero.\n\nThe starter reads a 64-bit number into `n_r` and always prints that it is not a power of two. Point `x0` at `fmt_yes` instead when `n_r` is a power of two: compute `n - 1` in a spare register and test the two with `tst`, which sets the flags from their AND.\n\nWatch zero and the negative numbers: the bit test alone gets one of each wrong.\n\n## what is checked\n\n- `64 is a power of two` for the sample input\n- the program exits cleanly\n- the bits are tested with `tst`\n- the right answer for other numbers, including 0, 1, a number wider than 32 bits, and negative numbers",
