@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 around:
 	add	w2, w0, 4
 	cmp	w2, 11
@@ -12,7 +12,7 @@ around:
 	sub	w0, w0, w1
 	add	w0, w0, 1000
 	ret
-	.align 2
+	.p2align 2,,3
 .L18:
 	adrp	x0, .L4
 	add	x0, x0, :lo12:.L4
@@ -38,15 +38,15 @@ around:
 	.byte	(.L5 - .Lrtx4) / 4
 	.byte	(.L3 - .Lrtx4) / 4
 	.text
-	.align 2
+	.p2align 2,,3
 .L16:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L10:
 	asr	w0, w1, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L9:
 	mov	w0, 7
 	udiv	w0, w1, w0
@@ -54,40 +54,40 @@ around:
 	sub	w0, w2, w0
 	sub	w0, w1, w0
 	ret
-	.align 2
+	.p2align 2,,3
 .L8:
 	mul	w0, w1, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L7:
 	sub	w0, w1, #1000
 	ret
-	.align 2
+	.p2align 2,,3
 .L6:
 	mov	w0, 257
 	orr	w0, w1, w0
 	ret
-	.align 2
+	.p2align 2,,3
 .L5:
 	and	w0, w1, 240
 	ret
-	.align 2
+	.p2align 2,,3
 .L3:
 	neg	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L15:
 	lsl	w0, w1, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L14:
 	add	w0, w1, 30
 	ret
-	.align 2
+	.p2align 2,,3
 .L13:
 	sub	w0, w1, #20
 	ret
-	.align 2
+	.p2align 2,,3
 .L12:
 	eor	w0, w1, 1
 	ret
@@ -145,7 +145,7 @@ around:
 	.string	" %d%c"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #576
@@ -165,7 +165,7 @@ main:
 	stp	x25, x26, [sp, 64]
 	stp	x27, x28, [sp, 80]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L20:
 	mov	w1, w20
 	add	w0, w22, w20
@@ -200,7 +200,7 @@ main:
 	add	x1, x1, :lo12:.LC4
 	add	x0, x0, :lo12:.LC10
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L110:
 	mov	w0, 52429
 	add	w20, w21, 1
@@ -225,7 +225,7 @@ main:
 	bl	printf
 	cmp	w20, 49
 	bne	.L110
-	.align 5
+	.p2align 5,,15
 .L73:
 	mov	w0, 10
 	bl	putchar
@@ -244,7 +244,7 @@ main:
 	adrp	x21, .LC5
 	str	q31, [sp, 204]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L76:
 	ldr	w0, [x26]
 	add	x1, x21, :lo12:.LC5
@@ -321,7 +321,7 @@ main:
 	sub	x23, x24, x23, lsl 3
 	add	x0, x20, x0
 	stp	x1, x0, [sp, 128]
-	.align 5
+	.p2align 5,,15
 .L91:
 	ldr	x0, [x28]
 	add	x0, x20, x0
@@ -332,7 +332,7 @@ main:
 .L77:
 	mov	x1, -1
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L231:
 	add	x1, x26, :lo12:.L79
 	ldrb	w1, [x1,w0,uxtw]
@@ -357,10 +357,10 @@ main:
 	.byte	(.L80 - .Lrtx79) / 4
 	.byte	(.L78 - .Lrtx79) / 4
 	.text
-	.align 2
+	.p2align 2,,3
 .L162:
 	ldr	x1, [sp, 104]
-	.align 5
+	.p2align 5,,15
 .L88:
 	mov	x0, x21
 	bl	printf
@@ -385,7 +385,7 @@ main:
 	add	x23, x22, 312
 	mov	w0, 72
 	b	.L93
-	.align 2
+	.p2align 2,,3
 .L233:
 	ldrsb	w1, [x23, w0, uxtw]
 	add	w0, w1, 48
@@ -406,53 +406,53 @@ main:
 	mov	w0, 52
 	mov	w1, 4
 	b	.L92
-	.align 2
+	.p2align 2,,3
 .L89:
 	ldr	x1, [sp, 128]
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L90:
 	ldr	x1, [sp, 136]
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L78:
 	ldr	x0, [sp, 112]
 	add	x1, x0, 1
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L80:
 	sub	x1, x24, x24, asr 5
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L81:
 	and	x1, x24, 65535
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L82:
 	mvn	x1, x24
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L83:
 	mov	x1, x23
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L84:
 	ldr	x0, [sp, 120]
 	lsr	x1, x0, 3
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L85:
 	asr	x1, x24, 2
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L86:
 	mov	x1, x27
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L87:
 	eor	x1, x24, 127
 	b	.L88
-	.align 2
+	.p2align 2,,3
 .L160:
 	mov	w0, 4660
 	add	w2, w21, w0
@@ -474,54 +474,54 @@ main:
 	.align	0
 	.align	2
 .L72:
-	.hword	(.L70 - .Lrtx72) / 4
-	.hword	(.L69 - .Lrtx72) / 4
-	.hword	(.L68 - .Lrtx72) / 4
-	.hword	(.L67 - .Lrtx72) / 4
-	.hword	(.L66 - .Lrtx72) / 4
-	.hword	(.L65 - .Lrtx72) / 4
-	.hword	(.L64 - .Lrtx72) / 4
-	.hword	(.L63 - .Lrtx72) / 4
-	.hword	(.L62 - .Lrtx72) / 4
-	.hword	(.L61 - .Lrtx72) / 4
-	.hword	(.L60 - .Lrtx72) / 4
-	.hword	(.L59 - .Lrtx72) / 4
-	.hword	(.L58 - .Lrtx72) / 4
-	.hword	(.L57 - .Lrtx72) / 4
-	.hword	(.L56 - .Lrtx72) / 4
-	.hword	(.L55 - .Lrtx72) / 4
-	.hword	(.L54 - .Lrtx72) / 4
-	.hword	(.L53 - .Lrtx72) / 4
-	.hword	(.L52 - .Lrtx72) / 4
-	.hword	(.L51 - .Lrtx72) / 4
-	.hword	(.L50 - .Lrtx72) / 4
-	.hword	(.L49 - .Lrtx72) / 4
-	.hword	(.L48 - .Lrtx72) / 4
-	.hword	(.L47 - .Lrtx72) / 4
-	.hword	(.L46 - .Lrtx72) / 4
-	.hword	(.L45 - .Lrtx72) / 4
-	.hword	(.L44 - .Lrtx72) / 4
-	.hword	(.L43 - .Lrtx72) / 4
-	.hword	(.L42 - .Lrtx72) / 4
-	.hword	(.L41 - .Lrtx72) / 4
-	.hword	(.L40 - .Lrtx72) / 4
-	.hword	(.L39 - .Lrtx72) / 4
-	.hword	(.L38 - .Lrtx72) / 4
-	.hword	(.L37 - .Lrtx72) / 4
-	.hword	(.L36 - .Lrtx72) / 4
-	.hword	(.L35 - .Lrtx72) / 4
-	.hword	(.L34 - .Lrtx72) / 4
-	.hword	(.L33 - .Lrtx72) / 4
-	.hword	(.L32 - .Lrtx72) / 4
-	.hword	(.L31 - .Lrtx72) / 4
-	.hword	(.L30 - .Lrtx72) / 4
-	.hword	(.L29 - .Lrtx72) / 4
-	.hword	(.L28 - .Lrtx72) / 4
-	.hword	(.L27 - .Lrtx72) / 4
-	.hword	(.L26 - .Lrtx72) / 4
-	.hword	(.L25 - .Lrtx72) / 4
-	.hword	(.L24 - .Lrtx72) / 4
-	.hword	(.L22 - .Lrtx72) / 4
+	.2byte	(.L70 - .Lrtx72) / 4
+	.2byte	(.L69 - .Lrtx72) / 4
+	.2byte	(.L68 - .Lrtx72) / 4
+	.2byte	(.L67 - .Lrtx72) / 4
+	.2byte	(.L66 - .Lrtx72) / 4
+	.2byte	(.L65 - .Lrtx72) / 4
+	.2byte	(.L64 - .Lrtx72) / 4
+	.2byte	(.L63 - .Lrtx72) / 4
+	.2byte	(.L62 - .Lrtx72) / 4
+	.2byte	(.L61 - .Lrtx72) / 4
+	.2byte	(.L60 - .Lrtx72) / 4
+	.2byte	(.L59 - .Lrtx72) / 4
+	.2byte	(.L58 - .Lrtx72) / 4
+	.2byte	(.L57 - .Lrtx72) / 4
+	.2byte	(.L56 - .Lrtx72) / 4
+	.2byte	(.L55 - .Lrtx72) / 4
+	.2byte	(.L54 - .Lrtx72) / 4
+	.2byte	(.L53 - .Lrtx72) / 4
+	.2byte	(.L52 - .Lrtx72) / 4
+	.2byte	(.L51 - .Lrtx72) / 4
+	.2byte	(.L50 - .Lrtx72) / 4
+	.2byte	(.L49 - .Lrtx72) / 4
+	.2byte	(.L48 - .Lrtx72) / 4
+	.2byte	(.L47 - .Lrtx72) / 4
+	.2byte	(.L46 - .Lrtx72) / 4
+	.2byte	(.L45 - .Lrtx72) / 4
+	.2byte	(.L44 - .Lrtx72) / 4
+	.2byte	(.L43 - .Lrtx72) / 4
+	.2byte	(.L42 - .Lrtx72) / 4
+	.2byte	(.L41 - .Lrtx72) / 4
+	.2byte	(.L40 - .Lrtx72) / 4
+	.2byte	(.L39 - .Lrtx72) / 4
+	.2byte	(.L38 - .Lrtx72) / 4
+	.2byte	(.L37 - .Lrtx72) / 4
+	.2byte	(.L36 - .Lrtx72) / 4
+	.2byte	(.L35 - .Lrtx72) / 4
+	.2byte	(.L34 - .Lrtx72) / 4
+	.2byte	(.L33 - .Lrtx72) / 4
+	.2byte	(.L32 - .Lrtx72) / 4
+	.2byte	(.L31 - .Lrtx72) / 4
+	.2byte	(.L30 - .Lrtx72) / 4
+	.2byte	(.L29 - .Lrtx72) / 4
+	.2byte	(.L28 - .Lrtx72) / 4
+	.2byte	(.L27 - .Lrtx72) / 4
+	.2byte	(.L26 - .Lrtx72) / 4
+	.2byte	(.L25 - .Lrtx72) / 4
+	.2byte	(.L24 - .Lrtx72) / 4
+	.2byte	(.L22 - .Lrtx72) / 4
 	.text
 .L157:
 	adrp	x1, .LC4
@@ -1675,7 +1675,7 @@ main:
 	cmp	w20, 49
 	bne	.L110
 	b	.L73
-	.align 2
+	.p2align 2,,3
 .L229:
 	adrp	x0, .L23
 	mov	w20, 0
@@ -1689,56 +1689,56 @@ main:
 	.align	0
 	.align	2
 .L23:
-	.hword	(.L111 - .Lrtx23) / 4
-	.hword	(.L112 - .Lrtx23) / 4
-	.hword	(.L113 - .Lrtx23) / 4
-	.hword	(.L114 - .Lrtx23) / 4
-	.hword	(.L115 - .Lrtx23) / 4
-	.hword	(.L116 - .Lrtx23) / 4
-	.hword	(.L117 - .Lrtx23) / 4
-	.hword	(.L118 - .Lrtx23) / 4
-	.hword	(.L119 - .Lrtx23) / 4
-	.hword	(.L120 - .Lrtx23) / 4
-	.hword	(.L121 - .Lrtx23) / 4
-	.hword	(.L122 - .Lrtx23) / 4
-	.hword	(.L123 - .Lrtx23) / 4
-	.hword	(.L124 - .Lrtx23) / 4
-	.hword	(.L125 - .Lrtx23) / 4
-	.hword	(.L126 - .Lrtx23) / 4
-	.hword	(.L127 - .Lrtx23) / 4
-	.hword	(.L128 - .Lrtx23) / 4
-	.hword	(.L129 - .Lrtx23) / 4
-	.hword	(.L130 - .Lrtx23) / 4
-	.hword	(.L131 - .Lrtx23) / 4
-	.hword	(.L132 - .Lrtx23) / 4
-	.hword	(.L133 - .Lrtx23) / 4
-	.hword	(.L134 - .Lrtx23) / 4
-	.hword	(.L135 - .Lrtx23) / 4
-	.hword	(.L136 - .Lrtx23) / 4
-	.hword	(.L137 - .Lrtx23) / 4
-	.hword	(.L138 - .Lrtx23) / 4
-	.hword	(.L139 - .Lrtx23) / 4
-	.hword	(.L140 - .Lrtx23) / 4
-	.hword	(.L141 - .Lrtx23) / 4
-	.hword	(.L142 - .Lrtx23) / 4
-	.hword	(.L143 - .Lrtx23) / 4
-	.hword	(.L144 - .Lrtx23) / 4
-	.hword	(.L145 - .Lrtx23) / 4
-	.hword	(.L146 - .Lrtx23) / 4
-	.hword	(.L147 - .Lrtx23) / 4
-	.hword	(.L148 - .Lrtx23) / 4
-	.hword	(.L149 - .Lrtx23) / 4
-	.hword	(.L150 - .Lrtx23) / 4
-	.hword	(.L151 - .Lrtx23) / 4
-	.hword	(.L152 - .Lrtx23) / 4
-	.hword	(.L153 - .Lrtx23) / 4
-	.hword	(.L154 - .Lrtx23) / 4
-	.hword	(.L155 - .Lrtx23) / 4
-	.hword	(.L156 - .Lrtx23) / 4
-	.hword	(.L157 - .Lrtx23) / 4
-	.hword	(.L158 - .Lrtx23) / 4
+	.2byte	(.L111 - .Lrtx23) / 4
+	.2byte	(.L112 - .Lrtx23) / 4
+	.2byte	(.L113 - .Lrtx23) / 4
+	.2byte	(.L114 - .Lrtx23) / 4
+	.2byte	(.L115 - .Lrtx23) / 4
+	.2byte	(.L116 - .Lrtx23) / 4
+	.2byte	(.L117 - .Lrtx23) / 4
+	.2byte	(.L118 - .Lrtx23) / 4
+	.2byte	(.L119 - .Lrtx23) / 4
+	.2byte	(.L120 - .Lrtx23) / 4
+	.2byte	(.L121 - .Lrtx23) / 4
+	.2byte	(.L122 - .Lrtx23) / 4
+	.2byte	(.L123 - .Lrtx23) / 4
+	.2byte	(.L124 - .Lrtx23) / 4
+	.2byte	(.L125 - .Lrtx23) / 4
+	.2byte	(.L126 - .Lrtx23) / 4
+	.2byte	(.L127 - .Lrtx23) / 4
+	.2byte	(.L128 - .Lrtx23) / 4
+	.2byte	(.L129 - .Lrtx23) / 4
+	.2byte	(.L130 - .Lrtx23) / 4
+	.2byte	(.L131 - .Lrtx23) / 4
+	.2byte	(.L132 - .Lrtx23) / 4
+	.2byte	(.L133 - .Lrtx23) / 4
+	.2byte	(.L134 - .Lrtx23) / 4
+	.2byte	(.L135 - .Lrtx23) / 4
+	.2byte	(.L136 - .Lrtx23) / 4
+	.2byte	(.L137 - .Lrtx23) / 4
+	.2byte	(.L138 - .Lrtx23) / 4
+	.2byte	(.L139 - .Lrtx23) / 4
+	.2byte	(.L140 - .Lrtx23) / 4
+	.2byte	(.L141 - .Lrtx23) / 4
+	.2byte	(.L142 - .Lrtx23) / 4
+	.2byte	(.L143 - .Lrtx23) / 4
+	.2byte	(.L144 - .Lrtx23) / 4
+	.2byte	(.L145 - .Lrtx23) / 4
+	.2byte	(.L146 - .Lrtx23) / 4
+	.2byte	(.L147 - .Lrtx23) / 4
+	.2byte	(.L148 - .Lrtx23) / 4
+	.2byte	(.L149 - .Lrtx23) / 4
+	.2byte	(.L150 - .Lrtx23) / 4
+	.2byte	(.L151 - .Lrtx23) / 4
+	.2byte	(.L152 - .Lrtx23) / 4
+	.2byte	(.L153 - .Lrtx23) / 4
+	.2byte	(.L154 - .Lrtx23) / 4
+	.2byte	(.L155 - .Lrtx23) / 4
+	.2byte	(.L156 - .Lrtx23) / 4
+	.2byte	(.L157 - .Lrtx23) / 4
+	.2byte	(.L158 - .Lrtx23) / 4
 	.text
-	.align 2
+	.p2align 2,,3
 .L232:
 	ldp	w1, w2, [sp, 152]
 	mov	w6, 4
@@ -1758,7 +1758,7 @@ main:
 	movi	v29.4s, 0x4
 	add	x1, sp, 320
 	ldr	q31, [x2, :lo12:.LANCHOR0]
-	.align 5
+	.p2align 5,,15
 .L95:
 	movi	v28.4s, 0x1
 	mla	v28.4s, v31.4s, v31.4s
@@ -1804,7 +1804,7 @@ main:
 	mov	x1, x22
 	mov	x0, x20
 	b	.L106
-	.align 2
+	.p2align 2,,3
 .L103:
 	cmp	w1, 6
 	beq	.L171
@@ -1846,12 +1846,12 @@ main:
 	mov	x1, x22
 	mov	x0, x20
 	b	.L105
-	.align 2
+	.p2align 2,,3
 .L97:
 	mov	x0, 1
 	mov	w3, w0
 	mov	w1, 0
-	.align 5
+	.p2align 5,,15
 .L99:
 	add	x2, x20, x0, lsl 2
 	add	x4, x22, x0, lsl 2
@@ -1967,38 +1967,38 @@ vzero:
 	.word	2147483647
 	.zero	4
 CSWTCH.24:
-	.quad	.LC20
-	.quad	.LC21
-	.quad	.LC22
-	.quad	.LC23
-	.quad	.LC24
-	.quad	.LC25
-	.quad	.LC26
-	.quad	.LC27
-	.quad	.LC28
-	.quad	.LC29
-	.quad	.LC30
-	.quad	.LC31
+	.xword	.LC20
+	.xword	.LC21
+	.xword	.LC22
+	.xword	.LC23
+	.xword	.LC24
+	.xword	.LC25
+	.xword	.LC26
+	.xword	.LC27
+	.xword	.LC28
+	.xword	.LC29
+	.xword	.LC30
+	.xword	.LC31
 .LC1:
-	.quad	0
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	4
-	.quad	5
-	.quad	6
-	.quad	7
-	.quad	8
-	.quad	9
-	.quad	10
-	.quad	11
-	.quad	12
-	.quad	-1
-	.quad	4294967299
-	.quad	9223372032559808517
-	.quad	-9223372036854775808
-	.quad	9223372036854775807
-	.quad	4294967295
+	.xword	0
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	4
+	.xword	5
+	.xword	6
+	.xword	7
+	.xword	8
+	.xword	9
+	.xword	10
+	.xword	11
+	.xword	12
+	.xword	-1
+	.xword	4294967299
+	.xword	9223372032559808517
+	.xword	-9223372036854775808
+	.xword	9223372036854775807
+	.xword	4294967295
 CSWTCH.27:
 	.byte	5
 	.byte	4
