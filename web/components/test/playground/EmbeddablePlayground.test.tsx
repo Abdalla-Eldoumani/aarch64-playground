@@ -13,7 +13,13 @@ vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({
-  RegisterPanel: () => <div data-testid="registers" />,
+  RegisterPanel: (props: { openOn?: string; vectorRegisters?: string[] }) => (
+    <div
+      data-testid="registers"
+      data-openon={props.openOn}
+      data-vectors={props.vectorRegisters ? "shown" : "hidden"}
+    />
+  ),
 }));
 vi.mock("@/components/panels/ConsolePanel", () => ({
   ConsolePanel: ({ keyHints = true }: { keyHints?: boolean }) => (
@@ -127,6 +133,23 @@ describe("EmbeddablePlayground", () => {
     act(() => ref.current!.step());
     expect(hub.step).toHaveBeenCalledTimes(1);
     expect(ref.current!.getSource()).toBe("mov x0, #1");
+  });
+
+  it("opens the embed's registers on the file the host names, x alone otherwise", () => {
+    const named = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" registerView="v" />,
+    );
+    engage(named.container);
+    const panel = screen.getByTestId("registers");
+    expect(panel.getAttribute("data-openon")).toBe("v");
+    expect(panel.getAttribute("data-vectors")).toBe("shown");
+    named.unmount();
+
+    const plain = render(<EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />);
+    engage(plain.container);
+    const xOnly = screen.getByTestId("registers");
+    expect(xOnly.getAttribute("data-openon")).toBeNull();
+    expect(xOnly.getAttribute("data-vectors")).toBe("hidden");
   });
 
   it("carries the base converter in the command actions", () => {
