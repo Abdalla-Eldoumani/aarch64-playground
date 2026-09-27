@@ -141,9 +141,9 @@ export function Controls({
             key={stepCount}
             className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono anim-step-pop"
             role="status"
-            aria-label={`${stepCount} instructions executed`}
+            aria-label={`${stepCount} ${stepCount === 1 ? "instruction" : "instructions"} executed`}
           >
-            {stepCount.toLocaleString()} steps
+            {stepCount.toLocaleString()} {stepCount === 1 ? "step" : "steps"}
           </span>
         )}
 
