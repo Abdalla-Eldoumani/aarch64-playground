@@ -233,21 +233,21 @@ Drives Firefox through the live app to confirm CSP boots Monaco and the editor r
 
 ## What CI runs
 
-`.github/workflows/check.yml` fans out so nothing waits on anything it
-does not need:
+`.github/workflows/check.yml` starts every job at once, and each one first
+checks which files changed (`.github/actions/changed-paths`, which runs
+`.github/scripts/classify-changes.js`). On a pull request, a job whose
+files did not change skips its remaining steps and passes: a docs change
+builds and tests nothing, a lesson or example change skips lint and
+typecheck, a change to `emulator/tests/` runs only the Rust jobs, and a
+change to a workflow, or to a file no rule names, runs everything. Pushes
+to `main` and `integration` and the weekly run always run everything.
 
-- **changes**: on a pull request, lists the changed files and turns off the
-  jobs they cannot affect (`.github/scripts/classify-changes.js`). A docs
-  change runs nothing below; a lesson or example change skips lint and
-  typecheck; a change to `emulator/tests/` runs only the Rust jobs; a
-  change to a workflow, or to a file no rule names, runs everything.
-  Pushes to `main` and `integration` and the weekly run always run
-  everything.
 - **wasm**: looks the web and nodejs wasm-pack bundles up in a cache keyed
   on a hash of the emulator sources and the two tool pins, and builds them
-  only on a miss. Every job that needs them restores them from that cache,
-  or downloads this job's artifact after a build, so a change that leaves
-  the emulator alone never installs a toolchain.
+  only on a miss. Every job that needs them restores them from that cache;
+  after a miss it sets itself up first and then waits for this job's
+  upload, so a change that leaves the emulator alone never installs a
+  toolchain and one that changes it does not hold the other jobs' setup.
 - **rust**: four jobs: `cargo test` minus the corpus gate, and the
   fifty-program corpus sliced three ways (`CORPUS_SHARD=i/3`, read by the
   test itself), every program running exactly once across the slices. A
