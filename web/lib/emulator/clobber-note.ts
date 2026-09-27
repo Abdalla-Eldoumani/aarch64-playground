@@ -29,7 +29,7 @@ const READ_BY_MAIN_RETURN = 2;
 const FLAGS = 31;
 
 /** A line the machine reported, found in the file it belongs to. */
-interface Place {
+export interface Place {
   /** The helper file's name, or null for the main buffer. */
   file: string | null;
   line: number;
@@ -38,7 +38,7 @@ interface Place {
 
 /** The machine numbers lines in the one string the files were joined into;
  *  a student reads them per file. */
-function place(line: number, ws: Workspace): Place {
+export function place(line: number, ws: Workspace): Place {
   const loc = resolveLine(line, ws.main, ws.extras);
   const main = loc.file === MAIN_FILE;
   const body = main ? ws.main : ws.extras[loc.file].body;
