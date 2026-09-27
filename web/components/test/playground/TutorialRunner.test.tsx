@@ -1,4 +1,4 @@
-// pins the tutorial runner: a modal that walks fixture steps with
+// pins the tutorial runner: a non-modal panel that walks fixture steps with
 // clamped back/next, persists per-tutorial progress through the real
 // localStorage store, fetches the backing source on demand (surfacing
 // fetch failures inline), and verifies expected-register checks as
@@ -80,22 +80,28 @@ describe("TutorialRunner open and close", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("opens as a modal on the first tutorial's first step", () => {
+  it("opens on the first tutorial's first step, as a panel that leaves the page live", () => {
+    // A full-screen modal caught every tap, so a step that said "step, then
+    // watch x19" could not be followed.
     renderRunner();
-    expect(screen.getByRole("dialog", { name: "guided tutorial" })).toBeTruthy();
+    const panel = screen.getByRole("dialog", { name: "guided tutorial" });
+    expect(panel.getAttribute("aria-modal")).toBe("false");
+    expect(panel.className).not.toContain("inset-0");
     expect(screen.getByText("a three step fixture")).toBeTruthy();
     expect(screen.getByText("step 1 / 3")).toBeTruthy();
     expect(screen.getByText("first step")).toBeTruthy();
   });
 
-  it("closes from the close button, the backdrop, and Escape, but not inner clicks", () => {
+  it("closes from the close button and from Escape inside it, but not inner clicks", () => {
     const { onClose } = renderRunner();
     fireEvent.click(screen.getByText("read the prologue"));
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "close" }));
-    fireEvent.click(screen.getByRole("dialog", { name: "guided tutorial" }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "guided tutorial" }), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(2);
+    // An Escape meant for the editor elsewhere on the page leaves it open.
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(3);
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
 
