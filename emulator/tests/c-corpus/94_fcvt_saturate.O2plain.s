@@ -1,111 +1,111 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtns_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtns w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtns_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtns x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtas_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtas w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtas_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtas x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtms_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtms w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtms_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtms x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtps_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtps w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtps_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtps x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtnu_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtnu w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtnu_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtnu x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtau_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtau w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtau_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtau x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtmu_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtmu w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtmu_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtmu x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtpu_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtpu w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtpu_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtpu x0, d0
@@ -141,7 +141,7 @@ fcvtpu_x:
 	.string	" %s:%016lx"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -144]!
@@ -160,7 +160,7 @@ main:
 	stp	x27, x28, [sp, 80]
 	stp	d13, d14, [sp, 96]
 	str	d15, [sp, 112]
-	.align 5
+	.p2align 5,,15
 .L19:
 	ldr	d31, [x25, w19, sxtw 3]
 	mov	w1, w19
@@ -184,7 +184,7 @@ main:
 	add	x21, x25, 208
 	add	x20, x20, :lo12:.LC2
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L20:
 	ldr	s31, [x21, w19, sxtw 2]
 	mov	w1, w19
@@ -206,7 +206,7 @@ main:
 	add	x1, x25, 304
 	add	x20, x20, :lo12:.LANCHOR1
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L21:
 	ldr	s31, [x1, w0, sxtw 2]
 	str	s31, [x20, x0, lsl 2]
@@ -225,7 +225,7 @@ main:
 	fcvtzu	v31.4s, v31.4s
 	stp	q28, q30, [x20, 32]
 	stp	q29, q31, [x20, 64]
-	.align 5
+	.p2align 5,,15
 .L22:
 	ldr	w4, [x22, x19, lsl 2]
 	ldr	w3, [x23, x19, lsl 2]
@@ -246,7 +246,7 @@ main:
 	mov	w19, 0
 	mov	x0, 4679240012837945344
 	fmov	d15, x0
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldr	d30, [x20, w19, sxtw 3]
 	mov	w1, w19
@@ -278,7 +278,7 @@ main:
 	mov	w24, 0
 	add	x0, x27, :lo12:.LC7
 	str	x0, [sp, 136]
-	.align 5
+	.p2align 5,,15
 .L26:
 	ldr	d15, [x25, w24, sxtw 3]
 	mov	x19, x26
@@ -286,7 +286,7 @@ main:
 	mov	w1, w24
 	mov	x0, x28
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L24:
 	ldp	x27, x0, [x20], 24
 	fmov	d0, d15
@@ -299,7 +299,7 @@ main:
 	bne	.L24
 	ldr	x0, [sp, 136]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L25:
 	ldr	x0, [x19, 16]
 	fmov	d0, d15
@@ -356,30 +356,30 @@ main:
 	.align	3
 	.LANCHOR2:
 modes:
-	.quad	.LC9
-	.quad	fcvtns_w
-	.quad	fcvtns_x
-	.quad	.LC10
-	.quad	fcvtas_w
-	.quad	fcvtas_x
-	.quad	.LC11
-	.quad	fcvtms_w
-	.quad	fcvtms_x
-	.quad	.LC12
-	.quad	fcvtps_w
-	.quad	fcvtps_x
-	.quad	.LC13
-	.quad	fcvtnu_w
-	.quad	fcvtnu_x
-	.quad	.LC14
-	.quad	fcvtau_w
-	.quad	fcvtau_x
-	.quad	.LC15
-	.quad	fcvtmu_w
-	.quad	fcvtmu_x
-	.quad	.LC16
-	.quad	fcvtpu_w
-	.quad	fcvtpu_x
+	.xword	.LC9
+	.xword	fcvtns_w
+	.xword	fcvtns_x
+	.xword	.LC10
+	.xword	fcvtas_w
+	.xword	fcvtas_x
+	.xword	.LC11
+	.xword	fcvtms_w
+	.xword	fcvtms_x
+	.xword	.LC12
+	.xword	fcvtps_w
+	.xword	fcvtps_x
+	.xword	.LC13
+	.xword	fcvtnu_w
+	.xword	fcvtnu_x
+	.xword	.LC14
+	.xword	fcvtau_w
+	.xword	fcvtau_x
+	.xword	.LC15
+	.xword	fcvtmu_w
+	.xword	fcvtmu_x
+	.xword	.LC16
+	.xword	fcvtpu_w
+	.xword	fcvtpu_x
 	.data
 	.align	4
 	.LANCHOR0:
