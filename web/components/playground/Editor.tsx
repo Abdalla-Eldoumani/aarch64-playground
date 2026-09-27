@@ -8,7 +8,7 @@ import {
   MNEMONIC_ALTERNATION,
   REGISTER_PATTERN,
 } from "@/lib/asm/highlight-arm64";
-import { explainError } from "@/lib/asm/error-explain";
+import { errorHoverMarkdown } from "@/lib/asm/error-explain";
 import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
 import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
 import { useToast } from "@/components/ui/Toast";
@@ -488,31 +488,14 @@ export function Editor({
       });
     }
 
-    // assembly errors: the hover bubble carries both the raw message and, when
-    // the explainer recognizes the variant, a structured {what / why / fix /
-    // consult} block keyed to a style-guide section.
     for (const err of assemblyErrors) {
-      const explanation = explainError(err.message);
-      const md = explanation
-        ? [
-            `**${err.message}**`,
-            "",
-            `*what:* ${explanation.what}`,
-            "",
-            `*why:* ${explanation.why}`,
-            "",
-            `*fix:* ${explanation.fix}`,
-            "",
-            `*consult:* ${explanation.styleSection} (docs/cpsc355-style-guide.md)`,
-          ].join("\n")
-        : err.message;
       decorations.push({
         range: new monaco.Range(err.line, 1, err.line, 1),
         options: {
           isWholeLine: true,
           className: "error-line-highlight",
           glyphMarginClassName: "error-glyph",
-          hoverMessage: { value: md, isTrusted: false },
+          hoverMessage: { value: errorHoverMarkdown(err.message), isTrusted: false },
         },
       });
     }
