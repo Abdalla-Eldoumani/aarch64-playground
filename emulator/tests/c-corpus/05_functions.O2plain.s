@@ -1,25 +1,25 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fact
 fact:
 	cmp	w0, 1
 	ble	.L4
 	sxtw	x1, w0
 	mov	x0, 1
-	.align 5
+	.p2align 5,,15
 .L3:
 	mul	x0, x0, x1
 	sub	x1, x1, #1
 	cmp	w1, 1
 	bgt	.L3
 	ret
-	.align 2
+	.p2align 2,,3
 .L4:
 	mov	x0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fib
 fib:
 	cmp	w0, 1
@@ -136,7 +136,7 @@ fib:
 	add	w19, w19, w0
 	cmp	w21, 1
 	bne	.L20
-	.align 5
+	.p2align 5,,15
 .L59:
 	ldr	w0, [sp, 112]
 	add	w3, w19, 1
@@ -162,7 +162,7 @@ fib:
 	add	w2, w2, 1
 	ldr	w19, [sp, 140]
 	b	.L25
-	.align 2
+	.p2align 2,,3
 .L14:
 	sub	w7, w7, #1
 	ldr	w19, [sp, 140]
@@ -186,7 +186,7 @@ fib:
 	add	w21, w21, 1
 	ldp	w22, w28, [sp, 156]
 	b	.L31
-	.align 2
+	.p2align 2,,3
 .L13:
 	ldp	w24, w21, [sp, 164]
 	add	w25, w7, w22
@@ -206,7 +206,7 @@ fib:
 	mov	w27, w4
 	add	w28, w28, 1
 	b	.L34
-	.align 2
+	.p2align 2,,3
 .L11:
 	ldr	w23, [sp, 144]
 	mov	w27, w4
@@ -230,7 +230,7 @@ fib:
 	ldp	x23, x24, [sp, 48]
 	ldp	x29, x30, [sp], 192
 	ret
-	.align 2
+	.p2align 2,,3
 .L10:
 	add	w25, w0, w25
 	mov	w19, w27
@@ -259,7 +259,7 @@ fib:
 	ldr	w0, [sp, 124]
 	b	.L22
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	ack
 ack:
 	cbz	w0, .L120
@@ -286,7 +286,7 @@ ack:
 	ldp	x25, x26, [sp, 64]
 	ldp	x29, x30, [sp], 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L121:
 	sub	w1, w1, #1
 .L78:
@@ -299,7 +299,7 @@ ack:
 	add	w1, w1, 1
 	cbnz	w27, .L76
 	b	.L75
-	.align 2
+	.p2align 2,,3
 .L122:
 	sub	w1, w1, #1
 .L80:
@@ -312,7 +312,7 @@ ack:
 	add	w1, w1, 1
 	cbnz	w26, .L78
 	b	.L124
-	.align 2
+	.p2align 2,,3
 .L123:
 	sub	w1, w1, #1
 .L82:
@@ -325,7 +325,7 @@ ack:
 	add	w1, w1, 1
 	cbnz	w25, .L80
 	b	.L126
-	.align 2
+	.p2align 2,,3
 .L125:
 	sub	w1, w1, #1
 .L84:
@@ -338,7 +338,7 @@ ack:
 	add	w1, w1, 1
 	cbnz	w24, .L82
 	b	.L128
-	.align 2
+	.p2align 2,,3
 .L127:
 	sub	w1, w1, #1
 .L86:
@@ -351,7 +351,7 @@ ack:
 	add	w1, w1, 1
 	cbnz	w23, .L84
 	b	.L130
-	.align 2
+	.p2align 2,,3
 .L129:
 	sub	w1, w1, #1
 .L88:
@@ -364,7 +364,7 @@ ack:
 	add	w1, w1, 1
 	cbnz	w22, .L86
 	b	.L132
-	.align 2
+	.p2align 2,,3
 .L131:
 	sub	w1, w1, #1
 .L90:
@@ -377,7 +377,7 @@ ack:
 	add	w1, w1, 1
 	cbnz	w21, .L88
 	b	.L134
-	.align 2
+	.p2align 2,,3
 .L133:
 	sub	w1, w1, #1
 .L92:
@@ -390,19 +390,19 @@ ack:
 	add	w1, w1, 1
 	cbnz	w20, .L90
 	b	.L136
-	.align 2
+	.p2align 2,,3
 .L135:
 	sub	w1, w1, #1
 	bl	ack
 	mov	w1, w0
 	cbnz	w19, .L92
 	b	.L137
-	.align 2
+	.p2align 2,,3
 .L120:
 	add	w0, w1, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sum10
 sum10:
 	sxtw	x1, w1
@@ -419,7 +419,7 @@ sum10:
 	add	x0, x7, x0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mix
 mix:
 	add	w0, w0, w1
@@ -437,7 +437,7 @@ mix:
 	add	w0, w0, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pressure
 pressure:
 	add	w1, w0, 1
@@ -448,7 +448,7 @@ pressure:
 	add	w6, w0, 6
 	add	w3, w0, 7
 	mov	w8, 10
-	.align 5
+	.p2align 5,,15
 .L141:
 	add	w0, w0, w1
 	subs	w8, w8, #1
@@ -483,7 +483,7 @@ pressure:
 	.string	"%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -32]!
@@ -491,14 +491,14 @@ main:
 	mov	x1, 1
 	mov	x29, sp
 	str	x19, [sp, 16]
-	.align 5
+	.p2align 5,,15
 .L144:
 	mul	x1, x1, x2
 	sub	x2, x2, #1
 	cmp	x2, 1
 	bne	.L144
 	mov	x0, 20
-	.align 5
+	.p2align 5,,15
 .L145:
 	mul	x2, x2, x0
 	sub	x0, x0, #1
