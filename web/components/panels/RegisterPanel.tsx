@@ -12,6 +12,7 @@ import {
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { formatWord64 } from "@/lib/emulator/format-hex";
 import { isCallLeftover } from "@/lib/emulator/clobber-note";
+import type { RegView } from "@/lib/emulator/emulator-state";
 import {
   compactHex,
   fpRegisterText,
@@ -57,8 +58,6 @@ interface RegisterPanelProps {
 // emulator's NzcvFlags::pack). Rendered left-to-right against `bitPos = 3 - i`
 // so each label reads its own bit, in the conventional ARM N Z C V order.
 const FLAG_NAMES = ["N", "Z", "C", "V"];
-
-export type RegView = "x" | "d" | "v";
 
 const VIEW_KEY = "aarch64-playground:regfile-view";
 /** The d-view's format flag keeps the key it shipped with, so a returning
