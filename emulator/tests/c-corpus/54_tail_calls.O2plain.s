@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 next:
 	ldrb	w4, [x0]
 	cbz	w4, .L16
@@ -19,7 +19,7 @@ next:
 	madd	w1, w1, w5, w3
 	mov	w2, 1
 	br	x16
-	.align 2
+	.p2align 2,,3
 .L4:
 	sub	w4, w4, #48
 	and	w4, w4, 255
@@ -37,12 +37,12 @@ next:
 	ldr	x3, [x4, w3, sxtw 3]
 	mov	x16, x3
 	br	x16
-	.align 2
+	.p2align 2,,3
 .L16:
 	mov	w0, 131
 	madd	w0, w1, w0, w2
 	ret
-	.align 2
+	.p2align 2,,3
 .L18:
 	cmp	w3, 2
 	beq	.L5
@@ -50,26 +50,26 @@ next:
 	add	x4, x4, :lo12:st_other
 	b	.L6
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_letter:
 	mov	w4, 4660
 	mov	w3, 0
 	eor	w1, w1, w4
 	b	next
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_digit:
 	add	w1, w1, 7
 	mov	w3, 1
 	b	next
 	.align	2
-	.align 5
+	.p2align 5,,15
 st_other:
 	sub	w1, w1, #3
 	mov	w3, 2
 	b	next
 	.align	2
-	.align 5
+	.p2align 5,,15
 is_odd.part.0:
 .L26:
 	cmp	x0, 1
@@ -79,11 +79,11 @@ is_odd.part.0:
 	mov	w0, 0
 .L22:
 	ret
-	.align 2
+	.p2align 2,,3
 .L23:
 	mov	w0, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L24:
 	cmp	x0, 3
 	beq	.L23
@@ -92,7 +92,7 @@ is_odd.part.0:
 	mov	w0, 0
 	b	.L22
 	.align	2
-	.align 5
+	.p2align 5,,15
 ack:
 	stp	x29, x30, [sp, -96]!
 	mov	x29, sp
@@ -123,7 +123,7 @@ ack:
 	ldp	x27, x28, [sp, 80]
 	ldp	x29, x30, [sp], 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L76:
 	add	x2, x2, 1
 	sub	x1, x1, #1
@@ -137,7 +137,7 @@ ack:
 	cbnz	x28, .L39
 	add	x1, x1, 1
 	b	.L38
-	.align 2
+	.p2align 2,,3
 .L77:
 	add	x2, x2, 1
 	sub	x1, x1, #1
@@ -151,7 +151,7 @@ ack:
 	cbnz	x26, .L41
 	add	x1, x1, 1
 	b	.L40
-	.align 2
+	.p2align 2,,3
 .L78:
 	add	x2, x2, 1
 	sub	x1, x1, #1
@@ -165,7 +165,7 @@ ack:
 	cbnz	x25, .L43
 	add	x1, x1, 1
 	b	.L42
-	.align 2
+	.p2align 2,,3
 .L79:
 	add	x2, x2, 1
 	sub	x1, x1, #1
@@ -179,7 +179,7 @@ ack:
 	cbnz	x24, .L45
 	add	x1, x1, 1
 	b	.L44
-	.align 2
+	.p2align 2,,3
 .L80:
 	add	x2, x2, 1
 	sub	x1, x1, #1
@@ -193,7 +193,7 @@ ack:
 	cbnz	x22, .L47
 	add	x1, x1, 1
 	b	.L46
-	.align 2
+	.p2align 2,,3
 .L81:
 	add	x2, x2, 1
 	sub	x1, x1, #1
@@ -207,7 +207,7 @@ ack:
 	cbnz	x21, .L49
 	add	x1, x1, 1
 	b	.L48
-	.align 2
+	.p2align 2,,3
 .L82:
 	add	x2, x2, 1
 	sub	x1, x1, #1
@@ -221,7 +221,7 @@ ack:
 	cbnz	x20, .L51
 	add	x1, x1, 1
 	b	.L50
-	.align 2
+	.p2align 2,,3
 .L83:
 	sub	x1, x1, #1
 	add	x2, x2, 1
@@ -238,7 +238,7 @@ ack:
 	cbnz	x19, .L53
 	add	x1, x1, 1
 	b	.L52
-	.align 2
+	.p2align 2,,3
 .L84:
 	sub	x1, x1, #1
 	bl	ack
@@ -274,7 +274,7 @@ ack:
 	.string	"ack(3,%d)=%ld calls=%ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -112]!
@@ -289,7 +289,7 @@ main:
 	stp	x25, x26, [sp, 64]
 	stp	x27, x28, [sp, 80]
 	cbz	w2, .L89
-	.align 5
+	.p2align 5,,15
 .L90:
 	umaddl	x1, w0, w0, x1
 	subs	x0, x0, #1
@@ -341,7 +341,7 @@ main:
 	movk	w8, 0xda, lsl 16
 	cmp	w0, w8
 	bls	.L134
-	.align 5
+	.p2align 5,,15
 .L96:
 	cbz	w24, .L135
 .L97:
@@ -402,7 +402,7 @@ main:
 	add	x22, x22, :lo12:.LC4
 	mov	x0, 0
 	b	.L98
-	.align 2
+	.p2align 2,,3
 .L100:
 	mov	x0, x23
 	cmp	w19, 92
@@ -422,7 +422,7 @@ main:
 	mov	x3, x23
 	mov	w4, 1
 	b	.L102
-	.align 2
+	.p2align 2,,3
 .L113:
 	mov	x3, x0
 .L102:
@@ -452,7 +452,7 @@ main:
 	movk	w7, 0xcccc, lsl 16
 	mov	w6, 12
 	strb	w0, [x5, 16]!
-	.align 5
+	.p2align 5,,15
 .L103:
 	umull	x1, w2, w7
 	lsr	x1, x1, 34
@@ -501,7 +501,7 @@ main:
 	add	x24, x24, :lo12:.LC9
 	mov	x21, 0
 	mov	x23, 1
-	.align 5
+	.p2align 5,,15
 .L109:
 	str	x23, [x19]
 	mov	w22, w21
@@ -564,7 +564,7 @@ main:
 	ldp	x27, x28, [sp, 80]
 	ldp	x29, x30, [sp], 112
 	ret
-	.align 2
+	.p2align 2,,3
 .L112:
 	mov	x3, x21
 	mov	w2, w19
@@ -573,7 +573,7 @@ main:
 	mov	w4, 1
 	bl	printf
 	b	.L140
-	.align 2
+	.p2align 2,,3
 .L139:
 	sub	x1, x26, #1
 	mov	x0, x4
@@ -601,9 +601,9 @@ main:
 	.align	4
 	.LANCHOR0:
 table:
-	.quad	st_letter
-	.quad	st_digit
-	.quad	st_other
+	.xword	st_letter
+	.xword	st_digit
+	.xword	st_other
 	.data
 	.align	2
 	.LANCHOR2:
