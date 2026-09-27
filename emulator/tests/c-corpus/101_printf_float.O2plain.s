@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 digits:
 	sub	sp, sp, #160
 	movi	d31, #0
@@ -32,7 +32,7 @@ digits:
 .L2:
 	fmov	d28, 1.0e+1
 	b	.L5
-	.align 2
+	.p2align 2,,3
 .L12:
 	fmul	d29, d31, d28
 	add	x2, x2, 8
@@ -46,7 +46,7 @@ digits:
 	fmov	d0, d31
 	add	sp, sp, 160
 	ret
-	.align 2
+	.p2align 2,,3
 .L6:
 	ldr	d27, [x2, w3, sxtw]
 	add	w1, w1, 1
@@ -61,7 +61,7 @@ digits:
 	.string	"dldidldidldiddlidddl"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 mixed.constprop.0:
 	sub	sp, sp, #224
 	fmov	d31, 3.0e+0
@@ -89,7 +89,7 @@ mixed.constprop.0:
 	stp	w3, w5, [sp, 24]
 	str	x7, [sp, 216]
 	b	.L26
-	.align 2
+	.p2align 2,,3
 .L14:
 	cmp	w1, 105
 	beq	.L32
@@ -123,7 +123,7 @@ mixed.constprop.0:
 .L33:
 	add	sp, sp, 224
 	ret
-	.align 2
+	.p2align 2,,3
 .L32:
 	tbnz	w3, #31, .L20
 .L30:
@@ -134,21 +134,21 @@ mixed.constprop.0:
 	scvtf	d1, w1
 	fsub	d0, d29, d1
 	b	.L18
-	.align 2
+	.p2align 2,,3
 .L23:
 	add	w6, w3, 8
 	cmp	w6, 0
 	ble	.L25
 	mov	w3, w6
 	b	.L31
-	.align 2
+	.p2align 2,,3
 .L15:
 	add	w6, w5, 16
 	cmp	w6, 0
 	ble	.L17
 	mov	w5, w6
 	b	.L29
-	.align 2
+	.p2align 2,,3
 .L20:
 	add	w6, w3, 8
 	cmp	w6, 0
@@ -233,7 +233,7 @@ mixed.constprop.0:
 	.string	"[%'.2f] [%'g] [%'012.1f]\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #336
