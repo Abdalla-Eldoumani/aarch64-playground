@@ -697,11 +697,11 @@ c.14:
 	.byte	120
 	.align	3
 cur.13:
-	.quad	pool.11+20
+	.xword	pool.11+20
 	.section .rodata
 	.align	3
 end.12:
-	.quad	pool.11+32
+	.xword	pool.11+32
 	.data
 	.align	3
 pool.11:
@@ -715,7 +715,7 @@ pool.11:
 	.word	88
 	.align	3
 last.10:
-	.quad	names.9+32
+	.xword	names.9+32
 	.section .rodata
 	.align	3
 .LC9:
@@ -734,30 +734,30 @@ last.10:
 	.string	"four"
 	.align	3
 names.9:
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
-	.quad	.LC13
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
+	.xword	.LC13
 	.data
 	.align	3
 m.8:
 	.byte	113
 	.zero	7
-	.quad	81985529216486895
+	.xword	81985529216486895
 	.hword	-2
 	.byte 250, 251, 252
 	.zero	3
 	.align	3
 op.7:
-	.quad	add1
+	.xword	add1
 	.align	3
 d.1:
 	.word	-1717986918
 	.word	1069128089
 	.align	3
 big.0:
-	.quad	-9000000000000000000
+	.xword	-9000000000000000000
 
 
 	.bss
