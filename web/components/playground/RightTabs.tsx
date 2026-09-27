@@ -54,7 +54,7 @@ const TABS: readonly RightTab[] = [
 
 /**
  * The debug column's tab strip (tablet and laptop layouts; the phone layout
- * reaches the same panes through MobileLayout's group switcher). The selected
+ * reaches the same panes through PhoneLayout's tabs). The selected
  * tab is the shell's state so a command-palette action can bring a pane
  * forward, but which panes have ever been MOUNTED is this component's own
  * business; see the terminal latch below.
@@ -101,7 +101,7 @@ export function RightTabs({
               role="tab"
               aria-selected={selected}
               aria-controls={`right-panel-${tab}`}
-              className={`relative min-h-[2.25rem] px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+              className={`touch-target relative min-h-[2.25rem] px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
                 selected
                   ? "text-[var(--cyan)] border-b border-[var(--cyan)]"
                   : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
