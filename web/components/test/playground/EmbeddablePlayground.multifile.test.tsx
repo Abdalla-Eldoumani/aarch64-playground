@@ -184,7 +184,12 @@ describe("multi-file line translation", () => {
       ref.current!.assemble();
     });
 
-    // The pc is inside util.s, so main.asm shows no marker.
+    // The pc is inside util.s, so the editor follows it there.
+    expect(editorProps.current!.currentLine).toBe(3);
+
+    // The student looks back at main.asm while paused: no marker there, and
+    // the tab they picked stays picked.
+    fireEvent.click(screen.getByRole("button", { name: "main.asm" }));
     expect(editorProps.current!.currentLine).toBeNull();
 
     // Typing five more lines into main.asm re-numbers the combined string.
@@ -309,7 +314,7 @@ describe("helper file names", () => {
     );
     engage(container);
 
-    const input = screen.getByPlaceholderText("new.asm");
+    const input = screen.getByLabelText("new file name");
     fireEvent.change(input, { target: { value: "main.asm" } });
     fireEvent.click(screen.getByLabelText("add file"));
 
@@ -326,7 +331,7 @@ describe("helper file names", () => {
     );
     engage(container);
 
-    const input = screen.getByPlaceholderText("new.asm");
+    const input = screen.getByLabelText("new file name");
     fireEvent.change(input, { target: { value: "util.s" } });
     fireEvent.click(screen.getByLabelText("add file"));
 
@@ -340,7 +345,7 @@ describe("helper file names", () => {
     );
     engage(container);
 
-    const input = screen.getByPlaceholderText("new.asm");
+    const input = screen.getByLabelText("new file name");
     fireEvent.change(input, { target: { value: "queue.s" } });
     fireEvent.click(screen.getByLabelText("add file"));
 
