@@ -186,6 +186,31 @@ fn parse_line(
             line_tokens = &line_tokens[2..];
             continue;
         }
+        // `name = expr`, where a dotted name is gcc's too: it pins a section
+        // anchor partway into a section with `.set .LANCHOR1, . + 4352`.
+        TokenKind::Ident(name) | TokenKind::DirectiveIdent(name)
+            if line_tokens
+                .get(1)
+                .is_some_and(|t| matches!(t.kind, TokenKind::Equals))
+                && !line_tokens
+                    .get(2)
+                    .is_some_and(|t| matches!(t.kind, TokenKind::Equals)) =>
+        {
+            // Record as a symbol-assignment item so Pass 1a can evaluate the
+            // body at this exact section offset. We keep the body as raw
+            // text (via the tokens' textual form) and let the linker
+            // lex+evaluate it, so `.` and label references pick up the
+            // right meaning.
+            let body_tokens = &line_tokens[2..];
+            let body = stringify_tokens_space(body_tokens);
+            let section = prog.section_or_insert(*current);
+            section.items.push(Item::SymbolAssignment {
+                name: name.clone(),
+                body,
+                original_line: first.line,
+            });
+            Ok(())
+        }
         TokenKind::DirectiveIdent(name) => {
             parse_directive(name, &line_tokens[1..], prog, current, first.line)
         }
@@ -211,29 +236,6 @@ fn parse_line(
             );
             line_tokens = &line_tokens[2..];
             continue;
-        }
-        TokenKind::Ident(name)
-            if line_tokens
-                .get(1)
-                .is_some_and(|t| matches!(t.kind, TokenKind::Equals))
-                && !line_tokens
-                    .get(2)
-                    .is_some_and(|t| matches!(t.kind, TokenKind::Equals)) =>
-        {
-            // `name = expr`. Record as a symbol-assignment item so Pass 1a
-            // can evaluate the body at this exact section offset. We keep
-            // the body as raw text (via the tokens' textual form) and let
-            // the linker lex+evaluate it, so `.` and label references pick
-            // up the right meaning.
-            let body_tokens = &line_tokens[2..];
-            let body = stringify_tokens_space(body_tokens);
-            let section = prog.section_or_insert(*current);
-            section.items.push(Item::SymbolAssignment {
-                name: name.clone(),
-                body,
-                original_line: first.line,
-            });
-            Ok(())
         }
         TokenKind::Ident(_) => {
             // Instruction line: hand the whole slice to the linker later.
