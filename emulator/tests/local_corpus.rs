@@ -136,7 +136,7 @@ fn every_local_corpus_program_links_and_runs() {
             }
             Err(e) => {
                 let msg = e.to_string();
-                if msg.contains("no entry point") {
+                if msg.contains("undefined reference to `main'") {
                     println!("LINK HELPER: {name} (no main by design)");
                     link_ok += 1;
                 } else if let Some(function) = function_from_c_neighbour(path, &msg) {
