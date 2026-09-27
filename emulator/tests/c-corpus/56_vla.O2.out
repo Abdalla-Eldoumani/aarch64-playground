@@ -1,0 +1,15 @@
+churn pass=0 size=6000 s=5999
+churn pass=500 size=6004 s=9602432523485754987
+churn pass=1000 size=6000 s=14536793432654056704
+churn=3124667554471963922
+row 0: 182 116 50
+row 1: 59 56 53
+row 2: -64 -4 56
+row 3: -187 -64 59
+row 4: -310 -124 62
+row 5: -433 -184 65
+row 6: -556 -244 68
+trace=140 sizeof row=56 sizeof matrix=392
+found=-18887 at i=17
+levels=132838615
+vla+call=238816
