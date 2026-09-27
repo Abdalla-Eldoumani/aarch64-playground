@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	qmul
 qmul:
 	fmul	d28, d1, d5
@@ -23,7 +23,7 @@ qmul:
 	fmadd	d3, d3, d4, d31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	qconj
 qconj:
 	sub	sp, sp, #96
@@ -33,7 +33,7 @@ qconj:
 	add	sp, sp, 96
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sq_add
 sq_add:
 	fmul	d30, d1, d1
@@ -43,7 +43,7 @@ sq_add:
 	fadd	d0, d30, d2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	escape
 escape:
 	mov	w1, w0
@@ -57,7 +57,7 @@ escape:
 	fmov	d25, 4.0e+0
 	mov	x29, sp
 	fmov	d26, d27
-	.align 5
+	.p2align 5,,15
 .L8:
 	fmov	d0, d27
 	fmov	d1, d26
@@ -80,7 +80,7 @@ escape:
 .L18:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	advance
 advance:
 	fmov	x1, d3
@@ -97,7 +97,7 @@ advance:
 	add	sp, sp, 112
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	dot3
 dot3:
 	fmul	d1, d1, d4
@@ -107,7 +107,7 @@ dot3:
 	fmadd	d0, d2, d5, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	dmix
 dmix:
 	fmov	d31, x0
@@ -122,7 +122,7 @@ dmix:
 	fmov	w1, s31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	d5scale
 d5scale:
 	ldr	d31, [x0, 32]
@@ -142,7 +142,7 @@ d5scale:
 	str	x0, [x8, 32]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	dlmake
 dlmake:
 	scvtf	d31, x0
@@ -152,7 +152,7 @@ dlmake:
 	fmov	x0, d31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	overflow
 overflow:
 	sub	sp, sp, #32
@@ -179,7 +179,7 @@ overflow:
 	fmadd	d0, d31, d30, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	third
 third:
 	fneg	d1, d0
@@ -194,7 +194,7 @@ third:
 	.string	"%s %.4f %.4f %.4f %.4f\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pq
 pq:
 	sub	sp, sp, #32
@@ -239,7 +239,7 @@ pq:
 	.string	"sizes %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #448
@@ -264,7 +264,7 @@ main:
 	stp	d11, d12, [sp, 112]
 	stp	d13, d14, [sp, 128]
 	stp	q31, q31, [sp, 272]
-	.align 5
+	.p2align 5,,15
 .L32:
 	mov	x0, x21
 	ldp	d0, d1, [sp, 240]
@@ -309,7 +309,7 @@ main:
 	fmov	d22, 2.5e-1
 	fmov	d23, -2.0e+0
 	fmsub	d24, d24, d13, d14
-	.align 5
+	.p2align 5,,15
 .L34:
 	scvtf	d0, w2
 	fmov	d1, d24
@@ -468,8 +468,8 @@ main:
 	.section .rodata
 	.align	4
 .LC11:
-	.quad	4613937818241073152
-	.quad	-4613937818241073152
+	.xword	4613937818241073152
+	.xword	-4613937818241073152
 	.section .rodata
 	.align	4
 	.LANCHOR0:
