@@ -10,12 +10,12 @@
     {
       "question": "What kind of arithmetic does a CPU normally do, given that every integer result has to fit in a fixed-size register?",
       "options": [
-        "Floating-point arithmetic",
         "Modulus arithmetic",
+        "Floating-point arithmetic",
         "Unbounded arithmetic",
         "Fractional arithmetic"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 0,
       "explanation": "An N-bit register holds only 2^N distinct bit patterns, so integer results are kept modulo 2^N. A sum that passes the top of that range wraps around instead of growing wider.",
       "hint": "Think about what happens when a calculation produces a value that is too large to fit in the register."
     },
@@ -34,12 +34,12 @@
     {
       "question": "When two unsigned values are added, what does a carry out of the most significant bit indicate?",
       "options": [
-        "The result is negative",
         "The true sum is too large for the register width",
+        "The result is negative",
         "The instruction executed without faulting",
         "A divide-by-zero condition"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 0,
       "explanation": "For unsigned addition a carry out of the top bit means the exact sum needs one more bit than the register has, so the value left in the register has wrapped. Only the flag-setting form records it: adds sets C, and plain add leaves the flags alone.",
       "hint": "Count the bits the exact sum would need."
     },
@@ -58,12 +58,12 @@
     {
       "question": "In the iterative binary multiplication algorithm, what two sub-steps are performed in each iteration?",
       "options": [
-        "A conditional addition followed by an arithmetic shift right",
         "An unconditional addition followed by a logical shift left",
         "A subtraction followed by sign extension",
-        "A bitwise AND followed by an arithmetic shift right"
+        "A bitwise AND followed by an arithmetic shift right",
+        "A conditional addition followed by an arithmetic shift right"
       ],
-      "correctAnswer": 0,
+      "correctAnswer": 3,
       "explanation": "Each iteration tests the low-order bit of the multiplier: a 1 adds the multiplicand into the product register and a 0 adds nothing. The product and multiplier are then shifted right together as one pair, arithmetically so that a negative partial product keeps its sign.",
       "hint": "The algorithm first decides whether to add, then shifts."
     }
