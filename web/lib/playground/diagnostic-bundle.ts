@@ -16,6 +16,8 @@ export interface DiagnosticBundle {
   stdin?: string;
   stdout?: string;
   stderr?: string;
+  /** The console's notes about the run (a register a library call overwrote). */
+  notes?: string[];
   exitCode?: number | null;
   /** General-purpose register hex strings, X0..X30 in order. */
   registers?: string[];
@@ -47,6 +49,10 @@ function isOptionalString(v: unknown): v is string | undefined {
   return v === undefined || typeof v === "string";
 }
 
+function isOptionalStringArray(v: unknown): v is string[] | undefined {
+  return v === undefined || (Array.isArray(v) && v.every((s) => typeof s === "string"));
+}
+
 function isOptionalNumberOrNull(v: unknown): v is number | null | undefined {
   return v === undefined || v === null || typeof v === "number";
 }
@@ -66,10 +72,8 @@ function isValidBundle(b: unknown): b is DiagnosticBundle {
   if (!isOptionalString(o.stdout)) return false;
   if (!isOptionalString(o.stderr)) return false;
   if (!isOptionalNumberOrNull(o.exitCode)) return false;
-  if (o.registers !== undefined) {
-    if (!Array.isArray(o.registers)) return false;
-    if (!o.registers.every((r) => typeof r === "string")) return false;
-  }
+  if (!isOptionalStringArray(o.notes)) return false;
+  if (!isOptionalStringArray(o.registers)) return false;
   if (!isOptionalString(o.sp)) return false;
   if (!isOptionalString(o.pc)) return false;
   if (!isOptionalString(o.stackBytes)) return false;
