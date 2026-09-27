@@ -2,6 +2,7 @@
   "title": "The vanishing value",
   "slug": "the-vanishing-value",
   "order": 41,
+  "lastUpdated": "2026-09-27",
   "topic": "memory",
   "difficulty": "core",
   "prompt": "This program reads two values into registers, swaps them, then prints them in their new order. Run it: one of the values has vanished, and the other now appears twice.\n\nTrace the two `mov` instructions of the swap by hand and watch where the first value goes. Fix the swap so both values survive; the starter aliases a spare register as `tmp_r` if you want one.\n\n## what is checked\n\n- both values appear, in swapped order\n- the program exits cleanly\n- the swap really happens in the registers: `x19` and `x20` end up holding each other's values, so reordering the printf arguments is not enough\n- the same holds for other pairs you do not see, equal and negative ones among them",
