@@ -886,3 +886,188 @@ main:
     let (_, out) = run_with_stdin(source, "");
     assert_eq!(out, "6 3 7 99\n");
 }
+
+// gcc -O2 lowers a dense switch to a table of halfword distances in words
+// from a base label, `.2byte (.Lcase - .Lbase) / 4`, read with ldrh and
+// sign-extended by `sxth`. The lexer split `.2byte` at its digit and
+// refused it as the integer `2b`. Case 3 sits above the base, so its entry
+// is negative and only the sign extension reaches it.
+#[test]
+fn a_halfword_jump_table_dispatches_every_case() {
+    let source = r#"
+        .section .rodata
+fmt:    .string "%d %d %d %d\n"
+
+        .text
+        .balign 4
+.Lcase3:
+        mov     w0, 44
+        ret
+pick:
+        adrp    x1, .Ltab
+        add     x1, x1, :lo12:.Ltab
+        ldrh    w1, [x1, w0, uxtw #1]
+        adr     x2, .Lbase
+        add     x1, x2, w1, sxth #2
+        br      x1
+.Lbase:
+        .section .rodata
+        .balign 2
+.Ltab:
+        .2byte  (.Lcase0 - .Lbase) / 4
+        .2byte  (.Lcase1 - .Lbase) / 4
+        .2byte  (.Lcase2 - .Lbase) / 4
+        .2byte  (.Lcase3 - .Lbase) / 4
+        .text
+.Lcase0:
+        mov     w0, 11
+        ret
+.Lcase1:
+        mov     w0, 22
+        ret
+.Lcase2:
+        mov     w0, 33
+        ret
+
+        .global main
+main:
+        stp     x29, x30, [sp, -32]!
+        mov     x29, sp
+        stp     x19, x20, [sp, 16]
+        mov     w0, 3
+        bl      pick
+        mov     w19, w0
+        mov     w0, 0
+        bl      pick
+        mov     w20, w0
+        mov     w0, 2
+        bl      pick
+        mov     w3, w0
+        mov     w0, 1
+        bl      pick
+        mov     w4, w0
+        mov     w2, w20
+        mov     w1, w19
+        adrp    x0, fmt
+        add     x0, x0, :lo12:fmt
+        bl      printf
+        ldp     x19, x20, [sp, 16]
+        mov     w0, 0
+        ldp     x29, x30, [sp], 32
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "44 11 33 22\n");
+}
+
+// GAS's other sized data spellings: `.4byte` is `.word`, and `.8byte` and
+// `.xword` (the one gcc writes for pointer tables) are `.quad`, with label
+// expressions as well as numbers.
+#[test]
+fn sized_data_directives_match_their_named_twins() {
+    let source = r#"
+        .section .rodata
+fmt:    .string "%ld %lx %d %d %d\n"
+
+        .data
+        .balign 8
+vals:   .8byte  -2, 0x1122334455667788
+slot:   .xword  vals + 8
+words:  .4byte  -3, 70000
+        .4byte  .Lend - vals
+.Lend:
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        adrp    x9, vals
+        add     x9, x9, :lo12:vals
+        ldr     x1, [x9]
+        adrp    x10, slot
+        add     x10, x10, :lo12:slot
+        ldr     x10, [x10]
+        ldr     x2, [x10]
+        adrp    x11, words
+        add     x11, x11, :lo12:words
+        ldrsw   x3, [x11]
+        ldr     w4, [x11, 4]
+        ldr     w5, [x11, 8]
+        adrp    x0, fmt
+        add     x0, x0, :lo12:fmt
+        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "-2 1122334455667788 -3 70000 36\n");
+}
+
+// gcc aligns functions and loop heads with `.p2align 5,,15`: pad to 2^5
+// bytes, but only when that takes 15 bytes or fewer. The padding is
+// executed in .text, so it must be no-ops. Each distance below is where
+// GAS put the label, taken or skipped.
+#[test]
+fn p2align_pads_to_a_power_of_two_within_its_limit() {
+    let source = r#"
+        .section .rodata
+fmt:    .string "%ld %ld %ld %ld %ld %ld %ld\n"
+
+        .data
+        .p2align 4
+d0:     .byte   1
+        .p2align 3
+d1:     .byte   2
+        .p2align 4,,7
+d2:     .byte   3
+        .p2align 4,,6
+d3:     .byte   4
+        .p2align 2,,3
+d4:     .byte   5
+
+        .text
+        .p2align 5
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        .p2align 5,,15
+t1:     nop
+        .p2align 5,,31
+t2:     nop
+        .p2align 4
+t3:     nop
+        adr     x9, main
+        adr     x1, t1
+        sub     x1, x1, x9
+        adr     x2, t2
+        sub     x2, x2, x9
+        adr     x3, t3
+        sub     x3, x3, x9
+        adrp    x9, d0
+        add     x9, x9, :lo12:d0
+        adrp    x4, d1
+        add     x4, x4, :lo12:d1
+        sub     x4, x4, x9
+        adrp    x5, d2
+        add     x5, x5, :lo12:d2
+        sub     x5, x5, x9
+        adrp    x6, d3
+        add     x6, x6, :lo12:d3
+        sub     x6, x6, x9
+        adrp    x7, d4
+        add     x7, x7, :lo12:d4
+        sub     x7, x7, x9
+        adrp    x0, fmt
+        add     x0, x0, :lo12:fmt
+        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "8 32 48 8 16 17 20\n");
+}
