@@ -743,6 +743,9 @@ function compare(p, pg, sv) {
 
 const oneLine = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, 160);
 
+// Text placed inside one cell of a markdown table row.
+const markdownCell = (s) => s.replace(/\|/g, "\\|");
+
 // The diagnosis behind each row that came back `differs` when the sweep was
 // last read by hand. A row with no entry here prints as undiagnosed, which is
 // the point: a NEW disagreement stands out instead of blending into the five
@@ -811,7 +814,7 @@ function report(programs, pgAll, svAll, machine) {
     lines.push("| program | source | verdict | note |");
     lines.push("| --- | --- | --- | --- |");
     for (const row of rows) {
-      lines.push(`| ${row.p.id} | ${row.p.source} | ${row.verdict} | ${row.note.replace(/\|/g, "\\|")} |`);
+      lines.push(`| ${row.p.id} | ${row.p.source} | ${row.verdict} | ${markdownCell(row.note)} |`);
     }
     const diffs = rows.filter((r) => r.verdict === "differs");
     if (diffs.length > 0) {
@@ -861,4 +864,7 @@ function main() {
   report(programs, pgAll, readServerResults(programs), machine);
 }
 
-main();
+// A test loads the report helpers without starting a sweep.
+if (require.main === module) main();
+
+module.exports = { markdownCell };
