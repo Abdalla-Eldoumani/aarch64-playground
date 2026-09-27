@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 tick_a:
 	adrp	x1, .LANCHOR0
 	ldr	w0, [x1, :lo12:.LANCHOR0]
@@ -8,7 +8,7 @@ tick_a:
 	str	w0, [x1, :lo12:.LANCHOR0]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 tick_b:
 	adrp	x1, .LANCHOR1
 	ldr	w0, [x1, :lo12:.LANCHOR1]
@@ -16,7 +16,7 @@ tick_b:
 	str	w0, [x1, :lo12:.LANCHOR1]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 tick_c:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -25,7 +25,7 @@ tick_c:
 	str	w0, [x1, 4]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 wrap8:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -34,7 +34,7 @@ wrap8:
 	strb	w2, [x1, 8]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 wrap16:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -43,7 +43,7 @@ wrap16:
 	strh	w0, [x1, 10]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 swrap:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -52,7 +52,7 @@ swrap:
 	strb	w0, [x1, 12]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 cursor_next:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -73,7 +73,7 @@ cursor_next:
 	.string	"four"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 name_of:
 	cmp	w0, 4
 	bgt	.L16
@@ -81,7 +81,7 @@ name_of:
 	add	x1, x1, :lo12:.LANCHOR2
 	ldr	x0, [x1, w0, sxtw 3]
 	ret
-	.align 2
+	.p2align 2,,3
 .L16:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -95,7 +95,7 @@ name_of:
 	str	x3, [x1, 56]
 .L17:
 	ret
-	.align 2
+	.p2align 2,,3
 .L15:
 	add	x3, x2, 32
 	adrp	x0, .LC0
@@ -103,7 +103,7 @@ name_of:
 	str	x3, [x1, 56]
 	b	.L17
 	.align	2
-	.align 5
+	.p2align 5,,15
 state:
 	adrp	x2, .LANCHOR1
 	add	x2, x2, :lo12:.LANCHOR1
@@ -130,17 +130,17 @@ state:
 	strb	w2, [x1, 18]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 add1:
 	add	w0, w0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 dbl:
 	lsl	w0, w0, 1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 apply_next:
 	stp	x29, x30, [sp, -32]!
 	mov	x29, sp
@@ -161,7 +161,7 @@ apply_next:
 	ldp	x29, x30, [sp], 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 histogram:
 	mov	w1, 19923
 	mov	w2, 1000
@@ -187,7 +187,7 @@ histogram:
 	.string	"fib calls=%d deepest=%d now=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fib_probe:
 	stp	x29, x30, [sp, -48]!
 	adrp	x4, .LANCHOR0
@@ -213,7 +213,7 @@ fib_probe:
 	mov	w0, w5
 	ldp	x29, x30, [sp], 48
 	ret
-	.align 2
+	.p2align 2,,3
 .L33:
 	sub	w0, w5, #1
 	mov	w1, 0
@@ -232,7 +232,7 @@ fib_probe:
 	ldr	w3, [x4, 4024]
 	sub	w3, w3, #1
 	b	.L30
-	.align 2
+	.p2align 2,,3
 .L32:
 	mov	w1, w0
 	adrp	x0, .LC1
@@ -251,7 +251,7 @@ fib_probe:
 	.string	"d=%.17g big=%lld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 halves.isra.0:
 	adrp	x0, .LANCHOR1
 	add	x0, x0, :lo12:.LANCHOR1
@@ -292,7 +292,7 @@ halves.isra.0:
 	.string	"fib(9)=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #144
@@ -322,7 +322,7 @@ main:
 	mov	w26, 0
 	str	x0, [sp, 136]
 	b	.L39
-	.align 2
+	.p2align 2,,3
 .L49:
 	ldr	w0, [x23, 112]
 	sub	w0, w0, #1
@@ -396,7 +396,7 @@ main:
 	adrp	x20, .LC5
 	add	x20, x20, :lo12:.LC5
 	mov	w19, 10
-	.align 5
+	.p2align 5,,15
 .L40:
 	bl	tick_c
 	mov	w1, w0
@@ -411,7 +411,7 @@ main:
 	add	x21, x21, :lo12:.LC6
 	mov	x0, x21
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L41:
 	mov	w0, w19
 	bl	name_of
@@ -472,11 +472,11 @@ main:
 	.align	4
 	.LANCHOR2:
 names.5:
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
-	.quad	.LC13
-	.quad	.LC0
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
+	.xword	.LC13
+	.xword	.LC0
 	.data
 	.align	4
 	.LANCHOR1:
@@ -502,23 +502,23 @@ pool.12:
 	.word	77
 	.word	88
 cur.13:
-	.quad	pool.12+20
+	.xword	pool.12+20
 last.6:
-	.quad	names.5+32
+	.xword	names.5+32
 m.8:
 	.byte	113
 	.zero	7
-	.quad	81985529216486895
+	.xword	81985529216486895
 	.hword	-2
 	.byte 250, 251, 252
 	.zero	3
 op.11:
-	.quad	add1
+	.xword	add1
 d.1:
 	.word	-1717986918
 	.word	1069128089
 big.0:
-	.quad	-9000000000000000000
+	.xword	-9000000000000000000
 rounds:
 	.word	300
 	.bss
