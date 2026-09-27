@@ -17,28 +17,38 @@ const job = (result: string) => ({ result, outputs: {} });
 
 describe("the ci gate", () => {
   it("passes when every needed job succeeded", () => {
-    expect(run({ changes: job("success"), rust: job("success") }).code).toBe(0);
+    expect(run({ wasm: job("success"), rust: job("success") }).code).toBe(0);
   });
 
-  it("passes when the path filter skipped jobs", () => {
-    expect(run({ changes: job("success"), rust: job("skipped"), "web-test": job("skipped") }).code).toBe(0);
+  it("passes when coverage is skipped on a pull request", () => {
+    expect(
+      run({
+        wasm: job("success"),
+        rust: job("success"),
+        corpus: job("success"),
+        "web-static": job("success"),
+        "web-build": job("success"),
+        "web-test": job("success"),
+        coverage: job("skipped"),
+      }).code,
+    ).toBe(0);
   });
 
   it("fails on a failed job and names it", () => {
-    const { code, stderr } = run({ changes: job("success"), rust: job("failure") });
+    const { code, stderr } = run({ wasm: job("success"), rust: job("failure") });
     expect(code).toBe(1);
     expect(stderr).toContain("rust: failure");
   });
 
   it("fails on a cancelled job", () => {
-    expect(run({ changes: job("success"), "web-build": job("cancelled") }).code).toBe(1);
+    expect(run({ wasm: job("success"), "web-build": job("cancelled") }).code).toBe(1);
   });
 
   it("fails on a mix of passing, skipped, and failed jobs, naming only the failures", () => {
     const { code, stderr } = run({
-      changes: job("success"),
       wasm: job("success"),
-      rust: job("skipped"),
+      rust: job("success"),
+      coverage: job("skipped"),
       "web-static": job("cancelled"),
       "web-test": job("failure"),
     });
@@ -46,11 +56,12 @@ describe("the ci gate", () => {
     expect(stderr).toContain("web-static: cancelled");
     expect(stderr).toContain("web-test: failure");
     expect(stderr).not.toContain("rust");
+    expect(stderr).not.toContain("coverage");
   });
 
   it("fails on a result it does not know and on a job with no result", () => {
-    expect(run({ changes: job("neutral") }).code).toBe(1);
-    expect(run({ changes: {} }).code).toBe(1);
+    expect(run({ corpus: job("neutral") }).code).toBe(1);
+    expect(run({ corpus: {} }).code).toBe(1);
   });
 
   it("fails when there is nothing to judge", () => {
