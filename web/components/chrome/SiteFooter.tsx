@@ -10,7 +10,7 @@ import { Wordmark } from "@/components/ui/Wordmark";
 
 // Footer links share one quiet -> cyan-on-hover treatment, all from tokens.
 const LINK_CLASS =
-  "rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
+  "touch-target inline-flex items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
 
 /**
  * The persistent site footer shared by the content layout and the 404: the brand
