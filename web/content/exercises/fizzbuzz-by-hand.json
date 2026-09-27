@@ -2,6 +2,7 @@
   "title": "Fizzbuzz, by hand",
   "slug": "fizzbuzz-by-hand",
   "order": 20,
+  "lastUpdated": "2026-09-27",
   "topic": "loops",
   "difficulty": "core",
   "prompt": "The classic interview question, on a machine with no remainder instruction: print the numbers 1 through a limit, except say `fizz` for multiples of 3, `buzz` for multiples of 5, and `fizzbuzz` for multiples of both. The starter reads the limit.\n\nAArch64 has division but no remainder instruction. The course idiom is `udiv` then `msub`: divide, multiply the quotient back, subtract, and what is left is the remainder.\n\n## what is checked\n\n- all fifteen lines in order for the `15` in the stdin box\n- the program exits cleanly\n- the remainders come from `msub`, not from a lookup\n- the same holds for other limits you do not see; a limit of 0 prints nothing",
