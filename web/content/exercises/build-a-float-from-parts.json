@@ -2,6 +2,7 @@
   "title": "Build a float from parts",
   "slug": "build-a-float-from-parts",
   "order": 67,
+  "lastUpdated": "2026-09-27",
   "topic": "floating-point",
   "difficulty": "challenge",
   "prompt": "Run IEEE 754 backwards: standard input gives a sign (0 or 1), an exponent without its bias, and a fraction in hex. Put them together into a single-precision float, then print its bits and its value. With the stdin box as given (`0 2 580000`) the program prints:\n\n```\n0x40d80000 = 6.750000\n```\n\nThe fraction goes in bits 22 to 0, the exponent plus the bias of 127 in bits 30 to 23, and the sign in bit 31. `bfi wD, wN, lsb, width` (bitfield insert) copies the low `width` bits of `wN` into `wD` starting at bit `lsb` and leaves every other bit of `wD` alone, which is exactly how a field drops into place.\n\nWhen the word is built, `fmov` moves it into `s0` unchanged. `printf` cannot print a float as it is: `%f` reads a double from `d0`, so widen it first with `fcvt d0, s0`.\n\nThis exercise builds normal numbers only, so each part has a range:\n\n- the sign is 0 or 1\n- the exponent is -126 to 127 (the stored values 0 and 255 are kept for zero, subnormals, infinity and NaN)\n- the fraction is 0 to `0x7fffff` (23 bits)\n\nAnything outside those ranges prints `cannot build that` and returns 1.\n\n## what is checked\n\n- the line for the parts in the stdin box, and for more parts you cannot see\n- the exit status (0, or 1 when a part is out of range)\n- the fields go in with `bfi` and the word moves with `fmov`",
