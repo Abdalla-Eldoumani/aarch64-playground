@@ -17,7 +17,7 @@ use aarch64_emulator::frontend::pipeline::assemble_hosted;
 /// `Segmentation fault`); stdout is not compared.
 const EXPECTED_FAULTS: &[(&str, &str)] = &[
     ("44_null_deref", "segmentation"),
-    ("45_misaligned_sp", "bus error"),
+    ("45_misaligned_sp", "Bus error"),
     ("46_stack_overflow", "stack overflow"),
 ];
 
