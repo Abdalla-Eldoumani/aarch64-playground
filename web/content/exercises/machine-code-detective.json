@@ -1,0 +1,71 @@
+{
+  "title": "Machine code detective",
+  "slug": "machine-code-detective",
+  "order": 29,
+  "topic": "bitwise",
+  "difficulty": "core",
+  "prompt": "A 32-bit instruction word arrives on standard input in hex. If it is an add or subtract between registers (the shifted-register format), take it apart and print the instruction it encodes. With the stdin box as given the program prints:\n\n```\nsf=1 op=0 S=0 shift=0 imm6=0\nRm=2 Rn=1 Rd=0\nadd x0, x1, x2\n```\n\nThe format, from bit 31 down:\n\n| bits | 31 | 30 | 29 | 28-24 | 23-22 | 21 | 20-16 | 15-10 | 9-5 | 4-0 |\n|---|---|---|---|---|---|---|---|---|---|---|\n| field | sf | op | S | 01011 | shift | 0 | Rm | imm6 | Rn | Rd |\n\n- `sf` is 1 for x registers and 0 for w registers\n- `op` is 0 for add and 1 for sub; `S` is 1 when the instruction sets the flags, so `op * 2 + S` indexes the `mnems` table (add, adds, sub, subs)\n- `shift` picks lsl, lsr or asr (3 is not allowed), and `imm6` is how far `Rm` is shifted first; leave the shift off the printed line when `imm6` is 0\n- in this format register number 31 is the zero register, printed `xzr` or `wzr`\n\n`ubfx wD, wN, lsb, width` copies `width` bits starting at bit `lsb` into the bottom of `wD`, which is exactly what each field needs. A word whose bits 28 to 24 are not `01011`, whose bit 21 is 1, or whose shift field is 3 is some other instruction: print `not an add or sub (shifted register)` and return 1.\n\n## what is checked\n\n- all three lines for the word in the stdin box, and for more words you cannot see\n- the exit status (0, or 1 for a word of another format)\n- the fields come out with `ubfx`",
+  "starter": "// decode one add/sub (shifted register) instruction word back into assembly\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(word_r, w19)\ndefine(sf_r, w20)\ndefine(op_r, w21)\ndefine(s_r, w22)\ndefine(shift_r, w23)\ndefine(imm6_r, w24)\ndefine(rm_r, w25)\ndefine(rn_r, w26)\ndefine(rd_r, w27)\n\n.data\nfmt_hex:    .string \"%x\"\nfmt_fields: .string \"sf=%d op=%d S=%d shift=%d imm6=%d\\n\"\nfmt_regs:   .string \"Rm=%d Rn=%d Rd=%d\\n\"\nfmt_str:    .string \"%s\"\nfmt_reg:    .string \"%s%s%d\"\nfmt_zr:     .string \"%s%szr\"\nfmt_shift:  .string \", %s %d\"\nfmt_not:    .string \"not an add or sub (shifted register)\\n\"\nstr_x:      .string \"x\"\nstr_w:      .string \"w\"\nstr_space:  .string \" \"\nstr_comma:  .string \", \"\nstr_end:    .string \"\\n\"\ns_add:      .string \"add\"\ns_adds:     .string \"adds\"\ns_sub:      .string \"sub\"\ns_subs:     .string \"subs\"\ns_lsl:      .string \"lsl\"\ns_lsr:      .string \"lsr\"\ns_asr:      .string \"asr\"\n\n        .balign 8\nmnems:      .dword  s_add, s_adds, s_sub, s_subs    // by op * 2 + S\nshifts:     .dword  s_lsl, s_lsr, s_asr             // by the shift field\n\n.bss\n.align 2\nword:       .skip 4\n\n.text\n\n// TODO: print_reg(x0 = text before it, w1 = sf, w2 = register number)\n// prints the text, then the register: x or w by sf, then the number.\n// In this format the number 31 means the zero register (xzr or wzr).\n// fmt_reg and fmt_zr take the text and the x or w as their two %s.\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_hex\n        ldr     x1, =word\n        bl      scanf\n        ldr     x9, =word\n        ldr     word_r, [x9]\n\n        // TODO:\n        //   - the word is this format only when bits 28 to 24 are 01011,\n        //     bit 21 is 0, and the shift field (bits 23 and 22) is not 3;\n        //     otherwise print fmt_not and return 1\n        //   - pull out every field: sf (31), op (30), S (29), shift\n        //     (23-22), Rm (20-16), imm6 (15-10), Rn (9-5), Rd (4-0)\n        //   - print them with fmt_fields and fmt_regs\n        //   - print the instruction: the mnemonic from mnems, then Rd,\n        //     Rn and Rm, then \", <shift> <imm6>\" only when imm6 is not\n        //     0, then str_end\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "8b020020\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "sf=1 op=0 S=0 shift=0 imm6=0\nRm=2 Rn=1 Rd=0\nadd x0, x1, x2\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "ubfx"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "4b030041\n",
+      "stdout": "sf=0 op=1 S=0 shift=0 imm6=0\nRm=3 Rn=2 Rd=1\nsub w1, w2, w3\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "eb02003f\n",
+      "stdout": "sf=1 op=1 S=1 shift=0 imm6=0\nRm=2 Rn=1 Rd=31\nsubs xzr, x1, x2\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "8b051083\n",
+      "stdout": "sf=1 op=0 S=0 shift=0 imm6=4\nRm=5 Rn=4 Rd=3\nadd x3, x4, x5, lsl 4\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "2b897d07\n",
+      "stdout": "sf=0 op=0 S=1 shift=2 imm6=31\nRm=9 Rn=8 Rd=7\nadds w7, w8, w9, asr 31\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "8b220020\n",
+      "stdout": "not an add or sub (shifted register)\n",
+      "exitCode": 1,
+      "edge": true
+    },
+    {
+      "stdin": "d65f03c0\n",
+      "stdout": "not an add or sub (shifted register)\n",
+      "exitCode": 1,
+      "edge": true
+    },
+    {
+      "stdin": "8bc20020\n",
+      "stdout": "not an add or sub (shifted register)\n",
+      "exitCode": 1,
+      "edge": true
+    }
+  ]
+}
