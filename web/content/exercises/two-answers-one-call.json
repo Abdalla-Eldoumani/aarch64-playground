@@ -2,6 +2,7 @@
   "title": "Two answers, one call",
   "slug": "two-answers-one-call",
   "order": 52,
+  "lastUpdated": "2026-09-27",
   "topic": "subroutines",
   "difficulty": "core",
   "prompt": "A function hands back one value in x0, but a division has two answers. `divmod(a, b, &q, &r)` gets both out: the caller (the code making the call) passes the *addresses* of two of its own variables, and `divmod` writes the quotient and the remainder into them. It returns 0 in w0 when it worked, and -1 when b is 0, in which case it writes nothing.\n\nThe starter's `main` reads pairs of numbers into its frame until the input runs out, and prints each result from the frame slots `q_s` and `r_s`. Write `divmod`, and fill in the call in `main`: a in x0, b in x1, and the addresses of the two slots in x2 and x3 (`add x2, fp, q_s` puts an address in a register).\n\nUse `sdiv`, which rounds toward zero the way C does, so -17 / 5 is -3 remainder -2. The remainder is a - q * b, one `msub`. Check b first: dividing by zero does not stop an ARMv8 program, `sdiv` quietly answers 0.\n\n`main` exits with the number of pairs that had no answer, so a script running the program can tell something went wrong.\n\nThe starter's input prints:\n\n```\n17 / 5 = 3 remainder 2\n100 / 7 = 14 remainder 2\n```\n\n## what is checked\n\n- the two lines above\n- the program exits with status 0\n- the same checks on other inputs the checker keeps hidden, including negative numbers, a divisor of 0 (the exit status must count them), and no input at all\n- `sdiv` does the division and `str` writes the answers",
