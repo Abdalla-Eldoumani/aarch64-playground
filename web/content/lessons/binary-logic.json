@@ -1,0 +1,79 @@
+{
+  "title": "Binary logic: masks, flags, and tst",
+  "slug": "binary-logic",
+  "order": 14,
+  "summary": "Set, clear, flip and test chosen bits of a register with orr, bic, eor, and and tst, using masks.",
+  "tags": [
+    "binary logic",
+    "bitwise"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Binary, hex, and octal: one number, many spellings](/learn/binary-hex-and-octal)\n- [Conditionals with cmp and b.cond](/learn/assembly-conditionals-basics)"
+    },
+    {
+      "type": "prose",
+      "markdown": "The logic instructions treat a register as a row of separate bits. Bit 5 of the result depends only on bit 5 of each operand, and nothing carries from one position to the next the way it does in addition. That makes them the tool for changing or checking chosen bits while leaving the others alone."
+    },
+    {
+      "type": "prose",
+      "markdown": "## And, or, exclusive or, not\n\nEach logic operation takes one bit from each operand and gives one bit back:\n\n| a | b | a AND b | a OR b | a XOR b |\n|---|---|---|---|---|\n| 0 | 0 | 0 | 0 | 0 |\n| 0 | 1 | 0 | 1 | 1 |\n| 1 | 0 | 0 | 1 | 1 |\n| 1 | 1 | 1 | 1 | 0 |\n\nAND is 1 only in the rows where a and b are both 1. OR is 1 whenever at least one of them is. *Exclusive or* (XOR) gives 1 where the two bits differ. NOT takes a single bit and flips it. Applied to whole registers, `1100` AND `1010` is `1000`, OR is `1110`, and XOR is `0110`.\n\nA64 spells these as instructions, each working on all 32 bits of a `w` register or all 64 bits of an `x` register at once:\n\n| instruction | result |\n|---|---|\n| `and d, n, m` | n AND m |\n| `orr d, n, m` | n OR m |\n| `eor d, n, m` | n XOR m |\n| `bic d, n, m` | n AND (NOT m), called bit clear |\n| `orn d, n, m` | n OR (NOT m) |\n| `eon d, n, m` | n XOR (NOT m) |\n| `mvn d, m` | NOT m |\n\nTwo familiar instructions are logic instructions underneath: `mov x19, x20` is `orr x19, xzr, x20` (OR with zero changes nothing), and `mvn` is `orn` with the zero register as its first source."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Masks\n\nA *mask* is a value whose 1 bits mark the positions you want to work on. Each instruction does one job with it:\n\n- `orr` with a mask *sets* those bits to 1, because x OR 1 is 1 and x OR 0 is x.\n- `bic` with a mask *clears* those bits to 0.\n- `eor` with a mask *flips* (toggles) those bits, because x XOR 1 is NOT x and x XOR 0 is x.\n- `and` with a mask *keeps* those bits and clears all the others. `and w1, w0, 0xff` keeps the low byte of `w0`.\n\nA *flag* is one bit used as a yes-or-no answer. The N, Z, C and V condition flags that `cmp` sets are flags in exactly this sense. A program can pack its own flags into one register, which saves space and lets one instruction change several at once."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Status effects as flags\n\nA game might keep a character's status effects as four flags in one word:\n\n| bit | mask | effect |\n|---|---|---|\n| 0 | `0x1` | poisoned |\n| 1 | `0x2` | invisible |\n| 2 | `0x4` | flying |\n| 3 | `0x8` | shielded |\n\nThe program below gives each mask an m4 name, so the code says `POISONED` instead of `0x1`. In `FLYING | SHIELDED`, the `|` means OR, worked out by the assembler before the program runs, so that operand is the constant `0xc`. `bic` takes its mask from a register here, so the mask goes into `w9` first.\n\nThe status word has to survive every `printf` call, so it lives in `w19`. This `main` uses `w19` without saving it first, as the programs in these lessons do. A subroutine you write yourself has to save any of x19 to x28 that it changes."
+    },
+    {
+      "type": "editor",
+      "starter": "// Keep a game character's status effects as four bits of one register\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(status_r, w19)\ndefine(mask_r, w9)\n\ndefine(POISONED, 0x1)\ndefine(INVISIBLE, 0x2)\ndefine(FLYING, 0x4)\ndefine(SHIELDED, 0x8)\n\n.data\nfmt_start:  .string \"start:              status = 0x%x\\n\"\nfmt_poison: .string \"stepped in a swamp: status = 0x%x\\n\"\nfmt_wings:  .string \"wings and shield:   status = 0x%x\\n\"\nfmt_on:     .string \"cloak on:           status = 0x%x\\n\"\nfmt_cure:   .string \"drank the antidote: status = 0x%x\\n\"\nfmt_off:    .string \"cloak off:          status = 0x%x\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     status_r, 0                 // no effects yet\n        ldr     x0, =fmt_start\n        mov     w1, status_r\n        bl      printf\n\n        orr     status_r, status_r, POISONED\n        ldr     x0, =fmt_poison\n        mov     w1, status_r\n        bl      printf\n\n        orr     status_r, status_r, FLYING | SHIELDED   // two bits in one mask: 0xc\n        ldr     x0, =fmt_wings\n        mov     w1, status_r\n        bl      printf\n\n        eor     status_r, status_r, INVISIBLE           // off becomes on\n        ldr     x0, =fmt_on\n        mov     w1, status_r\n        bl      printf\n\n        mov     mask_r, POISONED\n        bic     status_r, status_r, mask_r              // clear the bits set in the mask\n        ldr     x0, =fmt_cure\n        mov     w1, status_r\n        bl      printf\n\n        eor     status_r, status_r, INVISIBLE           // on becomes off\n        ldr     x0, =fmt_off\n        mov     w1, status_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "start:              status = 0x0\nstepped in a swamp: status = 0x1\nwings and shield:   status = 0xd\ncloak on:           status = 0xf\ndrank the antidote: status = 0xe\ncloak off:          status = 0xc\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The status goes `0x0`, `0x1`, `0xd`, `0xf`, `0xe`, `0xc`. In binary that is `0000`, `0001`, `1101`, `1111`, `1110`, `1100`: each step changes one bit, except the third, where one mask sets two bits at once.\n\nThe two `eor` lines use the same mask, so the second one undoes the first: flipping a bit twice puts it back. `bic` is safe to repeat as well: clearing a bit that is already 0 leaves it at 0."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "A logic instruction cannot take just any constant. The immediate in `and`, `orr`, `eor`, `ands` and `tst` has to be a *bitmask immediate*: one run of consecutive 1s, which may be rotated and repeated across the register. `0xc` (`1100`), `0xff` and `0xfffffffe` qualify. `0x5` (`0101`) does not, so `orr w19, w19, POISONED | FLYING` fails to assemble. Put a mask like that in a register with `mov` first and use the register form. Zero and all ones are never allowed as a bitmask immediate either."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Testing bits with tst\n\n`tst` ANDs its two operands, throws the result away, and keeps only the condition flags, the same way `cmp` is a `subs` that throws its result away. If none of the mask's bits are 1 in the register, the AND is zero and the Z flag is set. So after a `tst`:\n\n- `b.eq` branches when every masked bit is 0.\n- `b.ne` branches when at least one masked bit is 1.\n\n`ands` does the same AND but also writes the result to its destination. Both set N from the top bit of the result and Z when the result is zero, and both clear C and V.\n\nThe program below starts from a status value and prints the name of each effect that is on. Each test branches past its message with `b.eq` when the bit is clear, the same shape as an `if` with no `else`. Before the four single-bit tests, one `tst` with the mask `0xf` checks all four bits at once, and prints `no effects` when none is set."
+    },
+    {
+      "type": "editor",
+      "starter": "// Report which status effects are on, testing one bit at a time with tst\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(status_r, w19)\n\ndefine(POISONED, 0x1)\ndefine(INVISIBLE, 0x2)\ndefine(FLYING, 0x4)\ndefine(SHIELDED, 0x8)\ndefine(START, 0xa)                          // try any value from 0x0 to 0xf\n\n.data\nfmt_head:   .string \"status = 0x%x\\n\"\nmsg_poison: .string \"  poisoned\\n\"\nmsg_invis:  .string \"  invisible\\n\"\nmsg_fly:    .string \"  flying\\n\"\nmsg_shield: .string \"  shielded\\n\"\nmsg_none:   .string \"  no effects\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     status_r, START\n        ldr     x0, =fmt_head\n        mov     w1, status_r\n        bl      printf\n\n        tst     status_r, 0xf               // is any of the four bits set?\n        b.ne    chk_poison\n        ldr     x0, =msg_none\n        bl      printf\n        b       chk_done\n\nchk_poison:\n        tst     status_r, POISONED\n        b.eq    chk_invis                   // Z set: the bit is 0, skip the message\n        ldr     x0, =msg_poison\n        bl      printf\nchk_invis:\n        tst     status_r, INVISIBLE\n        b.eq    chk_fly\n        ldr     x0, =msg_invis\n        bl      printf\nchk_fly:\n        tst     status_r, FLYING\n        b.eq    chk_shield\n        ldr     x0, =msg_fly\n        bl      printf\nchk_shield:\n        tst     status_r, SHIELDED\n        b.eq    chk_done\n        ldr     x0, =msg_shield\n        bl      printf\nchk_done:\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "status = 0xa\n  invisible\n  shielded\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "With the starting value `0xa` it prints `status = 0xa`, then `invisible` and `shielded`: `0xa` is `1010`, so bits 1 and 3 are on. Change `START` to `0x0` to see the `no effects` line, or to `0xf` to see all four names."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. `w0` holds `0110` and `w1` holds `0011`. What do `and`, `orr` and `eor` of the two give?\n2. Which instruction turns bit 4 of `w19` off and leaves every other bit as it was, with the mask `0x10` in `w9`?\n3. After `tst w19, 0x4`, which branch jumps when bit 2 of `w19` is 1?\n4. Why does `eor w19, w19, 0x3` done twice leave `w19` unchanged?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `0010`, `0111` and `0101`.\n2. `bic w19, w19, w9`.\n3. `b.ne`: the AND is not zero when the bit is 1.\n4. Each `eor` flips bits 0 and 1, and flipping a bit twice puts it back."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: binary logic (intro)](/practice/quiz-basic-binary-logic) and [Quiz: binary logic (core)](/practice/quiz-inter-binary-logic): what each logic instruction does, `bic` and `tst` included.\n- [Fill in the blank: binary logic (core)](/practice/blanks-binary-logic): write the instruction for a described change, such as clearing the bits set in a mask.\n- [Predict: binary logic (challenge)](/practice/predict-binary-logic): what short instruction sequences leave in a register.\n- [Bit population census](/practice/bit-population-census) and [Quiz: binary logic (challenge)](/practice/quiz-advance-binary-logic): both lean on [Shifts, sign extension, and bitfields](/learn/shifts-and-bitfields), the next lesson."
+    }
+  ]
+}
