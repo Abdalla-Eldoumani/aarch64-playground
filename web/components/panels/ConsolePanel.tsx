@@ -35,6 +35,9 @@ interface ConsolePanelProps {
    *  chrome turns this off: its fast path grades the live stdout, and an
    *  echoed byte there would fail a correct program's `equals` check. */
   echoStdin?: boolean;
+  /** Whether the empty state names F10 and F5. Only the playground page binds
+   *  them, so the embeds point at their buttons instead. */
+  keyHints?: boolean;
   /** Signal end-of-input (wired to ctrl-d in the stdin box). */
   closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
@@ -61,6 +64,7 @@ export function ConsolePanel({
   pushStdin,
   onInputSent,
   echoStdin = true,
+  keyHints = true,
   closeStdin,
   uploadVfsFile,
   clearConsole,
@@ -233,7 +237,9 @@ export function ConsolePanel({
             <p className="font-sans text-[11px] text-[var(--text-secondary)]">
               {coarsePointer
                 ? "Tap step or run under the editor, or feed stdin from the box below."
-                : "Step with F10, run with F5, or feed stdin from the box below."}
+                : keyHints
+                  ? "Step with F10, run with F5, or feed stdin from the box below."
+                  : "Press step or run under the editor, or feed stdin from the box below."}
             </p>
           </div>
         )}
