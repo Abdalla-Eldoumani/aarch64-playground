@@ -2,6 +2,7 @@
   "title": "Collatz countdown",
   "slug": "collatz-countdown",
   "order": 13,
+  "lastUpdated": "2026-09-27",
   "topic": "loops",
   "difficulty": "core",
   "prompt": "Start from a whole number n. If n is even, halve it; if it is odd, make it 3n + 1. Repeat, and n always seems to reach 1 in the end (nobody has proved it, and nobody has found a number that does not). Count the steps it takes: for 27 the program prints `steps = 111`.\n\nThe starter reads n into `n_r` and prints `steps_r` at the end. Write the loop between them, and test before each step, the way a pre-test loop does: when n starts at 1 it is already there, so the answer is 0 steps.\n\nA number below 1 never gets there (0 halves to 0 forever), so for those print `n must be at least 1` and return 1 from `main`.\n\nHint: `udiv` then `msub` gives the remainder of n divided by 2, which tells you whether n is even.\n\n## what is checked\n\n- with the input `27` the program prints `steps = 111` and returns 0\n- the checker also tries values you do not see, including 1, numbers below 1, and one whose path climbs past what 32 bits can hold",
