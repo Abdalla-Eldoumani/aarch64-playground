@@ -76,7 +76,26 @@ describe("ReplayScrubber", () => {
     const grown = [...frames, frame(4)];
     rerender(<ReplayScrubber frames={grown} currentStep={4} onSeek={onSeek} />);
     expect(slider.value).toBe("3");
-    expect(screen.getByText(/step 4 \/ 4/)).toBeTruthy();
+    expect(screen.getByText(/step 4 · 4 of 4/)).toBeTruthy();
+  });
+
+  it("names the step and the kept frame together when a run skipped ahead", () => {
+    // Three single steps, then a run that stopped at step 274: the ring keeps
+    // four frames, and the knob a third of the way along is frame 2, step 2.
+    const onSeek = vi.fn();
+    render(
+      <ReplayScrubber
+        frames={[frame(1), frame(2), frame(3), frame(274)]}
+        currentStep={274}
+        onSeek={onSeek}
+      />,
+    );
+    expect(screen.getByText("step 274 · 4 of 4")).toBeTruthy();
+    const slider = screen.getByRole("slider", { name: /replay/i }) as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: "1" } });
+    expect(slider.getAttribute("aria-valuetext")).toBe("step 2, frame 2 of 4");
+    // Scrubbing repaints the registers only; the label says so.
+    expect(screen.getByText("step 2 · 2 of 4 · registers only")).toBeTruthy();
   });
 
   it("releases the pin when playback runs to the end", () => {
