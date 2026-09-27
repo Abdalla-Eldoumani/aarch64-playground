@@ -86,9 +86,9 @@ const TRACE_STYLE = {
 } as const;
 
 // On a touch screen a field never shrinks under 44px, the least a finger
-// hits; the row scrolls sideways instead.
+// hits (45 with the shared 1px edge); the row scrolls sideways instead.
 const FIELD_LI =
-  "flex min-w-0 [@media(pointer:coarse)]:min-w-[44px] flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
+  "flex min-w-0 [@media(pointer:coarse)]:min-w-[45px] flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
 // The amber destination cell: the 1px border rides an inset shadow so the
 // shared cell edges and the proportional widths stay untouched.
 const FIELD_LI_DEST =
