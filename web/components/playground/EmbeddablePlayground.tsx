@@ -23,7 +23,7 @@ import type { Action } from "@/lib/playground/commands";
 import { buildPaletteCommands } from "@/lib/playground/palette-commands";
 import { Editor } from "@/components/playground/lazy-editor";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
-import { RegisterPanel } from "@/components/panels/RegisterPanel";
+import { RegisterPanel, type RegView } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { EmbedLayout } from "@/components/playground/EmbedLayout";
 import {
@@ -140,6 +140,10 @@ export type EmbeddablePlaygroundProps = {
    * without `readOnly` is a caller mistake and warns in development.
    */
   staticEditor?: boolean;
+  /** Embed chrome: the register file the host's program writes (the reference
+   *  bench knows it). Given, the registers panel carries the d and v views and
+   *  opens on this one; left out, it shows the x registers alone. */
+  registerView?: RegView;
   /** Landing hero only: once the hub engages, assemble the start program and
    *  step it on a timer with no user action. Off by default, so full and
    *  checker chrome are unchanged. Suppressed under prefers-reduced-motion. */
@@ -217,6 +221,7 @@ function EmbeddableCore({
   fromShare,
   readOnly,
   staticEditor,
+  registerView,
   autoplay,
   autoplaySteps = 8,
   showRun = true,
@@ -813,6 +818,19 @@ function EmbeddableCore({
   // are built here, from the hub, and handed over as nodes; full-only panels
   // (and their code) never load on these surfaces at all.
   if (chrome !== "full") {
+    // A host that names the file its program writes gets the d and v views
+    // too; every other embed keeps the x registers alone.
+    const floatFiles =
+      registerView === undefined
+        ? {}
+        : {
+            openOn: registerView,
+            fpRegisters: emu.fpRegisters,
+            changedFpRegs: emu.changedFpRegs,
+            vectorRegisters: emu.vectorRegisters,
+            source,
+            currentLine: emu.currentLine,
+          };
     return (
       <EmbedLayout
         showRun={showRun}
@@ -857,6 +875,7 @@ function EmbeddableCore({
         }
         registers={
           <RegisterPanel
+            {...floatFiles}
             registers={emu.registers}
             changedRegs={emu.changedRegs}
             sp={emu.sp}
