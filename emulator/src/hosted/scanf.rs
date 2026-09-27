@@ -505,6 +505,7 @@ mod tests {
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
         strtok_save: u64,
+        callbacks: crate::hosted::callback::CallbackState,
     }
 
     impl Host {
@@ -525,6 +526,7 @@ mod tests {
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
                 strtok_save: 0,
+                callbacks: Default::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -542,6 +544,7 @@ mod tests {
                 term: &mut self.term,
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
+                callbacks: &mut self.callbacks,
             }
         }
         fn place_fmt(&mut self, fmt: &str) {
