@@ -2,6 +2,7 @@
   "title": "Printing integers and characters",
   "slug": "printing-other-data-types",
   "order": 6,
+  "lastUpdated": "2026-09-27",
   "summary": "Match each printf format specifier to a value in the right argument register, at the width the specifier expects.",
   "tags": [
     "printing",
