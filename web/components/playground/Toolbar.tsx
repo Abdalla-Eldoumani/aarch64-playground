@@ -100,7 +100,7 @@ export function Toolbar({
           commands
           <kbd
             aria-hidden="true"
-            className="ml-1.5 hidden sm:inline-block text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px]"
+            className="ml-1.5 hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px]"
           >
             Ctrl+K
           </kbd>
