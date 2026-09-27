@@ -39,6 +39,7 @@ export function MultiFileTabs({
 }: MultiFileTabsProps) {
   const [pending, setPending] = useState("");
   const tabRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   function promptRename(idx: number, current: string) {
     const next = window.prompt("rename file", current);
@@ -135,15 +136,21 @@ export function MultiFileTabs({
           if (pending.trim()) {
             onAdd(pending.trim());
             setPending("");
+          } else {
+            // "+" with no name did nothing at all; send the student to the
+            // box the name goes in.
+            nameInputRef.current?.focus();
           }
         }}
         className="inline-flex items-center gap-1 ml-1"
       >
         <input
+          ref={nameInputRef}
           type="text"
           value={pending}
           onChange={(e) => setPending(e.target.value)}
-          placeholder="new.asm"
+          // A file-like placeholder ("new.asm") read as a second tab.
+          placeholder="new file name"
           aria-label="new file name"
           className="w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
         />
@@ -161,7 +168,8 @@ export function MultiFileTabs({
           onClick={onRestoreBackup}
           className="ml-1 rounded px-2 py-0.5 text-[var(--cyan)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         >
-          restore {backupCount} replaced file{backupCount === 1 ? "" : "s"}
+          {/* Removed or replaced by a program load: the word covers both. */}
+          restore {backupCount} file{backupCount === 1 ? "" : "s"}
         </button>
       )}
     </div>
