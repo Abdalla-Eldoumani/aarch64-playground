@@ -49,8 +49,25 @@ describe("CallingConventionGuide", () => {
     // The vector width is named as the playground's reach, not the course's,
     // and the callee-saved promise is pinned to the low 64 bits of v8-v15.
     expect(text).toContain("The course keeps to");
-    expect(text).toContain("preserves only the low 64 bits of");
+    expect(text).toContain("callee-saved, but only their low 64 bits");
     expect(text).toContain("v8");
+  });
+
+  it("teaches the vector registers' roles as AAPCS64 states them", () => {
+    const { container } = render(<CallingConventionGuide />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("v0 through v7 carry the first eight");
+    expect(text).toContain("v0-v7 and v16-v31 are caller-saved");
+    expect(text).toContain("8 or 16 bytes");
+    expect(text).toContain("at most four of them");
+    expect(text).toContain("consecutive v registers");
+  });
+
+  it("says a float reaches printf widened to a double, never narrowed", () => {
+    const { container } = render(<CallingConventionGuide />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("a float reaches printf as a double in d0");
+    expect(text).not.toContain("before handing a float to");
   });
 
   it("teaches the w view of the integer registers under section 01", () => {
