@@ -190,7 +190,9 @@ broken program the reader fixes) add:
 
 - `starter`: the source loaded into the editor; may be empty.
 - `args`: optional command-line arguments for the run. When it is not empty
-  the editor shows an args box holding it, so the reader can try others.
+  the editor shows an args box holding it, so the reader can try others with
+  run. Check always runs these authored args, whatever the box holds, since
+  the expected output was written for them.
 - `stdin`: optional input for the run. Check feeds it and then ends the
   input, the way `./program < file` does on the servers, so a read past it
   sees end of file.
