@@ -2,6 +2,7 @@
   "title": "Every instruction is 32 bits",
   "slug": "instruction-encoding",
   "order": 28,
+  "lastUpdated": "2026-09-27",
   "summary": "Split an instruction word into its fields, read the five common formats, and encode a simple instruction by hand.",
   "tags": [
     "armv8 basics",
