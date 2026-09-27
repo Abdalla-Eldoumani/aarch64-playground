@@ -331,7 +331,7 @@ export function InstructionReference({
           />
           <kbd
             aria-hidden="true"
-            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-[var(--radius-control)] border border-[var(--border)] px-1.5 py-[2px] font-mono text-[10px] leading-none text-[var(--text-tertiary)]"
+            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 [@media(pointer:coarse)]:hidden rounded-[var(--radius-control)] border border-[var(--border)] px-1.5 py-[2px] font-mono text-[10px] leading-none text-[var(--text-tertiary)]"
           >
             /
           </kbd>
