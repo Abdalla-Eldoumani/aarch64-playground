@@ -29,7 +29,7 @@
 	.string	"%d: d3 %d d7 %d d10 %d dm5 %d r10 %d rm3 %d u10 %u ur7 %u l %ld %ld %lu\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #128
@@ -53,7 +53,7 @@ main:
 	add	x26, x26, :lo12:.LC2
 	bl	printf
 	b	.L4
-	.align 2
+	.p2align 2,,3
 .L2:
 	mov	x0, x24
 	add	w22, w22, 1
@@ -109,7 +109,7 @@ main:
 	mov	w22, 0
 	bl	printf
 	b	.L7
-	.align 2
+	.p2align 2,,3
 .L5:
 	mov	x0, x25
 	add	w22, w22, 1
@@ -153,7 +153,7 @@ main:
 	mov	w5, -2147483648
 	mov	w3, 2147483647
 	mov	x4, -9223372036854775808
-	.align 5
+	.p2align 5,,15
 .L8:
 // 11 "programs/86_div_edges.c" 1
 	sdiv w2, w5, w0
@@ -189,7 +189,7 @@ main:
 	adrp	x0, .LC7
 	add	x0, x0, :lo12:.LC7
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L9:
 	add	x0, x21, 256
 	mov	x10, 51719
@@ -284,22 +284,22 @@ w_pairs:
 	.word	-100
 	.word	7
 x_pairs:
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	-9223372036854775808
-	.quad	0
-	.quad	-9223372036854775808
-	.quad	3
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
-	.quad	-9
-	.quad	4
-	.quad	9
-	.quad	-4
-	.quad	-1
-	.quad	2
-	.quad	81985529216486895
-	.quad	4096
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	-9223372036854775808
+	.xword	0
+	.xword	-9223372036854775808
+	.xword	3
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
+	.xword	-9
+	.xword	4
+	.xword	9
+	.xword	-4
+	.xword	-1
+	.xword	2
+	.xword	81985529216486895
+	.xword	4096
 dividends:
 	.word	-2147483648
 	.word	-2147483647
