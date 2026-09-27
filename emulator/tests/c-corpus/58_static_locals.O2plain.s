@@ -383,7 +383,7 @@ main:
 	.section .rodata
 	.align	4
 	.LANCHOR2:
-names__5:
+names.5:
 	.quad	.LC9
 	.quad	.LC10
 	.quad	.LC11
@@ -392,7 +392,7 @@ names__5:
 	.data
 	.align	4
 	.LANCHOR1:
-pool__12:
+pool.12:
 	.word	11
 	.word	22
 	.word	33
@@ -403,50 +403,50 @@ pool__12:
 	.word	88
 rounds:
 	.word	300
-hits__17:
+hits.17:
 	.word	100
-c__16:
+c.16:
 	.byte	-6
 	.zero	1
-s__15:
+s.15:
 	.hword	-6
-c__14:
+c.14:
 	.byte	120
 	.zero	3
-cur__13:
-	.quad	pool__12+20
-op__11:
+cur.13:
+	.quad	pool.12+20
+op.11:
 	.quad	add1
-m__8:
+m.8:
 	.byte	113
 	.zero	7
 	.quad	81985529216486895
 	.hword	-2
 	.byte 250, 251, 252
 	.zero	3
-hits__7:
+hits.7:
 	.word	-5
 	.zero	4
-last__6:
-	.quad	names__5+32
-d__1:
+last.6:
+	.quad	names.5+32
+d.1:
 	.word	-1717986918
 	.word	1069128089
-big__0:
+big.0:
 	.quad	-9000000000000000000
 	.bss
 	.align	4
 	.LANCHOR0:
-calls__4:
+calls.4:
 	.zero	4
-now__2:
+now.2:
 	.zero	4
-deepest__3:
+deepest.3:
 	.zero	4
-hits__18:
+hits.18:
 	.zero	4
-hist__10:
+hist.10:
 	.zero	4000
-total__9:
+total.9:
 	.zero	4
 
