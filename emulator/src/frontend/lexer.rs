@@ -346,6 +346,16 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
             // `v0.16b` never reached the encoder at all.
             if let Some(end) = vector_suffix_end(bytes, &source[start..i], i) {
                 i = end;
+            } else if !is_vector_register(&source[start..i]) {
+                // GAS lets a symbol carry dots after its first character,
+                // and gcc names its function clones and static locals that
+                // way (`twice.constprop.0`, `count.0`).
+                while bytes.get(i) == Some(&b'.') && bytes.get(i + 1).is_some_and(|&c| is_id_continue(c)) {
+                    i += 2;
+                    while i < bytes.len() && is_id_continue(bytes[i]) {
+                        i += 1;
+                    }
+                }
             }
             let text = &source[start..i];
             tokens.push(Token {
@@ -428,11 +438,7 @@ const VECTOR_SUFFIXES: &[&str] = &[
 /// anything else, so an ordinary identifier followed by a directive
 /// (`v1` then `.byte`) lexes exactly as it always did.
 fn vector_suffix_end(bytes: &[u8], name: &str, from: usize) -> Option<usize> {
-    let index = name.strip_prefix('v').or_else(|| name.strip_prefix('V'))?;
-    if index.is_empty() || !index.bytes().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    if bytes.get(from) != Some(&b'.') {
+    if !is_vector_register(name) || bytes.get(from) != Some(&b'.') {
         return None;
     }
     let rest = &bytes[from + 1..];
@@ -457,6 +463,13 @@ fn vector_suffix_end(bytes: &[u8], name: &str, from: usize) -> Option<usize> {
         return None;
     }
     Some(end + 1)
+}
+
+/// `v<n>` in either case: the one name a dot after it gives an arrangement
+/// or a lane rather than a longer symbol.
+fn is_vector_register(name: &str) -> bool {
+    name.strip_prefix(['v', 'V'])
+        .is_some_and(|index| !index.is_empty() && index.bytes().all(|c| c.is_ascii_digit()))
 }
 
 fn is_id_start(b: u8) -> bool {
@@ -1065,6 +1078,36 @@ mod tests {
             vec![
                 TokenKind::Ident("v1".into()),
                 TokenKind::DirectiveIdent(".byte".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_symbol_keeps_the_dots_gcc_puts_in_it() {
+        let t = lex("bl f.constprop.0.isra.0", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![TokenKind::Ident("bl".into()), TokenKind::Ident("f.constprop.0.isra.0".into())]
+        );
+        let t = lex("count.0: .word 5", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::Ident("count.0".into()),
+                TokenKind::Colon,
+                TokenKind::DirectiveIdent(".word".into()),
+                TokenKind::IntLit(5),
+            ]
+        );
+        // A trailing dot is the current-address symbol, not part of the name.
+        let t = lex("end.-start", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::Ident("end".into()),
+                TokenKind::Dot,
+                TokenKind::Minus,
+                TokenKind::Ident("start".into()),
             ]
         );
     }
