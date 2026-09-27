@@ -246,6 +246,14 @@ function sameViews(a: readonly RegView[], b: ReadonlySet<RegView>): boolean {
   return a.length === b.size && a.every((t) => b.has(t));
 }
 
+/** The last write with nothing left to show or say. Its id stays, so the
+ *  next write's id is still new to the scroll effect. */
+function spent(pending: PendingFollow | null): PendingFollow | null {
+  return pending && (pending.rows.length > 0 || pending.speech)
+    ? { ...pending, rows: [], speech: "" }
+    : pending;
+}
+
 function reduceView(state: ViewState, action: ViewAction): ViewState {
   if (action.kind === "show") {
     if (state.view === action.view && !state.flagged.has(action.view)) return state;
@@ -253,7 +261,10 @@ function reduceView(state: ViewState, action: ViewAction): ViewState {
     flagged.delete(action.view);
     return { ...state, view: action.view, flagged };
   }
-  if (action.kind === "run") return state.pending ? { ...state, pending: null } : state;
+  if (action.kind === "run") {
+    const pending = spent(state.pending);
+    return pending === state.pending ? state : { ...state, pending };
+  }
   const { touched, move } = action;
   let { view, flagged } = state;
   // Exactly one class wrote: show it, so a mixed program needs no manual
@@ -274,7 +285,7 @@ function reduceView(state: ViewState, action: ViewAction): ViewState {
   const pending =
     rows.length > 0 || action.speech
       ? { id: (state.pending?.id ?? 0) + 1, view, rows, speech: action.speech }
-      : null;
+      : spent(state.pending);
   let { doubles } = state;
   if (action.fpWritten.some((i) => doubles.has(i) !== action.dSpelled)) {
     const next = new Set(doubles);
