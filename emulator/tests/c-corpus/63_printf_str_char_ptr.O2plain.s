@@ -8,7 +8,7 @@
 	.string	" %02x"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 dump:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -25,7 +25,7 @@ dump:
 	str	x21, [sp, 32]
 	adrp	x21, .LC1
 	add	x21, x21, :lo12:.LC1
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldrb	w1, [x19], 1
 	mov	x0, x21
@@ -127,7 +127,7 @@ dump:
 	.string	"%.3s%s\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #144
