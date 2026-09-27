@@ -405,6 +405,38 @@ describe("InstructionReference", () => {
     ).toBeNull();
   });
 
+  it("brings a stacked detail back on screen after one of its own fragment links", () => {
+    // Below lg the browser's jump to #b-cond lands on the index row carrying
+    // that id, thousands of pixels above the detail.
+    const media = window.matchMedia;
+    const frame = window.requestAnimationFrame;
+    const scroll = window.HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
+    const followLink = (stacked: boolean) => {
+      window.matchMedia = ((query: string) => ({
+        ...media(query),
+        matches: stacked && query.includes("max-width: 1023.98px"),
+      })) as typeof window.matchMedia;
+      fireEvent.click(screen.getByRole("button", { name: "cmp" }));
+      scroll.mockClear();
+      fireEvent.click(screen.getByRole("link", { name: /see b\.cond/ }));
+      return scroll.mock.contexts;
+    };
+    window.requestAnimationFrame = (step: FrameRequestCallback) => {
+      step(0);
+      return 0;
+    };
+    try {
+      render(<InstructionReference instructions={FIXTURE} />);
+      const detail = screen.getByRole("region", { name: "instruction detail" });
+      expect(followLink(true)).toContain(detail);
+      // Beside the index the detail never left the screen.
+      expect(followLink(false)).not.toContain(detail);
+    } finally {
+      window.matchMedia = media;
+      window.requestAnimationFrame = frame;
+    }
+  });
+
   it("renders under every theme without crashing", () => {
     for (const theme of THEMES) {
       document.documentElement.setAttribute("data-theme", theme);
