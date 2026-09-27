@@ -146,14 +146,9 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 
 // ---------------------------------------------------------------------
 // Enumeration. Every entry is {id, source, kind, program, args, stdin,
-// vfs, note}. `kind` is console (run and compare), interactive (a
+// vfs, note}. `kind` is console (run and compare) or interactive (a
 // terminal face: assembled and linked on both sides, never compared byte
-// for byte) or leaf (no entry point by design; both sides must refuse it).
-
-// is-prime ships as a leaf function with no entry point on purpose; its own
-// header says to assemble it beside a caller and no such caller ships.
-// Naming it keeps a main that goes missing from any other example a finding.
-const LEAF_ONLY = { "is-prime": "leaf function, no entry point; no caller ships with it" };
+// for byte).
 
 // The three examples that wear a plain console face under the `console`
 // argv token drive that face here with the scripted session from
@@ -190,12 +185,6 @@ function enumerateExamples(mods) {
       vfs: {},
       note: helpers.length > 0 ? `${helpers.length} helper files` : "",
     };
-    if (LEAF_ONLY[stem]) {
-      entry.kind = "leaf";
-      entry.note = LEAF_ONLY[stem];
-      out.push(entry);
-      continue;
-    }
     const argsRaw = readFixture(stem, "args");
     const stdinRaw = readFixture(stem, "stdin");
     const vfsRaw = readFixture(stem, "vfs.json");
