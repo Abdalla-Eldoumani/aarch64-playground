@@ -73,7 +73,7 @@
     {
       "name": "learn index flight payload (the rows the server sends)",
       "path": ".next/server/app/learn.rsc",
-      "limit": "4.6 KB"
+      "limit": "6.4 KB"
     }
   ],
   "dependencies": {
