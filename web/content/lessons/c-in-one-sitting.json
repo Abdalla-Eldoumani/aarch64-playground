@@ -1,0 +1,141 @@
+{
+  "title": "C in one sitting",
+  "slug": "c-in-one-sitting",
+  "order": 1,
+  "summary": "Read the C that later lessons turn into assembly: types and their sizes, printf and scanf, pointer parameters, the two loop shapes, and arrays.",
+  "tags": [
+    "variables",
+    "arrays"
+  ],
+  "body": [
+    {
+      "type": "prose",
+      "markdown": "Many lessons on this site start from a few lines of C and then write the same thing in assembly. This lesson is the C you need to read those lines. It is not a full C course: it covers only the pieces the assembly lessons lean on, in the order they come up.\n\nC does not run on this site; only assembly does. Read the C blocks here, or copy one into a file and build it with `gcc` on any Linux or Mac machine. The one runnable program, near the end, is assembly."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Types and their sizes\n\nA *variable* is a named place in memory that holds a value. Every variable in C has a *type*, which says what kind of value it holds and how many bytes of memory it takes. A *byte* is 8 bits, and a *bit* is a single 0 or 1. The sizes below are the ones on the 64-bit ARM Linux machines this site imitates. Assembly cares about them because each size has its own load and store instructions.\n\n| Type | Bytes | Holds |\n|---|---|---|\n| `char` | 1 | one character, or a small integer |\n| `short` | 2 | an integer from -32,768 to 32,767 |\n| `int` | 4 | an integer from about -2.1 billion to 2.1 billion |\n| `long` | 8 | an integer up to about 9.2 billion billion either way |\n| `float` | 4 | a number with a fraction, accurate to about 7 digits |\n| `double` | 8 | a number with a fraction, accurate to about 15 digits |\n| any pointer | 8 | a memory address |\n\nWriting `unsigned` in front of an integer type drops the negative numbers and doubles the top of the range: an `unsigned int` holds 0 to about 4.3 billion."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Dividing whole numbers\n\nC has the usual `+`, `-` and `*`. Two operators behave differently from a calculator:\n\n- `/` on two integers gives a whole number and throws the fraction away, so `17 / 5` is `3`. It cuts toward zero, so `-17 / 5` is `-3`, not `-4`.\n- `%` gives the *remainder*, what is left over after that division: `17 % 5` is `2`, and `-17 % 5` is `-2`.\n\nBoth rules come back in assembly, where the divide instruction drops the fraction the same way and there is no remainder instruction at all."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "int apples = 17;\nint bags = 5;\nint per_bag = apples / bags;     // 3\nint left_over = apples % bags;   // 2\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## printf: printing with a format string\n\n`printf` prints text. Its first *argument*, the first value handed to it, is a *format string*: the text to print, with a placeholder wherever a value should appear. Each placeholder is a *format specifier*, a `%` followed by a letter or two that says how to print the next argument. The arguments after the format string fill the placeholders from left to right.\n\n| Specifier | Prints |\n|---|---|\n| `%d` | an `int` in decimal |\n| `%ld` | a `long` in decimal |\n| `%u` | an `unsigned int` |\n| `%x` | an integer in hexadecimal (base 16) |\n| `%c` | one character |\n| `%s` | a string: a run of characters, such as a word or a sentence |\n| `%f` | a `double`; a `float` is turned into a `double` on the way in |\n\n`\\n` inside the string is a newline. `printf` never adds one on its own."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "int age = 19;\nchar grade = 'A';\nprintf(\"age %d, grade %c\\n\", age, grade);   // age 19, grade A\nprintf(\"%d in hex is %x\\n\", 255, 255);      // 255 in hex is ff\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## scanf: reading into a variable\n\n`scanf` works the other way round: it reads what is typed at the keyboard, turns it into a value, and stores that value in a variable. It reads whole numbers with the same `%d` and `%ld` specifiers, with one difference that matters later. `scanf` is given the *address* of each variable, written with `&`, because it has to change the variable, not just read it. The next two sections show why an address makes that possible."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "int n;\nprintf(\"How many? \");\nscanf(\"%d\", &n);                 // &n is the address of n\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Functions get copies of their arguments\n\nA *function* is a named piece of code that takes arguments and can hand back, or *return*, one value. When a function is called, each argument is copied into the function's own parameter, so changing the parameter changes only the copy. This is called passing *by value*."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "void try_to_reset(int x) {\n    x = 0;                       // changes the copy only\n}\n\nint main(void) {\n    int score = 12;\n    try_to_reset(score);\n    printf(\"%d\\n\", score);       // still 12\n    return 0;\n}\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Pointers: handing over an address\n\nA *pointer* is a variable that holds a memory address. `&score` gives the address of `score`, and a variable declared as `int *p` can hold it. A `*` in front of a pointer, as in `*p`, means the value stored at that address, so `*p = 0` writes into `score` itself.\n\nThis is how a function changes its caller's variables, and how it hands back more than one answer. `divmod` below returns nothing. It writes its two results through the two addresses it is given. Passing an address this way is called passing *by reference*."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "void divmod(int a, int b, int *q, int *r) {\n    *q = a / b;                  // write into the caller's quot\n    *r = a % b;                  // write into the caller's rem\n}\n\nint main(void) {\n    int quot, rem;\n    divmod(38, 7, &quot, &rem);\n    printf(\"38 = 7 * %d + %d\\n\", quot, rem);   // 38 = 7 * 5 + 3\n    return 0;\n}\n"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "In assembly an address is a 64-bit number in an `x` register. A pointer argument arrives in a register like any other argument, and the function stores to that address. The `scanf` call above does exactly this with `&n`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Making a choice with if and else\n\n`if` runs a block only when its condition is true, and `else` gives the block to run otherwise. A condition compares two values with `==`, `!=`, `<`, `<=`, `>` or `>=`. C also has `switch`, a many-way choice on one integer; assembly builds it from the same comparisons."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "if (temp < 0) {\n    printf(\"freezing\\n\");\n} else {\n    printf(\"above freezing\\n\");\n}\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Two loop shapes\n\nA *loop* repeats a block. C has two basic shapes, and the assembly lessons build both:\n\n- A `while` loop tests its condition first. If the condition is false from the start, the body never runs. This is a *pre-test loop*.\n- A `do ... while` loop runs the body first and tests afterwards, so the body always runs at least once. This is a *post-test loop*.\n\nA `for` loop is a `while` loop with its three parts (the start, the test and the step) written on one line."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "int i = 1;\nwhile (i <= 3) {                 // test first: may run zero times\n    printf(\"%d \", i);            // prints 1 2 3\n    i++;\n}\n\nint j = 10;\ndo {                             // body first: runs at least once\n    printf(\"%d \", j);            // prints 10, once\n    j++;\n} while (j <= 3);\n\nfor (int k = 1; k <= 3; k++) {   // the same loop as the while above\n    printf(\"%d \", k);\n}\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Arrays, and walking them with a pointer\n\nAn *array* is a row of values of one type, side by side in memory. `int marks[6]` sets aside 6 ints, 24 bytes in a row. `marks[0]` is the first element and `marks[5]` the last; there is no `marks[6]`.\n\nThe name of an array, used on its own, is the address of element 0. Adding 1 to a pointer moves it forward by one *element*, not one byte: for an `int` pointer that is 4 bytes. So `marks[i]` and `*(marks + i)` mean the same thing. The two loops below add up the same array, first by index and then by moving a pointer along it."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "int marks[6] = {70, 85, 62, 91, 78, 64};\nint total = 0;\n\nfor (int i = 0; i < 6; i++) {    // by index\n    total += marks[i];\n}\n\ntotal = 0;\nint *p = marks;                  // p = &marks[0]\nint *end = marks + 6;            // one past the last element\nwhile (p < end) {                // by pointer\n    total += *p;\n    p++;                         // moves 4 bytes: one int\n}\nprintf(\"total = %d\\n\", total);   // total = 450\n"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`main` can take two parameters, `int argc` and `char *argv[]`: how many words were typed on the command line, and an array of pointers to those words. Each word is a string, and a string is itself an array of `char`, so `argv` is a pointer to pointers. [Strings, pointer arrays, and argv](/learn/strings-and-command-line-arguments) walks it in assembly."
+    },
+    {
+      "type": "prose",
+      "markdown": "## A first look at the assembly\n\nHere is a small C program and the same program in assembly. The next lessons explain every kind of line, so do not worry about each one yet. For now, look for three things that carry straight over from C:\n\n- The three arguments travel to `average3` in registers `w0`, `w1` and `w2`, and the answer comes back in `w0`.\n- `sdiv` divides and drops the fraction, like `/` on two ints.\n- `printf` is the same C function, called with `bl`. The address of its format string goes in `x0`, and the values for the four `%d` specifiers go in `w1` to `w4`."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "#include <stdio.h>\n\nint average3(int a, int b, int c) {\n    return (a + b + c) / 3;\n}\n\nint main(void) {\n    int s1 = 10, s2 = 20, s3 = 25;\n    printf(\"average of %d, %d and %d is %d\\n\", s1, s2, s3, average3(s1, s2, s3));\n    return 0;\n}\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Averages three ints with a small function: the assembly twin of average3() in C.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(s1_r, w19)\ndefine(s2_r, w20)\ndefine(s3_r, w21)\ndefine(avg_r, w22)\n\n.data\nfmt_avg:    .string \"average of %d, %d and %d is %d\\n\"\n\n.text\n\n// average3(w0 = a, w1 = b, w2 = c) -> w0 = (a + b + c) / 3\n        .balign 4\n        .global average3\naverage3:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        add     w9, w0, w1                  // w9 = a + b\n        add     w9, w9, w2                  // w9 = a + b + c\n        mov     w10, 3\n        sdiv    w0, w9, w10                 // int division: the fraction is dropped\n\n        ldp     fp, lr, [sp], 16\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     s1_r, 10\n        mov     s2_r, 20\n        mov     s3_r, 25\n\n        mov     w0, s1_r                    // arguments travel in w0, w1, w2\n        mov     w1, s2_r\n        mov     w2, s3_r\n        bl      average3\n        mov     avg_r, w0                   // the answer comes back in w0\n\n        ldr     x0, =fmt_avg                // printf(fmt_avg, s1, s2, s3, avg)\n        mov     w1, s1_r\n        mov     w2, s2_r\n        mov     w3, s3_r\n        mov     w4, avg_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "average of 10, 20 and 25 is 18\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "Run it. It prints `average of 10, 20 and 25 is 18`: the true average is 18.33, and integer division drops the .33. Change the three `mov` lines in `main` and run it again."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`main` keeps its values in `w19` to `w22` because a function it calls, such as `printf` or `average3`, is free to change `x0` to `x18`, while `x19` to `x28` keep their values across a call. `main` uses them here without saving them first, as course programs do in `main`. Any other function you write must save the ones it uses from `x19` to `x28` and put them back before it returns."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. How many bytes does an `int` take on these machines, and how many does a pointer take?\n2. What are `23 / 4` and `23 % 4` in C?\n3. Why does `scanf(\"%d\", &n)` need the `&`?\n4. The condition of a `do ... while` loop is false from the start. How many times does its body run?\n5. An `int` pointer `p` holds the address 1000. What address does `p + 1` hold?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. 4 bytes for an `int` and 8 for a pointer.\n2. 5 and 3.\n3. `scanf` has to store into `n`, so it needs to know where `n` lives; a copy of its value would be no use.\n4. Once.\n5. 1004, one `int` further on."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\nOnly assembly runs on this site, so no practice set covers C on its own. The assembly lessons that follow often start from C like the pieces above. The next one is [System architecture: what is inside the box](/learn/inside-the-computer)."
+    }
+  ]
+}
