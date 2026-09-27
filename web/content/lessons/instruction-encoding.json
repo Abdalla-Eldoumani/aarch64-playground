@@ -1,0 +1,154 @@
+{
+  "title": "Every instruction is 32 bits",
+  "slug": "instruction-encoding",
+  "order": 28,
+  "summary": "Split an instruction word into its fields, read the five common formats, and encode a simple instruction by hand.",
+  "tags": [
+    "armv8 basics",
+    "system architecture"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Binary, hex, and octal: one number, many spellings](/learn/binary-hex-and-octal)\n- [Shifts, sign extension, and bitfields](/learn/shifts-and-bitfields)\n- [Memory: loads, stores, and addressing modes](/learn/memory-and-addressing-modes)"
+    },
+    {
+      "type": "prose",
+      "markdown": "Every instruction in your program ends up as a number. The assembler's last job is to replace a line such as `add x9, x9, x12` with the pattern of bits the processor fetches and obeys. That pattern is the instruction's *machine code*, and on AArch64 it is always exactly 32 bits (four bytes), whichever instruction it is. The fixed size is part of what makes AArch64 a RISC (reduced instruction set) design: the processor always knows where the next instruction starts, which is why `pc` moves on by 4 after every instruction that does not branch.\n\nThis lesson reads those 32 bits. By the end you can take an instruction word written in hex, cut it into its fields, and name the instruction inside, and you can build the word for a simple instruction by hand. The two programs on this page read their own machine code out of memory, so you can check every number here by running them."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Reading a word by position\n\nThe bits of a word are numbered from 31 on the left (the most significant bit) down to 0 on the right. A *field* is a run of neighboring bits with one job, such as naming a register or holding a constant. A field is named by its end positions: \"bits 9 to 5\" is a five-bit field.\n\nHex is the easiest way to write a word down, because each hex digit stands for exactly four bits. To split a word, write each of its eight hex digits as four binary digits, then ignore the groups of four and cut the 32 bits again where the fields begin and end. To go the other way, line the fields up, regroup the bits in fours from the left, and read off the hex.\n\nThree facts hold in every format below that names a register:\n\n- A register is named by a 5-bit number from 0 to 31: `x0` is `00000`, `x9` is `01001`, `x29` (`fp`) is `11101`, and `x30` (`lr`) is `11110`. The number 31 (`11111`) means the zero register or `sp`, depending on the instruction.\n- The `x` and `w` views of a register share one number. In the arithmetic formats a separate bit picks the width: the size bit `sf`, bit 31, is 1 for 64-bit `x` registers and 0 for 32-bit `w` registers.\n- The register being written (or, for a load or store, the register being transferred) sits at the right end, in bits 4 to 0. The first source register comes next, in bits 9 to 5."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Five formats\n\nThe top bits of a word, the *opcode*, say which operation it holds and therefore how to read the rest of it. Instructions that need the same kinds of operands share one layout, called a *format*. Textbooks name five of them with short letters:\n\n| Format | Used by | Each field and the bits it occupies |\n|---|---|---|\n| R, register | `add`, `sub`, `adds`, `subs` with two source registers | opcode 31-21, Rm 20-16, imm6 15-10, Rn 9-5, Rd 4-0 |\n| I, immediate | `add`, `sub`, `adds`, `subs` with a constant | opcode 31-22, imm12 21-10, Rn 9-5, Rd 4-0 |\n| D, load and store | `ldr`, `str` with pre-index or post-index | opcode 31-21, imm9 20-12, op2 11-10, Rn 9-5, Rt 4-0 |\n| B, branch | `b`, `bl` | opcode 31-26, imm26 25-0 |\n| CB, conditional branch | `b.eq`, `b.ne`, `b.lt` and the rest | opcode 31-24, imm19 23-5, bit 4 always 0, cond 3-0 |\n\nEach row covers all 32 bits with no gaps. `Rd` is the destination, `Rn` and `Rm` are the first and second sources, and `Rt` is the register a load writes or a store reads. A field whose name starts with `imm` holds an *immediate*, a constant stored inside the instruction itself, and the number in its name is its width in bits: `imm12` is 12 bits.\n\nThe ARM manual cuts the opcode into smaller named parts and has many more layouts (logical instructions, `movz`, loads with a plain offset, floating point). These five cover the instructions you write most often, and every other layout is read the same way."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The register format\n\n`add x9, x9, x12`, from the second program on this page, assembles to `0x8b0c0129`. Taken apart:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "hex        8    b    0    c    0    1    2    9\nbinary     1000 1011 0000 1100 0000 0001 0010 1001\n\nfield      opcode        Rm      imm6     Rn      Rd\nbits       31-21         20-16   15-10    9-5     4-0\nbinary     10001011000   01100   000000   01001   01001\nmeaning    add, x regs   x12     shift 0  x9      x9\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The 11-bit opcode packs several choices together. Bit 31 is `sf`. Bit 30, `op`, is 0 for add and 1 for subtract. Bit 29, `S`, is 1 for the versions that set the flags, `adds` and `subs`. Bits 23 and 22 choose the kind of shift applied to `Rm` (`00` is `lsl`), and `imm6` holds how far to shift it. With no shift written, `imm6` is 0. The four 64-bit opcodes differ only in bits 30 and 29:\n\n| Instruction | opcode | as hex |\n|---|---|---|\n| `add` | `10001011000` | `0x458` |\n| `adds` | `10101011000` | `0x558` |\n| `sub` | `11001011000` | `0x658` |\n| `subs` | `11101011000` | `0x758` |\n\nOn `w` registers bit 31 is 0, which takes `0x400` off each value: `add` on `w` registers is `0x058`.\n\nSome familiar mnemonics are other instructions under a second name, called *aliases*. `cmp x9, x12` is really `subs xzr, x9, x12`: a subtraction that sets the flags and sends its result to register 31, where it is thrown away. Its word, `0xeb0c013f`, ends in `11111` for that reason."
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below does this split in code. The line labelled `specimen` is the instruction it inspects: `ldr x9, =specimen` gets that line's address, exactly as `ldr x0, =fmt` gets a string's, and `ldr word_r, [x9]` reads its four bytes as one number. Then `ubfx` (unsigned bitfield extract, from the [shifts and bitfields lesson](/learn/shifts-and-bitfields)) copies each field into the low bits of an argument register for `printf`.\n\nRunning it prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "word = 0x8b0f09cd\nsf = 1  opcode = 0x458  Rm = 15  imm6 = 2  Rn = 14  Rd = 13\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Read the machine word of one add instruction\n// and pull out its register-format fields with ubfx\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(word_r, w9)\n\n.data\nfmt_fields: .string \"word = 0x%08x\\nsf = %d  opcode = 0x%03x  Rm = %d  imm6 = %d  Rn = %d  Rd = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\nspecimen:\n        add     x13, x14, x15, lsl 2        // the instruction to take apart\n\n        ldr     x9, =specimen\n        ldr     word_r, [x9]                // its 4 bytes, read as one word\n        mov     w1, word_r\n        ubfx    w2, word_r, 31, 1           // bit 31: sf\n        ubfx    w3, word_r, 21, 11          // bits 31 to 21: the whole opcode\n        ubfx    w4, word_r, 16, 5           // bits 20 to 16: Rm\n        ubfx    w5, word_r, 10, 6           // bits 15 to 10: shift amount\n        ubfx    w6, word_r, 5, 5            // bits 9 to 5: Rn\n        ubfx    w7, word_r, 0, 5            // bits 4 to 0: Rd\n        ldr     x0, =fmt_fields\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "word = 0x8b0f09cd\nsf = 1  opcode = 0x458  Rm = 15  imm6 = 2  Rn = 14  Rd = 13\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "Try a few edits to the `specimen` line and run again:\n\n- `add w13, w14, w15`: `sf` becomes 0, the opcode reads `0x058`, `imm6` reads 0, and the word is `0x0b0f01cd`.\n- `sub x13, x14, x15, lsl 2`: only bit 30 changes, so the opcode reads `0x658` and the word is `0xcb0f09cd`.\n- `adds x13, x14, x15, lsl 2`: bit 29 turns on, and the opcode reads `0x558`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The immediate format\n\nWhen the second operand is a constant, the constant goes inside the instruction. `sub w11, w11, 1` assembles to `0x5100056b`:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "binary     0101 0001 0000 0000 0000 0101 0110 1011\n\nfield      opcode        imm12          Rn      Rd\nbits       31-22         21-10          9-5     4-0\nbinary     0101000100    000000000001   01011   01011\nmeaning    sub, w regs   1              w11     w11\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The opcode starts with the same three choices as the register format, `sf`, `op` and `S`: here 0 (32-bit), 1 (subtract) and 0 (no flags). The next six bits, `100010`, mark the add and subtract immediate family. The last opcode bit is `sh`.\n\n`imm12` is a 12-bit unsigned number, so one `add` or `sub` can carry a constant from 0 to 4095. When `sh` is 1, the constant is shifted left 12 places before use, which reaches multiples of 4096: `add x10, x11, 8192` is stored as `imm12` = 2 with `sh` = 1. A constant that fits neither way cannot be an immediate. It has to be put in a register first, the way the [registers and immediates lesson](/learn/registers-and-immediates) builds one with `movz` and `movk`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Encoding one by hand\n\nGoing from an instruction to its word is the same work in the other direction:\n\n1. Pick the format from the instruction's operands.\n2. Write each field in binary at its full width, with leading zeros.\n3. Put the fields side by side, opcode first, to make 32 bits.\n4. Cut those 32 bits into groups of four from the left and read each group as a hex digit.\n\nFor `add x10, x11, 300`:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "format     immediate, since the second operand is a constant\nopcode     sf=1 op=0 S=0, then 100010, then sh=0   ->  1001000100\nimm12      300 = 256 + 32 + 8 + 4                  ->  000100101100\nRn         x11                                     ->  01011\nRd         x10                                     ->  01010\n\n32 bits    1001000100 000100101100 01011 01010\nby fours   1001 0001 0000 0100 1011 0001 0110 1010\nhex        9    1    0    4    b    1    6    a      =  0x9104b16a\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "To check a hand encoding, make it the `specimen` line in the program above and read the `word` line. Ignore the second line for an immediate: it splits the word the register-format way, which does not apply here."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The load and store format\n\nThe D format covers `ldr` and `str` with pre-index or post-index addressing. `ldr x12, [x10], 8` assembles to `0xf840854c`:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "binary     1111 1000 0100 0000 1000 0101 0100 1100\n\nfield      opcode         imm9        op2    Rn      Rt\nbits       31-21          20-12       11-10  9-5     4-0\nbinary     11111000010    000001000   01     01010   01100\nmeaning    ldr, 8 bytes   +8          post   x10     x12\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "- The opcode's first two bits give the access size: `11` for 8 bytes (an `x` register) and `10` for 4 bytes (a `w` register). Its second-to-last bit is 1 for a load and 0 for a store, so `str x12, [x10], 8` starts `11111000000`.\n- `imm9` is the step in bytes. It is signed, so it runs from -256 to 255, and a negative step is stored in two's complement, the same way a negative number is stored in a register.\n- `op2` picks the addressing mode: `01` is post-index (use the address in `Rn`, then add the step to `Rn`) and `11` is pre-index (add the step first, then use the new address; written with `!`).\n- `Rn` is the base register holding the address, and `Rt` is the register loaded or stored.\n\nThe plain offset form, `ldr x0, [x1, 16]`, uses a different layout with a 12-bit unsigned offset counted in units of the access size. Its bit diagram is on the [ldr reference entry](/reference#ldr)."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Branches count in instructions\n\nA branch does not store the address it jumps to. It stores an *offset*: how far the target is from the branch instruction itself, counted in instructions, not bytes. Every instruction is 4 bytes, so a byte distance always ends in two 0 bits; the format leaves them out and multiplies by 4 when the branch runs, which gives the same field four times the reach. A backward jump has a negative offset, stored in two's complement.\n\n- The B format, for `b` and `bl`, has a 6-bit opcode (`000101` for `b`, `100101` for `bl`) and a 26-bit offset, `imm26`. That reaches 2^25 instructions, 128 MB, in either direction.\n- The CB format, for `b.cond`, has the opcode `01010100`, a 19-bit offset `imm19` (1 MB either way), a 0 bit, and a 4-bit condition code.\n\nThe condition codes you will meet most:\n\n| cond | bits | cond | bits |\n|---|---|---|---|\n| `eq` | `0000` | `ge` | `1010` |\n| `ne` | `0001` | `lt` | `1011` |\n| `hs` | `0010` | `gt` | `1100` |\n| `lo` | `0011` | `le` | `1101` |\n| `hi` | `1000` | `ls` | `1001` |\n\nTwo branches from the loop in the program below. `b sum_test` jumps four instructions ahead to the loop's test, and `b.gt sum_top` jumps four instructions back to the loop's first instruction:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "b sum_test     0x14000004\nbinary         0001 0100 0000 0000 0000 0000 0000 0100\nopcode         000101                        ->  b\nimm26          00000000000000000000000100    ->  +4 instructions\ntarget         16 bytes after the b\n\nb.gt sum_top   0x54ffff8c\nbinary         0101 0100 1111 1111 1111 1111 1000 1100\nopcode         01010100                      ->  b.cond\nimm19          1111111111111111100           ->  leading 1, so negative\nflip bits      0000000000000000011\nadd 1          0000000000000000100           ->  4, so imm19 is -4\nbit 4          0\ncond           1100                          ->  gt\ntarget         16 bytes before the b.gt\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Because the offset is relative, a branch word does not change when the whole program is loaded at a different address. It changes only when the distance to the target changes."
+    },
+    {
+      "type": "prose",
+      "markdown": "## A program that reads its own machine code\n\nThe program below adds four numbers in a loop, then prints the words of five of the loop's instructions, one from each format. The loop has the test at the bottom: `b sum_test` jumps straight to the test, so a list of zero numbers would skip the body entirely. Each inspected instruction has a label (`enc_b`, `enc_ldr` and so on) so the program can find it with `ldr =label`, the same way it finds a string. The text beside each word is an ordinary string showing the line after m4 has replaced the register names.\n\nRunning it prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "sum = 124\nb       sum_test           0x14000004\nldr     x12, [x10], 8      0xf840854c\nadd     x9, x9, x12        0x8b0c0129\nsub     w11, w11, 1        0x5100056b\nb.gt    sum_top            0x54ffff8c\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Sum four numbers in a small loop, then print the\n// machine words of five of the loop's own instructions\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(sum_r, x9)\ndefine(ptr_r, x10)\ndefine(left_r, w11)\ndefine(elem_r, x12)\n\n.data\n        .balign 8\nnums:       .dword  3, 14, 15, 92\nfmt_sum:    .string \"sum = %ld\\n\"\nfmt_word:   .string \"%-26s 0x%08x\\n\"\nname_b:     .string \"b       sum_test\"\nname_ldr:   .string \"ldr     x12, [x10], 8\"\nname_add:   .string \"add     x9, x9, x12\"\nname_sub:   .string \"sub     w11, w11, 1\"\nname_bgt:   .string \"b.gt    sum_top\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     sum_r, 0\n        ldr     ptr_r, =nums\n        mov     left_r, 4                   // four numbers to add\nenc_b:\n        b       sum_test                    // forward 4 instructions\nsum_top:\nenc_ldr:\n        ldr     elem_r, [ptr_r], 8          // load, then step to the next dword\nenc_add:\n        add     sum_r, sum_r, elem_r\nenc_sub:\n        sub     left_r, left_r, 1\nsum_test:\n        cmp     left_r, 0\nenc_bgt:\n        b.gt    sum_top                     // back 4 instructions\n\n        ldr     x0, =fmt_sum\n        mov     x1, sum_r\n        bl      printf\n\n        // each block reads one instruction's 4 bytes through its label\n        ldr     x0, =fmt_word\n        ldr     x1, =name_b\n        ldr     x2, =enc_b\n        ldr     w2, [x2]\n        bl      printf\n\n        ldr     x0, =fmt_word\n        ldr     x1, =name_ldr\n        ldr     x2, =enc_ldr\n        ldr     w2, [x2]\n        bl      printf\n\n        ldr     x0, =fmt_word\n        ldr     x1, =name_add\n        ldr     x2, =enc_add\n        ldr     w2, [x2]\n        bl      printf\n\n        ldr     x0, =fmt_word\n        ldr     x1, =name_sub\n        ldr     x2, =enc_sub\n        ldr     w2, [x2]\n        bl      printf\n\n        ldr     x0, =fmt_word\n        ldr     x1, =name_bgt\n        ldr     x2, =enc_bgt\n        ldr     w2, [x2]\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sum = 124\nb       sum_test           0x14000004\nldr     x12, [x10], 8      0xf840854c\nadd     x9, x9, x12        0x8b0c0129\nsub     w11, w11, 1        0x5100056b\nb.gt    sum_top            0x54ffff8c\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "Two edits worth making:\n\n- Add a line holding `nop` (an instruction that does nothing) just above `enc_sub:`. The sum stays 124, but both branches now cross one more instruction: `b` becomes `0x14000005` (+5) and `b.gt` becomes `0x54ffff6c` (-5). No other word changes.\n- Change the `sub` to subtract 2. The loop runs twice, so the sum becomes 17, and the `sub` word becomes `0x5100096b` because `imm12` now holds 2. The text beside it stays as it was, since it is only a string."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "The usual slips when encoding by hand: counting a branch offset in bytes instead of instructions; measuring it from the next instruction instead of from the branch itself; writing a register field as one hex digit instead of five binary digits; and swapping `Rn` and `Rd` (the destination is always the rightmost field). When a hand encoding and the machine disagree, split both words into fields and compare them one field at a time."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. Decode `0xcb0a0128`. Which instruction is it?\n2. Encode a `b.ne` whose target is three instructions before the branch.\n3. What is the largest constant `imm12` can hold, and what does setting `sh` do to it?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. The opcode is `11001011000`, a 64-bit `sub`; `Rm` is 10, `imm6` is 0, `Rn` is 9 and `Rd` is 8, so it is `sub x8, x9, x10`.\n2. The offset is -3, which is `1111111111111111101` in 19 bits, and `ne` is `0001`, so the word is `0x54ffffa1`.\n3. 4095; setting `sh` shifts the constant left 12 bits, which multiplies it by 4096."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: system architecture (core)](/practice/quiz-inter-architecture): why a fixed instruction size helps the processor.\n- [Quiz: ARMv8 assembly (intro)](/practice/quiz-basic-armv8), then [core](/practice/quiz-inter-armv8): which instruction an alias really encodes.\n- The reference has worked bit diagrams for [add](/reference#add), [sub](/reference#sub), [ldr](/reference#ldr) and [b](/reference#b)."
+    }
+  ]
+}
