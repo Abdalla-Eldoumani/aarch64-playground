@@ -1,36 +1,36 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 widen_sc:
 	sxtb	x0, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 widen_uc:
 	and	x0, x0, 255
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 widen_ss:
 	sxth	x0, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 widen_us:
 	and	x0, x0, 65535
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 widen_int_to_ul:
 	sxtw	x0, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 widen_uint_to_l:
 	uxtw	x0, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 narrow_ret:
 	ret
 	.section .rodata
@@ -63,7 +63,7 @@ narrow_ret:
 	.string	"lossy round trips %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #160
@@ -86,7 +86,7 @@ main:
 	stp	x19, x20, [sp, 32]
 	mov	w20, 0
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L10:
 	ldr	x19, [x27, w20, sxtw 3]
 	str	w19, [sp]
@@ -242,7 +242,7 @@ main:
 	mov	w2, 0
 	mov	w1, 0
 	mov	x3, 4294967295
-	.align 5
+	.p2align 5,,15
 .L12:
 	ldr	x0, [x27, w2, sxtw 3]
 	add	w2, w2, 1
@@ -268,28 +268,28 @@ main:
 	.align	4
 	.LANCHOR0:
 inputs:
-	.quad	0
-	.quad	1
-	.quad	-1
-	.quad	127
-	.quad	128
-	.quad	255
-	.quad	256
-	.quad	-128
-	.quad	-129
-	.quad	32767
-	.quad	32768
-	.quad	65535
-	.quad	65536
-	.quad	2147483647
-	.quad	2147483648
-	.quad	-2147483648
-	.quad	-2147483649
-	.quad	4294967295
-	.quad	4294967296
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
-	.quad	1311768467463790320
+	.xword	0
+	.xword	1
+	.xword	-1
+	.xword	127
+	.xword	128
+	.xword	255
+	.xword	256
+	.xword	-128
+	.xword	-129
+	.xword	32767
+	.xword	32768
+	.xword	65535
+	.xword	65536
+	.xword	2147483647
+	.xword	2147483648
+	.xword	-2147483648
+	.xword	-2147483649
+	.xword	4294967295
+	.xword	4294967296
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
+	.xword	1311768467463790320
 sb:
 	.byte 128, 255, 0, 1, 127
 	.zero	3
