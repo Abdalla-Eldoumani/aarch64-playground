@@ -2,6 +2,7 @@
   "title": "Mirror, mirror",
   "slug": "mirror-mirror",
   "order": 44,
+  "lastUpdated": "2026-09-27",
   "topic": "memory",
   "difficulty": "core",
   "prompt": "The starter reads a count n (0 to 16) and then n numbers into the word array `list` in `.bss`, and prints the array at the end. Reverse the array in place before it is printed, so the last number comes out first.\n\nIn place means inside `list` itself, with no second array. Point one register at the first element and another at the last, swap the two words they point at, then move both pointers one element toward the middle. Stop when they meet or cross. Post-index addressing, such as `[left_r], 4`, uses the address in the register and then adds 4 to it, so one instruction can both store and step.\n\n## what is checked\n\n- the line `mirrored:` followed by the numbers in reverse order\n- the program exits cleanly\n- the array is changed in memory (`str` present)\n- your program also runs on lists you do not see: odd and even lengths, negative numbers, a single number, and an empty list",
