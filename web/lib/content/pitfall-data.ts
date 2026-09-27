@@ -403,7 +403,7 @@ main:
         mov     x1, x19
         ldr     x19, [fp, 16]`,
     watch:
-      "the fault prints sum = 1: announce scratched x9, exactly as a callee may. this emulator's printf happens to leave x9 alone; real printf makes no such promise. the fix keeps the sum in x19 and prints 42.",
+      "the fault prints sum = -2401053088876216593: the printf inside announce left 0xdeadbeefdeadbeef in x9, as any call may, and the console notes the read. the fix keeps the sum in x19 and prints 42.",
     fault: `// the fault: the sum lives in x9, and the routine it calls uses x9 too
 define(fp, x29)
 define(lr, x30)
@@ -422,8 +422,8 @@ main:
         add     x9, x9, 2               // sum = 42, parked in a temporary
         bl      announce                // any callee may scratch x9
         ldr     x0, =fmt
-        mov     x1, x9                  // fault: x9 holds announce's leftover
-        bl      printf                  // prints sum = 1, not 42
+        mov     x1, x9                  // fault: x9 holds a call's leftover
+        bl      printf                  // prints the leftover, not 42
         mov     w0, 0
         ldp     fp, lr, [sp], 16
         ret
