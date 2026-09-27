@@ -193,7 +193,7 @@ ping:
 	b	.L41
 	.align	2
 	.align 5
-hof_f__part__0:
+hof_f.part.0:
 	stp	x29, x30, [sp, -32]!
 	mov	w1, w0
 	subs	w2, w0, #1
@@ -203,7 +203,7 @@ hof_f__part__0:
 .L43:
 	mov	w0, w2
 	str	w1, [sp, 20]
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	ldr	w1, [sp, 20]
 	ldp	x29, x30, [sp], 32
 	sub	w0, w1, w0
@@ -216,7 +216,7 @@ hof_f__part__0:
 .L44:
 	mov	w0, w3
 	stp	w2, w1, [sp, 20]
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	mov	w3, w0
 	ldp	w2, w1, [sp, 20]
 	mov	w0, w1
@@ -232,7 +232,7 @@ hof_f__part__0:
 .L45:
 	stp	w2, w3, [sp, 20]
 	str	w1, [sp, 28]
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	ldp	w2, w3, [sp, 20]
 	ldr	w1, [sp, 28]
 	subs	w3, w3, w0
@@ -243,14 +243,14 @@ hof_f__part__0:
 	mov	w0, w4
 	stp	w2, w3, [sp, 20]
 	str	w1, [sp, 28]
-	bl	hof_f__part__0
+	bl	hof_f.part.0
 	ldp	w2, w3, [sp, 20]
 	ldr	w1, [sp, 28]
 	cbz	w0, .L44
 	b	.L45
 	.align	2
 	.align 5
-hof_m__part__0:
+hof_m.part.0:
 	mov	w1, w0
 	subs	w0, w0, #1
 	bne	.L85
@@ -263,7 +263,7 @@ hof_m__part__0:
 	mov	w19, 0
 .L71:
 	str	w1, [sp, 32]
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	ldr	w1, [sp, 32]
 	mov	w2, w0
 	cbz	w0, .L84
@@ -284,7 +284,7 @@ hof_m__part__0:
 .L68:
 	stp	w3, w1, [sp, 32]
 	str	w2, [sp, 40]
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	ldp	w3, w1, [sp, 32]
 	ldr	w2, [sp, 40]
 	subs	w3, w3, w0
@@ -303,7 +303,7 @@ hof_m__part__0:
 	mov	w0, w4
 	stp	w3, w1, [sp, 32]
 	stp	w2, w4, [sp, 40]
-	bl	hof_f__part__0
+	bl	hof_f.part.0
 	ldp	w3, w1, [sp, 32]
 	ldr	w2, [sp, 40]
 	cbnz	w0, .L68
@@ -379,7 +379,7 @@ main:
 	bne	.L121
 .L90:
 	mov	w0, w1
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	mov	w1, w0
 	sub	w1, w19, w1
 .L123:
@@ -410,7 +410,7 @@ main:
 	blt	.L97
 .L98:
 	mov	w0, w19
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	mov	w1, w0
 	mov	x0, x21
 	bl	printf
@@ -450,7 +450,7 @@ main:
 	mov	w2, 1
 .L91:
 	mov	w0, w2
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	subs	w1, w22, w0
 	bne	.L90
 	sub	w1, w19, w1
@@ -461,7 +461,7 @@ main:
 .L92:
 	mov	w0, w3
 	str	w1, [sp, 84]
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	subs	w2, w23, w0
 	ldr	w1, [sp, 84]
 	beq	.L90
@@ -471,7 +471,7 @@ main:
 	mov	w0, 1
 .L93:
 	stp	w2, w1, [sp, 84]
-	bl	hof_m__part__0
+	bl	hof_m.part.0
 	ldp	w2, w1, [sp, 84]
 	subs	w3, w24, w0
 	beq	.L91
@@ -480,7 +480,7 @@ main:
 	mov	w0, w25
 	stp	w24, w23, [sp, 84]
 	str	w22, [sp, 92]
-	bl	hof_f__part__0
+	bl	hof_f.part.0
 	ldp	w3, w2, [sp, 84]
 	ldr	w1, [sp, 92]
 	cbz	w0, .L92
