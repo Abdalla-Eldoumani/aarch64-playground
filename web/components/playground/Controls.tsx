@@ -32,6 +32,10 @@ interface ControlsProps {
   blocked?: boolean;
   error: string | null;
   stepCount?: number;
+  /** The phone row: five buttons sharing the width, no key chips, and no
+   *  step counter or halted chip, which the phone's status line carries. The
+   *  phone layout pads the safe area itself. */
+  compact?: boolean;
 }
 
 export function Controls({
@@ -50,6 +54,7 @@ export function Controls({
   blocked = false,
   error,
   stepCount,
+  compact = false,
 }: ControlsProps) {
   // The step counter uses a key tied to the count so the scale-up animation
   // restarts each step without extra effects. The visible 44px controls are
@@ -61,17 +66,23 @@ export function Controls({
   // first failed program says what to do next.
   const explanation = error ? explainError(error) : null;
 
+  // On a phone the five buttons share the row, assemble a little wider for
+  // its longer word, so all five fit a 320px screen with nothing to scroll.
+  const share = (weight: string) => (compact ? `${weight} min-w-0 !px-1 !text-[13px]` : undefined);
+
   return (
     <div
-      style={{ paddingBottom: "calc(0.5rem + var(--safe-bottom))" }}
-      className="flex flex-col gap-1.5 px-2 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center sm:gap-2 sm:px-4"
+      style={compact ? undefined : { paddingBottom: "calc(0.5rem + var(--safe-bottom))" }}
+      className={
+        compact
+          ? "flex flex-col gap-1.5 px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)]"
+          : "flex flex-col gap-1.5 px-2 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center sm:gap-2 sm:px-4"
+      }
     >
-      {/* Under sm the controls take one nowrap strip that scrolls within
-          itself, so the fifth button is reachable instead of clipped, and the
-          assemble error drops to its own row underneath rather than off the
-          right edge. At sm and up the band dissolves and every control is a
-          direct child of the row. */}
-      <div className="controls-band flex items-center gap-1.5 sm:contents">
+      {/* The assemble error is its own row under the buttons on a phone and
+          sits inline beside them from sm up, where this row dissolves and
+          every control is a direct child of the outer one. */}
+      <div className={compact ? "flex items-center gap-1" : "flex items-center gap-1.5 sm:contents"}>
         <Button
           variant="primary"
           onClick={onAssemble}
@@ -80,9 +91,10 @@ export function Controls({
           aria-busy={isAssembling}
           aria-keyshortcuts="F6"
           title="F6"
+          className={share("flex-[1.4]")}
         >
           <span>{isAssembling ? "loading…" : "assemble"}</span>
-          <Shortcut keys="F6" />
+          {!compact && <Shortcut keys="F6" />}
         </Button>
         <Button
           variant="primary"
@@ -90,6 +102,7 @@ export function Controls({
           aria-label={isRunning ? "pause" : "run"}
           aria-keyshortcuts="F5"
           title="F5"
+          className={share("flex-1")}
           disabled={
             (!programLoaded && (!runAssemblesFirst || isAssembling)) ||
             (isHalted && !isRunning) ||
@@ -97,7 +110,7 @@ export function Controls({
           }
         >
           <span>{isRunning ? "pause" : "run"}</span>
-          <Shortcut keys="F5" />
+          {!compact && <Shortcut keys="F5" />}
         </Button>
         <Button
           variant="secondary"
@@ -105,10 +118,11 @@ export function Controls({
           aria-label="step"
           aria-keyshortcuts="F10"
           title="F10"
+          className={share("flex-1")}
           disabled={!programLoaded || isRunning || isHalted || blocked}
         >
           <span>step</span>
-          <Shortcut keys="F10" />
+          {!compact && <Shortcut keys="F10" />}
         </Button>
         {onStepBack && (
           <Button
@@ -117,10 +131,11 @@ export function Controls({
             aria-label="back"
             aria-keyshortcuts="Shift+F10"
             title="Shift+F10"
+            className={share("flex-1")}
             disabled={!programLoaded || isRunning || !canStepBack || blocked}
           >
             <span>back</span>
-            <Shortcut keys="Shift+F10" />
+            {!compact && <Shortcut keys="Shift+F10" />}
           </Button>
         )}
         <Button
@@ -129,14 +144,15 @@ export function Controls({
           aria-label="reset"
           aria-keyshortcuts="Shift+F5"
           title="Shift+F5"
+          className={share("flex-1")}
         >
           <span>reset</span>
-          <Shortcut keys="Shift+F5" />
+          {!compact && <Shortcut keys="Shift+F5" />}
         </Button>
 
-        <div className="controls-spacer flex-1" />
+        {!compact && <div className="flex-1" />}
 
-        {stepCount != null && stepCount > 0 && (
+        {!compact && stepCount != null && stepCount > 0 && (
           <span
             key={stepCount}
             className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono anim-step-pop"
@@ -147,7 +163,7 @@ export function Controls({
           </span>
         )}
 
-        {isHalted && !error && (
+        {!compact && isHalted && !error && (
           <span
             className="hidden sm:inline-flex items-center gap-2 font-sans text-xs tracking-wide text-[var(--text-secondary)]"
             role="status"
@@ -189,7 +205,8 @@ export function Controls({
 }
 
 function Shortcut({ keys }: { keys: string }) {
-  // Inherit the button's text color via currentColor so the chip reads on both
+  // Hidden on a touch screen, which has no F keys to press. Inherit the
+  // button's text color via currentColor so the chip reads on both
   // the cyan-filled primaries and the surface-toned secondaries, at full
   // strength so it clears WCAG AA on the filled cyan. aria-hidden keeps the
   // chip out of the accessible name: the button's label stays the bare verb and
@@ -197,7 +214,7 @@ function Shortcut({ keys }: { keys: string }) {
   return (
     <kbd
       aria-hidden="true"
-      className="hidden sm:inline-block text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px]"
+      className="hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px]"
     >
       {keys}
     </kbd>
