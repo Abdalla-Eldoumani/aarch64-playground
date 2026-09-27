@@ -13,6 +13,9 @@ import { useId, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { FeedbackAlert } from "@/components/practice/FeedbackAlert";
 
+/** The empty blank's width in characters: room for a mnemonic like `ldrsw`. */
+const BLANK_MIN_CH = 8;
+
 export function BlanksBlock({
   prompt,
   code,
@@ -81,7 +84,10 @@ export function BlanksBlock({
           value={inputVal}
           onChange={(event) => setInputVal(event.target.value)}
           disabled={submitted}
-          className={`inline-block w-20 border-b-2 px-1 py-0.5 text-center font-mono text-[14px] font-bold outline-none transition-colors ${inputTone}`}
+          // Grows with what is typed, so a two-word answer is never clipped,
+          // and never with the answer's own length, which would be a hint.
+          style={{ width: `${Math.max(BLANK_MIN_CH, inputVal.length + 2)}ch` }}
+          className={`inline-block max-w-full border-b-2 px-1 py-0.5 text-center font-mono text-[14px] font-bold outline-none transition-colors ${inputTone}`}
         />
         {parts[1]}
       </div>
