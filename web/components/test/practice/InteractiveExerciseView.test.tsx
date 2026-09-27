@@ -204,17 +204,36 @@ describe("InteractiveExerciseView saved answers", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "3" } });
     expect(storedAnswer("trace-the-adds")).toMatchObject({ kind: "predict", answers: ["3"] });
   });
-
-  it("does not store the check result beside the answer", () => {
+  it("keeps a question that was checked and right answered across a reload", () => {
     render(<InteractiveExerciseView exercise={QUIZ} />);
     fireEvent.click(screen.getByRole("button", { name: "x29" }));
     fireEvent.click(screen.getAllByRole("button", { name: "check answer" })[0]);
+    expect(storedAnswer("registers-quiz")).toMatchObject({ kind: "quiz", answers: [1], graded: [0] });
 
-    expect(Object.keys(storedAnswer("registers-quiz") as object).sort()).toEqual([
-      "answers",
-      "kind",
-      "updatedAt",
-      "version",
-    ]);
+    cleanup();
+    render(<InteractiveExerciseView exercise={QUIZ} />);
+
+    expect(screen.getByText("1 of 2 correct")).toBeTruthy();
+    expect(screen.getByText(QUIZ.questions[0].explanation)).toBeTruthy();
+    // Only the unanswered question still asks to be checked.
+    expect(screen.getAllByRole("button", { name: "check answer" })).toHaveLength(1);
+    expect(markSolved).not.toHaveBeenCalled();
+  });
+
+  it("restores a checked blank the same way", () => {
+    storeAnswer("load-store-blanks", { kind: "blanks", answers: ["LDR ", ""], graded: [0] });
+    render(<InteractiveExerciseView exercise={BLANKS} />);
+    expect(screen.getByText("1 of 2 correct")).toBeTruthy();
+    expect(screen.getByText(BLANKS.blanks[0].explanation)).toBeTruthy();
+    expect((screen.getAllByRole("textbox")[0] as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("asks again when the stored answer no longer passes, and never counts a wrong answer", () => {
+    // A set whose answer changed since the student checked it, or a hand-edited store.
+    storeAnswer("registers-quiz", { kind: "quiz", answers: [0, null], graded: [0] });
+    render(<InteractiveExerciseView exercise={QUIZ} />);
+    expect(screen.getByText("0 of 2 correct")).toBeTruthy();
+    expect(screen.queryByText(QUIZ.questions[0].explanation)).toBeNull();
+    expect(screen.getAllByRole("button", { name: "check answer" })).toHaveLength(2);
   });
 });
