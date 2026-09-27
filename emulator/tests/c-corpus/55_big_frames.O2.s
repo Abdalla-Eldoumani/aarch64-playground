@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 twist:
 	sxtw	x4, w1
 	mov	x2, 4800
@@ -10,7 +10,7 @@ twist:
 	stp	x29, x30, [sp, -16]!
 	mov	x5, 4792
 	mov	x29, sp
-	.align 5
+	.p2align 5,,15
 .L2:
 	sub	x3, x5, x1
 	ldr	x2, [x1]
@@ -34,13 +34,13 @@ twist:
 	.string	"%s: sum=%lld first=%lld last=%lld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 show:
 	mov	x2, 4800
 	mov	x3, x1
 	add	x5, x1, x2
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L7:
 	ldr	x4, [x3], 8
 	add	x2, x2, x4
@@ -53,7 +53,7 @@ show:
 	add	x0, x0, :lo12:.LC0
 	b	printf
 	.align	2
-	.align 5
+	.p2align 5,,15
 frame_4k:
 	mov	x12, 4144
 	sub	sp, sp, x12
@@ -70,7 +70,7 @@ frame_4k:
 	add	w0, w1, 7
 	add	x1, sp, 40
 	add	x2, x1, 1
-	.align 5
+	.p2align 5,,15
 .L10:
 	strb	w0, [x2], 13
 	add	w0, w0, 91
@@ -87,7 +87,7 @@ frame_4k:
 	add	w0, w0, 9
 	strb	w0, [sp, 2090]
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L11:
 	lsl	x2, x0, 5
 	sub	x0, x2, x0
@@ -101,7 +101,7 @@ frame_4k:
 	add	sp, sp, x12
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 frame_40k:
 	mov	x12, 40032
 	sub	sp, sp, x12
@@ -122,7 +122,7 @@ frame_40k:
 	add	x4, sp, x4
 	mov	x0, x2
 	movk	x1, 0xfffe, lsl 16
-	.align 5
+	.p2align 5,,15
 .L16:
 	str	x1, [x0]
 	add	x0, x0, 776
@@ -140,7 +140,7 @@ frame_40k:
 	mov	x0, 0
 	sdiv	x4, x4, x5
 	str	x4, [sp, 20032]
-	.align 5
+	.p2align 5,,15
 .L17:
 	ldr	x1, [x2], 56
 	eor	x1, x1, x0, lsr 3
@@ -158,7 +158,7 @@ frame_40k:
 	add	sp, sp, x12
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 frame_72k:
 	sub	sp, sp, #2400
 	mov	x2, 6464
@@ -175,7 +175,7 @@ frame_72k:
 	mov	w0, 0
 	mov	x2, x1
 	mov	w4, 18000
-	.align 5
+	.p2align 5,,15
 .L22:
 	eor	w3, w19, w0
 	add	w0, w0, 1000
@@ -186,7 +186,7 @@ frame_72k:
 	add	x3, sp, 69632
 	mov	x0, 0
 	add	x3, x3, 2400
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldr	w2, [x1]
 	add	x0, x0, x0, lsl 1
@@ -202,7 +202,7 @@ frame_72k:
 	add	sp, sp, 69632
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 frame_600k:
 	sub	sp, sp, #2000
 	mov	x2, 10176
@@ -216,7 +216,7 @@ frame_600k:
 	add	x1, sp, 16
 	mov	w0, 0
 	mov	x2, x1
-	.align 5
+	.p2align 5,,15
 .L28:
 	asr	w3, w0, 12
 	add	w0, w0, 4096
@@ -231,7 +231,7 @@ frame_600k:
 	add	x3, x3, 2626
 	strb	w0, [x2]
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L29:
 	lsl	x2, x0, 3
 	sub	x0, x2, x0
@@ -250,7 +250,7 @@ frame_600k:
 	add	x0, x1, x0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 deep8k:
 	mov	x12, 8224
 	sub	sp, sp, x12
@@ -287,7 +287,7 @@ deep8k:
 	add	sp, sp, x12
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 far_args.constprop.0:
 	mov	x12, 40032
 	sub	sp, sp, x12
@@ -334,7 +334,7 @@ far_args.constprop.0:
 	mov	x1, 0
 	str	x4, [x0]
 	add	x0, sp, 32
-	.align 5
+	.p2align 5,,15
 .L38:
 	ldr	x2, [x0]
 	add	x0, x0, 3992
@@ -379,7 +379,7 @@ far_args.constprop.0:
 	.string	"b3"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	mov	x12, 24032
@@ -437,7 +437,7 @@ main:
 	mov	x8, 4800
 	add	x19, x0, x8
 	ldr	q30, [x1, :lo12:.LC11]
-	.align 5
+	.p2align 5,,15
 .L42:
 	add	v0.4s, v31.4s, v30.4s
 	add	v31.4s, v31.4s, v29.4s
