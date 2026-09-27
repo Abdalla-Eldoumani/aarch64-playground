@@ -74,6 +74,9 @@ export interface EmulatorState {
   memoryRegions: MemoryRegion[];
   stdout: string;
   stderr: string;
+  /** Plain-language notes about the run, shown under the output: today, a
+   *  caller-saved register read after a library call overwrote it. */
+  notes: string[];
   blocked: boolean;
   /** True once the running program put the terminal in raw mode; the
    *  terminal pane takes over I/O and the console stays quiet. */
