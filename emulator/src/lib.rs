@@ -184,12 +184,26 @@ pub struct HostCallContext {
 pub fn host_call_context(cpu: &Cpu, line_map: &[u32]) -> Option<HostCallContext> {
     let name = cpu.host_call_name(cpu.regs.read_pc())?.to_string();
     let call_site_pc = cpu.regs.read_gpr(30, true).wrapping_sub(4);
-    let target = call_site_pc as u32;
-    let call_site_line = line_map
+    let call_site_line = line_at(line_map, call_site_pc);
+    Some(HostCallContext { name, call_site_pc, call_site_line })
+}
+
+/// Editor line of `pc` in the flat `[addr, line, ...]` map.
+fn line_at(line_map: &[u32], pc: u64) -> Option<u32> {
+    let target = pc as u32;
+    line_map
         .chunks_exact(2)
         .find(|pair| pair[0] == target)
-        .map(|pair| pair[1]);
-    Some(HostCallContext { name, call_site_pc, call_site_line })
+        .map(|pair| pair[1])
+}
+
+/// Turn the two pcs of each `Cpu::take_clobber_notes` row into the editor
+/// lines the web words the note from, 0 where the map has none.
+pub fn clobber_note_lines(rows: &mut [u32], line_map: &[u32]) {
+    for row in rows.chunks_exact_mut(4) {
+        row[2] = line_at(line_map, u64::from(row[2])).unwrap_or(0);
+        row[3] = line_at(line_map, u64::from(row[3])).unwrap_or(0);
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -800,6 +814,15 @@ impl Emulator {
             .unwrap(),
             None => JsValue::NULL,
         }
+    }
+
+    /// The caller-saved registers the program read after a library call
+    /// overwrote them, as `[register, read_by, call_line, read_line]` rows
+    /// (see `Cpu::take_clobber_notes`), drained: each arrives once.
+    pub fn take_clobber_notes(&mut self) -> Vec<u32> {
+        let mut rows = self.cpu.take_clobber_notes();
+        clobber_note_lines(&mut rows, &self.line_map);
+        rows
     }
 
     // -- hosted runtime --
