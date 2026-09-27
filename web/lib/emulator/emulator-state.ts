@@ -1,6 +1,7 @@
 import type { DecodedInstruction } from "@/lib/emulator/disassembly";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ReplayFrame } from "@/lib/emulator/replay";
+import type { Workspace } from "@/lib/playground/file-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
 /**
@@ -88,12 +89,18 @@ export interface EmulatorState {
   hostedMode: boolean;
   vfsFiles: string[];
   /** Resolves true on a successful assemble, false on any failure, so
-   *  callers can chain work (input seeding, run) on a loaded program. */
-  assemble: (source: string, args?: string[]) => Promise<boolean>;
+   *  callers can chain work (input seeding, run) on a loaded program.
+   *  `workspace` is the files `source` joins, when it joins more than one:
+   *  the notes name lines per file through it. */
+  assemble: (source: string, args?: string[], workspace?: Workspace) => Promise<boolean>;
   /** Assemble for the terminal toolchain: same machine bookkeeping, but
    *  the precise verdict comes back directly and the editor's error
    *  markers stay untouched. */
-  assembleForTool: (source: string, args?: string[]) => Promise<AssembleOutcome>;
+  assembleForTool: (
+    source: string,
+    args?: string[],
+    workspace?: Workspace,
+  ) => Promise<AssembleOutcome>;
   step: () => void;
   stepBack: () => void;
   canStepBack: boolean;
