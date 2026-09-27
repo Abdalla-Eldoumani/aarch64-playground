@@ -498,9 +498,12 @@ main:
         svc     0
 `;
 
-const runBrk = `// brk stops the program with a breakpoint trap; the branch goes around it
+const runBrk = `// brk stops the program with a breakpoint trap; what printed before it stays
 define(fp, x29)
 define(lr, x30)
+
+        .data
+msg:    .string "printed before the trap"
 
         .text
         .balign 4
@@ -509,11 +512,10 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     x0, 1
-        cbnz    x0, safe        // taken, so the trap never runs
-        brk     #1000           // would stop here: Trace/breakpoint trap
-safe:
-        mov     w0, 0
+        ldr     x0, =msg
+        bl      puts
+        brk     #1000           // stops here: Trace/breakpoint trap
+        mov     w0, 0           // never runs
         ldp     fp, lr, [sp], 16
         ret
 `;
