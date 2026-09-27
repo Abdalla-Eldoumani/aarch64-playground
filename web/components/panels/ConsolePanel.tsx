@@ -189,7 +189,7 @@ export function ConsolePanel({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <label className="cursor-pointer text-[var(--cyan)] hover:underline">
+          <label className="touch-target inline-flex items-center cursor-pointer text-[var(--cyan)] hover:underline">
             upload file
             <input
               type="file"
@@ -201,7 +201,7 @@ export function ConsolePanel({
           <button
             type="button"
             onClick={clearConsole}
-            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            className="touch-target text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           >
             clear
           </button>
@@ -276,12 +276,12 @@ export function ConsolePanel({
           }
           disabled={ownedByTerminal}
           aria-label="Standard input"
-          className="flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="touch-target min-w-0 flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)] disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           type="submit"
           disabled={ownedByTerminal}
-          className="px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="touch-target px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           send
         </button>
