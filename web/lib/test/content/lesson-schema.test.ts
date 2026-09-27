@@ -93,6 +93,15 @@ describe("validateLesson (malformed metadata)", () => {
     );
   });
 
+  test("keeps a real calendar date in lastUpdated and rejects anything else", () => {
+    const result = validateLesson({ ...validLesson(), lastUpdated: "2026-02-28" });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.lesson.lastUpdated).toBe("2026-02-28");
+    for (const bad of ["2026-02-30", "2026-13-01", "2026-9-27", "27/09/2026", "2026-09-27T00:00:00Z", 20260927, ""]) {
+      expect(rejectError({ ...validLesson(), lastUpdated: bad }), String(bad)).toMatch(/lastUpdated/);
+    }
+  });
+
   test("rejects tags that are not a string array", () => {
     expect(rejectError({ ...validLesson(), tags: [1, 2] })).toMatch(/tags/);
     expect(rejectError({ ...validLesson(), tags: "registers" })).toMatch(/tags/);
