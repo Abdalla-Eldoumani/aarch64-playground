@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fnv32:
 	ldrb	w1, [x0]
 	mov	x2, x0
@@ -9,7 +9,7 @@ fnv32:
 	cbz	w1, .L1
 	mov	w3, 403
 	movk	w3, 0x100, lsl 16
-	.align 5
+	.p2align 5,,15
 .L3:
 	eor	w0, w1, w0
 	ldrb	w1, [x2, 1]!
@@ -18,7 +18,7 @@ fnv32:
 .L1:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fnv64:
 	ldrb	w1, [x0]
 	mov	x2, x0
@@ -29,7 +29,7 @@ fnv64:
 	cbz	w1, .L7
 	mov	x3, 435
 	movk	x3, 0x100, lsl 32
-	.align 5
+	.p2align 5,,15
 .L9:
 	eor	x0, x1, x0
 	ldrb	w1, [x2, 1]!
@@ -88,7 +88,7 @@ fnv64:
 	.string	"neg %u %lu %u\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #208
@@ -102,7 +102,7 @@ main:
 	add	x21, x21, :lo12:.LC2
 	mov	w20, 0
 	str	x23, [sp, 80]
-	.align 5
+	.p2align 5,,15
 .L19:
 	sbfiz	x0, x20, 3, 32
 	add	w20, w20, 1
@@ -126,7 +126,7 @@ main:
 	add	x21, x19, 80
 	add	x22, x22, :lo12:.LC3
 	mov	w20, 0
-	.align 5
+	.p2align 5,,15
 .L29:
 	sbfiz	x0, x20, 4, 32
 	add	w20, w20, 1
@@ -328,7 +328,7 @@ main:
 	movk	x6, 0x5851, lsl 48
 	movk	x5, 0x1405, lsl 48
 	movk	w4, 0x41c6, lsl 16
-	.align 5
+	.p2align 5,,15
 .L54:
 	madd	x1, x1, x6, x5
 	subs	w0, w0, #1
@@ -357,13 +357,13 @@ main:
 	.align	3
 	.LANCHOR1:
 .LC0:
-	.quad	-1
-	.quad	-1
-	.quad	5
+	.xword	-1
+	.xword	-1
+	.xword	5
 .LC1:
-	.quad	1
-	.quad	0
-	.quad	7
+	.xword	1
+	.xword	0
+	.xword	7
 	.data
 	.align	4
 	.LANCHOR0:
@@ -388,22 +388,22 @@ ip:
 	.word	-2147483648
 	.zero	8
 lp:
-	.quad	9223372036854775807
-	.quad	1
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	-9223372036854775808
-	.quad	-9223372036854775808
-	.quad	3037000499
-	.quad	3037000499
-	.quad	3037000500
-	.quad	3037000500
-	.quad	-4294967296
-	.quad	2147483648
-	.quad	4294967296
-	.quad	2147483648
-	.quad	0
-	.quad	-9223372036854775808
+	.xword	9223372036854775807
+	.xword	1
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	-9223372036854775808
+	.xword	-9223372036854775808
+	.xword	3037000499
+	.xword	3037000499
+	.xword	3037000500
+	.xword	3037000500
+	.xword	-4294967296
+	.xword	2147483648
+	.xword	4294967296
+	.xword	2147483648
+	.xword	0
+	.xword	-9223372036854775808
 up:
 	.word	-1
 	.word	1
@@ -417,14 +417,14 @@ up:
 	.word	2
 	.zero	8
 ulp:
-	.quad	-1
-	.quad	1
-	.quad	0
-	.quad	1
-	.quad	4294967296
-	.quad	4294967296
-	.quad	4294967295
-	.quad	4294967297
-	.quad	-9223372036854775808
-	.quad	2
+	.xword	-1
+	.xword	1
+	.xword	0
+	.xword	1
+	.xword	4294967296
+	.xword	4294967296
+	.xword	4294967295
+	.xword	4294967297
+	.xword	-9223372036854775808
+	.xword	2
 
