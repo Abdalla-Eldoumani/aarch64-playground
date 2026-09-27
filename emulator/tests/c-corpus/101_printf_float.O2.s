@@ -62,7 +62,7 @@ digits:
 	.text
 	.align	2
 	.align 5
-mixed__constprop__0:
+mixed.constprop.0:
 	sub	sp, sp, #224
 	fmov	d31, 3.0e+0
 	add	x0, sp, 224
@@ -543,7 +543,7 @@ main:
 	add	x0, x0, :lo12:.LC0
 	stp	d12, d28, [sp, 8]
 	str	d31, [sp, 24]
-	bl	mixed__constprop__0
+	bl	mixed.constprop.0
 	adrp	x0, .LC29
 	add	x0, x0, :lo12:.LC29
 	bl	printf
