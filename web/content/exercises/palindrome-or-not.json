@@ -2,6 +2,7 @@
   "title": "Palindrome or not",
   "slug": "palindrome-or-not",
   "order": 37,
+  "lastUpdated": "2026-09-27",
   "topic": "strings",
   "difficulty": "core",
   "prompt": "The starter reads one word of up to 63 letters into `word`. Finish it so it says whether the word is a palindrome: a word that reads the same forwards and backwards. Capitals count as the same letter as their lower-case twin, so `Racecar` is a palindrome.\n\nUse two pointers. One starts on the first byte of `word`, the other on the last letter, which is the byte just before the terminating zero. Load a byte through each with `ldrb`, fold capitals to lower case, and compare. The first mismatch settles the answer; if the pointers meet or cross without one, the word is a palindrome.\n\nIn ASCII a capital sits exactly 32 below its lower-case letter, so adding 32 to any byte from `'A'` to `'Z'` folds it. Doing that twice per step is a good job for a small leaf subroutine.\n\nPrint the word as it was typed, followed by `is a palindrome` or `is not a palindrome`, using the two format strings in `.data`.\n\n## what is checked\n\n- the verdict for the word in the stdin box, and for more words you cannot see (so it has to work for any word)\n- the program exits cleanly\n- the letters are read one byte at a time (`ldrb`)",
