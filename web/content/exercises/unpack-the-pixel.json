@@ -1,0 +1,64 @@
+{
+  "title": "Unpack the pixel",
+  "slug": "unpack-the-pixel",
+  "order": 27,
+  "topic": "bitwise",
+  "difficulty": "core",
+  "prompt": "A 32-bit colour packs four 8-bit channels into one word, laid out `0xAARRGGBB`: alpha (how solid the pixel is) in the top byte, then red, then green, and blue in the lowest byte.\n\nThe starter reads a colour typed in hex into `pixel_r`. Pull each channel into its own register with `ubfx`, short for unsigned bitfield extract. For example, `ubfx w9, w10, 4, 12` copies the 12 bits of `w10` that start at bit 4 down to the bottom of `w9` and fills the rest of `w9` with zeros.\n\nThen make `swapped_r` a copy of the colour with its red and blue bytes traded, using `bfi`, short for bitfield insert. For example, `bfi w9, w10, 20, 4` copies the low 4 bits of `w10` into bits 20 to 23 of `w9` and leaves every other bit of `w9` as it was.\n\nWith the sample input `4a90e2ff` the output is:\n\n```\nalpha 74, red 144, green 226, blue 255\nswapped 0x4affe290\n```\n\n## what is checked\n\n- both lines for the sample input\n- the program exits cleanly\n- the channels come out with `ubfx` and go back in with `bfi`\n- the right answer for other colours, including all zeros, all ones, and a colour whose top bit is set",
+  "starter": "// unpack the four 8-bit channels of a 32-bit colour, then swap red and blue\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(pixel_r, w19)\ndefine(alpha_r, w20)\ndefine(red_r, w21)\ndefine(green_r, w22)\ndefine(blue_r, w23)\ndefine(swapped_r, w24)\n\n.data\nfmt_colour: .string \"%x\"\nfmt_ch:     .string \"alpha %d, red %d, green %d, blue %d\\n\"\nfmt_sw:     .string \"swapped 0x%08x\\n\"\n\n.bss\n.balign 4\npixel_m:    .skip 4\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_colour             // read a colour typed in hex\n        ldr     x1, =pixel_m\n        bl      scanf\n        ldr     x9, =pixel_m\n        ldr     pixel_r, [x9]\n\n        mov     alpha_r, 0                  // replace these placeholders\n        mov     red_r, 0\n        mov     green_r, 0\n        mov     blue_r, 0\n        mov     swapped_r, 0\n\n        // TODO: the colour is laid out 0xAARRGGBB. Pull each channel out\n        // of pixel_r into its own register, then make swapped_r a copy\n        // of pixel_r with the red and blue bytes traded.\n\n        ldr     x0, =fmt_ch\n        mov     w1, alpha_r\n        mov     w2, red_r\n        mov     w3, green_r\n        mov     w4, blue_r\n        bl      printf\n\n        ldr     x0, =fmt_sw\n        mov     w1, swapped_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "4a90e2ff\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "alpha 74, red 144, green 226, blue 255\nswapped 0x4affe290\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "ubfx"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "bfi"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "alpha 0, red 0, green 0, blue 0\nswapped 0x00000000\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "ffffffff\n",
+      "stdout": "alpha 255, red 255, green 255, blue 255\nswapped 0xffffffff\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "80000000\n",
+      "stdout": "alpha 128, red 0, green 0, blue 0\nswapped 0x80000000\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "12345678\n",
+      "stdout": "alpha 18, red 52, green 86, blue 120\nswapped 0x12785634\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "ff0000\n",
+      "stdout": "alpha 0, red 255, green 0, blue 0\nswapped 0x000000ff\n",
+      "exitCode": 0
+    }
+  ]
+}
