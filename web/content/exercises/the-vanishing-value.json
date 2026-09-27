@@ -1,7 +1,7 @@
 {
   "title": "The vanishing value",
   "slug": "the-vanishing-value",
-  "order": 23,
+  "order": 41,
   "topic": "memory",
   "difficulty": "core",
   "prompt": "This program swaps two registers, then prints them in their new order. Run it: one of the values has vanished, and the other now appears twice.\n\nTrace the two `mov` instructions of the swap by hand and watch where the first value goes. Fix the swap so both values survive; the starter aliases a spare register as `tmp_r` if you want one.\n\n## what is checked\n\n- both values appear, in swapped order\n- the program exits cleanly",
