@@ -70,7 +70,7 @@ st_other:
 	b	next
 	.align	2
 	.align 5
-is_odd__part__0:
+is_odd.part.0:
 .L26:
 	cmp	x0, 1
 	beq	.L23
@@ -581,7 +581,7 @@ main:
 	mov	x26, x0
 	b	.L110
 .L133:
-	bl	is_odd__part__0
+	bl	is_odd.part.0
 	mov	w4, w0
 	b	.L95
 .L132:
@@ -589,7 +589,7 @@ main:
 	beq	.L88
 	subs	x0, x0, #3
 	beq	.L91
-	bl	is_odd__part__0
+	bl	is_odd.part.0
 	mov	w2, w0
 	b	.L93
 	.section .rodata
