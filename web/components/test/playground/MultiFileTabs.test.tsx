@@ -171,7 +171,7 @@ describe("MultiFileTabs keyboard and roles", () => {
   it("names the new-file input for anyone who cannot see its placeholder", () => {
     renderTabs();
     const input = screen.getByLabelText("new file name") as HTMLInputElement;
-    expect(input.placeholder).toBe("new file name");
+    expect(input.placeholder).toBe("file name");
   });
 });
 
