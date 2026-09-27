@@ -10,6 +10,8 @@ export const MAX_CONSOLE_CHARS = 256 * 1024;
 /** Visible marker so trimmed output is never mistaken for all of it. */
 export const CONSOLE_TRIM_MARKER = "[...earlier output trimmed...]\n";
 
+const MAX_NOTES = 64;
+
 /** Which of the machine's two display streams a call is about. */
 export type ConsoleStream = "stdout" | "stderr";
 
@@ -80,6 +82,10 @@ export interface ConsoleOutput {
   stderr: string;
   appendStdout: (delta: string) => void;
   appendStderr: (delta: string) => void;
+  /** The machine's notes about the program (lib/emulator/clobber-note),
+   *  shown under the output and cleared with it. */
+  notes: string[];
+  appendNotes: (texts: string[]) => void;
   /**
    * Align a stream's scrollback with the machine's cumulative display
    * counter after a snapshot's deltas have been appended. A counter that
@@ -115,6 +121,7 @@ export function useConsoleOutput(
 ): ConsoleOutput {
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
+  const [notes, setNotes] = useState<string[]>([]);
   const outputTapRef = useRef<((text: string) => void) | null>(null);
   // The scrollback is mirrored in refs so an append can move the byte
   // position in the same pass: a functional setState updater runs twice
@@ -165,6 +172,12 @@ export function useConsoleOutput(
     [append],
   );
 
+  // A run notes each register at most once, but terminal runs keep the
+  // scrollback, so the list is capped like the text beside it.
+  const appendNotes = useCallback((texts: string[]) => {
+    setNotes((prev) => [...prev, ...texts].slice(-MAX_NOTES));
+  }, []);
+
   const syncSeen = useCallback(
     (stream: ConsoleStream, seen: number) => {
       const pos = posRef.current[stream];
@@ -205,6 +218,7 @@ export function useConsoleOutput(
       posRef.current[stream].historyBytes = 0;
       write(stream, "");
     }
+    setNotes([]);
   }, [write]);
 
   // The text stays, its byte accounting goes: everything shown becomes
@@ -237,6 +251,8 @@ export function useConsoleOutput(
     stderr,
     appendStdout,
     appendStderr,
+    notes,
+    appendNotes,
     syncSeen,
     clearScrollback,
     preserveScrollback,
