@@ -40,10 +40,15 @@ describe("the header audit script", () => {
       "https://CDN.jsDelivr.net",
       "https://*.jsdelivr.net",
       "*",
+      "https:",
+      "http:",
     ]) {
       expect(cspPasses(withSource("script-src", source)), source).toBe(false);
     }
     expect(cspPasses(withSource("style-src", "https://cdn.jsdelivr.net"))).toBe(false);
+    // A header value can hold several policies joined by commas, which is
+    // also how a repeated header reads back; the browser enforces each one.
+    expect(cspPasses("script-src 'self' https://cdn.jsdelivr.net, " + SHIPPED_CSP)).toBe(false);
   });
 
   it("does not take a host that only contains the CDN's name for the CDN", () => {
