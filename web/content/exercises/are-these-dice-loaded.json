@@ -2,6 +2,7 @@
   "title": "Are these dice loaded?",
   "slug": "are-these-dice-loaded",
   "order": 62,
+  "lastUpdated": "2026-09-27",
   "topic": "external-data",
   "difficulty": "core",
   "prompt": "Someone swears their die is fair. Read their rolls and draw a *histogram*, a bar chart with one bar per face, to check.\n\nThe starter's `main` reads numbers until the input runs out. Finish the tally: a roll from 1 to 6 adds 1 to that face's count in the `.bss` array `tally` (face 1 at index 0), and any other value adds 1 to `ignored_r` instead. Then finish the chart: the starter already prints each row's label `f |` and its line break, so print one `#` per roll in between.\n\n`tally` holds ints, 4 bytes each, so entry i sits at `tally + i * 4`: the scaled form `[tally_r, w9, SXTW 2]` does that multiply for you.\n\nThe starter's input draws:\n\n```\n1 |#\n2 |#\n3 |###\n4 |\n5 |#\n6 |###\nignored 0\n```\n\n## what is checked\n\n- the chart above\n- the program exits with status 0\n- the same checks on other inputs the checker keeps hidden: no rolls at all, values outside 1 to 6 (0, 7 and negatives), and a die that only ever rolls one face\n- the counts are kept in memory (`str`)",
